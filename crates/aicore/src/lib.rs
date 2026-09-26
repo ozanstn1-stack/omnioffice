@@ -56,6 +56,133 @@ pub fn clamp_output_tokens(max_tokens: u32) -> u32 {
     max_tokens.clamp(256, MAX_OUTPUT_TOKENS)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderKind {
+    #[default]
+    DeepSeek,
+    OpenAiCompatible,
+    Ollama,
+    Gemini,
+    Custom,
+}
+
+impl ProviderKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::DeepSeek => "deepseek",
+            Self::OpenAiCompatible => "openai_compatible",
+            Self::Ollama => "ollama",
+            Self::Gemini => "gemini",
+            Self::Custom => "custom",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        let normalized = value.trim().to_lowercase().replace(['-', ' '], "_");
+        match normalized.as_str() {
+            "deepseek" | "deep_seek" => Some(Self::DeepSeek),
+            "openai_compatible" | "openai" | "open_ai" | "compatible" => Some(Self::OpenAiCompatible),
+            "ollama" | "local" => Some(Self::Ollama),
+            "gemini" | "google" | "google_gemini" => Some(Self::Gemini),
+            "custom" | "other" => Some(Self::Custom),
+            _ => None,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::DeepSeek => "DeepSeek",
+            Self::OpenAiCompatible => "OpenAI-compatible",
+            Self::Ollama => "Ollama (local)",
+            Self::Gemini => "Google Gemini",
+            Self::Custom => "Custom endpoint",
+        }
+    }
+
+    pub fn default_base_url(self) -> &'static str {
+        match self {
+            Self::DeepSeek => DEFAULT_BASE_URL,
+            Self::OpenAiCompatible => "https://api.openai.com/v1",
+            Self::Ollama => "http://localhost:11434",
+            Self::Gemini => "https://generativelanguage.googleapis.com/v1beta",
+            Self::Custom => "",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderCapabilities {
+    pub chat: bool,
+    pub embeddings: bool,
+    pub vision: bool,
+    pub structured_output: bool,
+    pub streaming: bool,
+}
+
+impl ProviderCapabilities {
+    pub fn for_kind(kind: ProviderKind) -> Self {
+        match kind {
+            ProviderKind::DeepSeek => Self {
+                chat: true,
+                embeddings: false,
+                vision: true,
+                structured_output: true,
+                streaming: true,
+            },
+            ProviderKind::OpenAiCompatible => Self {
+                chat: true,
+                embeddings: true,
+                vision: true,
+                structured_output: true,
+                streaming: true,
+            },
+            ProviderKind::Ollama => Self {
+                chat: true,
+                embeddings: true,
+                vision: true,
+                structured_output: true,
+                streaming: true,
+            },
+            ProviderKind::Gemini => Self {
+                chat: true,
+                embeddings: true,
+                vision: true,
+                structured_output: true,
+                streaming: true,
+            },
+            ProviderKind::Custom => Self {
+                chat: true,
+                embeddings: false,
+                vision: false,
+                structured_output: false,
+                streaming: true,
+            },
+        }
+    }
+}
+
+/// One-line privacy note shown next to the provider picker in the settings.
+pub fn provider_notes(kind: ProviderKind) -> &'static str {
+    match kind {
+        ProviderKind::DeepSeek => {
+            "Cloud API. The document text is sent to api.deepseek.com together with your API key."
+        }
+        ProviderKind::OpenAiCompatible => {
+            "Cloud API. The document text is sent to the OpenAI-compatible endpoint you configure."
+        }
+        ProviderKind::Ollama => {
+            "Local models. Ollama runs on your computer and the document text never leaves the computer."
+        }
+        ProviderKind::Gemini => {
+            "Cloud API. The document text is sent to Google Gemini together with your API key."
+        }
+        ProviderKind::Custom => {
+            "Custom endpoint. The document text is sent wherever that endpoint points; check its privacy policy."
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiConfig {
@@ -79,6 +206,12 @@ pub struct AiConfig {
     /// sent per request and how the map/reduce chunking is sized.
     #[serde(default = "default_context_tokens")]
     pub context_tokens: u32,
+    /// Which API backend the client talks to (default: DeepSeek).
+    #[serde(default)]
+    pub provider: ProviderKind,
+    /// Optional embedding model, used by providers that expose embeddings.
+    #[serde(default)]
+    pub embedding_model: Option<String>,
 }
 
 pub fn default_context_tokens() -> u32 {
@@ -117,6 +250,8 @@ impl Default for AiConfig {
             thinking: default_thinking(),
             reasoning_effort: default_reasoning_effort(),
             context_tokens: default_context_tokens(),
+            provider: ProviderKind::DeepSeek,
+            embedding_model: None,
         }
     }
 }
@@ -140,7 +275,7 @@ pub fn supports_thinking(model: &str) -> bool {
 
 impl AiConfig {
     pub fn is_configured(&self) -> bool {
-        !self.api_key.trim().is_empty()
+        self.provider == ProviderKind::Ollama || !self.api_key.trim().is_empty()
     }
 }
 
@@ -187,6 +322,10 @@ pub enum AiError {
     NoText,
     #[error("request was too large for the model context")]
     TooLarge,
+    #[error("{0}")]
+    ProviderUnreachable(String),
+    #[error("unsupported action: {0}")]
+    Unsupported(String),
 }
 
 pub type AiResult<T> = Result<T, AiError>;
@@ -241,7 +380,7 @@ struct ChatRequestBody<'a> {
 
 impl<'a> ChatRequestBody<'a> {
     fn new(config: &'a AiConfig, messages: &'a [ChatMessage], options: &ChatOptions, stream: bool) -> Self {
-        let enable_thinking = supports_thinking(&config.model);
+        let enable_thinking = config.provider == ProviderKind::DeepSeek && supports_thinking(&config.model);
         Self {
             model: &config.model,
             messages,
@@ -331,7 +470,55 @@ struct ApiErrorDetail {
     kind: String,
 }
 
-/// Minimal DeepSeek chat-completions client.
+#[derive(Debug, Serialize)]
+struct OllamaChatRequestBody<'a> {
+    model: &'a str,
+    messages: &'a [ChatMessage],
+    stream: bool,
+    options: OllamaChatOptions,
+}
+
+#[derive(Debug, Serialize)]
+struct OllamaChatOptions {
+    temperature: f32,
+    num_predict: u32,
+}
+
+impl<'a> OllamaChatRequestBody<'a> {
+    fn new(config: &'a AiConfig, messages: &'a [ChatMessage], options: &ChatOptions, stream: bool) -> Self {
+        Self {
+            model: &config.model,
+            messages,
+            stream,
+            options: OllamaChatOptions {
+                temperature: options.temperature.unwrap_or(config.temperature),
+                num_predict: clamp_output_tokens(options.max_tokens.unwrap_or(config.max_tokens)),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct OllamaChatResponse {
+    #[serde(default)]
+    message: OllamaMessage,
+    #[serde(default)]
+    done: bool,
+    #[serde(default)]
+    error: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct OllamaMessage {
+    #[serde(default)]
+    content: String,
+}
+
+/// Chat-completions client that adapts to the configured provider.
+///
+/// The name is kept for backwards compatibility: it talks to DeepSeek by
+/// default, and to any OpenAI-compatible, Ollama, Gemini or custom endpoint
+/// selected with [`ProviderKind`].
 pub struct DeepSeekClient {
     config: AiConfig,
     http: reqwest::Client,
@@ -355,27 +542,71 @@ impl DeepSeekClient {
         &self.config
     }
 
+    pub fn provider(&self) -> ProviderKind {
+        self.config.provider
+    }
+
+    pub fn capabilities(&self) -> ProviderCapabilities {
+        ProviderCapabilities::for_kind(self.provider())
+    }
+
     fn endpoint(&self) -> String {
-        format!(
-            "{}/chat/completions",
-            self.config.base_url.trim_end_matches('/')
-        )
+        let base = self.config.base_url.trim().trim_end_matches('/');
+        match self.provider() {
+            ProviderKind::Ollama => format!("{base}/api/chat"),
+            ProviderKind::Gemini => format!("{base}/openai/chat/completions"),
+            ProviderKind::DeepSeek | ProviderKind::OpenAiCompatible | ProviderKind::Custom => {
+                format!("{base}/chat/completions")
+            }
+        }
+    }
+
+    fn request(&self) -> reqwest::RequestBuilder {
+        let builder = self.http.post(self.endpoint());
+        if self.provider() == ProviderKind::Ollama {
+            builder
+        } else {
+            builder.bearer_auth(self.config.api_key.trim())
+        }
+    }
+
+    fn unreachable(&self, error: reqwest::Error) -> AiError {
+        let reason = if error.is_timeout() {
+            "the request timed out"
+        } else {
+            "could not reach the server"
+        };
+        let hint = match self.provider() {
+            ProviderKind::Ollama => " (is Ollama running? try `ollama serve`)",
+            _ => "",
+        };
+        AiError::ProviderUnreachable(format!(
+            "{reason} for {} at {}{hint}",
+            self.provider().label(),
+            self.config.base_url.trim()
+        ))
     }
 
     /// Non-streaming completion (used for tests and short tasks).
     pub async fn chat(&self, messages: &[ChatMessage], options: ChatOptions) -> AiResult<String> {
-        let body = ChatRequestBody::new(&self.config, messages, &options, false);
+        if self.provider() == ProviderKind::Ollama {
+            self.chat_ollama(messages, &options).await
+        } else {
+            self.chat_openai_compatible(messages, &options).await
+        }
+    }
+
+    async fn chat_openai_compatible(&self, messages: &[ChatMessage], options: &ChatOptions) -> AiResult<String> {
+        let body = ChatRequestBody::new(&self.config, messages, options, false);
         let response = self
-            .http
-            .post(self.endpoint())
-            .bearer_auth(&self.config.api_key)
+            .request()
             .json(&body)
             .send()
             .await
-            .map_err(|_| AiError::Network)?;
+            .map_err(|error| self.unreachable(error))?;
 
         let status = response.status();
-        let text = response.text().await.map_err(|_| AiError::Network)?;
+        let text = response.text().await.map_err(|error| self.unreachable(error))?;
         if !status.is_success() {
             return Err(map_http_error(status.as_u16(), &text));
         }
@@ -386,6 +617,30 @@ impl DeepSeekClient {
             .next()
             .and_then(|choice| choice.message.text())
             .ok_or(AiError::InvalidResponse)
+    }
+
+    async fn chat_ollama(&self, messages: &[ChatMessage], options: &ChatOptions) -> AiResult<String> {
+        let body = OllamaChatRequestBody::new(&self.config, messages, options, false);
+        let response = self
+            .request()
+            .json(&body)
+            .send()
+            .await
+            .map_err(|error| self.unreachable(error))?;
+
+        let status = response.status();
+        let text = response.text().await.map_err(|error| self.unreachable(error))?;
+        if !status.is_success() {
+            return Err(map_http_error(status.as_u16(), &text));
+        }
+        let parsed: OllamaChatResponse = serde_json::from_str(&text).map_err(|_| AiError::InvalidResponse)?;
+        if !parsed.error.trim().is_empty() {
+            return Err(AiError::Server(parsed.error));
+        }
+        if parsed.message.content.trim().is_empty() {
+            return Err(AiError::InvalidResponse);
+        }
+        Ok(parsed.message.content)
     }
 
     /// Streaming completion: `on_delta` receives incremental answer text and
@@ -399,15 +654,30 @@ impl DeepSeekClient {
         on_delta: &mut (dyn FnMut(&str) + Send),
         on_reasoning: &mut (dyn FnMut(&str) + Send),
     ) -> AiResult<String> {
+        if self.provider() == ProviderKind::Ollama {
+            let _ = on_reasoning;
+            self.chat_stream_ollama(messages, options, cancel, on_delta).await
+        } else {
+            self.chat_stream_openai_compatible(messages, options, cancel, on_delta, on_reasoning)
+                .await
+        }
+    }
+
+    async fn chat_stream_openai_compatible(
+        &self,
+        messages: &[ChatMessage],
+        options: ChatOptions,
+        cancel: &CancelToken,
+        on_delta: &mut (dyn FnMut(&str) + Send),
+        on_reasoning: &mut (dyn FnMut(&str) + Send),
+    ) -> AiResult<String> {
         let body = ChatRequestBody::new(&self.config, messages, &options, true);
         let response = self
-            .http
-            .post(self.endpoint())
-            .bearer_auth(&self.config.api_key)
+            .request()
             .json(&body)
             .send()
             .await
-            .map_err(|_| AiError::Network)?;
+            .map_err(|error| self.unreachable(error))?;
         let status = response.status();
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -420,7 +690,7 @@ impl DeepSeekClient {
         let mut reasoning_text = String::new();
         while let Some(chunk) = stream.next().await {
             cancel.check()?;
-            let bytes = chunk.map_err(|_| AiError::Network)?;
+            let bytes = chunk.map_err(|error| self.unreachable(error))?;
             buffer.push_str(&String::from_utf8_lossy(&bytes));
             // Server-sent events: lines like `data: {...}` separated by blank lines.
             while let Some(position) = buffer.find('\n') {
@@ -463,6 +733,80 @@ impl DeepSeekClient {
         Ok(full)
     }
 
+    async fn chat_stream_ollama(
+        &self,
+        messages: &[ChatMessage],
+        options: ChatOptions,
+        cancel: &CancelToken,
+        on_delta: &mut (dyn FnMut(&str) + Send),
+    ) -> AiResult<String> {
+        let body = OllamaChatRequestBody::new(&self.config, messages, &options, true);
+        let response = self
+            .request()
+            .json(&body)
+            .send()
+            .await
+            .map_err(|error| self.unreachable(error))?;
+        let status = response.status();
+        if !status.is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(map_http_error(status.as_u16(), &text));
+        }
+
+        // Ollama streams newline-delimited JSON objects, one per line:
+        // {"message":{"content":"..."},"done":false} ... {"done":true}
+        let mut stream = response.bytes_stream();
+        let mut buffer = String::new();
+        let mut full = String::new();
+        let mut finished = false;
+        while let Some(chunk) = stream.next().await {
+            cancel.check()?;
+            let bytes = chunk.map_err(|error| self.unreachable(error))?;
+            buffer.push_str(&String::from_utf8_lossy(&bytes));
+            while let Some(position) = buffer.find('\n') {
+                let line = buffer[..position].trim().to_string();
+                buffer.drain(..=position);
+                if line.is_empty() {
+                    continue;
+                }
+                let parsed: OllamaChatResponse =
+                    serde_json::from_str(&line).map_err(|_| AiError::InvalidResponse)?;
+                if !parsed.error.trim().is_empty() {
+                    return Err(AiError::Server(parsed.error));
+                }
+                if !parsed.message.content.is_empty() {
+                    full.push_str(&parsed.message.content);
+                    on_delta(&parsed.message.content);
+                }
+                if parsed.done {
+                    finished = true;
+                    break;
+                }
+            }
+            if finished {
+                break;
+            }
+        }
+        if !finished {
+            let line = buffer.trim();
+            if !line.is_empty() {
+                let parsed: OllamaChatResponse =
+                    serde_json::from_str(line).map_err(|_| AiError::InvalidResponse)?;
+                if !parsed.error.trim().is_empty() {
+                    return Err(AiError::Server(parsed.error));
+                }
+                if !parsed.message.content.is_empty() {
+                    full.push_str(&parsed.message.content);
+                    on_delta(&parsed.message.content);
+                }
+            }
+        }
+        if full.trim().is_empty() {
+            return Err(AiError::InvalidResponse);
+        }
+        Ok(full)
+    }
+
     /// Cheap connectivity/credentials check for the settings screen.
     pub async fn test_connection(&self) -> AiResult<String> {
         let messages = vec![ChatMessage::user("Reply with the single word: ready")];
@@ -480,7 +824,21 @@ impl DeepSeekClient {
 }
 
 fn map_http_error(status: u16, body: &str) -> AiError {
-    let detail = serde_json::from_str::<ApiErrorBody>(body).ok().map(|parsed| parsed.error);
+    let detail = serde_json::from_str::<ApiErrorBody>(body)
+        .ok()
+        .map(|parsed| parsed.error)
+        .or_else(|| {
+            // Ollama reports errors as {"error": "text"}.
+            let value: serde_json::Value = serde_json::from_str(body).ok()?;
+            value
+                .get("error")
+                .and_then(|error| error.as_str())
+                .map(|message| ApiErrorDetail {
+                    message: message.to_string(),
+                    code: String::new(),
+                    kind: String::new(),
+                })
+        });
     let code = detail
         .as_ref()
         .map(|error| format!("{} {}", error.code, error.kind).to_lowercase())

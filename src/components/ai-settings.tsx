@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bot, CheckCircle2, KeyRound, ShieldAlert, Trash2, Zap } from "lucide-react";
+import { Bot, CheckCircle2, KeyRound, ShieldAlert, ShieldCheck, Trash2, Zap } from "lucide-react";
 import { Badge, Button, Card, Checkbox, Field, Segmented, Slider, Spinner, TextInput } from "./ui";
 import { useSettings } from "../lib/store";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -9,21 +9,110 @@ import { aiClearKey, aiGetSettings, aiLibraryDefaultDir, aiModels, aiSaveSetting
 import type { AiModelOption, AiSettingsView, AiTestResult, ReasoningEffort } from "../lib/types";
 
 /**
- * Settings panel for the optional DeepSeek integration.
+ * Settings panel for the optional AI integration.
  *
  * This is the only screen that receives an API key. The key is written by the
  * Rust layer (Windows DPAPI encrypted) and is never logged; the UI only ever
  * shows a masked value afterwards.
  */
+
+interface ProviderCapabilities {
+  chat: boolean;
+  embeddings: boolean;
+  vision: boolean;
+  structured_output: boolean;
+  streaming: boolean;
+}
+
+interface ProviderPreset {
+  id: string;
+  label: string;
+  baseUrl: string;
+  model: string;
+  note: string;
+  capabilities: ProviderCapabilities;
+}
+
+const PROVIDER_PRESETS: ProviderPreset[] = [
+  {
+    id: "deepseek",
+    label: "DeepSeek",
+    baseUrl: "https://api.deepseek.com",
+    model: "deepseek-flash",
+    note: "Cloud API. The document text is sent to api.deepseek.com together with your API key.",
+    capabilities: { chat: true, embeddings: false, vision: true, structured_output: true, streaming: true },
+  },
+  {
+    id: "openai_compatible",
+    label: "OpenAI-compatible",
+    baseUrl: "",
+    model: "",
+    note: "Cloud API. The document text is sent to the OpenAI-compatible endpoint you configure.",
+    capabilities: { chat: true, embeddings: true, vision: true, structured_output: true, streaming: true },
+  },
+  {
+    id: "ollama",
+    label: "Ollama (local)",
+    baseUrl: "http://localhost:11434",
+    model: "llama3.2",
+    note: "Local models. Ollama runs on your computer and the document text never leaves the computer.",
+    capabilities: { chat: true, embeddings: true, vision: true, structured_output: true, streaming: true },
+  },
+  {
+    id: "gemini",
+    label: "Google Gemini",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    model: "gemini-2.0-flash",
+    note: "Cloud API. The document text is sent to Google Gemini together with your API key.",
+    capabilities: { chat: true, embeddings: true, vision: true, structured_output: true, streaming: true },
+  },
+  {
+    id: "custom",
+    label: "Custom endpoint",
+    baseUrl: "",
+    model: "",
+    note: "Custom endpoint. The document text is sent wherever that endpoint points; check its privacy policy.",
+    capabilities: { chat: true, embeddings: false, vision: false, structured_output: false, streaming: true },
+  },
+];
+
+type AiSettingsViewExt = AiSettingsView & {
+  provider?: string;
+  providerLabel?: string;
+  providerNote?: string;
+  capabilities?: ProviderCapabilities;
+  embeddingModel?: string | null;
+};
+
+const CAPABILITY_CHIPS: { key: keyof ProviderCapabilities; labelKey: string; fallback: string }[] = [
+  { key: "chat", labelKey: "ai.capChat", fallback: "Chat" },
+  { key: "embeddings", labelKey: "ai.capEmbeddings", fallback: "Embeddings" },
+  { key: "vision", labelKey: "ai.capVision", fallback: "Vision" },
+  { key: "structured_output", labelKey: "ai.capStructured", fallback: "Structured output" },
+  { key: "streaming", labelKey: "ai.capStreaming", fallback: "Streaming" },
+];
+
+function parseProviderId(value?: string): string {
+  const normalized = (value ?? "").trim().toLowerCase().replace(/[-\s]/g, "_");
+  if (normalized === "deepseek" || normalized === "deep_seek") return "deepseek";
+  if (["openai_compatible", "openai", "open_ai", "compatible"].includes(normalized)) return "openai_compatible";
+  if (normalized === "ollama" || normalized === "local") return "ollama";
+  if (["gemini", "google", "google_gemini"].includes(normalized)) return "gemini";
+  if (normalized === "custom" || normalized === "other") return "custom";
+  return "deepseek";
+}
+
 export function AiSettings() {
   const t = useT();
   const settings = useSettings((s) => s.settings);
   const updateSettings = useSettings((s) => s.update);
   const [libraryDefault, setLibraryDefault] = useState("");
-  const [view, setView] = useState<AiSettingsView | null>(null);
+  const [view, setView] = useState<AiSettingsViewExt | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("https://api.deepseek.com");
   const [model, setModel] = useState("deepseek-flash");
+  const [provider, setProvider] = useState("deepseek");
+  const [embeddingModel, setEmbeddingModel] = useState("");
   const [models, setModels] = useState<AiModelOption[]>([]);
   const [temperature, setTemperature] = useState(0.2);
   const [maxTokens, setMaxTokens] = useState(4096);
@@ -43,10 +132,12 @@ export function AiSettings() {
       .then(setModels)
       .catch(() => undefined);
     void aiGetSettings()
-      .then((settings) => {
+      .then((settings: AiSettingsViewExt) => {
         setView(settings);
         setBaseUrl(settings.baseUrl);
         setModel(settings.model);
+        setProvider(parseProviderId(settings.provider));
+        setEmbeddingModel(settings.embeddingModel ?? "");
         setTemperature(settings.temperature);
         setMaxTokens(settings.maxTokens);
         setThinking(settings.thinking);
@@ -56,6 +147,28 @@ export function AiSettings() {
       })
       .catch(() => undefined);
   }, []);
+
+  const label = (key: string, fallback: string) => {
+    const value = t(key);
+    return value === key ? fallback : value;
+  };
+
+  const preset = PROVIDER_PRESETS.find((entry) => entry.id === provider) ?? PROVIDER_PRESETS[0];
+  const savedProvider = parseProviderId(view?.provider);
+  const capabilities: ProviderCapabilities =
+    view?.capabilities && savedProvider === provider ? view.capabilities : preset.capabilities;
+  const providerNote = view?.providerNote && savedProvider === provider ? view.providerNote : preset.note;
+  const needsApiKey = provider !== "ollama";
+
+  const changeProvider = (value: string) => {
+    setProvider(value);
+    setTestResult(null);
+    const next = PROVIDER_PRESETS.find((entry) => entry.id === value);
+    if (next) {
+      if (next.baseUrl) setBaseUrl(next.baseUrl);
+      if (next.model) setModel(next.model);
+    }
+  };
 
   const normalizedModel = model.trim().toLowerCase();
   const isV4Model =
@@ -76,7 +189,9 @@ export function AiSettings() {
         thinking,
         reasoningEffort,
         contextTokens,
-      });
+        provider,
+        embeddingModel: capabilities.embeddings && embeddingModel.trim() ? embeddingModel.trim() : undefined,
+      } as Parameters<typeof aiSaveSettings>[0] & { provider: string; embeddingModel?: string });
       setView(updated);
       setApiKey("");
       setTestResult(null);
@@ -115,21 +230,80 @@ export function AiSettings() {
         <span>{t("settings.aiWarning")}</span>
       </div>
 
-      <Field label={t("settings.aiKey")} hint={t("settings.aiKeyHint")}>
-        <div className="flex gap-2">
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+        <Field label={label("ai.provider", "Provider")} hint={label("ai.providerHint", "Where the extracted text is sent")}>
+          <select
+            className="select"
+            value={provider}
+            aria-label={label("ai.provider", "Provider")}
+            onChange={(event) => changeProvider(event.target.value)}
+          >
+            {PROVIDER_PRESETS.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field
+          label={label("ai.embeddingModel", "Embedding model")}
+          hint={
+            capabilities.embeddings
+              ? label("ai.embeddingHint", "Optional; used by providers with embedding support")
+              : label("ai.embeddingUnsupported", "This provider does not support embeddings")
+          }
+        >
           <TextInput
-            type="password"
-            value={apiKey}
-            placeholder={view?.maskedKey || "sk-…"}
-            onChange={(event) => setApiKey(event.target.value)}
-            autoComplete="off"
+            value={embeddingModel}
+            disabled={!capabilities.embeddings}
+            onChange={(event) => setEmbeddingModel(event.target.value)}
+            placeholder="nomic-embed-text"
             spellCheck={false}
           />
-          <Button variant="ghost" icon={<KeyRound size={15} />} onClick={() => void clear()} disabled={!view?.configured}>
-            {t("settings.aiClear")}
-          </Button>
+        </Field>
+      </div>
+
+      <div className="card-soft p-3 flex items-start gap-2 text-xs">
+        {provider === "ollama" ? (
+          <ShieldCheck size={14} style={{ color: "var(--ok)", marginTop: 2 }} />
+        ) : (
+          <ShieldAlert size={14} style={{ color: "var(--warn)", marginTop: 2 }} />
+        )}
+        <span>{providerNote}</span>
+      </div>
+
+      <Field label={label("ai.capabilities", "Provider capabilities")}>
+        <div className="flex flex-wrap gap-1.5">
+          {CAPABILITY_CHIPS.map((chip) => (
+            <Badge key={chip.key} tone={capabilities[chip.key] ? "ok" : "default"}>
+              {label(chip.labelKey, chip.fallback)}: {capabilities[chip.key] ? t("info.yes") : t("info.no")}
+            </Badge>
+          ))}
         </div>
       </Field>
+
+      {provider === "ollama" ? (
+        <div className="card-soft p-3 flex items-start gap-2 text-xs">
+          <CheckCircle2 size={14} style={{ color: "var(--ok)", marginTop: 2 }} />
+          <span>{label("ai.ollamaNoKey", "Ollama runs on this computer, so no API key is needed.")}</span>
+        </div>
+      ) : (
+        <Field label={t("settings.aiKey")} hint={t("settings.aiKeyHint")}>
+          <div className="flex gap-2">
+            <TextInput
+              type="password"
+              value={apiKey}
+              placeholder={view?.maskedKey || "sk-…"}
+              onChange={(event) => setApiKey(event.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <Button variant="ghost" icon={<KeyRound size={15} />} onClick={() => void clear()} disabled={!view?.configured}>
+              {t("settings.aiClear")}
+            </Button>
+          </div>
+        </Field>
+      )}
 
       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
         <Field label={t("settings.aiBaseUrl")} hint={t("settings.aiBaseUrlHint")}>
@@ -253,7 +427,7 @@ export function AiSettings() {
           variant="ghost"
           icon={testing ? <Spinner size={14} /> : <Zap size={15} />}
           onClick={() => void test()}
-          disabled={testing || (!view?.configured && !apiKey.trim())}
+          disabled={testing || (needsApiKey && !view?.configured && !apiKey.trim())}
         >
           {t("settings.aiTestConnection")}
         </Button>

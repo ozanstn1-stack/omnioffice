@@ -34,7 +34,11 @@ export type ScreenId =
   | "draw"
   | "planner"
   | "data"
-  | "pdfForms";
+  | "pdfForms"
+  | "pdfStudio"
+  | "vault"
+  | "compat"
+  | "jobs";
 
 export interface PageToolsTab {
   tab: "extract" | "delete" | "rotate" | "resize" | "crop" | "numbering";

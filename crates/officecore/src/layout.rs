@@ -282,8 +282,31 @@ fn paragraph_words(document: &TextDocument, props: &ParaProps, runs: &[Run]) -> 
     let mut words: Vec<(String, TextStyle, bool)> = Vec::new();
     let mut first = true;
     for run in runs {
+        // Deleted text is hidden unless revisions are shown; when they are,
+        // insertions are underlined and deletions struck through.
+        if run.is_deleted() && !document.show_revisions {
+            continue;
+        }
         let effective = effective_style(document, props, Some(run));
-        let style = text_style(&effective);
+        let mut style = text_style(&effective);
+        if document.show_revisions {
+            if let Some(revision) = &run.revision {
+                match revision.kind.as_str() {
+                    "insert" => {
+                        style.underline = true;
+                        style.color = Rgb(22, 101, 52);
+                    }
+                    "delete" => {
+                        style.strike = true;
+                        style.color = Rgb(153, 27, 27);
+                    }
+                    "format" => {
+                        style.color = Rgb(29, 78, 216);
+                    }
+                    _ => {}
+                }
+            }
+        }
         let mut buffer = String::new();
         let mut push_buffer = |words: &mut Vec<(String, TextStyle, bool)>, buffer: &mut String, style: &TextStyle, is_space: bool| {
             if !buffer.is_empty() {
@@ -346,21 +369,35 @@ struct Renderer<'a> {
     top: f64,
     bottom: f64,
     link_runs: Vec<(f64, f64, f64, f64, String)>,
+    /// The section whose page setup and headers/footers are in effect.
+    section: SectionProps,
+    /// True while drawing the first page of the current section.
+    section_first_page: bool,
+    /// Index of the block being drawn (bookmark anchors).
+    current_block: usize,
+    /// Bookmark name -> page number collected during this pass.
+    bookmark_pages: std::collections::HashMap<String, u32>,
+    /// Bookmark page numbers from the previous pass (for PAGEREF).
+    known_bookmark_pages: std::collections::HashMap<String, u32>,
+    /// Footnotes waiting to be drawn at the bottom of the current page.
+    pending_notes: Vec<(String, Vec<Run>)>,
+    /// Space reserved for the pending notes on the current page.
+    note_reserve: f64,
 }
 
 impl<'a> Renderer<'a> {
-    fn new(fonts: &'a FontSet, document: &'a TextDocument, total_pages: usize) -> Self {
-        let page = &document.page;
-        let columns = page.columns.max(1);
-        let gap = page.column_spacing_pt.max(12.0);
-        let content_width = (page.width_pt - page.margin_left_pt - page.margin_right_pt).max(40.0);
+    fn new(fonts: &'a FontSet, document: &'a TextDocument, total_pages: usize, known_bookmark_pages: std::collections::HashMap<String, u32>) -> Self {
+        let section = document.first_section();
+        let columns = section.columns.max(section.page.columns.max(1));
+        let gap = section.page.column_spacing_pt.max(12.0);
+        let content_width = (section.page.width_pt - section.page.margin_left_pt - section.page.margin_right_pt).max(40.0);
         let column_width = if columns > 1 {
             (content_width - gap * (columns as f64 - 1.0)) / columns as f64
         } else {
             content_width
         };
-        let top = page.margin_top_pt.max(4.0);
-        let bottom = page.height_pt - page.margin_bottom_pt.max(4.0);
+        let top = section.page.margin_top_pt.max(4.0);
+        let bottom = section.page.height_pt - section.page.margin_bottom_pt.max(4.0);
         Self {
             fonts,
             document,
@@ -375,30 +412,127 @@ impl<'a> Renderer<'a> {
             top,
             bottom,
             link_runs: Vec::new(),
+            section,
+            section_first_page: true,
+            current_block: 0,
+            bookmark_pages: std::collections::HashMap::new(),
+            known_bookmark_pages,
+            pending_notes: Vec::new(),
+            note_reserve: 0.0,
         }
     }
 
     fn columns(&self) -> u32 {
-        self.document.page.columns.max(1)
+        self.section.columns.max(self.section.page.columns.max(1))
     }
 
     fn column_x(&self, column: u32) -> f64 {
-        self.document.page.margin_left_pt + (self.column_width + self.column_gap) * column as f64
+        self.section.page.margin_left_pt + (self.column_width + self.column_gap) * column as f64
+    }
+
+    /// Switches to a new section, re-deriving all geometry.
+    fn set_section(&mut self, section: SectionProps, force_page: bool) {
+        let geometry_changed = (section.page.width_pt - self.section.page.width_pt).abs() > 0.5
+            || (section.page.height_pt - self.section.page.height_pt).abs() > 0.5
+            || (section.page.margin_left_pt - self.section.page.margin_left_pt).abs() > 0.5;
+        if force_page || geometry_changed {
+            if self.current.is_some() {
+                self.finish_page();
+            }
+            self.start_page_with(section);
+        } else {
+            self.section = section;
+            self.recompute_geometry();
+            self.draw_header_footer();
+            self.y = self.top;
+        }
+    }
+
+    fn recompute_geometry(&mut self) {
+        let page = &self.section.page;
+        let columns = self.section.columns.max(page.columns.max(1));
+        let gap = page.column_spacing_pt.max(12.0);
+        self.content_width = (page.width_pt - page.margin_left_pt - page.margin_right_pt).max(40.0);
+        self.column_width = if columns > 1 {
+            (self.content_width - gap * (columns as f64 - 1.0)) / columns as f64
+        } else {
+            self.content_width
+        };
+        self.column_gap = gap;
+        self.top = page.margin_top_pt.max(4.0);
+        self.bottom = page.height_pt - page.margin_bottom_pt.max(4.0) - self.note_reserve;
+    }
+
+    /// Resolves a field to its rendered value.
+    fn field_value(&self, field: &FieldRef, page_number: u32) -> String {
+        match field.kind.as_str() {
+            "page" => page_number.to_string(),
+            "pages" => self.total_pages.max(1).to_string(),
+            "date" | "time" => {
+                if !field.cached.is_empty() {
+                    field.cached.clone()
+                } else {
+                    let (date, time) = utc_now();
+                    if field.kind == "time" { time } else { date }
+                }
+            }
+            "title" => self.document.title.clone(),
+            "author" => self.document.metadata.author.clone(),
+            "refPage" => self
+                .known_bookmark_pages
+                .get(&field.target)
+                .map(|page| page.to_string())
+                .unwrap_or_else(|| if field.cached.is_empty() { "?".to_string() } else { field.cached.clone() }),
+            _ => {
+                if field.cached.is_empty() {
+                    field.target.clone()
+                } else {
+                    field.cached.clone()
+                }
+            }
+        }
+    }
+
+    /// Replaces field runs and `{{page}}` / `{{pages}}` tokens with values.
+    fn substitute_runs(&self, runs: &[Run], page_number: u32) -> Vec<Run> {
+        runs.iter()
+            .map(|run| {
+                if let Some(field) = &run.field {
+                    let mut replaced = run.clone();
+                    replaced.text = self.field_value(field, page_number);
+                    replaced.field = None;
+                    return replaced;
+                }
+                if run.text.contains("{{page}}") || run.text.contains("{{pages}}") {
+                    let mut replaced = run.clone();
+                    replaced.text = replaced
+                        .text
+                        .replace("{{page}}", &page_number.to_string())
+                        .replace("{{pages}}", &self.total_pages.max(1).to_string());
+                    return replaced;
+                }
+                run.clone()
+            })
+            .collect()
     }
 
     fn draw_header_footer(&mut self) {
-        let document = self.document;
-        let page_index = self.current.as_ref().map(|state| state.page_index).unwrap_or(0);
-        let page = &document.page;
+        let page_number = self.current.as_ref().map(|state| state.page_index as u32 + 1).unwrap_or(1);
+        let is_first = self.section_first_page;
+        let is_even = page_number % 2 == 0;
+        let mut section = self.section.clone();
+        if section.different_first_page && is_first {
+            section.header = section.first_header.clone();
+            section.footer = section.first_footer.clone();
+        } else if section.different_odd_even && is_even {
+            section.header = section.even_header.clone();
+            section.footer = section.even_footer.clone();
+        }
         let content_width = self.content_width;
-        let left = page.margin_left_pt;
-        let canvas = self.current.as_mut().unwrap();
-        let total = self.total_pages;
-        let substitute = |text: &str| -> String {
-            text.replace("{{page}}", &(page_index + 1).to_string())
-                .replace("{{pages}}", &total.to_string())
-        };
-        for (blocks, is_header) in [(&document.header, true), (&document.footer, false)] {
+        let left = section.page.margin_left_pt;
+        let page = section.page.clone();
+        let mut commands: Vec<(f64, f64, String, TextStyle)> = Vec::new();
+        for (blocks, is_header) in [(&section.header, true), (&section.footer, false)] {
             if blocks.is_empty() {
                 continue;
             }
@@ -410,11 +544,8 @@ impl<'a> Renderer<'a> {
             let mut y = start_y;
             for block in blocks {
                 if let Block::Paragraph { props, runs } = block {
-                    let substituted: Vec<Run> = runs
-                        .iter()
-                        .map(|run| Run { text: substitute(&run.text), ..run.clone() })
-                        .collect();
-                    let (words, _) = paragraph_words(document, props, &substituted);
+                    let substituted = self.substitute_runs(runs, page_number);
+                    let (words, _) = paragraph_words(self.document, props, &substituted);
                     for segment in split_on_newlines(words) {
                         let lines = break_line(self.fonts, &segment, content_width, &props.align);
                         for line in lines {
@@ -424,7 +555,7 @@ impl<'a> Renderer<'a> {
                                 _ => left,
                             };
                             for item in &line.items {
-                                canvas.canvas.text(x + item.dx, y + line.ascent, &item.text, &item.style);
+                                commands.push((x + item.dx, y + line.ascent, item.text.clone(), item.style.clone()));
                             }
                             y += line.height;
                         }
@@ -432,10 +563,23 @@ impl<'a> Renderer<'a> {
                 }
             }
         }
+        let canvas = self.current.as_mut().unwrap();
+        for (x, y, text, style) in commands {
+            canvas.canvas.text(x, y, &text, &style);
+        }
     }
 
     fn start_page(&mut self) {
-        let page = &self.document.page;
+        let section = self.section.clone();
+        self.start_page_with(section);
+    }
+
+    fn start_page_with(&mut self, section: SectionProps) {
+        self.section = section;
+        self.section_first_page = true;
+        self.note_reserve = 0.0;
+        self.recompute_geometry();
+        let page = &self.section.page;
         let canvas = Canvas::new(page.width_pt, page.height_pt, self.fonts);
         let index = self.pages.len();
         self.current = Some(PageState { canvas, page_index: index });
@@ -446,9 +590,13 @@ impl<'a> Renderer<'a> {
     }
 
     fn finish_page(&mut self) {
+        self.draw_pending_notes();
         if let Some(state) = self.current.take() {
             self.pages.push(state.canvas.finish());
         }
+        self.pending_notes.clear();
+        self.note_reserve = 0.0;
+        self.section_first_page = false;
     }
 
     fn canvas(&mut self) -> &mut Canvas<'a> {
@@ -462,8 +610,71 @@ impl<'a> Renderer<'a> {
         self.bottom - self.y
     }
 
-    /// Moves to the next column or starts a new page. Returns false when the
-    /// content is taller than a full column (caller should clip).
+    /// Registers a footnote reference and reserves room for its text at the
+    /// bottom of the current page. `(continued)` notes that do not fit are
+    /// carried to the next page.
+    fn reserve_note(&mut self, id: &str, runs: &[Run]) {
+        if self.pending_notes.iter().any(|(pending, _)| pending == id) {
+            return;
+        }
+        let width = (self.column_width - 18.0).max(40.0);
+        let props = ParaProps { style: "Normal".into(), space_after_pt: 2.0, line_spacing: 1.0, ..Default::default() };
+        let blocks = vec![Block::Paragraph { props, runs: runs.to_vec() }];
+        let height = measure_blocks(self.fonts, self.document, &blocks, width).min(160.0) + 8.0;
+        let content_height = (self.section.page.height_pt - self.section.page.margin_top_pt - self.section.page.margin_bottom_pt).max(60.0);
+        let max_reserve = content_height * 0.5;
+        // When the notes for this page would take more than half the content
+        // height, the page is closed and the note continues on the next one.
+        if self.note_reserve + height > max_reserve && !self.pending_notes.is_empty() {
+            self.finish_page();
+            self.start_page();
+        }
+        self.note_reserve += height;
+        self.bottom = self.section.page.height_pt - self.section.page.margin_bottom_pt - self.note_reserve;
+        self.pending_notes.push((id.to_string(), runs.to_vec()));
+    }
+
+    /// Draws the notes collected on this page at the bottom of the page.
+    fn draw_pending_notes(&mut self) {
+        if self.pending_notes.is_empty() || self.current.is_none() {
+            return;
+        }
+        let note_runs: Vec<(String, Vec<Run>)> = std::mem::take(&mut self.pending_notes);
+        let page = self.section.page.clone();
+        let mut y = page.height_pt - page.margin_bottom_pt - self.note_reserve;
+        let width = (self.column_width).max(60.0);
+        // Separator line above the note area.
+        {
+            let canvas = self.canvas();
+            canvas.line(page.margin_left_pt, y + 2.0, page.margin_left_pt + width * 0.35, y + 2.0, Rgb(120, 130, 145), 0.6, "solid");
+        }
+        for (id, runs) in note_runs {
+            let number = self.document.footnote_number(&id).or_else(|| self.document.endnote_number(&id)).unwrap_or(0);
+            let mut all_runs = vec![Run { text: format!("{number} "), size_pt: Some(8.5), ..Default::default() }];
+            all_runs.extend(runs.iter().cloned().map(|mut run| {
+                run.size_pt = Some(run.size_pt.unwrap_or(8.5));
+                run
+            }));
+            let props = ParaProps { style: "Normal".into(), space_after_pt: 2.0, line_spacing: 1.0, ..Default::default() };
+            let (words, base) = paragraph_words(self.document, &props, &all_runs);
+            for segment in split_on_newlines(words) {
+                let lines = break_line(self.fonts, &segment, width, "left");
+                for line in lines {
+                    if y + line.height > page.height_pt - page.margin_bottom_pt + 4.0 {
+                        break;
+                    }
+                    let x = page.margin_left_pt;
+                    for item in &line.items {
+                        let canvas = self.canvas();
+                        canvas.text(x + item.dx, y + line.ascent, &item.text, &item.style);
+                    }
+                    y += line.height * base.line_spacing.max(1.0);
+                }
+            }
+        }
+    }
+
+    /// Moves to the next column or starts a new page.
     fn next_column(&mut self) {
         if self.column + 1 < self.columns() {
             self.column += 1;
@@ -483,8 +694,28 @@ impl<'a> Renderer<'a> {
     }
 
     fn draw_paragraph(&mut self, props: &ParaProps, runs: &[Run]) {
+        if self.current.is_none() {
+            self.start_page();
+        }
+        let page_number = self.current.as_ref().map(|state| state.page_index as u32 + 1).unwrap_or(1);
+        let runs = self.substitute_runs(runs, page_number);
+        // Reserve bottom-of-page space for the notes referenced here.
+        for run in &runs {
+            if let Some(id) = &run.footnote {
+                if let Some(note) = self.document.footnotes.iter().find(|note| &note.id == id) {
+                    let note_runs = note.runs.clone();
+                    self.reserve_note(id, &note_runs);
+                }
+            }
+            if let Some(id) = &run.endnote {
+                if let Some(note) = self.document.endnotes.iter().find(|note| &note.id == id) {
+                    let note_runs = note.runs.clone();
+                    self.reserve_note(id, &note_runs);
+                }
+            }
+        }
         let document = self.document;
-        let (words, base) = paragraph_words(document, props, runs);
+        let (words, base) = paragraph_words(document, props, &runs);
         let indent_left = base.indent_left_pt;
         let indent_right = base.indent_right_pt;
         let available = (self.column_width - indent_left - indent_right).max(24.0);
@@ -675,8 +906,51 @@ impl<'a> Renderer<'a> {
                     self.draw_paragraph(&props, &runs);
                 }
             }
+            Block::SectionBreak { section } => match section.start.as_str() {
+                "continuous" => self.set_section(section.clone(), false),
+                "oddPage" | "evenPage" => {
+                    self.finish_page();
+                    let want_odd = section.start == "oddPage";
+                    while (self.pages.len() + 1) % 2 == if want_odd { 0 } else { 1 } {
+                        self.start_page_with(section.clone());
+                        self.finish_page();
+                    }
+                    self.start_page_with(section.clone());
+                }
+                _ => self.set_section(section.clone(), true),
+            },
         }
     }
+}
+
+/// Current UTC date and time as `(yyyy-mm-dd, hh:mm:ss)` without a date crate.
+fn utc_now() -> (String, String) {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0);
+    let days = seconds.div_euclid(86_400);
+    let remainder = seconds.rem_euclid(86_400);
+    let (year, month, day) = civil_from_days(days);
+    (
+        format!("{year:04}-{month:02}-{day:02}"),
+        format!("{:02}:{:02}:{:02}", remainder / 3600, (remainder % 3600) / 60, remainder % 60),
+    )
+}
+
+/// Days since the Unix epoch to a civil date (Howard Hinnant's algorithm).
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let year = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if month <= 2 { year + 1 } else { year }, month, day)
 }
 
 /// One table-of-contents line as a paragraph, dot leader included.
@@ -718,6 +992,7 @@ fn measure_blocks(fonts: &FontSet, document: &TextDocument, blocks: &[Block], wi
             }
             Block::Rule => height += 14.0,
             Block::PageBreak => {}
+            Block::SectionBreak { .. } => {}
             Block::Toc { entries } => {
                 for entry in entries {
                     let (props, runs) = toc_entry_line(entry);
@@ -802,22 +1077,39 @@ fn draw_blocks_in_cell(renderer: &mut Renderer<'_>, blocks: &[Block], x: f64, y:
     cursor - y
 }
 
-fn render_pass(fonts: &FontSet, document: &TextDocument, total_pages: usize) -> Vec<BuiltPage> {
-    let mut renderer = Renderer::new(fonts, document, total_pages);
+fn render_pass(
+    fonts: &FontSet,
+    document: &TextDocument,
+    total_pages: usize,
+    known_bookmark_pages: std::collections::HashMap<String, u32>,
+) -> (Vec<BuiltPage>, std::collections::HashMap<String, u32>) {
+    let mut renderer = Renderer::new(fonts, document, total_pages, known_bookmark_pages);
     renderer.start_page();
-    for block in &document.blocks {
+    for (index, block) in document.blocks.iter().enumerate() {
+        renderer.current_block = index;
         renderer.draw_block(block);
+        for bookmark in document.bookmarks.iter().filter(|bookmark| bookmark.block as usize == index) {
+            let page = renderer.current.as_ref().map(|state| state.page_index as u32 + 1).unwrap_or(1);
+            renderer.bookmark_pages.insert(bookmark.name.clone(), page);
+        }
     }
     renderer.finish_page();
-    renderer.pages
+    (renderer.pages, renderer.bookmark_pages)
 }
 
 /// Renders a Writer document to PDF bytes.
+///
+/// Three passes at most: the first learns the page count and bookmark pages,
+/// the second resolves `{{pages}}` / `PAGEREF` fields, and a third only runs
+/// when resolving those fields changed the pagination.
 pub fn document_to_pdf(document: &TextDocument) -> Vec<u8> {
     let fonts = FontSet::new();
-    let mut pages = render_pass(&fonts, document, 1);
-    if document.header.iter().chain(document.footer.iter()).any(contains_page_token) {
-        pages = render_pass(&fonts, document, pages.len());
+    let (first_pass, bookmark_pages) = render_pass(&fonts, document, 1, std::collections::HashMap::new());
+    let total = first_pass.len();
+    let (mut pages, _) = render_pass(&fonts, document, total, bookmark_pages.clone());
+    if pages.len() != total {
+        let (stable, _) = render_pass(&fonts, document, pages.len(), bookmark_pages);
+        pages = stable;
     }
     write_pdf(&pages, &fonts)
 }

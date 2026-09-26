@@ -1,9 +1,10 @@
 //! PresentationML (PPTX) import and export.
 //!
-//! The writer emits a complete, valid package (master, layout, theme, slides,
-//! notes, media) so PowerPoint, LibreOffice and OnlyOffice open it natively.
-//! The reader extracts text boxes, pictures, shapes, tables, notes and slide
-//! size, skipping animations/SmartArt with a warning.
+//! The writer emits a complete, valid package (masters, layouts, themes,
+//! slides, notes, media, ChartML and animation timing) so PowerPoint,
+//! LibreOffice and OnlyOffice open it natively. The reader extracts text
+//! boxes, pictures, shapes, groups, charts, tables, placeholders, animations,
+//! notes and slide size, warning whenever something cannot be represented.
 
 use crate::error::{OfficeError, OfficeResult};
 use crate::model::*;
@@ -178,11 +179,18 @@ const REL_IMAGE: &str = "http://schemas.openxmlformats.org/officeDocument/2006/r
 const REL_NOTES: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide";
 const REL_MASTER: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster";
 const REL_THEME: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme";
+const REL_CHART: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart";
 
-fn presentation_xml(deck: &Deck, slide_ids: &[String]) -> String {
+fn presentation_xml(deck: &Deck, master_ids: &[String], slide_ids: &[String]) -> String {
     let mut out = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<p:presentation {NS} saveSubsetFonts=\"1\"><p:sldMasterIdLst><p:sldMasterId id=\"2147483648\" r:id=\"rId1\"/></p:sldMasterIdLst><p:sldIdLst>"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<p:presentation {NS} saveSubsetFonts=\"1\"><p:sldMasterIdLst>"
     );
+    let mut master_id = 2147483648u32;
+    for rid in master_ids {
+        out.push_str(&format!("<p:sldMasterId id=\"{master_id}\" r:id=\"{rid}\"/>"));
+        master_id += 1;
+    }
+    out.push_str("</p:sldMasterIdLst><p:sldIdLst>");
     let mut next_id = 256u32;
     for rid in slide_ids {
         out.push_str(&format!("<p:sldId id=\"{next_id}\" r:id=\"{rid}\"/>"));
@@ -210,15 +218,173 @@ fn layout_xml(background: &str) -> String {
     )
 }
 
+struct PlannedLayout {
+    id: String,
+    part: String,
+    model: Option<SlideLayout>,
+    theme_name: String,
+}
+
+struct PlannedMaster {
+    master: Option<SlideMaster>,
+    part: String,
+    theme_part: String,
+    theme_name: String,
+    background: String,
+    layouts: Vec<PlannedLayout>,
+}
+
+fn plan_masters(deck: &Deck) -> Vec<PlannedMaster> {
+    let deck_theme = deck.theme.as_str();
+    if deck.masters.is_empty() {
+        let background = match deck_theme {
+            "dark" => theme_for(deck_theme).lt1.to_string(),
+            _ => "FFFFFF".to_string(),
+        };
+        return vec![PlannedMaster {
+            master: None,
+            part: "ppt/slideMasters/slideMaster1.xml".into(),
+            theme_part: "ppt/theme/theme1.xml".into(),
+            theme_name: deck_theme.to_string(),
+            background,
+            layouts: vec![PlannedLayout {
+                id: String::new(),
+                part: "ppt/slideLayouts/slideLayout1.xml".into(),
+                model: None,
+                theme_name: deck_theme.to_string(),
+            }],
+        }];
+    }
+    let mut planned = Vec::new();
+    let mut layout_number = 1usize;
+    for (index, master) in deck.masters.iter().enumerate() {
+        let theme_name = if master.theme.trim().is_empty() { deck_theme } else { master.theme.as_str() };
+        let theme = theme_for(theme_name);
+        let background = master.background.as_deref().unwrap_or(theme.lt1).trim_start_matches('#').to_string();
+        let mut layouts = Vec::new();
+        for layout in &master.layouts {
+            layouts.push(PlannedLayout {
+                id: layout.id.clone(),
+                part: format!("ppt/slideLayouts/slideLayout{layout_number}.xml"),
+                model: Some(layout.clone()),
+                theme_name: theme_name.to_string(),
+            });
+            layout_number += 1;
+        }
+        if layouts.is_empty() {
+            layouts.push(PlannedLayout {
+                id: String::new(),
+                part: format!("ppt/slideLayouts/slideLayout{layout_number}.xml"),
+                model: None,
+                theme_name: theme_name.to_string(),
+            });
+            layout_number += 1;
+        }
+        planned.push(PlannedMaster {
+            master: Some(master.clone()),
+            part: format!("ppt/slideMasters/slideMaster{}.xml", index + 1),
+            theme_part: format!("ppt/theme/theme{}.xml", index + 1),
+            theme_name: theme_name.to_string(),
+            background,
+            layouts,
+        });
+    }
+    planned
+}
+
+fn layout_for_slide<'a>(slide: &Slide, masters: &'a [PlannedMaster]) -> Option<&'a PlannedLayout> {
+    if let Some(layout_id) = slide.layout_id.as_deref() {
+        for master in masters {
+            if let Some(layout) = master.layouts.iter().find(|layout| layout.id == layout_id) {
+                return Some(layout);
+            }
+        }
+    }
+    if let Some(master_id) = slide.master_id.as_deref() {
+        if let Some(master) = masters
+            .iter()
+            .find(|master| master.master.as_ref().map(|model| model.id.as_str()) == Some(master_id))
+        {
+            if let Some(layout) = master.layouts.first() {
+                return Some(layout);
+            }
+        }
+    }
+    masters.first().and_then(|master| master.layouts.first())
+}
+
+fn planned_theme_name(layout: Option<&PlannedLayout>, deck: &Deck) -> String {
+    layout.map(|layout| layout.theme_name.clone()).unwrap_or_else(|| deck.theme.clone())
+}
+
+fn file_name(part: &str) -> &str {
+    part.rsplit('/').next().unwrap_or(part)
+}
+
+fn rels_name(part: &str) -> String {
+    let (dir, file) = part.rsplit_once('/').unwrap_or(("", part));
+    format!("{dir}/_rels/{file}.rels")
+}
+
+fn part_stem(part: &str) -> String {
+    file_name(part).split('.').next().unwrap_or(part).to_string()
+}
+
+fn placeholder_role(kind: &str) -> Option<&'static str> {
+    match kind {
+        "title" | "ctrTitle" => Some("title"),
+        "body" => Some("body"),
+        "subTitle" => Some("subtitle"),
+        "ftr" => Some("footer"),
+        "sldNum" => Some("slideNumber"),
+        "dt" => Some("date"),
+        _ => None,
+    }
+}
+
+fn placeholder_xml(placeholder: &Option<String>) -> String {
+    match placeholder.as_deref() {
+        Some("title") => "<p:ph type=\"title\"/>".into(),
+        Some("body") => "<p:ph type=\"body\" idx=\"1\"/>".into(),
+        Some("subtitle") => "<p:ph type=\"subTitle\" idx=\"1\"/>".into(),
+        Some("footer") => "<p:ph type=\"ftr\" idx=\"11\"/>".into(),
+        Some("slideNumber") => "<p:ph type=\"sldNum\" idx=\"12\"/>".into(),
+        Some("date") => "<p:ph type=\"dt\" idx=\"10\"/>".into(),
+        _ => String::new(),
+    }
+}
+
+fn layout_type(kind: &str) -> &str {
+    match kind {
+        "title" => "titleOnly",
+        "titleContent" => "obj",
+        "twoContent" => "twoColTx",
+        "section" => "secHead",
+        "blank" => "blank",
+        other if !other.is_empty() => other,
+        _ => "blank",
+    }
+}
+
+fn layout_kind(kind: &str) -> String {
+    match kind {
+        "title" | "titleOnly" => "title".into(),
+        "obj" => "titleContent".into(),
+        "twoColTx" => "twoContent".into(),
+        "secHead" => "section".into(),
+        other => other.to_string(),
+    }
+}
+
 struct SlideWriter {
     rels: RelSet,
-    media: Vec<(String, Vec<u8>)>,
     next_shape: usize,
+    shape_ids: HashMap<String, usize>,
 }
 
 impl SlideWriter {
     fn new() -> Self {
-        Self { rels: RelSet::new(), media: Vec::new(), next_shape: 1 }
+        Self { rels: RelSet::new(), next_shape: 1, shape_ids: HashMap::new() }
     }
 
     fn shape_id(&mut self) -> usize {
@@ -322,34 +488,258 @@ fn alignment(value: &str) -> &'static str {
     }
 }
 
-fn object_xml(object: &SlideObject, theme: &Theme, writer: &mut SlideWriter) -> String {
+struct ExportContext {
+    media: Vec<(String, Vec<u8>)>,
+    charts: Vec<(String, String)>,
+    next_chart: usize,
+    warnings: Vec<String>,
+}
+
+impl ExportContext {
+    fn new() -> Self {
+        Self { media: Vec::new(), charts: Vec::new(), next_chart: 1, warnings: Vec::new() }
+    }
+
+    fn warn(&mut self, message: &str) {
+        self.warnings.push(message.to_string());
+    }
+}
+
+fn chart_kind_supported(kind: &str) -> bool {
+    matches!(kind, "column" | "bar" | "line" | "pie" | "area")
+}
+
+const CHART_CATEGORY_AXIS: u64 = 111_111_111;
+const CHART_VALUE_AXIS: u64 = 222_222_222;
+
+fn chart_title_xml(text: &str) -> String {
+    format!(
+        "<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang=\"en-US\"/><a:t>{}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>",
+        escape_text(text)
+    )
+}
+
+fn chart_axes_xml(chart: &ChartData) -> String {
+    let category_title = if chart.x_title.is_empty() { String::new() } else { chart_title_xml(&chart.x_title) };
+    let value_title = if chart.y_title.is_empty() { String::new() } else { chart_title_xml(&chart.y_title) };
+    format!(
+        "<c:catAx><c:axId val=\"{cat}\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling><c:delete val=\"0\"/><c:axPos val=\"b\"/>{category_title}<c:crossAx val=\"{val}\"/></c:catAx><c:valAx><c:axId val=\"{val}\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling><c:delete val=\"0\"/><c:axPos val=\"l\"/>{value_title}<c:crossAx val=\"{cat}\"/></c:valAx>",
+        cat = CHART_CATEGORY_AXIS,
+        val = CHART_VALUE_AXIS,
+    )
+}
+
+fn chart_ref(value: &str) -> String {
+    escape_text(value.trim())
+}
+
+fn chart_part_xml(chart: &ChartData) -> Result<String, String> {
+    let kind = chart.kind.as_str();
+    if !chart_kind_supported(kind) {
+        return Err(format!("the chart type \"{kind}\" is not representable yet"));
+    }
+    if chart.series.is_empty() {
+        return Err("the chart has no data series".into());
+    }
+    if chart.categories.trim().is_empty() {
+        return Err("the chart has no category range".into());
+    }
+
+    let mut series_xml = String::new();
+    for (index, series) in chart.series.iter().enumerate() {
+        series_xml.push_str(&format!(
+            "<c:ser><c:idx val=\"{index}\"/><c:order val=\"{index}\"/><c:tx><c:v>{}</c:v></c:tx>",
+            escape_text(&series.name)
+        ));
+        if let Some(color) = series.color.as_deref() {
+            series_xml.push_str(&format!(
+                "<c:spPr><a:solidFill><a:srgbClr val=\"{}\"/></a:solidFill></c:spPr>",
+                escape_attr(color.trim_start_matches('#'))
+            ));
+        }
+        series_xml.push_str(&format!(
+            "<c:cat><c:strRef><c:f>{}</c:f></c:strRef></c:cat><c:val><c:numRef><c:f>{}</c:f></c:numRef></c:val></c:ser>",
+            chart_ref(&chart.categories),
+            chart_ref(&series.range)
+        ));
+    }
+
+    let labels = if chart.show_labels {
+        "<c:dLbls><c:showLegendKey val=\"0\"/><c:showVal val=\"1\"/><c:showCatName val=\"0\"/><c:showSerName val=\"0\"/><c:showPercent val=\"0\"/><c:showBubbleSize val=\"0\"/></c:dLbls>"
+    } else {
+        ""
+    };
+
+    let mut plot = String::new();
+    let mut axes = String::new();
+    match kind {
+        "column" | "bar" => {
+            let direction = if kind == "bar" { "bar" } else { "col" };
+            let grouping = if chart.stacked { "stacked" } else { "clustered" };
+            let overlap = if chart.stacked { "<c:overlap val=\"100\"/>" } else { "" };
+            plot.push_str(&format!(
+                "<c:barChart><c:barDir val=\"{direction}\"/><c:grouping val=\"{grouping}\"/><c:varyColors val=\"0\"/>{series_xml}{labels}<c:gapWidth val=\"150\"/>{overlap}<c:axId val=\"{cat}\"/><c:axId val=\"{val}\"/></c:barChart>",
+                cat = CHART_CATEGORY_AXIS,
+                val = CHART_VALUE_AXIS,
+            ));
+            axes = chart_axes_xml(chart);
+        }
+        "line" => {
+            plot.push_str(&format!(
+                "<c:lineChart><c:grouping val=\"standard\"/><c:varyColors val=\"0\"/>{series_xml}{labels}<c:marker val=\"1\"/><c:axId val=\"{cat}\"/><c:axId val=\"{val}\"/></c:lineChart>",
+                cat = CHART_CATEGORY_AXIS,
+                val = CHART_VALUE_AXIS,
+            ));
+            axes = chart_axes_xml(chart);
+        }
+        "area" => {
+            let grouping = if chart.stacked { "stacked" } else { "standard" };
+            plot.push_str(&format!(
+                "<c:areaChart><c:grouping val=\"{grouping}\"/><c:varyColors val=\"0\"/>{series_xml}{labels}<c:axId val=\"{cat}\"/><c:axId val=\"{val}\"/></c:areaChart>",
+                cat = CHART_CATEGORY_AXIS,
+                val = CHART_VALUE_AXIS,
+            ));
+            axes = chart_axes_xml(chart);
+        }
+        "pie" => {
+            plot.push_str(&format!("<c:pieChart><c:varyColors val=\"1\"/>{series_xml}{labels}<c:firstSliceAng val=\"0\"/></c:pieChart>"));
+        }
+        _ => return Err(format!("the chart type \"{kind}\" is not representable yet")),
+    }
+
+    let title = if chart.title.is_empty() { String::new() } else { chart_title_xml(&chart.title) };
+    let legend = if chart.legend {
+        "<c:legend><c:legendPos val=\"b\"/><c:overlay val=\"0\"/></c:legend>"
+    } else {
+        ""
+    };
+    Ok(format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><c:roundedCorners val=\"0\"/><c:chart>{title}<c:plotArea><c:layout/>{plot}{axes}</c:plotArea>{legend}<c:plotVisOnly val=\"1\"/><c:dispBlanksAs val=\"gap\"/></c:chart><c:printSettings><c:headerFooter/><c:pageMargins b=\"0.75\" l=\"0.7\" r=\"0.7\" t=\"0.75\" header=\"0.3\" footer=\"0.3\"/><c:pageSetup/></c:printSettings></c:chartSpace>"
+    ))
+}
+
+fn children_bounds(children: &[SlideObject]) -> Option<(f64, f64, f64, f64)> {
+    if children.is_empty() {
+        return None;
+    }
+    let mut min_x = f64::MAX;
+    let mut min_y = f64::MAX;
+    let mut max_x = f64::MIN;
+    let mut max_y = f64::MIN;
+    for child in children {
+        min_x = min_x.min(child.x);
+        min_y = min_y.min(child.y);
+        max_x = max_x.max(child.x + child.w.max(0.0));
+        max_y = max_y.max(child.y + child.h.max(0.0));
+    }
+    Some((min_x, min_y, (max_x - min_x).max(1.0), (max_y - min_y).max(1.0)))
+}
+
+fn map_object_into_group(object: &SlideObject, outer: (f64, f64, f64, f64), inner: (f64, f64, f64, f64)) -> SlideObject {
+    let (ox, oy, ow, oh) = outer;
+    let (cx, cy, cw, ch) = inner;
+    let sx = if ow.abs() > 0.01 { cw / ow } else { 1.0 };
+    let sy = if oh.abs() > 0.01 { ch / oh } else { 1.0 };
+    let mut mapped = object.clone();
+    mapped.x = cx + (object.x - ox) * sx;
+    mapped.y = cy + (object.y - oy) * sy;
+    mapped.w = object.w * sx;
+    mapped.h = object.h * sy;
+    if let (Some(line), Some(source)) = (mapped.line.as_mut(), object.line.as_ref()) {
+        line.x2 = source.x2 * sx;
+        line.y2 = source.y2 * sy;
+    }
+    mapped.children = object.children.iter().map(|child| map_object_into_group(child, outer, inner)).collect();
+    mapped
+}
+
+fn group_transform(x: f64, y: f64, w: f64, h: f64, rotation: f64, inner: (f64, f64, f64, f64)) -> String {
+    let rotation_attr = if rotation.abs() > 0.01 { format!(" rot=\"{}\"", (rotation * 60000.0).round() as i64) } else { String::new() };
+    format!(
+        "<a:xfrm{rotation_attr}><a:off x=\"{}\" y=\"{}\"/><a:ext cx=\"{}\" cy=\"{}\"/><a:chOff x=\"{}\" y=\"{}\"/><a:chExt cx=\"{}\" cy=\"{}\"/></a:xfrm>",
+        emu(x.max(-100000.0)),
+        emu(y.max(-100000.0)),
+        emu(w.max(4.0)),
+        emu(h.max(4.0)),
+        emu(inner.0.max(-100000.0)),
+        emu(inner.1.max(-100000.0)),
+        emu(inner.2.max(4.0)),
+        emu(inner.3.max(4.0))
+    )
+}
+
+fn object_xml(object: &SlideObject, theme: &Theme, writer: &mut SlideWriter, export: &mut ExportContext) -> Option<String> {
     let style = object.style.clone().unwrap_or_default();
     let fill = style.fill.as_deref().map(str::to_string);
     let stroke = style.stroke.as_deref().map(|color| (color.to_string(), style.stroke_width_pt.max(0.5)));
     let name = if object.name.is_empty() { format!("{} {}", object.kind, object.id) } else { object.name.clone() };
     let id = writer.shape_id();
-    match object.kind.as_str() {
+    let xml = match object.kind.as_str() {
         "image" => {
-            let Some(image) = &object.image else { return String::new() };
+            let Some(image) = &object.image else {
+                export.warn("An image object has no image data and was kept in the native .oswk file.");
+                return None;
+            };
             if image.is_empty() {
-                return String::new();
+                export.warn("An image object has no image data and was kept in the native .oswk file.");
+                return None;
             }
             let mut resolved = None;
-            for (name, _) in &writer.media {
-                if name == &image.name {
-                    resolved = Some(name.clone());
+            for (media_name, _) in &export.media {
+                if media_name == &image.name {
+                    resolved = Some(media_name.clone());
                 }
             }
             let part_name = resolved.unwrap_or_else(|| {
-                let name = format!("image{}.{}", writer.media.len() + 1, image.extension());
-                writer.media.push((name.clone(), image.bytes()));
-                name
+                let part = format!("image{}.{}", export.media.len() + 1, image.extension());
+                export.media.push((part.clone(), image.bytes()));
+                part
             });
             let rid = writer.rels.add(REL_IMAGE, &format!("../media/{part_name}"));
             format!(
                 "<p:pic><p:nvPicPr><p:cNvPr id=\"{id}\" name=\"{}\"/><p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed=\"{rid}\"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>{}</p:spPr></p:pic>",
                 escape_attr(&name),
                 SlideWriter::transform(object.x, object.y, object.w, object.h, object.rotation)
+            )
+        }
+        "chart" => {
+            let Some(chart) = &object.chart else {
+                export.warn("A chart object has no chart data and was kept in the native .oswk file.");
+                return None;
+            };
+            match chart_part_xml(chart) {
+                Ok(chart_xml) => {
+                    let part = format!("ppt/charts/chart{}.xml", export.next_chart);
+                    export.next_chart += 1;
+                    let rid = writer.rels.add(REL_CHART, &format!("../charts/{}", file_name(&part)));
+                    export.charts.push((part, chart_xml));
+                    format!(
+                        "<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id=\"{id}\" name=\"{}\"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm>{}</p:xfrm><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:chart xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" r:id=\"{rid}\"/></a:graphicData></a:graphic></p:graphicFrame>",
+                        escape_attr(&name),
+                        SlideWriter::transform(object.x, object.y, object.w, object.h, object.rotation)
+                    )
+                }
+                Err(reason) => {
+                    export.warn(&format!("A chart was kept in the native .oswk file and not embedded into PPTX: {reason}."));
+                    return None;
+                }
+            }
+        }
+        "group" => {
+            let inner = children_bounds(&object.children).unwrap_or((object.x, object.y, object.w.max(4.0), object.h.max(4.0)));
+            let mut sorted: Vec<&SlideObject> = object.children.iter().collect();
+            sorted.sort_by_key(|child| child.z);
+            let mut children = String::new();
+            for child in sorted {
+                let mapped = map_object_into_group(child, (object.x, object.y, object.w, object.h), inner);
+                if let Some(child_xml) = object_xml(&mapped, theme, writer, export) {
+                    children.push_str(&child_xml);
+                }
+            }
+            format!(
+                "<p:grpSp><p:nvGrpSpPr><p:cNvPr id=\"{id}\" name=\"{}\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr>{}</p:grpSpPr>{children}</p:grpSp>",
+                escape_attr(&name),
+                group_transform(object.x, object.y, object.w, object.h, object.rotation, inner)
             )
         }
         "line" | "arrow" => {
@@ -387,7 +777,10 @@ fn object_xml(object: &SlideObject, theme: &Theme, writer: &mut SlideWriter) -> 
             )
         }
         "table" => {
-            let Some(table) = &object.table else { return String::new() };
+            let Some(table) = &object.table else {
+                export.warn("A table object has no table data and was kept in the native .oswk file.");
+                return None;
+            };
             let rows = table.rows.len().max(1);
             let columns = table.rows.iter().map(|row| row.cells.len()).max().unwrap_or(1).max(1);
             let cell_width = emu(object.w / columns as f64);
@@ -426,9 +819,15 @@ fn object_xml(object: &SlideObject, theme: &Theme, writer: &mut SlideWriter) -> 
                 _ => "rect",
             };
             let mut body = String::new();
-            body.push_str("<p:nvSpPr>");
-            body.push_str(&format!("<p:cNvPr id=\"{id}\" name=\"{}\"/>", escape_attr(&name)));
-            body.push_str("<p:cNvSpPr/><p:nvPr/></p:nvSpPr>");
+            let placeholder = placeholder_xml(&object.placeholder);
+            if placeholder.is_empty() {
+                body.push_str(&format!("<p:nvSpPr><p:cNvPr id=\"{id}\" name=\"{}\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>", escape_attr(&name)));
+            } else {
+                body.push_str(&format!(
+                    "<p:nvSpPr><p:cNvPr id=\"{id}\" name=\"{}\"/><p:cNvSpPr/><p:nvPr>{placeholder}</p:nvPr></p:nvSpPr>",
+                    escape_attr(&name)
+                ));
+            }
             body.push_str(&format!("<p:spPr>{}<a:prstGeom prst=\"{preset}\"><a:avLst/></a:prstGeom>{}</p:spPr>", SlideWriter::transform(object.x, object.y, object.w, object.h, object.rotation), SlideWriter::fill(&stroke, &fill)));
             if let Some(text) = &object.text {
                 body.push_str(&SlideWriter::text_body(text, theme));
@@ -437,16 +836,196 @@ fn object_xml(object: &SlideObject, theme: &Theme, writer: &mut SlideWriter) -> 
             }
             format!("<p:sp>{body}</p:sp>")
         }
+    };
+    if !object.id.is_empty() {
+        writer.shape_ids.insert(object.id.clone(), id);
+    }
+    Some(xml)
+}
+
+fn trigger_node_types(trigger: &str) -> (&'static str, &'static str) {
+    match trigger {
+        "withPrevious" => ("withGroup", "withEffect"),
+        "afterPrevious" => ("afterGroup", "afterEffect"),
+        _ => ("clickPar", "clickEffect"),
     }
 }
 
-fn slide_xml(slide: &Slide, theme: &Theme, writer: &mut SlideWriter) -> String {
+fn timing_set_xml(next_id: &mut usize, spid: usize, visible: bool, duration: i64) -> String {
+    let id = *next_id;
+    *next_id += 1;
+    format!(
+        "<p:set><p:cBhvr><p:cTn id=\"{id}\" dur=\"{duration}\" fill=\"hold\"><p:stCondLst><p:cond delay=\"0\"/></p:stCondLst></p:cTn><p:tgtEl><p:spTgt spid=\"{spid}\"/></p:tgtEl><p:attrNameLst><p:attrName>style.visibility</p:attrName></p:attrNameLst></p:cBhvr><p:to><p:strVal val=\"{}\"/></p:to></p:set>",
+        if visible { "visible" } else { "hidden" }
+    )
+}
+
+fn timing_effect_xml(next_id: &mut usize, spid: usize, transition: Option<&str>, filter: &str, duration: i64) -> String {
+    let id = *next_id;
+    *next_id += 1;
+    let transition_attr = transition.map(|value| format!(" transition=\"{value}\"")).unwrap_or_default();
+    format!(
+        "<p:animEffect{transition_attr} filter=\"{}\"><p:cBhvr><p:cTn id=\"{id}\" dur=\"{duration}\" fill=\"hold\"><p:stCondLst><p:cond delay=\"0\"/></p:stCondLst></p:cTn><p:tgtEl><p:spTgt spid=\"{spid}\"/></p:tgtEl></p:cBhvr></p:animEffect>",
+        escape_attr(filter)
+    )
+}
+
+fn timing_xml(slide: &Slide, shape_ids: &HashMap<String, usize>, warnings: &mut Vec<String>) -> String {
+    let mut animations: Vec<&Animation> = slide.animations.iter().collect();
+    animations.sort_by_key(|animation| animation.order);
+    if animations.is_empty() {
+        return String::new();
+    }
+    let mut next_id = 3usize;
+    let mut pars = String::new();
+    for animation in animations {
+        let Some(spid) = shape_ids.get(&animation.object_id).copied() else {
+            warnings.push(format!(
+                "An animation targeting \"{}\" was not written because the object is not on the exported slide.",
+                animation.object_id
+            ));
+            continue;
+        };
+        let (par_node, effect_node) = trigger_node_types(&animation.trigger);
+        let duration = ((animation.duration_ms as f64) / 10.0).round().max(0.0) as i64;
+        let delay = ((animation.delay_ms as f64) / 10.0).round().max(0.0) as i64;
+        let mut effects = String::new();
+        match animation.kind.as_str() {
+            "entrance" => {
+                effects.push_str(&timing_set_xml(&mut next_id, spid, true, duration));
+                if animation.effect.is_empty() {
+                    warnings.push("An entrance animation without an effect was written as \"appear\".".into());
+                } else if animation.effect != "appear" {
+                    effects.push_str(&timing_effect_xml(&mut next_id, spid, Some("in"), &animation.effect, duration));
+                }
+            }
+            "exit" => {
+                effects.push_str(&timing_set_xml(&mut next_id, spid, false, duration));
+                let filter = if animation.effect.is_empty() {
+                    warnings.push("An exit animation without an effect was written as \"fade\".".into());
+                    "fade"
+                } else {
+                    animation.effect.as_str()
+                };
+                effects.push_str(&timing_effect_xml(&mut next_id, spid, Some("out"), filter, duration));
+            }
+            "emphasis" => {
+                let filter = if animation.effect.is_empty() {
+                    warnings.push("An emphasis animation without an effect was written as \"pulse\".".into());
+                    "pulse"
+                } else {
+                    animation.effect.as_str()
+                };
+                effects.push_str(&timing_effect_xml(&mut next_id, spid, None, filter, duration));
+            }
+            other => {
+                warnings.push(format!("An animation of kind \"{other}\" was kept in the native .oswk file and not written to the PPTX timing."));
+                continue;
+            }
+        }
+        let par_id = next_id;
+        next_id += 1;
+        let effect_id = next_id;
+        next_id += 1;
+        pars.push_str(&format!(
+            "<p:par><p:cTn id=\"{par_id}\" fill=\"hold\" nodeType=\"{par_node}\"><p:stCondLst><p:cond delay=\"{delay}\"/></p:stCondLst><p:childTnLst><p:par><p:cTn id=\"{effect_id}\" fill=\"hold\" nodeType=\"{effect_node}\"><p:childTnLst>{effects}</p:childTnLst></p:cTn></p:par></p:childTnLst></p:cTn></p:par>"
+        ));
+    }
+    if pars.is_empty() {
+        return String::new();
+    }
+    format!(
+        "<p:timing><p:tnLst><p:par><p:cTn id=\"1\" dur=\"indefinite\" restart=\"never\" nodeType=\"tmRoot\"><p:childTnLst><p:seq concurrent=\"1\" nextAc=\"seek\"><p:cTn id=\"2\" dur=\"indefinite\" nodeType=\"mainSeq\"><p:childTnLst>{pars}</p:childTnLst></p:cTn><p:prevCondLst><p:cond evt=\"onPrev\" delay=\"0\"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:prevCondLst><p:nextCondLst><p:cond evt=\"onNext\" delay=\"0\"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:nextCondLst></p:seq></p:childTnLst></p:cTn></p:par></p:tnLst></p:timing>"
+    )
+}
+
+fn master_xml_planned(planned: &PlannedMaster, layout_rids: &[String], width: f64, height: f64, export: &mut ExportContext) -> String {
+    let theme = theme_for(&planned.theme_name);
+    let mut writer = SlideWriter::new();
+    let mut shapes = String::new();
+    let objects: Vec<&SlideObject> = planned.master.as_ref().map(|master| master.objects.iter().collect()).unwrap_or_default();
+    let mut has_footer = false;
+    let mut has_slide_number = false;
+    let mut has_date = false;
+    for object in &objects {
+        match object.placeholder.as_deref() {
+            Some("footer") => has_footer = true,
+            Some("slideNumber") => has_slide_number = true,
+            Some("date") => has_date = true,
+            _ => {}
+        }
+    }
+    let mut sorted = objects;
+    sorted.sort_by_key(|object| object.z);
+    for object in &sorted {
+        if let Some(xml) = object_xml(object, &theme, &mut writer, export) {
+            shapes.push_str(&xml);
+        }
+    }
+    let mut footer_shapes = String::new();
+    let bottom = (height - 44.0).max(0.0);
+    if !has_date {
+        let shape = placeholder_object("date", 40.0, bottom, 200.0, 28.0);
+        if let Some(xml) = object_xml(&shape, &theme, &mut writer, export) {
+            footer_shapes.push_str(&xml);
+        }
+    }
+    if !has_footer {
+        let shape = placeholder_object("footer", (width * 0.25).max(40.0), bottom, (width * 0.5).max(160.0), 28.0);
+        if let Some(xml) = object_xml(&shape, &theme, &mut writer, export) {
+            footer_shapes.push_str(&xml);
+        }
+    }
+    if !has_slide_number {
+        let shape = placeholder_object("slideNumber", (width - 120.0).max(40.0), bottom, 80.0, 28.0);
+        if let Some(xml) = object_xml(&shape, &theme, &mut writer, export) {
+            footer_shapes.push_str(&xml);
+        }
+    }
+    let layout_list: String = layout_rids
+        .iter()
+        .enumerate()
+        .map(|(index, rid)| format!("<p:sldLayoutId id=\"{}\" r:id=\"{rid}\"/>", 2147483649u64 + index as u64))
+        .collect();
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<p:sldMaster {NS}><p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"{}\"/></a:solidFill><a:effectLst/></p:bgPr></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>{shapes}{footer_shapes}</p:spTree></p:cSld><p:clrMap bg1=\"lt1\" tx1=\"dk1\" bg2=\"lt2\" tx2=\"dk2\" accent1=\"accent1\" accent2=\"accent2\" accent3=\"accent3\" accent4=\"accent4\" accent5=\"accent5\" accent6=\"accent6\" hlink=\"hlink\" folHlink=\"folHlink\"/><p:sldLayoutIdLst>{layout_list}</p:sldLayoutIdLst><p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles></p:sldMaster>",
+        escape_attr(&planned.background)
+    )
+}
+
+fn placeholder_object(kind: &str, x: f64, y: f64, w: f64, h: f64) -> SlideObject {
+    let mut object = SlideObject::new("text", x, y, w, h);
+    object.placeholder = Some(kind.to_string());
+    object
+}
+
+fn layout_xml_planned(layout: &SlideLayout, theme_name: &str, export: &mut ExportContext) -> String {
+    let theme = theme_for(theme_name);
+    let mut writer = SlideWriter::new();
+    let mut shapes = String::new();
+    let mut objects: Vec<&SlideObject> = layout.objects.iter().collect();
+    objects.sort_by_key(|object| object.z);
+    for object in &objects {
+        if let Some(xml) = object_xml(object, &theme, &mut writer, export) {
+            shapes.push_str(&xml);
+        }
+    }
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<p:sldLayout {NS} type=\"{}\" preserve=\"1\"><p:cSld name=\"{}\"><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>{shapes}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>",
+        escape_attr(layout_type(&layout.kind)),
+        escape_attr(&layout.name)
+    )
+}
+
+fn slide_xml(slide: &Slide, theme: &Theme, writer: &mut SlideWriter, export: &mut ExportContext) -> String {
     let background = slide.background.as_deref().unwrap_or(theme.lt1);
     let mut shapes = String::new();
     let mut objects: Vec<&SlideObject> = slide.objects.iter().collect();
     objects.sort_by_key(|object| object.z);
     for object in objects {
-        shapes.push_str(&object_xml(object, theme, writer));
+        if let Some(xml) = object_xml(object, theme, writer, export) {
+            shapes.push_str(&xml);
+        }
     }
     let mut background_xml = String::new();
     if slide.background.is_some() {
@@ -462,8 +1041,9 @@ fn slide_xml(slide: &Slide, theme: &Theme, writer: &mut SlideWriter) -> String {
         Some("slide") => "<p:transition spd=\"med\"><p:slide dir=\"l\"/></p:transition>".to_string(),
         _ => String::new(),
     };
+    let timing = timing_xml(slide, &writer.shape_ids, &mut export.warnings);
     format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<p:sld {NS}><p:cSld>{background_xml}<p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>{shapes}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>{transition}</p:sld>"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<p:sld {NS}><p:cSld>{background_xml}<p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>{shapes}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>{transition}{timing}</p:sld>"
     )
 }
 
@@ -482,41 +1062,84 @@ pub struct DeckWrite {
 
 pub fn write_pptx_package(deck: &Deck) -> OfficeResult<DeckWrite> {
     let theme = theme_for(&deck.theme);
-    let mut warnings = Vec::new();
-    if deck.slides.iter().any(|slide| slide.objects.iter().any(|object| object.kind == "chart")) {
-        warnings.push("Charts are kept in the native .oswk file and are not embedded into PPTX yet.".into());
-    }
+    let empty_masters = deck.masters.is_empty();
     let background = match deck.theme.as_str() {
         "dark" => theme.lt1,
         _ => "FFFFFF",
     };
+    let planned_masters = plan_masters(deck);
+    let mut export = ExportContext::new();
 
-    let mut parts: Vec<(String, String, Option<String>, Vec<(String, Vec<u8>)>)> = Vec::new();
+    let mut theme_parts: Vec<(String, String)> = Vec::new();
+    if empty_masters {
+        theme_parts.push(("ppt/theme/theme1.xml".into(), theme_xml(&theme)));
+    } else {
+        for planned in &planned_masters {
+            theme_parts.push((planned.theme_part.clone(), theme_xml(&theme_for(&planned.theme_name))));
+        }
+    }
+
+    let mut master_parts: Vec<(String, String, String)> = Vec::new();
+    let mut layout_parts: Vec<(String, String, String)> = Vec::new();
+    for planned in &planned_masters {
+        let mut rels = RelSet::new();
+        let mut layout_rids = Vec::new();
+        for layout in &planned.layouts {
+            layout_rids.push(rels.add(REL_LAYOUT, &format!("../slideLayouts/{}", file_name(&layout.part))));
+        }
+        rels.add(REL_THEME, &format!("../theme/{}", file_name(&planned.theme_part)));
+        let master_content = match (&planned.master, empty_masters) {
+            (None, true) => master_xml(&theme, background),
+            _ => master_xml_planned(planned, &layout_rids, deck.size.width_pt, deck.size.height_pt, &mut export),
+        };
+        master_parts.push((planned.part.clone(), master_content, rels.xml()));
+        for layout in &planned.layouts {
+            let layout_content = match (&layout.model, empty_masters) {
+                (Some(model), false) => layout_xml_planned(model, &planned.theme_name, &mut export),
+                _ => layout_xml(background),
+            };
+            let mut layout_rels = RelSet::new();
+            layout_rels.add(REL_MASTER, &format!("../slideMasters/{}", file_name(&planned.part)));
+            layout_parts.push((layout.part.clone(), layout_content, layout_rels.xml()));
+        }
+    }
+
+    let mut parts: Vec<(String, String, Option<String>)> = Vec::new();
     for (index, slide) in deck.slides.iter().enumerate() {
         let mut writer = SlideWriter::new();
-        writer.rels.add(REL_LAYOUT, "../slideLayouts/slideLayout1.xml");
-        let xml = slide_xml(slide, &theme, &mut writer);
+        let planned_layout = layout_for_slide(slide, &planned_masters);
+        if let Some(layout) = planned_layout {
+            writer.rels.add(REL_LAYOUT, &format!("../slideLayouts/{}", file_name(&layout.part)));
+        }
+        let slide_theme = theme_for(&planned_theme_name(planned_layout, deck));
+        let xml = slide_xml(slide, &slide_theme, &mut writer, &mut export);
         let mut rels = writer.rels;
         let mut notes_part = None;
         if !slide.notes.trim().is_empty() {
             rels.add(REL_NOTES, &format!("../notesSlides/notesSlide{}.xml", index + 1));
             notes_part = Some(notes_xml(slide));
         }
-        parts.push((xml, rels.xml(), notes_part, writer.media));
+        parts.push((xml, rels.xml(), notes_part));
     }
 
-    let mut slide_rids = Vec::new();
-    let presentation_rels = {
+    let (presentation_rels, slide_rids, master_rids) = {
         let mut rels = RelSet::new();
-        rels.add(REL_MASTER, "slideMasters/slideMaster1.xml");
+        let mut master_rids = Vec::new();
+        for planned in &planned_masters {
+            let target = planned.part.strip_prefix("ppt/").unwrap_or(&planned.part);
+            master_rids.push(rels.add(REL_MASTER, target));
+        }
+        let mut slide_rids = Vec::new();
         for index in 0..parts.len() {
             slide_rids.push(rels.add(REL_SLIDE, &format!("slides/slide{}.xml", index + 1)));
         }
         rels.add("http://schemas.openxmlformats.org/officeDocument/2006/relationships/presProps", "presProps.xml");
         rels.add("http://schemas.openxmlformats.org/officeDocument/2006/relationships/viewProps", "viewProps.xml");
         rels.add("http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles", "tableStyles.xml");
-        rels.add(REL_THEME, "theme/theme1.xml");
-        rels.xml()
+        if let Some((first_theme, _)) = theme_parts.first() {
+            rels.add(REL_THEME, &format!("theme/{}", file_name(first_theme)));
+        }
+        (rels.xml(), slide_rids, master_rids)
     };
 
     let mut zip = ZipWriter::new();
@@ -527,9 +1150,15 @@ pub fn write_pptx_package(deck: &Deck) -> OfficeResult<DeckWrite> {
         content_types.push_str(&format!("<Default Extension=\"{extension}\" ContentType=\"{mime}\"/>"));
     }
     content_types.push_str("<Override PartName=\"/ppt/presentation.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml\"/>");
-    content_types.push_str("<Override PartName=\"/ppt/slideMasters/slideMaster1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml\"/>");
-    content_types.push_str("<Override PartName=\"/ppt/slideLayouts/slideLayout1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml\"/>");
-    content_types.push_str("<Override PartName=\"/ppt/theme/theme1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.theme+xml\"/>");
+    for (part, _) in &theme_parts {
+        content_types.push_str(&format!("<Override PartName=\"/{part}\" ContentType=\"application/vnd.openxmlformats-officedocument.theme+xml\"/>"));
+    }
+    for (part, _, _) in &master_parts {
+        content_types.push_str(&format!("<Override PartName=\"/{part}\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml\"/>"));
+    }
+    for (part, _, _) in &layout_parts {
+        content_types.push_str(&format!("<Override PartName=\"/{part}\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml\"/>"));
+    }
     content_types.push_str("<Override PartName=\"/ppt/presProps.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.presProps+xml\"/>");
     content_types.push_str("<Override PartName=\"/ppt/viewProps.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.viewProps+xml\"/>");
     content_types.push_str("<Override PartName=\"/ppt/tableStyles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.tableStyles+xml\"/>");
@@ -539,6 +1168,11 @@ pub fn write_pptx_package(deck: &Deck) -> OfficeResult<DeckWrite> {
             content_types.push_str(&format!("<Override PartName=\"/ppt/notesSlides/notesSlide{}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml\"/>", index + 1));
         }
     }
+    for (part, _) in &export.charts {
+        content_types.push_str(&format!(
+            "<Override PartName=\"/{part}\" ContentType=\"application/vnd.openxmlformats-officedocument.drawingml.chart+xml\"/>"
+        ));
+    }
     content_types.push_str("<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/><Override PartName=\"/docProps/app.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/></Types>");
 
     let mut root_rels = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">");
@@ -547,33 +1181,27 @@ pub fn write_pptx_package(deck: &Deck) -> OfficeResult<DeckWrite> {
     root_rels.push_str("<Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties\" Target=\"docProps/app.xml\"/>");
     root_rels.push_str("</Relationships>");
 
-    let master_rels = {
-        let mut rels = RelSet::new();
-        rels.add(REL_LAYOUT, "../slideLayouts/slideLayout1.xml");
-        rels.add(REL_THEME, "../theme/theme1.xml");
-        rels.xml()
-    };
-    let layout_rels = {
-        let mut rels = RelSet::new();
-        rels.add(REL_MASTER, "../slideMasters/slideMaster1.xml");
-        rels.xml()
-    };
-
     zip.add_text("[Content_Types].xml", &content_types);
     zip.add_text("_rels/.rels", &root_rels);
     zip.add_text("docProps/core.xml", &core_properties(deck));
     zip.add_text("docProps/app.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\"><Application>Office Swiss Army Knife</Application></Properties>");
-    zip.add_text("ppt/presentation.xml", &presentation_xml(deck, &slide_rids));
+    zip.add_text("ppt/presentation.xml", &presentation_xml(deck, &master_rids, &slide_rids));
     zip.add_text("ppt/_rels/presentation.xml.rels", &presentation_rels);
     zip.add_text("ppt/presProps.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<p:presentationPr xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\"/>");
     zip.add_text("ppt/viewProps.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<p:viewPr xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\"/>");
     zip.add_text("ppt/tableStyles.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<a:tblStyleLst xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" def=\"mediumStyle2Accent1\"/>");
-    zip.add_text("ppt/theme/theme1.xml", &theme_xml(&theme));
-    zip.add_text("ppt/slideMasters/slideMaster1.xml", &master_xml(&theme, background));
-    zip.add_text("ppt/slideMasters/_rels/slideMaster1.xml.rels", &master_rels);
-    zip.add_text("ppt/slideLayouts/slideLayout1.xml", &layout_xml(background));
-    zip.add_text("ppt/slideLayouts/_rels/slideLayout1.xml.rels", &layout_rels);
-    for (index, (xml, rels, notes, media)) in parts.iter().enumerate() {
+    for (part, xml) in &theme_parts {
+        zip.add_text(part, xml);
+    }
+    for (part, xml, rels) in &master_parts {
+        zip.add_text(part, xml);
+        zip.add_text(&rels_name(part), rels);
+    }
+    for (part, xml, rels) in &layout_parts {
+        zip.add_text(part, xml);
+        zip.add_text(&rels_name(part), rels);
+    }
+    for (index, (xml, rels, notes)) in parts.iter().enumerate() {
         zip.add_text(&format!("ppt/slides/slide{}.xml", index + 1), xml);
         zip.add_text(&format!("ppt/slides/_rels/slide{}.xml.rels", index + 1), rels);
         if let Some(notes) = notes {
@@ -583,10 +1211,16 @@ pub fn write_pptx_package(deck: &Deck) -> OfficeResult<DeckWrite> {
                 index + 1
             ));
         }
-        for (name, data) in media {
-            zip.add(&format!("ppt/media/{name}"), data);
-        }
     }
+    for (name, data) in &export.media {
+        zip.add(&format!("ppt/media/{name}"), data);
+    }
+    for (part, xml) in &export.charts {
+        zip.add_text(part, xml);
+    }
+    let mut warnings = export.warnings;
+    warnings.sort();
+    warnings.dedup();
     Ok(DeckWrite { bytes: zip.finish(), warnings })
 }
 
@@ -610,22 +1244,26 @@ pub fn write_pptx_file(path: &Path, deck: &Deck) -> OfficeResult<()> {
 // Import
 // ---------------------------------------------------------------------------
 
-fn part_rels(reader: &ZipReader, part: &str) -> HashMap<String, String> {
+fn part_rels_typed(reader: &ZipReader, part: &str) -> Vec<(String, String, String)> {
     let (dir, file) = match part.rsplit_once('/') {
         Some((dir, file)) => (format!("{dir}/"), file.to_string()),
         None => (String::new(), part.to_string()),
     };
-    let mut map = HashMap::new();
+    let mut entries = Vec::new();
     let Ok(text) = reader.read_text(&format!("{dir}_rels/{file}.rels")) else {
-        return map;
+        return entries;
     };
-    let Ok(root) = parse_xml(&text) else { return map };
+    let Ok(root) = parse_xml(&text) else { return entries };
     for node in root.children_named("Relationship") {
-        if let (Some(id), Some(target)) = (node.attr("Id"), node.attr("Target")) {
-            map.insert(id.to_string(), target.to_string());
+        if let (Some(id), Some(kind), Some(target)) = (node.attr("Id"), node.attr("Type"), node.attr("Target")) {
+            entries.push((id.to_string(), kind.to_string(), target.to_string()));
         }
     }
-    map
+    entries
+}
+
+fn part_rels(reader: &ZipReader, part: &str) -> HashMap<String, String> {
+    part_rels_typed(reader, part).into_iter().map(|(id, _, target)| (id, target)).collect()
 }
 
 fn resolve_part(current: &str, target: &str) -> String {
@@ -646,8 +1284,100 @@ fn resolve_part(current: &str, target: &str) -> String {
     segments.join("/")
 }
 
-fn read_shape(node: &XmlNode, reader: &ZipReader, rels: &HashMap<String, String>, z: i32, warnings: &mut Vec<String>) -> Option<SlideObject> {
-    match node.local_name() {
+fn map_object_outside(object: &SlideObject, outer: (f64, f64, f64, f64), inner: (f64, f64, f64, f64)) -> SlideObject {
+    let (ox, oy, ow, oh) = outer;
+    let (cx, cy, cw, ch) = inner;
+    let sx = if cw.abs() > 0.01 { ow / cw } else { 1.0 };
+    let sy = if ch.abs() > 0.01 { oh / ch } else { 1.0 };
+    let mut mapped = object.clone();
+    mapped.x = ox + (object.x - cx) * sx;
+    mapped.y = oy + (object.y - cy) * sy;
+    mapped.w = object.w * sx;
+    mapped.h = object.h * sy;
+    if let (Some(line), Some(source)) = (mapped.line.as_mut(), object.line.as_ref()) {
+        line.x2 = source.x2 * sx;
+        line.y2 = source.y2 * sy;
+    }
+    mapped.children = object.children.iter().map(|child| map_object_outside(child, outer, inner)).collect();
+    mapped
+}
+
+fn read_group_transform(transform: Option<&XmlNode>) -> Option<(f64, f64, f64, f64)> {
+    let transform = transform?;
+    let offset = transform.child("chOff")?;
+    let extent = transform.child("chExt")?;
+    let x = offset.attr("x").and_then(|value| value.parse::<f64>().ok()).map(pt_from_emu)?;
+    let y = offset.attr("y").and_then(|value| value.parse::<f64>().ok()).map(pt_from_emu)?;
+    let w = extent.attr("cx").and_then(|value| value.parse::<f64>().ok()).map(pt_from_emu)?;
+    let h = extent.attr("cy").and_then(|value| value.parse::<f64>().ok()).map(pt_from_emu)?;
+    Some((x, y, w, h))
+}
+
+fn read_shape_id(node: &XmlNode) -> Option<usize> {
+    node.find_descendant("cNvPr").and_then(|props| props.attr("id")).and_then(|value| value.parse::<usize>().ok())
+}
+
+fn read_chart_xml(xml: &str, warnings: &mut Vec<String>) -> Option<ChartData> {
+    let root = parse_xml(xml).ok()?;
+    let plot = root.find_descendant("plotArea")?;
+    let plot_child = plot.children.iter().find(|child| child.local_name().ends_with("Chart"))?;
+    let kind = match plot_child.local_name() {
+        "barChart" => {
+            if plot_child.find_descendant("barDir").and_then(|node| node.attr("val")) == Some("bar") {
+                "bar".to_string()
+            } else {
+                "column".to_string()
+            }
+        }
+        "lineChart" => "line".to_string(),
+        "pieChart" => "pie".to_string(),
+        "areaChart" => "area".to_string(),
+        other => {
+            let raw = other.trim_end_matches("Chart").to_ascii_lowercase();
+            if !raw.is_empty() {
+                warnings.push(format!("A \"{raw}\" chart was imported with limited support; it is kept in the native .oswk file."));
+            }
+            raw
+        }
+    };
+    let chart_node = root.child("chart");
+    let title = chart_node.and_then(|node| node.child("title")).map(|node| node.deep_text()).unwrap_or_default();
+    let legend = chart_node.and_then(|node| node.child("legend")).is_some();
+    let mut series = Vec::new();
+    for ser in plot_child.children_named("ser") {
+        let name = ser
+            .child("tx")
+            .map(|tx| tx.find_descendant("v").map(XmlNode::deep_text).unwrap_or_else(|| tx.deep_text()))
+            .unwrap_or_default();
+        let range = ser.child("val").and_then(|val| val.find_descendant("f")).map(XmlNode::deep_text).unwrap_or_default();
+        let color = ser
+            .find_descendant("spPr")
+            .and_then(|props| props.find_descendant("srgbClr"))
+            .and_then(|color| color.attr("val"))
+            .map(|value| format!("#{value}"));
+        series.push(ChartSeries { name, range, color });
+    }
+    let categories = plot_child
+        .children_named("ser")
+        .next()
+        .and_then(|ser| ser.child("cat"))
+        .and_then(|cat| cat.find_descendant("f"))
+        .map(XmlNode::deep_text)
+        .unwrap_or_default();
+    let stacked = plot_child.find_descendant("grouping").and_then(|node| node.attr("val")).map(|value| value == "stacked").unwrap_or(false);
+    let show_labels = root
+        .find_descendant("dLbls")
+        .and_then(|labels| labels.find_descendant("showVal"))
+        .and_then(|node| node.attr("val"))
+        .map(|value| value == "1")
+        .unwrap_or(false);
+    let x_title = plot.find_descendant("catAx").and_then(|axis| axis.find_descendant("title")).map(|node| node.deep_text()).unwrap_or_default();
+    let y_title = plot.find_descendant("valAx").and_then(|axis| axis.find_descendant("title")).map(|node| node.deep_text()).unwrap_or_default();
+    Some(ChartData { kind, title, categories, series, legend, x_title, y_title, stacked, show_labels })
+}
+
+fn read_shape(node: &XmlNode, reader: &ZipReader, rels: &HashMap<String, String>, base: &str, z: i32, warnings: &mut Vec<String>) -> Option<SlideObject> {
+    let mut object = match node.local_name() {
         "sp" => {
             let shape_props = node.find_descendant("spPr")?;
             let transform = shape_props.find_descendant("xfrm");
@@ -665,6 +1395,13 @@ fn read_shape(node: &XmlNode, reader: &ZipReader, rels: &HashMap<String, String>
             }, x, y, w, h);
             object.z = z;
             object.rotation = rotation;
+            object.placeholder = node
+                .child("nvSpPr")
+                .and_then(|props| props.child("nvPr"))
+                .and_then(|props| props.child("ph"))
+                .and_then(|placeholder| placeholder.attr("type"))
+                .and_then(placeholder_role)
+                .map(str::to_string);
             let fill = shape_props
                 .find_descendant("solidFill")
                 .and_then(|fill| fill.find_descendant("srgbClr"))
@@ -685,16 +1422,28 @@ fn read_shape(node: &XmlNode, reader: &ZipReader, rels: &HashMap<String, String>
                     object.text = Some(TextFrame { paragraphs, ..Default::default() });
                 }
             }
-            Some(object)
+            object
         }
         "pic" => {
             let shape_props = node.find_descendant("spPr")?;
             let transform = shape_props.find_descendant("xfrm");
             let (x, y, w, h, rotation) = read_transform(transform);
-            let embed = node.find_descendant("blip").and_then(|blip| blip.attr_any_ns("embed"))?;
-            let target = rels.get(embed)?;
-            let part = resolve_part("ppt/slides/slide1.xml", target);
-            let data = reader.read(&part).ok()?;
+            let Some(embed) = node.find_descendant("blip").and_then(|blip| blip.attr_any_ns("embed")) else {
+                warnings.push("An image without a relationship was skipped.".into());
+                return None;
+            };
+            let Some(target) = rels.get(embed) else {
+                warnings.push("An image relationship could not be resolved and was skipped.".into());
+                return None;
+            };
+            let part = resolve_part(base, target);
+            let data = match reader.read(&part) {
+                Ok(data) => data,
+                Err(_) => {
+                    warnings.push(format!("Image part {part} could not be read and was skipped."));
+                    return None;
+                }
+            };
             if data.is_empty() {
                 return None;
             }
@@ -703,7 +1452,7 @@ fn read_shape(node: &XmlNode, reader: &ZipReader, rels: &HashMap<String, String>
             object.z = z;
             object.rotation = rotation;
             object.image = Some(ImageData::from_bytes(&name, &data));
-            Some(object)
+            object
         }
         "cxnSp" => {
             let shape_props = node.find_descendant("spPr")?;
@@ -718,34 +1467,94 @@ fn read_shape(node: &XmlNode, reader: &ZipReader, rels: &HashMap<String, String>
                 .and_then(|color| color.attr("val"))
                 .map(|value| format!("#{value}"));
             object.style = Some(ShapeStyle { fill: color.clone(), stroke: color, stroke_width_pt: 2.0, opacity: 1.0, corner_radius_pt: 0.0, shadow: false });
-            Some(object)
+            object
         }
         "graphicFrame" => {
             let transform = node.find_descendant("xfrm");
             let (x, y, w, h, rotation) = read_transform(transform);
-            let table = node.find_descendant("tbl")?;
-            let mut rows = Vec::new();
-            for row_node in table.children_named("tr") {
-                let mut cells = Vec::new();
-                for cell in row_node.children_named("tc") {
-                    let mut inner = Vec::new();
-                    inner.push(Block::paragraph(&cell.deep_text().trim().to_string()));
-                    cells.push(TableCell { blocks: inner, ..Default::default() });
+            if let Some(table) = node.find_descendant("tbl") {
+                let mut rows = Vec::new();
+                for row_node in table.children_named("tr") {
+                    let mut cells = Vec::new();
+                    for cell in row_node.children_named("tc") {
+                        let mut inner = Vec::new();
+                        inner.push(Block::paragraph(&cell.deep_text().trim().to_string()));
+                        cells.push(TableCell { blocks: inner, ..Default::default() });
+                    }
+                    rows.push(TableRow { cells, ..Default::default() });
                 }
-                rows.push(TableRow { cells, ..Default::default() });
+                let mut object = SlideObject::new("table", x, y, w, h);
+                object.z = z;
+                object.rotation = rotation;
+                object.table = Some(TableData { rows, ..Default::default() });
+                object
+            } else if let Some(chart_ref) = node.find_descendant("chart") {
+                let Some(embed) = chart_ref.attr_any_ns("id") else {
+                    warnings.push("A chart without a relationship was skipped.".into());
+                    return None;
+                };
+                let Some(target) = rels.get(embed) else {
+                    warnings.push("A chart relationship could not be resolved and was skipped.".into());
+                    return None;
+                };
+                let part = resolve_part(base, target);
+                let text = match reader.read_text(&part) {
+                    Ok(text) => text,
+                    Err(_) => {
+                        warnings.push(format!("Chart part {part} could not be read and was skipped."));
+                        return None;
+                    }
+                };
+                let chart = match read_chart_xml(&text, warnings) {
+                    Some(chart) => chart,
+                    None => {
+                        warnings.push(format!("Chart part {part} could not be parsed and was skipped."));
+                        return None;
+                    }
+                };
+                let mut object = SlideObject::new("chart", x, y, w, h);
+                object.z = z;
+                object.rotation = rotation;
+                object.chart = Some(chart);
+                object
+            } else {
+                return None;
             }
-            let mut object = SlideObject::new("table", x, y, w, h);
-            object.z = z;
-            object.rotation = rotation;
-            object.table = Some(TableData { rows, ..Default::default() });
-            Some(object)
         }
         "grpSp" => {
-            warnings.push("Grouped shapes were flattened during import.".into());
-            None
+            let group_props = node.child("grpSpPr");
+            let transform = group_props.and_then(|props| props.child("xfrm"));
+            let (x, y, w, h, rotation) = read_transform(transform);
+            let mut object = SlideObject::new("group", x, y, w, h);
+            object.z = z;
+            object.rotation = rotation;
+            let child_transform = read_group_transform(transform);
+            let mut child_z = 1i32;
+            for child in node.children.iter().filter(|child| child.local_name() != "nvGrpSpPr" && child.local_name() != "grpSpPr") {
+                if let Some(child_object) = read_shape(child, reader, rels, base, child_z, warnings) {
+                    let mapped = match child_transform {
+                        Some(inner) => map_object_outside(&child_object, (x, y, w, h), inner),
+                        None => child_object,
+                    };
+                    object.children.push(mapped);
+                    child_z += 1;
+                } else if !matches!(child.local_name(), "extLst" | "contentPart") {
+                    warnings.push("A shape inside a group could not be imported.".into());
+                }
+            }
+            if let Some(props) = group_props {
+                if props.find_descendant("effectLst").map(|effects| !effects.children.is_empty()).unwrap_or(false) {
+                    warnings.push("Effects on grouped shapes were not imported.".into());
+                }
+            }
+            object
         }
-        _ => None,
+        _ => return None,
+    };
+    if let Some(shape_id) = read_shape_id(node) {
+        object.id = format!("shape{shape_id}");
     }
+    Some(object)
 }
 
 fn read_transform(transform: Option<&XmlNode>) -> (f64, f64, f64, f64, f64) {
@@ -822,6 +1631,232 @@ impl FindDescendant for XmlNode {
     }
 }
 
+fn timing_trigger(node_type: &str) -> &'static str {
+    match node_type {
+        "withEffect" | "withGroup" => "withPrevious",
+        "afterEffect" | "afterGroup" => "afterPrevious",
+        _ => "onClick",
+    }
+}
+
+fn parse_duration(value: &str) -> Option<u32> {
+    let hundredths = value.parse::<f64>().ok()?;
+    Some((hundredths * 10.0).round().max(0.0) as u32)
+}
+
+fn read_timing_par(par: &XmlNode, order: u32, warnings: &mut Vec<String>) -> Option<Animation> {
+    let mut effect_nodes = Vec::new();
+    par.find_all("animEffect", &mut effect_nodes);
+    let mut set_nodes = Vec::new();
+    par.find_all("set", &mut set_nodes);
+    if effect_nodes.is_empty() && set_nodes.is_empty() {
+        return None;
+    }
+    if effect_nodes.len() > 1 {
+        warnings.push("Multiple effects inside one animation node were simplified.".into());
+    }
+    let mut trigger = None;
+    for node in effect_nodes.iter().chain(set_nodes.iter()) {
+        if let Some(node_type) = node.find_descendant("cTn").and_then(|ctn| ctn.attr("nodeType")) {
+            if matches!(node_type, "clickEffect" | "withEffect" | "afterEffect") {
+                trigger = Some(timing_trigger(node_type));
+                break;
+            }
+        }
+    }
+    let trigger = trigger
+        .or_else(|| par.child("cTn").and_then(|ctn| ctn.attr("nodeType")).map(timing_trigger))
+        .unwrap_or("onClick");
+    let delay = par
+        .child("cTn")
+        .and_then(|ctn| ctn.child("stCondLst"))
+        .and_then(|conditions| conditions.find_descendant("cond"))
+        .and_then(|condition| condition.attr("delay"))
+        .and_then(parse_duration)
+        .unwrap_or(0);
+    let mut kind = "entrance";
+    let mut effect = "appear".to_string();
+    let mut duration = 0u32;
+    let mut spid = None;
+    if let Some(effect_node) = effect_nodes.first() {
+        kind = match effect_node.attr("transition") {
+            Some("in") => "entrance",
+            Some("out") => "exit",
+            _ => "emphasis",
+        };
+        effect = match effect_node.attr("filter") {
+            Some(filter) => filter.to_string(),
+            None => {
+                let fallback = match kind {
+                    "entrance" => "appear",
+                    "exit" => "fade",
+                    _ => "pulse",
+                };
+                warnings.push(format!("An animation effect without a filter was imported as \"{fallback}\"."));
+                fallback.to_string()
+            }
+        };
+        duration = effect_node.find_descendant("cTn").and_then(|ctn| ctn.attr("dur")).and_then(parse_duration).unwrap_or(0);
+        spid = effect_node.find_descendant("spTgt").and_then(|target| target.attr("spid")).and_then(|value| value.parse::<usize>().ok());
+    } else if let Some(set_node) = set_nodes.first() {
+        let visible = set_node.find_descendant("strVal").and_then(|value| value.attr("val")) == Some("visible");
+        kind = if visible { "entrance" } else { "exit" };
+        duration = set_node.find_descendant("cTn").and_then(|ctn| ctn.attr("dur")).and_then(parse_duration).unwrap_or(0);
+        spid = set_node.find_descendant("spTgt").and_then(|target| target.attr("spid")).and_then(|value| value.parse::<usize>().ok());
+    }
+    let Some(spid) = spid else {
+        warnings.push("An animation without a target object was skipped.".into());
+        return None;
+    };
+    Some(Animation {
+        id: uuid::Uuid::new_v4().to_string(),
+        object_id: format!("shape{spid}"),
+        kind: kind.to_string(),
+        effect,
+        trigger: trigger.to_string(),
+        duration_ms: duration,
+        delay_ms: delay,
+        order,
+    })
+}
+
+fn read_timing(slide_root: &XmlNode, warnings: &mut Vec<String>) -> Vec<Animation> {
+    let Some(timing) = slide_root.find_descendant("timing") else { return Vec::new() };
+    let mut sequences = Vec::new();
+    timing.find_all("seq", &mut sequences);
+    let Some(sequence) = sequences.first() else {
+        warnings.push("The slide timing could not be imported.".into());
+        return Vec::new();
+    };
+    let main_seq = sequence
+        .children_named("cTn")
+        .find(|ctn| ctn.attr("nodeType") == Some("mainSeq"))
+        .and_then(|ctn| ctn.child("childTnLst"));
+    let Some(container) = main_seq else {
+        warnings.push("The slide timing could not be imported.".into());
+        return Vec::new();
+    };
+    let mut animations = Vec::new();
+    for (index, par) in container.children_named("par").enumerate() {
+        if let Some(animation) = read_timing_par(par, index as u32, warnings) {
+            animations.push(animation);
+        }
+    }
+    if animations.is_empty() {
+        warnings.push("Some animation effects could not be imported.".into());
+    }
+    animations
+}
+
+fn theme_key(name: &str) -> Option<&'static str> {
+    match name.to_ascii_lowercase().as_str() {
+        "business" => Some("business"),
+        "dark" => Some("dark"),
+        "modern" => Some("modern"),
+        "education" => Some("education"),
+        "simple" => Some("simple"),
+        "minimal" => Some("minimal"),
+        _ => None,
+    }
+}
+
+fn read_masters(reader: &ZipReader, presentation_rels: &[(String, String, String)], warnings: &mut Vec<String>) -> (Vec<SlideMaster>, HashMap<String, (usize, String)>) {
+    let mut masters: Vec<SlideMaster> = Vec::new();
+    let mut layout_index: HashMap<String, (usize, String)> = HashMap::new();
+    let mut failed = false;
+    for (_, kind, target) in presentation_rels {
+        if !kind.ends_with("slideMaster") {
+            continue;
+        }
+        let master_part = resolve_part("ppt/presentation.xml", target);
+        let master_text = match reader.read_text(&master_part) {
+            Ok(text) => text,
+            Err(_) => {
+                failed = true;
+                warnings.push(format!("Slide master part {master_part} could not be read."));
+                continue;
+            }
+        };
+        let master_root = match parse_xml(&master_text) {
+            Ok(root) if root.local_name() == "sldMaster" => root,
+            _ => {
+                failed = true;
+                warnings.push(format!("Slide master part {master_part} is malformed."));
+                continue;
+            }
+        };
+        let mut master = SlideMaster { id: part_stem(&master_part), name: format!("Master {}", masters.len() + 1), ..Default::default() };
+        if let Some(background) = master_root.find_descendant("bgPr") {
+            master.background = background.find_descendant("srgbClr").and_then(|color| color.attr("val")).map(|value| format!("#{value}"));
+        }
+        let typed = part_rels_typed(reader, &master_part);
+        let rels: HashMap<String, String> = typed.iter().map(|(id, _, target)| (id.clone(), target.clone())).collect();
+        for (_, rel_kind, rel_target) in &typed {
+            if !rel_kind.ends_with("theme") {
+                continue;
+            }
+            let theme_part = resolve_part(&master_part, rel_target);
+            if let Ok(theme_text) = reader.read_text(&theme_part) {
+                if let Ok(theme_root) = parse_xml(&theme_text) {
+                    master.theme = theme_root.attr("name").and_then(theme_key).unwrap_or_default().to_string();
+                }
+            }
+        }
+        if let Some(tree) = master_root.find_descendant("spTree") {
+            let mut z = 1i32;
+            for shape in tree.children.iter().filter(|child| child.local_name() != "nvGrpSpPr" && child.local_name() != "grpSpPr") {
+                if let Some(object) = read_shape(shape, reader, &rels, &master_part, z, warnings) {
+                    master.objects.push(object);
+                    z += 1;
+                }
+            }
+        }
+        for (_, rel_kind, rel_target) in &typed {
+            if !rel_kind.ends_with("slideLayout") {
+                continue;
+            }
+            let layout_part = resolve_part(&master_part, rel_target);
+            let layout_id = part_stem(&layout_part);
+            let layout_text = match reader.read_text(&layout_part) {
+                Ok(text) => text,
+                Err(_) => {
+                    failed = true;
+                    warnings.push(format!("Slide layout part {layout_part} could not be read."));
+                    continue;
+                }
+            };
+            let layout_root = match parse_xml(&layout_text) {
+                Ok(root) if root.local_name() == "sldLayout" => root,
+                _ => {
+                    failed = true;
+                    warnings.push(format!("Slide layout part {layout_part} is malformed."));
+                    continue;
+                }
+            };
+            let mut layout = SlideLayout { id: layout_id.clone(), ..Default::default() };
+            layout.name = layout_root.child("cSld").and_then(|cld| cld.attr("name")).unwrap_or("Layout").to_string();
+            layout.kind = layout_root.attr("type").map(layout_kind).unwrap_or_else(|| "blank".to_string());
+            if let Some(tree) = layout_root.find_descendant("spTree") {
+                let mut z = 1i32;
+                for shape in tree.children.iter().filter(|child| child.local_name() != "nvGrpSpPr" && child.local_name() != "grpSpPr") {
+                    if let Some(object) = read_shape(shape, reader, &rels, &layout_part, z, warnings) {
+                        layout.objects.push(object);
+                        z += 1;
+                    }
+                }
+            }
+            layout_index.insert(layout_part, (masters.len(), layout.id.clone()));
+            master.layouts.push(layout);
+        }
+        masters.push(master);
+    }
+    if failed {
+        warnings.push("Slide masters or layouts could not be read; the deck opens without master inheritance.".into());
+        return (Vec::new(), HashMap::new());
+    }
+    (masters, layout_index)
+}
+
 pub fn read_pptx(bytes: &[u8]) -> OfficeResult<DeckRead> {
     let reader = ZipReader::open(bytes.to_vec())?;
     if !reader.contains("ppt/presentation.xml") {
@@ -830,7 +1865,8 @@ pub fn read_pptx(bytes: &[u8]) -> OfficeResult<DeckRead> {
     let mut warnings = Vec::new();
     let presentation = reader.read_text("ppt/presentation.xml")?;
     let root = parse_xml(&presentation)?;
-    let rels = part_rels(&reader, "ppt/presentation.xml");
+    let typed_rels = part_rels_typed(&reader, "ppt/presentation.xml");
+    let rels: HashMap<String, String> = typed_rels.iter().map(|(id, _, target)| (id.clone(), target.clone())).collect();
     let mut deck = Deck::new_blank("Imported presentation");
     if let Some(size) = root.child("sldSz") {
         if let Some(cx) = size.attr("cx").and_then(|value| value.parse::<f64>().ok()) {
@@ -840,6 +1876,8 @@ pub fn read_pptx(bytes: &[u8]) -> OfficeResult<DeckRead> {
             deck.size.height_pt = pt_from_emu(cy);
         }
     }
+    let (masters, layout_index) = read_masters(&reader, &typed_rels, &mut warnings);
+    deck.masters = masters;
     deck.slides.clear();
     let mut slide_parts: Vec<String> = Vec::new();
     let mut slide_ids = Vec::new();
@@ -873,19 +1911,32 @@ pub fn read_pptx(bytes: &[u8]) -> OfficeResult<DeckRead> {
             }
         }
         let slide_rels = part_rels(&reader, part);
+        for (_, rel_kind, target) in part_rels_typed(&reader, part) {
+            if !rel_kind.ends_with("slideLayout") {
+                continue;
+            }
+            let layout_part = resolve_part(part, &target);
+            if let Some((master_index, layout_id)) = layout_index.get(&layout_part) {
+                slide.layout_id = Some(layout_id.clone());
+                slide.master_id = deck.masters.get(*master_index).map(|master| master.id.clone());
+            } else {
+                slide.layout_id = Some(part_stem(&layout_part));
+            }
+        }
         let mut z = 1i32;
         let shapes: Vec<&XmlNode> = slide_root
             .find_descendant("spTree")
             .map(|tree| tree.children.iter().filter(|child| child.local_name() != "nvGrpSpPr" && child.local_name() != "grpSpPr").collect())
             .unwrap_or_default();
         for shape in shapes {
-            if let Some(object) = read_shape(shape, &reader, &slide_rels, z, &mut warnings) {
+            if let Some(object) = read_shape(shape, &reader, &slide_rels, part, z, &mut warnings) {
                 slide.objects.push(object);
                 z += 1;
-            } else if shape.local_name() == "graphicFrame" {
-                warnings.push("Some embedded objects (charts or diagrams) were not imported.".into());
+            } else if shape.local_name() == "graphicFrame" && shape.find_descendant("chart").is_none() {
+                warnings.push("An embedded diagram or object was not imported.".into());
             }
         }
+        slide.animations = read_timing(&slide_root, &mut warnings);
         // Notes.
         for (rid, target) in &slide_rels {
             if target.contains("notesSlide") {
@@ -917,7 +1968,6 @@ pub fn read_pptx(bytes: &[u8]) -> OfficeResult<DeckRead> {
     if reader.names().any(|name| name.contains("vbaProject")) {
         warnings.push("Macros were not loaded. Presentations always open with macros disabled.".into());
     }
-    warnings.push("Animations and complex effects are not imported.".into());
     warnings.sort();
     warnings.dedup();
     Ok(DeckRead { deck, warnings })

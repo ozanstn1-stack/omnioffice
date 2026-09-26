@@ -14,8 +14,10 @@ import {
   Bold,
   Copy,
   Eraser,
+  Eye,
   Filter,
   FolderOpen,
+  GitBranch,
   Grid3x3,
   Printer,
   RefreshCw,
@@ -26,27 +28,40 @@ import {
   Redo2,
   Save,
   Sigma,
+  Table2,
   Trash2,
   Tag,
   Underline,
   Undo2,
   Snowflake,
+  XCircle,
 } from "lucide-react";
 import type { OfficeTab, Workbook } from "../lib/office-store";
 import { useOfficeTabs } from "../lib/office-store";
-import { useT } from "../lib/i18n";
+import { useT, type Translate } from "../lib/i18n";
 import { useToasts } from "../lib/store";
-import { cellText, defaultCellStyle, defaultPrintSettings, emptyCell, newSheet, type Cell, type CellStyle, type ChartData, type CondRule, type NamedRange, type PivotTable, type PivotValueField, type PrintSettings, type Sheet } from "../lib/office-types";
+import { cellText, defaultCellStyle, defaultPrintSettings, emptyCell, newSheet, newSpreadsheetTable, type Cell, type CellStyle, type ChartData, type CondRule, type NamedRange, type PivotTable, type PivotValueField, type PrintSettings, type Sheet, type SpreadsheetTable } from "../lib/office-types";
 import { computePivot, pivotFields } from "./calc/pivot";
 import {
   addressesInRange,
   columnLabel,
   formatAddress,
+  functionCatalogue,
   isError,
   parseAddress,
   parseRange,
+  suggestFunctions,
   type Scalar,
 } from "./calc/formula";
+import { addressInRange } from "./calc/addresses";
+import {
+  findCircularReferences,
+  invalidReferences,
+  traceDependents,
+  tracePrecedents,
+  type AuditNode,
+} from "./calc/audit";
+import { tableByName, tableColumnBodyRange } from "./calc/structured";
 import {
   applyCellEdit,
   applyCellEdits,
@@ -87,6 +102,198 @@ interface EditingCell extends CellPosition {
 /** Where a committed edit sends the selection. */
 type CommitMove = "down" | "up" | "right" | "left" | "none";
 
+// ---------------------------------------------------------------------------
+// Formula assistance (autocomplete + argument hints)
+// ---------------------------------------------------------------------------
+
+type SuggestionKind = "function" | "name" | "sheet" | "table" | "column";
+
+interface FormulaSuggestion {
+  kind: SuggestionKind;
+  label: string;
+  insert: string;
+  detail: string;
+  /** Caret offset inside `insert` after the insertion (defaults to the end). */
+  caret?: number;
+}
+
+interface SuggestionList {
+  items: FormulaSuggestion[];
+  /** Range inside the draft the selected item replaces. */
+  start: number;
+  end: number;
+}
+
+interface ArgumentHint {
+  name: string;
+  parts: string[];
+  active: number;
+}
+
+interface CatalogueEntry {
+  name: string;
+  signature: string;
+  category: string;
+}
+
+/** The identifier or partial structured reference ending at `caret`. */
+function suggestionWord(text: string, caret: number): string {
+  return /[A-Za-z_$][A-Za-z0-9_$.]*$/.exec(text.slice(0, caret))?.[0] ?? "";
+}
+
+/**
+ * The suggestion popup contents for a draft.
+ *
+ * Inside `Table[...]` the items are the table's columns; otherwise functions
+ * (prefix match), defined names, sheet names and table names are offered.
+ * Returns null when the draft is not a formula or nothing matches.
+ */
+function buildSuggestions(
+  text: string,
+  caret: number,
+  workbook: Workbook,
+  sheet: Sheet,
+  catalogue: Map<string, CatalogueEntry>,
+  t: Translate,
+): SuggestionList | null {
+  if (!text.startsWith("=") || caret < 1 || caret > text.length) return null;
+  const before = text.slice(0, caret);
+  const bracket = /([A-Za-z_][A-Za-z0-9_$. ]*)\[([^\[\]]*)$/.exec(before);
+  if (bracket) {
+    const table = tableByName(sheet.tables, bracket[1]);
+    if (!table) return null;
+    const partial = bracket[2];
+    const items = table.columns
+      .filter((column) => column.name.toUpperCase().startsWith(partial.toUpperCase()))
+      .map<FormulaSuggestion>((column) => ({
+        kind: "column",
+        label: column.name,
+        insert: text[caret] === "]" ? column.name : `${column.name}]`,
+        detail: `${table.name}[${column.name}]`,
+      }));
+    if (items.length === 0) return null;
+    return { items, start: caret - partial.length, end: caret };
+  }
+
+  const word = suggestionWord(text, caret);
+  if (!word) return null;
+  const upper = word.toUpperCase();
+  const items: FormulaSuggestion[] = [];
+  for (const name of suggestFunctions(word, 6)) {
+    const meta = catalogue.get(name);
+    items.push({
+      kind: "function",
+      label: name,
+      insert: `${name}(`,
+      caret: name.length + 1,
+      detail: meta ? `${meta.signature} · ${meta.category}` : name,
+    });
+  }
+  for (const entry of workbook.names ?? []) {
+    if (entry.name.toUpperCase().startsWith(upper)) {
+      items.push({ kind: "name", label: entry.name, insert: entry.name, detail: entry.definition });
+    }
+  }
+  for (const candidate of workbook.sheets) {
+    if (candidate.name.toUpperCase().startsWith(upper)) {
+      items.push({ kind: "sheet", label: candidate.name, insert: `${candidate.name}!`, detail: t("calc.sheetReference") });
+    }
+  }
+  for (const table of sheet.tables ?? []) {
+    if (table.name.toUpperCase().startsWith(upper)) {
+      items.push({ kind: "table", label: table.name, insert: `${table.name}[`, detail: t("calc.tableReference") });
+    }
+  }
+  if (items.length === 0) return null;
+  return { items, start: caret - word.length, end: caret };
+}
+
+/** Splits a signature body on top-level commas (`VLOOKUP(a, [b], c)`). */
+function splitSignature(signature: string): string[] {
+  const open = signature.indexOf("(");
+  const close = signature.lastIndexOf(")");
+  if (open < 0 || close <= open) return [signature];
+  const body = signature.slice(open + 1, close);
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const character of body) {
+    if (character === "(" || character === "[") depth += 1;
+    else if (character === ")" || character === "]") depth -= 1;
+    if (character === "," && depth === 0) {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    current += character;
+  }
+  parts.push(current);
+  return parts.map((part) => part.trim());
+}
+
+/**
+ * The argument hint for the call the caret is inside, or null.
+ *
+ * Scanning backwards from the caret, the innermost unmatched `(` names the
+ * function and the separators at that depth count the current argument.
+ */
+function argumentHintFor(text: string, caret: number, catalogue: Map<string, CatalogueEntry>): ArgumentHint | null {
+  if (!text.startsWith("=") || caret < 1) return null;
+  const before = text.slice(0, caret);
+  let depth = 0;
+  let separators = 0;
+  for (let index = before.length - 1; index >= 0; index -= 1) {
+    const character = before[index];
+    if (character === '"') {
+      // Skip a quoted string backwards; an unmatched quote just ends the scan.
+      index -= 1;
+      while (index >= 0 && before[index] !== '"') index -= 1;
+      continue;
+    }
+    if (character === ")") {
+      depth += 1;
+      continue;
+    }
+    if (character === "(") {
+      if (depth > 0) {
+        depth -= 1;
+        continue;
+      }
+      const match = /([A-Za-z_][A-Za-z0-9_.]*)$/.exec(before.slice(0, index));
+      const name = match?.[1]?.toUpperCase() ?? "";
+      const meta = catalogue.get(name);
+      if (!meta) return null;
+      const parts = splitSignature(meta.signature);
+      if (parts.length === 0) return null;
+      return { name, parts, active: Math.min(separators, parts.length - 1) };
+    }
+    if ((character === "," || character === ";") && depth === 0) separators += 1;
+  }
+  return null;
+}
+
+/** Appends a number until the name is unique inside the sheet's tables. */
+function uniqueTableName(tables: readonly SpreadsheetTable[], base: string): string {
+  let name = base;
+  let index = 1;
+  while (tables.some((table) => table.name.toLowerCase() === name.toLowerCase())) {
+    index += 1;
+    name = `${base}${index}`;
+  }
+  return name;
+}
+
+/** Appends a number until the column name is unique inside the table. */
+function uniqueColumnName(columns: readonly string[], base: string): string {
+  let name = base;
+  let index = 1;
+  while (columns.some((column) => column.toLowerCase() === name.toLowerCase())) {
+    index += 1;
+    name = `${base}${index}`;
+  }
+  return name;
+}
+
 export function CalcEditor({ tab }: { tab: CalcTab }) {
   const t = useT();
   const workbook = tab.model;
@@ -104,7 +311,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const [validationDialog, setValidationDialog] = useState(false);
   const [nameDialog, setNameDialog] = useState(false);
   const [printDialog, setPrintDialog] = useState(false);
-  const [filterOpen, setFilterOpen] = useState<{ col: number; values: Array<{ value: string; checked: boolean }> } | null>(null);
+  const [filterOpen, setFilterOpen] = useState<{ col: number; values: Array<{ value: string; checked: boolean }>; tableId?: string; tableName?: string } | null>(null);
   const [undoStack, setUndoStack] = useState<Workbook[]>([]);
   const [redoStack, setRedoStack] = useState<Workbook[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -117,6 +324,16 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   // so consecutive typing after Enter keeps working.
   const editingRef = useRef<EditingCell | null>(null);
   const restoreGridFocusRef = useRef(false);
+  const formulaInputRef = useRef<HTMLInputElement>(null);
+  const pendingCaretRef = useRef<number | null>(null);
+  const [focusMode, setFocusMode] = useState<"cell" | "bar" | null>(null);
+  const [draftCaret, setDraftCaret] = useState(0);
+  const [suggestIndex, setSuggestIndex] = useState(0);
+  const [suggestDismissed, setSuggestDismissed] = useState(false);
+  const [assistAnchor, setAssistAnchor] = useState<{ left: number; top: number } | null>(null);
+  const [tableDialog, setTableDialog] = useState(false);
+  const [tablesPanel, setTablesPanel] = useState(false);
+  const [trace, setTrace] = useState<{ kind: "precedents" | "dependents"; cells: AuditNode[] } | null>(null);
 
   const setEditing = useCallback((next: EditingCell | null) => {
     editingRef.current = next;
@@ -126,6 +343,79 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const sheet = workbook.sheets[Math.min(sheetIndex, workbook.sheets.length - 1)] ?? workbook.sheets[0];
   const activeCell = sheet.cells[formatAddress(selection.focus.row, selection.focus.col)];
   const computed = useMemo(() => computeSheetValues(workbook, sheet), [workbook, sheet]);
+  const catalogue = useMemo(() => new Map(functionCatalogue().map((entry) => [entry.name, entry] as const)), []);
+
+  // The draft and caret of whichever input owns the focus. The suggestion
+  // popup and the argument hint are derived from these, never from the grid
+  // selection, so the inline editor and the formula bar stay independent.
+  const assistText = focusMode === "cell" ? editing?.value ?? "" : focusMode === "bar" ? formulaDraft : "";
+  const assistCaret = Math.min(Math.max(0, draftCaret), assistText.length);
+  const suggestions = useMemo(() => {
+    if (focusMode === null || suggestDismissed) return null;
+    return buildSuggestions(assistText, assistCaret, workbook, sheet, catalogue, t);
+  }, [focusMode, suggestDismissed, assistText, assistCaret, workbook, sheet, catalogue, t]);
+  const argumentHint = useMemo(() => {
+    if (focusMode === null) return null;
+    return argumentHintFor(assistText, assistCaret, catalogue);
+  }, [focusMode, assistText, assistCaret, catalogue]);
+  const suggestionKey = suggestions?.items.map((item) => item.label).join("|") ?? "";
+  useEffect(() => setSuggestIndex(0), [suggestionKey]);
+
+  // Keep the popup glued under the focused input as the draft changes.
+  useLayoutEffect(() => {
+    if (focusMode === null) {
+      setAssistAnchor(null);
+      return;
+    }
+    const input = focusMode === "cell" ? cellInputRef.current : formulaInputRef.current;
+    if (!input) {
+      setAssistAnchor(null);
+      return;
+    }
+    const rect = input.getBoundingClientRect();
+    setAssistAnchor({ left: rect.left, top: rect.bottom + 2 });
+  }, [focusMode, assistText, assistCaret, editing]);
+
+  /** Replaces the current token with the picked suggestion. */
+  const applySuggestion = (suggestion: FormulaSuggestion) => {
+    if (!suggestions) return;
+    const { start, end } = suggestions;
+    const next = assistText.slice(0, start) + suggestion.insert + assistText.slice(end);
+    const caret = start + (suggestion.caret ?? suggestion.insert.length);
+    pendingCaretRef.current = caret;
+    setDraftCaret(caret);
+    setSuggestDismissed(false);
+    if (focusMode === "cell" && editingRef.current) {
+      setEditing({ row: editingRef.current.row, col: editingRef.current.col, value: next });
+    } else {
+      setFormulaDraft(next);
+      if (editingRef.current) setEditing({ ...editingRef.current, value: next });
+    }
+  };
+
+  /** Popup keys consumed before the editor's own Enter/Tab handling. */
+  const handleAssistKey = (event: React.KeyboardEvent<HTMLInputElement>): boolean => {
+    if (!suggestions || suggestions.items.length === 0) return false;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      setSuggestIndex((index) => {
+        const count = suggestions.items.length;
+        return event.key === "ArrowDown" ? (index + 1) % count : (index - 1 + count) % count;
+      });
+      return true;
+    }
+    if (event.key === "Tab" || event.key === "Enter") {
+      event.preventDefault();
+      applySuggestion(suggestions.items[Math.min(suggestIndex, suggestions.items.length - 1)] ?? suggestions.items[0]);
+      return true;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setSuggestDismissed(true);
+      return true;
+    }
+    return false;
+  };
 
   useEditorShortcuts(session);
 
@@ -180,9 +470,12 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       const input = cellInputRef.current;
       if (!input) return;
       input.focus();
-      const end = input.value.length;
+      // A suggestion insertion places the caret itself (inside `NAME(`); a
+      // plain edit keeps it at the end so fast typing never loses characters.
+      const caret = pendingCaretRef.current ?? input.value.length;
+      pendingCaretRef.current = null;
       try {
-        input.setSelectionRange(end, end);
+        input.setSelectionRange(caret, caret);
       } catch {
         // setSelectionRange is not supported for every input type.
       }
@@ -193,6 +486,21 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     const grid = gridRef.current;
     if (grid && document.activeElement !== grid) grid.focus({ preventScroll: true });
   }, [editing]);
+
+  // The formula bar is a controlled input, so an inserted suggestion changes
+  // the value without a selection event; this restores the caret it asked for.
+  useLayoutEffect(() => {
+    const caret = pendingCaretRef.current;
+    if (caret === null || editing) return;
+    const input = formulaInputRef.current;
+    if (!input || document.activeElement !== input) return;
+    pendingCaretRef.current = null;
+    try {
+      input.setSelectionRange(caret, caret);
+    } catch {
+      // Not every input type supports setSelectionRange.
+    }
+  }, [formulaDraft, editing]);
 
   // -------------------------------------------------------------------------
   // Cell helpers
@@ -601,27 +909,63 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     setFilterOpen({ col, values: [...values.entries()].map(([value, checked]) => ({ value, checked })) });
   };
 
+  /** Opens the filter dialog scoped to one structured table column. */
+  const openTableFilter = (table: SpreadsheetTable, columnName: string) => {
+    const parts = parseRange(table.range);
+    const columnIndex = table.columns.findIndex((column) => column.name === columnName);
+    if (!parts || columnIndex < 0) return;
+    const body = tableColumnBodyRange(table, columnName);
+    const values = new Map<string, boolean>();
+    if (body) {
+      for (const address of addressesInRange(`${body.start}:${body.end}`)) {
+        const text = String(computed.get(address) ?? "");
+        if (!values.has(text)) values.set(text, true);
+      }
+    }
+    setFilterOpen({
+      col: parts.start.col + columnIndex,
+      tableId: table.id,
+      tableName: table.name,
+      values: [...values.entries()].map(([value, checked]) => ({ value, checked })),
+    });
+  };
+
   const applyFilter = () => {
     if (!filterOpen) return;
-    const allowed = new Set(filterOpen.values.filter((entry) => entry.checked).map((entry) => entry.value));
+    const state = filterOpen;
+    const allowed = new Set(state.values.filter((entry) => entry.checked).map((entry) => entry.value));
     updateSheet((current) => {
-      const parts = parseRange(usedRange(current));
+      const table = state.tableId ? (current.tables ?? []).find((candidate) => candidate.id === state.tableId) : undefined;
+      const parts = parseRange(table ? table.range : usedRange(current));
       if (!parts) return current;
-      for (let row = parts.start.row; row <= parts.end.row; row += 1) {
-        const address = formatAddress(row, filterOpen.col);
+      // A structured table filters its body only; the plain sheet filter keeps
+      // its original behaviour of scanning the whole used range.
+      const startRow = table ? parts.start.row + (table.hasHeaders ? 1 : 0) : parts.start.row;
+      const endRow = table ? parts.end.row - (table.hasTotals ? 1 : 0) : parts.end.row;
+      let rowHeights = current.rowHeights;
+      for (let row = startRow; row <= endRow; row += 1) {
+        const address = formatAddress(row, state.col);
         const value = String(computed.get(address) ?? "");
         const position = parseAddress(address);
         if (!position) continue;
         const hidden = !allowed.has(value);
         if (hidden) {
-          current = { ...current, rowHeights: { ...current.rowHeights, [position.row]: 0 } };
-        } else if (current.rowHeights[position.row] === 0) {
-          const heights = { ...current.rowHeights };
-          delete heights[position.row];
-          current = { ...current, rowHeights: heights };
+          rowHeights = { ...rowHeights, [position.row]: 0 };
+        } else if (rowHeights[position.row] === 0) {
+          rowHeights = { ...rowHeights };
+          delete rowHeights[position.row];
         }
       }
-      return { ...current, filter: { range: usedRange(current), column: filterOpen.col, values: [...allowed] } };
+      if (table) {
+        return {
+          ...current,
+          rowHeights,
+          tables: (current.tables ?? []).map((candidate) =>
+            candidate.id === table.id ? { ...candidate, filter: { range: table.range, column: state.col, values: [...allowed] } } : candidate,
+          ),
+        };
+      }
+      return { ...current, rowHeights, filter: { range: usedRange(current), column: state.col, values: [...allowed] } };
     });
     setFilterOpen(null);
   };
@@ -699,6 +1043,115 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   };
 
   // -------------------------------------------------------------------------
+  // Structured tables (V3)
+  // -------------------------------------------------------------------------
+
+  /** Creates a table over the dialog's range, naming columns from the header row. */
+  const addTable = (config: { name: string; range: string; hasHeaders: boolean; hasTotals: boolean; bandedRows: boolean }) => {
+    const parts = parseRange(config.range);
+    if (!parts) return;
+    const columns: string[] = [];
+    for (let col = parts.start.col; col <= parts.end.col; col += 1) {
+      const header = config.hasHeaders ? String(computed.get(formatAddress(parts.start.row, col)) ?? "").trim() : "";
+      columns.push(uniqueColumnName(columns, header || `Column${col - parts.start.col + 1}`));
+    }
+    const table = newSpreadsheetTable(uniqueTableName(sheet.tables ?? [], config.name.trim() || "Table1"), config.range, columns);
+    table.hasHeaders = config.hasHeaders;
+    table.hasTotals = config.hasTotals;
+    table.bandedRows = config.bandedRows;
+    updateSheet((current) => ({ ...current, tables: [...(current.tables ?? []), table] }));
+    setTableDialog(false);
+    setTablesPanel(true);
+  };
+
+  const patchTable = (tableId: string, patch: (table: SpreadsheetTable) => SpreadsheetTable) => {
+    updateSheet((current) => ({ ...current, tables: (current.tables ?? []).map((table) => (table.id === tableId ? patch(table) : table)) }));
+  };
+
+  const deleteTable = (tableId: string) => {
+    updateSheet((current) => ({ ...current, tables: (current.tables ?? []).filter((table) => table.id !== tableId) }));
+  };
+
+  const renameTable = (table: SpreadsheetTable) => {
+    const name = window.prompt(t("calc.tableName"), table.name);
+    if (!name || name.trim() === "") return;
+    patchTable(table.id, (current) => ({
+      ...current,
+      name: uniqueTableName((sheet.tables ?? []).filter((candidate) => candidate.id !== table.id), name.trim()),
+    }));
+  };
+
+  const jumpToTable = (table: SpreadsheetTable) => {
+    const parts = parseRange(table.range);
+    if (!parts) return;
+    revealCell(parts.start);
+    setSelection({ anchor: parts.start, focus: parts.end });
+  };
+
+  /**
+   * Appends a calculated column: the header goes into the header row, the
+   * row-shifted formula into every body cell, and the unshifted formula into
+   * `column.formula` so the table remembers what the column computes.
+   */
+  const addCalculatedColumn = (table: SpreadsheetTable, columnName: string, formula: string) => {
+    const name = columnName.trim();
+    const source = formula.trim();
+    if (name === "" || source === "") return;
+    const bodyFormula = source.startsWith("=") ? source : `=${source}`;
+    update((current) => {
+      const index = Math.min(Math.max(0, sheetIndex), current.sheets.length - 1);
+      const target = current.sheets[index];
+      const table2 = (target.tables ?? []).find((candidate) => candidate.id === table.id);
+      const parts = table2 ? parseRange(table2.range) : null;
+      if (!table2 || !parts) return current;
+      const column = parts.end.col + 1;
+      const resolved = uniqueColumnName(table2.columns.map((entry) => entry.name), name);
+      let next: Workbook = {
+        ...current,
+        sheets: current.sheets.map((candidate, at) =>
+          at === index
+            ? {
+                ...candidate,
+                tables: (candidate.tables ?? []).map((entry) =>
+                  entry.id === table2.id
+                    ? {
+                        ...entry,
+                        range: `${formatAddress(parts.start.row, parts.start.col)}:${formatAddress(parts.end.row, column)}`,
+                        columns: [...entry.columns, { name: resolved, formula: bodyFormula }],
+                      }
+                    : entry,
+                ),
+              }
+            : candidate,
+        ),
+      };
+      const bodyStart = parts.start.row + (table2.hasHeaders ? 1 : 0);
+      const bodyEnd = parts.end.row - (table2.hasTotals ? 1 : 0);
+      for (let row = bodyStart; row <= bodyEnd; row += 1) {
+        next = applyCellEdit(next, index, row, column, shiftFormulaRows(bodyFormula, row - bodyStart) ?? bodyFormula);
+      }
+      if (table2.hasHeaders) next = applyCellEdit(next, index, parts.start.row, column, resolved);
+      return next;
+    });
+  };
+
+  // -------------------------------------------------------------------------
+  // Formula auditing (V3)
+  // -------------------------------------------------------------------------
+
+  const traceFromSelection = (kind: "precedents" | "dependents") => {
+    const address = formatAddress(selection.focus.row, selection.focus.col);
+    const cells = kind === "precedents" ? tracePrecedents(workbook, sheet.name, address) : traceDependents(workbook, sheet.name, address);
+    if (cells.length === 0) {
+      setTrace(null);
+      useToasts.getState().push({ kind: "info", title: t("calc.traceEmpty") });
+      return;
+    }
+    setTrace({ kind, cells });
+  };
+
+
+  // -------------------------------------------------------------------------
   // Rendering
   // -------------------------------------------------------------------------
 
@@ -734,6 +1187,39 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     const parts = parseRange(`${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`);
     return parts ?? { start: selection.anchor, end: selection.focus };
   }, [selection]);
+
+  // Structured tables and audit overlays are derived once per sheet/selection
+  // change; the per-cell render only looks up whether a cell participates.
+  const sheetTables = useMemo(() => {
+    const out: Array<{ table: SpreadsheetTable; parts: { start: CellPosition; end: CellPosition } }> = [];
+    for (const table of sheet.tables ?? []) {
+      const parts = parseRange(table.range);
+      if (parts) out.push({ table, parts });
+    }
+    return out;
+  }, [sheet]);
+
+  const tracedCells = useMemo(() => {
+    const cells = new Map<string, "precedents" | "dependents">();
+    if (!trace) return cells;
+    for (const node of trace.cells) {
+      if (node.sheet === sheet.name) cells.set(node.address, trace.kind);
+    }
+    return cells;
+  }, [trace, sheet.name]);
+
+  // The selected cell decides the audit banner: a cycle path for a circular
+  // #REF!, the offending reference otherwise.
+  const selectedError = useMemo(() => {
+    const address = formatAddress(selection.focus.row, selection.focus.col);
+    const value = computed.get(address);
+    if (!isError(value) || value.code !== "#REF!") return null;
+    const key = `${sheet.name}!${address}`;
+    const cycle = findCircularReferences(workbook).find((candidate) => candidate.includes(key));
+    if (cycle) return `${t("calc.circularReference")}: ${cycle.join(" → ")}`;
+    const issue = invalidReferences(workbook).find((entry) => entry.sheet === sheet.name && entry.address === address);
+    return issue ? `${t("calc.invalidReference")}: ${issue.reference}` : t("calc.invalidReference");
+  }, [computed, selection.focus, sheet.name, workbook, t]);
 
   // Conditional formatting is evaluated once per sheet/data change instead of
   // per visible cell. The old per-cell `conditionalFill` rescanned the rule
@@ -790,7 +1276,11 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     return x - scroll.left + HEADER_WIDTH;
   };
 
-  const nameBox = `${formatAddress(selection.focus.row, selection.focus.col)}${selection.anchor.row !== selection.focus.row || selection.anchor.col !== selection.focus.col ? `:${formatAddress(selection.anchor.row, selection.anchor.col)}` : ""}`;
+  const selectionAddress = formatAddress(selection.focus.row, selection.focus.col);
+  const selectedTable = (sheet.tables ?? []).find((table) => addressInRange(selectionAddress, table.range));
+  const nameBox = selectedTable
+    ? selectedTable.name
+    : `${selectionAddress}${selection.anchor.row !== selection.focus.row || selection.anchor.col !== selection.focus.col ? `:${formatAddress(selection.anchor.row, selection.anchor.col)}` : ""}`;
 
   // The last valid row/column, used for Ctrl+End, Space and the data extent.
   const lastRow = Math.max(0, sheet.rowCount - 1);
@@ -880,6 +1370,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
             <RibbonGroup label={t("calc.pivotTable")}>
               <ToolButton icon={<Grid3x3 size={16} />} label={t("calc.pivotTable")} onClick={() => setPivotDialog(true)} />
             </RibbonGroup>
+            <RibbonGroup label={t("calc.structuredTables")}>
+              <ToolButton icon={<Table2 size={16} />} label={t("calc.insertTable")} onClick={() => setTableDialog(true)} />
+              <ToolButton icon={<Eye size={16} />} label={t("calc.tableList")} onClick={() => setTablesPanel((open) => !open)} active={tablesPanel} />
+            </RibbonGroup>
           </>
         ) : null}
 
@@ -892,6 +1386,15 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
               <ToolButton label="COUNT" onClick={() => insertFunction("COUNT")} />
               <ToolButton label="ROUND" onClick={() => insertFunction("ROUND")} />
               <ToolButton label="VLOOKUP" onClick={() => insertFunction("VLOOKUP")} />
+            </RibbonGroup>
+            <RibbonGroup label={t("calc.auditing")}>
+              <ToolButton icon={<GitBranch size={16} />} label={t("calc.tracePrecedents")} onClick={() => traceFromSelection("precedents")} />
+              <ToolButton icon={<GitBranch size={16} />} label={t("calc.traceDependents")} onClick={() => traceFromSelection("dependents")} />
+              <ToolButton icon={<XCircle size={16} />} label={t("calc.clearTrace")} onClick={() => setTrace(null)} disabled={trace === null} />
+            </RibbonGroup>
+            <RibbonGroup label={t("calc.structuredTables")}>
+              <ToolButton icon={<Table2 size={16} />} label={t("calc.insertTable")} onClick={() => setTableDialog(true)} />
+              <ToolButton icon={<Eye size={16} />} label={t("calc.tableList")} onClick={() => setTablesPanel((open) => !open)} active={tablesPanel} />
             </RibbonGroup>
             <RibbonGroup label={t("calc.conditional")}>
               <ToolButton icon={<Filter size={16} />} label={t("calc.conditionalFormatting")} onClick={() => setConditionalDialog(true)} />
@@ -951,10 +1454,20 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         <span className="fx">fx</span>
         <input
           className="formula-input"
+          ref={formulaInputRef}
           value={editing ? editing.value : formulaDraft}
           placeholder={t("calc.formulaHint")}
+          onFocus={(event) => {
+            setFocusMode("bar");
+            setSuggestDismissed(false);
+            setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length);
+          }}
+          onSelect={(event) => setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
+          onBlur={() => setFocusMode(null)}
           onChange={(event) => {
             setFormulaDraft(event.target.value);
+            setDraftCaret(event.target.selectionStart ?? event.target.value.length);
+            setSuggestDismissed(false);
             // Read through the ref so the draft and the open editor can never
             // disagree about the current text.
             const current = editingRef.current;
@@ -962,6 +1475,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           }}
           onKeyDown={(event) => {
             if (event.nativeEvent.isComposing) return;
+            // The popup owns Tab/Enter/Escape/arrows while it is open.
+            if (handleAssistKey(event)) return;
             if (event.key === "Enter") {
               event.preventDefault();
               if (editingRef.current) {
@@ -987,6 +1502,27 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           }}
         />
       </div>
+
+      {trace || selectedError ? (
+        <div className="calc-audit-banner" style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 10px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)", fontSize: 12 }}>
+          {trace ? (
+            <>
+              <strong>{trace.kind === "precedents" ? t("calc.tracePrecedents") : t("calc.traceDependents")}</strong>
+              <span className="muted" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {trace.cells.map((node) => (node.sheet === sheet.name ? node.address : `${node.sheet}!${node.address}`)).join(", ")}
+              </span>
+            </>
+          ) : (
+            <span>{selectedError}</span>
+          )}
+          <span className="spacer" />
+          {trace ? (
+            <button type="button" className="btn btn-soft" onClick={() => setTrace(null)}>
+              {t("calc.clearTrace")}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="calc-grid-wrap" ref={containerRef}>
         <div
@@ -1047,6 +1583,24 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   const style = cell?.style ?? defaultCellStyle();
                   const validation = sheet.validations.find((rule) => addressesInRange(rule.range, 100).includes(address));
                   const invalid = validation ? !isValid(validation, value) : false;
+                  // The structured table (if any) that owns this cell decides
+                  // header/banding/outline; the cell's own formatting still wins.
+                  const tableEntry = sheetTables.find(
+                    ({ parts }) => row >= parts.start.row && row <= parts.end.row && col >= parts.start.col && col <= parts.end.col,
+                  );
+                  let tableFill: string | undefined;
+                  let tableHeader = false;
+                  if (tableEntry) {
+                    const { table, parts } = tableEntry;
+                    tableHeader = table.hasHeaders && row === parts.start.row;
+                    const totalsRow = table.hasTotals && row === parts.end.row;
+                    if (tableHeader) tableFill = table.headerFill ?? undefined;
+                    else if (!totalsRow && table.bandedRows) {
+                      const bodyStart = parts.start.row + (table.hasHeaders ? 1 : 0);
+                      if ((row - bodyStart) % 2 === 1) tableFill = "#EFF6FF";
+                    }
+                  }
+                  const traceKind = tracedCells.get(address);
                   return (
                     <div
                       key={address}
@@ -1056,11 +1610,11 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                         top: row * ROW_HEIGHT,
                         width,
                         height: sheet.rowHeights[String(row)] ?? ROW_HEIGHT,
-                        background: fill ?? style.fill ?? undefined,
-                        fontWeight: style.bold ? 700 : undefined,
+                        background: fill ?? tableFill ?? style.fill ?? undefined,
+                        fontWeight: style.bold || (tableHeader && tableEntry!.table.headerBold) ? 700 : undefined,
                         fontStyle: style.italic ? "italic" : undefined,
                         textDecoration: [style.underline ? "underline" : "", style.strike ? "line-through" : ""].filter(Boolean).join(" ") || undefined,
-                        color: style.color ?? undefined,
+                        color: style.color ?? (tableFill && tableHeader ? "#ffffff" : undefined),
                         textAlign: (style.align === "general" ? (typeof value === "number" ? "right" : "left") : style.align) as "left" | "right" | "center",
                         justifyContent: style.align === "center" ? "center" : style.align === "right" || (style.align === "general" && typeof value === "number") ? "flex-end" : "flex-start",
                       }}
@@ -1077,10 +1631,25 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                           ref={cellInputRef}
                           value={editing!.value}
                           autoFocus
-                          onChange={(event) => setEditing({ row, col, value: event.target.value })}
-                          onBlur={() => commitEdit("none", false)}
+                          onFocus={(event) => {
+                            setFocusMode("cell");
+                            setSuggestDismissed(false);
+                            setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length);
+                          }}
+                          onSelect={(event) => setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
+                          onChange={(event) => {
+                            setDraftCaret(event.target.selectionStart ?? event.target.value.length);
+                            setSuggestDismissed(false);
+                            setEditing({ row, col, value: event.target.value });
+                          }}
+                          onBlur={() => {
+                            setFocusMode(null);
+                            commitEdit("none", false);
+                          }}
                           onKeyDown={(event) => {
                             if (event.nativeEvent.isComposing) return;
+                            // The popup owns Tab/Enter/Escape/arrows while it is open.
+                            if (handleAssistKey(event)) return;
                             if (event.key === "Enter") {
                               event.preventDefault();
                               commitEdit(event.shiftKey ? "up" : "down");
@@ -1104,6 +1673,31 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                       {style.borders.bottom ? <span className="cell-border bottom" /> : null}
                       {style.borders.left ? <span className="cell-border left" /> : null}
                       {style.borders.right ? <span className="cell-border right" /> : null}
+                      {tableEntry ? (
+                        <span
+                          className="table-outline"
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            pointerEvents: "none",
+                            borderTop: row === tableEntry.parts.start.row ? "2px solid #1d4ed8" : undefined,
+                            borderBottom: row === tableEntry.parts.end.row ? "2px solid #1d4ed8" : undefined,
+                            borderLeft: col === tableEntry.parts.start.col ? "2px solid #1d4ed8" : undefined,
+                            borderRight: col === tableEntry.parts.end.col ? "2px solid #1d4ed8" : undefined,
+                          }}
+                        />
+                      ) : null}
+                      {traceKind ? (
+                        <span
+                          className="cell-trace"
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            pointerEvents: "none",
+                            boxShadow: `inset 0 0 0 2px ${traceKind === "precedents" ? "#2563eb" : "#dc2626"}`,
+                          }}
+                        />
+                      ) : null}
                       {(() => {
                         const bar = dataBars.get(address);
                         if (!bar) return null;
@@ -1236,7 +1830,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       ) : null}
 
       {filterOpen ? (
-        <Dialog title={t("calc.filter")} onClose={() => setFilterOpen(null)}>
+        <Dialog title={filterOpen.tableName ? `${t("calc.filter")} · ${filterOpen.tableName}` : t("calc.filter")} onClose={() => setFilterOpen(null)}>
           <div className="stack filter-list">
             {filterOpen.values.map((entry, index) => (
               <label key={entry.value} className="check">
@@ -1266,7 +1860,12 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
               type="button"
               className="btn btn-soft"
               onClick={() => {
-                updateSheet((current) => ({ ...current, rowHeights: {}, filter: null }));
+                const tableId = filterOpen.tableId;
+                updateSheet((current) =>
+                  tableId
+                    ? { ...current, rowHeights: {}, tables: (current.tables ?? []).map((table) => (table.id === tableId ? { ...table, filter: null } : table)) }
+                    : { ...current, rowHeights: {}, filter: null },
+                );
                 setFilterOpen(null);
               }}
             >
@@ -1274,6 +1873,102 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
             </button>
           </div>
         </Dialog>
+      ) : null}
+
+      {tableDialog ? (
+        <InsertTableDialog
+          defaultName={uniqueTableName(sheet.tables ?? [], `Table${(sheet.tables?.length ?? 0) + 1}`)}
+          defaultRange={`${formatAddress(selectionBounds.start.row, selectionBounds.start.col)}:${formatAddress(selectionBounds.end.row, selectionBounds.end.col)}`}
+          onClose={() => setTableDialog(false)}
+          onApply={addTable}
+        />
+      ) : null}
+
+      {tablesPanel ? (
+        <TablesPanel
+          tables={sheet.tables ?? []}
+          onClose={() => setTablesPanel(false)}
+          onInsert={() => setTableDialog(true)}
+          onJump={jumpToTable}
+          onRename={renameTable}
+          onDelete={(table) => deleteTable(table.id)}
+          onToggleTotals={(table) => patchTable(table.id, (current) => ({ ...current, hasTotals: !current.hasTotals }))}
+          onToggleBanded={(table) => patchTable(table.id, (current) => ({ ...current, bandedRows: !current.bandedRows }))}
+          onAddColumn={addCalculatedColumn}
+          onFilter={(table, column) => openTableFilter(table, column)}
+        />
+      ) : null}
+
+      {assistAnchor && focusMode !== null && (suggestions || argumentHint) ? (
+        <div className="calc-assist" style={{ position: "fixed", left: assistAnchor.left, top: assistAnchor.top, zIndex: 60, display: "flex", flexDirection: "column", gap: 4, maxWidth: 460 }}>
+          {argumentHint ? (
+            <div
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                boxShadow: "var(--shadow)",
+                padding: "4px 8px",
+                fontFamily: "Consolas, monospace",
+                fontSize: 11.5,
+                display: "flex",
+                gap: 2,
+                flexWrap: "wrap",
+              }}
+            >
+              <strong>{argumentHint.name}</strong>
+              <span>(</span>
+              {argumentHint.parts.map((part, index) => (
+                <span key={`${index}:${part}`}>
+                  {index > 0 ? <span>, </span> : null}
+                  <span
+                    style={
+                      index === argumentHint.active
+                        ? { background: "var(--accent-weak)", color: "var(--accent-text)", borderRadius: 3, padding: "0 3px", fontWeight: 600 }
+                        : undefined
+                    }
+                  >
+                    {part}
+                  </span>
+                </span>
+              ))}
+              <span>)</span>
+            </div>
+          ) : null}
+          {suggestions && suggestions.items.length > 0 ? (
+            <div
+              role="listbox"
+              aria-label={t("calc.suggestions")}
+              style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, boxShadow: "var(--shadow)", maxHeight: 220, overflowY: "auto" }}
+            >
+              {suggestions.items.map((item, index) => (
+                <div
+                  key={`${item.kind}:${item.label}`}
+                  role="option"
+                  aria-selected={index === suggestIndex}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => applySuggestion(item)}
+                  onMouseEnter={() => setSuggestIndex(index)}
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 8,
+                    padding: "3px 8px",
+                    cursor: "pointer",
+                    background: index === suggestIndex ? "var(--accent-weak)" : undefined,
+                    color: index === suggestIndex ? "var(--accent-text)" : undefined,
+                    fontSize: 12,
+                  }}
+                >
+                  <span style={{ fontWeight: 600, fontFamily: "Consolas, monospace" }}>{item.label}</span>
+                  <span className="muted small" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {item.detail}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
@@ -1752,6 +2447,211 @@ function ValidationDialog({ onClose, onApply }: { onClose: () => void; onApply: 
         </button>
       </div>
     </Dialog>
+  );
+}
+
+/** Configures a new structured table over a cell range. */
+function InsertTableDialog({
+  defaultName,
+  defaultRange,
+  onClose,
+  onApply,
+}: {
+  defaultName: string;
+  defaultRange: string;
+  onClose: () => void;
+  onApply: (config: { name: string; range: string; hasHeaders: boolean; hasTotals: boolean; bandedRows: boolean }) => void;
+}) {
+  const t = useT();
+  const [name, setName] = useState(defaultName);
+  const [range, setRange] = useState(defaultRange);
+  const [hasHeaders, setHasHeaders] = useState(true);
+  const [hasTotals, setHasTotals] = useState(false);
+  const [bandedRows, setBandedRows] = useState(true);
+  const valid = name.trim() !== "" && parseRange(range) !== null;
+  return (
+    <Dialog title={t("calc.insertTable")} onClose={onClose}>
+      <div className="stack">
+        <label className="field">
+          <span>{t("calc.tableName")}</span>
+          <input className="input" value={name} onChange={(event) => setName(event.target.value)} />
+        </label>
+        <label className="field">
+          <span>{t("calc.tableRange")}</span>
+          <input className="input" value={range} onChange={(event) => setRange(event.target.value)} />
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={hasHeaders} onChange={(event) => setHasHeaders(event.target.checked)} />
+          {t("calc.tableHeaders")}
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={hasTotals} onChange={(event) => setHasTotals(event.target.checked)} />
+          {t("calc.tableTotals")}
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={bandedRows} onChange={(event) => setBandedRows(event.target.checked)} />
+          {t("calc.tableBanded")}
+        </label>
+        <p className="muted small">=SUM(Name[Column])</p>
+        <button type="button" className="btn btn-primary" disabled={!valid} onClick={() => onApply({ name, range, hasHeaders, hasTotals, bandedRows })}>
+          {t("common.apply")}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+interface TablePanelDraft {
+  name: string;
+  formula: string;
+  filter: string;
+}
+
+/**
+ * Side panel listing the active sheet's structured tables.
+ *
+ * Selecting a table jumps to it; the panel renames, deletes, toggles the
+ * totals/banding flags, appends a calculated column, and opens the shared
+ * filter dialog scoped to one table column.
+ */
+function TablesPanel({
+  tables,
+  onClose,
+  onInsert,
+  onJump,
+  onRename,
+  onDelete,
+  onToggleTotals,
+  onToggleBanded,
+  onAddColumn,
+  onFilter,
+}: {
+  tables: SpreadsheetTable[];
+  onClose: () => void;
+  onInsert: () => void;
+  onJump: (table: SpreadsheetTable) => void;
+  onRename: (table: SpreadsheetTable) => void;
+  onDelete: (table: SpreadsheetTable) => void;
+  onToggleTotals: (table: SpreadsheetTable) => void;
+  onToggleBanded: (table: SpreadsheetTable) => void;
+  onAddColumn: (table: SpreadsheetTable, name: string, formula: string) => void;
+  onFilter: (table: SpreadsheetTable, column: string) => void;
+}) {
+  const t = useT();
+  const [drafts, setDrafts] = useState<Record<string, TablePanelDraft>>({});
+  const draftFor = (table: SpreadsheetTable): TablePanelDraft => drafts[table.id] ?? { name: "", formula: "", filter: table.columns[0]?.name ?? "" };
+  const patchDraft = (table: SpreadsheetTable, patch: Partial<TablePanelDraft>) => {
+    setDrafts((current) => ({
+      ...current,
+      [table.id]: { ...(current[table.id] ?? { name: "", formula: "", filter: table.columns[0]?.name ?? "" }), ...patch },
+    }));
+  };
+
+  return (
+    <aside
+      className="calc-tables-panel"
+      style={{
+        position: "fixed",
+        top: 150,
+        right: 14,
+        width: 320,
+        maxHeight: "62vh",
+        overflowY: "auto",
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        boxShadow: "var(--shadow)",
+        padding: 10,
+        zIndex: 30,
+      }}
+    >
+      <div className="row" style={{ alignItems: "center" }}>
+        <strong>{t("calc.tableList")}</strong>
+        <span className="spacer" />
+        <button type="button" className="btn btn-soft" onClick={onInsert}>
+          {t("calc.insertTable")}
+        </button>
+        <button type="button" className="icon-btn" onClick={onClose} aria-label={t("common.close")}>
+          ×
+        </button>
+      </div>
+      {tables.length === 0 ? <p className="muted small">{t("calc.noTables")}</p> : null}
+      <div className="stack">
+        {tables.map((table) => {
+          const draft = draftFor(table);
+          return (
+            <div key={table.id} className="stack" style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 8 }}>
+              <div className="row" style={{ alignItems: "center", gap: 6 }}>
+                <button type="button" className="btn btn-soft" onClick={() => onJump(table)} title={t("calc.tableJump")}>
+                  {table.name}
+                </button>
+                <span className="muted small">
+                  {table.range} · {table.columns.length}
+                </span>
+                <span className="spacer" />
+                <button type="button" className="icon-btn" onClick={() => onRename(table)} title={t("calc.tableRename")}>
+                  <Tag size={13} />
+                </button>
+                <button type="button" className="icon-btn" onClick={() => onDelete(table)} title={t("common.delete")}>
+                  <Trash2 size={13} />
+                </button>
+              </div>
+              <div className="row wrap" style={{ gap: 10 }}>
+                <label className="check">
+                  <input type="checkbox" checked={table.hasTotals} onChange={() => onToggleTotals(table)} />
+                  {t("calc.tableTotals")}
+                </label>
+                <label className="check">
+                  <input type="checkbox" checked={table.bandedRows} onChange={() => onToggleBanded(table)} />
+                  {t("calc.tableBanded")}
+                </label>
+              </div>
+              <div className="row wrap" style={{ gap: 6, alignItems: "flex-end" }}>
+                <label className="field" style={{ flex: 1 }}>
+                  <span>{t("calc.tableFilter")}</span>
+                  <select className="input" value={draft.filter} onChange={(event) => patchDraft(table, { filter: event.target.value })}>
+                    {table.columns.map((column) => (
+                      <option key={column.name} value={column.name}>
+                        {column.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button type="button" className="btn btn-soft" onClick={() => onFilter(table, draft.filter)} disabled={draft.filter === ""}>
+                  {t("calc.filter")}
+                </button>
+              </div>
+              <div className="row wrap" style={{ gap: 6, alignItems: "flex-end" }}>
+                <label className="field" style={{ flex: 1 }}>
+                  <span>{t("calc.tableNewColumn")}</span>
+                  <input className="input" value={draft.name} onChange={(event) => patchDraft(table, { name: event.target.value })} />
+                </label>
+                <label className="field" style={{ flex: 1.4 }}>
+                  <span>{t("calc.tableFormula")}</span>
+                  <input
+                    className="input"
+                    placeholder={`=${table.name}[${table.columns[0]?.name ?? "Column"}]`}
+                    value={draft.formula}
+                    onChange={(event) => patchDraft(table, { formula: event.target.value })}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={draft.name.trim() === "" || draft.formula.trim() === ""}
+                  onClick={() => {
+                    onAddColumn(table, draft.name, draft.formula);
+                    patchDraft(table, { name: "", formula: "" });
+                  }}
+                >
+                  {t("common.add")}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </aside>
   );
 }
 

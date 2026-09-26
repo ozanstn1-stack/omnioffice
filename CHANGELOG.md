@@ -4,6 +4,149 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0]
+
+The document-platform release. Writer gains sections, notes, tracked changes,
+comments and fields; Calc gains structured tables, auditing and real XLSX
+import fidelity; Impress gains masters, groups, charts, animations and a
+presenter view; the PDF module gains a sanitizer, PDF/A validation, flattening,
+redaction verification and working OCR preprocessing; and the app gains a
+Document Vault, a command platform and an opt-in AI document assistant.
+
+### Added
+
+- **Writer sections.** `Block::SectionBreak` with per-section page setup,
+  default/first/even headers and footers, and section start types (new page,
+  continuous, odd, even). DOCX exports each section as a real `w:sectPr` with
+  its own header/footer parts; the PDF export switches page geometry, headers
+  and footers per section.
+- **Footnotes and endnotes.** `Footnote` model with automatic numbering by
+  reference order, `w:footnoteReference`/`w:footnote` parts in DOCX, a reserved
+  note area at the bottom of the referencing page in the paginated view and in
+  PDF export, and note text appended in the text exports.
+- **Track changes.** Run-level insertions, deletions and formatting changes
+  with author/timestamp, a suggest mode, a review pane with accept/reject,
+  accept all/reject all and next/previous, show/hide, and DOCX
+  `w:ins`/`w:del`/`w:rPrChange` round trips. Deleted text stays in the model
+  until a decision is made, so accept/reject is lossless
+  (`officecore::revisions` and `src/office/writer/revisions.ts`).
+- **Comments with replies** and **bookmarks/cross-reference fields**
+  (REF, PAGEREF, NOTEREF, DATE, TIME, TITLE, AUTHOR) written as real Word
+  fields and resolved in the PDF export.
+- **Calc structured tables** (`SpreadsheetTable`): header/totals rows, banded
+  rows, calculated columns, filters and structured references
+  (`=SUM(Sales[Amount])`, `Sales[@Amount]`, `[#All]`, `[#Headers]`,
+  `[#Data]`, `[#Totals]`), evaluated by the formula engine and wired into the
+  dependency graph; exported as real `xl/tables/tableN.xml` parts.
+- **Calc formula autocomplete and auditing.** Suggestions for functions (with
+  signatures), defined names, sheets, tables and columns; argument hints;
+  trace precedents/dependents with coloured overlays; circular and invalid
+  reference reporting.
+- **XLSX import fidelity.** A custom OOXML pass reads styles (fonts, fills,
+  borders, alignment), number formats, column widths, row heights, merges,
+  freeze panes, data validation, conditional formatting, hyperlinks, comments,
+  defined names and structured tables. Malformed parts degrade to
+  values+formulas with a warning instead of failing the import.
+- **Impress master slides and layouts** with placeholder inheritance, **real
+  nested groups** with group transforms and Alt+click child selection, **PPTX
+  chart import/export** (column/bar/line/pie/area), an **animation model**
+  (entrance/emphasis/exit, triggers, duration, delay) that the slideshow
+  executes and that round-trips as `<p:timing>`, and a **presenter view**.
+- **PDF sanitizer** (`pdfcore::sanitize`): removes JavaScript, embedded files,
+  launch/URI actions, unsafe annotations and metadata by walking every object,
+  with a removal report.
+- **PDF/A validation and conversion** (`pdfcore::pdfa`) for 1b/2b/3b: real
+  structural checks (XMP identifier, output intent, embedded fonts, encryption,
+  JavaScript, attachments, title, trailer ID). Conversion applies the fixes it
+  can and re-validates the written file; it reports failure when fonts remain
+  unembedded instead of claiming compliance.
+- **Annotation/form flattening** (`pdfcore::flatten`): appearance streams are
+  burned into the page content and the interactive objects removed.
+- **Redaction verification**: the redacted output is re-opened and its text
+  layer re-extracted; the report now carries `verified`, `remaining_matches`
+  (masked) and an honest message when verification was skipped.
+- **OCR preprocessing** now works: orientation detection runs on the rendered
+  raster (previously it was handed the PDF path and silently did nothing),
+  deskew/denoise/threshold/contrast are applied, and `OcrResult` reports what
+  was applied.
+- **PDF Studio screen** for sanitize, flatten and PDF/A validate/convert.
+- **Document Vault**: opt-in indexing of user-picked folders for office
+  documents and PDFs, incremental rescans, crash-resistant JSON index,
+  full-text/phrase/fuzzy search with filters, snippets with match locations and
+  a preview panel. Nothing is scanned unless the user adds the folder.
+- **Command platform**: unified command registry, command palette
+  (`Ctrl+Shift+P`), global search (`Ctrl+Shift+F`) over commands, recent files
+  and the vault index, and a background job center with progress/cancel/retry.
+- **Compatibility Center** and capability system: `officecore::compat` reports
+  per-format support and a pre-save loss report; new Tauri commands
+  `office_capabilities`, `office_model_capabilities`, `office_compatibility`.
+- **`.oswk` schema versioning** (`officecore::schema`): every unit is stamped
+  with `schemaVersion`, V2.x files are migrated in memory on open (with
+  notes), future schemas are refused instead of misread, and corrupt models
+  produce a clear error.
+- **AI provider abstraction**: DeepSeek, OpenAI-compatible, Ollama (local,
+  keyless), Gemini and custom providers with capability flags
+  (`crates/aicore`), a document-chat prompt with `[page N]` citations,
+  Writer/Calc action prompts, and a provider/capabilities UI with the send
+  scope and a "what will be sent" activity line.
+- **Desktop CI** (`.github/workflows/desktop.yml`): frontend tests/type
+  check/build on Linux, Rust workspace tests on Windows/Linux/macOS, Chrome
+  extension tests/build/verify, and a dependency audit job.
+- **Release pipeline** (`.github/workflows/release.yml`): on `v*` tags, a
+  Windows Tauri build, installer/portable packaging, SHA256 checksums, artifact
+  upload and release attachment, plus a version-consistency job.
+- 76 new Rust tests and 76 new frontend tests.
+
+### Changed
+
+- The `.oswk` `version` field is now the schema version (3) instead of a
+  mis-parsed semver (it used to always write 2).
+- `NativeUnit` carries `schemaVersion`; opening an old unit reports the
+  migration in the document warnings.
+- The Writer paginated view maps a click to a character offset (caret lands
+  where you clicked) before opening the editing surface.
+- XLSX export skips the sheet-level autofilter when a structured table owns
+  the range, so the package no longer contains duplicate filters.
+
+### Fixed
+
+- OCR `auto_rotate` was a no-op (Tesseract OSD received a PDF path); it now
+  detects orientation on the rendered page and applies the rotation.
+- `xlsx_roundtrip_loss_is_limited_to_presentation_metadata` (which asserted
+  layout was dropped) is replaced by a test that asserts the new fidelity.
+- The DOCX reader no longer drops `w:ins` content or ignores `w:del`,
+  `footnotes.xml`, `comments.xml`, `sectPr` (beyond the last one) or non
+  page-number fields.
+
+### Compatibility
+
+- `.oswk` files written by 2.2.0/2.5.0 open unchanged and are migrated in
+  memory; saving rewrites them at schema 3.
+- DOCX packages gain footnotes/endnotes/comments parts and per-section
+  header/footer parts; ODT/RTF/text exports keep their previous behaviour and
+  the Compatibility Center lists exactly what they drop.
+- XLSX import now returns much more of the original structure; documents that
+  previously round-tripped as values+formulas still import the same values and
+  formulas.
+
+### Known limitations
+
+- Writer typing still happens on the continuous surface; the paginated view is
+  caret-accurate but not a WYSIWYG typing canvas.
+- Track changes covers run-level insertions/deletions/formatting; paragraph
+  moves and structural edits are not recorded as revisions.
+- ODT/RTF do not write note objects yet; PDF/A conversion does not embed
+  missing fonts; digital signatures, the plugin runtime and cloud sync are not
+  implemented in 3.0.0 and are declared as such in the README.
+
+### Tests
+
+- Rust: 322 tests (was 246), including the schema migration suite, Writer V3
+  round trips, PPTX V3 suite, XLSX import fidelity, sanitizer/PDF-A/flatten
+  and redaction verification, and vault indexing.
+- Frontend: 451 tests (was 375), including structured references, auditing,
+  sections/notes pagination, tracked changes and the new screens.
+
 ## [2.5.0]
 
 A feature release on top of 2.2.0's stabilisation: Calc gets a dependency-driven

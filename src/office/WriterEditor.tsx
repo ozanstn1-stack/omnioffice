@@ -46,10 +46,11 @@ import type { OfficeTab, TextDocument } from "../lib/office-store";
 import { useOfficeTabs } from "../lib/office-store";
 import { useToasts, reportError } from "../lib/store";
 import { useT } from "../lib/i18n";
-import { uid, wordCount, type Block, type DocComment, type ImageData, type ParaProps, type Run, type TableData, type TocEntry } from "../lib/office-types";
-import { defaultPageSetup, defaultParaProps, emptyMetadata, newParaBlock, newTextDocument } from "../lib/office-types";
+import { uid, wordCount, type Block, type DocComment, type FieldRef, type Footnote, type ImageData, type ParaProps, type Run, type SectionProps, type TableData, type TocEntry } from "../lib/office-types";
+import { defaultPageSetup, defaultParaProps, defaultSectionProps, documentSections, emptyMetadata, newFootnote, newParaBlock, newTextDocument, sectionForBlock } from "../lib/office-types";
 import { Dialog, Ribbon, RibbonGroup, ToolButton, ToolColor, ToolNumber, ToolSelect, useTablePicker } from "./office-ui";
 import { openIntoWorkspace, useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
+import { acceptAll, acceptRevision, nextRevision, rejectAll, rejectRevision, revisionList, trackRunChanges } from "./writer/revisions";
 import {
   insertText,
   joinRuns,
@@ -88,6 +89,34 @@ interface SelectionInfo {
 
 const HIGHLIGHT_COLORS = ["#FEF08A", "#BBF7D0", "#BFDBFE", "#FBCFE8", "#FED7AA", "#E9D5FF", "#FECACA", "#A7F3D0"];
 
+/**
+ * Footnote area reservation: notes are rendered at 8.5pt with a 1.0 line
+ * height, so a rough line count is accurate enough for pagination while the
+ * real text is drawn by the same renderer that draws the page.
+ */
+function estimateNoteHeight(note: Footnote, contentWidthPx: number): number {
+  const text = note.runs.map((run) => run.text).join("");
+  const charsPerLine = Math.max(40, Math.floor(contentWidthPx / 4.6));
+  const lines = Math.max(1, Math.ceil((text.length + 4) / charsPerLine));
+  return lines * 13 + 6;
+}
+
+/** Footnote number in reference order (1-based). */
+function noteNumber(document: TextDocument, id: string): number {
+  const order: string[] = [];
+  const collect = (runs: Run[]) => {
+    for (const run of runs) {
+      const reference = run.footnote ?? run.endnote;
+      if (reference && !order.includes(reference)) order.push(reference);
+    }
+  };
+  for (const block of document.blocks) {
+    if (block.type === "paragraph") collect(block.runs);
+    if (block.type === "table") for (const row of block.table.rows) for (const cell of row.cells) for (const inner of cell.blocks) if (inner.type === "paragraph") collect(inner.runs);
+  }
+  return order.indexOf(id) + 1;
+}
+
 export function WriterEditor({ tab }: { tab: WriterTab }) {
   const t = useT();
   const { edit } = useOfficeTabs();
@@ -109,8 +138,15 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   // probe column and computed by the pagination engine; "continuous" keeps the
   // pre-2.5 editing surface for users who prefer it.
   const [view, setView] = useState<"paginated" | "continuous">("paginated");
-  const [pages, setPages] = useState<PageLayout[]>([{ fragments: [], usedPx: 0, continuation: false }]);
+  const [pages, setPages] = useState<PageLayout[]>([{ fragments: [], usedPx: 0, continuation: false, sectionIndex: 0, noteHeightPx: 0, sectionPage: 1 }]);
   const [navOpen, setNavOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [sectionsOpen, setSectionsOpen] = useState(false);
+  const [fieldOpen, setFieldOpen] = useState(false);
+  const [fieldKind, setFieldKind] = useState<FieldRef["kind"]>("ref");
+  const [fieldTarget, setFieldTarget] = useState("");
+  const [activeRevision, setActiveRevision] = useState<string | null>(null);
+  const [bookmarkName, setBookmarkName] = useState("");
   const [layoutVersion, setLayoutVersion] = useState(0);
   const probeRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -120,7 +156,17 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   const picker = useTablePicker();
 
   const document = tab.model;
+  const revisionAuthor = document.metadata.author.trim() || "You";
+  const sections = useMemo(() => documentSections(document), [document]);
   const stats = useMemo(() => wordCount(document), [document]);
+  const noteNumbers = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const note of [...(document.footnotes ?? []), ...(document.endnotes ?? [])]) {
+      const number = noteNumber(document, note.id);
+      if (number > 0) map[note.id] = number;
+    }
+    return map;
+  }, [document]);
 
   useEditorShortcuts(session, { onFind: () => setFindOpen(true), onReplace: () => setFindOpen(true) });
 
@@ -162,7 +208,36 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     const probe = probeRef.current;
     if (!probe) return;
     const metrics = measureBlocks(probe, document.blocks);
-    setPages(paginate(metrics, Math.max(120, contentHeightPx)));
+    const sections = documentSections(document);
+    // V3: each block knows its section; a section break switches the geometry
+    // and the following pages use that section's page setup. Footnote text is
+    // reserved at the bottom of the page that references it.
+    let breakCount = 0;
+    const enriched = metrics.map((metric) => {
+      const block = document.blocks[metric.index];
+      if (block?.type === "sectionBreak") {
+        breakCount += 1;
+        const section = sections[breakCount] ?? sections[sections.length - 1];
+        return { ...metric, kind: "sectionBreak" as const, sectionIndex: breakCount, sectionStart: section.start };
+      }
+      const section = sections[breakCount] ?? sections[0];
+      let noteHeightPx = 0;
+      if (block?.type === "paragraph") {
+        for (const run of block.runs) {
+          const note = run.footnote
+            ? document.footnotes?.find((candidate) => candidate.id === run.footnote)
+            : run.endnote
+              ? document.endnotes?.find((candidate) => candidate.id === run.endnote)
+              : undefined;
+          if (note) noteHeightPx += estimateNoteHeight(note, contentWidthPx);
+        }
+      }
+      return { ...metric, sectionIndex: breakCount, footnoteHeightPx: noteHeightPx, sectionStart: section.start };
+    });
+    const sectionHeights = sections.map((section) =>
+      Math.max(120, (section.page.heightPt - section.page.marginTopPt - section.page.marginBottomPt) * (96 / 72) * zoom),
+    );
+    setPages(paginate(enriched, Math.max(120, contentHeightPx), { sectionHeights, noteAreaRatio: 0.45 }));
   }, [view, editingHeader, document, contentWidthPx, contentHeightPx, zoom, layoutVersion]);
 
   // The status bar shows the laid-out page count in the paginated view and the
@@ -276,7 +351,13 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     const block = currentBlocks()[index];
     if (!block) return;
     if (block.type === "paragraph") {
-      const runs = domToRuns(element);
+      let runs = domToRuns(element);
+      // Suggest mode: text that changed since the last sync is recorded as a
+      // tracked insertion/deletion instead of being applied silently.
+      if (document.trackChanges && !editingHeader) {
+        const previous = block.runs.filter((run) => !run.revision || run.revision.kind === "insert");
+        runs = trackRunChanges(previous, runs, revisionAuthor);
+      }
       updateBlock(index, { ...block, runs: runs.length > 0 ? runs : [emptyRun()] });
     } else if (block.type === "table") {
       // Table cells are handled by syncCell.
@@ -643,6 +724,112 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   };
 
   // -------------------------------------------------------------------------
+  // V3: sections, footnotes, tracked changes and fields
+  // -------------------------------------------------------------------------
+
+  const toggleTrackChanges = () => update((doc) => ({ ...doc, trackChanges: !doc.trackChanges }));
+  const toggleShowRevisions = () => update((doc) => ({ ...doc, showRevisions: doc.showRevisions === false }));
+
+  const caretAt = (): { index: number; offset: number } | null => {
+    const active = window.document.activeElement as HTMLElement | null;
+    if (!active?.dataset?.blockIndex) return null;
+    return { index: Number(active.dataset.blockIndex), offset: caretOffset(active) };
+  };
+
+  const insertFootnote = (endnote: boolean) => {
+    const caret = caretAt();
+    if (!caret) return;
+    const block = currentBlocks()[caret.index];
+    if (block?.type !== "paragraph") return;
+    const note = newFootnote();
+    const [left, right] = splitRuns(block.runs, caret.offset);
+    const reference: Run = endnote ? { ...emptyRun(""), endnote: note.id } : { ...emptyRun(""), footnote: note.id };
+    update((doc) => ({
+      ...doc,
+      footnotes: endnote ? doc.footnotes ?? [] : [...(doc.footnotes ?? []), note],
+      endnotes: endnote ? [...(doc.endnotes ?? []), note] : doc.endnotes ?? [],
+      blocks: doc.blocks.map((candidate, index) => (index === caret.index && candidate.type === "paragraph" ? { ...candidate, runs: [...left, reference, ...right] } : candidate)),
+    }));
+    setLayoutVersion((version) => version + 1);
+  };
+
+  const insertSectionBreak = (start: string) => {
+    const caret = caretAt();
+    const current = caret ? sectionForBlock(document, caret.index) : sections[sections.length - 1];
+    const section: SectionProps = { ...defaultSectionProps(current.page), start };
+    const breakBlock: Block = { type: "sectionBreak", section };
+    if (caret) insertBlockAfter(caret.index, breakBlock);
+    else withBlocks([...currentBlocks(), breakBlock]);
+    setLayoutVersion((version) => version + 1);
+  };
+
+  const updateSection = (sectionIndex: number, patch: Partial<SectionProps>) => {
+    update((doc) => {
+      const updatedSections = documentSections(doc);
+      const target = updatedSections[sectionIndex];
+      if (!target) return doc;
+      if (sectionIndex === updatedSections.length - 1) {
+        // The final section lives in the document-level fields.
+        return { ...doc, page: patch.page ?? doc.page, header: patch.header ?? doc.header, footer: patch.footer ?? doc.footer };
+      }
+      let breakCount = 0;
+      return {
+        ...doc,
+        blocks: doc.blocks.map((block) => {
+          if (block.type !== "sectionBreak") return block;
+          breakCount += 1;
+          return breakCount === sectionIndex ? { ...block, section: { ...block.section, ...patch } } : block;
+        }),
+      };
+    });
+    setLayoutVersion((version) => version + 1);
+  };
+
+  const removeSectionBreak = (sectionIndex: number) => {
+    let breakCount = 0;
+    update((doc) => ({
+      ...doc,
+      blocks: doc.blocks.filter((block) => {
+        if (block.type !== "sectionBreak") return true;
+        breakCount += 1;
+        return breakCount !== sectionIndex;
+      }),
+    }));
+    setLayoutVersion((version) => version + 1);
+  };
+
+  const addBookmark = () => {
+    const caret = caretAt();
+    if (!caret) return;
+    const name = bookmarkName.trim() || `Bookmark${(document.bookmarks?.length ?? 0) + 1}`;
+    if (document.bookmarks?.some((bookmark) => bookmark.name === name)) {
+      useToasts.getState().push({ kind: "error", title: t("writer.bookmarkExists") });
+      return;
+    }
+    update((doc) => ({ ...doc, bookmarks: [...(doc.bookmarks ?? []), { id: uid(), name, block: caret.index, offset: caret.offset }] }));
+    setBookmarkName("");
+  };
+
+  const insertField = (kind: FieldRef["kind"], target = "") => {
+    const caret = caretAt();
+    if (!caret) return;
+    const block = currentBlocks()[caret.index];
+    if (block?.type !== "paragraph") return;
+    const cached = kind === "page" ? "1" : kind === "pages" ? "1" : kind === "date" ? new Date().toISOString().slice(0, 10) : kind === "time" ? new Date().toISOString().slice(11, 19) : kind === "title" ? document.title : kind === "author" ? document.metadata.author : target || "?";
+    const [left, right] = splitRuns(block.runs, caret.offset);
+    const fieldRun: Run = { ...emptyRun(""), field: { kind, target, cached } };
+    updateBlock(caret.index, { ...block, runs: [...left, fieldRun, ...right] });
+  };
+
+  const jumpToRevision = (forward: boolean) => {
+    const id = nextRevision(document, activeRevision, forward);
+    if (!id) return;
+    setActiveRevision(id);
+    const summary = revisionList(document).find((revision) => revision.id === id);
+    if (summary) jumpToBlock(summary.blockIndex);
+  };
+
+  // -------------------------------------------------------------------------
   // Page setup
   // -------------------------------------------------------------------------
 
@@ -770,12 +957,18 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     window.document.querySelector<HTMLElement>(`[data-page-index="${page - 1}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" });
   };
 
-  /** Opens the continuous editor on a block (paginated pages are read-only). */
-  const editBlock = (index: number) => {
+  /**
+   * Opens the editing surface on a block at the clicked position.
+   *
+   * The paginated pages are measured fragments, so typing happens on the
+   * continuous surface; the click position is mapped to a character offset so
+   * the caret lands exactly where the user clicked.
+   */
+  const editBlock = (index: number, offset = 0) => {
     setView("continuous");
     const block = document.blocks[index];
     if (block?.type === "paragraph") {
-      pendingFocus.current = { index, offset: 0, scope: "body" };
+      pendingFocus.current = { index, offset, scope: "body" };
       return;
     }
     window.setTimeout(() => {
@@ -792,6 +985,8 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
           index={index}
           scope={scope}
           zoom={zoom}
+          noteNumbers={noteNumbers}
+          showRevisions={document.showRevisions !== false}
           selectedImage={selectedImage}
           onSelectImage={setSelectedImage}
           onFocusParagraph={handleParagraphFocus}
@@ -877,6 +1072,18 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
             <RibbonGroup label={t("writer.pages")}>
               <ToolButton icon={<SeparatorHorizontal size={16} />} label={t("writer.pageBreak")} onClick={insertPageBreak} />
               <ToolButton icon={<Minus size={16} />} label={t("writer.horizontalRule")} onClick={insertRule} />
+              <ToolButton label={t("writer.sectionBreak")} onClick={() => insertSectionBreak("newPage")} title={t("writer.sectionBreak")} />
+              <ToolButton label={t("writer.sectionContinuous")} onClick={() => insertSectionBreak("continuous")} title={t("writer.sectionContinuous")} />
+            </RibbonGroup>
+            <RibbonGroup label={t("writer.notes")}>
+              <ToolButton label={t("writer.insertFootnote")} onClick={() => insertFootnote(false)} />
+              <ToolButton label={t("writer.insertEndnote")} onClick={() => insertFootnote(true)} />
+            </RibbonGroup>
+            <RibbonGroup label={t("writer.fields")}>
+              <ToolButton label={t("writer.fieldPage")} onClick={() => insertField("page")} />
+              <ToolButton label={t("writer.fieldPages")} onClick={() => insertField("pages")} />
+              <ToolButton label={t("writer.fieldDate")} onClick={() => insertField("date")} />
+              <ToolButton label={t("writer.crossReference")} onClick={() => setFieldOpen(true)} />
             </RibbonGroup>
             <RibbonGroup label={t("writer.tableOfContents")}>
               <ToolButton icon={<TocIcon size={16} />} label={t("writer.insertToc")} onClick={insertToc} />
@@ -935,6 +1142,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                 width={110}
               />
               <ToolButton icon={<Columns2 size={16} />} onClick={() => setColumns(document.page.columns > 1 ? 1 : 2)} active={document.page.columns > 1} title={t("writer.columns")} />
+              <ToolButton label={t("writer.sections")} onClick={() => setSectionsOpen(true)} title={t("writer.sections")} />
             </RibbonGroup>
             <RibbonGroup label={t("writer.spacing")}>
               <ToolNumber value={selection?.paragraph.spaceBeforePt ?? 0} onChange={(value) => setSpace(value, selection?.paragraph.spaceAfterPt ?? 0)} min={0} max={144} title={t("writer.spaceBefore")} />
@@ -951,6 +1159,17 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
 
         {ribbon === "review" ? (
           <>
+            <RibbonGroup label={t("writer.trackChanges")}>
+              <ToolButton label={t("writer.suggesting")} onClick={toggleTrackChanges} active={document.trackChanges === true} title={t("writer.suggestingHint")} />
+              <ToolButton label={t("writer.showRevisions")} onClick={toggleShowRevisions} active={document.showRevisions !== false} />
+              <ToolButton label={t("writer.reviewPane")} onClick={() => setReviewOpen((open) => !open)} active={reviewOpen} />
+            </RibbonGroup>
+            <RibbonGroup label={t("writer.revisions")}>
+              <ToolButton label={t("writer.previousChange")} onClick={() => jumpToRevision(false)} />
+              <ToolButton label={t("writer.nextChange")} onClick={() => jumpToRevision(true)} />
+              <ToolButton label={t("writer.acceptAll")} onClick={() => { update((doc) => acceptAll(doc)); setActiveRevision(null); setLayoutVersion((version) => version + 1); }} />
+              <ToolButton label={t("writer.rejectAll")} onClick={() => { update((doc) => rejectAll(doc)); setActiveRevision(null); setLayoutVersion((version) => version + 1); }} />
+            </RibbonGroup>
             <RibbonGroup label={t("writer.comments")}>
               <ToolButton icon={<MessageSquare size={16} />} label={t("writer.addComment")} onClick={addComment} />
               <ToolButton icon={<MessageSquare size={16} />} label={t("writer.comments")} onClick={() => setCommentsOpen(!commentsOpen)} active={commentsOpen} />
@@ -1030,36 +1249,75 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         <div className="editor-scroll">
           {view === "paginated" && !editingHeader ? (
             <div className="writer-pages">
-              {pages.map((page, pageIndex) => (
-                <div
-                  key={pageIndex}
-                  className="writer-page writer-page-sheet"
-                  data-page-index={pageIndex}
-                  style={{ width: pageWidth, minHeight: pageHeight, padding: `${marginTop}px ${marginX}px` }}
-                >
-                  {document.header.length > 0 ? (
-                    <div className="writer-header-zone muted">
-                      <StaticBlocks blocks={document.header} scope="header" page={pageIndex + 1} pages={pages.length} zoom={zoom} onOpen={editBlock} />
+              {pages.map((page, pageIndex) => {
+                const section = sections[page.sectionIndex] ?? sections[0];
+                const setup = section.page;
+                const sheetWidth = setup.widthPt * (96 / 72) * zoom;
+                const sheetHeight = setup.heightPt * (96 / 72) * zoom;
+                const marginX = setup.marginLeftPt * (96 / 72) * zoom;
+                const marginTop = setup.marginTopPt * (96 / 72) * zoom;
+                const sheetContentHeight = Math.max(120, (setup.heightPt - setup.marginTopPt - setup.marginBottomPt) * (96 / 72) * zoom);
+                const isFirstPage = page.sectionPage === 1;
+                const isEvenPage = page.sectionPage % 2 === 0;
+                const headerBlocks = section.differentFirstPage && isFirstPage ? section.firstHeader : section.differentOddEven && isEvenPage ? section.evenHeader : section.header;
+                const footerBlocks = section.differentFirstPage && isFirstPage ? section.firstFooter : section.differentOddEven && isEvenPage ? section.evenFooter : section.footer;
+                const noteIds: string[] = [];
+                for (const fragment of page.fragments) {
+                  const fragmentBlock = document.blocks[fragment.index];
+                  if (fragmentBlock?.type !== "paragraph") continue;
+                  for (const run of fragmentBlock.runs) {
+                    const id = run.footnote ?? run.endnote;
+                    if (id && !noteIds.includes(id)) noteIds.push(id);
+                  }
+                }
+                return (
+                  <div
+                    key={pageIndex}
+                    className="writer-page writer-page-sheet"
+                    data-page-index={pageIndex}
+                    data-section-index={page.sectionIndex}
+                    style={{ width: sheetWidth, minHeight: sheetHeight, padding: `${marginTop}px ${marginX}px` }}
+                  >
+                    {headerBlocks.length > 0 ? (
+                      <div className="writer-header-zone muted">
+                        <StaticBlocks blocks={headerBlocks} scope="header" page={pageIndex + 1} pages={pages.length} zoom={zoom} noteNumbers={noteNumbers} onOpen={editBlock} />
+                      </div>
+                    ) : null}
+                    <div className="writer-body" style={{ height: sheetContentHeight - page.noteHeightPx, overflow: "hidden" }}>
+                      {page.fragments.map((fragment, fragmentIndex) => (
+                        <PageFragmentView
+                          key={`${fragment.index}-${fragment.from}-${fragmentIndex}`}
+                          fragment={fragment}
+                          block={document.blocks[fragment.index]}
+                          zoom={zoom}
+                          noteNumbers={noteNumbers}
+                          showRevisions={document.showRevisions !== false}
+                          onOpen={(offset) => editBlock(fragment.index, offset)}
+                        />
+                      ))}
                     </div>
-                  ) : null}
-                  <div className="writer-body" style={{ height: contentHeightPx, overflow: "hidden" }}>
-                    {page.fragments.map((fragment, fragmentIndex) => (
-                      <PageFragmentView
-                        key={`${fragment.index}-${fragment.from}-${fragmentIndex}`}
-                        fragment={fragment}
-                        block={document.blocks[fragment.index]}
-                        zoom={zoom}
-                        onOpen={() => editBlock(fragment.index)}
-                      />
-                    ))}
+                    {page.noteHeightPx > 0 ? (
+                      <div className="writer-notes" style={{ height: page.noteHeightPx }}>
+                        <div className="writer-notes-separator" />
+                        {noteIds.map((id) => {
+                          const note = document.footnotes?.find((candidate) => candidate.id === id) ?? document.endnotes?.find((candidate) => candidate.id === id);
+                          if (!note) return null;
+                          return (
+                            <div key={id} className="writer-note">
+                              <sup>{noteNumbers[id] ?? ""}</sup> {runsText(note.runs)}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                    {footerBlocks.length > 0 ? (
+                      <div className="writer-footer-zone muted">
+                        <StaticBlocks blocks={footerBlocks} scope="footer" page={pageIndex + 1} pages={pages.length} zoom={zoom} noteNumbers={noteNumbers} onOpen={editBlock} />
+                      </div>
+                    ) : null}
                   </div>
-                  {document.footer.length > 0 ? (
-                    <div className="writer-footer-zone muted">
-                      <StaticBlocks blocks={document.footer} scope="footer" page={pageIndex + 1} pages={pages.length} zoom={zoom} onOpen={editBlock} />
-                    </div>
-                  ) : null}
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="writer-page" ref={bodyRef} data-scope={editingHeader ?? "body"} onMouseDown={handlePageMouseDown} style={{ width: pageWidth, minHeight: pageHeight, padding: `${marginTop}px ${marginX}px` }}>
@@ -1192,10 +1450,197 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                 </button>
               </div>
               <p>{comment.text}</p>
+              {(comment.replies ?? []).map((reply, replyIndex) => (
+                <p key={replyIndex} className="comment-reply muted">
+                  <strong>{reply.author}:</strong> {reply.text}
+                </p>
+              ))}
+              <CommentReplyInput
+                placeholder={t("writer.reply")}
+                onSubmit={(text) =>
+                  update((doc) => ({
+                    ...doc,
+                    comments: doc.comments.map((entry) =>
+                      entry.id === comment.id ? { ...entry, replies: [...(entry.replies ?? []), { author: revisionAuthor, text, created: new Date().toISOString() }] } : entry,
+                    ),
+                  }))
+                }
+              />
             </div>
           ))}
         </div>
       ) : null}
+
+      {reviewOpen ? (
+        <div className="comments-sidebar writer-review-pane">
+          <div className="comments-head">
+            <strong>{t("writer.reviewPane")}</strong>
+            <span className="spacer" />
+            <span className="muted">{revisionList(document).length}</span>
+            <button type="button" className="icon-btn" onClick={() => setReviewOpen(false)} aria-label={t("common.close")}>
+              <X size={14} />
+            </button>
+          </div>
+          {revisionList(document).length === 0 ? <p className="muted">{t("writer.noRevisions")}</p> : null}
+          {revisionList(document).map((revision) => (
+            <div key={revision.id} className={`comment-card${activeRevision === revision.id ? " is-active" : ""}`} onClick={() => setActiveRevision(revision.id)}>
+              <div className="row">
+                <strong>{t(`writer.revision_${revision.kind}`)}</strong>
+                <span className="spacer" />
+                <span className="muted">{revision.author}</span>
+              </div>
+              <p className={revision.kind === "delete" ? "writer-rev-delete" : revision.kind === "insert" ? "writer-rev-insert" : ""}>{revision.text || "…"}</p>
+              <div className="row">
+                <button
+                  type="button"
+                  className="btn btn-soft"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    update((doc) => acceptRevision(doc, revision.id));
+                    setActiveRevision(null);
+                    setLayoutVersion((version) => version + 1);
+                  }}
+                >
+                  {t("writer.accept")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-soft"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    update((doc) => rejectRevision(doc, revision.id));
+                    setActiveRevision(null);
+                    setLayoutVersion((version) => version + 1);
+                  }}
+                >
+                  {t("writer.reject")}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {fieldOpen ? (
+        <Dialog title={t("writer.crossReference")} onClose={() => setFieldOpen(false)}>
+          <div className="stack">
+            <label className="field">
+              <span>{t("writer.fieldKind")}</span>
+              <select value={fieldKind} onChange={(event) => setFieldKind(event.target.value as FieldRef["kind"])}>
+                <option value="ref">{t("writer.fieldRef")}</option>
+                <option value="refPage">{t("writer.fieldRefPage")}</option>
+                <option value="bookmark">{t("writer.fieldBookmark")}</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>{t("writer.bookmarkTarget")}</span>
+              <select value={fieldTarget} onChange={(event) => setFieldTarget(event.target.value)}>
+                <option value="">—</option>
+                {(document.bookmarks ?? []).map((bookmark) => (
+                  <option key={bookmark.id} value={bookmark.name}>
+                    {bookmark.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="row">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  if (!fieldTarget) return;
+                  insertField(fieldKind, fieldTarget);
+                  setFieldOpen(false);
+                }}
+              >
+                {t("writer.insertField")}
+              </button>
+              <input placeholder={t("writer.bookmarkName")} value={bookmarkName} onChange={(event) => setBookmarkName(event.target.value)} />
+              <button type="button" className="btn btn-soft" onClick={addBookmark}>
+                {t("writer.addBookmark")}
+              </button>
+            </div>
+            <p className="muted">{t("writer.bookmarkHint")}</p>
+          </div>
+        </Dialog>
+      ) : null}
+
+      {sectionsOpen ? (
+        <Dialog title={t("writer.sections")} onClose={() => setSectionsOpen(false)}>
+          <div className="stack">
+            {sections.map((section, sectionIndex) => (
+              <div key={sectionIndex} className="section-card">
+                <div className="row">
+                  <strong>
+                    {t("writer.section")} {sectionIndex + 1}
+                  </strong>
+                  <span className="spacer" />
+                  {sectionIndex > 0 ? (
+                    <button type="button" className="icon-btn" title={t("common.delete")} onClick={() => removeSectionBreak(sectionIndex)}>
+                      <Trash2 size={13} />
+                    </button>
+                  ) : null}
+                </div>
+                <div className="row">
+                  <select
+                    value={section.page.size}
+                    onChange={(event) => updateSection(sectionIndex, { page: { ...section.page, ...sizeDimensions(event.target.value, section.page.orientation), size: event.target.value } })}
+                  >
+                    {["a4", "a5", "letter", "legal", "a3"].map((size) => (
+                      <option key={size} value={size}>
+                        {size.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={section.page.orientation}
+                    onChange={(event) => {
+                      const landscape = event.target.value === "landscape";
+                      const currently = section.page.widthPt > section.page.heightPt;
+                      const page = { ...section.page, orientation: event.target.value };
+                      if (landscape !== currently) {
+                        const width = page.widthPt;
+                        page.widthPt = page.heightPt;
+                        page.heightPt = width;
+                      }
+                      updateSection(sectionIndex, { page });
+                    }}
+                  >
+                    <option value="portrait">{t("writer.portrait")}</option>
+                    <option value="landscape">{t("writer.landscape")}</option>
+                  </select>
+                  <select value={section.start} onChange={(event) => (sectionIndex === sections.length - 1 ? undefined : updateSection(sectionIndex, { start: event.target.value }))}>
+                    <option value="newPage">{t("writer.startNewPage")}</option>
+                    <option value="continuous">{t("writer.startContinuous")}</option>
+                    <option value="oddPage">{t("writer.startOdd")}</option>
+                    <option value="evenPage">{t("writer.startEven")}</option>
+                  </select>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Dialog>
+      ) : null}
+    </div>
+  );
+}
+
+function CommentReplyInput({ placeholder, onSubmit }: { placeholder: string; onSubmit: (text: string) => void }) {
+  const [text, setText] = useState("");
+  return (
+    <div className="row">
+      <input value={text} placeholder={placeholder} onChange={(event) => setText(event.target.value)} />
+      <button
+        type="button"
+        className="btn btn-soft"
+        disabled={!text.trim()}
+        onClick={() => {
+          onSubmit(text.trim());
+          setText("");
+        }}
+      >
+        +
+      </button>
     </div>
   );
 }
@@ -1220,6 +1665,8 @@ function StaticParagraph({
   zoom,
   page = 0,
   pages = 0,
+  noteNumbers,
+  showRevisions = true,
 }: {
   block: Extract<Block, { type: "paragraph" }>;
   index: number;
@@ -1227,6 +1674,8 @@ function StaticParagraph({
   zoom: number;
   page?: number;
   pages?: number;
+  noteNumbers?: Record<string, number>;
+  showRevisions?: boolean;
 }) {
   const props = block.props;
   const listMarker = props.list ? (props.list.kind === "number" ? `${props.list.start}.` : ["•", "◦", "▪"][props.list.level % 3]) : null;
@@ -1243,7 +1692,7 @@ function StaticParagraph({
           textIndent: props.firstLinePt,
           fontSize: `${(effectiveFontSize(block) ?? 11) * zoom}pt`,
         }}
-        dangerouslySetInnerHTML={{ __html: runsToHtml(substituteTokens(block.runs, page, pages)) }}
+        dangerouslySetInnerHTML={{ __html: runsToHtml(substituteTokens(block.runs, page, pages), { noteNumbers, showRevisions }) }}
       />
     </div>
   );
@@ -1306,6 +1755,8 @@ function StaticBlocks({
   page,
   pages,
   zoom,
+  noteNumbers,
+  showRevisions = true,
   onOpen,
 }: {
   blocks: Block[];
@@ -1313,13 +1764,17 @@ function StaticBlocks({
   page: number;
   pages: number;
   zoom: number;
+  noteNumbers?: Record<string, number>;
+  showRevisions?: boolean;
   onOpen: (index: number) => void;
 }) {
   return (
     <>
       {blocks.map((block, index) => {
         if (block.type === "paragraph") {
-          return <StaticParagraph key={index} block={block} index={index} scope={scope} zoom={zoom} page={page} pages={pages} />;
+          return (
+            <StaticParagraph key={index} block={block} index={index} scope={scope} zoom={zoom} page={page} pages={pages} noteNumbers={noteNumbers} showRevisions={showRevisions} />
+          );
         }
         return (
           <div key={index} data-block-index={index} data-scope={scope}>
@@ -1345,27 +1800,62 @@ function StaticBlocks({
 }
 
 /** One page fragment: whole block, paragraph lines or table rows. */
-function PageFragmentView({ fragment, block, zoom, onOpen }: { fragment: Fragment; block: Block | undefined; zoom: number; onOpen: () => void }) {
+function PageFragmentView({
+  fragment,
+  block,
+  zoom,
+  noteNumbers,
+  showRevisions,
+  onOpen,
+}: {
+  fragment: Fragment;
+  block: Block | undefined;
+  zoom: number;
+  noteNumbers?: Record<string, number>;
+  showRevisions?: boolean;
+  onOpen: (offset: number) => void;
+}) {
   if (!block) return null;
+  // Maps a click to the character offset inside the fragment so the caret
+  // lands where the user clicked, not at the start of the block.
+  const clickOffset = (event: React.MouseEvent<HTMLElement>): number => {
+    if (fragment.mode !== "whole") return 0;
+    const target = window.document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null };
+    const range = target.caretRangeFromPoint?.(event.clientX, event.clientY);
+    if (!range) return 0;
+    const container = event.currentTarget;
+    let offset = 0;
+    const walker = window.document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      if (node === range.startContainer) {
+        offset += range.startOffset;
+        break;
+      }
+      offset += (node.textContent ?? "").length;
+      node = walker.nextNode();
+    }
+    return offset;
+  };
   if (fragment.mode === "lines" && block.type === "paragraph") {
     return (
-      <div className="writer-fragment" style={{ height: fragment.heightPx, overflow: "hidden" }} onClick={onOpen}>
+      <div className="writer-fragment" style={{ height: fragment.heightPx, overflow: "hidden" }} onClick={(event) => onOpen(clickOffset(event))}>
         <div style={{ marginTop: -fragment.offsetPx }}>
-          <StaticParagraph block={block} index={fragment.index} scope="page" zoom={zoom} />
+          <StaticParagraph block={block} index={fragment.index} scope="page" zoom={zoom} noteNumbers={noteNumbers} showRevisions={showRevisions} />
         </div>
       </div>
     );
   }
   if (fragment.mode === "rows" && block.type === "table") {
     return (
-      <div className="writer-fragment" onClick={onOpen}>
+      <div className="writer-fragment" onClick={() => onOpen(0)}>
         <StaticTable table={block.table} zoom={zoom} from={fragment.from} to={fragment.to} />
       </div>
     );
   }
   return (
-    <div className="writer-fragment" onClick={onOpen}>
-      <StaticBlocks blocks={[block]} scope="page" page={0} pages={0} zoom={zoom} onOpen={onOpen} />
+    <div className="writer-fragment" onClick={(event) => onOpen(clickOffset(event))}>
+      <StaticBlocks blocks={[block]} scope="page" page={0} pages={0} zoom={zoom} noteNumbers={noteNumbers} showRevisions={showRevisions} onOpen={() => onOpen(0)} />
     </div>
   );
 }
@@ -1379,6 +1869,8 @@ function BlockView({
   index,
   scope,
   zoom,
+  noteNumbers,
+  showRevisions,
   onSelectImage,
   onFocusParagraph,
   onSync,
@@ -1391,6 +1883,8 @@ function BlockView({
   index: number;
   scope: string;
   zoom: number;
+  noteNumbers: Record<string, number>;
+  showRevisions: boolean;
   selectedImage: number | null;
   onSelectImage: (index: number | null) => void;
   onFocusParagraph: (block: Extract<Block, { type: "paragraph" }>) => void;
@@ -1407,6 +1901,8 @@ function BlockView({
         index={index}
         scope={scope}
         zoom={zoom}
+        noteNumbers={noteNumbers}
+        showRevisions={showRevisions}
         onFocus={() => onFocusParagraph(block)}
         onSync={onSync}
         onUpdate={onUpdate}
@@ -1455,6 +1951,8 @@ function ParagraphView({
   index,
   scope,
   zoom,
+  noteNumbers,
+  showRevisions,
   onFocus,
   onSync,
   onStructure,
@@ -1463,6 +1961,8 @@ function ParagraphView({
   index: number;
   scope: string;
   zoom: number;
+  noteNumbers: Record<string, number>;
+  showRevisions: boolean;
   onFocus: () => void;
   onSync: (element: HTMLElement) => void;
   onUpdate: (block: Block) => void;
@@ -1479,7 +1979,7 @@ function ParagraphView({
   // effects run before the parent's, which makes that ordering guaranteed.
   useLayoutEffect(() => {
     if (!ref.current) return;
-    const html = runsToHtml(block.runs);
+    const html = runsToHtml(block.runs, { noteNumbers, showRevisions });
     if (!focused) {
       if (ref.current.innerHTML !== html) ref.current.innerHTML = html;
       return;

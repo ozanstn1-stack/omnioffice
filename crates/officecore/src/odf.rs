@@ -290,6 +290,11 @@ fn write_blocks(writer: &mut XmlWriter, blocks: &[Block], styles: &mut AutoStyle
                     writer.raw(&format!("<text:p>{}</text:p>", crate::xml::escape_text(&text)));
                 }
             }
+            Block::SectionBreak { .. } => {
+                let props = ParaProps { page_break_before: true, ..Default::default() };
+                let name = styles.paragraph(paragraph_style_xml(&props, true));
+                writer.raw(&format!("<text:p text:style-name=\"{name}\"/>"));
+            }
         }
         index += 1;
     }
@@ -1183,6 +1188,15 @@ fn slide_object_xml(object: &SlideObject) -> String {
                 inner.push_str(&writer.finish());
             }
         }
+        "chart" => {
+            if let Some(chart) = &object.chart {
+                let title = if chart.title.trim().is_empty() { format!("{} chart", chart.kind) } else { chart.title.clone() };
+                inner.push_str(&format!(
+                    "<draw:text-box><text:p text:style-name=\"Standard\">{}</text:p></draw:text-box>",
+                    crate::xml::escape_text(&title)
+                ));
+            }
+        }
         _ => {
             if let Some(text) = &object.text {
                 let mut writer = XmlWriter::new();
@@ -1237,14 +1251,60 @@ fn slide_object_xml(object: &SlideObject) -> String {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct DeckWrite {
+    pub bytes: Vec<u8>,
+    pub warnings: Vec<String>,
+}
+
+fn count_groups(objects: &[SlideObject]) -> usize {
+    objects
+        .iter()
+        .map(|object| if object.kind == "group" { 1 + count_groups(&object.children) } else { 0 })
+        .sum()
+}
+
+fn flatten_groups(objects: &[SlideObject], out: &mut Vec<SlideObject>) {
+    for object in objects {
+        if object.kind == "group" {
+            flatten_groups(&object.children, out);
+        } else {
+            out.push(object.clone());
+        }
+    }
+}
+
+pub fn write_odp_package(deck: &Deck) -> OfficeResult<DeckWrite> {
+    let bytes = write_odp_bytes(deck)?;
+    let mut warnings = Vec::new();
+    let groups: usize = deck.slides.iter().map(|slide| count_groups(&slide.objects)).sum();
+    if groups > 0 {
+        warnings.push("Groups are exported as individual shapes.".into());
+    }
+    let charts: usize = deck.slides.iter().map(|slide| slide.objects.iter().filter(|object| object.chart.is_some()).count()).sum();
+    if charts > 0 {
+        warnings.push("Chart data is kept in the native .oswk file; ODP gets drawn placeholder shapes.".into());
+    }
+    let animations: usize = deck.slides.iter().map(|slide| slide.animations.len()).sum();
+    if animations > 0 {
+        warnings.push("Animations are kept in the native .oswk file and are not written to ODP.".into());
+    }
+    Ok(DeckWrite { bytes, warnings })
+}
+
 pub fn write_odp(deck: &Deck) -> OfficeResult<Vec<u8>> {
+    Ok(write_odp_package(deck)?.bytes)
+}
+
+fn write_odp_bytes(deck: &Deck) -> OfficeResult<Vec<u8>> {
     let mut body = String::new();
     let mut pictures: Vec<(String, Vec<u8>)> = Vec::new();
     for (index, slide) in deck.slides.iter().enumerate() {
         body.push_str(&format!("<draw:page draw:name=\"Slide{}\" draw:master-page-name=\"Default\">", index + 1));
-        let mut objects: Vec<&SlideObject> = slide.objects.iter().collect();
+        let mut objects: Vec<SlideObject> = Vec::new();
+        flatten_groups(&slide.objects, &mut objects);
         objects.sort_by_key(|object| object.z);
-        for object in objects {
+        for object in &objects {
             if let Some(image) = &object.image {
                 if !image.is_empty() && !pictures.iter().any(|(name, _)| name == &image.name) {
                     pictures.push((image.name.clone(), image.bytes()));

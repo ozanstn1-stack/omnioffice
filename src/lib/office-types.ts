@@ -105,6 +105,39 @@ export interface TocEntry {
   anchor: number;
 }
 
+/** Formatting captured before a tracked formatting change. */
+export interface RunFormat {
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  strike: boolean;
+  color: string | null;
+  highlight: string | null;
+  font: string | null;
+  sizePt: number | null;
+}
+
+/**
+ * A tracked revision attached to a run.
+ *
+ * Deleted text stays in the model until the revision is accepted or rejected,
+ * which is what makes accept/reject lossless.
+ */
+export interface RevisionMark {
+  id: string;
+  kind: "insert" | "delete" | "format" | string;
+  author: string;
+  date: string;
+  original?: RunFormat | null;
+}
+
+/** A resolved document field (page number, cross reference, date, ...). */
+export interface FieldRef {
+  kind: "page" | "pages" | "date" | "time" | "title" | "author" | "ref" | "refPage" | "footnote" | "bookmark" | "figure" | "table" | string;
+  target: string;
+  cached: string;
+}
+
 export interface Run {
   text: string;
   bold: boolean;
@@ -119,6 +152,19 @@ export interface Run {
   comment: string | null;
   superscript: boolean;
   subscript: boolean;
+  /** Footnote id this run is the reference for (V3). */
+  footnote?: string | null;
+  /** Endnote id this run is the reference for (V3). */
+  endnote?: string | null;
+  /** A document field rendered at this position (V3). */
+  field?: FieldRef | null;
+  /** Tracked revision (V3). */
+  revision?: RevisionMark | null;
+}
+
+/** True when the run is a tracked deletion. */
+export function isDeletedRun(run: Run): boolean {
+  return run.revision?.kind === "delete";
 }
 
 export interface TableCell {
@@ -145,13 +191,55 @@ export interface TableData {
   align: string;
 }
 
+/**
+ * Properties of one Writer section (V3).
+ *
+ * The document-level `page` / `header` / `footer` are the first section; every
+ * section break carries the properties of the section that starts there.
+ */
+export interface SectionProps {
+  page: PageSetup;
+  header: Block[];
+  footer: Block[];
+  firstHeader: Block[];
+  firstFooter: Block[];
+  evenHeader: Block[];
+  evenFooter: Block[];
+  differentFirstPage: boolean;
+  differentOddEven: boolean;
+  columns: number;
+  /** `newPage`, `continuous`, `oddPage` or `evenPage`. */
+  start: string;
+}
+
 export type Block =
   | { type: "paragraph"; props: ParaProps; runs: Run[] }
   | { type: "table"; table: TableData }
   | { type: "image"; image: ImageData; widthPt: number; heightPt: number; align: string; caption: string }
   | { type: "pageBreak" }
   | { type: "rule" }
-  | { type: "toc"; entries: TocEntry[] };
+  | { type: "toc"; entries: TocEntry[] }
+  | { type: "sectionBreak"; section: SectionProps };
+
+/** A footnote or endnote; numbering is automatic by reference order. */
+export interface Footnote {
+  id: string;
+  runs: Run[];
+  marker: string;
+}
+
+export interface Bookmark {
+  id: string;
+  name: string;
+  block: number;
+  offset: number;
+}
+
+export interface CommentReply {
+  author: string;
+  text: string;
+  created: string;
+}
 
 export interface DocComment {
   id: string;
@@ -159,6 +247,8 @@ export interface DocComment {
   text: string;
   created: string;
   resolved: boolean;
+  modified?: string;
+  replies?: CommentReply[];
 }
 
 export interface TextDocument {
@@ -171,6 +261,12 @@ export interface TextDocument {
   footer: Block[];
   comments: DocComment[];
   metadata: DocMetadata;
+  /** V3 fields; all optional so documents saved by older builds still open. */
+  footnotes?: Footnote[];
+  endnotes?: Footnote[];
+  bookmarks?: Bookmark[];
+  trackChanges?: boolean;
+  showRevisions?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -316,6 +412,33 @@ export interface PivotTable {
   anchor: string;
 }
 
+/** One column of a structured spreadsheet table. */
+export interface TableColumn {
+  name: string;
+  formula: string | null;
+}
+
+/**
+ * A structured spreadsheet table (Excel "ListObject"): a named range with a
+ * header row, an optional totals row, banded rows, an optional filter and
+ * calculated columns. Structured references such as `Sales[Amount]` resolve
+ * against `name` and the column names.
+ */
+export interface SpreadsheetTable {
+  id: string;
+  name: string;
+  range: string;
+  hasHeaders: boolean;
+  hasTotals: boolean;
+  bandedRows: boolean;
+  bandedColumns: boolean;
+  headerFill: string | null;
+  headerBold: boolean;
+  styleName: string;
+  columns: TableColumn[];
+  filter: FilterState | null;
+}
+
 export interface Sheet {
   id: string;
   name: string;
@@ -329,6 +452,8 @@ export interface Sheet {
   freezeCols: number;
   charts: ChartPlacement[];
   pivotTables: PivotTable[];
+  /** Structured tables (V3). */
+  tables?: SpreadsheetTable[];
   conditional: CondRule[];
   validations: Validation[];
   filter: FilterState | null;
@@ -467,16 +592,53 @@ export interface SlideObject {
   table: TableData | null;
   chart: ChartData | null;
   groupId: string | null;
+  /** Children of a `group` object; coordinates are absolute (V3). */
+  children?: SlideObject[];
+  /** Placeholder role on a master/layout (V3). */
+  placeholder?: string | null;
   name: string;
+}
+
+/** One slideshow animation (V3). */
+export interface Animation {
+  id: string;
+  objectId: string;
+  kind: "entrance" | "emphasis" | "exit" | string;
+  effect: string;
+  trigger: "onClick" | "withPrevious" | "afterPrevious" | string;
+  durationMs: number;
+  delayMs: number;
+  order: number;
+}
+
+/** A layout inside a master; placeholder objects are inherited by slides. */
+export interface SlideLayout {
+  id: string;
+  name: string;
+  kind: string;
+  objects: SlideObject[];
+}
+
+/** A slide master: theme, background and layouts (V3). */
+export interface SlideMaster {
+  id: string;
+  name: string;
+  theme: string;
+  background: string | null;
+  objects: SlideObject[];
+  layouts: SlideLayout[];
 }
 
 export interface Slide {
   id: string;
   layout: string;
+  masterId?: string | null;
+  layoutId?: string | null;
   background: string | null;
   transition: string | null;
   transitionMs: number;
   objects: SlideObject[];
+  animations?: Animation[];
   notes: string;
 }
 
@@ -486,6 +648,8 @@ export interface Deck {
   size: SlideSize;
   theme: string;
   slides: Slide[];
+  /** Masters with layouts (V3). */
+  masters?: SlideMaster[];
   metadata: DocMetadata;
 }
 
@@ -607,6 +771,26 @@ export function defaultPageSetup(size = "a4", orientation = "portrait"): PageSet
   };
 }
 
+export function defaultSectionProps(page = defaultPageSetup()): SectionProps {
+  return {
+    page,
+    header: [],
+    footer: [],
+    firstHeader: [],
+    firstFooter: [],
+    evenHeader: [],
+    evenFooter: [],
+    differentFirstPage: false,
+    differentOddEven: false,
+    columns: page.columns,
+    start: "newPage",
+  };
+}
+
+export function newFootnote(id = uid()): Footnote {
+  return { id, runs: [defaultRun()], marker: "" };
+}
+
 export function newTextDocument(title = "Untitled document"): TextDocument {
   return {
     id: uid(),
@@ -618,6 +802,11 @@ export function newTextDocument(title = "Untitled document"): TextDocument {
     footer: [],
     comments: [],
     metadata: { ...emptyMetadata(), title },
+    footnotes: [],
+    endnotes: [],
+    bookmarks: [],
+    trackChanges: false,
+    showRevisions: true,
   };
 }
 
@@ -675,6 +864,7 @@ export function newSheet(name: string): Sheet {
     freezeCols: 0,
     charts: [],
     pivotTables: [],
+    tables: [],
     conditional: [],
     validations: [],
     filter: null,
@@ -682,6 +872,23 @@ export function newSheet(name: string): Sheet {
     tabColor: null,
     print: defaultPrintSettings(),
     sheetProtection: "",
+  };
+}
+
+export function newSpreadsheetTable(name: string, range: string, columns: string[]): SpreadsheetTable {
+  return {
+    id: uid(),
+    name,
+    range,
+    hasHeaders: true,
+    hasTotals: false,
+    bandedRows: true,
+    bandedColumns: false,
+    headerFill: "#1D4ED8",
+    headerBold: true,
+    styleName: "TableStyleMedium2",
+    columns: columns.map((column) => ({ name: column, formula: null })),
+    filter: null,
   };
 }
 
@@ -724,12 +931,44 @@ export function newSlideObject(kind: string, x: number, y: number, w: number, h:
     table: null,
     chart: null,
     groupId: null,
+    children: [],
+    placeholder: null,
     name: `${kind} ${Math.round(x)},${Math.round(y)}`,
   };
 }
 
+export function newAnimation(objectId: string, kind = "entrance", effect = "fade", trigger = "onClick", order = 1): Animation {
+  return { id: uid(), objectId, kind, effect, trigger, durationMs: 500, delayMs: 0, order };
+}
+
 export function newSlide(layout = "titleContent"): Slide {
-  return { id: uid(), layout, background: null, transition: null, transitionMs: 500, objects: [], notes: "" };
+  return {
+    id: uid(),
+    layout,
+    masterId: null,
+    layoutId: null,
+    background: null,
+    transition: null,
+    transitionMs: 500,
+    objects: [],
+    animations: [],
+    notes: "",
+  };
+}
+
+export function newSlideMaster(name = "Master"): SlideMaster {
+  return {
+    id: uid(),
+    name,
+    theme: "minimal",
+    background: null,
+    objects: [],
+    layouts: [
+      { id: uid(), name: "Title slide", kind: "title", objects: [] },
+      { id: uid(), name: "Title and content", kind: "titleContent", objects: [] },
+      { id: uid(), name: "Blank", kind: "blank", objects: [] },
+    ],
+  };
 }
 
 export function newDeck(title = "Untitled presentation"): Deck {
@@ -739,6 +978,7 @@ export function newDeck(title = "Untitled presentation"): Deck {
     size: { preset: "16:9", widthPt: 960, heightPt: 540 },
     theme: "minimal",
     slides: [newSlide()],
+    masters: [],
     metadata: { ...emptyMetadata(), title },
   };
 }
@@ -755,10 +995,57 @@ export function blockText(block: Block): string {
     case "image":
       return block.caption;
     case "pageBreak":
+    case "sectionBreak":
       return "";
     default:
       return "";
   }
+}
+
+/** Document section list: first section from the document fields, then breaks. */
+export function documentSections(document: TextDocument): SectionProps[] {
+  const first = defaultSectionProps(document.page);
+  first.header = document.header;
+  first.footer = document.footer;
+  first.differentFirstPage = document.page.differentFirstPage;
+  const sections = [first];
+  for (const block of document.blocks) {
+    if (block.type === "sectionBreak") sections.push(block.section);
+  }
+  return sections;
+}
+
+/** The section in effect for a block index. */
+export function sectionForBlock(document: TextDocument, blockIndex: number): SectionProps {
+  const sections = documentSections(document);
+  let current = sections[0];
+  let breakIndex = 1;
+  for (let index = 0; index <= blockIndex && index < document.blocks.length; index += 1) {
+    if (document.blocks[index].type === "sectionBreak") {
+      current = sections[breakIndex] ?? current;
+      breakIndex += 1;
+    }
+  }
+  return current;
+}
+
+/** Footnote ids in reference order across the document. */
+export function footnoteOrder(document: TextDocument): string[] {
+  const order: string[] = [];
+  const collect = (runs: Run[]) => {
+    for (const run of runs) {
+      if (run.footnote && !order.includes(run.footnote)) order.push(run.footnote);
+      if (run.endnote && !order.includes(run.endnote)) order.push(run.endnote);
+    }
+  };
+  const walk = (block: Block) => {
+    if (block.type === "paragraph") collect(block.runs);
+    if (block.type === "table") {
+      for (const row of block.table.rows) for (const cell of row.cells) cell.blocks.forEach(walk);
+    }
+  };
+  document.blocks.forEach(walk);
+  return order;
 }
 
 export function documentText(document: TextDocument): string {

@@ -46,7 +46,7 @@ dependencies = [
 
 [[package]]
 name = "aicore"
-version = "2.5.0"
+version = "3.0.0"
 dependencies = [
  "futures-util",
  "reqwest 0.12.28",
@@ -2865,7 +2865,7 @@ dependencies = [
 
 [[package]]
 name = "officecore"
-version = "2.5.0"
+version = "3.0.0"
 dependencies = [
  "ab_glyph",
  "base64 0.22.1",
@@ -2996,7 +2996,7 @@ dependencies = [
 
 [[package]]
 name = "pdf-swiss-army-knife"
-version = "2.5.0"
+version = "3.0.0"
 dependencies = [
  "aicore",
  "base64 0.22.1",
@@ -3018,7 +3018,7 @@ dependencies = [
 
 [[package]]
 name = "pdfcore"
-version = "2.5.0"
+version = "3.0.0"
 dependencies = [
  "ab_glyph",
  "image",

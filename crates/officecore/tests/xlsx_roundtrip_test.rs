@@ -321,11 +321,12 @@ fn xlsx_export_materializes_pivot_tables_as_values() {
     assert_eq!(data.get("G3").map(|cell| cell.value.clone()), Some(CellValue::Number(200.0)));
 }
 
-/// Measures what a pure XLSX round trip through the importer loses, so the
-/// documented limitation stays true: values and formulas survive, layout and
-/// presentation metadata does not come back through `calamine`.
+/// Pins what a pure XLSX round trip preserves. V3.0 added a custom OOXML
+/// import pass, so layout and presentation metadata now survive; charts are
+/// still export-only (the model keeps them, the importer does not rebuild
+/// ChartML).
 #[test]
-fn xlsx_roundtrip_loss_is_limited_to_presentation_metadata() {
+fn xlsx_roundtrip_preserves_values_and_presentation_metadata() {
     let original = golden_workbook();
     let bytes = xlsx::write_xlsx(&original).unwrap();
     let read = xlsx::read_workbook_bytes(&bytes).unwrap();
@@ -337,17 +338,13 @@ fn xlsx_roundtrip_loss_is_limited_to_presentation_metadata() {
         before.cells.len(),
         "every value and formula cell must survive the round trip"
     );
-    // Presentation metadata is written to the package (asserted above) but the
-    // calamine-based importer does not read it back. That is the documented
-    // limitation; if it ever changes, this test says so.
-    let dropped = [
-        after.merges.is_empty(),
-        after.col_widths.is_empty(),
-        after.row_heights.is_empty(),
-        after.freeze_rows == 0,
-        after.conditional.is_empty(),
-        after.validations.is_empty(),
-        after.charts.is_empty(),
-    ];
-    assert!(dropped.iter().all(|dropped| *dropped), "presentation metadata unexpectedly survived import: {dropped:?}");
+    assert_eq!(after.merges.len(), before.merges.len(), "merges must survive");
+    assert!(!after.col_widths.is_empty(), "column widths must survive");
+    assert!(!after.row_heights.is_empty(), "row heights must survive");
+    assert!(after.freeze_rows > 0 || after.freeze_cols > 0, "freeze panes must survive");
+    assert_eq!(after.conditional.len(), before.conditional.len(), "conditional rules must survive");
+    assert_eq!(after.validations.len(), before.validations.len(), "validations must survive");
+    // Charts are still export-only: the ChartML part is written but the
+    // importer does not rebuild the chart model yet.
+    assert!(after.charts.is_empty(), "charts are expected to remain export-only");
 }

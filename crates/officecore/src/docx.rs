@@ -104,7 +104,10 @@ impl Media {
     }
 }
 
-fn content_types(has_header: bool, has_footer: bool) -> String {
+const CONTENT_TYPE_HEADER: &str = "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml";
+const CONTENT_TYPE_FOOTER: &str = "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml";
+
+fn content_types(header_parts: &[String], footer_parts: &[String], footnotes: bool, endnotes: bool, comments: bool) -> String {
     let mut writer = XmlWriter::new();
     writer.declaration();
     writer.open("Types", &[("xmlns", "http://schemas.openxmlformats.org/package/2006/content-types")]);
@@ -121,24 +124,31 @@ fn content_types(has_header: bool, has_footer: bool) -> String {
     ] {
         writer.empty("Default", &[("Extension", extension), ("ContentType", mime)]);
     }
-    let overrides = [
-        ("/word/document.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"),
-        ("/word/styles.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"),
-        ("/word/numbering.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"),
-        ("/word/settings.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"),
-        ("/word/header1.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"),
-        ("/word/footer1.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"),
-        ("/docProps/core.xml", "application/vnd.openxmlformats-package.core-properties+xml"),
-        ("/docProps/app.xml", "application/vnd.openxmlformats-officedocument.extended-properties+xml"),
+    let mut overrides: Vec<(String, &str)> = vec![
+        ("/word/document.xml".into(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"),
+        ("/word/styles.xml".into(), "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"),
+        ("/word/numbering.xml".into(), "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"),
+        ("/word/settings.xml".into(), "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"),
+        ("/docProps/core.xml".into(), "application/vnd.openxmlformats-package.core-properties+xml"),
+        ("/docProps/app.xml".into(), "application/vnd.openxmlformats-officedocument.extended-properties+xml"),
     ];
+    for part in header_parts {
+        overrides.push((format!("/word/{part}"), CONTENT_TYPE_HEADER));
+    }
+    for part in footer_parts {
+        overrides.push((format!("/word/{part}"), CONTENT_TYPE_FOOTER));
+    }
+    if footnotes {
+        overrides.push(("/word/footnotes.xml".into(), "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"));
+    }
+    if endnotes {
+        overrides.push(("/word/endnotes.xml".into(), "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml"));
+    }
+    if comments {
+        overrides.push(("/word/comments.xml".into(), "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"));
+    }
     for (part, mime) in overrides {
-        if part.ends_with("header1.xml") && !has_header {
-            continue;
-        }
-        if part.ends_with("footer1.xml") && !has_footer {
-            continue;
-        }
-        writer.empty("Override", &[("PartName", part), ("ContentType", mime)]);
+        writer.empty("Override", &[("PartName", &part), ("ContentType", mime)]);
     }
     writer.close("Types");
     writer.finish()
@@ -200,7 +210,7 @@ fn app_properties(document: &TextDocument) -> String {
     writer.finish()
 }
 
-fn write_paragraph_properties(writer: &mut XmlWriter, props: &ParaProps) {
+fn write_paragraph_properties(writer: &mut XmlWriter, props: &ParaProps, sect: Option<&str>) {
     let mut children: Vec<String> = Vec::new();
     if !props.style.is_empty() && props.style != "Normal" {
         children.push(format!("<w:pStyle w:val=\"{}\"/>", crate::xml::escape_attr(&props.style)));
@@ -253,6 +263,9 @@ fn write_paragraph_properties(writer: &mut XmlWriter, props: &ParaProps) {
             num_id
         ));
     }
+    if let Some(sect) = sect {
+        children.push(sect.to_string());
+    }
     if !children.is_empty() {
         writer.raw("<w:pPr>");
         for child in children {
@@ -288,7 +301,51 @@ fn highlight_value(color: &str) -> String {
     }
 }
 
-fn write_run_properties(writer: &mut XmlWriter, run: &Run) {
+/// Shared writer state: relationships, media, note/comment/revision id maps.
+#[derive(Default)]
+struct DocxState {
+    rels: Relationships,
+    media: Media,
+    id_counter: usize,
+    footnote_ids: HashMap<String, u32>,
+    endnote_ids: HashMap<String, u32>,
+    comment_ids: HashMap<String, u32>,
+    revision_ids: HashMap<String, u32>,
+    revision_seq: u32,
+}
+
+impl DocxState {
+    fn new() -> Self {
+        Self { rels: Relationships::new(4), ..Default::default() }
+    }
+
+    /// Numeric id for a revision, allocated once and reused.
+    fn revision_id(&mut self, id: &str) -> u32 {
+        if let Some(existing) = self.revision_ids.get(id) {
+            return *existing;
+        }
+        self.revision_seq += 1;
+        let value = self.revision_seq;
+        self.revision_ids.insert(id.to_string(), value);
+        value
+    }
+
+    fn note_id(&mut self, key: &str, id: &str) -> u32 {
+        let map = if key == "endnote" { &mut self.endnote_ids } else { &mut self.footnote_ids };
+        if let Some(existing) = map.get(id) {
+            return *existing;
+        }
+        let value = map.len() as u32 + 1;
+        map.insert(id.to_string(), value);
+        value
+    }
+
+    fn comment_id(&mut self, id: &str) -> Option<u32> {
+        self.comment_ids.get(id).copied()
+    }
+}
+
+fn write_run_properties(writer: &mut XmlWriter, run: &Run, extra: Option<&str>) {
     let mut children: Vec<String> = Vec::new();
     if let Some(font) = &run.font {
         let escaped = crate::xml::escape_attr(font);
@@ -320,6 +377,9 @@ fn write_run_properties(writer: &mut XmlWriter, run: &Run) {
     } else if run.subscript {
         children.push("<w:vertAlign w:val=\"subscript\"/>".into());
     }
+    if let Some(extra) = extra {
+        children.push(extra.to_string());
+    }
     if !children.is_empty() {
         writer.raw("<w:rPr>");
         for child in children {
@@ -329,7 +389,70 @@ fn write_run_properties(writer: &mut XmlWriter, run: &Run) {
     }
 }
 
-fn write_text_run(writer: &mut XmlWriter, run: &Run) {
+/// The XML of a `w:rPrChange` carrying the formatting before a tracked change.
+fn format_revision_xml(state: &mut DocxState, revision: &RevisionMark) -> Option<String> {
+    let original = revision.original.as_ref()?;
+    let id = state.revision_id(&revision.id);
+    let mut properties = Run { text: String::new(), ..Default::default() };
+    properties.apply_format(original);
+    let mut inner = XmlWriter::new();
+    write_run_properties(&mut inner, &properties, None);
+    Some(format!(
+        "<w:rPrChange w:id=\"{id}\" w:author=\"{}\" w:date=\"{}\">{}</w:rPrChange>",
+        crate::xml::escape_attr(&revision.author),
+        crate::xml::escape_attr(if revision.date.is_empty() { "1970-01-01T00:00:00Z" } else { &revision.date }),
+        inner.finish()
+    ))
+}
+
+fn write_text_run(state: &mut DocxState, writer: &mut XmlWriter, run: &Run) {
+    let revision = run.revision.clone();
+    match revision.as_ref().map(|mark| mark.kind.as_str()) {
+        Some("delete") => {
+            let id = state.revision_id(&revision.as_ref().unwrap().id);
+            writer.raw(&format!(
+                "<w:del w:id=\"{id}\" w:author=\"{}\" w:date=\"{}\">",
+                crate::xml::escape_attr(&revision.as_ref().unwrap().author),
+                crate::xml::escape_attr(if revision.as_ref().unwrap().date.is_empty() { "1970-01-01T00:00:00Z" } else { &revision.as_ref().unwrap().date })
+            ));
+            write_run_content(state, writer, run, true);
+            writer.raw("</w:del>");
+        }
+        Some("insert") => {
+            let id = state.revision_id(&revision.as_ref().unwrap().id);
+            writer.raw(&format!(
+                "<w:ins w:id=\"{id}\" w:author=\"{}\" w:date=\"{}\">",
+                crate::xml::escape_attr(&revision.as_ref().unwrap().author),
+                crate::xml::escape_attr(if revision.as_ref().unwrap().date.is_empty() { "1970-01-01T00:00:00Z" } else { &revision.as_ref().unwrap().date })
+            ));
+            write_run_content(state, writer, run, false);
+            writer.raw("</w:ins>");
+        }
+        _ => write_run_content(state, writer, run, false),
+    }
+}
+
+fn write_run_content(state: &mut DocxState, writer: &mut XmlWriter, run: &Run, deleted: bool) {
+    if let Some(id) = &run.footnote {
+        if let Some(number) = state.footnote_ids.get(id).copied() {
+            writer.raw("<w:r><w:rPr><w:rStyle w:val=\"FootnoteReference\"/><w:vertAlign w:val=\"superscript\"/></w:rPr>");
+            writer.raw(&format!("<w:footnoteReference w:id=\"{number}\"/>"));
+            writer.raw("</w:r>");
+            return;
+        }
+    }
+    if let Some(id) = &run.endnote {
+        if let Some(number) = state.endnote_ids.get(id).copied() {
+            writer.raw("<w:r><w:rPr><w:rStyle w:val=\"EndnoteReference\"/><w:vertAlign w:val=\"superscript\"/></w:rPr>");
+            writer.raw(&format!("<w:endnoteReference w:id=\"{number}\"/>"));
+            writer.raw("</w:r>");
+            return;
+        }
+    }
+    if let Some(field) = &run.field {
+        write_field_run(state, writer, run, field);
+        return;
+    }
     // `{{page}}` / `{{pages}}` become real PAGE/NUMPAGES fields so Word and
     // LibreOffice keep them up to date instead of showing a static number.
     if run.text.contains("{{page}}") || run.text.contains("{{pages}}") {
@@ -342,32 +465,43 @@ fn write_text_run(writer: &mut XmlWriter, run: &Run) {
                 (Some(a), None) => (a, "{{page}}"),
                 (None, Some(b)) => (b, "{{pages}}"),
                 (None, None) => {
-                    write_plain_run(writer, run, remaining);
+                    write_plain_run(state, writer, run, remaining, deleted);
                     break;
                 }
             };
             if index > 0 {
-                write_plain_run(writer, run, &remaining[..index]);
+                write_plain_run(state, writer, run, &remaining[..index], deleted);
             }
-            write_field_run(writer, run, token == "{{pages}}");
+            let mut field_run = run.clone();
+            field_run.field = Some(FieldRef { kind: if token == "{{pages}}" { "pages".into() } else { "page".into() }, target: String::new(), cached: "1".into() });
+            write_field_run(state, writer, &field_run, field_run.field.as_ref().unwrap());
             remaining = &remaining[index + token.len()..];
         }
         return;
     }
-    write_plain_run(writer, run, &run.text);
+    write_plain_run(state, writer, run, &run.text, deleted);
 }
 
-fn write_plain_run(writer: &mut XmlWriter, run: &Run, text: &str) {
+fn write_plain_run(state: &mut DocxState, writer: &mut XmlWriter, run: &Run, text: &str, deleted: bool) {
     if text.is_empty() {
         return;
     }
+    let extra = if !deleted {
+        run.revision.as_ref().filter(|mark| mark.kind == "format").and_then(|mark| format_revision_xml(state, mark))
+    } else {
+        None
+    };
     writer.raw("<w:r>");
-    write_run_properties(writer, run);
+    write_run_properties(writer, run, extra.as_deref());
     let mut parts = text.split('\n').peekable();
     while let Some(part) = parts.next() {
-        writer.raw("<w:t xml:space=\"preserve\">");
+        if deleted {
+            writer.raw("<w:delText xml:space=\"preserve\">");
+        } else {
+            writer.raw("<w:t xml:space=\"preserve\">");
+        }
         writer.text(part);
-        writer.raw("</w:t>");
+        writer.raw(if deleted { "</w:delText>" } else { "</w:t>" });
         if parts.peek().is_some() {
             writer.raw("<w:br/>");
         }
@@ -375,45 +509,75 @@ fn write_plain_run(writer: &mut XmlWriter, run: &Run, text: &str) {
     writer.raw("</w:r>");
 }
 
-fn write_field_run(writer: &mut XmlWriter, run: &Run, total_pages: bool) {
-    let instruction = if total_pages { "NUMPAGES" } else { "PAGE" };
-    for (payload, is_field) in [
-        ("<w:fldChar w:fldCharType=\"begin\"/>".to_string(), false),
-        (format!("<w:instrText xml:space=\"preserve\"> {instruction} </w:instrText>"), false),
-        ("<w:fldChar w:fldCharType=\"separate\"/>".to_string(), false),
-        ("<w:t>1</w:t>".to_string(), true),
-        ("<w:fldChar w:fldCharType=\"end\"/>".to_string(), false),
-    ] {
-        writer.raw("<w:r>");
-        write_run_properties(writer, run);
-        writer.raw(&payload);
-        writer.raw("</w:r>");
-        let _ = is_field;
+fn field_instruction(field: &FieldRef) -> String {
+    match field.kind.as_str() {
+        "page" => "PAGE".into(),
+        "pages" => "NUMPAGES".into(),
+        "date" => "DATE".into(),
+        "time" => "TIME".into(),
+        "title" => "TITLE".into(),
+        "author" => "AUTHOR".into(),
+        "ref" | "bookmark" | "figure" | "table" => format!("REF {} \\h", field.target),
+        "refPage" => format!("PAGEREF {} \\h", field.target),
+        "footnote" => format!("NOTEREF {} \\f", field.target),
+        other => other.to_uppercase(),
     }
 }
 
-fn write_paragraph(writer: &mut XmlWriter, props: &ParaProps, runs: &[Run], rels: &mut Relationships) {
+fn write_field_run(state: &mut DocxState, writer: &mut XmlWriter, run: &Run, field: &FieldRef) {
+    let instruction = field_instruction(field);
+    let cached = if field.cached.is_empty() { "1" } else { field.cached.as_str() };
+    for payload in [
+        "<w:fldChar w:fldCharType=\"begin\"/>".to_string(),
+        format!("<w:instrText xml:space=\"preserve\"> {instruction} </w:instrText>"),
+        "<w:fldChar w:fldCharType=\"separate\"/>".to_string(),
+    ] {
+        writer.raw("<w:r>");
+        write_run_properties(writer, run, None);
+        writer.raw(&payload);
+        writer.raw("</w:r>");
+    }
+    let mut result = run.clone();
+    result.field = None;
+    result.text = cached.to_string();
+    write_run_content(state, writer, &result, false);
+    writer.raw("<w:r>");
+    write_run_properties(writer, run, None);
+    writer.raw("<w:fldChar w:fldCharType=\"end\"/>");
+    writer.raw("</w:r>");
+}
+
+fn write_paragraph(state: &mut DocxState, writer: &mut XmlWriter, props: &ParaProps, runs: &[Run], sect: Option<&str>) {
     writer.raw("<w:p>");
-    write_paragraph_properties(writer, props);
+    write_paragraph_properties(writer, props, sect);
     for run in runs {
+        let comment = run.comment.as_deref().and_then(|id| state.comment_id(id));
+        if let Some(comment) = comment {
+            writer.raw(&format!("<w:commentRangeStart w:id=\"{comment}\"/>"));
+        }
         if let Some(url) = &run.link {
-            let id = rels.add(REL_HYPERLINK, url, true);
+            let id = state.rels.add(REL_HYPERLINK, url, true);
             writer.raw(&format!("<w:hyperlink r:id=\"{id}\">"));
-            write_text_run(writer, run);
+            write_text_run(state, writer, run);
             writer.raw("</w:hyperlink>");
         } else {
-            write_text_run(writer, run);
+            write_text_run(state, writer, run);
+        }
+        if let Some(comment) = comment {
+            writer.raw(&format!("<w:commentRangeEnd w:id=\"{comment}\"/>"));
+            writer.raw(&format!("<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"{comment}\"/></w:r>"));
         }
     }
     writer.raw("</w:p>");
 }
 
-fn write_image(writer: &mut XmlWriter, image: &ImageData, width_pt: f64, height_pt: f64, rels: &mut Relationships, media: &mut Media, id_counter: &mut usize) {
-    let Some(target) = media.add(image) else {
+fn write_image(state: &mut DocxState, writer: &mut XmlWriter, image: &ImageData, width_pt: f64, height_pt: f64) {
+    let Some(target) = state.media.add(image) else {
         return;
     };
-    let id = rels.add(REL_IMAGE, &target, false);
-    *id_counter += 1;
+    let id = state.rels.add(REL_IMAGE, &target, false);
+    state.id_counter += 1;
+    let id_counter = state.id_counter;
     let name = if image.name.is_empty() { format!("Image {}", id_counter) } else { image.name.clone() };
     let width = if width_pt > 1.0 { width_pt } else { 320.0 };
     let height = if height_pt > 1.0 { height_pt } else { 200.0 };
@@ -445,7 +609,7 @@ fn write_image(writer: &mut XmlWriter, image: &ImageData, width_pt: f64, height_
     writer.raw("</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>");
 }
 
-fn write_table(writer: &mut XmlWriter, table: &TableData, rels: &mut Relationships, media: &mut Media, id_counter: &mut usize, depth: usize) {
+fn write_table(state: &mut DocxState, writer: &mut XmlWriter, table: &TableData, depth: usize) {
     if depth > 4 {
         return;
     }
@@ -515,10 +679,10 @@ fn write_table(writer: &mut XmlWriter, table: &TableData, rels: &mut Relationshi
             }
             writer.raw("</w:tcPr>");
             if cell.blocks.is_empty() {
-                write_paragraph(writer, &ParaProps::default(), &[], rels);
+                write_paragraph(state, writer, &ParaProps::default(), &[], None);
             } else {
                 for block in &cell.blocks {
-                    write_block(writer, block, rels, media, id_counter, depth + 1);
+                    write_block(state, writer, block, depth + 1);
                 }
             }
             writer.raw("</w:tc>");
@@ -530,11 +694,11 @@ fn write_table(writer: &mut XmlWriter, table: &TableData, rels: &mut Relationshi
     writer.raw("<w:p/>");
 }
 
-fn write_block(writer: &mut XmlWriter, block: &Block, rels: &mut Relationships, media: &mut Media, id_counter: &mut usize, depth: usize) {
+fn write_block(state: &mut DocxState, writer: &mut XmlWriter, block: &Block, depth: usize) {
     match block {
-        Block::Paragraph { props, runs } => write_paragraph(writer, props, runs, rels),
-        Block::Table { table } => write_table(writer, table, rels, media, id_counter, depth),
-        Block::Image { image, width_pt, height_pt, .. } => write_image(writer, image, *width_pt, *height_pt, rels, media, id_counter),
+        Block::Paragraph { props, runs } => write_paragraph(state, writer, props, runs, None),
+        Block::Table { table } => write_table(state, writer, table, depth),
+        Block::Image { image, width_pt, height_pt, .. } => write_image(state, writer, image, *width_pt, *height_pt),
         Block::PageBreak => {
             writer.raw("<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>");
         }
@@ -546,35 +710,109 @@ fn write_block(writer: &mut XmlWriter, block: &Block, rels: &mut Relationships, 
             // editor; Word will not refresh them, which the export warns about.
             for entry in entries {
                 let (props, runs) = crate::layout::toc_entry_line(entry);
-                write_paragraph(writer, &props, &runs, rels);
+                write_paragraph(state, writer, &props, &runs, None);
             }
+        }
+        // Section breaks are emitted by `write_docx`, which owns the section
+        // plan; a break inside a table cell degrades to a page break.
+        Block::SectionBreak { .. } => {
+            writer.raw("<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>");
         }
     }
 }
 
-fn write_head_foot(blocks: &[Block], rels: &mut Relationships, media: &mut Media, id_counter: &mut usize) -> String {
+fn write_head_foot(state: &mut DocxState, blocks: &[Block], is_header: bool) -> String {
     let mut writer = XmlWriter::new();
     writer.declaration();
-    writer.raw(&format!("<w:hdr {NS_DECL}>"));
+    writer.raw(&format!("<w:{} {NS_DECL}>", if is_header { "hdr" } else { "ftr" }));
     if blocks.is_empty() {
         writer.raw("<w:p/>");
     }
     for block in blocks {
-        write_block(&mut writer, block, rels, media, id_counter, 0);
+        write_block(state, &mut writer, block, 0);
     }
-    writer.raw("</w:hdr>");
+    writer.raw(if is_header { "</w:hdr>" } else { "</w:ftr>" });
     writer.finish()
 }
 
-fn write_footer(blocks: &[Block], rels: &mut Relationships, media: &mut Media, id_counter: &mut usize) -> String {
-    let mut writer = XmlWriter::new();
-    writer.declaration();
-    writer.raw(&format!("<w:ftr {NS_DECL}>"));
-    for block in blocks {
-        write_block(&mut writer, block, rels, media, id_counter, 0);
+/// The `w:sectPr` payload for one section, registering header/footer parts.
+fn section_properties_xml(state: &mut DocxState, section: &SectionProps, parts: &mut DocxParts) -> String {
+    let mut out = String::new();
+    let mut add_part = |state: &mut DocxState, parts: &mut DocxParts, blocks: &[Block], is_header: bool, kind: &str| -> Option<String> {
+        if blocks.is_empty() {
+            return None;
+        }
+        let index = if is_header { parts.headers.len() } else { parts.footers.len() } + 1;
+        let name = format!("{}{}.xml", if is_header { "header" } else { "footer" }, index);
+        let xml = write_head_foot(state, blocks, is_header);
+        let relationship = state.rels.add(
+            if is_header {
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header"
+            } else {
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer"
+            },
+            &name,
+            false,
+        );
+        if is_header {
+            parts.headers.push(name.clone());
+        } else {
+            parts.footers.push(name.clone());
+        }
+        parts.part_xml.push((name.clone(), xml));
+        let tag = if is_header { "headerReference" } else { "footerReference" };
+        out.push_str(&format!("<w:{tag} w:type=\"{kind}\" r:id=\"{relationship}\"/>"));
+        Some(name)
+    };
+    add_part(state, parts, &section.header, true, "default");
+    add_part(state, parts, &section.first_header, true, "first");
+    add_part(state, parts, &section.even_header, true, "even");
+    add_part(state, parts, &section.footer, false, "default");
+    add_part(state, parts, &section.first_footer, false, "first");
+    add_part(state, parts, &section.even_footer, false, "even");
+    if section.different_first_page {
+        out.push_str("<w:titlePg/>");
     }
-    writer.raw("</w:ftr>");
-    writer.finish()
+    if section.different_odd_even {
+        out.push_str("<w:evenAndOddHeaders/>");
+    }
+    match section.start.as_str() {
+        "continuous" => out.push_str("<w:type w:val=\"continuous\"/>"),
+        "oddPage" => out.push_str("<w:type w:val=\"oddPage\"/>"),
+        "evenPage" => out.push_str("<w:type w:val=\"evenPage\"/>"),
+        _ => {}
+    }
+    out.push_str(&format!(
+        "<w:pgSz w:w=\"{}\" w:h=\"{}\"{} />",
+        twips(section.page.width_pt),
+        twips(section.page.height_pt),
+        if section.page.orientation == "landscape" { " w:orient=\"landscape\"" } else { "" }
+    ));
+    out.push_str(&format!(
+        "<w:pgMar w:top=\"{}\" w:right=\"{}\" w:bottom=\"{}\" w:left=\"{}\" w:header=\"{}\" w:footer=\"{}\" w:gutter=\"0\"/>",
+        twips(section.page.margin_top_pt),
+        twips(section.page.margin_right_pt),
+        twips(section.page.margin_bottom_pt),
+        twips(section.page.margin_left_pt),
+        twips(section.page.header_distance_pt),
+        twips(section.page.footer_distance_pt)
+    ));
+    let columns = section.columns.max(section.page.columns.max(1));
+    if columns > 1 {
+        out.push_str(&format!("<w:cols w:num=\"{}\" w:space=\"{}\"/>", columns, twips(section.page.column_spacing_pt)));
+    } else {
+        out.push_str("<w:cols w:space=\"708\"/>");
+    }
+    out
+}
+
+/// Header/footer parts produced while planning the sections.
+#[derive(Default)]
+struct DocxParts {
+    headers: Vec<String>,
+    footers: Vec<String>,
+    part_xml: Vec<(String, String)>,
+    even_odd: bool,
 }
 
 fn write_styles(document: &TextDocument) -> String {
@@ -671,6 +909,13 @@ fn write_styles(document: &TextDocument) -> String {
         }
         writer.raw("</w:rPr></w:style>");
     }
+    // Character and paragraph styles Word needs for notes and comments.
+    writer.raw("<w:style w:type=\"character\" w:styleId=\"FootnoteReference\"><w:name w:val=\"footnote reference\"/><w:uiPriority w:val=\"99\"/><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr></w:style>");
+    writer.raw("<w:style w:type=\"character\" w:styleId=\"EndnoteReference\"><w:name w:val=\"endnote reference\"/><w:uiPriority w:val=\"99\"/><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr></w:style>");
+    writer.raw("<w:style w:type=\"paragraph\" w:styleId=\"FootnoteText\"><w:name w:val=\"footnote text\"/><w:uiPriority w:val=\"99\"/><w:pPr><w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr><w:rPr><w:sz w:val=\"18\"/></w:rPr></w:style>");
+    writer.raw("<w:style w:type=\"paragraph\" w:styleId=\"EndnoteText\"><w:name w:val=\"endnote text\"/><w:uiPriority w:val=\"99\"/><w:pPr><w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr><w:rPr><w:sz w:val=\"18\"/></w:rPr></w:style>");
+    writer.raw("<w:style w:type=\"character\" w:styleId=\"CommentReference\"><w:name w:val=\"annotation reference\"/><w:uiPriority w:val=\"99\"/><w:rPr><w:sz w:val=\"16\"/></w:rPr></w:style>");
+    writer.raw("<w:style w:type=\"paragraph\" w:styleId=\"CommentText\"><w:name w:val=\"annotation text\"/><w:uiPriority w:val=\"99\"/><w:pPr><w:spacing w:after=\"0\"/></w:pPr></w:style>");
     writer.raw("</w:styles>");
     writer.finish()
 }
@@ -708,85 +953,199 @@ fn write_numbering() -> String {
     writer.finish()
 }
 
-fn write_settings() -> String {
+fn write_settings(even_and_odd_headers: bool, track_revisions: bool) -> String {
     let mut writer = XmlWriter::new();
     writer.declaration();
     writer.raw(&format!("<w:settings {NS_DECL}>"));
     writer.raw("<w:zoom w:percent=\"100\"/><w:defaultTabStop w:val=\"708\"/><w:compat/>");
+    if even_and_odd_headers {
+        writer.raw("<w:evenAndOddHeaders/>");
+    }
+    if track_revisions {
+        writer.raw("<w:trackRevisions/>");
+    }
     writer.raw("</w:settings>");
     writer.finish()
 }
 
+/// The `word/footnotes.xml` or `word/endnotes.xml` part, when notes exist.
+fn write_notes(state: &mut DocxState, document: &TextDocument, endnotes: bool) -> Option<String> {
+    let ids = if endnotes { state.endnote_ids.clone() } else { state.footnote_ids.clone() };
+    if ids.is_empty() {
+        return None;
+    }
+    let (notes, item, root, text_style, reference_style) = if endnotes {
+        (&document.endnotes, "endnote", "w:endnotes", "EndnoteText", "EndnoteReference")
+    } else {
+        (&document.footnotes, "footnote", "w:footnotes", "FootnoteText", "FootnoteReference")
+    };
+    let mut writer = XmlWriter::new();
+    writer.declaration();
+    writer.raw(&format!("<{root} {NS_DECL}>"));
+    writer.raw(&format!(
+        "<w:{item} w:type=\"separator\" w:id=\"-1\"><w:p><w:pPr><w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr><w:r><w:separator/></w:r></w:p></w:{item}>"
+    ));
+    writer.raw(&format!(
+        "<w:{item} w:type=\"continuationSeparator\" w:id=\"0\"><w:p><w:pPr><w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:{item}>"
+    ));
+    for note in notes {
+        let Some(number) = ids.get(&note.id).copied() else { continue };
+        writer.raw(&format!("<w:{item} w:id=\"{number}\">"));
+        writer.raw(&format!("<w:p><w:pPr><w:pStyle w:val=\"{text_style}\"/></w:pPr>"));
+        writer.raw("<w:r><w:rPr>");
+        writer.raw(&format!("<w:rStyle w:val=\"{reference_style}\"/><w:vertAlign w:val=\"superscript\"/>"));
+        writer.raw("</w:rPr>");
+        if note.marker.is_empty() {
+            writer.raw(&format!("<w:{item}Ref/>"));
+        } else {
+            writer.raw(&format!("<w:t xml:space=\"preserve\">{}</w:t>", crate::xml::escape_text(&note.marker)));
+        }
+        writer.raw("</w:r><w:r><w:t xml:space=\"preserve\"> </w:t></w:r>");
+        for run in &note.runs {
+            if run.text.is_empty() {
+                continue;
+            }
+            let mut body = run.clone();
+            body.footnote = None;
+            body.endnote = None;
+            body.field = None;
+            write_text_run(state, &mut writer, &body);
+        }
+        writer.raw("</w:p>");
+        writer.raw(&format!("</w:{item}>"));
+    }
+    writer.raw(&format!("</{root}>"));
+    Some(writer.finish())
+}
+
+/// The `word/comments.xml` part, when the document has comments.
+fn write_comments(state: &mut DocxState, document: &TextDocument) -> Option<String> {
+    if state.comment_ids.is_empty() || document.comments.is_empty() {
+        return None;
+    }
+    let mut writer = XmlWriter::new();
+    writer.declaration();
+    writer.raw(&format!("<w:comments {NS_DECL}>"));
+    for comment in &document.comments {
+        let Some(number) = state.comment_ids.get(&comment.id).copied() else { continue };
+        let date = if comment.created.is_empty() { "1970-01-01T00:00:00Z" } else { comment.created.as_str() };
+        writer.raw(&format!(
+            "<w:comment w:id=\"{number}\" w:author=\"{}\" w:date=\"{}\" w:initials=\"{}\">",
+            crate::xml::escape_attr(&comment.author),
+            crate::xml::escape_attr(date),
+            crate::xml::escape_attr(&initials(&comment.author))
+        ));
+        writer.raw("<w:p><w:pPr><w:pStyle w:val=\"CommentText\"/></w:pPr><w:r><w:annotationRef/></w:r>");
+        writer.raw(&format!("<w:r><w:t xml:space=\"preserve\">{}</w:t></w:r></w:p>", crate::xml::escape_text(&comment.text)));
+        for reply in &comment.replies {
+            writer.raw("<w:p><w:pPr><w:pStyle w:val=\"CommentText\"/></w:pPr>");
+            writer.raw(&format!(
+                "<w:r><w:t xml:space=\"preserve\">Re: {}: {}</w:t></w:r></w:p>",
+                crate::xml::escape_text(&reply.author),
+                crate::xml::escape_text(&reply.text)
+            ));
+        }
+        writer.raw("</w:comment>");
+    }
+    writer.raw("</w:comments>");
+    Some(writer.finish())
+}
+
+fn initials(author: &str) -> String {
+    author
+        .split_whitespace()
+        .filter_map(|word| word.chars().next())
+        .take(3)
+        .collect::<String>()
+        .to_uppercase()
+}
+
 pub fn write_docx(document: &TextDocument) -> OfficeResult<Vec<u8>> {
-    let mut rels = Relationships::new(4);
-    let mut media = Media::default();
-    let mut id_counter = 0usize;
+    let mut state = DocxState::new();
 
-    let has_header = !document.header.is_empty();
-    let has_footer = true; // page-number footer is always written
-    let header_id = if has_header { Some(rels.add("http://schemas.openxmlformats.org/officeDocument/2006/relationships/header", "header1.xml", false)) } else { None };
-    let footer_id = Some(rels.add("http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer", "footer1.xml", false));
+    // Comments are exported only when they exist in the model; the id map also
+    // decides which `w:commentReference` runs are written.
+    for comment in &document.comments {
+        let number = state.comment_ids.len() as u32 + 1;
+        state.comment_ids.insert(comment.id.clone(), number);
+    }
+    // Footnote/endnote numbers follow reference order, so numbering stays
+    // correct when a note is inserted in the middle.
+    for id in document.footnote_order() {
+        state.note_id("footnote", &id);
+    }
+    for id in document.endnote_order() {
+        state.note_id("endnote", &id);
+    }
 
-    let header_xml = if has_header { Some(write_head_foot(&document.header, &mut rels, &mut media, &mut id_counter)) } else { None };
-    let footer_xml = Some(write_footer(&document.footer, &mut rels, &mut media, &mut id_counter));
+    // Plan the sections: the document-level page/header/footer fields are the
+    // first section; each SectionBreak starts the next one.
+    let sections = document.all_sections();
+    let mut parts = DocxParts::default();
+    let mut section_xml: Vec<String> = Vec::new();
+    for section in &sections {
+        section_xml.push(section_properties_xml(&mut state, section, &mut parts));
+    }
+    parts.even_odd = sections.iter().any(|section| section.different_odd_even)
+        || sections.iter().any(|section| !section.even_header.is_empty() || !section.even_footer.is_empty());
 
     let mut body = XmlWriter::new();
+    let mut current = 0usize;
     for block in &document.blocks {
-        write_block(&mut body, block, &mut rels, &mut media, &mut id_counter, 0);
+        if matches!(block, Block::SectionBreak { .. }) {
+            // Word stores the properties of the section that just ended in the
+            // last paragraph of that section.
+            let sect = section_xml.get(current).cloned().unwrap_or_default();
+            write_paragraph(&mut state, &mut body, &ParaProps::default(), &[], Some(&format!("<w:sectPr>{sect}</w:sectPr>")));
+            current += 1;
+            continue;
+        }
+        write_block(&mut state, &mut body, block, 0);
     }
-
-    let page = &document.page;
-    let mut sect = String::new();
-    if let Some(id) = &header_id {
-        sect.push_str(&format!("<w:headerReference w:type=\"default\" r:id=\"{id}\"/>"));
-    }
-    if let Some(id) = &footer_id {
-        sect.push_str(&format!("<w:footerReference w:type=\"default\" r:id=\"{id}\"/>"));
-    }
-    if page.different_first_page {
-        sect.push_str("<w:titlePg/>");
-    }
-    sect.push_str(&format!(
-        "<w:pgSz w:w=\"{}\" w:h=\"{}\"{} />",
-        twips(page.width_pt),
-        twips(page.height_pt),
-        if page.orientation == "landscape" { " w:orient=\"landscape\"" } else { "" }
-    ));
-    sect.push_str(&format!(
-        "<w:pgMar w:top=\"{}\" w:right=\"{}\" w:bottom=\"{}\" w:left=\"{}\" w:header=\"{}\" w:footer=\"{}\" w:gutter=\"0\"/>",
-        twips(page.margin_top_pt),
-        twips(page.margin_right_pt),
-        twips(page.margin_bottom_pt),
-        twips(page.margin_left_pt),
-        twips(page.header_distance_pt),
-        twips(page.footer_distance_pt)
-    ));
-    if page.columns > 1 {
-        sect.push_str(&format!("<w:cols w:num=\"{}\" w:space=\"{}\"/>", page.columns, twips(page.column_spacing_pt)));
-    } else {
-        sect.push_str("<w:cols w:space=\"708\"/>");
-    }
-    body.raw(&format!("<w:sectPr>{sect}</w:sectPr>"));
+    let last = section_xml.last().cloned().unwrap_or_default();
+    body.raw(&format!("<w:sectPr>{last}</w:sectPr>"));
 
     let document_xml = format!("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:document {NS_DECL}><w:body>{}</w:body></w:document>", body.finish());
 
     let styles_xml = write_styles(document);
     let numbering_xml = write_numbering();
-    let settings_xml = write_settings();
+    let settings_xml = write_settings(parts.even_odd, document.track_changes);
+
+    // Notes and comments parts are written after the body so every referenced
+    // note and comment has been assigned its number.
+    let footnotes_xml = write_notes(&mut state, document, false);
+    let endnotes_xml = write_notes(&mut state, document, true);
+    let comments_xml = write_comments(&mut state, document);
+
+    if let Some(xml) = &footnotes_xml {
+        state.rels.add("http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes", "footnotes.xml", false);
+        let _ = xml;
+    }
+    if let Some(xml) = &endnotes_xml {
+        state.rels.add("http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes", "endnotes.xml", false);
+        let _ = xml;
+    }
+    if let Some(xml) = &comments_xml {
+        state.rels.add("http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments", "comments.xml", false);
+        let _ = xml;
+    }
 
     // document.xml.rels: styles/numbering/settings first (rId1..3), then the rest.
     let mut entries = vec![
-        ("rId1".to_string(), format!("http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles|styles.xml"), false),
-        ("rId2".to_string(), format!("http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering|numbering.xml"), false),
-        ("rId3".to_string(), format!("http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings|settings.xml"), false),
+        ("rId1".to_string(), "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles|styles.xml".to_string(), false),
+        ("rId2".to_string(), "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering|numbering.xml".to_string(), false),
+        ("rId3".to_string(), "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings|settings.xml".to_string(), false),
     ];
-    entries.extend(rels.entries.iter().cloned());
+    entries.extend(state.rels.entries.iter().cloned());
     let mut rels_writer = Relationships::new(0);
     rels_writer.entries = entries;
     let document_rels = rels_writer.xml();
 
     let mut zip = ZipWriter::new();
-    zip.add_text("[Content_Types].xml", &content_types(has_header, has_footer));
+    zip.add_text(
+        "[Content_Types].xml",
+        &content_types(&parts.headers, &parts.footers, footnotes_xml.is_some(), endnotes_xml.is_some(), comments_xml.is_some()),
+    );
     zip.add_text("_rels/.rels", &root_relationships());
     zip.add_text("docProps/core.xml", &core_properties(document));
     zip.add_text("docProps/app.xml", &app_properties(document));
@@ -795,13 +1154,20 @@ pub fn write_docx(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     zip.add_text("word/styles.xml", &styles_xml);
     zip.add_text("word/numbering.xml", &numbering_xml);
     zip.add_text("word/settings.xml", &settings_xml);
-    if let Some(xml) = header_xml {
-        zip.add_text("word/header1.xml", &xml);
+    // Header/footer parts in the order they were planned and referenced.
+    for (name, xml) in &parts.part_xml {
+        zip.add_text(&format!("word/{name}"), xml);
     }
-    if let Some(xml) = footer_xml {
-        zip.add_text("word/footer1.xml", &xml);
+    if let Some(xml) = footnotes_xml {
+        zip.add_text("word/footnotes.xml", &xml);
     }
-    for (name, data) in &media.entries {
+    if let Some(xml) = endnotes_xml {
+        zip.add_text("word/endnotes.xml", &xml);
+    }
+    if let Some(xml) = comments_xml {
+        zip.add_text("word/comments.xml", &xml);
+    }
+    for (name, data) in &state.media.entries {
         zip.add(&format!("word/{name}"), data);
     }
     Ok(zip.finish())
@@ -835,6 +1201,20 @@ struct PartContext {
     warnings: Vec<String>,
     /// True while the cached result of a PAGE/NUMPAGES field is being skipped.
     field_skip: bool,
+    /// Numeric revision counter while `w:ins` / `w:del` wrappers are read.
+    revision_seq: u32,
+    /// Revision applied to runs read inside the current `w:ins` / `w:del`.
+    pending_revision: Option<RevisionMark>,
+    /// Comment id opened by the current `w:commentRangeStart`.
+    pending_comment: Option<String>,
+    /// A non page-number field being captured (`REF`, `DATE`, ...).
+    field_capture: Option<FieldRef>,
+}
+
+impl PartContext {
+    fn new(rels: HashMap<String, RelLink>) -> Self {
+        Self { rels, warnings: Vec::new(), field_skip: false, revision_seq: 0, pending_revision: None, pending_comment: None, field_capture: None }
+    }
 }
 
 fn read_relationships(reader: &ZipReader, part: &str) -> HashMap<String, RelLink> {
@@ -1045,6 +1425,23 @@ fn read_run_properties(node: Option<&XmlNode>) -> Run {
             run.subscript = true;
         }
     }
+    // Tracked formatting change: `w:rPrChange` carries the formatting the run
+    // had before the change.
+    if let Some(change) = properties.child("rPrChange") {
+        let mut original = Run::default();
+        if let Some(inner) = change.child("rPr") {
+            original = read_run_properties(Some(inner));
+        }
+        let author = change.attr_any_ns("author").unwrap_or("Unknown").to_string();
+        let date = change.attr_any_ns("date").unwrap_or_default().to_string();
+        run.revision = Some(RevisionMark {
+            id: format!("format-{author}-{date}"),
+            kind: "format".into(),
+            author,
+            date,
+            original: Some(original.format_snapshot()),
+        });
+    }
     run
 }
 
@@ -1085,6 +1482,50 @@ fn read_image_block(node: &XmlNode, rels: &HashMap<String, RelLink>, reader: &Zi
     Some(Block::Image { image, width_pt, height_pt, align: "center".into(), caption: String::new() })
 }
 
+/// Maps a Word field instruction onto the model field kinds we understand.
+fn map_field_instruction(instruction: &str, cached: &str) -> Option<FieldRef> {
+    let trimmed = instruction.trim().trim_start_matches('=').trim();
+    let upper = trimmed.to_uppercase();
+    let kind = |kind: &str, target: String| FieldRef { kind: kind.to_string(), target, cached: cached.to_string() };
+    if upper.starts_with("NUMPAGES") {
+        return Some(kind("pages", String::new()));
+    }
+    if upper.starts_with("PAGEREF ") {
+        return Some(kind("refPage", field_argument(trimmed, 8)));
+    }
+    if upper.starts_with("PAGE") {
+        return Some(kind("page", String::new()));
+    }
+    if upper.starts_with("NOTEREF ") {
+        return Some(kind("footnote", field_argument(trimmed, 9)));
+    }
+    if upper.starts_with("REF ") {
+        return Some(kind("ref", field_argument(trimmed, 4)));
+    }
+    if upper.starts_with("DATE") {
+        return Some(kind("date", String::new()));
+    }
+    if upper.starts_with("TIME") {
+        return Some(kind("time", String::new()));
+    }
+    if upper.starts_with("TITLE") {
+        return Some(kind("title", String::new()));
+    }
+    if upper.starts_with("AUTHOR") {
+        return Some(kind("author", String::new()));
+    }
+    None
+}
+
+fn field_argument(instruction: &str, prefix_len: usize) -> String {
+    instruction[prefix_len.min(instruction.len())..]
+        .trim()
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_string()
+}
+
 fn read_runs(node: &XmlNode, context: &mut PartContext, reader: &ZipReader, runs: &mut Vec<Run>, blocks: &mut Vec<Block>, first_break: &mut bool) {
     for child in &node.children {
         match child.local_name() {
@@ -1094,11 +1535,21 @@ fn read_runs(node: &XmlNode, context: &mut PartContext, reader: &ZipReader, runs
                 for part in &child.children {
                     match part.local_name() {
                         "t" => {
+                            if let Some(field) = &mut context.field_capture {
+                                field.cached.push_str(&part.deep_text());
+                                continue;
+                            }
                             if context.field_skip {
                                 continue;
                             }
                             run.text.push_str(&part.deep_text());
                             has_text = true;
+                        }
+                        "delText" => {
+                            if !context.field_skip {
+                                run.text.push_str(&part.deep_text());
+                                has_text = true;
+                            }
                         }
                         "tab" => {
                             run.text.push('\t');
@@ -1129,26 +1580,64 @@ fn read_runs(node: &XmlNode, context: &mut PartContext, reader: &ZipReader, runs
                             }
                         }
                         "instrText" => {
-                            let instruction = part.deep_text().to_uppercase();
-                            if instruction.contains("NUMPAGES") {
-                                runs.push(Run { text: "{{pages}}".into(), ..run.clone() });
-                                context.field_skip = true;
-                            } else if instruction.contains("PAGE") {
-                                runs.push(Run { text: "{{page}}".into(), ..run.clone() });
-                                context.field_skip = true;
-                            } else {
-                                context.warnings.push("Fields (other than page numbers) are imported as plain text.".into());
+                            let instruction = part.deep_text();
+                            match map_field_instruction(&instruction, "") {
+                                Some(field) if field.kind == "page" || field.kind == "pages" => {
+                                    // Keep the token the editors already render.
+                                    runs.push(Run { text: if field.kind == "pages" { "{{pages}}".into() } else { "{{page}}".into() }, ..run.clone() });
+                                    context.field_skip = true;
+                                }
+                                Some(field) => {
+                                    context.field_capture = Some(field);
+                                    context.field_skip = true;
+                                }
+                                None => {
+                                    context.warnings.push("A field this build does not understand was imported as plain text.".into());
+                                    context.field_skip = true;
+                                }
                             }
                         }
                         "fldChar" => {
-                            if part.attr_any_ns("fldCharType") == Some("end") {
+                            let kind = part.attr_any_ns("fldCharType");
+                            if kind == Some("end") {
+                                if let Some(field) = context.field_capture.take() {
+                                    runs.push(Run { field: Some(field), ..run.clone() });
+                                }
                                 context.field_skip = false;
                             }
                         }
+                        "footnoteReference" | "endnoteReference" => {
+                            let is_endnote = part.local_name() == "endnoteReference";
+                            if let Some(id) = part.attr_any_ns("id").and_then(|value| value.parse::<u32>().ok()) {
+                                if id > 0 {
+                                    if !run.text.is_empty() {
+                                        runs.push(run.clone());
+                                        run.text.clear();
+                                    }
+                                    let mut note_run = run.clone();
+                                    if is_endnote {
+                                        note_run.endnote = Some(format!("en{id}"));
+                                    } else {
+                                        note_run.footnote = Some(format!("fn{id}"));
+                                    }
+                                    runs.push(note_run);
+                                    has_text = true;
+                                }
+                            }
+                        }
+                        "commentReference" => {}
                         _ => {}
                     }
                 }
                 if has_text || !run.text.is_empty() {
+                    if run.revision.is_none() {
+                        run.revision = context.pending_revision.clone();
+                    }
+                    if run.comment.is_none() {
+                        if let Some(comment) = context.pending_comment.take() {
+                            run.comment = Some(comment);
+                        }
+                    }
                     runs.push(run);
                 }
             }
@@ -1164,27 +1653,51 @@ fn read_runs(node: &XmlNode, context: &mut PartContext, reader: &ZipReader, runs
                     runs.push(run);
                 }
             }
-            "smartTag" | "ins" | "sdt" | "sdtContent" => {
+            "smartTag" | "sdt" | "sdtContent" => {
                 read_runs(child, context, reader, runs, blocks, first_break);
             }
-            "del" | "delText" => {}
-            "commentRangeStart" | "commentRangeEnd" | "commentReference" | "footnoteReference" | "endnoteReference" => {
-                context.warnings.push("Comments and notes are not imported.".into());
+            "ins" | "del" => {
+                let kind = if child.local_name() == "del" { "delete" } else { "insert" };
+                let previous = context.pending_revision.take();
+                context.revision_seq += 1;
+                let revision = RevisionMark {
+                    id: format!("rev{}", context.revision_seq),
+                    kind: kind.into(),
+                    author: child.attr_any_ns("author").unwrap_or("Unknown").to_string(),
+                    date: child.attr_any_ns("date").unwrap_or_default().to_string(),
+                    original: None,
+                };
+                context.pending_revision = Some(revision);
+                read_runs(child, context, reader, runs, blocks, first_break);
+                context.pending_revision = previous;
             }
+            "commentRangeStart" => {
+                if let Some(id) = child.attr_any_ns("id") {
+                    context.pending_comment = Some(id.to_string());
+                }
+            }
+            "commentRangeEnd" | "commentReference" => {}
             "fldSimple" => {
-                let instruction = child.attr_any_ns("instr").unwrap_or_default().to_uppercase();
-                if instruction.contains("NUMPAGES") {
-                    runs.push(Run { text: "{{pages}}".into(), ..Default::default() });
-                    continue;
+                let instruction = child.attr_any_ns("instr").unwrap_or_default().to_string();
+                match map_field_instruction(&instruction, "") {
+                    Some(field) if field.kind == "page" || field.kind == "pages" => {
+                        runs.push(Run { text: if field.kind == "pages" { "{{pages}}".into() } else { "{{page}}".into() }, ..Default::default() });
+                    }
+                    Some(mut field) => {
+                        let mut inner_runs = Vec::new();
+                        let saved_skip = context.field_skip;
+                        context.field_skip = false;
+                        read_runs(child, context, reader, &mut inner_runs, blocks, first_break);
+                        context.field_skip = saved_skip;
+                        field.cached = inner_runs.iter().map(|run| run.text.clone()).collect::<Vec<_>>().join("");
+                        runs.push(Run { field: Some(field), ..Default::default() });
+                    }
+                    None => {
+                        let mut inner_runs = Vec::new();
+                        read_runs(child, context, reader, &mut inner_runs, blocks, first_break);
+                        runs.extend(inner_runs);
+                    }
                 }
-                if instruction.contains("PAGE") {
-                    runs.push(Run { text: "{{page}}".into(), ..Default::default() });
-                    continue;
-                }
-                context.warnings.push("Fields (other than page numbers) are imported as plain text.".into());
-                let mut inner_runs = Vec::new();
-                read_runs(child, context, reader, &mut inner_runs, blocks, first_break);
-                runs.extend(inner_runs);
             }
             _ => {}
         }
@@ -1196,6 +1709,18 @@ fn flush_paragraph(runs: &mut Vec<Run>, blocks: &mut Vec<Block>, props: Option<P
         return;
     }
     blocks.push(Block::Paragraph { props: props.unwrap_or_default(), runs: std::mem::take(runs) });
+}
+
+/// True when a block (or anything inside it) carries a pending revision.
+fn block_has_revisions(block: &Block) -> bool {
+    match block {
+        Block::Paragraph { runs, .. } => runs.iter().any(|run| run.revision.is_some()),
+        Block::Table { table } => table
+            .rows
+            .iter()
+            .any(|row| row.cells.iter().any(|cell| cell.blocks.iter().any(block_has_revisions))),
+        _ => false,
+    }
 }
 
 fn read_paragraph(node: &XmlNode, context: &mut PartContext, reader: &ZipReader, numbering: &Numbering) -> Vec<Block> {
@@ -1337,8 +1862,18 @@ fn read_table(node: &XmlNode, context: &mut PartContext, reader: &ZipReader, num
     }
 }
 
-fn read_section(node: &XmlNode, document: &mut TextDocument) {
-    let mut page = PageSetup::default();
+/// Parses a `w:sectPr` into the model's section properties, resolving the
+/// header/footer parts it references.
+fn parse_section_props(
+    node: &XmlNode,
+    rels: &HashMap<String, RelLink>,
+    reader: &ZipReader,
+    numbering: &Numbering,
+    part_dir: &str,
+    warnings: &mut Vec<String>,
+) -> SectionProps {
+    let mut section = SectionProps::default();
+    let page = &mut section.page;
     if let Some(size) = node.child("pgSz") {
         let width = size.attr_any_ns("w").and_then(parse_f64).unwrap_or(11906.0) / 20.0;
         let height = size.attr_any_ns("h").and_then(parse_f64).unwrap_or(16838.0) / 20.0;
@@ -1367,24 +1902,63 @@ fn read_section(node: &XmlNode, document: &mut TextDocument) {
         page.column_spacing_pt = columns.attr_any_ns("space").and_then(parse_f64).unwrap_or(708.0) / 20.0;
     }
     page.different_first_page = node.child("titlePg").is_some();
-    document.page = page;
+    section.different_first_page = page.different_first_page;
+    section.different_odd_even = node.child("evenAndOddHeaders").is_some();
+    section.columns = page.columns;
+    section.start = match node.child("type").and_then(|node| node.attr_any_ns("val")) {
+        Some("continuous") => "continuous".into(),
+        Some("oddPage") => "oddPage".into(),
+        Some("evenPage") => "evenPage".into(),
+        _ => "newPage".into(),
+    };
+    for key in ["headerReference", "footerReference"] {
+        for reference in node.children_named(key) {
+            let Some(id) = reference.attr_any_ns("id") else { continue };
+            let Some(link) = rels.get(id) else { continue };
+            let kind = reference.attr_any_ns("type").unwrap_or("default");
+            let path = if link.target.trim_start_matches('/').starts_with("word/") {
+                link.target.trim_start_matches('/').to_string()
+            } else {
+                format!("{part_dir}/{}", link.target.trim_start_matches("./"))
+            };
+            let blocks = read_part_blocks(reader, &path, numbering, warnings);
+            let is_header = key.starts_with("header");
+            let slot = match (is_header, kind) {
+                (true, "first") => &mut section.first_header,
+                (true, "even") => &mut section.even_header,
+                (true, _) => &mut section.header,
+                (false, "first") => &mut section.first_footer,
+                (false, "even") => &mut section.even_footer,
+                (false, _) => &mut section.footer,
+            };
+            if slot.is_empty() {
+                *slot = blocks;
+            }
+        }
+    }
+    section
 }
 
-fn read_part_blocks(reader: &ZipReader, part: &str, document: &mut TextDocument, numbering: &Numbering, warnings: &mut Vec<String>) -> Vec<Block> {
+fn apply_section_to_document(document: &mut TextDocument, section: SectionProps) {
+    document.page = section.page;
+    document.header = section.header;
+    document.footer = section.footer;
+}
+
+fn read_part_blocks(reader: &ZipReader, part: &str, numbering: &Numbering, warnings: &mut Vec<String>) -> Vec<Block> {
     let Ok(text) = reader.read_text(part) else {
         return Vec::new();
     };
     let Ok(root) = parse_xml(&text) else {
         return Vec::new();
     };
-    let mut context = PartContext { rels: read_relationships(reader, part), warnings: Vec::new(), field_skip: false };
+    let mut context = PartContext::new(read_relationships(reader, part));
     let mut blocks = Vec::new();
     let container = root.child("body").unwrap_or(&root);
     for child in &container.children {
         match child.local_name() {
             "p" => blocks.extend(read_paragraph(child, &mut context, reader, numbering)),
             "tbl" => blocks.push(read_table(child, &mut context, reader, numbering, warnings)),
-            "sectPr" => read_section(child, document),
             "sdt" => {
                 let mut inner = Vec::new();
                 child.find_all("sdtContent", &mut inner);
@@ -1402,6 +1976,187 @@ fn read_part_blocks(reader: &ZipReader, part: &str, document: &mut TextDocument,
     }
     warnings.extend(context.warnings);
     blocks
+}
+
+struct SectionPlan {
+    /// `(block index after the paragraph, properties of that section)` for every
+    /// paragraph-level `w:sectPr`.
+    paragraph_sections: Vec<(usize, SectionProps)>,
+    body: Option<SectionProps>,
+}
+
+/// Reads the main document part, returning blocks plus the section plan.
+fn read_body(reader: &ZipReader, part: &str, numbering: &Numbering, warnings: &mut Vec<String>) -> (Vec<Block>, SectionPlan) {
+    let mut plan = SectionPlan { paragraph_sections: Vec::new(), body: None };
+    let Ok(text) = reader.read_text(part) else {
+        return (Vec::new(), plan);
+    };
+    let Ok(root) = parse_xml(&text) else {
+        return (Vec::new(), plan);
+    };
+    let rels = read_relationships(reader, part);
+    let part_dir = part.rsplit_once('/').map(|(dir, _)| dir).unwrap_or("word");
+    let mut context = PartContext::new(rels.clone());
+    let mut blocks = Vec::new();
+    let container = root.child("body").unwrap_or(&root);
+    for child in &container.children {
+        match child.local_name() {
+            "p" => {
+                blocks.extend(read_paragraph(child, &mut context, reader, numbering));
+                if let Some(sect) = child.child("pPr").and_then(|properties| properties.child("sectPr")) {
+                    let props = parse_section_props(sect, &rels, reader, numbering, part_dir, warnings);
+                    plan.paragraph_sections.push((blocks.len(), props));
+                }
+            }
+            "tbl" => blocks.push(read_table(child, &mut context, reader, numbering, warnings)),
+            "sectPr" => {
+                plan.body = Some(parse_section_props(child, &rels, reader, numbering, part_dir, warnings));
+            }
+            "sdt" => {
+                let mut inner = Vec::new();
+                child.find_all("sdtContent", &mut inner);
+                for content in inner {
+                    for node in &content.children {
+                        if node.local_name() == "p" {
+                            blocks.extend(read_paragraph(node, &mut context, reader, numbering));
+                        }
+                    }
+                }
+            }
+            "bookmarkStart" | "bookmarkEnd" | "proofErr" | "commentRangeStart" | "commentRangeEnd" => {}
+            _ => {}
+        }
+    }
+    warnings.extend(context.warnings);
+    (blocks, plan)
+}
+
+/// Rebuilds the model's section list from the DOCX section plan.
+fn apply_section_plan(document: &mut TextDocument, mut blocks: Vec<Block>, plan: SectionPlan) {
+    if plan.paragraph_sections.is_empty() {
+        if let Some(body) = plan.body {
+            apply_section_to_document(document, body);
+        }
+        document.blocks = blocks;
+        return;
+    }
+    let first = plan.paragraph_sections[0].1.clone();
+    apply_section_to_document(document, first);
+    // Sections after the first: each paragraph sectPr defines the section that
+    // ends there; the body sectPr defines the final section. Without a body
+    // sectPr the last paragraph section doubles as the final one.
+    let mut sections_after: Vec<SectionProps> =
+        plan.paragraph_sections.iter().skip(1).map(|(_, props)| props.clone()).collect();
+    match plan.body.clone() {
+        Some(body) => sections_after.push(body),
+        None => {
+            if let Some(last) = plan.paragraph_sections.last() {
+                sections_after.push(last.1.clone());
+            }
+        }
+    }
+    let mut insertions: Vec<(usize, SectionProps)> = Vec::new();
+    for (index, (position, _)) in plan.paragraph_sections.iter().enumerate() {
+        if let Some(props) = sections_after.get(index) {
+            insertions.push((*position, props.clone()));
+        }
+    }
+    for (position, props) in insertions.into_iter().rev() {
+        let position = position.min(blocks.len());
+        blocks.insert(position, Block::SectionBreak { section: props });
+    }
+    document.blocks = blocks;
+}
+
+/// Reads `word/footnotes.xml` / `word/endnotes.xml` into model notes.
+fn read_notes(reader: &ZipReader, part: &str, endnotes: bool, numbering: &Numbering, warnings: &mut Vec<String>) -> Vec<Footnote> {
+    let mut notes = Vec::new();
+    let Ok(text) = reader.read_text(part) else {
+        return notes;
+    };
+    let Ok(root) = parse_xml(&text) else {
+        return notes;
+    };
+    let item = if endnotes { "endnote" } else { "footnote" };
+    let prefix = if endnotes { "en" } else { "fn" };
+    let mut context = PartContext::new(read_relationships(reader, part));
+    for node in root.children_named(item) {
+        let Some(id) = node.attr_any_ns("id").and_then(|value| value.parse::<i64>().ok()) else { continue };
+        if id <= 0 {
+            continue;
+        }
+        let mut runs = Vec::new();
+        for paragraph in node.children_named("p") {
+            for block in read_paragraph(paragraph, &mut context, reader, numbering) {
+                if let Block::Paragraph { runs: paragraph_runs, .. } = block {
+                    runs.extend(paragraph_runs);
+                }
+            }
+        }
+        while runs.first().map(|run| run.text.trim().is_empty()).unwrap_or(false) {
+            runs.remove(0);
+        }
+        if runs.is_empty() {
+            runs.push(Run::default());
+        }
+        notes.push(Footnote { id: format!("{prefix}{id}"), runs, marker: String::new() });
+    }
+    warnings.extend(context.warnings);
+    notes
+}
+
+/// Reads `word/comments.xml`; exported replies (which DOCX stores as extra
+/// comment paragraphs) become `replies` again.
+fn read_comments(reader: &ZipReader) -> Vec<Comment> {
+    let mut comments = Vec::new();
+    let Ok(text) = reader.read_text("word/comments.xml") else {
+        return comments;
+    };
+    let Ok(root) = parse_xml(&text) else {
+        return comments;
+    };
+    for node in root.children_named("comment") {
+        let Some(id) = node.attr_any_ns("id") else { continue };
+        let author = node.attr_any_ns("author").unwrap_or("Unknown").to_string();
+        let created = node.attr_any_ns("date").unwrap_or_default().to_string();
+        let mut paragraphs: Vec<String> = Vec::new();
+        for paragraph in node.children_named("p") {
+            let text = paragraph.deep_text();
+            let cleaned = text.trim().to_string();
+            if !cleaned.is_empty() {
+                paragraphs.push(cleaned);
+            }
+        }
+        let mut comment = Comment {
+            id: id.to_string(),
+            author: author.clone(),
+            text: String::new(),
+            created: created.clone(),
+            resolved: false,
+            modified: created,
+            replies: Vec::new(),
+        };
+        for paragraph in paragraphs {
+            if let Some(rest) = paragraph.strip_prefix("Re: ") {
+                if let Some((reply_author, reply_text)) = rest.split_once(": ") {
+                    comment.replies.push(CommentReply {
+                        author: reply_author.to_string(),
+                        text: reply_text.to_string(),
+                        created: String::new(),
+                    });
+                    continue;
+                }
+            }
+            if comment.text.is_empty() {
+                comment.text = paragraph;
+            } else {
+                comment.text.push('\n');
+                comment.text.push_str(&paragraph);
+            }
+        }
+        comments.push(comment);
+    }
+    comments
 }
 
 pub fn read_docx(bytes: &[u8]) -> OfficeResult<DocxRead> {
@@ -1432,47 +2187,20 @@ pub fn read_docx(bytes: &[u8]) -> OfficeResult<DocxRead> {
 
     document.styles = read_styles(&reader);
     let numbering = read_numbering(&reader);
-    document.blocks = read_part_blocks(&reader, &document_part, &mut document, &numbering, &mut warnings);
+    let (blocks, plan) = read_body(&reader, &document_part, &numbering, &mut warnings);
+    apply_section_plan(&mut document, blocks, plan);
 
-    // Header / footer parts referenced by the section.
-    if let Some(text) = reader.read_text(&document_part).ok() {
+    document.footnotes = read_notes(&reader, "word/footnotes.xml", false, &numbering, &mut warnings);
+    document.endnotes = read_notes(&reader, "word/endnotes.xml", true, &numbering, &mut warnings);
+    document.comments = read_comments(&reader);
+    if let Ok(text) = reader.read_text("word/settings.xml") {
         if let Ok(root) = parse_xml(&text) {
-            let rels = read_relationships(&reader, &document_part);
-            let mut sections = Vec::new();
-            root.find_all("sectPr", &mut sections);
-            for section in sections {
-                for key in ["headerReference", "footerReference"] {
-                    for reference in section.children_named(key) {
-                        let Some(id) = reference.attr_any_ns("id") else { continue };
-                        let Some(link) = rels.get(id) else { continue };
-                        let part_dir = document_part.rsplit_once('/').map(|(dir, _)| dir).unwrap_or("word");
-                        let rel_target = link.target.trim_start_matches('/');
-                        let path = if rel_target.starts_with("word/") {
-                            rel_target.to_string()
-                        } else {
-                            format!("{part_dir}/{rel_target}")
-                        };
-                        let mut part_document = TextDocument::default();
-                        let blocks = read_part_blocks(&reader, &path, &mut part_document, &numbering, &mut warnings);
-                        if key.starts_with("header") {
-                            document.header = blocks;
-                        } else {
-                            document.footer = blocks;
-                        }
-                    }
-                }
-            }
+            document.track_changes = root.child("trackRevisions").is_some();
         }
     }
 
-    if reader.contains("word/comments.xml") {
-        warnings.push("Comments were not imported.".into());
-    }
     if reader.contains("word/vbaProject.bin") {
         warnings.push("Macros were not loaded. Documents always open with macros disabled.".into());
-    }
-    if reader.contains("word/footnotes.xml") || reader.contains("word/endnotes.xml") {
-        warnings.push("Footnotes and endnotes were not imported.".into());
     }
     warnings.sort();
     warnings.dedup();
@@ -1698,6 +2426,219 @@ mod tests {
         assert!(reader.contains("word/styles.xml"));
         assert!(reader.contains("word/numbering.xml"));
         assert!(reader.contains("word/footer1.xml"));
+    }
+
+    #[test]
+    fn roundtrip_sections_with_headers() {
+        let mut document = TextDocument::new_blank("Sections");
+        document.page = PageSetup::from_preset("a4", "portrait");
+        document.header = vec![Block::paragraph("First section header")];
+        document.blocks = vec![
+            Block::paragraph("Section one body"),
+            Block::SectionBreak {
+                section: SectionProps {
+                    page: PageSetup::from_preset("a5", "landscape"),
+                    header: vec![Block::paragraph("Second section header")],
+                    start: "newPage".into(),
+                    ..Default::default()
+                },
+            },
+            Block::paragraph("Section two body"),
+            Block::SectionBreak {
+                section: SectionProps {
+                    page: PageSetup::from_preset("letter", "portrait"),
+                    start: "oddPage".into(),
+                    ..Default::default()
+                },
+            },
+            Block::paragraph("Section three body"),
+        ];
+        let bytes = write_docx(&document).unwrap();
+        let reader = ZipReader::open(bytes.clone()).unwrap();
+        assert!(reader.contains("word/header1.xml"));
+        assert!(reader.contains("word/header2.xml"));
+        let read = read_docx(&bytes).unwrap();
+        let breaks: Vec<&SectionProps> = read
+            .document
+            .blocks
+            .iter()
+            .filter_map(|block| match block {
+                Block::SectionBreak { section } => Some(section),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(breaks.len(), 2, "warnings: {:?}", read.warnings);
+        assert_eq!(breaks[0].page.size, "a5");
+        assert_eq!(breaks[0].page.orientation, "landscape");
+        assert!(breaks[0].header.iter().map(Block::plain_text).any(|text| text.contains("Second section")));
+        assert_eq!(breaks[1].page.size, "letter");
+        assert_eq!(breaks[1].start, "oddPage");
+        assert_eq!(read.document.page.size, "a4");
+        assert!(read.document.header.iter().map(Block::plain_text).any(|text| text.contains("First section")));
+        // The section body order is preserved.
+        let text = read.document.plain_text();
+        assert!(text.find("Section one").unwrap() < text.find("Section two").unwrap());
+        assert!(text.find("Section two").unwrap() < text.find("Section three").unwrap());
+    }
+
+    #[test]
+    fn roundtrip_footnotes_and_endnotes() {
+        let mut document = TextDocument::new_blank("Notes");
+        document.footnotes = vec![
+            Footnote { id: "fn-a".into(), runs: vec![Run { text: "First note".into(), ..Default::default() }], marker: String::new() },
+            Footnote { id: "fn-b".into(), runs: vec![Run { text: "Second note".into(), ..Default::default() }], marker: String::new() },
+        ];
+        document.endnotes = vec![Footnote { id: "en-a".into(), runs: vec![Run { text: "End note".into(), ..Default::default() }], marker: String::new() }];
+        document.blocks = vec![Block::Paragraph {
+            props: ParaProps::default(),
+            runs: vec![
+                Run { text: "one".into(), footnote: Some("fn-a".into()), ..Default::default() },
+                Run { text: " two".into(), footnote: Some("fn-b".into()), ..Default::default() },
+                Run { text: " end".into(), endnote: Some("en-a".into()), ..Default::default() },
+            ],
+        }];
+        let bytes = write_docx(&document).unwrap();
+        let reader = ZipReader::open(bytes.clone()).unwrap();
+        assert!(reader.contains("word/footnotes.xml"));
+        assert!(reader.contains("word/endnotes.xml"));
+        let read = read_docx(&bytes).unwrap();
+        assert_eq!(read.document.footnotes.len(), 2, "warnings: {:?}", read.warnings);
+        assert_eq!(read.document.endnotes.len(), 1);
+        assert!(read.document.footnotes[0].runs.iter().any(|run| run.text.contains("First note")));
+        assert!(read.document.footnotes[1].runs.iter().any(|run| run.text.contains("Second note")));
+        assert!(read.document.endnotes[0].runs.iter().any(|run| run.text.contains("End note")));
+        // Ids are regenerated from the Word numbering, but the automatic
+        // numbering follows reference order.
+        let first_id = read.document.footnotes[0].id.clone();
+        let second_id = read.document.footnotes[1].id.clone();
+        assert_eq!(read.document.footnote_number(&first_id), Some(1));
+        assert_eq!(read.document.footnote_number(&second_id), Some(2));
+        let references: Vec<String> = read
+            .document
+            .blocks
+            .iter()
+            .filter_map(|block| match block {
+                Block::Paragraph { runs, .. } => Some(runs.iter().filter_map(|run| run.footnote.clone()).collect::<Vec<_>>()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert_eq!(references.len(), 2);
+    }
+
+    #[test]
+    fn roundtrip_tracked_changes() {
+        let mut document = TextDocument::new_blank("Review");
+        document.track_changes = true;
+        let mut format_run = Run { text: "reformatted".into(), bold: true, ..Default::default() };
+        format_run.revision = Some(RevisionMark {
+            id: "f1".into(),
+            kind: "format".into(),
+            author: "Ada".into(),
+            date: "2026-02-02T10:00:00Z".into(),
+            original: Some(Run::default().format_snapshot()),
+        });
+        document.blocks = vec![Block::Paragraph {
+            props: ParaProps::default(),
+            runs: vec![
+                Run { text: "kept ".into(), ..Default::default() },
+                Run {
+                    text: "inserted".into(),
+                    revision: Some(RevisionMark { id: "i1".into(), kind: "insert".into(), author: "Ada".into(), date: "2026-02-02T10:00:00Z".into(), original: None }),
+                    ..Default::default()
+                },
+                Run {
+                    text: "removed".into(),
+                    revision: Some(RevisionMark { id: "d1".into(), kind: "delete".into(), author: "Grace".into(), date: "2026-02-02T11:00:00Z".into(), original: None }),
+                    ..Default::default()
+                },
+                format_run,
+            ],
+        }];
+        let bytes = write_docx(&document).unwrap();
+        let read = read_docx(&bytes).unwrap();
+        assert!(read.document.track_changes);
+        let revisions = crate::revisions::revision_list(&read.document);
+        assert_eq!(revisions.len(), 3, "warnings: {:?}", read.warnings);
+        assert!(revisions.iter().any(|revision| revision.kind == "insert" && revision.author == "Ada"));
+        assert!(revisions.iter().any(|revision| revision.kind == "delete" && revision.text.contains("removed")));
+        let format = revisions.iter().find(|revision| revision.kind == "format").expect("format revision missing");
+        assert_eq!(format.text, "reformatted");
+
+        // Accepting everything yields a clean document.
+        let mut accepted = read.document.clone();
+        crate::revisions::accept_all(&mut accepted);
+        assert_eq!(crate::revisions::revision_count(&accepted), 0);
+        assert!(accepted.plain_text().contains("inserted"));
+        assert!(!accepted.plain_text().contains("removed"));
+        // Rejecting everything restores the original text.
+        let mut rejected = read.document;
+        crate::revisions::reject_all(&mut rejected);
+        assert!(!rejected.plain_text().contains("inserted"));
+        assert!(rejected.plain_text().contains("removed"));
+    }
+
+    #[test]
+    fn roundtrip_comments_with_replies() {
+        let mut document = TextDocument::new_blank("Comments");
+        document.comments = vec![Comment {
+            id: "c1".into(),
+            author: "Ada".into(),
+            text: "Please verify this number".into(),
+            created: "2026-03-03T09:00:00Z".into(),
+            resolved: false,
+            modified: "2026-03-03T09:00:00Z".into(),
+            replies: vec![CommentReply { author: "Grace".into(), text: "Checked".into(), created: "2026-03-03T10:00:00Z".into() }],
+        }];
+        document.blocks = vec![Block::Paragraph {
+            props: ParaProps::default(),
+            runs: vec![Run { text: "Total: 42".into(), comment: Some("c1".into()), ..Default::default() }],
+        }];
+        let bytes = write_docx(&document).unwrap();
+        let reader = ZipReader::open(bytes.clone()).unwrap();
+        assert!(reader.contains("word/comments.xml"));
+        let read = read_docx(&bytes).unwrap();
+        assert_eq!(read.document.comments.len(), 1, "warnings: {:?}", read.warnings);
+        assert!(read.document.comments[0].text.contains("verify"));
+        assert_eq!(read.document.comments[0].replies.len(), 1);
+        assert!(read.document.comments[0].replies[0].text.contains("Checked"));
+        let anchored = read.document.blocks.iter().find_map(|block| match block {
+            Block::Paragraph { runs, .. } => runs.iter().find_map(|run| run.comment.clone()),
+            _ => None,
+        });
+        assert!(anchored.is_some());
+    }
+
+    #[test]
+    fn roundtrip_cross_reference_fields() {
+        let mut document = TextDocument::new_blank("Fields");
+        document.bookmarks = vec![Bookmark { id: "b1".into(), name: "Target".into(), block: 0, offset: 0 }];
+        document.blocks = vec![
+            Block::Paragraph {
+                props: ParaProps::default(),
+                runs: vec![
+                    Run { text: "See page ".into(), ..Default::default() },
+                    Run { text: "3".into(), field: Some(FieldRef { kind: "refPage".into(), target: "Target".into(), cached: "3".into() }), ..Default::default() },
+                    Run { text: " and ".into(), ..Default::default() },
+                    Run { text: "Target".into(), field: Some(FieldRef { kind: "ref".into(), target: "Target".into(), cached: "Target".into() }), ..Default::default() },
+                ],
+            },
+        ];
+        let bytes = write_docx(&document).unwrap();
+        let read = read_docx(&bytes).unwrap();
+        let fields: Vec<&FieldRef> = read
+            .document
+            .blocks
+            .iter()
+            .filter_map(|block| match block {
+                Block::Paragraph { runs, .. } => Some(runs.iter().filter_map(|run| run.field.as_ref()).collect::<Vec<_>>()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert_eq!(fields.len(), 2, "warnings: {:?}", read.warnings);
+        assert!(fields.iter().any(|field| field.kind == "refPage" && field.target == "Target"));
+        assert!(fields.iter().any(|field| field.kind == "ref" && field.target == "Target"));
     }
 }
 

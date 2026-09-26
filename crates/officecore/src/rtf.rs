@@ -256,6 +256,7 @@ fn write_block(out: &mut String, block: &Block, tables: &mut RtfTables, document
             out.push_str("}\\par\n");
         }
         Block::PageBreak => out.push_str("\\page\n"),
+        Block::SectionBreak { .. } => out.push_str("\\page\n"),
         Block::Rule => out.push_str("\\pard\\brdrb\\brdrs\\brdrw6 \\par\n"),
         Block::Toc { entries } => {
             for entry in entries {

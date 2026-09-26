@@ -14,6 +14,8 @@ import { formatNumber, formatPlainNumber, dateToSerial, serialToDate } from "./n
 import { lookupFunction, registerFunction, functionCount, functionNames, functionCatalogue, type FunctionArgs, type FunctionResult } from "./registry";
 import { ERR, FormulaError, compareScalars, criteriaMatcher, flatten, isError, numericGrid, padMatrix, scalarOf, toBool, toNumber, toText, type CellMatrix, type Scalar } from "./scalars";
 import { registerBuiltinFunctions } from "./functions";
+import { resolveStructuredReference, tableByName } from "./structured";
+import type { SpreadsheetTable } from "../../lib/office-types";
 
 registerBuiltinFunctions();
 
@@ -183,6 +185,16 @@ function tokenize(input: string): Token[] {
         tokens.push({ type: "ident", value: afterWord.toUpperCase() });
         continue;
       }
+      // A structured table reference (`Sales[Amount]`, `Sales[@[Net]]`) is one
+      // token; the bracket body may nest and contain spaces.
+      if (input[index] === "[") {
+        const brackets = readStructuredBrackets(input, index);
+        if (brackets) {
+          tokens.push({ type: "name", value: word + brackets });
+          index += brackets.length;
+          continue;
+        }
+      }
       // Bare cell reference?
       const reference = readReference(input, start);
       if (reference && (reference.range || /^\$?[A-Za-z]+\$?\d+$/.test(reference.address))) {
@@ -235,6 +247,25 @@ function readReference(input: string, index: number): { address: string; range: 
   return { address: input.slice(index, end).replace(/\$/g, "").toUpperCase(), range, next: end };
 }
 
+/**
+ * Consumes a balanced `[...]` body starting at `index`.
+ *
+ * Structured references nest brackets (`Sales[@[Net]]`), so a plain regex
+ * cannot find where the reference ends.
+ */
+function readStructuredBrackets(input: string, index: number): string | null {
+  if (input[index] !== "[") return null;
+  let depth = 0;
+  for (let at = index; at < input.length; at += 1) {
+    if (input[at] === "[") depth += 1;
+    else if (input[at] === "]") {
+      depth -= 1;
+      if (depth === 0) return input.slice(index, at + 1);
+    }
+  }
+  return null;
+}
+
 /** Functions whose value can change without any cell being edited. */
 const VOLATILE_FUNCTIONS = new Set(["TODAY", "NOW", "RAND", "RANDBETWEEN", "OFFSET", "INDIRECT", "CELL", "INFO"]);
 
@@ -264,7 +295,9 @@ export function collectReferences(formula: string): FormulaReferenceSummary | nu
       if (!parseRange(token.value)) return null;
       summary.ranges.push({ sheet: token.sheet ?? null, range: token.value.toUpperCase() });
     } else if (token.type === "name") {
-      summary.names.push(token.value.toUpperCase());
+      // `Sales[Amount]` is a structured reference, not a defined name; the
+      // dependency graph resolves it against the sheet's tables instead.
+      if (!token.value.includes("[")) summary.names.push(token.value.toUpperCase());
     } else if (token.type === "ident" && VOLATILE_FUNCTIONS.has(token.value)) {
       summary.volatile = true;
     }
@@ -485,6 +518,10 @@ export interface FormulaContext {
   maxRangeCells?: number;
   /** Defined names, keyed by upper-case name. */
   names?: Record<string, NamedRange | string>;
+  /** Structured tables visible from the formula's sheet. */
+  tables?: SpreadsheetTable[];
+  /** 1-based row of the formula's own cell, for `@` this-row references. */
+  currentRow?: number;
 }
 
 interface EvalState {
@@ -531,6 +568,20 @@ function resolveName(name: string, state: EvalState): Scalar | CellMatrix {
   // A name that resolves to itself once (directly or through a cycle) is an
   // error, not a value.
   return result;
+}
+
+/**
+ * Resolves one structured reference such as `Sales[Amount]`.
+ *
+ * A declared table that cannot answer the reference is `#REF!`; a reference to
+ * a table that does not exist at all is `#NAME?`, matching Excel.
+ */
+function evaluateStructuredReference(reference: string, state: EvalState): Scalar | CellMatrix {
+  const resolved = resolveStructuredReference(reference, state.context.tables, state.context.currentRow);
+  if (resolved) return evaluateRange({ type: "range", range: resolved, sheet: null }, state);
+  const bracket = reference.indexOf("[");
+  const tableName = bracket > 0 ? reference.slice(0, bracket) : reference;
+  return tableByName(state.context.tables, tableName) ? ERR.ref() : ERR.name();
 }
 
 /**
@@ -589,8 +640,15 @@ function evaluateNode(node: Node, state: EvalState): Scalar | CellMatrix {
       return node.value;
     case "error":
       return new FormulaError(node.value);
-    case "name":
+    case "name": {
+      const key = node.name.toUpperCase();
+      // Not a function, cell or defined name: a bracketed name is a structured
+      // table reference and must resolve against the sheet's tables.
+      if (node.name.includes("[") && !state.bindings.has(key) && state.context.names?.[key] === undefined) {
+        return evaluateStructuredReference(node.name, state);
+      }
       return resolveName(node.name, state);
+    }
     case "ref": {
       const sheet = resolveSheetName(node.sheet ?? null, state.context);
       if (sheet === undefined) return ERR.ref();

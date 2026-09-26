@@ -32,6 +32,7 @@ import {
   type CellMatrix,
   type Scalar,
 } from "./formula";
+import { structuredReferenceRanges } from "./structured";
 
 export function cellValueToScalar(value: CellValue): Scalar {
   switch (value.kind) {
@@ -134,7 +135,7 @@ export function applyCellEdit(workbook: Workbook, sheetIndex: number, row: numbe
   // Marking the staged workbook as dirty lets the formula evaluate against a
   // cache that only recalculates the cells this edit can affect.
   const stagedDirty = markDirty(stagedWorkbook, workbook, target.name, [address]);
-  const resolved: Cell = { ...staged, value: formulaResult(rawValue, stagedDirty, stagedSheet) };
+  const resolved: Cell = { ...staged, value: formulaResult(rawValue, stagedDirty, stagedSheet, row + 1) };
   const final = replaceSheet(stagedDirty, index, { ...stagedSheet, cells: { ...stagedSheet.cells, [address]: resolved } });
   return markDirty(final, workbook, target.name, [address]);
 }
@@ -274,6 +275,13 @@ function addEdges(entry: ComputeEntry, workbook: Workbook, sheetName: string, ad
       if (!addRange(range.sheet ?? sheetName, range.range)) entry.globalDependents.add(key);
     }
   }
+  // Structured references (`SUM(Sales[Amount])`) read the table's cells, so a
+  // change to any body cell has to mark this formula dirty.
+  const sheet = workbook.sheets.find((candidate) => candidate.name === sheetName);
+  const position = parseAddress(address);
+  for (const range of structuredReferenceRanges(formula, sheet?.tables, position ? position.row + 1 : undefined)) {
+    if (!addRange(sheetName, range)) entry.globalDependents.add(key);
+  }
   if (precedents.size > 0) {
     entry.precedents.set(key, precedents);
     for (const precedent of precedents) {
@@ -371,12 +379,15 @@ function evaluateCell(scope: EvalScope, key: string): Scalar {
     scope.computed.add(key);
     return scalar;
   }
+  const position = parseAddress(address);
   scope.resolving.add(key);
   let result: Scalar | CellMatrix = evaluateFormulaResult(cell.formula, {
     getValue: (sheetName2, address2) => evaluateCell(scope, keyOf(sheetName2 ?? sheetName, address2)),
     sheetNames: scope.sheetNames,
     currentSheet: sheetName,
     names: { ...scope.names.names, ...(scope.names.scoped.get(sheetName) ?? {}) },
+    tables: sheet.tables ?? [],
+    currentRow: position ? position.row + 1 : undefined,
   });
   scope.resolving.delete(key);
   if (Array.isArray(result)) {
@@ -573,12 +584,14 @@ export function computeSheetValues(workbook: Workbook, sheet: Sheet): Map<string
   return out;
 }
 
-export function formulaResult(formula: string, workbook: Workbook, sheet: Sheet): CellValue {
+export function formulaResult(formula: string, workbook: Workbook, sheet: Sheet, currentRow?: number): CellValue {
   const values = computeWorkbookValues(workbook);
   const result = evaluateFormulaResult(formula, {
     getValue: (sheetName, address) => values.get(`${sheetName ?? sheet.name}!${address}`) ?? "",
     sheetNames: workbook.sheets.map((candidate) => candidate.name),
     currentSheet: sheet.name,
+    tables: sheet.tables ?? [],
+    currentRow,
   });
   // A dynamic-array formula keeps its first value in the source cell; the rest
   // of the matrix is spilled by the value pass, not stored in the model.

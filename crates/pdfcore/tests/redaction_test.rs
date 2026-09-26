@@ -257,3 +257,61 @@ fn a_cancelled_run_stops_before_writing() {
     assert!(error.is_err(), "a cancelled run must report Cancelled");
     assert!(!result.exists(), "a cancelled run must not leave an output file");
 }
+
+#[test]
+fn redaction_is_verified_against_the_output_text_layer() {
+    if !pdfcore::render::is_available() {
+        eprintln!("pdfium is not available; skipping the redaction verification");
+        return;
+    }
+    let dir = TestDir::new();
+    let doc = invoice_page();
+    let areas = vec![line_area(1, 70.0, 700.0, 400.0)];
+    let options = RedactionOptions { remove_metadata: false, ..Default::default() };
+    let source = dir.path("invoice.pdf");
+    let report = match run_redaction(&doc, &areas, &options, &source) {
+        Ok(report) => report,
+        Err(error) => {
+            eprintln!("skipping: {error}");
+            return;
+        }
+    };
+    assert!(
+        report.verified,
+        "verification must run when pdfium and a text layer exist: {}",
+        report.verification_message
+    );
+    assert!(
+        report.remaining_matches.is_empty(),
+        "no redacted sample may remain extractable: {:?}",
+        report.remaining_matches
+    );
+    assert!(!report.verification_message.is_empty());
+}
+
+#[test]
+fn a_redacted_literal_is_absent_from_the_rendered_text_layer() {
+    if !pdfcore::render::is_available() {
+        eprintln!("pdfium is not available; skipping the redaction text check");
+        return;
+    }
+    let dir = TestDir::new();
+    let doc = invoice_page();
+    let areas = vec![line_area(1, 70.0, 670.0, 400.0)];
+    let options = RedactionOptions { remove_metadata: false, ..Default::default() };
+    let source = dir.path("invoice.pdf");
+    let report = match run_redaction(&doc, &areas, &options, &source) {
+        Ok(report) => report,
+        Err(error) => {
+            eprintln!("skipping: {error}");
+            return;
+        }
+    };
+    let after = pdfcore::render::extract_page_text(Path::new(&report.output), None, 1).unwrap_or_default();
+    assert!(
+        !after.contains("GB82WEST12345698765432"),
+        "the redacted literal is still extractable: {after:?}"
+    );
+    assert!(report.verified);
+    assert!(report.remaining_matches.is_empty());
+}

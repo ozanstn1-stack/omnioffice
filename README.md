@@ -1,177 +1,195 @@
 # Office Swiss Army Knife
 
-A local-first Windows desktop productivity suite: a word processor (Writer), a
+A local-first desktop productivity suite: a word processor (Writer), a
 spreadsheet (Calc), a presentation editor (Impress), local productivity tools
-(Notes, Planner, Data, Draw, Templates, PDF Forms) and the complete PDF toolkit
-this project started from.
+(Notes, Planner, Data, Draw, Templates, PDF Forms, Document Vault) and the
+complete PDF toolkit this project started from.
 
 Everything runs on your machine. Documents are never uploaded, there is no
-telemetry, and the app stays useful without an internet connection. Macros and
-embedded scripts in office files are never executed.
+telemetry, AI is opt-in with your own provider, and the app stays useful
+without an internet connection. Macros and embedded scripts in office files
+are never executed.
 
-**Version 2.5.0** · Platform: Windows (Tauri also targets Linux/macOS, but only
-Windows is built and verified here) · UI languages: English, Turkish.
+**Version 3.0.0** · Platform: Windows (Tauri also targets Linux/macOS; the
+desktop CI builds and tests all three, only Windows packaging is produced
+here) · UI languages: English, Turkish.
 
-## What's new in 2.5.0
+## What's new in 3.0.0
 
-- **Calc has a real calculation engine.** A dependency graph recalculates only
-  the cells an edit can affect; dynamic arrays spill (`=SEQUENCE`, `FILTER`,
-  `SORT`, `UNIQUE`, ... report `#SPILL!` when blocked); binary operators
-  broadcast over ranges; and **pivot tables** (row/column/value fields,
-  sum/count/average/min/max) are computed live, stored in `.oswk` and exported
-  to XLSX as values with a warning.
-- **Writer is paginated.** A measured layout engine turns the document into
-  real pages at A4/A5/A3/Letter/Legal sizes with per-page headers, footers and
-  page numbers, splitting paragraphs at line boundaries and tables at row
-  boundaries with repeated header rows. Keep-with-next, keep-together and
-  page-break-before are honoured.
-- **Table of contents and navigation.** Insert/Update TOC builds entries from
-  Heading 1-6 paragraphs with page numbers and click-to-jump; the navigation
-  pane lists the outline. TOCs are saved in `.oswk` and exported (static
-  entries) to DOCX, ODT, RTF, HTML, Markdown and PDF.
-- **More statistics**: `VAR.S/P`, `STDEV.S/P`, `PERCENTILE`, `QUARTILE`,
-  `CORREL`, `COVARIANCE.P/S`.
-- Everything from 2.2.0 (editor reliability, XLSX charts and conditional
-  formatting, formula hardening) is included.
+V3.0 turns the suite from a set of editors into a document platform:
 
-## Screenshots
+- **Writer is sectioned and reviewed.** Real sections (per-section page setup,
+  first/even headers, section breaks), footnotes and endnotes with automatic
+  numbering and a reserved note area, tracked changes (insertions, deletions
+  and formatting changes) with accept/reject per change or in bulk, comments
+  with replies, bookmarks and cross-reference fields (REF/PAGEREF/DATE/...).
+  All of it round-trips through DOCX and renders into the exported PDF.
+- **Calc understands tables and audits formulas.** Excel-style structured
+  tables with headers, totals, banded rows, calculated columns, filters and
+  structured references (`=SUM(Sales[Amount])`, `Sales[@Amount]`), formula
+  autocomplete with argument hints, and trace-precedents / trace-dependents /
+  circular-reference auditing on top of the dependency graph.
+- **XLSX import keeps the file, not just the numbers.** A custom OOXML pass now
+  reads styles, number formats, column widths, row heights, merges, freeze
+  panes, data validation, conditional formatting, hyperlinks, comments, defined
+  names and structured tables; tables are also written back as real
+  `xl/tables/tableN.xml` parts.
+- **Impress has masters, groups, charts and a slideshow that animates.**
+  Slide masters and layouts with placeholder inheritance, real nested shape
+  groups with group-level transforms, PPTX chart import/export, an animation
+  model (entrance/emphasis/exit with triggers and timing) that actually runs in
+  the slideshow, and a presenter view with next-slide preview, notes and timer.
+- **PDF tools grew up.** A real sanitizer (JavaScript, embedded files, launch
+  actions, unsafe annotations, metadata), annotation/form flattening, PDF/A
+  validation for 1b/2b/3b with an honest converter that re-validates and never
+  claims compliance it does not have, redaction verification (the output is
+  re-read and checked), and working OCR preprocessing (deskew, denoise,
+  threshold, contrast, orientation detection on the rendered page).
+- **Document Vault.** Opt-in local indexing of folders you choose (office
+  documents and PDFs), full-text/phrase/fuzzy search with filters, snippets
+  with match locations and a text preview. Local only, crash-resistant index,
+  incremental rescans.
+- **Document platform.** A unified command registry with a command palette
+  (`Ctrl+Shift+P`) and global search (`Ctrl+Shift+F`), a background job center
+  with progress/cancel/retry, a capability/compatibility system that reports
+  what each format supports *before* a save, and schema versioning with tested
+  migrations for `.oswk` (V2.x documents open and are upgraded in memory).
+- **AI is a document assistant, not a black box.** Provider abstraction
+  (DeepSeek, OpenAI-compatible, Ollama, Gemini, custom) with capability flags,
+  a per-document consent gate, "show what will be sent" activity line, send
+  scope (whole document / current page / selection), and a document chat that
+  answers with `[page N]` citations. Ollama runs entirely on your machine.
 
-| Writer — typing on the page | Calc — cells and formulas |
-|---|---|
-| ![Writer](docs/screenshots/office-writer-typing.png) | ![Calc](docs/screenshots/office-calc-formula.png) |
+## Verified workflows
 
-| Calc — opening a 100-row XLSX with live formulas | Impress — PPTX with slides, shapes and images |
-|---|---|
-| ![XLSX](docs/screenshots/office-calc-xlsx.png) | ![Impress](docs/screenshots/office-impress-pptx.png) |
+These were exercised on the built application and with automated tests:
 
-All screenshots come from the running application (`scripts/ui-flow.ps1`
-automation). The PDF module screenshots live in `docs/` from earlier releases.
-
-## What is verified working
-
-These workflows were exercised on the built application and with automated tests:
-
-- **Writer**: click anywhere on the page → caret appears → typing updates the
-  document model (screenshot above). Round-trip tests cover DOCX/ODT/RTF with
-  headings, bold/italic/underline, bullet and numbered lists, tables, images,
-  page breaks and a header/footer with real `PAGE` / `NUMPAGES` fields.
-- **Calc**: click a cell → type a value → `Enter` commits and moves on → keep
-  typing without clicking; `Tab`/`Shift+Tab`, `F2`, the formula bar and arrow
-  navigation all work and are covered by component tests that reproduce the
-  former Enter race. Opening the 100-row sample XLSX computes `=SUM(...)`,
-  `=AVERAGE(...)`, `=MAX(...)` and per-row `=B*C` correctly (screenshot above).
-- **Impress**: opening the sample PPTX loads five slides with text, bullets,
-  images, shapes, a table, speaker notes and transitions (screenshot above).
+- **Writer**: click anywhere on a page fragment → the caret lands at the
+  clicked character and the editing surface opens there; typing updates the
+  model; DOCX round-trip tests cover sections, notes, revisions, fields and
+  comments; the PDF export is section-aware and draws notes on the page that
+  references them.
+- **Calc**: click a cell → type → `Enter` commits and moves on; `=SUM(Sales[Amount])`
+  evaluates; editing a table cell recalculates its dependents; trace buttons
+  highlight precedents and dependents; the XLSX round trip preserves layout,
+  validation, conditional formatting, comments, links, names and tables.
+- **Impress**: the sample PPTX loads with slides, shapes, images, tables,
+  notes and transitions; masters/layouts round-trip; a nested group moves as
+  one; the slideshow runs entrance/emphasis/exit animations and the presenter
+  view shows the next slide and notes.
 - **PDF**: every tool from v1.x is unchanged and still covered by its tests.
 - **Redaction**: text under a redaction box is *deleted from the content
-  stream*, not covered with a black rectangle. Integration tests extract the
-  text back out of the redacted file and assert the string is gone, which is
-  the only way to prove it cannot be recovered.
-- **Compare**: a document compared against a revision reports which pages were
-  added, removed or changed; with the picture pass on, changed pixels are
-  marked on a side-by-side render.
-- **Inspect**: reports page geometry, fonts (and whether they are embedded),
-  images, form fields, outline, encryption and metadata, then lists findings
-  with a severity and an explanation. Accessibility conformance is derived from
-  those findings rather than asserted.
+  stream*; the verification pass re-opens the output, re-extracts the text and
+  reports any remaining matches (masked) instead of assuming success.
+- **Sanitizer**: tests inject JavaScript, an OpenAction, an embedded file and
+  an unsafe annotation, then walk every object in the output to prove they are
+  gone, and Inspect confirms it independently.
+- **PDF/A**: a document with unembedded fonts fails validation; conversion
+  writes the XMP/output intent it can and still reports `valid: false` when the
+  fonts remain unembedded.
 
 ## Modules
 
 ### Writer (word processor)
-- DOCX, ODT, RTF, TXT, Markdown, HTML import/export · PDF export · lossless `.oswk` unit format
-- Styles (Normal, Title, Subtitle, Heading 1–6, Quote, Caption, Code), fonts, sizes,
-  bold/italic/underline/strikethrough, superscript/subscript, text colour, highlight
-- Alignment, line spacing, space before/after, indents (including first-line and hanging)
-- Bullet, numbered and multilevel lists; tables (insert, add/delete row and column, shading, borders);
-  images (insert, resize, caption, alignment); hyperlinks; page breaks; horizontal rules
-- Page setup: A4/A5/A3/Letter/Legal, portrait/landscape, Normal/Narrow/Wide/custom margins, columns
-- Headers and footers with automatic `{{page}}` / `{{pages}}` numbers (written as real fields in DOCX)
-- Paginated view with real page containers (A4/A5/A3/Letter/Legal), per-page headers and
-  footers, and a page count from the layout engine; View → Paginated/Continuous switches
-  modes, and clicking a page opens the continuous editor on that block
-- Pagination rules: widow/orphan control, keep-with-next, keep-together, page-break-before,
-  table rows split across pages with a repeated header row
-- Table of contents generated from Heading 1–6 with page numbers and click-to-jump,
-  plus a navigation pane; both share the same heading outline
-- Find & replace (case sensitive, whole word), comments sidebar, word/character/page count,
-  zoom, print, export PDF with selectable text
+- DOCX, ODT, RTF, TXT, Markdown, HTML import/export · PDF export · lossless `.oswk`
+- Styles with based-on/next inheritance, fonts, bold/italic/underline/strike,
+  super/subscript, colour, highlight; alignment, spacing, indents
+- Lists (bullet/numbered/multilevel), tables, images, hyperlinks, page breaks,
+  horizontal rules, table of contents, navigation pane
+- **Sections (V3)**: per-section page size/orientation/margins/columns, section
+  breaks (new page/continuous/odd/even), default/first/even headers and footers
+- **Notes (V3)**: footnotes and endnotes, automatic numbering by reference
+  order, note area reserved at the bottom of the page in the paginated view and
+  in PDF export
+- **Track changes (V3)**: suggesting mode records typing and backspacing as
+  revisions; review pane with per-change accept/reject, accept all/reject all,
+  next/previous, show/hide; DOCX `w:ins`/`w:del`/`w:rPrChange` round trip
+- **Comments (V3)**: anchored comments with replies and resolve
+- **Fields and references (V3)**: bookmarks, cross references (REF/PAGEREF),
+  page/page-count/date/time/title/author fields written as real Word fields
+- Paginated view with real page containers, measured pagination (widow/orphan,
+  keep-with-next, keep-together, page-break-before, repeated table headers) and
+  click-to-caret positioning; continuous editing view
+- Find & replace, word/character/page count, zoom, print, PDF export with
+  selectable text
 
 ### Calc (spreadsheet)
 - XLSX, ODS, CSV/TSV import/export · XLS import (read-only) · PDF export
-- Virtualised grid, name box and formula bar, multi-sheet workbooks (add, rename, delete)
-- Formula engine with 160+ functions: SUM, AVERAGE, MIN, MAX, COUNT, COUNTA, COUNTBLANK, MEDIAN,
-  STDEV, IF, IFS, IFERROR, AND, OR, NOT, ROUND/ROUNDUP/ROUNDDOWN, ABS, PRODUCT, SQRT, POWER, MOD,
-  INT, CEILING, FLOOR, SUMIF(S), COUNTIF(S), AVERAGEIF, VLOOKUP, HLOOKUP, XLOOKUP, INDEX, MATCH,
-  CONCAT, TEXTJOIN, TEXTBEFORE/AFTER/SPLIT, LEFT, RIGHT, MID, LEN, TRIM, UPPER, LOWER, PROPER,
-  SUBSTITUTE, REPT, TEXT, VALUE, TODAY, NOW, DATE, YEAR, MONTH, DAY, HOUR, MINUTE, WEEKDAY,
-  WEEKNUM, ISOWEEKNUM, EDATE, EOMONTH, WORKDAY, NETWORKDAYS, LARGE, SMALL, RANK, SUMPRODUCT,
-  ISNUMBER, ISTEXT, ISBLANK, ISERROR, PI, RAND, RANDBETWEEN, financial and matrix functions,
-  `LET`, named ranges and inline array literals `{1,2;3,4}`
-  (A1, `$A$1`, mixed anchors and cross-sheet references such as `=SUM(Data!D2:D101)` all work)
-- Explicit errors instead of silent wrong answers: `#NAME?`, `#VALUE!`, `#REF!`, `#DIV/0!`, `#N/A`, `#NUM!`,
-  circular-reference detection, and invalid references (`=A0`) fail rather than reading an empty cell
-- Cell formatting (font, colour, fill, borders, alignment, wrap), number formats
-  (General, Number, Currency, Percentage, Date, Time, Accounting), sorting, filtering,
-  freeze panes, conditional formatting (greater/less/between/equal/text/duplicates/top-N/data bars),
-  data validation (list and number range), row/column insert, delete and resize
-- SVG charts fed from cell ranges (column, bar, line, pie, area) that refresh with the data
-  and export to XLSX as real charts; conditional formatting exports as real `cfRule`s
-- Dependency graph with incremental recalculation (only the cells an edit can affect are
-  recalculated; volatile formulas and opaque ranges fall back to global recomputation)
-- Dynamic arrays with spill: `SEQUENCE`, `FILTER`, `SORT`, `SORTBY`, `UNIQUE`, `TRANSPOSE`
-  write into neighbouring cells, report `#SPILL!` when the target is blocked, and broadcast
-  element-wise through `+ - * / ^ & = <> < > <= >=`
-- Pivot tables (Insert → Pivot table): row/column/value fields with
-  sum/count/average/min/max, computed live, refreshed on demand, saved in `.oswk` and
-  materialised as values on XLSX export
+- Virtualised grid, name box and formula bar, multi-sheet workbooks
+- Formula engine with 160+ functions, `LET`, named ranges, inline arrays,
+  dynamic arrays with spill, explicit errors and circular-reference detection
+- Dependency graph with incremental recalculation
+- **Formula autocomplete (V3)**: functions with signatures and descriptions,
+  defined names, sheet names, table and column names, argument hints
+- **Formula auditing (V3)**: trace precedents/dependents with coloured
+  overlays, circular-reference and invalid-reference reporting
+- **Structured tables (V3)**: create/rename/delete tables, header and totals
+  rows, banded rows, calculated columns, filters and structured references
+- **XLSX fidelity (V3)**: styles, number formats, widths, heights, merges,
+  freeze panes, validations, conditional formatting, hyperlinks, comments,
+  defined names and tables are read back; tables are exported as real table
+  parts
+- Cell formatting, number formats, sorting, filtering, conditional formatting,
+  data validation, freeze panes, charts (column/bar/line/pie/area), pivot
+  tables (computed live, exported as values)
 
 ### Impress (presentations)
 - PPTX and ODP import/export · PDF export · lossless `.oswk`
-- Slide thumbnails with reorder, canvas with drag/resize/rotate, z-order, align, group/ungroup
-- Text, image, rectangle, rounded rectangle, circle, line, arrow, table, chart objects
-- Eight layouts, six original themes, transitions (fade, slide, push, wipe), full-screen slideshow,
-  speaker notes
-
-### Productivity tools
-- **Notes** (folders, tags, search, pin, favourite, archive) · **Planner** (month view, tasks,
-  priorities, deadlines) · **Data** (local tables with CSV/JSON import/export) ·
-  **Draw** (shapes, lines, arrows, text, freehand; SVG/PNG/PDF export) ·
-  **Templates** (24 original documents, spreadsheets and decks) ·
-  **Converter** (batch office conversions with honest unsupported-target messages) ·
-  **Document Cleaner** (metadata/comments removal, embedded image optimisation) ·
-  **PDF Forms** (standard AcroForm text, checkbox, radio and dropdown fields)
+- **Master slides (V3)**: masters with themes/backgrounds and layouts with
+  placeholders inherited by slides; layout picker per slide
+- **Grouped shapes (V3)**: real nested groups with group-level move/resize and
+  Alt+click child selection
+- **Charts (V3)**: ChartML import/export for column/bar/line/pie/area with
+  titles, series, legend, axes, stacking and data labels
+- **Animations (V3)**: entrance/emphasis/exit effects with triggers, duration
+  and delay; the slideshow executes them; `<p:timing>` round trip
+- **Presenter view (V3)**: current/next slide, notes, timer, navigation
+- Eight layouts, six themes, transitions, full-screen slideshow, speaker notes
 
 ### PDF module
-Reader with search, Merge, Split, Organize, Compress, OCR (Tesseract), Protect (AES-256),
-Unlock, Watermark, Annotate, Metadata, Page tools (extract/delete/rotate/resize/crop/numbering),
-PDF → JPG/PNG, JPG/PNG → PDF, Batch processing, Info, optional offline AI assistant.
+Reader with search, Merge, Split, Organize, Compress, OCR (Tesseract), Protect
+(AES-256), Unlock, Watermark, Annotate, Metadata, Page tools, PDF → JPG/PNG,
+JPG/PNG → PDF, Batch, Info, Redact, Compare, Inspect and the optional offline
+AI assistant — all unchanged.
 
-Added in 2.1.0:
+**PDF Studio (V3)**: Sanitize (JavaScript/attachments/actions/unsafe
+annotations/metadata with a removal report), Flatten (annotation and form
+appearances burned into the page), PDF/A-1b/2b/3b validation and honest
+conversion with a re-validation pass.
 
-- **Redact** — remove text and pixels permanently. Drag over the page, or let
-  the detector find e-mail addresses, card numbers, IBANs, passport numbers
-  and phone numbers, then deselect anything to keep. Image areas can be
-  painted out or have their pixels removed (better for scans). Author and
-  document metadata can be stripped in the same pass.
-  Detection: e-mail (RFC-shaped), card numbers (Luhn-checked), IBANs (mod-97),
-  phone numbers, passport/ID numbers (check digits where the country uses
-  them).
-- **Compare** — two documents, page by page. A text pass classifies each page
-  as added, removed or changed; an optional pixel pass catches changes that
-  leave the text alone (stamps, signatures, scans). Both documents stay local
-  and are never modified.
-- **Inspect** — a read-only report of what a PDF really contains, including
-  what is wrong with it: unembedded fonts, missing language, untagged
-  structure, unlabelled form fields, JavaScript, image colour spaces and
-  total image pixels, with a finding and a severity for each.
+**OCR (V3)**: preprocessing now actually runs on the rendered page —
+orientation detection via Tesseract OSD on the raster (not the PDF), deskew,
+denoise, threshold and contrast, reported in the OCR result.
 
-### Workspace
-- Document tabs for Writer/Calc/Impress, dirty indicators
-- Autosave (15 s / 30 s / 1 min / 5 min / off) with crash recovery and a recovery banner
-- Local version history (up to 25 snapshots per document)
-- Favourites and pinned files, Light/Dark/System/Midnight/Paper themes
-- Open documents from the toolbar, `Ctrl+O`, drag & drop, recent files, or Windows
-  file associations (double-click)
+### Document Vault
+- Index folders you explicitly choose; nothing is scanned by default
+- DOCX, ODT, RTF, TXT, Markdown, HTML, XLSX, ODS, CSV, PPTX, ODP and PDF
+- Index keeps file name, path, type, dates, size, extracted text, headings and
+  locations (page/paragraph/cell/slide)
+- Full-text search with exact/phrase/fuzzy modes, extension/date/folder filters,
+  snippets with `<</term/>>` highlighting and a preview panel
+- Crash-resistant atomic index, incremental rescans, corrupted-index recovery
+
+### Document platform
+- Unified command registry feeding the palette, keyboard shortcuts and menus
+- Command palette (`Ctrl+Shift+P`) and global search (`Ctrl+Shift+F`) over
+  commands, recent files and the vault index
+- Background job center with progress, cancellation and retry
+- Compatibility Center: per-format capability matrix and a pre-save loss report
+- `.oswk` schema versioning with migrations; documents from a newer schema are
+  refused rather than misread
+- Autosave with crash recovery, local version history (25 snapshots)
+
+### AI assistant (opt-in)
+- Providers: DeepSeek, OpenAI-compatible endpoints, Ollama (local), Gemini,
+  custom — with capability flags (chat/embeddings/vision/structured/streaming)
+- Per-document consent before any request; network activity line shows the
+  provider and the character count being sent
+- Send scope: whole document, current page or selected text
+- Document chat with `[page N]` citations, summaries, translation, text
+  cleanup, metadata suggestions
+- API keys are stored with Windows DPAPI when available, never logged, never
+  written into documents or version history
 
 ## Supported formats
 
@@ -191,7 +209,7 @@ Only combinations that actually work are marked. “–” means not supported.
 | PPTX | ✓ | ✓ | ✓ | ✓ |
 | PPT | – | – | – | – |
 | ODP | ✓ | ✓ | ✓ | ✓ |
-| PDF | ✓ | ✓ (existing tools) | ✓ | – |
+| PDF | ✓ | ✓ (existing tools + PDF Studio) | ✓ | – |
 | JPG / PNG / BMP / GIF / WebP | ✓ | ✓ (as images) | ✓ | ✓ (images → PDF) |
 | SVG | ✓ (inserted as image) | ✓ | ✓ (media in DOCX/ODT) | ✗ (not rasterised) |
 | `.oswk` unit | ✓ | ✓ | ✓ | ✓ |
@@ -213,22 +231,32 @@ cargo run -p officecore --example make-office-samples
 
 ```
 crates/officecore   Document model + DOCX/ODT/ODS/ODP/RTF/XLSX/CSV/PPTX engines,
-                    hardened ZIP (ZIP-bomb limits) and XML layers, PDF layout and
-                    rendering with an embedded OFL font, document cleaner
-crates/pdfcore      The original PDF engine (render, merge, split, compress, OCR,
-                    security, watermark, annotations, metadata, page layout)
-crates/aicore       Optional assistant client, only used after the user opts in
-src-tauri           Tauri shell: PDF commands (untouched) + office commands,
-                    JSON stores, version history, recovery, file associations
+                    sections/notes/revisions/fields, structured tables,
+                    schema migrations, capability matrix, PDF layout with an
+                    embedded OFL font, hardened ZIP/XML layers
+crates/pdfcore      The PDF engine (render, merge, split, compress, OCR with
+                    preprocessing, security, watermark, annotations, metadata,
+                    page layout, sanitizer, PDF/A validation, flattening,
+                    redaction with verification)
+crates/aicore       Optional assistant client with a provider abstraction;
+                    the only component that talks to the network, and only
+                    after the user opts in
+src-tauri           Tauri shell: PDF commands, office commands, PDF Studio
+                    commands, document vault, JSON stores, version history,
+                    recovery, file associations
 src/                React 19 + TypeScript + Tailwind 4 frontend
-  src/office        Writer, Calc (with the formula engine), Impress, tool screens
-  src/screens       Original PDF screens (kept working)
+  src/office        Writer, Calc (formula engine, tables, auditing), Impress,
+                    tool screens
+  src/screens       PDF screens, Vault, Compatibility Center, Jobs, PDF Studio
+  src/lib           Command registry, background jobs, office stores, i18n
 ```
 
-The document model (`crates/officecore/src/model.rs`) is the single source of truth
-shared by the Rust engines and the TypeScript editors. File formats are import/export
-targets; the native `.oswk` format preserves everything the suite understands,
-including features a given file format cannot represent.
+The document model (`crates/officecore/src/model.rs`) is the single source of
+truth shared by the Rust engines and the TypeScript editors. File formats are
+import/export targets; the native `.oswk` format preserves everything the suite
+understands, including features a given file format cannot represent. The
+schema version is written into every unit and migrated on open
+(`crates/officecore/src/schema.rs`).
 
 ## Build
 
@@ -253,92 +281,110 @@ npm test
 npx tsc --noEmit
 ```
 
-246 Rust tests and 375 frontend tests pass.
+**322 Rust tests** (34 aicore, 120 officecore, 146 pdfcore, 22 src-tauri) and
+**451 frontend tests** pass, with a strict TypeScript type check on top.
 
-- `pdfcore`: 60 unit tests plus integration suites for merge, split, page
-  tools, compression, OCR, security, metadata, watermark, annotation,
-  redaction, comparison and inspection
-- `officecore`: 75 unit tests (model, ZIP limits, XML, DOCX/ODT/ODS/ODP/RTF/XLSX/CSV/PPTX,
-  PDF layout, cleaner, pivot engine) + 8 round-trip tests against the sample documents
-  and a 6-test XLSX round-trip suite (100-row golden workbook, cross-sheet formulas,
-  styles/merges/layout structure, validation + conditional formatting + charts,
-  pivot materialisation, and an explicit measurement of what a plain XLSX round trip drops)
-- `aicore`: 18 tests, `src-tauri`: 10 tests
-- Frontend: 375 tests covering the formula engine (including the dependency graph,
-  incremental recalculation, spill and pivot computation), pagination rules, writer
-  runs and caret logic, cell maths, i18n parity, redaction geometry and component
-  tests that drive the real Calc and Writer editors with the keyboard, with a strict
-  TypeScript type check on top
+Highlights:
 
-The XLSX chart and conditional-format packages are also opened with an
-independent reader (openpyxl) during development; the repository tests keep
-the structural checks so the package cannot silently regress.
+- `officecore`: DOCX round trips for sections, footnotes/endnotes, tracked
+  changes, fields and comments; a 6-test PPTX V3 suite (masters, nested
+  groups, charts, animations); XLSX import fidelity and table round trips;
+  schema migration tests (V2 opens, migrations are idempotent, future schemas
+  are refused, corrupt models are reported); compatibility reports; revision
+  accept/reject rules.
+- `pdfcore`: sanitizer (poisoned document, every object walked), PDF/A
+  validation/conversion, flattening, redaction verification, OCR preprocessing
+  (tesseract-guarded).
+- `src-tauri`: vault indexing/search tests (incremental rescan, corrupted
+  index recovery, folder permission rules).
+- Frontend: formula engine (dependency graph, spill, structured references,
+  auditing), pagination rules including sections and note reservation, writer
+  runs/caret/revisions, editor component tests, i18n parity and encoding.
 
-The redaction tests are the ones worth knowing about: they run the redaction,
-re-extract the text from the result and assert the target string is no longer
-present. A black rectangle would pass a visual check and fail this one.
+The redaction and sanitizer tests are the ones worth knowing about: they
+re-open the produced file and prove the removed content is gone. A black
+rectangle or a deleted key would pass a visual check and fail these.
 
 ## Privacy and security
 
-- No cloud upload, no telemetry, no document content collection, no mandatory account.
-- Only `aicore` performs network requests, and only after the user explicitly enables the assistant.
-- Macros and embedded scripts are never executed; documents always open with macros disabled.
-- ZIP extraction is bounded (entry count, size, compression ratio) to resist ZIP bombs.
-- XML parsing is depth-limited and does not expand external entities.
-- Writes are atomic (temp sibling + rename); passwords are never logged or persisted.
-- Recovery snapshots and version history stay in the app data directory on your machine.
+- No cloud upload, no telemetry, no document content collection, no mandatory
+  account. The vault only scans folders you pick.
+- Only `aicore` performs network requests, and only after the user explicitly
+  enables the assistant and confirms the send for the document.
+- Macros and embedded scripts are never executed; documents always open with
+  macros disabled.
+- ZIP extraction is bounded (entry count, size, compression ratio) to resist
+  ZIP bombs; XML parsing is depth-limited and does not expand external
+  entities; OOXML/ODF importers parse parts through those hardened layers.
+- Writes are atomic (temp sibling + rename); passwords are never logged or
+  persisted; API keys use DPAPI when available.
+- PDF Studio sanitization removes JavaScript, launch actions and embedded
+  files from a document and the result is verified with the inspector.
+- Recovery snapshots and version history stay in the app data directory.
 
 ## Known limitations
 
-- The Writer paginated view is a layout/reading view: it renders the measured pages, but
-  clicking a page opens the continuous editor instead of typing directly in the page
-  fragments. A caret that crosses page boundaries while editing is planned for V3.0.
-- Writer has no section system in 2.5.0 (one page setup per document), no track changes
-  and no footnotes; those are V3.0 items.
-- The on-screen pagination engine and the PDF export use separate layout implementations
-  (TypeScript and Rust) that share the same rules but not the same code; the PDF export
-  does not yet read `keepWithNext` / `keepTogether`.
-- XLSX export writes values, formulas, styles, number formats, merges, column widths, row
-  heights, freeze panes, data validation, conditional formatting and charts (column, bar,
-  line, pie, area). XLSX import reads values and formulas only, so formatting, layout,
-  validation, conditional rules and charts are not read back from an imported file; the
-  native `.oswk` format keeps everything. Cell comments are exported but not imported.
-- Pivot tables are exported to XLSX as their computed values (with a warning), not as a
-  native Excel pivot cache; pivot filters exist in the model but are not in the dialog yet.
-- The table of contents is exported as static lines with the page numbers from the last
-  update in the editor; Word does not refresh them.
-- Exported charts are functional but use default styling beyond the properties the editor
-  stores (title, series names/colours, legend, axis titles, data labels); Excel themes and
-  fine-grained chart formatting are not written.
-- PPTX export does not embed charts; animations, SmartArt and grouped shapes are not imported.
-- DOCX import simplifies text boxes, SmartArt, equations, tracked changes and non page-number
-  fields, and reports each case in the import warnings shown after opening.
-- SVG images are stored as media but cannot be rasterised into exported PDFs.
-- XLS files can be opened but not saved back to XLS (use XLSX/ODS/CSV).
-- Interoperability with Microsoft Office/LibreOffice was validated structurally (package parts,
-  content types, relationships) rather than by launching those applications.
-- macOS/Linux builds are not produced here.
+These are real and honest:
+
+- **Writer paginated view**: typing happens on the continuous editing surface.
+  Clicking a page fragment places the caret at the clicked character and opens
+  that surface; it is not yet a WYSIWYG typing canvas, and a caret cannot be
+  dragged across a page boundary while typing.
+- **Track changes** tracks text-level insertions/deletions and formatting
+  changes. Structural edits (paragraph splits/merges) are applied directly and
+  are not recorded as revisions; paragraph move revisions are not modelled.
+- **Notes** round-trip DOCX and render in the PDF export; the ODT, RTF and
+  plain-text exports do not write note objects (TXT/Markdown/HTML append the
+  note text at the end). The Compatibility Center reports this before saving.
+- **Sections** export to DOCX with per-section page setup and headers; ODT and
+  the text formats turn section breaks into page breaks.
+- **XLSX import** reads the structures listed above, but charts, drawings,
+  pivot caches, print settings and sheet protection are not imported back
+  (they are kept in `.oswk`). Charts are export-only in both directions for
+  import.
+- **PPTX charts** are written as ChartML referencing cell ranges; the range
+  values themselves are not embedded in the chart part, so other suites show
+  an empty plot until the workbook is attached. All chart properties round-trip.
+- **Impress masters**: layout/master decorative objects are composited behind
+  slides; ODP keeps a single default master page.
+- **Animations**: the built-in slideshow executes the effects the model stores;
+  PowerPoint-specific effects are simplified on import with a warning.
+- **PDF/A conversion** applies sanitization, XMP and an output intent, then
+  re-validates. It does **not** embed missing fonts, so documents with
+  unembedded fonts remain non-compliant and are reported as such.
+- **Digital signatures** are not implemented: no signing, no validation. This
+  is declared, not faked.
+- **Plugin architecture** is not implemented yet; the command registry is the
+  extension point that a plugin runtime will build on.
+- **Cloud sync** is not implemented; `.oswk` conflict-safe sync is planned for
+  V3.1.
+- **Vault PDF indexing** needs the bundled pdfium engine; without it PDFs are
+  indexed as metadata only and a warning is reported.
+- Interoperability with Microsoft Office/LibreOffice was validated
+  structurally (package parts, content types, relationships, an independent
+  reader in development) rather than by launching those applications. The PPTX
+  V3 output was converted with headless LibreOffice during development.
+- macOS/Linux desktop builds are produced and tested by CI; packaging is
+  Windows-only here.
 
 ## Roadmap
 
-Delivered in 2.5.0: the Calc dependency graph, incremental recalculation,
-dynamic arrays with spill, pivot tables, extended statistics and the measured
-Writer pagination engine with a paginated view, table of contents and
-navigation pane.
+Delivered in 3.0.0: sections, footnotes/endnotes, track changes, comments,
+fields and cross references; direct caret placement in the paginated view;
+structured tables and formula auditing; XLSX import fidelity; master slides,
+groups, PPTX charts, animations and presenter view; PDF sanitizer, PDF/A
+validation, flattening, redaction verification and OCR preprocessing; the
+Document Vault; the command platform, jobs, compatibility center and schema
+migrations; the AI provider abstraction with document chat.
 
-Planned for V3.0 (deliberately out of scope for 2.5.0):
+Planned for 3.1 (architecture prepared, not implemented):
 
-- Editing directly inside the page fragments, with a caret that crosses pages
-- Writer sections (per-section page setup, headers/footers, section breaks),
-  track changes with accept/reject, footnotes and endnotes
-- Formula autocomplete, trace-precedents/dependents auditing arrows, named
-  table objects with structured references
-- Impress master slides, PPTX chart import/export, grouped-shape hierarchy,
-  an animation model and a presenter view
-- PDF/A validation, a PDF sanitizer, annotation/form flattening, OCR
-  preprocessing (deskew/denoise/threshold) and a redaction verification report
-- AI document actions with a provider abstraction (OpenAI-compatible/Ollama)
-- Command palette and global search across documents
+- Direct typing inside page fragments with cross-page caret movement
+- Paragraph-level tracked structural changes and move revisions
+- Digital signatures (CMS/PKCS#7) with the Windows certificate store
+- A sandboxed plugin runtime with manifest permissions
+- WebDAV/OneDrive sync with conflict detection and manual resolution
+- Native PDF pivot caches, ODP notes and animations, SmartArt import
 
 ## License
 

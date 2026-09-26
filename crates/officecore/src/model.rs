@@ -381,6 +381,50 @@ impl Default for ParaProps {
     }
 }
 
+/// The formatting a run carried before a tracked formatting change.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RunFormat {
+    pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
+    pub strike: bool,
+    pub color: Option<String>,
+    pub highlight: Option<String>,
+    pub font: Option<String>,
+    pub size_pt: Option<f64>,
+}
+
+/// A tracked revision attached to a run.
+///
+/// `kind` is `insert`, `delete` or `format`. Deleted text stays in the model
+/// (shown struck through while revisions are visible) until the revision is
+/// accepted or rejected, which is what makes accept/reject lossless.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RevisionMark {
+    pub id: String,
+    pub kind: String,
+    pub author: String,
+    pub date: String,
+    /// Formatting before the change; only set for `format` revisions.
+    pub original: Option<RunFormat>,
+}
+
+/// A resolved document field, e.g. a cross reference or a date field.
+///
+/// `kind` is one of `page`, `pages`, `date`, `time`, `title`, `author`,
+/// `ref`, `refPage`, `footnote`, `bookmark`, `figure`, `table`. `target`
+/// names the bookmark or footnote the field points at; `cached` is the last
+/// rendered value so the field never has to be recomputed to be displayed.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct FieldRef {
+    pub kind: String,
+    pub target: String,
+    pub cached: String,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Run {
@@ -397,6 +441,53 @@ pub struct Run {
     pub comment: Option<String>,
     pub superscript: bool,
     pub subscript: bool,
+    /// Footnote id this run is the reference for.
+    #[serde(default)]
+    pub footnote: Option<String>,
+    /// Endnote id this run is the reference for.
+    #[serde(default)]
+    pub endnote: Option<String>,
+    /// A document field rendered at this position (page number, cross
+    /// reference, date, ...).
+    #[serde(default)]
+    pub field: Option<FieldRef>,
+    /// Tracked revision, when the run was inserted, deleted or reformatted
+    /// while suggest mode was on.
+    #[serde(default)]
+    pub revision: Option<RevisionMark>,
+}
+
+impl Run {
+    /// True when the run is a tracked deletion (kept in the model until the
+    /// revision is accepted or rejected).
+    pub fn is_deleted(&self) -> bool {
+        self.revision.as_ref().map(|revision| revision.kind == "delete").unwrap_or(false)
+    }
+
+    /// Builds a `format` revision mark capturing the run's current formatting.
+    pub fn format_snapshot(&self) -> RunFormat {
+        RunFormat {
+            bold: self.bold,
+            italic: self.italic,
+            underline: self.underline,
+            strike: self.strike,
+            color: self.color.clone(),
+            highlight: self.highlight.clone(),
+            font: self.font.clone(),
+            size_pt: self.size_pt,
+        }
+    }
+
+    pub fn apply_format(&mut self, format: &RunFormat) {
+        self.bold = format.bold;
+        self.italic = format.italic;
+        self.underline = format.underline;
+        self.strike = format.strike;
+        self.color = format.color.clone();
+        self.highlight = format.highlight.clone();
+        self.font = format.font.clone();
+        self.size_pt = format.size_pt;
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -459,6 +550,47 @@ pub struct TocEntry {
     pub anchor: u32,
 }
 
+/// Properties of one Writer section.
+///
+/// A section owns its page setup, headers and footers. The document-level
+/// `page` / `header` / `footer` fields are the **first** section; every
+/// [`Block::SectionBreak`] starts the next one and carries its own copy, so a
+/// document with no breaks behaves exactly as it did before V3.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SectionProps {
+    pub page: PageSetup,
+    pub header: Vec<Block>,
+    pub footer: Vec<Block>,
+    pub first_header: Vec<Block>,
+    pub first_footer: Vec<Block>,
+    pub even_header: Vec<Block>,
+    pub even_footer: Vec<Block>,
+    pub different_first_page: bool,
+    pub different_odd_even: bool,
+    pub columns: u32,
+    /// How the section starts: `newPage`, `continuous`, `oddPage` or `evenPage`.
+    pub start: String,
+}
+
+impl Default for SectionProps {
+    fn default() -> Self {
+        Self {
+            page: PageSetup::default(),
+            header: Vec::new(),
+            footer: Vec::new(),
+            first_header: Vec::new(),
+            first_footer: Vec::new(),
+            even_header: Vec::new(),
+            even_footer: Vec::new(),
+            different_first_page: false,
+            different_odd_even: false,
+            columns: 1,
+            start: "newPage".into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum Block {
@@ -470,6 +602,10 @@ pub enum Block {
     /// A table of contents whose entries were last updated in the editor; the
     /// layout and DOCX export render them as static text.
     Toc { #[serde(default)] entries: Vec<TocEntry> },
+    /// Starts a new section. The block itself renders no content; the section
+    /// it carries applies from this point until the next break (or the end of
+    /// the document).
+    SectionBreak { #[serde(default)] section: SectionProps },
 }
 
 impl Default for Block {
@@ -511,8 +647,42 @@ impl Block {
             Block::PageBreak => "\n".into(),
             Block::Rule => "".into(),
             Block::Toc { entries } => entries.iter().map(|entry| entry.text.clone()).collect::<Vec<_>>().join("\n"),
+            Block::SectionBreak { .. } => "".into(),
         }
     }
+
+    /// True when the block is a section break.
+    pub fn is_section_break(&self) -> bool {
+        matches!(self, Block::SectionBreak { .. })
+    }
+}
+
+/// A footnote or endnote. `runs` is the note body; numbering is automatic by
+/// position, so inserting a note in the middle renumbers later notes.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Footnote {
+    pub id: String,
+    pub runs: Vec<Run>,
+    /// Optional explicit marker; empty means automatic numbering.
+    pub marker: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Bookmark {
+    pub id: String,
+    pub name: String,
+    pub block: u32,
+    pub offset: u32,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CommentReply {
+    pub author: String,
+    pub text: String,
+    pub created: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -523,6 +693,10 @@ pub struct Comment {
     pub text: String,
     pub created: String,
     pub resolved: bool,
+    #[serde(default)]
+    pub modified: String,
+    #[serde(default)]
+    pub replies: Vec<CommentReply>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -530,6 +704,8 @@ pub struct Comment {
 pub struct TextDocument {
     pub id: String,
     pub title: String,
+    /// The final section's page setup. Section breaks override it from their
+    /// position onwards.
     pub page: PageSetup,
     pub styles: Vec<ParaStyle>,
     pub blocks: Vec<Block>,
@@ -537,6 +713,23 @@ pub struct TextDocument {
     pub footer: Vec<Block>,
     pub comments: Vec<Comment>,
     pub metadata: DocMetadata,
+    /// Footnotes, numbered in the order their references first appear.
+    #[serde(default)]
+    pub footnotes: Vec<Footnote>,
+    #[serde(default)]
+    pub endnotes: Vec<Footnote>,
+    #[serde(default)]
+    pub bookmarks: Vec<Bookmark>,
+    /// Suggest mode: edits are recorded as revisions instead of being applied.
+    #[serde(default)]
+    pub track_changes: bool,
+    /// Whether pending revisions are rendered in the editor.
+    #[serde(default = "default_true")]
+    pub show_revisions: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for TextDocument {
@@ -551,6 +744,11 @@ impl Default for TextDocument {
             footer: Vec::new(),
             comments: Vec::new(),
             metadata: DocMetadata::default(),
+            footnotes: Vec::new(),
+            endnotes: Vec::new(),
+            bookmarks: Vec::new(),
+            track_changes: false,
+            show_revisions: true,
         }
     }
 }
@@ -569,6 +767,100 @@ impl TextDocument {
 
     pub fn word_count(&self) -> usize {
         self.plain_text().split_whitespace().count()
+    }
+
+    /// The section properties in effect for block `block_index`: the most
+    /// recent section break at or before it, or the first section.
+    pub fn section_for_block(&self, block_index: usize) -> SectionProps {
+        let mut current = self.first_section();
+        for (index, block) in self.blocks.iter().enumerate() {
+            if index > block_index {
+                break;
+            }
+            if let Block::SectionBreak { section } = block {
+                current = section.clone();
+            }
+        }
+        current
+    }
+
+    /// The first section (document-level page setup, headers and footers).
+    pub fn first_section(&self) -> SectionProps {
+        SectionProps {
+            page: self.page.clone(),
+            header: self.header.clone(),
+            footer: self.footer.clone(),
+            first_header: Vec::new(),
+            first_footer: Vec::new(),
+            even_header: Vec::new(),
+            even_footer: Vec::new(),
+            different_first_page: self.page.different_first_page,
+            different_odd_even: false,
+            columns: self.page.columns,
+            start: "newPage".into(),
+        }
+    }
+
+    /// All section properties in document order: the first section is the
+    /// document-level page setup, every section break starts the next one.
+    pub fn all_sections(&self) -> Vec<SectionProps> {
+        let mut sections = vec![self.first_section()];
+        sections.extend(self.blocks.iter().filter_map(|block| match block {
+            Block::SectionBreak { section } => Some(section.clone()),
+            _ => None,
+        }));
+        sections
+    }
+
+    /// Footnote ids in reference order across the whole document.
+    pub fn footnote_order(&self) -> Vec<String> {
+        let mut order = Vec::new();
+        for block in &self.blocks {
+            collect_note_refs(block, &mut order, false);
+        }
+        order
+    }
+
+    pub fn endnote_order(&self) -> Vec<String> {
+        let mut order = Vec::new();
+        for block in &self.blocks {
+            collect_note_refs(block, &mut order, true);
+        }
+        order
+    }
+
+    /// The automatic number of a footnote (1-based), or None when unknown.
+    pub fn footnote_number(&self, id: &str) -> Option<usize> {
+        self.footnote_order().iter().position(|candidate| candidate == id).map(|index| index + 1)
+    }
+
+    pub fn endnote_number(&self, id: &str) -> Option<usize> {
+        self.endnote_order().iter().position(|candidate| candidate == id).map(|index| index + 1)
+    }
+}
+
+fn collect_note_refs(block: &Block, out: &mut Vec<String>, endnotes: bool) {
+    match block {
+        Block::Paragraph { runs, .. } => {
+            for run in runs {
+                let reference = if endnotes { run.endnote.as_ref() } else { run.footnote.as_ref() };
+                if let Some(id) = reference {
+                    if !out.iter().any(|candidate| candidate == id) {
+                        out.push(id.clone());
+                    }
+                }
+            }
+        }
+        Block::Table { table } => {
+            for row in &table.rows {
+                for cell in &row.cells {
+                    for block in &cell.blocks {
+                        collect_note_refs(block, out, endnotes);
+                    }
+                }
+            }
+        }
+        _ => {}
     }
 }
 
@@ -800,6 +1092,88 @@ pub struct PivotTable {
     pub anchor: String,
 }
 
+/// One column of a spreadsheet table. A calculated column carries a formula;
+/// the formula is written to every body cell of the column and exported as a
+/// real XLSX calculated column.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TableColumn {
+    pub name: String,
+    pub formula: Option<String>,
+}
+
+/// A structured spreadsheet table (the Excel "ListObject"): a named range with
+/// a header row, an optional totals row, banded rows, an optional filter and
+/// calculated columns. Structured references such as `Sales[Amount]` resolve
+/// against `name` and the column names.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SpreadsheetTable {
+    pub id: String,
+    pub name: String,
+    /// The full table range including the header and totals rows, e.g. `A1:D21`.
+    pub range: String,
+    pub has_headers: bool,
+    pub has_totals: bool,
+    pub banded_rows: bool,
+    pub banded_columns: bool,
+    pub header_fill: Option<String>,
+    pub header_bold: bool,
+    /// Optional built-in table style name (kept for XLSX round trips).
+    pub style_name: String,
+    pub columns: Vec<TableColumn>,
+    /// The table's own filter state; `None` means no filter buttons.
+    pub filter: Option<FilterState>,
+}
+
+impl SpreadsheetTable {
+    pub fn new(name: &str, range: &str, columns: Vec<String>) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: name.to_string(),
+            range: range.to_string(),
+            has_headers: true,
+            has_totals: false,
+            banded_rows: true,
+            banded_columns: false,
+            header_fill: Some("#1D4ED8".into()),
+            header_bold: true,
+            style_name: "TableStyleMedium2".into(),
+            columns: columns.into_iter().map(|name| TableColumn { name, formula: None }).collect(),
+            filter: None,
+        }
+    }
+
+    /// The body range (headers and totals excluded) as A1-style corners.
+    pub fn body_range(&self) -> Option<(String, String)> {
+        let ((start_row, start_col), (end_row, end_col)) = crate::address::parse_range(&self.range)?;
+        let first_body = if self.has_headers { start_row + 1 } else { start_row };
+        let last_body = if self.has_totals { end_row.saturating_sub(1) } else { end_row };
+        if first_body > last_body || start_col > end_col {
+            return None;
+        }
+        Some((crate::address::format(first_body, start_col), crate::address::format(last_body, end_col)))
+    }
+
+    /// The header range of the table, when it has headers.
+    pub fn header_range(&self) -> Option<String> {
+        if !self.has_headers {
+            return None;
+        }
+        let ((start_row, start_col), (_, end_col)) = crate::address::parse_range(&self.range)?;
+        Some(format!("{}:{}", crate::address::format(start_row, start_col), crate::address::format(start_row, end_col)))
+    }
+
+    /// The totals range of the table, when it has one.
+    pub fn totals_range(&self) -> Option<String> {
+        if !self.has_totals {
+            return None;
+        }
+        let ((_, start_col), (end_row, end_col)) = crate::address::parse_range(&self.range)?;
+        Some(format!("{}:{}", crate::address::format(end_row, start_col), crate::address::format(end_row, end_col)))
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Sheet {
@@ -815,6 +1189,9 @@ pub struct Sheet {
     pub freeze_cols: u32,
     pub charts: Vec<ChartPlacement>,
     pub pivot_tables: Vec<PivotTable>,
+    /// Structured tables defined over this sheet.
+    #[serde(default)]
+    pub tables: Vec<SpreadsheetTable>,
     pub conditional: Vec<CondRule>,
     pub validations: Vec<Validation>,
     pub filter: Option<FilterState>,
@@ -841,6 +1218,7 @@ impl Default for Sheet {
             freeze_cols: 0,
             charts: Vec::new(),
             pivot_tables: Vec::new(),
+            tables: Vec::new(),
             conditional: Vec::new(),
             validations: Vec::new(),
             filter: None,
@@ -1053,7 +1431,17 @@ pub struct SlideObject {
     pub line: Option<LineSpec>,
     pub table: Option<TableData>,
     pub chart: Option<ChartData>,
+    /// Flat group membership kept for files written before V3; new groups use
+    /// the `group` kind with `children`.
     pub group_id: Option<String>,
+    /// Children of a `group` object. Coordinates are absolute; moving or
+    /// resizing the group transforms every child.
+    #[serde(default)]
+    pub children: Vec<SlideObject>,
+    /// Placeholder role on a master or layout: `title`, `body`, `subtitle`,
+    /// `footer`, `slideNumber`, `date`.
+    #[serde(default)]
+    pub placeholder: Option<String>,
     pub name: String,
 }
 
@@ -1075,6 +1463,8 @@ impl Default for SlideObject {
             table: None,
             chart: None,
             group_id: None,
+            children: Vec::new(),
+            placeholder: None,
             name: String::new(),
         }
     }
@@ -1095,15 +1485,66 @@ impl SlideObject {
     }
 }
 
+/// One animation applied to a slide object during the slideshow.
+///
+/// `kind` is `entrance`, `emphasis` or `exit`; `trigger` is `onClick`,
+/// `withPrevious` or `afterPrevious`. The model is deliberately small: it is
+/// the subset the built-in slideshow can actually execute.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Animation {
+    pub id: String,
+    pub object_id: String,
+    pub kind: String,
+    pub effect: String,
+    pub trigger: String,
+    pub duration_ms: u32,
+    pub delay_ms: u32,
+    pub order: u32,
+}
+
+/// A layout inside a master. Placeholder objects on the layout are inherited
+/// by slides that use it.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SlideLayout {
+    pub id: String,
+    pub name: String,
+    /// `title`, `titleContent`, `twoContent`, `section`, `blank`, ...
+    pub kind: String,
+    pub objects: Vec<SlideObject>,
+}
+
+/// A slide master: theme, background and the layouts slides inherit from.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SlideMaster {
+    pub id: String,
+    pub name: String,
+    pub theme: String,
+    pub background: Option<String>,
+    pub objects: Vec<SlideObject>,
+    pub layouts: Vec<SlideLayout>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Slide {
     pub id: String,
+    /// Legacy editor layout preset; kept so old files keep their meaning.
     pub layout: String,
+    /// Master this slide inherits from; `None` means the deck default.
+    #[serde(default)]
+    pub master_id: Option<String>,
+    /// Layout inside the master; `None` means no inherited layout.
+    #[serde(default)]
+    pub layout_id: Option<String>,
     pub background: Option<String>,
     pub transition: Option<String>,
     pub transition_ms: u32,
     pub objects: Vec<SlideObject>,
+    #[serde(default)]
+    pub animations: Vec<Animation>,
     pub notes: String,
 }
 
@@ -1112,10 +1553,13 @@ impl Default for Slide {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             layout: "titleContent".into(),
+            master_id: None,
+            layout_id: None,
             background: None,
             transition: None,
             transition_ms: 500,
             objects: Vec::new(),
+            animations: Vec::new(),
             notes: String::new(),
         }
     }
@@ -1129,6 +1573,10 @@ pub struct Deck {
     pub size: SlideSize,
     pub theme: String,
     pub slides: Vec<Slide>,
+    /// Slide masters with their layouts. Empty means the deck uses the
+    /// built-in editor theme and no inheritance.
+    #[serde(default)]
+    pub masters: Vec<SlideMaster>,
     pub metadata: DocMetadata,
 }
 
@@ -1140,6 +1588,7 @@ impl Default for Deck {
             size: SlideSize::default(),
             theme: "minimal".into(),
             slides: vec![Slide::default()],
+            masters: Vec::new(),
             metadata: DocMetadata::default(),
         }
     }
@@ -1151,6 +1600,44 @@ impl Deck {
         deck.id = uuid::Uuid::new_v4().to_string();
         deck.title = title.to_string();
         deck
+    }
+
+    pub fn master(&self, id: &str) -> Option<&SlideMaster> {
+        self.masters.iter().find(|master| master.id == id)
+    }
+
+    /// The master a slide inherits from: its own, or the first deck master.
+    pub fn master_for(&self, slide: &Slide) -> Option<&SlideMaster> {
+        slide.master_id.as_deref().and_then(|id| self.master(id)).or_else(|| self.masters.first())
+    }
+
+    pub fn layout_for(&self, slide: &Slide) -> Option<&SlideLayout> {
+        let master = self.master_for(slide)?;
+        let layout_id = slide.layout_id.as_deref()?;
+        master.layouts.iter().find(|layout| layout.id == layout_id)
+    }
+
+    /// The objects a slide shows, including inherited master and layout
+    /// objects. Object ids from the slide are kept; inherited objects are
+    /// returned with a `master:`/`layout:` id prefix so the editor can tell
+    /// them apart and render them as non-editable background content.
+    pub fn inherited_objects(&self, slide: &Slide) -> Vec<SlideObject> {
+        let mut out = Vec::new();
+        if let Some(master) = self.master_for(slide) {
+            for object in &master.objects {
+                let mut inherited = object.clone();
+                inherited.id = format!("master:{}", object.id);
+                out.push(inherited);
+            }
+            if let Some(layout) = self.layout_for(slide) {
+                for object in &layout.objects {
+                    let mut inherited = object.clone();
+                    inherited.id = format!("layout:{}", object.id);
+                    out.push(inherited);
+                }
+            }
+        }
+        out
     }
 }
 

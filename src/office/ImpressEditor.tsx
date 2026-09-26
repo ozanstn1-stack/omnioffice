@@ -1,46 +1,83 @@
 /**
  * Impress editor: slide thumbnails, drag/resize/rotate canvas, properties
  * panel, notes, layouts, themes and transitions, plus a real slideshow.
+ *
+ * V3 adds masters/layouts (inherited placeholders), real shape groups with
+ * nested children, schematic chart previews, per-object animations and a
+ * presenter view. The pure helpers below (grouping, animation ordering) are
+ * exported so they can be unit tested without rendering the editor.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   AlignCenterHorizontal,
   AlignEndHorizontal,
   AlignStartHorizontal,
+  ArrowRight,
   Braces,
   Circle,
   Copy,
   FileDown,
-  Group,
   FolderOpen,
+  Group,
   Image as ImageIcon,
+  LayoutTemplate,
   LineChart,
-  Printer,
   Minus,
   MonitorPlay,
   Move,
   Play,
   Plus,
+  Printer,
   Redo2,
   RotateCw,
   Save,
+  Sparkles,
   Square,
   Table as TableIcon,
   Trash2,
   Type,
   Undo2,
   Ungroup,
-  ArrowRight,
 } from "lucide-react";
-import type { Deck, OfficeTab, Slide, SlideObject } from "../lib/office-store";
+import type { OfficeTab } from "../lib/office-store";
 import { useOfficeTabs } from "../lib/office-store";
+import type { Animation, ChartData, Deck, Slide, SlideLayout, SlideObject } from "../lib/office-types";
+import { newAnimation, newSlideMaster, uid, type ShapeStyle } from "../lib/office-types";
 import { useT } from "../lib/i18n";
 import { reportError } from "../lib/store";
-import { uid, type ShapeStyle } from "../lib/office-types";
-import { Ribbon, RibbonGroup, ToolButton, ToolColor, ToolNumber, ToolSelect } from "./office-ui";
+import { Dialog, Ribbon, RibbonGroup, TextField, ToolButton, ToolColor, ToolNumber, ToolSelect } from "./office-ui";
 import { openIntoWorkspace, useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
 
 type ImpressTab = OfficeTab & { model: Deck };
+type Theme = (typeof THEMES)[number];
+/** Path of object ids from the slide root; deeper paths are children of groups. */
+export type SelectionPath = string[];
+
+/** Animations that start together, with how their start time is anchored. */
+export interface AnimationStep {
+  animations: Animation[];
+  waitForClick: boolean;
+  relativeTo: "start" | "previousStart" | "previousEnd";
+  durationMs: number;
+}
+
+export interface RunningAnimation {
+  effect: Animation;
+  phase: "to" | "back";
+}
+
+export type AnimationRunState = Record<string, RunningAnimation>;
+export type AnimationDoneState = Record<string, boolean>;
+
+const MAX_GROUP_DEPTH = 8;
+const INHERITED_KEYS: Set<string> = new Set();
+const CHART_PALETTE = ["#2563EB", "#F97316", "#10B981", "#8B5CF6", "#EF4444", "#14B8A6"];
+
+export const ANIMATION_EFFECTS: Record<string, string[]> = {
+  entrance: ["appear", "fade", "flyIn", "zoom"],
+  emphasis: ["pulse", "spin", "grow", "shrink"],
+  exit: ["disappear", "fadeOut", "flyOut"],
+};
 
 const THEMES: Array<{ id: string; name: string; background: string; title: string; body: string; accent: string; titleColor: string; bodyColor: string }> = [
   { id: "minimal", name: "Minimal", background: "#FFFFFF", title: "Segoe UI", body: "Segoe UI", accent: "#2563EB", titleColor: "#111827", bodyColor: "#334155" },
@@ -114,6 +151,279 @@ function bulletObject(text: string, x: number, y: number, w: number, h: number):
   return object;
 }
 
+function emptyChart(): ChartData {
+  return { kind: "column", title: "Chart", categories: "", series: [], legend: true, xTitle: "", yTitle: "", stacked: false, showLabels: false };
+}
+
+// ---------------------------------------------------------------------------
+// Pure helpers: paths, groups, inheritance, animation ordering
+// ---------------------------------------------------------------------------
+
+export function pathKey(path: SelectionPath): string {
+  return path.join("/");
+}
+
+export function isInheritedId(id: string): boolean {
+  return id.startsWith("master:") || id.startsWith("layout:");
+}
+
+/** Deep clone that gives every object (and group child) a fresh id. */
+function cloneObject(object: SlideObject): SlideObject {
+  return {
+    ...(JSON.parse(JSON.stringify(object)) as SlideObject),
+    id: uid(),
+    children: object.children?.map(cloneObject),
+  };
+}
+
+/** Clone a list of objects and report the old to new id mapping. */
+function cloneObjects(objects: SlideObject[]): { objects: SlideObject[]; idMap: Map<string, string> } {
+  const idMap = new Map<string, string>();
+  const clone = (list: SlideObject[]): SlideObject[] =>
+    list.map((object) => {
+      const id = uid();
+      idMap.set(object.id, id);
+      return {
+        ...(JSON.parse(JSON.stringify(object)) as SlideObject),
+        id,
+        children: object.children ? clone(object.children) : undefined,
+      };
+    });
+  return { objects: clone(objects), idMap };
+}
+
+/** Bounding box of a set of objects (rotation is ignored, as in PowerPoint). */
+export function objectBounds(objects: SlideObject[]): { x: number; y: number; w: number; h: number } {
+  if (objects.length === 0) return { x: 0, y: 0, w: 0, h: 0 };
+  const left = Math.min(...objects.map((object) => object.x));
+  const top = Math.min(...objects.map((object) => object.y));
+  const right = Math.max(...objects.map((object) => object.x + object.w));
+  const bottom = Math.max(...objects.map((object) => object.y + object.h));
+  return { x: left, y: top, w: Math.max(1, right - left), h: Math.max(1, bottom - top) };
+}
+
+export function objectAtPath(objects: SlideObject[], path: SelectionPath): SlideObject | undefined {
+  let list = objects;
+  let found: SlideObject | undefined;
+  for (const id of path) {
+    found = list.find((object) => object.id === id);
+    if (!found) return undefined;
+    list = found.children ?? [];
+  }
+  return found;
+}
+
+export function replaceObjectAtPath(objects: SlideObject[], path: SelectionPath, patch: Partial<SlideObject>): SlideObject[] {
+  const [head, ...rest] = path;
+  return objects.map((object) => {
+    if (object.id !== head) return object;
+    if (rest.length === 0) return { ...object, ...patch };
+    return { ...object, children: object.children ? replaceObjectAtPath(object.children, rest, patch) : object.children };
+  });
+}
+
+function removeAtPath(objects: SlideObject[], path: SelectionPath): SlideObject[] {
+  const [head, ...rest] = path;
+  if (rest.length === 0) return objects.filter((object) => object.id !== head);
+  return objects.map((object) => (object.id === head && object.children ? { ...object, children: removeAtPath(object.children, rest) } : object));
+}
+
+/** Translate an object and every group child by the same delta. */
+export function translateObject(object: SlideObject, dx: number, dy: number): SlideObject {
+  return {
+    ...object,
+    x: object.x + dx,
+    y: object.y + dy,
+    children: object.children?.map((child) => translateObject(child, dx, dy)),
+  };
+}
+
+/** Scale an object and every group child about an origin (absolute child coords). */
+export function scaleObject(object: SlideObject, sx: number, sy: number, originX: number, originY: number): SlideObject {
+  return {
+    ...object,
+    x: originX + (object.x - originX) * sx,
+    y: originY + (object.y - originY) * sy,
+    w: Math.max(4, object.w * sx),
+    h: Math.max(4, object.h * sy),
+    children: object.children?.map((child) => scaleObject(child, sx, sy, originX, originY)),
+  };
+}
+
+/** Recompute every group's bounding box from its children (deepest first). */
+export function refreshGroupBounds(objects: SlideObject[]): SlideObject[] {
+  return objects.map((object) => {
+    if (object.kind !== "group" || !object.children || object.children.length === 0) return object;
+    const children = refreshGroupBounds(object.children);
+    return { ...object, ...objectBounds(children), children };
+  });
+}
+
+/**
+ * Group top-level objects into a real `{ kind: "group", children }` hierarchy.
+ * Child coordinates stay absolute; the group's box is their bounding box.
+ */
+export function groupSelection(objects: SlideObject[], ids: string[], groupId = uid()): SlideObject[] {
+  const selected = new Set(ids);
+  const members = objects.filter((object) => selected.has(object.id)).sort((a, b) => a.z - b.z);
+  if (members.length < 2) return objects;
+  const bounds = objectBounds(members);
+  const before = objects.findIndex((object) => selected.has(object.id));
+  const insertAt = objects.slice(0, before < 0 ? objects.length : before).filter((object) => !selected.has(object.id)).length;
+  const group: SlideObject = {
+    id: groupId,
+    kind: "group",
+    x: bounds.x,
+    y: bounds.y,
+    w: bounds.w,
+    h: bounds.h,
+    rotation: 0,
+    z: 0,
+    text: null,
+    image: null,
+    style: null,
+    line: null,
+    table: null,
+    chart: null,
+    groupId: null,
+    children: members.map((member, index) => ({ ...(JSON.parse(JSON.stringify(member)) as SlideObject), z: index + 1 })),
+    placeholder: null,
+    name: "Group",
+  };
+  const rest = objects.filter((object) => !selected.has(object.id));
+  rest.splice(insertAt, 0, group);
+  return rest.map((object, index) => ({ ...object, z: index + 1 }));
+}
+
+/** Dissolve one level of grouping: selected groups return their children. */
+export function ungroupSelection(objects: SlideObject[], ids: string[]): SlideObject[] {
+  const selected = new Set(ids);
+  const result: SlideObject[] = [];
+  for (const object of [...objects].sort((a, b) => a.z - b.z)) {
+    if (selected.has(object.id) && object.kind === "group" && object.children && object.children.length > 0) {
+      result.push(...[...object.children].sort((a, b) => a.z - b.z).map((child) => ({ ...child, groupId: null })));
+    } else {
+      result.push(object);
+    }
+  }
+  return result.map((object, index) => ({ ...object, z: index + 1 }));
+}
+
+/** Remove selected paths; a selected parent wins over its selected children. */
+export function removeSelectionPaths(objects: SlideObject[], paths: SelectionPath[]): SlideObject[] {
+  const topLevel = new Set(paths.filter((path) => path.length === 1).map((path) => path[0]));
+  let next = objects.filter((object) => !topLevel.has(object.id));
+  for (const path of paths.filter((item) => item.length > 1 && !topLevel.has(item[0]))) {
+    next = removeAtPath(next, path);
+  }
+  return refreshGroupBounds(next);
+}
+
+/**
+ * Master objects followed by layout objects, ids prefixed with `master:` /
+ * `layout:` (which marks them non-selectable). A placeholder role that the
+ * slide already fills is suppressed, exactly like PowerPoint.
+ */
+export function inheritedObjects(deck: Deck, slide: Slide): SlideObject[] {
+  const masters = deck.masters ?? [];
+  if (masters.length === 0) return [];
+  const master = masters.find((candidate) => candidate.id === slide.masterId) ?? masters[0];
+  const layout = master.layouts.find((candidate) => candidate.id === slide.layoutId) ?? master.layouts.find((candidate) => candidate.kind === slide.layout) ?? null;
+  const filled = new Set(slide.objects.map((object) => object.placeholder).filter((role): role is string => Boolean(role)));
+  const inherit = (objects: SlideObject[], prefix: string): SlideObject[] =>
+    objects
+      .filter((object) => !object.placeholder || !filled.has(object.placeholder))
+      .sort((a, b) => a.z - b.z)
+      .map((object) => ({ ...cloneObject(object), id: `${prefix}:${object.id}` }));
+  return [...inherit(master.objects, "master"), ...(layout ? inherit(layout.objects, "layout") : [])];
+}
+
+/**
+ * Order animations into steps that start together.
+ *
+ * - `withPrevious` merges into the current step.
+ * - `afterPrevious` starts a step when the previous step ends.
+ * - `onClick` waits for the presenter to click or press space.
+ */
+export function animationTimeline(animations: Animation[]): AnimationStep[] {
+  const sorted = [...animations].sort((a, b) => a.order - b.order);
+  const steps: AnimationStep[] = [];
+  for (const animation of sorted) {
+    const own = Math.max(0, animation.delayMs) + Math.max(0, animation.durationMs);
+    const current = steps[steps.length - 1];
+    if (animation.trigger === "withPrevious" && current) {
+      current.animations.push(animation);
+      current.durationMs = Math.max(current.durationMs, own);
+      continue;
+    }
+    steps.push({
+      animations: [animation],
+      waitForClick: animation.trigger === "onClick",
+      relativeTo: animation.trigger === "afterPrevious" ? "previousEnd" : animation.trigger === "withPrevious" ? "previousStart" : "start",
+      durationMs: own,
+    });
+  }
+  return steps;
+}
+
+/** The style one animation phase paints on its object (transitions are added by the caller). */
+export function animationEffectStyle(kind: string, effect: string, phase: "from" | "to" | "back"): CSSProperties {
+  if (phase === "back") return {};
+  if (kind === "entrance") {
+    if (phase === "from") {
+      if (effect === "flyIn") return { opacity: 0, transform: "translateY(40px)" };
+      if (effect === "zoom") return { opacity: 0, transform: "scale(0.5)" };
+      return { opacity: 0 };
+    }
+    return {};
+  }
+  if (kind === "emphasis") {
+    if (phase === "to") {
+      if (effect === "pulse") return { transform: "scale(1.15)" };
+      if (effect === "grow") return { transform: "scale(1.3)" };
+      if (effect === "shrink") return { transform: "scale(0.75)" };
+      if (effect === "spin") return { transform: "rotate(360deg)" };
+    }
+    return {};
+  }
+  if (phase === "to") {
+    if (effect === "flyOut") return { opacity: 0, transform: "translateY(-40px)" };
+    return { opacity: 0 };
+  }
+  return {};
+}
+
+/** Style for a slideshow object from its animation state (pending/running/finished). */
+export function animationObjectStyle(
+  objectId: string,
+  animations: Animation[],
+  running: AnimationRunState,
+  done: AnimationDoneState,
+): CSSProperties {
+  const mine = animations.filter((animation) => animation.objectId === objectId);
+  const active = mine.find((animation) => Boolean(running[animation.id]));
+  if (active) {
+    const state = running[active.id];
+    if (state) {
+      const ms = active.kind === "emphasis" ? Math.max(0, active.durationMs / 2) : Math.max(0, active.durationMs);
+      return { ...animationEffectStyle(active.kind, active.effect, state.phase), transition: `opacity ${ms}ms ease, transform ${ms}ms ease` };
+    }
+  }
+  const entrance = mine.find((animation) => animation.kind === "entrance");
+  if (entrance && !done[entrance.id]) return animationEffectStyle("entrance", entrance.effect, "from");
+  const exit = mine.find((animation) => animation.kind === "exit");
+  if (exit && done[exit.id]) return animationEffectStyle("exit", exit.effect, "to");
+  return {};
+}
+
+/** mm:ss clock for the presenter view. */
+export function formatClock(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
 export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   const t = useT();
   const deck = tab.model;
@@ -121,19 +431,34 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   const session = useOfficeSession(tab);
   const [ribbon, setRibbon] = useState("home");
   const [slideIndex, setSlideIndex] = useState(0);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<SelectionPath[]>([]);
   const [editingText, setEditingText] = useState<string | null>(null);
   const [slideshow, setSlideshow] = useState<number | null>(null);
+  const [presenterView, setPresenterView] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [animRunning, setAnimRunning] = useState<AnimationRunState>({});
+  const [animDone, setAnimDone] = useState<AnimationDoneState>({});
+  const [masterDialog, setMasterDialog] = useState(false);
+  const [chartPath, setChartPath] = useState<SelectionPath | null>(null);
+  const [animationEditing, setAnimationEditing] = useState<Animation | null>(null);
   const [undoStack, setUndoStack] = useState<Deck[]>([]);
   const [redoStack, setRedoStack] = useState<Deck[]>([]);
   const canvasRef = useRef<HTMLDivElement>(null);
-  const dragState = useRef<{ id: string; mode: "move" | "resize" | "rotate"; startX: number; startY: number; object: SlideObject } | null>(null);
+  const dragState = useRef<{ path: SelectionPath; mode: "move" | "resize" | "rotate"; startX: number; startY: number; object: SlideObject } | null>(null);
+  const showTimersRef = useRef<number[]>([]);
+  const showStartRef = useRef<number | null>(null);
+  const showEndRef = useRef<number | null>(null);
+  const stepIndexRef = useRef(0);
+  const advanceRef = useRef<() => void>(() => undefined);
 
   const slide = deck.slides[Math.min(slideIndex, deck.slides.length - 1)] ?? deck.slides[0];
 
   useEditorShortcuts(session);
-  useEditorShortcuts(session);
   const theme = useMemo(() => THEMES.find((candidate) => candidate.id === deck.theme) ?? THEMES[0], [deck.theme]);
+  const masters = useMemo(() => deck.masters ?? [], [deck.masters]);
+  const selectedMaster = useMemo(() => masters.find((candidate) => candidate.id === slide.masterId) ?? masters[0] ?? null, [masters, slide.masterId]);
+  const inherited = useMemo(() => inheritedObjects(deck, slide), [deck, slide]);
   const scale = useMemo(() => {
     const width = canvasRef.current?.clientWidth ?? 800;
     return Math.min(1.4, Math.max(0.2, (width - 48) / deck.size.widthPt));
@@ -156,35 +481,73 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
     [slideIndex, update],
   );
 
-  const updateObject = useCallback(
-    (id: string, patch: Partial<SlideObject>, recordUndo = true) =>
-      updateSlide((current) => ({ ...current, objects: current.objects.map((object) => (object.id === id ? { ...object, ...patch } : object)) }), recordUndo),
+  const updatePath = useCallback(
+    (path: SelectionPath, patch: Partial<SlideObject>, recordUndo = true) =>
+      updateSlide((current) => {
+        const next = replaceObjectAtPath(current.objects, path, patch);
+        return { ...current, objects: path.length > 1 ? refreshGroupBounds(next) : next };
+      }, recordUndo),
     [updateSlide],
   );
+
+  // -------------------------------------------------------------------------
+  // Selection
+  // -------------------------------------------------------------------------
+
+  const selectedKeys = useMemo(() => new Set(selected.map((path) => pathKey(path))), [selected]);
+  const selectedObjects = useMemo(
+    () => selected.map((path) => objectAtPath(slide.objects, path)).filter((object): object is SlideObject => Boolean(object)),
+    [selected, slide.objects],
+  );
+  const primary = selectedObjects[0];
+  const primaryPath = selected[0];
+  const hasGroupSelection = selected.some((path) => path.length === 1 && objectAtPath(slide.objects, path)?.kind === "group");
+
+  const selectFromEvent = (event: React.MouseEvent, path: SelectionPath) => {
+    if (isInheritedId(path[0])) return;
+    const target: SelectionPath = event.altKey ? path : [path[0]];
+    const key = pathKey(target);
+    if (event.shiftKey) {
+      setSelected((current) => (current.some((item) => pathKey(item) === key) ? current.filter((item) => pathKey(item) !== key) : [...current, target]));
+    } else {
+      setSelected([target]);
+    }
+  };
 
   // -------------------------------------------------------------------------
   // Pointer interaction
   // -------------------------------------------------------------------------
 
-  const beginDrag = (event: React.MouseEvent, id: string, mode: "move" | "resize" | "rotate") => {
+  const beginDrag = (event: React.MouseEvent, path: SelectionPath, mode: "move" | "resize" | "rotate") => {
     event.stopPropagation();
-    const object = slide.objects.find((candidate) => candidate.id === id);
+    if (isInheritedId(path[0])) return;
+    const object = objectAtPath(slide.objects, path);
     if (!object) return;
-    dragState.current = { id, mode, startX: event.clientX, startY: event.clientY, object: { ...object } };
+    const snapshot = JSON.parse(JSON.stringify(object)) as SlideObject;
+    dragState.current = { path, mode, startX: event.clientX, startY: event.clientY, object: snapshot };
     const onMove = (move: MouseEvent) => {
       const state = dragState.current;
       if (!state) return;
       const dx = (move.clientX - state.startX) / scale;
       const dy = (move.clientY - state.startY) / scale;
+      const children = state.object.children;
       if (state.mode === "move") {
-        updateObject(state.id, { x: Math.round(state.object.x + dx), y: Math.round(state.object.y + dy) }, false);
+        const nextX = Math.round(state.object.x + dx);
+        const nextY = Math.round(state.object.y + dy);
+        const moveDx = nextX - state.object.x;
+        const moveDy = nextY - state.object.y;
+        updatePath(state.path, { x: nextX, y: nextY, children: children ? children.map((child) => translateObject(child, moveDx, moveDy)) : undefined }, false);
       } else if (state.mode === "resize") {
-        updateObject(state.id, { w: Math.max(24, Math.round(state.object.w + dx)), h: Math.max(24, Math.round(state.object.h + dy)) }, false);
+        const w = Math.max(24, Math.round(state.object.w + dx));
+        const h = Math.max(24, Math.round(state.object.h + dy));
+        const sx = state.object.w > 0 ? w / state.object.w : 1;
+        const sy = state.object.h > 0 ? h / state.object.h : 1;
+        updatePath(state.path, { w, h, children: children ? children.map((child) => scaleObject(child, sx, sy, state.object.x, state.object.y)) : undefined }, false);
       } else {
         const centerX = state.object.x + state.object.w / 2;
         const centerY = state.object.y + state.object.h / 2;
         const angle = (Math.atan2(move.clientY / scale - centerY, move.clientX / scale - centerX) * 180) / Math.PI + 90;
-        updateObject(state.id, { rotation: Math.round(angle) }, false);
+        updatePath(state.path, { rotation: Math.round(angle) }, false);
       }
     };
     const onUp = () => {
@@ -196,21 +559,58 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
     window.addEventListener("mouseup", onUp);
   };
 
+  const handleObjectMouseDown = (event: React.MouseEvent, path: SelectionPath) => {
+    event.stopPropagation();
+    selectFromEvent(event, path);
+    beginDrag(event, event.altKey ? path : [path[0]], "move");
+  };
+
+  const handleObjectDoubleClick = (event: React.MouseEvent, path: SelectionPath) => {
+    event.stopPropagation();
+    const object = objectAtPath(slide.objects, path);
+    if (!object) return;
+    if (object.kind === "chart") {
+      setChartPath(path);
+      return;
+    }
+    if (object.text) setEditingText(pathKey(path));
+    if (object.kind === "image") void replaceImage(path);
+  };
+
+  const handleTextChange = (path: SelectionPath, text: string) => {
+    const object = objectAtPath(slide.objects, path);
+    if (!object?.text) return;
+    updatePath(path, { text: { ...object.text, paragraphs: [{ ...object.text.paragraphs[0], text }] } }, false);
+  };
+
   // -------------------------------------------------------------------------
   // Slide operations
   // -------------------------------------------------------------------------
 
   const addSlide = () => {
     const next = LAYOUTS.find((layout) => layout.id === "titleContent")!;
-    const created: Slide = { id: uid(), layout: "titleContent", background: null, transition: null, transitionMs: 500, objects: next.build(deck).map((object, index) => ({ ...object, z: index + 1 })), notes: "" };
+    const created: Slide = {
+      id: uid(),
+      layout: "titleContent",
+      masterId: slide.masterId ?? null,
+      layoutId: slide.layoutId ?? null,
+      background: null,
+      transition: null,
+      transitionMs: 500,
+      objects: next.build(deck).map((object, index) => ({ ...object, z: index + 1 })),
+      animations: [],
+      notes: "",
+    };
     update((current) => ({ ...current, slides: [...current.slides.slice(0, slideIndex + 1), created, ...current.slides.slice(slideIndex + 1)] }));
     setSlideIndex(slideIndex + 1);
   };
 
   const duplicateSlide = () => {
+    const { objects, idMap } = cloneObjects(slide.objects);
     const copy: Slide = JSON.parse(JSON.stringify(slide));
     copy.id = uid();
-    copy.objects = copy.objects.map((object) => ({ ...object, id: uid() }));
+    copy.objects = objects;
+    copy.animations = (slide.animations ?? []).map((animation) => ({ ...animation, id: uid(), objectId: idMap.get(animation.objectId) ?? animation.objectId }));
     update((current) => ({ ...current, slides: [...current.slides.slice(0, slideIndex + 1), copy, ...current.slides.slice(slideIndex + 1)] }));
     setSlideIndex(slideIndex + 1);
   };
@@ -238,6 +638,28 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
     updateSlide((current) => ({ ...current, layout: layoutId, objects: layout.build(deck).map((object, index) => ({ ...object, z: index + 1 })) }));
   };
 
+  const selectMaster = (masterId: string) => {
+    updateSlide((current) => ({ ...current, masterId: masterId || null, layoutId: null }));
+  };
+
+  const selectLayout = (layoutId: string) => {
+    if (!layoutId) {
+      updateSlide((current) => ({ ...current, layoutId: null }));
+      return;
+    }
+    const layout = selectedMaster?.layouts.find((candidate) => candidate.id === layoutId);
+    if (!layout) return;
+    updateSlide((current) => ({ ...current, layoutId, layout: layout.kind }));
+  };
+
+  const openMasterDialog = () => {
+    if (masters.length === 0) {
+      const master = newSlideMaster();
+      update((current) => ({ ...current, masters: [master] }));
+    }
+    setMasterDialog(true);
+  };
+
   const addObject = (kind: string) => {
     const base = { x: 120, y: 140, w: 240, h: 140 };
     let object: SlideObject;
@@ -259,64 +681,88 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
         },
       };
     } else if (kind === "chart") {
-      object = { ...textObject("", base.x, base.y, 420, 260, 14, "left"), kind: "chart", chart: { kind: "column", title: "Chart", categories: "", series: [], legend: true, xTitle: "", yTitle: "", stacked: false, showLabels: false } };
+      object = { ...textObject("", base.x, base.y, 420, 260, 14, "left"), kind: "chart", chart: emptyChart() };
     } else {
       object = { ...textObject("", base.x, base.y, base.w, base.h, 16, "left"), kind, style: { fill: theme.accent, stroke: null, strokeWidthPt: 1.5, opacity: 1, cornerRadiusPt: kind === "roundRect" ? 12 : 0, shadow: false } };
     }
     object.z = slide.objects.length + 1;
     updateSlide((current) => ({ ...current, objects: [...current.objects, object] }));
-    setSelected([object.id]);
+    setSelected([[object.id]]);
   };
 
   const deleteSelected = () => {
-    updateSlide((current) => ({ ...current, objects: current.objects.filter((object) => !selected.includes(object.id)) }));
+    if (selected.length === 0) return;
+    updateSlide((current) => ({ ...current, objects: removeSelectionPaths(current.objects, selected) }));
     setSelected([]);
   };
 
   const duplicateSelected = () => {
-    const copies = slide.objects
-      .filter((object) => selected.includes(object.id))
-      .map((object) => ({ ...JSON.parse(JSON.stringify(object)) as SlideObject, id: uid(), x: object.x + 16, y: object.y + 16, z: slide.objects.length + 1 }));
-    updateSlide((current) => ({ ...current, objects: [...current.objects, ...copies] }));
-    setSelected(copies.map((object) => object.id));
+    const members = selected
+      .filter((path) => path.length === 1)
+      .map((path) => slide.objects.find((object) => object.id === path[0]))
+      .filter((object): object is SlideObject => Boolean(object));
+    if (members.length === 0) return;
+    const copies = members.map((object) => ({ ...cloneObject(object), x: object.x + 16, y: object.y + 16 }));
+    updateSlide((current) => ({ ...current, objects: [...current.objects, ...copies].map((object, index) => ({ ...object, z: index + 1 })) }));
+    setSelected(copies.map((object) => [object.id]));
   };
 
   const alignSelected = (mode: "left" | "center" | "right" | "top" | "middle" | "bottom") => {
-    updateSlide((current) => ({
-      ...current,
-      objects: current.objects.map((object) => {
-        if (!selected.includes(object.id)) return object;
+    if (selected.length === 0) return;
+    updateSlide((current) => {
+      let objects = current.objects;
+      for (const path of selected) {
+        const object = objectAtPath(objects, path);
+        if (!object) continue;
         switch (mode) {
           case "left":
-            return { ...object, x: 0 };
+            objects = replaceObjectAtPath(objects, path, { x: 0 });
+            break;
           case "center":
-            return { ...object, x: Math.round((deck.size.widthPt - object.w) / 2) };
+            objects = replaceObjectAtPath(objects, path, { x: Math.round((deck.size.widthPt - object.w) / 2) });
+            break;
           case "right":
-            return { ...object, x: Math.round(deck.size.widthPt - object.w) };
+            objects = replaceObjectAtPath(objects, path, { x: Math.round(deck.size.widthPt - object.w) });
+            break;
           case "top":
-            return { ...object, y: 0 };
+            objects = replaceObjectAtPath(objects, path, { y: 0 });
+            break;
           case "middle":
-            return { ...object, y: Math.round((deck.size.heightPt - object.h) / 2) };
+            objects = replaceObjectAtPath(objects, path, { y: Math.round((deck.size.heightPt - object.h) / 2) });
+            break;
           default:
-            return { ...object, y: Math.round(deck.size.heightPt - object.h) };
+            objects = replaceObjectAtPath(objects, path, { y: Math.round(deck.size.heightPt - object.h) });
+            break;
         }
-      }),
-    }));
+      }
+      return { ...current, objects: refreshGroupBounds(objects) };
+    });
   };
 
   const groupSelected = () => {
+    const ids = selected.filter((path) => path.length === 1).map((path) => path[0]);
+    if (ids.length < 2) return;
     const groupId = uid();
-    updateSlide((current) => ({ ...current, objects: current.objects.map((object) => (selected.includes(object.id) ? { ...object, groupId } : object)) }));
+    updateSlide((current) => ({ ...current, objects: groupSelection(current.objects, ids, groupId) }));
+    setSelected([[groupId]]);
   };
 
   const ungroupSelected = () => {
-    updateSlide((current) => ({ ...current, objects: current.objects.map((object) => (selected.includes(object.id) ? { ...object, groupId: null } : object)) }));
+    const ids = selected
+      .filter((path) => path.length === 1)
+      .map((path) => path[0])
+      .filter((id) => slide.objects.find((object) => object.id === id)?.kind === "group");
+    if (ids.length === 0) return;
+    updateSlide((current) => ({ ...current, objects: ungroupSelection(current.objects, ids) }));
+    setSelected([]);
   };
 
   const bringForward = (delta: number) => {
+    const ids = new Set(selected.map((path) => path[0]));
+    if (ids.size === 0) return;
     updateSlide((current) => {
       const objects = [...current.objects].sort((a, b) => a.z - b.z);
-      for (const id of selected) {
+      for (const id of ids) {
         const index = objects.findIndex((object) => object.id === id);
         if (index < 0) continue;
         const target = Math.max(0, Math.min(objects.length - 1, index + delta));
@@ -325,6 +771,29 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
       }
       return { ...current, objects: objects.map((object, index) => ({ ...object, z: index + 1 })) };
     });
+  };
+
+  const setPrimaryPosition = (axis: "x" | "y", value: number) => {
+    if (!primary || !primaryPath) return;
+    const delta = value - primary[axis];
+    if (!delta) return;
+    const patch: Partial<SlideObject> = axis === "x" ? { x: value } : { y: value };
+    if (primary.children && primary.children.length > 0) {
+      patch.children = primary.children.map((child) => translateObject(child, axis === "x" ? delta : 0, axis === "y" ? delta : 0));
+    }
+    updatePath(primaryPath, patch);
+  };
+
+  const setPrimarySize = (axis: "w" | "h", value: number) => {
+    if (!primary || !primaryPath) return;
+    const next = Math.max(4, Math.round(value));
+    const patch: Partial<SlideObject> = axis === "w" ? { w: next } : { h: next };
+    if (primary.children && primary.children.length > 0) {
+      const sx = axis === "w" && primary.w > 0 ? next / primary.w : 1;
+      const sy = axis === "h" && primary.h > 0 ? next / primary.h : 1;
+      patch.children = primary.children.map((child) => scaleObject(child, sx, sy, primary.x, primary.y));
+    }
+    updatePath(primaryPath, patch);
   };
 
   const undo = () => {
@@ -347,20 +816,251 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
     });
   };
 
-  // Autoplay slideshow.
+  // -------------------------------------------------------------------------
+  // Animations + slideshow
+  // -------------------------------------------------------------------------
+
+  const reorderAnimation = (id: string, delta: number) => {
+    updateSlide((current) => {
+      const list = [...(current.animations ?? [])].sort((a, b) => a.order - b.order);
+      const index = list.findIndex((animation) => animation.id === id);
+      const target = index + delta;
+      if (index < 0 || target < 0 || target >= list.length) return current;
+      const [moved] = list.splice(index, 1);
+      list.splice(target, 0, moved);
+      return { ...current, animations: list.map((animation, position) => ({ ...animation, order: position + 1 })) };
+    });
+  };
+
+  const saveAnimation = (animation: Animation) => {
+    updateSlide((current) => {
+      const list = current.animations ?? [];
+      return {
+        ...current,
+        animations: list.some((candidate) => candidate.id === animation.id) ? list.map((candidate) => (candidate.id === animation.id ? animation : candidate)) : [...list, animation],
+      };
+    });
+    setAnimationEditing(null);
+  };
+
+  const addAnimation = () => {
+    const target = selectedObjects[0] ?? slide.objects[0];
+    if (!target) return;
+    const order = (slide.animations ?? []).reduce((max, animation) => Math.max(max, animation.order), 0) + 1;
+    setAnimationEditing(newAnimation(target.id, "entrance", "fade", "onClick", order));
+  };
+
+  const clearShowTimers = useCallback(() => {
+    for (const timer of showTimersRef.current) window.clearTimeout(timer);
+    showTimersRef.current = [];
+  }, []);
+
+  const runStep = useCallback((step: AnimationStep) => {
+    const startedAt = Date.now();
+    let endAt = startedAt;
+    for (const animation of step.animations) {
+      const beginsAfter = Math.max(0, animation.delayMs);
+      const lasting = Math.max(0, animation.durationMs);
+      endAt = Math.max(endAt, startedAt + beginsAfter + lasting);
+      const startTimer = window.setTimeout(() => {
+        const running: RunningAnimation = { effect: animation, phase: "to" };
+        setAnimRunning((current) => ({ ...current, [animation.id]: running }));
+        if (animation.kind === "emphasis" && lasting > 0) {
+          const backTimer = window.setTimeout(() => {
+            setAnimRunning((current) => (current[animation.id] ? { ...current, [animation.id]: { effect: animation, phase: "back" } } : current));
+          }, Math.round(lasting / 2));
+          showTimersRef.current.push(backTimer);
+        }
+        const endTimer = window.setTimeout(() => {
+          setAnimRunning((current) => {
+            const next = { ...current };
+            delete next[animation.id];
+            return next;
+          });
+          setAnimDone((current) => ({ ...current, [animation.id]: true }));
+        }, lasting);
+        showTimersRef.current.push(endTimer);
+      }, beginsAfter);
+      showTimersRef.current.push(startTimer);
+    }
+    showStartRef.current = startedAt;
+    showEndRef.current = endAt;
+    stepIndexRef.current += 1;
+    setStepIndex(stepIndexRef.current);
+  }, []);
+
+  const goToSlide = useCallback(
+    (index: number) => {
+      clearShowTimers();
+      showStartRef.current = null;
+      showEndRef.current = null;
+      stepIndexRef.current = 0;
+      setStepIndex(0);
+      setAnimRunning({});
+      setAnimDone({});
+      setSlideshow(index);
+    },
+    [clearShowTimers],
+  );
+
+  const showSlide = slideshow === null ? undefined : deck.slides[Math.min(slideshow, deck.slides.length - 1)];
+  const nextSlide = slideshow === null ? undefined : deck.slides[slideshow + 1];
+  const showAnimations = showSlide?.animations ?? [];
+  const stepList = useMemo(() => animationTimeline(showAnimations), [showAnimations]);
+
+  const advanceShow = useCallback(() => {
+    if (slideshow === null) return;
+    if (stepIndexRef.current < stepList.length) {
+      const step = stepList[stepIndexRef.current];
+      if (step.waitForClick) runStep(step);
+      return;
+    }
+    if (slideshow < deck.slides.length - 1) goToSlide(slideshow + 1);
+  }, [deck.slides.length, goToSlide, runStep, slideshow, stepList]);
+
+  useEffect(() => {
+    advanceRef.current = advanceShow;
+  }, [advanceShow]);
+
+  useEffect(() => {
+    if (slideshow === null || stepIndex >= stepList.length) return;
+    const step = stepList[stepIndex];
+    if (step.waitForClick) return;
+    const now = Date.now();
+    const base = step.relativeTo === "previousStart" ? showStartRef.current ?? now : step.relativeTo === "previousEnd" ? showEndRef.current ?? now : now;
+    const timer = window.setTimeout(() => runStep(step), Math.max(0, base - now));
+    showTimersRef.current.push(timer);
+    return () => window.clearTimeout(timer);
+  }, [runStep, slideshow, stepIndex, stepList]);
+
+  useEffect(() => {
+    if (slideshow !== null) return;
+    clearShowTimers();
+    stepIndexRef.current = 0;
+    setStepIndex(0);
+    setAnimRunning({});
+    setAnimDone({});
+    setPresenterView(false);
+    setElapsedMs(0);
+  }, [clearShowTimers, slideshow]);
+
   useEffect(() => {
     if (slideshow === null) return;
     const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSlideshow(null);
-      if (event.key === "ArrowRight" || event.key === " ") setSlideshow((current) => Math.min(deck.slides.length - 1, (current ?? 0) + 1));
-      if (event.key === "ArrowLeft") setSlideshow((current) => Math.max(0, (current ?? 0) - 1));
+      if (event.key === "Escape") {
+        setSlideshow(null);
+        setPresenterView(false);
+        return;
+      }
+      if (event.key === "ArrowRight" || event.key === " ") {
+        event.preventDefault();
+        advanceRef.current();
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        goToSlide(Math.max(0, slideshow - 1));
+        return;
+      }
+      if (event.key.toLowerCase() === "p") setPresenterView((value) => !value);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [slideshow, deck.slides.length]);
+  }, [goToSlide, slideshow]);
 
-  const selectedObjects = slide.objects.filter((object) => selected.includes(object.id));
-  const primary = selectedObjects[0];
+  useEffect(() => {
+    if (slideshow === null) {
+      setElapsedMs(0);
+      return;
+    }
+    const startedAt = Date.now();
+    setElapsedMs(0);
+    const interval = window.setInterval(() => setElapsedMs(Date.now() - startedAt), 500);
+    return () => window.clearInterval(interval);
+  }, [slideshow === null]);
+
+  useEffect(() => () => clearShowTimers(), [clearShowTimers]);
+
+  const showObjectStyle = useCallback(
+    (object: SlideObject) => animationObjectStyle(object.id, showAnimations, animRunning, animDone),
+    [animDone, animRunning, showAnimations],
+  );
+
+  const slideshowSlideArea = showSlide ? (
+    <div
+      className="slideshow-slide"
+      data-transition={showSlide.transition ?? "fade"}
+      style={{
+        width: presenterView ? "100%" : "90vw",
+        height: presenterView ? "100%" : `${(90 * deck.size.heightPt) / deck.size.widthPt}vh`,
+        background: showSlide.background ?? theme.background,
+      }}
+    >
+      <SlidePreview deck={deck} slide={showSlide} theme={theme} width={0} full slideWidth={deck.size.widthPt} slideHeight={deck.size.heightPt} objectStyle={showObjectStyle} />
+    </div>
+  ) : null;
+
+  const presenterPanel = presenterView && showSlide ? (
+    <aside
+      className="presenter-panel"
+      onClick={(event) => event.stopPropagation()}
+      style={{ width: 320, minWidth: 320, maxHeight: "100%", overflow: "auto", display: "flex", flexDirection: "column", gap: 10, padding: 12, borderRadius: 10, background: "rgba(15, 23, 42, 0.94)", color: "#E2E8F0" }}
+    >
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+        <strong>{t("impress.presenterView")}</strong>
+        <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatClock(elapsedMs)}</span>
+      </div>
+      <div>
+        <h4>{t("impress.currentSlide")}</h4>
+        <SlidePreview deck={deck} slide={showSlide} theme={theme} width={280} objectStyle={showObjectStyle} />
+      </div>
+      {nextSlide ? (
+        <div>
+          <h4>{t("impress.nextSlide")}</h4>
+          <SlidePreview deck={deck} slide={nextSlide} theme={theme} width={280} />
+        </div>
+      ) : null}
+      <div>
+        <h4>{t("impress.notes")}</h4>
+        <div style={{ whiteSpace: "pre-wrap", fontSize: 12, opacity: 0.9 }}>{showSlide.notes || "—"}</div>
+      </div>
+      <div className="row">
+        <button type="button" className="btn btn-soft" onClick={() => goToSlide(Math.max(0, (slideshow ?? 0) - 1))}>
+          ‹ {t("impress.previous")}
+        </button>
+        <button type="button" className="btn btn-soft" onClick={advanceShow}>
+          {t("impress.next")} ›
+        </button>
+      </div>
+    </aside>
+  ) : null;
+
+  const slideshowNav = (
+    <div className="slideshow-nav" onClick={(event) => event.stopPropagation()} style={presenterView ? { position: "static" } : undefined}>
+      <button type="button" className="btn btn-soft" onClick={() => goToSlide(Math.max(0, (slideshow ?? 0) - 1))}>
+        ‹
+      </button>
+      <span>
+        {(slideshow ?? 0) + 1} / {deck.slides.length}
+      </span>
+      <button type="button" className="btn btn-soft" onClick={advanceShow}>
+        ›
+      </button>
+      <button type="button" className="btn btn-soft" onClick={() => setPresenterView((value) => !value)}>
+        {t("impress.presenterView")}
+      </button>
+      <button
+        type="button"
+        className="btn btn-soft"
+        onClick={() => {
+          setSlideshow(null);
+          setPresenterView(false);
+        }}
+      >
+        {t("common.close")}
+      </button>
+    </div>
+  );
 
   return (
     <div className="editor impress-editor">
@@ -370,6 +1070,7 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
           { id: "insert", label: t("impress.tabInsert") },
           { id: "design", label: t("impress.tabDesign") },
           { id: "transitions", label: t("impress.tabTransitions") },
+          { id: "animations", label: t("impress.tabAnimations") },
           { id: "view", label: t("impress.tabView") },
         ]}
         active={ribbon}
@@ -398,8 +1099,8 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
               <ToolButton icon={<AlignCenterHorizontal size={16} />} onClick={() => alignSelected("center")} title={t("impress.alignCenter")} />
               <ToolButton icon={<AlignEndHorizontal size={16} />} onClick={() => alignSelected("right")} title={t("impress.alignRight")} />
               <ToolButton icon={<Move size={16} />} onClick={() => bringForward(1)} title={t("impress.bringForward")} />
-              <ToolButton icon={<Group size={16} />} label={t("impress.group")} onClick={groupSelected} disabled={selected.length < 2} />
-              <ToolButton icon={<Ungroup size={16} />} label={t("impress.ungroup")} onClick={ungroupSelected} disabled={selected.length === 0} />
+              <ToolButton icon={<Group size={16} />} label={t("impress.group")} onClick={groupSelected} disabled={selected.filter((path) => path.length === 1).length < 2} />
+              <ToolButton icon={<Ungroup size={16} />} label={t("impress.ungroup")} onClick={ungroupSelected} disabled={!hasGroupSelection} />
             </RibbonGroup>
             <RibbonGroup label={t("impress.slides")}>
               <ToolButton icon={<Plus size={16} />} label={t("impress.newSlide")} onClick={addSlide} />
@@ -427,10 +1128,13 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
         {ribbon === "design" ? (
           <>
             <RibbonGroup label={t("impress.theme")}>
-              <ToolSelect value={deck.theme} onChange={(theme) => update((current) => ({ ...current, theme }))} options={THEMES.map((candidate) => ({ value: candidate.id, label: candidate.name }))} width={130} />
+              <ToolSelect value={deck.theme} onChange={(themeId) => update((current) => ({ ...current, theme: themeId }))} options={THEMES.map((candidate) => ({ value: candidate.id, label: candidate.name }))} width={130} />
             </RibbonGroup>
             <RibbonGroup label={t("impress.layout")}>
               <ToolSelect value={slide.layout} onChange={applyLayout} options={LAYOUTS.map((layout) => ({ value: layout.id, label: layout.name }))} width={150} />
+            </RibbonGroup>
+            <RibbonGroup label={t("impress.master")}>
+              <ToolButton icon={<LayoutTemplate size={16} />} label={t("impress.masters")} onClick={openMasterDialog} />
             </RibbonGroup>
             <RibbonGroup label={t("impress.background")}>
               <ToolColor value={slide.background ?? theme.background} onChange={(background) => updateSlide((current) => ({ ...current, background }))} title={t("impress.background")} />
@@ -458,10 +1162,30 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
           </RibbonGroup>
         ) : null}
 
+        {ribbon === "animations" ? (
+          <RibbonGroup label={t("impress.animations")}>
+            <ToolButton icon={<Sparkles size={16} />} label={t("impress.addAnimation")} onClick={addAnimation} disabled={slide.objects.length === 0} />
+          </RibbonGroup>
+        ) : null}
+
         {ribbon === "view" ? (
           <RibbonGroup label={t("impress.present")}>
-            <ToolButton icon={<Play size={16} />} label={t("impress.startShow")} onClick={() => setSlideshow(slideIndex)} />
-            <ToolButton icon={<MonitorPlay size={16} />} label={t("impress.presenter")} onClick={() => setSlideshow(0)} />
+            <ToolButton
+              icon={<Play size={16} />}
+              label={t("impress.startShow")}
+              onClick={() => {
+                setPresenterView(false);
+                goToSlide(slideIndex);
+              }}
+            />
+            <ToolButton
+              icon={<MonitorPlay size={16} />}
+              label={t("impress.presenter")}
+              onClick={() => {
+                setPresenterView(true);
+                goToSlide(slideIndex);
+              }}
+            />
           </RibbonGroup>
         ) : null}
 
@@ -507,66 +1231,103 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
             onClick={(event) => event.stopPropagation()}
             onMouseDown={() => setSelected([])}
           >
-            {[...slide.objects].sort((a, b) => a.z - b.z).map((object) => (
+            {inherited.map((object) => (
               <div
                 key={object.id}
-                className={`slide-object${selected.includes(object.id) ? " is-selected" : ""}`}
-                style={{
-                  left: object.x * scale,
-                  top: object.y * scale,
-                  width: object.w * scale,
-                  height: object.h * scale,
-                  transform: `rotate(${object.rotation}deg)`,
-                  zIndex: object.z,
-                }}
-                onMouseDown={(event) => {
-                  event.stopPropagation();
-                  setSelected(event.shiftKey ? [...new Set([...selected, object.id])] : [object.id]);
-                  beginDrag(event, object.id, "move");
-                }}
-                onDoubleClick={() => {
-                  if (object.text) setEditingText(object.id);
-                  if (object.kind === "image") void replaceImage(object.id);
-                }}
+                className="slide-object is-inherited"
+                style={{ left: object.x * scale, top: object.y * scale, width: object.w * scale, height: object.h * scale, transform: `rotate(${object.rotation}deg)`, zIndex: 0, pointerEvents: "none" }}
               >
-                <SlideObjectView object={object} theme={theme} scale={scale} editing={editingText === object.id} onTextChange={(text) => updateObject(object.id, { text: { ...object.text!, paragraphs: [{ ...object.text!.paragraphs[0], text }] } })} onTextDone={() => setEditingText(null)} />
-                {selected.includes(object.id) ? (
-                  <>
-                    <span className="resize-handle" onMouseDown={(event) => beginDrag(event, object.id, "resize")} />
-                    <span className="rotate-handle" onMouseDown={(event) => beginDrag(event, object.id, "rotate")}>
-                      <RotateCw size={10} />
-                    </span>
-                  </>
-                ) : null}
+                <ObjectTree object={object} path={[object.id]} depth={0} theme={theme} scale={scale} selectedKeys={INHERITED_KEYS} editingKey={null} interactive={false} />
               </div>
             ))}
+            {[...slide.objects].sort((a, b) => a.z - b.z).map((object) => {
+              const path: SelectionPath = [object.id];
+              const isSelected = selectedKeys.has(pathKey(path));
+              return (
+                <div
+                  key={object.id}
+                  className={`slide-object${isSelected ? " is-selected" : ""}`}
+                  style={{
+                    left: object.x * scale,
+                    top: object.y * scale,
+                    width: object.w * scale,
+                    height: object.h * scale,
+                    transform: `rotate(${object.rotation}deg)`,
+                    zIndex: object.z,
+                  }}
+                  onMouseDown={(event) => handleObjectMouseDown(event, path)}
+                  onDoubleClick={(event) => handleObjectDoubleClick(event, path)}
+                >
+                  <ObjectTree
+                    object={object}
+                    path={path}
+                    depth={0}
+                    theme={theme}
+                    scale={scale}
+                    selectedKeys={selectedKeys}
+                    editingKey={editingText}
+                    interactive
+                    onObjectMouseDown={handleObjectMouseDown}
+                    onObjectDoubleClick={handleObjectDoubleClick}
+                    onHandleMouseDown={beginDrag}
+                    onTextChange={handleTextChange}
+                    onTextDone={() => setEditingText(null)}
+                  />
+                  {isSelected ? <SelectionHandles onHandleMouseDown={(event, mode) => beginDrag(event, path, mode)} /> : null}
+                </div>
+              );
+            })}
           </div>
         </div>
 
         <div className="slide-properties">
           <h4>{t("impress.properties")}</h4>
-          {primary ? (
+          <div className="stack">
+            <label className="field">
+              <span>{t("impress.master")}</span>
+              <select value={slide.masterId ?? masters[0]?.id ?? ""} onChange={(event) => selectMaster(event.target.value)}>
+                {masters.length === 0 ? <option value="">{t("impress.noMaster")}</option> : null}
+                {masters.map((master) => (
+                  <option key={master.id} value={master.id}>
+                    {master.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>{t("impress.layout")}</span>
+              <select value={slide.layoutId ?? ""} onChange={(event) => selectLayout(event.target.value)}>
+                <option value="">{t("impress.noLayout")}</option>
+                {(selectedMaster?.layouts ?? []).map((layout) => (
+                  <option key={layout.id} value={layout.id}>
+                    {layout.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {primary && primaryPath ? (
             <div className="stack">
               <div className="row">
-                <ToolNumber value={Math.round(primary.x)} onChange={(x) => updateObject(primary.id, { x })} title="X" width={64} />
-                <ToolNumber value={Math.round(primary.y)} onChange={(y) => updateObject(primary.id, { y })} title="Y" width={64} />
+                <ToolNumber value={Math.round(primary.x)} onChange={(x) => setPrimaryPosition("x", x)} title="X" width={64} />
+                <ToolNumber value={Math.round(primary.y)} onChange={(y) => setPrimaryPosition("y", y)} title="Y" width={64} />
               </div>
               <div className="row">
-                <ToolNumber value={Math.round(primary.w)} onChange={(w) => updateObject(primary.id, { w })} title="W" width={64} />
-                <ToolNumber value={Math.round(primary.h)} onChange={(h) => updateObject(primary.id, { h })} title="H" width={64} />
+                <ToolNumber value={Math.round(primary.w)} onChange={(w) => setPrimarySize("w", w)} title="W" width={64} />
+                <ToolNumber value={Math.round(primary.h)} onChange={(h) => setPrimarySize("h", h)} title="H" width={64} />
               </div>
               <div className="row">
-                <ToolNumber value={Math.round(primary.rotation)} onChange={(rotation) => updateObject(primary.id, { rotation })} min={-180} max={180} title={t("impress.rotation")} width={64} />
-                <ToolNumber value={primary.z} onChange={(z) => updateObject(primary.id, { z })} min={1} max={99} title="Z" width={64} />
+                <ToolNumber value={Math.round(primary.rotation)} onChange={(rotation) => updatePath(primaryPath, { rotation })} min={-180} max={180} title={t("impress.rotation")} width={64} />
+                <ToolNumber value={primary.z} onChange={(z) => updatePath(primaryPath, { z })} min={1} max={99} title="Z" width={64} />
               </div>
-              {(primary.kind === "rect" || primary.kind === "ellipse" || primary.kind === "roundRect") ? (
+              {primary.kind === "rect" || primary.kind === "ellipse" || primary.kind === "roundRect" ? (
                 <>
                   <label className="field">
                     <span>{t("impress.fill")}</span>
                     <input
                       type="color"
                       value={primary.style?.fill ?? "#2563eb"}
-                      onChange={(event) => updateObject(primary.id, { style: { ...(primary.style ?? defaultShapeStyle()), fill: event.target.value } })}
+                      onChange={(event) => updatePath(primaryPath, { style: { ...(primary.style ?? defaultShapeStyle()), fill: event.target.value } })}
                     />
                   </label>
                   <label className="field">
@@ -574,7 +1335,7 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
                     <input
                       type="number"
                       value={primary.style?.cornerRadiusPt ?? 0}
-                      onChange={(event) => updateObject(primary.id, { style: { ...(primary.style ?? defaultShapeStyle()), cornerRadiusPt: Number(event.target.value) } })}
+                      onChange={(event) => updatePath(primaryPath, { style: { ...(primary.style ?? defaultShapeStyle()), cornerRadiusPt: Number(event.target.value) } })}
                     />
                   </label>
                 </>
@@ -586,7 +1347,7 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
                     type="number"
                     value={primary.text.paragraphs[0]?.sizePt ?? primary.text.sizePt ?? 18}
                     onChange={(event) =>
-                      updateObject(primary.id, {
+                      updatePath(primaryPath, {
                         text: { ...primary.text!, paragraphs: [{ ...primary.text!.paragraphs[0], sizePt: Number(event.target.value) }] },
                       })
                     }
@@ -595,19 +1356,53 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
               ) : null}
               <label className="field">
                 <span>{t("writer.paragraph")}</span>
-                <select value={primary.text?.paragraphs[0]?.align ?? "left"} onChange={(event) => updateObject(primary.id, { text: primary.text ? { ...primary.text, paragraphs: [{ ...primary.text.paragraphs[0], align: event.target.value }] } : null })}>
+                <select value={primary.text?.paragraphs[0]?.align ?? "left"} onChange={(event) => updatePath(primaryPath, { text: primary.text ? { ...primary.text, paragraphs: [{ ...primary.text.paragraphs[0], align: event.target.value }] } : null })}>
                   <option value="left">{t("writer.alignLeft")}</option>
                   <option value="center">{t("writer.alignCenter")}</option>
                   <option value="right">{t("writer.alignRight")}</option>
                 </select>
               </label>
-              <ToolButton label={t("impress.editText")} onClick={() => (primary.text ? setEditingText(primary.id) : updateObject(primary.id, { text: { paragraphs: [{ text: "New text", level: 0, bold: false, italic: false, underline: false, sizePt: 20, color: null, align: "left", bullet: false, runs: [] }], valign: "top", font: null, sizePt: 20, color: null, align: "left" } }))} />
+              {primary.kind === "chart" ? <ToolButton icon={<LineChart size={14} />} label={t("impress.chartData")} onClick={() => setChartPath(primaryPath)} /> : null}
+              <ToolButton label={t("impress.editText")} onClick={() => (primary.text ? setEditingText(pathKey(primaryPath)) : updatePath(primaryPath, { text: { paragraphs: [{ text: "New text", level: 0, bold: false, italic: false, underline: false, sizePt: 20, color: null, align: "left", bullet: false, runs: [] }], valign: "top", font: null, sizePt: 20, color: null, align: "left" } }))} />
             </div>
           ) : (
             <p className="muted">{t("impress.noSelection")}</p>
           )}
           <h4>{t("impress.notes")}</h4>
           <textarea className="notes-input" value={slide.notes} onChange={(event) => updateSlide((current) => ({ ...current, notes: event.target.value }))} placeholder={t("impress.notesHint")} />
+          <h4>{t("impress.animations")}</h4>
+          <div className="stack">
+            {[...(slide.animations ?? [])]
+              .sort((a, b) => a.order - b.order)
+              .map((animation, index, list) => {
+                const target = slide.objects.find((object) => object.id === animation.objectId);
+                return (
+                  <div key={animation.id} className="row" style={{ alignItems: "center", gap: 4 }}>
+                    <span className="muted" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {target?.name ?? t("impress.animationMissingObject")} · {animation.kind} · {animation.effect} · {animation.trigger}
+                    </span>
+                    <button type="button" className="icon-btn" onClick={() => reorderAnimation(animation.id, -1)} disabled={index === 0} title={t("impress.moveUp")}>
+                      ↑
+                    </button>
+                    <button type="button" className="icon-btn" onClick={() => reorderAnimation(animation.id, 1)} disabled={index === list.length - 1} title={t("impress.moveDown")}>
+                      ↓
+                    </button>
+                    <button type="button" className="icon-btn" onClick={() => setAnimationEditing(animation)} title={t("common.edit")}>
+                      ✎
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => updateSlide((current) => ({ ...current, animations: (current.animations ?? []).filter((candidate) => candidate.id !== animation.id) }))}
+                      title={t("common.delete")}
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
+            <ToolButton icon={<Sparkles size={14} />} label={t("impress.addAnimation")} onClick={addAnimation} disabled={slide.objects.length === 0} />
+          </div>
         </div>
       </div>
 
@@ -621,47 +1416,66 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
         </span>
       </div>
 
-      {slideshow !== null ? (
-        <div className="slideshow" onClick={() => setSlideshow(null)}>
-          <div
-            className="slideshow-slide"
-            data-transition={deck.slides[slideshow]?.transition ?? "fade"}
-            style={{
-              width: "90vw",
-              height: `${(90 * deck.size.heightPt) / deck.size.widthPt}vh`,
-              background: deck.slides[slideshow]?.background ?? theme.background,
-            }}
-          >
-            <SlidePreview deck={deck} slide={deck.slides[slideshow]} theme={theme} width={0} full slideWidth={deck.size.widthPt} slideHeight={deck.size.heightPt} />
-          </div>
-          <div className="slideshow-nav">
-            <button type="button" className="btn btn-soft" onClick={(event) => { event.stopPropagation(); setSlideshow(Math.max(0, slideshow - 1)); }}>
-              ‹
-            </button>
-            <span>
-              {slideshow + 1} / {deck.slides.length}
-            </span>
-            <button type="button" className="btn btn-soft" onClick={(event) => { event.stopPropagation(); setSlideshow(Math.min(deck.slides.length - 1, slideshow + 1)); }}>
-              ›
-            </button>
-          </div>
+      {slideshow !== null && showSlide ? (
+        <div
+          className="slideshow"
+          onClick={advanceShow}
+          style={presenterView ? { display: "flex", flexDirection: "column", alignItems: "stretch", justifyContent: "flex-start", padding: 12, gap: 8 } : undefined}
+        >
+          {presenterView ? (
+            <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0, alignItems: "stretch", justifyContent: "center", width: "100%" }}>
+              {slideshowSlideArea}
+              {presenterPanel}
+            </div>
+          ) : (
+            slideshowSlideArea
+          )}
+          {slideshowNav}
         </div>
+      ) : null}
+
+      {masterDialog ? (
+        <MasterDialog
+          deck={deck}
+          slide={slide}
+          update={update}
+          onClose={() => setMasterDialog(false)}
+          onUseLayout={(masterId, layout) => {
+            updateSlide((current) => ({ ...current, masterId, layoutId: layout.id, layout: layout.kind }));
+          }}
+        />
+      ) : null}
+
+      {chartPath ? (
+        <ChartDialog
+          key={pathKey(chartPath)}
+          chart={objectAtPath(slide.objects, chartPath)?.chart ?? emptyChart()}
+          onClose={() => setChartPath(null)}
+          onSave={(chart) => {
+            updatePath(chartPath, { chart });
+            setChartPath(null);
+          }}
+        />
+      ) : null}
+
+      {animationEditing ? (
+        <AnimationDialog key={animationEditing.id} animation={animationEditing} objects={slide.objects} onClose={() => setAnimationEditing(null)} onSave={saveAnimation} />
       ) : null}
     </div>
   );
 
-  async function replaceImage(id: string) {
+  async function replaceImage(path: SelectionPath) {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const { readFile } = await import("@tauri-apps/plugin-fs");
-      const path = await open({ multiple: false, filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"] }] });
-      if (typeof path !== "string") return;
-      const bytes = await readFile(path);
+      const filePath = await open({ multiple: false, filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"] }] });
+      if (typeof filePath !== "string") return;
+      const bytes = await readFile(filePath);
       let base64 = "";
       for (let index = 0; index < bytes.length; index += 0x8000) base64 += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-      const name = path.split(/[\\/]/).pop() ?? "image.png";
+      const name = filePath.split(/[\\/]/).pop() ?? "image.png";
       const mime = name.endsWith(".jpg") || name.endsWith(".jpeg") ? "image/jpeg" : "image/png";
-      updateObject(id, { image: { name, mime, dataBase64: btoa(base64), alt: "" }, kind: "image" });
+      updatePath(path, { image: { name, mime, dataBase64: btoa(base64), alt: "" }, kind: "image" });
     } catch (error) {
       reportError(error, t);
     }
@@ -672,9 +1486,380 @@ function defaultShapeStyle(): ShapeStyle {
   return { fill: "#2563eb", stroke: null, strokeWidthPt: 1.5, opacity: 1, cornerRadiusPt: 0, shadow: false };
 }
 
-function SlideObjectView({ object, theme, scale, editing, onTextChange, onTextDone }: { object: SlideObject; theme: (typeof THEMES)[number]; scale: number; editing: boolean; onTextChange: (text: string) => void; onTextDone: () => void }) {
+function MasterDialog({
+  deck,
+  slide,
+  update,
+  onClose,
+  onUseLayout,
+}: {
+  deck: Deck;
+  slide: Slide;
+  update: (mutate: (deck: Deck) => Deck, recordUndo?: boolean) => void;
+  onClose: () => void;
+  onUseLayout: (masterId: string, layout: SlideLayout) => void;
+}) {
+  const t = useT();
+  const masters = deck.masters ?? [];
+  const [activeId, setActiveId] = useState(slide.masterId && masters.some((master) => master.id === slide.masterId) ? slide.masterId : masters[0]?.id ?? "");
+  const active = masters.find((master) => master.id === activeId) ?? masters[0];
+
+  const addMaster = () => {
+    const master = newSlideMaster(`Master ${masters.length + 1}`);
+    setActiveId(master.id);
+    update((current) => ({ ...current, masters: [...(current.masters ?? []), master] }));
+  };
+  const renameMaster = (masterId: string, name: string) =>
+    update((current) => ({ ...current, masters: (current.masters ?? []).map((master) => (master.id === masterId ? { ...master, name } : master)) }), false);
+  const addLayout = (masterId: string) => {
+    const layout: SlideLayout = { id: uid(), name: `Layout ${(masters.find((master) => master.id === masterId)?.layouts.length ?? 0) + 1}`, kind: "blank", objects: [] };
+    update((current) => ({ ...current, masters: (current.masters ?? []).map((master) => (master.id === masterId ? { ...master, layouts: [...master.layouts, layout] } : master)) }));
+  };
+  const renameLayout = (masterId: string, layoutId: string, name: string) =>
+    update(
+      (current) => ({
+        ...current,
+        masters: (current.masters ?? []).map((master) => (master.id === masterId ? { ...master, layouts: master.layouts.map((layout) => (layout.id === layoutId ? { ...layout, name } : layout)) } : master)),
+      }),
+      false,
+    );
+  const removeLayout = (masterId: string, layoutId: string) =>
+    update((current) => ({ ...current, masters: (current.masters ?? []).map((master) => (master.id === masterId ? { ...master, layouts: master.layouts.filter((layout) => layout.id !== layoutId) } : master)) }));
+
+  return (
+    <Dialog title={t("impress.masters")} onClose={onClose} wide>
+      <div className="row" style={{ alignItems: "flex-start", gap: 12 }}>
+        <div className="stack" style={{ minWidth: 170 }}>
+          {masters.map((master) => (
+            <button key={master.id} type="button" className={`btn ${master.id === (active?.id ?? "") ? "btn-primary" : "btn-soft"}`} onClick={() => setActiveId(master.id)}>
+              {master.name}
+            </button>
+          ))}
+          <button type="button" className="btn btn-soft" onClick={addMaster}>
+            + {t("impress.addMaster")}
+          </button>
+        </div>
+        {active ? (
+          <div className="stack" style={{ flex: 1 }}>
+            <label className="field">
+              <span>{t("impress.masterName")}</span>
+              <input value={active.name} onChange={(event) => renameMaster(active.id, event.target.value)} />
+            </label>
+            <h4>{t("impress.layouts")}</h4>
+            {active.layouts.map((layout) => (
+              <div key={layout.id} className="row" style={{ gap: 4, alignItems: "center" }}>
+                <input value={layout.name} onChange={(event) => renameLayout(active.id, layout.id, event.target.value)} />
+                <button
+                  type="button"
+                  className={`btn ${slide.masterId === active.id && slide.layoutId === layout.id ? "btn-primary" : "btn-soft"}`}
+                  onClick={() => onUseLayout(active.id, layout)}
+                >
+                  {t("impress.useLayout")}
+                </button>
+                <button type="button" className="icon-btn" onClick={() => removeLayout(active.id, layout.id)} title={t("common.delete")}>
+                  ×
+                </button>
+              </div>
+            ))}
+            <button type="button" className="btn btn-soft" onClick={() => addLayout(active.id)}>
+              + {t("impress.addLayout")}
+            </button>
+            <p className="muted">{t("impress.masterHint")}</p>
+          </div>
+        ) : null}
+      </div>
+    </Dialog>
+  );
+}
+
+function ChartDialog({ chart, onClose, onSave }: { chart: ChartData; onClose: () => void; onSave: (chart: ChartData) => void }) {
+  const t = useT();
+  const [draft, setDraft] = useState<ChartData>(() => JSON.parse(JSON.stringify(chart)) as ChartData);
+  const patch = (change: Partial<ChartData>) => setDraft((current) => ({ ...current, ...change }));
+
+  return (
+    <Dialog title={t("impress.chartData")} onClose={onClose} wide>
+      <div className="stack">
+        <label className="field">
+          <span>{t("impress.chartKind")}</span>
+          <select value={draft.kind} onChange={(event) => patch({ kind: event.target.value })}>
+            {["column", "bar", "line", "pie", "area"].map((kind) => (
+              <option key={kind} value={kind}>
+                {t(`calc.chart_${kind}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <TextField label={t("impress.chartTitle")} value={draft.title} onChange={(title) => patch({ title })} />
+        <TextField label={t("impress.chartCategories")} value={draft.categories} onChange={(categories) => patch({ categories })} />
+        <h4>{t("impress.chartSeries")}</h4>
+        {draft.series.map((entry, index) => (
+          <div key={index} className="row" style={{ gap: 4, alignItems: "center" }}>
+            <input value={entry.name} placeholder={t("impress.chartSeriesName")} onChange={(event) => patch({ series: draft.series.map((candidate, position) => (position === index ? { ...candidate, name: event.target.value } : candidate)) })} />
+            <input value={entry.range} placeholder={t("impress.chartRange")} onChange={(event) => patch({ series: draft.series.map((candidate, position) => (position === index ? { ...candidate, range: event.target.value } : candidate)) })} />
+            <input
+              type="color"
+              value={entry.color ?? CHART_PALETTE[index % CHART_PALETTE.length]}
+              onChange={(event) => patch({ series: draft.series.map((candidate, position) => (position === index ? { ...candidate, color: event.target.value } : candidate)) })}
+            />
+            <button type="button" className="icon-btn" onClick={() => patch({ series: draft.series.filter((_, position) => position !== index) })} title={t("common.delete")}>
+              ×
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="btn btn-soft"
+          onClick={() => patch({ series: [...draft.series, { name: `${t("impress.chartSeries")} ${draft.series.length + 1}`, range: "", color: null }] })}
+        >
+          + {t("impress.chartAddSeries")}
+        </button>
+        <div className="row">
+          <label className="check">
+            <input type="checkbox" checked={draft.legend} onChange={(event) => patch({ legend: event.target.checked })} />
+            {t("impress.chartLegend")}
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={draft.stacked} onChange={(event) => patch({ stacked: event.target.checked })} />
+            {t("impress.chartStacked")}
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={draft.showLabels} onChange={(event) => patch({ showLabels: event.target.checked })} />
+            {t("impress.chartShowLabels")}
+          </label>
+        </div>
+        <TextField label={t("impress.chartXTitle")} value={draft.xTitle} onChange={(xTitle) => patch({ xTitle })} />
+        <TextField label={t("impress.chartYTitle")} value={draft.yTitle} onChange={(yTitle) => patch({ yTitle })} />
+        <p className="muted">{t("impress.chartSchematicNote")}</p>
+        <div className="row">
+          <button type="button" className="btn btn-soft" onClick={onClose}>
+            {t("common.cancel")}
+          </button>
+          <button type="button" className="btn btn-primary" onClick={() => onSave(draft)}>
+            {t("common.save")}
+          </button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+function AnimationDialog({ animation, objects, onClose, onSave }: { animation: Animation; objects: SlideObject[]; onClose: () => void; onSave: (animation: Animation) => void }) {
+  const t = useT();
+  const [draft, setDraft] = useState<Animation>({ ...animation });
+  const effects = ANIMATION_EFFECTS[draft.kind] ?? ANIMATION_EFFECTS.entrance;
+  const effect = effects.includes(draft.effect) ? draft.effect : effects[0];
+  const missingObject = !objects.some((object) => object.id === draft.objectId);
+
+  return (
+    <Dialog title={t("impress.animation")} onClose={onClose}>
+      <div className="stack">
+        <label className="field">
+          <span>{t("impress.animationObject")}</span>
+          <select value={draft.objectId} onChange={(event) => setDraft({ ...draft, objectId: event.target.value })}>
+            {missingObject ? <option value={draft.objectId}>{t("impress.animationMissingObject")}</option> : null}
+            {objects.map((object, index) => (
+              <option key={object.id} value={object.id}>
+                {object.name || `${object.kind} ${index + 1}`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>{t("impress.animationKind")}</span>
+          <select
+            value={draft.kind}
+            onChange={(event) => {
+              const kind = event.target.value;
+              const list = ANIMATION_EFFECTS[kind] ?? [];
+              setDraft({ ...draft, kind, effect: list.includes(draft.effect) ? draft.effect : list[0] ?? "fade" });
+            }}
+          >
+            {["entrance", "emphasis", "exit"].map((kind) => (
+              <option key={kind} value={kind}>
+                {t(`impress.animationKind_${kind}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>{t("impress.animationEffect")}</span>
+          <select value={effect} onChange={(event) => setDraft({ ...draft, effect: event.target.value })}>
+            {effects.map((candidate) => (
+              <option key={candidate} value={candidate}>
+                {candidate}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>{t("impress.animationTrigger")}</span>
+          <select value={draft.trigger} onChange={(event) => setDraft({ ...draft, trigger: event.target.value })}>
+            <option value="onClick">{t("impress.triggerOnClick")}</option>
+            <option value="withPrevious">{t("impress.triggerWithPrevious")}</option>
+            <option value="afterPrevious">{t("impress.triggerAfterPrevious")}</option>
+          </select>
+        </label>
+        <div className="row">
+          <ToolNumber value={draft.durationMs} onChange={(durationMs) => setDraft({ ...draft, durationMs })} min={0} max={10000} step={50} title={t("impress.animationDuration")} width={80} />
+          <ToolNumber value={draft.delayMs} onChange={(delayMs) => setDraft({ ...draft, delayMs })} min={0} max={10000} step={50} title={t("impress.animationDelay")} width={80} />
+        </div>
+        <div className="row">
+          <button type="button" className="btn btn-soft" onClick={onClose}>
+            {t("common.cancel")}
+          </button>
+          <button type="button" className="btn btn-primary" onClick={() => onSave({ ...draft, effect })}>
+            {t("common.save")}
+          </button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+interface ObjectTreeProps {
+  object: SlideObject;
+  path: SelectionPath;
+  depth: number;
+  theme: Theme;
+  scale: number;
+  selectedKeys: Set<string>;
+  editingKey: string | null;
+  interactive: boolean;
+  onObjectMouseDown?: (event: React.MouseEvent, path: SelectionPath) => void;
+  onObjectDoubleClick?: (event: React.MouseEvent, path: SelectionPath) => void;
+  onHandleMouseDown?: (event: React.MouseEvent, path: SelectionPath, mode: "resize" | "rotate") => void;
+  onTextChange?: (path: SelectionPath, text: string) => void;
+  onTextDone?: () => void;
+}
+
+function SelectionHandles({ onHandleMouseDown }: { onHandleMouseDown: (event: React.MouseEvent, mode: "resize" | "rotate") => void }) {
+  return (
+    <>
+      <span
+        className="resize-handle"
+        onMouseDown={(event) => {
+          event.stopPropagation();
+          onHandleMouseDown(event, "resize");
+        }}
+      />
+      <span
+        className="rotate-handle"
+        onMouseDown={(event) => {
+          event.stopPropagation();
+          onHandleMouseDown(event, "rotate");
+        }}
+      >
+        <RotateCw size={10} />
+      </span>
+    </>
+  );
+}
+
+function ObjectTree(props: ObjectTreeProps) {
+  const { object, path, depth, theme, scale, selectedKeys, editingKey, interactive } = props;
+  if (object.kind === "group") {
+    if (depth >= MAX_GROUP_DEPTH) return null;
+    const children = [...(object.children ?? [])].sort((a, b) => a.z - b.z);
+    return (
+      <>
+        {children.map((child) => {
+          const childPath = [...path, child.id];
+          const isSelected = selectedKeys.has(pathKey(childPath));
+          return (
+            <div
+              key={child.id}
+              className={`slide-object${isSelected ? " is-selected" : ""}`}
+              style={{
+                position: "absolute",
+                left: (child.x - object.x) * scale,
+                top: (child.y - object.y) * scale,
+                width: child.w * scale,
+                height: child.h * scale,
+                transform: `rotate(${child.rotation}deg)`,
+                pointerEvents: interactive ? "auto" : "none",
+              }}
+              onMouseDown={interactive ? (event) => props.onObjectMouseDown?.(event, childPath) : undefined}
+              onDoubleClick={interactive ? (event) => props.onObjectDoubleClick?.(event, childPath) : undefined}
+            >
+              <ObjectTree {...props} object={child} path={childPath} depth={depth + 1} />
+              {interactive && isSelected ? <SelectionHandles onHandleMouseDown={(event, mode) => props.onHandleMouseDown?.(event, childPath, mode)} /> : null}
+            </div>
+          );
+        })}
+      </>
+    );
+  }
+  return (
+    <SlideObjectView
+      object={object}
+      theme={theme}
+      scale={scale}
+      editing={editingKey === pathKey(path)}
+      onTextChange={(text) => props.onTextChange?.(path, text)}
+      onTextDone={() => props.onTextDone?.()}
+    />
+  );
+}
+
+function ChartPreview({ chart, theme, scale }: { chart: ChartData | null; theme: Theme; scale: number }) {
+  const t = useT();
+  if (!chart) return <div className="slide-chart-placeholder">{t("calc.chart")}</div>;
+  const series = chart.series ?? [];
+  const colorOf = (index: number) => series[index]?.color ?? CHART_PALETTE[index % CHART_PALETTE.length];
+  const heights = series.map((_, index) => 45 + ((index * 37) % 50));
+  return (
+    <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", padding: 6 * scale, gap: 3 * scale, fontSize: Math.max(8, 10 * scale), color: theme.bodyColor, overflow: "hidden", boxSizing: "border-box" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 6 * scale, flexWrap: "wrap" }}>
+        {chart.title ? <strong style={{ fontSize: Math.max(9, 12 * scale) }}>{chart.title}</strong> : null}
+        <span style={{ opacity: 0.7 }}>{t(`calc.chart_${chart.kind}`)}</span>
+        {chart.stacked ? <span style={{ opacity: 0.7 }}>· {t("impress.chartStacked")}</span> : null}
+        {chart.showLabels ? <span style={{ opacity: 0.7 }}>· {t("impress.chartShowLabels")}</span> : null}
+      </div>
+      <div style={{ position: "relative", flex: 1, minHeight: 40 * scale, border: `1px dashed ${theme.accent}`, borderRadius: 4, display: "flex", alignItems: "flex-end", justifyContent: "center", gap: 4 * scale, padding: 4 * scale, overflow: "hidden" }}>
+        {series.length === 0 ? (
+          <span style={{ opacity: 0.6, textAlign: "center" }}>{t("impress.chartNoSeries")}</span>
+        ) : chart.kind === "pie" ? (
+          <div style={{ display: "flex", width: "100%", height: "100%" }}>
+            {series.map((entry, index) => (
+              <div key={index} title={`${entry.name}${entry.range ? ` · ${entry.range}` : ""}`} style={{ flex: 1, background: colorOf(index), opacity: 0.85 }} />
+            ))}
+          </div>
+        ) : (
+          series.map((entry, index) => (
+            <div
+              key={index}
+              title={`${entry.name}${entry.range ? ` · ${entry.range}` : ""}`}
+              style={{ flex: 1, maxWidth: 48 * scale, height: `${heights[index]}%`, background: colorOf(index), opacity: 0.85, borderRadius: 2 }}
+            />
+          ))
+        )}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", opacity: 0.75, gap: 6 * scale }}>
+        <span>{chart.yTitle || ""}</span>
+        <span style={{ textAlign: "center", flex: 1 }}>{chart.categories || t("impress.chartNoCategories")}</span>
+        <span>{chart.xTitle || ""}</span>
+      </div>
+      {chart.legend && series.length > 0 ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 * scale, opacity: 0.9 }}>
+          {series.map((entry, index) => (
+            <span key={index} style={{ display: "inline-flex", alignItems: "center", gap: 3 * scale }}>
+              <i style={{ width: 8 * scale, height: 8 * scale, background: colorOf(index), display: "inline-block", borderRadius: 2 }} />
+              {entry.name || `${t("impress.chartSeries")} ${index + 1}`}
+              {entry.range ? ` · ${entry.range}` : ""}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <div style={{ opacity: 0.55, fontSize: Math.max(7, 8 * scale) }}>{t("impress.chartSchematicNote")}</div>
+    </div>
+  );
+}
+
+function SlideObjectView({ object, theme, scale, editing, onTextChange, onTextDone }: { object: SlideObject; theme: Theme; scale: number; editing: boolean; onTextChange: (text: string) => void; onTextDone: () => void }) {
+  if (object.kind === "group") return null;
   if (object.kind === "image") {
-    if (!object.image || object.image.dataBase64 === "") return <div className="slide-image-placeholder">Double-click to add an image</div>;
+    if (!object.image || object.image.dataBase64 === "") return <div className="slide-image-placeholder">{object.placeholder ?? "Double-click to add an image"}</div>;
     return <img className="slide-image" src={`data:${object.image.mime};base64,${object.image.dataBase64}`} alt={object.image.alt} draggable={false} />;
   }
   if (object.kind === "line" || object.kind === "arrow") {
@@ -717,10 +1902,16 @@ function SlideObjectView({ object, theme, scale, editing, onTextChange, onTextDo
     );
   }
   if (object.kind === "chart") {
-    return <div className="slide-chart-placeholder">{object.chart?.title ?? "Chart"}</div>;
+    return (
+      <div style={{ width: "100%", height: "100%" }}>
+        <ChartPreview chart={object.chart} theme={theme} scale={scale} />
+      </div>
+    );
   }
   const style = object.style ?? defaultShapeStyle();
   const isShape = object.kind === "rect" || object.kind === "ellipse" || object.kind === "roundRect";
+  const emptyText = !object.text || object.text.paragraphs.every((paragraph) => paragraph.text.trim() === "");
+  const placeholderLabel = object.placeholder && emptyText ? object.placeholder : null;
   return (
     <div
       className={`slide-shape ${object.kind}`}
@@ -732,7 +1923,26 @@ function SlideObjectView({ object, theme, scale, editing, onTextChange, onTextDo
         boxShadow: style.shadow ? "0 6px 18px rgba(15,23,42,.25)" : undefined,
       }}
     >
-      {object.text ? (
+      {placeholderLabel ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "100%",
+            height: "100%",
+            boxSizing: "border-box",
+            border: "1px dashed currentColor",
+            borderRadius: 4,
+            padding: 4,
+            fontStyle: "italic",
+            opacity: 0.55,
+            fontSize: Math.max(10, 12 * scale),
+          }}
+        >
+          {placeholderLabel}
+        </div>
+      ) : object.text ? (
         editing ? (
           <textarea
             className="slide-text-editor"
@@ -774,20 +1984,40 @@ export function SlidePreview({
   full,
   slideWidth,
   slideHeight,
+  objectStyle,
 }: {
   deck: Deck;
   slide: Slide;
-  theme: (typeof THEMES)[number];
+  theme: Theme;
   width: number;
   full?: boolean;
   slideWidth?: number;
   slideHeight?: number;
+  objectStyle?: (object: SlideObject) => CSSProperties | undefined;
 }) {
   const actualWidth = full ? slideWidth ?? deck.size.widthPt : width;
   const scale = actualWidth / deck.size.widthPt;
   const height = full ? slideHeight ?? deck.size.heightPt : (deck.size.heightPt * width) / deck.size.widthPt;
+  const inherited = inheritedObjects(deck, slide);
   return (
     <div className="slide-preview" style={{ width: full ? "100%" : width, height: full ? "100%" : height, background: slide.background ?? theme.background, position: "relative", overflow: "hidden" }}>
+      {inherited.map((object) => (
+        <div
+          key={object.id}
+          className="slide-object is-inherited"
+          style={{
+            position: "absolute",
+            left: object.x * scale,
+            top: object.y * scale,
+            width: object.w * scale,
+            height: object.h * scale,
+            transform: `rotate(${object.rotation}deg)`,
+            pointerEvents: "none",
+          }}
+        >
+          <ObjectTree object={object} path={[object.id]} depth={0} theme={theme} scale={full ? scale * 1.2 : scale} selectedKeys={INHERITED_KEYS} editingKey={null} interactive={false} />
+        </div>
+      ))}
       {[...slide.objects].sort((a, b) => a.z - b.z).map((object) => (
         <div
           key={object.id}
@@ -798,9 +2028,10 @@ export function SlidePreview({
             width: object.w * scale,
             height: object.h * scale,
             transform: `rotate(${object.rotation}deg)`,
+            ...(objectStyle?.(object) ?? {}),
           }}
         >
-          <SlideObjectView object={object} theme={theme} scale={full ? scale * 1.2 : scale} editing={false} onTextChange={() => undefined} onTextDone={() => undefined} />
+          <ObjectTree object={object} path={[object.id]} depth={0} theme={theme} scale={full ? scale * 1.2 : scale} selectedKeys={INHERITED_KEYS} editingKey={null} interactive={false} />
         </div>
       ))}
     </div>

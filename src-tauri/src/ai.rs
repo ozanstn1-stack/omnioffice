@@ -36,6 +36,8 @@ fn ai_error(error: AiError) -> PdfError {
         AiError::TooLarge => ErrorCode::AiTooLarge,
         AiError::Server(_) => ErrorCode::AiServerError,
         AiError::InvalidResponse => ErrorCode::AiInvalidResponse,
+        AiError::ProviderUnreachable(_) => ErrorCode::AiNetwork,
+        AiError::Unsupported(_) => ErrorCode::Unsupported,
     };
     PdfError::coded(code, error.to_string())
 }
@@ -64,6 +66,16 @@ pub struct AiSettingsFile {
     /// Input budget in tokens (DeepSeek V4 allows 1M).
     #[serde(default = "default_context_tokens", alias = "context_tokens")]
     pub context_tokens: u32,
+    /// Provider id: "deepseek", "open_ai_compatible", "ollama", "gemini", "custom".
+    #[serde(default = "default_provider")]
+    pub provider: String,
+    /// Optional embedding model (providers with embedding capability).
+    #[serde(default, alias = "embedding_model")]
+    pub embedding_model: Option<String>,
+}
+
+fn default_provider() -> String {
+    "deepseek".to_string()
 }
 
 fn default_context_tokens() -> u32 {
@@ -101,6 +113,8 @@ impl Default for AiSettingsFile {
             thinking: default_thinking(),
             reasoning_effort: default_reasoning_effort(),
             context_tokens: default_context_tokens(),
+            provider: default_provider(),
+            embedding_model: None,
         }
     }
 }
@@ -121,6 +135,12 @@ pub struct AiSettingsView {
     pub context_tokens: u32,
     /// Maximum output tokens accepted by the API (384K).
     pub max_output_tokens: u32,
+    /// Provider id and its honest one-line privacy note.
+    pub provider: String,
+    pub provider_label: String,
+    pub provider_note: String,
+    pub capabilities: aicore::ProviderCapabilities,
+    pub embedding_model: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -138,6 +158,10 @@ pub struct AiSettingsInput {
     pub reasoning_effort: Option<String>,
     #[serde(default)]
     pub context_tokens: Option<u32>,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub embedding_model: Option<String>,
 }
 
 fn config_dir(app: &AppHandle) -> Result<PathBuf, PdfError> {
@@ -204,8 +228,10 @@ fn view(app: &AppHandle) -> AiSettingsView {
                 .unwrap_or_else(|_| "plain".to_string())
         })
         .unwrap_or_else(|| "none".to_string());
+    let provider = provider_kind(&settings.provider);
     AiSettingsView {
-        configured: !key.trim().is_empty(),
+        // A local Ollama server needs no API key, so it counts as configured.
+        configured: !key.trim().is_empty() || provider == aicore::ProviderKind::Ollama,
         key_storage: storage,
         masked_key: mask_key(&key),
         base_url: settings.base_url,
@@ -216,7 +242,16 @@ fn view(app: &AppHandle) -> AiSettingsView {
         reasoning_effort: settings.reasoning_effort,
         context_tokens: settings.context_tokens.clamp(8_000, aicore::MAX_CONTEXT_TOKENS),
         max_output_tokens: aicore::MAX_OUTPUT_TOKENS,
+        provider: settings.provider.clone(),
+        provider_label: provider_kind(&settings.provider).label().to_string(),
+        provider_note: aicore::provider_notes(provider_kind(&settings.provider)).to_string(),
+        capabilities: aicore::ProviderCapabilities::for_kind(provider_kind(&settings.provider)),
+        embedding_model: settings.embedding_model.clone(),
     }
+}
+
+fn provider_kind(value: &str) -> aicore::ProviderKind {
+    aicore::ProviderKind::parse(value).unwrap_or_default()
 }
 
 fn build_config(app: &AppHandle) -> Result<AiConfig, PdfError> {
@@ -234,6 +269,8 @@ fn build_config(app: &AppHandle) -> Result<AiConfig, PdfError> {
         thinking: settings.thinking,
         reasoning_effort: settings.reasoning_effort,
         context_tokens: settings.context_tokens.clamp(8_000, aicore::MAX_CONTEXT_TOKENS),
+        provider: provider_kind(&settings.provider),
+        embedding_model: settings.embedding_model.clone(),
     };
     if !config.is_configured() {
         return Err(ai_error(AiError::MissingApiKey));
@@ -274,6 +311,11 @@ pub fn ai_save_settings(app: AppHandle, input: AiSettingsInput) -> Result<AiSett
             .context_tokens
             .unwrap_or_else(default_context_tokens)
             .clamp(8_000, aicore::MAX_CONTEXT_TOKENS),
+        provider: input
+            .provider
+            .map(|value| provider_kind(&value).as_str().to_string())
+            .unwrap_or_else(default_provider),
+        embedding_model: input.embedding_model.filter(|value| !value.trim().is_empty()),
     };
     let text = serde_json::to_string_pretty(&file)
         .map_err(|error| PdfError::Internal(format!("settings serialize failed: {error}")))?;

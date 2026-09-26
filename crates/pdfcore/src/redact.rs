@@ -93,6 +93,14 @@ pub struct RedactionReport {
     pub unmatched_areas: u32,
     /// Notes the user must read, including any area to check by hand.
     pub warnings: Vec<String>,
+    /// True when the output was re-opened and its text layer re-checked.
+    pub verified: bool,
+    /// Masked samples of pre-redaction words that are still extractable from
+    /// the output. Short samples only: the report must not restart the leak.
+    pub remaining_matches: Vec<String>,
+    /// Plain-language explanation of what verification did, or why it could
+    /// not run.
+    pub verification_message: String,
 }
 
 /// One rectangle with the text it is meant to hide.
@@ -546,6 +554,9 @@ pub fn redact_pdf(
     let mut characters_removed = 0u32;
     let mut images_removed = 0u32;
     let mut unmatched_areas = 0u32;
+    // The words that sat under a redaction area before the edit, kept for the
+    // verification pass against the written output.
+    let mut verification_words: Vec<(u32, String)> = Vec::new();
 
     // One geometry pass over the document, so every page's character boxes come
     // from a single parse rather than one parse per page.
@@ -581,6 +592,14 @@ pub fn redact_pdf(
         let mut ranges: Vec<(usize, usize)> = Vec::new();
         for area in &page_areas {
             let padded = area.rect().padded(options.padding_pt);
+            if let Some(chars) = page_chars {
+                for word in chars.words() {
+                    let text = word.text.trim();
+                    if !text.is_empty() && word.box_rect.overlaps(&padded) {
+                        verification_words.push((page_number, text.to_string()));
+                    }
+                }
+            }
             let needle = page_chars.and_then(|chars| {
                 let (start, end) = chars.indices_in(&padded)?;
                 let slice: String = chars
@@ -693,6 +712,19 @@ pub fn redact_pdf(
     }
 
     docutil::save_document(&mut doc, &target, true)?;
+
+    // Verification happens on the written file, not on the in-memory model:
+    // the question is what a reader can extract from what was actually saved.
+    let affected_pages: Vec<u32> = verification_words.iter().map(|(page, _)| *page).collect();
+    let (verified, remaining_matches, verification_message) =
+        verify_redaction(&target, &verification_words, &affected_pages, &geometry);
+    if verified && !remaining_matches.is_empty() {
+        warnings.push(format!(
+            "Verification found {} redacted value(s) that can still be extracted from the output.",
+            remaining_matches.len()
+        ));
+    }
+
     Ok(RedactionReport {
         output: target.to_string_lossy().to_string(),
         text_runs_removed,
@@ -700,7 +732,133 @@ pub fn redact_pdf(
         images_removed,
         unmatched_areas,
         warnings,
+        verified,
+        remaining_matches,
+        verification_message,
     })
+}
+
+/// Re-opens the written output and checks that none of the words that sat
+/// under a redaction area can still be extracted.
+///
+/// Returns `verified = false` - with an explanation - when the check could not
+/// run at all: no pdfium, or an affected page with no text layer. The report
+/// must never imply a verification that did not happen.
+fn verify_redaction(
+    output: &Path,
+    words: &[(u32, String)],
+    affected_pages: &[u32],
+    geometry: &BTreeMap<u32, PageChars>,
+) -> (bool, Vec<String>, String) {
+    if !crate::render::is_available() {
+        return (
+            false,
+            Vec::new(),
+            "Verification skipped: pdfium is not available.".to_string(),
+        );
+    }
+    let mut pages: Vec<u32> = affected_pages.to_vec();
+    pages.sort_unstable();
+    pages.dedup();
+    if pages.is_empty() {
+        return (
+            false,
+            Vec::new(),
+            "Verification skipped: no text areas were redacted.".to_string(),
+        );
+    }
+
+    let mut remaining: Vec<String> = Vec::new();
+    let mut checked_pages: Vec<u32> = Vec::new();
+    let mut skipped_pages: Vec<u32> = Vec::new();
+    for page in &pages {
+        let has_text_layer = geometry
+            .get(page)
+            .map(|chars| !chars.chars.is_empty())
+            .unwrap_or(false);
+        let text = if has_text_layer {
+            crate::render::extract_page_text(output, None, *page).ok()
+        } else {
+            None
+        };
+        let Some(text) = text else {
+            skipped_pages.push(*page);
+            continue;
+        };
+        checked_pages.push(*page);
+        for (_, word) in words.iter().filter(|(word_page, _)| word_page == page) {
+            if locate(&text, word).is_some() {
+                remaining.push(mask_sample(word));
+            }
+        }
+    }
+    remaining.sort();
+    remaining.dedup();
+
+    if checked_pages.is_empty() {
+        return (
+            false,
+            remaining,
+            format!(
+                "Verification skipped: page(s) {} carry no extractable text layer.",
+                join_pages(&skipped_pages)
+            ),
+        );
+    }
+    if !skipped_pages.is_empty() {
+        return (
+            false,
+            remaining,
+            format!(
+                "Verification ran on page(s) {}; page(s) {} have no text layer and were skipped.",
+                join_pages(&checked_pages),
+                join_pages(&skipped_pages)
+            ),
+        );
+    }
+    if remaining.is_empty() {
+        (
+            true,
+            remaining,
+            format!(
+                "Verification passed: page(s) {} were re-extracted and none of the selected text remains.",
+                join_pages(&checked_pages)
+            ),
+        )
+    } else {
+        let message = format!(
+            "Verification found {} selected value(s) still extractable; check the output.",
+            remaining.len()
+        );
+        (true, remaining, message)
+    }
+}
+
+fn join_pages(pages: &[u32]) -> String {
+    pages
+        .iter()
+        .map(|page| page.to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Masks the middle of a sample so the report can name what leaked without
+/// reproducing it. At most eight characters are ever shown.
+fn mask_sample(value: &str) -> String {
+    let characters: Vec<char> = value.chars().collect();
+    if characters.len() <= 2 {
+        return "*".repeat(characters.len().max(1));
+    }
+    let show = characters.len().min(8);
+    let head = if show > 5 { 3 } else { 1 };
+    let tail = if show > 5 { 3 } else { 1 };
+    let mut out = String::with_capacity(show);
+    out.extend(characters.iter().take(head));
+    for _ in 0..show.saturating_sub(head + tail) {
+        out.push('*');
+    }
+    out.extend(characters.iter().skip(characters.len() - tail));
+    out
 }
 
 /// Paints the opaque boxes over the removed content.

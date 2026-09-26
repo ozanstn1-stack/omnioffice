@@ -104,6 +104,10 @@ pub struct OcrResult {
     pub duration_ms: u64,
     pub engine: String,
     pub languages: Vec<String>,
+    /// Preprocessing steps that were actually applied, e.g. `contrast`,
+    /// `denoise`, `auto_rotate`, `rotate:90`.
+    #[serde(rename = "preprocessApplied")]
+    pub preprocess_applied: Vec<String>,
 }
 
 pub fn tesseract_available() -> bool {
@@ -467,7 +471,7 @@ fn rotate_bilinear(image: &image::RgbaImage, degrees: f64) -> image::RgbaImage {
 }
 
 /// Applies rotation by multiples of 90 degrees, clockwise.
-fn rotate_quarters(image: &image::RgbaImage, degrees: i32) -> image::RgbaImage {
+pub fn rotate_quarters(image: &image::RgbaImage, degrees: i32) -> image::RgbaImage {
     match ((degrees % 360) + 360) % 360 {
         90 => image::imageops::rotate90(image),
         180 => image::imageops::rotate180(image),
@@ -476,27 +480,60 @@ fn rotate_quarters(image: &image::RgbaImage, degrees: i32) -> image::RgbaImage {
     }
 }
 
-fn preprocess(
+/// Applies the pixel filters, writes the result to `rendered_path`, and - when
+/// `auto_rotate` is on - detects the orientation on that written raster and
+/// re-writes it after applying the detected quarter turns.
+///
+/// Orientation detection must run against a raster file: tesseract cannot open
+/// a PDF, so handing it the source path silently disabled auto-rotation. The
+/// file is written first precisely so OSD sees what the OCR engine will read.
+pub fn preprocess(
     image: DynamicImage,
     options: &OcrPreprocess,
-    source_path: &Path,
+    rendered_path: &Path,
     cancel: &CancelToken,
 ) -> PdfResult<(DynamicImage, i32)> {
-    let mut applied_rotation = 0i32;
-    if options.auto_rotate {
-        if let Some(degrees) = detect_orientation(source_path) {
-            if degrees != 0 {
-                let rgba = image.to_rgba8();
-                let rotated = rotate_quarters(&rgba, degrees);
-                applied_rotation = degrees;
-                let mut result = DynamicImage::ImageRgba8(rotated);
-                result = apply_pixel_filters(result, options, cancel)?;
-                return Ok((result, applied_rotation));
-            }
+    let filtered = apply_pixel_filters(image, options, cancel)?;
+    filtered
+        .save_with_format(rendered_path, image::ImageFormat::Png)
+        .map_err(|e| PdfError::ConversionFailed(format!("page image write failed: {e}")))?;
+    if !options.auto_rotate {
+        return Ok((filtered, 0));
+    }
+    let Some(degrees) = detect_orientation(rendered_path) else {
+        return Ok((filtered, 0));
+    };
+    if degrees == 0 {
+        return Ok((filtered, 0));
+    }
+    let rotated = DynamicImage::ImageRgba8(rotate_quarters(&filtered.to_rgba8(), degrees));
+    rotated
+        .save_with_format(rendered_path, image::ImageFormat::Png)
+        .map_err(|e| PdfError::ConversionFailed(format!("rotated page image write failed: {e}")))?;
+    Ok((rotated, degrees))
+}
+
+/// Records the preprocessing steps that ran, for the OCR result.
+pub fn describe_preprocessing(options: &OcrPreprocess, rotation: i32, out: &mut Vec<String>) {
+    let steps = [
+        (options.grayscale, "grayscale"),
+        (options.denoise, "denoise"),
+        (options.contrast, "contrast"),
+        (options.binarize, "binarize"),
+        (options.deskew, "deskew"),
+        (options.auto_rotate, "auto_rotate"),
+    ];
+    for (enabled, name) in steps {
+        if enabled && !out.iter().any(|entry| entry == name) {
+            out.push(name.to_string());
         }
     }
-    let result = apply_pixel_filters(image, options, cancel)?;
-    Ok((result, applied_rotation))
+    if rotation != 0 {
+        let step = format!("rotate:{rotation}");
+        if !out.iter().any(|entry| entry == &step) {
+            out.push(step);
+        }
+    }
 }
 
 fn apply_pixel_filters(
@@ -582,6 +619,7 @@ pub fn ocr_pdf(
     let mut text_for_page: Vec<(u32, String)> = Vec::new();
     let mut pages_processed = 0u32;
     let mut pages_skipped = 0u32;
+    let mut preprocess_applied: Vec<String> = Vec::new();
 
     for (index, page_number) in target.iter().enumerate() {
         cancel.check()?;
@@ -602,11 +640,11 @@ pub fn ocr_pdf(
 
         let rendered = render::render_page(input, password, *page_number, &render_options)?;
         let image = rendered.to_dynamic_image()?;
-        let (processed, _rotation) = preprocess(image, &options.preprocess, input, cancel)?;
         let png_path = job.file(&format!("page-{page_number:05}.png"));
-        processed
-            .save_with_format(&png_path, image::ImageFormat::Png)
-            .map_err(|e| PdfError::ConversionFailed(format!("page image write failed: {e}")))?;
+        // `preprocess` writes the raster itself so orientation detection runs
+        // on the exact file tesseract will open.
+        let (_processed, rotation) = preprocess(image, &options.preprocess, &png_path, cancel)?;
+        describe_preprocessing(&options.preprocess, rotation, &mut preprocess_applied);
 
         let out_base = job.file(&format!("page-{page_number:05}"));
         let mut args = vec![
@@ -674,6 +712,7 @@ pub fn ocr_pdf(
                 duration_ms: started.elapsed().as_millis() as u64,
                 engine: engines::engine_status().tesseract_version.unwrap_or_else(|| "tesseract".into()),
                 languages,
+                preprocess_applied,
             }
         }
         _ => {
@@ -732,6 +771,7 @@ pub fn ocr_pdf(
                 duration_ms: started.elapsed().as_millis() as u64,
                 engine: engines::engine_status().tesseract_version.unwrap_or_else(|| "tesseract".into()),
                 languages,
+                preprocess_applied,
             }
         }
     };
@@ -811,5 +851,21 @@ mod tests {
         }
         let rotated = rotate_quarters(&img, 90);
         assert_eq!((rotated.width(), rotated.height()), (2, 4));
+    }
+
+    #[test]
+    fn rotation_quarters_moves_the_marked_corner_clockwise() {
+        let mut img = image::RgbaImage::new(3, 2);
+        for pixel in img.pixels_mut() {
+            pixel.0 = [0, 0, 0, 255];
+        }
+        img.put_pixel(0, 0, image::Rgba([255, 0, 0, 255]));
+        let rotated = rotate_quarters(&img, 90);
+        assert_eq!((rotated.width(), rotated.height()), (2, 3));
+        // imageops::rotate90 turns clockwise, so (0, 0) moves to (h - 1, 0).
+        assert_eq!(rotated.get_pixel(1, 0).0, [255, 0, 0, 255]);
+        assert_eq!(rotate_quarters(&img, 180).get_pixel(2, 1).0, [255, 0, 0, 255]);
+        assert_eq!(rotate_quarters(&img, 270).get_pixel(0, 2).0, [255, 0, 0, 255]);
+        assert_eq!((rotate_quarters(&img, 0).width(), rotate_quarters(&img, 0).height()), (3, 2));
     }
 }

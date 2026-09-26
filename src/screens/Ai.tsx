@@ -8,7 +8,9 @@ import {
   Languages,
   ListChecks,
   MessageCircleQuestion,
+  MessageSquare,
   Save,
+  Send,
   Sparkles,
   Square,
   Tags,
@@ -37,14 +39,14 @@ import {
   onAiChunk,
   onAiProgress,
 } from "../lib/api";
-import { Badge, Button, Card, Checkbox, Field, Segmented, Spinner, TextInput } from "../components/ui";
+import { Badge, Button, Card, Checkbox, Field, Segmented, Spinner, TextArea, TextInput } from "../components/ui";
 import { DropZone, InfoStrip, ResultCard } from "../components/files";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { logFrontend } from "../lib/api";
 import { useTool } from "../lib/useTool";
 import { useDev, useSettings, useToasts } from "../lib/store";
-import { fileBaseName, formatBytes, uid } from "../lib/format";
+import { clamp, fileBaseName, formatBytes, uid } from "../lib/format";
 import type {
   AiExamplePrompts,
   AiLibraryEntry,
@@ -57,15 +59,44 @@ import type {
   SummaryStyle,
 } from "../lib/types";
 
-type AiTab = "summary" | "translate" | "ask" | "cleanup" | "metadata";
+type AiTab = "summary" | "translate" | "ask" | "chat" | "cleanup" | "metadata";
+
+type ChatScope = "document" | "page" | "selection";
+
+interface ProviderCapabilities {
+  chat: boolean;
+  embeddings: boolean;
+  vision: boolean;
+  structured_output: boolean;
+  streaming: boolean;
+}
+
+type AiSettingsViewExt = AiSettingsView & {
+  provider?: string;
+  providerLabel?: string;
+  providerNote?: string;
+  capabilities?: ProviderCapabilities;
+  embeddingModel?: string | null;
+};
+
+interface ChatEntry {
+  role: "user" | "assistant";
+  content: string;
+}
+
+const CITATION_PATTERN = /(\[page\s+\d+\])/gi;
 
 export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; dragging: boolean }) {
   const t = useT();
+  const label = (key: string, fallback: string) => {
+    const value = t(key);
+    return value === key ? fallback : value;
+  };
   const session = useTool({ suffix: "_ai", accept: "pdf", initialPaths: initialFiles });
   const settingsLoaded = useSettings((s) => s.loaded);
   const settings = useSettings((s) => s.settings);
   const pushToast = useToasts((s) => s.push);
-  const [aiSettings, setAiSettings] = useState<AiSettingsView | null>(null);
+  const [aiSettings, setAiSettings] = useState<AiSettingsViewExt | null>(null);
   const devTab = useDev((s) => s.tab) as AiTab | null;
   const [tab, setTab] = useState<AiTab>("summary");
   const [examples, setExamples] = useState<AiExamplePrompts | null>(null);
@@ -90,12 +121,19 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
   const [targetLanguage, setTargetLanguage] = useState("tr");
   const [bilingual, setBilingual] = useState(false);
   const [question, setQuestion] = useState("");
+  const [chatMessages, setChatMessages] = useState<ChatEntry[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatScope, setChatScope] = useState<ChatScope>("document");
+  const [chatPage, setChatPage] = useState(1);
+  const [chatSelection, setChatSelection] = useState("");
   const jobId = useRef(uid("ai"));
   const outputRef = useRef<HTMLDivElement>(null);
+  const chatRef = useRef<HTMLDivElement>(null);
+  const chatActiveRef = useRef(false);
 
   // Development hook: start on a specific tab for screenshots.
   useEffect(() => {
-    if (devTab && ["summary", "translate", "ask", "cleanup", "metadata"].includes(devTab)) setTab(devTab);
+    if (devTab && ["summary", "translate", "ask", "chat", "cleanup", "metadata"].includes(devTab)) setTab(devTab);
   }, [devTab]);
 
   // Load AI settings and example prompts once.
@@ -114,6 +152,15 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
       if (payload.jobId !== jobId.current) return;
       if (payload.kind === "reasoning") {
         setReasoning((previous) => previous + payload.delta);
+      } else if (chatActiveRef.current) {
+        setChatMessages((previous) => {
+          const next = [...previous];
+          const last = next[next.length - 1];
+          if (last && last.role === "assistant") {
+            next[next.length - 1] = { ...last, content: last.content + payload.delta };
+          }
+          return next;
+        });
       } else {
         setOutput((previous) => previous + payload.delta);
       }
@@ -138,6 +185,11 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
     if (element) element.scrollTop = element.scrollHeight;
   }, [output]);
 
+  useEffect(() => {
+    const element = chatRef.current;
+    if (element) element.scrollTop = element.scrollHeight;
+  }, [chatMessages]);
+
   const refreshPreview = useCallback(async () => {
     if (!session.primary) {
       setPreview(null);
@@ -158,6 +210,8 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
     setMetadataSuggestion(null);
     setMetadataResult(null);
     setConsent(false);
+    setChatMessages([]);
+    setChatPage(1);
     void refreshPreview();
   }, [refreshPreview]);
 
@@ -193,6 +247,14 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
   const configured = aiSettings?.configured ?? false;
   const canRun = configured && consent && Boolean(session.primary) && !running;
 
+  const providerLabel = aiSettings?.providerLabel ?? (aiSettings?.provider === "ollama" ? "Ollama (local)" : "DeepSeek");
+  const networkActivityKey = "ai.networkActivity";
+  const networkActivityText = t(networkActivityKey, { chars: preview?.characters ?? 0, provider: providerLabel });
+  const networkActivity =
+    networkActivityText === networkActivityKey
+      ? `Sending ${preview?.characters ?? 0} characters to ${providerLabel}`
+      : networkActivityText;
+
   const fail = (message: string) => {
     setError(message);
     void logFrontend("ai-error", message);
@@ -208,15 +270,18 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
   session.registerAutoRun(() => {
     setConsent(true);
     if (tab === "ask") setQuestion("What is the total amount?");
+    if (tab === "chat") setChatInput("What is the total amount?");
     void (tab === "translate"
       ? runTranslate()
       : tab === "ask"
         ? runAsk("What is the total amount?")
-        : tab === "cleanup"
-          ? runCleanup()
-          : tab === "metadata"
-            ? runMetadata()
-            : runSummary());
+        : tab === "chat"
+          ? runChat("What is the total amount?")
+          : tab === "cleanup"
+            ? runCleanup()
+            : tab === "metadata"
+              ? runMetadata()
+              : runSummary());
   });
   const runSummary = async () => {
     if (!session.primary) return;
@@ -296,6 +361,67 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
       setStage(null);
     }
   };
+
+  const scopedChatQuestion = (asked: string) => {
+    if (chatScope === "page") {
+      return `Scope: answer from page ${chatPage} only.\n\nQuestion: ${asked}`;
+    }
+    if (chatScope === "selection") {
+      return `Scope: answer from the selected text below only.\n\nSelected text:\n${chatSelection.trim()}\n\nQuestion: ${asked}`;
+    }
+    return asked;
+  };
+
+  const runChat = async (questionOverride?: string) => {
+    const asked = (questionOverride ?? chatInput).trim();
+    if (!session.primary || !asked || running) return;
+    if (chatScope === "selection" && !chatSelection.trim()) return;
+    setChatMessages((previous) => [...previous, { role: "user", content: asked }, { role: "assistant", content: "" }]);
+    setChatInput("");
+    resetJob();
+    chatActiveRef.current = true;
+    setRunning(true);
+    setError(null);
+    try {
+      const result = await aiAsk({
+        path: session.primary.path,
+        question: scopedChatQuestion(asked),
+        password: session.password || undefined,
+        jobId: jobId.current,
+      });
+      setChatMessages((previous) => {
+        const next = [...previous];
+        const last = next[next.length - 1];
+        if (last && last.role === "assistant") next[next.length - 1] = { ...last, content: result.text };
+        return next;
+      });
+      setLastResult({ kind: "ask", result, options: asked });
+    } catch (runError) {
+      setChatMessages((previous) => {
+        const last = previous[previous.length - 1];
+        if (last && last.role === "assistant" && !last.content) return previous.slice(0, -1);
+        return previous;
+      });
+      fail(String((runError as { message?: string })?.message ?? runError));
+    } finally {
+      chatActiveRef.current = false;
+      setRunning(false);
+      setStage(null);
+    }
+  };
+
+  const renderChatContent = (content: string) =>
+    content.split(CITATION_PATTERN).map((part, index) => {
+      const match = /^\[page\s+(\d+)\]$/i.exec(part);
+      if (match) {
+        return (
+          <Badge key={index} tone="accent">
+            {label("ai.citationPage", "page")} {match[1]}
+          </Badge>
+        );
+      }
+      return <span key={index}>{part}</span>;
+    });
 
   const runCleanup = async () => {
     if (!session.primary) return;
@@ -439,10 +565,11 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
       { id: "summary", label: t("ai.tabSummary"), icon: <Sparkles size={14} /> },
       { id: "translate", label: t("ai.tabTranslate"), icon: <Languages size={14} /> },
       { id: "ask", label: t("ai.tabAsk"), icon: <MessageCircleQuestion size={14} /> },
+      { id: "chat", label: label("ai.tabChat", "Document chat"), icon: <MessageSquare size={14} /> },
       { id: "cleanup", label: t("ai.tabCleanup"), icon: <Wand2 size={14} /> },
       { id: "metadata", label: t("ai.tabMetadata"), icon: <Tags size={14} /> },
     ],
-    [t],
+    [t, label],
   );
 
   const activeRun = () => {
@@ -453,6 +580,8 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
         return runTranslate;
       case "ask":
         return runAsk;
+      case "chat":
+        return runChat;
       case "cleanup":
         return runCleanup;
       default:
@@ -642,6 +771,101 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                     </div>
                   ) : null}
 
+                  {tab === "chat" ? (
+                    <div className="flex flex-col gap-3">
+                      <Field
+                        label={label("ai.sendScope", "Send scope")}
+                        hint={label("ai.sendScopeHint", "What the question is restricted to")}
+                      >
+                        <Segmented<ChatScope>
+                          value={chatScope}
+                          onChange={setChatScope}
+                          options={[
+                            { value: "document", label: label("ai.scopeDocument", "Whole document") },
+                            { value: "page", label: label("ai.scopePage", "Current page") },
+                            { value: "selection", label: label("ai.scopeSelection", "Selected text only") },
+                          ]}
+                        />
+                      </Field>
+
+                      {chatScope === "page" ? (
+                        <Field label={label("ai.scopePageNumber", "Page")}>
+                          <TextInput
+                            type="number"
+                            min={1}
+                            max={preview?.pages ?? undefined}
+                            value={chatPage}
+                            onChange={(event) => setChatPage(clamp(Number(event.target.value) || 1, 1, preview?.pages || 1))}
+                          />
+                        </Field>
+                      ) : null}
+
+                      {chatScope === "selection" ? (
+                        <Field label={label("ai.scopeSelectionText", "Selected text")}>
+                          <TextArea
+                            value={chatSelection}
+                            rows={4}
+                            onChange={(event) => setChatSelection(event.target.value)}
+                            placeholder={label("ai.scopeSelectionPlaceholder", "Paste the text you selected in the document")}
+                          />
+                        </Field>
+                      ) : null}
+
+                      <p className="text-xs muted">
+                        {label(
+                          "ai.scopeNote",
+                          "Document chat calls ai_ask, which has no page or selection filter: the scope only narrows the question context sent to the model, and the retriever may still attach other pages.",
+                        )}
+                      </p>
+
+                      <div ref={chatRef} className="card-soft p-3 max-h-[380px] overflow-y-auto flex flex-col gap-2">
+                        {chatMessages.length === 0 ? (
+                          <p className="text-xs muted">{label("ai.chatEmpty", "Ask a question about this document.")}</p>
+                        ) : (
+                          chatMessages.map((message, index) => (
+                            <div
+                              key={index}
+                              className="rounded-xl px-3 py-2 text-[13px]"
+                              style={{
+                                alignSelf: message.role === "user" ? "flex-end" : "flex-start",
+                                maxWidth: "85%",
+                                background: message.role === "user" ? "var(--accent)" : "var(--surface-2)",
+                                color: message.role === "user" ? "var(--accent-text)" : "var(--text)",
+                              }}
+                            >
+                              {message.role === "assistant" ? (
+                                <div className="whitespace-pre-wrap leading-relaxed">
+                                  {message.content ? renderChatContent(message.content) : running ? <Spinner size={13} /> : null}
+                                </div>
+                              ) : (
+                                <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <TextInput
+                          value={chatInput}
+                          onChange={(event) => setChatInput(event.target.value)}
+                          placeholder={label("ai.chatPlaceholder", "Ask about this document…")}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && canRun) void runChat();
+                          }}
+                        />
+                        <Button
+                          variant="primary"
+                          icon={running ? <Spinner size={14} /> : <Send size={14} />}
+                          disabled={!canRun || !chatInput.trim() || (chatScope === "selection" && !chatSelection.trim())}
+                          onClick={() => void runChat()}
+                        >
+                          {label("ai.chatSend", "Send")}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+
                   {tab === "cleanup" ? (
                     <div className="flex flex-col gap-2">
                       <p className="text-[13px]">{t("ai.cleanupIntro")}</p>
@@ -680,7 +904,7 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                   ) : null}
                 </Card>
 
-                {reasoning && !output ? (
+                {reasoning && !output && (tab !== "chat" || running) ? (
                   <Card className="p-4 flex flex-col gap-2">
                     <p className="font-semibold text-[13.5px] flex items-center gap-2">
                       <Brain size={15} /> {t("ai.thinkingTitle")}
@@ -762,6 +986,9 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                       }}
                     />
                   </div>
+                  <p className="text-xs muted" data-testid="ai-network-activity">
+                    {networkActivity}
+                  </p>
                   <Button variant="danger" icon={<Square size={14} />} onClick={stop}>
                     {t("ai.stop")}
                   </Button>
@@ -785,6 +1012,7 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                 <p className="text-xs muted">{t("ai.needConsent")}</p>
               ) : null}
               {tab === "ask" && !question.trim() ? <p className="text-xs muted">{t("ai.questionPlaceholder")}</p> : null}
+              {tab === "chat" && !chatInput.trim() ? <p className="text-xs muted">{label("ai.chatPlaceholder", "Ask about this document…")}</p> : null}
               {settings.aiAutoSave ? <p className="text-xs muted">{t("ai.autoSaveOn")}</p> : null}
               {lastResult && !settings.aiAutoSave ? (
                 <Button size="sm" variant="ghost" icon={<Save size={14} />} onClick={saveToLibrary}>
@@ -803,6 +1031,11 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                 <p>
                   {t("ai.model")}: <strong className="text-[var(--text)]">{aiSettings.model}</strong>
                 </p>
+                {aiSettings.providerLabel ? (
+                  <p>
+                    {label("ai.provider", "Provider")}: <strong className="text-[var(--text)]">{aiSettings.providerLabel}</strong>
+                  </p>
+                ) : null}
                 <p>Key: {aiSettings.maskedKey || "—"}</p>
                 <p>
                   {aiSettings.keyStorage === "dpapi"
@@ -811,6 +1044,7 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                       ? t("ai.keyPlain")
                       : t("ai.keyMissing")}
                 </p>
+                {aiSettings.providerNote ? <p>{aiSettings.providerNote}</p> : null}
                 {preview ? <p>{formatBytes(preview.characters)}</p> : null}
               </Card>
             ) : null}

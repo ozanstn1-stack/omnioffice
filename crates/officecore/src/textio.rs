@@ -76,6 +76,7 @@ fn block_to_markdown(block: &Block) -> String {
             format!("![{alt}](embedded-image.{})", image.extension())
         }
         Block::PageBreak => "\n---\n".into(),
+        Block::SectionBreak { .. } => "\n---\n".into(),
         Block::Rule => "---".into(),
         Block::Toc { entries } => entries
             .iter()
@@ -92,8 +93,37 @@ fn block_to_markdown(block: &Block) -> String {
     }
 }
 
+/// Notes in reference order as `(number, text)` pairs, for the formats that
+/// cannot carry real note objects (Markdown, HTML, plain text).
+fn document_notes(document: &TextDocument) -> Vec<(usize, String)> {
+    let mut notes = Vec::new();
+    for id in document.footnote_order() {
+        if let Some(note) = document.footnotes.iter().find(|note| note.id == id) {
+            let text = note.runs.iter().map(|run| run.text.as_str()).collect::<Vec<_>>().join("");
+            notes.push((notes.len() + 1, text));
+        }
+    }
+    for id in document.endnote_order() {
+        if let Some(note) = document.endnotes.iter().find(|note| note.id == id) {
+            let text = note.runs.iter().map(|run| run.text.as_str()).collect::<Vec<_>>().join("");
+            notes.push((notes.len() + 1, text));
+        }
+    }
+    notes
+}
+
 pub fn document_to_markdown(document: &TextDocument) -> String {
-    document.blocks.iter().map(block_to_markdown).collect::<Vec<_>>().join("\n\n")
+    let body = document.blocks.iter().map(block_to_markdown).collect::<Vec<_>>().join("\n\n");
+    let notes = document_notes(document);
+    if notes.is_empty() {
+        return body;
+    }
+    let list = notes
+        .iter()
+        .map(|(number, text)| format!("{number}. {text}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("{body}\n\n---\n\n{list}\n")
 }
 
 pub fn document_to_text(document: &TextDocument) -> String {
@@ -121,6 +151,13 @@ pub fn document_to_text(document: &TextDocument) -> String {
     }
     while out.ends_with("\n\n\n") {
         out.pop();
+    }
+    let notes = document_notes(document);
+    if !notes.is_empty() {
+        out.push_str("\n\nNotes\n");
+        for (number, text) in notes {
+            out.push_str(&format!("{number}. {text}\n"));
+        }
     }
     out.trim_end().to_string()
 }
@@ -259,6 +296,7 @@ fn block_html(block: &Block) -> String {
             )
         }
         Block::PageBreak => "<div class=\"page-break\"></div>".into(),
+        Block::SectionBreak { .. } => "<div class=\"page-break\"></div>".into(),
         Block::Rule => "<hr/>".into(),
         Block::Toc { entries } => {
             let items = entries
@@ -280,7 +318,16 @@ fn block_html(block: &Block) -> String {
 
 /// Standalone HTML used for previews and the print pipeline.
 pub fn document_to_html(document: &TextDocument) -> String {
-    let body: String = document.blocks.iter().map(block_html).collect();
+    let mut body: String = document.blocks.iter().map(block_html).collect();
+    let notes = document_notes(document);
+    if !notes.is_empty() {
+        let items = notes
+            .iter()
+            .map(|(number, text)| format!("<li value=\"{number}\">{}</li>", escape_text(text)))
+            .collect::<Vec<_>>()
+            .join("");
+        body.push_str(&format!("<section class=\"notes\"><h2>Notes</h2><ol>{items}</ol></section>"));
+    }
     let header = if document.header.is_empty() {
         String::new()
     } else {

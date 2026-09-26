@@ -21,6 +21,9 @@
 //! * `pagelayout`- page size conversion and cropping
 //! * `ocr`       - Tesseract-based OCR pipeline
 //! * `engines`   - engine discovery (pdfium.dll, qpdf.exe, tesseract.exe)
+//! * `sanitize`  - full-object removal of scripts, actions, attachments
+//! * `pdfa`      - PDF/A validation and best-effort conversion
+//! * `flatten`   - annotation and form flattening
 
 pub mod annotate;
 pub mod compare;
@@ -29,6 +32,7 @@ pub mod convert;
 pub mod docutil;
 pub mod engines;
 pub mod error;
+pub mod flatten;
 pub mod images;
 pub mod info;
 pub mod inspect;
@@ -39,9 +43,11 @@ pub mod ocr;
 pub mod organize;
 pub mod pagelayout;
 pub mod pages;
+pub mod pdfa;
 pub mod progress;
 pub mod redact;
 pub mod render;
+pub mod sanitize;
 pub mod security;
 pub mod textbox;
 pub mod textimg;

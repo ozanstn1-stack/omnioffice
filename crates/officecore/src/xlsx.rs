@@ -3,16 +3,22 @@
 //! Export covers values, formulas, styling, number formats, column widths, row
 //! heights, merges, freeze panes, gridline settings, defined names, autofilters,
 //! tab colours, hyperlinks, cell comments, data validation, conditional
-//! formatting, sheet protection, print layout and charts (column, bar, line,
-//! pie, area) as real ChartML parts anchored to their cells. Import uses the well-tested
-//! `calamine` parser so XLSX, XLS and ODS files from Excel and LibreOffice open
-//! reliably; formatting is imported with limited support and that limitation is
-//! reported to the user.
+//! formatting, structured tables, sheet protection, print layout and charts
+//! (column, bar, line, pie, area) as real ChartML parts anchored to their cells.
+//!
+//! Import is two passes: the well-tested `calamine` parser reads values and
+//! formulas from XLSX, XLS and ODS files from Excel and LibreOffice, then a
+//! best-effort OOXML pass (only for XLSX/XLSM) reads styles, column widths, row
+//! heights, merges, freeze panes, validations, conditional formatting, defined
+//! names, hyperlinks, comments and structured tables straight from the package
+//! parts through the hardened ZIP/XML readers. The second pass never fails the
+//! import: a part that cannot be parsed adds a warning and the values from the
+//! first pass are still returned.
 
 use crate::error::{OfficeError, OfficeResult};
 use crate::io::{normalize_hex, write_atomic};
 use crate::model::*;
-use crate::xml::{escape_attr, escape_text, XmlWriter};
+use crate::xml::{escape_attr, escape_text, parse_xml, XmlNode, XmlWriter};
 use crate::zip::ZipWriter;
 use calamine::Reader as CalamineReader;
 use std::collections::BTreeMap;
@@ -333,6 +339,7 @@ fn sheet_xml(
     sheet: &Sheet,
     drawing_number: Option<usize>,
     pivot_cells: &[(String, CellValue)],
+    table_numbers: &[usize],
     styles: &mut StyleTable,
     shared: &mut Vec<String>,
     shared_index: &mut BTreeMap<String, usize>,
@@ -489,8 +496,10 @@ fn sheet_xml(
     }
 
     // AutoFilter: the active filter range, which is what the toolbar toggles.
+    // A range a structured table already filters is skipped here; the table part
+    // carries its own autoFilter and writing both would duplicate the filter.
     if let Some(filter) = &sheet.filter {
-        if !filter.range.is_empty() {
+        if !filter.range.is_empty() && !filter_owned_by_table(sheet, &filter.range) {
             writer.raw(&format!("<autoFilter ref=\"{}\"/>", escape_attr(&filter.range)));
         }
     }
@@ -590,6 +599,23 @@ fn sheet_xml(
             "../drawings/vmlDrawing1.vml".into(),
         ));
         writer.raw("<legacyDrawing r:id=\"rIdVml\"/>");
+    }
+
+    // Structured tables live in their own parts; the worksheet only points at
+    // them. Per CT_Worksheet `<tableParts>` comes after `<legacyDrawing>` and is
+    // the last element before `</worksheet>`.
+    if !table_numbers.is_empty() {
+        writer.raw(&format!("<tableParts count=\"{}\">", table_numbers.len()));
+        for (position, number) in table_numbers.iter().enumerate() {
+            let rid = format!("rIdTable{position}");
+            writer.raw(&format!("<tablePart r:id=\"{rid}\"/>"));
+            rels.push((
+                rid,
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/table".into(),
+                format!("../tables/table{number}.xml"),
+            ));
+        }
+        writer.raw("</tableParts>");
     }
 
     writer.raw("</worksheet>");
@@ -915,6 +941,127 @@ fn print_settings_xml(sheet: &Sheet) -> String {
     out
 }
 
+/// True when a structured table on the sheet already owns this filter range.
+///
+/// The worksheet-level `<autoFilter>` must not be written for such a range: the
+/// table part carries its own filter and Excel treats two filters over the same
+/// range as a corrupt file.
+fn filter_owned_by_table(sheet: &Sheet, range: &str) -> bool {
+    sheet.tables.iter().any(|table| {
+        table
+            .filter
+            .as_ref()
+            .map(|filter| filter.range.eq_ignore_ascii_case(range))
+            .unwrap_or(false)
+    })
+}
+
+/// The range Excel filters for a table: the full range minus the totals row.
+fn table_filter_range(table: &SpreadsheetTable) -> Option<String> {
+    let ((start_row, start_col), (end_row, end_col)) = crate::address::parse_range(&table.range)?;
+    let last_row = if table.has_totals { end_row.saturating_sub(1) } else { end_row };
+    if last_row < start_row || end_col < start_col {
+        return None;
+    }
+    Some(format!(
+        "{}:{}",
+        crate::address::format(start_row, start_col),
+        crate::address::format(last_row, end_col)
+    ))
+}
+
+/// A valid workbook-unique table name; OOXML names allow only a restricted set
+/// of characters and may not look like a cell reference.
+fn table_part_name(table: &SpreadsheetTable, number: usize) -> String {
+    let mut name: String = table
+        .name
+        .trim()
+        .chars()
+        .map(|character| if character.is_ascii_alphanumeric() || character == '_' || character == '.' { character } else { '_' })
+        .collect();
+    if name.is_empty() {
+        name = format!("Table{number}");
+    }
+    let starts_well = name.chars().next().map(|character| character.is_ascii_alphabetic() || character == '_').unwrap_or(false);
+    if !starts_well || crate::address::parse(&name).is_some() {
+        name.insert(0, '_');
+    }
+    name
+}
+
+/// Number of columns a table part declares; falls back to the range width so a
+/// table whose model columns were never filled in still exports a valid part.
+fn table_column_count(table: &SpreadsheetTable) -> usize {
+    let width = crate::address::parse_range(&table.range)
+        .map(|((_, start_col), (_, end_col))| end_col.saturating_sub(start_col) as usize + 1)
+        .unwrap_or(0);
+    table.columns.len().max(width).max(1)
+}
+
+/// One `xl/tables/tableN.xml` part.
+fn table_xml(table: &SpreadsheetTable, number: usize, name: &str) -> String {
+    let header_rows = u8::from(table.has_headers);
+    let totals_rows = u8::from(table.has_totals);
+    let mut xml = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<table xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" id=\"{number}\" name=\"{name}\" displayName=\"{name}\" ref=\"{range}\" headerRowCount=\"{header_rows}\" totalsRowCount=\"{totals_rows}\">",
+        name = escape_attr(&name),
+        range = escape_attr(&table.range),
+    );
+    if let Some(filter) = table.filter.as_ref() {
+        let range = if filter.range.is_empty() {
+            table_filter_range(table).unwrap_or_else(|| table.range.clone())
+        } else {
+            filter.range.clone()
+        };
+        if !range.is_empty() {
+            if filter.values.is_empty() {
+                xml.push_str(&format!("<autoFilter ref=\"{}\"/>", escape_attr(&range)));
+            } else {
+                xml.push_str(&format!(
+                    "<autoFilter ref=\"{}\"><filterColumn colId=\"{}\"><filters>",
+                    escape_attr(&range),
+                    filter.column
+                ));
+                for value in filter.values.iter().take(MAX_FILTER_VALUES) {
+                    xml.push_str(&format!("<filter val=\"{}\"/>", escape_attr(value)));
+                }
+                xml.push_str("</filters></filterColumn></autoFilter>");
+            }
+        }
+    }
+    let columns = table_column_count(table);
+    xml.push_str(&format!("<tableColumns count=\"{columns}\">"));
+    for index in 0..columns {
+        let column = table.columns.get(index);
+        let name = column
+            .map(|column| column.name.trim())
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("Column{}", index + 1));
+        match column.and_then(|column| column.formula.as_deref()).map(str::trim).filter(|formula| !formula.is_empty()) {
+            Some(formula) => xml.push_str(&format!(
+                "<tableColumn id=\"{}\" name=\"{}\"><calculatedColumnFormula>{}</calculatedColumnFormula></tableColumn>",
+                index + 1,
+                escape_attr(&name),
+                escape_text(formula.trim_start_matches('='))
+            )),
+            None => xml.push_str(&format!("<tableColumn id=\"{}\" name=\"{}\"/>", index + 1, escape_attr(&name))),
+        }
+    }
+    xml.push_str("</tableColumns>");
+    // Excel needs a style blob for the banding to render; a table without an
+    // explicit style falls back to the medium banded style.
+    let style_name = if table.style_name.trim().is_empty() { "TableStyleMedium2" } else { table.style_name.trim() };
+    xml.push_str(&format!(
+        "<tableStyleInfo name=\"{}\" showFirstColumn=\"0\" showLastColumn=\"0\" showRowStripes=\"{}\" showColumnStripes=\"{}\"/>",
+        escape_attr(style_name),
+        u8::from(table.banded_rows),
+        u8::from(table.banded_columns)
+    ));
+    xml.push_str("</table>");
+    xml
+}
+
 pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
     let mut warnings = Vec::new();
     let mut styles = StyleTable::new();
@@ -964,6 +1111,36 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
         sheet_charts.push(planned);
     }
 
+    // Structured tables: numbered workbook-wide so the worksheet tableParts,
+    // the relationship targets and the content-type overrides agree. A table
+    // with an unreadable range is skipped with a warning instead of producing a
+    // package Excel would reject; names are deduplicated workbook-wide.
+    let mut table_number = 0usize;
+    let mut used_table_names: Vec<String> = Vec::new();
+    let mut sheet_table_numbers: Vec<Vec<usize>> = Vec::new();
+    let mut table_parts: Vec<(usize, String)> = Vec::new();
+    for sheet in &workbook.sheets {
+        let mut numbers = Vec::new();
+        for table in &sheet.tables {
+            if crate::address::parse_range(&table.range).is_none() {
+                warnings.push(format!(
+                    "Table \"{}\" has a range that could not be read and was kept in the .oswk file only.",
+                    table.name
+                ));
+                continue;
+            }
+            table_number += 1;
+            let mut name = table_part_name(table, table_number);
+            while used_table_names.iter().any(|used| used.eq_ignore_ascii_case(&name)) {
+                name = format!("{name}_{table_number}");
+            }
+            used_table_names.push(name.clone());
+            numbers.push(table_number);
+            table_parts.push((table_number, table_xml(table, table_number, &name)));
+        }
+        sheet_table_numbers.push(numbers);
+    }
+
     let mut sheet_parts: Vec<SheetPart> = Vec::new();
     let mut sheet_drawings: Vec<Option<usize>> = Vec::new();
     let mut drawing_number = 0usize;
@@ -980,7 +1157,15 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
         if !pivot_cells.is_empty() {
             pivots_materialized += 1;
         }
-        sheet_parts.push(sheet_xml(sheet, drawing, &pivot_cells, &mut styles, &mut shared, &mut shared_index));
+        sheet_parts.push(sheet_xml(
+            sheet,
+            drawing,
+            &pivot_cells,
+            &sheet_table_numbers[index],
+            &mut styles,
+            &mut shared,
+            &mut shared_index,
+        ));
     }
     if pivots_materialized > 0 {
         warnings.push(format!(
@@ -1054,9 +1239,11 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
         }
     }
     // A sheet's AutoFilter range is itself a defined name in the OOXML spec.
+    // A range a structured table filters is skipped for the same reason as the
+    // worksheet `<autoFilter>` above.
     for (index, sheet) in workbook.sheets.iter().enumerate() {
         if let Some(filter) = &sheet.filter {
-            if !filter.range.is_empty() {
+            if !filter.range.is_empty() && !filter_owned_by_table(sheet, &filter.range) {
                 defined.push_str(&format!(
                     "<definedName name=\"_xlnm._FilterDatabase\" localSheetId=\"{}\" hidden=\"1\">{}!{}</definedName>",
                     index,
@@ -1130,6 +1317,12 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
         }
     }
 
+    for (number, _) in &table_parts {
+        content_types.push_str(&format!(
+            "<Override PartName=\"/xl/tables/table{number}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml\"/>"
+        ));
+    }
+
     content_types.push_str("</Types>");
     zip.add_text("[Content_Types].xml", &content_types);
     zip.add_text("_rels/.rels", &root_rels);
@@ -1174,6 +1367,9 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
         for chart in charts {
             zip.add_text(&format!("xl/charts/chart{}.xml", chart.chart_number), &chart.xml);
         }
+    }
+    for (number, xml) in &table_parts {
+        zip.add_text(&format!("xl/tables/table{number}.xml"), xml);
     }
 
     if with_comments {
@@ -1293,6 +1489,28 @@ fn contains_part(bytes: &[u8], needle: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// A copy of an OOXML package with `xl/styles.xml` dropped.
+///
+/// Used only as a fallback when `calamine` refuses to open a workbook because
+/// that part is malformed; dropping it lets the values open and the detailed
+/// pass reports the damaged styles.
+fn package_without_styles(bytes: &[u8]) -> Option<Vec<u8>> {
+    let zip = crate::zip::ZipReader::open(bytes.to_vec()).ok()?;
+    if !zip.contains("xl/workbook.xml") {
+        return None;
+    }
+    let names: Vec<String> = zip.names().map(str::to_string).collect();
+    let mut writer = ZipWriter::new();
+    for name in names {
+        if name == "xl/styles.xml" {
+            continue;
+        }
+        let data = zip.read(&name).ok()?;
+        writer.add(&name, &data);
+    }
+    Some(writer.finish())
+}
+
 pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
     if bytes.len() < 8 {
         return Err(OfficeError::corrupt("The file is too small to be a spreadsheet."));
@@ -1302,8 +1520,19 @@ pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
     workbook.sheets.clear();
 
     let cursor = Cursor::new(bytes.to_vec());
-    let mut sheets = calamine::open_workbook_auto_from_rs(cursor)
-        .map_err(|error| OfficeError::corrupt(format!("Could not read the spreadsheet: {error}")))?;
+    let mut sheets = match calamine::open_workbook_auto_from_rs(cursor) {
+        Ok(sheets) => sheets,
+        Err(error) => {
+            // `calamine` reads `xl/styles.xml` for number formats and fails on a
+            // malformed part, which would lose every value. Retry without the
+            // damaged part; the OOXML layout pass below reports it as a warning.
+            let Some(repaired) = package_without_styles(bytes) else {
+                return Err(OfficeError::corrupt(format!("Could not read the spreadsheet: {error}")));
+            };
+            calamine::open_workbook_auto_from_rs(Cursor::new(repaired))
+                .map_err(|error| OfficeError::corrupt(format!("Could not read the spreadsheet: {error}")))?
+        }
+    };
     let names: Vec<String> = sheets.sheet_names().to_vec();
     if names.is_empty() {
         return Err(OfficeError::corrupt("The spreadsheet does not contain any sheet."));
@@ -1377,13 +1606,22 @@ pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
     if workbook.sheets.is_empty() {
         workbook.sheets.push(Sheet::new("Sheet1"));
     }
+    // Second pass: read the OOXML parts calamine does not expose (styles,
+    // layout, validations, conditional rules, defined names, hyperlinks,
+    // comments and structured tables). It is best effort: every failure is a
+    // warning and the values from the first pass stay untouched.
+    if !import_ooxml_layout(bytes, &mut workbook, &mut warnings) {
+        warnings.push("Formatting, layout and comments are imported from XLSX/XLSM workbooks only; this file opened with values and formulas.".into());
+    }
     if contains_part(bytes, "xl/charts") || contains_part(bytes, "Object ") {
         warnings.push("Charts embedded in the spreadsheet are not imported.".into());
+    }
+    if contains_part(bytes, "xl/media/") {
+        warnings.push("Images embedded in the spreadsheet are not imported.".into());
     }
     if contains_part(bytes, "xl/vbaProject.bin") {
         warnings.push("Macros were not loaded. Spreadsheets always open with macros disabled.".into());
     }
-    warnings.push("Cell formatting, comments and charts from the original file are imported with limited support.".into());
     let title = String::new();
     if title.is_empty() {
         workbook.metadata.title = workbook.title.clone();
@@ -1398,6 +1636,953 @@ pub fn read_workbook_file(path: &Path) -> OfficeResult<SheetRead> {
         result.workbook.title = crate::io::file_stem(path);
     }
     Ok(result)
+}
+
+// ---------------------------------------------------------------------------
+// Import: OOXML styles, layout, validation, names and tables
+// ---------------------------------------------------------------------------
+
+/// Same row/column budgets as the calamine pass.
+const MAX_IMPORT_ROWS: u32 = 100_000;
+const MAX_IMPORT_COLS: u32 = 1_000;
+/// Worksheet parts bigger than this are skipped by the detailed pass so a
+/// hostile file cannot make the XML tree explode; calamine still returns the
+/// values. 64 MiB is far above any sheet the 100k-row budget can produce.
+const MAX_DETAIL_PART_BYTES: usize = 64 * 1024 * 1024;
+const MAX_FILTER_VALUES: usize = 1_024;
+
+/// The style catalogue resolved from `xl/styles.xml`, indexed by cell xf.
+#[derive(Debug, Clone, Default)]
+struct ImportedStyles {
+    cell_styles: Vec<CellStyle>,
+    /// `dxf` fill and font colours, indexed by `dxfId` in conditional rules.
+    dxf_fills: Vec<Option<String>>,
+    dxf_colors: Vec<Option<String>>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ImportFont {
+    name: Option<String>,
+    size_pt: Option<f64>,
+    bold: bool,
+    italic: bool,
+    underline: bool,
+    strike: bool,
+    color: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ImportedXf {
+    number_format: String,
+    font: Option<ImportFont>,
+    fill: Option<String>,
+    borders: CellBorders,
+    align: String,
+    valign: String,
+    wrap: bool,
+    rotation: i32,
+}
+
+/// One relationship from a `.rels` part.
+struct Relationship {
+    kind: String,
+    target: String,
+}
+
+/// Reads the OOXML parts calamine does not expose and maps them onto the model.
+///
+/// Returns `true` when the input is an OOXML workbook (so the caller knows the
+/// detailed pass applies); every parse failure is recorded as a warning and the
+/// calamine values stay untouched.
+fn import_ooxml_layout(bytes: &[u8], workbook: &mut Workbook, warnings: &mut Vec<String>) -> bool {
+    let Ok(zip) = crate::zip::ZipReader::open(bytes.to_vec()) else { return false };
+    if !zip.contains("xl/workbook.xml") {
+        return false;
+    }
+    let (sheet_refs, names, filter_databases) = match import_workbook_sheets(&zip) {
+        Ok(parts) => parts,
+        Err(error) => {
+            warnings.push(format!("The workbook part could not be read ({error}); sheet layout was not imported."));
+            return true;
+        }
+    };
+    let styles = match zip.read_text("xl/styles.xml") {
+        Ok(xml) => match parse_styles(&xml) {
+            Ok(styles) => styles,
+            Err(error) => {
+                warnings.push(format!("The styles of the workbook could not be read ({error}); cell formatting was not imported."));
+                ImportedStyles::default()
+            }
+        },
+        Err(error) => {
+            warnings.push(format!("The styles of the workbook could not be read ({error}); cell formatting was not imported."));
+            ImportedStyles::default()
+        }
+    };
+
+    let mut table_number = 0usize;
+    for (index, sheet) in workbook.sheets.iter_mut().enumerate() {
+        // Sheet name -> part mapping comes from workbook.xml + its rels, so the
+        // worksheet order in the package is never assumed.
+        let part = sheet_refs
+            .iter()
+            .find(|(name, _)| name == &sheet.name)
+            .map(|(_, part)| part.clone())
+            .or_else(|| sheet_refs.get(index).map(|(_, part)| part.clone()));
+        let Some(part) = part else { continue };
+        if let Err(error) = apply_worksheet_part(&zip, &part, sheet, &styles, &mut table_number, warnings) {
+            warnings.push(format!("The layout of sheet \"{}\" could not be imported ({error}).", sheet.name));
+        }
+    }
+    for entry in names {
+        workbook.names.push(entry);
+    }
+    // A hidden `_xlnm._FilterDatabase` name is a sheet's AutoFilter range.
+    for (sheet_name, range) in filter_databases {
+        let index = workbook
+            .sheets
+            .iter()
+            .position(|sheet| sheet.name == sheet_name)
+            .or_else(|| workbook.sheets.iter().position(|sheet| sheet.name.eq_ignore_ascii_case(&sheet_name)));
+        if let Some(index) = index {
+            if workbook.sheets[index].filter.is_none() {
+                workbook.sheets[index].filter = Some(FilterState { range, column: 0, values: Vec::new() });
+            }
+        }
+    }
+    true
+}
+
+/// Sheet names, their worksheet parts, the defined names and the
+/// `_FilterDatabase` ranges read from `xl/workbook.xml` and its rels.
+type WorkbookSheetInfo = (Vec<(String, String)>, Vec<NamedRange>, Vec<(String, String)>);
+
+fn import_workbook_sheets(zip: &crate::zip::ZipReader) -> OfficeResult<WorkbookSheetInfo> {
+    let root = parse_xml(&zip.read_text("xl/workbook.xml")?)?;
+    let relationships = read_relationships(zip, "xl/workbook.xml");
+    let mut sheets: Vec<(String, String)> = Vec::new();
+    if let Some(list) = root.child("sheets") {
+        for sheet in list.children_of("sheet") {
+            let name = sheet.attr("name").unwrap_or("").to_string();
+            let part = sheet
+                .attr_any_ns("id")
+                .and_then(|id| relationships.get(id))
+                .map(|relationship| resolve_part("xl/workbook.xml", &relationship.target))
+                .unwrap_or_else(|| format!("xl/worksheets/sheet{}.xml", sheets.len() + 1));
+            sheets.push((name, part));
+        }
+    }
+    let mut names = Vec::new();
+    let mut filters = Vec::new();
+    if let Some(defined) = root.child("definedNames") {
+        for entry in defined.children_of("definedName") {
+            let name = entry.attr("name").unwrap_or("").trim().to_string();
+            if name.is_empty() {
+                continue;
+            }
+            let definition = entry.deep_text().trim().trim_start_matches('=').to_string();
+            if definition.is_empty() {
+                continue;
+            }
+            if name == "_xlnm._FilterDatabase" {
+                let from_definition = split_sheet_reference(&definition);
+                let from_scope = entry
+                    .attr("localSheetId")
+                    .and_then(|value| value.trim().parse::<usize>().ok())
+                    .and_then(|index| sheets.get(index))
+                    .map(|(sheet_name, _)| sheet_name.clone());
+                let (sheet_name, range) = match from_definition {
+                    Some((sheet_name, range)) => (sheet_name, range),
+                    None => match from_scope {
+                        Some(sheet_name) => (sheet_name, definition.clone()),
+                        None => continue,
+                    },
+                };
+                filters.push((sheet_name, range));
+                continue;
+            }
+            // Print areas/titles and other `_xlnm` internals are not user names.
+            if name.starts_with("_xlnm.") {
+                continue;
+            }
+            let scope = entry
+                .attr("localSheetId")
+                .and_then(|value| value.trim().parse::<usize>().ok())
+                .and_then(|index| sheets.get(index))
+                .map(|(sheet_name, _)| sheet_name.clone());
+            names.push(NamedRange { name, definition, sheet: scope, comment: String::new() });
+        }
+    }
+    Ok((sheets, names, filters))
+}
+
+fn apply_worksheet_part(
+    zip: &crate::zip::ZipReader,
+    part: &str,
+    sheet: &mut Sheet,
+    styles: &ImportedStyles,
+    table_number: &mut usize,
+    warnings: &mut Vec<String>,
+) -> OfficeResult<()> {
+    let text = zip.read_text(part)?;
+    if text.len() > MAX_DETAIL_PART_BYTES {
+        warnings.push(format!(
+            "Sheet \"{}\" is too large for the layout pass; values and formulas were imported and its formatting was skipped.",
+            sheet.name
+        ));
+        return Ok(());
+    }
+    let root = parse_xml(&text)?;
+
+    if let Some(tab_color) = root.child("sheetPr").and_then(|sheet_pr| sheet_pr.child("tabColor")).and_then(color_of) {
+        sheet.tab_color = Some(tab_color);
+    }
+    apply_columns(&root, sheet);
+    apply_sheet_cells(&root, sheet, styles);
+    apply_merges(&root, sheet);
+    apply_freeze_panes(&root, sheet);
+    apply_sheet_filter(&root, sheet);
+    apply_validations(&root, sheet, warnings);
+    apply_conditional(&root, sheet, styles, warnings);
+    apply_hyperlinks(zip, part, &root, sheet);
+    apply_comments(zip, part, sheet, warnings);
+    apply_tables(zip, part, &root, sheet, table_number, warnings);
+    Ok(())
+}
+
+/// `<cols>` widths: Excel character width to pixels (`width * 7 + 5`).
+fn apply_columns(root: &XmlNode, sheet: &mut Sheet) {
+    let Some(cols) = root.child("cols") else { return };
+    for col in cols.children_of("col") {
+        let Some(width) = col.attr("width").and_then(|value| value.trim().parse::<f64>().ok()) else { continue };
+        let min = parse_u32_attr(col, "min").unwrap_or(1).saturating_sub(1);
+        let max = parse_u32_attr(col, "max").unwrap_or(min + 1).saturating_sub(1).max(min);
+        if min > MAX_IMPORT_COLS {
+            continue;
+        }
+        let pixels = (width * 7.0 + 5.0).max(24.0);
+        for column in min..=max.min(MAX_IMPORT_COLS) {
+            sheet.col_widths.insert(column, pixels);
+        }
+    }
+}
+
+/// `<sheetData>` row heights (points -> pixels) and per-cell styles. Values and
+/// formulas are not touched: they came from the calamine pass.
+fn apply_sheet_cells(root: &XmlNode, sheet: &mut Sheet, styles: &ImportedStyles) {
+    let Some(data) = root.child("sheetData") else { return };
+    let styles_available = !styles.cell_styles.is_empty();
+    for row in data.children_of("row") {
+        let Some(row_number) = parse_u32_attr(row, "r").map(|value| value.saturating_sub(1)) else { continue };
+        if row_number > MAX_IMPORT_ROWS {
+            continue;
+        }
+        if let Some(height) = row.attr("ht").and_then(|value| value.trim().parse::<f64>().ok()) {
+            sheet.row_heights.insert(row_number, height * PT_TO_PX);
+        }
+        if !styles_available {
+            continue;
+        }
+        for cell in row.children_of("c") {
+            let Some((cell_row, cell_column)) = cell.attr("r").and_then(crate::address::parse) else { continue };
+            if cell_row > MAX_IMPORT_ROWS || cell_column > MAX_IMPORT_COLS {
+                continue;
+            }
+            let Some(style_index) = parse_u32_attr(cell, "s").map(|value| value as usize) else { continue };
+            let Some(style) = styles.cell_styles.get(style_index) else { continue };
+            let address = crate::address::format(cell_row, cell_column);
+            match sheet.cells.get_mut(&address) {
+                Some(existing) => existing.style = style.clone(),
+                // A style-only cell is only materialised when it carries
+                // something visible; a plain "General" xf must not turn every
+                // empty row into a million model cells.
+                None if style_worth_a_cell(style) => {
+                    sheet.cells.insert(address, Cell { style: style.clone(), ..Default::default() });
+                }
+                None => {}
+            }
+        }
+    }
+}
+
+fn apply_merges(root: &XmlNode, sheet: &mut Sheet) {
+    let Some(merges) = root.child("mergeCells") else { return };
+    for merge in merges.children_of("mergeCell") {
+        let Some(reference) = merge.attr("ref") else { continue };
+        let Some(((start_row, start_col), (end_row, end_col))) = crate::address::parse_range(reference) else { continue };
+        if start_row > MAX_IMPORT_ROWS || start_col > MAX_IMPORT_COLS {
+            continue;
+        }
+        sheet.merges.push(MergeRange {
+            start: crate::address::format(start_row, start_col),
+            end: crate::address::format(end_row, end_col),
+        });
+    }
+}
+
+fn apply_freeze_panes(root: &XmlNode, sheet: &mut Sheet) {
+    let Some(pane) = root.child("sheetViews").and_then(|views| views.child("sheetView")).and_then(|view| view.child("pane")) else {
+        return;
+    };
+    if !matches!(pane.attr("state").map(str::trim), Some("frozen") | Some("frozenSplit")) {
+        return;
+    }
+    let x_split = pane.attr("xSplit").and_then(|value| value.trim().parse::<f64>().ok()).unwrap_or(0.0);
+    let y_split = pane.attr("ySplit").and_then(|value| value.trim().parse::<f64>().ok()).unwrap_or(0.0);
+    if x_split > 0.0 || y_split > 0.0 {
+        sheet.freeze_cols = x_split.max(0.0).round() as u32;
+        sheet.freeze_rows = y_split.max(0.0).round() as u32;
+    } else if let Some((row, column)) = pane.attr("topLeftCell").and_then(crate::address::parse) {
+        sheet.freeze_rows = row;
+        sheet.freeze_cols = column;
+    }
+}
+
+fn parse_filter_state(node: &XmlNode, fallback_range: &str) -> Option<FilterState> {
+    let range = node.attr("ref").unwrap_or("").trim();
+    let range = if range.is_empty() { fallback_range.trim() } else { range };
+    if range.is_empty() {
+        return None;
+    }
+    let mut state = FilterState { range: range.to_string(), column: 0, values: Vec::new() };
+    if let Some(column) = node.child("filterColumn") {
+        state.column = parse_u32_attr(column, "colId").unwrap_or(0);
+        if let Some(filters) = column.child("filters") {
+            for entry in filters.children_of("filter") {
+                if state.values.len() >= MAX_FILTER_VALUES {
+                    break;
+                }
+                if let Some(value) = entry.attr("val") {
+                    state.values.push(value.to_string());
+                }
+            }
+        }
+    }
+    Some(state)
+}
+
+fn apply_sheet_filter(root: &XmlNode, sheet: &mut Sheet) {
+    let Some(node) = root.child("autoFilter") else { return };
+    if let Some(state) = parse_filter_state(node, "") {
+        sheet.filter = Some(state);
+    }
+}
+
+fn apply_validations(root: &XmlNode, sheet: &mut Sheet, warnings: &mut Vec<String>) {
+    let Some(block) = root.child("dataValidations") else { return };
+    let mut unsupported = 0usize;
+    let mut range_lists = 0usize;
+    for node in block.children_of("dataValidation") {
+        let range = node.attr("sqref").unwrap_or("").trim().to_string();
+        if range.is_empty() {
+            continue;
+        }
+        let kind = node.attr("type").unwrap_or("none").trim();
+        let allow_blank = attr_on(node, "allowBlank");
+        let message = node.attr("error").or_else(|| node.attr("prompt")).unwrap_or("").to_string();
+        let formula1 = node.child("formula1").map(XmlNode::deep_text).unwrap_or_default();
+        let formula2 = node.child("formula2").map(XmlNode::deep_text).unwrap_or_default();
+        let validation = match kind {
+            "list" => {
+                let values = parse_list_values(&formula1);
+                if values.is_empty() && !formula1.trim().is_empty() {
+                    range_lists += 1;
+                }
+                Validation {
+                    id: format!("v{}", sheet.validations.len() + 1),
+                    range,
+                    kind: "list".into(),
+                    values,
+                    min: None,
+                    max: None,
+                    message,
+                    allow_blank,
+                }
+            }
+            "decimal" | "whole" => {
+                let (min, max) = numeric_bounds(node.attr("operator").unwrap_or("between"), &formula1, &formula2);
+                Validation {
+                    id: format!("v{}", sheet.validations.len() + 1),
+                    range,
+                    kind: "number".into(),
+                    values: Vec::new(),
+                    min,
+                    max,
+                    message,
+                    allow_blank,
+                }
+            }
+            _ => {
+                unsupported += 1;
+                continue;
+            }
+        };
+        sheet.validations.push(validation);
+    }
+    if unsupported > 0 {
+        warnings.push(format!(
+            "{unsupported} data validation rule(s) on sheet \"{}\" use types this editor cannot import and were dropped.",
+            sheet.name
+        ));
+    }
+    if range_lists > 0 {
+        warnings.push(format!(
+            "{range_lists} list validation(s) on sheet \"{}\" take their values from a cell range, which is not imported; the rule is kept without its list.",
+            sheet.name
+        ));
+    }
+}
+
+fn parse_list_values(formula: &str) -> Vec<String> {
+    let text = formula.trim();
+    let Some(inner) = text.strip_prefix('"').and_then(|value| value.strip_suffix('"')) else { return Vec::new() };
+    if inner.is_empty() {
+        return Vec::new();
+    }
+    inner
+        .split(',')
+        .map(|value| value.trim().replace("\"\"", "\""))
+        .filter(|value| !value.is_empty())
+        .take(MAX_FILTER_VALUES)
+        .collect()
+}
+
+fn numeric_bounds(operator: &str, first: &str, second: &str) -> (Option<f64>, Option<f64>) {
+    let number = |text: &str| text.trim().parse::<f64>().ok();
+    match operator {
+        "greaterThan" | "greaterThanOrEqual" => (number(first), None),
+        "lessThan" | "lessThanOrEqual" => (None, number(first)),
+        "equal" => {
+            let value = number(first);
+            (value, value)
+        }
+        _ => (number(first), number(second)),
+    }
+}
+
+fn apply_conditional(root: &XmlNode, sheet: &mut Sheet, styles: &ImportedStyles, warnings: &mut Vec<String>) {
+    let mut unsupported = 0usize;
+    for block in root.children_of("conditionalFormatting") {
+        let range = block.attr("sqref").unwrap_or("").trim().to_string();
+        if range.is_empty() {
+            continue;
+        }
+        for rule in block.children_of("cfRule") {
+            let kind = rule.attr("type").unwrap_or("").trim();
+            let stop_if_true = attr_on(rule, "stopIfTrue");
+            let dxf = parse_u32_attr(rule, "dxfId").map(|value| value as usize);
+            let mut fill = dxf.and_then(|index| styles.dxf_fills.get(index).cloned()).flatten();
+            let color = dxf.and_then(|index| styles.dxf_colors.get(index).cloned()).flatten();
+            let formulas = rule.children_of("formula");
+            let formula = |index: usize| formulas.get(index).map(|node| node.deep_text().trim().to_string()).unwrap_or_default();
+            let (model_kind, values, top_n) = match kind {
+                "cellIs" => match rule.attr("operator").unwrap_or("") {
+                    "greaterThan" => ("greater", vec![strip_operator(&formula(0))], None),
+                    "lessThan" => ("less", vec![strip_operator(&formula(0))], None),
+                    "equal" => ("equal", vec![strip_operator(&formula(0))], None),
+                    "between" => {
+                        let first = formula(0);
+                        let second = formula(1);
+                        // This writer encodes `between` as one formula with a
+                        // `~` separator; Excel uses two formula elements.
+                        let (low, high) = match first.split_once('~') {
+                            Some((low, high)) => (low.to_string(), high.to_string()),
+                            None => (first, second),
+                        };
+                        ("between", vec![strip_operator(&low), strip_operator(&high)], None)
+                    }
+                    _ => {
+                        unsupported += 1;
+                        continue;
+                    }
+                },
+                "containsText" => {
+                    let text = rule.attr("text").map(str::to_string).unwrap_or_else(|| contains_text_value(&formula(0)));
+                    ("textContains", vec![text], None)
+                }
+                "duplicateValues" => ("duplicate", Vec::new(), None),
+                "top10" => {
+                    let rank = parse_u32_attr(rule, "rank").unwrap_or(10);
+                    if attr_on(rule, "bottom") {
+                        ("bottom", Vec::new(), Some(rank))
+                    } else {
+                        ("top", Vec::new(), Some(rank))
+                    }
+                }
+                "dataBar" => {
+                    if let Some(bar_color) = rule.child("dataBar").and_then(|bar| bar.child("color")).and_then(color_of) {
+                        fill = Some(bar_color);
+                    }
+                    ("dataBar", Vec::new(), None)
+                }
+                _ => {
+                    unsupported += 1;
+                    continue;
+                }
+            };
+            sheet.conditional.push(CondRule {
+                id: format!("cf{}", sheet.conditional.len() + 1),
+                range: range.clone(),
+                kind: model_kind.into(),
+                values,
+                fill,
+                color,
+                top_n,
+                stop_if_true,
+            });
+        }
+    }
+    if unsupported > 0 {
+        warnings.push(format!(
+            "{unsupported} conditional formatting rule(s) on sheet \"{}\" use types this editor cannot import and were dropped.",
+            sheet.name
+        ));
+    }
+}
+
+/// `>10`, `<=5` and the like become the bare value the editor stores.
+fn strip_operator(formula: &str) -> String {
+    formula.trim().trim_start_matches(|character| matches!(character, '>' | '<' | '=')).trim().to_string()
+}
+
+fn contains_text_value(formula: &str) -> String {
+    const SEARCH: &str = "SEARCH(\"";
+    if let Some(start) = formula.find(SEARCH) {
+        let rest = &formula[start + SEARCH.len()..];
+        if let Some(end) = rest.find('"') {
+            return rest[..end].to_string();
+        }
+    }
+    String::new()
+}
+
+fn apply_hyperlinks(zip: &crate::zip::ZipReader, part: &str, root: &XmlNode, sheet: &mut Sheet) {
+    let Some(links) = root.child("hyperlinks") else { return };
+    let relationships = read_relationships(zip, part);
+    for link in links.children_of("hyperlink") {
+        let Some((row, column)) = link.attr("ref").and_then(crate::address::parse) else { continue };
+        let address = crate::address::format(row, column);
+        // Only external targets have a relationship; internal `location` links
+        // cannot be expressed as a cell link in the model.
+        let Some(target) = link
+            .attr_any_ns("id")
+            .and_then(|id| relationships.get(id))
+            .filter(|relationship| relationship.kind.ends_with("/hyperlink"))
+            .map(|relationship| relationship.target.clone())
+        else {
+            continue;
+        };
+        match sheet.cells.get_mut(&address) {
+            Some(cell) => cell.link = Some(target),
+            None => {
+                // `Cell::is_empty` ignores links, so `Sheet::set` would drop
+                // this cell; insert it directly instead.
+                sheet.cells.insert(address, Cell { link: Some(target), ..Default::default() });
+            }
+        }
+    }
+}
+
+fn apply_comments(zip: &crate::zip::ZipReader, part: &str, sheet: &mut Sheet, warnings: &mut Vec<String>) {
+    let relationships = read_relationships(zip, part);
+    let Some(target) = relationships
+        .values()
+        .find(|relationship| relationship.kind.ends_with("/comments"))
+        .map(|relationship| resolve_part(part, &relationship.target))
+    else {
+        return;
+    };
+    let parsed = zip.read_text(&target).and_then(|xml| parse_xml(&xml));
+    let root = match parsed {
+        Ok(root) => root,
+        Err(_) => {
+            warnings.push(format!("The comments of sheet \"{}\" could not be read.", sheet.name));
+            return;
+        }
+    };
+    let Some(list) = root.child("commentList") else { return };
+    for comment in list.children_of("comment") {
+        let Some((row, column)) = comment.attr("ref").and_then(crate::address::parse) else { continue };
+        let text = comment.child("text").map(XmlNode::deep_text).unwrap_or_default().trim().to_string();
+        if text.is_empty() {
+            continue;
+        }
+        let address = crate::address::format(row, column);
+        match sheet.cells.get_mut(&address) {
+            Some(cell) => cell.comment = Some(text),
+            None => {
+                sheet.cells.insert(address, Cell { comment: Some(text), ..Default::default() });
+            }
+        }
+    }
+}
+
+fn apply_tables(
+    zip: &crate::zip::ZipReader,
+    part: &str,
+    root: &XmlNode,
+    sheet: &mut Sheet,
+    table_number: &mut usize,
+    warnings: &mut Vec<String>,
+) {
+    let Some(table_parts) = root.child("tableParts") else { return };
+    let relationships = read_relationships(zip, part);
+    for table_part in table_parts.children_of("tablePart") {
+        let Some(relationship) = table_part.attr_any_ns("id").and_then(|id| relationships.get(id)) else { continue };
+        if !relationship.kind.ends_with("/table") {
+            continue;
+        }
+        let target = resolve_part(part, &relationship.target);
+        *table_number += 1;
+        match parse_table_part(zip, &target, *table_number, sheet) {
+            Ok(table) => sheet.tables.push(table),
+            Err(error) => warnings.push(format!("A structured table in sheet \"{}\" could not be imported ({error}).", sheet.name)),
+        }
+    }
+}
+
+fn parse_table_part(zip: &crate::zip::ZipReader, target: &str, number: usize, sheet: &Sheet) -> OfficeResult<SpreadsheetTable> {
+    let root = parse_xml(&zip.read_text(target)?)?;
+    let mut table = SpreadsheetTable {
+        id: format!("table{number}"),
+        ..Default::default()
+    };
+    table.name = root.attr("displayName").or_else(|| root.attr("name")).unwrap_or("").trim().to_string();
+    if table.name.is_empty() {
+        table.name = format!("Table{number}");
+    }
+    table.range = root.attr("ref").unwrap_or("").trim().to_string();
+    if table.range.is_empty() {
+        return Err(OfficeError::corrupt("the table range is missing"));
+    }
+    table.has_headers = root.attr("headerRowCount").map(|value| value.trim() != "0").unwrap_or(true);
+    table.has_totals = parse_u32_attr(&root, "totalsRowCount").map(|count| count > 0).unwrap_or(false);
+    if let Some(columns) = root.child("tableColumns") {
+        for column in columns.children_of("tableColumn") {
+            let name = column.attr("name").unwrap_or("").to_string();
+            let formula = column
+                .child("calculatedColumnFormula")
+                .map(|node| node.deep_text().trim().trim_start_matches('=').to_string())
+                .filter(|text| !text.is_empty())
+                .map(|text| format!("={text}"));
+            table.columns.push(TableColumn { name, formula });
+        }
+    }
+    if let Some(style) = root.child("tableStyleInfo") {
+        table.style_name = style.attr("name").unwrap_or("").to_string();
+        table.banded_rows = style.attr("showRowStripes").map(|value| matches!(value.trim(), "1" | "true")).unwrap_or(true);
+        table.banded_columns = style.attr("showColumnStripes").map(|value| matches!(value.trim(), "1" | "true")).unwrap_or(false);
+    }
+    if let Some(filter) = root.child("autoFilter") {
+        table.filter = parse_filter_state(filter, &table.range);
+    }
+    // Header styling is inferred from the cells the styles pass just decorated.
+    if table.has_headers {
+        if let Some(((row, column), _)) = crate::address::parse_range(&table.range) {
+            if let Some(cell) = sheet.get(&crate::address::format(row, column)) {
+                table.header_fill = cell.style.fill.clone();
+                table.header_bold = cell.style.bold;
+            }
+        }
+    }
+    Ok(table)
+}
+
+// ---------------------------------------------------------------------------
+// Import: styles.xml
+// ---------------------------------------------------------------------------
+
+fn parse_styles(xml: &str) -> OfficeResult<ImportedStyles> {
+    let root = parse_xml(xml)?;
+    let mut custom: BTreeMap<u32, String> = BTreeMap::new();
+    if let Some(node) = root.child("numFmts") {
+        for entry in node.children_of("numFmt") {
+            if custom.len() >= 4_096 {
+                break;
+            }
+            if let (Some(id), Some(code)) = (parse_u32_attr(entry, "numFmtId"), entry.attr("formatCode")) {
+                custom.insert(id, code.to_string());
+            }
+        }
+    }
+    let fonts: Vec<ImportFont> = root
+        .child("fonts")
+        .map(|node| node.children_of("font").into_iter().map(parse_font).collect())
+        .unwrap_or_default();
+    let fills: Vec<Option<String>> = root
+        .child("fills")
+        .map(|node| node.children_of("fill").into_iter().map(parse_fill).collect())
+        .unwrap_or_default();
+    let borders: Vec<CellBorders> = root
+        .child("borders")
+        .map(|node| node.children_of("border").into_iter().map(parse_border).collect())
+        .unwrap_or_default();
+    let cell_styles: Vec<CellStyle> = root
+        .child("cellXfs")
+        .map(|node| {
+            node.children_of("xf")
+                .into_iter()
+                .map(|xf| style_from_xf(&parse_xf(xf, &fonts, &fills, &borders, &custom)))
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut dxf_fills = Vec::new();
+    let mut dxf_colors = Vec::new();
+    if let Some(node) = root.child("dxfs") {
+        for dxf in node.children_of("dxf") {
+            dxf_fills.push(dxf.child("fill").and_then(parse_fill));
+            dxf_colors.push(dxf.child("font").and_then(|font| font.child("color")).and_then(color_of));
+        }
+    }
+    Ok(ImportedStyles { cell_styles, dxf_fills, dxf_colors })
+}
+
+fn parse_xf(
+    xf: &XmlNode,
+    fonts: &[ImportFont],
+    fills: &[Option<String>],
+    borders: &[CellBorders],
+    custom: &BTreeMap<u32, String>,
+) -> ImportedXf {
+    let font_id = parse_u32_attr(xf, "fontId").unwrap_or(0) as usize;
+    let fill_id = parse_u32_attr(xf, "fillId").unwrap_or(0) as usize;
+    let border_id = parse_u32_attr(xf, "borderId").unwrap_or(0) as usize;
+    let mut out = ImportedXf {
+        number_format: imported_number_format(parse_u32_attr(xf, "numFmtId").unwrap_or(0), custom),
+        font: fonts.get(font_id).cloned(),
+        fill: fills.get(fill_id).cloned().flatten(),
+        borders: borders.get(border_id).cloned().unwrap_or_default(),
+        ..Default::default()
+    };
+    if let Some(alignment) = xf.child("alignment") {
+        if let Some(horizontal) = alignment.attr("horizontal") {
+            if horizontal != "general" {
+                out.align = horizontal.to_string();
+            }
+        }
+        if let Some(vertical) = alignment.attr("vertical") {
+            out.valign = vertical.to_string();
+        }
+        out.wrap = attr_on(alignment, "wrapText");
+        out.rotation = alignment.attr("textRotation").and_then(|value| value.trim().parse::<i32>().ok()).unwrap_or(0);
+    }
+    out
+}
+
+fn parse_font(font: &XmlNode) -> ImportFont {
+    let mut out = ImportFont::default();
+    for child in &font.children {
+        match child.local_name() {
+            "b" => out.bold = font_flag(child),
+            "i" => out.italic = font_flag(child),
+            "u" => out.underline = child.attr("val").map(|value| value != "none").unwrap_or(true),
+            "strike" => out.strike = font_flag(child),
+            "sz" => out.size_pt = child.attr("val").and_then(|value| value.trim().parse::<f64>().ok()),
+            "name" => out.name = child.attr("val").map(str::to_string),
+            "color" => out.color = color_of(child),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// A `<b/>`/`<i/>`-style flag: present without `val` means on.
+fn font_flag(node: &XmlNode) -> bool {
+    node.attr("val").map(|value| !matches!(value.trim(), "0" | "false" | "off")).unwrap_or(true)
+}
+
+fn parse_fill(fill: &XmlNode) -> Option<String> {
+    let pattern = fill.child("patternFill")?;
+    if pattern.attr("patternType").map(|kind| kind.trim() == "none").unwrap_or(false) {
+        return None;
+    }
+    pattern.child("fgColor").and_then(color_of).or_else(|| pattern.child("bgColor").and_then(color_of))
+}
+
+fn parse_border(border: &XmlNode) -> CellBorders {
+    let side = |name: &str| -> Option<BorderStyle> {
+        let node = border.child(name)?;
+        let style = node.attr("style")?.trim();
+        if style.is_empty() || style == "none" {
+            return None;
+        }
+        let color = node.child("color").and_then(color_of).unwrap_or_else(|| "#000000".into());
+        Some(BorderStyle { style: style.to_string(), color })
+    };
+    CellBorders { top: side("top"), right: side("right"), bottom: side("bottom"), left: side("left") }
+}
+
+/// `rgb="FFRRGGBB"` (or `RRGGBB`) to the model's `#RRGGBB`. Theme and indexed
+/// colours have no portable value in the model and resolve to `None`.
+fn color_of(node: &XmlNode) -> Option<String> {
+    if attr_on(node, "auto") {
+        return None;
+    }
+    let rgb = node.attr("rgb")?;
+    let hex: String = rgb.chars().filter(|character| character.is_ascii_hexdigit()).collect();
+    match hex.len() {
+        8 => normalize_hex(&hex[2..]),
+        6 => normalize_hex(&hex),
+        _ => None,
+    }
+}
+
+fn style_from_xf(xf: &ImportedXf) -> CellStyle {
+    let mut style = CellStyle {
+        number_format: xf.number_format.clone(),
+        fill: xf.fill.clone(),
+        align: xf.align.clone(),
+        valign: xf.valign.clone(),
+        wrap: xf.wrap,
+        rotation: xf.rotation,
+        borders: xf.borders.clone(),
+        ..Default::default()
+    };
+    if let Some(font) = &xf.font {
+        style.font = font.name.clone();
+        style.size_pt = font.size_pt;
+        style.bold = font.bold;
+        style.italic = font.italic;
+        style.underline = font.underline;
+        style.strike = font.strike;
+        style.color = font.color.clone();
+    }
+    style
+}
+
+/// True when a style-only cell is worth keeping in the model. `General` is the
+/// model's default number format, so an xf that only says `General` must not
+/// materialise empty cells.
+fn style_worth_a_cell(style: &CellStyle) -> bool {
+    let mut probe = style.clone();
+    if probe.number_format == "General" {
+        probe.number_format.clear();
+    }
+    probe != CellStyle::default()
+}
+
+/// The built-in number formats from ECMA-376; ids without a portable code map
+/// to `General` rather than an invented format string.
+fn builtin_number_format(id: u32) -> Option<&'static str> {
+    Some(match id {
+        0 => "General",
+        1 => "0",
+        2 => "0.00",
+        3 => "#,##0",
+        4 => "#,##0.00",
+        5 => "$#,##0_);($#,##0)",
+        6 => "$#,##0_);[Red]($#,##0)",
+        7 => "$#,##0.00_);($#,##0.00)",
+        8 => "$#,##0.00_);[Red]($#,##0.00)",
+        9 => "0%",
+        10 => "0.00%",
+        11 => "0.00E+00",
+        12 => "# ?/?",
+        13 => "# ??/??",
+        14 => "mm-dd-yy",
+        15 => "d-mmm-yy",
+        16 => "d-mmm",
+        17 => "mmm-yy",
+        18 => "h:mm AM/PM",
+        19 => "h:mm:ss AM/PM",
+        20 => "h:mm",
+        21 => "h:mm:ss",
+        22 => "m/d/yy h:mm",
+        37 => "#,##0 ;(#,##0)",
+        38 => "#,##0 ;[Red](#,##0)",
+        39 => "#,##0.00;(#,##0.00)",
+        40 => "#,##0.00;[Red](#,##0.00)",
+        45 => "mm:ss",
+        46 => "[h]:mm:ss",
+        47 => "mmss.0",
+        48 => "##0.0E+0",
+        49 => "@",
+        _ => return None,
+    })
+}
+
+fn imported_number_format(id: u32, custom: &BTreeMap<u32, String>) -> String {
+    if let Some(code) = custom.get(&id) {
+        return code.clone();
+    }
+    builtin_number_format(id).unwrap_or("General").to_string()
+}
+
+// ---------------------------------------------------------------------------
+// Import: package relationships and small attribute helpers
+// ---------------------------------------------------------------------------
+
+/// `.rels` path for a part: `xl/workbook.xml` -> `xl/_rels/workbook.xml.rels`.
+fn rels_path_for(part: &str) -> String {
+    match part.rsplit_once('/') {
+        Some((directory, name)) => format!("{directory}/_rels/{name}.rels"),
+        None => format!("_rels/{part}.rels"),
+    }
+}
+
+fn read_relationships(zip: &crate::zip::ZipReader, part: &str) -> BTreeMap<String, Relationship> {
+    let mut map = BTreeMap::new();
+    let Ok(xml) = zip.read_text(&rels_path_for(part)) else { return map };
+    let Ok(root) = parse_xml(&xml) else { return map };
+    for relationship in root.children_of("Relationship") {
+        let id = relationship.attr("Id").unwrap_or("").to_string();
+        if id.is_empty() {
+            continue;
+        }
+        map.insert(
+            id,
+            Relationship {
+                kind: relationship.attr("Type").unwrap_or("").to_string(),
+                target: relationship.attr("Target").unwrap_or("").to_string(),
+            },
+        );
+    }
+    map
+}
+
+/// Resolves a relationship target against the part that owns it.
+fn resolve_part(part: &str, target: &str) -> String {
+    if let Some(absolute) = target.strip_prefix('/') {
+        return absolute.to_string();
+    }
+    let base = part.rsplit_once('/').map(|(directory, _)| directory).unwrap_or("");
+    let mut segments: Vec<&str> = if base.is_empty() { Vec::new() } else { base.split('/').collect() };
+    for segment in target.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop();
+            }
+            other => segments.push(other),
+        }
+    }
+    segments.join("/")
+}
+
+/// Splits `'My Sheet'!$A$1:$D$10` into the sheet name and the bare range.
+fn split_sheet_reference(definition: &str) -> Option<(String, String)> {
+    let definition = definition.trim().trim_start_matches('=').trim();
+    let bang = definition.rfind('!')?;
+    let (sheet, range) = definition.split_at(bang);
+    let sheet = sheet.trim();
+    let sheet = if sheet.len() >= 2 && sheet.starts_with('\'') && sheet.ends_with('\'') {
+        sheet[1..sheet.len() - 1].replace("''", "'")
+    } else {
+        sheet.to_string()
+    };
+    let range = range[1..].trim().replace('$', "");
+    if sheet.is_empty() || range.is_empty() {
+        return None;
+    }
+    Some((sheet, range))
+}
+
+fn parse_u32_attr(node: &XmlNode, name: &str) -> Option<u32> {
+    node.attr(name).and_then(|value| value.trim().parse::<u32>().ok())
+}
+
+fn attr_on(node: &XmlNode, name: &str) -> bool {
+    node.attr(name).map(|value| matches!(value.trim(), "1" | "true" | "on")).unwrap_or(false)
 }
 
 #[cfg(test)]

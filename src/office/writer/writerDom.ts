@@ -14,10 +14,37 @@ export function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+export interface RunRenderOptions {
+  /** Footnote/endnote id -> displayed number. */
+  noteNumbers?: Record<string, number>;
+  /** Field values to display instead of the cached text (page/pages). */
+  fieldValues?: Record<string, string>;
+  /** Show tracked changes (deletions struck through, insertions underlined). */
+  showRevisions?: boolean;
+}
+
+function revisionAttributes(run: Run): string {
+  const revision = run.revision;
+  if (!revision) return "";
+  return ` data-revision-id="${escapeHtml(revision.id)}" data-revision-kind="${escapeHtml(revision.kind)}" data-revision-author="${escapeHtml(revision.author)}" data-revision-date="${escapeHtml(revision.date)}"`;
+}
+
 /** Writes runs as the inner HTML of a contentEditable paragraph. */
-export function runsToHtml(runs: Run[]): string {
+export function runsToHtml(runs: Run[], options: RunRenderOptions = {}): string {
+  const showRevisions = options.showRevisions !== false;
   return runs
     .map((run) => {
+      const noteId = run.footnote ?? run.endnote;
+      if (noteId) {
+        const number = options.noteNumbers?.[noteId] ?? 1;
+        const kind = run.footnote ? "footnote" : "endnote";
+        return `<sup class="writer-note-ref" data-note-kind="${kind}" data-note-id="${escapeHtml(noteId)}"${revisionAttributes(run)}>${number}</sup>`;
+      }
+      if (run.field) {
+        const field = run.field;
+        const value = options.fieldValues?.[`${field.kind}:${field.target}`] ?? field.cached ?? "";
+        return `<span class="writer-field" data-field-kind="${escapeHtml(field.kind)}" data-field-target="${escapeHtml(field.target)}" data-field-cached="${escapeHtml(field.cached ?? "")}"${revisionAttributes(run)}>${escapeHtml(value)}</span>`;
+      }
       const text = escapeHtml(run.text).replace(/\t/g, "&emsp;");
       if (text === "") return "";
       let html = text;
@@ -34,6 +61,12 @@ export function runsToHtml(runs: Run[]): string {
       if (run.font) styles.push(`font-family:'${run.font.replace(/'/g, "")}'`);
       if (styles.length) html = `<span style="${styles.join(";")}">${html}</span>`;
       if (run.link) html = `<a href="${escapeHtml(run.link)}" target="_blank" rel="noreferrer">${html}</a>`;
+      if (run.revision && showRevisions) {
+        const className = run.revision.kind === "delete" ? "writer-rev-delete" : run.revision.kind === "insert" ? "writer-rev-insert" : "writer-rev-format";
+        html = `<span class="writer-rev ${className}"${revisionAttributes(run)} title="${escapeHtml(run.revision.author)}">${html}</span>`;
+      } else if (run.revision) {
+        html = `<span${revisionAttributes(run)}>${html}</span>`;
+      }
       return html;
     })
     .join("");
@@ -89,6 +122,40 @@ export function domToRuns(element: HTMLElement): Run[] {
     if (tag === "s" || tag === "strike" || tag === "del") next.strike = true;
     if (tag === "sup") next.superscript = true;
     if (tag === "sub") next.subscript = true;
+    // Footnote / endnote references are atomic: they carry no editable text.
+    const noteId = el.getAttribute("data-note-id");
+    if (noteId) {
+      const footnote = el.getAttribute("data-note-kind") !== "endnote";
+      runs.push({ ...emptyRun(""), ...next, footnote: footnote ? noteId : null, endnote: footnote ? null : noteId, revision: null });
+      return;
+    }
+    // Fields survive a DOM round trip through their data attributes.
+    const fieldKind = el.getAttribute("data-field-kind");
+    if (fieldKind) {
+      runs.push({
+        ...emptyRun(""),
+        ...next,
+        field: {
+          kind: fieldKind,
+          target: el.getAttribute("data-field-target") ?? "",
+          cached: el.getAttribute("data-field-cached") ?? (el.textContent ?? ""),
+        },
+        revision: null,
+      });
+      return;
+    }
+    // Tracked revisions are inherited by their children so typing inside an
+    // insertion keeps recording into the same revision.
+    const revisionId = el.getAttribute("data-revision-id");
+    if (revisionId) {
+      next.revision = {
+        id: revisionId,
+        kind: el.getAttribute("data-revision-kind") ?? "insert",
+        author: el.getAttribute("data-revision-author") ?? "Unknown",
+        date: el.getAttribute("data-revision-date") ?? "",
+        original: null,
+      };
+    }
     if (tag === "a") {
       const href = el.getAttribute("href");
       if (href) next.link = href;

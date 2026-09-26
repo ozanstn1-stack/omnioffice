@@ -13,6 +13,7 @@
 
 pub mod address;
 pub mod cleaner;
+pub mod compat;
 pub mod csvio;
 pub mod docx;
 pub mod error;
@@ -23,7 +24,9 @@ pub mod odf;
 pub mod pdfcanvas;
 pub mod pivot;
 pub mod pptx;
+pub mod revisions;
 pub mod rtf;
+pub mod schema;
 pub mod textio;
 pub mod xlsx;
 pub mod xml;

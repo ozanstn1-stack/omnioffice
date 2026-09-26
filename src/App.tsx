@@ -35,8 +35,10 @@ import {
   Moon,
   Eraser,
   FileDiff,
+  ListChecks,
   Puzzle,
   Scissors,
+  ShieldCheck,
   Settings as SettingsIcon,
   Stamp,
   Sun,
@@ -70,6 +72,13 @@ import { Batch } from "./screens/Batch";
 import { History } from "./screens/History";
 import { Settings } from "./screens/Settings";
 import { InfoScreen } from "./screens/Info";
+import { Vault } from "./screens/Vault";
+import { PdfStudio } from "./screens/PdfStudio";
+import { CompatibilityScreen } from "./screens/Compatibility";
+import { JobsScreen } from "./screens/Jobs";
+import { CommandPalette, GlobalSearch } from "./components/command-palette";
+import { registerCommand, setCommandTranslator, unregisterCommand } from "./lib/commands";
+import { useJobs as useBackgroundJobs } from "./lib/jobs";
 import { OverwriteDialog, PasswordDialog, Toasts } from "./components/files";
 import { Badge, IconButton } from "./components/ui";
 import { isAndroid, pickAndroidFiles } from "./lib/mobile";
@@ -99,7 +108,10 @@ export default function App() {
   const [dragging, setDragging] = useState(false);
   const [sidebarCompact, setSidebarCompact] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 900);
+  const backgroundJobs = useBackgroundJobs((state) => state.jobs.filter((job) => job.status === "running").length);
 
   // Phones always use the drawer navigation; desktop windows switch to it
   // when they get narrow enough for the sidebar to waste space.
@@ -203,12 +215,51 @@ export default function App() {
     return () => unlisten?.();
   }, [pushToast, screen, t]);
 
+  // Command platform: route palette titles through the active language and
+  // register the real navigation commands (palette and global search).
+  useEffect(() => {
+    setCommandTranslator(t);
+  }, [t]);
+
+  useEffect(() => {
+    const views: { id: ScreenId; key: string; category: "view" | "file" | "settings" }[] = [
+      { id: "home", key: "nav.home", category: "view" },
+      { id: "office", key: "nav.office", category: "view" },
+      { id: "reader", key: "nav.reader", category: "view" },
+      { id: "vault", key: "nav.vault", category: "view" },
+      { id: "compat", key: "nav.compat", category: "view" },
+      { id: "jobs", key: "nav.jobs", category: "view" },
+      { id: "settings", key: "nav.settings", category: "settings" },
+    ];
+    for (const view of views) {
+      registerCommand({
+        id: `view.${view.id}`,
+        titleKey: view.key,
+        category: view.category,
+        enabled: () => true,
+        execute: () => setScreen(view.id),
+      });
+    }
+    return () => views.forEach((view) => unregisterCommand(`view.${view.id}`));
+  }, []);
+
   // Global keyboard shortcuts
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
       const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
-      if ((event.ctrlKey || event.metaKey) && event.key === ",") {
+      const mod = event.ctrlKey || event.metaKey;
+      if (mod && event.shiftKey && event.key.toLowerCase() === "p") {
+        event.preventDefault();
+        setPaletteOpen(true);
+        return;
+      }
+      if (mod && event.shiftKey && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        setSearchOpen(true);
+        return;
+      }
+      if (mod && event.key === ",") {
         event.preventDefault();
         setScreen("settings");
         return;
@@ -278,6 +329,18 @@ export default function App() {
     setDropHandler(null);
   }, [setDropHandler]);
 
+  // Global search opens any real file: office documents go to the workspace,
+  // everything else to the PDF reader.
+  const openAnyPath = useCallback((path: string) => {
+    if (isOfficePath(path)) {
+      setScreen("office");
+      void openOfficePath(path);
+      return;
+    }
+    setFiles([path]);
+    setScreen("reader");
+  }, []);
+
   const screens: Record<ScreenId, React.ReactElement> = useMemo(
     () => ({
       home: <HomeScreen onNavigate={navigate} onDropFiles={homeDrop} dragging={dragging} onFileList={setFiles} />,
@@ -316,6 +379,10 @@ export default function App() {
       planner: <PlannerScreen />,
       data: <DataScreen />,
       pdfForms: <PdfFormsScreen />,
+      vault: <Vault />,
+      pdfStudio: <PdfStudio initialFiles={files} dragging={dragging} />,
+      compat: <CompatibilityScreen />,
+      jobs: <JobsScreen />,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [convertTab, dragging, files, homeDrop, navigate, pageToolTab, securityTab],
@@ -345,6 +412,7 @@ export default function App() {
         { id: "planner", label: t("nav.planner"), icon: <CalendarDays size={16} /> },
         { id: "data", label: t("nav.data"), icon: <Database size={16} /> },
         { id: "draw", label: t("nav.draw"), icon: <PenTool size={16} /> },
+        { id: "vault", label: t("nav.vault"), icon: <FileSearch size={16} /> },
       ],
     },
     {
@@ -363,6 +431,7 @@ export default function App() {
         { id: "split", label: t("nav.split"), icon: <Scissors size={16} /> },
         { id: "compress", label: t("nav.compress"), icon: <Minimize2 size={16} /> },
         { id: "pageTools", label: t("nav.pageTools"), icon: <Wand2 size={16} /> },
+        { id: "pdfStudio", label: t("nav.pdfStudio"), icon: <ShieldCheck size={16} /> },
         { id: "watermark", label: t("nav.watermark"), icon: <Stamp size={16} /> },
         { id: "annotate", label: t("nav.annotate"), icon: <Type size={16} /> },
         { id: "redact", label: t("nav.redact"), icon: <Eraser size={16} /> },
@@ -397,6 +466,8 @@ export default function App() {
       label: t("nav.batch"),
       items: [
         { id: "batch", label: t("nav.batch"), icon: <Archive size={16} /> },
+        { id: "jobs", label: t("nav.jobs"), icon: <ListChecks size={16} /> },
+        { id: "compat", label: t("nav.compat"), icon: <ShieldCheck size={16} /> },
         { id: "info", label: t("nav.info"), icon: <Info size={16} /> },
         { id: "history", label: t("nav.history"), icon: <FolderClock size={16} /> },
         { id: "settings", label: t("nav.settings"), icon: <SettingsIcon size={16} /> },
@@ -485,6 +556,8 @@ export default function App() {
         <Toasts />
         <OverwriteDialog />
         <PasswordDialog />
+        <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} context={{ screen }} onNavigate={(next) => setScreen(next as ScreenId)} />
+        <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} onOpenPath={openAnyPath} onNavigate={(next) => setScreen(next as ScreenId)} />
       </div>
     );
   }
@@ -524,6 +597,10 @@ export default function App() {
             </Badge>
           ) : null}
           <div className="flex items-center gap-1">
+            <button type="button" className="icon-btn" title={t("nav.jobs")} onClick={() => setScreen("jobs")} style={{ position: "relative" }}>
+              <ListChecks size={15} />
+              {backgroundJobs > 0 ? <span className="jobs-dot">{backgroundJobs}</span> : null}
+            </button>
             <IconButton
               label={t("settings.theme")}
               onClick={() => void update({ theme: isDark ? "light" : "dark" })}
@@ -555,6 +632,8 @@ export default function App() {
       <Toasts />
       <OverwriteDialog />
       <PasswordDialog />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} context={{ screen }} onNavigate={(next) => setScreen(next as ScreenId)} />
+      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} onOpenPath={openAnyPath} onNavigate={(next) => setScreen(next as ScreenId)} />
     </div>
   );
 }

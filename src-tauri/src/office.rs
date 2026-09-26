@@ -157,11 +157,26 @@ pub fn open_path(path: &Path) -> Result<OpenDocument, OfficeErrorPayload> {
         }
         "oswk" => {
             let bytes = officecore::io::read_bytes(path).map_err(payload)?;
-            let unit: NativeUnit = serde_json::from_slice(&bytes)
+            let mut raw: Value = serde_json::from_slice(&bytes)
+                .map_err(|error| payload(OfficeError::corrupt(format!("The unit file is not valid: {error}"))))?;
+            // Schema migration: older files gain the V3 fields with defaults,
+            // newer files are refused instead of being misread.
+            let migration = officecore::schema::migrate_unit(&mut raw).map_err(payload)?;
+            let unit: NativeUnit = serde_json::from_value(raw)
                 .map_err(|error| payload(OfficeError::corrupt(format!("The unit file is not valid: {error}"))))?;
             let title = unit.title.clone();
             let kind = unit.kind.clone();
-            (kind, title, unit.model, unit.warnings)
+            let mut warnings = unit.warnings;
+            if migration.migrated {
+                warnings.push(format!(
+                    "This document was migrated from schema {} to {}{}",
+                    migration.from_version,
+                    migration.to_version,
+                    if migration.notes.is_empty() { ".".to_string() } else { format!(" ({} change(s)).", migration.notes.len()) }
+                ));
+                warnings.extend(migration.notes);
+            }
+            (kind, title, unit.model, warnings)
         }
         "pdf" => {
             return Err(payload(OfficeError::unsupported(
@@ -294,7 +309,10 @@ pub async fn office_save_document(kind: String, model: Value, path: String) -> R
 #[serde(rename_all = "camelCase")]
 pub struct NativeUnit {
     pub format: String,
+    /// Schema version of the model (see `officecore::schema`).
     pub version: u32,
+    #[serde(default)]
+    pub schema_version: Option<u32>,
     pub kind: String,
     pub title: String,
     pub saved_at: String,
@@ -308,7 +326,8 @@ pub struct NativeUnit {
 pub fn save_native(kind: &str, title: &str, model: Value, path: &Path) -> Result<SaveDocument, OfficeErrorPayload> {
     let unit = NativeUnit {
         format: "office-swiss-army-knife".into(),
-        version: officecore::VERSION.parse().unwrap_or(2),
+        version: officecore::schema::SCHEMA_VERSION,
+        schema_version: Some(officecore::schema::SCHEMA_VERSION),
         kind: kind.to_string(),
         title: title.to_string(),
         saved_at: timestamp(),
@@ -326,6 +345,36 @@ pub async fn office_save_unit(kind: String, title: String, model: Value, path: S
     let task = tauri::async_runtime::spawn_blocking(move || save_native(&kind, &title, model, Path::new(&path)));
     task.await
         .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+}
+
+/// The capability matrix for one file extension (Compatibility Center).
+#[tauri::command]
+pub fn office_capabilities(extension: String) -> officecore::compat::FormatCapabilities {
+    officecore::compat::format_capabilities(&extension)
+}
+
+/// What the document *model* supports for a kind, independent of the format.
+#[tauri::command]
+pub fn office_model_capabilities(kind: String) -> officecore::compat::DocumentCapabilities {
+    officecore::compat::model_capabilities(&kind)
+}
+
+/// Lists every extension this build can open.
+#[tauri::command]
+pub fn office_supported_extensions() -> Vec<String> {
+    officecore::compat::supported_open_extensions().iter().map(|value| value.to_string()).collect()
+}
+
+/// Reports what `kind`'s model would lose if it were saved as `target`.
+#[tauri::command]
+pub fn office_compatibility(kind: String, model: Value, target: String) -> Result<officecore::compat::CompatibilityReport, OfficeErrorPayload> {
+    let report = match kind.as_str() {
+        "writer" => officecore::compat::document_feature_report(&writer_from_value(model)?, &target),
+        "calc" => officecore::compat::workbook_feature_report(&workbook_from_value(model)?, &target),
+        "impress" => officecore::compat::deck_feature_report(&deck_from_value(model)?, &target),
+        other => return Err(payload(OfficeError::invalid(format!("Unknown document kind '{other}'.")))),
+    };
+    Ok(report)
 }
 
 pub fn timestamp() -> String {

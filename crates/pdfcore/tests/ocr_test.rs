@@ -247,3 +247,92 @@ fn ocr_skips_text_pages_when_requested() {
     assert_eq!(result.pages_processed, 1);
     assert_eq!(result.pages_skipped, 1);
 }
+
+#[test]
+fn ocr_auto_rotates_a_quarter_turned_scan() {
+    if !pdfcore::ocr::tesseract_available() {
+        eprintln!("skipping: tesseract engine not available");
+        return;
+    }
+    if !pdfcore::render::is_available() {
+        eprintln!("skipping: pdfium is not available");
+        return;
+    }
+    let dir = TestDir::new();
+    let source = dir.path("upright.pdf");
+    // Orientation detection needs a text-dense page; a single short line is
+    // rejected by tesseract OSD with "Too few characters".
+    let caption = "HELLO OCR MEETING NOTES\nAGENDA ITEMS AND ATTENDEES\nBUDGET REVIEW AND PLANNING\nFOLLOW UP ACTIONS FOR OWNERS\nNEXT MEETING SCHEDULED SOON";
+    write_doc(&mut build_scanned_doc(1, caption, "rotated scan"), &source);
+
+    // Render the upright page, turn it a quarter clockwise, and put the turned
+    // raster into a PDF so OCR has to correct the orientation itself.
+    let rendered = pdfcore::render::render_page(
+        &source,
+        None,
+        1,
+        &pdfcore::render::RenderOptions {
+            dpi: 150.0,
+            max_width: Some(2500),
+            max_height: Some(2500),
+        },
+    )
+    .expect("render");
+    let image = rendered.to_dynamic_image().expect("rgba").to_rgba8();
+    let rotated = pdfcore::ocr::rotate_quarters(&image, 90);
+    let png = dir.path("rotated.png");
+    rotated.save(&png).expect("save rotated png");
+
+    let rotated_pdf = dir.path("rotated.pdf");
+    pdfcore::images::images_to_pdf(
+        &[pdfcore::images::ImageItem {
+            path: png.to_string_lossy().to_string(),
+            rotation_delta: 0,
+        }],
+        &pdfcore::images::ImageToPdfOptions {
+            page_size: "original".into(),
+            ..Default::default()
+        },
+        &rotated_pdf,
+        OverwritePolicy::Replace,
+        &no_progress,
+        &CancelToken::new(),
+    )
+    .expect("image to pdf");
+
+    let options = OcrOptions {
+        languages: vec!["eng".into()],
+        output_mode: "searchable_pdf".into(),
+        dpi: 200,
+        preprocess: OcrPreprocess {
+            auto_rotate: true,
+            contrast: false,
+            ..Default::default()
+        },
+        skip_text_pages: false,
+        ..Default::default()
+    };
+    let result = ocr_pdf(
+        &rotated_pdf,
+        &dir.path("rotated-ocr.pdf"),
+        &options,
+        OverwritePolicy::Replace,
+        None,
+        &no_progress,
+        &CancelToken::new(),
+    )
+    .expect("ocr runs");
+
+    assert!(
+        result.preprocess_applied.iter().any(|step| step.starts_with("rotate")),
+        "a rotation must be reported: {:?}",
+        result.preprocess_applied
+    );
+    let text = pdfcore::render::extract_page_text(std::path::Path::new(&result.path), None, 1)
+        .unwrap_or_default()
+        .to_uppercase();
+    assert!(
+        text.contains("HELLO") || text.contains("OCR") || text.contains("MEETING"),
+        "the corrected text layer was: {text}"
+    );
+}

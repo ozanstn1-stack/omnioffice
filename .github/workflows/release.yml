@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Windows installer and portable package
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - run: npm ci
+      - name: Fetch bundled engines (pdfium, qpdf, tesseract, fonts)
+        run: npm run engines:fetch
+      - name: Type check and tests
+        run: |
+          npx tsc --noEmit
+          npm test
+          cargo test --workspace
+      - name: Tauri release build
+        run: npm run tauri build
+      - name: Package installer and portable ZIP
+        run: npm run package
+
+      - name: Checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem release-artifacts -File | Where-Object { $_.Name -notlike "SHA256SUMS*" } | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
+            "$hash  $($_.Name)"
+          } | Set-Content release-artifacts/SHA256SUMS.txt -Encoding ASCII
+          Get-Content release-artifacts/SHA256SUMS.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: office-swiss-army-knife-windows
+          path: release-artifacts/*
+          if-no-files-found: error
+
+      - name: Attach to GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) { gh release create $tag --title "Office Swiss Army Knife $tag" --notes-file CHANGELOG.md }
+          Get-ChildItem release-artifacts -File | ForEach-Object { gh release upload $tag $_.FullName --clobber }
+
+  version-consistency:
+    name: Version consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: package.json, Cargo.toml and tauri.conf.json agree
+        run: |
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json','utf8')).version;
+            const tauri = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json','utf8')).version;
+            const cargo = fs.readFileSync('Cargo.toml','utf8').match(/version = \"([^\"]+)\"/)[1];
+            const tag = process.env.GITHUB_REF_NAME || '';
+            console.log({pkg, tauri, cargo, tag});
+            if (pkg !== tauri || pkg !== cargo) throw new Error('version mismatch');
+            if (tag.startsWith('v') && tag.slice(1) !== pkg) throw new Error('tag does not match version');
+          "

@@ -9,7 +9,9 @@ mod jobs;
 mod library;
 mod office;
 mod office_tools;
+mod pdf_v3;
 mod secret;
+mod vault;
 
 use jobs::JobRegistry;
 use tauri::Manager;
@@ -190,6 +192,20 @@ pub fn run() {
             office_tools::office_pdf_to_text,
             office_tools::office_pdf_add_form,
             office_tools::office_pdf_list_form,
+            office::office_capabilities,
+            office::office_model_capabilities,
+            office::office_supported_extensions,
+            office::office_compatibility,
+            pdf_v3::sanitize_pdf,
+            pdf_v3::flatten_pdf,
+            pdf_v3::pdfa_validate,
+            pdf_v3::pdfa_convert,
+            vault::vault_status,
+            vault::vault_configure,
+            vault::vault_scan,
+            vault::vault_search,
+            vault::vault_document_text,
+            vault::vault_clear,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Office Swiss Army Knife");

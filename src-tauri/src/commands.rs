@@ -62,7 +62,7 @@ pub struct OutputSpec {
 }
 
 impl OutputSpec {
-    fn resolve(&self) -> Result<(PathBuf, OverwritePolicy), PdfError> {
+    pub(crate) fn resolve(&self) -> Result<(PathBuf, OverwritePolicy), PdfError> {
         let path = PathBuf::from(&self.path);
         if path.as_os_str().is_empty() {
             return Err(PdfError::InvalidInput("output path is empty".into()));
@@ -1553,7 +1553,7 @@ fn emit_progress_simple(
 
 /// Runs a pdfcore operation on the blocking pool with progress + cancel wired
 /// to the job registry.
-async fn operation_with_progress<T, F>(
+pub(crate) async fn operation_with_progress<T, F>(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
     job_id: Option<String>,
