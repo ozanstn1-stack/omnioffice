@@ -61,8 +61,22 @@ jobs:
         run: |
           mkdir -p src-tauri/resources/engines
           echo "Engine binaries are fetched by scripts/fetch-engines.ps1." > src-tauri/resources/engines/README.txt
-      - name: Workspace tests
+      # The bundled engines are Windows binaries; only the Windows runner can
+      # exercise the engine-dependent pdfcore integration tests (raster
+      # compression, OCR, rendering). Linux/macOS run the engine-free suites
+      # plus a full workspace compile so cross-platform build breakage shows up.
+      - name: Fetch engines (Windows)
+        if: runner.os == 'Windows'
+        run: npm run engines:fetch
+      - name: Workspace tests (Windows, with engines)
+        if: runner.os == 'Windows'
         run: cargo test --workspace
+      - name: Library tests (engine-free)
+        if: runner.os != 'Windows'
+        run: cargo test -p officecore -p pdfcore -p aicore --lib
+      - name: Workspace compile
+        if: runner.os != 'Windows'
+        run: cargo build --workspace
       - name: Release build (library crates)
         run: cargo build --release -p officecore -p pdfcore -p aicore
 
