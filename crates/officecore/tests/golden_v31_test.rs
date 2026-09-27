@@ -977,18 +977,37 @@ fn golden_committed_fixtures_pin_the_v31_feature_summary() {
 /// the committed bytes exactly. A mismatch means the model changed shape; the
 /// message points at the explicit regeneration switch instead of silently
 /// accepting drift.
+///
+/// Windows checkouts can still convert the committed LF bytes to CRLF when
+/// `core.autocrlf` is on (the fixtures are JSON, so Git treats them as text).
+/// That is a checkout artifact, not model drift, so the comparison normalizes
+/// CRLF to LF; `.gitattributes` also marks the fixtures binary to keep the
+/// checkout byte-exact where possible.
 #[test]
 fn golden_committed_fixtures_are_reproducible() {
+    fn to_lf(bytes: &[u8]) -> Vec<u8> {
+        let mut normalized = Vec::with_capacity(bytes.len());
+        let mut index = 0;
+        while index < bytes.len() {
+            if bytes[index] == b'\r' && bytes.get(index + 1) == Some(&b'\n') {
+                index += 1;
+            }
+            normalized.push(bytes[index]);
+            index += 1;
+        }
+        normalized
+    }
     for (name, unit) in golden_units() {
         let path = ensure_fixture(name, &unit);
         let expected = serde_json::to_vec_pretty(&unit).unwrap();
         let actual = std::fs::read(&path).unwrap();
-        if actual != expected && std::env::var_os("OSAK_REGEN_GOLDEN").is_some() {
+        if to_lf(&actual) != expected && std::env::var_os("OSAK_REGEN_GOLDEN").is_some() {
             std::fs::write(&path, &expected).unwrap();
             continue;
         }
         assert_eq!(
-            actual, expected,
+            to_lf(&actual),
+            expected,
             "fixture {name} is stale; regenerate it with OSAK_REGEN_GOLDEN=1 and commit the new bytes"
         );
     }
