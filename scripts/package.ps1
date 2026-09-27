@@ -63,9 +63,27 @@ Remove-Item -Recurse -Force $portableStage
 Write-Host "portable:  $portableZip ($([math]::Round((Get-Item $portableZip).Length / 1MB, 1)) MB)"
 
 # ---------------------------------------------------------------- checksums
+# SHA256 through .NET instead of Get-FileHash: when npm runs this script from a
+# pwsh parent, Windows PowerShell 5.1 can inherit a PSModulePath that does not
+# contain its own utility modules, and Get-FileHash then "does not exist".
+function Get-Sha256([string]$Path) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $stream = [System.IO.File]::OpenRead($Path)
+        try {
+            $bytes = $sha.ComputeHash($stream)
+        } finally {
+            $stream.Dispose()
+        }
+    } finally {
+        $sha.Dispose()
+    }
+    return ([System.BitConverter]::ToString($bytes) -replace '-', '').ToLowerInvariant()
+}
+
 $lines = @()
 foreach ($file in @($installerPath, $portableZip)) {
-    $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
+    $hash = Get-Sha256 $file
     $lines += "$hash  $(Split-Path -Leaf $file)"
 }
 Set-Content (Join-Path $releaseDir 'SHA256SUMS.txt') -Value ($lines -join "`n")

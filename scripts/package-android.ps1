@@ -23,9 +23,24 @@ foreach ($abi in @('arm64-v8a', 'armeabi-v7a')) {
 
 # Only the current version's Android files: the sums file has to describe what
 # is being published, not every APK ever built.
+function Get-Sha256([string]$Path) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $stream = [System.IO.File]::OpenRead($Path)
+        try {
+            $bytes = $sha.ComputeHash($stream)
+        } finally {
+            $stream.Dispose()
+        }
+    } finally {
+        $sha.Dispose()
+    }
+    return ([System.BitConverter]::ToString($bytes) -replace '-', '').ToLowerInvariant()
+}
+
 $lines = @()
 foreach ($file in $copied) {
-    $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
+    $hash = Get-Sha256 $file
     $lines += "$hash  $(Split-Path -Leaf $file)"
 }
 $sums = Join-Path $releaseDir 'SHA256SUMS-android.txt'

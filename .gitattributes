@@ -1,0 +1,3 @@
+# Keep the translation source LF: its encoding test parses the file as text and
+# a CRLF checkout used to break the Turkish-character check on Windows runners.
+src/lib/i18n.ts text eol=lf

@@ -24,8 +24,11 @@ function table(name: "en" | "tr"): string {
 
 function entries(body: string): { key: string; value: string }[] {
   const out: { key: string; value: string }[] = [];
-  for (const line of body.split("\n")) {
-    const match = line.match(/^ {2}"([^"]+)": "(.*)"(,?)$/);
+  // Tolerate CRLF checkouts: a Windows runner with core.autocrlf=true used to
+  // leave a \r at the end of every line, the regex then matched nothing and
+  // the "contains Turkish characters" check silently saw an empty table.
+  for (const line of body.split(/\r?\n/)) {
+    const match = line.match(/^ {2}"([^"]+)": "(.*)"(,?)\s*$/);
     if (match) out.push({ key: match[1], value: match[2] });
   }
   return out;
