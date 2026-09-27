@@ -118,9 +118,17 @@ if ($Force -or -not (Test-Path $tessExe)) {
     $tessDataDir = Join-Path $tessDir 'tessdata'
     New-Item -ItemType Directory -Force -Path $tessDataDir | Out-Null
     $payloadData = Join-Path $tmp 'tessdata'
+    # TESSDATA_PREFIX points at the tessdata directory, so tesseract looks for
+    # output configs (pdf, hocr, ...) in <tessdata>\configs. Copying them next
+    # to the executable instead silently broke searchable-PDF output: tesseract
+    # printed "read_params_file: Can't open pdf", exited 0 and wrote only the
+    # text file. Copy them where the engine actually reads them.
     foreach ($sub in @('configs', 'tessconfigs')) {
         $p = Join-Path $payloadData $sub
-        if (Test-Path $p) { Copy-Item $p (Join-Path $tessDir $sub) -Recurse -Force }
+        if (Test-Path $p) {
+            Copy-Item $p (Join-Path $tessDataDir $sub) -Recurse -Force
+            Copy-Item $p (Join-Path $tessDir $sub) -Recurse -Force
+        }
     }
     $payloadFont = Join-Path $payloadData 'pdf.ttf'
     if (Test-Path $payloadFont) { Copy-Item $payloadFont (Join-Path $tessDataDir 'pdf.ttf') -Force }
@@ -141,10 +149,21 @@ if (-not (Test-Path $lic)) {
     Download-File -Url 'https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/LICENSE' -OutFile $lic
 }
 # GlyphLessFont needed by tesseract's PDF renderer (searchable PDF output);
-# it is copied out of the installer payload during extraction.
+# it is copied out of the installer payload during extraction, with a direct
+# download as a fallback so a stripped payload can never break OCR silently.
 $pdfFont = Join-Path $tessDataDir 'pdf.ttf'
 if (-not (Test-Path $pdfFont)) {
-    Write-Warning 'pdf.ttf missing: searchable PDF output may fail'
+    try {
+        Download-File -Url 'https://raw.githubusercontent.com/tesseract-ocr/tesseract/main/tessdata/pdf.ttf' -OutFile $pdfFont
+        Write-Host '  -> pdf.ttf (downloaded)'
+    } catch {
+        Write-Warning 'pdf.ttf missing: searchable PDF output may fail'
+    }
+}
+# The PDF/hOCR output configs are what tesseract reads from <tessdata>\configs.
+$pdfConfig = Join-Path $tessDataDir 'configs\pdf'
+if (-not (Test-Path $pdfConfig)) {
+    Write-Warning "tessdata\configs\pdf missing: searchable PDF output may fail"
 }
 
 # ---------------------------------------------------------------- fonts (PT Sans, OFL)

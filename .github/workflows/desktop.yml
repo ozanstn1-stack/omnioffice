@@ -54,6 +54,13 @@ jobs:
         run: |
           npm ci
           npm run build
+      # Engine binaries are fetched at build time, but tauri-build validates the
+      # resources glob even for `cargo test`; a placeholder keeps it matching.
+      - name: Stub the engine resources
+        shell: bash
+        run: |
+          mkdir -p src-tauri/resources/engines
+          echo "Engine binaries are fetched by scripts/fetch-engines.ps1." > src-tauri/resources/engines/README.txt
       - name: Workspace tests
         run: cargo test --workspace
       - name: Release build (library crates)
