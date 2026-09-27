@@ -1,0 +1,685 @@
+{
+  "format": "office-swiss-army-knife",
+  "kind": "impress",
+  "model": {
+    "id": "deck-v31",
+    "masters": [
+      {
+        "background": "#F8FAFC",
+        "id": "master-a",
+        "layouts": [
+          {
+            "id": "layout-a-title",
+            "kind": "title",
+            "name": "Title Slide",
+            "objects": [
+              {
+                "chart": null,
+                "children": [],
+                "groupId": null,
+                "h": 80.0,
+                "id": "layout-a-title-title",
+                "image": null,
+                "kind": "text",
+                "line": null,
+                "name": "",
+                "placeholder": "title",
+                "rotation": 0.0,
+                "style": null,
+                "table": null,
+                "text": {
+                  "align": "",
+                  "color": null,
+                  "font": null,
+                  "paragraphs": [
+                    {
+                      "align": "",
+                      "bold": false,
+                      "bullet": false,
+                      "color": null,
+                      "italic": false,
+                      "level": 0,
+                      "runs": [],
+                      "sizePt": null,
+                      "text": "Title Slide",
+                      "underline": false
+                    }
+                  ],
+                  "sizePt": null,
+                  "valign": ""
+                },
+                "w": 840.0,
+                "x": 60.0,
+                "y": 40.0,
+                "z": 1
+              },
+              {
+                "chart": null,
+                "children": [],
+                "groupId": null,
+                "h": 340.0,
+                "id": "layout-a-title-body",
+                "image": null,
+                "kind": "text",
+                "line": null,
+                "name": "",
+                "placeholder": "body",
+                "rotation": 0.0,
+                "style": null,
+                "table": null,
+                "text": {
+                  "align": "",
+                  "color": null,
+                  "font": null,
+                  "paragraphs": [
+                    {
+                      "align": "",
+                      "bold": false,
+                      "bullet": false,
+                      "color": null,
+                      "italic": false,
+                      "level": 0,
+                      "runs": [],
+                      "sizePt": null,
+                      "text": "Body",
+                      "underline": false
+                    }
+                  ],
+                  "sizePt": null,
+                  "valign": ""
+                },
+                "w": 840.0,
+                "x": 60.0,
+                "y": 140.0,
+                "z": 1
+              }
+            ]
+          },
+          {
+            "id": "layout-a-content",
+            "kind": "titleContent",
+            "name": "Content",
+            "objects": [
+              {
+                "chart": null,
+                "children": [],
+                "groupId": null,
+                "h": 80.0,
+                "id": "layout-a-content-title",
+                "image": null,
+                "kind": "text",
+                "line": null,
+                "name": "",
+                "placeholder": "title",
+                "rotation": 0.0,
+                "style": null,
+                "table": null,
+                "text": {
+                  "align": "",
+                  "color": null,
+                  "font": null,
+                  "paragraphs": [
+                    {
+                      "align": "",
+                      "bold": false,
+                      "bullet": false,
+                      "color": null,
+                      "italic": false,
+                      "level": 0,
+                      "runs": [],
+                      "sizePt": null,
+                      "text": "Content",
+                      "underline": false
+                    }
+                  ],
+                  "sizePt": null,
+                  "valign": ""
+                },
+                "w": 840.0,
+                "x": 60.0,
+                "y": 40.0,
+                "z": 1
+              },
+              {
+                "chart": null,
+                "children": [],
+                "groupId": null,
+                "h": 340.0,
+                "id": "layout-a-content-body",
+                "image": null,
+                "kind": "text",
+                "line": null,
+                "name": "",
+                "placeholder": "body",
+                "rotation": 0.0,
+                "style": null,
+                "table": null,
+                "text": {
+                  "align": "",
+                  "color": null,
+                  "font": null,
+                  "paragraphs": [
+                    {
+                      "align": "",
+                      "bold": false,
+                      "bullet": false,
+                      "color": null,
+                      "italic": false,
+                      "level": 0,
+                      "runs": [],
+                      "sizePt": null,
+                      "text": "Body",
+                      "underline": false
+                    }
+                  ],
+                  "sizePt": null,
+                  "valign": ""
+                },
+                "w": 840.0,
+                "x": 60.0,
+                "y": 140.0,
+                "z": 1
+              }
+            ]
+          }
+        ],
+        "name": "Master A",
+        "objects": [
+          {
+            "chart": null,
+            "children": [],
+            "groupId": null,
+            "h": 28.0,
+            "id": "master-a-footer",
+            "image": null,
+            "kind": "text",
+            "line": null,
+            "name": "",
+            "placeholder": "footer",
+            "rotation": 0.0,
+            "style": null,
+            "table": null,
+            "text": {
+              "align": "",
+              "color": null,
+              "font": null,
+              "paragraphs": [
+                {
+                  "align": "",
+                  "bold": false,
+                  "bullet": false,
+                  "color": null,
+                  "italic": false,
+                  "level": 0,
+                  "runs": [],
+                  "sizePt": null,
+                  "text": "Confidential",
+                  "underline": false
+                }
+              ],
+              "sizePt": null,
+              "valign": ""
+            },
+            "w": 360.0,
+            "x": 300.0,
+            "y": 496.0,
+            "z": 1
+          }
+        ],
+        "theme": "business"
+      },
+      {
+        "background": "#0F172A",
+        "id": "master-b",
+        "layouts": [
+          {
+            "id": "layout-b-title",
+            "kind": "title",
+            "name": "Title B",
+            "objects": [
+              {
+                "chart": null,
+                "children": [],
+                "groupId": null,
+                "h": 80.0,
+                "id": "layout-b-title-title",
+                "image": null,
+                "kind": "text",
+                "line": null,
+                "name": "",
+                "placeholder": "title",
+                "rotation": 0.0,
+                "style": null,
+                "table": null,
+                "text": {
+                  "align": "",
+                  "color": null,
+                  "font": null,
+                  "paragraphs": [
+                    {
+                      "align": "",
+                      "bold": false,
+                      "bullet": false,
+                      "color": null,
+                      "italic": false,
+                      "level": 0,
+                      "runs": [],
+                      "sizePt": null,
+                      "text": "Title B",
+                      "underline": false
+                    }
+                  ],
+                  "sizePt": null,
+                  "valign": ""
+                },
+                "w": 840.0,
+                "x": 60.0,
+                "y": 40.0,
+                "z": 1
+              },
+              {
+                "chart": null,
+                "children": [],
+                "groupId": null,
+                "h": 340.0,
+                "id": "layout-b-title-body",
+                "image": null,
+                "kind": "text",
+                "line": null,
+                "name": "",
+                "placeholder": "body",
+                "rotation": 0.0,
+                "style": null,
+                "table": null,
+                "text": {
+                  "align": "",
+                  "color": null,
+                  "font": null,
+                  "paragraphs": [
+                    {
+                      "align": "",
+                      "bold": false,
+                      "bullet": false,
+                      "color": null,
+                      "italic": false,
+                      "level": 0,
+                      "runs": [],
+                      "sizePt": null,
+                      "text": "Body",
+                      "underline": false
+                    }
+                  ],
+                  "sizePt": null,
+                  "valign": ""
+                },
+                "w": 840.0,
+                "x": 60.0,
+                "y": 140.0,
+                "z": 1
+              }
+            ]
+          }
+        ],
+        "name": "Master B",
+        "objects": [],
+        "theme": "modern"
+      }
+    ],
+    "metadata": {
+      "author": "QA",
+      "created": "2026-01-01T00:00:00Z",
+      "creator": "",
+      "keywords": "",
+      "lastModifiedBy": "",
+      "modified": "2026-01-02T00:00:00Z",
+      "subject": "",
+      "title": "V3.1 Golden Impress"
+    },
+    "size": {
+      "heightPt": 540.0,
+      "preset": "16:9",
+      "widthPt": 960.0
+    },
+    "slides": [
+      {
+        "animations": [
+          {
+            "delayMs": 0,
+            "durationMs": 500,
+            "effect": "fade",
+            "id": "anim-1",
+            "kind": "entrance",
+            "objectId": "group-outer",
+            "order": 0,
+            "trigger": "onClick"
+          },
+          {
+            "delayMs": 200,
+            "durationMs": 800,
+            "effect": "pulse",
+            "id": "anim-2",
+            "kind": "emphasis",
+            "objectId": "chart-1",
+            "order": 1,
+            "trigger": "withPrevious"
+          },
+          {
+            "delayMs": 100,
+            "durationMs": 400,
+            "effect": "fade",
+            "id": "anim-3",
+            "kind": "exit",
+            "objectId": "slide-image",
+            "order": 2,
+            "trigger": "afterPrevious"
+          }
+        ],
+        "background": null,
+        "id": "slide-1",
+        "layout": "titleContent",
+        "layoutId": "layout-a-title",
+        "masterId": "master-a",
+        "notes": "Golden speaker notes: mention the chart cache.",
+        "objects": [
+          {
+            "chart": null,
+            "children": [],
+            "groupId": null,
+            "h": 80.0,
+            "id": "slide-title",
+            "image": null,
+            "kind": "text",
+            "line": null,
+            "name": "",
+            "placeholder": "title",
+            "rotation": 0.0,
+            "style": null,
+            "table": null,
+            "text": {
+              "align": "",
+              "color": null,
+              "font": null,
+              "paragraphs": [
+                {
+                  "align": "",
+                  "bold": false,
+                  "bullet": false,
+                  "color": null,
+                  "italic": false,
+                  "level": 0,
+                  "runs": [],
+                  "sizePt": null,
+                  "text": "V3.1 slide",
+                  "underline": false
+                }
+              ],
+              "sizePt": null,
+              "valign": ""
+            },
+            "w": 840.0,
+            "x": 60.0,
+            "y": 40.0,
+            "z": 0
+          },
+          {
+            "chart": null,
+            "children": [
+              {
+                "chart": null,
+                "children": [],
+                "groupId": null,
+                "h": 80.0,
+                "id": "leaf-first",
+                "image": null,
+                "kind": "rect",
+                "line": null,
+                "name": "",
+                "placeholder": null,
+                "rotation": 0.0,
+                "style": null,
+                "table": null,
+                "text": null,
+                "w": 100.0,
+                "x": 120.0,
+                "y": 140.0,
+                "z": 1
+              },
+              {
+                "chart": null,
+                "children": [
+                  {
+                    "chart": null,
+                    "children": [],
+                    "groupId": null,
+                    "h": 60.0,
+                    "id": "leaf-ellipse",
+                    "image": null,
+                    "kind": "ellipse",
+                    "line": null,
+                    "name": "",
+                    "placeholder": null,
+                    "rotation": 0.0,
+                    "style": null,
+                    "table": null,
+                    "text": null,
+                    "w": 60.0,
+                    "x": 300.0,
+                    "y": 180.0,
+                    "z": 1
+                  },
+                  {
+                    "chart": null,
+                    "children": [],
+                    "groupId": null,
+                    "h": 70.0,
+                    "id": "leaf-rect",
+                    "image": null,
+                    "kind": "roundRect",
+                    "line": null,
+                    "name": "",
+                    "placeholder": null,
+                    "rotation": 0.0,
+                    "style": null,
+                    "table": null,
+                    "text": null,
+                    "w": 80.0,
+                    "x": 340.0,
+                    "y": 200.0,
+                    "z": 2
+                  }
+                ],
+                "groupId": null,
+                "h": 120.0,
+                "id": "group-inner",
+                "image": null,
+                "kind": "group",
+                "line": null,
+                "name": "",
+                "placeholder": null,
+                "rotation": 0.0,
+                "style": null,
+                "table": null,
+                "text": null,
+                "w": 180.0,
+                "x": 280.0,
+                "y": 160.0,
+                "z": 2
+              },
+              {
+                "chart": null,
+                "children": [],
+                "groupId": null,
+                "h": 60.0,
+                "id": "leaf-last",
+                "image": null,
+                "kind": "rect",
+                "line": null,
+                "name": "",
+                "placeholder": null,
+                "rotation": 0.0,
+                "style": null,
+                "table": null,
+                "text": null,
+                "w": 80.0,
+                "x": 140.0,
+                "y": 240.0,
+                "z": 3
+              }
+            ],
+            "groupId": null,
+            "h": 300.0,
+            "id": "group-outer",
+            "image": null,
+            "kind": "group",
+            "line": null,
+            "name": "",
+            "placeholder": null,
+            "rotation": 0.0,
+            "style": null,
+            "table": null,
+            "text": null,
+            "w": 400.0,
+            "x": 100.0,
+            "y": 120.0,
+            "z": 1
+          },
+          {
+            "chart": {
+              "categories": "A2:A4",
+              "categoriesCache": [
+                "Q1",
+                "Q2",
+                "Q3"
+              ],
+              "kind": "column",
+              "legend": true,
+              "series": [
+                {
+                  "color": "#1D4ED8",
+                  "name": "North",
+                  "range": "B2:B4"
+                }
+              ],
+              "seriesValuesCache": [
+                [
+                  10.0,
+                  20.5,
+                  31.0
+                ]
+              ],
+              "showLabels": true,
+              "stacked": false,
+              "title": "Quarterly units",
+              "xTitle": "Quarter",
+              "yTitle": "Units"
+            },
+            "children": [],
+            "groupId": null,
+            "h": 280.0,
+            "id": "chart-1",
+            "image": null,
+            "kind": "chart",
+            "line": null,
+            "name": "",
+            "placeholder": null,
+            "rotation": 0.0,
+            "style": null,
+            "table": null,
+            "text": null,
+            "w": 400.0,
+            "x": 500.0,
+            "y": 120.0,
+            "z": 3
+          },
+          {
+            "chart": null,
+            "children": [],
+            "groupId": null,
+            "h": 64.0,
+            "id": "slide-image",
+            "image": {
+              "alt": "",
+              "dataBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==",
+              "mime": "image/png",
+              "name": "pixel.png"
+            },
+            "kind": "image",
+            "line": null,
+            "name": "",
+            "placeholder": null,
+            "rotation": 0.0,
+            "style": null,
+            "table": null,
+            "text": null,
+            "w": 64.0,
+            "x": 60.0,
+            "y": 440.0,
+            "z": 1
+          }
+        ],
+        "transition": null,
+        "transitionMs": 500
+      },
+      {
+        "animations": [],
+        "background": null,
+        "id": "slide-2",
+        "layout": "titleContent",
+        "layoutId": "layout-b-title",
+        "masterId": "master-b",
+        "notes": "",
+        "objects": [
+          {
+            "chart": null,
+            "children": [],
+            "groupId": null,
+            "h": 80.0,
+            "id": "slide-2-title",
+            "image": null,
+            "kind": "text",
+            "line": null,
+            "name": "",
+            "placeholder": "title",
+            "rotation": 0.0,
+            "style": null,
+            "table": null,
+            "text": {
+              "align": "",
+              "color": null,
+              "font": null,
+              "paragraphs": [
+                {
+                  "align": "",
+                  "bold": false,
+                  "bullet": false,
+                  "color": null,
+                  "italic": false,
+                  "level": 0,
+                  "runs": [],
+                  "sizePt": null,
+                  "text": "Second slide",
+                  "underline": false
+                }
+              ],
+              "sizePt": null,
+              "valign": ""
+            },
+            "w": 840.0,
+            "x": 60.0,
+            "y": 40.0,
+            "z": 1
+          }
+        ],
+        "transition": "fade",
+        "transitionMs": 300
+      }
+    ],
+    "theme": "minimal",
+    "title": "V3.1 Golden Impress"
+  },
+  "savedAt": "2026-01-01T00:00:00Z",
+  "schemaVersion": 3,
+  "title": "V3.1 Golden Impress",
+  "version": 3,
+  "warnings": []
+}

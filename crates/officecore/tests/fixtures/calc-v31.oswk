@@ -1,0 +1,725 @@
+{
+  "format": "office-swiss-army-knife",
+  "kind": "calc",
+  "model": {
+    "activeSheet": 0,
+    "id": "calc-v31",
+    "metadata": {
+      "author": "QA",
+      "created": "2026-01-01T00:00:00Z",
+      "creator": "",
+      "keywords": "",
+      "lastModifiedBy": "",
+      "modified": "2026-01-02T00:00:00Z",
+      "subject": "",
+      "title": "V3.1 Golden Calc"
+    },
+    "names": [
+      {
+        "comment": "",
+        "definition": "0.2",
+        "name": "VAT_RATE",
+        "sheet": null
+      }
+    ],
+    "preservedPivots": [
+      {
+        "cacheId": 7,
+        "definitionXml": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<pivotCacheDefinition xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" refreshOnLoad=\"1\" recordCount=\"3\"><cacheSource type=\"worksheet\"><worksheetSource ref=\"A1:D4\" sheet=\"Data\"/></cacheSource><cacheFields count=\"4\"><cacheField name=\"Item\"/><cacheField name=\"Units\"/><cacheField name=\"Price\"/><cacheField name=\"Amount\"/></cacheFields></pivotCacheDefinition>",
+        "fields": [
+          "Item",
+          "Units",
+          "Price",
+          "Amount"
+        ],
+        "name": "PivotTable1",
+        "recordsBase64": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9InllcyI/Pgo8cGl2b3RDYWNoZVJlY29yZHMgeG1sbnM9Imh0dHA6Ly9zY2hlbWFzLm9wZW54bWxmb3JtYXRzLm9yZy9zcHJlYWRzaGVldG1sLzIwMDYvbWFpbiIgY291bnQ9IjMiPjxyPjxzIHY9IldpZGdldCIvPjxuIHY9IjIiLz48biB2PSIxMCIvPjxuIHY9IjIwIi8+PC9yPjxyPjxzIHY9IkdhZGdldCIvPjxuIHY9IjMiLz48biB2PSIyMCIvPjxuIHY9IjYwIi8+PC9yPjxyPjxzIHY9Ikdpem1vIi8+PG4gdj0iNCIvPjxuIHY9IjMwIi8+PG4gdj0iMTIwIi8+PC9yPjwvcGl2b3RDYWNoZVJlY29yZHM+",
+        "recordsPart": "xl/pivotCache/pivotCacheRecords1.xml",
+        "sheet": "Data",
+        "source": "Data!A1:D4",
+        "tableXml": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<pivotTableDefinition xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" name=\"PivotTable1\" cacheId=\"7\" dataCaption=\"Values\" updatedVersion=\"6\"><location ref=\"H1:I4\" firstHeaderRow=\"1\" firstDataRow=\"1\" firstDataCol=\"1\"/><pivotFields count=\"4\"><pivotField axis=\"axisRow\" showAll=\"0\"/><pivotField showAll=\"0\"/><pivotField showAll=\"0\"/><pivotField dataField=\"1\" showAll=\"0\"/></pivotFields><rowFields count=\"1\"><field x=\"0\"/></rowFields><dataFields count=\"1\"><dataField name=\"Sum of Amount\" fld=\"3\"/></dataFields></pivotTableDefinition>"
+      }
+    ],
+    "sheets": [
+      {
+        "cells": {
+          "A1": {
+            "comment": null,
+            "formula": null,
+            "link": null,
+            "style": {
+              "align": "",
+              "bold": false,
+              "borders": {
+                "bottom": null,
+                "left": null,
+                "right": null,
+                "top": null
+              },
+              "color": null,
+              "fill": null,
+              "font": null,
+              "italic": false,
+              "numberFormat": "",
+              "rotation": 0,
+              "sizePt": null,
+              "strike": false,
+              "underline": false,
+              "valign": "",
+              "wrap": false
+            },
+            "value": {
+              "kind": "text",
+              "value": "Item"
+            }
+          },
+          "A2": {
+            "comment": null,
+            "formula": null,
+            "link": null,
+            "style": {
+              "align": "",
+              "bold": false,
+              "borders": {
+                "bottom": null,
+                "left": null,
+                "right": null,
+                "top": null
+              },
+              "color": null,
+              "fill": null,
+              "font": null,
+              "italic": false,
+              "numberFormat": "",
+              "rotation": 0,
+              "sizePt": null,
+              "strike": false,
+              "underline": false,
+              "valign": "",
+              "wrap": false
+            },
+            "value": {
+              "kind": "text",
+              "value": "Widget"
+            }
+          },
+          "A3": {
+            "comment": null,
+            "formula": null,
+            "link": null,
+            "style": {
+              "align": "",
+              "bold": false,
+              "borders": {
+                "bottom": null,
+                "left": null,
+                "right": null,
+                "top": null
+              },
+              "color": null,
+              "fill": null,
+              "font": null,
+              "italic": false,
+              "numberFormat": "",
+              "rotation": 0,
+              "sizePt": null,
+              "strike": false,
+              "underline": false,
+              "valign": "",
+              "wrap": false
+            },
+            "value": {
+              "kind": "text",
+              "value": "Gadget"
+            }
+          },
+          "A4": {
+            "comment": null,
+            "formula": null,
+            "link": null,
+            "style": {
+              "align": "",
+              "bold": false,
+              "borders": {
+                "bottom": null,
+                "left": null,
+                "right": null,
+                "top": null
+              },
+              "color": null,
+              "fill": null,
+              "font": null,
+              "italic": false,
+              "numberFormat": "",
+              "rotation": 0,
+              "sizePt": null,
+              "strike": false,
+              "underline": false,
+              "valign": "",
+              "wrap": false
+            },
+            "value": {
+              "kind": "text",
+              "value": "Gizmo"
+            }
+          },
+          "B1": {
+            "comment": null,
+            "formula": null,
+            "link": null,
+            "style": {
+              "align": "",
+              "bold": false,
+              "borders": {
+                "bottom": null,
+                "left": null,
+                "right": null,
+                "top": null
+              },
+              "color": null,
+              "fill": null,
+              "font": null,
+              "italic": false,
+              "numberFormat": "",
+              "rotation": 0,
+              "sizePt": null,
+              "strike": false,
+              "underline": false,
+              "valign": "",
+              "wrap": false
+            },
+            "value": {
+              "kind": "text",
+              "value": "Units"
+            }
+          },
+          "B2": {
+            "comment": null,
+            "formula": null,
+            "link": null,
+            "style": {
+              "align": "",
+              "bold": false,
+              "borders": {
+                "bottom": null,
+                "left": null,
+                "right": null,
+                "top": null
+              },
+              "color": null,
+              "fill": null,
+              "font": null,
+              "italic": false,
+              "numberFormat": "",
+              "rotation": 0,
+              "sizePt": null,
+              "strike": false,
+              "underline": false,
+              "valign": "",
+              "wrap": false
+            },
+            "value": {
+              "kind": "number",
+              "value": 2.0
+            }
+          },
+          "B3": {
+            "comment": null,
+            "formula": null,
+            "link": null,
+            "style": {
+              "align": "",
+              "bold": false,
+              "borders": {
+                "bottom": null,
+                "left": null,
+                "right": null,
+                "top": null
+              },
+              "color": null,
+              "fill": null,
+              "font": null,
+              "italic": false,
+              "numberFormat": "",
+              "rotation": 0,
+              "sizePt": null,
+              "strike": false,
+              "underline": false,
+              "valign": "",
+              "wrap": false
+            },
+            "value": {
+              "kind": "number",
+              "value": 3.0
+            }
+          },
+          "B4": {
+            "comment": null,
+            "formula": null,
+            "link": null,
+            "style": {
+              "align": "",
+              "bold": false,
+              "borders": {
+                "bottom": null,
+                "left": null,
+                "right": null,
+                "top": null
+              },
+              "color": null,
+              "fill": null,
+              "font": null,
+              "italic": false,
+              "numberFormat": "",
+              "rotation": 0,
+              "sizePt": null,
+              "strike": false,
+              "underline": false,
+              "valign": "",
+              "wrap": false
+            },
+            "value": {
+              "kind": "number",
+              "value": 4.0
+            }
+          },
+          "C1": {
+            "comment": null,
+            "formula": null,
+            "link": null,
+            "style": {
+              "align": "",
+              "bold": false,
+              "borders": {
+                "bottom": null,
+                "left": null,
+                "right": null,
+                "top": null
+              },
+              "color": null,
+              "fill": null,
+              "font": null,
+              "italic": false,
+              "numberFormat": "",
+              "rotation": 0,
+              "sizePt": null,
+              "strike": false,
+              "underline": false,
+              "valign": "",
+              "wrap": false
+            },
+            "value": {
+              "kind": "text",
+              "value": "Price"
+            }
+          },
+          "C2": {
+            "comment": null,
+            "formula": null,
+            "link": null,
+            "style": {
+              "align": "",
+              "bold": false,
+              "borders": {
+                "bottom": null,
+                "left": null,
+                "right": null,
+                "top": null
+              },
+              "color": null,
+              "fill": null,
+              "font": null,
+              "italic": false,
+              "numberFormat": "",
+              "rotation": 0,
+              "sizePt": null,
+              "strike": false,
+              "underline": false,
+              "valign": "",
+              "wrap": false
+            },
+            "value": {
+              "kind": "number",
+              "value": 10.0
+            }
+          },
+          "C3": {
+            "comment": null,
+            "formula": null,
+            "link": null,
+            "style": {
+              "align": "",
+              "bold": false,
+              "borders": {
+                "bottom": null,
+                "left": null,
+                "right": null,
+                "top": null
+              },
+              "color": null,
+              "fill": null,
+              "font": null,
+              "italic": false,
+              "numberFormat": "",
+              "rotation": 0,
+              "sizePt": null,
+              "strike": false,
+              "underline": false,
+              "valign": "",
+              "wrap": false
+            },
+            "value": {
+              "kind": "number",
+              "value": 20.0
+            }
+          },
+          "C4": {
+            "comment": null,
+            "formula": null,
+            "link": null,
+            "style": {
+              "align": "",
+              "bold": false,
+              "borders": {
+                "bottom": null,
+                "left": null,
+                "right": null,
+                "top": null
+              },
+              "color": null,
+              "fill": null,
+              "font": null,
+              "italic": false,
+              "numberFormat": "",
+              "rotation": 0,
+              "sizePt": null,
+              "strike": false,
+              "underline": false,
+              "valign": "",
+              "wrap": false
+            },
+            "value": {
+              "kind": "number",
+              "value": 30.0
+            }
+          },
+          "D1": {
+            "comment": null,
+            "formula": null,
+            "link": null,
+            "style": {
+              "align": "",
+              "bold": false,
+              "borders": {
+                "bottom": null,
+                "left": null,
+                "right": null,
+                "top": null
+              },
+              "color": null,
+              "fill": null,
+              "font": null,
+              "italic": false,
+              "numberFormat": "",
+              "rotation": 0,
+              "sizePt": null,
+              "strike": false,
+              "underline": false,
+              "valign": "",
+              "wrap": false
+            },
+            "value": {
+              "kind": "text",
+              "value": "Amount"
+            }
+          },
+          "D2": {
+            "comment": null,
+            "formula": "=[@Units]*[@Price]",
+            "link": null,
+            "style": {
+              "align": "",
+              "bold": false,
+              "borders": {
+                "bottom": null,
+                "left": null,
+                "right": null,
+                "top": null
+              },
+              "color": null,
+              "fill": null,
+              "font": null,
+              "italic": false,
+              "numberFormat": "",
+              "rotation": 0,
+              "sizePt": null,
+              "strike": false,
+              "underline": false,
+              "valign": "",
+              "wrap": false
+            },
+            "value": {
+              "kind": "number",
+              "value": 20.0
+            }
+          },
+          "D3": {
+            "comment": null,
+            "formula": "=[@Units]*[@Price]",
+            "link": null,
+            "style": {
+              "align": "",
+              "bold": false,
+              "borders": {
+                "bottom": null,
+                "left": null,
+                "right": null,
+                "top": null
+              },
+              "color": null,
+              "fill": null,
+              "font": null,
+              "italic": false,
+              "numberFormat": "",
+              "rotation": 0,
+              "sizePt": null,
+              "strike": false,
+              "underline": false,
+              "valign": "",
+              "wrap": false
+            },
+            "value": {
+              "kind": "number",
+              "value": 60.0
+            }
+          },
+          "D4": {
+            "comment": null,
+            "formula": "=[@Units]*[@Price]",
+            "link": null,
+            "style": {
+              "align": "",
+              "bold": false,
+              "borders": {
+                "bottom": null,
+                "left": null,
+                "right": null,
+                "top": null
+              },
+              "color": null,
+              "fill": null,
+              "font": null,
+              "italic": false,
+              "numberFormat": "",
+              "rotation": 0,
+              "sizePt": null,
+              "strike": false,
+              "underline": false,
+              "valign": "",
+              "wrap": false
+            },
+            "value": {
+              "kind": "number",
+              "value": 120.0
+            }
+          },
+          "F1": {
+            "comment": null,
+            "formula": "=SUM(Sales[Amount])",
+            "link": null,
+            "style": {
+              "align": "",
+              "bold": false,
+              "borders": {
+                "bottom": null,
+                "left": null,
+                "right": null,
+                "top": null
+              },
+              "color": null,
+              "fill": null,
+              "font": null,
+              "italic": false,
+              "numberFormat": "",
+              "rotation": 0,
+              "sizePt": null,
+              "strike": false,
+              "underline": false,
+              "valign": "",
+              "wrap": false
+            },
+            "value": {
+              "kind": "number",
+              "value": 200.0
+            }
+          }
+        },
+        "charts": [
+          {
+            "anchor": "F3",
+            "chart": {
+              "categories": "A2:A4",
+              "categoriesCache": [
+                "Widget",
+                "Gadget",
+                "Gizmo"
+              ],
+              "kind": "column",
+              "legend": true,
+              "series": [
+                {
+                  "color": "#1D4ED8",
+                  "name": "Amount",
+                  "range": "D2:D4"
+                }
+              ],
+              "seriesValuesCache": [
+                [
+                  20.0,
+                  60.0,
+                  120.0
+                ]
+              ],
+              "showLabels": true,
+              "stacked": false,
+              "title": "Amount by item",
+              "xTitle": "Item",
+              "yTitle": "Amount"
+            },
+            "heightPx": 260.0,
+            "id": "chart-1",
+            "widthPx": 420.0
+          }
+        ],
+        "colCount": 26,
+        "colWidths": {},
+        "conditional": [],
+        "filter": null,
+        "freezeCols": 0,
+        "freezeRows": 0,
+        "id": "sheet-data",
+        "images": [
+          {
+            "anchor": {
+              "address": "B8",
+              "colOffEmu": 9525,
+              "rowOffEmu": 19050,
+              "toAddress": null,
+              "toColOffEmu": 0,
+              "toRowOffEmu": 0
+            },
+            "heightPx": 60.0,
+            "image": {
+              "alt": "",
+              "dataBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==",
+              "mime": "image/png",
+              "name": "pixel.png"
+            },
+            "rotationDeg": 15.0,
+            "widthPx": 120.0
+          }
+        ],
+        "merges": [],
+        "name": "Data",
+        "pivotTables": [],
+        "print": {
+          "centerHorizontally": true,
+          "centerVertically": false,
+          "colBreaks": [
+            3
+          ],
+          "differentFirstPage": false,
+          "differentOddEven": false,
+          "evenFooter": "",
+          "evenHeader": "",
+          "firstFooter": "",
+          "firstHeader": "",
+          "fitToHeight": 0,
+          "fitToWidth": 1,
+          "footer": "Page &P",
+          "header": "Sales report",
+          "landscape": false,
+          "marginBottom": 0.6,
+          "marginFooter": 0.25,
+          "marginHeader": 0.25,
+          "marginLeft": 0.5,
+          "marginRight": 0.5,
+          "marginTop": 0.6,
+          "paperSize": 9,
+          "printArea": "A1:F20",
+          "printGridlines": true,
+          "printHeadings": true,
+          "printTitlesCols": "A:A",
+          "printTitlesRows": "1:1",
+          "rowBreaks": [
+            4
+          ],
+          "scale": 85
+        },
+        "protection": {
+          "algorithmName": "SHA-512",
+          "enabled": true,
+          "hashValue": "aGFzaA==",
+          "options": [
+            "formatCells",
+            "objects"
+          ],
+          "passwordHash": "ABCD",
+          "saltValue": "c2FsdA==",
+          "spinCount": 100000
+        },
+        "rowCount": 200,
+        "rowHeights": {},
+        "sheetProtection": "",
+        "showGridlines": true,
+        "tabColor": null,
+        "tables": [
+          {
+            "bandedColumns": false,
+            "bandedRows": true,
+            "columns": [
+              {
+                "formula": null,
+                "name": "Item"
+              },
+              {
+                "formula": null,
+                "name": "Units"
+              },
+              {
+                "formula": null,
+                "name": "Price"
+              },
+              {
+                "formula": "=[@Units]*[@Price]",
+                "name": "Amount"
+              }
+            ],
+            "filter": {
+              "column": 0,
+              "range": "A1:D4",
+              "values": [
+                "Widget"
+              ]
+            },
+            "hasHeaders": true,
+            "hasTotals": false,
+            "headerBold": true,
+            "headerFill": "#1D4ED8",
+            "id": "table-sales",
+            "name": "Sales",
+            "range": "A1:D4",
+            "styleName": "TableStyleMedium2"
+          }
+        ],
+        "validations": []
+      }
+    ],
+    "title": "V3.1 Golden Calc"
+  },
+  "savedAt": "2026-01-01T00:00:00Z",
+  "schemaVersion": 3,
+  "title": "V3.1 Golden Calc",
+  "version": 3,
+  "warnings": []
+}

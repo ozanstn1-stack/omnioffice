@@ -1,0 +1,1285 @@
+{
+  "format": "office-swiss-army-knife",
+  "kind": "writer",
+  "model": {
+    "blocks": [
+      {
+        "props": {
+          "align": "left",
+          "firstLinePt": 0.0,
+          "indentLeftPt": 0.0,
+          "indentRightPt": 0.0,
+          "keepTogether": false,
+          "keepWithNext": false,
+          "lineSpacing": 1.15,
+          "list": null,
+          "pageBreakBefore": false,
+          "spaceAfterPt": 8.0,
+          "spaceBeforePt": 0.0,
+          "style": "Heading1"
+        },
+        "runs": [
+          {
+            "bold": false,
+            "color": null,
+            "comment": null,
+            "endnote": null,
+            "field": null,
+            "font": null,
+            "footnote": null,
+            "highlight": null,
+            "italic": false,
+            "link": null,
+            "revision": null,
+            "sizePt": null,
+            "strike": false,
+            "subscript": false,
+            "superscript": false,
+            "text": "V3.1 golden contract",
+            "underline": false
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "props": {
+          "align": "left",
+          "firstLinePt": 0.0,
+          "indentLeftPt": 0.0,
+          "indentRightPt": 0.0,
+          "keepTogether": false,
+          "keepWithNext": false,
+          "lineSpacing": 1.15,
+          "list": null,
+          "pageBreakBefore": false,
+          "spaceAfterPt": 8.0,
+          "spaceBeforePt": 0.0,
+          "style": "Normal"
+        },
+        "runs": [
+          {
+            "bold": false,
+            "color": null,
+            "comment": null,
+            "endnote": null,
+            "field": null,
+            "font": null,
+            "footnote": null,
+            "highlight": null,
+            "italic": false,
+            "link": null,
+            "revision": null,
+            "sizePt": null,
+            "strike": false,
+            "subscript": false,
+            "superscript": false,
+            "text": "Intro ",
+            "underline": false
+          },
+          {
+            "bold": false,
+            "color": null,
+            "comment": null,
+            "endnote": null,
+            "field": null,
+            "font": null,
+            "footnote": null,
+            "highlight": null,
+            "italic": false,
+            "link": null,
+            "revision": {
+              "author": "Ada",
+              "date": "2026-01-01T10:00:00Z",
+              "id": "rev-insert",
+              "kind": "insert",
+              "original": null
+            },
+            "sizePt": null,
+            "strike": false,
+            "subscript": false,
+            "superscript": false,
+            "text": "inserted",
+            "underline": false
+          },
+          {
+            "bold": false,
+            "color": null,
+            "comment": null,
+            "endnote": null,
+            "field": null,
+            "font": null,
+            "footnote": null,
+            "highlight": null,
+            "italic": false,
+            "link": null,
+            "revision": {
+              "author": "Grace",
+              "date": "2026-01-01T11:00:00Z",
+              "id": "rev-delete",
+              "kind": "delete",
+              "original": null
+            },
+            "sizePt": null,
+            "strike": false,
+            "subscript": false,
+            "superscript": false,
+            "text": "removed",
+            "underline": false
+          },
+          {
+            "bold": true,
+            "color": null,
+            "comment": null,
+            "endnote": null,
+            "field": null,
+            "font": null,
+            "footnote": null,
+            "highlight": null,
+            "italic": true,
+            "link": null,
+            "revision": {
+              "author": "Ada",
+              "date": "2026-01-01T12:00:00Z",
+              "id": "rev-format",
+              "kind": "format",
+              "original": {
+                "bold": false,
+                "color": null,
+                "font": null,
+                "highlight": null,
+                "italic": false,
+                "sizePt": null,
+                "strike": false,
+                "underline": false
+              }
+            },
+            "sizePt": null,
+            "strike": false,
+            "subscript": false,
+            "superscript": false,
+            "text": "reformatted",
+            "underline": false
+          },
+          {
+            "bold": false,
+            "color": null,
+            "comment": "comment-1",
+            "endnote": null,
+            "field": null,
+            "font": null,
+            "footnote": null,
+            "highlight": null,
+            "italic": false,
+            "link": null,
+            "revision": null,
+            "sizePt": null,
+            "strike": false,
+            "subscript": false,
+            "superscript": false,
+            "text": "commented",
+            "underline": false
+          },
+          {
+            "bold": false,
+            "color": null,
+            "comment": null,
+            "endnote": null,
+            "field": null,
+            "font": null,
+            "footnote": "fn-1",
+            "highlight": null,
+            "italic": false,
+            "link": null,
+            "revision": null,
+            "sizePt": null,
+            "strike": false,
+            "subscript": false,
+            "superscript": false,
+            "text": "",
+            "underline": false
+          },
+          {
+            "bold": false,
+            "color": null,
+            "comment": null,
+            "endnote": "en-1",
+            "field": null,
+            "font": null,
+            "footnote": null,
+            "highlight": null,
+            "italic": false,
+            "link": null,
+            "revision": null,
+            "sizePt": null,
+            "strike": false,
+            "subscript": false,
+            "superscript": false,
+            "text": "",
+            "underline": false
+          },
+          {
+            "bold": false,
+            "color": null,
+            "comment": null,
+            "endnote": null,
+            "field": null,
+            "font": null,
+            "footnote": null,
+            "highlight": null,
+            "italic": false,
+            "link": null,
+            "revision": null,
+            "sizePt": null,
+            "strike": false,
+            "subscript": false,
+            "superscript": false,
+            "text": "See page ",
+            "underline": false
+          },
+          {
+            "bold": false,
+            "color": null,
+            "comment": null,
+            "endnote": null,
+            "field": {
+              "cached": "2",
+              "kind": "refPage",
+              "target": "GoldenTarget"
+            },
+            "font": null,
+            "footnote": null,
+            "highlight": null,
+            "italic": false,
+            "link": null,
+            "revision": null,
+            "sizePt": null,
+            "strike": false,
+            "subscript": false,
+            "superscript": false,
+            "text": "2",
+            "underline": false
+          },
+          {
+            "bold": false,
+            "color": null,
+            "comment": null,
+            "endnote": null,
+            "field": null,
+            "font": null,
+            "footnote": null,
+            "highlight": null,
+            "italic": false,
+            "link": null,
+            "revision": null,
+            "sizePt": null,
+            "strike": false,
+            "subscript": false,
+            "superscript": false,
+            "text": " on ",
+            "underline": false
+          },
+          {
+            "bold": false,
+            "color": null,
+            "comment": null,
+            "endnote": null,
+            "field": {
+              "cached": "2026-01-01",
+              "kind": "date",
+              "target": ""
+            },
+            "font": null,
+            "footnote": null,
+            "highlight": null,
+            "italic": false,
+            "link": null,
+            "revision": null,
+            "sizePt": null,
+            "strike": false,
+            "subscript": false,
+            "superscript": false,
+            "text": "2026-01-01",
+            "underline": false
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "props": {
+          "align": "left",
+          "firstLinePt": 0.0,
+          "indentLeftPt": 0.0,
+          "indentRightPt": 0.0,
+          "keepTogether": false,
+          "keepWithNext": false,
+          "lineSpacing": 1.15,
+          "list": null,
+          "pageBreakBefore": false,
+          "spaceAfterPt": 8.0,
+          "spaceBeforePt": 0.0,
+          "style": "Normal"
+        },
+        "runs": [
+          {
+            "bold": false,
+            "color": null,
+            "comment": null,
+            "endnote": null,
+            "field": null,
+            "font": null,
+            "footnote": null,
+            "highlight": null,
+            "italic": false,
+            "link": null,
+            "revision": null,
+            "sizePt": null,
+            "strike": false,
+            "subscript": false,
+            "superscript": false,
+            "text": "Bookmarked paragraph",
+            "underline": false
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "section": {
+          "columns": 2,
+          "differentFirstPage": true,
+          "differentOddEven": true,
+          "evenFooter": [],
+          "evenHeader": [
+            {
+              "props": {
+                "align": "left",
+                "firstLinePt": 0.0,
+                "indentLeftPt": 0.0,
+                "indentRightPt": 0.0,
+                "keepTogether": false,
+                "keepWithNext": false,
+                "lineSpacing": 1.15,
+                "list": null,
+                "pageBreakBefore": false,
+                "spaceAfterPt": 8.0,
+                "spaceBeforePt": 0.0,
+                "style": "Normal"
+              },
+              "runs": [
+                {
+                  "bold": false,
+                  "color": null,
+                  "comment": null,
+                  "endnote": null,
+                  "field": null,
+                  "font": null,
+                  "footnote": null,
+                  "highlight": null,
+                  "italic": false,
+                  "link": null,
+                  "revision": null,
+                  "sizePt": null,
+                  "strike": false,
+                  "subscript": false,
+                  "superscript": false,
+                  "text": "Even landscape header",
+                  "underline": false
+                }
+              ],
+              "type": "paragraph"
+            }
+          ],
+          "firstFooter": [],
+          "firstHeader": [
+            {
+              "props": {
+                "align": "left",
+                "firstLinePt": 0.0,
+                "indentLeftPt": 0.0,
+                "indentRightPt": 0.0,
+                "keepTogether": false,
+                "keepWithNext": false,
+                "lineSpacing": 1.15,
+                "list": null,
+                "pageBreakBefore": false,
+                "spaceAfterPt": 8.0,
+                "spaceBeforePt": 0.0,
+                "style": "Normal"
+              },
+              "runs": [
+                {
+                  "bold": false,
+                  "color": null,
+                  "comment": null,
+                  "endnote": null,
+                  "field": null,
+                  "font": null,
+                  "footnote": null,
+                  "highlight": null,
+                  "italic": false,
+                  "link": null,
+                  "revision": null,
+                  "sizePt": null,
+                  "strike": false,
+                  "subscript": false,
+                  "superscript": false,
+                  "text": "First landscape header",
+                  "underline": false
+                }
+              ],
+              "type": "paragraph"
+            }
+          ],
+          "footer": [
+            {
+              "props": {
+                "align": "left",
+                "firstLinePt": 0.0,
+                "indentLeftPt": 0.0,
+                "indentRightPt": 0.0,
+                "keepTogether": false,
+                "keepWithNext": false,
+                "lineSpacing": 1.15,
+                "list": null,
+                "pageBreakBefore": false,
+                "spaceAfterPt": 8.0,
+                "spaceBeforePt": 0.0,
+                "style": "Normal"
+              },
+              "runs": [
+                {
+                  "bold": false,
+                  "color": null,
+                  "comment": null,
+                  "endnote": null,
+                  "field": null,
+                  "font": null,
+                  "footnote": null,
+                  "highlight": null,
+                  "italic": false,
+                  "link": null,
+                  "revision": null,
+                  "sizePt": null,
+                  "strike": false,
+                  "subscript": false,
+                  "superscript": false,
+                  "text": "Landscape footer",
+                  "underline": false
+                }
+              ],
+              "type": "paragraph"
+            }
+          ],
+          "header": [
+            {
+              "props": {
+                "align": "left",
+                "firstLinePt": 0.0,
+                "indentLeftPt": 0.0,
+                "indentRightPt": 0.0,
+                "keepTogether": false,
+                "keepWithNext": false,
+                "lineSpacing": 1.15,
+                "list": null,
+                "pageBreakBefore": false,
+                "spaceAfterPt": 8.0,
+                "spaceBeforePt": 0.0,
+                "style": "Normal"
+              },
+              "runs": [
+                {
+                  "bold": false,
+                  "color": null,
+                  "comment": null,
+                  "endnote": null,
+                  "field": null,
+                  "font": null,
+                  "footnote": null,
+                  "highlight": null,
+                  "italic": false,
+                  "link": null,
+                  "revision": null,
+                  "sizePt": null,
+                  "strike": false,
+                  "subscript": false,
+                  "superscript": false,
+                  "text": "Landscape header",
+                  "underline": false
+                }
+              ],
+              "type": "paragraph"
+            }
+          ],
+          "page": {
+            "columnSpacingPt": 24.0,
+            "columns": 1,
+            "differentFirstPage": false,
+            "footerDistancePt": 36.0,
+            "headerDistancePt": 36.0,
+            "heightPt": 595.28,
+            "marginBottomPt": 72.0,
+            "marginLeftPt": 72.0,
+            "marginRightPt": 72.0,
+            "marginTopPt": 72.0,
+            "orientation": "landscape",
+            "size": "a4",
+            "widthPt": 841.89
+          },
+          "start": "oddPage"
+        },
+        "type": "sectionBreak"
+      },
+      {
+        "props": {
+          "align": "left",
+          "firstLinePt": 0.0,
+          "indentLeftPt": 0.0,
+          "indentRightPt": 0.0,
+          "keepTogether": false,
+          "keepWithNext": false,
+          "lineSpacing": 1.15,
+          "list": null,
+          "pageBreakBefore": false,
+          "spaceAfterPt": 8.0,
+          "spaceBeforePt": 0.0,
+          "style": "Normal"
+        },
+        "runs": [
+          {
+            "bold": false,
+            "color": null,
+            "comment": null,
+            "endnote": null,
+            "field": null,
+            "font": null,
+            "footnote": null,
+            "highlight": null,
+            "italic": false,
+            "link": null,
+            "revision": null,
+            "sizePt": null,
+            "strike": false,
+            "subscript": false,
+            "superscript": false,
+            "text": "Section two content",
+            "underline": false
+          }
+        ],
+        "type": "paragraph"
+      },
+      {
+        "table": {
+          "align": "left",
+          "borderColor": "#94a3b8",
+          "borders": true,
+          "columnWidthsPt": [
+            160.0,
+            160.0
+          ],
+          "rows": [
+            {
+              "cells": [
+                {
+                  "align": "",
+                  "background": null,
+                  "blocks": [
+                    {
+                      "props": {
+                        "align": "left",
+                        "firstLinePt": 0.0,
+                        "indentLeftPt": 0.0,
+                        "indentRightPt": 0.0,
+                        "keepTogether": false,
+                        "keepWithNext": false,
+                        "lineSpacing": 1.15,
+                        "list": null,
+                        "pageBreakBefore": false,
+                        "spaceAfterPt": 8.0,
+                        "spaceBeforePt": 0.0,
+                        "style": "Normal"
+                      },
+                      "runs": [
+                        {
+                          "bold": false,
+                          "color": null,
+                          "comment": null,
+                          "endnote": null,
+                          "field": null,
+                          "font": null,
+                          "footnote": null,
+                          "highlight": null,
+                          "italic": false,
+                          "link": null,
+                          "revision": null,
+                          "sizePt": null,
+                          "strike": false,
+                          "subscript": false,
+                          "superscript": false,
+                          "text": "Key",
+                          "underline": false
+                        }
+                      ],
+                      "type": "paragraph"
+                    }
+                  ],
+                  "colspan": 0,
+                  "rowspan": 0,
+                  "valign": "",
+                  "widthPt": null
+                },
+                {
+                  "align": "",
+                  "background": null,
+                  "blocks": [
+                    {
+                      "props": {
+                        "align": "left",
+                        "firstLinePt": 0.0,
+                        "indentLeftPt": 0.0,
+                        "indentRightPt": 0.0,
+                        "keepTogether": false,
+                        "keepWithNext": false,
+                        "lineSpacing": 1.15,
+                        "list": null,
+                        "pageBreakBefore": false,
+                        "spaceAfterPt": 8.0,
+                        "spaceBeforePt": 0.0,
+                        "style": "Normal"
+                      },
+                      "runs": [
+                        {
+                          "bold": false,
+                          "color": null,
+                          "comment": null,
+                          "endnote": null,
+                          "field": null,
+                          "font": null,
+                          "footnote": null,
+                          "highlight": null,
+                          "italic": false,
+                          "link": null,
+                          "revision": null,
+                          "sizePt": null,
+                          "strike": false,
+                          "subscript": false,
+                          "superscript": false,
+                          "text": "Value",
+                          "underline": false
+                        }
+                      ],
+                      "type": "paragraph"
+                    }
+                  ],
+                  "colspan": 0,
+                  "rowspan": 0,
+                  "valign": "",
+                  "widthPt": null
+                }
+              ],
+              "header": true,
+              "heightPt": null
+            },
+            {
+              "cells": [
+                {
+                  "align": "",
+                  "background": null,
+                  "blocks": [
+                    {
+                      "props": {
+                        "align": "left",
+                        "firstLinePt": 0.0,
+                        "indentLeftPt": 0.0,
+                        "indentRightPt": 0.0,
+                        "keepTogether": false,
+                        "keepWithNext": false,
+                        "lineSpacing": 1.15,
+                        "list": null,
+                        "pageBreakBefore": false,
+                        "spaceAfterPt": 8.0,
+                        "spaceBeforePt": 0.0,
+                        "style": "Normal"
+                      },
+                      "runs": [
+                        {
+                          "bold": false,
+                          "color": null,
+                          "comment": null,
+                          "endnote": null,
+                          "field": null,
+                          "font": null,
+                          "footnote": null,
+                          "highlight": null,
+                          "italic": false,
+                          "link": null,
+                          "revision": null,
+                          "sizePt": null,
+                          "strike": false,
+                          "subscript": false,
+                          "superscript": false,
+                          "text": "Answer",
+                          "underline": false
+                        }
+                      ],
+                      "type": "paragraph"
+                    }
+                  ],
+                  "colspan": 0,
+                  "rowspan": 0,
+                  "valign": "",
+                  "widthPt": null
+                },
+                {
+                  "align": "",
+                  "background": null,
+                  "blocks": [
+                    {
+                      "props": {
+                        "align": "left",
+                        "firstLinePt": 0.0,
+                        "indentLeftPt": 0.0,
+                        "indentRightPt": 0.0,
+                        "keepTogether": false,
+                        "keepWithNext": false,
+                        "lineSpacing": 1.15,
+                        "list": null,
+                        "pageBreakBefore": false,
+                        "spaceAfterPt": 8.0,
+                        "spaceBeforePt": 0.0,
+                        "style": "Normal"
+                      },
+                      "runs": [
+                        {
+                          "bold": false,
+                          "color": null,
+                          "comment": null,
+                          "endnote": null,
+                          "field": null,
+                          "font": null,
+                          "footnote": null,
+                          "highlight": null,
+                          "italic": false,
+                          "link": null,
+                          "revision": null,
+                          "sizePt": null,
+                          "strike": false,
+                          "subscript": false,
+                          "superscript": false,
+                          "text": "42",
+                          "underline": false
+                        }
+                      ],
+                      "type": "paragraph"
+                    }
+                  ],
+                  "colspan": 0,
+                  "rowspan": 0,
+                  "valign": "",
+                  "widthPt": null
+                }
+              ],
+              "header": false,
+              "heightPt": null
+            }
+          ]
+        },
+        "type": "table"
+      },
+      {
+        "align": "center",
+        "caption": "Golden pixel",
+        "height_pt": 96.0,
+        "image": {
+          "alt": "",
+          "dataBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==",
+          "mime": "image/png",
+          "name": "pixel.png"
+        },
+        "type": "image",
+        "width_pt": 96.0
+      }
+    ],
+    "bookmarks": [
+      {
+        "block": 2,
+        "id": "bookmark-1",
+        "name": "GoldenTarget",
+        "offset": 0
+      }
+    ],
+    "comments": [
+      {
+        "author": "Ada",
+        "created": "2026-01-02T09:00:00Z",
+        "id": "comment-1",
+        "modified": "2026-01-02T11:00:00Z",
+        "replies": [
+          {
+            "author": "Grace",
+            "created": "2026-01-02T10:00:00Z",
+            "text": "Verified"
+          }
+        ],
+        "resolved": false,
+        "text": "Please verify the totals"
+      }
+    ],
+    "endnotes": [
+      {
+        "id": "en-1",
+        "marker": "",
+        "runs": [
+          {
+            "bold": false,
+            "color": null,
+            "comment": null,
+            "endnote": null,
+            "field": null,
+            "font": null,
+            "footnote": null,
+            "highlight": null,
+            "italic": false,
+            "link": null,
+            "revision": null,
+            "sizePt": null,
+            "strike": false,
+            "subscript": false,
+            "superscript": false,
+            "text": "Endnote body",
+            "underline": false
+          }
+        ]
+      }
+    ],
+    "footer": [
+      {
+        "props": {
+          "align": "left",
+          "firstLinePt": 0.0,
+          "indentLeftPt": 0.0,
+          "indentRightPt": 0.0,
+          "keepTogether": false,
+          "keepWithNext": false,
+          "lineSpacing": 1.15,
+          "list": null,
+          "pageBreakBefore": false,
+          "spaceAfterPt": 8.0,
+          "spaceBeforePt": 0.0,
+          "style": "Normal"
+        },
+        "runs": [
+          {
+            "bold": false,
+            "color": null,
+            "comment": null,
+            "endnote": null,
+            "field": null,
+            "font": null,
+            "footnote": null,
+            "highlight": null,
+            "italic": false,
+            "link": null,
+            "revision": null,
+            "sizePt": null,
+            "strike": false,
+            "subscript": false,
+            "superscript": false,
+            "text": "Golden footer",
+            "underline": false
+          }
+        ],
+        "type": "paragraph"
+      }
+    ],
+    "footnotes": [
+      {
+        "id": "fn-1",
+        "marker": "",
+        "runs": [
+          {
+            "bold": false,
+            "color": null,
+            "comment": null,
+            "endnote": null,
+            "field": null,
+            "font": null,
+            "footnote": null,
+            "highlight": null,
+            "italic": true,
+            "link": null,
+            "revision": null,
+            "sizePt": null,
+            "strike": false,
+            "subscript": false,
+            "superscript": false,
+            "text": "Footnote body",
+            "underline": false
+          }
+        ]
+      }
+    ],
+    "header": [
+      {
+        "props": {
+          "align": "left",
+          "firstLinePt": 0.0,
+          "indentLeftPt": 0.0,
+          "indentRightPt": 0.0,
+          "keepTogether": false,
+          "keepWithNext": false,
+          "lineSpacing": 1.15,
+          "list": null,
+          "pageBreakBefore": false,
+          "spaceAfterPt": 8.0,
+          "spaceBeforePt": 0.0,
+          "style": "Normal"
+        },
+        "runs": [
+          {
+            "bold": false,
+            "color": null,
+            "comment": null,
+            "endnote": null,
+            "field": null,
+            "font": null,
+            "footnote": null,
+            "highlight": null,
+            "italic": false,
+            "link": null,
+            "revision": null,
+            "sizePt": null,
+            "strike": false,
+            "subscript": false,
+            "superscript": false,
+            "text": "Golden header",
+            "underline": false
+          }
+        ],
+        "type": "paragraph"
+      }
+    ],
+    "id": "writer-v31",
+    "metadata": {
+      "author": "QA",
+      "created": "2026-01-01T00:00:00Z",
+      "creator": "officecore",
+      "keywords": "v3.1,golden,writer",
+      "lastModifiedBy": "QA",
+      "modified": "2026-01-02T00:00:00Z",
+      "subject": "golden fixture",
+      "title": "V3.1 Golden Writer"
+    },
+    "page": {
+      "columnSpacingPt": 24.0,
+      "columns": 1,
+      "differentFirstPage": false,
+      "footerDistancePt": 36.0,
+      "headerDistancePt": 36.0,
+      "heightPt": 841.89,
+      "marginBottomPt": 72.0,
+      "marginLeftPt": 72.0,
+      "marginRightPt": 72.0,
+      "marginTopPt": 72.0,
+      "orientation": "portrait",
+      "size": "a4",
+      "widthPt": 595.28
+    },
+    "showRevisions": true,
+    "styles": [
+      {
+        "align": null,
+        "basedOn": null,
+        "bold": null,
+        "color": "#1f2328",
+        "firstLinePt": null,
+        "font": "Calibri",
+        "highlight": null,
+        "id": "Normal",
+        "indentLeftPt": null,
+        "indentRightPt": null,
+        "italic": null,
+        "keepWithNext": null,
+        "lineSpacing": 1.15,
+        "name": "Normal",
+        "next": null,
+        "outlineLevel": null,
+        "pageBreakBefore": null,
+        "sizePt": 11.0,
+        "spaceAfterPt": 8.0,
+        "spaceBeforePt": null,
+        "strike": null,
+        "underline": null
+      },
+      {
+        "align": null,
+        "basedOn": "Normal",
+        "bold": true,
+        "color": "#0f172a",
+        "firstLinePt": null,
+        "font": "Calibri Light",
+        "highlight": null,
+        "id": "Title",
+        "indentLeftPt": null,
+        "indentRightPt": null,
+        "italic": null,
+        "keepWithNext": null,
+        "lineSpacing": null,
+        "name": "Title",
+        "next": "Subtitle",
+        "outlineLevel": null,
+        "pageBreakBefore": null,
+        "sizePt": 28.0,
+        "spaceAfterPt": 6.0,
+        "spaceBeforePt": null,
+        "strike": null,
+        "underline": null
+      },
+      {
+        "align": null,
+        "basedOn": "Normal",
+        "bold": null,
+        "color": "#475569",
+        "firstLinePt": null,
+        "font": null,
+        "highlight": null,
+        "id": "Subtitle",
+        "indentLeftPt": null,
+        "indentRightPt": null,
+        "italic": true,
+        "keepWithNext": null,
+        "lineSpacing": null,
+        "name": "Subtitle",
+        "next": "Normal",
+        "outlineLevel": null,
+        "pageBreakBefore": null,
+        "sizePt": 15.0,
+        "spaceAfterPt": 14.0,
+        "spaceBeforePt": null,
+        "strike": null,
+        "underline": null
+      },
+      {
+        "align": null,
+        "basedOn": "Normal",
+        "bold": true,
+        "color": "#1d4ed8",
+        "firstLinePt": null,
+        "font": "Calibri Light",
+        "highlight": null,
+        "id": "Heading1",
+        "indentLeftPt": null,
+        "indentRightPt": null,
+        "italic": null,
+        "keepWithNext": true,
+        "lineSpacing": null,
+        "name": "Heading 1",
+        "next": "Normal",
+        "outlineLevel": 0,
+        "pageBreakBefore": null,
+        "sizePt": 20.0,
+        "spaceAfterPt": 4.0,
+        "spaceBeforePt": 16.0,
+        "strike": null,
+        "underline": null
+      },
+      {
+        "align": null,
+        "basedOn": "Normal",
+        "bold": true,
+        "color": "#334155",
+        "firstLinePt": null,
+        "font": "Calibri Light",
+        "highlight": null,
+        "id": "Heading2",
+        "indentLeftPt": null,
+        "indentRightPt": null,
+        "italic": null,
+        "keepWithNext": true,
+        "lineSpacing": null,
+        "name": "Heading 2",
+        "next": "Normal",
+        "outlineLevel": 1,
+        "pageBreakBefore": null,
+        "sizePt": 16.0,
+        "spaceAfterPt": 4.0,
+        "spaceBeforePt": 12.0,
+        "strike": null,
+        "underline": null
+      },
+      {
+        "align": null,
+        "basedOn": "Normal",
+        "bold": true,
+        "color": "#334155",
+        "firstLinePt": null,
+        "font": "Calibri Light",
+        "highlight": null,
+        "id": "Heading3",
+        "indentLeftPt": null,
+        "indentRightPt": null,
+        "italic": null,
+        "keepWithNext": true,
+        "lineSpacing": null,
+        "name": "Heading 3",
+        "next": "Normal",
+        "outlineLevel": 2,
+        "pageBreakBefore": null,
+        "sizePt": 13.0,
+        "spaceAfterPt": 4.0,
+        "spaceBeforePt": 12.0,
+        "strike": null,
+        "underline": null
+      },
+      {
+        "align": null,
+        "basedOn": "Normal",
+        "bold": true,
+        "color": "#334155",
+        "firstLinePt": null,
+        "font": "Calibri Light",
+        "highlight": null,
+        "id": "Heading4",
+        "indentLeftPt": null,
+        "indentRightPt": null,
+        "italic": null,
+        "keepWithNext": true,
+        "lineSpacing": null,
+        "name": "Heading 4",
+        "next": "Normal",
+        "outlineLevel": 3,
+        "pageBreakBefore": null,
+        "sizePt": 11.5,
+        "spaceAfterPt": 4.0,
+        "spaceBeforePt": 12.0,
+        "strike": null,
+        "underline": null
+      },
+      {
+        "align": null,
+        "basedOn": "Normal",
+        "bold": true,
+        "color": "#334155",
+        "firstLinePt": null,
+        "font": "Calibri Light",
+        "highlight": null,
+        "id": "Heading5",
+        "indentLeftPt": null,
+        "indentRightPt": null,
+        "italic": null,
+        "keepWithNext": true,
+        "lineSpacing": null,
+        "name": "Heading 5",
+        "next": "Normal",
+        "outlineLevel": 4,
+        "pageBreakBefore": null,
+        "sizePt": 11.0,
+        "spaceAfterPt": 4.0,
+        "spaceBeforePt": 12.0,
+        "strike": null,
+        "underline": null
+      },
+      {
+        "align": null,
+        "basedOn": "Normal",
+        "bold": true,
+        "color": "#334155",
+        "firstLinePt": null,
+        "font": "Calibri Light",
+        "highlight": null,
+        "id": "Heading6",
+        "indentLeftPt": null,
+        "indentRightPt": null,
+        "italic": null,
+        "keepWithNext": true,
+        "lineSpacing": null,
+        "name": "Heading 6",
+        "next": "Normal",
+        "outlineLevel": 5,
+        "pageBreakBefore": null,
+        "sizePt": 10.5,
+        "spaceAfterPt": 4.0,
+        "spaceBeforePt": 12.0,
+        "strike": null,
+        "underline": null
+      },
+      {
+        "align": null,
+        "basedOn": "Normal",
+        "bold": null,
+        "color": "#334155",
+        "firstLinePt": null,
+        "font": null,
+        "highlight": null,
+        "id": "Quote",
+        "indentLeftPt": 24.0,
+        "indentRightPt": 24.0,
+        "italic": true,
+        "keepWithNext": null,
+        "lineSpacing": null,
+        "name": "Quote",
+        "next": null,
+        "outlineLevel": null,
+        "pageBreakBefore": null,
+        "sizePt": null,
+        "spaceAfterPt": 8.0,
+        "spaceBeforePt": 8.0,
+        "strike": null,
+        "underline": null
+      },
+      {
+        "align": "center",
+        "basedOn": "Normal",
+        "bold": null,
+        "color": "#64748b",
+        "firstLinePt": null,
+        "font": null,
+        "highlight": null,
+        "id": "Caption",
+        "indentLeftPt": null,
+        "indentRightPt": null,
+        "italic": true,
+        "keepWithNext": null,
+        "lineSpacing": null,
+        "name": "Caption",
+        "next": null,
+        "outlineLevel": null,
+        "pageBreakBefore": null,
+        "sizePt": 9.5,
+        "spaceAfterPt": null,
+        "spaceBeforePt": null,
+        "strike": null,
+        "underline": null
+      },
+      {
+        "align": null,
+        "basedOn": "Normal",
+        "bold": null,
+        "color": null,
+        "firstLinePt": null,
+        "font": "Consolas",
+        "highlight": null,
+        "id": "Code",
+        "indentLeftPt": null,
+        "indentRightPt": null,
+        "italic": null,
+        "keepWithNext": null,
+        "lineSpacing": null,
+        "name": "Code",
+        "next": null,
+        "outlineLevel": null,
+        "pageBreakBefore": null,
+        "sizePt": 10.0,
+        "spaceAfterPt": 0.0,
+        "spaceBeforePt": null,
+        "strike": null,
+        "underline": null
+      }
+    ],
+    "title": "V3.1 Golden Writer",
+    "trackChanges": true
+  },
+  "savedAt": "2026-01-01T00:00:00Z",
+  "schemaVersion": 3,
+  "title": "V3.1 Golden Writer",
+  "version": 3,
+  "warnings": []
+}

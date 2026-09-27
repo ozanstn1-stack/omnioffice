@@ -88,3 +88,72 @@ describe("large workbook smoke", () => {
   });
 });
 
+/**
+ * Dependency-chain workloads.
+ *
+ * The smoke tests above prove the engine does not fall over at size; these
+ * pin the shape that matters for real workbooks: long dependency chains where
+ * every cell feeds the next. A full recalculation must stay under a generous
+ * wall clock, and a single edit must recompute only the downstream chain.
+ *
+ * The heavy 500 000-cell case is gated behind OSAK_PERF_HEAVY=1 because it is
+ * minutes of CPU on a loaded machine:
+ *   PowerShell: $env:OSAK_PERF_HEAVY="1"; npx vitest run src/office/calc/perf.test.ts
+ */
+function chainWorkbook(rows: number): Workbook {
+  const sheet = newSheet("Chain");
+  const cells: Record<string, Cell> = { A1: numberCell(1) };
+  for (let row = 2; row <= rows; row += 1) cells[`A${row}`] = formulaCell(`=A${row - 1}+1`);
+  return { ...newWorkbook("Chain"), sheets: [{ ...sheet, cells, rowCount: rows + 10, colCount: 8 }] };
+}
+
+const heavyIt = process.env.OSAK_PERF_HEAVY === "1" ? it : it.skip;
+
+describe("dependency-chain performance", () => {
+  it("recalculates a 20 000-cell dependency chain, then follows one edit", () => {
+    const rows = 20_000;
+    const workbook = chainWorkbook(rows);
+
+    const fullStart = Date.now();
+    const values = computeWorkbookValues(workbook);
+    const fullMs = Date.now() - fullStart;
+    expect(values.get(`Chain!A${rows}`)).toBe(rows);
+    expect(lastComputeStats(workbook)?.mode).toBe("full");
+    expect(fullMs).toBeLessThan(10_000);
+
+    const edited = applyCellEdit(workbook, 0, 0, 0, "11");
+    const editStart = Date.now();
+    const next = computeWorkbookValues(edited);
+    const editMs = Date.now() - editStart;
+    expect(next.get(`Chain!A${rows}`)).toBe(rows + 10);
+    // Only the downstream chain is recomputed, not the whole sheet.
+    expect(lastComputeStats(edited)).toEqual({ mode: "incremental", recomputed: rows - 1 });
+    expect(editMs).toBeLessThan(5_000);
+  }, 60_000);
+
+  it("keeps a 100 000-cell dependency chain under 15 seconds", () => {
+    const rows = 100_000;
+    const workbook = chainWorkbook(rows);
+    const started = Date.now();
+    const values = computeWorkbookValues(workbook);
+    const elapsed = Date.now() - started;
+    expect(values.get(`Chain!A${rows}`)).toBe(rows);
+    expect(elapsed).toBeLessThan(15_000);
+  }, 60_000);
+
+  heavyIt(
+    "heavy: recalculates a 500 000-cell dependency chain",
+    () => {
+      const rows = 500_000;
+      const workbook = chainWorkbook(rows);
+      const started = Date.now();
+      const values = computeWorkbookValues(workbook);
+      const elapsed = Date.now() - started;
+      process.stderr.write(`calc heavy: 500 000-cell chain took ${elapsed}ms\n`);
+      expect(values.get(`Chain!A${rows}`)).toBe(rows);
+      expect(elapsed).toBeLessThan(120_000);
+    },
+    300_000,
+  );
+});
+
