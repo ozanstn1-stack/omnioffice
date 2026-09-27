@@ -1,7 +1,7 @@
 {
   "name": "pdf-swiss-army-knife",
   "private": true,
-  "version": "3.0.0",
+  "version": "3.1.0",
   "type": "module",
   "description": "Office Swiss Army Knife - local-first desktop office and PDF suite (Writer, Calc, Impress, PDF tools)",
   "scripts": {
@@ -41,6 +41,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
+    "@types/node": "^26.6.3",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.4.0",

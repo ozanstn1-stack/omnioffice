@@ -66,15 +66,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: package.json, Cargo.toml and tauri.conf.json agree
+      - name: package.json, Cargo.toml, tauri.conf.json and Android metadata agree
         run: |
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('package.json','utf8')).version;
             const tauri = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json','utf8')).version;
             const cargo = fs.readFileSync('Cargo.toml','utf8').match(/version = \"([^\"]+)\"/)[1];
+            const props = fs.readFileSync('src-tauri/gen/android/app/tauri.properties','utf8');
+            const androidName = (props.match(/versionName=([^\r\n]+)/) || [])[1];
+            const androidCode = (props.match(/versionCode=([0-9]+)/) || [])[1];
+            const [major, minor, patch] = pkg.split('.').map(Number);
+            const expectedCode = String(major * 1000000 + minor * 1000 + patch);
             const tag = process.env.GITHUB_REF_NAME || '';
-            console.log({pkg, tauri, cargo, tag});
+            console.log({pkg, tauri, cargo, androidName, androidCode, tag});
             if (pkg !== tauri || pkg !== cargo) throw new Error('version mismatch');
+            if (androidName !== pkg) throw new Error('Android versionName mismatch');
+            if (androidCode !== expectedCode) throw new Error('Android versionCode mismatch');
             if (tag.startsWith('v') && tag.slice(1) !== pkg) throw new Error('tag does not match version');
           "

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -19,8 +19,22 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => null) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(async () => null), save: vi.fn(async () => null) }));
 vi.mock("@tauri-apps/plugin-fs", () => ({ readFile: vi.fn(async () => new Uint8Array()) }));
+// Android layout is a prop of the environment, not of the editor: keep the
+// real mobile helpers and only flip the platform probe per test.
+vi.mock("../lib/mobile", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/mobile")>();
+  return { ...actual, isAndroid: vi.fn(() => false) };
+});
 
-import { CalcEditor } from "./CalcEditor";
+import { CalcEditor, clampGridZoom, pinchGridZoom, shiftFormulaColumns } from "./CalcEditor";
+import { isAndroid } from "../lib/mobile";
+
+// jsdom has no PointerEvent, so testing-library would fall back to a plain
+// Event and drop button/clientX/pointerId. MouseEvent carries those fields and
+// is the standard stand-in for pointer event tests.
+if (typeof window.PointerEvent === "undefined") {
+  window.PointerEvent = MouseEvent as unknown as typeof PointerEvent;
+}
 import { applyCellEdit } from "./calc/cells";
 import { useOfficeTabs, type OfficeTab } from "../lib/office-store";
 import { cellText, type Workbook } from "../lib/office-types";
@@ -41,6 +55,12 @@ function activeCellEditor(): HTMLInputElement | null {
 
 function workbookOf(): Workbook {
   return useOfficeTabs.getState().tabs[0].model as Workbook;
+}
+
+function cellAt(row: number, col: number): HTMLElement {
+  const element = document.querySelector<HTMLElement>(`[data-cell="${row}:${col}"]`);
+  if (!element) throw new Error(`cell ${row}:${col} is not rendered`);
+  return element;
 }
 
 describe("Calc keyboard entry is reliable without clicking between cells", () => {
@@ -207,6 +227,8 @@ describe("Calc keyboard entry is reliable without clicking between cells", () =>
     // After two Enter commits the selection is already on A3.
     const formulaBar = document.querySelector<HTMLInputElement>(".formula-input");
     expect(formulaBar).not.toBeNull();
+    // Desktop keeps the stock, non-docked bar under the ribbon.
+    expect(document.querySelector(".calc-formula-bar")?.classList.contains("is-docked")).toBe(false);
     await user.click(formulaBar!);
     await user.keyboard("=SUM(A1:A2){Enter}");
 
@@ -220,5 +242,117 @@ describe("Calc keyboard entry is reliable without clicking between cells", () =>
     await user.keyboard("9{Enter}");
     expect(document.querySelector<HTMLInputElement>(".name-box")?.value).toBe("A5");
     expect(cellText(workbookOf().sheets[0].cells.A4)).toBe("9");
+  });
+});
+
+describe("Calc pointer gestures", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+    vi.mocked(isAndroid).mockReturnValue(false);
+  });
+
+  it("extends the selection while a pointer is dragged across cells", () => {
+    const id = useOfficeTabs.getState().create("calc", "Untitled");
+    render(<Harness id={id} />);
+
+    fireEvent.pointerDown(cellAt(0, 0), { pointerId: 1, pointerType: "mouse", button: 0, clientX: 4, clientY: 4 });
+    // The move bubbles to the window listener, whose target still carries the
+    // cell data attributes; no hit-testing stub is needed in jsdom.
+    fireEvent.pointerMove(cellAt(0, 2), { pointerId: 1, pointerType: "mouse", clientX: 300, clientY: 4 });
+    fireEvent.pointerUp(window, { pointerId: 1, pointerType: "mouse" });
+
+    expect(document.querySelector<HTMLInputElement>(".name-box")?.value).toBe("C1:A1");
+    expect(cells().slice(0, 3).every((cell) => cell.classList.contains("is-selected"))).toBe(true);
+    expect(cells()[3].classList.contains("is-selected")).toBe(false);
+  });
+
+  it("fills formula cells down when the touch fill handle is dragged", async () => {
+    const user = userEvent.setup();
+    const id = useOfficeTabs.getState().create("calc", "Untitled");
+    render(<Harness id={id} />);
+
+    await user.click(cellAt(0, 0));
+    await user.keyboard("=B1+1{Enter}");
+    // The commit moved to A2; go back so the fill source is A1.
+    await user.click(cellAt(0, 0));
+
+    const handle = document.querySelector<HTMLElement>("[data-fill-handle]");
+    expect(handle).not.toBeNull();
+    fireEvent.pointerDown(handle!, { pointerId: 7, pointerType: "touch", button: 0, clientX: 100, clientY: 40 });
+    fireEvent.pointerMove(cellAt(1, 0), { pointerId: 7, pointerType: "touch", clientX: 100, clientY: 64 });
+    fireEvent.pointerUp(window, { pointerId: 7, pointerType: "touch" });
+
+    const sheet = workbookOf().sheets[0];
+    expect(sheet.cells.A1?.formula).toBe("=B1+1");
+    // Filled down: the row reference follows, the column does not.
+    expect(sheet.cells.A2?.formula).toBe("=B2+1");
+  });
+
+  it("commits the docked formula bar with its check button on Android", async () => {
+    vi.mocked(isAndroid).mockReturnValue(true);
+    const user = userEvent.setup();
+    const id = useOfficeTabs.getState().create("calc", "Untitled");
+    render(<Harness id={id} />);
+
+    const bar = document.querySelector<HTMLElement>(".calc-formula-bar");
+    expect(bar).not.toBeNull();
+    expect(bar!.classList.contains("is-docked")).toBe(true);
+    // Only one bar is rendered on Android; the desktop one sits above the grid.
+    expect(document.querySelectorAll(".calc-formula-bar")).toHaveLength(1);
+
+    const input = bar!.querySelector<HTMLInputElement>(".formula-input")!;
+    await user.click(input);
+    await user.keyboard("=1+1");
+    await user.click(within(bar!).getByRole("button", { name: "Apply" }));
+
+    expect(workbookOf().sheets[0].cells.A1?.formula).toBe("=1+1");
+    expect(document.querySelector<HTMLInputElement>(".calc-formula-bar .formula-input")?.value).toBe("=1+1");
+  });
+
+  it("applies an autocomplete suggestion on pointerdown for touch", async () => {
+    const user = userEvent.setup();
+    const id = useOfficeTabs.getState().create("calc", "Untitled");
+    render(<Harness id={id} />);
+
+    const input = document.querySelector<HTMLInputElement>(".formula-input")!;
+    await user.click(input);
+    await user.type(input, "=SU");
+    const assist = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>(".calc-assist");
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    // The catalogue is alphabetical, so pick the SUM row explicitly.
+    const option = within(assist)
+      .getAllByRole("option")
+      .find((entry) => entry.textContent?.startsWith("SUM"));
+    expect(option).toBeDefined();
+    fireEvent.pointerDown(option!);
+
+    expect(input.value).toBe("=SUM(");
+  });
+});
+
+describe("Calc touch maths", () => {
+  it("clamps the pinched grid zoom to 0.6 - 2.0", () => {
+    expect(clampGridZoom(0.1)).toBe(0.6);
+    expect(clampGridZoom(9)).toBe(2);
+    expect(clampGridZoom(1.25)).toBe(1.25);
+  });
+
+  it("scales the starting zoom by the pinch distance ratio", () => {
+    expect(pinchGridZoom(1, 100, 200)).toBe(2);
+    // 1 * 50/100 would be 0.5; the floor keeps the grid usable.
+    expect(pinchGridZoom(1, 100, 50)).toBe(0.6);
+    // A degenerate gesture keeps the zoom it started with.
+    expect(pinchGridZoom(1.5, 0, 0)).toBe(1.5);
+  });
+
+  it("shifts relative column references and leaves absolute ones", () => {
+    expect(shiftFormulaColumns("=SUM(A1:B2)", 2)).toBe("=SUM(C1:D2)");
+    expect(shiftFormulaColumns("=$A1+B$2", 1)).toBe("=$A1+C$2");
+    // Function names and typed-in lower case survive untouched.
+    expect(shiftFormulaColumns("=sum(a1:b1)", 1)).toBe("=sum(b1:c1)");
+    expect(shiftFormulaColumns(null, 1)).toBeNull();
   });
 });

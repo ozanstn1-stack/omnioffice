@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
@@ -76,12 +77,17 @@ import { Vault } from "./screens/Vault";
 import { PdfStudio } from "./screens/PdfStudio";
 import { CompatibilityScreen } from "./screens/Compatibility";
 import { JobsScreen } from "./screens/Jobs";
+import { Sync } from "./screens/Sync";
+import { Plugins } from "./screens/Plugins";
 import { CommandPalette, GlobalSearch } from "./components/command-palette";
 import { registerCommand, setCommandTranslator, unregisterCommand } from "./lib/commands";
-import { useJobs as useBackgroundJobs } from "./lib/jobs";
+import { resumeJobs, useJobs as useBackgroundJobs } from "./lib/jobs";
 import { OverwriteDialog, PasswordDialog, Toasts } from "./components/files";
+import { DataLossDialogHost } from "./components/data-loss-dialog";
 import { Badge, IconButton } from "./components/ui";
-import { isAndroid, pickAndroidFiles } from "./lib/mobile";
+import { isAndroid, openAnyFile, pickAndroidFiles } from "./lib/mobile";
+import { isImage } from "./lib/format";
+import { navigationActionFromState, overlayHistoryState, recordScreenVisit, type NavigationSnapshot } from "./lib/nav-history";
 import { OfficeWorkspace } from "./office/OfficeWorkspace";
 import { openIntoWorkspace } from "./office/useOfficeSession";
 import { CleanerScreen, ConverterScreen, DataScreen, DrawScreen, NotesScreen, PdfFormsScreen, PlannerScreen, TemplatesScreen } from "./office/ToolsScreens";
@@ -89,6 +95,11 @@ import { isOfficePath, openOfficePath, useOfficeTabs } from "./lib/office-store"
 import * as officeApi from "./lib/office-api";
 
 type PageToolTab = "extract" | "delete" | "rotate" | "resize" | "crop" | "numbering";
+
+/** Reads and clears the Android open-with queue filled by MainActivity.kt. */
+async function takePendingAndroidOpen(): Promise<string[]> {
+  return invoke<string[]>("android_take_pending_open");
+}
 
 export default function App() {
   const t = useT();
@@ -112,6 +123,9 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 900);
   const backgroundJobs = useBackgroundJobs((state) => state.jobs.filter((job) => job.status === "running").length);
+  // WebView history bridge for the Android back button (see lib/nav-history).
+  const navSnapshotRef = useRef<NavigationSnapshot>({ screen: "home", files: [] });
+  const overlayGuardRef = useRef(false);
 
   // Phones always use the drawer navigation; desktop windows switch to it
   // when they get narrow enough for the sidebar to waste space.
@@ -144,10 +158,70 @@ export default function App() {
     setScreen(next);
   }, []);
 
+  // Record one webview history entry per screen so the system back button can
+  // walk the app's own stack. Same-screen file refreshes replace the entry
+  // instead of stacking. This effect must stay before the overlay guard below:
+  // a palette navigation has to push the new screen before the guard is popped.
+  useEffect(() => {
+    recordScreenVisit(history, navSnapshotRef.current, { screen, files });
+    navSnapshotRef.current = { screen, files };
+  }, [screen, files]);
+
+  // Overlays push a guard entry, so back closes them first. When the user
+  // closes an overlay through the UI the guard is popped here to stay in sync.
+  const overlayOpen = navOpen || paletteOpen || searchOpen;
+  useEffect(() => {
+    if (overlayOpen && !overlayGuardRef.current) {
+      overlayGuardRef.current = true;
+      history.pushState(overlayHistoryState(), "");
+    } else if (!overlayOpen && overlayGuardRef.current) {
+      overlayGuardRef.current = false;
+      history.back();
+    }
+  }, [overlayOpen]);
+
+  // Back button / Alt+Left: turn history states back into navigation.
+  useEffect(() => {
+    const onPopState = (event: PopStateEvent) => {
+      // While an overlay is open its guard entry sits on top of the current
+      // screen, so this back press just closes the overlay.
+      if (overlayGuardRef.current) {
+        overlayGuardRef.current = false;
+        setNavOpen(false);
+        setPaletteOpen(false);
+        setSearchOpen(false);
+        return;
+      }
+      const action = navigationActionFromState(event.state);
+      if (action.kind === "close-overlays") {
+        // Landing on a guard entry happens when the UI already closed an
+        // overlay and popped the guard itself; nothing left to do.
+        return;
+      }
+      if (action.kind === "navigate") {
+        // Update the snapshot first so the screen effect above replaces the
+        // entry instead of pushing a duplicate while the webview is moving.
+        navSnapshotRef.current = { screen: action.screen, files: action.files };
+        setFiles(action.files);
+        setScreen(action.screen);
+        return;
+      }
+      // Walked past the first app entry: Home is the root, the next back press
+      // leaves the app.
+      navSnapshotRef.current = { screen: "home", files: [] };
+      setFiles([]);
+      setScreen("home");
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   // Global initialization
   useEffect(() => {
     void init();
     void refreshRecent();
+    // Loads persisted job records (running ones come back as interrupted).
+    void resumeJobs();
     let unlisten: (() => void) | undefined;
     void attachJobs().then((fn) => {
       unlisten = fn;
@@ -324,6 +398,69 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Routes documents that arrived through an Android open-with intent to the
+  // tool that can handle them. Unknown leftovers are handed to the system
+  // viewer so nothing is silently dropped.
+  const handleIncomingPaths = useCallback((paths: string[]) => {
+    const officePaths = paths.filter((path) => isOfficePath(path));
+    if (officePaths.length > 0) {
+      setScreen("office");
+      for (const path of officePaths) void openOfficePath(path);
+      return;
+    }
+    const pdfPaths = paths.filter((path) => path.toLowerCase().endsWith(".pdf"));
+    if (pdfPaths.length > 0) {
+      setFiles(pdfPaths);
+      setScreen("reader");
+      return;
+    }
+    const imagePaths = paths.filter((path) => isImage(path));
+    if (imagePaths.length > 0) {
+      setFiles(imagePaths);
+      setScreen("imagesToPdf");
+      return;
+    }
+    for (const path of paths) void openAnyFile(path).catch(() => undefined);
+  }, []);
+
+  // Android open-with: MainActivity copies shared documents into the cache and
+  // queues their paths. The copy runs on a background thread, so the queue is
+  // polled once shortly after mount, when the app returns to the foreground,
+  // and continuously while the activity is visible - a share sent to an app
+  // that is already on screen (singleTask -> onNewIntent) never triggers a
+  // visibility change, so the poll is what makes that case work. The command
+  // is a small file read and returns nothing when the queue is empty.
+  useEffect(() => {
+    if (!isAndroid()) return;
+    let cancelled = false;
+    const seen = new Set<string>();
+    const drain = () => {
+      void takePendingAndroidOpen()
+        .then((paths) => {
+          if (cancelled || !paths.length) return;
+          const fresh = paths.filter((path) => !seen.has(path));
+          for (const path of fresh) seen.add(path);
+          if (fresh.length > 0) handleIncomingPaths(fresh);
+        })
+        .catch(() => undefined);
+    };
+    drain();
+    const retry = window.setTimeout(drain, 900);
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === "visible") drain();
+    }, 2500);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") drain();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(retry);
+      window.clearInterval(poll);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [handleIncomingPaths]);
+
   const homeDrop = useCallback((paths: string[]) => {
     setFiles(paths);
     setDropHandler(null);
@@ -383,6 +520,8 @@ export default function App() {
       pdfStudio: <PdfStudio initialFiles={files} dragging={dragging} />,
       compat: <CompatibilityScreen />,
       jobs: <JobsScreen />,
+      sync: <Sync />,
+      plugins: <Plugins />,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [convertTab, dragging, files, homeDrop, navigate, pageToolTab, securityTab],
@@ -467,6 +606,8 @@ export default function App() {
       items: [
         { id: "batch", label: t("nav.batch"), icon: <Archive size={16} /> },
         { id: "jobs", label: t("nav.jobs"), icon: <ListChecks size={16} /> },
+        { id: "sync", label: t("nav.sync"), icon: <Repeat size={16} /> },
+        { id: "plugins", label: t("nav.plugins"), icon: <Puzzle size={16} /> },
         { id: "compat", label: t("nav.compat"), icon: <ShieldCheck size={16} /> },
         { id: "info", label: t("nav.info"), icon: <Info size={16} /> },
         { id: "history", label: t("nav.history"), icon: <FolderClock size={16} /> },
@@ -556,6 +697,9 @@ export default function App() {
         <Toasts />
         <OverwriteDialog />
         <PasswordDialog />
+        {/* One global host so the compatibility gate also covers the
+            converter, which is not rendered inside the office workspace. */}
+        <DataLossDialogHost />
         <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} context={{ screen }} onNavigate={(next) => setScreen(next as ScreenId)} />
         <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} onOpenPath={openAnyPath} onNavigate={(next) => setScreen(next as ScreenId)} />
       </div>
@@ -632,6 +776,8 @@ export default function App() {
       <Toasts />
       <OverwriteDialog />
       <PasswordDialog />
+      {/* Global compatibility gate host (converter + office workspace). */}
+      <DataLossDialogHost />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} context={{ screen }} onNavigate={(next) => setScreen(next as ScreenId)} />
       <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} onOpenPath={openAnyPath} onNavigate={(next) => setScreen(next as ScreenId)} />
     </div>

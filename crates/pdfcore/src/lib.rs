@@ -24,6 +24,7 @@
 //! * `sanitize`  - full-object removal of scripts, actions, attachments
 //! * `pdfa`      - PDF/A validation and best-effort conversion
 //! * `flatten`   - annotation and form flattening
+//! * `forms`     - AcroForm fields (list/fill/validate) and page object editing
 
 pub mod annotate;
 pub mod compare;
@@ -33,6 +34,8 @@ pub mod docutil;
 pub mod engines;
 pub mod error;
 pub mod flatten;
+pub mod fontembed;
+pub mod forms;
 pub mod images;
 pub mod info;
 pub mod inspect;
@@ -49,6 +52,7 @@ pub mod redact;
 pub mod render;
 pub mod sanitize;
 pub mod security;
+pub mod sign;
 pub mod textbox;
 pub mod textimg;
 pub mod watermark;

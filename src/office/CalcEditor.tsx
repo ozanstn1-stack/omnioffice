@@ -12,6 +12,7 @@ import {
   ArrowUpAZ,
   BarChart3,
   Bold,
+  Check,
   Copy,
   Eraser,
   Eye,
@@ -34,8 +35,10 @@ import {
   Underline,
   Undo2,
   Snowflake,
+  X,
   XCircle,
 } from "lucide-react";
+import { isAndroid } from "../lib/mobile";
 import type { OfficeTab, Workbook } from "../lib/office-store";
 import { useOfficeTabs } from "../lib/office-store";
 import { useT, type Translate } from "../lib/i18n";
@@ -294,6 +297,84 @@ function uniqueColumnName(columns: readonly string[], base: string): string {
   return name;
 }
 
+// ---------------------------------------------------------------------------
+// Touch interaction maths (pure so jsdom can test them)
+// ---------------------------------------------------------------------------
+
+/** Clamps a grid zoom factor so a pinch can never shrink the grid away. */
+export function clampGridZoom(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(2, Math.max(0.6, Number(value.toFixed(3))));
+}
+
+/** The zoom a two-finger pinch asks for: `startZoom` scaled by the distance ratio. */
+export function pinchGridZoom(startZoom: number, startDistance: number, distance: number): number {
+  if (!Number.isFinite(distance) || !Number.isFinite(startDistance) || startDistance <= 0) return startZoom;
+  return clampGridZoom(startZoom * (distance / startDistance));
+}
+
+/**
+ * Column shift for a fill-right, mirroring `shiftFormulaRows` in cells.ts:
+ * relative column references move, absolute (`$A`) and the row stay put.
+ */
+export function shiftFormulaColumns(formula: string | null, delta: number): string | null {
+  if (!formula || delta === 0) return formula;
+  return formula.replace(/(?<![A-Za-z0-9_$])(\$?)([A-Za-z]{1,3})(\$?)(\d{1,7})(?![A-Za-z0-9_(])/g, (match, dollarCol: string, letters: string, dollarRow: string, digits: string) => {
+    const position = parseAddress(`${letters}${digits}`);
+    if (position === null || dollarCol) return match;
+    const next = position.col + delta;
+    if (next < 0 || next >= 16_384) return match;
+    const label = columnLabel(next);
+    // Keep the case the author typed, like shiftFormulaRows keeps the letters.
+    return `${letters === letters.toLowerCase() ? label.toLowerCase() : label}${dollarRow}${digits}`;
+  });
+}
+
+/** The element carrying `attribute` under a pointer event: the event target
+ * when the event bubbles from it, or hit-testing at the pointer's coordinates
+ * when the pointer is captured by the grid (capture retargets every move). */
+function attributeAtEvent(event: PointerEvent | React.PointerEvent, attribute: string): HTMLElement | null {
+  const closest = (element: Element | null | undefined) => element?.closest?.<HTMLElement>(`[${attribute}]`) ?? null;
+  const fromTarget = closest(event.target as Element | null);
+  if (fromTarget) return fromTarget;
+  if (typeof document.elementFromPoint !== "function") return null;
+  return closest(document.elementFromPoint(event.clientX, event.clientY));
+}
+
+/** The cell under a pointer event, or null. */
+function cellAtEvent(event: PointerEvent | React.PointerEvent): CellPosition | null {
+  const element = attributeAtEvent(event, "data-cell");
+  return element ? { row: Number(element.dataset.row), col: Number(element.dataset.col) } : null;
+}
+
+interface DragBounds {
+  start: CellPosition;
+  end: CellPosition;
+}
+
+type GridGesture =
+  | { kind: "cells"; pointerId: number; anchor: CellPosition; startX: number; startY: number; moved: boolean }
+  | { kind: "rows"; pointerId: number; anchorRow: number }
+  | { kind: "cols"; pointerId: number; anchorCol: number }
+  | { kind: "resize"; pointerId: number; col: number; startX: number; startWidth: number }
+  | { kind: "fill"; pointerId: number; source: DragBounds; target: CellPosition }
+  | { kind: "pan"; pointerId: number; startX: number; startY: number; scrollLeft: number; scrollTop: number };
+
+interface PinchGesture {
+  startDistance: number;
+  startZoom: number;
+  /** Midpoint of the previous move, so two-finger pans are incremental and
+   * survive a zoom change in the middle of the gesture. */
+  lastMidX: number;
+  lastMidY: number;
+  /** Canvas coordinates under the pinch midpoint at the last move. */
+  contentX: number;
+  contentY: number;
+  /** Midpoint relative to the grid viewport at the last move. */
+  localX: number;
+  localY: number;
+}
+
 export function CalcEditor({ tab }: { tab: CalcTab }) {
   const t = useT();
   const workbook = tab.model;
@@ -330,10 +411,25 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const [draftCaret, setDraftCaret] = useState(0);
   const [suggestIndex, setSuggestIndex] = useState(0);
   const [suggestDismissed, setSuggestDismissed] = useState(false);
-  const [assistAnchor, setAssistAnchor] = useState<{ left: number; top: number } | null>(null);
+  const [assistAnchor, setAssistAnchor] = useState<{ left: number; top: number; above?: boolean } | null>(null);
   const [tableDialog, setTableDialog] = useState(false);
   const [tablesPanel, setTablesPanel] = useState(false);
   const [trace, setTrace] = useState<{ kind: "precedents" | "dependents"; cells: AuditNode[] } | null>(null);
+  // Touch zoom on the grid. 1 is the desktop layout; the pinch gesture moves
+  // it inside [0.6, 2] (see pinchGridZoom).
+  const [gridZoom, setGridZoom] = useState(1);
+  const android = isAndroid();
+  // Some Android WebViews overlay the soft keyboard instead of resizing the
+  // viewport; visualViewport reports the covered height so the docked bar can
+  // be lifted above it. When the viewport does resize this stays 0.
+  const [keyboardInset, setKeyboardInset] = useState(0);
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const gestureRef = useRef<GridGesture | null>(null);
+  const pinchRef = useRef<PinchGesture | null>(null);
+  const pinchFocalRef = useRef<PinchGesture | null>(null);
+  const lastTapRef = useRef<{ row: number; col: number; time: number } | null>(null);
+  const gridZoomRef = useRef(gridZoom);
+  gridZoomRef.current = gridZoom;
 
   const setEditing = useCallback((next: EditingCell | null) => {
     editingRef.current = next;
@@ -373,7 +469,13 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       return;
     }
     const rect = input.getBoundingClientRect();
-    setAssistAnchor({ left: rect.left, top: rect.bottom + 2 });
+    // The Android bar is docked at the bottom and the soft keyboard shrinks
+    // (or covers) the visible area, so the popup flips above the input when
+    // space runs out. visualViewport is the usable height in overlay mode.
+    const viewport = window.visualViewport;
+    const usableBottom = Math.min(window.innerHeight, viewport ? viewport.height + viewport.offsetTop : window.innerHeight);
+    const above = rect.bottom + 200 > usableBottom;
+    setAssistAnchor({ left: rect.left, top: above ? rect.top - 4 : rect.bottom + 2, above });
   }, [focusMode, assistText, assistCaret, editing]);
 
   /** Replaces the current token with the picked suggestion. */
@@ -452,6 +554,19 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   }, []);
 
   useEffect(() => {
+    if (!android || !window.visualViewport) return;
+    const viewport = window.visualViewport;
+    const update = () => setKeyboardInset(Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop)));
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    update();
+    return () => {
+      viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
+    };
+  }, [android]);
+
+  useEffect(() => {
     setFormulaDraft(activeCell?.formula ?? cellText(activeCell));
   }, [selection.focus.row, selection.focus.col, activeCell]);
 
@@ -526,16 +641,19 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       };
       const grid = gridRef.current;
       if (!grid) return clamped;
+      // Scroll offsets are outer pixels; the cell geometry is in canvas
+      // coordinates, so the zoom the canvas is laid out with maps between.
+      const zoom = gridZoomRef.current;
       let left = 0;
       for (let col = 0; col < clamped.col; col += 1) left += sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH;
       const width = sheet.colWidths[String(clamped.col)] ?? DEFAULT_COL_WIDTH;
       const top = clamped.row * (sheet.rowHeights[String(clamped.row)] ?? ROW_HEIGHT);
       const height = sheet.rowHeights[String(clamped.row)] ?? ROW_HEIGHT;
-      if (top < grid.scrollTop) grid.scrollTop = top;
-      else if (top + height > grid.scrollTop + grid.clientHeight) grid.scrollTop = top + height - grid.clientHeight;
-      if (left < grid.scrollLeft) grid.scrollLeft = Math.max(0, left);
-      else if (left + width > grid.scrollLeft + grid.clientWidth - HEADER_WIDTH) {
-        grid.scrollLeft = left + width - grid.clientWidth + HEADER_WIDTH;
+      if (top * zoom < grid.scrollTop) grid.scrollTop = top * zoom;
+      else if ((top + height) * zoom > grid.scrollTop + grid.clientHeight) grid.scrollTop = (top + height) * zoom - grid.clientHeight;
+      if (left * zoom < grid.scrollLeft) grid.scrollLeft = Math.max(0, left * zoom);
+      else if ((left + width) * zoom > grid.scrollLeft + grid.clientWidth - HEADER_WIDTH * zoom) {
+        grid.scrollLeft = (left + width) * zoom - grid.clientWidth + HEADER_WIDTH * zoom;
       }
       return clamped;
     },
@@ -572,6 +690,328 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     // would run at all and the grid stayed unfocused.
     if (restoreFocus) gridRef.current?.focus({ preventScroll: true });
   };
+
+  // -------------------------------------------------------------------------
+  // Pointer interaction (mouse, pen and touch share one code path)
+  //
+  // Pointer events are the single source of truth: Chromium fires them for
+  // mouse input too, so a parallel mouse handler would process every drag
+  // twice. The window-level move/up listeners keep a gesture alive when the
+  // pointer leaves the grid, which happens on every touch drag.
+  // -------------------------------------------------------------------------
+
+  const pointerMoveRef = useRef<(event: PointerEvent) => void>(() => undefined);
+  const pointerUpRef = useRef<(event: PointerEvent) => void>(() => undefined);
+
+  /** Touch keeps receiving move events outside the element; the mouse does not
+   * capture so double-click still targets the cell it happened on. */
+  const captureGridPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse") return;
+    try {
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    } catch {
+      // Pointer capture is unavailable (older webviews, jsdom).
+    }
+  };
+
+  const releaseGridPointer = (pointerId: number) => {
+    try {
+      gridRef.current?.releasePointerCapture?.(pointerId);
+    } catch {
+      // Not captured.
+    }
+  };
+
+  /** Scrolls the grid when a selection drag reaches an edge. */
+  const autoScrollGrid = (clientX: number, clientY: number) => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const rect = grid.getBoundingClientRect();
+    const margin = 32;
+    const step = 24;
+    if (clientX < rect.left + HEADER_WIDTH + margin) grid.scrollLeft = Math.max(0, grid.scrollLeft - step);
+    else if (clientX > rect.right - margin) grid.scrollLeft += step;
+    if (clientY < rect.top + ROW_HEIGHT + margin) grid.scrollTop = Math.max(0, grid.scrollTop - step);
+    else if (clientY > rect.bottom - margin) grid.scrollTop += step;
+  };
+
+  /**
+   * Repeats the fill source over the dragged range, shifting relative
+   * references the way Ctrl+D does. The source block tiles, so a two-row
+   * source repeats those two rows instead of duplicating the last one.
+   */
+  const fillFromHandle = (source: DragBounds, target: CellPosition) => {
+    const height = source.end.row - source.start.row + 1;
+    const width = source.end.col - source.start.col + 1;
+    const entries: Array<{ row: number; col: number; cell: Cell }> = [];
+    for (let row = source.start.row; row <= target.row; row += 1) {
+      for (let col = source.start.col; col <= target.col; col += 1) {
+        if (row <= source.end.row && col <= source.end.col) continue;
+        const fromRow = source.start.row + ((row - source.start.row) % height);
+        const fromCol = source.start.col + ((col - source.start.col) % width);
+        const cell = sheet.cells[formatAddress(fromRow, fromCol)] ?? emptyCell();
+        entries.push({
+          row,
+          col,
+          cell: { ...cell, formula: shiftFormulaColumns(shiftFormulaRows(cell.formula, row - fromRow), col - fromCol) },
+        });
+      }
+    }
+    if (entries.length) setCells(entries);
+    setSelection({ anchor: source.start, focus: target });
+  };
+
+  /** Ends a gesture and applies whatever it previewed. */
+  const endGridGesture = (pointerId: number) => {
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== pointerId) return;
+    gestureRef.current = null;
+    if (gesture.kind === "fill") fillFromHandle(gesture.source, gesture.target);
+  };
+
+  const handleGridPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    gridRef.current?.focus({ preventScroll: true });
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointersRef.current.size >= 2) {
+      // A second finger turns the gesture into pinch zoom plus two-finger pan;
+      // that is also how the sheet scrolls, because touch-action: none on the
+      // grid keeps the browser from scrolling it natively.
+      gestureRef.current = null;
+      const [a, b] = [...pointersRef.current.values()];
+      const grid = gridRef.current;
+      const rect = grid?.getBoundingClientRect();
+      const zoom = gridZoomRef.current;
+      const localX = (a.x + b.x) / 2 - (rect?.left ?? 0);
+      const localY = (a.y + b.y) / 2 - (rect?.top ?? 0);
+      pinchRef.current = {
+        startDistance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+        startZoom: zoom,
+        lastMidX: (a.x + b.x) / 2,
+        lastMidY: (a.y + b.y) / 2,
+        contentX: ((grid?.scrollLeft ?? 0) + localX) / zoom,
+        contentY: ((grid?.scrollTop ?? 0) + localY) / zoom,
+        localX,
+        localY,
+      };
+      pinchFocalRef.current = null;
+      return;
+    }
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    // Text inputs inside cells and the suggestion popup keep their own
+    // hit-testing: capturing the pointer for the grid would steal the caret.
+    if (target.closest?.("input, textarea, select, [contenteditable=true]")) return;
+    const resize = target.closest?.<HTMLElement>("[data-col-resize]");
+    if (resize) {
+      // Checked before the column header because the grip lives inside it.
+      const col = Number(resize.dataset.col);
+      gestureRef.current = {
+        kind: "resize",
+        pointerId: event.pointerId,
+        col,
+        startX: event.clientX,
+        startWidth: sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH,
+      };
+      captureGridPointer(event);
+      return;
+    }
+    const handle = target.closest?.<HTMLElement>("[data-fill-handle]");
+    if (handle) {
+      const bounds = selectionBounds;
+      gestureRef.current = { kind: "fill", pointerId: event.pointerId, source: { start: { ...bounds.start }, end: { ...bounds.end } }, target: { ...bounds.end } };
+      captureGridPointer(event);
+      return;
+    }
+    const cell = target.closest?.<HTMLElement>("[data-cell]");
+    if (cell) {
+      const position = { row: Number(cell.dataset.row), col: Number(cell.dataset.col) };
+      gestureRef.current = { kind: "cells", pointerId: event.pointerId, anchor: position, startX: event.clientX, startY: event.clientY, moved: false };
+      setSelection(event.shiftKey ? { anchor: selection.anchor, focus: position } : { anchor: position, focus: position });
+      captureGridPointer(event);
+      return;
+    }
+    const rowHeader = target.closest?.<HTMLElement>("[data-row-header]");
+    if (rowHeader) {
+      const row = Number(rowHeader.dataset.row);
+      gestureRef.current = { kind: "rows", pointerId: event.pointerId, anchorRow: row };
+      setSelection({ anchor: { row, col: 0 }, focus: { row, col: sheet.colCount - 1 } });
+      captureGridPointer(event);
+      return;
+    }
+    const colHeader = target.closest?.<HTMLElement>("[data-col-header]");
+    if (colHeader) {
+      const col = Number(colHeader.dataset.col);
+      gestureRef.current = { kind: "cols", pointerId: event.pointerId, anchorCol: col };
+      setSelection({ anchor: { row: 0, col }, focus: { row: sheet.rowCount - 1, col } });
+      captureGridPointer(event);
+      return;
+    }
+    // Empty canvas: one-finger pan for touch, drag-pan for the mouse.
+    const grid = gridRef.current;
+    if (grid) {
+      gestureRef.current = { kind: "pan", pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, scrollLeft: grid.scrollLeft, scrollTop: grid.scrollTop };
+      captureGridPointer(event);
+    }
+  };
+
+  const handleWindowPointerMove = (event: PointerEvent) => {
+    const points = pointersRef.current;
+    if (!points.has(event.pointerId)) return;
+    points.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    const pinch = pinchRef.current;
+    if (pinch && points.size >= 2) {
+      const [a, b] = [...points.values()];
+      const midX = (a.x + b.x) / 2;
+      const midY = (a.y + b.y) / 2;
+      const grid = gridRef.current;
+      const rect = grid?.getBoundingClientRect();
+      const localX = midX - (rect?.left ?? 0);
+      const localY = midY - (rect?.top ?? 0);
+      const current = gridZoomRef.current;
+      const nextZoom = pinchGridZoom(pinch.startZoom, pinch.startDistance, Math.hypot(a.x - b.x, a.y - b.y));
+      if (nextZoom !== current) {
+        // The zoom commits asynchronously; the focal point is applied in the
+        // layout effect once the canvas has its new size.
+        pinch.localX = localX;
+        pinch.localY = localY;
+        pinch.contentX = ((grid?.scrollLeft ?? 0) + localX) / current;
+        pinch.contentY = ((grid?.scrollTop ?? 0) + localY) / current;
+        pinchFocalRef.current = { ...pinch };
+        setGridZoom(nextZoom);
+      } else if (grid) {
+        // Two-finger pan without a zoom change. Zoom changes pan through the
+        // focal point instead, so this branch and the effect never both apply.
+        // Panning is relative to the previous midpoint so it composes with a
+        // zoom change in the middle of the same gesture.
+        grid.scrollLeft = Math.max(0, grid.scrollLeft - (midX - pinch.lastMidX));
+        grid.scrollTop = Math.max(0, grid.scrollTop - (midY - pinch.lastMidY));
+      }
+      pinch.lastMidX = midX;
+      pinch.lastMidY = midY;
+      return;
+    }
+
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    if (gesture.kind === "pan") {
+      const grid = gridRef.current;
+      if (!grid) return;
+      grid.scrollLeft = gesture.scrollLeft - (event.clientX - gesture.startX);
+      grid.scrollTop = gesture.scrollTop - (event.clientY - gesture.startY);
+      return;
+    }
+    if (gesture.kind === "resize") {
+      const width = Math.max(32, gesture.startWidth + (event.clientX - gesture.startX) / gridZoomRef.current);
+      updateSheet((current) => ({ ...current, colWidths: { ...current.colWidths, [gesture.col]: width } }));
+      return;
+    }
+    autoScrollGrid(event.clientX, event.clientY);
+    if (gesture.kind === "cells") {
+      const cell = cellAtEvent(event);
+      if (!cell) return;
+      if (Math.abs(event.clientX - gesture.startX) + Math.abs(event.clientY - gesture.startY) > 4) gesture.moved = true;
+      setSelection({
+        anchor: gesture.anchor,
+        focus: {
+          row: Math.min(Math.max(0, cell.row), sheet.rowCount - 1),
+          col: Math.min(Math.max(0, cell.col), sheet.colCount - 1),
+        },
+      });
+      return;
+    }
+    if (gesture.kind === "fill") {
+      const cell = cellAtEvent(event);
+      if (!cell) return;
+      const end = {
+        row: Math.max(gesture.source.end.row, Math.min(sheet.rowCount - 1, cell.row)),
+        col: Math.max(gesture.source.end.col, Math.min(sheet.colCount - 1, cell.col)),
+      };
+      gesture.target = end;
+      setSelection({ anchor: gesture.source.start, focus: end });
+      return;
+    }
+    if (gesture.kind === "rows") {
+      const header = attributeAtEvent(event, "data-row-header");
+      if (!header) return;
+      const row = Math.min(Math.max(0, Number(header.dataset.row)), sheet.rowCount - 1);
+      setSelection({ anchor: { row: gesture.anchorRow, col: 0 }, focus: { row, col: sheet.colCount - 1 } });
+      return;
+    }
+    if (gesture.kind === "cols") {
+      const header = attributeAtEvent(event, "data-col-header");
+      if (!header) return;
+      const col = Math.min(Math.max(0, Number(header.dataset.col)), sheet.colCount - 1);
+      setSelection({ anchor: { row: 0, col: gesture.anchorCol }, focus: { row: sheet.rowCount - 1, col } });
+    }
+  };
+
+  const handleWindowPointerUp = (event: PointerEvent) => {
+    const points = pointersRef.current;
+    if (!points.has(event.pointerId)) return;
+    points.delete(event.pointerId);
+    releaseGridPointer(event.pointerId);
+
+    if (pinchRef.current) {
+      if (points.size < 2) {
+        pinchRef.current = null;
+        pinchFocalRef.current = null;
+        // A finger remains: let it keep panning.
+        const [remaining] = points.entries();
+        const grid = gridRef.current;
+        if (remaining && grid && event.pointerType !== "mouse") {
+          gestureRef.current = { kind: "pan", pointerId: remaining[0], startX: remaining[1].x, startY: remaining[1].y, scrollLeft: grid.scrollLeft, scrollTop: grid.scrollTop };
+        }
+      }
+      return;
+    }
+
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    endGridGesture(event.pointerId);
+    // Double-tap on a cell opens the inline editor: touch never produces a
+    // native dblclick once the grid claims the gesture.
+    if (gesture.kind === "cells" && !gesture.moved && event.pointerType !== "mouse") {
+      const now = Date.now();
+      const previous = lastTapRef.current;
+      if (previous && now - previous.time < 350 && previous.row === gesture.anchor.row && previous.col === gesture.anchor.col) {
+        lastTapRef.current = null;
+        const cell = sheet.cells[formatAddress(gesture.anchor.row, gesture.anchor.col)];
+        setEditing({ row: gesture.anchor.row, col: gesture.anchor.col, value: cell?.formula ?? cellText(cell) });
+      } else {
+        lastTapRef.current = { row: gesture.anchor.row, col: gesture.anchor.col, time: now };
+      }
+    }
+  };
+
+  pointerMoveRef.current = handleWindowPointerMove;
+  pointerUpRef.current = handleWindowPointerUp;
+
+  useEffect(() => {
+    const move = (event: PointerEvent) => pointerMoveRef.current(event);
+    const up = (event: PointerEvent) => pointerUpRef.current(event);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+  }, []);
+
+  // Keeps the sheet point that sat under the pinch midpoint under it after the
+  // canvas has been laid out at the new zoom (CSS zoom resizes the scroll
+  // extent, so adjusting the scroll before the commit would be clamped).
+  useLayoutEffect(() => {
+    const focal = pinchFocalRef.current;
+    if (!focal || !pinchRef.current) return;
+    const grid = gridRef.current;
+    if (!grid) return;
+    const zoom = gridZoomRef.current;
+    grid.scrollLeft = focal.contentX * zoom - focal.localX;
+    grid.scrollTop = focal.contentY * zoom - focal.localY;
+  }, [gridZoom]);
 
   const applyStyle = (patch: Partial<CellStyle>) => {
     const addresses = addressesInRange(`${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`);
@@ -1162,26 +1602,33 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   }, [sheet]);
 
   const visible = useMemo(() => {
+    // The grid reports scroll offsets in outer pixels, while the canvas is
+    // laid out in canvas coordinates scaled by the pinch zoom; the window of
+    // cell indices comes from the unscaled numbers.
+    const viewTop = scroll.top / gridZoom;
+    const viewLeft = scroll.left / gridZoom;
+    const viewWidth = scroll.width / gridZoom;
+    const viewHeight = scroll.height / gridZoom;
     const rows: number[] = [];
-    const startRow = Math.max(0, Math.floor(scroll.top / ROW_HEIGHT) - 2);
-    const endRow = Math.min(sheet.rowCount - 1, startRow + Math.ceil(scroll.height / ROW_HEIGHT) + 4);
+    const startRow = Math.max(0, Math.floor(viewTop / ROW_HEIGHT) - 2);
+    const endRow = Math.min(sheet.rowCount - 1, startRow + Math.ceil(viewHeight / ROW_HEIGHT) + 4);
     for (let row = startRow; row <= endRow; row += 1) rows.push(row);
     const columns: Array<{ col: number; x: number }> = [];
     let x = 0;
     let startCol = 0;
     for (let col = 0; col < sheet.colCount; col += 1) {
       const width = sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH;
-      if (x + width < scroll.left) {
+      if (x + width < viewLeft) {
         x += width;
         startCol = col + 1;
         continue;
       }
-      if (x > scroll.left + scroll.width + 200) break;
-      columns.push({ col, x: x - scroll.left });
+      if (x > viewLeft + viewWidth + 200) break;
+      columns.push({ col, x });
       x += width;
     }
     return { rows, columns, startCol };
-  }, [scroll, sheet]);
+  }, [scroll, sheet, gridZoom]);
 
   const selectionBounds = useMemo(() => {
     const parts = parseRange(`${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`);
@@ -1270,10 +1717,18 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     return bars;
   }, [sheet, computed]);
 
+  /** Column offset inside the canvas; the browser scroll and the canvas zoom
+   * already move it on screen. */
   const columnX = (col: number) => {
     let x = 0;
     for (let index = 0; index < col; index += 1) x += sheet.colWidths[String(index)] ?? DEFAULT_COL_WIDTH;
-    return x - scroll.left + HEADER_WIDTH;
+    return x + HEADER_WIDTH;
+  };
+
+  // The touch-only fill handle sits on the selection's bottom-right corner.
+  const fillHandle = {
+    x: columnX(selectionBounds.end.col) + (sheet.colWidths[String(selectionBounds.end.col)] ?? DEFAULT_COL_WIDTH),
+    y: ROW_HEIGHT + selectionBounds.end.row * ROW_HEIGHT + (sheet.rowHeights[String(selectionBounds.end.row)] ?? ROW_HEIGHT),
   };
 
   const selectionAddress = formatAddress(selection.focus.row, selection.focus.col);
@@ -1306,8 +1761,92 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     setCells(entries);
   };
 
+  /** Commits the docked bar's draft; the Android twin of pressing Enter. */
+  const commitFormulaBar = () => {
+    if (!editingRef.current) setEditing({ row: selection.focus.row, col: selection.focus.col, value: formulaDraft });
+    commitEdit("none", false);
+  };
+
+  /** Reverts the docked bar; the Android twin of pressing Escape. */
+  const cancelFormulaBar = () => {
+    setEditing(null);
+    setFormulaDraft(activeCell?.formula ?? cellText(activeCell));
+    restoreGridFocusRef.current = false;
+  };
+
+  // On phones the bar is docked above the keyboard at the bottom of the
+  // editor; on desktop it keeps its place under the ribbon, byte for byte.
+  const formulaBar = (
+    <div className={`calc-formula-bar${android ? " is-docked" : ""}`}>
+      <input className="name-box" value={nameBox} onChange={(event) => {
+        const parts = parseRange(event.target.value.trim());
+        if (parts) setSelection({ anchor: parts.start, focus: parts.end });
+      }} />
+      <span className="fx">fx</span>
+      <input
+        className="formula-input"
+        ref={formulaInputRef}
+        value={editing ? editing.value : formulaDraft}
+        placeholder={t("calc.formulaHint")}
+        onFocus={(event) => {
+          setFocusMode("bar");
+          setSuggestDismissed(false);
+          setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length);
+        }}
+        onSelect={(event) => setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
+        onBlur={() => setFocusMode(null)}
+        onChange={(event) => {
+          setFormulaDraft(event.target.value);
+          setDraftCaret(event.target.selectionStart ?? event.target.value.length);
+          setSuggestDismissed(false);
+          // Read through the ref so the draft and the open editor can never
+          // disagree about the current text.
+          const current = editingRef.current;
+          if (current) setEditing({ row: current.row, col: current.col, value: event.target.value });
+        }}
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing) return;
+          // The popup owns Tab/Enter/Escape/arrows while it is open.
+          if (handleAssistKey(event)) return;
+          if (event.key === "Enter") {
+            event.preventDefault();
+            if (editingRef.current) {
+              commitEdit(event.shiftKey ? "up" : "down");
+            } else {
+              // Typing straight into the formula bar and pressing Enter has to
+              // commit the draft, not open the cell editor with a stale value.
+              setEditing({ row: selection.focus.row, col: selection.focus.col, value: formulaDraft });
+              commitEdit(event.shiftKey ? "up" : "down");
+            }
+            restoreGridFocusRef.current = true;
+          }
+          if (event.key === "Tab") {
+            event.preventDefault();
+            if (editingRef.current) commitEdit(event.shiftKey ? "left" : "right");
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            restoreGridFocusRef.current = true;
+            setEditing(null);
+            setFormulaDraft(activeCell?.formula ?? cellText(activeCell));
+          }
+        }}
+      />
+      {android ? (
+        <>
+          <button type="button" className="icon-btn calc-bar-action" aria-label={t("common.cancel")} onClick={cancelFormulaBar}>
+            <X size={17} />
+          </button>
+          <button type="button" className="icon-btn calc-bar-action is-primary" aria-label={t("common.apply")} onClick={commitFormulaBar}>
+            <Check size={17} />
+          </button>
+        </>
+      ) : null}
+    </div>
+  );
+
   return (
-    <div className="editor calc-editor">
+    <div className={`editor calc-editor${android ? " is-android" : ""}`} style={android && keyboardInset > 0 ? { paddingBottom: keyboardInset } : undefined}>
       <Ribbon
         tabs={[
           { id: "home", label: t("calc.tabHome") },
@@ -1446,62 +1985,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         </RibbonGroup>
       </Ribbon>
 
-      <div className="calc-formula-bar">
-        <input className="name-box" value={nameBox} onChange={(event) => {
-          const parts = parseRange(event.target.value.trim());
-          if (parts) setSelection({ anchor: parts.start, focus: parts.end });
-        }} />
-        <span className="fx">fx</span>
-        <input
-          className="formula-input"
-          ref={formulaInputRef}
-          value={editing ? editing.value : formulaDraft}
-          placeholder={t("calc.formulaHint")}
-          onFocus={(event) => {
-            setFocusMode("bar");
-            setSuggestDismissed(false);
-            setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length);
-          }}
-          onSelect={(event) => setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
-          onBlur={() => setFocusMode(null)}
-          onChange={(event) => {
-            setFormulaDraft(event.target.value);
-            setDraftCaret(event.target.selectionStart ?? event.target.value.length);
-            setSuggestDismissed(false);
-            // Read through the ref so the draft and the open editor can never
-            // disagree about the current text.
-            const current = editingRef.current;
-            if (current) setEditing({ row: current.row, col: current.col, value: event.target.value });
-          }}
-          onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return;
-            // The popup owns Tab/Enter/Escape/arrows while it is open.
-            if (handleAssistKey(event)) return;
-            if (event.key === "Enter") {
-              event.preventDefault();
-              if (editingRef.current) {
-                commitEdit(event.shiftKey ? "up" : "down");
-              } else {
-                // Typing straight into the formula bar and pressing Enter has to
-                // commit the draft, not open the cell editor with a stale value.
-                setEditing({ row: selection.focus.row, col: selection.focus.col, value: formulaDraft });
-                commitEdit(event.shiftKey ? "up" : "down");
-              }
-              restoreGridFocusRef.current = true;
-            }
-            if (event.key === "Tab") {
-              event.preventDefault();
-              if (editingRef.current) commitEdit(event.shiftKey ? "left" : "right");
-            }
-            if (event.key === "Escape") {
-              event.preventDefault();
-              restoreGridFocusRef.current = true;
-              setEditing(null);
-              setFormulaDraft(activeCell?.formula ?? cellText(activeCell));
-            }
-          }}
-        />
-      </div>
+      {!android ? formulaBar : null}
 
       {trace || selectedError ? (
         <div className="calc-audit-banner" style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 10px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)", fontSize: 12 }}>
@@ -1529,48 +2013,42 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           className="calc-grid"
           tabIndex={0}
           ref={gridRef}
-          onMouseDown={() => gridRef.current?.focus()}
+          onPointerDown={handleGridPointerDown}
           onKeyDown={handleKeyDown}
           onScroll={(event) => setScroll((current) => ({ ...current, top: (event.target as HTMLDivElement).scrollTop, left: (event.target as HTMLDivElement).scrollLeft }))}
           style={{ width: "100%", height: "100%" }}
         >
-          <div className="calc-canvas" style={{ width: HEADER_WIDTH + totalWidth, height: ROW_HEIGHT * (sheet.rowCount + 1) }}>
-            <div className="calc-col-headers" style={{ transform: `translate(${HEADER_WIDTH - scroll.left}px, 0)` }}>
+          <div className="calc-canvas" style={{ width: HEADER_WIDTH + totalWidth, height: ROW_HEIGHT * (sheet.rowCount + 1), zoom: gridZoom }}>
+            <div className="calc-col-headers" style={{ transform: `translate(${HEADER_WIDTH}px, ${scroll.top / gridZoom}px)` }}>
               {visible.columns.map(({ col, x }) => (
                 <div
                   key={col}
+                  data-col-header={col}
                   className={`calc-col-header${selection.focus.col === col ? " is-active" : ""}`}
                   style={{ left: x, width: sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH }}
-                  onMouseDown={() => setSelection({ anchor: { row: 0, col }, focus: { row: sheet.rowCount - 1, col } })}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     insertColumn(sheet, col, updateSheet);
                   }}
                 >
                   {columnLabel(col)}
-                  <span
-                    className="col-resize"
-                    onMouseDown={(event) => {
-                      event.stopPropagation();
-                      startColumnResize(event, col, sheet, updateSheet);
-                    }}
-                  />
+                  <span className="col-resize" data-col-resize={col} />
                 </div>
               ))}
             </div>
-            <div className="calc-row-headers" style={{ transform: `translate(0, ${ROW_HEIGHT - scroll.top}px)` }}>
+            <div className="calc-row-headers" style={{ transform: `translate(${scroll.left / gridZoom}px, 0)` }}>
               {visible.rows.map((row) => (
                 <div
                   key={row}
+                  data-row-header={row}
                   className={`calc-row-header${selection.focus.row === row ? " is-active" : ""}`}
                   style={{ top: row * ROW_HEIGHT, height: sheet.rowHeights[String(row)] ?? ROW_HEIGHT }}
-                  onMouseDown={() => setSelection({ anchor: { row, col: 0 }, focus: { row, col: sheet.colCount - 1 } })}
                 >
                   {row + 1}
                 </div>
               ))}
             </div>
-            <div className="calc-cells" style={{ transform: `translate(${HEADER_WIDTH - scroll.left}px, ${ROW_HEIGHT - scroll.top}px)`, width: totalWidth, height: ROW_HEIGHT * sheet.rowCount }}>
+            <div className="calc-cells" style={{ transform: `translate(${HEADER_WIDTH}px, 0)`, width: totalWidth, height: ROW_HEIGHT * sheet.rowCount }}>
               {visible.rows.map((row) =>
                 visible.columns.map(({ col, x }) => {
                   const address = formatAddress(row, col);
@@ -1604,6 +2082,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   return (
                     <div
                       key={address}
+                      data-cell={`${row}:${col}`}
+                      data-row={row}
+                      data-col={col}
                       className={`calc-cell${inSelection ? " is-selected" : ""}${invalid ? " is-invalid" : ""}`}
                       style={{
                         left: x,
@@ -1617,11 +2098,6 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                         color: style.color ?? (tableFill && tableHeader ? "#ffffff" : undefined),
                         textAlign: (style.align === "general" ? (typeof value === "number" ? "right" : "left") : style.align) as "left" | "right" | "center",
                         justifyContent: style.align === "center" ? "center" : style.align === "right" || (style.align === "general" && typeof value === "number") ? "flex-end" : "flex-start",
-                      }}
-                      onMouseDown={(event) => {
-                        gridRef.current?.focus();
-                        if (event.shiftKey) setSelection({ anchor: selection.anchor, focus: { row, col } });
-                        else setSelection({ anchor: { row, col }, focus: { row, col } });
                       }}
                       onDoubleClick={() => setEditing({ row, col, value: cell?.formula ?? cellText(cell) })}
                     >
@@ -1710,6 +2186,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 }),
               )}
             </div>
+            <span className="calc-fill-handle" data-fill-handle="" style={{ left: fillHandle.x - 5, top: fillHandle.y - 5 }} />
             {sheet.charts.map((chart) => {
               const position = parseAddress(chart.anchor) ?? { row: 0, col: 0 };
               return (
@@ -1719,7 +2196,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   sheet={sheet}
                   workbook={workbook}
                   x={columnX(position.col)}
-                  y={position.row * ROW_HEIGHT + ROW_HEIGHT - scroll.top}
+                  y={position.row * ROW_HEIGHT + ROW_HEIGHT}
                   onRemove={() => updateSheet((current) => ({ ...current, charts: current.charts.filter((candidate) => candidate.id !== chart.id) }))}
                 />
               );
@@ -1733,7 +2210,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   sheet={sheet}
                   workbook={workbook}
                   x={columnX(position.col)}
-                  y={position.row * ROW_HEIGHT + ROW_HEIGHT - scroll.top}
+                  y={position.row * ROW_HEIGHT + ROW_HEIGHT}
                   onRemove={() => updateSheet((current) => ({ ...current, pivotTables: (current.pivotTables ?? []).filter((candidate) => candidate.id !== pivot.id) }))}
                 />
               );
@@ -1778,6 +2255,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           {sheet.rowCount} × {sheet.colCount}
         </span>
       </div>
+
+      {android ? formulaBar : null}
 
       {chartDialog ? (
         <Dialog title={t("calc.chart")} onClose={() => setChartDialog(false)}>
@@ -1900,7 +2379,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       ) : null}
 
       {assistAnchor && focusMode !== null && (suggestions || argumentHint) ? (
-        <div className="calc-assist" style={{ position: "fixed", left: assistAnchor.left, top: assistAnchor.top, zIndex: 60, display: "flex", flexDirection: "column", gap: 4, maxWidth: 460 }}>
+        <div className="calc-assist" style={{ position: "fixed", left: assistAnchor.left, top: assistAnchor.top, transform: assistAnchor.above ? "translateY(-100%)" : undefined, zIndex: 60, display: "flex", flexDirection: "column", gap: 4, maxWidth: 460 }}>
           {argumentHint ? (
             <div
               style={{
@@ -1946,14 +2425,20 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   key={`${item.kind}:${item.label}`}
                   role="option"
                   aria-selected={index === suggestIndex}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => applySuggestion(item)}
+                  // Applied on pointerdown, not click: on touch the input would
+                  // blur before a click ever fires, and preventDefault keeps the
+                  // caret (and the soft keyboard) in the editor.
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    applySuggestion(item);
+                  }}
                   onMouseEnter={() => setSuggestIndex(index)}
                   style={{
                     display: "flex",
                     alignItems: "baseline",
                     gap: 8,
-                    padding: "3px 8px",
+                    padding: android ? "9px 10px" : "3px 8px",
+                    minHeight: android ? 40 : undefined,
                     cursor: "pointer",
                     background: index === suggestIndex ? "var(--accent-weak)" : undefined,
                     color: index === suggestIndex ? "var(--accent-text)" : undefined,
@@ -2081,21 +2566,6 @@ function toggleMerge(_sheet: Sheet, selection: Selection, updateSheet: (mutate: 
     if (existing >= 0) return { ...current, merges: current.merges.filter((_, index) => index !== existing) };
     return { ...current, merges: [...current.merges, { start, end }] };
   });
-}
-
-function startColumnResize(event: React.MouseEvent, col: number, sheet: Sheet, updateSheet: (mutate: (sheet: Sheet) => Sheet) => void) {
-  const startX = event.clientX;
-  const startWidth = sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH;
-  const onMove = (move: MouseEvent) => {
-    const width = Math.max(32, startWidth + (move.clientX - startX));
-    updateSheet((current) => ({ ...current, colWidths: { ...current.colWidths, [col]: width } }));
-  };
-  const onUp = () => {
-    window.removeEventListener("mousemove", onMove);
-    window.removeEventListener("mouseup", onUp);
-  };
-  window.addEventListener("mousemove", onMove);
-  window.addEventListener("mouseup", onUp);
 }
 
 // ---------------------------------------------------------------------------

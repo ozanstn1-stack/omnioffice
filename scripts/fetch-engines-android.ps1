@@ -26,6 +26,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $enginesDir = Join-Path $root 'src-tauri/resources/engines-android'
 $assetsDir = Join-Path $root 'src-tauri/resources/android-assets/tessdata'
 $desktopTessdata = Join-Path $root 'src-tauri/resources/engines/tesseract/tessdata'
+$fontsDir = Join-Path $root 'crates/pdfcore/assets/fonts'
 $cacheBase = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { [System.IO.Path]::GetTempPath() }
 $cacheDir = Join-Path $cacheBase 'pdf-sak-cache'
 $isWindowsHost = [bool]($env:OS -eq 'Windows_NT') -or [bool]$IsWindows
@@ -169,6 +170,51 @@ $license = Join-Path $tessDataAssets 'LICENSE.tessdata_fast.txt'
 if (-not (Test-Path $license)) {
     Download-File -Url 'https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/LICENSE' -OutFile $license
 }
+
+# ---------------------------------------------------------------- bundled fonts
+# pdfcore `include_bytes!`es these at compile time (text stamps + PDF/A font
+# embedding), so the Android build needs them in the checkout. They are part of
+# the repository; this step only restores them from the browser-extension
+# vendor copy or the pinned Liberation release when a checkout is incomplete.
+$bundledFonts = @(
+    'PT_Sans-Web-Regular.ttf',
+    'PT_Sans-Web-Bold.ttf',
+    'LiberationSans-Regular.ttf',
+    'LiberationSans-Italic.ttf',
+    'LiberationSans-Bold.ttf',
+    'LiberationSans-BoldItalic.ttf'
+)
+$fontVendorDirs = @(
+    (Join-Path $root 'crates/pdfcore/assets/fonts'),
+    (Join-Path $root 'chrome-extension/public/vendor/standard_fonts')
+)
+$missingFonts = @($bundledFonts | Where-Object { -not (Test-Path (Join-Path $fontsDir $_)) })
+if ($missingFonts.Count -gt 0) {
+    Write-Host '==> bundled fonts'
+    New-Item -ItemType Directory -Force -Path $fontsDir | Out-Null
+    foreach ($f in $missingFonts) {
+        $local = $fontVendorDirs | ForEach-Object { Join-Path $_ $f } | Where-Object { Test-Path $_ } | Select-Object -First 1
+        if ($local) {
+            Copy-Item $local (Join-Path $fontsDir $f) -Force
+            Write-Host "  -> $f (copy)"
+        } elseif ($f -like 'LiberationSans-*') {
+            $archive = Join-Path $cacheDir 'liberation-fonts-ttf-2.1.5.tar.gz'
+            Download-File -Url 'https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz' -OutFile $archive
+            $tmp = Join-Path $cacheDir 'liberation-x'
+            if (-not (Test-Path (Join-Path $tmp $f))) {
+                Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $tmp
+                New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+                tar -xzf $archive -C $tmp
+            }
+            $found = Get-ChildItem $tmp -Recurse -Filter $f | Select-Object -First 1
+            if (-not $found) { throw "liberation archive did not contain $f" }
+            Copy-Item $found.FullName (Join-Path $fontsDir $f) -Force
+            Write-Host "  -> $f (download)"
+        } else {
+            Write-Warning "bundled font $f is missing; text stamp rendering and PDF/A embedding will fail to compile"
+        }
+    }
+} else { Write-Host '==> bundled fonts (already present)' }
 
 # ---------------------------------------------------------------- verify
 Write-Host ''

@@ -282,6 +282,8 @@ export function OfficeWorkspace() {
       {historyFor ? (
         <VersionHistoryDialog documentId={historyFor} onClose={() => setHistoryFor(null)} />
       ) : null}
+
+      {/* The Data Loss dialog host lives in App so the converter is covered too. */}
     </div>
   );
 }

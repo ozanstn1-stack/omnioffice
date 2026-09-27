@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext HTTP is blocked. The exceptions cover the development loop only:
+  localhost (Tauri dev server) and 10.0.2.2 (the host machine as seen from the
+  Android emulator).
+
+  Note: this policy governs the WebView and the Java HTTP stacks. The Rust
+  side (reqwest/rustls) is NOT subject to it, so an Ollama server on the local
+  network still works from the backend, while browser-side HTTP to LAN
+  addresses does not. Keep remote endpoints on https.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>

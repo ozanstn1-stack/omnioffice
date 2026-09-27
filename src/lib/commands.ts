@@ -8,6 +8,7 @@ export type CommandCategory =
   | "pdf"
   | "ai"
   | "vault"
+  | "plugins"
   | "settings"
   | "help";
 

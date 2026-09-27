@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Dialog } from "../office/office-ui";
 import { Badge, SectionTitle, Spinner } from "./ui";
-import { useT } from "../lib/i18n";
+import { useT, type Translate } from "../lib/i18n";
 import { errorMessage } from "../lib/store";
 
 export interface CompatibilityItem {
@@ -56,10 +56,102 @@ function groupFor(status: string): StatusGroup {
 
 const supportedExtensions = () => invoke<string[]>("office_supported_extensions");
 const formatCapabilities = (extension: string) => invoke<FormatCapabilities>("office_capabilities", { extension });
-const compatibilityReport = (kind: string, model: unknown, target: string) =>
+
+/**
+ * Runs the backend feature report for `kind`'s model against `target`.
+ *
+ * Callers must fail open: a report that cannot be loaded must never block a
+ * save, because the document would then be trapped in the editor.
+ */
+export const compatibilityReport = (kind: string, model: unknown, target: string) =>
   invoke<CompatibilityReport>("office_compatibility", { kind, model, target });
 
-function YesNo({ value }: { value: boolean }) {
+// ---------------------------------------------------------------------------
+// Data Loss Protection helpers
+//
+// The wire format is exactly `CompatibilityReport { target, items }` with
+// `FeatureLoss { feature, status, message }` (serde camelCase on the Rust
+// side); `lossy()` and `summary()` are methods there, not serialized fields,
+// so the honest summary is computed here from the rows.
+// ---------------------------------------------------------------------------
+
+/** Rows that make a save lossy. Mirrors `CompatibilityReport::lossy()`. */
+export function lossyItems(report: CompatibilityReport | null | undefined): CompatibilityItem[] {
+  return (report?.items ?? []).filter((item) => item.status !== "unchanged");
+}
+
+/**
+ * The subset of lossy rows that must gate a write.
+ *
+ * PDF is a rendering target (a side file), not a document container. The
+ * backend's pdf reports only describe how features render, but if a report
+ * ever adds the generic `format: lost - not a target` row for pdf, a pure
+ * export must not be blocked by it because the model is never replaced.
+ */
+export function gatingLossItems(target: string, report: CompatibilityReport | null | undefined): CompatibilityItem[] {
+  const items = lossyItems(report);
+  return target === "pdf" ? items.filter((item) => item.feature !== "format") : items;
+}
+
+/** The matrix columns derived from the only per-row data the backend sends. */
+export interface LossRowFlags {
+  supported: boolean;
+  imported: boolean;
+  exported: boolean;
+  transformed: boolean;
+  lost: boolean;
+}
+
+/**
+ * Derives Feature / Supported? / Imported? / Exported? / Transformed? / Lost?
+ * from `status`. "Imported?" cannot be answered from the report itself: the
+ * backend lists a feature when the document holds it (and, for a few target
+ * limits such as CSV formatting, whenever the limit applies), so a listed row
+ * is treated as present in the document.
+ */
+export function lossRowFlags(item: CompatibilityItem): LossRowFlags {
+  const lost = item.status === "lost" || item.status === "unsupported";
+  const transformed = !lost && item.status !== "unchanged";
+  return {
+    supported: !lost,
+    imported: true,
+    exported: item.status === "unchanged",
+    transformed,
+    lost,
+  };
+}
+
+export interface LossCounts {
+  lost: number;
+  transformed: number;
+  unchanged: number;
+}
+
+export function countLosses(report: CompatibilityReport | null | undefined): LossCounts {
+  const counts: LossCounts = { lost: 0, transformed: 0, unchanged: 0 };
+  for (const item of report?.items ?? []) {
+    const flags = lossRowFlags(item);
+    if (flags.lost) counts.lost += 1;
+    else if (flags.transformed) counts.transformed += 1;
+    else counts.unchanged += 1;
+  }
+  return counts;
+}
+
+/**
+ * The honest one-line summary, mirroring `CompatibilityReport::summary()` in
+ * compat.rs but counting `partial` rows (Impress animations) as transformed
+ * instead of ignoring them, because `lossy()` already counts them.
+ */
+export function compatibilitySummary(report: CompatibilityReport | null | undefined, t: Translate): string {
+  const { lost, transformed } = countLosses(report);
+  if (lost === 0 && transformed === 0) return t("loss.summaryClean");
+  if (lost === 0) return t("loss.summaryTransformed", { transformed });
+  if (transformed === 0) return t("loss.summaryLost", { lost });
+  return t("loss.summaryBoth", { lost, transformed });
+}
+
+export function YesNo({ value }: { value: boolean }) {
   const t = useT();
   return <span style={{ color: value ? "var(--ok)" : "var(--muted)" }}>{value ? t("compat.yes") : t("compat.no")}</span>;
 }

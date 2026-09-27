@@ -3,15 +3,19 @@
 //! Export covers values, formulas, styling, number formats, column widths, row
 //! heights, merges, freeze panes, gridline settings, defined names, autofilters,
 //! tab colours, hyperlinks, cell comments, data validation, conditional
-//! formatting, structured tables, sheet protection, print layout and charts
-//! (column, bar, line, pie, area) as real ChartML parts anchored to their cells.
+//! formatting, structured tables, sheet protection, print layout (margins,
+//! headers/footers, page breaks, print area/titles), charts (column, bar, line,
+//! pie, area) as real ChartML parts anchored to their cells and sheet pictures
+//! in `xl/media` with drawing anchors. Imported pivot caches/tables are
+//! re-exported from the raw parts they came in as.
 //!
 //! Import is two passes: the well-tested `calamine` parser reads values and
 //! formulas from XLSX, XLS and ODS files from Excel and LibreOffice, then a
 //! best-effort OOXML pass (only for XLSX/XLSM) reads styles, column widths, row
 //! heights, merges, freeze panes, validations, conditional formatting, defined
-//! names, hyperlinks, comments and structured tables straight from the package
-//! parts through the hardened ZIP/XML readers. The second pass never fails the
+//! names, hyperlinks, comments, structured tables, print settings, sheet
+//! protection, drawings (charts and pictures) and pivot parts straight from the
+//! package through the hardened ZIP/XML readers. The second pass never fails the
 //! import: a part that cannot be parsed adds a warning and the values from the
 //! first pass are still returned.
 
@@ -20,6 +24,7 @@ use crate::io::{normalize_hex, write_atomic};
 use crate::model::*;
 use crate::xml::{escape_attr, escape_text, parse_xml, XmlNode, XmlWriter};
 use crate::zip::ZipWriter;
+use base64::Engine as _;
 use calamine::Reader as CalamineReader;
 use std::collections::BTreeMap;
 use std::io::Cursor;
@@ -490,9 +495,10 @@ fn sheet_xml(
 
     // CT_Worksheet order from here on: sheetProtection, autoFilter,
     // mergeCells, conditionalFormatting, dataValidations, hyperlinks,
-    // printOptions, pageMargins, pageSetup, headerFooter, legacyDrawing.
-    if !sheet.sheet_protection.is_empty() {
-        writer.raw(&format!("<sheetProtection password=\"{}\"/>", escape_attr(&sheet.sheet_protection)));
+    // printOptions, pageMargins, pageSetup, headerFooter, rowBreaks,
+    // colBreaks, drawing, legacyDrawing.
+    if let Some(xml) = sheet_protection_xml(sheet) {
+        writer.raw(&xml);
     }
 
     // AutoFilter: the active filter range, which is what the toolbar toggles.
@@ -731,6 +737,14 @@ struct PlannedChart {
     height_px: f64,
 }
 
+/// A sheet picture that made it into the package, ready to be written.
+struct PlannedImage {
+    /// File name inside `xl/media/`, e.g. `image1.png`.
+    part_name: String,
+    bytes: Vec<u8>,
+    image: SheetImage,
+}
+
 /// The chart kinds the exporter writes as real ChartML parts.
 fn chart_kind_supported(kind: &str) -> bool {
     matches!(kind, "column" | "bar" | "line" | "pie" | "area")
@@ -769,6 +783,26 @@ fn absolute_ref(range: &str, sheet: &str) -> Option<String> {
     }
 }
 
+/// `1:3` or `A:B` as the `Sheet!$1:$3` / `Sheet!$A:$B` form Excel stores in
+/// `_xlnm.Print_Titles`. `None` when the range is not a row or column span.
+fn print_titles_ref(range: &str, sheet: &str, rows: bool) -> Option<String> {
+    let (start, end) = range.trim().split_once(':')?;
+    let (start, end) = (start.trim(), end.trim());
+    if start.is_empty() || end.is_empty() {
+        return None;
+    }
+    if rows {
+        let start_row = start.parse::<u32>().ok()?;
+        let end_row = end.parse::<u32>().ok()?;
+        Some(format!("{}!${}:${}", sheet_ref(sheet), start_row, end_row))
+    } else {
+        if !start.chars().all(|character| character.is_ascii_alphabetic()) || !end.chars().all(|character| character.is_ascii_alphabetic()) {
+            return None;
+        }
+        Some(format!("{}!${}:${}", sheet_ref(sheet), start.to_ascii_uppercase(), end.to_ascii_uppercase()))
+    }
+}
+
 /// A rich-text chart or axis title.
 fn chart_title_xml(text: &str) -> String {
     format!(
@@ -779,6 +813,44 @@ fn chart_title_xml(text: &str) -> String {
 
 const CHART_CATEGORY_AXIS: u64 = 111_111_111;
 const CHART_VALUE_AXIS: u64 = 222_222_222;
+
+/// One cached value the way Excel writes `c:v`: plain decimal where possible.
+fn chart_cache_number(value: f64) -> String {
+    if !value.is_finite() {
+        return "0".into();
+    }
+    if value.fract() == 0.0 && value.abs() < 1e15 {
+        format!("{}", value as i64)
+    } else {
+        format!("{value}")
+    }
+}
+
+/// `<c:strCache>` for cached category labels; empty when there is no cache.
+fn chart_str_cache_xml(labels: &[String]) -> String {
+    if labels.is_empty() {
+        return String::new();
+    }
+    let mut out = format!("<c:strCache><c:ptCount val=\"{}\"/>", labels.len());
+    for (index, label) in labels.iter().enumerate() {
+        out.push_str(&format!("<c:pt idx=\"{index}\"><c:v>{}</c:v></c:pt>", escape_text(label)));
+    }
+    out.push_str("</c:strCache>");
+    out
+}
+
+/// `<c:numCache>` for cached series values; empty when there is no cache.
+fn chart_num_cache_xml(values: &[f64]) -> String {
+    if values.is_empty() {
+        return String::new();
+    }
+    let mut out = format!("<c:numCache><c:formatCode>General</c:formatCode><c:ptCount val=\"{}\"/>", values.len());
+    for (index, value) in values.iter().enumerate() {
+        out.push_str(&format!("<c:pt idx=\"{index}\"><c:v>{}</c:v></c:pt>", chart_cache_number(*value)));
+    }
+    out.push_str("</c:numCache>");
+    out
+}
 
 /// The category + value axis pair shared by every cartesian chart kind.
 fn chart_axes_xml(chart: &ChartData) -> String {
@@ -819,8 +891,17 @@ fn chart_xml(placement: &ChartPlacement, sheet_name: &str) -> Result<String, Str
                 argb.get(2..).unwrap_or("000000")
             ));
         }
+        // Cached labels/values from an imported ChartML part are written back
+        // so a chart whose source range lives outside the package still renders
+        // and a second import sees the same model.
+        let category_cache = if index == 0 { chart_str_cache_xml(&chart.categories_cache) } else { String::new() };
+        let value_cache = chart
+            .series_values_cache
+            .get(index)
+            .map(|values| chart_num_cache_xml(values))
+            .unwrap_or_default();
         series_xml.push_str(&format!(
-            "<c:cat><c:strRef><c:f>{}</c:f></c:strRef></c:cat><c:val><c:numRef><c:f>{}</c:f></c:numRef></c:val></c:ser>",
+            "<c:cat><c:strRef><c:f>{}</c:f>{category_cache}</c:strRef></c:cat><c:val><c:numRef><c:f>{}</c:f>{value_cache}</c:numRef></c:val></c:ser>",
             // A sheet name can contain `&` or `<`; the reference has to be
             // XML-escaped or the chart part stops being well-formed XML.
             escape_text(&categories),
@@ -884,8 +965,10 @@ fn chart_xml(placement: &ChartPlacement, sheet_name: &str) -> Result<String, Str
     ))
 }
 
-/// The drawing part that anchors a sheet's charts at their model positions.
-fn drawing_xml(charts: &[PlannedChart]) -> String {
+/// The drawing part that anchors a sheet's charts and pictures at their model
+/// positions. Chart relationships come first so the rIds stay stable when only
+/// one of the two kinds is present.
+fn drawing_xml(charts: &[PlannedChart], images: &[PlannedImage]) -> String {
     let mut xml = String::from(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<xdr:wsDr xmlns:xdr=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">",
     );
@@ -899,44 +982,180 @@ fn drawing_xml(charts: &[PlannedChart]) -> String {
             id = index + 1
         ));
     }
+    for (index, planned) in images.iter().enumerate() {
+        let image = &planned.image;
+        let (row, column) = crate::address::parse(&image.anchor.address).unwrap_or((0, 0));
+        let cx = (image.width_px.max(8.0) * 9525.0).round() as i64;
+        let cy = (image.height_px.max(8.0) * 9525.0).round() as i64;
+        let rid = format!("rId{}", charts.len() + index + 1);
+        // `rot` is stored in 60000ths of a degree, mirrored by the importer.
+        let rotation = if image.rotation_deg.abs() > 0.001 {
+            format!(" rot=\"{}\"", (image.rotation_deg * 60_000.0).round() as i64)
+        } else {
+            String::new()
+        };
+        let alt = escape_attr(&image.image.alt);
+        let id = charts.len() + index + 1;
+        let picture = format!(
+            "<xdr:pic><xdr:nvPicPr><xdr:cNvPr id=\"{id}\" name=\"Image {id}\" descr=\"{alt}\"/><xdr:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" r:embed=\"{rid}\"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm{rotation}><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{cx}\" cy=\"{cy}\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic>"
+        );
+        let from = format!(
+            "<xdr:from><xdr:col>{column}</xdr:col><xdr:colOff>{}</xdr:colOff><xdr:row>{row}</xdr:row><xdr:rowOff>{}</xdr:rowOff></xdr:from>",
+            image.anchor.col_off_emu, image.anchor.row_off_emu
+        );
+        // A picture imported with a two-cell anchor keeps both corners; a model
+        // picture without one is written as a one-cell anchor with its extent.
+        match image.anchor.to_address.as_deref().and_then(crate::address::parse) {
+            Some((to_row, to_column)) => {
+                xml.push_str(&format!(
+                    "<xdr:twoCellAnchor editAs=\"oneCell\">{from}<xdr:to><xdr:col>{to_column}</xdr:col><xdr:colOff>{}</xdr:colOff><xdr:row>{to_row}</xdr:row><xdr:rowOff>{}</xdr:rowOff></xdr:to>{picture}<xdr:clientData/></xdr:twoCellAnchor>",
+                    image.anchor.to_col_off_emu, image.anchor.to_row_off_emu
+                ));
+            }
+            None => {
+                xml.push_str(&format!(
+                    "<xdr:oneCellAnchor>{from}<xdr:ext cx=\"{cx}\" cy=\"{cy}\"/>{picture}<xdr:clientData/></xdr:oneCellAnchor>"
+                ));
+            }
+        }
+    }
     xml.push_str("</xdr:wsDr>");
     xml
 }
 
-/// Paper size, orientation and print options for a sheet.
+/// The `<sheetProtection>` element for a sheet, or `None` when unprotected.
+///
+/// Every attribute is written verbatim so the SHA-512 verifier Excel wrote
+/// comes back unchanged; the editor never tries to crack or bypass it. The
+/// legacy `password` hash is emitted for files written before V3.1, whose
+/// model only carried `sheet_protection`.
+fn sheet_protection_xml(sheet: &Sheet) -> Option<String> {
+    let protection = &sheet.protection;
+    let legacy = sheet.sheet_protection.trim();
+    let enabled = protection.enabled || !legacy.is_empty();
+    if !enabled {
+        return None;
+    }
+    let mut xml = String::from("<sheetProtection");
+    xml.push_str(" sheet=\"1\"");
+    if !legacy.is_empty() {
+        xml.push_str(&format!(" password=\"{}\"", escape_attr(legacy)));
+    } else if let Some(hash) = protection.password_hash.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+        xml.push_str(&format!(" password=\"{}\"", escape_attr(hash)));
+    }
+    if !protection.algorithm_name.trim().is_empty() {
+        xml.push_str(&format!(" algorithmName=\"{}\"", escape_attr(protection.algorithm_name.trim())));
+    }
+    if !protection.hash_value.trim().is_empty() {
+        xml.push_str(&format!(" hashValue=\"{}\"", escape_attr(protection.hash_value.trim())));
+    }
+    if !protection.salt_value.trim().is_empty() {
+        xml.push_str(&format!(" saltValue=\"{}\"", escape_attr(protection.salt_value.trim())));
+    }
+    if protection.spin_count > 0 {
+        xml.push_str(&format!(" spinCount=\"{}\"", protection.spin_count));
+    }
+    let mut options: Vec<&str> = protection
+        .options
+        .iter()
+        .map(String::as_str)
+        .filter(|name| SHEET_PROTECTION_OPTIONS.contains(name))
+        .collect();
+    options.sort_unstable();
+    options.dedup();
+    for name in options {
+        xml.push_str(&format!(" {name}=\"1\""));
+    }
+    xml.push_str("/>");
+    Some(xml)
+}
+
+/// Paper size, orientation, margins, header/footer and page breaks.
+///
+/// The element order is the CT_Worksheet sequence (printOptions, pageMargins,
+/// pageSetup, headerFooter, rowBreaks, colBreaks); writing them out of order
+/// produces a package Excel refuses to open. Every stored field is emitted so
+/// the settings survive an XLSX round trip.
 fn print_settings_xml(sheet: &Sheet) -> String {
-    let mut out = String::from("<pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" header=\"0.3\" footer=\"0.3\"/>");
-    let landscape = sheet.print.landscape;
+    let print = &sheet.print;
+    let mut out = String::new();
     out.push_str(&format!(
-        "<pageSetup paperSize=\"{}\" orientation=\"{}\" scale=\"{}\" fitToWidth=\"{}\" fitToHeight=\"{}\"/>",
-        sheet.print.paper_size,
-        if landscape { "landscape" } else { "portrait" },
-        sheet.print.scale.clamp(10, 400),
-        sheet.print.fit_to_width,
-        sheet.print.fit_to_height
+        "<printOptions horizontalCentered=\"{}\" verticalCentered=\"{}\" gridLines=\"{}\" headings=\"{}\"/>",
+        u8::from(print.center_horizontally),
+        u8::from(print.center_vertically),
+        u8::from(print.print_gridlines),
+        u8::from(print.print_headings)
     ));
     out.push_str(&format!(
-        "<printOptions horizontalCentered=\"{}\" gridLines=\"{}\" headings=\"{}\"/>",
-        u8::from(sheet.print.center_horizontally),
-        u8::from(sheet.print.print_gridlines),
-        u8::from(sheet.print.print_headings)
+        "<pageMargins left=\"{:.2}\" right=\"{:.2}\" top=\"{:.2}\" bottom=\"{:.2}\" header=\"{:.2}\" footer=\"{:.2}\"/>",
+        print.margin_left, print.margin_right, print.margin_top, print.margin_bottom, print.margin_header, print.margin_footer
     ));
-    if sheet.print.header.is_empty() {
-        // An empty `&C` header is what Excel writes, but readers such as
-        // openpyxl refuse to parse a format string with no text after it, so an
-        // empty header is omitted rather than written as `&C`.
-        out.push_str(&format!(
-            "<headerFooter differentFirst=\"{}\" differentOddEven=\"{}\"/>",
-            u8::from(sheet.print.different_first_page),
-            u8::from(sheet.print.different_odd_even)
-        ));
-    } else {
-        out.push_str(&format!(
-            "<headerFooter differentFirst=\"{}\" differentOddEven=\"{}\"><oddHeader>&amp;C{}</oddHeader></headerFooter>",
-            u8::from(sheet.print.different_first_page),
-            u8::from(sheet.print.different_odd_even),
-            escape_text(&sheet.print.header)
-        ));
+    // Excel only honours `fitToWidth`/`fitToHeight` when `fitToPage` is on;
+    // the model always stores the values, so the flag is derived from them.
+    let fit_to_page = if print.fit_to_height > 0 || print.fit_to_width > 1 { " fitToPage=\"1\"" } else { "" };
+    out.push_str(&format!(
+        "<pageSetup paperSize=\"{}\" orientation=\"{}\" scale=\"{}\" fitToWidth=\"{}\" fitToHeight=\"{}\"{fit_to_page}/>",
+        print.paper_size,
+        if print.landscape { "landscape" } else { "portrait" },
+        print.scale.clamp(10, 400),
+        print.fit_to_width,
+        print.fit_to_height
+    ));
+    let header_footer = |tag: &str, text: &str| -> String {
+        if text.is_empty() {
+            return String::new();
+        }
+        // Excel's format string carries its own section codes (`&L`, `&C`,
+        // `&R`). Text that already opens with one is written verbatim; plain
+        // text is centred, which is what the model means by `header`/`footer`.
+        let formatted = if text.starts_with("&L") || text.starts_with("&C") || text.starts_with("&R") {
+            text.to_string()
+        } else {
+            format!("&C{text}")
+        };
+        format!("<{tag}>{}</{tag}>", escape_text(&formatted))
+    };
+    let mut header = String::new();
+    header.push_str(&header_footer("oddHeader", &print.header));
+    header.push_str(&header_footer("oddFooter", &print.footer));
+    if print.different_first_page {
+        header.push_str(&header_footer("firstHeader", &print.first_header));
+        header.push_str(&header_footer("firstFooter", &print.first_footer));
+    }
+    if print.different_odd_even {
+        header.push_str(&header_footer("evenHeader", &print.even_header));
+        header.push_str(&header_footer("evenFooter", &print.even_footer));
+    }
+    out.push_str(&format!(
+        "<headerFooter differentFirst=\"{}\" differentOddEven=\"{}\">{header}</headerFooter>",
+        u8::from(print.different_first_page),
+        u8::from(print.different_odd_even)
+    ));
+    if !print.row_breaks.is_empty() {
+        let breaks: Vec<u32> = {
+            let mut breaks = print.row_breaks.clone();
+            breaks.sort_unstable();
+            breaks.dedup();
+            breaks
+        };
+        out.push_str(&format!("<rowBreaks count=\"{}\" manualBreakCount=\"{}\">", breaks.len(), breaks.len()));
+        for index in breaks {
+            out.push_str(&format!("<brk id=\"{index}\" max=\"16383\" man=\"1\"/>"));
+        }
+        out.push_str("</rowBreaks>");
+    }
+    if !print.col_breaks.is_empty() {
+        let breaks: Vec<u32> = {
+            let mut breaks = print.col_breaks.clone();
+            breaks.sort_unstable();
+            breaks.dedup();
+            breaks
+        };
+        out.push_str(&format!("<colBreaks count=\"{}\" manualBreakCount=\"{}\">", breaks.len(), breaks.len()));
+        for index in breaks {
+            out.push_str(&format!("<brk id=\"{index}\" max=\"1048575\" man=\"1\"/>"));
+        }
+        out.push_str("</colBreaks>");
     }
     out
 }
@@ -1068,6 +1287,20 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
     let mut shared: Vec<String> = Vec::new();
     let mut shared_index: BTreeMap<String, usize> = BTreeMap::new();
 
+    // A preserved pivot without its raw parts cannot become a valid Excel part;
+    // it stays in `.oswk` with a warning instead of producing a broken package.
+    let preserved_pivots: Vec<&PreservedPivot> = workbook
+        .preserved_pivots
+        .iter()
+        .filter(|pivot| !pivot.definition_xml.trim().is_empty() && !pivot.table_xml.trim().is_empty())
+        .collect();
+    if preserved_pivots.len() < workbook.preserved_pivots.len() {
+        warnings.push(format!(
+            "{} pivot table(s) had no preserved parts and were kept in the .oswk file only.",
+            workbook.preserved_pivots.len() - preserved_pivots.len()
+        ));
+    }
+
     // Chart references use the sheet name, so names are resolved first.
     let sheet_names: Vec<String> = workbook
         .sheets
@@ -1111,6 +1344,32 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
         sheet_charts.push(planned);
     }
 
+    // Pictures: every non-empty image becomes an `xl/media` part referenced
+    // from the sheet's drawing. A picture without bytes cannot be written as a
+    // valid media part and stays in `.oswk` with a warning.
+    let mut media_number = 0usize;
+    let mut sheet_images: Vec<Vec<PlannedImage>> = Vec::new();
+    for sheet in &workbook.sheets {
+        let mut planned = Vec::new();
+        for image in &sheet.images {
+            if image.image.is_empty() {
+                warnings.push(format!(
+                    "Image \"{}\" has no data and was kept in the .oswk file only.",
+                    image.image.name
+                ));
+                continue;
+            }
+            media_number += 1;
+            let part_name = format!("image{media_number}.{}", image.image.extension());
+            planned.push(PlannedImage {
+                part_name,
+                bytes: image.image.bytes(),
+                image: image.clone(),
+            });
+        }
+        sheet_images.push(planned);
+    }
+
     // Structured tables: numbered workbook-wide so the worksheet tableParts,
     // the relationship targets and the content-type overrides agree. A table
     // with an unreadable range is skipped with a warning instead of producing a
@@ -1146,7 +1405,7 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
     let mut drawing_number = 0usize;
     let mut pivots_materialized = 0usize;
     for (index, sheet) in workbook.sheets.iter().enumerate() {
-        let drawing = if sheet_charts[index].is_empty() {
+        let drawing = if sheet_charts[index].is_empty() && sheet_images[index].is_empty() {
             None
         } else {
             drawing_number += 1;
@@ -1171,6 +1430,24 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
         warnings.push(format!(
             "Pivot tables are written as their computed values (one sheet so far: {pivots_materialized}); the live pivot definition stays in the .oswk file."
         ));
+    }
+
+    // Worksheet -> pivot table relationships. A pivot table has no element of
+    // its own in the worksheet XML; Excel finds it through the sheet's rels.
+    if !workbook.sheets.is_empty() {
+        for (pivot_index, pivot) in preserved_pivots.iter().enumerate() {
+            let number = pivot_index + 1;
+            let sheet_index = workbook
+                .sheets
+                .iter()
+                .position(|sheet| sheet.name == pivot.sheet)
+                .unwrap_or(0);
+            sheet_parts[sheet_index].rels.push((
+                format!("rIdPivot{number}"),
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotTable".into(),
+                format!("../pivotTables/pivotTable{number}.xml"),
+            ));
+        }
     }
 
     let mut zip = ZipWriter::new();
@@ -1254,8 +1531,68 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
             }
         }
     }
+    // Print area and repeating titles are `_xlnm` names scoped to the sheet.
+    for (index, sheet) in workbook.sheets.iter().enumerate() {
+        if let Some(area) = sheet.print.print_area.as_deref() {
+            match absolute_ref(area, &sheet_names[index]) {
+                Some(reference) => {
+                    defined.push_str(&format!(
+                        "<definedName name=\"_xlnm.Print_Area\" localSheetId=\"{index}\">{}</definedName>",
+                        escape_text(&reference)
+                    ));
+                    defined_count += 1;
+                }
+                None => warnings.push(format!(
+                    "The print area of sheet \"{}\" could not be read and was kept in the .oswk file only.",
+                    sheet_names[index]
+                )),
+            }
+        }
+        let mut titles: Vec<String> = Vec::new();
+        if let Some(rows) = sheet.print.print_titles_rows.as_deref() {
+            if let Some(reference) = print_titles_ref(rows, &sheet_names[index], true) {
+                titles.push(reference);
+            } else {
+                warnings.push(format!(
+                    "The repeating rows of sheet \"{}\" could not be read and were kept in the .oswk file only.",
+                    sheet_names[index]
+                ));
+            }
+        }
+        if let Some(columns) = sheet.print.print_titles_cols.as_deref() {
+            if let Some(reference) = print_titles_ref(columns, &sheet_names[index], false) {
+                titles.push(reference);
+            } else {
+                warnings.push(format!(
+                    "The repeating columns of sheet \"{}\" could not be read and were kept in the .oswk file only.",
+                    sheet_names[index]
+                ));
+            }
+        }
+        if !titles.is_empty() {
+            defined.push_str(&format!(
+                "<definedName name=\"_xlnm.Print_Titles\" localSheetId=\"{index}\">{}</definedName>",
+                escape_text(&titles.join(","))
+            ));
+            defined_count += 1;
+        }
+    }
     if defined_count > 0 {
         workbook_xml.push_str(&format!("<definedNames>{defined}</definedNames>"));
+    }
+    // Pivot caches that were imported raw keep their original `cacheId`; the
+    // workbook only has to point Excel at the definition part.
+    let pivot_rid_base = sheet_parts.len() + 3;
+    if !preserved_pivots.is_empty() {
+        workbook_xml.push_str("<pivotCaches>");
+        for (index, pivot) in preserved_pivots.iter().enumerate() {
+            let cache_id = if pivot.cache_id > 0 { pivot.cache_id } else { index as u32 + 1 };
+            workbook_xml.push_str(&format!(
+                "<pivotCache cacheId=\"{cache_id}\" r:id=\"rId{}\"/>",
+                pivot_rid_base + index
+            ));
+        }
+        workbook_xml.push_str("</pivotCaches>");
     }
     workbook_xml.push_str("</workbook>");
 
@@ -1276,6 +1613,13 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
     workbook_rels.push_str(&format!(
         "<Relationship Id=\"rId{shared_rid}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings\" Target=\"sharedStrings.xml\"/>"
     ));
+    for (index, _) in preserved_pivots.iter().enumerate() {
+        workbook_rels.push_str(&format!(
+            "<Relationship Id=\"rId{}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotCacheDefinition\" Target=\"pivotCache/pivotCacheDefinition{}.xml\"/>",
+            pivot_rid_base + index,
+            index + 1
+        ));
+    }
     workbook_rels.push_str("</Relationships>");
 
     let mut shared_xml = String::from(
@@ -1301,7 +1645,7 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
     }
 
     for (index, charts) in sheet_charts.iter().enumerate() {
-        if charts.is_empty() {
+        if charts.is_empty() && sheet_images[index].is_empty() {
             continue;
         }
         if let Some(drawing) = sheet_drawings[index] {
@@ -1317,10 +1661,39 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
         }
     }
 
+    // One `Default` per image extension the workbook actually uses.
+    let mut media_extensions: BTreeMap<&str, &str> = BTreeMap::new();
+    for images in &sheet_images {
+        for image in images {
+            media_extensions.insert(image.image.image.extension(), image.image.image.mime.as_str());
+        }
+    }
+    for (extension, mime) in media_extensions {
+        content_types.push_str(&format!(
+            "<Default Extension=\"{}\" ContentType=\"{}\"/>",
+            escape_attr(extension),
+            escape_attr(mime)
+        ));
+    }
+
     for (number, _) in &table_parts {
         content_types.push_str(&format!(
             "<Override PartName=\"/xl/tables/table{number}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml\"/>"
         ));
+    }
+    for (index, _) in preserved_pivots.iter().enumerate() {
+        let number = index + 1;
+        content_types.push_str(&format!(
+            "<Override PartName=\"/xl/pivotTables/pivotTable{number}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.pivotTable+xml\"/>"
+        ));
+        content_types.push_str(&format!(
+            "<Override PartName=\"/xl/pivotCache/pivotCacheDefinition{number}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheDefinition+xml\"/>"
+        ));
+        if preserved_pivots[index].records_base64.is_some() {
+            content_types.push_str(&format!(
+                "<Override PartName=\"/xl/pivotCache/pivotCacheRecords{number}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheRecords+xml\"/>"
+            ));
+        }
     }
 
     content_types.push_str("</Types>");
@@ -1351,7 +1724,8 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
     }
     for (index, charts) in sheet_charts.iter().enumerate() {
         let Some(drawing) = sheet_drawings[index] else { continue };
-        zip.add_text(&format!("xl/drawings/drawing{drawing}.xml"), &drawing_xml(charts));
+        let images = &sheet_images[index];
+        zip.add_text(&format!("xl/drawings/drawing{drawing}.xml"), &drawing_xml(charts, images));
         let mut drawing_rels = String::from(
             "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">",
         );
@@ -1362,14 +1736,52 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
                 chart.chart_number
             ));
         }
+        for (position, image) in images.iter().enumerate() {
+            drawing_rels.push_str(&format!(
+                "<Relationship Id=\"rId{}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" Target=\"../media/{}\"/>",
+                charts.len() + position + 1,
+                escape_attr(&image.part_name)
+            ));
+        }
         drawing_rels.push_str("</Relationships>");
         zip.add_text(&format!("xl/drawings/_rels/drawing{drawing}.xml.rels"), &drawing_rels);
         for chart in charts {
             zip.add_text(&format!("xl/charts/chart{}.xml", chart.chart_number), &chart.xml);
         }
+        for image in images {
+            zip.add(&format!("xl/media/{}", image.part_name), &image.bytes);
+        }
     }
     for (number, xml) in &table_parts {
         zip.add_text(&format!("xl/tables/table{number}.xml"), xml);
+    }
+    // Preserved pivots: raw parts plus the two relationship files Excel needs
+    // to find the records and the cache definition.
+    for (index, pivot) in preserved_pivots.iter().enumerate() {
+        let number = index + 1;
+        zip.add_text(&format!("xl/pivotCache/pivotCacheDefinition{number}.xml"), &pivot.definition_xml);
+        zip.add_text(&format!("xl/pivotTables/pivotTable{number}.xml"), &pivot.table_xml);
+        zip.add_text(
+            &format!("xl/pivotTables/_rels/pivotTable{number}.xml.rels"),
+            &format!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotCacheDefinition\" Target=\"../pivotCache/pivotCacheDefinition{number}.xml\"/></Relationships>"
+            ),
+        );
+        if let Some(records) = pivot.records_base64.as_deref().filter(|value| !value.is_empty()) {
+            let bytes = base64::engine::general_purpose::STANDARD.decode(records.as_bytes()).unwrap_or_default();
+            zip.add(&format!("xl/pivotCache/pivotCacheRecords{number}.xml"), &bytes);
+            zip.add_text(
+                &format!("xl/pivotCache/_rels/pivotCacheDefinition{number}.xml.rels"),
+                &format!(
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotCacheRecords\" Target=\"pivotCacheRecords{number}.xml\"/></Relationships>"
+                ),
+            );
+        } else {
+            zip.add_text(
+                &format!("xl/pivotCache/_rels/pivotCacheDefinition{number}.xml.rels"),
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"/>",
+            );
+        }
     }
 
     if with_comments {
@@ -1565,7 +1977,6 @@ pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
                     calamine::Data::DateTimeIso(text) => CellValue::Text(text.clone()),
                     calamine::Data::DurationIso(text) => CellValue::Text(text.clone()),
                     calamine::Data::Error(error) => CellValue::Error(format!("{error:?}")),
-                    _ => continue,
                 };
                 let formula = formulas
                     .as_ref()
@@ -1608,16 +2019,28 @@ pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
     }
     // Second pass: read the OOXML parts calamine does not expose (styles,
     // layout, validations, conditional rules, defined names, hyperlinks,
-    // comments and structured tables). It is best effort: every failure is a
-    // warning and the values from the first pass stay untouched.
+    // comments, structured tables, drawings, print settings, protection and
+    // pivot caches). It is best effort: every failure is a warning and the
+    // values from the first pass stay untouched.
     if !import_ooxml_layout(bytes, &mut workbook, &mut warnings) {
         warnings.push("Formatting, layout and comments are imported from XLSX/XLSM workbooks only; this file opened with values and formulas.".into());
     }
-    if contains_part(bytes, "xl/charts") || contains_part(bytes, "Object ") {
-        warnings.push("Charts embedded in the spreadsheet are not imported.".into());
+    // Only warn about charts/images/pivots that are present in the package but
+    // could not be attached to a sheet; imported ones are reported by the
+    // importer itself when they need a caveat.
+    let imported_charts: usize = workbook.sheets.iter().map(|sheet| sheet.charts.len()).sum();
+    if imported_charts == 0 && contains_part(bytes, "xl/charts") {
+        warnings.push("Charts are present in the package but no sheet drawing could be linked, so they were not imported.".into());
     }
-    if contains_part(bytes, "xl/media/") {
-        warnings.push("Images embedded in the spreadsheet are not imported.".into());
+    let imported_images: usize = workbook.sheets.iter().map(|sheet| sheet.images.len()).sum();
+    if imported_images == 0 && contains_part(bytes, "xl/media/") {
+        warnings.push("Images are present in the package but no sheet drawing could be linked, so they were not imported.".into());
+    }
+    if contains_part(bytes, "xl/charts/colors") {
+        warnings.push("Chart colour overrides (xl/charts/colorsN.xml) are not imported; series colours come from the chart part.".into());
+    }
+    if contains_part(bytes, "Object ") {
+        warnings.push("Embedded OLE objects are not imported; they stay in the original file only.".into());
     }
     if contains_part(bytes, "xl/vbaProject.bin") {
         warnings.push("Macros were not loaded. Spreadsheets always open with macros disabled.".into());
@@ -1650,6 +2073,10 @@ const MAX_IMPORT_COLS: u32 = 1_000;
 /// values. 64 MiB is far above any sheet the 100k-row budget can produce.
 const MAX_DETAIL_PART_BYTES: usize = 64 * 1024 * 1024;
 const MAX_FILTER_VALUES: usize = 1_024;
+/// Cache points read from a ChartML part; well above any readable chart.
+const MAX_CHART_CACHE_POINTS: usize = 100_000;
+/// Pivot cache fields kept per cache definition.
+const MAX_PIVOT_FIELDS: usize = 4_096;
 
 /// The style catalogue resolved from `xl/styles.xml`, indexed by cell xf.
 #[derive(Debug, Clone, Default)]
@@ -1699,13 +2126,14 @@ fn import_ooxml_layout(bytes: &[u8], workbook: &mut Workbook, warnings: &mut Vec
     if !zip.contains("xl/workbook.xml") {
         return false;
     }
-    let (sheet_refs, names, filter_databases) = match import_workbook_sheets(&zip) {
+    let info = match import_workbook_sheets(&zip) {
         Ok(parts) => parts,
         Err(error) => {
             warnings.push(format!("The workbook part could not be read ({error}); sheet layout was not imported."));
             return true;
         }
     };
+    let WorkbookSheetInfo { sheets: sheet_refs, names, filters: filter_databases, print_areas, print_titles_rows, print_titles_cols } = info;
     let styles = match zip.read_text("xl/styles.xml") {
         Ok(xml) => match parse_styles(&xml) {
             Ok(styles) => styles,
@@ -1721,6 +2149,7 @@ fn import_ooxml_layout(bytes: &[u8], workbook: &mut Workbook, warnings: &mut Vec
     };
 
     let mut table_number = 0usize;
+    let mut preserved_pivots: Vec<PreservedPivot> = Vec::new();
     for (index, sheet) in workbook.sheets.iter_mut().enumerate() {
         // Sheet name -> part mapping comes from workbook.xml + its rels, so the
         // worksheet order in the package is never assumed.
@@ -1730,7 +2159,7 @@ fn import_ooxml_layout(bytes: &[u8], workbook: &mut Workbook, warnings: &mut Vec
             .map(|(_, part)| part.clone())
             .or_else(|| sheet_refs.get(index).map(|(_, part)| part.clone()));
         let Some(part) = part else { continue };
-        if let Err(error) = apply_worksheet_part(&zip, &part, sheet, &styles, &mut table_number, warnings) {
+        if let Err(error) = apply_worksheet_part(&zip, &part, sheet, &styles, &mut table_number, &mut preserved_pivots, warnings) {
             warnings.push(format!("The layout of sheet \"{}\" could not be imported ({error}).", sheet.name));
         }
     }
@@ -1750,12 +2179,76 @@ fn import_ooxml_layout(bytes: &[u8], workbook: &mut Workbook, warnings: &mut Vec
             }
         }
     }
+    apply_print_names(workbook, print_areas, print_titles_rows, print_titles_cols, warnings);
+    if !preserved_pivots.is_empty() {
+        warnings.push(format!(
+            "{} pivot cache(s) were preserved and will be re-exported, but the pivot grid is not recomputed from the cache; the visible values come from the sheet cells.",
+            preserved_pivots.len()
+        ));
+    }
+    workbook.preserved_pivots.extend(preserved_pivots);
     true
 }
 
-/// Sheet names, their worksheet parts, the defined names and the
-/// `_FilterDatabase` ranges read from `xl/workbook.xml` and its rels.
-type WorkbookSheetInfo = (Vec<(String, String)>, Vec<NamedRange>, Vec<(String, String)>);
+/// Applies `_xlnm.Print_Area` / `_xlnm.Print_Titles` names to their sheets.
+///
+/// A sheet can only store one print area and one row/column title span, so a
+/// package that carries several ranges keeps the first and reports the rest
+/// instead of silently dropping them.
+fn apply_print_names(
+    workbook: &mut Workbook,
+    print_areas: Vec<(String, String)>,
+    print_titles_rows: Vec<(String, String)>,
+    print_titles_cols: Vec<(String, String)>,
+    warnings: &mut Vec<String>,
+) {
+    for (sheet_name, range) in print_areas {
+        let Some(index) = sheet_index_by_name(workbook, &sheet_name) else { continue };
+        let area = &mut workbook.sheets[index].print.print_area;
+        if area.is_none() {
+            *area = Some(range);
+        } else {
+            warnings.push(format!(
+                "Sheet \"{}\" has more than one print area; only the first one was imported.",
+                workbook.sheets[index].name
+            ));
+        }
+    }
+    for (sheet_name, range) in print_titles_rows {
+        let Some(index) = sheet_index_by_name(workbook, &sheet_name) else { continue };
+        let rows = &mut workbook.sheets[index].print.print_titles_rows;
+        if rows.is_none() {
+            *rows = Some(range);
+        }
+    }
+    for (sheet_name, range) in print_titles_cols {
+        let Some(index) = sheet_index_by_name(workbook, &sheet_name) else { continue };
+        let columns = &mut workbook.sheets[index].print.print_titles_cols;
+        if columns.is_none() {
+            *columns = Some(range);
+        }
+    }
+}
+
+fn sheet_index_by_name(workbook: &Workbook, name: &str) -> Option<usize> {
+    workbook
+        .sheets
+        .iter()
+        .position(|sheet| sheet.name == name)
+        .or_else(|| workbook.sheets.iter().position(|sheet| sheet.name.eq_ignore_ascii_case(name)))
+}
+
+/// Sheet names, their worksheet parts, the defined names read from
+/// `xl/workbook.xml` and its rels, and the `_xlnm` ranges that belong to
+/// printing rather than to the user's name list.
+struct WorkbookSheetInfo {
+    sheets: Vec<(String, String)>,
+    names: Vec<NamedRange>,
+    filters: Vec<(String, String)>,
+    print_areas: Vec<(String, String)>,
+    print_titles_rows: Vec<(String, String)>,
+    print_titles_cols: Vec<(String, String)>,
+}
 
 fn import_workbook_sheets(zip: &crate::zip::ZipReader) -> OfficeResult<WorkbookSheetInfo> {
     let root = parse_xml(&zip.read_text("xl/workbook.xml")?)?;
@@ -1774,6 +2267,9 @@ fn import_workbook_sheets(zip: &crate::zip::ZipReader) -> OfficeResult<WorkbookS
     }
     let mut names = Vec::new();
     let mut filters = Vec::new();
+    let mut print_areas = Vec::new();
+    let mut print_titles_rows = Vec::new();
+    let mut print_titles_cols = Vec::new();
     if let Some(defined) = root.child("definedNames") {
         for entry in defined.children_of("definedName") {
             let name = entry.attr("name").unwrap_or("").trim().to_string();
@@ -1784,16 +2280,16 @@ fn import_workbook_sheets(zip: &crate::zip::ZipReader) -> OfficeResult<WorkbookS
             if definition.is_empty() {
                 continue;
             }
+            let scope = entry
+                .attr("localSheetId")
+                .and_then(|value| value.trim().parse::<usize>().ok())
+                .and_then(|index| sheets.get(index))
+                .map(|(sheet_name, _)| sheet_name.clone());
             if name == "_xlnm._FilterDatabase" {
                 let from_definition = split_sheet_reference(&definition);
-                let from_scope = entry
-                    .attr("localSheetId")
-                    .and_then(|value| value.trim().parse::<usize>().ok())
-                    .and_then(|index| sheets.get(index))
-                    .map(|(sheet_name, _)| sheet_name.clone());
                 let (sheet_name, range) = match from_definition {
                     Some((sheet_name, range)) => (sheet_name, range),
-                    None => match from_scope {
+                    None => match scope {
                         Some(sheet_name) => (sheet_name, definition.clone()),
                         None => continue,
                     },
@@ -1801,19 +2297,55 @@ fn import_workbook_sheets(zip: &crate::zip::ZipReader) -> OfficeResult<WorkbookS
                 filters.push((sheet_name, range));
                 continue;
             }
-            // Print areas/titles and other `_xlnm` internals are not user names.
+            if name == "_xlnm.Print_Area" {
+                for part in definition.split(',') {
+                    let (sheet_name, range) = match split_sheet_reference(part) {
+                        Some(pair) => pair,
+                        None => match scope.clone() {
+                            Some(sheet_name) => (sheet_name, strip_absolute_marks(part)),
+                            None => continue,
+                        },
+                    };
+                    if !range.is_empty() {
+                        print_areas.push((sheet_name, range));
+                    }
+                }
+                continue;
+            }
+            if name == "_xlnm.Print_Titles" {
+                for part in definition.split(',') {
+                    let (sheet_name, range) = match split_sheet_reference(part) {
+                        Some(pair) => pair,
+                        None => match scope.clone() {
+                            Some(sheet_name) => (sheet_name, strip_absolute_marks(part)),
+                            None => continue,
+                        },
+                    };
+                    if range.is_empty() {
+                        continue;
+                    }
+                    // `$1:$3` prints rows, `$A:$B` prints columns.
+                    if range.chars().next().map(|character| character.is_ascii_digit()).unwrap_or(false) {
+                        print_titles_rows.push((sheet_name, range));
+                    } else {
+                        print_titles_cols.push((sheet_name, range));
+                    }
+                }
+                continue;
+            }
+            // Other `_xlnm` internals are not user names.
             if name.starts_with("_xlnm.") {
                 continue;
             }
-            let scope = entry
-                .attr("localSheetId")
-                .and_then(|value| value.trim().parse::<usize>().ok())
-                .and_then(|index| sheets.get(index))
-                .map(|(sheet_name, _)| sheet_name.clone());
             names.push(NamedRange { name, definition, sheet: scope, comment: String::new() });
         }
     }
-    Ok((sheets, names, filters))
+    Ok(WorkbookSheetInfo { sheets, names, filters, print_areas, print_titles_rows, print_titles_cols })
+}
+
+/// `$A$1:$D$10` to `A1:D10` (the model stores relative references).
+fn strip_absolute_marks(range: &str) -> String {
+    range.trim().replace('$', "")
 }
 
 fn apply_worksheet_part(
@@ -1822,6 +2354,7 @@ fn apply_worksheet_part(
     sheet: &mut Sheet,
     styles: &ImportedStyles,
     table_number: &mut usize,
+    preserved_pivots: &mut Vec<PreservedPivot>,
     warnings: &mut Vec<String>,
 ) -> OfficeResult<()> {
     let text = zip.read_text(part)?;
@@ -1847,7 +2380,128 @@ fn apply_worksheet_part(
     apply_hyperlinks(zip, part, &root, sheet);
     apply_comments(zip, part, sheet, warnings);
     apply_tables(zip, part, &root, sheet, table_number, warnings);
+    apply_print_settings(&root, sheet);
+    apply_sheet_protection(&root, sheet);
+    apply_drawings(zip, part, &root, sheet, warnings);
+    apply_pivot_tables(zip, part, sheet, preserved_pivots, warnings);
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Import: print settings and sheet protection
+// ---------------------------------------------------------------------------
+
+/// `<pageSetup>`, `<printOptions>`, `<pageMargins>`, `<headerFooter>` and the
+/// manual page breaks, mapped onto [`PrintSettings`].
+fn apply_print_settings(root: &XmlNode, sheet: &mut Sheet) {
+    let print = &mut sheet.print;
+    if let Some(setup) = root.child("pageSetup") {
+        if let Some(value) = parse_u32_attr(setup, "paperSize") {
+            print.paper_size = value;
+        }
+        if let Some(value) = setup.attr("orientation") {
+            print.landscape = value.trim().eq_ignore_ascii_case("landscape");
+        }
+        if let Some(value) = parse_u32_attr(setup, "scale") {
+            print.scale = value.clamp(10, 400);
+        }
+        if let Some(value) = parse_u32_attr(setup, "fitToWidth") {
+            print.fit_to_width = value;
+        }
+        if let Some(value) = parse_u32_attr(setup, "fitToHeight") {
+            print.fit_to_height = value;
+        }
+    }
+    if let Some(options) = root.child("printOptions") {
+        print.center_horizontally = attr_on(options, "horizontalCentered");
+        print.center_vertically = attr_on(options, "verticalCentered");
+        print.print_gridlines = attr_on(options, "gridLines");
+        print.print_headings = attr_on(options, "headings");
+    }
+    if let Some(margins) = root.child("pageMargins") {
+        let number = |name: &str, target: &mut f64| {
+            if let Some(value) = margins.attr(name).and_then(|value| value.trim().parse::<f64>().ok()) {
+                *target = value;
+            }
+        };
+        number("left", &mut print.margin_left);
+        number("right", &mut print.margin_right);
+        number("top", &mut print.margin_top);
+        number("bottom", &mut print.margin_bottom);
+        number("header", &mut print.margin_header);
+        number("footer", &mut print.margin_footer);
+    }
+    if let Some(header) = root.child("headerFooter") {
+        print.different_first_page = attr_on(header, "differentFirst");
+        print.different_odd_even = attr_on(header, "differentOddEven");
+        print.header = header_format_text(header, "oddHeader");
+        print.footer = header_format_text(header, "oddFooter");
+        print.first_header = header_format_text(header, "firstHeader");
+        print.first_footer = header_format_text(header, "firstFooter");
+        print.even_header = header_format_text(header, "evenHeader");
+        print.even_footer = header_format_text(header, "evenFooter");
+    }
+    for breaks in root.children_of("rowBreaks") {
+        for brk in breaks.children_of("brk") {
+            if let Some(id) = parse_u32_attr(brk, "id") {
+                if id <= MAX_IMPORT_ROWS {
+                    sheet.print.row_breaks.push(id);
+                }
+            }
+        }
+    }
+    for breaks in root.children_of("colBreaks") {
+        for brk in breaks.children_of("brk") {
+            if let Some(id) = parse_u32_attr(brk, "id") {
+                if id <= MAX_IMPORT_COLS {
+                    sheet.print.col_breaks.push(id);
+                }
+            }
+        }
+    }
+    sheet.print.row_breaks.sort_unstable();
+    sheet.print.row_breaks.dedup();
+    sheet.print.col_breaks.sort_unstable();
+    sheet.print.col_breaks.dedup();
+}
+
+/// One header/footer format string. The model stores plain text; the `&C`
+/// prefix the exporter adds means "centred", so exactly one is stripped.
+fn header_format_text(header: &XmlNode, tag: &str) -> String {
+    header
+        .child(tag)
+        .map(XmlNode::deep_text)
+        .map(|text| text.strip_prefix("&C").unwrap_or(&text).to_string())
+        .unwrap_or_default()
+}
+
+/// `<sheetProtection>`: the verifier is preserved exactly, never cracked.
+fn apply_sheet_protection(root: &XmlNode, sheet: &mut Sheet) {
+    let Some(node) = root.child("sheetProtection") else { return };
+    let mut options: Vec<String> = SHEET_PROTECTION_OPTIONS
+        .iter()
+        .filter(|name| attr_on(node, name))
+        .map(|name| (*name).to_string())
+        .collect();
+    options.sort();
+    let password = node.attr("password").map(str::trim).filter(|value| !value.is_empty()).map(str::to_string);
+    let enabled = attr_on(node, "sheet")
+        || password.is_some()
+        || node.attr("hashValue").is_some()
+        || node.attr("algorithmName").is_some();
+    sheet.protection = SheetProtection {
+        enabled,
+        password_hash: password.clone(),
+        algorithm_name: node.attr("algorithmName").unwrap_or("").to_string(),
+        hash_value: node.attr("hashValue").unwrap_or("").to_string(),
+        salt_value: node.attr("saltValue").unwrap_or("").to_string(),
+        spin_count: parse_u32_attr(node, "spinCount").unwrap_or(0),
+        options,
+    };
+    // Keep the legacy single-hash field in sync for older units and the UI.
+    if let Some(password) = password {
+        sheet.sheet_protection = password;
+    }
 }
 
 /// `<cols>` widths: Excel character width to pixels (`width * 7 + 5`).
@@ -2289,6 +2943,527 @@ fn parse_table_part(zip: &crate::zip::ZipReader, target: &str, number: usize, sh
 }
 
 // ---------------------------------------------------------------------------
+// Import: drawings (charts and pictures)
+// ---------------------------------------------------------------------------
+
+/// First descendant with a matching local name. `XmlNode::find_all` also
+/// matches the local name, which is what chart/drawing XML needs.
+fn descendant<'a>(node: &'a XmlNode, name: &str) -> Option<&'a XmlNode> {
+    let mut found: Vec<&XmlNode> = Vec::new();
+    node.find_all(name, &mut found);
+    found.into_iter().next()
+}
+
+/// The text of a `c:title`/`c:tx` block: rich text, a cached string reference
+/// or a literal `c:v`, whichever the writer used.
+fn chart_text_block(node: &XmlNode) -> String {
+    if let Some(value) = node.child("v") {
+        return value.deep_text();
+    }
+    if let Some(reference) = node.child("strRef") {
+        if let Some(value) = reference.child("v") {
+            return value.deep_text();
+        }
+        if let Some(value) = descendant(reference, "strCache").and_then(|cache| cache.children_of("pt").first().and_then(|point| point.child("v"))).map(XmlNode::deep_text) {
+            if !value.is_empty() {
+                return value;
+            }
+        }
+        return reference.child("f").map(XmlNode::deep_text).unwrap_or_default();
+    }
+    if let Some(rich) = node.child("rich") {
+        let mut out = String::new();
+        for paragraph in rich.children_of("p") {
+            if let Some(value) = paragraph.child("t") {
+                out.push_str(&value.deep_text());
+            }
+            for run in paragraph.children_of("r") {
+                if let Some(value) = run.child("t") {
+                    out.push_str(&value.deep_text());
+                }
+            }
+        }
+        if !out.is_empty() {
+            return out;
+        }
+    }
+    node.deep_text()
+}
+
+/// `'My Sheet'!$A$1:$B$5` to the model's relative `A1:B5`.
+fn relative_ref(formula: &str) -> String {
+    let text = formula.trim();
+    let text = match text.rfind('!') {
+        Some(index) => &text[index + 1..],
+        None => text,
+    };
+    text.trim().replace('$', "")
+}
+
+/// Cached `c:strCache`/`c:numCache` points as text, ordered by `c:pt/@idx`.
+fn cache_text_values(reference: &XmlNode) -> Vec<String> {
+    let Some(cache) = descendant(reference, "strCache").or_else(|| descendant(reference, "numCache")) else {
+        return Vec::new();
+    };
+    let mut points: Vec<(u32, String)> = Vec::new();
+    for point in cache.children_of("pt") {
+        let index = parse_u32_attr(point, "idx").unwrap_or(points.len() as u32);
+        let value = point.child("v").map(XmlNode::deep_text).unwrap_or_default();
+        points.push((index, value));
+    }
+    points.sort_by_key(|(index, _)| *index);
+    points.into_iter().map(|(_, value)| value).take(MAX_CHART_CACHE_POINTS).collect()
+}
+
+/// Cached `c:numCache` points as numbers, ordered by `c:pt/@idx`.
+fn cache_number_values(reference: &XmlNode) -> Vec<f64> {
+    let Some(cache) = descendant(reference, "numCache") else { return Vec::new() };
+    let mut points: Vec<(u32, f64)> = Vec::new();
+    for point in cache.children_of("pt") {
+        let index = parse_u32_attr(point, "idx").unwrap_or(points.len() as u32);
+        let value = point.child("v").and_then(|value| value.deep_text().trim().parse::<f64>().ok());
+        if let Some(value) = value {
+            points.push((index, value));
+        }
+    }
+    points.sort_by_key(|(index, _)| *index);
+    points.into_iter().map(|(_, value)| value).take(MAX_CHART_CACHE_POINTS).collect()
+}
+
+/// Reads one ChartML part back into the model. This is the inverse of
+/// [`chart_xml`]: the exporter writes one cache-free `c:ser` per series with a
+/// literal `c:tx`, so the round trip through our own files is exact.
+fn read_xlsx_chart(xml: &str, warnings: &mut Vec<String>) -> Option<ChartData> {
+    let root = parse_xml(xml).ok()?;
+    let plot = descendant(&root, "plotArea")?;
+    let plot_child = plot.children.iter().find(|child| child.local_name().ends_with("Chart"))?;
+    let kind = match plot_child.local_name() {
+        "barChart" => {
+            if descendant(plot_child, "barDir").and_then(|node| node.attr("val")) == Some("bar") {
+                "bar".to_string()
+            } else {
+                "column".to_string()
+            }
+        }
+        "lineChart" => "line".to_string(),
+        "pieChart" => "pie".to_string(),
+        "areaChart" => "area".to_string(),
+        other => {
+            let raw = other.trim_end_matches("Chart").to_ascii_lowercase();
+            if !raw.is_empty() {
+                warnings.push(format!(
+                    "A \"{raw}\" chart was imported with limited support; it is kept in the native .oswk file."
+                ));
+            }
+            raw
+        }
+    };
+    let chart_node = root.child("chart");
+    let title = chart_node.and_then(|node| node.child("title")).map(chart_text_block).unwrap_or_default();
+    let legend_node = chart_node.and_then(|node| node.child("legend"));
+    let legend = legend_node.is_some();
+    // The model stores only whether a legend exists; a foreign position cannot
+    // be kept, and the exporter always writes a bottom legend.
+    let legend_position = legend_node
+        .and_then(|node| descendant(node, "legendPos"))
+        .and_then(|node| node.attr("val"))
+        .map(str::to_string);
+    if let Some(position) = legend_position.as_deref().filter(|position| !position.is_empty() && *position != "b") {
+        warnings.push(format!(
+            "An imported chart has its legend at \"{position}\"; the editor renders charts with a bottom legend."
+        ));
+    }
+    let mut series = Vec::new();
+    let mut categories = String::new();
+    let mut categories_cache = Vec::new();
+    let mut series_values_cache = Vec::new();
+    for ser in plot_child.children_named("ser") {
+        let name = ser.child("tx").map(chart_text_block).unwrap_or_default();
+        let range = ser
+            .child("val")
+            .and_then(|val| descendant(val, "f"))
+            .map(XmlNode::deep_text)
+            .map(|value| relative_ref(&value))
+            .unwrap_or_default();
+        let color = descendant(ser, "spPr")
+            .and_then(|props| descendant(props, "srgbClr"))
+            .and_then(|color| color.attr("val"))
+            .map(|value| format!("#{}", value.trim_start_matches('#').to_ascii_uppercase()));
+        if categories.is_empty() {
+            if let Some(cat) = ser.child("cat") {
+                categories = descendant(cat, "f").map(XmlNode::deep_text).map(|value| relative_ref(&value)).unwrap_or_default();
+                categories_cache = cache_text_values(cat);
+            }
+        }
+        series_values_cache.push(ser.child("val").map(cache_number_values).unwrap_or_default());
+        series.push(ChartSeries { name, range, color });
+    }
+    let stacked = descendant(plot_child, "grouping").and_then(|node| node.attr("val")).map(|value| value == "stacked").unwrap_or(false);
+    // Empty caches are dropped so an export/import cycle of cache-free charts
+    // stays byte-identical; a chart with at least one cache keeps the aligned
+    // per-series vectors the model documents.
+    if series_values_cache.iter().all(Vec::is_empty) {
+        series_values_cache.clear();
+    }
+    let show_labels = descendant(&root, "dLbls")
+        .and_then(|labels| descendant(labels, "showVal"))
+        .and_then(|node| node.attr("val"))
+        .map(|value| value == "1")
+        .unwrap_or(false);
+    let x_title = descendant(plot, "catAx").and_then(|axis| axis.child("title")).map(chart_text_block).unwrap_or_default();
+    let y_title = descendant(plot, "valAx").and_then(|axis| axis.child("title")).map(chart_text_block).unwrap_or_default();
+    Some(ChartData {
+        kind,
+        title,
+        categories,
+        series,
+        legend,
+        x_title,
+        y_title,
+        stacked,
+        show_labels,
+        categories_cache,
+        series_values_cache,
+    })
+}
+
+/// The cell anchor of a `oneCellAnchor`/`twoCellAnchor`, in the model's terms.
+struct DrawingAnchor {
+    address: String,
+    col_off_emu: i64,
+    row_off_emu: i64,
+    to_address: Option<String>,
+    to_col_off_emu: i64,
+    to_row_off_emu: i64,
+    width_px: f64,
+    height_px: f64,
+}
+
+/// 96 dpi pixels per EMU, the same factor the exporter uses.
+const EMU_PER_PX: f64 = 9525.0;
+
+fn parse_drawing_anchor(anchor: &XmlNode) -> Option<DrawingAnchor> {
+    let from = anchor.child("from")?;
+    let child_number = |node: &XmlNode, name: &str| -> Option<u32> {
+        node.child(name)
+            .map(XmlNode::deep_text)
+            .and_then(|value| value.trim().parse::<u32>().ok())
+    };
+    let column = child_number(from, "col")?;
+    let row = child_number(from, "row")?;
+    if row > MAX_IMPORT_ROWS || column > MAX_IMPORT_COLS {
+        return None;
+    }
+    let offset = |node: Option<&XmlNode>, name: &str| -> i64 {
+        node.and_then(|node| node.child(name))
+            .map(XmlNode::deep_text)
+            .and_then(|value| value.trim().parse::<i64>().ok())
+            .unwrap_or(0)
+    };
+    let col_off_emu = offset(Some(from), "colOff");
+    let row_off_emu = offset(Some(from), "rowOff");
+    let to = anchor.child("to");
+    let to_address = to.and_then(|to| {
+        let to_column = child_number(to, "col")?;
+        let to_row = child_number(to, "row")?;
+        Some(crate::address::format(to_row, to_column))
+    });
+    let to_col_off_emu = offset(to, "colOff");
+    let to_row_off_emu = offset(to, "rowOff");
+    // A one-cell anchor carries `ext`; a two-cell anchor's extent is derived
+    // from its corners using Excel's default column (64 px) and row (20 px).
+    let (width_px, height_px) = if let Some(ext) = anchor.child("ext") {
+        let cx = ext.attr("cx").and_then(|value| value.trim().parse::<f64>().ok()).unwrap_or(0.0);
+        let cy = ext.attr("cy").and_then(|value| value.trim().parse::<f64>().ok()).unwrap_or(0.0);
+        (cx / EMU_PER_PX, cy / EMU_PER_PX)
+    } else if let Some(to) = to {
+        let to_column = child_number(to, "col").unwrap_or(column);
+        let to_row = child_number(to, "row").unwrap_or(row);
+        let width = to_column.saturating_sub(column) as f64 * 64.0 + (to_col_off_emu - col_off_emu) as f64 / EMU_PER_PX;
+        let height = to_row.saturating_sub(row) as f64 * 20.0 + (to_row_off_emu - row_off_emu) as f64 / EMU_PER_PX;
+        (width, height)
+    } else {
+        return None;
+    };
+    if !width_px.is_finite() || !height_px.is_finite() || width_px <= 0.0 || height_px <= 0.0 {
+        return None;
+    }
+    Some(DrawingAnchor {
+        address: crate::address::format(row, column),
+        col_off_emu,
+        row_off_emu,
+        to_address,
+        to_col_off_emu,
+        to_row_off_emu,
+        width_px,
+        height_px,
+    })
+}
+
+/// Reads the sheet's drawing part and maps charts and pictures onto the model.
+///
+/// A drawing is optional: a sheet without one simply keeps no floating
+/// objects. Every failure is a warning; the calamine values are never touched.
+fn apply_drawings(zip: &crate::zip::ZipReader, part: &str, root: &XmlNode, sheet: &mut Sheet, warnings: &mut Vec<String>) {
+    let Some(drawing) = root.child("drawing") else { return };
+    let Some(relationship_id) = drawing.attr_any_ns("id") else { return };
+    let relationships = read_relationships(zip, part);
+    let Some(relationship) = relationships
+        .get(relationship_id)
+        .filter(|relationship| relationship.kind.ends_with("/drawing"))
+    else {
+        return;
+    };
+    let target = resolve_part(part, &relationship.target);
+    let text = match zip.read_text(&target) {
+        Ok(text) => text,
+        Err(error) => {
+            warnings.push(format!("The drawing of sheet \"{}\" could not be read ({error}).", sheet.name));
+            return;
+        }
+    };
+    if text.len() > MAX_DETAIL_PART_BYTES {
+        warnings.push(format!("The drawing of sheet \"{}\" is too large to inspect; charts and images were skipped.", sheet.name));
+        return;
+    }
+    let parsed = match parse_xml(&text) {
+        Ok(parsed) => parsed,
+        Err(_) => {
+            warnings.push(format!("The drawing of sheet \"{}\" could not be parsed; charts and images were skipped.", sheet.name));
+            return;
+        }
+    };
+    let drawing_relationships = read_relationships(zip, &target);
+    for anchor in parsed.children.iter().filter(|child| matches!(child.local_name(), "oneCellAnchor" | "twoCellAnchor")) {
+        let Some(geometry) = parse_drawing_anchor(anchor) else { continue };
+        // Charts: `xdr:graphicFrame` wrapping a `c:chart` relationship.
+        if let Some(frame) = anchor.child("graphicFrame") {
+            let Some(chart_ref) = descendant(frame, "chart") else {
+                warnings.push(format!(
+                    "A non-chart graphic frame in the drawing of sheet \"{}\" was not imported.",
+                    sheet.name
+                ));
+                continue;
+            };
+            let Some(embed) = chart_ref.attr_any_ns("id") else {
+                warnings.push(format!("A chart on sheet \"{}\" has no relationship and was skipped.", sheet.name));
+                continue;
+            };
+            let Some(relationship) = drawing_relationships.get(embed).filter(|relationship| relationship.kind.ends_with("/chart")) else {
+                warnings.push(format!("A chart relationship on sheet \"{}\" could not be resolved and was skipped.", sheet.name));
+                continue;
+            };
+            let chart_part = resolve_part(&target, &relationship.target);
+            let chart_text = match zip.read_text(&chart_part) {
+                Ok(text) => text,
+                Err(_) => {
+                    warnings.push(format!("Chart part {chart_part} could not be read and was skipped."));
+                    continue;
+                }
+            };
+            if chart_text.len() > MAX_DETAIL_PART_BYTES {
+                warnings.push(format!("Chart part {chart_part} is too large to inspect and was skipped."));
+                continue;
+            }
+            match read_xlsx_chart(&chart_text, warnings) {
+                Some(chart) => sheet.charts.push(ChartPlacement {
+                    id: format!("chart{}", sheet.charts.len() + 1),
+                    chart,
+                    anchor: geometry.address,
+                    width_px: geometry.width_px,
+                    height_px: geometry.height_px,
+                }),
+                None => warnings.push(format!("Chart part {chart_part} could not be parsed and was skipped.")),
+            }
+            continue;
+        }
+        // Pictures: `xdr:pic` with an `a:blip/@r:embed` relationship.
+        let Some(picture) = anchor.child("pic") else { continue };
+        let Some(embed) = descendant(picture, "blip").and_then(|blip| blip.attr_any_ns("embed")) else {
+            warnings.push(format!("An image on sheet \"{}\" has no relationship and was skipped.", sheet.name));
+            continue;
+        };
+        let Some(relationship) = drawing_relationships.get(embed).filter(|relationship| relationship.kind.ends_with("/image")) else {
+            warnings.push(format!("An image relationship on sheet \"{}\" could not be resolved and was skipped.", sheet.name));
+            continue;
+        };
+        let media_part = resolve_part(&target, &relationship.target);
+        let bytes = match zip.read(&media_part) {
+            Ok(bytes) if !bytes.is_empty() => bytes,
+            _ => {
+                warnings.push(format!("Image part {media_part} could not be read and was skipped."));
+                continue;
+            }
+        };
+        let name = media_part.rsplit('/').next().unwrap_or("image.png").to_string();
+        let mut image = ImageData::from_bytes(&name, &bytes);
+        image.alt = descendant(picture, "cNvPr").and_then(|props| props.attr("descr")).unwrap_or("").to_string();
+        if descendant(picture, "srcRect").is_some() {
+            warnings.push(format!(
+                "A cropped image on sheet \"{}\" was imported without its crop; the full picture is shown.",
+                sheet.name
+            ));
+        }
+        let rotation_deg = picture
+            .child("spPr")
+            .and_then(|props| props.child("xfrm"))
+            .and_then(|xfrm| xfrm.attr("rot"))
+            .and_then(|value| value.trim().parse::<f64>().ok())
+            .map(|value| value / 60_000.0)
+            .unwrap_or(0.0);
+        sheet.images.push(SheetImage {
+            image,
+            anchor: CellAnchor {
+                address: geometry.address,
+                col_off_emu: geometry.col_off_emu,
+                row_off_emu: geometry.row_off_emu,
+                to_address: geometry.to_address,
+                to_col_off_emu: geometry.to_col_off_emu,
+                to_row_off_emu: geometry.to_row_off_emu,
+            },
+            width_px: geometry.width_px,
+            height_px: geometry.height_px,
+            rotation_deg,
+        });
+    }
+    let absolute = parsed.children_of("absoluteAnchor").len();
+    if absolute > 0 {
+        warnings.push(format!(
+            "{absolute} absolutely anchored drawing(s) on sheet \"{}\" have no cell anchor and were not imported.",
+            sheet.name
+        ));
+    }
+    let shapes = parsed
+        .children
+        .iter()
+        .filter(|child| matches!(child.local_name(), "sp" | "grpSp"))
+        .count();
+    if shapes > 0 {
+        warnings.push(format!(
+            "{shapes} shape(s) in the drawing of sheet \"{}\" were not imported; the sheet model has no floating shapes.",
+            sheet.name
+        ));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Import: pivot caches and tables
+// ---------------------------------------------------------------------------
+
+/// Reads the pivot tables linked from a worksheet and preserves their raw
+/// parts. The rendered grid is already in the sheet cells from the calamine
+/// pass; nothing here recomputes an aggregation.
+fn apply_pivot_tables(
+    zip: &crate::zip::ZipReader,
+    part: &str,
+    sheet: &Sheet,
+    preserved: &mut Vec<PreservedPivot>,
+    warnings: &mut Vec<String>,
+) {
+    let relationships = read_relationships(zip, part);
+    for relationship in relationships.values() {
+        if !relationship.kind.ends_with("/pivotTable") {
+            continue;
+        }
+        let target = resolve_part(part, &relationship.target);
+        if let Some(pivot) = parse_pivot_table(zip, &target, &sheet.name, warnings) {
+            // Two sheets can share one cache; the table part itself is unique.
+            if !preserved.iter().any(|existing| existing.table_xml == pivot.table_xml) {
+                preserved.push(pivot);
+            }
+        }
+    }
+}
+
+fn parse_pivot_table(zip: &crate::zip::ZipReader, target: &str, sheet_name: &str, warnings: &mut Vec<String>) -> Option<PreservedPivot> {
+    let table_xml = match zip.read_text(target) {
+        Ok(text) => text,
+        Err(error) => {
+            warnings.push(format!("A pivot table part could not be read ({error})."));
+            return None;
+        }
+    };
+    if table_xml.len() > MAX_DETAIL_PART_BYTES {
+        warnings.push(format!("A pivot table part is too large to inspect and was kept in the original file only."));
+        return None;
+    }
+    let root = match parse_xml(&table_xml) {
+        Ok(root) => root,
+        Err(_) => {
+            warnings.push(format!("A pivot table part could not be parsed and was kept in the original file only."));
+            return None;
+        }
+    };
+    let mut name = root.attr("name").unwrap_or("").trim().to_string();
+    if name.is_empty() {
+        name = target.rsplit('/').next().unwrap_or("PivotTable").trim_end_matches(".xml").to_string();
+    }
+    let cache_id = parse_u32_attr(&root, "cacheId").unwrap_or(0);
+    let relationships = read_relationships(zip, target);
+    let Some(definition_relationship) = relationships.values().find(|relationship| relationship.kind.ends_with("/pivotCacheDefinition")) else {
+        warnings.push(format!("Pivot table \"{name}\" has no cache definition and was kept in the original file only."));
+        return None;
+    };
+    let definition_part = resolve_part(target, &definition_relationship.target);
+    let definition_xml = match zip.read_text(&definition_part) {
+        Ok(text) if text.len() <= MAX_DETAIL_PART_BYTES => text,
+        _ => {
+            warnings.push(format!("The pivot cache definition for \"{name}\" could not be read and was kept in the original file only."));
+            return None;
+        }
+    };
+    let Ok(definition_root) = parse_xml(&definition_xml) else {
+        warnings.push(format!("The pivot cache definition for \"{name}\" could not be parsed and was kept in the original file only."));
+        return None;
+    };
+    let source = definition_root
+        .child("cacheSource")
+        .and_then(|source| source.child("worksheetSource"))
+        .map(|worksheet| {
+            let reference = worksheet.attr("ref").unwrap_or("").trim().replace('$', "");
+            let source_sheet = worksheet.attr("sheet").unwrap_or("").trim();
+            if source_sheet.is_empty() || reference.is_empty() {
+                reference
+            } else {
+                format!("{source_sheet}!{reference}")
+            }
+        })
+        .unwrap_or_default();
+    let fields: Vec<String> = definition_root
+        .child("cacheFields")
+        .map(|block| {
+            block
+                .children_of("cacheField")
+                .into_iter()
+                .take(MAX_PIVOT_FIELDS)
+                .map(|field| field.attr("name").unwrap_or("").to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    let definition_relationships = read_relationships(zip, &definition_part);
+    let records_part = definition_relationships
+        .values()
+        .find(|relationship| relationship.kind.ends_with("/pivotCacheRecords"))
+        .map(|relationship| resolve_part(&definition_part, &relationship.target));
+    let records_base64 = records_part
+        .as_ref()
+        .and_then(|part| zip.read(part).ok())
+        .filter(|bytes| !bytes.is_empty())
+        .map(|bytes| base64::engine::general_purpose::STANDARD.encode(bytes));
+    Some(PreservedPivot {
+        name,
+        sheet: sheet_name.to_string(),
+        cache_id,
+        definition_xml,
+        records_base64,
+        table_xml,
+        records_part,
+        source,
+        fields,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Import: styles.xml
 // ---------------------------------------------------------------------------
 
@@ -2656,6 +3831,8 @@ mod tests {
                 y_title: "EUR".into(),
                 stacked: false,
                 show_labels: true,
+                categories_cache: Vec::new(),
+                series_values_cache: Vec::new(),
             },
             anchor: "D2".into(),
             width_px: 420.0,

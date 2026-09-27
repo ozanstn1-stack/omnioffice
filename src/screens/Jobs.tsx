@@ -1,10 +1,15 @@
 /**
  * Background job center: every long operation (PDF, OCR, AI, vault scan)
- * reports here with progress, cancellation and retry.
+ * reports here with progress, cancellation and retry. Rows marked
+ * `interrupted` were running when the process died (Android activity
+ * recreation or a restart); their persisted payload can be routed back to
+ * the originating screen through jobs_retry.
  */
+import { useEffect } from "react";
 import { Ban, CheckCircle2, ListChecks, RefreshCw, XCircle } from "lucide-react";
-import { useJobs as useBackgroundJobs } from "../lib/jobs";
+import { resumeJobs, useJobs as useBackgroundJobs } from "../lib/jobs";
 import { useT } from "../lib/i18n";
+import { useToasts } from "../lib/store";
 import { Badge, Card, EmptyState } from "../components/ui";
 
 export function JobsScreen() {
@@ -13,6 +18,23 @@ export function JobsScreen() {
   const cancel = useBackgroundJobs((state) => state.cancel);
   const retry = useBackgroundJobs((state) => state.retry);
   const clearFinished = useBackgroundJobs((state) => state.clearFinished);
+  const pushToast = useToasts((state) => state.push);
+
+  // Safety net for the case where the app bootstrap (App.tsx) does not call
+  // resumeJobs yet: opening the screen still restores the persisted history.
+  useEffect(() => {
+    void resumeJobs();
+  }, []);
+
+  const onRetry = (id: string) => {
+    void retry(id).then((outcome) => {
+      // No screen registered a handler for this job kind: say so instead of
+      // leaving the user with a button that appears to do nothing.
+      if (outcome === "unavailable") {
+        pushToast({ kind: "info", title: t("jobs.retryUnavailable") });
+      }
+    });
+  };
 
   return (
     <div className="screen">
@@ -37,7 +59,17 @@ export function JobsScreen() {
             <Card key={job.id}>
               <div className="row">
                 <strong>{job.title}</strong>
-                <Badge tone={job.status === "failed" ? "danger" : job.status === "succeeded" ? "ok" : job.status === "cancelled" ? "warn" : "accent"}>
+                <Badge
+                  tone={
+                    job.status === "failed"
+                      ? "danger"
+                      : job.status === "succeeded"
+                        ? "ok"
+                        : job.status === "cancelled" || job.status === "interrupted"
+                          ? "warn"
+                          : "accent"
+                  }
+                >
                   {t(`jobs.status.${job.status}`)}
                 </Badge>
                 <span className="spacer" />
@@ -53,6 +85,9 @@ export function JobsScreen() {
                   </p>
                 </>
               ) : null}
+              {job.status === "interrupted" ? (
+                <p className="muted small">{t("jobs.interruptedHint")}</p>
+              ) : null}
               {job.error ? <p className="muted small">{job.error}</p> : null}
               <div className="row" style={{ marginTop: 8 }}>
                 {job.status === "running" ? (
@@ -60,8 +95,8 @@ export function JobsScreen() {
                     <Ban size={13} /> {t("common.cancel")}
                   </button>
                 ) : null}
-                {job.status === "failed" || job.status === "cancelled" ? (
-                  <button type="button" className="btn btn-soft" onClick={() => retry(job.id)}>
+                {job.status === "failed" || job.status === "cancelled" || job.status === "interrupted" ? (
+                  <button type="button" className="btn btn-soft" onClick={() => onRetry(job.id)}>
                     <RefreshCw size={13} /> {t("jobs.retry")}
                   </button>
                 ) : null}

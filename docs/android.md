@@ -33,7 +33,15 @@ npm run android:build        # release APK for arm64-v8a
 npm run android:build:all    # release APKs for arm64-v8a + armeabi-v7a
 ```
 
-The APKs land in `release-artifacts/`. Extra switches:
+The APKs land in `release-artifacts/` as
+`PDF-Swiss-Army-Knife-Android-<version>-<abi>.apk`. Pass `-Bundle` to also
+produce signed AABs:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& ./scripts/build-android.ps1 -Abi arm64-v8a,armeabi-v7a -Bundle"
+```
+
+Extra switches:
 
 ```powershell
 powershell -File scripts/build-android.ps1 -Abi x86_64 -Debug    # emulator build
@@ -41,10 +49,15 @@ powershell -File scripts/build-android.ps1 -SkipFrontend         # reuse dist/
 powershell -File scripts/build-android.ps1 -AndroidHome D:\Sdk -NdkHome D:\Sdk\ndk\27.3.13750724
 ```
 
+The app version comes from `src-tauri/tauri.conf.json`; the build script
+writes `app/tauri.properties` (`versionName=3.1.0`,
+`versionCode=3001000` — `major*1e6 + minor*1e3 + patch`, monotonically
+increasing).
+
 Install on a device or emulator:
 
 ```powershell
-adb install -r release-artifacts\pdf-swiss-army-knife-arm64-v8a-app-arm64-release.apk
+adb install -r release-artifacts\PDF-Swiss-Army-Knife-Android-3.1.0-arm64-v8a.apk
 ```
 
 > **Why not `tauri android build`?** The Tauri CLI prepares `jniLibs` with
@@ -60,7 +73,7 @@ adb install -r release-artifacts\pdf-swiss-army-knife-arm64-v8a-app-arm64-releas
 | `libpdf_sak_lib.so` | `lib/<abi>/` | the Rust application (frontend embedded via `tauri/custom-protocol`) |
 | `libpdfium.so` | `lib/<abi>/` | page rendering, text extraction, search (bblanchon/pdfium-binaries) |
 | `libtesseract.so` | `lib/<abi>/` | Tesseract 4.1.0 CLI, executed from the app's native library directory |
-| `tessdata/*` | `assets/` | 8 OCR languages + OSD, copied to the app's private files directory on first launch |
+| `tessdata/*` | `assets/` | 9 OCR languages + OSD, copied to the app's private files directory on first launch |
 
 `npm run android:engines` downloads these into `src-tauri/resources/engines-android`
 (native libraries) and `src-tauri/resources/android-assets/tessdata` (models);
@@ -123,6 +136,26 @@ means users have to uninstall the app before installing an update.
 
 ## CI
 
-`.github/workflows/android.yml` builds the APKs on every version tag (and on
-manual dispatch) on an Ubuntu runner with the Android SDK/NDK, and attaches
-them to the GitHub release.
+`.github/workflows/android.yml` builds signed APKs **and AABs** for both ABIs on
+every version tag (and on manual dispatch) on an Ubuntu runner with the Android
+SDK/NDK, and attaches them to the GitHub release. It also validates the
+Android version metadata against `tauri.conf.json` and the tag.
+
+## V3.1 platform behavior
+
+* **Open with**: `MainActivity` handles `ACTION_VIEW` and
+  `ACTION_SEND`/`SEND_MULTIPLE`, validates the extension against a whitelist,
+  copies the stream into app cache (256 MB cap, sanitized name) and the
+  frontend drains `android_take_pending_open()` at startup, on new intents and
+  on resume.
+* **SAF**: office documents can be imported (`pickOfficeFiles`) and saved
+  through a SAF destination or published to Downloads; `content://` URIs are
+  never passed to the Rust backend.
+* **Vault**: imports copies into app-private storage and indexes them.
+* **Jobs**: persisted to `jobs.json`; jobs that were running when the process
+  died come back as `interrupted` (no foreground service in V3.1).
+* **Back navigation**: `handleBackNavigation = true` plus an in-app history so
+  Back closes overlays/navigates before exiting.
+* **Security**: `allowBackup=false`, data-extraction rules, narrowed
+  FileProvider paths, network security config limiting cleartext to
+  localhost/emulator hosts.

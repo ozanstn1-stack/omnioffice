@@ -3,6 +3,7 @@
 //! These cover the workflow the user performs by hand:
 //!   open a file -> verify content -> save it again -> reopen -> verify again.
 
+use officecore::model::{Block, CellValue, ChartData, ChartSeries, Footnote, RevisionMark, Run, SlideObject};
 use officecore::{docx, odf, pptx, rtf, xlsx};
 use std::path::{Path, PathBuf};
 
@@ -70,14 +71,50 @@ fn odt_and_rtf_roundtrip() {
     let odt_source = require(&samples_dir().join("test-document.odt"));
     let odt = odf::read_odt_file(&odt_source).unwrap();
     assert!(odt.document.plain_text().contains("Test document"));
+    // Extend: footnotes now survive an ODT write -> read cycle.
+    let mut edited = odt.document;
+    edited.footnotes = vec![Footnote { id: "fn-rt".into(), runs: vec![Run { text: "Round trip note".into(), ..Default::default() }], marker: String::new() }];
+    edited.blocks.push(Block::Paragraph {
+        props: Default::default(),
+        runs: vec![Run { text: "note ref".into(), ..Default::default() }, Run { footnote: Some("fn-rt".into()), ..Default::default() }],
+    });
     let odt_target = temp("roundtrip-document.odt");
-    std::fs::write(&odt_target, odf::write_odt(&odt.document).unwrap()).unwrap();
+    std::fs::write(&odt_target, odf::write_odt(&edited).unwrap()).unwrap();
     let odt_again = odf::read_odt_file(&odt_target).unwrap();
     assert!(odt_again.document.plain_text().contains("Test document"));
+    assert_eq!(odt_again.document.footnotes.len(), 1);
+    assert!(odt_again.document.footnotes[0].runs.iter().any(|run| run.text.contains("Round trip note")));
+    assert_eq!(odt_again.document.footnote_order().len(), 1);
+    assert!(!odt_again.document.plain_text().contains("Round trip note"), "the note body must not leak into the paragraph text");
 
     let rtf_source = require(&samples_dir().join("test-document.rtf"));
-    let rtf = rtf::read_rtf_file(&rtf_source).unwrap();
-    assert!(rtf.document.plain_text().contains("Test document"));
+    let rtf_read = rtf::read_rtf_file(&rtf_source).unwrap();
+    assert!(rtf_read.document.plain_text().contains("Test document"));
+    // Extend: RTF keeps notes and tracked insertions.
+    let mut edited = rtf_read.document;
+    edited.footnotes = vec![Footnote { id: "fn-rtf".into(), runs: vec![Run { text: "RTF note".into(), ..Default::default() }], marker: String::new() }];
+    edited.blocks.push(Block::Paragraph {
+        props: Default::default(),
+        runs: vec![
+            Run {
+                text: "tracked".into(),
+                revision: Some(RevisionMark { id: "r1".into(), kind: "insert".into(), author: "RoundTrip".into(), date: "2026-01-01T00:00:00Z".into(), original: None }),
+                ..Default::default()
+            },
+            Run { footnote: Some("fn-rtf".into()), ..Default::default() },
+        ],
+    });
+    let rtf_target = temp("roundtrip-document.rtf");
+    std::fs::write(&rtf_target, rtf::write_rtf(&edited).unwrap()).unwrap();
+    let rtf_again = rtf::read_rtf_file(&rtf_target).unwrap();
+    assert_eq!(rtf_again.document.footnotes.len(), 1);
+    assert!(rtf_again.document.footnotes[0].runs.iter().any(|run| run.text.contains("RTF note")));
+    assert_eq!(rtf_again.document.footnote_order().len(), 1);
+    let revision = rtf_again.document.blocks.iter().find_map(|block| match block {
+        Block::Paragraph { runs, .. } => runs.iter().find_map(|run| run.revision.as_ref().filter(|revision| revision.kind == "insert").cloned()),
+        _ => None,
+    });
+    assert_eq!(revision.map(|revision| (revision.author, revision.date)), Some(("RoundTrip".into(), "2026-01-01T00:00:00Z".into())));
 }
 
 #[test]
@@ -145,11 +182,41 @@ fn pptx_open_edit_save_reopen() {
 
     let mut edited = first.deck;
     edited.slides[0].notes = "Edited notes".into();
+    // Extend: a chart with cached values must keep them (and its embedded
+    // workbook) through the save/reopen cycle.
+    let mut chart_object = SlideObject::new("chart", 80.0, 80.0, 400.0, 240.0);
+    chart_object.id = "chart-roundtrip".into();
+    chart_object.chart = Some(ChartData {
+        kind: "line".into(),
+        title: "Round trip chart".into(),
+        categories: "A2:A3".into(),
+        series: vec![ChartSeries { name: "Value".into(), range: "B2:B3".into(), color: Some("#2563EB".into()) }],
+        legend: true,
+        x_title: String::new(),
+        y_title: String::new(),
+        stacked: false,
+        show_labels: false,
+        categories_cache: vec!["Alpha".into(), "Beta".into()],
+        series_values_cache: vec![vec![1.5, 2.5]],
+    });
+    edited.slides[0].objects.push(chart_object);
     let target = temp("roundtrip-presentation.pptx");
     pptx::write_pptx_file(&target, &edited).unwrap();
     let second = pptx::read_pptx_file(&target).unwrap();
     assert_eq!(second.deck.slides.len(), 5);
     assert!(second.deck.slides[0].notes.contains("Edited notes"));
+    let chart = second.deck.slides[0].objects.iter().find_map(|object| object.chart.as_ref()).expect("cached chart");
+    assert_eq!(chart.categories_cache, vec!["Alpha".to_string(), "Beta".to_string()]);
+    assert_eq!(chart.series_values_cache, vec![vec![1.5, 2.5]]);
+
+    let bytes = std::fs::read(&target).unwrap();
+    let reader = officecore::zip::ZipReader::open(bytes).unwrap();
+    let workbook_bytes = reader.read("ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx").unwrap();
+    let workbook = xlsx::read_workbook_bytes(&workbook_bytes).unwrap();
+    assert_eq!(
+        workbook.workbook.sheets[0].get("B2").map(|cell| cell.value.clone()),
+        Some(CellValue::Number(1.5))
+    );
 }
 
 #[test]

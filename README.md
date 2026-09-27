@@ -1,92 +1,129 @@
 # Office Swiss Army Knife
 
-A local-first desktop productivity suite: a word processor (Writer), a
-spreadsheet (Calc), a presentation editor (Impress), local productivity tools
-(Notes, Planner, Data, Draw, Templates, PDF Forms, Document Vault) and the
-complete PDF toolkit this project started from.
+A local-first productivity suite: a word processor (Writer), a spreadsheet
+(Calc), a presentation editor (Impress), local productivity tools (Notes,
+Planner, Data, Draw, Templates, PDF Forms, Document Vault) and the complete
+PDF toolkit this project started from — on **Windows and Android**.
 
 Everything runs on your machine. Documents are never uploaded, there is no
-telemetry, AI is opt-in with your own provider, and the app stays useful
-without an internet connection. Macros and embedded scripts in office files
-are never executed.
+telemetry, AI is opt-in with your own provider, cloud sync is off until you
+configure it, and the app stays useful without an internet connection. Macros
+and embedded scripts in office files are never executed.
 
-**Version 3.0.0** · Platform: Windows (Tauri also targets Linux/macOS; the
+**Version 3.1.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
-here) · UI languages: English, Turkish.
+here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
 
-## What's new in 3.0.0
+## What's new in 3.1.0
 
-V3.0 turns the suite from a set of editors into a document platform:
+V3.1 completes the cross-platform story and raises Office/PDF fidelity:
 
-- **Writer is sectioned and reviewed.** Real sections (per-section page setup,
-  first/even headers, section breaks), footnotes and endnotes with automatic
-  numbering and a reserved note area, tracked changes (insertions, deletions
-  and formatting changes) with accept/reject per change or in bulk, comments
-  with replies, bookmarks and cross-reference fields (REF/PAGEREF/DATE/...).
-  All of it round-trips through DOCX and renders into the exported PDF.
-- **Calc understands tables and audits formulas.** Excel-style structured
-  tables with headers, totals, banded rows, calculated columns, filters and
-  structured references (`=SUM(Sales[Amount])`, `Sales[@Amount]`), formula
-  autocomplete with argument hints, and trace-precedents / trace-dependents /
-  circular-reference auditing on top of the dependency graph.
-- **XLSX import keeps the file, not just the numbers.** A custom OOXML pass now
-  reads styles, number formats, column widths, row heights, merges, freeze
-  panes, data validation, conditional formatting, hyperlinks, comments, defined
-  names and structured tables; tables are also written back as real
-  `xl/tables/tableN.xml` parts.
-- **Impress has masters, groups, charts and a slideshow that animates.**
-  Slide masters and layouts with placeholder inheritance, real nested shape
-  groups with group-level transforms, PPTX chart import/export, an animation
-  model (entrance/emphasis/exit with triggers and timing) that actually runs in
-  the slideshow, and a presenter view with next-slide preview, notes and timer.
-- **PDF tools grew up.** A real sanitizer (JavaScript, embedded files, launch
-  actions, unsafe annotations, metadata), annotation/form flattening, PDF/A
-  validation for 1b/2b/3b with an honest converter that re-validates and never
-  claims compliance it does not have, redaction verification (the output is
-  re-read and checked), and working OCR preprocessing (deskew, denoise,
-  threshold, contrast, orientation detection on the rendered page).
-- **Document Vault.** Opt-in local indexing of folders you choose (office
-  documents and PDFs), full-text/phrase/fuzzy search with filters, snippets
-  with match locations and a text preview. Local only, crash-resistant index,
-  incremental rescans.
-- **Document platform.** A unified command registry with a command palette
-  (`Ctrl+Shift+P`) and global search (`Ctrl+Shift+F`), a background job center
-  with progress/cancel/retry, a capability/compatibility system that reports
-  what each format supports *before* a save, and schema versioning with tested
-  migrations for `.oswk` (V2.x documents open and are upgraded in memory).
-- **AI is a document assistant, not a black box.** Provider abstraction
-  (DeepSeek, OpenAI-compatible, Ollama, Gemini, custom) with capability flags,
-  a per-document consent gate, "show what will be sent" activity line, send
-  scope (whole document / current page / selection), and a document chat that
-  answers with `[page N]` citations. Ollama runs entirely on your machine.
+- **Writer is a real WYSIWYG editor.** Click anywhere on a page and type
+  there — the caret lands on the clicked character, Enter/Backspace/Delete/
+  Shift+Enter work in place, selection and paste are native, and the caret
+  **crosses pages** with the arrow keys. Caret position is preserved across
+  reflow. Touch works the same way on Android.
+- **Real digital signatures.** Detached CMS/PKCS#7 signatures (X.509,
+  SHA-256, RSA or ECDSA P-256) with a visible appearance, a ByteRange that
+  covers the saved revision, and re-verification of the written file.
+  Certificates come from a PKCS#12 file on any platform or from the Windows
+  certificate store; validation reports digest match, modification, signer
+  identity and chain status. Trust is honestly reported as `unknown` offline.
+- **PDF Studio grew forms and objects.** List, fill and validate AcroForm
+  fields (text, checkbox, radio, dropdown, list) with regenerated appearance
+  streams; flatten afterwards; select annotations, form widgets and drawn
+  images to move, resize, rotate or delete — mouse on Windows, touch handles
+  on Android. Text/vector content streams are documented as out of scope.
+- **PDF/A conversion embeds missing fonts.** Simple fonts are substituted
+  with bundled OFL fonts (Liberation Sans for the Helvetica/Arial family —
+  metric-compatible — and PT Sans as a warned fallback), embedded as
+  `/FontFile2` with real metrics, and the output intent carries a genuine
+  sRGB ICC v4 `/DestOutputProfile`. What cannot be embedded (CID/Type0,
+  symbolic fonts, custom encodings) is reported, never silently skipped.
+- **XLSX import keeps the file, not just the numbers.** Charts,
+  pictures with anchors and rotation, print settings (page setup, margins,
+  header/footer, row/column breaks, Print_Area/Print_Titles), sheet
+  protection and pivot parts now round-trip; pivot caches are preserved
+  losslessly rather than recomputed.
+- **PPTX charts carry data.** The chart dialog edits real categories and
+  values; export writes `c:strCache`/`c:numCache` and an embedded Excel
+  workbook, so other office suites show the chart instead of an empty plot.
+- **ODT and RTF keep notes and tracked changes.** Footnote/endnote objects
+  (`text:note`) and RTF `\footnote`/`{\revised}`/`{\deleted}` with author
+  tables round-trip.
+- **Android is a first-class platform.** Open-with intents (content:// URIs
+  copied safely into cache), SAF import/export for office formats, Document
+  Vault import + local indexing, persistent background jobs that survive
+  process death, touch UX in every editor and the reader (pinch zoom, drag
+  pan, object handles), in-app back navigation, hardened manifest with
+  backups disabled.
+- **Sandboxed plugin runtime.** Plugins are manifest-validated, run in a Web
+  Worker with no DOM and no IPC, and every capability (`read_document`,
+  `modify_document`, `read_files`, `write_files`, `clipboard`, `network`) is
+  enforced by the host. A crashing plugin never takes the app down.
+- **Local-first cloud sync foundation.** A real WebDAV provider (conditional
+  PUT, ETag-aware) with per-file metadata and **three-way conflict
+  detection** (local/cloud/base) and manual resolution: keep local, keep
+  cloud, or keep both. Off by default, no silent overwrites; OneDrive/Google
+  Drive are declared OAuth-only and disabled with an explicit message.
+- **Data Loss Protection.** Every non-`.oswk` save/export — including the
+  Universal Converter — runs the compatibility matrix first and shows
+  Feature / Supported? / Imported? / Exported? / Transformed? / Lost? with
+  Continue, Cancel and **Save as .oswk**.
+- **Golden-file contract and performance guards.** V3.1 `.oswk` fixtures pin
+  feature survival across `.oswk` and DOCX/XLSX/PPTX round trips, and
+  performance tests cover large documents, spreadsheets and PDFs.
 
 ## Verified workflows
 
 These were exercised on the built application and with automated tests:
 
-- **Writer**: click anywhere on a page fragment → the caret lands at the
-  clicked character and the editing surface opens there; typing updates the
-  model; DOCX round-trip tests cover sections, notes, revisions, fields and
-  comments; the PDF export is section-aware and draws notes on the page that
-  references them.
-- **Calc**: click a cell → type → `Enter` commits and moves on; `=SUM(Sales[Amount])`
-  evaluates; editing a table cell recalculates its dependents; trace buttons
-  highlight precedents and dependents; the XLSX round trip preserves layout,
-  validation, conditional formatting, comments, links, names and tables.
+- **Writer**: clicking a page fragment places a real caret inside the page
+  sheet at the clicked character and typing updates the model; Enter splits,
+  Backspace merges across fragments, ArrowDown crosses to the next page;
+  DOCX round-trip tests cover sections, notes, revisions, fields, comments,
+  and the V3.1 golden fixture covers all of it together.
+- **Calc**: click a cell → type → `Enter` commits and moves on;
+  `=SUM(Sales[Amount])` evaluates; editing a table cell recalculates its
+  dependents; trace buttons highlight precedents and dependents; the XLSX
+  round trip preserves layout, charts, pictures, print settings, protection,
+  validation, conditional formatting, comments, links, names, tables and
+  pivot parts.
 - **Impress**: the sample PPTX loads with slides, shapes, images, tables,
   notes and transitions; masters/layouts round-trip; a nested group moves as
-  one; the slideshow runs entrance/emphasis/exit animations and the presenter
-  view shows the next slide and notes.
+  one; charts export with caches and an embedded workbook; the slideshow runs
+  entrance/emphasis/exit animations and the presenter view shows the next
+  slide and notes; touch drags objects on Android.
 - **PDF**: every tool from v1.x is unchanged and still covered by its tests.
+- **Signatures**: `sign_pdf` output is verified by re-parsing the CMS with an
+  independent parser, recomputing the byte-range digest and checking RSA/
+  ECDSA signatures; tampering after signing is detected; a wrong PFX password
+  is an error, never a fake success. The Windows store signing path was
+  end-to-end tested with a temporary certificate.
+- **Forms**: filled values set `/V`, appearances are regenerated and parsed
+  back; validation flags required/max-length/option problems; flattening
+  removes the interactive fields (tested).
+- **PDF/A**: a document with an unembedded Helvetica is converted, the
+  descriptor gains `/FontFile2`, the ICC profile stream appears, and the
+  re-validation reports the font check as passing; Type0 fonts are reported
+  as skipped and compliance is not claimed.
 - **Redaction**: text under a redaction box is *deleted from the content
-  stream*; the verification pass re-opens the output, re-extracts the text and
-  reports any remaining matches (masked) instead of assuming success.
+  stream*; the verification pass re-opens the output, re-extracts the text
+  and reports any remaining matches (masked) instead of assuming success.
 - **Sanitizer**: tests inject JavaScript, an OpenAction, an embedded file and
   an unsafe annotation, then walk every object in the output to prove they are
   gone, and Inspect confirms it independently.
-- **PDF/A**: a document with unembedded fonts fails validation; conversion
-  writes the XMP/output intent it can and still reports `valid: false` when the
-  fonts remain unembedded.
+- **Vault**: indexes user-picked folders on Windows and SAF-imported
+  documents on Android; search, snippets and preview work on both; the index
+  is crash-resistant and incremental.
+- **Jobs**: jobs persist across restarts, running ones come back as
+  `interrupted` with retry where routing exists, and cancellation works.
+- **Plugins**: the sample Word Frequency plugin reads the document through
+  the capability API, and permission tests prove a plugin without
+  `write_files` cannot touch the sandbox.
+- **Sync**: conflict states are unit-tested in a three-way matrix; uploads
+  are conditional (`If-Match`) and a 412 maps to a conflict, never a silent
+  overwrite.
 
 ## Modules
 
@@ -96,20 +133,17 @@ These were exercised on the built application and with automated tests:
   super/subscript, colour, highlight; alignment, spacing, indents
 - Lists (bullet/numbered/multilevel), tables, images, hyperlinks, page breaks,
   horizontal rules, table of contents, navigation pane
-- **Sections (V3)**: per-section page size/orientation/margins/columns, section
+- **Sections**: per-section page size/orientation/margins/columns, section
   breaks (new page/continuous/odd/even), default/first/even headers and footers
-- **Notes (V3)**: footnotes and endnotes, automatic numbering by reference
-  order, note area reserved at the bottom of the page in the paginated view and
-  in PDF export
-- **Track changes (V3)**: suggesting mode records typing and backspacing as
-  revisions; review pane with per-change accept/reject, accept all/reject all,
-  next/previous, show/hide; DOCX `w:ins`/`w:del`/`w:rPrChange` round trip
-- **Comments (V3)**: anchored comments with replies and resolve
-- **Fields and references (V3)**: bookmarks, cross references (REF/PAGEREF),
-  page/page-count/date/time/title/author fields written as real Word fields
-- Paginated view with real page containers, measured pagination (widow/orphan,
-  keep-with-next, keep-together, page-break-before, repeated table headers) and
-  click-to-caret positioning; continuous editing view
+- **Notes**: footnotes and endnotes with automatic numbering, reserved note
+  area, DOCX and ODT objects plus RTF destinations
+- **Track changes**: run-level insertions, deletions and formatting changes
+  with suggest mode, review pane, accept/reject (single and bulk),
+  next/previous, DOCX round trip and RTF `\revised`/`\deleted` marks
+- **Comments** with replies and resolve; **bookmarks, fields and cross
+  references** (REF/PAGEREF/DATE/TIME/TITLE/AUTHOR)
+- **Direct paginated editing (V3.1)**: caret on the page, cross-page caret
+  movement, selection, pointer/touch input, caret persistence across reflow
 - Find & replace, word/character/page count, zoom, print, PDF export with
   selectable text
 
@@ -119,31 +153,31 @@ These were exercised on the built application and with automated tests:
 - Formula engine with 160+ functions, `LET`, named ranges, inline arrays,
   dynamic arrays with spill, explicit errors and circular-reference detection
 - Dependency graph with incremental recalculation
-- **Formula autocomplete (V3)**: functions with signatures and descriptions,
-  defined names, sheet names, table and column names, argument hints
-- **Formula auditing (V3)**: trace precedents/dependents with coloured
-  overlays, circular-reference and invalid-reference reporting
-- **Structured tables (V3)**: create/rename/delete tables, header and totals
-  rows, banded rows, calculated columns, filters and structured references
-- **XLSX fidelity (V3)**: styles, number formats, widths, heights, merges,
-  freeze panes, validations, conditional formatting, hyperlinks, comments,
-  defined names and tables are read back; tables are exported as real table
-  parts
-- Cell formatting, number formats, sorting, filtering, conditional formatting,
-  data validation, freeze panes, charts (column/bar/line/pie/area), pivot
-  tables (computed live, exported as values)
+- Formula autocomplete (functions, names, sheets, tables, columns, argument
+  hints) and auditing (trace precedents/dependents, circular/invalid refs)
+- Structured tables with headers, totals, banded rows, calculated columns,
+  filters and structured references (`=SUM(Sales[Amount])`)
+- **XLSX import fidelity (V3.1)**: styles, number formats, widths, heights,
+  merges, freeze panes, validations, conditional formatting, hyperlinks,
+  comments, names, tables, charts, pictures, print settings, sheet
+  protection and preserved pivot parts
+- Cell formatting, sorting, filtering, conditional formatting, data
+  validation, freeze panes, charts (column/bar/line/pie/area), pivot tables
+- **Mobile (V3.1)**: touch selection, fill handle, pinch zoom, bottom-docked
+  formula bar, scrollable toolbars and tabs
 
 ### Impress (presentations)
 - PPTX and ODP import/export · PDF export · lossless `.oswk`
-- **Master slides (V3)**: masters with themes/backgrounds and layouts with
-  placeholders inherited by slides; layout picker per slide
-- **Grouped shapes (V3)**: real nested groups with group-level move/resize and
-  Alt+click child selection
-- **Charts (V3)**: ChartML import/export for column/bar/line/pie/area with
-  titles, series, legend, axes, stacking and data labels
-- **Animations (V3)**: entrance/emphasis/exit effects with triggers, duration
-  and delay; the slideshow executes them; `<p:timing>` round trip
-- **Presenter view (V3)**: current/next slide, notes, timer, navigation
+- **Master slides and layouts** with placeholder inheritance
+- **Grouped shapes**: nested groups with group-level transforms
+- **Charts (V3.1)**: ChartML import/export with titles, series, legend, axes,
+  stacking, data labels, cached categories/values and an embedded workbook
+  (editable data grid in the chart dialog, clipboard paste)
+- **Animations**: entrance/emphasis/exit with triggers, duration and delay;
+  the slideshow executes them; `<p:timing>` round trip
+- **Presenter view**: current/next slide, notes, timer, navigation
+- **Mobile (V3.1)**: touch object move/resize/rotate, marquee select,
+  double-tap to edit, coarse-pointer handles
 - Eight layouts, six themes, transitions, full-screen slideshow, speaker notes
 
 ### PDF module
@@ -152,44 +186,55 @@ Reader with search, Merge, Split, Organize, Compress, OCR (Tesseract), Protect
 JPG/PNG → PDF, Batch, Info, Redact, Compare, Inspect and the optional offline
 AI assistant — all unchanged.
 
-**PDF Studio (V3)**: Sanitize (JavaScript/attachments/actions/unsafe
-annotations/metadata with a removal report), Flatten (annotation and form
-appearances burned into the page), PDF/A-1b/2b/3b validation and honest
-conversion with a re-validation pass.
+**PDF Studio (V3.1)**: Sanitize (JavaScript/attachments/actions/unsafe
+annotations/metadata with a removal report), Flatten, PDF/A-1b/2b/3b
+validation and conversion with **real font embedding and an ICC output
+intent**, **Signatures** (list/validate/sign with Windows store or PKCS#12,
+visible appearance), and **Forms & objects** (list/fill/validate AcroForm
+fields, move/resize/rotate/delete annotations, widgets and drawn images).
 
-**OCR (V3)**: preprocessing now actually runs on the rendered page —
-orientation detection via Tesseract OSD on the raster (not the PDF), deskew,
-denoise, threshold and contrast, reported in the OCR result.
+**OCR**: preprocessing runs on the rendered page — orientation detection via
+Tesseract OSD on the raster, deskew, denoise, threshold and contrast,
+reported in the OCR result.
+
+**Reader (V3.1)**: pinch zoom, drag pan, double-tap zoom, touch-friendly
+toolbar.
 
 ### Document Vault
-- Index folders you explicitly choose; nothing is scanned by default
+- Windows: index folders you explicitly choose; nothing is scanned by default
+- Android: import documents through SAF into app-private vault storage and
+  index those copies (SAF has no browsable paths for the Rust scanner)
 - DOCX, ODT, RTF, TXT, Markdown, HTML, XLSX, ODS, CSV, PPTX, ODP and PDF
-- Index keeps file name, path, type, dates, size, extracted text, headings and
-  locations (page/paragraph/cell/slide)
-- Full-text search with exact/phrase/fuzzy modes, extension/date/folder filters,
-  snippets with `<</term/>>` highlighting and a preview panel
-- Crash-resistant atomic index, incremental rescans, corrupted-index recovery
+- Full-text search with exact/phrase/fuzzy modes, filters, snippets and a
+  preview panel; crash-resistant atomic index, incremental rescans
 
 ### Document platform
-- Unified command registry feeding the palette, keyboard shortcuts and menus
-- Command palette (`Ctrl+Shift+P`) and global search (`Ctrl+Shift+F`) over
-  commands, recent files and the vault index
-- Background job center with progress, cancellation and retry
-- Compatibility Center: per-format capability matrix and a pre-save loss report
-- `.oswk` schema versioning with migrations; documents from a newer schema are
-  refused rather than misread
+- Unified command registry feeding the palette, shortcuts and menus
+- Command palette (`Ctrl+Shift+P`) and global search (`Ctrl+Shift+F`)
+- **Persistent background job center (V3.1)**: progress, cancel, retry,
+  interrupted-job recovery, `jobs.json` state
+- **Data Loss Protection (V3.1)**: compatibility report before every lossy
+  save/export with Continue/Cancel/Save as `.oswk`
+- Compatibility Center: per-format capability matrix and loss reports
+- `.oswk` schema versioning with migrations; newer schemas are refused
 - Autosave with crash recovery, local version history (25 snapshots)
+- **Plugins (V3.1)**: sandboxed Web Worker runtime, manifest permissions,
+  install/list/remove, sample plugin; crash-isolated
+- **Cloud sync foundation (V3.1)**: WebDAV with conflict detection and manual
+  resolution; off by default
 
 ### AI assistant (opt-in)
 - Providers: DeepSeek, OpenAI-compatible endpoints, Ollama (local), Gemini,
-  custom — with capability flags (chat/embeddings/vision/structured/streaming)
-- Per-document consent before any request; network activity line shows the
-  provider and the character count being sent
-- Send scope: whole document, current page or selected text
+  custom — with capability flags
+- Per-document consent before any request; the network activity line shows
+  the provider and the character count being sent
+- Send scope: whole document, current page or selected text (Windows and
+  Android)
 - Document chat with `[page N]` citations, summaries, translation, text
   cleanup, metadata suggestions
-- API keys are stored with Windows DPAPI when available, never logged, never
-  written into documents or version history
+- API keys use Windows DPAPI when available; the Android build reports its
+  plaintext fallback and excludes app data from device backups. Keys are
+  never logged, never written into documents, versions or crash reports.
 
 ## Supported formats
 
@@ -200,7 +245,7 @@ Only combinations that actually work are marked. “–” means not supported.
 | DOCX | ✓ | ✓ | ✓ | ✓ |
 | DOC | – | – | – | – |
 | ODT | ✓ | ✓ | ✓ | ✓ |
-| RTF | ✓ | ✓ | ✓ (basic formatting, tables, images) | ✓ |
+| RTF | ✓ | ✓ | ✓ (basic formatting, tables, images, notes) | ✓ |
 | TXT / Markdown / HTML | ✓ | ✓ | ✓ | ✓ (via Writer) |
 | XLSX | ✓ | ✓ | ✓ | ✓ |
 | XLS | ✓ | – | – | – |
@@ -209,17 +254,57 @@ Only combinations that actually work are marked. “–” means not supported.
 | PPTX | ✓ | ✓ | ✓ | ✓ |
 | PPT | – | – | – | – |
 | ODP | ✓ | ✓ | ✓ | ✓ |
-| PDF | ✓ | ✓ (existing tools + PDF Studio) | ✓ | – |
+| PDF | ✓ | ✓ (tools + Studio + forms + signatures) | ✓ | – |
 | JPG / PNG / BMP / GIF / WebP | ✓ | ✓ (as images) | ✓ | ✓ (images → PDF) |
 | SVG | ✓ (inserted as image) | ✓ | ✓ (media in DOCX/ODT) | ✗ (not rasterised) |
 | `.oswk` unit | ✓ | ✓ | ✓ | ✓ |
 
+Android runs the same engines and formats; file access goes through the
+Storage Access Framework and the UI adapts to touch and phone screens.
+
+## Android
+
+**Supported features.** Writer/Calc/Impress editing (touch, virtual keyboard,
+pointer gestures), PDF tools and PDF Studio (including signatures with a
+PKCS#12 file, forms and redaction), Document Vault import/search/preview,
+background jobs with persistence, AI (opt-in; local network or remote
+endpoints), plugins, data-loss protection, command platform (drawer
+navigation and touch entry points).
+
+**Supported formats.** The same table as above. Open-with intents and SAF
+import accept docx, odt, rtf, txt, md, html, xlsx, ods, csv, tsv, pptx, odp,
+pdf and `.oswk`.
+
+**APK architectures.** `arm64-v8a` and `armeabi-v7a` release APKs are built
+and signed with the project release keystore; AABs are produced for both.
+minSdk 24, targetSdk 36, `versionName 3.1.0`, `versionCode 3001000`.
+
+**Storage behavior.** Documents opened from other apps are copied into app
+cache (extension and size validated) before parsing. Exports go to a SAF
+location you pick, or to the public Downloads folder. The vault imports
+copies into app-private storage; it does not watch live folders. Temporary
+files are cleaned up by the app; backups are disabled (`allowBackup=false`).
+
+**AI/privacy behavior.** AI is off until you enable it and configure a
+provider; every request shows what is sent. API keys on Android use a
+plaintext fallback (reported in the UI) that is excluded from backups.
+Cleartext HTTP from the WebView is restricted to localhost/emulator hosts;
+the Rust client can still reach a local-network model server (e.g. Ollama on
+your LAN) because it uses its own TLS stack.
+
+**Limitations.** No foreground service: a job keeps running only while the
+process lives (state survives death and is marked interrupted). Android
+cannot index arbitrary SAF folders; imports are the supported path. The
+launcher label remains "PDF Swiss Army Knife" for upgrade continuity.
+
 ## Sample documents
 
-`samples/` contains documents generated by the suite itself (no personal data):
-`test-document.docx`, `test-document.odt`, `test-document.rtf`,
+`samples/` contains documents generated by the suite itself (no personal
+data): `test-document.docx`, `test-document.odt`, `test-document.rtf`,
 `test-spreadsheet.xlsx`, `test-spreadsheet.ods`, `test-spreadsheet.csv`,
 `test-presentation.pptx`, `test-presentation.odp`.
+`crates/officecore/tests/fixtures/` contains the V3.1 golden `.oswk`
+fixtures used by the cross-format contract tests.
 
 Regenerate them with:
 
@@ -231,47 +316,76 @@ cargo run -p officecore --example make-office-samples
 
 ```
 crates/officecore   Document model + DOCX/ODT/ODS/ODP/RTF/XLSX/CSV/PPTX engines,
-                    sections/notes/revisions/fields, structured tables,
-                    schema migrations, capability matrix, PDF layout with an
-                    embedded OFL font, hardened ZIP/XML layers
+                    sections/notes/revisions/fields, structured tables, charts,
+                    XLSX import fidelity (charts/pictures/print/protection/pivots),
+                    ODT/RTF notes, schema migrations, capability matrix,
+                    PDF layout with an embedded OFL font, hardened ZIP/XML layers
 crates/pdfcore      The PDF engine (render, merge, split, compress, OCR with
                     preprocessing, security, watermark, annotations, metadata,
-                    page layout, sanitizer, PDF/A validation, flattening,
-                    redaction with verification)
+                    page layout, sanitizer, PDF/A validation + font embedding +
+                    ICC output intent, flattening, redaction with verification,
+                    forms fill/validate, CMS/PKCS#7 signatures)
 crates/aicore       Optional assistant client with a provider abstraction;
-                    the only component that talks to the network, and only
-                    after the user opts in
+                    the only component that talks to the network for AI, and
+                    only after the user opts in
+crates/synccore     Local-first sync foundation: WebDAV client, per-file
+                    metadata, three-way conflict detection, manual resolution
 src-tauri           Tauri shell: PDF commands, office commands, PDF Studio
-                    commands, document vault, JSON stores, version history,
-                    recovery, file associations
+                    (sanitize/flatten/PDF-A/signatures/forms), vault, jobs
+                    store, plugins, sync, Windows certificate store,
+                    Android intent handling, JSON stores, recovery
 src/                React 19 + TypeScript + Tailwind 4 frontend
-  src/office        Writer, Calc (formula engine, tables, auditing), Impress,
-                    tool screens
-  src/screens       PDF screens, Vault, Compatibility Center, Jobs, PDF Studio
-  src/lib           Command registry, background jobs, office stores, i18n
+  src/office        Writer (paginated direct editing), Calc (formula engine,
+                    tables, auditing), Impress, tool screens
+  src/screens       PDF screens, PDF Studio, Vault, Compatibility, Jobs,
+                    Plugins, Sync, Reader
+  src/lib           Command registry, background jobs, office stores, i18n,
+                    plugin runtime, mobile/SAF bridge, sync client
 ```
 
 The document model (`crates/officecore/src/model.rs`) is the single source of
-truth shared by the Rust engines and the TypeScript editors. File formats are
-import/export targets; the native `.oswk` format preserves everything the suite
-understands, including features a given file format cannot represent. The
-schema version is written into every unit and migrated on open
-(`crates/officecore/src/schema.rs`).
+truth shared by the Rust engines and the TypeScript editors; the same engines
+run on Windows and Android. File formats are import/export targets; the native
+`.oswk` format preserves everything the suite understands. Every unit carries
+`schemaVersion` and is migrated on open (`crates/officecore/src/schema.rs`).
 
 ## Build
 
 Requirements: Node.js 20+, Rust 1.82+, Visual Studio Build Tools (Windows).
+Android additionally needs JDK 21, Android SDK (platform 36, build-tools 36)
+and NDK 27.3.13750724.
+
+### Windows
 
 ```bash
 npm install
-npm run engines:fetch      # pdfium, qpdf, tesseract and fonts (skipped if present)
+npm run engines:fetch      # pdfium, qpdf, tesseract, fonts (skipped if present)
 npm run build              # type-check + frontend production build
 npm run test:rust          # cargo test --workspace
 npm run app:build          # Tauri release build (first run downloads NSIS)
-npm run package            # NSIS installer + portable ZIP into release-artifacts/
+npm run package            # installer + portable ZIP into release-artifacts/
 ```
 
-Development: `npm run app:dev`.
+The installer is written as both `Office-Swiss-Army-Knife-Setup-<version>.exe`
+and `Office Swiss Army Knife_<version>_x64-setup.exe`; `SHA256SUMS.txt` covers
+both plus the portable ZIP.
+
+### Android
+
+```bash
+npm run android:engines                                    # pdfium/tesseract per ABI
+npm run android:build                                      # arm64-v8a debug/release flow
+npm run android:build:all                                  # arm64-v8a + armeabi-v7a
+# APKs and AABs (with -Bundle) land in release-artifacts/:
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& ./scripts/build-android.ps1 -Abi arm64-v8a,armeabi-v7a -Bundle"
+```
+
+Release signing reads `src-tauri/gen/android/keystore.properties` when
+present (CI restores it from secrets) and falls back to the local debug
+keystore for sideload builds. The Android version metadata is generated from
+`tauri.conf.json` into `app/tauri.properties` on every build.
+
+Development: `npm run app:dev` (desktop) · `npm run android:dev`.
 
 ## Tests
 
@@ -281,43 +395,65 @@ npm test
 npx tsc --noEmit
 ```
 
-**322 Rust tests** (34 aicore, 120 officecore, 146 pdfcore, 22 src-tauri) and
-**451 frontend tests** pass, with a strict TypeScript type check on top.
+**447 Rust tests** (34 aicore, 142 officecore, 180 pdfcore, 40 synccore,
+51 src-tauri; 3 heavy performance cases are `#[ignore]`d) and **578 frontend
+tests** (577 passing, 1 heavy case gated by `OSAK_PERF_HEAVY=1`) pass, with a
+strict TypeScript type check on top.
 
 Highlights:
 
 - `officecore`: DOCX round trips for sections, footnotes/endnotes, tracked
-  changes, fields and comments; a 6-test PPTX V3 suite (masters, nested
-  groups, charts, animations); XLSX import fidelity and table round trips;
-  schema migration tests (V2 opens, migrations are idempotent, future schemas
-  are refused, corrupt models are reported); compatibility reports; revision
-  accept/reject rules.
-- `pdfcore`: sanitizer (poisoned document, every object walked), PDF/A
-  validation/conversion, flattening, redaction verification, OCR preprocessing
-  (tesseract-guarded).
-- `src-tauri`: vault indexing/search tests (incremental rescan, corrupted
-  index recovery, folder permission rules).
-- Frontend: formula engine (dependency graph, spill, structured references,
-  auditing), pagination rules including sections and note reservation, writer
-  runs/caret/revisions, editor component tests, i18n parity and encoding.
+  changes, fields and comments; ODT/RTF note and revision round trips; PPTX
+  V3 suite (masters, nested groups, charts with caches and embedded
+  workbook); XLSX import fidelity (charts, pictures, print, protection,
+  pivots); schema migrations (V2/V3 open, migrations idempotent, future
+  schemas refused); **V3.1 golden fixtures** assert feature survival across
+  `.oswk` and DOCX/XLSX/PPTX.
+- `pdfcore`: sanitizer (every object walked), PDF/A validation/conversion
+  with font embedding and ICC structure, flattening, redaction verification,
+  OCR preprocessing (tesseract-guarded), **signature round trips (RSA/ECDSA,
+  tamper detection, PFX passwords, ByteRange coverage)**, **forms
+  fill/validate and object edits**, performance guards.
+- `synccore`: metadata/state-machine matrix, WebDAV multistatus parsing,
+  conditional PUT conflict mapping, keep-both naming; live network test is
+  opt-in.
+- `src-tauri`: vault indexing/search/import tests, job persistence
+  (interrupted recovery), plugin install/sandbox guards, Android intent
+  file handling, Windows store certificate listing.
+- Frontend: paginated Writer editing (click-to-caret, Enter/Backspace/arrows
+  across fragments), formula engine and auditing, pagination rules, P2P
+  pointer interactions, data-loss gate flows, plugin permission enforcement,
+  sync helpers, i18n parity and encoding.
 
-The redaction and sanitizer tests are the ones worth knowing about: they
-re-open the produced file and prove the removed content is gone. A black
-rectangle or a deleted key would pass a visual check and fail these.
+The redaction, sanitizer and signature tests are the ones worth knowing
+about: they re-open the produced file and prove the claims instead of
+trusting a visual check.
 
 ## Privacy and security
 
 - No cloud upload, no telemetry, no document content collection, no mandatory
-  account. The vault only scans folders you pick.
-- Only `aicore` performs network requests, and only after the user explicitly
-  enables the assistant and confirms the send for the document.
-- Macros and embedded scripts are never executed; documents always open with
-  macros disabled.
+  account. The vault only indexes folders you pick (Windows) or documents you
+  import (Android). Cloud sync is off until configured and never overwrites
+  silently.
+- Only `aicore` (AI) and `synccore` (sync) perform network requests, and only
+  after the user explicitly enables them; the AI activity line shows the
+  provider and the character count being sent.
+- Macros and embedded scripts are never executed; PDF JavaScript is never
+  executed by forms; documents always open with macros disabled.
 - ZIP extraction is bounded (entry count, size, compression ratio) to resist
   ZIP bombs; XML parsing is depth-limited and does not expand external
   entities; OOXML/ODF importers parse parts through those hardened layers.
 - Writes are atomic (temp sibling + rename); passwords are never logged or
-  persisted; API keys use DPAPI when available.
+  persisted; API keys use DPAPI on Windows. PFX passwords and private keys
+  are held in memory only during signing.
+- The plugin runtime sandboxes plugin code in a Web Worker with no DOM, no
+  Tauri IPC and host-enforced capabilities; plugin file access is scoped to a
+  per-plugin directory and path traversal is rejected on both sides.
+- Android: `allowBackup=false`, data-extraction rules exclude app data,
+  FileProvider paths are narrowed, network security config restricts
+  cleartext to localhost/emulator, intent input is validated (extension
+  whitelist, size cap, sanitized names) and activities stay unexported except
+  the launcher.
 - PDF Studio sanitization removes JavaScript, launch actions and embedded
   files from a document and the result is verified with the inspector.
 - Recovery snapshots and version history stay in the app data directory.
@@ -326,67 +462,88 @@ rectangle or a deleted key would pass a visual check and fail these.
 
 These are real and honest:
 
-- **Writer paginated view**: typing happens on the continuous editing surface.
-  Clicking a page fragment places the caret at the clicked character and opens
-  that surface; it is not yet a WYSIWYG typing canvas, and a caret cannot be
-  dragged across a page boundary while typing.
-- **Track changes** tracks text-level insertions/deletions and formatting
-  changes. Structural edits (paragraph splits/merges) are applied directly and
-  are not recorded as revisions; paragraph move revisions are not modelled.
-- **Notes** round-trip DOCX and render in the PDF export; the ODT, RTF and
-  plain-text exports do not write note objects (TXT/Markdown/HTML append the
-  note text at the end). The Compatibility Center reports this before saving.
-- **Sections** export to DOCX with per-section page setup and headers; ODT and
-  the text formats turn section breaks into page breaks.
-- **XLSX import** reads the structures listed above, but charts, drawings,
-  pivot caches, print settings and sheet protection are not imported back
-  (they are kept in `.oswk`). Charts are export-only in both directions for
-  import.
-- **PPTX charts** are written as ChartML referencing cell ranges; the range
-  values themselves are not embedded in the chart part, so other suites show
-  an empty plot until the workbook is attached. All chart properties round-trip.
-- **Impress masters**: layout/master decorative objects are composited behind
-  slides; ODP keeps a single default master page.
-- **Animations**: the built-in slideshow executes the effects the model stores;
-  PowerPoint-specific effects are simplified on import with a warning.
-- **PDF/A conversion** applies sanitization, XMP and an output intent, then
-  re-validates. It does **not** embed missing fonts, so documents with
-  unembedded fonts remain non-compliant and are reported as such.
-- **Digital signatures** are not implemented: no signing, no validation. This
-  is declared, not faked.
-- **Plugin architecture** is not implemented yet; the command registry is the
-  extension point that a plugin runtime will build on.
-- **Cloud sync** is not implemented; `.oswk` conflict-safe sync is planned for
-  V3.1.
-- **Vault PDF indexing** needs the bundled pdfium engine; without it PDFs are
-  indexed as metadata only and a warning is reported.
+- **Track changes** tracks run-level insertions, deletions and formatting
+  changes plus paragraph-level split/merge as text edits; paragraph *move*
+  revisions and table/list structural revision objects are not modelled and
+  DOCX `w:moveFrom/w:moveTo` is not written. Structural edits are applied
+  directly in the model.
+- **Writer paginated editing**: dragging a selection that starts on a static
+  (non-active) fragment across *different blocks* is limited; the document
+  layout itself is measured per reflow with caret persistence, but the full
+  editing surface is activated per block rather than per page.
+- **Bookmarks**: the model and PDF export resolve bookmarks; the DOCX writer
+  does not yet emit `w:bookmarkStart/End` anchors, so REF targets rely on the
+  cached field values in Word.
+- **PDF/A**: Type0/CID fonts, symbolic fonts, custom encodings and fonts used
+  only inside form appearances are skipped and reported; PT Sans fallbacks
+  are not metric-compatible; there is no subsetting; the generated sRGB ICC
+  profile is structurally valid but has not been run through an external
+  validator, and no external veraPDF run is claimed.
+- **Signatures**: trust is reported `unknown` (no network revocation/OCSP,
+  no system trust store); encrypted PDFs must be decrypted first; RC2/RC4
+  PFX files are rejected with a clear error; ECDSA is P-256 only; the
+  `/Contents` placeholder holds up to 8 KB of DER.
+- **PDF object editing** covers annotations, form widgets and drawn images.
+  Text and vector objects inside content streams are not listed or editable
+  (safe graphics-state rewriting is out of scope for this release).
+- **Forms**: JavaScript field formatting/validation is never executed; such
+  fields are flagged but not evaluated. Non-WinAnsi characters fall back to
+  `?` in generated Base14 appearances (the real `/V` keeps the string).
+- **XLSX**: pivot caches are preserved and re-exported, not recomputed;
+  unsupported chart kinds, secondary/combo axes and some conditional formats
+  degrade with warnings; SVG export of sheets is not offered.
+- **PPTX**: programmatic animations are simplified to what the model
+  represents; ODP loses animations, groups and charts on export (declared in
+  the compatibility matrix and gated by Data Loss Protection).
+- **ODT/RTF**: RTF cannot mark endnotes distinctly (endnote-only documents
+  request endnote placement via `\aendnotes`), revision timestamps lose
+  seconds, and format-change revisions are not written to RTF.
+- **Vault on Android** imports documents; it cannot watch SAF folders
+  because the scanner uses real filesystem paths. Imported copies consume
+  storage and are not deleted by `vault_clear`.
+- **Cloud sync**: WebDAV only; OneDrive/Google Drive require OAuth and are
+  unavailable; there is no background polling, no auto-merge and no delete
+  propagation. Conflict resolution is manual by design.
+- **Plugins**: a Web Worker is not an OS/WASM sandbox - it protects documents
+  and user data through the capability boundary, not against a WebView
+  engine escape. Installation is folder-based (no zip), and `doc.applyEdits`
+  works on whole runs/cells.
+- **Android**: no foreground service (long jobs run only while the process
+  lives; state survives death as `interrupted`), no on-device automated test
+  run is claimed in the repository, `osed/ospr/osdt` are accepted by the
+  intent filter but the engine does not understand them yet, and the
+  launcher label is still "PDF Swiss Army Knife".
 - Interoperability with Microsoft Office/LibreOffice was validated
-  structurally (package parts, content types, relationships, an independent
-  reader in development) rather than by launching those applications. The PPTX
-  V3 output was converted with headless LibreOffice during development.
+  structurally (package parts, content types, relationships, independent
+  readers) plus headless LibreOffice conversion during development, not by
+  launching those applications in CI.
 - macOS/Linux desktop builds are produced and tested by CI; packaging is
   Windows-only here.
 
 ## Roadmap
 
-Delivered in 3.0.0: sections, footnotes/endnotes, track changes, comments,
-fields and cross references; direct caret placement in the paginated view;
-structured tables and formula auditing; XLSX import fidelity; master slides,
-groups, PPTX charts, animations and presenter view; PDF sanitizer, PDF/A
-validation, flattening, redaction verification and OCR preprocessing; the
-Document Vault; the command platform, jobs, compatibility center and schema
-migrations; the AI provider abstraction with document chat.
+Delivered in 3.1.0: direct page editing with cross-page caret; real CMS/
+PKCS#7 signatures (Windows store + PKCS#12); PDF forms fill/validate and
+annotation/image object editing; PDF/A font embedding and ICC output intent;
+XLSX charts/pictures/print/protection/pivot fidelity; PPTX chart caches and
+embedded workbook; ODT/RTF notes and revisions; sandboxed plugin runtime;
+WebDAV sync with conflict detection; Android intents, SAF, vault import,
+persistent jobs and touch UX; data-loss protection; golden-file and
+performance contracts; release assets for Windows and Android.
 
-Planned for 3.1 (architecture prepared, not implemented):
+Next (architecture prepared, not implemented):
 
-- Direct typing inside page fragments with cross-page caret movement
-- Paragraph-level tracked structural changes and move revisions
-- Digital signatures (CMS/PKCS#7) with the Windows certificate store
-- A sandboxed plugin runtime with manifest permissions
-- WebDAV/OneDrive sync with conflict detection and manual resolution
-- Native PDF pivot caches, ODP notes and animations, SmartArt import
+- Paragraph move revisions and table/list structural tracked changes with
+  DOCX `w:moveFrom`/`w:moveTo`
+- PDF content-stream object editing (text/vector) with graphics-state-aware
+  rewriting
+- Font subsetting and CID remapping for PDF/A-2/3 with Type0 fonts
+- OAuth cloud providers (OneDrive/Google Drive) and background sync
+- Android foreground service for long-running jobs and share-sheet polish
+- SmartArt and advanced PPTX effect import
 
 ## License
 
 MIT. See [LICENSE](LICENSE). Third-party components keep their own licenses
-(Tauri, React, Tailwind, lopdf, pdfium, qpdf, Tesseract, PT Sans/OFL, …).
+(Tauri, React, Tailwind, lopdf, pdfium, qpdf, Tesseract, PT Sans/Liberation/
+OFL, RustCrypto, …).

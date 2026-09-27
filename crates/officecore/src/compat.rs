@@ -121,7 +121,7 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
             true,
             vec![
                 feature("sections", SupportLevel::Partial, "Section breaks are written as page breaks; per-section page setup is not exported to ODT."),
-                feature("footnotes", SupportLevel::Unsupported, "Footnotes and endnotes are kept in .oswk only; the ODT export does not write text:note yet."),
+                feature("footnotes", SupportLevel::Full, "Footnotes and endnotes round-trip as text:note elements with matching citation numbers."),
                 feature("trackChanges", SupportLevel::Unsupported, "Tracked changes are kept in .oswk only; a warning is reported when exporting to ODT."),
                 feature("comments", SupportLevel::Unsupported, "Comments are kept in .oswk only."),
                 feature("fields", SupportLevel::Unsupported, "Fields export as their cached text."),
@@ -134,8 +134,8 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
             true,
             vec![
                 feature("sections", SupportLevel::Partial, "Sections become page breaks."),
-                feature("footnotes", SupportLevel::Unsupported, "Notes are kept in .oswk only; the RTF export does not write footnote objects."),
-                feature("trackChanges", SupportLevel::Unsupported, "Tracked changes are kept in .oswk only."),
+                feature("footnotes", SupportLevel::Partial, "Footnotes are written as real \\footnote destinations; the endnote class survives through an ignorable \\* marker because RTF has no per-note endnote class."),
+                feature("trackChanges", SupportLevel::Partial, "Insertions and deletions are written as \\revised/\\deleted marks with a \\revtbl author table; formatting revisions are not representable."),
                 feature("comments", SupportLevel::Unsupported, "Comments are kept in .oswk only."),
             ],
         ),
@@ -157,8 +157,11 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
             true,
             vec![
                 feature("tables", SupportLevel::Full, "Structured tables with headers, totals and filters round-trip."),
-                feature("pivotTables", SupportLevel::Partial, "Pivots export as computed values, not a live Excel pivot cache."),
-                feature("charts", SupportLevel::Full, "Column, bar, line, pie and area charts."),
+                feature("pivotTables", SupportLevel::Partial, "Imported pivot caches and tables are preserved and re-exported from their raw parts; the grid is not recomputed, and editor pivots export as computed values."),
+                feature("charts", SupportLevel::Full, "Column, bar, line, pie and area charts round-trip, including titles, series colours, caches and cell anchors."),
+                feature("images", SupportLevel::Full, "Pictures are imported and exported with their anchor, size and rotation."),
+                feature("printSettings", SupportLevel::Full, "Print area, repeating titles, margins, headers/footers and manual page breaks round-trip."),
+                feature("protection", SupportLevel::Full, "Password verifiers and locked-action flags are preserved exactly and never cracked."),
                 feature("conditionalFormatting", SupportLevel::Full, "All editor rule kinds."),
                 feature("dataValidation", SupportLevel::Full, "List and numeric ranges."),
             ],
@@ -184,7 +187,7 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
             vec![
                 feature("masters", SupportLevel::Full, "Slide masters, layouts and placeholder inheritance."),
                 feature("groups", SupportLevel::Full, "Nested shape groups round-trip."),
-                feature("charts", SupportLevel::Full, "Column, bar, line, pie and area charts."),
+                feature("charts", SupportLevel::Full, "Column, bar, line, pie and area charts with cached values and an embedded workbook."),
                 feature("animations", SupportLevel::Partial, "Entrance/emphasis/exit effects; PowerPoint-only effects are simplified."),
                 feature("smartArt", SupportLevel::Partial, "SmartArt is imported as its rendered shapes when available."),
             ],
@@ -289,19 +292,19 @@ pub fn document_feature_report(document: &TextDocument, format: &str) -> Compati
             if document.track_changes || !document.comments.is_empty() {
                 items.push(item("comments", "lost", "Comments are not written to ODT; keep the .oswk copy."));
             }
-            if has_notes(document, false) || has_notes(document, true) {
-                items.push(item("footnotes", "lost", "Footnotes and endnotes are not written to ODT yet; keep the .oswk copy."));
-            }
         }
         "rtf" => {
             if sections > 0 {
                 items.push(item("sections", "transformed", "Sections become page breaks."));
             }
-            if has_revisions(document) || !document.comments.is_empty() {
-                items.push(item("review", "lost", "Tracked changes and comments are not written to RTF; keep the .oswk copy."));
+            if has_revisions(document) {
+                items.push(item("trackChanges", "transformed", "Insertions and deletions are written as \\revised/\\deleted marks with a \\revtbl author table and \\revdttm timestamps; formatting revisions are simplified."));
+            }
+            if !document.comments.is_empty() {
+                items.push(item("comments", "lost", "Comments are not written to RTF; keep the .oswk copy."));
             }
             if has_notes(document, false) || has_notes(document, true) {
-                items.push(item("footnotes", "lost", "Notes are not written to RTF yet; keep the .oswk copy."));
+                items.push(item("footnotes", "transformed", "Notes are written as RTF \\footnote destinations; endnote classes are preserved with an ignorable marker that Word ignores."));
             }
         }
         "txt" | "md" | "markdown" | "html" | "htm" => {
@@ -335,7 +338,11 @@ pub fn workbook_feature_report(workbook: &Workbook, format: &str) -> Compatibili
     match format.as_str() {
         "oswk" | "xlsx" | "xlsm" => {
             if pivots > 0 {
-                items.push(item("pivotTables", "transformed", "Pivot tables are written as computed values, not a live Excel pivot cache."));
+                items.push(item(
+                    "pivotTables",
+                    "transformed",
+                    "Editor pivot definitions are written as computed values; pivot caches imported from a package are re-exported from their preserved raw parts.",
+                ));
             }
             if format != "oswk" && format != "xlsx" && format != "xlsm" {
                 items.push(item("format", "lost", "Unsupported target."));

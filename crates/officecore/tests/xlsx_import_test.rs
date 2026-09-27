@@ -408,3 +408,199 @@ fn sheet_names_map_to_parts_through_the_workbook_rels_not_the_file_order() {
     assert_eq!(alpha.get("A1").map(|cell| cell.value.clone()), Some(CellValue::Text("alpha-only".into())));
     assert_eq!(zeta.get("A1").map(|cell| cell.value.clone()), Some(CellValue::Text("zeta-only".into())));
 }
+
+// ---------------------------------------------------------------------------
+// V3.1: foreign drawing, print, protection and pivot fixtures
+// ---------------------------------------------------------------------------
+
+/// Rebuilds a package with parts replaced and extra parts appended, so the
+/// importer can be fed files our own writer would never produce.
+fn rebuild_with(bytes: &[u8], replacements: &[(&str, &str)], additions: &[(&str, &[u8])]) -> Vec<u8> {
+    let reader = ZipReader::open(bytes.to_vec()).unwrap();
+    let mut writer = ZipWriter::new();
+    let mut written: Vec<String> = Vec::new();
+    for (name, data) in reader.read_all(ZipLimits::default()).unwrap() {
+        match replacements.iter().find(|(part, _)| *part == name) {
+            Some((_, replacement)) => writer.add_text(&name, replacement),
+            None => writer.add(&name, &data),
+        }
+        written.push(name);
+    }
+    for (name, data) in additions {
+        if !written.iter().any(|existing| existing == name) {
+            writer.add(name, data);
+        }
+    }
+    writer.finish()
+}
+
+/// A worksheet from a package that is not ours: inline strings, print options
+/// in a foreign shape, SHA-512 protection and manual page breaks.
+const FOREIGN_SHEET: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><dimension ref=\"A1:C4\"/><sheetViews><sheetView workbookViewId=\"0\"/></sheetViews><sheetFormatPr defaultRowHeight=\"15\"/><sheetData><row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Q1</t></is></c><c r=\"B1\" t=\"inlineStr\"><is><t>Revenue</t></is></c></row><row r=\"2\"><c r=\"A2\" t=\"inlineStr\"><is><t>Q1</t></is></c><c r=\"B2\"><v>10</v></c></row><row r=\"3\"><c r=\"A3\" t=\"inlineStr\"><is><t>Q2</t></is></c><c r=\"B3\"><v>20</v></c></row><row r=\"4\"><c r=\"A4\" t=\"inlineStr\"><is><t>Q3</t></is></c><c r=\"B4\"><v>30</v></c></row></sheetData><sheetProtection sheet=\"1\" algorithmName=\"SHA-512\" hashValue=\"aGFzaA==\" saltValue=\"c2FsdA==\" spinCount=\"50000\" selectLockedCells=\"1\" sort=\"1\"/><printOptions gridLines=\"1\" headings=\"1\" horizontalCentered=\"1\" verticalCentered=\"1\"/><pageMargins left=\"0.25\" right=\"0.5\" top=\"0.55\" bottom=\"0.65\" header=\"0.15\" footer=\"0.2\"/><pageSetup paperSize=\"1\" orientation=\"landscape\" scale=\"80\" fitToWidth=\"2\" fitToHeight=\"4\"/><headerFooter differentFirst=\"1\" differentOddEven=\"1\"><oddFooter>&amp;Lfooter left</oddFooter><evenHeader>&amp;Ceven head</evenHeader><firstHeader>&amp;Cfirst head</firstHeader><firstFooter>&amp;Cfirst foot</firstFooter></headerFooter><rowBreaks count=\"1\" manualBreakCount=\"1\"><brk id=\"7\" max=\"16383\" man=\"1\"/></rowBreaks><colBreaks count=\"1\" manualBreakCount=\"1\"><brk id=\"3\" max=\"1048575\" man=\"1\"/></colBreaks><drawing r:id=\"rIdDrawing\"/></worksheet>";
+
+/// A two-cell anchored chart (no `ext`) and a one-cell anchored rotated
+/// picture with `descr`, as Excel writes them.
+const FOREIGN_DRAWING: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<xdr:wsDr xmlns:xdr=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><xdr:twoCellAnchor editAs=\"oneCell\"><xdr:from><xdr:col>4</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>8</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>12</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to><xdr:graphicFrame macro=\"\"><xdr:nvGraphicFramePr><xdr:cNvPr id=\"2\" name=\"Chart 1\"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/></xdr:xfrm><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:chart xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" r:id=\"rId1\"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor><xdr:oneCellAnchor><xdr:from><xdr:col>1</xdr:col><xdr:colOff>12700</xdr:colOff><xdr:row>14</xdr:row><xdr:rowOff>6350</xdr:rowOff></xdr:from><xdr:ext cx=\"952500\" cy=\"476250\"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id=\"3\" name=\"Logo\" descr=\"company logo\"/><xdr:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" r:embed=\"rId2\"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm rot=\"2700000\"><a:off x=\"0\" y=\"0\"/><a:ext cx=\"952500\" cy=\"476250\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>";
+
+/// A ChartML part whose series names and categories only exist in caches.
+const FOREIGN_CHART: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><c:roundedCorners val=\"0\"/><c:chart><c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Foreign chart</a:t></a:r></a:p></c:rich></c:tx></c:title><c:plotArea><c:layout/><c:lineChart><c:grouping val=\"stacked\"/><c:varyColors val=\"0\"/><c:ser><c:idx val=\"0\"/><c:order val=\"0\"/><c:tx><c:strRef><c:f>Data!$B$1</c:f><c:strCache><c:ptCount val=\"1\"/><c:pt idx=\"0\"><c:v>Revenue</c:v></c:pt></c:strCache></c:strRef></c:tx><c:cat><c:strRef><c:f>Data!$A$2:$A$4</c:f><c:strCache><c:ptCount val=\"3\"/><c:pt idx=\"0\"><c:v>Q1</c:v></c:pt><c:pt idx=\"1\"><c:v>Q2</c:v></c:pt><c:pt idx=\"2\"><c:v>Q3</c:v></c:pt></c:strCache></c:strRef></c:cat><c:val><c:numRef><c:f>Data!$B$2:$B$4</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val=\"3\"/><c:pt idx=\"0\"><c:v>10</c:v></c:pt><c:pt idx=\"1\"><c:v>20</c:v></c:pt><c:pt idx=\"2\"><c:v>30</c:v></c:pt></c:numCache></c:numRef></c:val></c:ser><c:marker val=\"1\"/><c:axId val=\"111111111\"/><c:axId val=\"222222222\"/></c:lineChart><c:catAx><c:axId val=\"111111111\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling><c:delete val=\"0\"/><c:axPos val=\"b\"/><c:title><c:tx><c:rich><a:p><a:r><a:t>Quarter</a:t></a:r></a:p></c:rich></c:tx></c:title><c:crossAx val=\"222222222\"/></c:catAx><c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling><c:delete val=\"0\"/><c:axPos val=\"l\"/><c:title><c:tx><c:rich><a:p><a:r><a:t>Units</a:t></a:r></a:p></c:rich></c:tx></c:title><c:crossAx val=\"111111111\"/></c:valAx></c:plotArea><c:legend><c:legendPos val=\"r\"/><c:overlay val=\"0\"/></c:legend><c:plotVisOnly val=\"1\"/><c:dispBlanksAs val=\"gap\"/></c:chart><c:printSettings><c:headerFooter/><c:pageMargins b=\"0.75\" l=\"0.7\" r=\"0.7\" t=\"0.75\" header=\"0.3\" footer=\"0.3\"/><c:pageSetup/></c:printSettings></c:chartSpace>";
+
+const FOREIGN_PIVOT_DEFINITION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<pivotCacheDefinition xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" refreshOnLoad=\"1\" recordCount=\"3\"><cacheSource type=\"worksheet\"><worksheetSource ref=\"A1:B4\" sheet=\"Data\"/></cacheSource><cacheFields count=\"2\"><cacheField name=\"Quarter\" numFmtId=\"0\"><sharedItems count=\"3\"><s v=\"Q1\"/><s v=\"Q2\"/><s v=\"Q3\"/></sharedItems></cacheField><cacheField name=\"Revenue\" numFmtId=\"0\"><sharedItems containsString=\"0\" containsNumber=\"1\"/></cacheField></cacheFields></pivotCacheDefinition>";
+
+const FOREIGN_PIVOT_TABLE: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<pivotTableDefinition xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" name=\"PT_Foreign\" cacheId=\"3\" dataOnRows=\"1\" dataCaption=\"Values\" updatedVersion=\"6\" minRefreshableVersion=\"3\" itemPrintTitles=\"1\" createdVersion=\"6\" indent=\"0\" compact=\"0\" compactData=\"0\" gridDropZones=\"1\"><location ref=\"D1:E4\" firstHeaderRow=\"1\" firstDataRow=\"1\" firstDataCol=\"1\"/><pivotFields count=\"2\"><pivotField axis=\"axisRow\" showAll=\"0\"><items count=\"3\"><item t=\"default\"/><item x=\"0\"/><item x=\"1\"/></items></pivotField><pivotField dataField=\"1\" showAll=\"0\"/></pivotFields><rowFields count=\"1\"><field x=\"0\"/></rowFields><rowItems count=\"3\"><i><x/></i><i><x v=\"1\"/></i><i><x v=\"2\"/></i></rowItems><dataFields count=\"1\"><dataField name=\"Sum of Revenue\" fld=\"1\" baseField=\"0\" baseItem=\"0\"/></dataFields></pivotTableDefinition>";
+
+const FOREIGN_PIVOT_RECORDS: &[u8] = b"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<pivotCacheRecords xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" count=\"3\"><r><s v=\"Q1\"/><n v=\"10\"/></r><r><s v=\"Q2\"/><n v=\"20\"/></r><r><s v=\"Q3\"/><n v=\"30\"/></r></pivotCacheRecords>";
+
+fn simple_picture() -> SheetImage {
+    let png = [0x89u8, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 9, 8, 7, 6];
+    SheetImage {
+        image: ImageData::from_bytes("logo.png", &png),
+        anchor: CellAnchor::at("G2"),
+        width_px: 120.0,
+        height_px: 60.0,
+        rotation_deg: 0.0,
+    }
+}
+
+#[test]
+fn foreign_drawing_print_protection_and_pivots_import() {
+    let mut workbook = Workbook::new_blank("Foreign");
+    workbook.sheets[0].name = "Data".into();
+    workbook.sheets[0].set("A1", Cell { value: CellValue::Text("Q1".into()), ..Default::default() });
+    workbook.sheets[0].sheet_protection = "ABCD".into();
+    workbook.sheets[0].charts.push(ChartPlacement {
+        id: "chart-1".into(),
+        chart: ChartData {
+            kind: "column".into(),
+            title: "Placeholder".into(),
+            categories: "A2:A4".into(),
+            series: vec![ChartSeries { name: "Revenue".into(), range: "B2:B4".into(), color: None }],
+            legend: true,
+            ..Default::default()
+        },
+        anchor: "A1".into(),
+        width_px: 300.0,
+        height_px: 200.0,
+    });
+    workbook.sheets[0].images.push(simple_picture());
+    let bytes = xlsx::write_xlsx(&workbook).unwrap();
+
+    // Point the worksheet's pivot relationship at a part we add below.
+    let reader = ZipReader::open(bytes.clone()).unwrap();
+    let sheet_rels = reader.read_text("xl/worksheets/_rels/sheet1.xml.rels").unwrap();
+    let sheet_rels_foreign = sheet_rels.replace(
+        "</Relationships>",
+        "<Relationship Id=\"rIdPivot1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotTable\" Target=\"../pivotTables/pivotTable1.xml\"/></Relationships>",
+    );
+    let content_types = reader.read_text("[Content_Types].xml").unwrap();
+    let content_types_foreign = content_types.replace(
+        "</Types>",
+        "<Override PartName=\"/xl/pivotTables/pivotTable1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.pivotTable+xml\"/><Override PartName=\"/xl/pivotCache/pivotCacheDefinition1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheDefinition+xml\"/><Override PartName=\"/xl/pivotCache/pivotCacheRecords1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheRecords+xml\"/></Types>",
+    );
+    let patched = rebuild_with(
+        &bytes,
+        &[
+            ("xl/worksheets/sheet1.xml", FOREIGN_SHEET),
+            ("xl/drawings/drawing1.xml", FOREIGN_DRAWING),
+            ("xl/charts/chart1.xml", FOREIGN_CHART),
+            ("xl/worksheets/_rels/sheet1.xml.rels", &sheet_rels_foreign),
+            ("[Content_Types].xml", &content_types_foreign),
+        ],
+        &[
+            ("xl/pivotTables/pivotTable1.xml", FOREIGN_PIVOT_TABLE.as_bytes()),
+            (
+                "xl/pivotTables/_rels/pivotTable1.xml.rels",
+                b"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotCacheDefinition\" Target=\"../pivotCache/pivotCacheDefinition1.xml\"/></Relationships>",
+            ),
+            ("xl/pivotCache/pivotCacheDefinition1.xml", FOREIGN_PIVOT_DEFINITION.as_bytes()),
+            (
+                "xl/pivotCache/_rels/pivotCacheDefinition1.xml.rels",
+                b"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotCacheRecords\" Target=\"pivotCacheRecords1.xml\"/></Relationships>",
+            ),
+            ("xl/pivotCache/pivotCacheRecords1.xml", FOREIGN_PIVOT_RECORDS),
+        ],
+    );
+
+    let read = xlsx::read_workbook_bytes(&patched).unwrap();
+    assert!(
+        !read.warnings.iter().any(|warning| warning.contains("not imported")),
+        "imported parts should not warn as unimported: {:?}",
+        read.warnings
+    );
+    let sheet = read.workbook.sheets.iter().find(|sheet| sheet.name == "Data").expect("Data sheet");
+
+    // Values still come from the inline-string fixture.
+    assert_eq!(sheet.get("A2").map(|cell| cell.value.clone()), Some(CellValue::Text("Q1".into())));
+    assert_eq!(sheet.get("B4").map(|cell| cell.value.clone()), Some(CellValue::Number(30.0)));
+
+    // Print settings from a foreign `<pageSetup>`/`<pageMargins>`/`<headerFooter>`.
+    assert_eq!(sheet.print.paper_size, 1);
+    assert!(sheet.print.landscape);
+    assert_eq!(sheet.print.scale, 80);
+    assert_eq!((sheet.print.fit_to_width, sheet.print.fit_to_height), (2, 4));
+    assert!(sheet.print.center_horizontally && sheet.print.center_vertically);
+    assert!(sheet.print.print_gridlines && sheet.print.print_headings);
+    assert_eq!((sheet.print.margin_left, sheet.print.margin_right), (0.25, 0.5));
+    assert_eq!((sheet.print.margin_top, sheet.print.margin_bottom), (0.55, 0.65));
+    assert_eq!((sheet.print.margin_header, sheet.print.margin_footer), (0.15, 0.2));
+    assert!(sheet.print.different_first_page && sheet.print.different_odd_even);
+    assert_eq!(sheet.print.header, "");
+    assert_eq!(sheet.print.footer, "&Lfooter left");
+    assert_eq!(sheet.print.first_header, "first head");
+    assert_eq!(sheet.print.first_footer, "first foot");
+    assert_eq!(sheet.print.even_header, "even head");
+    assert_eq!(sheet.print.row_breaks, vec![7]);
+    assert_eq!(sheet.print.col_breaks, vec![3]);
+
+    // Protection: verifier preserved, locked actions sorted.
+    assert!(sheet.protection.enabled);
+    assert_eq!(sheet.protection.password_hash, None);
+    assert_eq!(sheet.protection.algorithm_name, "SHA-512");
+    assert_eq!(sheet.protection.hash_value, "aGFzaA==");
+    assert_eq!(sheet.protection.salt_value, "c2FsdA==");
+    assert_eq!(sheet.protection.spin_count, 50_000);
+    assert_eq!(sheet.protection.options, vec!["selectLockedCells".to_string(), "sort".to_string()]);
+    assert_eq!(sheet.sheet_protection, "");
+
+    // Drawing: the two-cell anchored line chart with cache-only series.
+    let chart = sheet.charts.first().expect("chart");
+    assert_eq!(chart.chart.kind, "line");
+    assert!(chart.chart.stacked);
+    assert_eq!(chart.chart.title, "Foreign chart");
+    assert_eq!(chart.anchor, "E2");
+    assert!((chart.width_px - 256.0).abs() < 0.01, "two-cell width drifted: {}", chart.width_px);
+    assert!((chart.height_px - 220.0).abs() < 0.01, "two-cell height drifted: {}", chart.height_px);
+    assert_eq!(chart.chart.series[0].name, "Revenue");
+    assert_eq!(chart.chart.series[0].range, "B2:B4");
+    assert_eq!(chart.chart.categories, "A2:A4");
+    assert_eq!(chart.chart.categories_cache, vec!["Q1".to_string(), "Q2".to_string(), "Q3".to_string()]);
+    assert_eq!(chart.chart.series_values_cache, vec![vec![10.0, 20.0, 30.0]]);
+    assert_eq!(chart.chart.x_title, "Quarter");
+    assert_eq!(chart.chart.y_title, "Units");
+    assert!(chart.chart.legend);
+
+    // Picture: one-cell anchored, rotated, with alt text.
+    let image = sheet.images.first().expect("picture");
+    assert_eq!(image.anchor.address, "B15");
+    assert_eq!(image.anchor.col_off_emu, 12_700);
+    assert_eq!(image.anchor.row_off_emu, 6_350);
+    assert!((image.width_px - 100.0).abs() < 0.01);
+    assert!((image.height_px - 50.0).abs() < 0.01);
+    assert!((image.rotation_deg - 45.0).abs() < 0.01);
+    assert_eq!(image.image.alt, "company logo");
+    assert_eq!(image.image.bytes(), simple_picture().image.bytes());
+
+    // Pivot cache parts preserved with their source and field names.
+    assert_eq!(read.workbook.preserved_pivots.len(), 1);
+    let pivot = &read.workbook.preserved_pivots[0];
+    assert_eq!(pivot.name, "PT_Foreign");
+    assert_eq!(pivot.cache_id, 3);
+    assert_eq!(pivot.source, "Data!A1:B4");
+    assert_eq!(pivot.fields, vec!["Quarter".to_string(), "Revenue".to_string()]);
+    assert_eq!(pivot.definition_xml, FOREIGN_PIVOT_DEFINITION);
+    assert_eq!(pivot.table_xml, FOREIGN_PIVOT_TABLE);
+    assert_eq!(
+        pivot.records_base64.as_deref(),
+        Some(base64::Engine::encode(&base64::engine::general_purpose::STANDARD, FOREIGN_PIVOT_RECORDS).as_str())
+    );
+}

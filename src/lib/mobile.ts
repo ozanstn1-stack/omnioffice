@@ -81,6 +81,76 @@ function mimeFilters(accept: "pdf" | "image" | "any"): string[] {
   return ["application/pdf", "image/*"];
 }
 
+/**
+ * Office formats the Android shell accepts. Kept in sync with the intent
+ * filters in AndroidManifest.xml and the whitelist in MainActivity.kt so an
+ * open-with intent never produces a file the app cannot route.
+ */
+export const OFFICE_EXTENSIONS: readonly string[] = [
+  "docx",
+  "odt",
+  "rtf",
+  "txt",
+  "md",
+  "html",
+  "xlsx",
+  "ods",
+  "csv",
+  "tsv",
+  "pptx",
+  "odp",
+  "osed",
+  "ospr",
+  "osdt",
+  "oswk",
+];
+
+/**
+ * MIME types for {@link OFFICE_EXTENSIONS}. The last entry is a catch-all so
+ * providers that report a generic type still offer the app. PDF is listed
+ * explicitly because the vault imports PDFs through the same picker.
+ */
+const OFFICE_MIME_TYPES: readonly string[] = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.oasis.opendocument.text",
+  "application/rtf",
+  "text/plain",
+  "text/markdown",
+  "text/html",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.oasis.opendocument.spreadsheet",
+  "text/csv",
+  "text/tab-separated-values",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.oasis.opendocument.presentation",
+  "application/octet-stream",
+];
+
+/** Copies picked SAF URIs into a fresh cache directory and returns real paths. */
+async function importPickedUris(picked: AndroidFs.FsUri[], fallbackName: string): Promise<string[]> {
+  if (!picked.length) return [];
+
+  const cache = await appCacheDir();
+  const directory = await join(cache, "imports", uid("import"));
+  await invoke("ensure_dir", { path: directory });
+
+  const taken = new Set<string>();
+  const paths: string[] = [];
+  for (const uri of picked) {
+    let name = fallbackName;
+    try {
+      name = sanitizeName(await AndroidFs.getName(uri));
+    } catch {
+      name = fallbackName;
+    }
+    const destination = await join(directory, uniqueName(name, taken));
+    await AndroidFs.copyFile(uri, destination, { create: true });
+    paths.push(destination);
+  }
+  return paths;
+}
+
 /** Picks documents through the system picker and imports them as local paths. */
 export async function pickAndroidFiles(options: {
   multiple: boolean;
@@ -91,26 +161,47 @@ export async function pickAndroidFiles(options: {
     mimeTypes: mimeFilters(options.accept),
     localOnly: true,
   });
-  if (!picked.length) return [];
+  return importPickedUris(picked, "document.pdf");
+}
 
-  const cache = await appCacheDir();
-  const directory = await join(cache, "imports", uid("import"));
-  await invoke("ensure_dir", { path: directory });
+/**
+ * Picks documents with an explicit MIME allow-list. The picked files are
+ * copied into the app cache and returned as ordinary paths (content:// URIs
+ * never leave this module).
+ */
+export async function pickAndroidFilesWithMime(mimeTypes: string[], multiple = true): Promise<string[]> {
+  const picked = await AndroidFs.showOpenFilePicker({
+    multiple,
+    mimeTypes,
+    localOnly: true,
+  });
+  return importPickedUris(picked, "document");
+}
 
-  const taken = new Set<string>();
-  const paths: string[] = [];
-  for (const uri of picked) {
-    let name = "document.pdf";
-    try {
-      name = sanitizeName(await AndroidFs.getName(uri));
-    } catch {
-      name = "document.pdf";
-    }
-    const destination = await join(directory, uniqueName(name, taken));
-    await AndroidFs.copyFile(uri, destination, { create: true });
-    paths.push(destination);
-  }
-  return paths;
+/**
+ * Picks office documents for the workspace. The office MIME list is offered
+ * first and a catch-all wildcard acts as a fallback so providers that do not
+ * describe their files precisely are still usable.
+ */
+export async function pickOfficeFiles(multiple = true): Promise<string[]> {
+  return pickAndroidFilesWithMime([...OFFICE_MIME_TYPES, "*/*"], multiple);
+}
+
+/**
+ * Picks a PKCS#12 certificate for the signature tools and imports it into the
+ * app cache. Returns the local path plus the sanitized display name, or null
+ * when the user cancels.
+ */
+export async function pickCertificatePfx(): Promise<{ path: string; name: string } | null> {
+  const picked = await AndroidFs.showOpenFilePicker({
+    multiple: false,
+    mimeTypes: ["application/x-pkcs12", "*/*"],
+    localOnly: true,
+  });
+  if (!picked.length) return null;
+  const [path] = await importPickedUris(picked.slice(0, 1), "certificate.p12");
+  if (!path) return null;
+  return { path, name: fileBaseName(path) };
 }
 
 export interface AndroidTarget {
@@ -135,15 +226,6 @@ export async function pickAndroidFolder(): Promise<AndroidTarget | null> {
   if (!uri) return null;
   const name = await AndroidFs.getName(uri).catch(() => "folder");
   return { uri, name };
-}
-
-async function ensurePublicAccess(): Promise<void> {
-  const level = await AndroidFs.getAndroidApiLevel().catch(() => 29);
-  if (level >= 29) return;
-  const granted = await AndroidFs.checkPublicFilesPermission().catch(() => false);
-  if (!granted) {
-    await AndroidFs.requestPublicFilesPermission().catch(() => false);
-  }
 }
 
 async function createPublicDownload(name: string, mimeType: string): Promise<AndroidFs.FsUri> {
@@ -186,17 +268,36 @@ export interface PublishTarget {
   dir?: AndroidTarget | null;
 }
 
+/** A document that could not be published, with a human readable reason. */
+export interface PublishFailure {
+  path: string;
+  error: string;
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  return String(error);
+}
+
 /**
  * Copies finished documents to a user-visible location and remembers the
  * resulting content URIs so they can be opened or shared afterwards.
  * Without an explicit target the documents land in
  * `Downloads/PDF Swiss Army Knife`.
+ *
+ * On Android 9 and older the app cannot write into public directories itself
+ * (the storage permission bridge lives on the native side and is not compiled
+ * in), so publishing falls back to the system save dialog, one document at a
+ * time. Failures - including a cancelled dialog - are returned instead of
+ * being logged, so the caller can show them.
  */
-export async function publishOutputs(paths: string[], target?: PublishTarget): Promise<void> {
-  if (!isAndroid() || !paths.length) return;
-  if (!target?.file && !target?.dir) {
-    await ensurePublicAccess();
-  }
+export async function publishOutputs(paths: string[], target?: PublishTarget): Promise<PublishFailure[]> {
+  const failures: PublishFailure[] = [];
+  if (!isAndroid() || !paths.length) return failures;
+
+  const apiLevel = await AndroidFs.getAndroidApiLevel().catch(() => 29);
+  const legacyStorage = apiLevel < 29;
+
   for (const path of paths) {
     const name = fileBaseName(path);
     const mimeType = mimeForName(name);
@@ -208,6 +309,15 @@ export async function publishOutputs(paths: string[], target?: PublishTarget): P
       } else if (target?.dir) {
         uri = await createInDir(target.dir.uri, name, mimeType);
         await AndroidFs.copyFile(path, uri, { create: false });
+      } else if (legacyStorage) {
+        // API 24-28: ask the user where the file should go.
+        const picked = await pickAndroidSaveTarget(name, mimeType);
+        if (!picked) {
+          failures.push({ path, error: "Save cancelled: Android 9 and older need a destination for every export." });
+          continue;
+        }
+        uri = picked.uri;
+        await AndroidFs.copyFile(path, uri, { create: false });
       } else {
         uri = await createPublicDownload(name, mimeType);
         await AndroidFs.copyFile(path, uri, { create: false });
@@ -216,9 +326,10 @@ export async function publishOutputs(paths: string[], target?: PublishTarget): P
       }
       publishedUris.set(path, uri);
     } catch (error) {
-      console.error("publish failed", path, error);
+      failures.push({ path, error: describeError(error) });
     }
   }
+  return failures;
 }
 
 /**
@@ -244,6 +355,22 @@ export async function saveFileOnAndroid(sourcePath: string, defaultName?: string
   await AndroidFs.copyFile(sourcePath, target.uri, { create: false });
   publishedUris.set(sourcePath, target.uri);
   return target.name;
+}
+
+/**
+ * Copies an updated document over the destination that was chosen when it was
+ * first published. Returns false when the document has no remembered
+ * destination (first save) or the copy fails.
+ */
+export async function updatePublishedOutput(sourcePath: string): Promise<boolean> {
+  const target = publishedUris.get(sourcePath);
+  if (!target) return false;
+  try {
+    await AndroidFs.copyFile(sourcePath, target.uri, { create: false });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Opens a document with the system viewer (Android) or default app. */

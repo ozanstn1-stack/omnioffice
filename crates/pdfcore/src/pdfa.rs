@@ -11,7 +11,7 @@
 //! | `pdfa.encryption`     | encrypted files fail                                       |
 //! | `pdfa.file-version`   | A-1 fails on PDF 2.0; A-2/A-3 warn below PDF 1.7           |
 //! | `pdfa.xmp-pdfaid`     | XMP `pdfaid:part`/`pdfaid:conformance` must match the level |
-//! | `pdfa.output-intent`  | needs a `GTS_PDFA1` output intent (fail A-1, warn A-2/A-3) |
+//! | `pdfa.output-intent`  | needs a `GTS_PDFA1` output intent with a `/DestOutputProfile` ICC stream (fail A-1, warn A-2/A-3) |
 //! | `pdfa.fonts-embedded` | every font must carry a font program                       |
 //! | `pdfa.javascript`     | JavaScript fails A-1, warns A-2/A-3                        |
 //! | `pdfa.embedded-files` | attachments fail A-1/A-2, are allowed in A-3b              |
@@ -22,12 +22,21 @@
 //!
 //! Conversion applies only fixes that are actually achievable with lopdf:
 //! JavaScript, actions and embedded files are stripped through the sanitizer,
-//! an XMP packet with the correct `pdfaid:part`/`conformance` is written, a
-//! basic sRGB `GTS_PDFA1` output intent is declared, and `/NeedAppearances` is
-//! turned off. It does **not** embed fonts: full font-embedding conversion
-//! (subsetting, re-encoding, CID handling) is not implemented here. When fonts
-//! remain unembedded the re-run validator reports `valid: false` and says so;
-//! the converter never claims a success it did not achieve.
+//! an XMP packet with the correct `pdfaid:part`/`conformance` is written, an
+//! sRGB `GTS_PDFA1` output intent **with a generated ICC v4 profile** as its
+//! `/DestOutputProfile` is declared, `/NeedAppearances` is turned off, and
+//! non-embedded simple fonts receive a bundled substitute program (see
+//! [`crate::fontembed`]). The per-font outcome, including every honest skip
+//! (CID/Type0, symbolic, custom encodings, non-metric substitutes), travels
+//! back in [`PdfaReport::font_embedding`].
+//!
+//! What this still does **not** do, and the validator therefore still reports:
+//! fonts are embedded whole (no subsetting), Type0/CID fonts are skipped, and
+//! the PT Sans fallback used for Times/Courier/unknown families is not
+//! metric-compatible. The ICC profile is generated deterministically to the
+//! ICC v4 layout and checked structurally by this crate's tests; it has not
+//! been run through an external validator such as veraPDF. The converter never
+//! claims a success it did not achieve.
 
 use std::path::Path;
 
@@ -36,6 +45,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::docutil;
 use crate::error::{PdfError, PdfResult};
+use crate::fontembed::{self, EmbeddedFontReport};
 use crate::inspect;
 use crate::progress::{CancelToken, ProgressCallback, ProgressReporter};
 use crate::sanitize::{sanitize_document, SanitizeOptions};
@@ -103,6 +113,11 @@ pub struct PdfaReport {
     pub warnings: usize,
     /// True when the report was produced by [`convert_pdfa`].
     pub converted: bool,
+    /// Per-font outcome of the conversion's embedding step. Empty for a plain
+    /// [`validate_pdfa`] run; a font that could not be embedded is reported
+    /// here with its skip reason instead of being silently dropped.
+    #[serde(default)]
+    pub font_embedding: Vec<EmbeddedFontReport>,
 }
 
 fn check(id: &str, level: PdfaLevel, status: &str, message: impl Into<String>) -> PdfaCheck {
@@ -173,23 +188,70 @@ fn version_parts(version: &str) -> (u32, u32) {
     (parts.next().unwrap_or(1), parts.next().unwrap_or(0))
 }
 
-fn has_pdfa_output_intent(doc: &Document) -> bool {
+/// The exact output-intent requirement that fails, so the check message can
+/// name it instead of a bare boolean.
+enum OutputIntentState {
+    /// No `/S /GTS_PDFA1` output intent dictionary was found.
+    Missing,
+    /// A GTS_PDFA1 intent exists but none carries `/DestOutputProfile`.
+    NoProfile,
+    /// A profile stream exists but is structurally unusable; the string names
+    /// the failing detail.
+    BadProfile(String),
+    /// A GTS_PDFA1 intent with a usable ICC stream, `components` = `/N`.
+    Present { components: i64 },
+}
+
+/// Resolves the document's output intents down to the strongest GTS_PDFA1
+/// state found. A profile is "usable" here when it is a non-empty stream with
+/// a positive `/N` component count; the ICC bytes themselves are not parsed
+/// by the validator (the converter generates them, see `srgb_v4_icc_profile`).
+fn gts_pdfa1_output_intent(doc: &Document) -> OutputIntentState {
     let catalog = match doc.catalog() {
         Ok(catalog) => catalog,
-        Err(_) => return false,
+        Err(_) => return OutputIntentState::Missing,
     };
     let intents = match resolve_array(doc, catalog.get(b"OutputIntents").ok()) {
         Some(items) => items,
-        None => return false,
+        None => return OutputIntentState::Missing,
     };
+    let mut state = OutputIntentState::Missing;
     for item in &intents {
-        if let Some(intent) = resolve_dict(doc, Some(item)) {
-            if intent.get(b"S").ok().and_then(|value| value.as_name().ok()) == Some(b"GTS_PDFA1") {
-                return true;
+        let intent = match resolve_dict(doc, Some(item)) {
+            Some(intent) => intent,
+            None => continue,
+        };
+        if intent.get(b"S").ok().and_then(|value| value.as_name().ok()) != Some(b"GTS_PDFA1") {
+            continue;
+        }
+        match resolve_stream(doc, intent.get(b"DestOutputProfile").ok()) {
+            Some(stream) => {
+                let components = stream
+                    .dict
+                    .get(b"N")
+                    .ok()
+                    .and_then(|value| value.as_i64().ok())
+                    .unwrap_or(0);
+                if components <= 0 {
+                    if matches!(state, OutputIntentState::Missing | OutputIntentState::NoProfile) {
+                        state = OutputIntentState::BadProfile("has no positive /N component count".to_string());
+                    }
+                } else if stream.content.is_empty() {
+                    if !matches!(state, OutputIntentState::Present { .. }) {
+                        state = OutputIntentState::BadProfile("is an empty stream".to_string());
+                    }
+                } else {
+                    return OutputIntentState::Present { components };
+                }
+            }
+            None => {
+                if matches!(state, OutputIntentState::Missing) {
+                    state = OutputIntentState::NoProfile;
+                }
             }
         }
     }
-    false
+    state
 }
 
 fn need_appearances_true(doc: &Document) -> bool {
@@ -236,6 +298,7 @@ fn finish(level: PdfaLevel, checks: Vec<PdfaCheck>, converted: bool) -> PdfaRepo
         failures,
         warnings,
         converted,
+        font_embedding: Vec::new(),
     }
 }
 
@@ -335,27 +398,48 @@ pub fn validate_pdfa(path: &Path, level: PdfaLevel) -> PdfResult<PdfaReport> {
         )),
     }
 
-    if has_pdfa_output_intent(&doc) {
-        checks.push(check(
+    match gts_pdfa1_output_intent(&doc) {
+        OutputIntentState::Present { components } => checks.push(check(
             "pdfa.output-intent",
             level,
             "pass",
-            "A GTS_PDFA1 output intent is present.",
-        ));
-    } else if level == PdfaLevel::A1b {
-        checks.push(check(
-            "pdfa.output-intent",
-            level,
-            "fail",
-            "PDF/A-1 requires a GTS_PDFA1 output intent and none was found.",
-        ));
-    } else {
-        checks.push(check(
-            "pdfa.output-intent",
-            level,
-            "warning",
-            "No GTS_PDFA1 output intent was found; strict validators will reject the file.",
-        ));
+            format!("A GTS_PDFA1 output intent with a {components}-component ICC profile is present."),
+        )),
+        OutputIntentState::NoProfile => {
+            let status = if level == PdfaLevel::A1b { "fail" } else { "warning" };
+            checks.push(check(
+                "pdfa.output-intent",
+                level,
+                status,
+                "A GTS_PDFA1 output intent is present but carries no /DestOutputProfile ICC stream.",
+            ));
+        }
+        OutputIntentState::BadProfile(detail) => {
+            let status = if level == PdfaLevel::A1b { "fail" } else { "warning" };
+            checks.push(check(
+                "pdfa.output-intent",
+                level,
+                status,
+                format!("A GTS_PDFA1 output intent is present but its /DestOutputProfile {detail}."),
+            ));
+        }
+        OutputIntentState::Missing => {
+            if level == PdfaLevel::A1b {
+                checks.push(check(
+                    "pdfa.output-intent",
+                    level,
+                    "fail",
+                    "PDF/A-1 requires a GTS_PDFA1 output intent and none was found.",
+                ));
+            } else {
+                checks.push(check(
+                    "pdfa.output-intent",
+                    level,
+                    "warning",
+                    "No GTS_PDFA1 output intent was found; strict validators will reject the file.",
+                ));
+            }
+        }
     }
 
     let unembedded: Vec<String> = inspection
@@ -531,12 +615,166 @@ fn write_xmp_metadata(doc: &mut Document, level: PdfaLevel, title: &str) -> PdfR
     Ok(())
 }
 
+/// Encodes a value as an ICC `s15Fixed16Number` (16 fractional bits,
+/// big-endian two's complement).
+fn fix16(value: f64) -> i32 {
+    let scaled = (value * 65536.0).round();
+    let clamped = scaled.clamp(i32::MIN as f64, i32::MAX as f64);
+    clamped as i32
+}
+
+/// `XYZType` tag body: type signature, reserved word and three s15Fixed16
+/// values.
+fn icc_xyz_tag(x: f64, y: f64, z: f64) -> Vec<u8> {
+    let mut out = Vec::with_capacity(20);
+    out.extend_from_slice(b"XYZ ");
+    out.extend_from_slice(&[0u8; 4]);
+    for value in [x, y, z] {
+        out.extend_from_slice(&fix16(value).to_be_bytes());
+    }
+    out
+}
+
+/// The sRGB transfer curve as an ICC `parametricCurveType` with function type
+/// 4: `Y = (a*X + b)^g` for `X >= d`, `Y = c*X + f` otherwise, using the
+/// IEC 61966-2.1 constants. The same tag body is shared by rTRC/gTRC/bTRC.
+fn srgb_trc_tag() -> Vec<u8> {
+    const PARAMETERS: [f64; 7] = [
+        2.4,             // g
+        1.0 / 1.055,     // a
+        0.055 / 1.055,   // b
+        1.0 / 12.92,     // c
+        0.04045,         // d
+        0.0,             // e
+        0.0,             // f
+    ];
+    let mut out = Vec::with_capacity(40);
+    out.extend_from_slice(b"para");
+    out.extend_from_slice(&[0u8; 4]);
+    out.extend_from_slice(&4u16.to_be_bytes());
+    out.extend_from_slice(&0u16.to_be_bytes());
+    for parameter in PARAMETERS {
+        out.extend_from_slice(&fix16(parameter).to_be_bytes());
+    }
+    out
+}
+
+/// `multiLocalizedUnicodeType` tag body with one `en-US` record, the ICC v4
+/// way to carry `desc` and `cprt` text.
+fn icc_mluc_tag(text: &str) -> Vec<u8> {
+    let mut string = Vec::with_capacity(text.len() * 2);
+    for unit in text.encode_utf16() {
+        string.extend_from_slice(&unit.to_be_bytes());
+    }
+    let mut out = Vec::with_capacity(28 + string.len() + 3);
+    out.extend_from_slice(b"mluc");
+    out.extend_from_slice(&[0u8; 4]);
+    out.extend_from_slice(&1u32.to_be_bytes()); // record count
+    out.extend_from_slice(&12u32.to_be_bytes()); // record size
+    out.extend_from_slice(b"enUS"); // ISO 639-1 language + ISO 3166-1 country
+    out.extend_from_slice(&(string.len() as u32).to_be_bytes());
+    out.extend_from_slice(&28u32.to_be_bytes()); // string offset within the tag
+    out.extend_from_slice(&string);
+    while out.len() % 4 != 0 {
+        out.push(0);
+    }
+    out
+}
+
+/// Builds a deterministic, structurally valid minimal sRGB ICC v4 profile:
+/// `mntr` class, `RGB ` data space, `XYZ ` PCS, a 9-tag table (r/g/bXYZ,
+/// r/g/bTRC, wtpt, desc, cprt) with 4-byte aligned tag data, the D50 PCS
+/// illuminant, D50-adapted sRGB colorants and the IEC 61966-2.1 parametric
+/// TRC. The profile ID is left zero, which the ICC spec defines as "not
+/// calculated"; the creation date is fixed so the bytes are reproducible.
+///
+/// Verified: the tag table, offsets, sizes and type signatures are checked by
+/// this crate's structural walker test. Not verified: an external validator
+/// (e.g. veraPDF) has not been run against the emitted profile, so callers
+/// must not describe it as a certified ICC profile.
+pub fn srgb_v4_icc_profile() -> Vec<u8> {
+    // D50-adapted sRGB colorants (Bradford adaptation), the matrix used by
+    // published sRGB v4 profiles. Values are s15Fixed16-encoded below.
+    const WHITE: (f64, f64, f64) = (0.9642, 1.0, 0.8249);
+    const RED: (f64, f64, f64) = (0.4360747, 0.2225045, 0.0139322);
+    const GREEN: (f64, f64, f64) = (0.3850649, 0.7168786, 0.0971045);
+    const BLUE: (f64, f64, f64) = (0.1430804, 0.0606169, 0.7141733);
+
+    // Tag table entries must be sorted by signature.
+    let tags: [(&[u8; 4], Vec<u8>); 9] = [
+        (b"bTRC", srgb_trc_tag()),
+        (b"bXYZ", icc_xyz_tag(BLUE.0, BLUE.1, BLUE.2)),
+        (b"cprt", icc_mluc_tag("Public domain. sRGB values per IEC 61966-2.1.")),
+        (b"desc", icc_mluc_tag("sRGB IEC61966-2.1")),
+        (b"gTRC", srgb_trc_tag()),
+        (b"gXYZ", icc_xyz_tag(GREEN.0, GREEN.1, GREEN.2)),
+        (b"rTRC", srgb_trc_tag()),
+        (b"rXYZ", icc_xyz_tag(RED.0, RED.1, RED.2)),
+        (b"wtpt", icc_xyz_tag(WHITE.0, WHITE.1, WHITE.2)),
+    ];
+
+    const HEADER_SIZE: usize = 128;
+    let table_size = 4 + tags.len() * 12;
+    let mut offsets: Vec<(usize, usize)> = Vec::with_capacity(tags.len());
+    let mut offset = HEADER_SIZE + table_size;
+    for (_, data) in &tags {
+        offsets.push((offset, data.len()));
+        offset += data.len();
+        offset = (offset + 3) & !3; // tag data is 4-byte aligned
+    }
+    let total = offset;
+
+    let mut profile: Vec<u8> = vec![0u8; HEADER_SIZE];
+    profile.extend_from_slice(&(tags.len() as u32).to_be_bytes());
+    for ((signature, _), (tag_offset, tag_size)) in tags.iter().zip(&offsets) {
+        profile.extend_from_slice(*signature);
+        profile.extend_from_slice(&(*tag_offset as u32).to_be_bytes());
+        profile.extend_from_slice(&(*tag_size as u32).to_be_bytes());
+    }
+    for ((_, data), (tag_offset, _)) in tags.iter().zip(&offsets) {
+        debug_assert_eq!(profile.len(), *tag_offset);
+        profile.extend_from_slice(data);
+        while profile.len() % 4 != 0 {
+            profile.push(0);
+        }
+    }
+
+    // Header, per ICC.1:2022 Table 17.
+    profile[0..4].copy_from_slice(&(total as u32).to_be_bytes()); // profile size
+    profile[8..12].copy_from_slice(&0x0430_0000u32.to_be_bytes()); // v4.3.0
+    profile[12..16].copy_from_slice(b"mntr"); // display device profile
+    profile[16..20].copy_from_slice(b"RGB "); // data colour space
+    profile[20..24].copy_from_slice(b"XYZ "); // profile connection space
+    // Fixed creation date keeps the output deterministic; only ranges matter.
+    profile[24..26].copy_from_slice(&2026u16.to_be_bytes());
+    profile[26..28].copy_from_slice(&1u16.to_be_bytes());
+    profile[28..30].copy_from_slice(&1u16.to_be_bytes());
+    profile[36..40].copy_from_slice(b"acsp");
+    profile[68..72].copy_from_slice(&fix16(WHITE.0).to_be_bytes());
+    profile[72..76].copy_from_slice(&fix16(WHITE.1).to_be_bytes());
+    profile[76..80].copy_from_slice(&fix16(WHITE.2).to_be_bytes());
+    profile
+}
+
 fn write_output_intent(doc: &mut Document) -> PdfResult<()> {
+    // `/DestOutputProfile` is what makes the output intent real: it names the
+    // ICC profile that defines the colour space the document is intended for.
+    // `/N 3` is three-component RGB, `/Alternate` names the device space a
+    // reader without ICC support should fall back to. The profile bytes are
+    // generated deterministically in this crate.
+    let profile_id = doc.add_object(Object::Stream(Stream::new(
+        dictionary! {
+            "N" => 3i64,
+            "Alternate" => "DeviceRGB",
+        },
+        srgb_v4_icc_profile(),
+    )));
     let intent = doc.add_object(Object::Dictionary(dictionary! {
         "Type" => "OutputIntent",
         "S" => "GTS_PDFA1",
         "OutputConditionIdentifier" => Object::String(b"sRGB IEC61966-2.1".to_vec(), lopdf::StringFormat::Literal),
         "Info" => Object::String(b"sRGB IEC61966-2.1".to_vec(), lopdf::StringFormat::Literal),
+        "DestOutputProfile" => Object::Reference(profile_id),
     }));
     doc.catalog_mut()?
         .set("OutputIntents", Object::Array(vec![Object::Reference(intent)]));
@@ -557,9 +795,11 @@ fn remove_need_appearances(doc: &mut Document) {
 }
 
 /// Converts a file towards `level` with the fixes lopdf can actually apply,
-/// then re-validates the written output and returns that real report. Font
-/// embedding is not implemented, so a document relying on non-embedded fonts
-/// still comes back `valid: false` with the failure attached.
+/// then re-validates the written output and returns that real report. The
+/// font-embedding step runs before saving and its per-font outcome is carried
+/// in [`PdfaReport::font_embedding`]; fonts it refuses (CID/Type0, symbolic,
+/// custom encodings) still make the re-run validator report `valid: false`,
+/// and the converter never claims a success it did not achieve.
 pub fn convert_pdfa(
     input: &Path,
     output: &Path,
@@ -570,7 +810,7 @@ pub fn convert_pdfa(
     cancel.check()?;
     let mut doc = docutil::load_document(input, None)?;
     let reporter = ProgressReporter::new(progress);
-    reporter.emit_step("pdfa.convert", 0, 4);
+    reporter.emit_step("pdfa.convert", 0, 5);
 
     let sanitize_options = SanitizeOptions {
         remove_javascript: true,
@@ -583,19 +823,26 @@ pub fn convert_pdfa(
         remove_links: false,
     };
     let _ = sanitize_document(&mut doc, &sanitize_options, cancel)?;
-    reporter.emit_step("pdfa.convert", 1, 4);
+    reporter.emit_step("pdfa.convert", 1, 5);
 
     let title = crate::metadata::read_metadata(&doc).title;
     write_xmp_metadata(&mut doc, level, &title)?;
     write_output_intent(&mut doc)?;
     remove_need_appearances(&mut doc);
-    reporter.emit_step("pdfa.convert", 2, 4);
+    reporter.emit_step("pdfa.convert", 2, 5);
+
+    // Address the main PDF/A failure mode: fonts the file only names get a
+    // bundled substitute program. The report lists what was embedded and what
+    // was skipped, and why; skipped fonts keep failing validation honestly.
+    let font_embedding = fontembed::embed_missing_fonts_in_document(&mut doc);
+    reporter.emit_step("pdfa.convert", 3, 5);
 
     docutil::save_document(&mut doc, output, true)?;
-    reporter.emit_step("pdfa.convert", 3, 4);
+    reporter.emit_step("pdfa.convert", 4, 5);
 
     let mut report = validate_pdfa(output, level)?;
     report.converted = true;
-    reporter.emit_step("pdfa.convert", 4, 4);
+    report.font_embedding = font_embedding;
+    reporter.emit_step("pdfa.convert", 5, 5);
     Ok(report)
 }

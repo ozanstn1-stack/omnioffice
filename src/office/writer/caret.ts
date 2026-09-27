@@ -93,6 +93,81 @@ export function setSelectionRange(element: HTMLElement, from: number, to: number
   selection.addRange(range);
 }
 
+/**
+ * Plain-text offset of a DOM position inside `element`.
+ *
+ * Range#toString skips element boundaries but keeps every text node, which is
+ * exactly how the model counts characters. Positions outside the element clamp
+ * to 0 so a caller cannot produce an offset the model does not have.
+ */
+export function textOffsetWithin(element: HTMLElement, node: Node, nodeOffset: number): number {
+  if (node !== element && !element.contains(node)) return 0;
+  const probe = element.ownerDocument.createRange();
+  probe.selectNodeContents(element);
+  try {
+    probe.setEnd(node, nodeOffset);
+  } catch {
+    // An out-of-range DOM position (stale node, text since replaced) falls back
+    // to the end of the element rather than throwing during a caret move.
+    return element.textContent?.length ?? 0;
+  }
+  return probe.toString().length;
+}
+
+/** Browser caret hit-test at a viewport point, across the two API spellings. */
+function pointPosition(document: Document, x: number, y: number): { node: Node; offset: number } | null {
+  const doc = document as Document & {
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+  };
+  const range = doc.caretRangeFromPoint?.(x, y);
+  if (range) return { node: range.startContainer, offset: range.startOffset };
+  const position = doc.caretPositionFromPoint?.(x, y);
+  if (position) return { node: position.offsetNode, offset: position.offset };
+  return null;
+}
+
+/**
+ * Maps a viewport point to a plain-text offset inside `element`.
+ *
+ * The paginated view renders a continuation fragment as the whole paragraph
+ * shifted up inside a clipped box, so hit-testing any fragment still yields an
+ * offset in the full paragraph. Returns null when the browser has no hit test
+ * (jsdom) or the point falls outside `element`.
+ */
+export function offsetFromPoint(element: HTMLElement, x: number, y: number): number | null {
+  const position = pointPosition(element.ownerDocument, x, y);
+  if (!position || !element.contains(position.node)) return null;
+  return textOffsetWithin(element, position.node, position.offset);
+}
+
+export interface ParagraphPoint {
+  /** The `.para` element under the point. */
+  element: HTMLElement;
+  /** Block index of the paragraph that owns the `.para`. */
+  block: number;
+  /** Plain-text offset inside the paragraph. */
+  offset: number;
+}
+
+/**
+ * The paragraph under a viewport point, for drag selection over static
+ * fragments. The block index comes from the enclosing `[data-block-index]`,
+ * which both the static renderer and the editable carry.
+ */
+export function paragraphAtPoint(document: Document, x: number, y: number): ParagraphPoint | null {
+  const position = pointPosition(document, x, y);
+  if (!position) return null;
+  const start =
+    position.node.nodeType === Node.ELEMENT_NODE ? (position.node as HTMLElement) : position.node.parentElement;
+  const element = start?.closest<HTMLElement>(".para");
+  if (!element) return null;
+  const owner = element.closest<HTMLElement>("[data-block-index]");
+  const block = owner ? Number(owner.dataset.blockIndex) : Number.NaN;
+  if (!Number.isFinite(block)) return null;
+  return { element, block, offset: textOffsetWithin(element, position.node, position.offset) };
+}
+
 /** Walks the text nodes of an element to find the node holding `offset`. */
 function findTextNodeAt(element: HTMLElement, offset: number): { node: Text; offset: number } | null {
   const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);

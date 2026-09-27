@@ -414,3 +414,291 @@ export const saveSettings = (settings: Settings) => invoke<void>("save_settings"
 export const loadRecent = () => invoke<RecentEntry[]>("load_recent");
 export const addRecent = (entry: RecentEntry) => invoke<void>("add_recent", { entry });
 export const clearRecent = () => invoke<void>("clear_recent");
+
+// ---------------------------------------------------------------------------
+// Digital signatures - real CMS/PKCS#7 detached signatures (SHA-256)
+//
+// The Rust side never claims a signature is trusted: `trust` is always
+// "unknown" because there is no system trust store and no revocation check.
+// Verification is performed locally against the embedded certificate.
+// ---------------------------------------------------------------------------
+
+export interface SignatureCertificateInfo {
+  subject: string;
+  issuer: string;
+  serialHex: string;
+  notBefore: string;
+  notAfter: string;
+  expired: boolean;
+  isCa: boolean;
+  sha256Fingerprint: string;
+}
+
+export interface SignatureInfo {
+  fieldName: string;
+  subFilter: string;
+  coversWholeDocument: boolean;
+  modifiedAfterSigning: boolean;
+  digestMatches: boolean;
+  signatureValid: boolean;
+  chain: SignatureCertificateInfo[];
+  chainLinked: boolean;
+  selfSignedChain: boolean;
+  signer: SignatureCertificateInfo;
+  signingTime: string | null;
+  algorithm: string;
+  trust: string;
+  notes: string[];
+}
+
+export interface SignatureReport {
+  signatures: SignatureInfo[];
+}
+
+export interface SignOptionsInput {
+  page?: number;
+  /** [x1, y1, x2, y2] in PDF points, bottom-left origin. */
+  rect?: [number, number, number, number] | null;
+  reason?: string;
+  location?: string;
+  contact?: string;
+  appearance?: boolean;
+  signerName?: string | null;
+}
+
+export interface SignResult {
+  output: string;
+  signature: SignatureInfo;
+}
+
+export interface SigningCertificateSummary {
+  index: number;
+  subject: string;
+  issuer: string;
+  serialHex: string;
+  notBefore: string;
+  notAfter: string;
+  expired: boolean;
+  hasPrivateKey: boolean;
+  sha256Fingerprint: string;
+}
+
+export const pdfVerifySignatures = (path: string) =>
+  invoke<SignatureReport>("pdf_verify_signatures", { path });
+
+export const pdfSign = (payload: {
+  input: string;
+  output: string;
+  pfxPath?: string | null;
+  pfxPassword?: string | null;
+  certIndex?: number | null;
+  options: SignOptionsInput;
+}) => invoke<SignResult>("pdf_sign", payload);
+
+export const pdfListSigningCertificates = () =>
+  invoke<SigningCertificateSummary[]>("pdf_list_signing_certificates");
+
+// ---------------------------------------------------------------------------
+// Cloud sync (.oswk over WebDAV; off by default, everything explicit)
+// ---------------------------------------------------------------------------
+
+export type SyncProviderId = "webdav" | "onedrive" | "google-drive";
+export type SyncStateId = "local_only" | "synced" | "local_ahead" | "cloud_ahead" | "conflict";
+export type SyncResolutionId = "keep_local" | "keep_cloud" | "keep_both";
+
+export interface SyncConfigView {
+  enabled: boolean;
+  provider: SyncProviderId;
+  url: string;
+  username: string;
+  remoteDir: string;
+  hasPassword: boolean;
+  passwordStorage: "dpapi" | "plain" | "none";
+}
+
+export interface SyncSaveInput {
+  enabled: boolean;
+  provider: SyncProviderId;
+  url: string;
+  username: string;
+  /** null keeps the stored password, "" clears it, any value replaces it. */
+  password: string | null;
+  remoteDir: string;
+}
+
+export interface SyncTestResult {
+  server: string;
+  remoteDir: string;
+  remoteDirExists: boolean;
+  message: string;
+}
+
+export interface SyncStatusView {
+  file: string;
+  localPath: string;
+  remotePath: string;
+  state: SyncStateId;
+  tracked: boolean;
+  localSize: number;
+  remoteSize: number | null;
+  localSha256: string;
+  cloudSha256: string | null;
+  remoteEtag: string | null;
+  baseEtag: string | null;
+  baseSha256: string | null;
+  localRevision: number;
+  lastSyncedAt: string | null;
+  updatedAt: string | null;
+  note: string | null;
+}
+
+export interface SyncListEntry {
+  name: string;
+  size: number;
+  etag: string | null;
+  modified: string | null;
+}
+
+export interface SyncProviderInfo {
+  id: string;
+  available: boolean;
+  note: string;
+}
+
+export interface SyncCapabilities {
+  maxTransferBytes: number;
+  backgroundSync: boolean;
+  autoMerge: boolean;
+  providers: SyncProviderInfo[];
+}
+
+export const syncGetConfig = () => invoke<SyncConfigView>("sync_get_config");
+export const syncSaveConfig = (input: SyncSaveInput) => invoke<SyncConfigView>("sync_save_config", { input });
+export const syncTestConnection = () => invoke<SyncTestResult>("sync_test_connection");
+export const syncStatus = (localPath: string) => invoke<SyncStatusView>("sync_status", { localPath });
+export const syncUpload = (localPath: string) => invoke<SyncStatusView>("sync_upload", { localPath });
+export const syncDownload = (remoteName: string, localPath: string) =>
+  invoke<SyncStatusView>("sync_download", { remoteName, localPath });
+export const syncList = () => invoke<SyncListEntry[]>("sync_list");
+export const syncResolve = (localPath: string, resolution: SyncResolutionId) =>
+  invoke<SyncStatusView>("sync_resolve", { localPath, resolution });
+export const syncForget = (localPath: string) => invoke<void>("sync_forget", { localPath });
+export const syncCapabilities = () => invoke<SyncCapabilities>("sync_capabilities");
+
+// ---------------------------------------------------------------------------
+// AcroForm fields and PDF Studio page objects (V3.1)
+//
+// Every value below is a real PDF object read or written by
+// `pdfcore::forms`: fill writes `/V` and rebuilds widget appearances, object
+// edits rewrite the annotation `/Rect` (plus appearance matrix for rotation)
+// or the image placement matrix in the content stream. The commands never
+// execute PDF JavaScript, and validation reports only what is provable from
+// the file; scripted formats come back as "scripted_format" warnings.
+// ---------------------------------------------------------------------------
+
+export interface FieldOption {
+  value: string;
+  label: string;
+}
+
+export type FormFieldType = "text" | "checkbox" | "radio" | "pushbutton" | "choice" | "signature" | "unknown";
+
+export interface FormFieldInfo {
+  name: string;
+  fieldType: FormFieldType | string;
+  flags: number;
+  required: boolean;
+  readOnly: boolean;
+  value: string;
+  values: string[];
+  defaultValue: string;
+  tooltip: string | null;
+  maxLength: number | null;
+  multiline: boolean;
+  password: boolean;
+  comb: boolean;
+  combo: boolean;
+  editable: boolean;
+  multiSelect: boolean;
+  options: FieldOption[];
+  page: number | null;
+  rect: [number, number, number, number] | null;
+  tabOrder: number | null;
+  widgetCount: number;
+  hasScript: boolean;
+}
+
+export interface FieldValue {
+  name: string;
+  value: string;
+  values?: string[];
+}
+
+export interface FillReport {
+  filled: number;
+  skipped: string[];
+  warnings: string[];
+}
+
+export interface FieldIssue {
+  field: string;
+  code: string;
+  severity: "error" | "warning" | string;
+  message: string;
+}
+
+export interface PageObjectInfo {
+  page: number;
+  index: number;
+  /** `annotation` | `widget` | `image`. */
+  kind: string;
+  subtype: string;
+  /** `"object generation"` for indirect objects; null for inline ones. */
+  id: string | null;
+  /** Page-space box, bottom-left origin. */
+  rect: [number, number, number, number];
+  matrix: [number, number, number, number, number, number] | null;
+  resourceName: string | null;
+  fieldName: string | null;
+  contents: string;
+  flags: number;
+  hidden: boolean;
+  tabOrder: number | null;
+}
+
+export type ObjectEditAction =
+  | { action: "move"; dx: number; dy: number }
+  | { action: "resize"; rect: [number, number, number, number] }
+  | { action: "delete" }
+  | { action: "rotate"; degrees: number };
+
+export type ObjectEdit = { page: number; index: number } & ObjectEditAction;
+
+export interface EditReport {
+  edited: number;
+  deleted: number;
+  warnings: string[];
+}
+
+export const pdfListFormFields = (path: string, password?: string) =>
+  invoke<FormFieldInfo[]>("pdf_list_form_fields", { path, password: password || null });
+
+export const pdfFillForm = (request: {
+  input: string;
+  output: OutputSpec;
+  values: FieldValue[];
+  password?: string | null;
+}) => invoke<FillReport>("pdf_fill_form", { request });
+
+export const pdfValidateForm = (path: string, values: FieldValue[], password?: string) =>
+  invoke<FieldIssue[]>("pdf_validate_form", { path, values, password: password || null });
+
+export const pdfListObjects = (path: string, password?: string) =>
+  invoke<PageObjectInfo[]>("pdf_list_objects", { path, password: password || null });
+
+export const pdfEditObjects = (request: {
+  input: string;
+  output: OutputSpec;
+  edits: ObjectEdit[];
+  password?: string | null;
+}) => invoke<EditReport>("pdf_edit_objects", { request });

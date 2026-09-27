@@ -128,6 +128,72 @@ impl Media {
     }
 }
 
+/// Writer-side note lookup: citation numbers come from the document's
+/// reference order (`TextDocument::footnote_order` / `endnote_order`) so the
+/// `text:note-citation` values match what the editor shows.
+#[derive(Default)]
+struct NoteContext {
+    footnotes: HashMap<String, (usize, Footnote)>,
+    endnotes: HashMap<String, (usize, Footnote)>,
+}
+
+impl NoteContext {
+    fn for_document(document: &TextDocument) -> Self {
+        let mut context = NoteContext::default();
+        for (index, id) in document.footnote_order().iter().enumerate() {
+            if let Some(note) = document.footnotes.iter().find(|note| &note.id == id) {
+                context.footnotes.insert(id.clone(), (index + 1, note.clone()));
+            }
+        }
+        for (index, id) in document.endnote_order().iter().enumerate() {
+            if let Some(note) = document.endnotes.iter().find(|note| &note.id == id) {
+                context.endnotes.insert(id.clone(), (index + 1, note.clone()));
+            }
+        }
+        context
+    }
+
+    fn reference(&self, id: &str, endnote: bool) -> Option<&(usize, Footnote)> {
+        if endnote {
+            self.endnotes.get(id)
+        } else {
+            self.footnotes.get(id)
+        }
+    }
+}
+
+/// `text:id` must be an XML ID (an NCName). Imported ids are often numeric
+/// ("1") or UUID-ish; anything unusable falls back to `ftnN`/`ednN` so the
+/// package stays valid and our own reader still restores a stable reference.
+fn note_export_id(note: &Footnote, endnote: bool, number: usize) -> String {
+    let candidate = note.id.trim();
+    let first_ok = candidate.chars().next().map(|ch| ch.is_ascii_alphabetic() || ch == '_').unwrap_or(false);
+    let rest_ok = candidate.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_'));
+    if first_ok && rest_ok {
+        candidate.to_string()
+    } else {
+        format!("{}{}", if endnote { "edn" } else { "ftn" }, number)
+    }
+}
+
+/// One inline `text:note` element: citation plus body paragraphs. The body
+/// runs are written with an empty note context, so notes inside notes (which
+/// ODF forbids anyway) cannot recurse.
+fn note_xml(note: &Footnote, endnote: bool, number: usize, styles: &mut AutoStyles) -> String {
+    let id = note_export_id(note, endnote, number);
+    let class = if endnote { "endnote" } else { "footnote" };
+    let citation = if note.marker.trim().is_empty() { number.to_string() } else { note.marker.clone() };
+    let mut writer = XmlWriter::new();
+    write_runs(&mut writer, &note.runs, styles, &NoteContext::default());
+    let body = writer.finish();
+    format!(
+        "<text:note text:id=\"{}\" text:note-class=\"{class}\"><text:note-citation>{}</text:note-citation><text:note-body>{}</text:note-body></text:note>",
+        escape(&id),
+        crate::xml::escape_text(&citation),
+        if body.is_empty() { "<text:p/>".to_string() } else { format!("<text:p>{body}</text:p>") }
+    )
+}
+
 fn paragraph_style_xml(props: &ParaProps, page_break: bool) -> String {
     let mut properties = String::new();
     match props.align.as_str() {
@@ -198,18 +264,29 @@ fn run_style_xml(run: &Run) -> String {
     format!("<style:text-properties{properties}/>")
 }
 
-fn write_runs(writer: &mut XmlWriter, runs: &[Run], styles: &mut AutoStyles) {
+fn write_runs(writer: &mut XmlWriter, runs: &[Run], styles: &mut AutoStyles, notes: &NoteContext) {
     for run in runs {
         let text = run.text.replace('\n', " ");
-        if text.is_empty() {
-            continue;
+        if !text.is_empty() {
+            let content = crate::xml::escape_text(&text);
+            if run.link.is_some() || run.bold || run.italic || run.underline || run.strike || run.color.is_some() || run.highlight.is_some() || run.font.is_some() || run.size_pt.is_some() || run.superscript || run.subscript {
+                let name = styles.text(run_style_xml(run));
+                writer.raw(&format!("<text:span text:style-name=\"{name}\">{content}</text:span>"));
+            } else {
+                writer.raw(&content);
+            }
         }
-        let content = crate::xml::escape_text(&text);
-        if run.link.is_some() || run.bold || run.italic || run.underline || run.strike || run.color.is_some() || run.highlight.is_some() || run.font.is_some() || run.size_pt.is_some() || run.superscript || run.subscript {
-            let name = styles.text(run_style_xml(run));
-            writer.raw(&format!("<text:span text:style-name=\"{name}\">{content}</text:span>"));
-        } else {
-            writer.raw(&content);
+        // Note references are emitted inline at the run position, after the
+        // run text; the note body never lands in the paragraph runs.
+        if let Some(id) = &run.footnote {
+            if let Some((number, note)) = notes.reference(id, false) {
+                writer.raw(&note_xml(note, false, *number, styles));
+            }
+        }
+        if let Some(id) = &run.endnote {
+            if let Some((number, note)) = notes.reference(id, true) {
+                writer.raw(&note_xml(note, true, *number, styles));
+            }
         }
         if let Some(url) = &run.link {
             let last = writer.as_str().len();
@@ -219,7 +296,7 @@ fn write_runs(writer: &mut XmlWriter, runs: &[Run], styles: &mut AutoStyles) {
     }
 }
 
-fn write_blocks(writer: &mut XmlWriter, blocks: &[Block], styles: &mut AutoStyles, media: &mut Media, list_depth: u32) {
+fn write_blocks(writer: &mut XmlWriter, blocks: &[Block], styles: &mut AutoStyles, media: &mut Media, notes: &NoteContext, list_depth: u32) {
     let mut index = 0usize;
     while index < blocks.len() {
         let block = &blocks[index];
@@ -234,7 +311,7 @@ fn write_blocks(writer: &mut XmlWriter, blocks: &[Block], styles: &mut AutoStyle
                                 
                                 let name = styles.paragraph(paragraph_style_xml(inner, false));
                                 writer.raw(&format!("<text:list-item><text:p text:style-name=\"{name}\">"));
-                                write_runs(writer, inner_runs, styles);
+                                write_runs(writer, inner_runs, styles, notes);
                                 writer.raw("</text:p></text:list-item>");
                                 index += 1;
                             }
@@ -249,15 +326,15 @@ fn write_blocks(writer: &mut XmlWriter, blocks: &[Block], styles: &mut AutoStyle
                 if is_heading {
                     let level = props.style.trim_start_matches("Heading").parse::<u32>().unwrap_or(1).clamp(1, 10);
                     writer.raw(&format!("<text:h text:outline-level=\"{level}\" text:style-name=\"{name}\">"));
-                    write_runs(writer, runs, styles);
+                    write_runs(writer, runs, styles, notes);
                     writer.raw("</text:h>");
                 } else {
                     writer.raw(&format!("<text:p text:style-name=\"{name}\">"));
-                    write_runs(writer, runs, styles);
+                    write_runs(writer, runs, styles, notes);
                     writer.raw("</text:p>");
                 }
             }
-            Block::Table { table } => write_table(writer, table, styles, media),
+            Block::Table { table } => write_table(writer, table, styles, media, notes),
             Block::Image { image, width_pt, height_pt, .. } => {
                 let Some(name) = media.add(image) else {
                     index += 1;
@@ -301,7 +378,7 @@ fn write_blocks(writer: &mut XmlWriter, blocks: &[Block], styles: &mut AutoStyle
     let _ = list_depth;
 }
 
-fn write_table(writer: &mut XmlWriter, table: &TableData, styles: &mut AutoStyles, media: &mut Media) {
+fn write_table(writer: &mut XmlWriter, table: &TableData, styles: &mut AutoStyles, media: &mut Media, notes: &NoteContext) {
     let columns = table.rows.iter().map(|row| row.cells.len()).max().unwrap_or(1).max(1);
     writer.raw("<table:table>");
     for index in 0..columns {
@@ -318,7 +395,7 @@ fn write_table(writer: &mut XmlWriter, table: &TableData, styles: &mut AutoStyle
             if cell.blocks.is_empty() {
                 writer.raw("<text:p/>");
             } else {
-                write_blocks(writer, &cell.blocks, styles, media, 0);
+                write_blocks(writer, &cell.blocks, styles, media, notes, 0);
             }
             writer.raw("</table:table-cell>");
         }
@@ -412,16 +489,17 @@ fn master_styles_xml(document: &TextDocument) -> String {
     }
     let mut header_footer = String::new();
     let mut media = Media::default();
+    let notes = NoteContext::for_document(document);
     if !document.header.is_empty() {
         let mut writer = XmlWriter::new();
         let mut styles = AutoStyles::default();
-        write_blocks(&mut writer, &document.header, &mut styles, &mut media, 0);
+        write_blocks(&mut writer, &document.header, &mut styles, &mut media, &notes, 0);
         header_footer.push_str(&format!("<style:header>{}</style:header>", writer.finish()));
     }
     if !document.footer.is_empty() {
         let mut writer = XmlWriter::new();
         let mut styles = AutoStyles::default();
-        write_blocks(&mut writer, &document.footer, &mut styles, &mut media, 0);
+        write_blocks(&mut writer, &document.footer, &mut styles, &mut media, &notes, 0);
         header_footer.push_str(&format!("<style:footer>{}</style:footer>", writer.finish()));
     }
     format!(
@@ -467,8 +545,9 @@ pub struct TextRead {
 pub fn write_odt(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     let mut styles = AutoStyles::default();
     let mut media = Media::default();
+    let notes = NoteContext::for_document(document);
     let mut body = XmlWriter::new();
-    write_blocks(&mut body, &document.blocks, &mut styles, &mut media, 0);
+    write_blocks(&mut body, &document.blocks, &mut styles, &mut media, &notes, 0);
     let content = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content {NS} office:version=\"1.2\">{}{}<office:body><office:text text:style-name=\"Standard\">{}</office:text></office:body></office:document-content>",
         styles.xml(),
@@ -542,7 +621,63 @@ fn read_span_style(node: &XmlNode) -> Run {
     run
 }
 
-fn node_text_runs(node: &XmlNode, runs: &mut Vec<Run>) {
+/// Reader-side note accumulator. Notes are collected while paragraphs are
+/// parsed and attached to the document once the whole body is read.
+#[derive(Default)]
+struct NoteReadState {
+    footnotes: Vec<Footnote>,
+    endnotes: Vec<Footnote>,
+    sequence: usize,
+}
+
+/// Reads one inline `text:note`: a reference run goes into `runs` at this
+/// position while the body goes to `notes`, so note text never leaks into the
+/// surrounding paragraph.
+fn read_note(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState) {
+    let endnote = node.attr_any_ns("note-class") == Some("endnote");
+    notes.sequence += 1;
+    let id = node
+        .attr_any_ns("id")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("{}{}", if endnote { "en" } else { "fn" }, notes.sequence));
+    let number = if endnote { notes.endnotes.len() + 1 } else { notes.footnotes.len() + 1 };
+    let citation = node.child("note-citation").map(XmlNode::deep_text).unwrap_or_default();
+    let citation = citation.trim().to_string();
+    // Keep an explicit marker only when it is not the automatic number; that
+    // way our own exports (whose citation *is* the number) stay automatic.
+    let marker = if citation.is_empty() || citation.parse::<usize>().ok() == Some(number) { String::new() } else { citation };
+    let mut body_runs = Vec::new();
+    if let Some(body) = node.child("note-body") {
+        let mut first_paragraph = true;
+        for paragraph in body.children.iter().filter(|child| matches!(child.local_name(), "p" | "h")) {
+            if !first_paragraph {
+                body_runs.push(Run { text: "\n".into(), ..Default::default() });
+            }
+            first_paragraph = false;
+            if !paragraph.text.is_empty() {
+                body_runs.push(Run { text: paragraph.text.clone(), ..Default::default() });
+            }
+            for inner in &paragraph.children {
+                node_text_runs(inner, &mut body_runs, notes);
+            }
+        }
+    }
+    if body_runs.is_empty() {
+        body_runs.push(Run::default());
+    }
+    let note = Footnote { id: id.clone(), runs: body_runs, marker };
+    if endnote {
+        notes.endnotes.push(note);
+        runs.push(Run { endnote: Some(id), ..Default::default() });
+    } else {
+        notes.footnotes.push(note);
+        runs.push(Run { footnote: Some(id), ..Default::default() });
+    }
+}
+
+fn node_text_runs(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState) {
     match node.local_name() {
         "span" => {
             let base = read_span_style(node);
@@ -557,6 +692,7 @@ fn node_text_runs(node: &XmlNode, runs: &mut Vec<Run>) {
                     }
                     "tab" => runs.push(Run { text: "\t".into(), ..base.clone() }),
                     "line-break" => runs.push(Run { text: "\n".into(), ..base.clone() }),
+                    "note" => read_note(child, runs, notes),
                     _ => {
                         let text = child.deep_text();
                         if !text.is_empty() {
@@ -573,7 +709,7 @@ fn node_text_runs(node: &XmlNode, runs: &mut Vec<Run>) {
             }
             for child in &node.children {
                 let mut inner = Vec::new();
-                node_text_runs(child, &mut inner);
+                node_text_runs(child, &mut inner, notes);
                 for mut run in inner {
                     if run.link.is_none() {
                         run.link = link.clone();
@@ -582,6 +718,7 @@ fn node_text_runs(node: &XmlNode, runs: &mut Vec<Run>) {
                 }
             }
         }
+        "note" => read_note(node, runs, notes),
         "s" => {
             let count = node.attr_any_ns("c").and_then(|value| value.parse::<usize>().ok()).unwrap_or(1);
             runs.push(Run { text: " ".repeat(count), ..Default::default() });
@@ -595,23 +732,22 @@ fn node_text_runs(node: &XmlNode, runs: &mut Vec<Run>) {
                 runs.push(Run { text, ..Default::default() });
             }
             for child in &node.children {
-                node_text_runs(child, runs);
+                node_text_runs(child, runs, notes);
             }
         }
     }
 }
 
 fn paragraph_props(node: &XmlNode, style_map: &HashMap<String, ParaProps>) -> ParaProps {
-    let mut props = if let Some(name) = node.attr("style-name").or_else(|| node.attr_any_ns("style-name")) {
+    let props = if let Some(name) = node.attr("style-name").or_else(|| node.attr_any_ns("style-name")) {
         style_map.get(name).cloned().unwrap_or_default()
     } else {
         ParaProps::default()
     };
-    props.page_break_before = props.page_break_before;
     props
 }
 
-fn read_blocks(node: &XmlNode, style_map: &HashMap<String, ParaProps>, reader: &ZipReader, warnings: &mut Vec<String>) -> Vec<Block> {
+fn read_blocks(node: &XmlNode, style_map: &HashMap<String, ParaProps>, reader: &ZipReader, warnings: &mut Vec<String>, notes: &mut NoteReadState) -> Vec<Block> {
     let mut blocks = Vec::new();
     for child in &node.children {
         match child.local_name() {
@@ -621,7 +757,7 @@ fn read_blocks(node: &XmlNode, style_map: &HashMap<String, ParaProps>, reader: &
                     runs.push(Run { text: child.text.clone(), ..Default::default() });
                 }
                 for inner in &child.children {
-                    node_text_runs(inner, &mut runs);
+                    node_text_runs(inner, &mut runs, notes);
                 }
                 let mut props = paragraph_props(child, style_map);
                 if child.local_name() == "h" {
@@ -639,7 +775,7 @@ fn read_blocks(node: &XmlNode, style_map: &HashMap<String, ParaProps>, reader: &
                                 runs.push(Run { text: inner.text.clone(), ..Default::default() });
                             }
                             for part in &inner.children {
-                                node_text_runs(part, &mut runs);
+                                node_text_runs(part, &mut runs, notes);
                             }
                             let mut props = paragraph_props(inner, style_map);
                             let level = inner.attr_any_ns("level").and_then(|value| value.parse::<u32>().ok()).unwrap_or(0);
@@ -661,7 +797,7 @@ fn read_blocks(node: &XmlNode, style_map: &HashMap<String, ParaProps>, reader: &
                             cell.colspan = span.max(1);
                         }
                         let mut nested_warnings = Vec::new();
-                        cell.blocks = read_blocks(cell_node, style_map, reader, &mut nested_warnings);
+                        cell.blocks = read_blocks(cell_node, style_map, reader, &mut nested_warnings, notes);
                         if cell.blocks.is_empty() {
                             cell.blocks.push(Block::paragraph(""));
                         }
@@ -678,7 +814,7 @@ fn read_blocks(node: &XmlNode, style_map: &HashMap<String, ParaProps>, reader: &
                 blocks.push(Block::Table { table: TableData { rows, column_widths_pt: widths, borders: true, border_color: "#94A3B8".into(), align: "left".into() } });
             }
             "section" => {
-                blocks.extend(read_blocks(child, style_map, reader, warnings));
+                blocks.extend(read_blocks(child, style_map, reader, warnings, notes));
             }
             "annotation" => warnings.push("Comments in the document were not imported.".into()),
             _ => {
@@ -709,7 +845,7 @@ fn read_blocks(node: &XmlNode, style_map: &HashMap<String, ParaProps>, reader: &
                         let mut inner = Vec::new();
                         for part in &child.children {
                             if part.local_name() == "text-box" {
-                                inner.extend(read_blocks(part, style_map, reader, warnings));
+                                inner.extend(read_blocks(part, style_map, reader, warnings, notes));
                             }
                         }
                         blocks.extend(inner);
@@ -784,8 +920,9 @@ pub fn read_odt(bytes: &[u8]) -> OfficeResult<TextRead> {
     let root = parse_xml(&text)?;
     collect_styles(&root, &mut style_map);
     let mut document = TextDocument::new_blank("Imported document");
+    let mut note_state = NoteReadState::default();
     let container = root.child("body").and_then(|body| body.child("text")).unwrap_or(&root);
-    document.blocks = read_blocks(container, &style_map, &reader, &mut warnings);
+    document.blocks = read_blocks(container, &style_map, &reader, &mut warnings, &mut note_state);
     if document.blocks.is_empty() {
         document.blocks.push(Block::paragraph(""));
     }
@@ -833,15 +970,17 @@ pub fn read_odt(bytes: &[u8]) -> OfficeResult<TextRead> {
             let mut headers = Vec::new();
             root.find_all("header", &mut headers);
             if let Some(header) = headers.first() {
-                document.header = read_blocks(header, &style_map, &reader, &mut warnings);
+                document.header = read_blocks(header, &style_map, &reader, &mut warnings, &mut note_state);
             }
             let mut footers = Vec::new();
             root.find_all("footer", &mut footers);
             if let Some(footer) = footers.first() {
-                document.footer = read_blocks(footer, &style_map, &reader, &mut warnings);
+                document.footer = read_blocks(footer, &style_map, &reader, &mut warnings, &mut note_state);
             }
         }
     }
+    document.footnotes = note_state.footnotes;
+    document.endnotes = note_state.endnotes;
     if reader.names().any(|name| name.starts_with("Object")) {
         warnings.push("Embedded objects in the document were not imported.".into());
     }
@@ -1184,7 +1323,7 @@ fn slide_object_xml(object: &SlideObject) -> String {
                 let mut writer = XmlWriter::new();
                 let mut styles = AutoStyles::default();
                 let mut media = Media::default();
-                write_table(&mut writer, table, &mut styles, &mut media);
+                write_table(&mut writer, table, &mut styles, &mut media, &NoteContext::default());
                 inner.push_str(&writer.finish());
             }
         }
@@ -1516,6 +1655,117 @@ mod tests {
         let bytes = write_odt(&sample_document()).unwrap();
         assert_eq!(&bytes[30..38], b"mimetype");
         assert_eq!(u16::from_le_bytes([bytes[8], bytes[9]]), 0);
+    }
+
+    #[test]
+    fn odt_notes_roundtrip() {
+        let mut document = TextDocument::new_blank("Notes");
+        document.footnotes = vec![
+            Footnote { id: "fn-a".into(), runs: vec![Run { text: "Birinci not".into(), bold: true, ..Default::default() }], marker: String::new() },
+            Footnote { id: "fn-b".into(), runs: vec![Run { text: "Tablo notu".into(), ..Default::default() }], marker: String::new() },
+        ];
+        document.endnotes = vec![Footnote { id: "en-a".into(), runs: vec![Run { text: "Son not".into(), ..Default::default() }], marker: String::new() }];
+        let mut table = TableData::simple(1, 1, 300.0);
+        table.rows[0].cells[0].blocks = vec![Block::Paragraph {
+            props: ParaProps::default(),
+            runs: vec![
+                Run { text: "hucre".into(), ..Default::default() },
+                Run { footnote: Some("fn-b".into()), ..Default::default() },
+            ],
+        }];
+        document.blocks = vec![
+            Block::Paragraph {
+                props: ParaProps::default(),
+                runs: vec![
+                    Run { text: "govde".into(), ..Default::default() },
+                    Run { footnote: Some("fn-a".into()), ..Default::default() },
+                    Run { text: " son".into(), ..Default::default() },
+                    Run { endnote: Some("en-a".into()), ..Default::default() },
+                ],
+            },
+            Block::Table { table },
+        ];
+
+        let bytes = write_odt(&document).unwrap();
+        let reader = ZipReader::open(bytes.clone()).unwrap();
+        let content = reader.read_text("content.xml").unwrap();
+        assert!(content.contains("text:note-class=\"footnote\""), "content: {content}");
+        assert!(content.contains("text:note-class=\"endnote\""));
+        assert!(content.contains("Birinci not"));
+        assert!(content.contains("Tablo notu"));
+        assert!(content.contains("Son not"));
+
+        let read = read_odt(&bytes).unwrap();
+        assert_eq!(read.document.footnotes.len(), 2, "warnings: {:?}", read.warnings);
+        assert_eq!(read.document.endnotes.len(), 1);
+        let order = read.document.footnote_order();
+        assert_eq!(order.len(), 2);
+        assert_eq!(read.document.footnote_number(&order[0]), Some(1));
+        assert_eq!(read.document.footnote_number(&order[1]), Some(2));
+        let first = read.document.footnotes.iter().find(|note| note.id == order[0]).unwrap();
+        assert!(first.runs.iter().any(|run| run.text.contains("Birinci not")));
+        let second = read.document.footnotes.iter().find(|note| note.id == order[1]).unwrap();
+        assert!(second.runs.iter().any(|run| run.text.contains("Tablo notu")));
+        assert!(read.document.endnotes[0].runs.iter().any(|run| run.text.contains("Son not")));
+
+        // Note bodies must not be folded into the paragraph text.
+        let body = read.document.blocks.iter().map(Block::plain_text).collect::<Vec<_>>().join("\n");
+        assert!(!body.contains("Birinci not"), "note body leaked: {body}");
+        assert!(!body.contains("Tablo notu"), "table note body leaked: {body}");
+        assert!(body.contains("govde"));
+        assert!(body.contains("hucre"));
+
+        let paragraph = match &read.document.blocks[0] {
+            Block::Paragraph { runs, .. } => runs,
+            _ => panic!("first block should be a paragraph"),
+        };
+        assert!(paragraph.iter().any(|run| run.footnote.is_some()));
+        assert!(paragraph.iter().any(|run| run.endnote.is_some()));
+        let cell = match &read.document.blocks[1] {
+            Block::Table { table } => &table.rows[0].cells[0],
+            _ => panic!("second block should be a table"),
+        };
+        let cell_ref = cell.blocks.iter().find_map(|block| match block {
+            Block::Paragraph { runs, .. } => runs.iter().find(|run| run.footnote.is_some()),
+            _ => None,
+        });
+        assert!(cell_ref.is_some(), "the table cell footnote reference was lost");
+    }
+
+    #[test]
+    fn odt_hand_written_note_fixture_parses() {
+        let content = concat!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+            "<office:document-content xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" ",
+            "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" office:version=\"1.2\">",
+            "<office:body><office:text><text:p>Merhaba",
+            "<text:note text:id=\"ftn1\" text:note-class=\"footnote\"><text:note-citation>1</text:note-citation>",
+            "<text:note-body><text:p>El yazisi dipnot</text:p></text:note-body></text:note>",
+            " dunya<text:note text:id=\"edn1\" text:note-class=\"endnote\"><text:note-citation>i</text:note-citation>",
+            "<text:note-body><text:p>El yazisi sonnot</text:p></text:note-body></text:note>",
+            "</text:p></office:text></office:body></office:document-content>"
+        );
+        let mut zip = ZipWriter::new();
+        zip.add_text("mimetype", "application/vnd.oasis.opendocument.text");
+        zip.add_text("content.xml", content);
+        let read = read_odt(&zip.finish()).unwrap();
+        assert_eq!(read.document.footnotes.len(), 1);
+        assert_eq!(read.document.endnotes.len(), 1);
+        assert_eq!(read.document.footnotes[0].id, "ftn1");
+        assert_eq!(read.document.endnotes[0].id, "edn1");
+        assert!(read.document.footnotes[0].runs.iter().any(|run| run.text == "El yazisi dipnot"));
+        assert!(read.document.endnotes[0].runs.iter().any(|run| run.text == "El yazisi sonnot"));
+        let paragraph = match &read.document.blocks[0] {
+            Block::Paragraph { runs, .. } => runs,
+            _ => panic!("first block should be a paragraph"),
+        };
+        let text: String = paragraph.iter().map(|run| run.text.as_str()).collect();
+        assert_eq!(text, "Merhaba dunya", "note bodies leaked into the paragraph: {text}");
+        assert!(paragraph.iter().any(|run| run.footnote.as_deref() == Some("ftn1")));
+        assert!(paragraph.iter().any(|run| run.endnote.as_deref() == Some("edn1")));
+        // A citation that is not the automatic number is preserved as a marker.
+        assert_eq!(read.document.footnotes[0].marker, "");
+        assert_eq!(read.document.endnotes[0].marker, "i");
     }
 
     #[test]

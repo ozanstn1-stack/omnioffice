@@ -19,6 +19,7 @@ param(
     [switch]$Debug,
     [switch]$SkipFrontend,
     [switch]$SkipEngines,
+    [switch]$Bundle,
     [string]$AndroidHome,
     [string]$NdkHome
 )
@@ -265,9 +266,27 @@ foreach ($archAbi in $Abi) {
     $outDir = Join-Path $root 'release-artifacts'
     New-Item -ItemType Directory -Force -Path $outDir | Out-Null
     foreach ($apk in $apks) {
-        $target = Join-Path $outDir ("pdf-swiss-army-knife-{0}-{1}.apk" -f $archAbi, $apk.BaseName)
+        # Release-asset name contract: PDF-Swiss-Army-Knife-Android-<version>-<abi>.apk
+        $target = Join-Path $outDir ("PDF-Swiss-Army-Knife-Android-{0}-{1}.apk" -f $versionName, $archAbi)
         Copy-Item $apk.FullName $target -Force
         Write-Host ("    -> {0} ({1:N1} MB)" -f $target, ((Get-Item $target).Length / 1MB))
+    }
+
+    if ($Bundle) {
+        $bundleTask = "bundle$($flavor.Substring(0,1).ToUpperInvariant())$($flavor.Substring(1))$buildType"
+        Write-Host "==> Gradle $bundleTask ($archAbi)"
+        Invoke-Native -Command (Join-Path $genDir 'gradlew.bat') -Arguments @(
+            $bundleTask, '--console=plain', "-PndkDir=$ndk"
+        ) -What "gradle $bundleTask" -WorkingDirectory $genDir
+
+        $aabDir = Join-Path $appDir "build\outputs\bundle\$flavor$buildType"
+        $aabs = Get-ChildItem $aabDir -Filter '*.aab' -ErrorAction SilentlyContinue
+        if (-not $aabs) { throw "no AAB produced in $aabDir" }
+        foreach ($aab in $aabs) {
+            $target = Join-Path $outDir ("PDF-Swiss-Army-Knife-Android-{0}-{1}.aab" -f $versionName, $archAbi)
+            Copy-Item $aab.FullName $target -Force
+            Write-Host ("    -> {0} ({1:N1} MB)" -f $target, ((Get-Item $target).Length / 1MB))
+        }
     }
 }
 

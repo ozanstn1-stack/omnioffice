@@ -708,7 +708,14 @@ body {
 .fx { color: var(--muted); font-style: italic; font-size: 12px; }
 .formula-input { flex: 1; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; color: var(--text); font-family: Consolas, monospace; font-size: 12.5px; }
 .calc-grid-wrap { flex: 1; min-height: 0; overflow: hidden; }
-.calc-grid { overflow: auto; outline: none; }
+/* The grid owns every touch gesture: drag-selection, two-finger pan and
+   pinch zoom. The browser must not scroll the page while a drag runs. */
+.calc-grid { overflow: auto; outline: none; touch-action: none; }
+.calc-fill-handle { position: absolute; width: 10px; height: 10px; background: var(--accent); border: 2px solid #fff; border-radius: 2px; display: none; touch-action: none; }
+@media (pointer: coarse) {
+  .calc-fill-handle { display: block; width: 16px; height: 16px; }
+}
+.calc-bar-action { min-width: 40px; min-height: 40px; }
 .calc-canvas { position: relative; }
 .calc-col-headers, .calc-row-headers { position: absolute; }
 .calc-col-header { position: absolute; top: 0; height: 24px; display: flex; align-items: center; justify-content: center; background: var(--surface-2); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); font-size: 11px; color: var(--muted); position: absolute; }
@@ -731,6 +738,14 @@ body {
 .cell-comment-dot { position: absolute; right: 2px; top: 2px; width: 5px; height: 5px; border-radius: 50%; background: var(--danger); }
 .calc-sheet-tabs { display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-top: 1px solid var(--border); background: var(--surface); }
 .sheet-tab { display: flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; cursor: pointer; color: var(--muted); }
+/* Android: the formula bar is docked above the keyboard and every toolbar
+   tap gets a finger-sized target. Desktop keeps the stock sizes. */
+.calc-editor.is-android .calc-formula-bar.is-docked { border-bottom: none; border-top: 1px solid var(--border); padding-bottom: calc(5px + env(safe-area-inset-bottom)); position: sticky; bottom: 0; z-index: 20; }
+.calc-editor.is-android .tool-btn { min-width: 40px; min-height: 40px; }
+.calc-editor.is-android .ribbon-tab { padding: 10px 14px; }
+.calc-editor.is-android .calc-sheet-tabs { overflow-x: auto; }
+.calc-editor.is-android .sheet-tab { flex: 0 0 auto; }
+.calc-editor.is-android .col-resize { width: 14px; right: -7px; }
 .sheet-tab.is-active { background: var(--accent-weak); color: var(--accent-text); border-color: var(--accent); }
 .writer-stage { display: flex; flex: 1; min-height: 0; }
 .writer-nav-pane { width: 232px; min-width: 232px; border-right: 1px solid var(--border); overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 2px; background: var(--surface); }
@@ -766,11 +781,17 @@ body {
 .slide-thumb:hover .slide-thumb-actions { opacity: 1; }
 .slide-add { margin-top: 6px; }
 .slide-stage { overflow: auto; display: flex; align-items: flex-start; justify-content: center; padding: 24px; background: var(--bg-soft); }
-.slide-canvas { position: relative; box-shadow: 0 4px 20px rgba(15, 23, 42, 0.22); border-radius: 4px; }
+.slide-canvas { position: relative; box-shadow: 0 4px 20px rgba(15, 23, 42, 0.22); border-radius: 4px; touch-action: none; }
 .slide-object { position: absolute; cursor: move; }
 .slide-object.is-selected { outline: 2px solid var(--accent); outline-offset: 1px; }
+.slide-marquee { position: absolute; border: 1px dashed var(--accent); background: rgba(91, 91, 214, 0.12); pointer-events: none; }
 .resize-handle { position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px; background: var(--accent); border-radius: 50%; cursor: nwse-resize; }
 .rotate-handle { position: absolute; left: 50%; top: -22px; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; background: var(--accent); color: #fff; border-radius: 50%; cursor: grab; }
+/* Fingers are wider than mouse cursors: grow the drag handles on touch. */
+@media (pointer: coarse) {
+  .resize-handle { width: 24px; height: 24px; right: -12px; bottom: -12px; }
+  .rotate-handle { width: 30px; height: 30px; top: -38px; }
+}
 .slide-shape { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .slide-text { padding: 4px 8px; width: 100%; }
 .slide-text p { margin: 0 0 4px; }

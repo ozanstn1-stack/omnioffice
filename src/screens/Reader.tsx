@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   ChevronLeft,
@@ -22,6 +22,44 @@ import { reportError, useJobProgress, useToasts } from "../lib/store";
 import type { PageGeometry, SearchResponse, TextMatch } from "../lib/types";
 
 const PT_TO_CSS = 96 / 72;
+
+// ---------------------------------------------------------------------------
+// Touch zoom maths (pure so jsdom can test them)
+// ---------------------------------------------------------------------------
+
+/** Clamps a reader zoom factor to the range the buttons and pinch produce. */
+export function clampReaderZoom(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return clamp(Number(value.toFixed(2)), 0.25, 4);
+}
+
+/** The zoom a two-finger pinch asks for: the distance ratio applied to the
+ * zoom the gesture started with. */
+export function pinchZoomValue(startZoom: number, startDistance: number, distance: number): number {
+  if (!Number.isFinite(distance) || !Number.isFinite(startDistance) || startDistance <= 0) return startZoom;
+  return clampReaderZoom(startZoom * (distance / startDistance));
+}
+
+/** Double-tap toggles between fit width and 200 %, like mobile PDF readers. */
+export function doubleTapZoom(current: number | "fit"): number | "fit" {
+  return current === 2 ? "fit" : 2;
+}
+
+interface ReaderPinch {
+  distance: number;
+  zoom: number;
+}
+
+/** Where a pinch midpoint sat in content coordinates, kept so the layout
+ * effect can put the same content point back under the finger after the
+ * debounced page width changes. */
+interface ReaderFocal {
+  contentX: number;
+  contentY: number;
+  screenX: number;
+  screenY: number;
+  width: number;
+}
 
 /** Copies text to the clipboard with a fallback for restricted webviews. */
 async function copyText(value: string): Promise<boolean> {
@@ -138,10 +176,16 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
   const session = useTool({ suffix: "_reader", accept: "pdf", loadInfo: true, initialPaths: initialFiles });
   const pushToast = useToasts((s) => s.push);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const imageCache = useRef<Map<string, string>>(new Map());
   const currentPageRef = useRef(1);
   const framePending = useRef(false);
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const panRef = useRef<{ pointerId: number; startX: number; startY: number; scrollLeft: number } | null>(null);
+  const pinchRef = useRef<ReaderPinch | null>(null);
+  const pinchFocalRef = useRef<ReaderFocal | null>(null);
+  const lastTapRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const [containerWidth, setContainerWidth] = useState(900);
   const [zoom, setZoom] = useState<number | "fit">("fit");
   const [currentPage, setCurrentPage] = useState(1);
@@ -207,7 +251,10 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
     setCurrentPage(1);
     currentPageRef.current = 1;
     setZoom("fit");
-    scrollRef.current?.scrollTo({ top: 0 });
+    // Plain scrollTop instead of scrollTo: jsdom has no scrollTo and the
+    // effect must not throw while tests render the reader.
+    const container = scrollRef.current;
+    if (container) container.scrollTop = 0;
   }, [session.primary?.path]);
 
   const register = useCallback((page: number, element: HTMLDivElement | null) => {
@@ -227,8 +274,112 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
   const applyZoom = (next: number | "fit") => setZoom(next);
   const zoomBy = (factor: number) => {
     const current = typeof zoom === "number" ? zoom : 1;
-    applyZoom(clamp(Number((current * factor).toFixed(2)), 0.25, 4));
+    applyZoom(clampReaderZoom(current * factor));
   };
+
+  // -------------------------------------------------------------------------
+  // Touch pan / pinch / double-tap (the mouse keeps the stock experience)
+  //
+  // The scroller keeps `touch-action: pan-y`, so vertical swipes stay native
+  // while horizontal drags are ours: the page is wider than the viewport only
+  // when zoomed, and overflow-x stays hidden so desktop never sees a bar.
+  // -------------------------------------------------------------------------
+
+  const trackPinchFocal = (clientX: number, clientY: number) => {
+    const content = contentRef.current;
+    if (!content) return;
+    const bounds = content.getBoundingClientRect();
+    pinchFocalRef.current = {
+      contentX: clientX - bounds.left,
+      contentY: clientY - bounds.top,
+      screenX: clientX,
+      screenY: clientY,
+      width: renderWidth,
+    };
+  };
+
+  const handleReaderPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse") return;
+    const container = scrollRef.current;
+    if (!container) return;
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    try {
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    } catch {
+      // Pointer capture is unavailable (older webviews, jsdom).
+    }
+    if (pointersRef.current.size >= 2) {
+      panRef.current = null;
+      const [a, b] = [...pointersRef.current.values()];
+      pinchRef.current = { distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), zoom: typeof zoom === "number" ? zoom : 1 };
+      trackPinchFocal((a.x + b.x) / 2, (a.y + b.y) / 2);
+      return;
+    }
+    panRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, scrollLeft: container.scrollLeft };
+  };
+
+  const handleReaderPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const points = pointersRef.current;
+    if (!points.has(event.pointerId)) return;
+    points.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const pinch = pinchRef.current;
+    if (pinch && points.size >= 2) {
+      const [a, b] = [...points.values()];
+      const midX = (a.x + b.x) / 2;
+      const midY = (a.y + b.y) / 2;
+      trackPinchFocal(midX, midY);
+      setZoom(pinchZoomValue(pinch.zoom, pinch.distance, Math.hypot(a.x - b.x, a.y - b.y)));
+      return;
+    }
+    const pan = panRef.current;
+    const container = scrollRef.current;
+    if (!pan || !container || pan.pointerId !== event.pointerId) return;
+    // Horizontal drag pans; vertical stays with the browser's native scroll.
+    container.scrollLeft = Math.max(0, pan.scrollLeft - (event.clientX - pan.startX));
+  };
+
+  const handleReaderPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const points = pointersRef.current;
+    if (!points.has(event.pointerId)) return;
+    points.delete(event.pointerId);
+    try {
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+    } catch {
+      // Not captured.
+    }
+    if (pinchRef.current) {
+      if (points.size < 2) pinchRef.current = null;
+      return;
+    }
+    const pan = panRef.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    panRef.current = null;
+    if (Math.abs(event.clientX - pan.startX) + Math.abs(event.clientY - pan.startY) > 8) return;
+    const now = Date.now();
+    const previous = lastTapRef.current;
+    if (previous && now - previous.time < 320 && Math.abs(previous.x - event.clientX) < 40 && Math.abs(previous.y - event.clientY) < 40) {
+      lastTapRef.current = null;
+      setZoom((current) => doubleTapZoom(current));
+    } else {
+      lastTapRef.current = { x: event.clientX, y: event.clientY, time: now };
+    }
+  };
+
+  // Once the debounced page width has settled, put the content point that was
+  // under the pinch midpoint back under the finger; measuring the real rect
+  // keeps the centring of narrow pages out of the equation.
+  useLayoutEffect(() => {
+    const focal = pinchFocalRef.current;
+    if (!focal) return;
+    pinchFocalRef.current = null;
+    const container = scrollRef.current;
+    const content = contentRef.current;
+    if (!container || !content) return;
+    const bounds = content.getBoundingClientRect();
+    const factor = renderWidth / Math.max(1, focal.width);
+    container.scrollLeft = Math.max(0, container.scrollLeft + bounds.left + focal.contentX * factor - focal.screenX);
+    container.scrollTop += bounds.top + focal.contentY * factor - focal.screenY;
+  }, [renderWidth]);
 
   const runSearch = useCallback(async () => {
     const trimmed = query.trim();
@@ -439,10 +590,17 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
         <div
           ref={scrollRef}
           onScroll={handleScroll}
-          className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
+          onPointerDown={handleReaderPointerDown}
+          onPointerMove={handleReaderPointerMove}
+          onPointerUp={handleReaderPointerUp}
+          onPointerCancel={handleReaderPointerUp}
+          className="reader-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y"
           style={{ background: "var(--bg)" }}
         >
-          <div className="px-6 py-5 flex flex-col gap-5 items-center">
+          {/* `w-max` + `min-w-full` lets the pages overflow sideways (instead
+              of centring out of reach) once a zoom makes them wider than the
+              reading area, which is what horizontal panning scrolls. */}
+          <div ref={contentRef} className="px-6 py-5 flex flex-col gap-5 items-center min-w-full w-max mx-auto">
             {session.info && !session.info.hasTextLayer ? (
               <div className="text-xs muted text-center max-w-[620px]">{t("reader.noTextLayer")}</div>
             ) : null}

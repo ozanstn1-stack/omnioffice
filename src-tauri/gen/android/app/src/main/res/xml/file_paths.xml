@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Directories the FileProvider may share through content:// URIs. The old
+  external-path root is intentionally gone: only app-private files, the cache
+  (imports, office scratch files, incoming shares) and the app's external
+  files directory are exposed.
+-->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
   <files-path name="app_files" path="." />
   <cache-path name="app_cache" path="." />
   <external-files-path name="app_external_files" path="." />
-  <external-path name="my_images" path="." />
-  <cache-path name="my_cache_images" path="." />
 </paths>

@@ -152,7 +152,142 @@ function bulletObject(text: string, x: number, y: number, w: number, h: number):
 }
 
 function emptyChart(): ChartData {
-  return { kind: "column", title: "Chart", categories: "", series: [], legend: true, xTitle: "", yTitle: "", stacked: false, showLabels: false };
+  return { kind: "column", title: "Chart", categories: "", series: [], legend: true, xTitle: "", yTitle: "", stacked: false, showLabels: false, categoriesCache: [], seriesValuesCache: [] };
+}
+
+// ---------------------------------------------------------------------------
+// Chart data helpers
+//
+// A presentation carries no workbook, so a chart that only has ranges cannot
+// render outside the editor. The chart dialog therefore edits the V3.1 caches
+// (`categoriesCache` / `seriesValuesCache`), which the PPTX exporter writes as
+// `c:strCache` / `c:numCache` plus an embedded Excel workbook. The pure helpers
+// below are exported for unit tests; the dialog binds them to the grid.
+// ---------------------------------------------------------------------------
+
+/** Sheet name the Rust exporter uses for the embedded chart workbook. */
+const CHART_DATA_SHEET = "Sheet1";
+
+/** Parses one cell as a locale-independent decimal; anything else is null. */
+export function parseChartCellNumber(text: string): number | null {
+  const trimmed = text.trim();
+  if (!/^[+-]?(\d+(\.\d+)?|\.\d+)([eE][+-]?\d+)?$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? value : null;
+}
+
+/** Text a cached number is edited as: plain decimal, no locale formatting. */
+export function formatChartCellValue(value: number): string {
+  return String(value);
+}
+
+/**
+ * Splits pasted text into rows of cells. A row that contains a tab is split on
+ * tabs only, so comma decimals inside spreadsheet exports are kept together;
+ * otherwise commas are the separator. Line endings may be CRLF, CR or LF and a
+ * single trailing newline is ignored. Blank rows are kept so pasted columns
+ * stay aligned with the row they start at.
+ */
+export function parseChartClipboard(text: string): string[][] {
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  return lines.map((line) => line.split(line.includes("\t") ? "\t" : ",").map((cell) => cell.trim()));
+}
+
+/**
+ * A1 range for one column of the embedded workbook the exporter builds:
+ * row 1 is the header, so the first cached value lives on row 2.
+ */
+export function chartWorkbookRange(columnIndex: number, rowCount: number): string {
+  let value = columnIndex + 1;
+  let letters = "";
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    letters = String.fromCharCode(65 + remainder) + letters;
+    value = Math.floor((value - 1) / 26);
+  }
+  return `${CHART_DATA_SHEET}!$${letters}$2:$${letters}$${rowCount + 1}`;
+}
+
+/** True when any chart cache carries data; false for range-only charts. */
+export function chartHasCachedData(chart: ChartData): boolean {
+  return (chart.categoriesCache ?? []).length > 0 || (chart.seriesValuesCache ?? []).some((values) => values.length > 0);
+}
+
+/** Display rows: enough for every cache plus at least one empty row. */
+export function chartDataRowCount(chart: ChartData): number {
+  const valueRows = (chart.seriesValuesCache ?? []).reduce((max, values) => Math.max(max, values.length), 0);
+  return Math.max(1, (chart.categoriesCache ?? []).length, valueRows);
+}
+
+/** One grid cell: row index and column index (0 is the category column). */
+export interface ChartGridCell {
+  row: number;
+  column: number;
+}
+
+/**
+ * Deep clone for the dialog draft plus cache arrays aligned with `series`, so
+ * grid edits never mutate the document until Save is pressed.
+ */
+export function normalizeChartDraft(chart: ChartData): ChartData {
+  const clone = JSON.parse(JSON.stringify(chart)) as ChartData;
+  clone.categoriesCache = [...(chart.categoriesCache ?? [])];
+  clone.seriesValuesCache = chart.series.map((_, index) => [...(chart.seriesValuesCache?.[index] ?? [])]);
+  return clone;
+}
+
+/**
+ * Writes a parsed clipboard block into the caches starting at `target`.
+ * Column 0 holds category labels (any text), columns 1..n the series values;
+ * cells that do not parse as numbers are skipped, mirroring the rule that
+ * invalid cell input is never committed. Leading rows beyond the current
+ * series length are padded with 0 because the cache is a dense list.
+ */
+export function mergeChartPaste(chart: ChartData, target: ChartGridCell, block: string[][]): ChartData {
+  const categories = [...(chart.categoriesCache ?? [])];
+  const seriesValues = (chart.seriesValuesCache ?? []).map((values) => [...values]);
+  block.forEach((line, rowOffset) => {
+    line.forEach((cell, columnOffset) => {
+      const row = target.row + rowOffset;
+      const column = target.column + columnOffset;
+      if (column === 0) {
+        while (categories.length <= row) categories.push("");
+        categories[row] = cell;
+        return;
+      }
+      const values = seriesValues[column - 1];
+      if (!values) return;
+      const parsed = parseChartCellNumber(cell);
+      if (parsed === null) return;
+      while (values.length < row) values.push(0);
+      values[row] = parsed;
+    });
+  });
+  while (categories.length > 0 && categories[categories.length - 1] === "") categories.pop();
+  return { ...chart, categoriesCache: categories, seriesValuesCache: seriesValues };
+}
+
+/**
+ * Rewrites the range fields to point at the embedded workbook the PPTX
+ * exporter builds from the caches: category labels in column A, series 1..n in
+ * B, C, ... This makes the exported chart self-consistent ("ranges that
+ * reference nothing" become real). Called only when the user edited data in
+ * this dialog session, so untouched imported charts keep their ranges.
+ */
+export function syncChartDataRanges(chart: ChartData): ChartData {
+  const categories = chart.categoriesCache ?? [];
+  const values = chart.seriesValuesCache ?? [];
+  const dataRows = Math.max(categories.length, ...values.map((list) => list.length));
+  if (dataRows === 0) return chart;
+  return {
+    ...chart,
+    categories: chartWorkbookRange(0, categories.length > 0 ? categories.length : dataRows),
+    series: chart.series.map((entry, index) => {
+      const length = values[index]?.length ?? 0;
+      return length > 0 ? { ...entry, range: chartWorkbookRange(index + 1, length) } : entry;
+    }),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -424,6 +559,13 @@ export function formatClock(ms: number): string {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+/** Top-level objects whose boxes intersect a marquee rectangle (slide units). */
+export function objectsInRect(objects: SlideObject[], rect: { x: number; y: number; w: number; h: number }): SlideObject[] {
+  return objects.filter(
+    (object) => object.x < rect.x + rect.w && object.x + object.w > rect.x && object.y < rect.y + rect.h && object.y + object.h > rect.y,
+  );
+}
+
 export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   const t = useT();
   const deck = tab.model;
@@ -446,6 +588,8 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   const [redoStack, setRedoStack] = useState<Deck[]>([]);
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragState = useRef<{ path: SelectionPath; mode: "move" | "resize" | "rotate"; startX: number; startY: number; object: SlideObject } | null>(null);
+  const lastTapRef = useRef<{ key: string; time: number } | null>(null);
+  const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const showTimersRef = useRef<number[]>([]);
   const showStartRef = useRef<number | null>(null);
   const showEndRef = useRef<number | null>(null);
@@ -503,7 +647,7 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   const primaryPath = selected[0];
   const hasGroupSelection = selected.some((path) => path.length === 1 && objectAtPath(slide.objects, path)?.kind === "group");
 
-  const selectFromEvent = (event: React.MouseEvent, path: SelectionPath) => {
+  const selectFromPointer = (event: React.PointerEvent, path: SelectionPath) => {
     if (isInheritedId(path[0])) return;
     const target: SelectionPath = event.altKey ? path : [path[0]];
     const key = pathKey(target);
@@ -515,17 +659,39 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   };
 
   // -------------------------------------------------------------------------
-  // Pointer interaction
+  // Pointer interaction (mouse, pen and touch share one code path)
   // -------------------------------------------------------------------------
 
-  const beginDrag = (event: React.MouseEvent, path: SelectionPath, mode: "move" | "resize" | "rotate") => {
+  /** Opens whatever a double-click (or touch double-tap) means for an object. */
+  const openObjectEditor = (path: SelectionPath, object: SlideObject) => {
+    if (object.kind === "chart") {
+      setChartPath(path);
+      return;
+    }
+    if (object.text) setEditingText(pathKey(path));
+    if (object.kind === "image") void replaceImage(path);
+  };
+
+  const beginDrag = (event: React.PointerEvent, path: SelectionPath, mode: "move" | "resize" | "rotate") => {
     event.stopPropagation();
     if (isInheritedId(path[0])) return;
     const object = objectAtPath(slide.objects, path);
     if (!object) return;
     const snapshot = JSON.parse(JSON.stringify(object)) as SlideObject;
     dragState.current = { path, mode, startX: event.clientX, startY: event.clientY, object: snapshot };
-    const onMove = (move: MouseEvent) => {
+    const pointerId = event.pointerId;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const capture = event.currentTarget as Element | null;
+    // Touch keeps receiving events after the finger leaves the object; the
+    // mouse does not capture so double-click still reaches the object.
+    try {
+      if (event.pointerType !== "mouse") capture?.setPointerCapture?.(pointerId);
+    } catch {
+      // Pointer capture is unavailable (older webviews, jsdom).
+    }
+    const onMove = (move: PointerEvent) => {
+      if (move.pointerId !== pointerId) return;
       const state = dragState.current;
       if (!state) return;
       const dx = (move.clientX - state.startX) / scale;
@@ -550,31 +716,102 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
         updatePath(state.path, { rotation: Math.round(angle) }, false);
       }
     };
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+    const onUp = (up: PointerEvent) => {
+      if (up.pointerId !== pointerId) return;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      try {
+        capture?.releasePointerCapture?.(pointerId);
+      } catch {
+        // Not captured.
+      }
       dragState.current = null;
+      // Touch never produces a native dblclick once the object owns the
+      // gesture, so a double-tap opens the text editor by hand.
+      if (mode === "move" && up.pointerType !== "mouse" && Math.abs(up.clientX - startX) + Math.abs(up.clientY - startY) < 6) {
+        const now = Date.now();
+        const key = pathKey(path);
+        const previous = lastTapRef.current;
+        if (previous && previous.key === key && now - previous.time < 350) {
+          lastTapRef.current = null;
+          const current = objectAtPath(slide.objects, path);
+          if (current) openObjectEditor(path, current);
+        } else {
+          lastTapRef.current = { key, time: now };
+        }
+      }
     };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   };
 
-  const handleObjectMouseDown = (event: React.MouseEvent, path: SelectionPath) => {
+  /** Empty-canvas drag: a marquee that selects every object it touches. */
+  const beginMarquee = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const surface = event.currentTarget;
+    const pointerId = event.pointerId;
+    const origin = surface.getBoundingClientRect();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    // The rectangle lives in slide units; the canvas is laid out at `scale`.
+    const rectAt = (clientX: number, clientY: number) => {
+      const bounds = surface.getBoundingClientRect();
+      const endX = (clientX - bounds.left) / scale;
+      const endY = (clientY - bounds.top) / scale;
+      const startDeckX = (startX - origin.left) / scale;
+      const startDeckY = (startY - origin.top) / scale;
+      return {
+        x: Math.min(startDeckX, endX),
+        y: Math.min(startDeckY, endY),
+        w: Math.abs(endX - startDeckX),
+        h: Math.abs(endY - startDeckY),
+      };
+    };
+    let moved = false;
+    setSelected([]);
+    try {
+      if (event.pointerType !== "mouse") surface.setPointerCapture?.(pointerId);
+    } catch {
+      // Pointer capture is unavailable (older webviews, jsdom).
+    }
+    const onMove = (move: PointerEvent) => {
+      if (move.pointerId !== pointerId) return;
+      if (!moved && Math.abs(move.clientX - startX) + Math.abs(move.clientY - startY) < 4) return;
+      moved = true;
+      setMarquee(rectAt(move.clientX, move.clientY));
+    };
+    const onUp = (up: PointerEvent) => {
+      if (up.pointerId !== pointerId) return;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      try {
+        surface.releasePointerCapture?.(pointerId);
+      } catch {
+        // Not captured.
+      }
+      setMarquee(null);
+      if (!moved) return;
+      const hits = objectsInRect(slide.objects, rectAt(up.clientX, up.clientY));
+      setSelected(hits.map((object) => [object.id]));
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  };
+
+  const handleObjectPointerDown = (event: React.PointerEvent, path: SelectionPath) => {
     event.stopPropagation();
-    selectFromEvent(event, path);
+    selectFromPointer(event, path);
     beginDrag(event, event.altKey ? path : [path[0]], "move");
   };
 
   const handleObjectDoubleClick = (event: React.MouseEvent, path: SelectionPath) => {
     event.stopPropagation();
     const object = objectAtPath(slide.objects, path);
-    if (!object) return;
-    if (object.kind === "chart") {
-      setChartPath(path);
-      return;
-    }
-    if (object.text) setEditingText(pathKey(path));
-    if (object.kind === "image") void replaceImage(path);
+    if (object) openObjectEditor(path, object);
   };
 
   const handleTextChange = (path: SelectionPath, text: string) => {
@@ -1220,7 +1457,7 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
           </button>
         </div>
 
-        <div className="slide-stage" ref={canvasRef} onClick={() => setSelected([])}>
+        <div className="slide-stage" ref={canvasRef} onPointerDown={(event) => { if (event.target === event.currentTarget) setSelected([]); }}>
           <div
             className="slide-canvas"
             style={{
@@ -1229,8 +1466,14 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
               background: slide.background ?? theme.background,
             }}
             onClick={(event) => event.stopPropagation()}
-            onMouseDown={() => setSelected([])}
+            onPointerDown={beginMarquee}
           >
+            {marquee ? (
+              <div
+                className="slide-marquee"
+                style={{ left: marquee.x * scale, top: marquee.y * scale, width: marquee.w * scale, height: marquee.h * scale }}
+              />
+            ) : null}
             {inherited.map((object) => (
               <div
                 key={object.id}
@@ -1255,7 +1498,7 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
                     transform: `rotate(${object.rotation}deg)`,
                     zIndex: object.z,
                   }}
-                  onMouseDown={(event) => handleObjectMouseDown(event, path)}
+                  onPointerDown={(event) => handleObjectPointerDown(event, path)}
                   onDoubleClick={(event) => handleObjectDoubleClick(event, path)}
                 >
                   <ObjectTree
@@ -1267,13 +1510,13 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
                     selectedKeys={selectedKeys}
                     editingKey={editingText}
                     interactive
-                    onObjectMouseDown={handleObjectMouseDown}
+                    onObjectPointerDown={handleObjectPointerDown}
                     onObjectDoubleClick={handleObjectDoubleClick}
-                    onHandleMouseDown={beginDrag}
+                    onHandlePointerDown={beginDrag}
                     onTextChange={handleTextChange}
                     onTextDone={() => setEditingText(null)}
                   />
-                  {isSelected ? <SelectionHandles onHandleMouseDown={(event, mode) => beginDrag(event, path, mode)} /> : null}
+                  {isSelected ? <SelectionHandles onHandlePointerDown={(event, mode) => beginDrag(event, path, mode)} /> : null}
                 </div>
               );
             })}
@@ -1450,6 +1693,7 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
         <ChartDialog
           key={pathKey(chartPath)}
           chart={objectAtPath(slide.objects, chartPath)?.chart ?? emptyChart()}
+          theme={theme}
           onClose={() => setChartPath(null)}
           onSave={(chart) => {
             updatePath(chartPath, { chart });
@@ -1572,70 +1816,360 @@ function MasterDialog({
   );
 }
 
-function ChartDialog({ chart, onClose, onSave }: { chart: ChartData; onClose: () => void; onSave: (chart: ChartData) => void }) {
+function ChartDialog({ chart, theme, onClose, onSave }: { chart: ChartData; theme: Theme; onClose: () => void; onSave: (chart: ChartData) => void }) {
   const t = useT();
-  const [draft, setDraft] = useState<ChartData>(() => JSON.parse(JSON.stringify(chart)) as ChartData);
+  const [draft, setDraft] = useState<ChartData>(() => normalizeChartDraft(chart));
+  const [tab, setTab] = useState<"data" | "chart">("data");
+  // Displayed rows; caches may grow past this through paste, the derived count
+  // below always covers every stored value.
+  const [rowCount, setRowCount] = useState(() => chartDataRowCount(chart));
+  // Text of cells that are being edited but do not parse (or were emptied).
+  // The draft only ever receives parsed numbers, so invalid input is never
+  // committed; blurring discards the text and restores the stored value.
+  const [cellTexts, setCellTexts] = useState<Record<string, string>>({});
+  // Paste anchor = the focused cell; paste starts there.
+  const [pasteAnchor, setPasteAnchor] = useState<ChartGridCell>({ row: 0, column: 1 });
+  const [dataTouched, setDataTouched] = useState(false);
+  const gridRef = useRef<HTMLDivElement>(null);
   const patch = (change: Partial<ChartData>) => setDraft((current) => ({ ...current, ...change }));
+
+  const categories = draft.categoriesCache ?? [];
+  const seriesValues = draft.seriesValuesCache ?? draft.series.map(() => []);
+  const rows = Math.max(rowCount, categories.length, ...seriesValues.map((values) => values.length), 1);
+  const cellKey = (row: number, column: number) => `${row}:${column}`;
+
+  const updateSeries = (index: number, change: Partial<ChartData["series"][number]>) => {
+    setDraft((current) => ({ ...current, series: current.series.map((entry, position) => (position === index ? { ...entry, ...change } : entry)) }));
+  };
+
+  const addSeries = () => {
+    setDraft((current) => {
+      const values = current.seriesValuesCache ?? current.series.map(() => []);
+      return {
+        ...current,
+        series: [...current.series, { name: `${t("impress.chartSeries")} ${current.series.length + 1}`, range: "", color: null }],
+        seriesValuesCache: [...values, []],
+      };
+    });
+  };
+
+  const removeSeries = (index: number) => {
+    setDataTouched(true);
+    // Uncommitted cell text is keyed by column, so drop it instead of letting
+    // it attach to a different series after the shift.
+    setCellTexts({});
+    setDraft((current) => {
+      const values = current.seriesValuesCache ?? current.series.map(() => []);
+      return {
+        ...current,
+        series: current.series.filter((_, position) => position !== index),
+        seriesValuesCache: values.filter((_, position) => position !== index),
+      };
+    });
+  };
+
+  /** Shrinks or grows the visible rows; shrinking trims caches to fit. */
+  const changeRowCount = (next: number) => {
+    const target = Math.max(1, Math.min(1000, Math.floor(next) || 1));
+    setDataTouched(true);
+    setRowCount(target);
+    setDraft((current) => ({
+      ...current,
+      categoriesCache: (current.categoriesCache ?? []).filter((_, row) => row < target),
+      seriesValuesCache: current.series.map((_, index) => (current.seriesValuesCache?.[index] ?? []).filter((_, row) => row < target)),
+    }));
+    setCellTexts((current) => {
+      const kept: Record<string, string> = {};
+      for (const [key, text] of Object.entries(current)) {
+        if (Number(key.split(":")[0]) < target) kept[key] = text;
+      }
+      return kept;
+    });
+  };
+
+  /** Commits a parsed value; rows beyond the current length are padded with 0
+   * because caches are dense lists (the Rust reader zero-fills sparse points). */
+  const commitValue = (seriesIndex: number, row: number, value: number) => {
+    setDataTouched(true);
+    setDraft((current) => {
+      const values = (current.seriesValuesCache ?? []).map((list) => [...list]);
+      const target = values[seriesIndex] ?? [];
+      while (target.length < row) target.push(0);
+      target[row] = value;
+      values[seriesIndex] = target;
+      return { ...current, seriesValuesCache: values };
+    });
+  };
+
+  /** Clearing a cell drops the trailing value or, inside a series, stores 0 so
+   * the later points keep their category alignment. */
+  const clearValue = (seriesIndex: number, row: number) => {
+    setDataTouched(true);
+    setDraft((current) => {
+      const values = (current.seriesValuesCache ?? []).map((list) => [...list]);
+      const target = values[seriesIndex];
+      if (!target || row >= target.length) return current;
+      if (row === target.length - 1) target.pop();
+      else target[row] = 0;
+      values[seriesIndex] = target;
+      return { ...current, seriesValuesCache: values };
+    });
+  };
+
+  const changeValue = (seriesIndex: number, row: number, text: string) => {
+    const key = cellKey(row, seriesIndex + 1);
+    const parsed = parseChartCellNumber(text);
+    if (parsed === null) {
+      setCellTexts((current) => ({ ...current, [key]: text }));
+      return;
+    }
+    setCellTexts((current) => {
+      if (!(key in current)) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    commitValue(seriesIndex, row, parsed);
+  };
+
+  /** Blur commit: an emptied cell clears its value, text that never parsed is
+   * dropped (invalid input is not committed). */
+  const finishValue = (seriesIndex: number, row: number) => {
+    const key = cellKey(row, seriesIndex + 1);
+    const text = cellTexts[key];
+    if (text === undefined) return;
+    setCellTexts((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    if (parseChartCellNumber(text) === null && text.trim() === "") clearValue(seriesIndex, row);
+  };
+
+  const changeCategory = (row: number, text: string) => {
+    setDataTouched(true);
+    setDraft((current) => {
+      const next = [...(current.categoriesCache ?? [])];
+      while (next.length <= row) next.push("");
+      next[row] = text;
+      // Trailing empty labels do not carry data; keep the cache short.
+      while (next.length > 0 && next[next.length - 1] === "") next.pop();
+      return { ...current, categoriesCache: next };
+    });
+  };
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    const text = event.clipboardData?.getData("text/plain") ?? "";
+    if (text.trim() === "") return;
+    const block = parseChartClipboard(text);
+    if (block.length === 0) return;
+    event.preventDefault();
+    setDataTouched(true);
+    setDraft((current) => mergeChartPaste(current, pasteAnchor, block));
+    setRowCount((current) => Math.max(current, pasteAnchor.row + block.length, 1));
+  };
+
+  const focusCell = (row: number, column: number) => {
+    const input = gridRef.current?.querySelector<HTMLInputElement>(`[data-cell="${row}:${column}"]`);
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  };
+
+  /** Spreadsheet-style navigation: up/down/Enter move between rows, left/right
+   * only when the caret is already at the edge of the cell text. */
+  const handleCellKeyDown = (event: React.KeyboardEvent<HTMLInputElement>, row: number, column: number) => {
+    const input = event.currentTarget;
+    const atStart = input.selectionStart === 0 && input.selectionEnd === 0;
+    const atEnd = input.selectionStart === input.value.length && input.selectionEnd === input.value.length;
+    let next: ChartGridCell | null = null;
+    if (event.key === "ArrowUp" && row > 0) next = { row: row - 1, column };
+    else if (event.key === "ArrowDown" && row < rows - 1) next = { row: row + 1, column };
+    else if (event.key === "Enter" && row < rows - 1) next = { row: row + 1, column };
+    else if (event.key === "ArrowLeft" && column > 0 && atStart) next = { row, column: column - 1 };
+    else if (event.key === "ArrowRight" && column < draft.series.length && atEnd) next = { row, column: column + 1 };
+    if (!next) return;
+    event.preventDefault();
+    focusCell(next.row, next.column);
+  };
+
+  const gridInputStyle: CSSProperties = { width: "100%", minWidth: 84, boxSizing: "border-box", border: "none", background: "transparent", padding: "6px 8px", font: "inherit", color: "inherit" };
+  const gridCellStyle: CSSProperties = { padding: 0, borderBottom: "1px solid var(--border)", borderRight: "1px solid var(--border)" };
+  const gridHeadStyle: CSSProperties = { position: "sticky", top: 0, zIndex: 1, background: "var(--surface)", borderBottom: "1px solid var(--border)", borderRight: "1px solid var(--border)", padding: 2, textAlign: "left", minWidth: 110 };
 
   return (
     <Dialog title={t("impress.chartData")} onClose={onClose} wide>
       <div className="stack">
-        <label className="field">
-          <span>{t("impress.chartKind")}</span>
-          <select value={draft.kind} onChange={(event) => patch({ kind: event.target.value })}>
-            {["column", "bar", "line", "pie", "area"].map((kind) => (
-              <option key={kind} value={kind}>
-                {t(`calc.chart_${kind}`)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <TextField label={t("impress.chartTitle")} value={draft.title} onChange={(title) => patch({ title })} />
-        <TextField label={t("impress.chartCategories")} value={draft.categories} onChange={(categories) => patch({ categories })} />
-        <h4>{t("impress.chartSeries")}</h4>
-        {draft.series.map((entry, index) => (
-          <div key={index} className="row" style={{ gap: 4, alignItems: "center" }}>
-            <input value={entry.name} placeholder={t("impress.chartSeriesName")} onChange={(event) => patch({ series: draft.series.map((candidate, position) => (position === index ? { ...candidate, name: event.target.value } : candidate)) })} />
-            <input value={entry.range} placeholder={t("impress.chartRange")} onChange={(event) => patch({ series: draft.series.map((candidate, position) => (position === index ? { ...candidate, range: event.target.value } : candidate)) })} />
-            <input
-              type="color"
-              value={entry.color ?? CHART_PALETTE[index % CHART_PALETTE.length]}
-              onChange={(event) => patch({ series: draft.series.map((candidate, position) => (position === index ? { ...candidate, color: event.target.value } : candidate)) })}
-            />
-            <button type="button" className="icon-btn" onClick={() => patch({ series: draft.series.filter((_, position) => position !== index) })} title={t("common.delete")}>
-              ×
-            </button>
-          </div>
-        ))}
-        <button
-          type="button"
-          className="btn btn-soft"
-          onClick={() => patch({ series: [...draft.series, { name: `${t("impress.chartSeries")} ${draft.series.length + 1}`, range: "", color: null }] })}
-        >
-          + {t("impress.chartAddSeries")}
-        </button>
-        <div className="row">
-          <label className="check">
-            <input type="checkbox" checked={draft.legend} onChange={(event) => patch({ legend: event.target.checked })} />
-            {t("impress.chartLegend")}
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={draft.stacked} onChange={(event) => patch({ stacked: event.target.checked })} />
-            {t("impress.chartStacked")}
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={draft.showLabels} onChange={(event) => patch({ showLabels: event.target.checked })} />
-            {t("impress.chartShowLabels")}
-          </label>
+        <div style={{ height: 190, flex: "0 0 auto", border: "1px solid var(--border)", borderRadius: 6, overflow: "hidden", background: theme.background }}>
+          <ChartPreview chart={draft} theme={theme} scale={1} />
         </div>
-        <TextField label={t("impress.chartXTitle")} value={draft.xTitle} onChange={(xTitle) => patch({ xTitle })} />
-        <TextField label={t("impress.chartYTitle")} value={draft.yTitle} onChange={(yTitle) => patch({ yTitle })} />
-        <p className="muted">{t("impress.chartSchematicNote")}</p>
+        <div className="row" style={{ gap: 4 }}>
+          <button type="button" className={`btn ${tab === "data" ? "btn-primary" : "btn-soft"}`} onClick={() => setTab("data")}>
+            {t("impress.chartTabData")}
+          </button>
+          <button type="button" className={`btn ${tab === "chart" ? "btn-primary" : "btn-soft"}`} onClick={() => setTab("chart")}>
+            {t("impress.chartTabChart")}
+          </button>
+        </div>
+
+        {tab === "data" ? (
+          <div className="stack">
+            {chartHasCachedData(chart) ? null : <p className="muted">{t("impress.chartRangeOnlyHint")}</p>}
+            <div className="row" style={{ gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <button type="button" className="btn btn-soft" onClick={() => changeRowCount(rows + 1)}>
+                + {t("impress.chartAddRow")}
+              </button>
+              <button type="button" className="btn btn-soft" onClick={() => changeRowCount(Math.max(1, rows - 1))}>
+                − {t("impress.chartRemoveRow")}
+              </button>
+              <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <span>{t("impress.chartRowCount")}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={rows}
+                  style={{ width: 72 }}
+                  onChange={(event) => {
+                    const value = Number(event.target.value);
+                    if (Number.isFinite(value)) changeRowCount(value);
+                  }}
+                />
+              </label>
+            </div>
+            <div ref={gridRef} onPaste={handlePaste} style={{ overflowX: "auto", overflowY: "auto", maxHeight: 280, border: "1px solid var(--border)", borderRadius: 6 }}>
+              <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                <thead>
+                  <tr>
+                    <th style={gridHeadStyle}>{t("impress.chartCategoryColumn")}</th>
+                    {draft.series.map((entry, index) => (
+                      <th key={index} style={gridHeadStyle}>
+                        <div className="row" style={{ gap: 2, alignItems: "center" }}>
+                          <input
+                            data-series-name={index}
+                            value={entry.name}
+                            placeholder={t("impress.chartSeriesName")}
+                            aria-label={`${t("impress.chartSeriesName")} ${index + 1}`}
+                            style={gridInputStyle}
+                            onChange={(event) => updateSeries(index, { name: event.target.value })}
+                          />
+                          <button type="button" className="icon-btn" onClick={() => removeSeries(index)} title={t("common.delete")}>
+                            ×
+                          </button>
+                        </div>
+                      </th>
+                    ))}
+                    <th style={{ ...gridHeadStyle, minWidth: 40 }}>
+                      <button type="button" className="icon-btn" onClick={addSeries} title={t("impress.chartAddSeries")}>
+                        +
+                      </button>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: rows }, (_, row) => (
+                    <tr key={row}>
+                      <td style={gridCellStyle}>
+                        <input
+                          data-cell={`${row}:0`}
+                          value={categories[row] ?? ""}
+                          placeholder={`${t("impress.chartCategoryColumn")} ${row + 1}`}
+                          aria-label={`${t("impress.chartCategoryColumn")} ${row + 1}`}
+                          style={gridInputStyle}
+                          onChange={(event) => changeCategory(row, event.target.value)}
+                          onFocus={() => setPasteAnchor({ row, column: 0 })}
+                          onPointerDown={() => setPasteAnchor({ row, column: 0 })}
+                          onKeyDown={(event) => handleCellKeyDown(event, row, 0)}
+                        />
+                      </td>
+                      {draft.series.map((entry, seriesIndex) => {
+                        const key = cellKey(row, seriesIndex + 1);
+                        const stored = seriesValues[seriesIndex]?.[row];
+                        return (
+                          <td key={seriesIndex} style={gridCellStyle}>
+                            <input
+                              data-cell={key}
+                              value={cellTexts[key] ?? (stored === undefined ? "" : formatChartCellValue(stored))}
+                              inputMode="decimal"
+                              placeholder={entry.name}
+                              aria-label={`${entry.name || `${t("impress.chartSeries")} ${seriesIndex + 1}`} ${row + 1}`}
+                              style={gridInputStyle}
+                              onChange={(event) => changeValue(seriesIndex, row, event.target.value)}
+                              onBlur={() => finishValue(seriesIndex, row)}
+                              onFocus={() => setPasteAnchor({ row, column: seriesIndex + 1 })}
+                              onPointerDown={() => setPasteAnchor({ row, column: seriesIndex + 1 })}
+                              onKeyDown={(event) => handleCellKeyDown(event, row, seriesIndex + 1)}
+                            />
+                          </td>
+                        );
+                      })}
+                      <td style={{ borderBottom: "1px solid var(--border)" }} />
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="muted">{t("impress.chartPasteHint")}</p>
+            <p className="muted">{t("impress.chartDataHint")}</p>
+            <p className="muted">{t("impress.chartDataGapNote")}</p>
+          </div>
+        ) : (
+          <div className="stack">
+            <label className="field">
+              <span>{t("impress.chartKind")}</span>
+              <select value={draft.kind} onChange={(event) => patch({ kind: event.target.value })}>
+                {["column", "bar", "line", "pie", "area"].map((kind) => (
+                  <option key={kind} value={kind}>
+                    {t(`calc.chart_${kind}`)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <TextField label={t("impress.chartTitle")} value={draft.title} onChange={(title) => patch({ title })} />
+            <TextField label={t("impress.chartCategories")} value={draft.categories} onChange={(categories) => patch({ categories })} />
+            <h4>{t("impress.chartSeries")}</h4>
+            {draft.series.map((entry, index) => (
+              <div key={index} className="row" style={{ gap: 4, alignItems: "center" }}>
+                <input value={entry.name} placeholder={t("impress.chartSeriesName")} onChange={(event) => updateSeries(index, { name: event.target.value })} />
+                <input value={entry.range} placeholder={t("impress.chartRange")} onChange={(event) => updateSeries(index, { range: event.target.value })} />
+                <input type="color" value={entry.color ?? CHART_PALETTE[index % CHART_PALETTE.length]} onChange={(event) => updateSeries(index, { color: event.target.value })} />
+                <button type="button" className="icon-btn" onClick={() => removeSeries(index)} title={t("common.delete")}>
+                  ×
+                </button>
+              </div>
+            ))}
+            <button type="button" className="btn btn-soft" onClick={addSeries}>
+              + {t("impress.chartAddSeries")}
+            </button>
+            <div className="row">
+              <label className="check">
+                <input type="checkbox" checked={draft.legend} onChange={(event) => patch({ legend: event.target.checked })} />
+                {t("impress.chartLegend")}
+              </label>
+              <label className="check">
+                <input type="checkbox" checked={draft.stacked} onChange={(event) => patch({ stacked: event.target.checked })} />
+                {t("impress.chartStacked")}
+              </label>
+              <label className="check">
+                <input type="checkbox" checked={draft.showLabels} onChange={(event) => patch({ showLabels: event.target.checked })} />
+                {t("impress.chartShowLabels")}
+              </label>
+            </div>
+            <TextField label={t("impress.chartXTitle")} value={draft.xTitle} onChange={(xTitle) => patch({ xTitle })} />
+            <TextField label={t("impress.chartYTitle")} value={draft.yTitle} onChange={(yTitle) => patch({ yTitle })} />
+          </div>
+        )}
+
         <div className="row">
           <button type="button" className="btn btn-soft" onClick={onClose}>
             {t("common.cancel")}
           </button>
-          <button type="button" className="btn btn-primary" onClick={() => onSave(draft)}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => onSave(dataTouched && chartHasCachedData(draft) ? syncChartDataRanges(draft) : draft)}
+          >
             {t("common.save")}
           </button>
         </div>
@@ -1726,28 +2260,28 @@ interface ObjectTreeProps {
   selectedKeys: Set<string>;
   editingKey: string | null;
   interactive: boolean;
-  onObjectMouseDown?: (event: React.MouseEvent, path: SelectionPath) => void;
+  onObjectPointerDown?: (event: React.PointerEvent, path: SelectionPath) => void;
   onObjectDoubleClick?: (event: React.MouseEvent, path: SelectionPath) => void;
-  onHandleMouseDown?: (event: React.MouseEvent, path: SelectionPath, mode: "resize" | "rotate") => void;
+  onHandlePointerDown?: (event: React.PointerEvent, path: SelectionPath, mode: "resize" | "rotate") => void;
   onTextChange?: (path: SelectionPath, text: string) => void;
   onTextDone?: () => void;
 }
 
-function SelectionHandles({ onHandleMouseDown }: { onHandleMouseDown: (event: React.MouseEvent, mode: "resize" | "rotate") => void }) {
+function SelectionHandles({ onHandlePointerDown }: { onHandlePointerDown: (event: React.PointerEvent, mode: "resize" | "rotate") => void }) {
   return (
     <>
       <span
         className="resize-handle"
-        onMouseDown={(event) => {
+        onPointerDown={(event) => {
           event.stopPropagation();
-          onHandleMouseDown(event, "resize");
+          onHandlePointerDown(event, "resize");
         }}
       />
       <span
         className="rotate-handle"
-        onMouseDown={(event) => {
+        onPointerDown={(event) => {
           event.stopPropagation();
-          onHandleMouseDown(event, "rotate");
+          onHandlePointerDown(event, "rotate");
         }}
       >
         <RotateCw size={10} />
@@ -1779,11 +2313,11 @@ function ObjectTree(props: ObjectTreeProps) {
                 transform: `rotate(${child.rotation}deg)`,
                 pointerEvents: interactive ? "auto" : "none",
               }}
-              onMouseDown={interactive ? (event) => props.onObjectMouseDown?.(event, childPath) : undefined}
+              onPointerDown={interactive ? (event) => props.onObjectPointerDown?.(event, childPath) : undefined}
               onDoubleClick={interactive ? (event) => props.onObjectDoubleClick?.(event, childPath) : undefined}
             >
               <ObjectTree {...props} object={child} path={childPath} depth={depth + 1} />
-              {interactive && isSelected ? <SelectionHandles onHandleMouseDown={(event, mode) => props.onHandleMouseDown?.(event, childPath, mode)} /> : null}
+              {interactive && isSelected ? <SelectionHandles onHandlePointerDown={(event, mode) => props.onHandlePointerDown?.(event, childPath, mode)} /> : null}
             </div>
           );
         })}
@@ -1807,7 +2341,122 @@ function ChartPreview({ chart, theme, scale }: { chart: ChartData | null; theme:
   if (!chart) return <div className="slide-chart-placeholder">{t("calc.chart")}</div>;
   const series = chart.series ?? [];
   const colorOf = (index: number) => series[index]?.color ?? CHART_PALETTE[index % CHART_PALETTE.length];
+  const categories = chart.categoriesCache ?? [];
+  const values = series.map((_, index) => chart.seriesValuesCache?.[index] ?? []);
+  const hasValues = values.some((list) => list.length > 0);
+  const rowCount = Math.max(categories.length, ...values.map((list) => list.length), 0);
+  // Bars scale against the largest magnitude so negative series still get a
+  // baseline; pies only use positive slices.
+  const maxValue = Math.max(1e-9, ...values.flatMap((list) => list.map((value) => Math.abs(value))));
+  const labelOf = (row: number) => categories[row] || `${row + 1}`;
   const heights = series.map((_, index) => 45 + ((index * 37) % 50));
+  const smallFont = Math.max(7, 8 * scale);
+
+  // The caches are what the exporter embeds, so the preview is data-driven when
+  // they carry values; range-only charts keep the schematic index-based look.
+  let plot: React.ReactNode = null;
+  if (hasValues && series.length > 0) {
+    if (chart.kind === "pie") {
+      const pieIndex = values.findIndex((list) => list.some((value) => value > 0));
+      const pieValues = pieIndex >= 0 ? values[pieIndex] : [];
+      const pieTotal = pieValues.reduce((sum, value) => sum + Math.max(0, value), 0);
+      if (pieTotal > 0) {
+        let progress = 0;
+        const slices = pieValues.map((value, row) => {
+          const start = progress;
+          progress += Math.max(0, value) / pieTotal;
+          return `${CHART_PALETTE[row % CHART_PALETTE.length]} ${start * 100}% ${progress * 100}%`;
+        });
+        plot = (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 * scale, width: "100%", height: "100%" }}>
+            <div style={{ height: "90%", aspectRatio: "1 / 1", borderRadius: "50%", background: `conic-gradient(${slices.join(", ")})`, border: `1px solid ${theme.accent}` }} />
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 * scale, overflow: "hidden" }}>
+              {pieValues.map((value, row) => (
+                <span key={row} style={{ display: "flex", alignItems: "center", gap: 4 * scale, whiteSpace: "nowrap", overflow: "hidden" }}>
+                  <i style={{ width: 8 * scale, height: 8 * scale, background: CHART_PALETTE[row % CHART_PALETTE.length], borderRadius: 2, flex: "0 0 auto" }} />
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{labelOf(row)}</span>
+                  <span style={{ opacity: 0.7, marginLeft: "auto" }}>{formatChartCellValue(value)}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        );
+      }
+    } else if (chart.kind === "line" || chart.kind === "area") {
+      const pointX = (row: number) => (rowCount <= 1 ? 50 : (row / (rowCount - 1)) * 100);
+      const pointY = (value: number) => 50 - (value / maxValue) * 45;
+      plot = (
+        <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ display: "block", width: "100%", height: "100%" }}>
+          <line x1="0" y1="50" x2="100" y2="50" stroke={theme.accent} strokeWidth="1" opacity="0.5" vectorEffect="non-scaling-stroke" />
+          {series.map((entry, seriesIndex) => {
+            const points = values[seriesIndex].map((value, row) => `${pointX(row)},${pointY(value)}`).join(" ");
+            return (
+              <g key={seriesIndex}>
+                {chart.kind === "area" ? <polygon points={`0,50 ${points} 100,50`} fill={colorOf(seriesIndex)} opacity="0.35" /> : null}
+                <polyline points={points} fill="none" stroke={colorOf(seriesIndex)} strokeWidth="1.6" vectorEffect="non-scaling-stroke">
+                  <title>{entry.name}</title>
+                </polyline>
+              </g>
+            );
+          })}
+        </svg>
+      );
+    } else if (chart.kind === "bar") {
+      plot = (
+        <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 3 * scale, width: "100%", height: "100%" }}>
+          {Array.from({ length: rowCount }, (_, row) => (
+            <div key={row} style={{ display: "flex", alignItems: "center", gap: 4 * scale }}>
+              <span style={{ width: 56 * scale, flex: "0 0 auto", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: 0.8 }}>{labelOf(row)}</span>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 1 }}>
+                {series.map((entry, seriesIndex) => {
+                  const value = values[seriesIndex]?.[row] ?? 0;
+                  return (
+                    <div key={seriesIndex} title={`${entry.name}: ${formatChartCellValue(value)}`} style={{ display: "flex", alignItems: "center", gap: 3 * scale }}>
+                      <div style={{ width: `${(Math.max(0, value) / maxValue) * 100}%`, height: Math.max(4, 7 * scale), background: colorOf(seriesIndex), borderRadius: 2 }} />
+                      {chart.showLabels ? <span style={{ fontSize: smallFont, opacity: 0.75 }}>{formatChartCellValue(value)}</span> : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    } else {
+      plot = (
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-around", gap: 2 * scale, width: "100%", height: "100%" }}>
+          {Array.from({ length: rowCount }, (_, row) => {
+            const total = series.reduce((sum, _, seriesIndex) => sum + Math.max(0, values[seriesIndex]?.[row] ?? 0), 0);
+            return (
+              <div key={row} style={{ flex: 1, maxWidth: 64 * scale, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", gap: 1 }}>
+                {chart.showLabels && (chart.stacked || series.length === 1) ? <span style={{ fontSize: smallFont, opacity: 0.75 }}>{formatChartCellValue(chart.stacked ? total : values[0]?.[row] ?? 0)}</span> : null}
+                <div style={{ width: "100%", height: `${(total / maxValue) * 100}%`, display: "flex", flexDirection: chart.stacked ? "column-reverse" : "row", alignItems: "flex-end", justifyContent: "center", gap: 1 }}>
+                  {series.map((entry, seriesIndex) => {
+                    const raw = values[seriesIndex]?.[row] ?? 0;
+                    const value = Math.max(0, raw);
+                    return (
+                      <div
+                        key={seriesIndex}
+                        title={`${entry.name}: ${formatChartCellValue(raw)}`}
+                        style={{
+                          flex: chart.stacked ? "none" : 1,
+                          width: chart.stacked ? "100%" : undefined,
+                          height: chart.stacked ? `${total > 0 ? (value / total) * 100 : 0}%` : "100%",
+                          background: colorOf(seriesIndex),
+                          borderRadius: chart.stacked ? 0 : 2,
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", padding: 6 * scale, gap: 3 * scale, fontSize: Math.max(8, 10 * scale), color: theme.bodyColor, overflow: "hidden", boxSizing: "border-box" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 6 * scale, flexWrap: "wrap" }}>
@@ -1819,6 +2468,8 @@ function ChartPreview({ chart, theme, scale }: { chart: ChartData | null; theme:
       <div style={{ position: "relative", flex: 1, minHeight: 40 * scale, border: `1px dashed ${theme.accent}`, borderRadius: 4, display: "flex", alignItems: "flex-end", justifyContent: "center", gap: 4 * scale, padding: 4 * scale, overflow: "hidden" }}>
         {series.length === 0 ? (
           <span style={{ opacity: 0.6, textAlign: "center" }}>{t("impress.chartNoSeries")}</span>
+        ) : plot ? (
+          plot
         ) : chart.kind === "pie" ? (
           <div style={{ display: "flex", width: "100%", height: "100%" }}>
             {series.map((entry, index) => (
@@ -1835,9 +2486,18 @@ function ChartPreview({ chart, theme, scale }: { chart: ChartData | null; theme:
           ))
         )}
       </div>
+      {hasValues && chart.kind !== "pie" && chart.kind !== "bar" ? (
+        <div style={{ display: "flex", justifyContent: "space-around", gap: 2 * scale, opacity: 0.8, overflow: "hidden" }}>
+          {Array.from({ length: rowCount }, (_, row) => (
+            <span key={row} style={{ flex: 1, maxWidth: 64 * scale, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {labelOf(row)}
+            </span>
+          ))}
+        </div>
+      ) : null}
       <div style={{ display: "flex", justifyContent: "space-between", opacity: 0.75, gap: 6 * scale }}>
         <span>{chart.yTitle || ""}</span>
-        <span style={{ textAlign: "center", flex: 1 }}>{chart.categories || t("impress.chartNoCategories")}</span>
+        <span style={{ textAlign: "center", flex: 1 }}>{hasValues ? t("impress.chartCachedData") : chart.categories || t("impress.chartNoCategories")}</span>
         <span>{chart.xTitle || ""}</span>
       </div>
       {chart.legend && series.length > 0 ? (
@@ -1846,12 +2506,12 @@ function ChartPreview({ chart, theme, scale }: { chart: ChartData | null; theme:
             <span key={index} style={{ display: "inline-flex", alignItems: "center", gap: 3 * scale }}>
               <i style={{ width: 8 * scale, height: 8 * scale, background: colorOf(index), display: "inline-block", borderRadius: 2 }} />
               {entry.name || `${t("impress.chartSeries")} ${index + 1}`}
-              {entry.range ? ` · ${entry.range}` : ""}
+              {!hasValues && entry.range ? ` · ${entry.range}` : ""}
             </span>
           ))}
         </div>
       ) : null}
-      <div style={{ opacity: 0.55, fontSize: Math.max(7, 8 * scale) }}>{t("impress.chartSchematicNote")}</div>
+      {hasValues ? null : <div style={{ opacity: 0.55, fontSize: Math.max(7, 8 * scale) }}>{t("impress.chartSchematicNote")}</div>}
     </div>
   );
 }

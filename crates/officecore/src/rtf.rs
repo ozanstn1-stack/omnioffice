@@ -7,6 +7,7 @@
 
 use crate::error::{OfficeError, OfficeResult};
 use crate::model::*;
+use std::collections::HashMap;
 use std::path::Path;
 
 #[derive(Debug, Clone)]
@@ -59,6 +60,8 @@ fn escape_rtf(text: &str) -> String {
 struct RtfTables {
     fonts: Vec<String>,
     colors: Vec<(u8, u8, u8)>,
+    /// Revision authors in `\revtbl` order; `\revauth` carries the index.
+    authors: Vec<String>,
 }
 
 impl RtfTables {
@@ -78,6 +81,67 @@ impl RtfTables {
         self.colors.push(rgb);
         Some(self.colors.len() - 1)
     }
+
+    fn author_index(&mut self, author: &str) -> usize {
+        if let Some(index) = self.authors.iter().position(|existing| existing == author) {
+            return index;
+        }
+        self.authors.push(author.to_string());
+        self.authors.len() - 1
+    }
+}
+
+/// Note bodies keyed by id, resolved while writing runs. RTF footnotes cannot
+/// nest, so note bodies are written with an empty context.
+#[derive(Default, Clone)]
+struct RtfNotes {
+    footnotes: HashMap<String, Footnote>,
+    endnotes: HashMap<String, Footnote>,
+}
+
+impl RtfNotes {
+    fn for_document(document: &TextDocument) -> Self {
+        Self {
+            footnotes: document.footnotes.iter().map(|note| (note.id.clone(), note.clone())).collect(),
+            endnotes: document.endnotes.iter().map(|note| (note.id.clone(), note.clone())).collect(),
+        }
+    }
+
+    fn footnote_for(&self, run: &Run) -> Option<&Footnote> {
+        run.footnote.as_ref().and_then(|id| self.footnotes.get(id))
+    }
+
+    fn endnote_for(&self, run: &Run) -> Option<&Footnote> {
+        run.endnote.as_ref().and_then(|id| self.endnotes.get(id))
+    }
+}
+
+/// RTF writes `\revdttm` as a packed 32-bit DTTM (6-bit minute, 5-bit hour,
+/// day, month, year-1900, weekday); the seconds of our ISO dates are dropped
+/// because the format has no second field.
+fn iso_to_dttm(date: &str) -> Option<u32> {
+    let date = date.trim();
+    if date.len() < 16 {
+        return None;
+    }
+    let year: u32 = date.get(0..4)?.parse().ok()?;
+    let month: u32 = date.get(5..7)?.parse().ok()?;
+    let day: u32 = date.get(8..10)?.parse().ok()?;
+    let hour: u32 = date.get(11..13)?.parse().ok()?;
+    let minute: u32 = date.get(14..16)?.parse().ok()?;
+    if !(1900..=2140).contains(&year) || !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || minute > 59 {
+        return None;
+    }
+    Some((minute & 0x3F) | ((hour & 0x1F) << 6) | ((day & 0x1F) << 11) | ((month & 0x0F) << 16) | (((year - 1900) & 0x1FF) << 20))
+}
+
+fn dttm_to_iso(value: u32) -> String {
+    let minute = value & 0x3F;
+    let hour = (value >> 6) & 0x1F;
+    let day = (value >> 11) & 0x1F;
+    let month = (value >> 16) & 0x0F;
+    let year = ((value >> 20) & 0x1FF) + 1900;
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:00Z")
 }
 
 fn collect_fonts(document: &TextDocument) -> Vec<String> {
@@ -115,8 +179,59 @@ fn paragraph_style_index(document: &TextDocument, style_id: &str) -> usize {
     document.styles.iter().position(|style| style.id == style_id).unwrap_or(0)
 }
 
-fn write_run(out: &mut String, run: &Run, tables: &mut RtfTables) {
+/// Emits one note as a real RTF `\footnote` destination. `\chftn` is the
+/// automatic reference anchor. RTF has no per-note endnote class, so endnotes
+/// are the same destination plus our own ignorable `{\*\oswkendnote}` marker:
+/// Word skips it and renders the note as a footnote, while this reader can
+/// restore the class on round trip. The note text itself is never emitted at
+/// the reference position.
+fn write_note(out: &mut String, note: &Footnote, endnote: bool, tables: &mut RtfTables) {
+    out.push_str("{\\footnote \\chftn ");
+    if endnote {
+        out.push_str("{\\*\\oswkendnote}");
+    }
+    for run in &note.runs {
+        if run.text.is_empty() {
+            continue;
+        }
+        write_run(out, run, tables, &RtfNotes::default());
+    }
+    out.push('}');
+}
+
+/// Revision properties are character properties, so they live inside the run
+/// group the text is wrapped in. `\revauthN` indexes the `\revtbl` header
+/// table; `\revdttmN` is the DTTM packed timestamp (second precision is lost).
+fn write_revision_controls(out: &mut String, revision: &RevisionMark, tables: &mut RtfTables) {
+    match revision.kind.as_str() {
+        "delete" => out.push_str("\\deleted "),
+        "insert" => out.push_str("\\revised "),
+        // Formatting revisions have no faithful RTF text-mark equivalent this
+        // writer can emit (\crauth/\crdate are formatting properties, not text
+        // marks), so they keep their formatting and are documented as
+        // not representable.
+        _ => return,
+    }
+    if !revision.author.is_empty() {
+        let index = tables.author_index(&revision.author);
+        out.push_str(&format!("\\revauth{index} "));
+    }
+    if let Some(dttm) = iso_to_dttm(&revision.date) {
+        out.push_str(&format!("\\revdttm{dttm} "));
+    }
+}
+
+fn write_run(out: &mut String, run: &Run, tables: &mut RtfTables, notes: &RtfNotes) {
+    if let Some(note) = notes.footnote_for(run) {
+        write_note(out, note, false, tables);
+    }
+    if let Some(note) = notes.endnote_for(run) {
+        write_note(out, note, true, tables);
+    }
     out.push('{');
+    if let Some(revision) = &run.revision {
+        write_revision_controls(out, revision, tables);
+    }
     if let Some(font) = &run.font {
         let index = tables.font_index(font);
         out.push_str(&format!("\\f{index} "));
@@ -156,7 +271,7 @@ fn write_run(out: &mut String, run: &Run, tables: &mut RtfTables) {
     out.push('}');
 }
 
-fn write_block(out: &mut String, block: &Block, tables: &mut RtfTables, document: &TextDocument, depth: usize) {
+fn write_block(out: &mut String, block: &Block, tables: &mut RtfTables, document: &TextDocument, notes: &RtfNotes, depth: usize) {
     match block {
         Block::Paragraph { props, runs } => {
             out.push_str("\\pard");
@@ -203,7 +318,7 @@ fn write_block(out: &mut String, block: &Block, tables: &mut RtfTables, document
             }
             out.push(' ');
             for run in runs {
-                write_run(out, run, tables);
+                write_run(out, run, tables, notes);
             }
             out.push_str("\\par\n");
         }
@@ -226,7 +341,7 @@ fn write_block(out: &mut String, block: &Block, tables: &mut RtfTables, document
                         out.push_str("\\par");
                     }
                     for block in &cell.blocks {
-                        write_block(out, block, tables, document, depth + 1);
+                        write_block(out, block, tables, document, notes, depth + 1);
                     }
                     out.push_str("\\cell ");
                 }
@@ -272,20 +387,64 @@ fn write_block(out: &mut String, block: &Block, tables: &mut RtfTables, document
     }
 }
 
+fn collect_revision_authors_runs(runs: &[Run], authors: &mut Vec<String>) {
+    for run in runs {
+        if let Some(revision) = &run.revision {
+            if !revision.author.is_empty() && !authors.iter().any(|existing| existing == &revision.author) {
+                authors.push(revision.author.clone());
+            }
+        }
+    }
+}
+
+fn collect_revision_authors_blocks(blocks: &[Block], authors: &mut Vec<String>) {
+    for block in blocks {
+        match block {
+            Block::Paragraph { runs, .. } => collect_revision_authors_runs(runs, authors),
+            Block::Table { table } => {
+                for row in &table.rows {
+                    for cell in &row.cells {
+                        collect_revision_authors_blocks(&cell.blocks, authors);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// The `\revtbl` header must list every author before the body references its
+/// index, so authors are gathered up front from body, headers, footers and
+/// note bodies. Index 0 is the conventional "Unknown" entry: Word writes it
+/// and maps `\revauthN` to the Nth group, so keeping the slot makes the table
+/// readable in Word as well as by this reader.
+fn collect_revision_authors(document: &TextDocument) -> Vec<String> {
+    let mut authors = vec!["Unknown".to_string()];
+    collect_revision_authors_blocks(&document.blocks, &mut authors);
+    collect_revision_authors_blocks(&document.header, &mut authors);
+    collect_revision_authors_blocks(&document.footer, &mut authors);
+    for note in document.footnotes.iter().chain(document.endnotes.iter()) {
+        collect_revision_authors_runs(&note.runs, &mut authors);
+    }
+    authors
+}
+
 pub fn write_rtf(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     let fonts = collect_fonts(document);
-    let mut tables = RtfTables { fonts, colors: Vec::new() };
+    let authors = collect_revision_authors(document);
+    let notes = RtfNotes::for_document(document);
+    let mut tables = RtfTables { fonts, colors: Vec::new(), authors };
     let mut body = String::new();
     for block in &document.blocks {
-        write_block(&mut body, block, &mut tables, document, 0);
+        write_block(&mut body, block, &mut tables, document, &notes, 0);
     }
     let mut header = String::new();
     for block in &document.header {
-        write_block(&mut header, block, &mut tables, document, 0);
+        write_block(&mut header, block, &mut tables, document, &notes, 0);
     }
     let mut footer = String::new();
     for block in &document.footer {
-        write_block(&mut footer, block, &mut tables, document, 0);
+        write_block(&mut footer, block, &mut tables, document, &notes, 0);
     }
 
     let mut out = String::from("{\\rtf1\\ansi\\ansicpg1252\\deff0\\nouicompat\\deflang1033\n");
@@ -302,6 +461,17 @@ pub fn write_rtf(document: &TextDocument) -> OfficeResult<Vec<u8>> {
         out.push_str(&format!("{{\\s{index}\\sbasedon0\\snext0 {};}}", escape_rtf(&style.name)));
     }
     out.push_str("}\n");
+    // Revision author names; RTF's \revtbl only carries names (no timestamps),
+    // which is why each revision also stores its own \revdttm. The "Unknown"
+    // slot is always present, so only emit the table when a real author was
+    // collected.
+    if tables.authors.len() > 1 {
+        out.push_str("{\\*\\revtbl ");
+        for author in &tables.authors {
+            out.push_str(&format!("{{{author};}}", author = escape_rtf(author)));
+        }
+        out.push_str("}\n");
+    }
     let page = &document.page;
     out.push_str(&format!(
         "\\paperw{}\\paperh{}\\margl{}\\margr{}\\margt{}\\margb{}",
@@ -314,6 +484,13 @@ pub fn write_rtf(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     ));
     if page.orientation == "landscape" {
         out.push_str("\\landscape");
+    }
+    // RTF places every note as a footnote; \aendnotes\aenddoc at least makes a
+    // document with only endnotes render them at the end in Word. Mixed
+    // footnotes/endnotes keep the default footnote placement, and the endnote
+    // class survives only through the {\*\oswkendnote} marker.
+    if !document.endnotes.is_empty() && document.footnotes.is_empty() {
+        out.push_str("\\aendnotes\\aenddoc");
     }
     if !header.is_empty() {
         out.push_str("\n{\\header ");
@@ -390,6 +567,22 @@ struct Reader {
     pict: Option<PictState>,
     skip_unicode: i32,
     depth: usize,
+    /// Revision authors from `\revtbl`, indexed the way `\revauth` refers to them.
+    revision_authors: Vec<String>,
+    /// Current character revision, scoped like the RTF group it was set in.
+    revision: Option<RevisionMark>,
+    revision_stack: Vec<Option<RevisionMark>>,
+    revision_seq: usize,
+    /// Author index waiting for a `\revised`/`\deleted`/`\crauth` to attach to.
+    revauth: Option<usize>,
+    /// While a `\footnote` destination is open, text lands here instead of in
+    /// the body runs; the reference run is inserted when the group closes.
+    note_runs: Vec<Run>,
+    note_depth: Option<usize>,
+    note_endnote: bool,
+    note_seq: usize,
+    footnotes: Vec<Footnote>,
+    endnotes: Vec<Footnote>,
 }
 
 #[derive(Default)]
@@ -421,6 +614,17 @@ impl Reader {
             pict: None,
             skip_unicode: 0,
             depth: 0,
+            revision_authors: Vec::new(),
+            revision: None,
+            revision_stack: Vec::new(),
+            revision_seq: 0,
+            revauth: None,
+            note_runs: Vec::new(),
+            note_depth: None,
+            note_endnote: false,
+            note_seq: 0,
+            footnotes: Vec::new(),
+            endnotes: Vec::new(),
         }
     }
 
@@ -480,9 +684,13 @@ impl Reader {
             size_pt: format.size_pt,
             superscript: format.superscript,
             subscript: format.subscript,
+            revision: self.revision.clone(),
             ..Default::default()
         };
-        if let Some(last) = self.runs.last_mut() {
+        // Text inside a \footnote destination belongs to the note, not to the
+        // surrounding paragraph.
+        let target = if self.note_depth.is_some() { &mut self.note_runs } else { &mut self.runs };
+        if let Some(last) = target.last_mut() {
             if last.bold == run.bold
                 && last.italic == run.italic
                 && last.underline == run.underline
@@ -491,12 +699,66 @@ impl Reader {
                 && last.highlight == run.highlight
                 && last.font == run.font
                 && last.size_pt == run.size_pt
+                && last.revision == run.revision
             {
                 last.text.push_str(&run.text);
                 return;
             }
         }
-        self.runs.push(run);
+        target.push(run);
+    }
+
+    /// Creates (or reuses) the current revision mark, attaching the pending
+    /// `\revauth` author when one was recorded before the mark itself.
+    fn start_revision(&mut self, kind: &str) {
+        if self.revision.is_none() {
+            self.revision_seq += 1;
+            let author = self.revauth.take().and_then(|index| self.revision_authors.get(index)).cloned().unwrap_or_default();
+            self.revision = Some(RevisionMark { id: format!("rev{}", self.revision_seq), kind: kind.to_string(), author, date: String::new(), original: None });
+        } else if let Some(mark) = self.revision.as_mut() {
+            mark.kind = kind.to_string();
+        }
+    }
+
+    /// Restores the revision state of the group that is closing. A pending
+    /// `\revauth` index is only meaningful inside its own group, so it is
+    /// dropped once no revision is active.
+    fn close_revision_group(&mut self) {
+        self.revision = self.revision_stack.pop().flatten();
+        if self.revision.is_none() {
+            self.revauth = None;
+        }
+    }
+
+    /// Closes an open `\footnote` destination: stores the body as a note and
+    /// places the reference run at the current body position.
+    fn finish_note(&mut self) {
+        if self.note_depth.is_none() {
+            return;
+        }
+        self.note_depth = None;
+        self.note_seq += 1;
+        let endnote = self.note_endnote;
+        self.note_endnote = false;
+        let id = format!("{}{}", if endnote { "en" } else { "fn" }, self.note_seq);
+        let mut runs = std::mem::take(&mut self.note_runs);
+        while runs.last().map(|run| run.text == "\n").unwrap_or(false) {
+            runs.pop();
+        }
+        if runs.is_empty() {
+            runs.push(Run::default());
+        }
+        let note = Footnote { id: id.clone(), runs, marker: String::new() };
+        if endnote {
+            self.endnotes.push(note);
+        } else {
+            self.footnotes.push(note);
+        }
+        self.runs.push(Run {
+            footnote: if endnote { None } else { Some(id.clone()) },
+            endnote: if endnote { Some(id) } else { None },
+            ..Default::default()
+        });
     }
 }
 
@@ -536,6 +798,52 @@ fn color_for(colors: &[(u8, u8, u8)], index: i32) -> Option<String> {
         return None;
     }
     colors.get((index - 1) as usize).map(|(red, green, blue)| format!("#{red:02X}{green:02X}{blue:02X}"))
+}
+
+/// Parses `{\*\revtbl {Author1;}{Author2;}}`: every subgroup is one author
+/// name, in the order `\revauthN` indexes. Note that the table carries only
+/// names; timestamps live on each revision as `\revdttm`.
+fn parse_revtbl(reader: &mut Reader, raw: &str) {
+    let mut name = String::new();
+    let mut depth = 0i32;
+    let mut chars = raw.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '{' => {
+                depth += 1;
+                name.clear();
+            }
+            '}' => {
+                if depth >= 1 {
+                    let trimmed = name.trim();
+                    if !trimmed.is_empty() {
+                        reader.revision_authors.push(trimmed.to_string());
+                    }
+                }
+                depth -= 1;
+                name.clear();
+            }
+            '\\' => {
+                // Skip control words (e.g. `\revtbl`) and their trailing space.
+                while let Some(next) = chars.peek() {
+                    if next.is_ascii_alphanumeric() {
+                        chars.next();
+                    } else {
+                        if *next == ' ' {
+                            chars.next();
+                        }
+                        break;
+                    }
+                }
+            }
+            _ if depth >= 1 => {
+                if ch != ';' {
+                    name.push(ch);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 fn apply_pict_control(reader: &mut Reader, word: &str, param: Option<i32>) {
@@ -596,7 +904,15 @@ fn apply_control(reader: &mut Reader, word: &str, param: Option<i32>) {
             }
         }
         "line" => reader.push_text("\n"),
-        "par" => reader.flush_run(),
+        "par" => {
+            // A paragraph break inside a footnote destination separates note
+            // paragraphs instead of flushing the body paragraph.
+            if reader.note_depth.is_some() {
+                reader.push_text("\n");
+            } else {
+                reader.flush_run();
+            }
+        }
         "tab" => reader.push_text("\t"),
         "page" => {
             reader.flush_run();
@@ -632,6 +948,36 @@ fn apply_control(reader: &mut Reader, word: &str, param: Option<i32>) {
             }
         }
         "s" => reader.para_format.style_index = param.unwrap_or(0).max(0) as usize,
+        // Tracked changes: \revised/\deleted mark the text, \revauth indexes
+        // the \revtbl author table and \revdttm carries the timestamp.
+        "revised" => reader.start_revision("insert"),
+        "deleted" => reader.start_revision("delete"),
+        "revauth" => {
+            let index = param.unwrap_or(0).max(0) as usize;
+            reader.revauth = Some(index);
+            let author = reader.revision_authors.get(index).cloned().unwrap_or_default();
+            if let Some(mark) = reader.revision.as_mut() {
+                if mark.author.is_empty() {
+                    mark.author = author;
+                }
+            }
+        }
+        "revdttm" => {
+            if let Some(value) = param {
+                if let Some(mark) = reader.revision.as_mut() {
+                    mark.date = dttm_to_iso(value as u32);
+                }
+            }
+        }
+        // Formatting revisions use \crauth/\crdate instead of \revised.
+        "crauth" => reader.start_revision("format"),
+        "crdate" => {
+            if let Some(value) = param {
+                if let Some(mark) = reader.revision.as_mut() {
+                    mark.date = dttm_to_iso(value as u32);
+                }
+            }
+        }
         _ => {}
     }
 }
@@ -723,15 +1069,25 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
                 reader.flush_run();
                 reader.depth += 1;
                 reader.destination_stack.push(reader.destination);
+                // Revision properties are scoped like character formatting;
+                // remember the outer state so a `{\deleted ...}` group cannot
+                // leak into the following text.
+                reader.revision_stack.push(reader.revision.clone());
                 i += 1;
             }
             '}' => {
                 if reader.pict.is_some() {
                     decode_pict(&mut reader);
+                    reader.close_revision_group();
                     reader.destination = reader.destination_stack.pop().unwrap_or(Destination::Body);
                     reader.depth = reader.depth.saturating_sub(1);
                     i += 1;
                     continue;
+                }
+                let closing_note = reader.note_depth == Some(reader.depth);
+                reader.close_revision_group();
+                if closing_note {
+                    reader.finish_note();
                 }
                 reader.flush_run();
                 reader.destination = reader.destination_stack.pop().unwrap_or(Destination::Body);
@@ -766,8 +1122,24 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
                     continue;
                 }
                 if next == '*' {
+                    // Ignorable destinations are skipped, but two of them carry
+                    // data we care about: \revtbl (revision authors) and our own
+                    // \oswkendnote marker (endnote class).
+                    let mut probe = i + 2;
+                    let mut name = String::new();
+                    while probe < chars.len() && chars[probe].is_ascii_alphabetic() {
+                        name.push(chars[probe]);
+                        probe += 1;
+                    }
                     let end = skip_group(&chars, i + 1);
+                    let content: String = if end > i + 1 { chars[(i + 1)..(end - 1)].iter().collect() } else { String::new() };
+                    if name == "revtbl" {
+                        parse_revtbl(&mut reader, &content);
+                    } else if name == "oswkendnote" && reader.note_depth.is_some() {
+                        reader.note_endnote = true;
+                    }
                     i = end;
+                    reader.close_revision_group();
                     reader.depth = reader.depth.saturating_sub(1);
                     reader.destination_stack.pop();
                     continue;
@@ -803,9 +1175,11 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
                     match word.as_str() {
                         "colortbl" => parse_color_table(&mut reader, &content),
                         "fonttbl" => collect_font_names(&mut reader, &content),
+                        "revtbl" => parse_revtbl(&mut reader, &content),
                         _ => {}
                     }
                     i = end;
+                    reader.close_revision_group();
                     reader.depth = reader.depth.saturating_sub(1);
                     reader.destination_stack.pop();
                     continue;
@@ -813,6 +1187,15 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
 
                 match word.as_str() {
                     "pict" => reader.pict = Some(PictState::default()),
+                    // A footnote destination: text is collected into note_runs
+                    // and the reference run is placed when the group closes.
+                    // The \chftn anchor inside is a control word, so it never
+                    // reaches the paragraph text.
+                    "footnote" => {
+                        reader.note_runs.clear();
+                        reader.note_endnote = false;
+                        reader.note_depth = Some(reader.depth);
+                    }
                     "header" | "headerl" | "headerr" | "headerf" => reader.destination = Destination::Header,
                     "footer" | "footerl" | "footerr" | "footerf" => reader.destination = Destination::Footer,
                     "bin" => {
@@ -891,6 +1274,8 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
     document.blocks = reader.blocks;
     document.header = reader.header_blocks;
     document.footer = reader.footer_blocks;
+    document.footnotes = reader.footnotes;
+    document.endnotes = reader.endnotes;
     Ok(RtfRead { document, warnings })
 }
 
@@ -1039,6 +1424,118 @@ mod tests {
         let text = read.document.plain_text();
         assert!(text.contains("Hello"), "text was {text}");
         assert!(!text.contains("Riched20"));
+    }
+
+    #[test]
+    fn roundtrip_notes_and_revisions() {
+        let mut document = TextDocument::new_blank("Notes and revisions");
+        document.footnotes = vec![Footnote { id: "fn-a".into(), runs: vec![Run { text: "First note".into(), ..Default::default() }], marker: String::new() }];
+        document.endnotes = vec![Footnote { id: "en-a".into(), runs: vec![Run { text: "End note".into(), ..Default::default() }], marker: String::new() }];
+        document.blocks = vec![Block::Paragraph {
+            props: ParaProps::default(),
+            runs: vec![
+                Run { text: "Body ".into(), ..Default::default() },
+                Run {
+                    text: "inserted text".into(),
+                    revision: Some(RevisionMark { id: "r1".into(), kind: "insert".into(), author: "Alice".into(), date: "2026-01-01T00:00:00Z".into(), original: None }),
+                    ..Default::default()
+                },
+                Run { footnote: Some("fn-a".into()), ..Default::default() },
+                Run {
+                    text: "removed text".into(),
+                    revision: Some(RevisionMark { id: "r2".into(), kind: "delete".into(), author: "Bob".into(), date: "2026-02-03T04:05:00Z".into(), original: None }),
+                    ..Default::default()
+                },
+                Run { endnote: Some("en-a".into()), ..Default::default() },
+            ],
+        }];
+
+        let bytes = write_rtf(&document).unwrap();
+        let text = String::from_utf8(bytes.clone()).unwrap();
+        assert!(text.contains("{\\footnote \\chftn "), "text: {text}");
+        assert!(text.contains("{\\*\\oswkendnote}"), "text: {text}");
+        assert!(text.contains("{\\*\\revtbl {Unknown;}{Alice;}{Bob;}}"), "text: {text}");
+        assert!(text.contains("{\\revised \\revauth1 \\revdttm"), "text: {text}");
+        assert!(text.contains("{\\deleted \\revauth2 \\revdttm"), "text: {text}");
+        // Both note classes are present, so Word placement stays untouched.
+        assert!(!text.contains("\\aendnotes"));
+
+        let read = read_rtf(&bytes).unwrap();
+        assert_eq!(read.document.footnotes.len(), 1, "warnings: {:?}", read.warnings);
+        assert_eq!(read.document.endnotes.len(), 1);
+        assert!(read.document.footnotes[0].runs.iter().any(|run| run.text.contains("First note")));
+        assert!(read.document.endnotes[0].runs.iter().any(|run| run.text.contains("End note")));
+        assert_eq!(read.document.footnote_order().len(), 1);
+        assert_eq!(read.document.endnote_order().len(), 1);
+
+        let body = read.document.blocks.iter().map(Block::plain_text).collect::<Vec<_>>().join("\n");
+        assert!(body.contains("Body"));
+        assert!(body.contains("inserted text") && body.contains("removed text"), "body: {body}");
+        assert!(!body.contains("First note") && !body.contains("End note"), "note body leaked: {body}");
+
+        let revisions: Vec<(String, String, String)> = read
+            .document
+            .blocks
+            .iter()
+            .flat_map(|block| match block {
+                Block::Paragraph { runs, .. } => runs
+                    .iter()
+                    .filter_map(|run| run.revision.as_ref().map(|revision| (revision.kind.clone(), revision.author.clone(), revision.date.clone())))
+                    .collect::<Vec<_>>(),
+                _ => Vec::new(),
+            })
+            .collect();
+        assert!(
+            revisions.iter().any(|(kind, author, date)| kind == "insert" && author == "Alice" && date == "2026-01-01T00:00:00Z"),
+            "revisions: {revisions:?}"
+        );
+        assert!(
+            revisions.iter().any(|(kind, author, date)| kind == "delete" && author == "Bob" && date == "2026-02-03T04:05:00Z"),
+            "revisions: {revisions:?}"
+        );
+    }
+
+    #[test]
+    fn endnote_only_documents_request_endnote_placement() {
+        let mut document = TextDocument::new_blank("Endnotes");
+        document.endnotes = vec![Footnote { id: "en-a".into(), runs: vec![Run { text: "Only note".into(), ..Default::default() }], marker: String::new() }];
+        document.blocks = vec![Block::Paragraph {
+            props: ParaProps::default(),
+            runs: vec![
+                Run { text: "Body".into(), ..Default::default() },
+                Run { endnote: Some("en-a".into()), ..Default::default() },
+            ],
+        }];
+        let bytes = write_rtf(&document).unwrap();
+        let text = String::from_utf8(bytes).unwrap();
+        assert!(text.contains("\\aendnotes\\aenddoc"), "text: {text}");
+    }
+
+    #[test]
+    fn parses_hand_written_footnote_and_deletion() {
+        let rtf = br"{\rtf1\ansi{\*\revtbl{Unknown;}{Alice;}}{\fonttbl{\f0\fnil Calibri;}}\f0\fs24 Body text{\footnote \chftn Note from fixture} more {\deleted\revauth1 removed by Alice} tail\par}";
+        let read = read_rtf(rtf).unwrap();
+        assert_eq!(read.document.footnotes.len(), 1);
+        assert!(read.document.endnotes.is_empty());
+        assert!(read.document.footnotes[0].runs.iter().any(|run| run.text.contains("Note from fixture")));
+        assert_eq!(read.document.footnote_order().len(), 1);
+        let body = read.document.plain_text();
+        assert!(body.contains("Body text"), "body: {body}");
+        assert!(!body.contains("Note from fixture"), "note body leaked: {body}");
+        let (revision, text) = read
+            .document
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                Block::Paragraph { runs, .. } => runs
+                    .iter()
+                    .find_map(|run| run.revision.clone().map(|revision| (revision, run.text.clone()))),
+                _ => None,
+            })
+            .expect("a deleted run should carry a delete revision");
+        assert_eq!(revision.kind, "delete");
+        assert_eq!(revision.author, "Alice");
+        assert!(text.contains("removed by Alice"), "text: {text}");
     }
 }
 

@@ -47,12 +47,27 @@ const invoke = vi.fn(async (command: string) => {
   switch (command) {
     case "vault_status":
       return statusFixture;
+    case "vault_scan":
+      return statusFixture;
     case "vault_search":
       return searchFixture;
     case "vault_document_text":
       return "Full preview text of the indexed document.";
     case "vault_configure":
       return { folders: ["C:/vault"], includePdf: true, includeOffice: true, maxFileMb: 25, updatedAt: "2026-01-02T03:04:05Z" };
+    case "vault_import_files":
+      return {
+        imported: [
+          {
+            source: "C:/cache/imports/report.txt",
+            path: "C:/appdata/vault/imported/0123456789abcdef-report.txt",
+            name: "0123456789abcdef-report.txt",
+            size: 12,
+            sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          },
+        ],
+        skipped: [],
+      };
     default:
       return null;
   }
@@ -61,16 +76,26 @@ const invoke = vi.fn(async (command: string) => {
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invoke(...(args as [string])) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(async () => null) }));
+// Keep the real mobile helpers (isAndroid is a platform probe) and only mock
+// the SAF picker plus the probe; each test sets what it needs.
+vi.mock("../lib/mobile", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/mobile")>();
+  return { ...actual, isAndroid: vi.fn(() => false), pickOfficeFiles: vi.fn(async () => []) };
+});
 // The vault.* / compat.* keys are added to the i18n table by another engineer;
 // identity translation keeps the assertions stable either way, exactly like
 // the missing-key fallback does at runtime.
 vi.mock("../lib/i18n", () => ({ useT: () => (key: string) => key }));
 
 import { Vault } from "./Vault";
+import { isAndroid, pickOfficeFiles } from "../lib/mobile";
 
 describe("the vault screen renders against the real wire format", () => {
   beforeEach(() => {
     invoke.mockClear();
+    // restoreMocks resets the factory implementations before every test.
+    vi.mocked(isAndroid).mockReturnValue(false);
+    vi.mocked(pickOfficeFiles).mockResolvedValue([]);
   });
 
   it("states the privacy contract and shows the index status", async () => {
@@ -82,6 +107,8 @@ describe("the vault screen renders against the real wire format", () => {
     expect(screen.getByText("2.00 KB")).toBeInTheDocument();
     expect(screen.getByText("A configured folder no longer exists.")).toBeInTheDocument();
     expect(container.textContent).toContain("vault.foldersTitle");
+    // Desktop keeps the folder flow: the picker button stays available.
+    expect(screen.getAllByRole("button", { name: "vault.addFolder" }).length).toBeGreaterThan(0);
   });
 
   it("searches, renders two hits with highlighted snippets and previews one", async () => {
@@ -101,5 +128,32 @@ describe("the vault screen renders against the real wire format", () => {
 
     await user.click(screen.getByText("alpha.txt"));
     await waitFor(() => expect(screen.getByText("Full preview text of the indexed document.")).toBeInTheDocument());
+  });
+
+  it("imports picked documents on Android instead of scanning folders", async () => {
+    vi.mocked(isAndroid).mockReturnValue(true);
+    vi.mocked(pickOfficeFiles).mockResolvedValue(["C:/cache/imports/report.txt"]);
+    const user = userEvent.setup();
+    render(<Vault />);
+    await waitFor(() => expect(screen.getByText("vault.indexed")).toBeInTheDocument());
+
+    // Android hides the folder picker and explains the import model.
+    expect(screen.queryByRole("button", { name: "vault.addFolder" })).toBeNull();
+    expect(screen.getByText("vault.androidImportNote")).toBeInTheDocument();
+    expect(screen.getByText("vault.importedRootName")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "vault.importDocuments" }));
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("vault_import_files", { paths: ["C:/cache/imports/report.txt"] }),
+    );
+    // The import is followed by a scan of the configured roots (empty on a
+    // fresh Android vault; the backend adds the always-on import root).
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "vault_scan",
+        expect.objectContaining({ request: expect.objectContaining({ folders: [] }) }),
+      ),
+    );
+    expect(pickOfficeFiles).toHaveBeenCalledWith(true);
   });
 });

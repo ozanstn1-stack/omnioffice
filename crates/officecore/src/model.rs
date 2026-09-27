@@ -130,6 +130,34 @@ pub fn guess_mime(name: &str, bytes: &[u8]) -> String {
     "image/png".into()
 }
 
+/// A cell-based anchor used by floating sheet objects (images).
+///
+/// `address` is the top-left cell (`D2`); the offsets are the EMU distances
+/// from that cell's top-left corner, exactly as an OOXML drawing stores them.
+/// `to_*` is only filled when the source anchor was a `twoCellAnchor`, so a
+/// package written elsewhere keeps its bottom-right corner even though the
+/// exporter itself emits `oneCellAnchor` from `width_px`/`height_px`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CellAnchor {
+    pub address: String,
+    pub col_off_emu: i64,
+    pub row_off_emu: i64,
+    #[serde(default)]
+    pub to_address: Option<String>,
+    #[serde(default)]
+    pub to_col_off_emu: i64,
+    #[serde(default)]
+    pub to_row_off_emu: i64,
+}
+
+impl CellAnchor {
+    /// A bare anchor with no offsets, e.g. `A1`.
+    pub fn at(address: &str) -> Self {
+        Self { address: address.to_string(), ..Default::default() }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Writer
 // ---------------------------------------------------------------------------
@@ -932,8 +960,11 @@ pub struct Cell {
 
 /// Paper, orientation and print options for one sheet.
 ///
-/// Mirrors the `pageSetup`/`printOptions`/`headerFooter` parts of an XLSX so a
-/// print-ready sheet survives a round trip through the native format.
+/// Mirrors the `pageSetup`/`printOptions`/`printMargins`/`headerFooter` parts
+/// of an XLSX so a print-ready sheet survives a round trip through the native
+/// format. The V3.1 fields are covered by the container-level
+/// `#[serde(default)]`, so older `.oswk` units load unchanged and pull the
+/// intended defaults (not zero) from [`PrintSettings::default`].
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PrintSettings {
@@ -945,14 +976,48 @@ pub struct PrintSettings {
     pub fit_to_width: u32,
     pub fit_to_height: u32,
     pub center_horizontally: bool,
+    #[serde(default)]
+    pub center_vertically: bool,
     pub print_gridlines: bool,
     pub print_headings: bool,
     /// Row number repeated at the top of every page, e.g. "1:1".
     pub print_titles_rows: Option<String>,
+    /// Column letter repeated at the left of every page, e.g. "A:A".
+    #[serde(default)]
+    pub print_titles_cols: Option<String>,
+    /// The printed range as a relative A1 range (`A1:D40`), from
+    /// `_xlnm.Print_Area`.
+    #[serde(default)]
+    pub print_area: Option<String>,
     pub different_first_page: bool,
     pub different_odd_even: bool,
     pub header: String,
     pub footer: String,
+    /// Page margins in inches, as OOXML stores them. Missing keys in an older
+    /// unit fall back to the container-level `Default`, not to zero.
+    pub margin_left: f64,
+    pub margin_right: f64,
+    pub margin_top: f64,
+    pub margin_bottom: f64,
+    pub margin_header: f64,
+    pub margin_footer: f64,
+    /// `firstHeader`/`firstFooter`/`evenHeader`/`evenFooter` format strings,
+    /// active when the matching `different_*` flag is set. The odd header and
+    /// footer stay in `header`/`footer`.
+    #[serde(default)]
+    pub first_header: String,
+    #[serde(default)]
+    pub first_footer: String,
+    #[serde(default)]
+    pub even_header: String,
+    #[serde(default)]
+    pub even_footer: String,
+    /// Manual horizontal page breaks as 0-based row indexes (`<rowBreaks>`).
+    #[serde(default)]
+    pub row_breaks: Vec<u32>,
+    /// Manual vertical page breaks as 0-based column indexes (`<colBreaks>`).
+    #[serde(default)]
+    pub col_breaks: Vec<u32>,
 }
 
 impl Default for PrintSettings {
@@ -964,13 +1029,28 @@ impl Default for PrintSettings {
             fit_to_width: 1,
             fit_to_height: 0,
             center_horizontally: false,
+            center_vertically: false,
             print_gridlines: false,
             print_headings: false,
             print_titles_rows: None,
+            print_titles_cols: None,
+            print_area: None,
             different_first_page: false,
             different_odd_even: false,
             header: String::new(),
             footer: String::new(),
+            margin_left: 0.7,
+            margin_right: 0.7,
+            margin_top: 0.75,
+            margin_bottom: 0.75,
+            margin_header: 0.3,
+            margin_footer: 0.3,
+            first_header: String::new(),
+            first_footer: String::new(),
+            even_header: String::new(),
+            even_footer: String::new(),
+            row_breaks: Vec::new(),
+            col_breaks: Vec::new(),
         }
     }
 }
@@ -1011,6 +1091,14 @@ pub struct ChartData {
     pub y_title: String,
     pub stacked: bool,
     pub show_labels: bool,
+    /// Cached category labels (ChartML `c:strCache`). Empty means the chart only
+    /// carries ranges, which is how documents written before V3.1 import.
+    #[serde(default)]
+    pub categories_cache: Vec<String>,
+    /// Cached series values aligned with `series` (ChartML `c:numCache`); an
+    /// empty inner vector means that series only carries a range.
+    #[serde(default)]
+    pub series_values_cache: Vec<Vec<f64>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -1021,6 +1109,21 @@ pub struct ChartPlacement {
     pub anchor: String,
     pub width_px: f64,
     pub height_px: f64,
+}
+
+/// A picture floating over a worksheet.
+///
+/// The bytes live in [`ImageData`]; the anchor and size mirror the `xdr:pic`
+/// in the drawing part so an XLSX import/export round trip is stable.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SheetImage {
+    pub image: ImageData,
+    pub anchor: CellAnchor,
+    pub width_px: f64,
+    pub height_px: f64,
+    /// Clockwise rotation in degrees, as written to `a:xfrm/@rot`.
+    pub rotation_deg: f64,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -1174,6 +1277,82 @@ impl SpreadsheetTable {
     }
 }
 
+/// Sheet protection as stored in `<sheetProtection>`.
+///
+/// The password never appears in clear: `password_hash` is the legacy 16-bit
+/// XOR hash and `hash_value`/`salt_value`/`spin_count` carry the modern
+/// SHA-512 verifier, both exactly as Excel wrote them. The editor cannot
+/// unlock a protected sheet without the password and does not attempt to; the
+/// fields exist so a protected workbook round-trips byte-for-attribute.
+/// `options` holds the boolean attributes that were set (see `Sheet::protection`);
+/// true means the corresponding action stays locked.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SheetProtection {
+    /// True when `<sheetProtection>` says the sheet itself is protected.
+    pub enabled: bool,
+    /// Legacy `password` attribute (16-bit hash), when present.
+    pub password_hash: Option<String>,
+    /// Modern `algorithmName` (usually `SHA-512`).
+    pub algorithm_name: String,
+    pub hash_value: String,
+    pub salt_value: String,
+    pub spin_count: u32,
+    /// Locked-action attribute names that are on, sorted for a stable order:
+    /// `formatCells`, `formatColumns`, `formatRows`, `insertRows`, ... .
+    pub options: Vec<String>,
+}
+
+/// The recognised `<sheetProtection>` boolean attributes, in schema order.
+pub const SHEET_PROTECTION_OPTIONS: [&str; 15] = [
+    "objects",
+    "scenarios",
+    "formatCells",
+    "formatColumns",
+    "formatRows",
+    "insertColumns",
+    "insertRows",
+    "insertHyperlinks",
+    "deleteColumns",
+    "deleteRows",
+    "selectLockedCells",
+    "sort",
+    "autoFilter",
+    "pivotTables",
+    "selectUnlockedCells",
+];
+
+/// A pivot cache/table read back from a package, kept as its original parts.
+///
+/// The grid a pivot renders is already in the sheet cells, so the editor never
+/// recomputes from the cache. These raw parts exist purely so a re-export
+/// writes the same live Excel pivot instead of silently flattening it; the
+/// records are base64 because `.oswk` is JSON.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PreservedPivot {
+    /// The pivot table's `name` attribute, e.g. `PivotTable1`.
+    pub name: String,
+    /// Sheet the pivot table belongs to.
+    pub sheet: String,
+    /// The `cacheId` from the workbook's `<pivotCaches>` list.
+    pub cache_id: u32,
+    /// Raw `xl/pivotCache/pivotCacheDefinitionN.xml` text.
+    pub definition_xml: String,
+    /// Raw `xl/pivotCache/pivotCacheRecordsN.xml` bytes, base64 encoded.
+    #[serde(default)]
+    pub records_base64: Option<String>,
+    /// Raw `xl/pivotTables/pivotTableN.xml` text.
+    pub table_xml: String,
+    /// Original records part path, kept so the re-export keeps the same target.
+    #[serde(default)]
+    pub records_part: Option<String>,
+    /// `sheet!range` of the cache source, for display and warnings.
+    pub source: String,
+    /// Cache field names in order.
+    pub fields: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Sheet {
@@ -1188,6 +1367,9 @@ pub struct Sheet {
     pub freeze_rows: u32,
     pub freeze_cols: u32,
     pub charts: Vec<ChartPlacement>,
+    /// Pictures floating over the sheet (V3.1 XLSX import/export).
+    #[serde(default)]
+    pub images: Vec<SheetImage>,
     pub pivot_tables: Vec<PivotTable>,
     /// Structured tables defined over this sheet.
     #[serde(default)]
@@ -1201,6 +1383,10 @@ pub struct Sheet {
     pub print: PrintSettings,
     /// Legacy sheet-protection hash; empty means the sheet is unprotected.
     pub sheet_protection: String,
+    /// Full `<sheetProtection>` state (V3.1). `sheet_protection` keeps the
+    /// legacy password hash so older units and the frontend stay compatible.
+    #[serde(default)]
+    pub protection: SheetProtection,
 }
 
 impl Default for Sheet {
@@ -1217,6 +1403,7 @@ impl Default for Sheet {
             freeze_rows: 0,
             freeze_cols: 0,
             charts: Vec::new(),
+            images: Vec::new(),
             pivot_tables: Vec::new(),
             tables: Vec::new(),
             conditional: Vec::new(),
@@ -1226,6 +1413,7 @@ impl Default for Sheet {
             tab_color: None,
             print: PrintSettings::default(),
             sheet_protection: String::new(),
+            protection: SheetProtection::default(),
         }
     }
 }
@@ -1299,6 +1487,10 @@ pub struct Workbook {
     /// Defined names, workbook-level and per-sheet.
     pub names: Vec<NamedRange>,
     pub metadata: DocMetadata,
+    /// Pivot caches/tables imported raw from a package (V3.1); re-exported
+    /// as-is so a live Excel pivot survives an edit-and-save cycle.
+    #[serde(default)]
+    pub preserved_pivots: Vec<PreservedPivot>,
 }
 
 impl Default for Workbook {
@@ -1310,6 +1502,7 @@ impl Default for Workbook {
             active_sheet: 0,
             names: Vec::new(),
             metadata: DocMetadata::default(),
+            preserved_pivots: Vec::new(),
         }
     }
 }

@@ -32,6 +32,8 @@ import { uid } from "../lib/office-types";
 import { useDataSheets, useDraw, useNotes, useOfficeTabs, usePlanner, type DrawDocument } from "../lib/office-store";
 import * as api from "../lib/office-api";
 import { Screen } from "../components/layout";
+import { compatibilityReport, gatingLossItems } from "../components/compatibility";
+import { useDataLossPrompt } from "../components/data-loss-dialog";
 import { TEMPLATES, templatesFor } from "./templates";
 
 // ---------------------------------------------------------------------------
@@ -782,11 +784,38 @@ export function ConverterScreen() {
   const run = async () => {
     if (files.length === 0) return;
     setBusy(true);
+    // Data Loss Protection covers the converter as well: convert a file to any
+    // non-native target only after the compatibility report has been shown.
+    // The report needs the parsed model, so office inputs are opened read-only
+    // for the check; PDFs and unreadable files skip it (fail-open).
+    let effectiveTarget = target;
+    if (target !== "oswk") {
+      for (const input of files) {
+        try {
+          const opened = await api.openDocument(input);
+          if (opened.kind !== "writer" && opened.kind !== "calc" && opened.kind !== "impress") continue;
+          const report = await compatibilityReport(opened.kind, opened.model, target);
+          if (gatingLossItems(target, report).length === 0) continue;
+          const choice = await useDataLossPrompt.getState().ask(target, report);
+          if (choice === "cancel") {
+            setBusy(false);
+            return;
+          }
+          if (choice === "oswk") {
+            effectiveTarget = "oswk";
+            setTarget("oswk");
+          }
+          break;
+        } catch {
+          // Not an office document we can inspect (e.g. PDF) - convert as asked.
+        }
+      }
+    }
     const converted: typeof results = [];
     for (const input of files) {
       const base = input.replace(/\.[^.\\/]+$/, "");
       const directory = outputDir || input.replace(/[\\/][^\\/]+$/, "");
-      const output = `${base}.${target === "html" ? "html" : target}`.replace(/^.*[\\/]/, `${directory}/`);
+      const output = `${base}.${effectiveTarget === "html" ? "html" : effectiveTarget}`.replace(/^.*[\\/]/, `${directory}/`);
       try {
         const info = await api.convertFile(input, output);
         converted.push({ input, output: info.output, ok: true, detail: info.warnings.join(" ") });

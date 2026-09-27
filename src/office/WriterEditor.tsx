@@ -7,6 +7,7 @@
  * setup, styles) mutate the model directly, which keeps DOCX/ODT export exact.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { readFile } from "@tauri-apps/plugin-fs";
 import {
@@ -62,7 +63,7 @@ import {
   splitRuns,
   wordRangeAt,
 } from "./writer/runs";
-import { caretOffset, caretOnFirstLine, caretOnLastLine, repaintParagraph, selectedRange, setCaretOffset } from "./writer/caret";
+import { caretOffset, caretOnFirstLine, caretOnLastLine, offsetFromPoint, paragraphAtPoint, repaintParagraph, selectedRange, setCaretOffset, setSelectionRange } from "./writer/caret";
 import { domToRuns, runsToHtml, wrapCellRuns } from "./writer/writerDom";
 import { emptyRun as emptyWriterRun } from "./writer/runs";
 import { measureBlocks } from "./writer/measure";
@@ -72,6 +73,18 @@ import { LayoutList, ListTree, ListOrdered as TocIcon, RefreshCw } from "lucide-
 export { runsToHtml, domToRuns };
 
 type WriterTab = OfficeTab & { model: TextDocument };
+
+/** The block whose editable paragraph is hosted by a page fragment (V3.1). */
+interface PageEditState {
+  /** Block index owning the editable. */
+  block: number;
+  /** Fragment line index hosting it, or null to pick by `edge` after a reflow. */
+  from: number | null;
+  /** Character offset the caret was placed at. */
+  offset: number;
+  /** Which end of the block the caret is at when no fragment matches `from`. */
+  edge: "start" | "end";
+}
 
 /** Structural edits the paragraph component asks the document to perform. */
 type StructureAction =
@@ -153,6 +166,17 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   // Caret the model wants placed after a structural edit. It is consumed by
   // the layout effect below, in the same commit that renders the new blocks.
   const pendingFocus = useRef<{ index: number; offset: number; scope: string } | null>(null);
+  // V3.1: the paginated view edits where the page is. `pageEdit` names the
+  // block whose real editable paragraph is hosted by one of its fragments; the
+  // fragment renders the whole paragraph shifted by `fragment.offsetPx` and
+  // clipped by the page, exactly like the static preview did. The caret request
+  // below is separate from `pendingFocus` because it targets `data-scope="page"`.
+  const [pageEdit, setPageEdit] = useState<PageEditState | null>(null);
+  const pendingPageFocus = useRef<{ block: number; offset: number } | null>(null);
+  // Last (block, offset) recorded before a model update. A reflow can remount
+  // the editable when fragment boundaries move; this is what the restore in the
+  // layout effect uses so the caret never jumps to the start.
+  const pageCaret = useRef<{ block: number; offset: number; from: number } | null>(null);
   const picker = useTablePicker();
 
   const document = tab.model;
@@ -175,13 +199,61 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   // before focus had moved and was lost.
   useLayoutEffect(() => {
     const request = pendingFocus.current;
-    if (!request) return;
-    pendingFocus.current = null;
-    const target = window.document.querySelector<HTMLElement>(`[data-scope="${request.scope}"][data-block-index="${request.index}"]`);
-    if (!target) return;
-    target.focus();
-    setCaretOffset(target, request.offset);
+    if (request) {
+      // Pagination lags the model by one commit, so the target paragraph may
+      // still be missing; keep the request for the next pass instead of losing
+      // the caret. Static page fragments share the scope/block attributes, so
+      // the page target must be pinned to the contentEditable.
+      const target = window.document.querySelector<HTMLElement>(
+        request.scope === "page"
+          ? `[data-scope="page"][data-block-index="${request.index}"][contenteditable="true"]`
+          : `[data-scope="${request.scope}"][data-block-index="${request.index}"]`,
+      );
+      if (target) {
+        pendingFocus.current = null;
+        target.focus();
+        setCaretOffset(target, request.offset);
+      }
+    }
+
+    const pageRequest = pendingPageFocus.current;
+    if (pageRequest) {
+      const target = window.document.querySelector<HTMLElement>(
+        `[data-scope="page"][data-block-index="${pageRequest.block}"][contenteditable="true"]`,
+      );
+      if (target) {
+        pendingPageFocus.current = null;
+        target.focus();
+        setCaretOffset(target, pageRequest.offset);
+        // Cross-page caret moves can land on a sheet outside the viewport;
+        // `nearest` leaves an already visible page alone.
+        target.scrollIntoView({ block: "nearest" });
+        pageCaret.current = { block: pageRequest.block, offset: pageRequest.offset, from: pageEdit?.from ?? -1 };
+      }
+    }
+
+    // A reflow remounts the page editable when fragment boundaries move. The
+    // removed node does not fire a usable blur, so focus falls back to the
+    // body; take it back at the (block, offset) recorded before the update.
+    const active = pageEdit;
+    const last = pageCaret.current;
+    if (active && last && last.block === active.block) {
+      const target = window.document.querySelector<HTMLElement>(
+        `[data-scope="page"][data-block-index="${active.block}"][contenteditable="true"]`,
+      );
+      const focused = window.document.activeElement;
+      if (target && (focused === null || focused === window.document.body)) {
+        target.focus();
+        setCaretOffset(target, last.offset);
+      }
+    }
   });
+
+  // The paginated in-place editor is body-only; leaving the view must not leave
+  // an invisible editable behind.
+  useEffect(() => {
+    if (view !== "paginated" || editingHeader) setPageEdit(null);
+  }, [view, editingHeader]);
 
   // Ctrl+Enter inserts a real page break at the caret.
   useEffect(() => {
@@ -552,15 +624,22 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
    * paragraphs in the DOM (a focused contentEditable is not re-rendered by
    * React) and restores the caret once the model change has committed.
    */
-  const handleStructure = (action: StructureAction, scope: "body" | "header" | "footer" | "cell") => {
+  const handleStructure = (action: StructureAction, scope: "body" | "header" | "footer" | "cell" | "page") => {
     if (scope === "cell") return; // cell editing keeps the simple single-paragraph model
     const blocks = [...currentBlocks()];
     const block = blocks[action.index];
     if (!block) return;
     const paragraph = block.type === "paragraph" ? block : null;
 
-    const focusParagraph = (index: number, offset: number) => {
+    const focusParagraph = (index: number, offset: number, edge: "start" | "end" = offset <= 0 ? "start" : "end") => {
       pendingFocus.current = { index, offset, scope };
+      // In the paginated view the caret also moves the editable to the
+      // fragment that owns the offset: the first fragment for an offset at the
+      // start, the last for one at the end.
+      if (scope === "page") {
+        pageCaret.current = { block: index, offset, from: -1 };
+        setPageEdit({ block: index, from: null, offset, edge });
+      }
     };
 
     /**
@@ -613,7 +692,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         blocks.splice(action.index, 1);
         withBlocks(blocks);
         repaintAt(action.index - 1, merged);
-        focusParagraph(action.index - 1, caret);
+        focusParagraph(action.index - 1, caret, "end");
         return;
       }
       case "mergeForward": {
@@ -630,7 +709,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         blocks.splice(action.index + 1, 1);
         withBlocks(blocks);
         repaintAt(action.index, merged);
-        focusParagraph(action.index, caret);
+        focusParagraph(action.index, caret, "end");
         return;
       }
       case "indent":
@@ -643,10 +722,16 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         return;
       }
       case "moveCaret": {
-        const target = blocks[action.index + action.delta];
-        if (!target || target.type !== "paragraph") return;
-        const at = action.delta < 0 ? (action.atLine === "start" ? 0 : runsText(target.runs).length) : action.atLine === "end" ? runsText(target.runs).length : 0;
-        focusParagraph(action.index + action.delta, at);
+        // Skip blocks that cannot hold a caret (page/section breaks, rules,
+        // images, tables): the next paragraph may well live on the next page,
+        // and stopping on a break would strand the caret.
+        const direction = action.delta < 0 ? -1 : 1;
+        let target = action.index + direction;
+        while (target >= 0 && target < blocks.length && blocks[target].type !== "paragraph") target += direction;
+        const nextParagraph = blocks[target];
+        if (!nextParagraph || nextParagraph.type !== "paragraph") return;
+        const at = direction < 0 ? (action.atLine === "start" ? 0 : runsText(nextParagraph.runs).length) : action.atLine === "end" ? runsText(nextParagraph.runs).length : 0;
+        focusParagraph(target, at, action.atLine);
         return;
       }
     }
@@ -960,9 +1045,9 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   /**
    * Opens the editing surface on a block at the clicked position.
    *
-   * The paginated pages are measured fragments, so typing happens on the
-   * continuous surface; the click position is mapped to a character offset so
-   * the caret lands exactly where the user clicked.
+   * Used for blocks that have no in-place surface (tables, images, TOC) and for
+   * header/footer jumps: those still switch to the continuous view. Paragraph
+   * fragments in the paginated view are handled by `activatePageEdit` instead.
    */
   const editBlock = (index: number, offset = 0) => {
     setView("continuous");
@@ -974,6 +1059,106 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     window.setTimeout(() => {
       window.document.querySelector<HTMLElement>(`[data-scope="body"][data-block-index="${index}"]`)?.scrollIntoView({ block: "center" });
     }, 0);
+  };
+
+  /** Header/footer fragments open the continuous surface on that scope. */
+  const editHeaderFooter = (scope: "header" | "footer", index: number) => {
+    setEditingHeader(scope);
+    setView("continuous");
+    pendingFocus.current = { index, offset: 0, scope };
+  };
+
+  // -------------------------------------------------------------------------
+  // Paginated in-place editing (V3.1)
+  // -------------------------------------------------------------------------
+
+  /** Fragments of a block in document order (page order, then fragment order). */
+  const fragmentListOf = (blockIndex: number): Fragment[] => {
+    const fragments: Fragment[] = [];
+    for (const page of pages) for (const fragment of page.fragments) if (fragment.index === blockIndex) fragments.push(fragment);
+    return fragments;
+  };
+
+  /**
+   * The fragment that hosts the active editable for a block.
+   *
+   * A reflow keeps the fragment the caret was in as long as it still exists.
+   * When splitting changed the boundaries entirely, the caret edge decides:
+   * offsets at the start of a block belong to its first fragment, offsets at
+   * the end to its last.
+   */
+  const activeFragmentFrom = (blockIndex: number): number | null => {
+    if (!pageEdit || pageEdit.block !== blockIndex) return null;
+    const fragments = fragmentListOf(blockIndex);
+    if (fragments.length === 0) return null;
+    if (pageEdit.from !== null && fragments.some((fragment) => fragment.from === pageEdit.from)) return pageEdit.from;
+    return pageEdit.edge === "end" ? fragments[fragments.length - 1].from : fragments[0].from;
+  };
+
+  /**
+   * Activates a page fragment for editing.
+   *
+   * The offset comes from a real hit test, so continuation fragments place the
+   * caret at the clicked character even though their DOM holds the whole
+   * paragraph. `flushSync` makes the editable exist before the pointer handler
+   * returns: Android webviews only open the soft keyboard for a `focus()` call
+   * inside the user gesture.
+   */
+  const activatePageEdit = (blockIndex: number, offset: number, fragment: Fragment, container: HTMLElement) => {
+    const block = document.blocks[blockIndex];
+    if (block?.type !== "paragraph") {
+      editBlock(blockIndex, offset);
+      return;
+    }
+    pendingPageFocus.current = { block: blockIndex, offset };
+    pageCaret.current = { block: blockIndex, offset, from: fragment.from };
+    flushSync(() => setPageEdit({ block: blockIndex, from: fragment.from, offset, edge: "start" }));
+    const editable = container.querySelector<HTMLElement>(`[data-scope="page"][data-block-index="${blockIndex}"][contenteditable="true"]`);
+    if (editable) {
+      editable.focus();
+      setCaretOffset(editable, offset);
+      pendingPageFocus.current = null;
+    }
+  };
+
+  /** Records the caret before a model update so a reflow can restore it. */
+  const recordPageCaret = (blockIndex: number, offset: number, from: number) => {
+    pageCaret.current = { block: blockIndex, offset, from };
+  };
+
+  /**
+   * Extends a drag selection that started on a static fragment.
+   *
+   * Pointer capture keeps the moves coming; every fragment renders the whole
+   * paragraph, so the point maps to a block offset even when it hovers a
+   * continuation on another page. Only the active block's editable takes the
+   * range, which keeps one selection owner per block.
+   */
+  const extendPageSelection = (blockIndex: number, anchor: number, x: number, y: number) => {
+    const editable = window.document.querySelector<HTMLElement>(`[data-scope="page"][data-block-index="${blockIndex}"][contenteditable="true"]`);
+    if (!editable) return;
+    const hit = paragraphAtPoint(window.document, x, y);
+    if (!hit || hit.block !== blockIndex) return;
+    setSelectionRange(editable, Math.min(anchor, hit.offset), Math.max(anchor, hit.offset));
+    pageCaret.current = { block: blockIndex, offset: hit.offset, from: pageCaret.current?.from ?? -1 };
+  };
+
+  /**
+   * Moves the active editable one fragment forward/backward, keeping the
+   * character offset. Returns false when the block has no fragment that way, so
+   * the caller can fall through to the normal paragraph-end behaviour.
+   */
+  const moveActiveFragment = (blockIndex: number, direction: -1 | 1): boolean => {
+    if (!pageEdit || pageEdit.block !== blockIndex) return false;
+    const fragments = fragmentListOf(blockIndex);
+    const position = fragments.findIndex((fragment) => fragment.from === activeFragmentFrom(blockIndex));
+    const next = fragments[position + direction];
+    if (!next) return false;
+    const offset = pageCaret.current?.block === blockIndex ? pageCaret.current.offset : pageEdit.offset;
+    pageCaret.current = { block: blockIndex, offset, from: next.from };
+    pendingPageFocus.current = { block: blockIndex, offset };
+    setPageEdit({ block: blockIndex, from: next.from, offset, edge: direction < 0 ? "start" : "end" });
+    return true;
   };
 
   const renderBlocks = (blocks: Block[], scope: "body" | "header" | "footer" | "cell", tablePath?: [number, number, number]) => (
@@ -1280,7 +1465,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                   >
                     {headerBlocks.length > 0 ? (
                       <div className="writer-header-zone muted">
-                        <StaticBlocks blocks={headerBlocks} scope="header" page={pageIndex + 1} pages={pages.length} zoom={zoom} noteNumbers={noteNumbers} onOpen={editBlock} />
+                        <StaticBlocks blocks={headerBlocks} scope="header" page={pageIndex + 1} pages={pages.length} zoom={zoom} noteNumbers={noteNumbers} onOpen={(index) => editHeaderFooter("header", index)} />
                       </div>
                     ) : null}
                     <div className="writer-body" style={{ height: sheetContentHeight - page.noteHeightPx, overflow: "hidden" }}>
@@ -1292,7 +1477,18 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                           zoom={zoom}
                           noteNumbers={noteNumbers}
                           showRevisions={document.showRevisions !== false}
-                          onOpen={(offset) => editBlock(fragment.index, offset)}
+                          active={pageEdit?.block === fragment.index && activeFragmentFrom(fragment.index) === fragment.from}
+                          onActivate={activatePageEdit}
+                          onExtendSelection={extendPageSelection}
+                          onSync={(element) => syncParagraph(fragment.index, element)}
+                          onStructure={(action) => handleStructure(action, "page")}
+                          onFocusParagraph={handleParagraphFocus}
+                          onRecordCaret={recordPageCaret}
+                          onCaretOut={(direction) => {
+                            moveActiveFragment(fragment.index, direction);
+                          }}
+                          onArrowAtEdge={(direction) => moveActiveFragment(fragment.index, direction)}
+                          onOpen={editBlock}
                         />
                       ))}
                     </div>
@@ -1312,7 +1508,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                     ) : null}
                     {footerBlocks.length > 0 ? (
                       <div className="writer-footer-zone muted">
-                        <StaticBlocks blocks={footerBlocks} scope="footer" page={pageIndex + 1} pages={pages.length} zoom={zoom} noteNumbers={noteNumbers} onOpen={editBlock} />
+                        <StaticBlocks blocks={footerBlocks} scope="footer" page={pageIndex + 1} pages={pages.length} zoom={zoom} noteNumbers={noteNumbers} onOpen={(index) => editHeaderFooter("footer", index)} />
                       </div>
                     ) : null}
                   </div>
@@ -1667,6 +1863,7 @@ function StaticParagraph({
   pages = 0,
   noteNumbers,
   showRevisions = true,
+  onOpen,
 }: {
   block: Extract<Block, { type: "paragraph" }>;
   index: number;
@@ -1676,11 +1873,13 @@ function StaticParagraph({
   pages?: number;
   noteNumbers?: Record<string, number>;
   showRevisions?: boolean;
+  /** Click target for header/footer previews; page fragments use pointer events. */
+  onOpen?: () => void;
 }) {
   const props = block.props;
   const listMarker = props.list ? (props.list.kind === "number" ? `${props.list.start}.` : ["•", "◦", "▪"][props.list.level % 3]) : null;
   return (
-    <div className="para-row" data-block-index={index} data-scope={scope} style={{ marginLeft: props.list ? props.list.level * 24 : 0 }}>
+    <div className="para-row" data-block-index={index} data-scope={scope} onClick={onOpen} style={{ marginLeft: props.list ? props.list.level * 24 : 0 }}>
       {listMarker ? <span className="list-marker">{listMarker}</span> : null}
       <div
         className={`para para-${props.style.toLowerCase()}${props.pageBreakBefore ? " page-break-before" : ""}`}
@@ -1773,7 +1972,7 @@ function StaticBlocks({
       {blocks.map((block, index) => {
         if (block.type === "paragraph") {
           return (
-            <StaticParagraph key={index} block={block} index={index} scope={scope} zoom={zoom} page={page} pages={pages} noteNumbers={noteNumbers} showRevisions={showRevisions} />
+            <StaticParagraph key={index} block={block} index={index} scope={scope} zoom={zoom} page={page} pages={pages} noteNumbers={noteNumbers} showRevisions={showRevisions} onOpen={() => onOpen(index)} />
           );
         }
         return (
@@ -1806,6 +2005,15 @@ function PageFragmentView({
   zoom,
   noteNumbers,
   showRevisions,
+  active,
+  onActivate,
+  onExtendSelection,
+  onSync,
+  onStructure,
+  onFocusParagraph,
+  onRecordCaret,
+  onCaretOut,
+  onArrowAtEdge,
   onOpen,
 }: {
   fragment: Fragment;
@@ -1813,49 +2021,266 @@ function PageFragmentView({
   zoom: number;
   noteNumbers?: Record<string, number>;
   showRevisions?: boolean;
-  onOpen: (offset: number) => void;
+  active: boolean;
+  onActivate: (index: number, offset: number, fragment: Fragment, container: HTMLElement) => void;
+  onExtendSelection: (index: number, anchor: number, x: number, y: number) => void;
+  onSync: (element: HTMLElement) => void;
+  onStructure: (action: StructureAction) => void;
+  onFocusParagraph: (block: Extract<Block, { type: "paragraph" }>) => void;
+  onRecordCaret: (index: number, offset: number, from: number) => void;
+  onCaretOut: (direction: -1 | 1) => void;
+  onArrowAtEdge: (direction: -1 | 1) => boolean;
+  onOpen: (index: number, offset?: number) => void;
 }) {
+  // Anchor of a drag that started on a static fragment. The static copy cannot
+  // extend the browser selection by itself, so the moves rebuild the range on
+  // the active editable with pointer capture.
+  const drag = useRef<number | null>(null);
   if (!block) return null;
-  // Maps a click to the character offset inside the fragment so the caret
-  // lands where the user clicked, not at the start of the block.
-  const clickOffset = (event: React.MouseEvent<HTMLElement>): number => {
-    if (fragment.mode !== "whole") return 0;
-    const target = window.document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null };
-    const range = target.caretRangeFromPoint?.(event.clientX, event.clientY);
-    if (!range) return 0;
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
     const container = event.currentTarget;
-    let offset = 0;
-    const walker = window.document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-    let node = walker.nextNode();
-    while (node) {
-      if (node === range.startContainer) {
-        offset += range.startOffset;
-        break;
+    const editable = container.querySelector<HTMLElement>('[contenteditable="true"]');
+    if (editable && editable.contains(event.target as Node)) return; // native caret and drags
+    const para = container.querySelector<HTMLElement>(".para");
+    if (!para) return;
+    // `offsetFromPoint` hit-tests the paragraph, so continuation fragments map
+    // the click to the character in the full block, not to the fragment start.
+    const offset = offsetFromPoint(para, event.clientX, event.clientY) ?? 0;
+    if (event.pointerType === "mouse") {
+      // Claim the gesture: the browser would otherwise start a selection on
+      // the static copy that the editable replaces a moment later.
+      event.preventDefault();
+      drag.current = offset;
+      try {
+        container.setPointerCapture(event.pointerId);
+      } catch {
+        // jsdom and some older webviews do not implement pointer capture.
       }
-      offset += (node.textContent ?? "").length;
-      node = walker.nextNode();
     }
-    return offset;
+    onActivate(fragment.index, offset, fragment, container);
   };
-  if (fragment.mode === "lines" && block.type === "paragraph") {
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (drag.current === null) return;
+    onExtendSelection(fragment.index, drag.current, event.clientX, event.clientY);
+  };
+
+  const endDrag = () => {
+    drag.current = null;
+  };
+
+  if (block.type === "paragraph") {
+    const clipped = fragment.mode === "lines";
     return (
-      <div className="writer-fragment" style={{ height: fragment.heightPx, overflow: "hidden" }} onClick={(event) => onOpen(clickOffset(event))}>
-        <div style={{ marginTop: -fragment.offsetPx }}>
-          <StaticParagraph block={block} index={fragment.index} scope="page" zoom={zoom} noteNumbers={noteNumbers} showRevisions={showRevisions} />
+      <div
+        className="writer-fragment"
+        data-fragment-from={fragment.from}
+        style={clipped ? { height: fragment.heightPx, overflow: "hidden" } : undefined}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onLostPointerCapture={endDrag}
+      >
+        <div style={clipped ? { marginTop: -fragment.offsetPx } : undefined}>
+          {active ? (
+            <PageEditableParagraph
+              block={block}
+              index={fragment.index}
+              fragment={fragment}
+              zoom={zoom}
+              noteNumbers={noteNumbers}
+              showRevisions={showRevisions}
+              onSync={onSync}
+              onStructure={onStructure}
+              onFocusParagraph={onFocusParagraph}
+              onRecordCaret={onRecordCaret}
+              onCaretOut={onCaretOut}
+              onArrowAtEdge={onArrowAtEdge}
+            />
+          ) : (
+            <StaticParagraph block={block} index={fragment.index} scope="page" zoom={zoom} noteNumbers={noteNumbers} showRevisions={showRevisions} />
+          )}
         </div>
       </div>
     );
   }
   if (fragment.mode === "rows" && block.type === "table") {
     return (
-      <div className="writer-fragment" onClick={() => onOpen(0)}>
+      <div className="writer-fragment" onClick={() => onOpen(fragment.index, 0)}>
         <StaticTable table={block.table} zoom={zoom} from={fragment.from} to={fragment.to} />
       </div>
     );
   }
   return (
-    <div className="writer-fragment" onClick={(event) => onOpen(clickOffset(event))}>
-      <StaticBlocks blocks={[block]} scope="page" page={0} pages={0} zoom={zoom} noteNumbers={noteNumbers} showRevisions={showRevisions} onOpen={() => onOpen(0)} />
+    <div className="writer-fragment" onClick={() => onOpen(fragment.index, 0)}>
+      <StaticBlocks blocks={[block]} scope="page" page={0} pages={0} zoom={zoom} noteNumbers={noteNumbers} showRevisions={showRevisions} onOpen={() => onOpen(fragment.index, 0)} />
+    </div>
+  );
+}
+
+/**
+ * The block's editable paragraph, hosted by one page fragment.
+ *
+ * The element carries the *whole* paragraph; the fragment box clips it to the
+ * page band, which is what lets the caret and the model text continue across a
+ * page break. One active fragment per block keeps a single editing surface, so
+ * typing, IME, paste and the native caret behave exactly like the continuous
+ * surface and flow through `syncParagraph`.
+ */
+function PageEditableParagraph({
+  block,
+  index,
+  fragment,
+  zoom,
+  noteNumbers,
+  showRevisions,
+  onSync,
+  onStructure,
+  onFocusParagraph,
+  onRecordCaret,
+  onCaretOut,
+  onArrowAtEdge,
+}: {
+  block: Extract<Block, { type: "paragraph" }>;
+  index: number;
+  fragment: Fragment;
+  zoom: number;
+  noteNumbers?: Record<string, number>;
+  showRevisions?: boolean;
+  onSync: (element: HTMLElement) => void;
+  onStructure: (action: StructureAction) => void;
+  onFocusParagraph: (block: Extract<Block, { type: "paragraph" }>) => void;
+  onRecordCaret: (index: number, offset: number, from: number) => void;
+  onCaretOut: (direction: -1 | 1) => void;
+  onArrowAtEdge: (direction: -1 | 1) => boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [focused, setFocused] = useState(false);
+  // Caret to restore after a structural change, consumed by the effect below.
+  const pendingCaret = useRef<number | null>(null);
+  const props = block.props;
+
+  // Same contract as the continuous paragraph: while focused the browser owns
+  // the DOM, but when the model and the screen disagree (a structural edit
+  // rewrote the runs) the element is repainted and the caret restored.
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const html = runsToHtml(block.runs, { noteNumbers, showRevisions });
+    if (!focused) {
+      if (element.innerHTML !== html) element.innerHTML = html;
+      return;
+    }
+    const modelText = runsText(block.runs);
+    const domText = runsText(domToRuns(element));
+    if (modelText === domText && pendingCaret.current === null) return;
+    const at = pendingCaret.current ?? caretOffset(element);
+    pendingCaret.current = null;
+    if (element.innerHTML !== html) element.innerHTML = html;
+    setCaretOffset(element, Math.min(at, modelText.length));
+  }, [block.runs, focused, noteNumbers, showRevisions]);
+
+  // The caret can land on a line the fragment clips away (ArrowDown past the
+  // visible band, typing at the page boundary). Hand the surface to the
+  // neighbouring fragment instead of leaving the caret hidden. jsdom has no
+  // layout, so the geometry guards keep tests on the no-op path.
+  useLayoutEffect(() => {
+    if (!focused || !ref.current) return;
+    const element = ref.current;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (!element.contains(range.startContainer)) return;
+    const caret = typeof range.getBoundingClientRect === "function" ? range.getBoundingClientRect() : null;
+    const box = element.getBoundingClientRect();
+    if (!caret || caret.height === 0 || box.height === 0) return;
+    const y = caret.top - box.top;
+    if (y >= fragment.offsetPx + fragment.heightPx) onCaretOut(1);
+    else if (y < fragment.offsetPx) onCaretOut(-1);
+  });
+
+  const record = () => {
+    const element = ref.current;
+    if (element) onRecordCaret(index, caretOffset(element), fragment.from);
+  };
+
+  /** True when the collapsed caret sits on the first/last visible line. */
+  const caretAtFragmentEdge = (element: HTMLElement, direction: -1 | 1): boolean => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return false;
+    const range = selection.getRangeAt(0);
+    if (!element.contains(range.startContainer)) return false;
+    const caret = typeof range.getBoundingClientRect === "function" ? range.getBoundingClientRect() : null;
+    const box = element.getBoundingClientRect();
+    if (!caret || caret.height === 0 || box.height === 0) return false;
+    // Subpixel line boxes put the edge a fraction of a pixel off, so compare
+    // with a one-pixel tolerance.
+    const y = caret.top - box.top;
+    if (direction > 0) return y + Math.max(1, caret.height) >= fragment.offsetPx + fragment.heightPx - 1;
+    return y <= fragment.offsetPx + 1;
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const element = ref.current;
+    if (!element) return;
+    if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      // Only claim the key at the fragment edge and only when the block really
+      // continues in that direction; otherwise the shared handler's
+      // paragraph-end behaviour applies.
+      if (caretAtFragmentEdge(element, direction) && onArrowAtEdge(direction)) {
+        event.preventDefault();
+        return;
+      }
+    }
+    handleParagraphKeyDown(event, { element, block, index, onStructure, pendingCaret });
+  };
+
+  const listMarker = props.list ? (props.list.kind === "number" ? `${props.list.start}.` : ["•", "◦", "▪"][props.list.level % 3]) : null;
+  return (
+    <div className="para-row" style={{ marginLeft: props.list ? props.list.level * 24 : 0 }}>
+      {listMarker ? (
+        <span className="list-marker" contentEditable={false}>
+          {listMarker}
+        </span>
+      ) : null}
+      <div
+        ref={ref}
+        className={`para para-${props.style.toLowerCase()}${props.pageBreakBefore ? " page-break-before" : ""}`}
+        data-block-index={index}
+        data-scope="page"
+        data-fragment-from={fragment.from}
+        contentEditable
+        suppressContentEditableWarning
+        spellCheck
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+        onKeyUp={record}
+        onFocus={() => {
+          setFocused(true);
+          onFocusParagraph(block);
+          record();
+        }}
+        onBlur={(event) => {
+          setFocused(false);
+          onSync(event.currentTarget);
+        }}
+        onInput={(event) => {
+          record();
+          onSync(event.currentTarget);
+        }}
+        style={{
+          textAlign: props.align as "left" | "center" | "right" | "justify",
+          lineHeight: props.lineSpacing,
+          marginBottom: props.spaceAfterPt,
+          marginTop: props.spaceBeforePt,
+          textIndent: props.firstLinePt,
+          fontSize: `${(effectiveFontSize(block) ?? 11) * zoom}pt`,
+        }}
+      />
     </div>
   );
 }
@@ -1940,6 +2365,132 @@ function BlockView({
 }
 
 /**
+ * The structural key handling shared by the continuous paragraph and the
+ * paginated page editable.
+ *
+ * Normal typing is left to the browser; the keys that change the *structure* of
+ * the document are intercepted here and reported upwards, because the model -
+ * not the DOM - is the source of truth that DOCX/ODT export and PDF layout
+ * read. Keeping one implementation means both surfaces stay in sync.
+ */
+function handleParagraphKeyDown(
+  event: React.KeyboardEvent<HTMLElement>,
+  {
+    element,
+    block,
+    index,
+    onStructure,
+    pendingCaret,
+  }: {
+    element: HTMLElement;
+    block: Extract<Block, { type: "paragraph" }>;
+    index: number;
+    onStructure: (action: StructureAction) => void;
+    pendingCaret: { current: number | null };
+  },
+): void {
+  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") return; // page break, handled globally
+  const mod = event.ctrlKey || event.metaKey;
+  const offset = caretOffset(element);
+  const range = selectedRange(element);
+  const plain = domToRuns(element);
+  const from = range ? range[0] : offset;
+  const to = range ? range[1] : offset;
+
+  switch (event.key) {
+    case "Enter": {
+      if (event.shiftKey) {
+        // Shift+Enter is a hard line break inside the same paragraph.
+        event.preventDefault();
+        const [left, right] = splitAtLineBreak(plain, to);
+        const tail = replaceRange(right, 0, 0, "\n");
+        onStructure({ kind: "replace", index, block: { ...block, runs: insertText(joinRuns(left, tail), from, "") } });
+        // The repaint below puts the caret after the new line break.
+        pendingCaret.current = from + 1;
+        return;
+      }
+      event.preventDefault();
+      onStructure({ kind: "split", index, offset: from, to });
+      return;
+    }
+    case "Backspace": {
+      if (from !== 0 || to !== 0) {
+        if (mod) {
+          event.preventDefault();
+          const [start] = wordRangeAt(plain, from, "backward");
+          onStructure({ kind: "replace", index, block: { ...block, runs: replaceRange(plain, start, from, "") } });
+          pendingCaret.current = start;
+          return;
+        }
+        if (range) {
+          event.preventDefault();
+          onStructure({ kind: "replace", index, block: { ...block, runs: replaceRange(plain, from, to, "") } });
+          pendingCaret.current = from;
+          return;
+        }
+        return; // normal character delete, the browser handles it
+      }
+      event.preventDefault();
+      onStructure({ kind: "mergeBackward", index });
+      return;
+    }
+    case "Delete": {
+      const text = runsText(plain);
+      if (to < text.length) {
+        if (mod) {
+          event.preventDefault();
+          const [, end] = wordRangeAt(plain, to, "forward");
+          onStructure({ kind: "replace", index, block: { ...block, runs: replaceRange(plain, from, end, "") } });
+          return;
+        }
+        if (range) {
+          event.preventDefault();
+          onStructure({ kind: "replace", index, block: { ...block, runs: replaceRange(plain, from, to, "") } });
+          pendingCaret.current = from;
+          return;
+        }
+        return;
+      }
+      event.preventDefault();
+      onStructure({ kind: "mergeForward", index });
+      return;
+    }
+    case "Tab": {
+      event.preventDefault();
+      onStructure({ kind: event.shiftKey ? "outdent" : "indent", index });
+      return;
+    }
+    case "ArrowUp":
+      if (caretOnFirstLine(element)) {
+        event.preventDefault();
+        onStructure({ kind: "moveCaret", index, delta: -1, atLine: "start" });
+      }
+      return;
+    case "ArrowDown":
+      if (caretOnLastLine(element)) {
+        event.preventDefault();
+        onStructure({ kind: "moveCaret", index, delta: 1, atLine: "end" });
+      }
+      return;
+    case "Home":
+      if (!mod) {
+        event.preventDefault();
+        setCaretOffset(element, 0);
+      }
+      return;
+    case "End": {
+      if (!mod) {
+        event.preventDefault();
+        setCaretOffset(element, runsText(plain).length);
+      }
+      return;
+    }
+    default:
+      return;
+  }
+}
+
+/**
  * One editable paragraph.
  *
  * Normal typing is left to the browser. The keys that change the *structure* of
@@ -2002,106 +2553,7 @@ function ParagraphView({
   const listMarker = props.list ? (props.list.kind === "number" ? `${props.list.start}.` : ["•", "◦", "▪"][props.list.level % 3]) : null;
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    const element = event.currentTarget;
-    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") return; // page break, handled globally
-    const mod = event.ctrlKey || event.metaKey;
-    const offset = caretOffset(element);
-    const range = selectedRange(element);
-    const plain = domToRuns(element);
-    const from = range ? range[0] : offset;
-    const to = range ? range[1] : offset;
-
-    switch (event.key) {
-      case "Enter": {
-        if (event.shiftKey) {
-          // Shift+Enter is a hard line break inside the same paragraph.
-          event.preventDefault();
-          const [left, right] = splitAtLineBreak(plain, to);
-          const tail = replaceRange(right, 0, 0, "\n");
-          onStructure({ kind: "replace", index, block: { ...block, runs: insertText(joinRuns(left, tail), from, "") } });
-          // The repaint below puts the caret after the new line break.
-          pendingCaret.current = from + 1;
-          return;
-        }
-        event.preventDefault();
-        onStructure({ kind: "split", index, offset: from, to });
-        return;
-      }
-      case "Backspace": {
-        if (from !== 0 || to !== 0) {
-          if (mod) {
-            event.preventDefault();
-            const [start] = wordRangeAt(plain, from, "backward");
-            onStructure({ kind: "replace", index, block: { ...block, runs: replaceRange(plain, start, from, "") } });
-            pendingCaret.current = start;
-            return;
-          }
-          if (range) {
-            event.preventDefault();
-            onStructure({ kind: "replace", index, block: { ...block, runs: replaceRange(plain, from, to, "") } });
-            pendingCaret.current = from;
-            return;
-          }
-          return; // normal character delete, the browser handles it
-        }
-        event.preventDefault();
-        onStructure({ kind: "mergeBackward", index });
-        return;
-      }
-      case "Delete": {
-        const text = runsText(plain);
-        if (to < text.length) {
-          if (mod) {
-            event.preventDefault();
-            const [, end] = wordRangeAt(plain, to, "forward");
-            onStructure({ kind: "replace", index, block: { ...block, runs: replaceRange(plain, from, end, "") } });
-            return;
-          }
-          if (range) {
-            event.preventDefault();
-            onStructure({ kind: "replace", index, block: { ...block, runs: replaceRange(plain, from, to, "") } });
-            pendingCaret.current = from;
-            return;
-          }
-          return;
-        }
-        event.preventDefault();
-        onStructure({ kind: "mergeForward", index });
-        return;
-      }
-      case "Tab": {
-        event.preventDefault();
-        onStructure({ kind: event.shiftKey ? "outdent" : "indent", index });
-        return;
-      }
-      case "ArrowUp":
-        if (caretOnFirstLine(element)) {
-          event.preventDefault();
-          onStructure({ kind: "moveCaret", index, delta: -1, atLine: "start" });
-        }
-        return;
-      case "ArrowDown":
-        if (caretOnLastLine(element)) {
-          event.preventDefault();
-          onStructure({ kind: "moveCaret", index, delta: 1, atLine: "end" });
-        }
-        return;
-      case "Home":
-        if (!mod) {
-          event.preventDefault();
-          setCaretOffset(element, 0);
-        }
-        return;
-      case "End": {
-        if (!mod) {
-          event.preventDefault();
-          setCaretOffset(element, runsText(plain).length);
-        }
-        return;
-      }
-      default:
-        return;
-    }
+    handleParagraphKeyDown(event, { element: event.currentTarget, block, index, onStructure, pendingCaret });
   };
 
   return (

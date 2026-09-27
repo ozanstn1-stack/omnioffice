@@ -180,6 +180,7 @@ const REL_NOTES: &str = "http://schemas.openxmlformats.org/officeDocument/2006/r
 const REL_MASTER: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster";
 const REL_THEME: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme";
 const REL_CHART: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart";
+const REL_PACKAGE: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package";
 
 fn presentation_xml(deck: &Deck, master_ids: &[String], slide_ids: &[String]) -> String {
     let mut out = format!(
@@ -488,16 +489,26 @@ fn alignment(value: &str) -> &'static str {
     }
 }
 
+/// One exported chart part plus, when the chart carries cached values, the
+/// embedded workbook that backs them (`c:externalData`).
+struct ChartPart {
+    part: String,
+    xml: String,
+    rels: String,
+    embedding: Option<(String, Vec<u8>)>,
+}
+
 struct ExportContext {
     media: Vec<(String, Vec<u8>)>,
-    charts: Vec<(String, String)>,
+    charts: Vec<ChartPart>,
     next_chart: usize,
+    next_embedding: usize,
     warnings: Vec<String>,
 }
 
 impl ExportContext {
     fn new() -> Self {
-        Self { media: Vec::new(), charts: Vec::new(), next_chart: 1, warnings: Vec::new() }
+        Self { media: Vec::new(), charts: Vec::new(), next_chart: 1, next_embedding: 1, warnings: Vec::new() }
     }
 
     fn warn(&mut self, message: &str) {
@@ -533,7 +544,72 @@ fn chart_ref(value: &str) -> String {
     escape_text(value.trim())
 }
 
-fn chart_part_xml(chart: &ChartData) -> Result<String, String> {
+/// True when the chart carries cached values: those are written as ChartML
+/// caches and backed by an embedded workbook so Excel/LibreOffice can render
+/// (and re-edit) the chart even when the original range is not in the deck.
+fn chart_has_cache(chart: &ChartData) -> bool {
+    !chart.categories_cache.is_empty() || chart.series_values_cache.iter().any(|values| !values.is_empty())
+}
+
+/// Formats one cached value the way Excel writes `c:v`: plain decimal, no
+/// exponent for ordinary magnitudes; non-finite values become 0 because XML
+/// numbers cannot be NaN/Infinity.
+fn chart_cache_number(value: f64) -> String {
+    if !value.is_finite() {
+        return "0".into();
+    }
+    if value.fract() == 0.0 && value.abs() < 1e15 {
+        format!("{}", value as i64)
+    } else {
+        format!("{value}")
+    }
+}
+
+fn chart_str_cache_xml(labels: &[String]) -> String {
+    let mut out = format!("<c:strCache><c:ptCount val=\"{}\"/>", labels.len());
+    for (index, label) in labels.iter().enumerate() {
+        out.push_str(&format!("<c:pt idx=\"{index}\"><c:v>{}</c:v></c:pt>", escape_text(label)));
+    }
+    out.push_str("</c:strCache>");
+    out
+}
+
+fn chart_num_cache_xml(values: &[f64]) -> String {
+    let mut out = format!("<c:numCache><c:formatCode>General</c:formatCode><c:ptCount val=\"{}\"/>", values.len());
+    for (index, value) in values.iter().enumerate() {
+        out.push_str(&format!("<c:pt idx=\"{index}\"><c:v>{}</c:v></c:pt>", chart_cache_number(*value)));
+    }
+    out.push_str("</c:numCache>");
+    out
+}
+
+/// Builds the embedded workbook for a chart whose caches carry values. The
+/// package is produced with the same xlsx writer Calc uses, so the reader in
+/// this crate (and Excel/LibreOffice) sees an ordinary readable spreadsheet.
+fn embedded_workbook(chart: &ChartData) -> OfficeResult<Vec<u8>> {
+    let mut workbook = Workbook::new_blank("Chart data");
+    workbook.sheets.clear();
+    let mut sheet = Sheet::new("Sheet1");
+    sheet.set("A1", Cell { value: CellValue::Text("Category".into()), ..Default::default() });
+    for (index, series) in chart.series.iter().enumerate() {
+        let address = crate::address::format(0, index as u32 + 1);
+        sheet.set(&address, Cell { value: CellValue::Text(series.name.clone()), ..Default::default() });
+    }
+    for (row, label) in chart.categories_cache.iter().enumerate() {
+        let address = crate::address::format(row as u32 + 1, 0);
+        sheet.set(&address, Cell { value: CellValue::Text(label.clone()), ..Default::default() });
+    }
+    for (series_index, values) in chart.series_values_cache.iter().enumerate() {
+        for (row, value) in values.iter().enumerate() {
+            let address = crate::address::format(row as u32 + 1, series_index as u32 + 1);
+            sheet.set(&address, Cell { value: CellValue::Number(*value), ..Default::default() });
+        }
+    }
+    workbook.sheets.push(sheet);
+    crate::xlsx::write_xlsx(&workbook)
+}
+
+fn chart_part_xml(chart: &ChartData, external_rid: Option<&str>) -> Result<String, String> {
     let kind = chart.kind.as_str();
     if !chart_kind_supported(kind) {
         return Err(format!("the chart type \"{kind}\" is not representable yet"));
@@ -546,6 +622,7 @@ fn chart_part_xml(chart: &ChartData) -> Result<String, String> {
     }
 
     let mut series_xml = String::new();
+    let label_cache = if chart.categories_cache.is_empty() { String::new() } else { chart_str_cache_xml(&chart.categories_cache) };
     for (index, series) in chart.series.iter().enumerate() {
         series_xml.push_str(&format!(
             "<c:ser><c:idx val=\"{index}\"/><c:order val=\"{index}\"/><c:tx><c:v>{}</c:v></c:tx>",
@@ -557,10 +634,20 @@ fn chart_part_xml(chart: &ChartData) -> Result<String, String> {
                 escape_attr(color.trim_start_matches('#'))
             ));
         }
+        // Only series that actually carry cached values get a c:numCache; the
+        // rest keep the range-only shape the existing decks rely on.
+        let value_cache = chart
+            .series_values_cache
+            .get(index)
+            .filter(|values| !values.is_empty())
+            .map(|values| chart_num_cache_xml(values))
+            .unwrap_or_default();
         series_xml.push_str(&format!(
-            "<c:cat><c:strRef><c:f>{}</c:f></c:strRef></c:cat><c:val><c:numRef><c:f>{}</c:f></c:numRef></c:val></c:ser>",
+            "<c:cat><c:strRef><c:f>{}</c:f>{}</c:strRef></c:cat><c:val><c:numRef><c:f>{}</c:f>{}</c:numRef></c:val></c:ser>",
             chart_ref(&chart.categories),
-            chart_ref(&series.range)
+            label_cache,
+            chart_ref(&series.range),
+            value_cache
         ));
     }
 
@@ -613,8 +700,13 @@ fn chart_part_xml(chart: &ChartData) -> Result<String, String> {
     } else {
         ""
     };
+    // c:externalData points at the embedded workbook part so Word/Excel treat
+    // the cached values as an editable data source instead of a dead cache.
+    let external = external_rid
+        .map(|rid| format!("<c:externalData r:id=\"{}\"><c:autoUpdate val=\"0\"/></c:externalData>", escape_attr(rid)))
+        .unwrap_or_default();
     Ok(format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><c:roundedCorners val=\"0\"/><c:chart>{title}<c:plotArea><c:layout/>{plot}{axes}</c:plotArea>{legend}<c:plotVisOnly val=\"1\"/><c:dispBlanksAs val=\"gap\"/></c:chart><c:printSettings><c:headerFooter/><c:pageMargins b=\"0.75\" l=\"0.7\" r=\"0.7\" t=\"0.75\" header=\"0.3\" footer=\"0.3\"/><c:pageSetup/></c:printSettings></c:chartSpace>"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><c:roundedCorners val=\"0\"/><c:chart>{title}<c:plotArea><c:layout/>{plot}{axes}</c:plotArea>{legend}<c:plotVisOnly val=\"1\"/><c:dispBlanksAs val=\"gap\"/></c:chart>{external}<c:printSettings><c:headerFooter/><c:pageMargins b=\"0.75\" l=\"0.7\" r=\"0.7\" t=\"0.75\" header=\"0.3\" footer=\"0.3\"/><c:pageSetup/></c:printSettings></c:chartSpace>"
     ))
 }
 
@@ -707,12 +799,38 @@ fn object_xml(object: &SlideObject, theme: &Theme, writer: &mut SlideWriter, exp
                 export.warn("A chart object has no chart data and was kept in the native .oswk file.");
                 return None;
             };
-            match chart_part_xml(chart) {
+            // A cached chart gets an embedded workbook part plus the
+            // relationship that c:externalData points at. If the workbook
+            // cannot be built the chart is still exported with its ranges.
+            let mut embedding: Option<(String, Vec<u8>)> = None;
+            if chart_has_cache(chart) {
+                match embedded_workbook(chart) {
+                    Ok(bytes) => {
+                        let number = export.next_embedding;
+                        export.next_embedding += 1;
+                        embedding = Some((format!("ppt/embeddings/Microsoft_Excel_Worksheet{number}.xlsx"), bytes));
+                    }
+                    Err(error) => export.warn(&format!("A chart cache could not be embedded and was kept in the native .oswk file: {error}.")),
+                }
+            }
+            let mut chart_rels = RelSet::new();
+            let external_rid = embedding
+                .as_ref()
+                .map(|(target, _)| {
+                    let target = target.strip_prefix("ppt/").unwrap_or(target);
+                    chart_rels.add(REL_PACKAGE, &format!("../{target}"))
+                });
+            match chart_part_xml(chart, external_rid.as_deref()) {
                 Ok(chart_xml) => {
                     let part = format!("ppt/charts/chart{}.xml", export.next_chart);
                     export.next_chart += 1;
                     let rid = writer.rels.add(REL_CHART, &format!("../charts/{}", file_name(&part)));
-                    export.charts.push((part, chart_xml));
+                    export.charts.push(ChartPart {
+                        part,
+                        xml: chart_xml,
+                        rels: if embedding.is_some() { chart_rels.xml() } else { String::new() },
+                        embedding,
+                    });
                     format!(
                         "<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id=\"{id}\" name=\"{}\"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm>{}</p:xfrm><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:chart xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" r:id=\"{rid}\"/></a:graphicData></a:graphic></p:graphicFrame>",
                         escape_attr(&name),
@@ -1149,6 +1267,9 @@ pub fn write_pptx_package(deck: &Deck) -> OfficeResult<DeckWrite> {
     for (extension, mime) in [("png", "image/png"), ("jpg", "image/jpeg"), ("jpeg", "image/jpeg"), ("gif", "image/gif"), ("bmp", "image/bmp"), ("webp", "image/webp")] {
         content_types.push_str(&format!("<Default Extension=\"{extension}\" ContentType=\"{mime}\"/>"));
     }
+    if export.charts.iter().any(|chart| chart.embedding.is_some()) {
+        content_types.push_str("<Default Extension=\"xlsx\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\"/>");
+    }
     content_types.push_str("<Override PartName=\"/ppt/presentation.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml\"/>");
     for (part, _) in &theme_parts {
         content_types.push_str(&format!("<Override PartName=\"/{part}\" ContentType=\"application/vnd.openxmlformats-officedocument.theme+xml\"/>"));
@@ -1168,9 +1289,10 @@ pub fn write_pptx_package(deck: &Deck) -> OfficeResult<DeckWrite> {
             content_types.push_str(&format!("<Override PartName=\"/ppt/notesSlides/notesSlide{}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml\"/>", index + 1));
         }
     }
-    for (part, _) in &export.charts {
+    for chart in &export.charts {
         content_types.push_str(&format!(
-            "<Override PartName=\"/{part}\" ContentType=\"application/vnd.openxmlformats-officedocument.drawingml.chart+xml\"/>"
+            "<Override PartName=\"/{}\" ContentType=\"application/vnd.openxmlformats-officedocument.drawingml.chart+xml\"/>",
+            chart.part
         ));
     }
     content_types.push_str("<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/><Override PartName=\"/docProps/app.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/></Types>");
@@ -1215,8 +1337,14 @@ pub fn write_pptx_package(deck: &Deck) -> OfficeResult<DeckWrite> {
     for (name, data) in &export.media {
         zip.add(&format!("ppt/media/{name}"), data);
     }
-    for (part, xml) in &export.charts {
-        zip.add_text(part, xml);
+    for chart in &export.charts {
+        zip.add_text(&chart.part, &chart.xml);
+        if !chart.rels.is_empty() {
+            zip.add_text(&rels_name(&chart.part), &chart.rels);
+        }
+        if let Some((path, bytes)) = &chart.embedding {
+            zip.add(path, bytes);
+        }
     }
     let mut warnings = export.warnings;
     warnings.sort();
@@ -1317,6 +1445,50 @@ fn read_shape_id(node: &XmlNode) -> Option<usize> {
     node.find_descendant("cNvPr").and_then(|props| props.attr("id")).and_then(|value| value.parse::<usize>().ok())
 }
 
+/// Reads a `c:strCache` below `parent` (a category/value reference node).
+/// Points are placed by their `idx`, so a sparse cache stays aligned instead
+/// of shifting values; missing labels become empty strings.
+fn read_str_cache(parent: &XmlNode) -> Vec<String> {
+    let Some(cache) = parent.find_descendant("strCache") else {
+        return Vec::new();
+    };
+    let mut points = Vec::new();
+    cache.find_all("pt", &mut points);
+    let mut out: Vec<String> = Vec::new();
+    for point in points {
+        let index = point.attr("idx").and_then(|value| value.parse::<usize>().ok()).unwrap_or(out.len());
+        let value = point.find_descendant("v").map(XmlNode::deep_text).unwrap_or_default();
+        while out.len() <= index {
+            out.push(String::new());
+        }
+        out[index] = value;
+    }
+    out
+}
+
+/// Reads a `c:numCache` below `parent` (a series value reference node).
+fn read_num_cache(parent: &XmlNode) -> Vec<f64> {
+    let Some(cache) = parent.find_descendant("numCache") else {
+        return Vec::new();
+    };
+    let mut points = Vec::new();
+    cache.find_all("pt", &mut points);
+    let mut out: Vec<f64> = Vec::new();
+    for point in points {
+        let index = point.attr("idx").and_then(|value| value.parse::<usize>().ok()).unwrap_or(out.len());
+        let value = point
+            .find_descendant("v")
+            .map(XmlNode::deep_text)
+            .and_then(|text| text.trim().parse::<f64>().ok())
+            .unwrap_or(0.0);
+        while out.len() <= index {
+            out.push(0.0);
+        }
+        out[index] = value;
+    }
+    out
+}
+
 fn read_chart_xml(xml: &str, warnings: &mut Vec<String>) -> Option<ChartData> {
     let root = parse_xml(xml).ok()?;
     let plot = root.find_descendant("plotArea")?;
@@ -1344,6 +1516,7 @@ fn read_chart_xml(xml: &str, warnings: &mut Vec<String>) -> Option<ChartData> {
     let title = chart_node.and_then(|node| node.child("title")).map(|node| node.deep_text()).unwrap_or_default();
     let legend = chart_node.and_then(|node| node.child("legend")).is_some();
     let mut series = Vec::new();
+    let mut series_values_cache = Vec::new();
     for ser in plot_child.children_named("ser") {
         let name = ser
             .child("tx")
@@ -1355,6 +1528,7 @@ fn read_chart_xml(xml: &str, warnings: &mut Vec<String>) -> Option<ChartData> {
             .and_then(|props| props.find_descendant("srgbClr"))
             .and_then(|color| color.attr("val"))
             .map(|value| format!("#{value}"));
+        series_values_cache.push(ser.child("val").map(read_num_cache).unwrap_or_default());
         series.push(ChartSeries { name, range, color });
     }
     let categories = plot_child
@@ -1363,6 +1537,14 @@ fn read_chart_xml(xml: &str, warnings: &mut Vec<String>) -> Option<ChartData> {
         .and_then(|ser| ser.child("cat"))
         .and_then(|cat| cat.find_descendant("f"))
         .map(XmlNode::deep_text)
+        .unwrap_or_default();
+    // The caches are what makes a deck render with values even when the source
+    // workbook is gone; empty vectors mean the chart only carries ranges.
+    let categories_cache = plot_child
+        .children_named("ser")
+        .next()
+        .and_then(|ser| ser.child("cat"))
+        .map(read_str_cache)
         .unwrap_or_default();
     let stacked = plot_child.find_descendant("grouping").and_then(|node| node.attr("val")).map(|value| value == "stacked").unwrap_or(false);
     let show_labels = root
@@ -1373,7 +1555,7 @@ fn read_chart_xml(xml: &str, warnings: &mut Vec<String>) -> Option<ChartData> {
         .unwrap_or(false);
     let x_title = plot.find_descendant("catAx").and_then(|axis| axis.find_descendant("title")).map(|node| node.deep_text()).unwrap_or_default();
     let y_title = plot.find_descendant("valAx").and_then(|axis| axis.find_descendant("title")).map(|node| node.deep_text()).unwrap_or_default();
-    Some(ChartData { kind, title, categories, series, legend, x_title, y_title, stacked, show_labels })
+    Some(ChartData { kind, title, categories, series, legend, x_title, y_title, stacked, show_labels, categories_cache, series_values_cache })
 }
 
 fn read_shape(node: &XmlNode, reader: &ZipReader, rels: &HashMap<String, String>, base: &str, z: i32, warnings: &mut Vec<String>) -> Option<SlideObject> {

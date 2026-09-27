@@ -47,6 +47,15 @@ $installerPath = Join-Path $releaseDir $installerName
 Copy-Item $nsis.FullName $installerPath -Force
 Write-Host "installer: $installerPath ($([math]::Round((Get-Item $installerPath).Length / 1MB, 1)) MB from $($nsis.Name))"
 
+# The V3.1 release contract names the Windows installer
+# `Office Swiss Army Knife_<version>_x64-setup.exe` (Tauri's own bundle naming).
+# Ship the identical file under that name as well so release consumers can use
+# either; both are listed in SHA256SUMS.txt.
+$contractInstallerName = "Office Swiss Army Knife_${version}_x64-setup.exe"
+$contractInstallerPath = Join-Path $releaseDir $contractInstallerName
+Copy-Item $installerPath $contractInstallerPath -Force
+Write-Host "installer (release name): $contractInstallerPath"
+
 # ---------------------------------------------------------------- portable
 $portableStage = Join-Path $env:TEMP "osak-portable-$version"
 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $portableStage
@@ -82,7 +91,7 @@ function Get-Sha256([string]$Path) {
 }
 
 $lines = @()
-foreach ($file in @($installerPath, $portableZip)) {
+foreach ($file in @($installerPath, $contractInstallerPath, $portableZip)) {
     $hash = Get-Sha256 $file
     $lines += "$hash  $(Split-Path -Leaf $file)"
 }

@@ -355,71 +355,62 @@ pub async fn office_pdf_add_form(request: PdfFormRequest) -> Result<String, Offi
 }
 
 /// Reading form fields back out of a PDF (used for previews and batch flows).
+///
+/// Delegates to `pdfcore::forms::list_fields`, which walks the AcroForm field
+/// tree properly (parent `/Kids`, `/FT` and `/V` inheritance, widget state
+/// dictionaries) instead of the earlier shallow read that reported every
+/// field as page 1, dropped options and guessed the type from `/FT` alone.
+/// Coordinates are converted back to the top-left origin the office form
+/// editor uses, so listing a created form and saving it again leaves every
+/// field where it was.
 #[tauri::command]
 pub async fn office_pdf_list_form(input: String) -> Result<Vec<PdfFormField>, OfficeErrorPayload> {
     let task = tauri::async_runtime::spawn_blocking(move || {
         let document = pdfcore::docutil::load_document(Path::new(&input), None).map_err(pdf_error)?;
-        let mut fields = Vec::new();
-        let catalog_id = match document.trailer.get(b"Root") {
-            Ok(lopdf::Object::Reference(id)) => *id,
-            _ => return Ok(fields),
-        };
-        let Ok(catalog) = document.get_dictionary(catalog_id) else { return Ok(fields) };
-        let acro = match catalog.get(b"AcroForm") {
-            Ok(lopdf::Object::Reference(id)) => match document.get_dictionary(*id) {
-                Ok(dict) => dict,
-                Err(_) => return Ok(fields),
-            },
-            Ok(lopdf::Object::Dictionary(dict)) => dict,
-            _ => return Ok(fields),
-        };
-        let Ok(lopdf::Object::Array(list)) = acro.get(b"Fields") else { return Ok(fields) };
-        for item in list {
-            let lopdf::Object::Reference(id) = item else { continue };
-            let Ok(dictionary) = document.get_dictionary(*id) else { continue };
-            let name = match dictionary.get(b"T") {
-                Ok(lopdf::Object::String(bytes, _)) => String::from_utf8_lossy(bytes).to_string(),
-                Ok(lopdf::Object::Name(bytes)) => String::from_utf8_lossy(bytes).to_string(),
-                _ => String::new(),
-            };
-            let kind = match dictionary.get(b"FT") {
-                Ok(lopdf::Object::Name(bytes)) => String::from_utf8_lossy(bytes).to_string(),
-                _ => String::new(),
-            };
-            let value = dictionary
-                .get(b"V")
-                .map(|value| match value {
-                    lopdf::Object::String(bytes, _) => String::from_utf8_lossy(bytes).to_string(),
-                    lopdf::Object::Name(bytes) => String::from_utf8_lossy(bytes).to_string(),
-                    other => format!("{other:?}"),
-                })
-                .unwrap_or_default();
-            let rect = dictionary.get(b"Rect").and_then(|value| value.as_array()).ok();
-            let (x, y, w, h) = match rect {
-                Some(values) if values.len() == 4 => {
-                    let get = |index: usize| values.get(index).and_then(|value| value.as_float().ok()).unwrap_or(0.0);
-                    (get(0) as f64, get(1) as f64, ((get(2) - get(0)).abs()) as f64, ((get(3) - get(1)).abs()) as f64)
+        let pages = document.get_pages();
+        let fields = pdfcore::forms::list_fields(&document)
+            .into_iter()
+            .map(|info| {
+                let page = info.page.unwrap_or(1);
+                let (x, y, w, h) = match (info.page, info.rect) {
+                    (Some(page_number), Some(rect)) => {
+                        let height = pages
+                            .get(&page_number)
+                            .and_then(|page_id| pdfcore::docutil::page_mediabox(&document, *page_id).ok())
+                            .map(|media| media[3] - media[1])
+                            .unwrap_or(0.0);
+                        let left = rect[0].min(rect[2]);
+                        let bottom = rect[1].min(rect[3]);
+                        let right = rect[0].max(rect[2]);
+                        let top = rect[1].max(rect[3]);
+                        (left, height - top, right - left, top - bottom)
+                    }
+                    _ => (0.0, 0.0, 0.0, 0.0),
+                };
+                // The simple office builder only edits text/checkbox/radio and
+                // dropdown fields; everything else is shown as text rather
+                // than inventing an editor for it.
+                let kind = match info.field_type.as_str() {
+                    "checkbox" => "checkbox",
+                    "radio" => "radio",
+                    "choice" => "dropdown",
+                    _ => "text",
+                };
+                PdfFormField {
+                    kind: kind.to_string(),
+                    name: info.name,
+                    page,
+                    x,
+                    y,
+                    w,
+                    h,
+                    value: info.value,
+                    options: info.options.into_iter().map(|option| option.value).collect(),
+                    font_size: None,
+                    required: info.required,
                 }
-                _ => (0.0, 0.0, 0.0, 0.0),
-            };
-            fields.push(PdfFormField {
-                kind: match kind.as_str() {
-                    "Btn" => "checkbox".into(),
-                    "Ch" => "dropdown".into(),
-                    _ => "text".into(),
-                },
-                name,
-                page: 1,
-                x,
-                y,
-                w,
-                h,
-                value,
-                options: Vec::new(),
-                font_size: None,
-                required: false,
-            });
-        }
+            })
+            .collect();
         Ok(fields)
     });
     task.await

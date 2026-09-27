@@ -12,6 +12,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * were duplicated on Enter, merges resurrected the removed paragraph). The fix
  * repaints the affected paragraph before focus moves; these tests type without
  * clicking and assert the model text after every structural key.
+ *
+ * V3.1 moved the editing surface into the paginated page itself, so the tests
+ * below drive the real page fragments: clicking one must place a caret in an
+ * editable hosted by the sheet, and every structural key must still reach the
+ * model through the same code path as the continuous view.
  */
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => null) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
@@ -21,6 +26,7 @@ vi.mock("@tauri-apps/plugin-fs", () => ({ readFile: vi.fn(async () => new Uint8A
 import { WriterEditor } from "./WriterEditor";
 import { useOfficeTabs, type OfficeTab } from "../lib/office-store";
 import type { Block, TextDocument } from "../lib/office-types";
+import { caretOffset, setCaretOffset } from "./writer/caret";
 
 function Harness({ id }: { id: string }) {
   const tab = useOfficeTabs((state) => state.tabs.find((candidate) => candidate.id === id));
@@ -30,6 +36,22 @@ function Harness({ id }: { id: string }) {
 
 function paragraphs(): HTMLElement[] {
   return Array.from(document.querySelectorAll<HTMLElement>(".writer-body .para"));
+}
+
+function pageFragments(): HTMLElement[] {
+  return Array.from(document.querySelectorAll<HTMLElement>(".writer-fragment"));
+}
+
+function pageEditables(): HTMLElement[] {
+  return Array.from(document.querySelectorAll<HTMLElement>('.writer-page-sheet .para[contenteditable="true"]'));
+}
+
+/** Clicks a page fragment and returns the editable the page opened for it. */
+async function openPageEditor(user: ReturnType<typeof userEvent.setup>, fragmentIndex = 0): Promise<HTMLElement> {
+  await user.click(pageFragments()[fragmentIndex]);
+  const editable = pageEditables()[0];
+  if (!editable) throw new Error("no editable opened in the page sheet");
+  return editable;
 }
 
 function documentOf(): TextDocument {
@@ -136,9 +158,14 @@ describe("Writer structural editing stays in sync with the model", () => {
     expect(sheets[1].textContent).toContain("Page two");
     expect(sheets[2].textContent).toContain("Page three");
     expect(document.querySelector(".editor-status")?.textContent).toContain("3 pages");
-    // Clicking a fragment opens the continuous editor on that block.
+    // Clicking a fragment keeps the page view and opens a real editable inside
+    // the sheet (V3.1: no jump to the continuous surface).
     await user.click(document.querySelectorAll(".writer-fragment")[1]);
-    expect(document.querySelectorAll(".writer-page-sheet").length).toBe(0);
+    expect(document.querySelectorAll(".writer-page-sheet").length).toBe(3);
+    const editable = document.querySelector<HTMLElement>('.writer-page-sheet .para[contenteditable="true"]');
+    expect(editable).not.toBeNull();
+    expect(editable?.dataset.blockIndex).toBe("2");
+    expect(document.activeElement).toBe(editable);
   });
 
   it("inserts a table of contents from the headings", async () => {
@@ -193,6 +220,176 @@ describe("Writer structural editing stays in sync with the model", () => {
     await user.click(paragraphs()[0]);
     await user.keyboard("One{Enter}Two{Enter}Three");
     expect(blockTexts()).toEqual(["One", "Two", "Three"]);
+  });
+});
+
+describe("Writer paginated in-place editing", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+  });
+
+  it("focuses a real editable inside the page sheet on click", async () => {
+    const user = userEvent.setup();
+    const id = useOfficeTabs.getState().create("writer", "Untitled");
+    render(<Harness id={id} />);
+
+    const editable = await openPageEditor(user);
+    expect(editable.closest(".writer-page-sheet")).not.toBeNull();
+    // jsdom does not implement `isContentEditable`; the attribute is the DOM truth.
+    expect(editable.getAttribute("contenteditable")).toBe("true");
+    expect(editable.tabIndex).toBe(0);
+    expect(document.activeElement).toBe(editable);
+    expect(document.querySelectorAll(".writer-page-sheet").length).toBe(1);
+    // Exactly one editable surface per block, even though the page preview
+    // renders a static copy of the paragraph.
+    expect(pageEditables()).toHaveLength(1);
+  });
+
+  it("places the caret at the clicked character inside the fragment", async () => {
+    const user = userEvent.setup();
+    const id = useOfficeTabs.getState().create("writer", "Untitled");
+    const tab = useOfficeTabs.getState().tabs[0];
+    const model = tab.model as TextDocument;
+    const first = model.blocks.find((block) => block.type === "paragraph") as Extract<Block, { type: "paragraph" }>;
+    const blocks = [{ type: "paragraph" as const, props: { ...first.props }, runs: [{ ...first.runs[0], text: "Hello World" }] }];
+    useOfficeTabs.setState((state) => ({ tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, blocks } } : entry)) }));
+    render(<Harness id={id} />);
+
+    const fragment = pageFragments()[0];
+    const preview = fragment.querySelector<HTMLElement>(".para");
+    expect(preview).not.toBeNull();
+    // jsdom has no hit test; stub `caretRangeFromPoint` with the position a
+    // click after "Hello " would produce.
+    const doc = document as unknown as { caretRangeFromPoint?: (x: number, y: number) => Range | null };
+    const range = document.createRange();
+    range.setStart(preview?.firstChild as Text, 6);
+    range.collapse(true);
+    doc.caretRangeFromPoint = () => range;
+    try {
+      await user.click(fragment);
+    } finally {
+      delete doc.caretRangeFromPoint;
+    }
+
+    const editable = pageEditables()[0];
+    expect(document.activeElement).toBe(editable);
+    expect(caretOffset(editable)).toBe(6);
+    await user.keyboard("X");
+    expect(blockTexts()[0]).toBe("Hello XWorld");
+  });
+
+  it("types into a page fragment and updates the model paragraph", async () => {
+    const user = userEvent.setup();
+    const id = useOfficeTabs.getState().create("writer", "Untitled");
+    render(<Harness id={id} />);
+
+    const editable = await openPageEditor(user);
+    await user.keyboard("Hello");
+    expect(blockTexts()[0]).toBe("Hello");
+    expect(editable.textContent).toBe("Hello");
+  });
+
+  it("splits on Enter in a page fragment and keeps typing in the new paragraph", async () => {
+    const user = userEvent.setup();
+    const id = useOfficeTabs.getState().create("writer", "Untitled");
+    render(<Harness id={id} />);
+
+    await openPageEditor(user);
+    await user.keyboard("Hello{Enter}");
+    expect(blockTexts()).toEqual(["Hello", ""]);
+
+    // The new paragraph owns the caret in its own page fragment, no clicking.
+    const next = pageEditables()[0];
+    expect(next.dataset.blockIndex).toBe("1");
+    expect(document.activeElement).toBe(next);
+    await user.keyboard("World");
+    expect(blockTexts()).toEqual(["Hello", "World"]);
+    expect(next.textContent).toBe("World");
+  });
+
+  it("merges into the previous paragraph on Backspace at the start of a fragment", async () => {
+    const user = userEvent.setup();
+    const id = useOfficeTabs.getState().create("writer", "Untitled");
+    render(<Harness id={id} />);
+
+    await openPageEditor(user);
+    await user.keyboard("Hello{Enter}World");
+    await user.keyboard("{Home}{Backspace}");
+    expect(blockTexts()).toEqual(["HelloWorld"]);
+
+    // The caret lands at the join point in the merged paragraph.
+    await user.keyboard("!");
+    expect(blockTexts()).toEqual(["Hello!World"]);
+  });
+
+  it("moves the caret to the next page's fragment on ArrowDown at the end", async () => {
+    const user = userEvent.setup();
+    const id = useOfficeTabs.getState().create("writer", "Untitled");
+    const tab = useOfficeTabs.getState().tabs[0];
+    const model = tab.model as TextDocument;
+    const first = model.blocks.find((block) => block.type === "paragraph") as Extract<Block, { type: "paragraph" }>;
+    const blocks = [
+      { type: "paragraph" as const, props: { ...first.props }, runs: [{ ...first.runs[0], text: "First" }] },
+      { type: "pageBreak" as const },
+      { type: "paragraph" as const, props: { ...first.props }, runs: [{ ...first.runs[0], text: "Second" }] },
+    ];
+    useOfficeTabs.setState((state) => ({ tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, blocks } } : entry)) }));
+    render(<Harness id={id} />);
+
+    const editable = await openPageEditor(user);
+    expect(editable.dataset.blockIndex).toBe("0");
+    await user.keyboard("{End}{ArrowDown}");
+
+    const next = pageEditables()[0];
+    expect(next.dataset.blockIndex).toBe("2");
+    expect(document.activeElement).toBe(next);
+    // The active surface moved to the second sheet, not just to another block.
+    const sheets = document.querySelectorAll(".writer-page-sheet");
+    expect(next.closest(".writer-page-sheet")).toBe(sheets[1]);
+  });
+
+  it("keeps header editing reachable from the paginated view", async () => {
+    const user = userEvent.setup();
+    const id = useOfficeTabs.getState().create("writer", "Untitled");
+    const tab = useOfficeTabs.getState().tabs[0];
+    const model = tab.model as TextDocument;
+    const first = model.blocks.find((block) => block.type === "paragraph") as Extract<Block, { type: "paragraph" }>;
+    const header = [{ type: "paragraph" as const, props: { ...first.props }, runs: [{ ...first.runs[0], text: "Header text" }] }];
+    useOfficeTabs.setState((state) => ({ tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, header } } : entry)) }));
+    render(<Harness id={id} />);
+
+    const preview = document.querySelector<HTMLElement>(".writer-page-sheet .writer-header-zone .para");
+    expect(preview?.textContent).toContain("Header text");
+    await user.click(preview as HTMLElement);
+
+    // Header editing still lives on the continuous surface, focused on the
+    // header paragraph rather than on a body block.
+    const editable = document.querySelector<HTMLElement>('[data-scope="header"][contenteditable="true"]');
+    expect(editable).not.toBeNull();
+    expect(document.activeElement).toBe(editable);
+    await user.keyboard("{End}!");
+    const saved = useOfficeTabs.getState().tabs[0].model as TextDocument;
+    const savedHeader = saved.header[0];
+    expect(savedHeader.type === "paragraph" ? savedHeader.runs.map((run) => run.text).join("") : "").toBe("Header text!");
+  });
+
+  it("keeps the caret offset and focus when typing causes a reflow", async () => {
+    const user = userEvent.setup();
+    const id = useOfficeTabs.getState().create("writer", "Untitled");
+    render(<Harness id={id} />);
+
+    const editable = await openPageEditor(user);
+    await user.keyboard("Hello");
+    expect(document.activeElement).toBe(editable);
+
+    // Put the caret between "He" and "llo", then type: the model update
+    // re-renders the editor (and recomputes pagination), and the focused
+    // element must keep its caret instead of jumping to the start.
+    setCaretOffset(editable, 2);
+    await user.keyboard("X");
+    expect(blockTexts()[0]).toBe("HeXllo");
+    expect(document.activeElement).toBe(editable);
+    expect(caretOffset(editable)).toBe(3);
   });
 });
 

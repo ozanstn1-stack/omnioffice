@@ -37,7 +37,9 @@ export type ScreenId =
   | "pdfForms"
   | "pdfStudio"
   | "vault"
+  | "sync"
   | "compat"
+  | "plugins"
   | "jobs";
 
 export interface PageToolsTab {

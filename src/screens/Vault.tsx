@@ -11,15 +11,16 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  Upload,
   X,
 } from "lucide-react";
 import { Badge, Button, Card, Checkbox, EmptyState, Field, IconButton, NumberInput, Spinner, TextInput, Toggle } from "../components/ui";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
-import { errorMessage } from "../lib/store";
+import { errorMessage, useToasts } from "../lib/store";
 import { cancelJob, onProgress, toAppError } from "../lib/api";
 import { formatBytes, formatDate } from "../lib/format";
-import { openAnyFile } from "../lib/mobile";
+import { isAndroid, openAnyFile, pickOfficeFiles } from "../lib/mobile";
 import type { ProgressPayload } from "../lib/types";
 
 export interface VaultConfig {
@@ -37,6 +38,29 @@ export interface VaultStatus {
   lastScan: string | null;
   scanning: boolean;
   warnings: string[];
+  /** Platform capability: folder scanning (desktop only). Optional so an
+   *  older backend without the field still renders. */
+  canScanFolders?: boolean;
+  /** Platform capability: importing picked documents into app storage. */
+  canImportFiles?: boolean;
+}
+
+export interface VaultImportFile {
+  source: string;
+  path: string;
+  name: string;
+  size: number;
+  sha256: string;
+}
+
+export interface VaultImportSkip {
+  source: string;
+  reason: string;
+}
+
+export interface VaultImportReport {
+  imported: VaultImportFile[];
+  skipped: VaultImportSkip[];
 }
 
 export interface VaultScanRequest {
@@ -145,6 +169,11 @@ function HitRow({ hit, active, onSelect }: { hit: VaultSearchHit; active: boolea
 
 export function Vault() {
   const t = useT();
+  // Android cannot browse folders: the user imports documents instead and the
+  // backend indexes the app-private copies. `status` carries the platform
+  // capabilities; the local probe is the fallback for an older backend.
+  const android = isAndroid();
+  const pushToast = useToasts((state) => state.push);
   const [config, setConfig] = useState<VaultConfig>(DEFAULT_CONFIG);
   const [status, setStatus] = useState<VaultStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -152,6 +181,7 @@ export function Vault() {
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState<ProgressPayload | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const [query, setQuery] = useState("");
   const [exact, setExact] = useState(false);
@@ -174,6 +204,11 @@ export function Vault() {
 
   const busy = scanning || Boolean(status?.scanning);
   const percent = progress && progress.total > 0 ? Math.min(100, Math.round((progress.current / progress.total) * 100)) : null;
+  // The import flow is Android's replacement for folder selection; the
+  // backend confirms both capabilities, the local probe keeps an older
+  // backend usable.
+  const canScanFolders = status?.canScanFolders ?? !android;
+  const showImport = android && (status?.canImportFiles ?? true);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -215,6 +250,9 @@ export function Vault() {
   );
 
   const addFolder = async () => {
+    // Android has no browsable folder picker; the button is hidden there, and
+    // this guard keeps the handler honest if it is ever wired elsewhere.
+    if (!canScanFolders) return;
     const picked = await openDialog({ directory: true, multiple: false, title: t("vault.addFolder") }).catch(() => null);
     if (!picked) return;
     const path = String(Array.isArray(picked) ? picked[0] : picked);
@@ -248,6 +286,41 @@ export function Vault() {
 
   const cancelScan = () => {
     void cancelJob("vault-scan").catch(() => undefined);
+  };
+
+  /**
+   * Android ingestion: the system picker returns documents (PDF and office
+   * types), the backend copies them into the app-private vault and a rescan
+   * indexes those copies. The picked cache paths are only an intermediate
+   * hop - the vault copies are what persists and is searchable. Never scans
+   * anything the user did not pick.
+   */
+  const importDocuments = async () => {
+    setImporting(true);
+    setScanError(null);
+    try {
+      const picked = await pickOfficeFiles(true);
+      if (!picked.length) return;
+      const report = await invoke<VaultImportReport>("vault_import_files", { paths: picked });
+      await startScan();
+      if (report.imported.length) {
+        pushToast({
+          kind: "success",
+          title: t("vault.importDone", { count: report.imported.length }),
+          detail: report.skipped.length ? t("vault.importSkipped", { count: report.skipped.length }) : undefined,
+        });
+      } else {
+        pushToast({
+          kind: "info",
+          title: t("vault.importNone"),
+          detail: report.skipped.map((entry) => entry.reason).join("; ") || undefined,
+        });
+      }
+    } catch (err) {
+      setScanError(errorMessage(err, t));
+    } finally {
+      setImporting(false);
+    }
   };
 
   const runSearch = async (offset: number) => {
@@ -331,11 +404,38 @@ export function Vault() {
             <OptionCard
               title={t("vault.foldersTitle")}
               action={
-                <Button size="sm" variant="ghost" icon={<FolderPlus size={14} />} onClick={() => void addFolder()}>
-                  {t("vault.addFolder")}
-                </Button>
+                canScanFolders ? (
+                  <Button size="sm" variant="ghost" icon={<FolderPlus size={14} />} onClick={() => void addFolder()}>
+                    {t("vault.addFolder")}
+                  </Button>
+                ) : null
               }
             >
+              {android ? (
+                <>
+                  <p className="text-xs muted">{t("vault.androidImportNote")}</p>
+                  {showImport ? (
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      className="w-full"
+                      icon={importing ? <Spinner size={15} /> : <Upload size={15} />}
+                      onClick={() => void importDocuments()}
+                      disabled={importing || busy}
+                    >
+                      {importing ? t("vault.importing") : t("vault.importDocuments")}
+                    </Button>
+                  ) : null}
+                  {status ? (
+                    <div className="card-soft flex items-center gap-2 px-3 py-2">
+                      <HardDrive size={15} className="muted shrink-0" />
+                      <span className="text-xs truncate flex-1">{t("vault.importedRootName")}</span>
+                      <Badge>{t("vault.appPrivate")}</Badge>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+
               {config.folders.length ? (
                 <div className="flex flex-col gap-2">
                   {config.folders.map((folder) => (
@@ -350,7 +450,7 @@ export function Vault() {
                     </div>
                   ))}
                 </div>
-              ) : (
+              ) : !android ? (
                 <EmptyState
                   icon={<FolderPlus size={22} />}
                   title={t("vault.noFolders")}
@@ -361,9 +461,9 @@ export function Vault() {
                     </Button>
                   }
                 />
-              )}
+              ) : null}
 
-              {status && status.folders > config.folders.length ? (
+              {!android && status && status.folders > config.folders.length ? (
                 <p className="text-xs" style={{ color: "var(--warn)" }}>
                   {t("vault.savedFoldersHint", { count: status.folders })}
                 </p>
@@ -449,7 +549,7 @@ export function Vault() {
                     <TextInput
                       value={folderFilter}
                       onChange={(event) => setFolderFilter(event.target.value)}
-                      placeholder="C:\\Documents"
+                      placeholder={android ? t("vault.folderFilterAndroid") : "C:\\Documents"}
                       spellCheck={false}
                     />
                   </Field>

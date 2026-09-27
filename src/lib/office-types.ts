@@ -328,6 +328,32 @@ export interface MergeRange {
   end: string;
 }
 
+/**
+ * A cell-based anchor for floating sheet objects (V3.1 XLSX pictures).
+ *
+ * The offsets are EMU distances from the anchor cell's top-left corner. The
+ * `toAddress` corner is only present when the source drawing used a two-cell
+ * anchor; the exporter itself writes one-cell anchors from the pixel size.
+ */
+export interface CellAnchor {
+  address: string;
+  colOffEmu: number;
+  rowOffEmu: number;
+  toAddress?: string | null;
+  toColOffEmu?: number;
+  toRowOffEmu?: number;
+}
+
+/** A picture floating over a worksheet; mirrors the Rust `SheetImage`. */
+export interface SheetImage {
+  image: ImageData;
+  anchor: CellAnchor;
+  widthPx: number;
+  heightPx: number;
+  /** Clockwise rotation in degrees. */
+  rotationDeg: number;
+}
+
 export interface ChartSeries {
   name: string;
   range: string;
@@ -344,6 +370,14 @@ export interface ChartData {
   yTitle: string;
   stacked: boolean;
   showLabels: boolean;
+  /**
+   * Cached category labels (ChartML `c:strCache`, V3.1). Optional so documents
+   * saved by older builds stay valid; when populated the PPTX exporter embeds
+   * the values in a workbook so charts render without the original range.
+   */
+  categoriesCache?: string[];
+  /** Cached values per series (ChartML `c:numCache`, V3.1), aligned with `series`. */
+  seriesValuesCache?: number[][];
 }
 
 export interface ChartPlacement {
@@ -412,12 +446,42 @@ export interface PivotTable {
   anchor: string;
 }
 
+/**
+ * Sheet protection exactly as Excel wrote it (V3.1). The editor never cracks
+ * or bypasses the verifier; `options` lists the locked actions that were on.
+ */
+export interface SheetProtection {
+  enabled: boolean;
+  /** Legacy 16-bit `password` hash, when present. */
+  passwordHash: string | null;
+  algorithmName: string;
+  hashValue: string;
+  saltValue: string;
+  spinCount: number;
+  options: string[];
+}
+
+/**
+ * A pivot cache/table imported raw from a package (V3.1) so a re-export keeps
+ * the live Excel pivot. The records are base64 because `.oswk` is JSON.
+ */
+export interface PreservedPivot {
+  name: string;
+  sheet: string;
+  cacheId: number;
+  definitionXml: string;
+  recordsBase64: string | null;
+  tableXml: string;
+  recordsPart: string | null;
+  source: string;
+  fields: string[];
+}
+
 /** One column of a structured spreadsheet table. */
 export interface TableColumn {
   name: string;
   formula: string | null;
 }
-
 /**
  * A structured spreadsheet table (Excel "ListObject"): a named range with a
  * header row, an optional totals row, banded rows, an optional filter and
@@ -451,6 +515,8 @@ export interface Sheet {
   freezeRows: number;
   freezeCols: number;
   charts: ChartPlacement[];
+  /** Pictures floating over the sheet (V3.1). Optional on older documents. */
+  images?: SheetImage[];
   pivotTables: PivotTable[];
   /** Structured tables (V3). */
   tables?: SpreadsheetTable[];
@@ -462,6 +528,8 @@ export interface Sheet {
   print: PrintSettings;
   /** Legacy sheet-protection hash; empty means the sheet is unprotected. */
   sheetProtection: string;
+  /** Full protection state (V3.1); optional on documents from older builds. */
+  protection?: SheetProtection;
 }
 
 /** Paper, orientation and print options; mirrors the Rust `PrintSettings`. */
@@ -482,6 +550,27 @@ export interface PrintSettings {
   differentOddEven: boolean;
   header: string;
   footer: string;
+  /** V3.1 fields; optional so documents from older builds stay valid. */
+  centerVertically?: boolean;
+  /** Printed column range repeated at the left of every page, e.g. "A:A". */
+  printTitlesCols?: string | null;
+  /** The printed range as a relative A1 range, e.g. "A1:D40". */
+  printArea?: string | null;
+  /** Page margins in inches, as OOXML stores them. */
+  marginLeft?: number;
+  marginRight?: number;
+  marginTop?: number;
+  marginBottom?: number;
+  marginHeader?: number;
+  marginFooter?: number;
+  firstHeader?: string;
+  firstFooter?: string;
+  evenHeader?: string;
+  evenFooter?: string;
+  /** Manual horizontal page breaks as 0-based row indexes. */
+  rowBreaks?: number[];
+  /** Manual vertical page breaks as 0-based column indexes. */
+  colBreaks?: number[];
 }
 
 export function defaultPrintSettings(): PrintSettings {
@@ -499,6 +588,21 @@ export function defaultPrintSettings(): PrintSettings {
     differentOddEven: false,
     header: "",
     footer: "",
+    centerVertically: false,
+    printTitlesCols: null,
+    printArea: null,
+    marginLeft: 0.7,
+    marginRight: 0.7,
+    marginTop: 0.75,
+    marginBottom: 0.75,
+    marginHeader: 0.3,
+    marginFooter: 0.3,
+    firstHeader: "",
+    firstFooter: "",
+    evenHeader: "",
+    evenFooter: "",
+    rowBreaks: [],
+    colBreaks: [],
   };
 }
 
@@ -525,6 +629,8 @@ export interface Workbook {
   /** Defined names, workbook-level and per-sheet. */
   names: NamedRange[];
   metadata: DocMetadata;
+  /** Pivot caches/tables imported raw from a package (V3.1). */
+  preservedPivots?: PreservedPivot[];
 }
 
 // ---------------------------------------------------------------------------

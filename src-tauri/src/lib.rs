@@ -4,30 +4,48 @@
 //! commands, progress events, cancellation and engine discovery.
 
 mod ai;
+mod android_intent;
 mod commands;
 mod jobs;
 mod library;
 mod office;
 mod office_tools;
 mod pdf_v3;
+mod plugin;
 mod secret;
+mod sign;
+mod sync;
 mod vault;
 
-use jobs::JobRegistry;
+use jobs::{JobRegistry, JobStore};
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Persistent job history, shared by the registry and the jobs_* commands.
+    // Managed as Arc<JobStore> so both sides see the same records.
+    let job_store = JobStore::shared();
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_android_fs::init())
-        .manage(JobRegistry::default());
+        .manage(job_store.clone())
+        .manage(JobRegistry::new(job_store));
 
     builder
         .setup(|app| {
+            // Restore the persistent job history from <config>/jobs.json and
+            // flip every job that was still running/queued when the previous
+            // process died to `interrupted` (Android activity recreation or an
+            // app restart). This only preserves state; it does not keep the
+            // process - and therefore the work - alive.
+            if let Some(store) = app.try_state::<std::sync::Arc<JobStore>>() {
+                if let Ok(config_dir) = app.path().app_config_dir() {
+                    store.attach_path(config_dir.join("jobs.json"));
+                }
+            }
             // Teach pdfcore where the bundled engines live. Both layouts are
             // covered: <install>/resources/engines (bundler default) and
             // <exe dir>/engines (portable layout).
@@ -102,6 +120,12 @@ pub fn run() {
             commands::engine_status,
             commands::ocr_languages,
             commands::cancel_job,
+            jobs::jobs_list,
+            jobs::jobs_clear_finished,
+            jobs::jobs_register,
+            jobs::jobs_progress,
+            jobs::jobs_finish,
+            jobs::jobs_retry,
             commands::pdf_info,
             commands::page_thumbnail,
             commands::page_preview,
@@ -141,6 +165,7 @@ pub fn run() {
             commands::suggest_output,
             commands::file_sizes,
             commands::dev_launch_context,
+            android_intent::android_take_pending_open,
             ai::ai_get_settings,
             ai::ai_save_settings,
             ai::ai_clear_key,
@@ -200,12 +225,40 @@ pub fn run() {
             pdf_v3::flatten_pdf,
             pdf_v3::pdfa_validate,
             pdf_v3::pdfa_convert,
+            pdf_v3::pdf_list_form_fields,
+            pdf_v3::pdf_fill_form,
+            pdf_v3::pdf_validate_form,
+            pdf_v3::pdf_list_objects,
+            pdf_v3::pdf_edit_objects,
+            sign::pdf_sign,
+            sign::pdf_verify_signatures,
+            sign::pdf_list_signing_certificates,
             vault::vault_status,
             vault::vault_configure,
             vault::vault_scan,
+            vault::vault_import_files,
             vault::vault_search,
             vault::vault_document_text,
             vault::vault_clear,
+            sync::sync_get_config,
+            sync::sync_save_config,
+            sync::sync_test_connection,
+            sync::sync_status,
+            sync::sync_upload,
+            sync::sync_download,
+            sync::sync_list,
+            sync::sync_resolve,
+            sync::sync_forget,
+            sync::sync_capabilities,
+            plugin::plugin_list,
+            plugin::plugin_read_source,
+            plugin::plugin_install,
+            plugin::plugin_install_from_path,
+            plugin::plugin_install_sample,
+            plugin::plugin_delete,
+            plugin::plugin_file_read,
+            plugin::plugin_file_write,
+            plugin::plugin_http_request,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Office Swiss Army Knife");

@@ -85,6 +85,7 @@ fn sample_deck() -> Deck {
         y_title: "Units".into(),
         stacked: false,
         show_labels: true,
+        ..Default::default()
     });
 
     let mut badge = SlideObject::new("rect", 60.0, 440.0, 220.0, 60.0);
@@ -374,6 +375,91 @@ fn malformed_masters_fall_back_without_failing_the_import() {
         "warnings: {:?}",
         read.warnings
     );
+}
+
+fn cached_chart_deck() -> Deck {
+    let mut deck = Deck::new_blank("Cached chart");
+    let mut chart = SlideObject::new("chart", 80.0, 60.0, 520.0, 320.0);
+    chart.id = "chart-cached".into();
+    chart.z = 1;
+    chart.chart = Some(ChartData {
+        kind: "column".into(),
+        title: "Cached sales".into(),
+        categories: "A2:A4".into(),
+        series: vec![
+            ChartSeries { name: "North".into(), range: "B2:B4".into(), color: Some("#1D4ED8".into()) },
+            ChartSeries { name: "South".into(), range: "C2:C4".into(), color: None },
+        ],
+        legend: true,
+        x_title: String::new(),
+        y_title: String::new(),
+        stacked: false,
+        show_labels: false,
+        categories_cache: vec!["Q1".into(), "Q2".into(), "Q3".into()],
+        series_values_cache: vec![vec![10.0, 20.5, 31.0], vec![5.0, 6.0, 7.0]],
+    });
+    deck.slides = vec![Slide { objects: vec![chart], ..Default::default() }];
+    deck
+}
+
+#[test]
+fn charts_with_caches_export_an_embedded_workbook_and_roundtrip() {
+    let deck = cached_chart_deck();
+    let write = pptx::write_pptx_package(&deck).unwrap();
+    assert!(write.warnings.is_empty(), "unexpected warnings: {:?}", write.warnings);
+
+    let reader = ZipReader::open(write.bytes.clone()).unwrap();
+    assert!(reader.contains("ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx"));
+    assert!(reader.contains("ppt/charts/_rels/chart1.xml.rels"));
+    let content_types = reader.read_text("[Content_Types].xml").unwrap();
+    assert!(content_types.contains("spreadsheetml.sheet"), "content types: {content_types}");
+    let chart_xml = reader.read_text("ppt/charts/chart1.xml").unwrap();
+    officecore::xml::parse_xml(&chart_xml).unwrap_or_else(|error| panic!("chart XML is malformed: {error}"));
+    assert!(chart_xml.contains("<c:strCache>"), "chart: {chart_xml}");
+    assert!(chart_xml.contains("<c:numCache>"));
+    assert!(chart_xml.contains("<c:pt idx=\"0\"><c:v>Q1</c:v></c:pt>"));
+    assert!(chart_xml.contains("<c:pt idx=\"1\"><c:v>20.5</c:v></c:pt>"));
+    assert!(chart_xml.contains("<c:externalData r:id=\"rId1\">"));
+    let chart_rels = reader.read_text("ppt/charts/_rels/chart1.xml.rels").unwrap();
+    officecore::xml::parse_xml(&chart_rels).unwrap_or_else(|error| panic!("chart rels are malformed: {error}"));
+    assert!(chart_rels.contains("relationships/package"), "rels: {chart_rels}");
+    assert!(chart_rels.contains("../embeddings/Microsoft_Excel_Worksheet1.xlsx"));
+
+    // The embedded workbook must be a real xlsx package: validate it with the
+    // crate's own reader, independently of the chart code.
+    let workbook_bytes = reader.read("ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx").unwrap();
+    let workbook = officecore::xlsx::read_workbook_bytes(&workbook_bytes).unwrap();
+    assert_eq!(workbook.workbook.sheets.len(), 1);
+    let sheet = &workbook.workbook.sheets[0];
+    assert_eq!(sheet.get("A2").map(|cell| cell.value.clone()), Some(CellValue::Text("Q1".into())));
+    assert_eq!(sheet.get("B3").map(|cell| cell.value.clone()), Some(CellValue::Number(20.5)));
+    assert_eq!(sheet.get("C4").map(|cell| cell.value.clone()), Some(CellValue::Number(7.0)));
+
+    // Import restores the cache fields and keeps the range information.
+    let read = pptx::read_pptx(&write.bytes).unwrap();
+    let chart = read.deck.slides[0].objects.iter().find_map(|object| object.chart.as_ref()).expect("chart");
+    assert_eq!(chart.categories, "A2:A4");
+    assert_eq!(chart.series[0].range, "B2:B4");
+    assert_eq!(chart.categories_cache, vec!["Q1".to_string(), "Q2".to_string(), "Q3".to_string()]);
+    assert_eq!(chart.series_values_cache, vec![vec![10.0, 20.5, 31.0], vec![5.0, 6.0, 7.0]]);
+
+    // A second write -> read cycle stays stable.
+    let second = pptx::read_pptx(&pptx::write_pptx(&read.deck).unwrap()).unwrap().deck;
+    let chart = second.slides[0].objects.iter().find_map(|object| object.chart.as_ref()).expect("chart");
+    assert_eq!(chart.categories_cache.len(), 3);
+    assert_eq!(chart.series_values_cache[0], vec![10.0, 20.5, 31.0]);
+    assert_eq!(chart.series_values_cache[1], vec![5.0, 6.0, 7.0]);
+}
+
+#[test]
+fn charts_without_caches_stay_range_only() {
+    let write = pptx::write_pptx_package(&sample_deck()).unwrap();
+    let reader = ZipReader::open(write.bytes).unwrap();
+    assert!(!reader.names().any(|name| name.contains("embeddings")), "range-only charts must not embed a workbook");
+    let chart_xml = reader.read_text("ppt/charts/chart1.xml").unwrap();
+    assert!(!chart_xml.contains("<c:strCache>"));
+    assert!(!chart_xml.contains("<c:numCache>"));
+    assert!(!chart_xml.contains("c:externalData"));
 }
 
 #[test]

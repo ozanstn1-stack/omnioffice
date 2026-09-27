@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The editor module pulls in the session hook, which touches Tauri at import
 // time; stubs keep the pure helpers testable in jsdom.
@@ -12,13 +13,33 @@ import {
   animationTimeline,
   formatClock,
   groupSelection,
+  ImpressEditor,
   inheritedObjects,
+  mergeChartPaste,
+  objectsInRect,
+  parseChartCellNumber,
+  parseChartClipboard,
   refreshGroupBounds,
   scaleObject,
+  syncChartDataRanges,
   translateObject,
   ungroupSelection,
 } from "./ImpressEditor";
-import { newAnimation, newDeck, newSlide, newSlideMaster, newSlideObject, type SlideObject } from "../lib/office-types";
+import { useOfficeTabs, type OfficeTab } from "../lib/office-store";
+import { newAnimation, newDeck, newSlide, newSlideMaster, newSlideObject, newTextFrame, type ChartData, type Deck, type SlideObject } from "../lib/office-types";
+
+// jsdom has no PointerEvent, so testing-library would fall back to a plain
+// Event and drop button/clientX/pointerId. MouseEvent carries those fields and
+// is the standard stand-in for pointer event tests.
+if (typeof window.PointerEvent === "undefined") {
+  window.PointerEvent = MouseEvent as unknown as typeof PointerEvent;
+}
+
+function Harness({ id }: { id: string }) {
+  const tab = useOfficeTabs((state) => state.tabs.find((candidate) => candidate.id === id));
+  if (!tab) return null;
+  return <ImpressEditor tab={tab as OfficeTab & { model: Deck }} />;
+}
 
 function rect(id: string, x: number, y: number, w: number, h: number, z: number): SlideObject {
   return { ...newSlideObject("rect", x, y, w, h), id, z };
@@ -169,5 +190,262 @@ describe("presenter clock", () => {
     expect(formatClock(9_000)).toBe("00:09");
     expect(formatClock(65_000)).toBe("01:05");
     expect(formatClock(3_600_000)).toBe("60:00");
+  });
+});
+
+describe("marquee selection", () => {
+  it("keeps only the objects the rectangle touches", () => {
+    const a = rect("a", 0, 0, 100, 100, 1);
+    const b = rect("b", 200, 200, 100, 100, 2);
+    expect(objectsInRect([a, b], { x: 50, y: 50, w: 100, h: 100 }).map((object) => object.id)).toEqual(["a"]);
+    // Overlapping boxes intersect; boxes that only touch an edge do not.
+    expect(objectsInRect([a, b], { x: 150, y: 150, w: 100, h: 100 }).map((object) => object.id)).toEqual(["b"]);
+    expect(objectsInRect([a, b], { x: 100, y: 100, w: 100, h: 100 }).map((object) => object.id)).toEqual([]);
+  });
+});
+
+describe("pointer gestures on the slide canvas", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+  });
+
+  it("moves an object with a single pointer drag", () => {
+    const deck = newDeck("Touch");
+    deck.slides[0].objects = [
+      { ...newSlideObject("rect", 100, 100, 200, 100), id: "r1", z: 1 },
+      { ...newSlideObject("rect", 500, 300, 100, 100), id: "r2", z: 2 },
+    ];
+    const id = useOfficeTabs.getState().create("impress", "Touch", deck);
+    render(<Harness id={id} />);
+
+    const objects = document.querySelectorAll<HTMLElement>(".slide-object:not(.is-inherited)");
+    expect(objects.length).toBe(2);
+    fireEvent.pointerDown(objects[0], { pointerId: 1, pointerType: "mouse", button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { pointerId: 1, pointerType: "mouse", clientX: 180, clientY: 130 });
+    fireEvent.pointerUp(window, { pointerId: 1, pointerType: "mouse" });
+
+    const model = useOfficeTabs.getState().tabs[0].model as Deck;
+    // jsdom has no layout: the canvas falls back to scale 0.2, so 80 screen px
+    // are 400 slide points.
+    expect(model.slides[0].objects[0].x).toBe(500);
+    expect(model.slides[0].objects[0].y).toBe(250);
+  });
+
+  it("selects with a marquee and clears on a plain canvas tap", () => {
+    const deck = newDeck("Touch");
+    deck.slides[0].objects = [
+      { ...newSlideObject("rect", 100, 100, 200, 100), id: "r1", z: 1 },
+      { ...newSlideObject("rect", 500, 300, 100, 100), id: "r2", z: 2 },
+    ];
+    const id = useOfficeTabs.getState().create("impress", "Touch", deck);
+    render(<Harness id={id} />);
+
+    const canvas = document.querySelector<HTMLElement>(".slide-canvas")!;
+    fireEvent.pointerDown(canvas, { pointerId: 3, pointerType: "mouse", button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(window, { pointerId: 3, pointerType: "mouse", clientX: 60, clientY: 60 });
+    expect(document.querySelector(".slide-marquee")).not.toBeNull();
+    fireEvent.pointerUp(window, { pointerId: 3, pointerType: "mouse", clientX: 60, clientY: 60 });
+
+    const selected = document.querySelectorAll(".slide-object.is-selected");
+    expect(selected.length).toBe(1);
+    expect(document.querySelector(".slide-marquee")).toBeNull();
+  });
+
+  it("enters text editing when a text object is double-tapped on touch", () => {
+    const deck = newDeck("Touch");
+    deck.slides[0].objects = [{ ...newSlideObject("rect", 100, 100, 200, 100), id: "r1", z: 1, text: newTextFrame("Hello", 20) }];
+    const id = useOfficeTabs.getState().create("impress", "Touch", deck);
+    render(<Harness id={id} />);
+
+    const object = document.querySelector<HTMLElement>(".slide-object:not(.is-inherited)")!;
+    const tap = (pointerId: number) => {
+      fireEvent.pointerDown(object, { pointerId, pointerType: "touch", button: 0, clientX: 40, clientY: 40 });
+      fireEvent.pointerUp(window, { pointerId, pointerType: "touch", clientX: 40, clientY: 40 });
+    };
+
+    tap(1);
+    expect(document.querySelector(".slide-text-editor")).toBeNull();
+    tap(2);
+    expect(document.querySelector(".slide-text-editor")).not.toBeNull();
+  });
+});
+
+describe("chart data helpers", () => {
+  const base: ChartData = {
+    kind: "column",
+    title: "Revenue",
+    categories: "Data!$A$2:$A$4",
+    series: [
+      { name: "A", range: "Data!$B$2:$B$4", color: null },
+      { name: "B", range: "", color: null },
+    ],
+    legend: true,
+    xTitle: "",
+    yTitle: "",
+    stacked: false,
+    showLabels: false,
+    categoriesCache: ["Q1", "Q2", "Q3"],
+    seriesValuesCache: [[1, 2], []],
+  };
+
+  it("parses tab-, comma- and newline-separated clipboard text", () => {
+    expect(parseChartClipboard("Region\tSales\nNorth\t10\nSouth,20\n")).toEqual([
+      ["Region", "Sales"],
+      ["North", "10"],
+      ["South", "20"],
+    ]);
+    // Blank interior lines stay so pasted columns keep their row alignment.
+    expect(parseChartClipboard("1\n\n3")).toEqual([["1"], [""], ["3"]]);
+  });
+
+  it("parses locale-independent decimals and rejects everything else", () => {
+    expect(parseChartCellNumber("1.5")).toBe(1.5);
+    expect(parseChartCellNumber("-2e2")).toBe(-200);
+    expect(parseChartCellNumber(".5")).toBe(0.5);
+    expect(parseChartCellNumber("+3")).toBe(3);
+    // Comma is a clipboard separator, not a decimal mark.
+    expect(parseChartCellNumber("1,5")).toBeNull();
+    expect(parseChartCellNumber("")).toBeNull();
+    expect(parseChartCellNumber("abc")).toBeNull();
+    expect(parseChartCellNumber("Infinity")).toBeNull();
+  });
+
+  it("merges a pasted block into the caches and skips invalid numbers", () => {
+    const merged = mergeChartPaste(base, { row: 1, column: 1 }, [["7"], ["-3"], ["oops"]]);
+    expect(merged.categoriesCache).toEqual(["Q1", "Q2", "Q3"]);
+    expect(merged.seriesValuesCache).toEqual([[1, 7, -3], []]);
+  });
+
+  it("pastes labels into the category column", () => {
+    const merged = mergeChartPaste(base, { row: 1, column: 0 }, [["R2"], ["R3"]]);
+    expect(merged.categoriesCache).toEqual(["Q1", "R2", "R3"]);
+  });
+
+  it("zero-fills a gap when a pasted value skips rows, matching the reader", () => {
+    const merged = mergeChartPaste(base, { row: 3, column: 1 }, [["5"]]);
+    expect(merged.seriesValuesCache![0]).toEqual([1, 2, 0, 5]);
+  });
+
+  it("derives workbook ranges from caches and leaves empty series alone", () => {
+    const synced = syncChartDataRanges({
+      ...base,
+      categoriesCache: ["Q1", "Q2"],
+      seriesValuesCache: [[], [4, 5, 6]],
+    });
+    expect(synced.categories).toBe("Sheet1!$A$2:$A$3");
+    expect(synced.series[0].range).toBe("Data!$B$2:$B$4");
+    expect(synced.series[1].range).toBe("Sheet1!$C$2:$C$4");
+  });
+});
+
+describe("Impress chart data editor", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+  });
+
+  function chartDeck(overrides: Partial<ChartData> = {}): Deck {
+    const deck = newDeck("Charts");
+    const object = newSlideObject("chart", 100, 100, 400, 260);
+    object.chart = {
+      kind: "column",
+      title: "Revenue",
+      categories: "Data!$A$2:$A$4",
+      series: [{ name: "Sales", range: "Data!$B$2:$B$4", color: null }],
+      legend: true,
+      xTitle: "",
+      yTitle: "",
+      stacked: false,
+      showLabels: false,
+      categoriesCache: ["Q1", "Q2", "Q3"],
+      seriesValuesCache: [[10, 20, 30]],
+      ...overrides,
+    };
+    deck.slides[0].objects = [object];
+    return deck;
+  }
+
+  /** Creates a tab with the deck, opens the chart dialog by double-click. */
+  function openChartDialog(deck: Deck): { id: string; dialog: HTMLElement } {
+    const id = useOfficeTabs.getState().create("impress", "Charts", deck);
+    render(<Harness id={id} />);
+    fireEvent.doubleClick(document.querySelector(".slide-object:not(.is-inherited)")!);
+    return { id, dialog: document.querySelector('[role="dialog"]') as HTMLElement };
+  }
+
+  function cell(dialog: HTMLElement, row: number, column: number): HTMLInputElement {
+    return dialog.querySelector<HTMLInputElement>(`[data-cell="${row}:${column}"]`)!;
+  }
+
+  function savedChart(id: string): ChartData {
+    const model = useOfficeTabs.getState().tabs.find((tab) => tab.id === id)!.model as Deck;
+    return model.slides[0].objects[0].chart!;
+  }
+
+  it("prefills the data grid from the imported chart caches", () => {
+    const { dialog } = openChartDialog(chartDeck());
+    expect(dialog).not.toBeNull();
+    expect(cell(dialog, 0, 0).value).toBe("Q1");
+    expect(cell(dialog, 2, 0).value).toBe("Q3");
+    expect(cell(dialog, 1, 1).value).toBe("20");
+    expect(dialog.querySelector<HTMLInputElement>('[data-series-name="0"]')!.value).toBe("Sales");
+  });
+
+  it("opens a range-only chart with an empty grid and the range hint", () => {
+    const { dialog } = openChartDialog(chartDeck({ categoriesCache: [], seriesValuesCache: [] }));
+    expect(cell(dialog, 0, 0).value).toBe("");
+    expect(cell(dialog, 0, 1).value).toBe("");
+    expect(within(dialog).getByText(/only carries cell ranges/)).toBeTruthy();
+  });
+
+  it("commits typed values and saves caches plus workbook-backed ranges", () => {
+    const { id, dialog } = openChartDialog(chartDeck());
+    fireEvent.change(cell(dialog, 1, 1), { target: { value: "25.5" } });
+    fireEvent.change(cell(dialog, 2, 0), { target: { value: "Q3b" } });
+    fireEvent.click(within(dialog).getByText("Save"));
+
+    const chart = savedChart(id);
+    expect(chart.categoriesCache).toEqual(["Q1", "Q2", "Q3b"]);
+    expect(chart.seriesValuesCache).toEqual([[10, 25.5, 30]]);
+    // Data was edited, so the ranges now point at the embedded workbook the
+    // Rust exporter builds from these caches.
+    expect(chart.categories).toBe("Sheet1!$A$2:$A$4");
+    expect(chart.series[0].range).toBe("Sheet1!$B$2:$B$4");
+  });
+
+  it("does not commit invalid input and keeps imported ranges untouched", () => {
+    const { id, dialog } = openChartDialog(chartDeck());
+    const target = cell(dialog, 0, 1);
+    fireEvent.change(target, { target: { value: "1,5" } });
+    expect(target.value).toBe("1,5");
+    fireEvent.blur(target);
+    expect(target.value).toBe("10");
+    fireEvent.click(within(dialog).getByText("Save"));
+
+    const chart = savedChart(id);
+    expect(chart.seriesValuesCache).toEqual([[10, 20, 30]]);
+    expect(chart.categories).toBe("Data!$A$2:$A$4");
+    expect(chart.series[0].range).toBe("Data!$B$2:$B$4");
+  });
+
+  it("pastes a tab and newline separated block at the focused cell", () => {
+    const { id, dialog } = openChartDialog(chartDeck());
+    const target = cell(dialog, 1, 1);
+    fireEvent.pointerDown(target, { pointerId: 1, button: 0 });
+    fireEvent.paste(target, { clipboardData: { getData: () => "41\n42\n" } });
+    fireEvent.click(within(dialog).getByText("Save"));
+
+    const chart = savedChart(id);
+    expect(chart.seriesValuesCache).toEqual([[10, 41, 42]]);
+  });
+
+  it("adds a series column with an empty value list aligned with the others", () => {
+    const { id, dialog } = openChartDialog(chartDeck());
+    fireEvent.click(dialog.querySelector<HTMLButtonElement>('button[title="Add series"]')!);
+    fireEvent.change(cell(dialog, 0, 2), { target: { value: "9" } });
+    fireEvent.click(within(dialog).getByText("Save"));
+
+    const chart = savedChart(id);
+    expect(chart.series).toHaveLength(2);
+    expect(chart.seriesValuesCache).toEqual([[10, 20, 30], [9]]);
   });
 });

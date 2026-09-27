@@ -1,0 +1,28 @@
+[package]
+name = "synccore"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Local-first cloud sync foundation (WebDAV) for PDF Swiss Army Knife"
+
+[lib]
+name = "synccore"
+path = "src/lib.rs"
+
+[dependencies]
+# Blocking client: every network call runs inside a Tauri spawn_blocking worker,
+# so the UI thread is never blocked. rustls keeps the crate free of OpenSSL /
+# native TLS dependencies, which is what makes Windows + Android both work.
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "charset"] }
+quick-xml = "0.42.0"
+percent-encoding = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"

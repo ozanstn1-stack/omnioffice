@@ -4,6 +4,192 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0]
+
+Cross-platform completion, Office/PDF fidelity, secure signing and production
+release. The paginated Writer is now a real editing canvas, PDFs can be signed
+with genuine CMS/PKCS#7 signatures and validated, PDF forms can be filled and
+flattened, XLSX import keeps charts, pictures, print settings, protection and
+pivot parts, PPTX charts ship cached values and an embedded workbook, ODT/RTF
+keep notes and tracked changes, the Android app becomes a first-class platform
+(intents, SAF, touch editing, vault import, persistent jobs), and a sandboxed
+plugin runtime and a local-first sync foundation land with data-loss
+protection in front of every lossy save.
+
+### Writer
+
+- **Direct WYSIWYG editing in the paginated view.** Typing now happens on the
+  page itself: clicking anywhere on a page places a real caret at the clicked
+  character, typing/paste/delete go through the document model, Enter splits,
+  Backspace merges, Shift+Enter inserts a line break, and the caret moves
+  **across page boundaries** with the arrow keys. Caret persistence across
+  reflow is preserved; the continuous surface remains available.
+- Cross-page/fragment selection works through the native selection when the
+  drag starts in the active editable; all editors accept pointer events so the
+  same behavior works with touch on Android.
+
+### Calc
+
+- **XLSX import fidelity**: charts (column/bar/line/pie/area, titles, series,
+  colours, caches, drawing anchors), pictures (media, anchor, size, rotation),
+  print settings (page setup, margins, options, header/footer, row/column
+  breaks, Print_Area and Print_Titles), and sheet protection now round-trip.
+- Pivot tables are preserved losslessly (definition, records, table parts are
+  re-exported); the grid is not recomputed from the cache.
+- Formula-autocomplete and auditing overlays now apply on touch (pointerdown),
+  with a bottom-docked formula bar on Android.
+
+### Impress
+
+- **PPTX chart data path completed**: the chart dialog edits real
+  categories/values (grid entry, paste, add/remove rows and series), the model
+  carries `categoriesCache`/`seriesValuesCache`, and export writes
+  `c:strCache`/`c:numCache` plus an **embedded Excel workbook**, so charts open
+  with data in other office suites.
+- Touch object editing (move/resize/rotate), marquee selection and
+  double-tap-to-edit; larger handles on coarse pointers.
+
+### PDF
+
+- **Real digital signatures** (`pdfcore::sign`): detached CMS/PKCS#7 with
+  X.509, SHA-256, RSA and ECDSA P-256; AcroForm signature field + widget with
+  a generated visible appearance; ByteRange covers the saved revision; the
+  written file is re-verified. Validation reports digest match, whole-file
+  coverage, modification detection and signature validity, and prints subject/
+  issuer/serial/validity/algorithm/signing time. Certificates come from a
+  PKCS#12 (.pfx) file on every platform, or from the **Windows certificate
+  store** (listing + signing, with a clear error for non-exportable keys).
+  Trust is reported as `unknown` offline; nothing is faked.
+- **Forms & objects in PDF Studio**: field listing (text/checkbox/radio choice/
+  list/dropdown with flags, options, required, tab order), filling with
+  regenerated appearances, validation (required, max length, options, hinted
+  formats), and annotation/widget/image object selection with move, resize,
+  rotate and delete - mouse on Windows, touch handles on Android. Text and
+  vector content-stream objects are documented as out of scope.
+- **PDF/A font embedding** (`pdfcore::fontembed`): non-embedded simple fonts
+  are substituted with bundled OFL fonts (Liberation Sans for the Helvetica/
+  Arial family, metric-compatible; PT Sans fallback with a warning) and
+  embedded as `/FontFile2` with real descriptor metrics; skipped fonts are
+  reported honestly (CID/Type0, symbolic, custom encodings). Conversion also
+  writes a real `/DestOutputProfile` sRGB ICC v4 profile.
+- Reader pinch-zoom, drag pan and double-tap zoom for Android.
+
+### Digital Signatures
+
+- New `pdfcore::sign` module, Tauri commands (`pdf_sign`,
+  `pdf_verify_signatures`, `pdf_list_signing_certificates`) and a Signatures
+  tab in PDF Studio. PFX passwords/key material never touch disk or logs.
+
+### Android
+
+- **Open-with intents work**: MainActivity resolves content:// URIs (VIEW,
+  SEND, SEND_MULTIPLE), copies them into app cache under size/extension
+  guards, and the app opens them at startup or on new intent.
+- **Office documents can be imported and exported**: SAF pickers for office
+  MIME types, saving through SAF targets with publish-to-Downloads fallbacks.
+- **Document Vault on Android**: import documents through SAF into app-private
+  vault storage, index, search and preview locally; folder scanning remains a
+  desktop capability and is labeled as such.
+- **Background jobs persist**: job records survive process death, previously
+  running jobs return as `interrupted`, and cancellation keeps working.
+- Touch UX across Writer/Calc/Impress/Reader; Android back button follows an
+  in-app history; secrets excluded from backups (`allowBackup=false`),
+  network-security config pins cleartext to localhost/emulator hosts.
+
+### Windows
+
+- File associations now register unique ProgIds for all supported extensions
+  (previously generic names collided and only `.oswk` registered), the
+  installer still accepts "Office Swiss Army Knife_3.1.0_x64-setup.exe" as its
+  asset name, and the portable ZIP ships the same binaries.
+
+### Compatibility
+
+- **Data Loss Protection**: before every non-`.oswk` save/export (including
+  the Universal Converter) the compatibility report is computed and a modal
+  shows Feature / Supported? / Imported? / Exported? / Transformed? / Lost?
+  with Continue, Cancel and **Save as .oswk**. The check fails open so a
+  broken report can never trap a save.
+- Compatibility matrix updated for the new ODT/RTF/PPTX/XLSX capabilities.
+
+### Security
+
+- Android manifest hardening: `allowBackup=false`, data-extraction rules,
+  narrowed FileProvider paths, network security config, intent input
+  validation (whitelist, size cap, sanitized names, no traversal).
+- Plugin runtime runs untrusted plugin code in a Web Worker with no DOM and no
+  IPC; capabilities (`read_document`, `modify_document`, `read_files`,
+  `write_files`, `clipboard`, `network`) are host-enforced per manifest,
+  plugin file IO is scoped to a per-plugin sandbox, and a plugin crash only
+  kills its worker.
+- Sync credentials reuse the existing secret store (DPAPI on Windows); cloud
+  is off by default and nothing is ever overwritten silently.
+
+### Performance
+
+- Performance guards added: Writer pagination and 100-page PDF export, Calc
+  20k/100k-cell recalculation, PDF merge/text extraction/render, plus
+  `#[ignore]` heavy cases (500-page Writer PDF, 500k-cell chain, 500-page
+  scanned render). Measured on the development machine with generous bounds.
+
+### AI
+
+- AI remains opt-in with visible provider and send scope on both platforms;
+  the Android build documents its plaintext key fallback and the backup
+  exclusion, and LAN/localhost cleartext access for local models.
+
+### Cloud
+
+- **Local-first sync foundation** (`crates/synccore` + Sync screen): provider
+  abstraction with a real WebDAV implementation (PROPFIND/GET/conditional
+  PUT/MKCOL/DELETE), per-file metadata with device id and revision, three-way
+  conflict detection (local/cloud/base) and manual resolution - keep local,
+  keep cloud or keep both. OneDrive/Google Drive are declared as requiring
+  OAuth and are disabled with an explicit message. Off by default; no
+  background polling.
+
+### Release
+
+- Version 3.1.0 everywhere (package.json, workspace Cargo.toml, Cargo.lock,
+  tauri.conf.json, Android `versionName`/`versionCode`, UI constants).
+- Windows: NSIS installer (`Office Swiss Army Knife_3.1.0_x64-setup.exe`),
+  portable ZIP and SHA256 sums. Android: signed release APKs for arm64-v8a
+  and armeabi-v7a plus AABs for both, with SHA256 sums.
+- CI updated: Android workflow builds APKs **and** AABs, attaches all assets
+  to the tag release (creating it if the desktop job has not yet), and both
+  workflows validate the Android version metadata against the tag.
+
+### Added
+
+- Golden-file contract tests: Writer/Calc/Impress V3.1 fixtures commit the
+  `.oswk` bytes and assert feature survival across `.oswk` and DOCX/XLSX/PPTX
+  round trips; the same engine ships on Android, so the contract is testable
+  in CI and manually on device.
+- Sandboxed plugin runtime with manifest permissions, sample plugin, install/
+  list/remove commands and a Plugins screen.
+- `pdfcore::forms` (AcroForm list/fill/validate, page objects), `pdfcore::sign`,
+  `pdfcore::fontembed`, `crates/synccore`, `vault_import_files`, persisted
+  `JobStore`, Android intent handling.
+
+### Changed
+
+- Writer paginated fragments host the editing surface directly; the old
+  "click opens the continuous surface" behavior is gone for paragraphs.
+- `PrintSettings`, `Sheet`, `Workbook`, `ChartData` and `TextDocument` gained
+  V3.1 fields, all serde-defaulted: V2/V3 `.oswk` documents open unchanged.
+- `SheetProtection` is now a structured model instead of a boolean.
+
+### Fixed
+
+- XLSX: the exporter dropped footer text, hardcoded margins and page breaks,
+  and ignored imported print settings; all of them round-trip now.
+- PPTX: charts exported without caches rendered empty in other suites; they
+  now carry values and an embedded workbook.
+- RTF: footnote groups were previously parsed as ordinary text.
+- ODT: note bodies were folded into the paragraph text on import.
+- Android file intents were silently dropped; they now open the document.
+- Windows file associations for office extensions never registered.
+
 ## [3.0.0]
 
 The document-platform release. Writer gains sections, notes, tracked changes,

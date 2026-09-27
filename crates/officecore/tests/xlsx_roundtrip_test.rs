@@ -5,11 +5,10 @@
 //!   build/edit a workbook -> save XLSX -> reopen XLSX -> compare the model
 //!
 //! Import reads values and formulas through `calamine`; cell styling, merges,
-//! column widths, freeze panes, validations, conditional formatting and charts
-//! are written by the exporter but not read back by the importer, so those are
-//! verified structurally against the package parts (and the loss is asserted,
-//! not hidden). Values and formulas are compared cell by cell with no loss
-//! permitted.
+//! column widths, freeze panes, validations, conditional formatting, charts,
+//! pictures, print settings, protection and preserved pivot parts are all
+//! rebuilt by the V3.1 OOXML pass and compared on the model. Values and
+//! formulas are compared cell by cell with no loss permitted.
 
 use officecore::model::*;
 use officecore::xlsx;
@@ -127,6 +126,7 @@ fn golden_workbook() -> Workbook {
             y_title: "EUR".into(),
             stacked: false,
             show_labels: false,
+            ..Default::default()
         },
         anchor: "F5".into(),
         width_px: 420.0,
@@ -153,6 +153,7 @@ fn golden_workbook() -> Workbook {
             y_title: String::new(),
             stacked: false,
             show_labels: true,
+            ..Default::default()
         },
         anchor: "D2".into(),
         width_px: 300.0,
@@ -322,9 +323,9 @@ fn xlsx_export_materializes_pivot_tables_as_values() {
 }
 
 /// Pins what a pure XLSX round trip preserves. V3.0 added a custom OOXML
-/// import pass, so layout and presentation metadata now survive; charts are
-/// still export-only (the model keeps them, the importer does not rebuild
-/// ChartML).
+/// import pass; V3.1 rebuilt the parts the exporter writes (charts, pictures,
+/// print settings, protection and pivot caches) so this now checks the model
+/// instead of accepting the loss.
 #[test]
 fn xlsx_roundtrip_preserves_values_and_presentation_metadata() {
     let original = golden_workbook();
@@ -344,7 +345,340 @@ fn xlsx_roundtrip_preserves_values_and_presentation_metadata() {
     assert!(after.freeze_rows > 0 || after.freeze_cols > 0, "freeze panes must survive");
     assert_eq!(after.conditional.len(), before.conditional.len(), "conditional rules must survive");
     assert_eq!(after.validations.len(), before.validations.len(), "validations must survive");
-    // Charts are still export-only: the ChartML part is written but the
-    // importer does not rebuild the chart model yet.
-    assert!(after.charts.is_empty(), "charts are expected to remain export-only");
+
+    // Charts: the ChartML part is read back into the model, anchors and all.
+    assert_eq!(after.charts.len(), before.charts.len(), "charts must survive the round trip");
+    let chart = after.charts.iter().find(|chart| chart.chart.title == "Sales vs cost").expect("column chart");
+    assert_eq!(chart.chart.kind, "column");
+    assert_eq!(chart.anchor, "F5");
+    assert_eq!(chart.chart.categories, "A2:A13");
+    assert_eq!(chart.chart.series.len(), 2);
+    assert_eq!(chart.chart.series[0].name, "Sales");
+    assert_eq!(chart.chart.series[0].range, "B2:B13");
+    assert_eq!(chart.chart.series[0].color.as_deref(), Some("#4472C4"));
+    assert_eq!(chart.chart.series[1].name, "Cost");
+    assert_eq!(chart.chart.x_title, "Month");
+    assert_eq!(chart.chart.y_title, "EUR");
+    assert!(chart.chart.legend);
+    assert!((chart.width_px - 420.0).abs() < 0.01, "chart width drifted: {}", chart.width_px);
+    assert!((chart.height_px - 260.0).abs() < 0.01, "chart height drifted: {}", chart.height_px);
+
+    let summary = sheet_by_name(&read.workbook, "Summary").unwrap();
+    let pie = summary.charts.first().expect("pie chart");
+    assert_eq!(pie.chart.kind, "pie");
+    assert_eq!(pie.chart.title, "Share");
+    assert_eq!(pie.chart.categories, "A2:A3");
+    assert_eq!(pie.chart.series[0].range, "B2:B3");
+    assert!(pie.chart.show_labels);
+    assert_eq!(pie.anchor, "D2");
+}
+
+
+// ---------------------------------------------------------------------------
+// V3.1: pictures, print settings, protection and preserved pivots
+// ---------------------------------------------------------------------------
+
+/// A hand-written pivot cache definition, as Excel writes one. The importer
+/// must read the source range and field names out of it and keep the raw part.
+const PIVOT_DEFINITION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<pivotCacheDefinition xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" refreshOnLoad=\"1\" recordCount=\"3\"><cacheSource type=\"worksheet\"><worksheetSource ref=\"A1:C4\" sheet=\"Data\"/></cacheSource><cacheFields count=\"3\"><cacheField name=\"Department\" numFmtId=\"0\"><sharedItems count=\"2\"><s v=\"Hardware\"/><s v=\"Software\"/></sharedItems></cacheField><cacheField name=\"Year\" numFmtId=\"0\"><sharedItems count=\"1\"><n v=\"2025\"/></sharedItems></cacheField><cacheField name=\"Sales\" numFmtId=\"0\"><sharedItems containsString=\"0\" containsNumber=\"1\"/></cacheField></cacheFields></pivotCacheDefinition>";
+
+/// The matching pivot table part.
+const PIVOT_TABLE: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<pivotTableDefinition xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" name=\"PivotTable1\" cacheId=\"7\" dataOnRows=\"1\" dataCaption=\"Values\" updatedVersion=\"6\" minRefreshableVersion=\"3\" useAutoFormatting=\"1\" itemPrintTitles=\"1\" createdVersion=\"6\" indent=\"0\" compact=\"0\" compactData=\"0\" gridDropZones=\"1\"><location ref=\"F1:G3\" firstHeaderRow=\"1\" firstDataRow=\"1\" firstDataCol=\"1\"/><pivotFields count=\"3\"><pivotField axis=\"axisRow\" showAll=\"0\" compact=\"0\" outline=\"0\"><items count=\"2\"><item t=\"default\"/><item x=\"0\"/></items></pivotField><pivotField dataField=\"1\" showAll=\"0\" compact=\"0\" outline=\"0\"/><pivotField showAll=\"0\" compact=\"0\" outline=\"0\"/></pivotFields><rowFields count=\"1\"><field x=\"0\"/></rowFields><rowItems count=\"2\"><i><x/></i><i><x v=\"1\"/></i></rowItems><dataFields count=\"1\"><dataField name=\"Sum of Sales\" fld=\"2\" baseField=\"0\" baseItem=\"0\"/></dataFields></pivotTableDefinition>";
+
+const PIVOT_RECORDS: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<pivotCacheRecords xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" count=\"3\"><r><s v=\"Hardware\"/><n v=\"2025\"/><n v=\"100\"/></r><r><s v=\"Hardware\"/><n v=\"2025\"/><n v=\"150\"/></r><r><s v=\"Software\"/><n v=\"2025\"/><n v=\"200\"/></r></pivotCacheRecords>";
+
+fn pivot_records_base64() -> String {
+    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, PIVOT_RECORDS.as_bytes())
+}
+
+/// A workbook exercising every V3.1 import target at once.
+fn v31_workbook() -> Workbook {
+    let mut workbook = Workbook::new_blank("V31");
+    let sheet = &mut workbook.sheets[0];
+    sheet.name = "Data".into();
+    for row in 0..4u32 {
+        for column in 0..3u32 {
+            let address = officecore::address::format(row, column);
+            let value = match (row, column) {
+                (0, 0) => CellValue::Text("Department".into()),
+                (0, 1) => CellValue::Text("Year".into()),
+                (0, 2) => CellValue::Text("Sales".into()),
+                (1, 0) => CellValue::Text("Hardware".into()),
+                (1, 1) => CellValue::Number(2025.0),
+                (1, 2) => CellValue::Number(100.0),
+                (2, 0) => CellValue::Text("Hardware".into()),
+                (2, 1) => CellValue::Number(2025.0),
+                (2, 2) => CellValue::Number(150.0),
+                (3, 0) => CellValue::Text("Software".into()),
+                (3, 1) => CellValue::Number(2025.0),
+                (3, 2) => CellValue::Number(200.0),
+                _ => CellValue::Empty,
+            };
+            sheet.set(&address, Cell { value, ..Default::default() });
+        }
+    }
+
+    let png = [0x89u8, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4];
+    sheet.images.push(SheetImage {
+        image: ImageData::from_bytes("logo.png", &png),
+        anchor: CellAnchor { address: "B2".into(), col_off_emu: 95_250, row_off_emu: 47_625, ..Default::default() },
+        width_px: 160.0,
+        height_px: 90.0,
+        rotation_deg: 15.0,
+    });
+
+    sheet.charts.push(ChartPlacement {
+        id: "chart-1".into(),
+        chart: ChartData {
+            kind: "column".into(),
+            title: "Sales by department".into(),
+            categories: "A2:A4".into(),
+            series: vec![ChartSeries { name: "Sales".into(), range: "C2:C4".into(), color: Some("#4472C4".into()) }],
+            legend: true,
+            x_title: "Department".into(),
+            y_title: "EUR".into(),
+            stacked: false,
+            show_labels: true,
+            categories_cache: vec!["Hardware".into(), "Hardware".into(), "Software".into()],
+            series_values_cache: vec![vec![100.0, 150.0, 200.0]],
+        },
+        anchor: "E2".into(),
+        width_px: 420.0,
+        height_px: 260.0,
+    });
+
+    sheet.print = PrintSettings {
+        paper_size: 1,
+        landscape: true,
+        scale: 85,
+        fit_to_width: 2,
+        fit_to_height: 3,
+        center_horizontally: true,
+        center_vertically: true,
+        print_gridlines: true,
+        print_headings: true,
+        print_titles_rows: Some("1:1".into()),
+        print_titles_cols: Some("A:A".into()),
+        print_area: Some("A1:C4".into()),
+        different_first_page: true,
+        different_odd_even: true,
+        header: "Report".into(),
+        footer: "Page &P".into(),
+        margin_left: 0.5,
+        margin_right: 0.6,
+        margin_top: 0.7,
+        margin_bottom: 0.8,
+        margin_header: 0.2,
+        margin_footer: 0.25,
+        first_header: "First".into(),
+        first_footer: "First bottom".into(),
+        even_header: "Even".into(),
+        even_footer: "Even bottom".into(),
+        row_breaks: vec![5, 9],
+        col_breaks: vec![2],
+    };
+
+    sheet.protection = SheetProtection {
+        enabled: true,
+        password_hash: Some("ABCD".into()),
+        algorithm_name: "SHA-512".into(),
+        hash_value: "aGFzaA==".into(),
+        salt_value: "c2FsdA==".into(),
+        spin_count: 100_000,
+        options: vec!["formatCells".into(), "objects".into()],
+    };
+
+    workbook.preserved_pivots.push(PreservedPivot {
+        name: "PivotTable1".into(),
+        sheet: "Data".into(),
+        cache_id: 7,
+        definition_xml: PIVOT_DEFINITION.into(),
+        records_base64: Some(pivot_records_base64()),
+        table_xml: PIVOT_TABLE.into(),
+        records_part: Some("xl/pivotCache/pivotCacheRecords1.xml".into()),
+        source: "Data!A1:C4".into(),
+        fields: vec!["Department".into(), "Year".into(), "Sales".into()],
+    });
+    workbook
+}
+
+#[test]
+fn xlsx_roundtrip_preserves_pictures_print_protection_and_pivots() {
+    let original = v31_workbook();
+    let bytes = xlsx::write_xlsx(&original).unwrap();
+    let read = xlsx::read_workbook_bytes(&bytes).unwrap();
+    let sheet = sheet_by_name(&read.workbook, "Data").expect("Data sheet");
+
+    // Picture: bytes, anchor offsets, size and rotation all survive.
+    assert_eq!(sheet.images.len(), 1, "the picture must survive the round trip");
+    let image = &sheet.images[0];
+    assert_eq!(image.image.mime, "image/png");
+    assert_eq!(image.image.bytes(), original.sheets[0].images[0].image.bytes());
+    assert_eq!(image.anchor.address, "B2");
+    assert_eq!(image.anchor.col_off_emu, 95_250);
+    assert_eq!(image.anchor.row_off_emu, 47_625);
+    assert!((image.width_px - 160.0).abs() < 0.01);
+    assert!((image.height_px - 90.0).abs() < 0.01);
+    assert!((image.rotation_deg - 15.0).abs() < 0.01);
+
+    // Chart: ranges, cache, titles and anchor come back exactly.
+    let chart = sheet.charts.first().expect("chart");
+    assert_eq!(chart.chart, original.sheets[0].charts[0].chart);
+    assert_eq!(chart.anchor, "E2");
+    assert!((chart.width_px - 420.0).abs() < 0.01);
+    assert!((chart.height_px - 260.0).abs() < 0.01);
+
+    // Print settings: every stored field round-trips.
+    assert_eq!(sheet.print, original.sheets[0].print);
+
+    // Protection: attributes and the locked-action list survive verbatim.
+    assert_eq!(sheet.protection, original.sheets[0].protection);
+    assert_eq!(sheet.sheet_protection, "ABCD");
+
+    // Pivot: raw parts preserved and readable.
+    assert_eq!(read.workbook.preserved_pivots.len(), 1);
+    let pivot = &read.workbook.preserved_pivots[0];
+    assert_eq!(pivot.name, "PivotTable1");
+    assert_eq!(pivot.sheet, "Data");
+    assert_eq!(pivot.cache_id, 7);
+    assert_eq!(pivot.definition_xml, PIVOT_DEFINITION);
+    assert_eq!(pivot.table_xml, PIVOT_TABLE);
+    assert_eq!(pivot.records_base64.as_deref(), Some(pivot_records_base64().as_str()));
+    assert_eq!(pivot.source, "Data!A1:C4");
+    assert_eq!(pivot.fields, vec!["Department".to_string(), "Year".to_string(), "Sales".to_string()]);
+    assert!(read.warnings.iter().any(|warning| warning.contains("pivot cache")), "{:?}", read.warnings);
+
+    // A second write/read cycle must be byte-for-byte stable at the model level.
+    let second = xlsx::write_xlsx(&read.workbook).unwrap();
+    let read2 = xlsx::read_workbook_bytes(&second).unwrap();
+    let sheet2 = sheet_by_name(&read2.workbook, "Data").expect("Data sheet");
+    assert_eq!(sheet2.images, sheet.images, "picture drifted on a second cycle");
+    assert_eq!(sheet2.charts, sheet.charts, "chart drifted on a second cycle");
+    assert_eq!(sheet2.print, sheet.print, "print settings drifted on a second cycle");
+    assert_eq!(sheet2.protection, sheet.protection, "protection drifted on a second cycle");
+    assert_eq!(read2.workbook.preserved_pivots, read.workbook.preserved_pivots);
+}
+
+#[test]
+fn xlsx_export_writes_picture_media_and_drawing_relationships() {
+    let bytes = xlsx::write_xlsx(&v31_workbook()).unwrap();
+    let reader = officecore::zip::ZipReader::open(bytes).unwrap();
+    assert!(reader.contains("xl/media/image1.png"), "the media part is missing");
+    let drawing = reader.read_text("xl/drawings/drawing1.xml").unwrap();
+    assert!(drawing.contains("<xdr:pic>"));
+    assert!(drawing.contains("rot=\"900000\""), "the rotation was not written: {drawing}");
+    let rels = reader.read_text("xl/drawings/_rels/drawing1.xml.rels").unwrap();
+    assert!(rels.contains("../media/image1.png"));
+    let content_types = reader.read_text("[Content_Types].xml").unwrap();
+    assert!(content_types.contains("Extension=\"png\" ContentType=\"image/png\""));
+    assert!(content_types.ends_with("</Types>"));
+    // The pivot parts and their wiring are in the package.
+    assert!(reader.contains("xl/pivotTables/pivotTable1.xml"));
+    assert!(reader.contains("xl/pivotCache/pivotCacheDefinition1.xml"));
+    assert!(reader.contains("xl/pivotCache/pivotCacheRecords1.xml"));
+    let workbook = reader.read_text("xl/workbook.xml").unwrap();
+    assert!(workbook.contains("<pivotCaches><pivotCache cacheId=\"7\" r:id=\"rId4\"/></pivotCaches>"));
+    assert!(workbook.contains("_xlnm.Print_Area"));
+    assert!(workbook.contains("_xlnm.Print_Titles"));
+    let sheet = reader.read_text("xl/worksheets/sheet1.xml").unwrap();
+    assert!(sheet.contains("rowBreaks"));
+    assert!(sheet.contains("sheetProtection"));
+    assert!(!sheet.contains("pivotTablePart"), "pivot tables are linked through rels, not worksheet elements");
+}
+
+/// A calc unit written by V3.0 has no `images`, `protection` or
+/// `preservedPivots` keys and its `PrintSettings` predates the V3.1 fields.
+/// The schema version stays 3, so loading must be carried by serde defaults.
+#[test]
+fn a_v3_calc_unit_without_the_v31_fields_still_loads() {
+    let legacy = r#"{
+        "id": "wb",
+        "title": "Legacy",
+        "activeSheet": 0,
+        "names": [],
+        "metadata": { "title": "Legacy" },
+        "sheets": [{
+            "id": "s1",
+            "name": "Sheet1",
+            "rowCount": 200,
+            "colCount": 26,
+            "cells": {},
+            "colWidths": {},
+            "rowHeights": {},
+            "merges": [],
+            "freezeRows": 0,
+            "freezeCols": 0,
+            "charts": [],
+            "pivotTables": [],
+            "conditional": [],
+            "validations": [],
+            "filter": null,
+            "showGridlines": true,
+            "tabColor": null,
+            "print": {
+                "paperSize": 9, "landscape": false, "scale": 100,
+                "fitToWidth": 1, "fitToHeight": 0, "centerHorizontally": false,
+                "printGridlines": false, "printHeadings": false,
+                "printTitlesRows": null, "differentFirstPage": false,
+                "differentOddEven": false, "header": "", "footer": ""
+            },
+            "sheetProtection": ""
+        }]
+    }"#;
+    let model: serde_json::Value = serde_json::from_str(legacy).unwrap();
+    let mut unit = serde_json::json!({ "kind": "calc", "version": 3, "model": model });
+    let report = officecore::schema::migrate_unit(&mut unit).unwrap();
+    assert!(!report.migrated, "schema 3 is already current");
+    let workbook: Workbook = serde_json::from_value(unit["model"].clone()).unwrap();
+    assert!(workbook.preserved_pivots.is_empty());
+    assert!(workbook.sheets[0].images.is_empty());
+    assert!(!workbook.sheets[0].protection.enabled);
+    assert_eq!(workbook.sheets[0].print.margin_left, 0.7);
+    assert_eq!(workbook.sheets[0].print.fit_to_width, 1);
+    assert!(workbook.sheets[0].print.row_breaks.is_empty());
+}
+
+/// A picture that came from a two-cell anchor is written back as a two-cell
+/// anchor, so both corners (and therefore the size Excel derives from them)
+/// survive a second cycle.
+#[test]
+fn xlsx_two_cell_anchored_picture_round_trips_its_corners() {
+    let mut workbook = Workbook::new_blank("TwoCell");
+    workbook.sheets[0].name = "Data".into();
+    workbook.sheets[0].set("A1", Cell { value: CellValue::Text("x".into()), ..Default::default() });
+    workbook.sheets[0].images.push(SheetImage {
+        image: ImageData::from_bytes("p.png", &[0x89, b'P', b'N', b'G', 1, 2, 3, 4]),
+        anchor: CellAnchor {
+            address: "B2".into(),
+            col_off_emu: 9_525,
+            row_off_emu: 19_050,
+            to_address: Some("E8".into()),
+            to_col_off_emu: 38_100,
+            to_row_off_emu: 47_625,
+        },
+        width_px: 200.0,
+        height_px: 120.0,
+        rotation_deg: 0.0,
+    });
+
+    let bytes = xlsx::write_xlsx(&workbook).unwrap();
+    let reader = officecore::zip::ZipReader::open(bytes.clone()).unwrap();
+    let drawing = reader.read_text("xl/drawings/drawing1.xml").unwrap();
+    assert!(drawing.contains("<xdr:twoCellAnchor"), "the corners were flattened: {drawing}");
+    assert!(!drawing.contains("<xdr:ext "), "a two-cell anchor must not carry an extent");
+
+    let read = xlsx::read_workbook_bytes(&bytes).unwrap();
+    let image = &read.workbook.sheets[0].images[0];
+    assert_eq!(image.anchor.address, "B2");
+    assert_eq!(image.anchor.to_address.as_deref(), Some("E8"));
+    assert_eq!(image.anchor.col_off_emu, 9_525);
+    assert_eq!(image.anchor.to_row_off_emu, 47_625);
+    // The size is derived from the corners: 3 default columns plus the offsets
+    // (192 + 3 px wide) and 6 default rows plus the offsets (120 + 3 px tall).
+    assert!((image.width_px - 195.0).abs() < 0.01, "width: {}", image.width_px);
+    assert!((image.height_px - 123.0).abs() < 0.01, "height: {}", image.height_px);
+
+    let second = xlsx::write_xlsx(&read.workbook).unwrap();
+    let read2 = xlsx::read_workbook_bytes(&second).unwrap();
+    assert_eq!(read2.workbook.sheets[0].images, read.workbook.sheets[0].images);
 }

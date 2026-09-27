@@ -6,6 +6,7 @@
 #   qpdf.exe     - PDF security / structural engine (Apache-2.0)
 #   tesseract    - OCR engine (Apache-2.0) + tessdata_fast language models (Apache-2.0)
 #   PT Sans font - text stamp rendering (SIL OFL 1.1)
+#   Liberation Sans fonts - PDF/A font embedding (SIL OFL 1.1)
 #
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-engines.ps1 [-Force]
 
@@ -178,6 +179,46 @@ $ofl = Join-Path $fontsDir 'OFL.txt'
 if (-not (Test-Path $ofl)) {
     Download-File -Url 'https://raw.githubusercontent.com/google/fonts/main/ofl/ptsans/OFL.txt' -OutFile $ofl
 }
+
+# ---------------------------------------------------------------- fonts (Liberation Sans, OFL)
+# Used by fontembed.rs as the metric-compatible substitute for Helvetica/Arial.
+# The four faces already ship with the browser extension, so copy them when
+# present (offline-friendly) and only fall back to the pinned release archive.
+$liberationFiles = @(
+    'LiberationSans-Regular.ttf',
+    'LiberationSans-Italic.ttf',
+    'LiberationSans-Bold.ttf',
+    'LiberationSans-BoldItalic.ttf'
+)
+$liberationMissing = @($liberationFiles | Where-Object { $Force -or -not (Test-Path (Join-Path $fontsDir $_)) })
+if ($liberationMissing.Count -gt 0) {
+    $liberationVendor = Join-Path $root 'chrome-extension\public\vendor\standard_fonts'
+    $missingFromVendor = @()
+    foreach ($f in $liberationMissing) {
+        $target = Join-Path $fontsDir $f
+        $local = Join-Path $liberationVendor $f
+        if (Test-Path $local) {
+            Write-Host "==> font $f (copy from chrome-extension vendor)"
+            Copy-Item $local $target -Force
+        } else {
+            $missingFromVendor += $f
+        }
+    }
+    if ($missingFromVendor.Count -gt 0) {
+        Write-Host '==> liberation fonts (download)'
+        $archive = Join-Path $cacheDir 'liberation-fonts-ttf-2.1.5.tar.gz'
+        Download-File -Url 'https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz' -OutFile $archive
+        $tmp = Join-Path $cacheDir 'liberation-x'
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $tmp
+        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        tar -xzf $archive -C $tmp
+        foreach ($f in $missingFromVendor) {
+            $found = Get-ChildItem $tmp -Recurse -Filter $f | Select-Object -First 1
+            if (-not $found) { throw "liberation archive did not contain $f" }
+            Copy-Item $found.FullName (Join-Path $fontsDir $f) -Force
+        }
+    }
+} else { Write-Host '==> liberation fonts (already present)' }
 
 # ---------------------------------------------------------------- verify
 Write-Host ''

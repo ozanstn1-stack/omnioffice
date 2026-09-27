@@ -44,6 +44,10 @@ const INDEX_FILE: &str = "index.json";
 const CONFIG_FILE: &str = "vault-config.json";
 const STATUS_FILE: &str = "status.json";
 const DOCS_DIR: &str = "docs";
+/// App-private directory holding the copies of documents the user imported
+/// through the system picker. On Android this is the only index root besides
+/// an (usually empty) folder list, because SAF never hands out browable paths.
+const IMPORTED_DIR: &str = "imported";
 
 const INDEX_VERSION: u32 = 1;
 const DEFAULT_MAX_FILE_MB: u64 = 25;
@@ -64,6 +68,15 @@ const MAX_LIMIT: usize = 200;
 const SNIPPET_CHARS: usize = 160;
 const FUZZY_MIN_WORD: usize = 4;
 const FUZZY_MAX_WORD: usize = 64;
+
+/// Hard cap for a single imported document. Independent of the per-scan
+/// `max_file_mb` (which only filters indexing): this cap stops a huge copy
+/// from ever reaching the app-private vault storage.
+const IMPORT_MAX_BYTES: u64 = 256 * 1024 * 1024;
+/// Hex characters of the SHA-256 digest used as the imported-file prefix.
+const IMPORT_HASH_CHARS: usize = 16;
+/// Longest imported file name (stem + extension) after sanitizing.
+const IMPORT_NAME_CHARS: usize = 120;
 
 // ---------------------------------------------------------------------------
 // Wire types
@@ -140,6 +153,12 @@ pub struct VaultStatus {
     pub scanning: bool,
     /// Recovery/cap notes from the last load or scan (never file contents).
     pub warnings: Vec<String>,
+    /// Platform capability: the app can walk user-chosen folders. False on
+    /// Android, where the only index root is the import directory.
+    pub can_scan_folders: bool,
+    /// Platform capability: picked documents can be copied into the
+    /// app-private import directory (true on every platform).
+    pub can_import_files: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -153,6 +172,35 @@ pub struct VaultScanRequest {
     pub rescan: bool,
     /// Upper bound for discovered files; 0 uses the default cap.
     pub max_files: usize,
+}
+
+/// One document copied into the vault's private import directory.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct VaultImportFile {
+    /// Path the user picked (on Android a cache copy of the SAF selection).
+    pub source: String,
+    /// Path of the copy inside the vault import directory.
+    pub path: String,
+    pub name: String,
+    pub size: u64,
+    pub sha256: String,
+}
+
+/// One pick that was not imported, with a machine-stable reason string.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct VaultImportSkip {
+    pub source: String,
+    pub reason: String,
+}
+
+/// Result of `vault_import_files`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct VaultImportReport {
+    pub imported: Vec<VaultImportFile>,
+    pub skipped: Vec<VaultImportSkip>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -240,6 +288,13 @@ fn docs_dir(root: &Path) -> PathBuf {
 
 fn stored_status_path(root: &Path) -> PathBuf {
     root.join(VAULT_DIR).join(STATUS_FILE)
+}
+
+/// App-private directory that holds copies of imported documents. Always an
+/// index root on Android (created on demand); on desktop it only receives
+/// files through `vault_import_files` and is not scanned.
+pub fn imported_dir(root: &Path) -> PathBuf {
+    root.join(VAULT_DIR).join(IMPORTED_DIR)
 }
 
 fn office_to_pdf(error: OfficeError) -> PdfError {
@@ -355,11 +410,15 @@ pub fn vault_status_at(root: &Path) -> VaultStatus {
     let index_bytes = std::fs::metadata(index_path(root)).map(|metadata| metadata.len()).unwrap_or(0);
     VaultStatus {
         indexed: index.documents.len(),
-        folders: load_config(root).folders.len(),
+        // On Android the app-private import directory is always an index
+        // root even though it is not part of the user's folder list.
+        folders: load_config(root).folders.len() + usize::from(cfg!(target_os = "android")),
         index_bytes,
         last_scan: stored.last_scan,
         scanning: stored.scanning,
         warnings,
+        can_scan_folders: cfg!(not(target_os = "android")),
+        can_import_files: true,
     }
 }
 
@@ -862,8 +921,22 @@ fn path_is_under(path_key: &str, folder_key: &str) -> bool {
 /// Pure with respect to Tauri: the caller provides the storage root, the
 /// configuration and the cancellation token, so the whole scan is unit
 /// testable. `request.folders` never adds discovery roots - only folders
-/// already saved in the configuration are walked.
+/// already saved in the configuration are walked. On Android the app-private
+/// import directory is always an additional root (imported documents).
 pub fn scan_folders(root: &Path, config: &VaultConfig, request: &VaultScanRequest, cancel: &CancelToken) -> ScanOutcome {
+    scan_folders_with(root, config, request, cancel, cfg!(target_os = "android"))
+}
+
+/// Like [`scan_folders`] but with an explicit decision about the always-on
+/// "Imported documents" root. The host tests pass `true` explicitly, because
+/// `cfg!(target_os = "android")` is false on the machine that runs them.
+pub fn scan_folders_with(
+    root: &Path,
+    config: &VaultConfig,
+    request: &VaultScanRequest,
+    cancel: &CancelToken,
+    include_imports: bool,
+) -> ScanOutcome {
     let (mut index, load_warnings) = load_index(root);
     let mut warnings = WarningSink::new(load_warnings);
     let previous: HashMap<String, VaultDocument> = index
@@ -884,6 +957,21 @@ pub fn scan_folders(root: &Path, config: &VaultConfig, request: &VaultScanReques
             continue;
         }
         roots.push((key, path));
+    }
+    if include_imports {
+        // The import directory is created on demand: an Android vault that
+        // has never imported anything still has this root, so "Index now"
+        // works before the first import instead of failing on a missing
+        // folder. Hidden temp files from interrupted copies are skipped by
+        // the walk below like any other dot-file.
+        let imported = imported_dir(root);
+        if let Err(error) = std::fs::create_dir_all(&imported) {
+            warnings.push(format!("The imported documents folder could not be created: {error}"));
+        }
+        let key = normalize_path_key(&imported.to_string_lossy());
+        if imported.is_dir() && !roots.iter().any(|(existing, _)| *existing == key) {
+            roots.push((key, imported));
+        }
     }
     if let Some(requested) = &request.folders {
         for folder in requested {
@@ -1105,6 +1193,211 @@ pub fn scan_folders(root: &Path, config: &VaultConfig, request: &VaultScanReques
         cancelled,
         truncated,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Import (the Android ingestion path)
+//
+// Android never hands the app a browsable folder path: the Storage Access
+// Framework returns content:// URIs. The honest design is therefore "the user
+// imports documents": the picker copies a selection into the app cache, then
+// `vault_import_files` copies those files into the app-private vault and the
+// next scan indexes the copies. Windows keeps the folder-scan model and the
+// same command works there for symmetry, but the UI only offers it on Android.
+// Nothing here scans, and nothing walks a directory the user did not pick.
+// ---------------------------------------------------------------------------
+
+fn import_skip(source: &str, reason: impl Into<String>) -> VaultImportSkip {
+    VaultImportSkip { source: source.to_string(), reason: reason.into() }
+}
+
+/// Sanitizes a picked file name for use inside the import directory.
+///
+/// `Path::file_name()` already drops every directory component, so a hostile
+/// path such as `../../etc/passwd` cannot contribute separators. The
+/// replacement below additionally neutralizes separator-like characters on
+/// platforms where they are ordinary characters (backslash on Unix), and the
+/// length cap keeps the hash prefix plus name well below filesystem limits.
+/// Returns `None` when nothing usable is left.
+fn sanitize_import_name(name: &str) -> Option<String> {
+    let base = Path::new(name).file_name()?.to_string_lossy().to_string();
+    let mut cleaned = String::with_capacity(base.len());
+    for ch in base.chars() {
+        if ch.is_control() {
+            continue;
+        }
+        cleaned.push(match ch {
+            '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            other => other,
+        });
+    }
+    let cleaned = cleaned.trim().to_string();
+    if cleaned.is_empty() || cleaned == "." || cleaned == ".." {
+        return None;
+    }
+    // Split off a plausible extension so the length cap never eats it.
+    let (stem, extension) = match cleaned.rfind('.') {
+        Some(index) if index > 0 => {
+            let extension = &cleaned[index..];
+            if extension.chars().count() <= 16 {
+                (&cleaned[..index], extension)
+            } else {
+                (cleaned.as_str(), "")
+            }
+        }
+        _ => (cleaned.as_str(), ""),
+    };
+    let stem_budget = IMPORT_NAME_CHARS.saturating_sub(extension.chars().count()).max(1);
+    let (stem, _) = truncate_chars(stem, stem_budget);
+    let stem = stem.trim_end_matches([' ', '.']).to_string();
+    let stem = if stem.is_empty() { "document".to_string() } else { stem };
+    Some(format!("{stem}{extension}"))
+}
+
+/// Copies `source` into place through a unique temp sibling plus rename, so a
+/// crash can leave a stray dot-file but never a half-written document the
+/// index could pick up. Refuses to overwrite: the import loop has already
+/// checked for duplicates, and anything that appears in between is skipped
+/// rather than replaced.
+fn copy_into_import_dir(source: &Path, destination: &Path) -> Result<(), PdfError> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| PdfError::Internal("the import destination has no parent directory".into()))?;
+    std::fs::create_dir_all(parent).map_err(PdfError::from_io)?;
+    let temp = parent.join(format!(".import-{}.tmp", uuid::Uuid::new_v4().simple()));
+    if let Err(error) = std::fs::copy(source, &temp) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(PdfError::from_io(error));
+    }
+    if destination.exists() {
+        let _ = std::fs::remove_file(&temp);
+        return Err(PdfError::InvalidInput("already imported".into()));
+    }
+    std::fs::rename(&temp, destination).map_err(|error| {
+        let _ = std::fs::remove_file(&temp);
+        PdfError::from_io(error)
+    })
+}
+
+/// Content prefix -> existing file name for everything already in the import
+/// directory. Hidden temp files and unrelated names are ignored.
+fn existing_imports(dir: &Path) -> HashMap<String, String> {
+    let mut known = HashMap::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+            if let Some((prefix, _)) = name.split_once('-') {
+                if prefix.len() == IMPORT_HASH_CHARS && prefix.chars().all(|ch| ch.is_ascii_hexdigit()) {
+                    known.entry(prefix.to_ascii_lowercase()).or_insert(name);
+                }
+            }
+        }
+    }
+    known
+}
+
+/// Copies user-picked documents into the app-private vault.
+///
+/// Each copy is content-addressed: its name is `<sha256-prefix>-<name>`, so
+/// importing the same content twice is a no-op regardless of the picked file
+/// name. Validation happens before the copy: the source must exist, be a
+/// regular file (symlinks are never followed), have a whitelisted extension
+/// and stay within the byte cap. The destination is always exactly one path
+/// component inside the import directory - never a path derived from user
+/// input. Returns what was imported and why the rest was skipped.
+pub fn import_files(root: &Path, paths: &[String]) -> VaultImportReport {
+    import_files_capped(root, paths, IMPORT_MAX_BYTES)
+}
+
+/// [`import_files`] with an explicit byte cap. The command always uses the
+/// 256 MB default; tests use a tiny cap to exercise the size guard without
+/// writing a quarter-gigabyte fixture.
+fn import_files_capped(root: &Path, paths: &[String], max_bytes: u64) -> VaultImportReport {
+    let mut report = VaultImportReport::default();
+    let destination_dir = imported_dir(root);
+    let mut known = existing_imports(&destination_dir);
+
+    for raw in paths {
+        let source_text = raw.trim();
+        if source_text.is_empty() {
+            report.skipped.push(import_skip(raw, "empty path"));
+            continue;
+        }
+        let source = Path::new(source_text);
+        // `symlink_metadata` describes the link itself, so `is_file()` below
+        // is false for symlinks and they are never followed or copied.
+        let metadata = match std::fs::symlink_metadata(source) {
+            Ok(metadata) => metadata,
+            Err(_) => {
+                report.skipped.push(import_skip(source_text, "the file no longer exists"));
+                continue;
+            }
+        };
+        if !metadata.file_type().is_file() {
+            report.skipped.push(import_skip(source_text, "not a regular file (folders and symlinks are not imported)"));
+            continue;
+        }
+        let extension = officecore::io::extension_of(source);
+        // The full whitelist, independent of the include_pdf/include_office
+        // toggles: import validates the type, the scan decides what to index.
+        if !is_supported(&extension, &VaultConfig::default()) {
+            let reason = if extension.is_empty() {
+                "unsupported document type".to_string()
+            } else {
+                format!("unsupported document type (.{extension})")
+            };
+            report.skipped.push(import_skip(source_text, reason));
+            continue;
+        }
+        if metadata.len() > max_bytes {
+            report.skipped.push(import_skip(source_text, format!("larger than the {max_bytes} byte import limit")));
+            continue;
+        }
+        let Some(safe_name) = sanitize_import_name(source_text) else {
+            report.skipped.push(import_skip(source_text, "the file name could not be made safe"));
+            continue;
+        };
+        let (sha256, size) = match synccore::metadata::hash_file(source) {
+            Ok(value) => value,
+            Err(error) => {
+                report.skipped.push(import_skip(source_text, format!("the file could not be read ({error})")));
+                continue;
+            }
+        };
+        let prefix: String = sha256.chars().take(IMPORT_HASH_CHARS).collect();
+        if prefix.len() != IMPORT_HASH_CHARS {
+            report.skipped.push(import_skip(source_text, "the content hash could not be computed"));
+            continue;
+        }
+        if let Some(existing) = known.get(&prefix) {
+            report.skipped.push(import_skip(source_text, format!("already imported as {existing}")));
+            continue;
+        }
+        let file_name = format!("{prefix}-{safe_name}");
+        let destination = destination_dir.join(&file_name);
+        // Defence in depth: the destination must stay exactly one component
+        // inside the import directory, whatever the sanitizer returned.
+        if destination.parent() != Some(destination_dir.as_path()) {
+            report.skipped.push(import_skip(source_text, "the destination path was refused"));
+            continue;
+        }
+        if let Err(error) = copy_into_import_dir(source, &destination) {
+            report.skipped.push(import_skip(source_text, format!("the copy failed ({error})")));
+            continue;
+        }
+        known.insert(prefix, file_name.clone());
+        report.imported.push(VaultImportFile {
+            source: source_text.to_string(),
+            path: destination.to_string_lossy().to_string(),
+            name: file_name,
+            size,
+            sha256,
+        });
+    }
+    report
 }
 
 // ---------------------------------------------------------------------------
@@ -1683,16 +1976,30 @@ pub async fn vault_scan(app: AppHandle, registry: State<'_, JobRegistry>, reques
         }
         Ok(VaultStatus {
             indexed: outcome.index.documents.len(),
-            folders: config.folders.len(),
+            folders: config.folders.len() + usize::from(cfg!(target_os = "android")),
             index_bytes: std::fs::metadata(index_path(&root)).map(|metadata| metadata.len()).unwrap_or(0),
             last_scan: stored.last_scan,
             scanning: false,
             warnings: outcome.warnings,
+            can_scan_folders: cfg!(not(target_os = "android")),
+            can_import_files: true,
         })
     })
     .await;
     registry.finish(&job_id);
     result
+}
+
+/// Copies user-picked documents into the app-private vault import directory
+/// and reports what was imported and skipped. This is the Android ingestion
+/// path (SAF hands out content:// URIs, never browsable paths); on desktop it
+/// works too, but folder selection stays the primary model. The command never
+/// scans and never touches a folder the user did not pick through the picker;
+/// the caller triggers `vault_scan` afterwards.
+#[tauri::command]
+pub async fn vault_import_files(app: AppHandle, paths: Vec<String>) -> Result<VaultImportReport, PdfError> {
+    let root = config_dir(&app)?;
+    run_blocking(move || Ok(import_files(&root, &paths))).await
 }
 
 #[tauri::command]
@@ -2222,5 +2529,165 @@ mod tests {
         assert!(stripped.contains("World"));
         assert!(!stripped.contains("<h1>"));
         assert!(!stripped.contains("</p>"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Import (Android ingestion path)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn import_copies_documents_and_dedupes_by_content_hash() {
+        let base = temp_root("import");
+        let root = base.join("root");
+        let picks = base.join("picks");
+        std::fs::create_dir_all(&picks).expect("picks dir");
+        let report_source = picks.join("report.txt");
+        std::fs::write(&report_source, "Harbour report: the lantern is green").expect("write report");
+        // Same content, different name: must not create a second copy.
+        let duplicate = picks.join("copy.txt");
+        std::fs::write(&duplicate, "Harbour report: the lantern is green").expect("write duplicate");
+        let notes = picks.join("notes.md");
+        std::fs::write(&notes, "# Beta notes\n\nWidgets and jars").expect("write notes");
+
+        let report = import_files(
+            &root,
+            &[
+                report_source.display().to_string(),
+                duplicate.display().to_string(),
+                notes.display().to_string(),
+            ],
+        );
+        assert_eq!(report.imported.len(), 2);
+        assert_eq!(report.skipped.len(), 1);
+        assert!(report.skipped[0].reason.contains("already imported"), "{:?}", report.skipped);
+        for entry in &report.imported {
+            assert!(entry.name.starts_with(&entry.sha256[..IMPORT_HASH_CHARS]));
+            assert_eq!(entry.size, std::fs::metadata(&entry.path).expect("copy exists").len());
+            let destination = Path::new(&entry.path);
+            assert_eq!(destination.parent(), Some(imported_dir(&root).as_path()), "copy stays in the import dir");
+            assert!(!entry.sha256.is_empty());
+        }
+        assert_eq!(std::fs::read_dir(imported_dir(&root)).expect("import dir").count(), 2, "no duplicate copies");
+
+        // Re-importing the same pick is idempotent.
+        let again = import_files(&root, &[report_source.display().to_string()]);
+        assert!(again.imported.is_empty());
+        assert_eq!(again.skipped.len(), 1);
+        assert_eq!(std::fs::read_dir(imported_dir(&root)).expect("import dir").count(), 2);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn import_rejects_bad_extensions_oversize_and_missing_paths() {
+        let base = temp_root("import-guard");
+        let root = base.join("root");
+        let picks = base.join("picks");
+        std::fs::create_dir_all(&picks).expect("picks dir");
+        let binary = picks.join("tool.exe");
+        std::fs::write(&binary, b"MZ ...").expect("write exe");
+        let big = picks.join("big.txt");
+        std::fs::write(&big, "x".repeat(64)).expect("write big");
+        let missing = picks.join("gone.txt");
+
+        let report = import_files_capped(
+            &root,
+            &[
+                binary.display().to_string(),
+                big.display().to_string(),
+                missing.display().to_string(),
+                String::new(),
+                "../../outside.txt".to_string(),
+            ],
+            8,
+        );
+        assert!(report.imported.is_empty());
+        assert_eq!(report.skipped.len(), 5);
+        assert!(report.skipped[0].reason.contains("unsupported document type"));
+        assert!(report.skipped[1].reason.contains("larger than the 8 byte import limit"));
+        assert!(report.skipped[2].reason.contains("no longer exists"));
+        assert!(report.skipped[3].reason.contains("empty path"));
+        assert!(report.skipped[4].reason.contains("no longer exists"), "a traversal path cannot resolve to a file");
+        assert!(!imported_dir(&root).exists() || std::fs::read_dir(imported_dir(&root)).expect("dir").next().is_none());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn import_names_are_sanitized_bounded_and_never_contain_separators() {
+        assert_eq!(sanitize_import_name("a/b.txt").as_deref(), Some("b.txt"));
+        assert_eq!(sanitize_import_name("bad?name.txt").as_deref(), Some("bad_name.txt"));
+        assert!(sanitize_import_name("..").is_none(), "a parent reference is never usable");
+        assert!(sanitize_import_name(".").is_none());
+        let long = format!("{}.txt", "a".repeat(500));
+        let cleaned = sanitize_import_name(&long).expect("long name is cut, not refused");
+        assert!(cleaned.chars().count() <= IMPORT_NAME_CHARS);
+        assert!(cleaned.ends_with(".txt"), "the extension survives the cut: {cleaned}");
+        let sneaky = sanitize_import_name("..\\..\\escape.txt").expect("sneaky name");
+        assert!(!sneaky.contains('/') && !sneaky.contains('\\'), "no separators survive: {sneaky}");
+    }
+
+    #[test]
+    fn imported_documents_become_an_index_root_and_are_searchable() {
+        let base = temp_root("import-scan");
+        let root = base.join("root");
+        let picks = base.join("picks");
+        std::fs::create_dir_all(&picks).expect("picks dir");
+        let source = picks.join("harbour.txt");
+        std::fs::write(&source, "Harbour notes: the lantern is green").expect("write");
+        let report = import_files(&root, &[source.display().to_string()]);
+        assert_eq!(report.imported.len(), 1);
+
+        // An Android vault starts with an empty folder list; the import root
+        // must be discovered anyway.
+        let config = test_config(Vec::new());
+        let outcome = scan_folders_with(&root, &config, &scan_request(), &CancelToken::new(), true);
+        assert_eq!(outcome.index.documents.len(), 1);
+        let document = &outcome.index.documents[0];
+        assert!(document.file_name.ends_with("harbour.txt"), "{}", document.file_name);
+        assert_eq!(document.path, report.imported[0].path);
+        assert!(document.text.contains("lantern"));
+
+        let found = search_at(&root, &search_request("lantern"));
+        assert_eq!(found.total, 1);
+        assert!(found.hits[0].file_name.ends_with("harbour.txt"));
+        // The imported text is cached like any other vault document.
+        assert!(document_text_path(&root, &document.id).expect("cache path").exists());
+
+        // The desktop scan (include_imports = false) ignores the same root.
+        // Skipped when the tests themselves run on Android, where the flag is
+        // always on by platform policy.
+        if cfg!(not(target_os = "android")) {
+            let desktop = scan_folders(&root, &config, &scan_request(), &CancelToken::new());
+            assert!(desktop.index.documents.is_empty(), "desktop keeps the folder model");
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn status_reports_platform_capabilities_and_counts_the_import_root() {
+        let base = temp_root("capabilities");
+        let root = base.join("root");
+        let status = vault_status_at(&root);
+        assert!(status.can_import_files, "import works on every platform");
+        assert_eq!(status.can_scan_folders, cfg!(not(target_os = "android")));
+        assert_eq!(status.folders, usize::from(cfg!(target_os = "android")));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn import_never_follows_symlinks() {
+        use std::os::unix::fs::symlink;
+        let base = temp_root("import-symlink");
+        let root = base.join("root");
+        let picks = base.join("picks");
+        std::fs::create_dir_all(&picks).expect("picks dir");
+        let target = picks.join("real.txt");
+        std::fs::write(&target, "real content").expect("write");
+        let link = picks.join("link.txt");
+        symlink(&target, &link).expect("symlink");
+        let report = import_files(&root, &[link.display().to_string()]);
+        assert!(report.imported.is_empty());
+        assert!(report.skipped[0].reason.contains("not a regular file"), "{:?}", report.skipped);
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
