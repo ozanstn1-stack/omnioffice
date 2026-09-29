@@ -9,6 +9,26 @@ license = "MIT"
 repository = "https://github.com/ozanstn1-stack/pdf-swiss-army-knife"
 authors = ["PDF Swiss Army Knife contributors"]
 
+# Lint policy for every crate (each member opts in with `[lints] workspace = true`).
+#
+# The CI gate is `cargo clippy --workspace --all-targets -- -D warnings`
+# (npm run lint:rust). Everything is denied by default; the entries below are
+# deliberate exceptions with a reason, not a way to silence findings.
+[workspace.lints.clippy]
+# Long, flat parameter lists are the shape of this code base's drawing and
+# export helpers (page, x, y, width, height, colour, ...). Bundling them into a
+# struct is a refactor with real regression risk and no behaviour win.
+too_many_arguments = "allow"
+# `DocUtil::mul` is a public helper on the PDF object model whose name mirrors
+# the PDF operator; renaming it would churn every call site for a lint that is
+# about accidental trait confusion.
+should_implement_trait = "allow"
+# The forms/annotation helpers take and return nested lopdf containers; the
+# aliases that would satisfy the lint make the signatures harder to read.
+type_complexity = "allow"
+# Boxing a variant of the public signing enums would change their shape for
+# every caller to save a few bytes on a stack-local value.
+large_enum_variant = "allow"
 [profile.release]
 codegen-units = 1
 lto = true

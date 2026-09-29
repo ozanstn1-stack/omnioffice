@@ -165,7 +165,7 @@ impl JobStore {
     pub fn records(&self) -> Vec<JobRecord> {
         let inner = self.lock();
         let mut records: Vec<JobRecord> = inner.records.values().cloned().collect();
-        records.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        records.sort_by_key(|record| std::cmp::Reverse(record.created_at));
         records
     }
 
@@ -319,7 +319,7 @@ impl JobStore {
         inner.last_persist_by_job.clear();
         self.persist_locked(&inner);
         let mut records: Vec<JobRecord> = inner.records.values().cloned().collect();
-        records.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        records.sort_by_key(|record| std::cmp::Reverse(record.created_at));
         records
     }
 
@@ -349,7 +349,7 @@ impl JobStore {
     fn persist_locked(&self, inner: &StoreInner) {
         let Some(path) = self.path.get() else { return };
         let mut records: Vec<&JobRecord> = inner.records.values().collect();
-        records.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        records.sort_by_key(|record| std::cmp::Reverse(record.created_at));
         let Ok(json) = serde_json::to_vec_pretty(&records) else { return };
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);

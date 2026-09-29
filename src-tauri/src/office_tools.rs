@@ -218,6 +218,9 @@ pub async fn office_pdf_add_form(request: PdfFormRequest) -> Result<String, Offi
             if field.required {
                 widget.set("Ff", 2);
             }
+            // Every arm that produces an appearance assigns it; the initial
+            // None is only the fall-through value.
+            #[allow(unused_assignments)]
             let mut appearance: Option<String> = None;
             match field_kind {
                 "checkbox" => {

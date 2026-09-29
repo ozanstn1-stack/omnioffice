@@ -321,7 +321,7 @@ pub fn page_rotation(path: &Path, page: u32) -> i32 {
         .ok()
         .and_then(|d| d.get(b"Rotate").ok())
         .and_then(|o| o.as_i64().ok())
-        .map(|v| ((v % 360 + 360) % 360) as i32)
+        .map(|v| v.rem_euclid(360) as i32)
         .unwrap_or(0)
 }
 

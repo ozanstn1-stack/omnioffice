@@ -7,7 +7,6 @@
 //! both sides with the same fixture.
 use crate::address::{format, parse, parse_range};
 use crate::model::*;
-use std::collections::BTreeMap;
 
 struct Record {
     row: Vec<String>,

@@ -1535,8 +1535,8 @@ pub fn validate_fields(doc: &Document, values: &[FieldValue]) -> Vec<FieldIssue>
                     }
                 }
             }
-            "pushbutton" | "signature" => {
-                if !value.value.is_empty() || !value.values.is_empty() {
+            "pushbutton" | "signature"
+                if (!value.value.is_empty() || !value.values.is_empty()) => {
                     issues.push(FieldIssue {
                         field: value.name.clone(),
                         code: "not_fillable".into(),
@@ -1544,7 +1544,6 @@ pub fn validate_fields(doc: &Document, values: &[FieldValue]) -> Vec<FieldIssue>
                         message: format!("'{}' is a {} field and cannot take a value.", value.name, field_type),
                     });
                 }
-            }
             _ => {}
         }
     }
@@ -2142,8 +2141,8 @@ fn image_placements(doc: &Document, page_id: ObjectId) -> Vec<ImagePlacement> {
                         }
                     }
                 }
-                b"Do" => {
-                    if index >= 1 {
+                b"Do"
+                    if index >= 1 => {
                         if let TokenKind::Name(name) = &tokens[index - 1].kind {
                             let name = String::from_utf8_lossy(name).to_string();
                             if images.contains_key(&name) {
@@ -2158,7 +2157,6 @@ fn image_placements(doc: &Document, page_id: ObjectId) -> Vec<ImagePlacement> {
                             }
                         }
                     }
-                }
                 _ => {}
             }
         }
@@ -2283,12 +2281,12 @@ pub fn apply_object_edits(doc: &mut Document, edits: &[ObjectEdit]) -> PdfResult
     // Snapshot the target lists before mutating anything.
     let mut snapshots: HashMap<u32, Vec<PageObjectEntry>> = HashMap::new();
     for edit in edits {
-        if !snapshots.contains_key(&edit.page) {
+        if let std::collections::hash_map::Entry::Vacant(e) = snapshots.entry(edit.page) {
             let page_id = pages
                 .get(&edit.page)
                 .copied()
                 .ok_or(PdfError::RangeOutOfBounds)?;
-            snapshots.insert(edit.page, page_object_entries(doc, page_id));
+            e.insert(page_object_entries(doc, page_id));
         }
     }
     // Validate all indexes and parameters before writing.
@@ -2458,7 +2456,7 @@ pub fn apply_object_edits(doc: &mut Document, edits: &[ObjectEdit]) -> PdfResult
                 continue;
             }
         };
-        ops.sort_by(|a, b| b.0.cmp(&a.0));
+        ops.sort_by_key(|entry| std::cmp::Reverse(entry.0));
         for (_, op) in ops {
             match op {
                 StreamOp::Replace { ranges, values } => match rewrite_matrix_bytes(&buffer, &ranges, values) {
@@ -2662,7 +2660,7 @@ fn annot_dict_snapshot(doc: &Document, handle: AnnotHandle) -> Option<Dictionary
 fn with_annot_dict(
     doc: &mut Document,
     handle: AnnotHandle,
-    f: impl FnOnce(&mut Dictionary) -> (),
+    f: impl FnOnce(&mut Dictionary),
 ) -> PdfResult<()> {
     match handle {
         AnnotHandle::Ref(id) => with_object_dict(doc, id, f),

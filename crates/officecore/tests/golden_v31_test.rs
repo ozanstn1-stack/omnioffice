@@ -516,12 +516,14 @@ fn v31_deck() -> Deck {
     let mut title = placeholder_shape("slide-title", "title", "V3.1 slide", 60.0, 40.0, 840.0, 80.0);
     title.z = 0;
 
-    let mut first = Slide::default();
-    first.id = "slide-1".into();
-    first.layout = "titleContent".into();
-    first.master_id = Some("master-a".into());
-    first.layout_id = Some("layout-a-title".into());
-    first.objects = vec![title, outer, chart, image];
+    let mut first = Slide {
+        id: "slide-1".into(),
+        layout: "titleContent".into(),
+        master_id: Some("master-a".into()),
+        layout_id: Some("layout-a-title".into()),
+        objects: vec![title, outer, chart, image],
+        ..Default::default()
+    };
     first.animations = vec![
         Animation {
             id: "anim-1".into(),
@@ -556,11 +558,13 @@ fn v31_deck() -> Deck {
     ];
     first.notes = "Golden speaker notes: mention the chart cache.".into();
 
-    let mut second = Slide::default();
-    second.id = "slide-2".into();
-    second.master_id = Some("master-b".into());
-    second.layout_id = Some("layout-b-title".into());
-    second.objects = vec![placeholder_shape("slide-2-title", "title", "Second slide", 60.0, 40.0, 840.0, 80.0)];
+    let mut second = Slide {
+        id: "slide-2".into(),
+        master_id: Some("master-b".into()),
+        layout_id: Some("layout-b-title".into()),
+        objects: vec![placeholder_shape("slide-2-title", "title", "Second slide", 60.0, 40.0, 840.0, 80.0)],
+        ..Default::default()
+    };
     second.transition = Some("fade".into());
     second.transition_ms = 300;
 

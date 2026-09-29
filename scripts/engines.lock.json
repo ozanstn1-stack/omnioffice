@@ -1,0 +1,77 @@
+{
+  "comment": "SHA-256 of every artifact scripts/fetch-engines.ps1 and scripts/fetch-engines-android.ps1 download. Each download is verified against this file and a mismatch stops the build, so a changed or tampered upstream binary cannot silently end up in the installer or the APK. Re-pin deliberately after checking an upstream release: run the fetch script with -UpdateLock.",
+  "artifacts": {
+    "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F8057/pdfium-win-x64.tgz": {
+      "sha256": "e307d519e42f2e69b1b531f0c2a32dffcdf3891ec0eba60328ba51a57cec01ed"
+    },
+    "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F8057/pdfium-android-arm64.tgz": {
+      "sha256": "78e93fe31a7f77f73e4339ae878a9b0a19a0ed5e9a3b6a4b61c0c595cbebcebc"
+    },
+    "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F8057/pdfium-android-arm.tgz": {
+      "sha256": "a8e53a24e190d87735ded9b5d6e5bb91bd25a1191a64a38131c5839eab1e4355"
+    },
+    "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F8057/pdfium-android-x64.tgz": {
+      "sha256": "3d031045e48d392877c12d4805f1f63132107fcb739059bc6018f1cc0d81eb5a"
+    },
+    "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F8057/pdfium-android-x86.tgz": {
+      "sha256": "eaae9fc143960c76381b6c9c5fa8b89bd52f3cb61858a8176418b9261ece159f"
+    },
+    "https://github.com/qpdf/qpdf/releases/download/v12.4.1/qpdf-12.4.1-msvc64.zip": {
+      "sha256": "3cd016cd433ef7232e42f4c13348a49cc14907a3c7278ef4f99120593126f7a6"
+    },
+    "https://github.com/UB-Mannheim/tesseract/releases/download/v5.4.0.20240606/tesseract-ocr-w64-setup-5.4.0.20240606.exe": {
+      "sha256": "c885fff6998e0608ba4bb8ab51436e1c6775c2bafc2559a19b423e18678b60c9"
+    },
+    "https://github.com/agnostic-apollo/tesseract-for-android/releases/download/v1.0.0/tesseract-binaries-v1.0.0.zip": {
+      "sha256": "923f60eab3a8d191034ef1247852f8383ce3f48ee7db4581af99558e81246e87"
+    },
+    "https://www.7-zip.org/a/7zr.exe": {
+      "sha256": "ad4c82fadcbdf93c03b4fc440f300509c7d60c5c2f4d183e35d9d70d6957037d"
+    },
+    "https://www.7-zip.org/a/7z2301-x64.exe": {
+      "sha256": "26cb6e9f56333682122fafe79dbcdfd51e9f47cc7217dccd29ac6fc33b5598cd"
+    },
+    "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/eng.traineddata": {
+      "sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2"
+    },
+    "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/tur.traineddata": {
+      "sha256": "7393381111e1152420fc4092cb44eef4237580d21b92bf30d7d221aad192c6b7"
+    },
+    "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/deu.traineddata": {
+      "sha256": "19d219bbb6672c869d20a9636c6816a81eb9a71796cb93ebe0cb1530e2cdb22d"
+    },
+    "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/nld.traineddata": {
+      "sha256": "ced0e5e046a84c908a6aa7accbef9a232c4a5d9a8276691b81c6ee64d02963f6"
+    },
+    "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/fra.traineddata": {
+      "sha256": "ced037562e8c80c13122dece28dd477d399af80911a28791a66a63ac1e3445ca"
+    },
+    "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/spa.traineddata": {
+      "sha256": "6f2e04d02774a18f01bed44b1111f2cd7f3ba7ac9dc4373cd3f898a40ea6b464"
+    },
+    "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/ita.traineddata": {
+      "sha256": "b8f89e1e785118dac4d51ae042c029a64edb5c3ee42ef73027a6d412748d8827"
+    },
+    "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/bul.traineddata": {
+      "sha256": "aebc9b0fcc8cfaf8a9f38a02bb7b85052bd850744696a2c11cf0081820e5b21e"
+    },
+    "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/osd.traineddata": {
+      "sha256": "9cf5d576fcc47564f11265841e5ca839001e7e6f38ff7f7aacf46d15a96b00ff"
+    },
+    "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/LICENSE": {
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    "https://raw.githubusercontent.com/tesseract-ocr/tesseract/main/tessdata/pdf.ttf": {
+      "sha256": "c7845420925a23d88ed830a63957b8af85a66a8daf8d9fc90e843673b2ef1a59"
+    },
+    "https://raw.githubusercontent.com/google/fonts/main/ofl/ptsans/PT_Sans-Web-Regular.ttf": {
+      "sha256": "9cc831490532009bae2b3ce0d39c62adfc889060beb421593bfd9d2396d0f10a"
+    },
+    "https://raw.githubusercontent.com/google/fonts/main/ofl/ptsans/PT_Sans-Web-Bold.ttf": {
+      "sha256": "3128bd5ecf01816e59a23d54c57a7a6b14615b07db53ff277c77376010265b05"
+    },
+    "https://raw.githubusercontent.com/google/fonts/main/ofl/ptsans/OFL.txt": {
+      "sha256": "2758cf7a872827f39661cf8cc24188113c030447aefb5ca7145993650076ca8c"
+    }
+  }
+}

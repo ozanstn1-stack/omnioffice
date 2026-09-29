@@ -144,9 +144,11 @@ fn deck() -> Deck {
     let image = ImageData::from_bytes("sample.png", &sample_png());
     deck.slides = (0..5)
         .map(|index| {
-            let mut slide = Slide::default();
-            slide.notes = format!("Speaker notes for slide {}", index + 1);
-            slide.transition = Some(if index % 2 == 0 { "fade".into() } else { "push".into() });
+            let mut slide = Slide {
+                notes: format!("Speaker notes for slide {}", index + 1),
+                transition: Some(if index % 2 == 0 { "fade".into() } else { "push".into() }),
+                ..Default::default()
+            };
             let mut title = SlideObject::new("text", 60.0, 50.0, 840.0, 90.0);
             title.text = Some(TextFrame {
                 paragraphs: vec![TextParagraph { text: format!("Slide {} title", index + 1), level: 0, bold: true, size_pt: Some(32.0), ..Default::default() }],

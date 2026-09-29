@@ -105,7 +105,7 @@ function tokenize(input: string): Token[] {
     }
     if (/[0-9]/.test(ch) || (ch === "." && /[0-9]/.test(input[index + 1] ?? ""))) {
       let value = "";
-      while (index < input.length && /[0-9.eE+\-]/.test(input[index])) {
+      while (index < input.length && /[0-9.eE+-]/.test(input[index])) {
         // Stop a trailing +/- that is an operator, not an exponent sign.
         if ((input[index] === "+" || input[index] === "-") && !/[eE]$/.test(value)) break;
         value += input[index];

@@ -554,9 +554,8 @@ fn forms_fill_sets_values_and_regenerates_appearances() {
         .unwrap()
         .as_reference()
         .unwrap();
-    assert_eq!(
-        filled.get_dictionary(acro).unwrap().get(b"NeedAppearances").unwrap().as_bool().unwrap(),
-        true
+    assert!(
+        filled.get_dictionary(acro).unwrap().get(b"NeedAppearances").unwrap().as_bool().unwrap()
     );
 }
 

@@ -734,7 +734,7 @@ pub fn srgb_v4_icc_profile() -> Vec<u8> {
     for ((_, data), (tag_offset, _)) in tags.iter().zip(&offsets) {
         debug_assert_eq!(profile.len(), *tag_offset);
         profile.extend_from_slice(data);
-        while profile.len() % 4 != 0 {
+        while !profile.len().is_multiple_of(4) {
             profile.push(0);
         }
     }

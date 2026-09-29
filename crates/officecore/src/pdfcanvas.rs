@@ -66,7 +66,7 @@ impl FontFace {
     pub fn load(bold: bool) -> Self {
         let bytes = if bold { FONT_BOLD } else { FONT_REGULAR };
         let font = FontVec::try_from_vec(bytes.to_vec()).expect("bundled font must parse");
-        let units = font.units_per_em().unwrap_or(1000.0) as f32;
+        let units = font.units_per_em().unwrap_or(1000.0);
         let ascent = font.ascent_unscaled() as f64 / units as f64;
         let descent = font.descent_unscaled() as f64 / units as f64;
         let gap = font.line_gap_unscaled() as f64 / units as f64;
@@ -136,10 +136,6 @@ impl FontFace {
             out.push_str(&format!("{cid:04X}"));
         }
         out
-    }
-
-    fn cid_count(&self) -> usize {
-        self.cid_of.borrow().len()
     }
 
     fn cmap(&self) -> String {

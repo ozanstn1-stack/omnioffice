@@ -211,7 +211,7 @@ fn break_line(
                 continue;
             }
             current_width += word_width;
-            current.push((word.clone(), style.clone(), true));
+            current.push((word.clone(), *style, true));
             continue;
         }
         if current_width + word_width > width && !current.is_empty() {
@@ -219,14 +219,14 @@ fn break_line(
             current.clear();
             current_width = 0.0;
         }
-        current.push((word.clone(), style.clone(), false));
+        current.push((word.clone(), *style, false));
         current_width += word_width;
     }
     if !current.is_empty() {
         lines.push(finalize_line(fonts, &current, current_width, width, align));
     }
     if lines.is_empty() {
-        let style = words.first().map(|(_, style, _)| style.clone()).unwrap_or_default();
+        let style = words.first().map(|(_, style, _)| *style).unwrap_or_default();
         let height = fonts.pick(style.bold).line_height_pt(style.size_pt, 1.15);
         let ascent = fonts.pick(style.bold).ascent_pt(style.size_pt);
         lines.push(LaidLine { items: Vec::new(), width: 0.0, height, ascent });
@@ -268,7 +268,7 @@ fn finalize_line(fonts: &FontSet, items: &[(String, TextStyle, bool)], natural_w
     let justify = align == "justify" && natural > width - 1.0 && gap_count > 1;
     let gap_extra = if justify { (width - line_width) / gap_count as f64 } else { 0.0 };
     for (text, style, is_space) in &trimmed {
-        laid_items.push(LineItem { dx, text: text.clone(), style: style.clone() });
+        laid_items.push(LineItem { dx, text: text.clone(), style: *style });
         dx += fonts.pick(style.bold).advance_pt(text, style.size_pt);
         if *is_space {
             dx += gap_extra;
@@ -308,20 +308,20 @@ fn paragraph_words(document: &TextDocument, props: &ParaProps, runs: &[Run]) -> 
             }
         }
         let mut buffer = String::new();
-        let mut push_buffer = |words: &mut Vec<(String, TextStyle, bool)>, buffer: &mut String, style: &TextStyle, is_space: bool| {
+        let push_buffer = |words: &mut Vec<(String, TextStyle, bool)>, buffer: &mut String, style: &TextStyle, is_space: bool| {
             if !buffer.is_empty() {
-                words.push((std::mem::take(buffer), style.clone(), is_space));
+                words.push((std::mem::take(buffer), *style, is_space));
             }
         };
         for ch in run.text.chars() {
             match ch {
                 ' ' | '\t' | '\u{a0}' => {
                     push_buffer(&mut words, &mut buffer, &style, false);
-                    words.push((if ch == '\t' { "    ".into() } else { " ".into() }, style.clone(), true));
+                    words.push((if ch == '\t' { "    ".into() } else { " ".into() }, style, true));
                 }
                 '\n' => {
                     push_buffer(&mut words, &mut buffer, &style, false);
-                    words.push(("\n".into(), style.clone(), false));
+                    words.push(("\n".into(), style, false));
                 }
                 other => buffer.push(other),
             }
@@ -368,6 +368,10 @@ struct Renderer<'a> {
     y: f64,
     top: f64,
     bottom: f64,
+    /// Link rectangles gathered while laying out runs. Collected for the
+    /// link-annotation writer; nothing consumes them yet, so the field is
+    /// explicitly allowed rather than silently kept.
+    #[allow(dead_code)]
     link_runs: Vec<(f64, f64, f64, f64, String)>,
     /// The section whose page setup and headers/footers are in effect.
     section: SectionProps,
@@ -519,7 +523,7 @@ impl<'a> Renderer<'a> {
     fn draw_header_footer(&mut self) {
         let page_number = self.current.as_ref().map(|state| state.page_index as u32 + 1).unwrap_or(1);
         let is_first = self.section_first_page;
-        let is_even = page_number % 2 == 0;
+        let is_even = page_number.is_multiple_of(2);
         let mut section = self.section.clone();
         if section.different_first_page && is_first {
             section.header = section.first_header.clone();
@@ -555,7 +559,7 @@ impl<'a> Renderer<'a> {
                                 _ => left,
                             };
                             for item in &line.items {
-                                commands.push((x + item.dx, y + line.ascent, item.text.clone(), item.style.clone()));
+                                commands.push((x + item.dx, y + line.ascent, item.text.clone(), item.style));
                             }
                             y += line.height;
                         }
@@ -682,14 +686,6 @@ impl<'a> Renderer<'a> {
         } else {
             self.finish_page();
             self.start_page();
-        }
-    }
-
-    fn ensure_space(&mut self, needed: f64) {
-        if self.remaining() < needed {
-            // Prefer filling the remaining space in a new column when the
-            // content is small; otherwise start a fresh page.
-            self.next_column();
         }
     }
 
@@ -955,10 +951,12 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
 
 /// One table-of-contents line as a paragraph, dot leader included.
 pub(crate) fn toc_entry_line(entry: &TocEntry) -> (ParaProps, Vec<Run>) {
-    let mut props = ParaProps::default();
-    props.style = format!("Toc{}", entry.level.clamp(1, 6));
-    props.indent_left_pt = entry.level.saturating_sub(1) as f64 * 14.0;
-    props.space_after_pt = 2.0;
+    let props = ParaProps {
+        style: format!("Toc{}", entry.level.clamp(1, 6)),
+        indent_left_pt: entry.level.saturating_sub(1) as f64 * 14.0,
+        space_after_pt: 2.0,
+        ..Default::default()
+    };
     let text = if entry.page > 0 { format!("{} .... {}", entry.text, entry.page) } else { entry.text.clone() };
     (props, vec![Run { text, ..Default::default() }])
 }
@@ -1112,14 +1110,6 @@ pub fn document_to_pdf(document: &TextDocument) -> Vec<u8> {
         pages = stable;
     }
     write_pdf(&pages, &fonts)
-}
-
-fn contains_page_token(block: &Block) -> bool {
-    match block {
-        Block::Paragraph { runs, .. } => runs.iter().any(|run| run.text.contains("{{page}}") || run.text.contains("{{pages}}")),
-        Block::Table { table } => table.rows.iter().any(|row| row.cells.iter().any(|cell| cell.blocks.iter().any(contains_page_token))),
-        _ => false,
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1451,7 +1441,7 @@ fn draw_text_frame(canvas: &mut Canvas<'_>, object: &SlideObject, frame: &TextFr
         for word in text.split_whitespace() {
             let word_width = face.advance_pt(word, size) + face.advance_pt(" ", size);
             if current_width + word_width > available && !current.is_empty() {
-                lines.push((std::mem::take(&mut current), style.clone(), line_height));
+                lines.push((std::mem::take(&mut current), style, line_height));
                 current_width = 0.0;
             }
             current.push_str(word);

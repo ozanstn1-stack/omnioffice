@@ -243,6 +243,7 @@ Only combinations that actually work are marked. “–” means not supported.
 | Format | Open | Edit | Save | PDF export |
 |---|---|---|---|---|
 | DOCX | ✓ | ✓ | ✓ | ✓ |
+| DOCM / DOTX / XLSM / PPTM | ✓ | ✓ | ✓ | ✓ (macros are detected, never executed and dropped on save) |
 | DOC | – | – | – | – |
 | ODT | ✓ | ✓ | ✓ | ✓ |
 | RTF | ✓ | ✓ | ✓ (basic formatting, tables, images, notes) | ✓ |
@@ -351,7 +352,7 @@ run on Windows and Android. File formats are import/export targets; the native
 
 ## Build
 
-Requirements: Node.js 20+, Rust 1.82+, Visual Studio Build Tools (Windows).
+Requirements: Node.js 20+, Rust 1.84+, Visual Studio Build Tools (Windows).
 Android additionally needs JDK 21, Android SDK (platform 36, build-tools 36)
 and NDK 27.3.13750724.
 
@@ -369,6 +370,14 @@ npm run package            # installer + portable ZIP into release-artifacts/
 The installer is written as both `Office-Swiss-Army-Knife-Setup-<version>.exe`
 and `Office Swiss Army Knife_<version>_x64-setup.exe`; `SHA256SUMS.txt` covers
 both plus the portable ZIP.
+
+Every engine download is pinned by SHA-256 in `scripts/engines.lock.json` and
+verified by the fetch scripts: a mismatch stops the build instead of shipping an
+unverified binary. When an upstream release is updated on purpose, verify it and
+re-run the fetch script with `-UpdateLock` to re-pin. Releases also publish
+CycloneDX SBOMs (Rust and npm) next to the installer and carry a signed build
+provenance attestation, verifiable with
+`gh attestation verify <file> --repo ozanstn1-stack/pdf-swiss-army-knife`.
 
 ### Android
 
@@ -395,10 +404,32 @@ npm test
 npx tsc --noEmit
 ```
 
-**447 Rust tests** (34 aicore, 142 officecore, 180 pdfcore, 40 synccore,
+**451 Rust tests** (34 aicore, 146 officecore, 180 pdfcore, 40 synccore,
 51 src-tauri; 3 heavy performance cases are `#[ignore]`d) and **578 frontend
 tests** (577 passing, 1 heavy case gated by `OSAK_PERF_HEAVY=1`) pass, with a
 strict TypeScript type check on top.
+
+### Quality gates
+
+The same gates run in CI (`.github/workflows/desktop.yml`), so a clean local
+run means a clean pull request:
+
+```bash
+npm run lint               # ESLint (0 errors; the warning count is a frozen budget)
+npm run i18n:audit -- --check   # en/tr tables must stay in sync
+npm run format:gate        # Prettier on the files this change adds
+npm run format:gate:rust   # rustfmt on the files this change adds
+npm run lint:rust          # cargo clippy --workspace --all-targets -- -D warnings
+```
+
+Neither rustfmt nor Prettier had ever run over this code base, so the
+formatting gate is staged: files **added** by a change must be formatted, and
+the repository-wide backlog is printed but not enforced. Run `npm run format`
+and `npm run fmt:rust` (one commit, no behaviour change) to clear the backlog
+and then switch the gate to `--all-changed`.
+
+Deliberate lint exceptions live in one place — `[workspace.lints]` in the root
+`Cargo.toml` — each with the reason it exists.
 
 Highlights:
 

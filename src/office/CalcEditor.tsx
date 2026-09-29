@@ -161,7 +161,7 @@ function buildSuggestions(
 ): SuggestionList | null {
   if (!text.startsWith("=") || caret < 1 || caret > text.length) return null;
   const before = text.slice(0, caret);
-  const bracket = /([A-Za-z_][A-Za-z0-9_$. ]*)\[([^\[\]]*)$/.exec(before);
+  const bracket = /([A-Za-z_][A-Za-z0-9_$. ]*)\[([^[\]]*)$/.exec(before);
   if (bracket) {
     const table = tableByName(sheet.tables, bracket[1]);
     if (!table) return null;

@@ -141,7 +141,7 @@ impl WebDavProvider {
         };
         path.split('/')
             .filter(|segment| !segment.is_empty())
-            .map(|segment| decode_percent(segment))
+            .map(decode_percent)
             .collect()
     }
 

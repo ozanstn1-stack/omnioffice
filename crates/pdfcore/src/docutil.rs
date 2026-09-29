@@ -298,12 +298,12 @@ pub fn rebuild_page_tree(doc: &mut Document, plan: &[PagePlanItem]) -> PdfResult
     let mut rotation_snapshot: std::collections::HashMap<u32, i32> = std::collections::HashMap::new();
     let current_pages = doc.get_pages();
     for item in plan {
-        if !rotation_snapshot.contains_key(&item.source_page) {
+        if let std::collections::hash_map::Entry::Vacant(e) = rotation_snapshot.entry(item.source_page) {
             let page_id = current_pages
                 .get(&item.source_page)
                 .copied()
                 .ok_or(PdfError::RangeOutOfBounds)?;
-            rotation_snapshot.insert(item.source_page, page_rotation(doc, page_id)?);
+            e.insert(page_rotation(doc, page_id)?);
         }
     }
     let mut used: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
@@ -383,7 +383,7 @@ pub fn page_rotation(doc: &Document, page_id: ObjectId) -> PdfResult<i32> {
         .get(b"Rotate")
         .ok()
         .and_then(|o| o.as_i64().ok())
-        .map(|v| ((v % 360 + 360) % 360) as i32)
+        .map(|v| v.rem_euclid(360) as i32)
         .unwrap_or(0))
 }
 
@@ -466,9 +466,6 @@ pub fn wrap_page_content_transform(
 // ---------------------------------------------------------------------------
 // Resources
 // ---------------------------------------------------------------------------
-
-/// Ensures the page has its own Resources dictionary (cloned when shared), so
-/// adding fonts/XObjects/ExtGState never leaks into other pages.
 
 /// The image XObjects a page draws from, whichever way they are stored.
 ///
@@ -618,7 +615,7 @@ pub fn add_rgba_image_xobject(doc: &mut Document, img: &RawImage) -> PdfResult<O
     let (w, h) = (img.width, img.height);
     let mut rgb = Vec::with_capacity((w * h * 3) as usize);
     let mut alpha = Vec::with_capacity((w * h) as usize);
-    for px in img.rgba.chunks_exact(4) {
+    for px in img.rgba.as_chunks::<4>().0 {
         rgb.extend_from_slice(&px[0..3]);
         alpha.push(px[3]);
     }
@@ -716,13 +713,13 @@ pub fn pdf_text_value(obj: &Object) -> Option<String> {
         Object::String(bytes, _) => {
             if bytes.starts_with(&[0xFE, 0xFF]) {
                 let units: Vec<u16> = bytes[2..]
-                    .chunks_exact(2)
+                    .as_chunks::<2>().0.iter()
                     .map(|c| u16::from_be_bytes([c[0], c[1]]))
                     .collect();
                 Some(String::from_utf16_lossy(&units))
             } else if bytes.starts_with(&[0xFF, 0xFE]) {
                 let units: Vec<u16> = bytes[2..]
-                    .chunks_exact(2)
+                    .as_chunks::<2>().0.iter()
                     .map(|c| u16::from_le_bytes([c[0], c[1]]))
                     .collect();
                 Some(String::from_utf16_lossy(&units))
@@ -824,7 +821,7 @@ impl Matrix {
     /// applied, origin bottom-left) back into the page's own coordinate
     /// system. Use as the outer `cm` for rotation-aware drawing.
     pub fn display_to_page(rotation: i32, page_w: f64, page_h: f64) -> Matrix {
-        match ((rotation % 360) + 360) % 360 {
+        match rotation.rem_euclid(360) {
             90 => Matrix([0.0, 1.0, -1.0, 0.0, page_w, 0.0]),
             180 => Matrix([-1.0, 0.0, 0.0, -1.0, page_w, page_h]),
             270 => Matrix([0.0, -1.0, 1.0, 0.0, 0.0, page_h]),
@@ -842,7 +839,7 @@ impl Matrix {
 
     /// Size of the displayed page for a rotation value.
     pub fn displayed_size(rotation: i32, page_w: f64, page_h: f64) -> (f64, f64) {
-        match ((rotation % 360) + 360) % 360 {
+        match rotation.rem_euclid(360) {
             90 | 270 => (page_h, page_w),
             _ => (page_w, page_h),
         }

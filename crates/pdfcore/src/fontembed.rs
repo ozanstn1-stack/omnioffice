@@ -263,7 +263,7 @@ pub fn embed_missing_fonts_in_document(doc: &mut Document) -> Vec<EmbeddedFontRe
                 _ => None,
             };
             if let Some(acro) = acro {
-                if let Some(Object::Dictionary(default_resources)) = acro.get(b"DR").ok() {
+                if let Ok(Object::Dictionary(default_resources)) = acro.get(b"DR") {
                     collect_font_sites(doc, default_resources, &mut sites, &mut reports);
                 }
             }
@@ -314,15 +314,14 @@ fn collect_font_sites(
                     ));
                 }
             }
-            Object::Dictionary(_) => {
-                if reports.len() < MAX_REPORTS {
+            Object::Dictionary(_)
+                if reports.len() < MAX_REPORTS => {
                     reports.push(EmbeddedFontReport::skipped(
                         &resource_name,
                         "",
                         "the font dictionary is written inline; only indirect font objects can be rewritten in place",
                     ));
                 }
-            }
             _ => {}
         }
     }
@@ -821,7 +820,7 @@ fn read_postscript_name(program: &[u8]) -> Option<String> {
         };
         if platform == 3 {
             let units: Vec<u16> = bytes
-                .chunks_exact(2)
+                .as_chunks::<2>().0.iter()
                 .take(256)
                 .map(|pair| u16::from_be_bytes([pair[0], pair[1]]))
                 .collect();

@@ -11,6 +11,45 @@ permissions:
   contents: read
 
 jobs:
+  # Static checks that do not need a compiler or the native engines. Kept in
+  # its own job so a lint failure is reported in seconds instead of waiting for
+  # the Rust matrix.
+  lint:
+    name: Lint (ESLint, Prettier, rustfmt, i18n)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The formatting gate diffs the pushed range against its base, so the
+          # base commit has to be in the clone.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: npm ci
+      - name: ESLint
+        run: npm run lint
+      - name: Translation tables (en/tr parity)
+        run: npm run i18n:audit -- --check
+      - name: Formatting gate (files added by this change)
+        env:
+          FORMAT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          npm run format:gate
+          npm run format:gate:rust
+      # Neither rustfmt nor Prettier has been run over the whole code base yet;
+      # the counts below are the backlog. Once `npm run format` and
+      # `npm run fmt:rust` have been committed, add `--all-changed` to the
+      # gate above (or replace it with a plain repository-wide check).
+      - name: Formatting backlog (informational)
+        run: |
+          npm run format:gate -- --repo
+          npm run format:gate:rust -- --repo
+
   frontend:
     name: Frontend (tests, type check, build)
     runs-on: ubuntu-latest
@@ -42,6 +81,8 @@ jobs:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: System dependencies (Linux)
         if: runner.os == 'Linux'
@@ -68,6 +109,11 @@ jobs:
       - name: Fetch engines (Windows)
         if: runner.os == 'Windows'
         run: npm run engines:fetch
+      # Clippy runs on the runner that has the full engine set so the
+      # cfg(windows) paths are compiled too.
+      - name: Clippy
+        if: runner.os == 'Windows'
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Workspace tests (Windows, with engines)
         if: runner.os == 'Windows'
         run: cargo test --workspace
@@ -100,10 +146,11 @@ jobs:
       - run: npm run build
       - run: npm run verify
 
+  # Blocking on purpose: a known-vulnerable dependency is a release blocker,
+  # not a note in the log. Fix or override an advisory explicitly.
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -114,7 +161,28 @@ jobs:
       - name: npm audit (high)
         run: npm audit --audit-level=high
       - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          # Prebuilt binary: keeps the audit job under a minute instead of
+          # compiling cargo-audit on every push.
+          tool: cargo-audit
+      # Reviewed exceptions. Everything else stays blocking: a new advisory
+      # fails this job rather than scrolling past in a log.
+      #
+      # RUSTSEC-2023-0071 (rsa 0.9.x, Marvin timing side channel): no fixed
+      #   release exists. The suite signs PDFs locally with a user-supplied key
+      #   and never exposes a signing oracle, so the attack needs a timing
+      #   measurement the app does not offer. Revisit when rsa ships a fix or
+      #   the signing path moves to another implementation.
+      # RUSTSEC-2024-0429 (glib 0.18.5, unsound VariantStrIter): reachable only
+      #   through the Linux/macOS GTK stack that Tauri pulls in; the Windows and
+      #   Android builds this repository ships do not include it. Fixed in
+      #   glib 0.20, which the current Tauri/wry dependency chain does not allow.
+      #
+      # Unmaintained-crate advisories (proc-macro-error, unic-*, ttf-parser)
+      # are warnings and do not fail the job.
       - name: cargo audit
         run: |
-          cargo install cargo-audit --locked || true
-          cargo audit || true
+          cargo audit \
+            --ignore RUSTSEC-2023-0071 \
+            --ignore RUSTSEC-2024-0429

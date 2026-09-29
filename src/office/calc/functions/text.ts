@@ -17,6 +17,9 @@ function numberArg(args: Scalar[][][], index: number, fallback: number): number 
 
 registerFunction("LEN", (args) => textArg(args, 0).length, 1, 1, false, { signature: "LEN(text)", category: "Text" });
 registerFunction("TRIM", (args) => textArg(args, 0).trim().replace(/\s+/g, " "), 1, 1, false, { signature: "TRIM(text)", category: "Text" });
+// CLEAN() is defined as removing the non-printing control characters, so the
+// control-character class is the function, not an accident.
+// eslint-disable-next-line no-control-regex
 registerFunction("CLEAN", (args) => textArg(args, 0).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ""), 1, 1, false, { signature: "CLEAN(text)", category: "Text" });
 registerFunction("UPPER", (args) => textArg(args, 0).toUpperCase(), 1, 1, false, { signature: "UPPER(text)", category: "Text" });
 registerFunction("LOWER", (args) => textArg(args, 0).toLowerCase(), 1, 1, false, { signature: "LOWER(text)", category: "Text" });

@@ -297,8 +297,7 @@ mod tests {
     #[test]
     fn semicolon_and_decimal_comma() {
         let bytes = b"Name;Price\nPen;1,50\n";
-        let mut options = CsvOptions::default();
-        options.delimiter = "semicolon".into();
+        let options = CsvOptions { delimiter: "semicolon".into(), ..Default::default() };
         let read = parse_csv(bytes, &options).unwrap();
         assert_eq!(read.workbook.sheets[0].get("B2").map(|cell| cell.value.clone()), Some(CellValue::Number(1.5)));
     }

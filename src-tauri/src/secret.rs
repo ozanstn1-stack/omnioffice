@@ -18,13 +18,13 @@ fn protect(plaintext: &[u8]) -> Result<Vec<u8>, String> {
         CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
     };
     unsafe {
-        let mut input = CRYPT_INTEGER_BLOB {
+        let input = CRYPT_INTEGER_BLOB {
             cbData: plaintext.len() as u32,
             pbData: plaintext.as_ptr() as *mut u8,
         };
         let mut output = CRYPT_INTEGER_BLOB::default();
         CryptProtectData(
-            &mut input,
+            &input,
             windows::core::PCWSTR::null(),
             None,
             None,
@@ -46,13 +46,13 @@ fn unprotect(blob: &[u8]) -> Result<Vec<u8>, String> {
         CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
     };
     unsafe {
-        let mut input = CRYPT_INTEGER_BLOB {
+        let input = CRYPT_INTEGER_BLOB {
             cbData: blob.len() as u32,
             pbData: blob.as_ptr() as *mut u8,
         };
         let mut output = CRYPT_INTEGER_BLOB::default();
         CryptUnprotectData(
-            &mut input,
+            &input,
             None,
             None,
             None,
@@ -105,7 +105,7 @@ pub fn load_api_key(path: &Path) -> Result<String, PdfError> {
     let content = content.trim();
     if let Some(encoded) = content.strip_prefix(DPAPI_PREFIX) {
         let blob = base64_decode(encoded).ok_or_else(|| PdfError::Internal("invalid key blob".to_string()))?;
-        let plain = unprotect(&blob).map_err(|error| PdfError::Internal(error))?;
+        let plain = unprotect(&blob).map_err(PdfError::Internal)?;
         return String::from_utf8(plain).map_err(|_| PdfError::Internal("invalid key encoding".to_string()));
     }
     if let Some(encoded) = content.strip_prefix(PLAIN_PREFIX) {

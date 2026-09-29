@@ -170,7 +170,7 @@ fn xlsx_roundtrip_preserves_every_value_and_formula() {
     let read = xlsx::read_workbook_bytes(&bytes).unwrap();
 
     assert_eq!(read.workbook.sheets.len(), 2, "both sheets must survive the round trip");
-    assert_eq!(sheet_by_name(&read.workbook, "Data").is_some(), true, "sheet names are preserved");
+    assert!(sheet_by_name(&read.workbook, "Data").is_some(), "sheet names are preserved");
 
     let mut value_losses = Vec::new();
     let mut formula_losses = Vec::new();

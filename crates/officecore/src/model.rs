@@ -288,12 +288,14 @@ impl Default for ParaStyle {
 /// The style catalogue every Writer document starts with (fully original design).
 pub fn default_styles() -> Vec<ParaStyle> {
     let mut list = Vec::new();
-    let mut normal = ParaStyle::default();
-    normal.font = Some("Calibri".into());
-    normal.size_pt = Some(11.0);
-    normal.line_spacing = Some(1.15);
-    normal.space_after_pt = Some(8.0);
-    normal.color = Some("#1f2328".into());
+    let normal = ParaStyle {
+        font: Some("Calibri".into()),
+        size_pt: Some(11.0),
+        line_spacing: Some(1.15),
+        space_after_pt: Some(8.0),
+        color: Some("#1f2328".into()),
+        ..Default::default()
+    };
     list.push(normal);
 
     let mut title = ParaStyle { id: "Title".into(), name: "Title".into(), based_on: Some("Normal".into()), next: Some("Subtitle".into()), ..Default::default() };
@@ -651,8 +653,7 @@ impl Block {
     }
 
     pub fn heading(text: &str, level: u32) -> Self {
-        let mut props = ParaProps::default();
-        props.style = format!("Heading{level}");
+        let props = ParaProps { style: format!("Heading{level}"), ..Default::default() };
         Block::Paragraph { props, runs: vec![Run { text: text.to_string(), ..Default::default() }] }
     }
 
@@ -783,10 +784,7 @@ impl Default for TextDocument {
 
 impl TextDocument {
     pub fn new_blank(title: &str) -> Self {
-        let mut document = Self::default();
-        document.id = uuid::Uuid::new_v4().to_string();
-        document.title = title.to_string();
-        document
+        Self { id: uuid::Uuid::new_v4().to_string(), title: title.to_string(), ..Default::default() }
     }
 
     pub fn plain_text(&self) -> String {
@@ -898,7 +896,9 @@ fn collect_note_refs(block: &Block, out: &mut Vec<String>, endnotes: bool) {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", content = "value", rename_all = "camelCase")]
+#[derive(Default)]
 pub enum CellValue {
+    #[default]
     Empty,
     Number(f64),
     Text(String),
@@ -906,11 +906,6 @@ pub enum CellValue {
     Error(String),
 }
 
-impl Default for CellValue {
-    fn default() -> Self {
-        CellValue::Empty
-    }
-}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
@@ -1420,10 +1415,7 @@ impl Default for Sheet {
 
 impl Sheet {
     pub fn new(name: &str) -> Self {
-        let mut sheet = Self::default();
-        sheet.id = uuid::Uuid::new_v4().to_string();
-        sheet.name = name.to_string();
-        sheet
+        Self { id: uuid::Uuid::new_v4().to_string(), name: name.to_string(), ..Default::default() }
     }
 
     pub fn set(&mut self, address: &str, cell: Cell) {
@@ -1509,10 +1501,7 @@ impl Default for Workbook {
 
 impl Workbook {
     pub fn new_blank(title: &str) -> Self {
-        let mut workbook = Self::default();
-        workbook.id = uuid::Uuid::new_v4().to_string();
-        workbook.title = title.to_string();
-        workbook
+        Self { id: uuid::Uuid::new_v4().to_string(), title: title.to_string(), ..Default::default() }
     }
 
     /// Names visible from `sheet`: workbook-level names plus that sheet's own.
@@ -1789,10 +1778,7 @@ impl Default for Deck {
 
 impl Deck {
     pub fn new_blank(title: &str) -> Self {
-        let mut deck = Self::default();
-        deck.id = uuid::Uuid::new_v4().to_string();
-        deck.title = title.to_string();
-        deck
+        Self { id: uuid::Uuid::new_v4().to_string(), title: title.to_string(), ..Default::default() }
     }
 
     pub fn master(&self, id: &str) -> Option<&SlideMaster> {

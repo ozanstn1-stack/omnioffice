@@ -290,7 +290,7 @@ pub fn looks_like_card(compact: &str) -> bool {
         }
         sum += value;
     }
-    sum % 10 == 0
+    sum.is_multiple_of(10)
 }
 
 /// 7-15 digits with at least one separator.
@@ -300,7 +300,7 @@ pub fn looks_like_card(compact: &str) -> bool {
 pub fn looks_like_phone(compact: &str) -> bool {
     let separators = compact.chars().filter(|c| " -+()./".contains(*c)).count();
     let digits = compact.chars().filter(|c| c.is_ascii_digit()).count();
-    if digits < 7 || digits > 15 {
+    if !(7..=15).contains(&digits) {
         return false;
     }
     if separators == 0 {

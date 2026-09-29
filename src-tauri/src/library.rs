@@ -257,6 +257,17 @@ pub fn clear_operations(log_path: &Path) -> Result<(), PdfError> {
     write_json(log_path, &Vec::<OperationEntry>::new())
 }
 
+impl AiLibraryEntry {
+    /// Used by the library tests; the UI receives the full path instead.
+    #[allow(dead_code)]
+    fn file_name(&self) -> String {
+        Path::new(&self.file_path)
+            .file_name()
+            .map(|value| value.to_string_lossy().to_string())
+            .unwrap_or_default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -381,14 +392,5 @@ mod tests {
         assert!(name.ends_with(".md"));
         assert!(!name.contains(' '));
         assert!(!name.contains('ş') || name.contains('-'), "non ascii characters are transliterated away");
-    }
-}
-
-impl AiLibraryEntry {
-    fn file_name(&self) -> String {
-        Path::new(&self.file_path)
-            .file_name()
-            .map(|value| value.to_string_lossy().to_string())
-            .unwrap_or_default()
     }
 }

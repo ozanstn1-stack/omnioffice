@@ -60,16 +60,6 @@ fn stripped_odf_meta(title: &str) -> String {
     )
 }
 
-fn guess_mime_for_extension(extension: &str) -> &'static str {
-    match extension {
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "bmp" => "image/bmp",
-        "tif" | "tiff" => "image/tiff",
-        "webp" => "image/webp",
-        _ => "image/png",
-    }
-}
 
 fn optimize_image(name: &str, data: &[u8], options: &CleanOptions) -> Option<Vec<u8>> {
     if options.image_quality == 0 {
@@ -136,9 +126,7 @@ fn clean_ooxml(reader: &ZipReader, options: &CleanOptions, result: &mut CleanRes
             // Replacing the part with an empty comments list keeps all
             // relationships and content types valid.
             if lower.contains("comments") {
-                let empty = format!(
-                    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:comments xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"/>"
-                );
+                let empty = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:comments xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"/>".to_string();
                 writer.add_text(name, &empty);
                 result.actions.push("Removed comment text.".into());
                 continue;

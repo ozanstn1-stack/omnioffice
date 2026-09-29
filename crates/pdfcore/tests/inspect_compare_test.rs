@@ -2,7 +2,6 @@
 
 mod common;
 
-use std::path::Path;
 
 use common::*;
 use pdfcore::compare::{compare_pdfs, CompareOptions};

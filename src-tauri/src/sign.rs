@@ -154,9 +154,7 @@ pub async fn pdf_sign(
         let expected = sign::certificate_fingerprint(&cert_der)?;
         let signature = report
             .signatures
-            .into_iter()
-            .filter(|entry| entry.signer.sha256_fingerprint == expected)
-            .next_back()
+            .into_iter().rfind(|entry| entry.signer.sha256_fingerprint == expected)
             .ok_or_else(|| {
                 PdfError::ProcessingFailed(
                     "the produced signature could not be verified after writing".into(),
@@ -411,7 +409,7 @@ mod windows_store {
                 Err(error) => last_error = Some(error),
             }
         }
-        Err(last_error.unwrap_or_else(|| windows::core::Error::from_win32()))
+        Err(last_error.unwrap_or_else(windows::core::Error::from_win32))
     }
 
     unsafe fn export_private_key(context: *const CERT_CONTEXT) -> PdfResult<Vec<u8>> {

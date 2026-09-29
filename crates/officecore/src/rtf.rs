@@ -650,14 +650,16 @@ impl Reader {
         }
         let runs = std::mem::take(&mut self.runs);
         let format = &self.para_format;
-        let mut props = ParaProps::default();
-        props.align = if format.align.is_empty() { "left".into() } else { format.align.clone() };
-        props.indent_left_pt = format.indent_left_pt;
-        props.indent_right_pt = format.indent_right_pt;
-        props.first_line_pt = format.first_line_pt;
-        props.space_before_pt = format.space_before_pt;
-        props.space_after_pt = format.space_after_pt;
-        props.line_spacing = if format.line_spacing > 0.0 { format.line_spacing } else { 1.15 };
+        let mut props = ParaProps {
+            align: if format.align.is_empty() { "left".into() } else { format.align.clone() },
+            indent_left_pt: format.indent_left_pt,
+            indent_right_pt: format.indent_right_pt,
+            first_line_pt: format.first_line_pt,
+            space_before_pt: format.space_before_pt,
+            space_after_pt: format.space_after_pt,
+            line_spacing: if format.line_spacing > 0.0 { format.line_spacing } else { 1.15 },
+            ..Default::default()
+        };
         if props.align == "left" && format.style_index > 0 {
             props.style = format!("Style{}", format.style_index);
         }
@@ -836,11 +838,10 @@ fn parse_revtbl(reader: &mut Reader, raw: &str) {
                     }
                 }
             }
-            _ if depth >= 1 => {
-                if ch != ';' {
+            _ if depth >= 1
+                && ch != ';' => {
                     name.push(ch);
                 }
-            }
             _ => {}
         }
     }

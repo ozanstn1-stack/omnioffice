@@ -435,7 +435,7 @@ fn signature_ecdsa_p256_sign_and_verify() {
 #[test]
 fn signature_chain_links_to_self_signed_root() {
     let chained = chained_identity();
-    let signed = sign_with(&chained.leaf, &[chained.ca.cert_der.clone()], &sign_options());
+    let signed = sign_with(&chained.leaf, std::slice::from_ref(&chained.ca.cert_der), &sign_options());
 
     let report = sign::verify_signatures(&signed);
     let info = &report.signatures[0];

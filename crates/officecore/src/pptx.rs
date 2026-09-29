@@ -186,16 +186,14 @@ fn presentation_xml(deck: &Deck, master_ids: &[String], slide_ids: &[String]) ->
     let mut out = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<p:presentation {NS} saveSubsetFonts=\"1\"><p:sldMasterIdLst>"
     );
-    let mut master_id = 2147483648u32;
-    for rid in master_ids {
+    for (offset, rid) in master_ids.iter().enumerate() {
+        let master_id = 2147483648u32 + offset as u32;
         out.push_str(&format!("<p:sldMasterId id=\"{master_id}\" r:id=\"{rid}\"/>"));
-        master_id += 1;
     }
     out.push_str("</p:sldMasterIdLst><p:sldIdLst>");
-    let mut next_id = 256u32;
-    for rid in slide_ids {
+    for (offset, rid) in slide_ids.iter().enumerate() {
+        let next_id = 256u32 + offset as u32;
         out.push_str(&format!("<p:sldId id=\"{next_id}\" r:id=\"{rid}\"/>"));
-        next_id += 1;
     }
     out.push_str("</p:sldIdLst>");
     out.push_str(&format!(
@@ -410,14 +408,11 @@ impl SlideWriter {
             Some(color) => out.push_str(&format!("<a:solidFill><a:srgbClr val=\"{}\"/></a:solidFill>", escape_attr(color.trim_start_matches('#')))),
             None => out.push_str("<a:noFill/>"),
         }
-        match stroke {
-            Some((color, width)) => out.push_str(&format!(
-                "<a:ln w=\"{}\"><a:solidFill><a:srgbClr val=\"{}\"/></a:solidFill><a:prstDash val=\"solid\"/></a:ln>",
-                (width * 12700.0).round() as i64,
-                escape_attr(color.trim_start_matches('#'))
-            )),
-            None => {}
-        }
+        if let Some((color, width)) = stroke { out.push_str(&format!(
+            "<a:ln w=\"{}\"><a:solidFill><a:srgbClr val=\"{}\"/></a:solidFill><a:prstDash val=\"solid\"/></a:ln>",
+            (width * 12700.0).round() as i64,
+            escape_attr(color.trim_start_matches('#'))
+        )) }
         out
     }
 
@@ -1283,9 +1278,9 @@ pub fn write_pptx_package(deck: &Deck) -> OfficeResult<DeckWrite> {
     content_types.push_str("<Override PartName=\"/ppt/presProps.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.presProps+xml\"/>");
     content_types.push_str("<Override PartName=\"/ppt/viewProps.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.viewProps+xml\"/>");
     content_types.push_str("<Override PartName=\"/ppt/tableStyles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.tableStyles+xml\"/>");
-    for index in 0..parts.len() {
+    for (index, part) in parts.iter().enumerate() {
         content_types.push_str(&format!("<Override PartName=\"/ppt/slides/slide{}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/>", index + 1));
-        if parts[index].2.is_some() {
+        if part.2.is_some() {
             content_types.push_str(&format!("<Override PartName=\"/ppt/notesSlides/notesSlide{}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml\"/>", index + 1));
         }
     }
@@ -1659,8 +1654,7 @@ fn read_shape(node: &XmlNode, reader: &ZipReader, rels: &HashMap<String, String>
                 for row_node in table.children_named("tr") {
                     let mut cells = Vec::new();
                     for cell in row_node.children_named("tc") {
-                        let mut inner = Vec::new();
-                        inner.push(Block::paragraph(&cell.deep_text().trim().to_string()));
+                        let inner = vec![Block::paragraph(cell.deep_text().trim())];
                         cells.push(TableCell { blocks: inner, ..Default::default() });
                     }
                     rows.push(TableRow { cells, ..Default::default() });
@@ -1670,7 +1664,8 @@ fn read_shape(node: &XmlNode, reader: &ZipReader, rels: &HashMap<String, String>
                 object.rotation = rotation;
                 object.table = Some(TableData { rows, ..Default::default() });
                 object
-            } else if let Some(chart_ref) = node.find_descendant("chart") {
+            } else {
+                let chart_ref = node.find_descendant("chart")?;
                 let Some(embed) = chart_ref.attr_any_ns("id") else {
                     warnings.push("A chart without a relationship was skipped.".into());
                     return None;
@@ -1699,8 +1694,6 @@ fn read_shape(node: &XmlNode, reader: &ZipReader, rels: &HashMap<String, String>
                 object.rotation = rotation;
                 object.chart = Some(chart);
                 object
-            } else {
-                return None;
             }
         }
         "grpSp" => {

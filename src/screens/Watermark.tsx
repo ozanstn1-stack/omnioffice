@@ -48,7 +48,6 @@ export function Watermark({ initialFiles, dragging }: { initialFiles?: string[];
   useEffect(() => {
     const pages = pagesText.trim() ? parsePageList(pagesText, pageCount) : [];
     patch({ pages: pages ?? [] });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pagesText, pageCount]);
 
   const pickImage = async () => {

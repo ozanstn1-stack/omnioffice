@@ -830,7 +830,7 @@ fn build_detached_cms(
     ]);
 
     // DER SET OF ordering: ascending by encoded bytes.
-    let mut attributes = vec![attr_content_type, attr_signing_time, attr_message_digest];
+    let mut attributes = [attr_content_type, attr_signing_time, attr_message_digest];
     attributes.sort();
     let signed_attrs_content: Vec<u8> = attributes.concat();
 
@@ -1075,7 +1075,7 @@ fn collect_safe_bags(
 /// Placeholder that keeps the encrypted key bag DER around; replaced by the
 /// decrypted PKCS#8 when the container password is available.
 fn encrypted_key_marker(encrypted: &EncryptedPrivateKeyInfoLite) -> PdfResult<Vec<u8>> {
-    Ok(encrypted.to_der().map_err(internal)?)
+    encrypted.to_der().map_err(internal)
 }
 
 /// Real PKCS#12 parsing and decryption. Returns the signer certificate, its
@@ -1751,11 +1751,11 @@ fn collect_signature_field_names(doc: &Document) -> std::collections::HashMap<lo
 
 /// Computes the covered ranges and the total number of signed bytes.
 fn byte_range_pairs(values: &[Object]) -> Option<Vec<(usize, usize)>> {
-    if values.len() < 2 || values.len() % 2 != 0 {
+    if values.len() < 2 || !values.len().is_multiple_of(2) {
         return None;
     }
     let mut pairs = Vec::with_capacity(values.len() / 2);
-    for chunk in values.chunks_exact(2) {
+    for chunk in values.as_chunks::<2>().0 {
         let start = crate::docutil::object_to_f64(&chunk[0])?;
         let length = crate::docutil::object_to_f64(&chunk[1])?;
         if start < 0.0 || length < 0.0 {

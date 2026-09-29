@@ -1272,7 +1272,7 @@ pub fn load_recent(app: AppHandle) -> Result<Vec<RecentEntry>, PdfError> {
     let text = read_config_text(&path)?;
     let mut entries: Vec<RecentEntry> = serde_json::from_str(&text).unwrap_or_default();
     entries.retain(|e| Path::new(&e.path).exists());
-    entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    entries.sort_by_key(|entry| std::cmp::Reverse(entry.timestamp));
     entries.truncate(30);
     Ok(entries)
 }

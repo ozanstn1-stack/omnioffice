@@ -255,7 +255,7 @@ fn metadata_edit_and_remove() {
 
 #[test]
 fn info_reports_document_facts() {
-    let (dir, input) = setup("info", 3);
+    let (_dir, input) = setup("info", 3);
     let info = pdfcore::info::pdf_info(&input, None).unwrap();
     assert_eq!(info.page_count, 3);
     assert!(!info.encrypted);

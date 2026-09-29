@@ -472,7 +472,7 @@ fn rotate_bilinear(image: &image::RgbaImage, degrees: f64) -> image::RgbaImage {
 
 /// Applies rotation by multiples of 90 degrees, clockwise.
 pub fn rotate_quarters(image: &image::RgbaImage, degrees: i32) -> image::RgbaImage {
-    match ((degrees % 360) + 360) % 360 {
+    match degrees.rem_euclid(360) {
         90 => image::imageops::rotate90(image),
         180 => image::imageops::rotate180(image),
         270 => image::imageops::rotate270(image),

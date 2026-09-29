@@ -66,12 +66,6 @@ fn rd_u32(data: &[u8], at: usize) -> OfficeResult<u32> {
         .ok_or_else(|| OfficeError::corrupt("Truncated ZIP structure"))
 }
 
-fn rd_u64(data: &[u8], at: usize) -> OfficeResult<u64> {
-    data.get(at..at + 8)
-        .map(|b| u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]))
-        .ok_or_else(|| OfficeError::corrupt("Truncated ZIP structure"))
-}
-
 pub fn read_entry_name(data: &[u8], at: usize) -> String {
     String::from_utf8_lossy(data.get(at..).unwrap_or_default()).into_owned()
 }

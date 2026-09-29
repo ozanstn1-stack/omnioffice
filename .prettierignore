@@ -1,0 +1,15 @@
+# Build output and generated assets
+dist/
+node_modules/
+target/
+release-artifacts/
+src-tauri/
+chrome-extension/
+crates/
+
+# Documents and fixtures are not source code
+samples/
+docs/
+CHANGELOG.md
+README.md
+package-lock.json

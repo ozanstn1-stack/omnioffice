@@ -101,11 +101,13 @@ fn sample_deck() -> Deck {
     title.id = "slide-title".into();
     title.z = 0;
 
-    let mut first = Slide::default();
-    first.layout = "titleContent".into();
-    first.master_id = Some("master-a".into());
-    first.layout_id = Some("layout-a-title".into());
-    first.objects = vec![title, outer, chart, badge];
+    let mut first = Slide {
+        layout: "titleContent".into(),
+        master_id: Some("master-a".into()),
+        layout_id: Some("layout-a-title".into()),
+        objects: vec![title, outer, chart, badge],
+        ..Default::default()
+    };
     first.animations = vec![
         Animation {
             id: "anim-1".into(),
@@ -139,10 +141,12 @@ fn sample_deck() -> Deck {
         },
     ];
 
-    let mut second = Slide::default();
-    second.master_id = Some("master-b".into());
-    second.layout_id = Some("layout-b-title".into());
-    second.objects = vec![placeholder_shape("title", "Second slide", 60.0, 40.0, 840.0, 80.0)];
+    let second = Slide {
+        master_id: Some("master-b".into()),
+        layout_id: Some("layout-b-title".into()),
+        objects: vec![placeholder_shape("title", "Second slide", 60.0, 40.0, 840.0, 80.0)],
+        ..Default::default()
+    };
 
     deck.slides = vec![first, second];
     deck

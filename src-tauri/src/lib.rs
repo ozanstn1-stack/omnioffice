@@ -98,8 +98,8 @@ pub fn run() {
                     // DPI scale to the CSS viewport, so sizing in logical units
                     // can still overflow the screen on scaled displays.
                     let screen = monitor.size();
-                    let target_width = (screen.width as f64 * 0.96).min(1780.0).max(1100.0);
-                    let target_height = (screen.height as f64 * 0.93).min(1080.0).max(720.0);
+                    let target_width = (screen.width as f64 * 0.96).clamp(1100.0, 1780.0);
+                    let target_height = (screen.height as f64 * 0.93).clamp(720.0, 1080.0);
                     let _ = window.set_size(tauri::PhysicalSize::new(target_width, target_height));
                     let _ = window.center();
                 }

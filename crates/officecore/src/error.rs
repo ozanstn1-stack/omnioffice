@@ -95,6 +95,6 @@ impl std::error::Error for OfficeError {}
 
 impl From<OfficeError> for String {
     fn from(value: OfficeError) -> Self {
-        serde_json::to_string(&value).unwrap_or_else(|_| value.message)
+        serde_json::to_string(&value).unwrap_or(value.message)
     }
 }

@@ -202,18 +202,18 @@ pub fn inspect_document(path: &Path, password: Option<&str>) -> PdfResult<Docume
         out.javascript_entries.push(String::from_utf8_lossy(kind).to_string());
     }
     if let Some(Object::Dictionary(names)) = deref(&doc, catalog.get(b"Names").ok()) {
-        collect_name_tree(&doc, &names, b"JavaScript", &mut out.javascript_entries);
+        collect_name_tree(&doc, names, b"JavaScript", &mut out.javascript_entries);
         let mut files: Vec<String> = Vec::new();
-        collect_name_tree(&doc, &names, b"EmbeddedFiles", &mut files);
+        collect_name_tree(&doc, names, b"EmbeddedFiles", &mut files);
         out.embedded_files = files;
     }
     if let Ok(info_id) = doc.trailer.get(b"Info").and_then(|value| value.as_reference()) {
         if let Ok(Object::Dictionary(info)) = doc.get_object(info_id) {
-            out.title_override = text_of(&info, b"Title").unwrap_or_default();
-            out.subject_override = text_of(&info, b"Subject").unwrap_or_default();
-            out.author_override = text_of(&info, b"Author").unwrap_or_default();
-            out.producer = text_of(&info, b"Producer").unwrap_or_default();
-            out.creator = text_of(&info, b"Creator").unwrap_or_default();
+            out.title_override = text_of(info, b"Title").unwrap_or_default();
+            out.subject_override = text_of(info, b"Subject").unwrap_or_default();
+            out.author_override = text_of(info, b"Author").unwrap_or_default();
+            out.producer = text_of(info, b"Producer").unwrap_or_default();
+            out.creator = text_of(info, b"Creator").unwrap_or_default();
         }
     }
     out.has_acro_form = catalog.get(b"AcroForm").is_ok();
@@ -280,7 +280,7 @@ fn collect_name_tree(doc: &Document, names: &Dictionary, key: &[u8], out: &mut V
                         .get(b"UF")
                         .ok()
                         .or_else(|| file.get(b"F").ok())
-                        .and_then(|value| docutil::pdf_text_value(value))
+                        .and_then(docutil::pdf_text_value)
                         .unwrap_or_default(),
                     _ => String::new(),
                 };
@@ -323,7 +323,7 @@ fn read_outline(doc: &Document, catalog: &Dictionary) -> PdfResult<Vec<OutlineEn
             _ => break,
         };
         out.push(OutlineEntry {
-            title: text_of(&entry, b"Title").unwrap_or_default(),
+            title: text_of(entry, b"Title").unwrap_or_default(),
             page: entry
                 .get(b"Dest")
                 .ok()
@@ -347,7 +347,7 @@ fn read_outline(doc: &Document, catalog: &Dictionary) -> PdfResult<Vec<OutlineEn
                     _ => break,
                 };
                 out.push(OutlineEntry {
-                    title: text_of(&child_entry, b"Title").unwrap_or_default(),
+                    title: text_of(child_entry, b"Title").unwrap_or_default(),
                     page: child_entry
                         .get(b"Dest")
                         .ok()
@@ -439,7 +439,7 @@ fn collect_annotations(doc: &Document, page_id: ObjectId, page: u32, out: &mut V
                 .and_then(|value| value.as_name().ok())
                 .map(|value| String::from_utf8_lossy(value).to_string())
                 .unwrap_or_default(),
-            contents: text_of(&entry, b"Contents").unwrap_or_default(),
+            contents: text_of(entry, b"Contents").unwrap_or_default(),
             // Bit 2 of /F is the Hidden flag.
             hidden: entry.get(b"F").ok().and_then(|value| value.as_i64().ok()).unwrap_or(0) & 2 != 0,
         });

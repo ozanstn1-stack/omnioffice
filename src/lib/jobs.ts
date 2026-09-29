@@ -226,6 +226,8 @@ async function persistProgress(id: string, update: JobProgressUpdate): Promise<v
       message: update.message ?? null,
     });
   } catch {
+    // Best effort: the backend is absent in browser tests, and a job that
+    // cannot be persisted must still run.
   }
 }
 
@@ -238,6 +240,8 @@ async function persistFinish(
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("jobs_finish", { id, status, error: error ?? null });
   } catch {
+    // Best effort: the backend is absent in browser tests, and a job that
+    // cannot be persisted must still run.
   }
 }
 
@@ -247,6 +251,8 @@ async function persistCancel(id: string): Promise<void> {
     await invoke("cancel_job", { jobId: id });
     await invoke("jobs_finish", { id, status: "cancelled", error: null });
   } catch {
+    // Best effort: the backend is absent in browser tests, and a job that
+    // cannot be persisted must still run.
   }
 }
 
@@ -255,6 +261,8 @@ async function persistClearFinished(): Promise<void> {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("jobs_clear_finished");
   } catch {
+    // Best effort: the backend is absent in browser tests, and a job that
+    // cannot be persisted must still run.
   }
 }
 
@@ -312,6 +320,7 @@ export const useJobs = create<JobsState>((set, get) => ({
     try {
       job.cancel?.();
     } catch {
+      // A throwing cancel callback must not stop the fallback below.
     }
     // Restored rows have no live callback; talk to the Rust registry directly
     // so an actually-running worker still stops.
@@ -400,6 +409,7 @@ export function attachJobEvents(): Promise<void> {
       ]);
       attached = true;
     } catch {
+      // Without the event bridge the job still runs; only live progress is lost.
     } finally {
       attaching = null;
     }

@@ -395,7 +395,6 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Routes documents that arrived through an Android open-with intent to the
@@ -523,7 +522,6 @@ export default function App() {
       sync: <Sync />,
       plugins: <Plugins />,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [convertTab, dragging, files, homeDrop, navigate, pageToolTab, securityTab],
   );
 

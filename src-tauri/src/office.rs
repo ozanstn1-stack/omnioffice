@@ -694,7 +694,7 @@ pub struct RecoveryEntry {
 }
 
 fn recovery_dir(app: &AppHandle) -> Result<PathBuf, OfficeErrorPayload> {
-    Ok(config_dir(&app)?.join("recovery"))
+    Ok(config_dir(app)?.join("recovery"))
 }
 
 #[tauri::command]

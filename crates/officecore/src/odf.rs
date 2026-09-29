@@ -508,16 +508,14 @@ fn master_styles_xml(document: &TextDocument) -> String {
 }
 
 fn manifest() -> String {
-    format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.2\">\
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.2\">\
         <manifest:file-entry manifest:full-path=\"/\" manifest:media-type=\"application/vnd.oasis.opendocument.text\"/>\
         <manifest:file-entry manifest:full-path=\"content.xml\" manifest:media-type=\"text/xml\"/>\
         <manifest:file-entry manifest:full-path=\"styles.xml\" manifest:media-type=\"text/xml\"/>\
         <manifest:file-entry manifest:full-path=\"meta.xml\" manifest:media-type=\"text/xml\"/>\
         <manifest:file-entry manifest:full-path=\"Pictures/\" manifest:media-type=\"\"/>\
         <manifest:file-entry manifest:full-path=\"Images/\" manifest:media-type=\"\"/>\
-        </manifest:manifest>"
-    )
+        </manifest:manifest>".to_string()
 }
 
 fn manifest_for(mime: &str) -> String {
@@ -887,7 +885,7 @@ fn collect_styles(root: &XmlNode, style_map: &mut HashMap<String, ParaProps>) {
                 props.first_line_pt = value;
             }
             if let Some(value) = properties.attr_any_ns("line-height") {
-                if let Some(percent) = value.trim_end_matches('%').parse::<f64>().ok() {
+                if let Ok(percent) = value.trim_end_matches('%').parse::<f64>() {
                     props.line_spacing = percent / 100.0;
                 }
             }

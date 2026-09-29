@@ -1223,7 +1223,7 @@ fn table_xml(table: &SpreadsheetTable, number: usize, name: &str) -> String {
     let totals_rows = u8::from(table.has_totals);
     let mut xml = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<table xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" id=\"{number}\" name=\"{name}\" displayName=\"{name}\" ref=\"{range}\" headerRowCount=\"{header_rows}\" totalsRowCount=\"{totals_rows}\">",
-        name = escape_attr(&name),
+        name = escape_attr(name),
         range = escape_attr(&table.range),
     );
     if let Some(filter) = table.filter.as_ref() {
@@ -1525,7 +1525,7 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
                     "<definedName name=\"_xlnm._FilterDatabase\" localSheetId=\"{}\" hidden=\"1\">{}!{}</definedName>",
                     index,
                     escape_text(&sheet_names[index]),
-                    escape_text(&filter.range.replace(':', ":"))
+                    escape_text(&filter.range)
                 ));
                 defined_count += 1;
             }
@@ -2796,7 +2796,7 @@ fn apply_conditional(root: &XmlNode, sheet: &mut Sheet, styles: &ImportedStyles,
 
 /// `>10`, `<=5` and the like become the bare value the editor stores.
 fn strip_operator(formula: &str) -> String {
-    formula.trim().trim_start_matches(|character| matches!(character, '>' | '<' | '=')).trim().to_string()
+    formula.trim().trim_start_matches(['>', '<', '=']).trim().to_string()
 }
 
 fn contains_text_value(formula: &str) -> String {
@@ -3176,14 +3176,13 @@ fn parse_drawing_anchor(anchor: &XmlNode) -> Option<DrawingAnchor> {
         let cx = ext.attr("cx").and_then(|value| value.trim().parse::<f64>().ok()).unwrap_or(0.0);
         let cy = ext.attr("cy").and_then(|value| value.trim().parse::<f64>().ok()).unwrap_or(0.0);
         (cx / EMU_PER_PX, cy / EMU_PER_PX)
-    } else if let Some(to) = to {
+    } else {
+        let to = to?;
         let to_column = child_number(to, "col").unwrap_or(column);
         let to_row = child_number(to, "row").unwrap_or(row);
         let width = to_column.saturating_sub(column) as f64 * 64.0 + (to_col_off_emu - col_off_emu) as f64 / EMU_PER_PX;
         let height = to_row.saturating_sub(row) as f64 * 20.0 + (to_row_off_emu - row_off_emu) as f64 / EMU_PER_PX;
         (width, height)
-    } else {
-        return None;
     };
     if !width_px.is_finite() || !height_px.is_finite() || width_px <= 0.0 || height_px <= 0.0 {
         return None;
@@ -3384,13 +3383,13 @@ fn parse_pivot_table(zip: &crate::zip::ZipReader, target: &str, sheet_name: &str
         }
     };
     if table_xml.len() > MAX_DETAIL_PART_BYTES {
-        warnings.push(format!("A pivot table part is too large to inspect and was kept in the original file only."));
+        warnings.push("A pivot table part is too large to inspect and was kept in the original file only.".to_string());
         return None;
     }
     let root = match parse_xml(&table_xml) {
         Ok(root) => root,
         Err(_) => {
-            warnings.push(format!("A pivot table part could not be parsed and was kept in the original file only."));
+            warnings.push("A pivot table part could not be parsed and was kept in the original file only.".to_string());
             return None;
         }
     };

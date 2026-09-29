@@ -1519,7 +1519,6 @@ fn map_field_instruction(instruction: &str, cached: &str) -> Option<FieldRef> {
 
 fn field_argument(instruction: &str, prefix_len: usize) -> String {
     instruction[prefix_len.min(instruction.len())..]
-        .trim()
         .split_whitespace()
         .next()
         .unwrap_or("")
@@ -1709,18 +1708,6 @@ fn flush_paragraph(runs: &mut Vec<Run>, blocks: &mut Vec<Block>, props: Option<P
         return;
     }
     blocks.push(Block::Paragraph { props: props.unwrap_or_default(), runs: std::mem::take(runs) });
-}
-
-/// True when a block (or anything inside it) carries a pending revision.
-fn block_has_revisions(block: &Block) -> bool {
-    match block {
-        Block::Paragraph { runs, .. } => runs.iter().any(|run| run.revision.is_some()),
-        Block::Table { table } => table
-            .rows
-            .iter()
-            .any(|row| row.cells.iter().any(|cell| cell.blocks.iter().any(block_has_revisions))),
-        _ => false,
-    }
 }
 
 fn read_paragraph(node: &XmlNode, context: &mut PartContext, reader: &ZipReader, numbering: &Numbering) -> Vec<Block> {

@@ -11,7 +11,8 @@
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-engines.ps1 [-Force]
 
 param(
-    [switch]$Force
+    [switch]$Force,
+    [switch]$UpdateLock
 )
 
 $ErrorActionPreference = 'Stop'
@@ -25,15 +26,59 @@ $cacheDir = Join-Path $env:LOCALAPPDATA 'pdf-sak-cache'
 
 New-Item -ItemType Directory -Force -Path $enginesDir, $fontsDir, $cacheDir | Out-Null
 
+# ---------------------------------------------------------------- supply chain
+# Every artifact below is pinned by SHA-256 in engines.lock.json: a download that
+# does not match stops the build instead of shipping an unverified binary. When an
+# upstream release is updated on purpose, verify it and re-pin with -UpdateLock.
+$lockPath = Join-Path $PSScriptRoot 'engines.lock.json'
+$lock = if (Test-Path $lockPath) { Get-Content $lockPath -Raw | ConvertFrom-Json } else { [pscustomobject]@{ comment = ''; artifacts = [pscustomobject]@{} } }
+
+function Get-PinnedHash {
+    param([string]$Url)
+    $entry = $lock.artifacts.PSObject.Properties[$Url]
+    if (-not $entry) { return $null }
+    return [string]$entry.Value.sha256
+}
+
+function Set-PinnedHash {
+    param([string]$Url, [string]$Sha256)
+    $artifacts = [ordered]@{}
+    foreach ($property in $lock.artifacts.PSObject.Properties) { $artifacts[$property.Name] = $property.Value }
+    $artifacts[$Url] = [pscustomobject]@{ sha256 = $Sha256 }
+    $sorted = [ordered]@{}
+    foreach ($key in ($artifacts.Keys | Sort-Object)) { $sorted[$key] = $artifacts[$key] }
+    [pscustomobject]@{ comment = $lock.comment; artifacts = [pscustomobject]$sorted } |
+        ConvertTo-Json -Depth 6 | Set-Content -Path $lockPath -Encoding UTF8
+}
+
+$script:unpinned = New-Object System.Collections.Generic.List[string]
+
+function Assert-Artifact {
+    param([string]$Url, [string]$Path, [switch]$Keep)
+    $actual = (Get-FileHash -Algorithm SHA256 -Path $Path).Hash.ToLower()
+    $expected = Get-PinnedHash -Url $Url
+    if (-not $expected) {
+        if ($UpdateLock) { Set-PinnedHash -Url $Url -Sha256 $actual; Write-Host "  pinned now: $actual"; return }
+        if (-not $script:unpinned.Contains($Url)) { $script:unpinned.Add($Url) }
+        return
+    }
+    if ($actual -eq $expected) { return }
+    if ($UpdateLock) { Set-PinnedHash -Url $Url -Sha256 $actual; Write-Host "  re-pinned: $actual"; return }
+    throw ("SHA-256 mismatch for " + $Url + "`n  expected " + $expected + "`n  actual   " + $actual + "`n" +
+        "Refusing to use the file. If the upstream release changed on purpose, verify it and re-run with -UpdateLock.")
+}
+
 function Download-File {
     param([string]$Url, [string]$OutFile)
     if ((Test-Path $OutFile) -and -not $Force) {
+        Assert-Artifact -Url $Url -Path $OutFile
         Write-Host "  cached: $OutFile"
         return
     }
     Write-Host "  downloading: $Url"
     $tmp = "$OutFile.part"
     Invoke-WebRequest -Uri $Url -OutFile $tmp -UseBasicParsing -Headers @{ 'User-Agent' = 'pdf-sak-build' }
+    try { Assert-Artifact -Url $Url -Path $tmp } catch { Remove-Item -Force $tmp -ErrorAction SilentlyContinue; throw }
     Move-Item -Force $tmp $OutFile
 }
 
@@ -221,6 +266,10 @@ if ($liberationMissing.Count -gt 0) {
 } else { Write-Host '==> liberation fonts (already present)' }
 
 # ---------------------------------------------------------------- verify
+if ($script:unpinned.Count -gt 0) {
+    Write-Warning ("not pinned yet: " + ($script:unpinned -join ', '))
+    Write-Warning 'Verify these sources, then re-run with -UpdateLock to record their SHA-256 in engines.lock.json.'
+}
 Write-Host ''
 Write-Host 'Engine status:'
 & $qpdfExe --version 2>&1 | Select-Object -First 1

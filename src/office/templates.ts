@@ -20,7 +20,7 @@ import {
   type Workbook,
 } from "../lib/office-types";
 
-let templateTitlesDisabled = false;
+const templateTitlesDisabled = false;
 void templateTitlesDisabled;
 
 const STYLE_BLOCKED = false;

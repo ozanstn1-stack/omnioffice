@@ -87,10 +87,12 @@ fn images_to_pdf_builds_pages() {
         ImageItem { path: img1.display().to_string(), rotation_delta: 0 },
         ImageItem { path: img2.display().to_string(), rotation_delta: 90 },
     ];
-    let mut options = ImageToPdfOptions::default();
-    options.page_size = "a4".into();
-    options.fit = "fit".into();
-    options.orientation = "auto".into();
+    let options = ImageToPdfOptions {
+        page_size: "a4".into(),
+        fit: "fit".into(),
+        orientation: "auto".into(),
+        ..Default::default()
+    };
 
     let out = dir.path("album.pdf");
     let path = images_to_pdf(
@@ -110,9 +112,7 @@ fn images_to_pdf_builds_pages() {
     assert!(second[3] > second[2], "expected portrait page, got {second:?}");
 
     // Original page size mode
-    let mut original = ImageToPdfOptions::default();
-    original.page_size = "original".into();
-    original.dpi = 96;
+    let original = ImageToPdfOptions { page_size: "original".into(), dpi: 96, ..Default::default() };
     let out2 = dir.path("original.pdf");
     images_to_pdf(
         &items[..1],

@@ -165,7 +165,7 @@ fn build_image_artwork(options: &WatermarkOptions, page_width_pt: f64) -> PdfRes
     let opacity = options.opacity.clamp(0.0, 1.0);
     let mut pixels = rgba.into_raw();
     if opacity < 1.0 {
-        for px in pixels.chunks_exact_mut(4) {
+        for px in pixels.as_chunks_mut::<4>().0 {
             px[3] = (px[3] as f64 * opacity).round() as u8;
         }
     }

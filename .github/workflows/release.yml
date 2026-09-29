@@ -12,6 +12,11 @@ jobs:
   windows:
     name: Windows installer and portable package
     runs-on: windows-latest
+    permissions:
+      contents: write
+      # Needed by actions/attest-build-provenance below.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -34,6 +39,28 @@ jobs:
       - name: Package installer and portable ZIP
         run: npm run package
 
+      # A bill of materials for both dependency graphs, generated from the
+      # lockfiles that the build actually used and attached to the release
+      # next to the installer. CycloneDX JSON so scanners can read it.
+      - name: SBOM (Rust, CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./Cargo.lock
+          format: cyclonedx-json
+          output-file: release-artifacts/sbom-rust.cyclonedx.json
+          upload-artifact: false
+          upload-release-assets: false
+          dependency-snapshot: false
+      - name: SBOM (npm, CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./package-lock.json
+          format: cyclonedx-json
+          output-file: release-artifacts/sbom-npm.cyclonedx.json
+          upload-artifact: false
+          upload-release-assets: false
+          dependency-snapshot: false
+
       - name: Checksums
         shell: pwsh
         run: |
@@ -42,6 +69,15 @@ jobs:
             "$hash  $($_.Name)"
           } | Set-Content release-artifacts/SHA256SUMS.txt -Encoding ASCII
           Get-Content release-artifacts/SHA256SUMS.txt
+
+      # Signed provenance for every release asset (installer, portable ZIP,
+      # checksums, SBOMs). Users verify with:
+      #   gh attestation verify <file> --repo <owner>/<repo>
+      - name: Attest build provenance
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: release-artifacts/*
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

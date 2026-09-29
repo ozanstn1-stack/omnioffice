@@ -228,10 +228,10 @@ fn scanned_jpeg_document(pages: u32, title: &str) -> Document {
                 }
             }
         }
-        let (rw, rh) = (w as u32, h as u32);
+        let (rw, rh) = (w, h);
         let rgb_image = image::RgbImage::from_raw(rw, rh, {
             let mut rgb = Vec::with_capacity((rw * rh * 3) as usize);
-            for px in rgba.chunks_exact(4) {
+            for px in rgba.as_chunks::<4>().0 {
                 rgb.extend_from_slice(&px[0..3]);
             }
             rgb

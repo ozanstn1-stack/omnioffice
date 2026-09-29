@@ -11,7 +11,7 @@
 //! The reports are deterministic and testable; the string status values are
 //! part of the UI contract and must stay stable.
 
-use crate::model::{Block, Deck, TextDocument, Workbook};
+use crate::model::{Deck, TextDocument, Workbook};
 use serde::{Deserialize, Serialize};
 
 /// How well a format supports one feature.
@@ -112,6 +112,7 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
                 feature("styles", SupportLevel::Full, "Based-on inheritance and next styles."),
                 feature("charts", SupportLevel::Unsupported, "Writer charts are not implemented."),
                 feature("digitalSignature", SupportLevel::Partial, "Existing signatures are preserved but the writer does not create new ones."),
+                feature("macros", SupportLevel::Unsupported, "Macros are detected and never executed; saving writes the macro-free document, so the VBA project is dropped."),
             ],
         ),
         "odt" => (
@@ -164,6 +165,7 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
                 feature("protection", SupportLevel::Full, "Password verifiers and locked-action flags are preserved exactly and never cracked."),
                 feature("conditionalFormatting", SupportLevel::Full, "All editor rule kinds."),
                 feature("dataValidation", SupportLevel::Full, "List and numeric ranges."),
+                feature("macros", SupportLevel::Unsupported, "Macros are detected and never executed; saving writes the macro-free workbook, so the VBA project is dropped."),
             ],
         ),
         "xls" => (true, false, false, false, vec![]),
@@ -190,6 +192,7 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
                 feature("charts", SupportLevel::Full, "Column, bar, line, pie and area charts with cached values and an embedded workbook."),
                 feature("animations", SupportLevel::Partial, "Entrance/emphasis/exit effects; PowerPoint-only effects are simplified."),
                 feature("smartArt", SupportLevel::Partial, "SmartArt is imported as its rendered shapes when available."),
+                feature("macros", SupportLevel::Unsupported, "Macros are detected and never executed; saving writes the macro-free presentation, so the VBA project is dropped."),
             ],
         ),
         "ppt" => (false, false, false, false, vec![]),
@@ -212,8 +215,8 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
             false,
             vec![
                 feature("editing", SupportLevel::Partial, "Page tools, annotations, forms and object editing where the PDF allows it."),
-                feature("pdfa", SupportLevel::Partial, "Validation and best-effort conversion; full font embedding is not implemented."),
-                feature("signatures", SupportLevel::Partial, "Signature detection and validation are not implemented yet."),
+                feature("pdfa", SupportLevel::Partial, "Validation and best-effort conversion: simple fonts are embedded as FontFile2 and the output intent carries an sRGB profile; CID/Type0, symbolic and custom-encoded fonts are reported instead of embedded, and there is no subsetting."),
+                feature("signatures", SupportLevel::Partial, "Detached CMS/PKCS#7 signatures are created and validated (digest, coverage, signer, chain); long-term validation data (DSS, RFC 3161 timestamps) is not written yet."),
             ],
         ),
         "oswk" => (
@@ -496,7 +499,7 @@ pub fn model_capabilities(kind: &str) -> DocumentCapabilities {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Footnote, RevisionMark, Run, SectionProps, SpreadsheetTable};
+    use crate::model::{Block, Footnote, RevisionMark, Run, SectionProps, SpreadsheetTable};
 
     #[test]
     fn capability_matrix_is_populated_for_real_formats() {

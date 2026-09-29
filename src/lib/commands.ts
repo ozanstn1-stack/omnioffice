@@ -105,6 +105,7 @@ function localizedTitle(command: CommandDefinition): string {
     const translated = translator(command.titleKey);
     if (translated) return translated;
   } catch {
+    // Before i18n is initialised the translator throws; the key is the fallback.
   }
   return command.titleKey;
 }

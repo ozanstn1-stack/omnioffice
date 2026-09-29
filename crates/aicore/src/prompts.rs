@@ -232,13 +232,12 @@ and translate everything else. Do not add any text of your own.\n\n",
     );
     chunks
         .iter()
-        .map(|chunk| {
+        .flat_map(|chunk| {
             vec![
                 ChatMessage::system(TRANSLATE_SYSTEM),
                 ChatMessage::user(format!("{instruction}<<<TEXT\n{chunk}\nTEXT>>>")),
             ]
         })
-        .flatten()
         .collect()
 }
 
@@ -308,7 +307,7 @@ pub fn select_relevant_pages<'a>(
             (score, *page, text.as_str())
         })
         .collect();
-    scored.sort_by(|left, right| right.0.cmp(&left.0));
+    scored.sort_by_key(|entry| std::cmp::Reverse(entry.0));
 
     let mut selected: Vec<(u32, &str)> = Vec::new();
     let mut used = 0usize;
@@ -569,15 +568,13 @@ pub fn calc_action_prompt(action: &str, question: &str, context: &str) -> AiResu
 fn fenced_block(text: &str, language: &str) -> Option<String> {
     let start = text.find("```")?;
     let after = &text[start + 3..];
-    let after = match after.find('\n') {
-        Some(position) => {
-            let tag = after[..position].trim();
-            if !tag.is_empty() && !tag.eq_ignore_ascii_case(language) {
-                return None;
-            }
-            &after[position + 1..]
+    let after = {
+        let position = after.find('\n')?;
+        let tag = after[..position].trim();
+        if !tag.is_empty() && !tag.eq_ignore_ascii_case(language) {
+            return None;
         }
-        None => return None,
+        &after[position + 1..]
     };
     let end = after.find("```")?;
     Some(after[..end].to_string())

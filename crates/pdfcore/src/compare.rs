@@ -184,10 +184,7 @@ pub fn compare_pdfs(
 
 /// Extracts one page's text, returning `None` when the page has no text layer.
 fn extract(path: &Path, password: Option<&str>, page: u32) -> Option<String> {
-    match crate::render::extract_page_text(path, password, page) {
-        Ok(text) => Some(text),
-        Err(_) => None,
-    }
+    crate::render::extract_page_text(path, password, page).ok()
 }
 
 /// Classifies how two pages of text differ.
@@ -385,7 +382,7 @@ pub fn write_visual_diff(
             row.push(left[base + 1] / 2 + 128);
             row.push(left[base + 2] / 2 + 128);
         }
-        row.extend(std::iter::repeat(255u8).take(gap * 3));
+        row.extend(std::iter::repeat_n(255u8, gap * 3));
         for x in 0..width as usize {
             let base = (y * width as usize + x) * 4;
             let delta = (left[base] as i32 - right[base] as i32).abs()
@@ -425,7 +422,7 @@ mod tests {
 
     #[test]
     fn one_changed_channel_is_reported() {
-        let mut left = vec![10u8; 40];
+        let left = vec![10u8; 40];
         let mut right = left.clone();
         right[0] = 200;
         let (difference, changed) = pixel_difference(&left, &right, 24);

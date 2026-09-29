@@ -246,6 +246,8 @@ pub struct VaultSearchResponse {
 /// Result of a pure folder scan. `index` is written to disk by `scan_folders`
 /// unless the scan was cancelled (a partial index is never persisted).
 #[derive(Debug, Clone)]
+// The scan counters are recorded for diagnostics; the UI reads VaultStatus.
+#[allow(dead_code)]
 pub struct ScanOutcome {
     pub index: VaultIndex,
     pub warnings: Vec<String>,
@@ -392,12 +394,17 @@ fn sanitize_id(id: &str) -> Result<String, PdfError> {
 }
 
 /// Cache path of a document's full extracted text.
+///
+/// Public because the vault tests build the cache path themselves; the vault
+/// reader uses it through `read_document_text`.
+#[allow(dead_code)]
 pub fn document_text_path(root: &Path, id: &str) -> Result<PathBuf, PdfError> {
     let id = sanitize_id(id)?;
     Ok(docs_dir(root).join(format!("{id}.txt")))
 }
 
 /// Reads the cached full extracted text of one document.
+#[allow(dead_code)]
 pub fn read_document_text(root: &Path, id: &str) -> Result<String, PdfError> {
     let path = document_text_path(root, id)?;
     std::fs::read_to_string(&path).map_err(PdfError::from_io)
@@ -1144,9 +1151,7 @@ pub fn scan_folders_with(
             }
             let under_root = roots.iter().any(|(folder_key, _)| path_is_under(&key, folder_key));
             let supported_now = is_supported(&document.extension, config);
-            let purge = if !under_root {
-                true
-            } else if !supported_now {
+            let purge = if !under_root || !supported_now {
                 true
             } else if request.rescan {
                 !truncated && !found_keys.contains(&key)
@@ -1967,9 +1972,7 @@ pub async fn vault_scan(app: AppHandle, registry: State<'_, JobRegistry>, reques
         if !outcome.cancelled {
             stored.last_scan = Some(outcome.index.updated_at.clone());
         }
-        if let Err(error) = write_stored_status(&root, &stored) {
-            return Err(error);
-        }
+        write_stored_status(&root, &stored)?;
         emit_progress(&app_for_work, &job_for_work, &ProgressEvent::new("scan", 1, 1));
         if outcome.cancelled {
             return Err(PdfError::Cancelled);

@@ -1,0 +1,40 @@
+# Dependency updates. The desktop and Android workflows install from these
+# three ecosystems, so all of them are watched here; the audit job in
+# .github/workflows/desktop.yml fails the build on a known vulnerable version,
+# this keeps the pull requests coming before that happens.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      frontend:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: npm
+    directory: /chrome-extension
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      extension:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      rust:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

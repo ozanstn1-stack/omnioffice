@@ -45,9 +45,8 @@ pub fn schema_version_of(unit: &Value) -> u32 {
 }
 
 fn ensure_object<'a>(model: &'a mut Value, note: &mut Option<String>) -> OfficeResult<&'a mut serde_json::Map<String, Value>> {
-    model.as_object_mut().ok_or_else(|| OfficeError::corrupt("The document model is not a JSON object.")).map(|object| {
+    model.as_object_mut().ok_or_else(|| OfficeError::corrupt("The document model is not a JSON object.")).inspect(|_object| {
         let _ = note;
-        object
     })
 }
 

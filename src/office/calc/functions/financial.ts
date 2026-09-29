@@ -363,11 +363,9 @@ registerFunction("DDB", (args) => {
   if (typeof factor !== "number") return factor;
   if (cost <= 0 || life <= 0 || period < 1 || factor <= 0) return ERR.num();
   let bookValue = cost;
-  let total = 0;
   for (let index = 1; index < period; index += 1) {
     const depreciation = Math.min(bookValue, (bookValue - salvage) * factor / life);
     bookValue -= depreciation;
-    total += depreciation;
   }
   return Math.min(bookValue, (bookValue - salvage) * factor / life);
 }, 4, 5, false, { signature: "DDB(cost, salvage, life, period, [factor])", category: "Financial" });

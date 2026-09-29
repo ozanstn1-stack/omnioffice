@@ -203,7 +203,7 @@ mod tests {
         assert!(img.width > 50);
         assert!(img.height > 30);
         // some pixels must be non-transparent
-        assert!(img.rgba.chunks_exact(4).any(|p| p[3] > 0));
+        assert!(img.rgba.as_chunks::<4>().0.iter().any(|p| p[3] > 0));
     }
 
     #[test]

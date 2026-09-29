@@ -1,0 +1,14 @@
+# Formatting contract for the whole workspace.
+#
+# The code base was written with a 120-column budget and packed item lists
+# (for example long string tuples kept on one line). rustfmt's defaults
+# - max_width = 100 and use_small_heuristics = "Default", which limits nested
+# lists to 60% of that - would reflow 95 files and ~2200 hunks in one go and
+# bury every real change in the diff. Keeping the wider budget makes
+# `cargo fmt --check` a meaningful gate without a mass rewrite.
+#
+# `cargo fmt --check` is enforced in CI (see .github/workflows/desktop.yml).
+max_width = 120
+use_small_heuristics = "Max"
+edition = "2021"
+newline_style = "Auto"
