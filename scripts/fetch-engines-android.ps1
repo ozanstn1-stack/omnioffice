@@ -57,14 +57,43 @@ function Set-PinnedHash {
     $sorted = [ordered]@{}
     foreach ($key in ($artifacts.Keys | Sort-Object)) { $sorted[$key] = $artifacts[$key] }
     [pscustomobject]@{ comment = $lock.comment; artifacts = [pscustomobject]$sorted } |
-        ConvertTo-Json -Depth 6 | Set-Content -Path $lockPath -Encoding UTF8
+        ConvertTo-Json -Depth 6 | ForEach-Object { [System.IO.File]::WriteAllText($lockPath, $_, (New-Object System.Text.UTF8Encoding($false))) }
 }
 
 $script:unpinned = New-Object System.Collections.Generic.List[string]
 
+function Get-Sha256Hex {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    # .NET is part of the engine, not of a module that can fail to autoload.
+    # The Windows runner has been seen without Get-FileHash (it lives in
+    # Microsoft.PowerShell.Utility), so verification must not depend on it.
+    try {
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        $stream = [System.IO.File]::OpenRead($Path)
+        try {
+            return ([System.BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+        } finally {
+            $stream.Dispose()
+            $sha.Dispose()
+        }
+    } catch {
+        # Fall through to the alternatives below.
+    }
+    if (Get-Command Get-FileHash -ErrorAction SilentlyContinue) {
+        return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+    }
+    if (Get-Command certutil.exe -ErrorAction SilentlyContinue) {
+        foreach ($line in (& certutil.exe -hashfile $Path SHA256)) {
+            $candidate = ($line -replace '[^0-9a-fA-F]', '')
+            if ($candidate.Length -eq 64) { return $candidate.ToLowerInvariant() }
+        }
+    }
+    throw "Cannot compute a SHA-256 for $Path on this host (.NET crypto, Get-FileHash and certutil are all unavailable)."
+}
+
 function Assert-Artifact {
     param([string]$Url, [string]$Path, [switch]$Keep)
-    $actual = (Get-FileHash -Algorithm SHA256 -Path $Path).Hash.ToLower()
+    $actual = Get-Sha256Hex -Path $Path
     $expected = Get-PinnedHash -Url $Url
     if (-not $expected) {
         if ($UpdateLock) { Set-PinnedHash -Url $Url -Sha256 $actual; Write-Host "  pinned now: $actual"; return }
@@ -267,6 +296,7 @@ if ($script:unpinned.Count -gt 0) {
     Write-Warning 'Verify these sources, then re-run with -UpdateLock to record their SHA-256 in engines.lock.json.'
 }
 Write-Host ''
+Write-Host ('host: PowerShell ' + $PSVersionTable.PSVersion + ' (' + $ExecutionContext.SessionState.LanguageMode + ')')
 Write-Host 'Android engine status:'
 foreach ($archAbi in $Abis) {
     $dir = Join-Path $enginesDir $archAbi
