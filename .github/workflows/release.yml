@@ -75,7 +75,7 @@ jobs:
       #   gh attestation verify <file> --repo <owner>/<repo>
       - name: Attest build provenance
         if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: release-artifacts/*
 
