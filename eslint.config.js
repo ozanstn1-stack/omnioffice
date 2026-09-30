@@ -88,6 +88,15 @@ export default [
       "react-hooks/exhaustive-deps": "warn",
       ...reactCompilerBacklog,
       ...a11yAsWarnings,
+      // Promoted to errors after the V3.1.1 accessibility pass. The remaining
+      // interaction backlog (`click-events-have-key-events`,
+      // `no-static-element-interactions`, `control-has-associated-label`) is
+      // frozen per rule in scripts/lint-baseline.json and must be burned down
+      // in V3.2 before those rules are promoted too.
+      "jsx-a11y/no-autofocus": "error",
+      "jsx-a11y/no-noninteractive-element-interactions": "error",
+      "jsx-a11y/no-noninteractive-tabindex": "error",
+      "jsx-a11y/interactive-supports-focus": "error",
       // `label-has-for` is deprecated in eslint-plugin-jsx-a11y (v6.3) and is
       // scheduled for removal in v7; `label-has-associated-control` replaces
       // it and belongs to the same accessibility backlog as the interaction

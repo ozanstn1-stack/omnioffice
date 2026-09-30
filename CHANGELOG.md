@@ -4,6 +4,59 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.1]
+
+Security and supply-chain patch on top of 3.1.0.
+
+### Security
+
+- AI provider and WebDAV base URLs are validated on save and at client
+  construction: `https://` is mandatory for every non-loopback host, plain
+  `http://` is limited to `localhost` / loopback IPs (WebDAV additionally
+  requires an explicit opt-in in the sync settings) and a redirect that
+  downgrades to a public `http://` endpoint is refused before Basic Auth
+  credentials, Bearer tokens or document bytes can leave the machine.
+- Native engine downloads are fully pinned: the two previously missing
+  SHA-256 entries (Tesseract 4.1.0 source archive, Liberation fonts archive)
+  are in `engines.lock.json`, and a download without a pin now fails the
+  build instead of warning. CI verifies the lock covers the complete download
+  surface of both fetch scripts (`-VerifyLock`).
+- The webview no longer holds a standing Android grant to `$DOCUMENT/**` or
+  `$DOWNLOAD/**`: intermediates live in app-private data/cache and
+  user-visible files go through SAF. AI library files on Android also moved
+  to app-private storage.
+- OS open/reveal no longer uses the opener plugin permission from the
+  webview; two validated Rust commands accept only existing documents with
+  extensions the app produces, so a compromised renderer cannot launch
+  executables through the shell.
+- Every GitHub Action is pinned to a commit SHA (Dependabot keeps the pins
+  current).
+
+### Fixed
+
+- Chrome extension: "Open with PDF Swiss Army Knife" now passes the selected
+  PDF to the app, which shows a consent prompt, requests the optional host
+  permission for that origin and opens the downloaded file. Hostile
+  `javascript:` / `data:` / `file:` links are ignored, and a changed hash
+  replaces or closes a stale prompt.
+- AI settings now surface save errors instead of failing silently when a
+  provider URL is rejected.
+
+### Changed
+
+- WebDAV uploads and downloads stream with hashing instead of buffering up to
+  512 MB per transfer; conflict checks happen against a staged temporary file
+  before anything is promoted into place.
+- Screens load lazily with a CI bundle budget (entry chunk 315 KB → 155 KB
+  gzip); the ESLint gate is a per-rule baseline with
+  `jsx-a11y/no-autofocus`, `no-noninteractive-element-interactions`,
+  `no-noninteractive-tabindex` and `interactive-supports-focus` promoted to
+  errors.
+- The Android intent pipeline (name sanitization, extension whitelist, 256 MB
+  copy cap) is covered by JVM unit tests run by the Android release workflow.
+- The Chrome extension job runs the headless-Chrome self test (pdf.js worker,
+  canvas rendering, deep-link consent) in CI.
+
 ## [3.1.0]
 
 Cross-platform completion, Office/PDF fidelity, secure signing and production

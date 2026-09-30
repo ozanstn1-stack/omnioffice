@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Image as ImageIcon, Stamp } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { isAndroid, pickAndroidFiles } from "../lib/mobile";
@@ -46,11 +46,6 @@ export function Watermark({ initialFiles, dragging }: { initialFiles?: string[];
   const patch = (values: Partial<WatermarkOptions>) => setOptions((previous) => ({ ...previous, ...values }));
   const pageCount = session.info?.pageCount ?? 1;
 
-  useEffect(() => {
-    const pages = pagesText.trim() ? parsePageList(pagesText, pageCount) : [];
-    patch({ pages: pages ?? [] });
-  }, [pagesText, pageCount]);
-
   const pickImage = async () => {
     if (isAndroid()) {
       const paths = await pickAndroidFiles({ multiple: false, accept: "image" }).catch(() => []);
@@ -62,17 +57,19 @@ export function Watermark({ initialFiles, dragging }: { initialFiles?: string[];
   };
 
   session.registerAutoRun(() => void run());
-  const run = () =>
-    session.run(async (jobId, overwrite) =>
+  const run = () => {
+    const pages = pagesText.trim() ? (parsePageList(pagesText, pageCount) ?? []) : [];
+    return session.run(async (jobId, overwrite) =>
       watermarkPdf(
         session.primary?.path ?? "",
         session.outputSpec(overwrite),
-        options,
+        { ...options, pages },
         jobId,
         session.password || undefined,
         keepSignatures,
       ),
     );
+  };
 
   const positionOptions: { value: WatermarkPosition; label: string }[] = POSITIONS.map((position) => ({
     value: position,

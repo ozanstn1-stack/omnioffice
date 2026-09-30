@@ -1,5 +1,8 @@
 name: Desktop
 
+# Third-party actions are pinned to commit SHAs; Dependabot
+# (.github/dependabot.yml, github-actions ecosystem) keeps them current.
+
 on:
   push:
     branches: [master]
@@ -18,16 +21,16 @@ jobs:
     name: Lint (ESLint, Prettier, rustfmt, i18n)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # The formatting gate diffs the pushed range against its base, so the
           # base commit has to be in the clone.
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
         with:
           components: rustfmt
       - run: npm ci
@@ -49,13 +52,21 @@ jobs:
         run: |
           npm run format:gate -- --repo
           npm run format:gate:rust -- --repo
+      # Every engine download must be covered by a pinned SHA-256. The fetch
+      # scripts themselves are the source of truth (they hard-fail on an
+      # unpinned download), so this only proves the lock has no gaps before a
+      # Windows runner spends time downloading.
+      - name: Engine artifact lock coverage
+        run: |
+          pwsh -NoProfile -File scripts/fetch-engines.ps1 -VerifyLock
+          pwsh -NoProfile -File scripts/fetch-engines-android.ps1 -VerifyLock
 
   frontend:
     name: Frontend (tests, type check, build)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -66,6 +77,8 @@ jobs:
         run: npm test
       - name: Production build
         run: npx vite build
+      - name: Bundle budget
+        run: npm run bundle:check
 
   rust:
     name: Rust (${{ matrix.os }})
@@ -75,15 +88,15 @@ jobs:
         os: [windows-latest, ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
         with:
           components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: System dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -139,11 +152,11 @@ jobs:
     name: MSRV (declared Rust version)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch
         with:
           toolchain: "1.89.0"
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: The pin below and Cargo.toml must agree
         run: |
           declared=$(node -p "require('fs').readFileSync('Cargo.toml','utf8').match(/rust-version = \"([^\"]+)\"/)[1]")
@@ -162,8 +175,8 @@ jobs:
       run:
         working-directory: chrome-extension
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -174,6 +187,19 @@ jobs:
       - run: npm run test
       - run: npm run build
       - run: npm run verify
+      # Headless Chrome runs the in-page self test (pdf.js worker + canvas) and
+      # the context-menu deep-link checks against the built dist. The GitHub
+      # ubuntu image ships Google Chrome; the preview server serves the build.
+      - name: Browser self test (headless Chrome)
+        run: |
+          npm run preview &
+          PREVIEW_PID=$!
+          trap "kill $PREVIEW_PID" EXIT
+          for attempt in $(seq 1 30); do
+            if curl -sf http://localhost:4173/app.html > /dev/null; then break; fi
+            sleep 1
+          done
+          npm run selftest:browser
 
   # Blocking on purpose: a known-vulnerable dependency is a release blocker,
   # not a note in the log. Fix or override an advisory explicitly.
@@ -181,16 +207,16 @@ jobs:
     name: Dependency audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - name: npm audit (high)
         run: npm audit --audit-level=high
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: taiki-e/install-action@v2
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
+      - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2
         with:
           # Prebuilt binary: keeps the audit job under a minute instead of
           # compiling cargo-audit on every push.

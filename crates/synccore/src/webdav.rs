@@ -25,7 +25,11 @@ use crate::{RemoteEntry, SyncError, SyncProvider, MAX_TRANSFER_BYTES};
 use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
-use std::io::Read;
+use sha2::{Digest, Sha256};
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// Largest multi-status document accepted (a folder with tens of thousands of
@@ -79,14 +83,42 @@ impl std::fmt::Debug for WebDavProvider {
 }
 
 impl WebDavProvider {
+    /// Strict constructor: HTTPS only. Use [`Self::new_with_options`] to opt
+    /// into the loopback HTTP exception.
     pub fn new(base_url: &str, username: &str, password: &str) -> Result<Self, SyncError> {
-        let base_url = normalize_base_url(base_url)?;
+        Self::new_with_options(base_url, username, password, false)
+    }
+
+    /// Constructor with the explicit insecure-HTTP opt-in. Plain `http://` is
+    /// still refused for every non-loopback host; the flag only unlocks
+    /// `localhost` / loopback-IP servers.
+    pub fn new_with_options(
+        base_url: &str,
+        username: &str,
+        password: &str,
+        allow_insecure_http: bool,
+    ) -> Result<Self, SyncError> {
+        let base_url = normalize_base_url_with_options(base_url, allow_insecure_http)?;
+        let redirect = reqwest::redirect::Policy::custom(move |attempt| {
+            if !is_redirect_target_allowed(attempt.url(), allow_insecure_http) {
+                return attempt.error(
+                    "a redirect to a non-local http:// endpoint was refused to keep the credentials and documents encrypted"
+                        .to_string(),
+                );
+            }
+            if attempt.previous().len() >= 5 {
+                attempt.stop()
+            } else {
+                attempt.follow()
+            }
+        });
         let client = reqwest::blocking::Client::builder()
             .connect_timeout(Duration::from_secs(20))
             // Generous overall timeout: a 512 MB transfer over a slow uplink
             // can legitimately take minutes. The cap bounds the size.
             .timeout(Duration::from_secs(600))
             .user_agent("PDFSwissArmyKnife/3.1 (synccore)")
+            .redirect(redirect)
             .build()
             .map_err(|error| SyncError::Internal(format!("HTTP client could not be created: {error}")))?;
         Ok(Self {
@@ -179,6 +211,159 @@ impl WebDavProvider {
         };
         request.send().map_err(network_error)
     }
+
+    /// Streams a local file to the server without buffering it in memory and
+    /// returns `(sha256, size, etag)`. The body carries a known
+    /// Content-Length (every WebDAV server accepts it) and the hash is
+    /// computed while the bytes travel, so a 512 MB document never needs more
+    /// than one 64 KiB chunk of memory.
+    pub fn put_file(
+        &self,
+        path: &str,
+        local: &Path,
+        if_match_etag: Option<&str>,
+    ) -> Result<(String, u64, Option<String>), SyncError> {
+        let metadata = std::fs::metadata(local)?;
+        if metadata.len() > MAX_TRANSFER_BYTES {
+            return Err(SyncError::TooLarge(metadata.len()));
+        }
+        let segments = normalize_remote_path(path)?;
+        let url = self.url_for(&segments);
+        let file = File::open(local)?;
+        let hasher = Arc::new(Mutex::new(Sha256::new()));
+        let body = HashingReader {
+            inner: file,
+            hasher: hasher.clone(),
+        };
+        let mut request = self
+            .request(reqwest::Method::PUT, &url, &[])
+            .header("Content-Type", "application/octet-stream")
+            .body(reqwest::blocking::Body::sized(body, metadata.len()));
+        if let Some(etag) = if_match_etag {
+            if !etag.trim().is_empty() {
+                request = request.header("If-Match", etag.trim());
+            }
+        }
+        let response = request.send().map_err(network_error)?;
+        let status = response.status().as_u16();
+        let etag = header_etag(&response);
+        let etag = map_put_status(status, path, etag)?;
+        let sha256 = {
+            let guard = hasher.lock().map_err(|_| SyncError::Internal("upload hasher was poisoned".to_string()))?;
+            hex_lower(&guard.clone().finalize())
+        };
+        Ok((sha256, metadata.len(), etag))
+    }
+
+    /// Streams a remote file into `writer` while hashing it. Returns
+    /// `(sha256, size, etag)`. Nothing larger than the transfer cap is ever
+    /// read; a lying `Content-Length` cannot overflow memory because the
+    /// response is consumed in bounded chunks.
+    pub fn get_to_writer(
+        &self,
+        path: &str,
+        writer: &mut dyn Write,
+    ) -> Result<(String, u64, Option<String>), SyncError> {
+        let segments = normalize_remote_path(path)?;
+        let url = self.url_for(&segments);
+        let mut response = self.request(reqwest::Method::GET, &url, &[]).send().map_err(network_error)?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(http_status_error(status.as_u16(), path));
+        }
+        if let Some(length) = response.content_length() {
+            if length > MAX_TRANSFER_BYTES {
+                return Err(SyncError::TooLarge(length));
+            }
+        }
+        let etag = header_etag(&response);
+        let mut hasher = Sha256::new();
+        let mut total = 0u64;
+        let mut chunk = [0u8; 64 * 1024];
+        loop {
+            let read = response.read(&mut chunk)?;
+            if read == 0 {
+                break;
+            }
+            total += read as u64;
+            if total > MAX_TRANSFER_BYTES {
+                return Err(SyncError::TooLarge(total));
+            }
+            hasher.update(&chunk[..read]);
+            writer.write_all(&chunk[..read])?;
+        }
+        Ok((hex_lower(&hasher.finalize()), total, etag))
+    }
+
+    /// Streams a remote file into a temporary sibling of `local` (same
+    /// directory, so the final rename is atomic) and returns
+    /// `(temp_path, sha256, size, etag)`. The caller decides whether to
+    /// promote the temporary file with [`promote_staged_download`]; on any
+    /// error the partial file is removed.
+    pub fn stage_download(
+        &self,
+        path: &str,
+        local: &Path,
+    ) -> Result<(PathBuf, String, u64, Option<String>), SyncError> {
+        let parent = local
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .ok_or_else(|| SyncError::InvalidInput("the download destination has no folder".to_string()))?;
+        let name = local
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| "download".to_string());
+        let temp = parent.join(format!(".{name}.{}.part", uuid::Uuid::new_v4()));
+        let mut file = File::create(&temp)?;
+        let streamed = self.get_to_writer(path, &mut file);
+        let (sha256, size, etag) = match streamed {
+            Ok(result) => result,
+            Err(error) => {
+                drop(file);
+                let _ = std::fs::remove_file(&temp);
+                return Err(error);
+            }
+        };
+        file.sync_all()?;
+        drop(file);
+        Ok((temp, sha256, size, etag))
+    }
+}
+
+/// Promotes a staged download into place with an atomic rename (the staged
+/// file lives in the same directory as the target).
+pub fn promote_staged_download(staged: &Path, target: &Path) -> Result<(), SyncError> {
+    std::fs::rename(staged, target)?;
+    Ok(())
+}
+
+/// A `Read` adapter that feeds every byte through SHA-256, so an upload can
+/// stream and hash at the same time.
+struct HashingReader<R> {
+    inner: R,
+    hasher: Arc<Mutex<Sha256>>,
+}
+
+impl<R: Read> Read for HashingReader<R> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.inner.read(buffer)?;
+        if read > 0 {
+            if let Ok(mut hasher) = self.hasher.lock() {
+                hasher.update(&buffer[..read]);
+            }
+        }
+        Ok(read)
+    }
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
 }
 
 impl SyncProvider for WebDavProvider {
@@ -362,32 +547,94 @@ fn header_etag(response: &reqwest::blocking::Response) -> Option<String> {
 // Path handling
 // ---------------------------------------------------------------------------
 
+/// True when `host` points at the local machine: `localhost`, any name under
+/// `.localhost`, or a loopback IP literal (`127.0.0.0/8`, `::1`).
+pub fn is_loopback_host(host: &str) -> bool {
+    let trimmed = host.trim().trim_start_matches('[').trim_end_matches(']');
+    if trimmed.is_empty() {
+        return false;
+    }
+    if trimmed.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    // IP literals arrive without the authority brackets once the URL parser
+    // has split them out; strip defensively in case a caller passes a raw host.
+    trimmed
+        .parse::<std::net::IpAddr>()
+        .map(|address| address.is_loopback())
+        .unwrap_or(false)
+}
+
+/// A redirect is only followed over HTTPS, or over plain HTTP when the target
+/// is the local machine and the caller explicitly opted into the loopback
+/// exception. A public HTTP target (a downgrade attack, or a redirected
+/// credential leak) fails the request instead of being followed.
+pub fn is_redirect_target_allowed(url: &reqwest::Url, allow_insecure_http: bool) -> bool {
+    match url.scheme() {
+        "https" => true,
+        "http" => allow_insecure_http && url.host_str().map(is_loopback_host).unwrap_or(false),
+        _ => false,
+    }
+}
+
 /// Validates and trims the WebDAV endpoint URL. Query strings and fragments
 /// are rejected: they cannot be combined with per-folder paths safely.
+///
+/// This is the strict entry point: HTTPS only. Callers that want the
+/// loopback-HTTP exception use [`normalize_base_url_with_options`].
 pub fn normalize_base_url(url: &str) -> Result<String, SyncError> {
+    normalize_base_url_with_options(url, false)
+}
+
+/// Validates and trims the WebDAV endpoint URL.
+///
+/// HTTPS is mandatory for every non-local host: the Basic Auth credentials
+/// and the synchronized documents must never travel in cleartext. Plain
+/// `http://` is only accepted for loopback hosts (`localhost`, `127.0.0.0/8`,
+/// `::1`) and only when the caller explicitly opted in with
+/// `allow_insecure_http`; a public `http://` endpoint is refused even then.
+pub fn normalize_base_url_with_options(url: &str, allow_insecure_http: bool) -> Result<String, SyncError> {
     let trimmed = url.trim().trim_end_matches('/');
     if trimmed.is_empty() {
         return Err(SyncError::InvalidInput("the WebDAV URL is empty".to_string()));
     }
-    let lower = trimmed.to_ascii_lowercase();
-    if !lower.starts_with("https://") && !lower.starts_with("http://") {
-        return Err(SyncError::InvalidInput(
-            "the WebDAV URL must start with https:// (or http:// for a local server)".to_string(),
-        ));
+    if trimmed.chars().any(|ch| ch.is_whitespace() || ch.is_control()) {
+        return Err(SyncError::InvalidInput("the WebDAV URL contains whitespace".to_string()));
     }
-    if trimmed.contains('?') || trimmed.contains('#') {
+    let parsed = reqwest::Url::parse(trimmed).map_err(|_| {
+        SyncError::InvalidInput("the WebDAV URL is not a valid absolute http(s) URL".to_string())
+    })?;
+    match parsed.scheme() {
+        "https" => {}
+        "http" => {
+            let host = parsed.host_str().unwrap_or_default();
+            if !is_loopback_host(host) {
+                return Err(SyncError::InvalidInput(
+                    "plain http:// is refused for non-local servers: use https:// so the credentials and the synced documents are encrypted in transit"
+                        .to_string(),
+                ));
+            }
+            if !allow_insecure_http {
+                return Err(SyncError::InvalidInput(
+                    "plain http:// only works for a local server (localhost) and must be enabled explicitly in the sync settings"
+                        .to_string(),
+                ));
+            }
+        }
+        other => {
+            return Err(SyncError::InvalidInput(format!(
+                "the WebDAV URL must start with https:// (got {other}://)"
+            )))
+        }
+    }
+    if parsed.query().is_some() || parsed.fragment().is_some() {
         return Err(SyncError::InvalidInput(
             "the WebDAV URL must not contain a query string or fragment".to_string(),
         ));
     }
-    if trimmed.chars().any(|ch| ch.is_whitespace() || ch.is_control()) {
-        return Err(SyncError::InvalidInput("the WebDAV URL contains whitespace".to_string()));
-    }
     // Refuse credentials embedded in the URL: they would leak into error
     // strings, and the password belongs to the secret store.
-    let after_scheme = &trimmed[lower.find("://").unwrap_or(0) + 3..];
-    let authority = after_scheme.split('/').next().unwrap_or("");
-    if authority.contains('@') {
+    if !parsed.username().is_empty() || parsed.password().is_some() {
         return Err(SyncError::InvalidInput(
             "remove the username/password from the URL and use the dedicated fields".to_string(),
         ));
@@ -800,13 +1047,170 @@ mod tests {
             "https://cloud.example.com/dav"
         );
         assert_eq!(
-            normalize_base_url(" http://192.168.1.10:8080/dav ").unwrap(),
-            "http://192.168.1.10:8080/dav"
+            normalize_base_url_with_options("http://localhost:8080/dav", true).unwrap(),
+            "http://localhost:8080/dav"
         );
+        // A public HTTP endpoint is refused even with the opt-in: only
+        // loopback hosts may fall back to plain HTTP.
+        assert!(normalize_base_url("http://example.com/dav").is_err());
+        assert!(normalize_base_url_with_options("http://example.com/dav", true).is_err());
+        assert!(normalize_base_url_with_options("http://192.168.1.10:8080/dav", true).is_err());
+        // Loopback HTTP still requires the explicit opt-in.
+        assert!(normalize_base_url("http://localhost:8080/dav").is_err());
+        assert!(normalize_base_url("http://127.0.0.1:8080/dav").is_err());
+        assert!(normalize_base_url_with_options("http://127.0.0.1:8080/dav", true).is_ok());
+        assert!(normalize_base_url_with_options("http://[::1]:8080/dav", true).is_ok());
         assert!(normalize_base_url("").is_err());
         assert!(normalize_base_url("ftp://host/dav").is_err());
         assert!(normalize_base_url("https://user:pass@host/dav").is_err());
         assert!(normalize_base_url("https://host/dav?x=1").is_err());
+        assert!(normalize_base_url("https://host/dav#frag").is_err());
+    }
+
+    #[test]
+    fn loopback_detection() {
+        assert!(is_loopback_host("localhost"));
+        assert!(is_loopback_host("[::1]"));
+        assert!(is_loopback_host("127.0.0.1"));
+        assert!(is_loopback_host("127.8.8.8"));
+        assert!(!is_loopback_host("example.com"));
+        assert!(!is_loopback_host("192.168.1.10"));
+        assert!(!is_loopback_host("10.0.0.1"));
+        assert!(!is_loopback_host(""));
+    }
+
+    #[test]
+    fn redirect_policy_rejects_public_http_targets() {
+        let https = reqwest::Url::parse("https://cloud.example.com/x").unwrap();
+        let public_http = reqwest::Url::parse("http://example.com/x").unwrap();
+        let loopback_http = reqwest::Url::parse("http://127.0.0.1:8080/x").unwrap();
+        let other = reqwest::Url::parse("ftp://example.com/x").unwrap();
+        assert!(is_redirect_target_allowed(&https, false));
+        assert!(!is_redirect_target_allowed(&public_http, false));
+        assert!(!is_redirect_target_allowed(&public_http, true));
+        assert!(!is_redirect_target_allowed(&loopback_http, false));
+        assert!(is_redirect_target_allowed(&loopback_http, true));
+        assert!(!is_redirect_target_allowed(&other, true));
+    }
+
+    #[test]
+    fn provider_rejects_plain_http_for_non_local_hosts() {
+        assert!(WebDavProvider::new("http://example.com/dav", "a", "b").is_err());
+        assert!(WebDavProvider::new_with_options("http://example.com/dav", "a", "b", true).is_err());
+        assert!(WebDavProvider::new("http://127.0.0.1:8080/dav", "a", "b").is_err());
+        assert!(WebDavProvider::new_with_options("http://127.0.0.1:8080/dav", "a", "b", true).is_ok());
+    }
+
+    #[test]
+    fn redirect_downgrade_is_refused() {
+        use std::io::{Read, Write};
+        // A loopback WebDAV endpoint that answers every request with a
+        // redirect to a public http:// host. The client must refuse the
+        // redirect instead of sending the request (and Basic Auth) there.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buffer = [0u8; 2048];
+                let _ = stream.read(&mut buffer);
+                let response = "HTTP/1.1 302 Found\r\nLocation: http://example.invalid/steal\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        let provider =
+            WebDavProvider::new_with_options(&format!("http://127.0.0.1:{port}/dav"), "alice", "hunter2", true)
+                .unwrap();
+        let error = provider.test().unwrap_err();
+        server.join().unwrap();
+        match error {
+            SyncError::Network(message) => assert!(
+                message.contains("redirect"),
+                "the failure must be the refused redirect, got: {message}"
+            ),
+            other => panic!("expected Network error for the refused redirect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn streaming_put_and_get_roundtrip() {
+        use std::io::{Read, Write};
+        // A minimal loopback WebDAV endpoint: stores the PUT body in memory
+        // and serves it back on GET (with an ETag). Verifies that the
+        // streaming upload/download paths speak real HTTP.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let mut stored: Vec<u8> = Vec::new();
+            for _ in 0..2 {
+                let Ok((mut stream, _)) = listener.accept() else {
+                    return;
+                };
+                let mut buffer: Vec<u8> = Vec::new();
+                let mut chunk = [0u8; 4096];
+                let header_end = loop {
+                    let read = stream.read(&mut chunk).unwrap_or(0);
+                    if read == 0 {
+                        return;
+                    }
+                    buffer.extend_from_slice(&chunk[..read]);
+                    if let Some(position) = buffer.windows(4).position(|window| window == b"\r\n\r\n") {
+                        break position + 4;
+                    }
+                };
+                let headers = String::from_utf8_lossy(&buffer[..header_end]).to_string();
+                let headers_lower = headers.to_lowercase();
+                let content_length = headers_lower
+                    .lines()
+                    .find_map(|line| line.strip_prefix("content-length: "))
+                    .and_then(|value| value.trim().parse::<usize>().ok())
+                    .unwrap_or(0);
+                while buffer.len() < header_end + content_length {
+                    let read = stream.read(&mut chunk).unwrap_or(0);
+                    if read == 0 {
+                        break;
+                    }
+                    buffer.extend_from_slice(&chunk[..read]);
+                }
+                if headers.starts_with("PUT") {
+                    stored = buffer[header_end..header_end + content_length].to_vec();
+                    let response =
+                        "HTTP/1.1 201 Created\r\nETag: \"e1\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                    let _ = stream.write_all(response.as_bytes());
+                } else if headers.starts_with("GET") {
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nETag: \"e1\"\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        stored.len()
+                    );
+                    let _ = stream.write_all(response.as_bytes());
+                    let _ = stream.write_all(&stored);
+                } else {
+                    let _ = stream.write_all(b"HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                }
+            }
+        });
+        let provider =
+            WebDavProvider::new_with_options(&format!("http://127.0.0.1:{port}/dav"), "", "", true).unwrap();
+        let dir = std::env::temp_dir().join(format!("pdfsak-stream-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("source.oswk");
+        let payload = b"streamed document bytes";
+        std::fs::write(&source, payload).unwrap();
+
+        let (sha256, size, etag) = provider.put_file("remote.oswk", &source, None).unwrap();
+        assert_eq!(size, payload.len() as u64);
+        assert_eq!(etag.as_deref(), Some("e1"));
+        assert_eq!(sha256, hex_lower(Sha256::digest(payload).as_slice()));
+
+        let mut downloaded = Vec::new();
+        let (downloaded_sha, downloaded_size, downloaded_etag) =
+            provider.get_to_writer("remote.oswk", &mut downloaded).unwrap();
+        assert_eq!(downloaded, payload);
+        assert_eq!(downloaded_size, payload.len() as u64);
+        assert_eq!(downloaded_sha, sha256);
+        assert_eq!(downloaded_etag.as_deref(), Some("e1"));
+
+        server.join().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1051,7 +1455,7 @@ mod tests {
         };
         let user = std::env::var("PDFSAK_WEBDAV_USER").unwrap_or_default();
         let password = std::env::var("PDFSAK_WEBDAV_PASSWORD").unwrap_or_default();
-        let provider = WebDavProvider::new(&url, &user, &password).unwrap();
+        let provider = WebDavProvider::new_with_options(&url, &user, &password, true).unwrap();
         provider.test().unwrap();
         provider.ensure_dir("pdfsak-sync-test").unwrap();
 

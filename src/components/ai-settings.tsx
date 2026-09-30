@@ -5,7 +5,7 @@ import { useSettings } from "../lib/store";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { clamp } from "../lib/format";
 import { useT } from "../lib/i18n";
-import { aiClearKey, aiGetSettings, aiLibraryDefaultDir, aiModels, aiSaveSettings, aiTestConnection } from "../lib/api";
+import { aiClearKey, aiGetSettings, aiLibraryDefaultDir, aiModels, aiSaveSettings, aiTestConnection, toAppError } from "../lib/api";
 import type { AiModelOption, AiSettingsView, AiTestResult, ReasoningEffort } from "../lib/types";
 
 /**
@@ -122,6 +122,7 @@ export function AiSettings() {
   const [maxOutputTokens, setMaxOutputTokens] = useState(384_000);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<AiTestResult | null>(null);
 
   useEffect(() => {
@@ -177,8 +178,9 @@ export function AiSettings() {
     normalizedModel.startsWith("deepseek-flash-") ||
     normalizedModel === "deepseek-reasoner";
 
-  const save = async () => {
+  const save = async (): Promise<boolean> => {
     setSaving(true);
+    setSaveError(null);
     try {
       const updated = await aiSaveSettings({
         apiKey: apiKey.trim() ? apiKey.trim() : undefined,
@@ -195,6 +197,12 @@ export function AiSettings() {
       setView(updated);
       setApiKey("");
       setTestResult(null);
+      return true;
+    } catch (error) {
+      // The backend refuses e.g. a public http:// base URL so the API key can
+      // never be sent unencrypted; show the reason instead of failing silently.
+      setSaveError(toAppError(error).message);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -204,7 +212,7 @@ export function AiSettings() {
     setTesting(true);
     setTestResult(null);
     try {
-      await save();
+      if (!(await save())) return;
       const result = await aiTestConnection();
       setTestResult(result);
     } finally {
@@ -418,6 +426,12 @@ export function AiSettings() {
         ) : null}
         {!isV4Model ? <p className="text-xs" style={{ color: "var(--warn)" }}>{t("settings.aiThinkingModelWarning")}</p> : null}
       </div>
+
+      {saveError ? (
+        <p className="text-xs" style={{ color: "var(--danger, #b91c1c)" }}>
+          {saveError}
+        </p>
+      ) : null}
 
       <div className="flex items-center gap-2">
         <Button variant="primary" icon={saving ? <Spinner size={14} /> : <Bot size={15} />} onClick={() => void save()} disabled={saving}>

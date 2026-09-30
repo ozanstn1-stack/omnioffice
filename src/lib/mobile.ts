@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import { appCacheDir, join } from "@tauri-apps/api/path";
-import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import * as AndroidFs from "tauri-plugin-android-fs-api";
 import { fileBaseName, uid } from "./format";
 
@@ -376,7 +375,10 @@ export async function updatePublishedOutput(sourcePath: string): Promise<boolean
 /** Opens a document with the system viewer (Android) or default app. */
 export async function openAnyFile(path: string): Promise<void> {
   if (!isAndroid()) {
-    await openPath(path);
+    // Goes through the validated Rust command: the opener plugin permission is
+    // not granted to the webview, so only document types the app produces can
+    // reach the OS default handler.
+    await invoke("open_document_file", { path });
     return;
   }
   let uri = publishedUris.get(path);
@@ -392,7 +394,7 @@ export async function openAnyFile(path: string): Promise<void> {
 /** Shares a document with another app (Android) or reveals it in the folder. */
 export async function revealAnyFile(path: string): Promise<void> {
   if (!isAndroid()) {
-    await revealItemInDir(path);
+    await invoke("reveal_document_file", { path });
     return;
   }
   let uri = publishedUris.get(path);

@@ -707,6 +707,7 @@ const en: Dict = {
   "calc.tabData": "Data",
   "calc.tabView": "View",
   "calc.clearCells": "Clear",
+  "calc.gridLabel": "Spreadsheet grid",
   "calc.fillColor": "Fill",
   "calc.mergeCells": "Merge",
   "calc.borders": "Borders",
@@ -1094,6 +1095,9 @@ const en: Dict = {
     "OneDrive and Google Drive require OAuth sign-in, which is not available in this build. WebDAV works now; the other providers are shown for transparency.",
   "sync.url": "Server URL",
   "sync.urlPlaceholder": "https://cloud.example.com/remote.php/dav/files/me",
+  "sync.allowInsecureHttp": "Allow plain HTTP for a local server (loopback only)",
+  "sync.allowInsecureHttpHint":
+    "Off by default. When enabled, http:// is accepted only for localhost / 127.0.0.1 / ::1; a remote server must always use https://.",
   "sync.username": "Username",
   "sync.password": "Password",
   "sync.passwordHint":
@@ -2288,6 +2292,7 @@ const tr: Dict = {
   "calc.tabData": "Veri",
   "calc.tabView": "Görünüm",
   "calc.clearCells": "Temizle",
+  "calc.gridLabel": "Hesap tablosu ızgarası",
   "calc.fillColor": "Dolgu",
   "calc.mergeCells": "Birleştir",
   "calc.borders": "Kenarlıklar",
@@ -2653,6 +2658,9 @@ const tr: Dict = {
     "OneDrive ve Google Drive OAuth oturumu gerektirir; bu sürümde mevcut değil. WebDAV şimdi çalışır; diğer sağlayıcılar yalnızca şeffaflık için gösterilir.",
   "sync.url": "Sunucu adresi",
   "sync.urlPlaceholder": "https://cloud.example.com/remote.php/dav/files/me",
+  "sync.allowInsecureHttp": "Yerel sunucu için düz HTTP'ye izin ver (yalnızca loopback)",
+  "sync.allowInsecureHttpHint":
+    "Varsayılan olarak kapalı. Etkinleştirildiğinde http:// yalnızca localhost / 127.0.0.1 / ::1 için kabul edilir; uzak bir sunucu her zaman https:// kullanmalıdır.",
   "sync.username": "Kullanıcı adı",
   "sync.password": "Parola",
   "sync.passwordHint":

@@ -55,8 +55,8 @@ export function CommandPalette({ open, onClose, context, onNavigate }: { open: b
   };
 
   return (
-    <div className="palette-overlay" onClick={onClose}>
-      <div className="palette" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+    <div className="palette-overlay" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="palette" role="dialog" aria-modal="true">
         <div className="palette-input">
           <CommandIcon size={15} />
           <input
@@ -168,8 +168,8 @@ export function GlobalSearch({ open, onClose, onOpenPath, onNavigate }: { open: 
   if (!open) return null;
 
   return (
-    <div className="palette-overlay" onClick={onClose}>
-      <div className="palette" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+    <div className="palette-overlay" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="palette" role="dialog" aria-modal="true">
         <div className="palette-input">
           <Search size={15} />
           <input

@@ -51,6 +51,7 @@ function PasswordField({
         className="input pr-10"
         type={visible ? "text" : "password"}
         value={value}
+        // eslint-disable-next-line jsx-a11y/no-autofocus -- the password field is the dialog's only target; focusing it is the expected flow
         autoFocus={autoFocus}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
@@ -215,6 +216,7 @@ function Unlock({ initialFiles, dragging }: { initialFiles?: string[]; dragging:
           <OutputBar session={session} runLabel={t("security.unlockRun")} onRun={run} disabled={!session.primary || !password} />
           <OptionCard title={t("nav.unlock")}>
             <Field label={t("security.unlockPassword")}>
+              {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the unlock password is the only field in this panel; focusing it is expected */}
               <PasswordField value={password} onChange={setPassword} placeholder="••••••••" autoFocus />
             </Field>
             <p className="text-xs muted flex items-start gap-1.5">

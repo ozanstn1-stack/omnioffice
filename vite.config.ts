@@ -16,6 +16,17 @@ export default defineConfig({
   build: {
     target: "chrome110",
     sourcemap: false,
+    // Screens are loaded lazily (see src/App.tsx); the vendor chunk keeps the
+    // React runtime cacheable across releases. The budget is enforced by
+    // scripts/check-bundle-budget.mjs in CI.
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom"],
+          state: ["zustand"],
+        },
+      },
+    },
   },
   test: {
     environment: "jsdom",

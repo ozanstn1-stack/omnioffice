@@ -25,6 +25,12 @@
     "https://github.com/agnostic-apollo/tesseract-for-android/releases/download/v1.0.0/tesseract-binaries-v1.0.0.zip": {
       "sha256": "923f60eab3a8d191034ef1247852f8383ce3f48ee7db4581af99558e81246e87"
     },
+    "https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz": {
+      "sha256": "7191c669bf38899f73a2094ed00f7b800553364f90e2637010a69c0e268f25d0"
+    },
+    "https://github.com/tesseract-ocr/tesseract/archive/refs/tags/4.1.0.tar.gz": {
+      "sha256": "5c5ed5f1a76888dc57a83704f24ae02f8319849f5c4cf19d254296978a1a1961"
+    },
     "https://www.7-zip.org/a/7zr.exe": {
       "sha256": "ad4c82fadcbdf93c03b4fc440f300509c7d60c5c2f4d183e35d9d70d6957037d"
     },

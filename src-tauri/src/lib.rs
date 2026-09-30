@@ -10,6 +10,7 @@ mod jobs;
 mod library;
 mod office;
 mod office_tools;
+mod paths;
 mod pdf_v3;
 mod plugin;
 mod secret;
@@ -164,6 +165,8 @@ pub fn run() {
             commands::ensure_dir,
             commands::suggest_output,
             commands::file_sizes,
+            commands::open_document_file,
+            commands::reveal_document_file,
             commands::dev_launch_context,
             android_intent::android_take_pending_open,
             ai::ai_get_settings,

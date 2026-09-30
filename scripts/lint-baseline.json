@@ -1,0 +1,17 @@
+{
+  "comment": "Per-rule warning baseline for scripts/lint-baseline.mjs. Counts may only go down; refreshing it is a deliberate, reviewed change.",
+  "updated": "2026-09-30",
+  "rules": {
+    "jsx-a11y/click-events-have-key-events": 14,
+    "jsx-a11y/control-has-associated-label": 15,
+    "jsx-a11y/no-static-element-interactions": 16,
+    "react-hooks/exhaustive-deps": 14,
+    "react-hooks/globals": 1,
+    "react-hooks/immutability": 7,
+    "react-hooks/preserve-manual-memoization": 3,
+    "react-hooks/purity": 2,
+    "react-hooks/refs": 13,
+    "react-hooks/set-state-in-effect": 36,
+    "react-hooks/use-memo": 1
+  }
+}

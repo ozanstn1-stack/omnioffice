@@ -1240,7 +1240,6 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   const presenterPanel = presenterView && showSlide ? (
     <aside
       className="presenter-panel"
-      onClick={(event) => event.stopPropagation()}
       style={{ width: 320, minWidth: 320, maxHeight: "100%", overflow: "auto", display: "flex", flexDirection: "column", gap: 10, padding: 12, borderRadius: 10, background: "rgba(15, 23, 42, 0.94)", color: "#E2E8F0" }}
     >
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
@@ -1662,7 +1661,12 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
       {slideshow !== null && showSlide ? (
         <div
           className="slideshow"
-          onClick={advanceShow}
+          onClick={(event) => {
+            // Clicks inside the presenter control panel must not advance the
+            // show to the next slide.
+            if (event.target instanceof Element && event.target.closest(".presenter-panel")) return;
+            advanceShow();
+          }}
           style={presenterView ? { display: "flex", flexDirection: "column", alignItems: "stretch", justifyContent: "flex-start", padding: 12, gap: 8 } : undefined}
         >
           {presenterView ? (
@@ -2606,6 +2610,7 @@ function SlideObjectView({ object, theme, scale, editing, onTextChange, onTextDo
         editing ? (
           <textarea
             className="slide-text-editor"
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- the user just double-clicked the text object; the editor must take focus
             autoFocus
             defaultValue={object.text.paragraphs.map((paragraph) => paragraph.text).join("\n")}
             onBlur={(event) => {

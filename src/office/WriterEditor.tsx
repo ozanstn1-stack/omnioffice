@@ -1555,6 +1555,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
           <div className="stack">
             <label className="field">
               <span>{t("writer.findWhat")}</span>
+              {/* eslint-disable-next-line jsx-a11y/no-autofocus -- opening Find must put the caret in the search field */}
               <input value={findText} onChange={(event) => setFindText(event.target.value)} autoFocus />
             </label>
             <label className="field">
@@ -2254,6 +2255,8 @@ function PageEditableParagraph({
         data-scope="page"
         data-fragment-from={fragment.from}
         contentEditable
+        role="textbox"
+        aria-multiline="true"
         suppressContentEditableWarning
         spellCheck
         tabIndex={0}
@@ -2341,13 +2344,22 @@ function BlockView({
   if (block.type === "image") {
     return (
       <figure className="writer-image" style={{ textAlign: block.align as "left" | "center" | "right" }}>
-        <img
-          src={`data:${block.image.mime};base64,${block.image.dataBase64}`}
-          alt={block.image.alt}
-          style={{ width: block.widthPt * (96 / 72) * zoom }}
+        <button
+          type="button"
           onClick={() => onSelectImage(index)}
-        />
-        <figcaption onDoubleClick={() => onSelectImage(index)}>{block.caption || block.image.name}</figcaption>
+          style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}
+        >
+          <img src={`data:${block.image.mime};base64,${block.image.dataBase64}`} alt={block.image.alt} style={{ width: block.widthPt * (96 / 72) * zoom }} />
+        </button>
+        <figcaption>
+          <button
+            type="button"
+            onClick={() => onSelectImage(index)}
+            style={{ background: "none", border: "none", padding: 0, font: "inherit", color: "inherit", cursor: "pointer" }}
+          >
+            {block.caption || block.image.name}
+          </button>
+        </figcaption>
       </figure>
     );
   }

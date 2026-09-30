@@ -21,6 +21,8 @@ import {
 import { extractPageText, renderPage, searchDocument } from "./render";
 import { makeDemoPdf } from "./demo";
 import { loadStampFonts } from "./session";
+import { MAX_REMOTE_BYTES, openRemoteLink, parseRemoteLink } from "./remotelink";
+import { takePendingFiles } from "./pending";
 
 interface Check {
   name: string;
@@ -173,6 +175,49 @@ async function run(): Promise<Check[]> {
       const code = (error as { code?: string }).code;
       if (code !== "password_required") throw error;
       return "rejected with password_required";
+    }
+  });
+
+  await record("context-menu deep links are parsed safely", async () => {
+    const good = parseRemoteLink(`#url=${encodeURIComponent("https://example.com/docs/report.pdf")}`);
+    if (!good || good.host !== "example.com") throw new Error("valid link was not parsed");
+    if (parseRemoteLink("#url=javascript:alert(1)") !== null) throw new Error("javascript: URL accepted");
+    if (parseRemoteLink("#url=data:text/html,<script>") !== null) throw new Error("data: URL accepted");
+    if (parseRemoteLink("#url=file:///etc/passwd") !== null) throw new Error("file: URL accepted");
+    if (parseRemoteLink("") !== null) throw new Error("empty hash accepted");
+    return good.host;
+  });
+
+  await record("linked PDF downloads into the pending file registry", async () => {
+    const bytes = new TextEncoder().encode("%PDF-1.4 fake");
+    const fakeFetch = async () =>
+      new Response(bytes, { status: 200, headers: { "content-length": String(bytes.length) } });
+    const file = await openRemoteLink(
+      { url: "https://example.com/docs/report.pdf", host: "example.com" },
+      { fetch: fakeFetch as unknown as typeof fetch },
+    );
+    const pending = takePendingFiles();
+    if (!pending || pending.length !== 1) throw new Error("no pending file was registered");
+    if (pending[0].name !== "report.pdf") throw new Error(`unexpected name ${pending[0].name}`);
+    if (pending[0].type !== "application/pdf") throw new Error("unexpected MIME type");
+    return `${file.name} (${file.size} bytes)`;
+  });
+
+  await record("oversized linked PDFs are refused", async () => {
+    const fakeFetch = async () =>
+      new Response(new Uint8Array([1]), {
+        status: 200,
+        headers: { "content-length": String(MAX_REMOTE_BYTES + 1) },
+      });
+    try {
+      await openRemoteLink(
+        { url: "https://example.com/big.pdf", host: "example.com" },
+        { fetch: fakeFetch as unknown as typeof fetch },
+      );
+      throw new Error("oversized download was accepted");
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("accepted")) throw error;
+      return "refused";
     }
   });
 

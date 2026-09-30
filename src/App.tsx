@@ -51,50 +51,70 @@ import { errorMessage, useDev, useDrop, useJobs, useRecent, useSettings, useToas
 import packageJson from "../package.json";
 import { devLaunchContext, startupFiles } from "./lib/api";
 import type { Navigate, ScreenId } from "./lib/nav";
-import { Home as HomeScreen } from "./screens/Home";
-import { Reader } from "./screens/Reader";
-import { Ai } from "./screens/Ai";
-import { AiLibrary } from "./screens/AiLibrary";
-import { Merge } from "./screens/Merge";
-import { Organize } from "./screens/Organize";
-import { Split } from "./screens/Split";
-import { Compress } from "./screens/Compress";
-import { Ocr } from "./screens/Ocr";
-import { Convert } from "./screens/Convert";
-import { Security } from "./screens/Security";
-import { Watermark } from "./screens/Watermark";
-import { PageTools } from "./screens/PageTools";
-import { Annotate } from "./screens/Annotate";
-import { Redact } from "./screens/Redact";
-import { Compare } from "./screens/Compare";
-import { Inspect } from "./screens/Inspect";
-import { Metadata } from "./screens/Metadata";
-import { Batch } from "./screens/Batch";
-import { History } from "./screens/History";
-import { Settings } from "./screens/Settings";
-import { InfoScreen } from "./screens/Info";
-import { Vault } from "./screens/Vault";
-import { PdfStudio } from "./screens/PdfStudio";
-import { CompatibilityScreen } from "./screens/Compatibility";
-import { JobsScreen } from "./screens/Jobs";
-import { Sync } from "./screens/Sync";
-import { Plugins } from "./screens/Plugins";
-import { CommandPalette, GlobalSearch } from "./components/command-palette";
+// Route-level code splitting: every screen is loaded when it is first opened,
+// so the startup bundle only carries the shell, the navigation and the shared
+// UI primitives. The lazy import maps the named export to the default export
+// `React.lazy` expects.
+const HomeScreen = React.lazy(() => import("./screens/Home").then((module) => ({ default: module.Home })));
+const Reader = React.lazy(() => import("./screens/Reader").then((module) => ({ default: module.Reader })));
+const Ai = React.lazy(() => import("./screens/Ai").then((module) => ({ default: module.Ai })));
+const AiLibrary = React.lazy(() => import("./screens/AiLibrary").then((module) => ({ default: module.AiLibrary })));
+const Merge = React.lazy(() => import("./screens/Merge").then((module) => ({ default: module.Merge })));
+const Organize = React.lazy(() => import("./screens/Organize").then((module) => ({ default: module.Organize })));
+const Split = React.lazy(() => import("./screens/Split").then((module) => ({ default: module.Split })));
+const Compress = React.lazy(() => import("./screens/Compress").then((module) => ({ default: module.Compress })));
+const Ocr = React.lazy(() => import("./screens/Ocr").then((module) => ({ default: module.Ocr })));
+const Convert = React.lazy(() => import("./screens/Convert").then((module) => ({ default: module.Convert })));
+const Security = React.lazy(() => import("./screens/Security").then((module) => ({ default: module.Security })));
+const Watermark = React.lazy(() => import("./screens/Watermark").then((module) => ({ default: module.Watermark })));
+const PageTools = React.lazy(() => import("./screens/PageTools").then((module) => ({ default: module.PageTools })));
+const Annotate = React.lazy(() => import("./screens/Annotate").then((module) => ({ default: module.Annotate })));
+const Redact = React.lazy(() => import("./screens/Redact").then((module) => ({ default: module.Redact })));
+const Compare = React.lazy(() => import("./screens/Compare").then((module) => ({ default: module.Compare })));
+const Inspect = React.lazy(() => import("./screens/Inspect").then((module) => ({ default: module.Inspect })));
+const Metadata = React.lazy(() => import("./screens/Metadata").then((module) => ({ default: module.Metadata })));
+const Batch = React.lazy(() => import("./screens/Batch").then((module) => ({ default: module.Batch })));
+const History = React.lazy(() => import("./screens/History").then((module) => ({ default: module.History })));
+const Settings = React.lazy(() => import("./screens/Settings").then((module) => ({ default: module.Settings })));
+const InfoScreen = React.lazy(() => import("./screens/Info").then((module) => ({ default: module.InfoScreen })));
+const Vault = React.lazy(() => import("./screens/Vault").then((module) => ({ default: module.Vault })));
+const PdfStudio = React.lazy(() => import("./screens/PdfStudio").then((module) => ({ default: module.PdfStudio })));
+const CompatibilityScreen = React.lazy(() => import("./screens/Compatibility").then((module) => ({ default: module.CompatibilityScreen })));
+const JobsScreen = React.lazy(() => import("./screens/Jobs").then((module) => ({ default: module.JobsScreen })));
+const Sync = React.lazy(() => import("./screens/Sync").then((module) => ({ default: module.Sync })));
+const Plugins = React.lazy(() => import("./screens/Plugins").then((module) => ({ default: module.Plugins })));
+const OfficeWorkspace = React.lazy(() => import("./office/OfficeWorkspace").then((module) => ({ default: module.OfficeWorkspace })));
+const CleanerScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.CleanerScreen })));
+const ConverterScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.ConverterScreen })));
+const DataScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.DataScreen })));
+const DrawScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.DrawScreen })));
+const NotesScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.NotesScreen })));
+const PdfFormsScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.PdfFormsScreen })));
+const PlannerScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.PlannerScreen })));
+const TemplatesScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.TemplatesScreen })));
 import { registerCommand, setCommandTranslator, unregisterCommand } from "./lib/commands";
 import { resumeJobs, useJobs as useBackgroundJobs } from "./lib/jobs";
+import { CommandPalette, GlobalSearch } from "./components/command-palette";
 import { OverwriteDialog, PasswordDialog, Toasts } from "./components/files";
 import { DataLossDialogHost } from "./components/data-loss-dialog";
-import { Badge, IconButton } from "./components/ui";
+import { Badge, IconButton, Spinner } from "./components/ui";
 import { isAndroid, openAnyFile, pickAndroidFiles } from "./lib/mobile";
 import { isImage } from "./lib/format";
 import { navigationActionFromState, overlayHistoryState, recordScreenVisit, type NavigationSnapshot } from "./lib/nav-history";
-import { OfficeWorkspace } from "./office/OfficeWorkspace";
 import { openIntoWorkspace } from "./office/useOfficeSession";
-import { CleanerScreen, ConverterScreen, DataScreen, DrawScreen, NotesScreen, PdfFormsScreen, PlannerScreen, TemplatesScreen } from "./office/ToolsScreens";
 import { isOfficePath, openOfficePath, useOfficeTabs } from "./lib/office-store";
 import * as officeApi from "./lib/office-api";
 
 type PageToolTab = "extract" | "delete" | "rotate" | "resize" | "crop" | "numbering";
+
+/** Shown while a lazily imported screen chunk is being fetched. */
+function ScreenLoading() {
+  return (
+    <div className="flex items-center justify-center h-full">
+      <Spinner size={22} />
+    </div>
+  );
+}
 
 /** Reads and clears the Android open-with queue filled by MainActivity.kt. */
 async function takePendingAndroidOpen(): Promise<string[]> {
@@ -667,8 +687,8 @@ export default function App() {
         </header>
 
         {navOpen ? (
-          <div className="drawer-overlay" onClick={() => setNavOpen(false)}>
-            <aside className="drawer" onClick={(event) => event.stopPropagation()}>
+          <div className="drawer-overlay" onClick={(event) => { if (event.target === event.currentTarget) setNavOpen(false); }}>
+            <aside className="drawer">
               <div className="flex items-center gap-2.5 px-3.5 py-4">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--accent)", color: "var(--accent-text)" }}>
                   <Puzzle size={18} />
@@ -689,7 +709,9 @@ export default function App() {
         ) : null}
 
         <main className="flex-1 min-w-0 relative overflow-hidden">
-          <div key={`${screen}-${files.join("|")}`} className="h-full">{screens[screen]}</div>
+          <div key={`${screen}-${files.join("|")}`} className="h-full">
+            <React.Suspense fallback={<ScreenLoading />}>{screens[screen]}</React.Suspense>
+          </div>
         </main>
 
         <Toasts />
@@ -768,7 +790,9 @@ export default function App() {
             </p>
           </div>
         ) : null}
-        <div key={`${screen}-${files.join("|")}`} className="h-full">{screens[screen]}</div>
+        <div key={`${screen}-${files.join("|")}`} className="h-full">
+          <React.Suspense fallback={<ScreenLoading />}>{screens[screen]}</React.Suspense>
+        </div>
       </main>
 
       <Toasts />

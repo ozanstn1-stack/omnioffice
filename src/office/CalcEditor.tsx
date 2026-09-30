@@ -2012,6 +2012,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         <div
           className="calc-grid"
           tabIndex={0}
+          role="grid"
+          aria-label={t("calc.gridLabel")}
           ref={gridRef}
           onPointerDown={handleGridPointerDown}
           onKeyDown={handleKeyDown}
@@ -2106,6 +2108,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                           className="cell-editor"
                           ref={cellInputRef}
                           value={editing!.value}
+                          // eslint-disable-next-line jsx-a11y/no-autofocus -- typing replaces the cell content; focusing the editor is the whole point of the interaction
                           autoFocus
                           onFocus={(event) => {
                             setFocusMode("cell");
@@ -2424,6 +2427,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 <div
                   key={`${item.kind}:${item.label}`}
                   role="option"
+                  tabIndex={-1}
                   aria-selected={index === suggestIndex}
                   // Applied on pointerdown, not click: on touch the input would
                   // blur before a click ever fires, and preventDefault keeps the

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { documentDir } from "@tauri-apps/api/path";
+import { appDataDir } from "@tauri-apps/api/path";
 import { open } from "@tauri-apps/plugin-dialog";
 import { cancelJob, fileSizes, logOperation, pdfInfo, suggestOutput, toAppError } from "./api";
 import { dirName, fileBaseName, isImage, isPdf, joinPath, uid } from "./format";
@@ -239,14 +239,15 @@ export function useTool(options: ToolOptions): ToolSession {
     }
     let cancelled = false;
     const suggestedName = primary.path.replace(/\.[^.\\/]+$/, "") + suffix + (accept === "image" ? ".pdf" : ".pdf");
-    // Android: outputs stay inside the app's Documents folder and are copied
-    // to the public Downloads folder (or a picked destination) afterwards.
+    // Android: outputs are staged inside the app's private data directory and
+    // published through the SAF dialog afterwards. No standing grant to any
+    // shared/user-visible storage is needed for the intermediate file.
     if (isAndroid()) {
       void (async () => {
         let base = settings.defaultOutputDir;
         if (!base) {
-          const documents = await documentDir().catch(() => "");
-          base = documents ? joinPath(documents, "PDF Swiss Army Knife") : dirName(primary.path);
+          const appData = await appDataDir().catch(() => "");
+          base = appData ? joinPath(appData, "Outputs") : dirName(primary.path);
         }
         if (cancelled) return;
         setOutputPath(joinPath(base, fileBaseName(suggestedName)));

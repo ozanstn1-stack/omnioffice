@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
   Combine,
+  Download,
   Files,
   FolderClock,
   Hash,
@@ -16,7 +17,7 @@ import {
   Sun,
   Wand2,
 } from "lucide-react";
-import { Badge, IconButton } from "./components/ui";
+import { Badge, Button, IconButton, Modal, Spinner } from "./components/ui";
 import { ScreenId } from "./lib/nav";
 import { HomeScreen } from "./screens/Home";
 import { ReaderScreen } from "./screens/Reader";
@@ -31,11 +32,15 @@ import { MetadataScreen } from "./screens/Metadata";
 import { ConvertScreen } from "./screens/Convert";
 
 import { setPendingFiles } from "./lib/pending";
+import { openRemoteLink, parseRemoteLink, type RemoteLink } from "./lib/remotelink";
 
 export default function App() {
   const [screen, setScreen] = useState<ScreenId>("home");
   const [dark, setDark] = useState(() => localStorage.getItem("pdfsak-theme") !== "light");
-  const [version, setVersion] = useState("1.0.0");
+  const [version, setVersion] = useState("1.0.1");
+  const [remoteLink, setRemoteLink] = useState<RemoteLink | null>(null);
+  const [remoteBusy, setRemoteBusy] = useState(false);
+  const [remoteError, setRemoteError] = useState<string | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -50,6 +55,49 @@ export default function App() {
   const navigate = (next: ScreenId, files?: File[]) => {
     if (files?.length) setPendingFiles(files);
     setScreen(next);
+  };
+
+  // Context-menu deep link (`app.html#url=...`, written by background.js).
+  // The tab is often reused, so the hash can change without a reload: listen
+  // for both the initial value and later hashchange events.
+  useEffect(() => {
+    const read = () => {
+      const link = parseRemoteLink(location.hash);
+      // A changed hash replaces the prompt: an invalid/removed link must never
+      // leave a stale consent dialog for a different URL on screen.
+      setRemoteLink(link);
+      if (link) setRemoteError(null);
+    };
+    read();
+    window.addEventListener("hashchange", read);
+    return () => window.removeEventListener("hashchange", read);
+  }, []);
+
+  const requestOriginPermission = (origin: string): Promise<boolean> => {
+    const permissions = typeof chrome !== "undefined" ? chrome.permissions : undefined;
+    if (!permissions?.request) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      try {
+        permissions.request({ origins: [origin] }, (granted) => resolve(Boolean(granted)));
+      } catch {
+        resolve(false);
+      }
+    });
+  };
+
+  const openRemote = async () => {
+    if (!remoteLink) return;
+    setRemoteBusy(true);
+    setRemoteError(null);
+    try {
+      await openRemoteLink(remoteLink, { requestPermission: requestOriginPermission });
+      setRemoteLink(null);
+      setScreen("reader");
+    } catch (error) {
+      setRemoteError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRemoteBusy(false);
+    }
   };
 
   // Development hook (used by the automated browser validation):
@@ -154,6 +202,42 @@ export default function App() {
           {screens[screen]}
         </div>
       </main>
+
+      {remoteLink ? (
+        <Modal
+          title="Open linked PDF?"
+          onClose={() => setRemoteLink(null)}
+          footer={
+            <>
+              <Button onClick={() => setRemoteLink(null)}>Cancel</Button>
+              <Button
+                variant="primary"
+                onClick={() => void openRemote()}
+                disabled={remoteBusy}
+                icon={remoteBusy ? <Spinner size={14} /> : <Download size={14} />}
+                data-testid="remote-link-open"
+              >
+                Download and open
+              </Button>
+            </>
+          }
+        >
+          <div data-testid="remote-link-banner">
+            <p className="text-[13px]">
+              The browser passed a document from the context menu. It is downloaded once, opened locally and never uploaded anywhere.
+            </p>
+            <p className="text-xs muted mt-2 break-all" data-testid="remote-link-host">
+              {remoteLink.host}
+            </p>
+            <p className="text-xs muted break-all">{remoteLink.url}</p>
+            {remoteError ? (
+              <p className="text-xs mt-2" style={{ color: "var(--danger, #b91c1c)" }} data-testid="remote-link-error">
+                {remoteError}
+              </p>
+            ) : null}
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }

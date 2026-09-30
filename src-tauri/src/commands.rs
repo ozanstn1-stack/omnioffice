@@ -63,10 +63,7 @@ pub struct OutputSpec {
 
 impl OutputSpec {
     pub(crate) fn resolve(&self) -> Result<(PathBuf, OverwritePolicy), PdfError> {
-        let path = PathBuf::from(&self.path);
-        if path.as_os_str().is_empty() {
-            return Err(PdfError::InvalidInput("output path is empty".into()));
-        }
+        let path = crate::paths::output_file(&self.path)?;
         Ok((path, policy(&self.overwrite)))
     }
 }
@@ -1462,6 +1459,51 @@ pub fn file_sizes(paths: Vec<String>) -> Vec<Option<u64>> {
         .collect()
 }
 
+// ---------------------------------------------------------------------------
+// OS integration (open / reveal)
+// ---------------------------------------------------------------------------
+
+/// Extensions the OS open/reveal commands accept: only formats the app itself
+/// handles as documents. A compromised renderer therefore cannot use these
+/// commands to launch an executable or script through the default handler.
+/// `opener` permissions are not granted to the webview at all; it reaches the
+/// OS only through the two validated commands below.
+const OPENABLE_EXTENSIONS: &[&str] = &[
+    "pdf", "png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif", "txt", "md", "csv", "json",
+    "docx", "odt", "rtf", "xlsx", "ods", "tsv", "pptx", "odp", "oswk", "osed", "ospr", "osdt",
+];
+
+fn openable_document_path(raw: &str) -> Result<PathBuf, PdfError> {
+    let path = crate::paths::input_file(raw)?;
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .unwrap_or_default();
+    if !OPENABLE_EXTENSIONS.contains(&extension.as_str()) {
+        return Err(PdfError::InvalidInput(format!(
+            "refusing to hand this file type to the operating system: {raw}"
+        )));
+    }
+    Ok(path)
+}
+
+/// Opens a document the app produced with the OS default handler.
+#[tauri::command]
+pub fn open_document_file(path: String) -> Result<(), PdfError> {
+    let path = openable_document_path(&path)?;
+    tauri_plugin_opener::open_path(path, None::<&str>)
+        .map_err(|error| PdfError::Internal(format!("could not open the file: {error}")))
+}
+
+/// Reveals a document in the system file manager.
+#[tauri::command]
+pub fn reveal_document_file(path: String) -> Result<(), PdfError> {
+    let path = openable_document_path(&path)?;
+    tauri_plugin_opener::reveal_item_in_dir(path)
+        .map_err(|error| PdfError::Internal(format!("could not reveal the file: {error}")))
+}
+
 /// Development/screenshot helper: lets an automated run start on a specific
 /// screen with pre-selected files, e.g.
 ///   set PDFSAK_START_SCREEN=compress && set PDFSAK_DEV_FILES=C:\in.pdf
@@ -1518,8 +1560,15 @@ fn operations_log(app: &AppHandle) -> Result<PathBuf, PdfError> {
     Ok(config_dir(app)?.join("operations.json"))
 }
 
-/// Default AI library folder: Documents/PDF Swiss Army Knife AI.
+/// Default AI library folder: `Documents/PDF Swiss Army Knife AI` on desktop.
+/// Android keeps the files inside the app data directory instead: the
+/// Documents resolver there points at app-private external storage, and the
+/// SAF publishing flow copies results out to a location the user picks.
 fn default_library_dir(app: &AppHandle) -> PathBuf {
+    #[cfg(target_os = "android")]
+    if let Ok(dir) = app.path().app_data_dir() {
+        return dir.join("ai-library");
+    }
     app.path()
         .document_dir()
         .map(|dir| dir.join("PDF Swiss Army Knife AI"))

@@ -183,6 +183,82 @@ pub fn provider_notes(kind: ProviderKind) -> &'static str {
     }
 }
 
+/// True when `host` points at the local machine: `localhost`, any name under
+/// `.localhost`, or a loopback IP literal (`127.0.0.0/8`, `::1`).
+pub fn is_loopback_host(host: &str) -> bool {
+    let trimmed = host.trim().trim_start_matches('[').trim_end_matches(']');
+    if trimmed.is_empty() {
+        return false;
+    }
+    if trimmed.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    trimmed
+        .parse::<std::net::IpAddr>()
+        .map(|address| address.is_loopback())
+        .unwrap_or(false)
+}
+
+/// Validates and normalizes a provider base URL, trimming trailing slashes.
+///
+/// The base URL is user-editable and the API key is sent to whatever host it
+/// contains as a Bearer token, so HTTPS is mandatory for every non-local host:
+/// plain `http://` would put the key and the document text on the wire in
+/// cleartext. The loopback exception (Ollama and other local servers) is
+/// limited to `localhost` / loopback IPs. Query strings, fragments, embedded
+/// credentials and whitespace are rejected because the endpoint is built by
+/// appending a path to this value.
+pub fn normalize_base_url(url: &str) -> AiResult<String> {
+    let trimmed = url.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return Err(AiError::InvalidBaseUrl("the provider URL is empty".to_string()));
+    }
+    if trimmed.chars().any(|ch| ch.is_whitespace() || ch.is_control()) {
+        return Err(AiError::InvalidBaseUrl("the provider URL contains whitespace".to_string()));
+    }
+    let parsed = reqwest::Url::parse(trimmed)
+        .map_err(|_| AiError::InvalidBaseUrl("the provider URL is not a valid absolute URL".to_string()))?;
+    match parsed.scheme() {
+        "https" => {}
+        "http" => {
+            if !parsed.host_str().map(is_loopback_host).unwrap_or(false) {
+                return Err(AiError::InvalidBaseUrl(
+                    "plain http:// is refused for a remote provider: the API key and the document text would travel unencrypted. Use https:// (http:// is only allowed for a local server such as Ollama)"
+                        .to_string(),
+                ));
+            }
+        }
+        other => {
+            return Err(AiError::InvalidBaseUrl(format!(
+                "the provider URL must start with https:// (got {other}://)"
+            )))
+        }
+    }
+    if parsed.query().is_some() || parsed.fragment().is_some() {
+        return Err(AiError::InvalidBaseUrl(
+            "the provider URL must not contain a query string or fragment".to_string(),
+        ));
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(AiError::InvalidBaseUrl(
+            "remove the username/password from the provider URL and use the API key field".to_string(),
+        ));
+    }
+    Ok(trimmed.to_string())
+}
+
+/// A redirect is only followed over HTTPS, or over plain HTTP when the target
+/// is the local machine/the configured loopback server. A redirect to a public
+/// `http://` endpoint would leak the Bearer token, so the request fails
+/// instead of following it.
+fn is_redirect_target_allowed(url: &reqwest::Url, allow_loopback_http: bool) -> bool {
+    match url.scheme() {
+        "https" => true,
+        "http" => allow_loopback_http && url.host_str().map(is_loopback_host).unwrap_or(false),
+        _ => false,
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiConfig {
@@ -324,6 +400,8 @@ pub enum AiError {
     TooLarge,
     #[error("{0}")]
     ProviderUnreachable(String),
+    #[error("invalid provider URL: {0}")]
+    InvalidBaseUrl(String),
     #[error("unsupported action: {0}")]
     Unsupported(String),
 }
@@ -519,20 +597,39 @@ struct OllamaMessage {
 /// The name is kept for backwards compatibility: it talks to DeepSeek by
 /// default, and to any OpenAI-compatible, Ollama, Gemini or custom endpoint
 /// selected with [`ProviderKind`].
+#[derive(Debug)]
 pub struct DeepSeekClient {
     config: AiConfig,
     http: reqwest::Client,
 }
 
 impl DeepSeekClient {
-    pub fn new(config: AiConfig) -> AiResult<Self> {
+    pub fn new(mut config: AiConfig) -> AiResult<Self> {
         if !config.is_configured() {
             return Err(AiError::MissingApiKey);
         }
+        config.base_url = normalize_base_url(&config.base_url)?;
+        let allow_loopback_http = config
+            .base_url
+            .to_ascii_lowercase()
+            .starts_with("http://");
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(180))
             .connect_timeout(Duration::from_secs(20))
             .user_agent(concat!("PDFSwissArmyKnife/", env!("CARGO_PKG_VERSION")))
+            .redirect(reqwest::redirect::Policy::custom(move |attempt| {
+                if !is_redirect_target_allowed(attempt.url(), allow_loopback_http) {
+                    return attempt.error(
+                        "a redirect to a non-local http:// endpoint was refused to keep the API key encrypted in transit"
+                            .to_string(),
+                    );
+                }
+                if attempt.previous().len() >= 5 {
+                    attempt.stop()
+                } else {
+                    attempt.follow()
+                }
+            }))
             .build()
             .map_err(|_| AiError::Network)?;
         Ok(Self { config, http })
@@ -913,5 +1010,75 @@ pub async fn run_plan(
             on_progress("reduce", total, total);
             Ok(final_text)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn provider_url_requires_https_for_remote_hosts() {
+        assert_eq!(normalize_base_url(" https://api.deepseek.com/ ").unwrap(), "https://api.deepseek.com");
+        assert_eq!(
+            normalize_base_url("https://api.openai.com/v1/").unwrap(),
+            "https://api.openai.com/v1"
+        );
+        // A remote plain-HTTP endpoint would leak the API key: refused.
+        assert!(matches!(
+            normalize_base_url("http://api.example.com/v1"),
+            Err(AiError::InvalidBaseUrl(_))
+        ));
+        assert!(matches!(
+            normalize_base_url("http://192.168.1.10:8000/v1"),
+            Err(AiError::InvalidBaseUrl(_))
+        ));
+        // Loopback HTTP stays available for local servers (Ollama).
+        assert_eq!(
+            normalize_base_url("http://localhost:11434").unwrap(),
+            "http://localhost:11434"
+        );
+        assert_eq!(normalize_base_url("http://127.0.0.1:11434").unwrap(), "http://127.0.0.1:11434");
+        assert_eq!(normalize_base_url("http://[::1]:11434").unwrap(), "http://[::1]:11434");
+        // Other schemes, credentials, queries and fragments are rejected.
+        assert!(normalize_base_url("ftp://host/v1").is_err());
+        assert!(normalize_base_url("").is_err());
+        assert!(normalize_base_url("https://user:key@host/v1").is_err());
+        assert!(normalize_base_url("https://host/v1?x=1").is_err());
+        assert!(normalize_base_url("https://host/v1#frag").is_err());
+    }
+
+    #[test]
+    fn redirect_policy_rejects_public_http_targets() {
+        let https = reqwest::Url::parse("https://api.deepseek.com/x").unwrap();
+        let public_http = reqwest::Url::parse("http://api.example.com/x").unwrap();
+        let loopback_http = reqwest::Url::parse("http://127.0.0.1:11434/x").unwrap();
+        assert!(is_redirect_target_allowed(&https, false));
+        assert!(!is_redirect_target_allowed(&public_http, false));
+        assert!(!is_redirect_target_allowed(&public_http, true));
+        assert!(!is_redirect_target_allowed(&loopback_http, false));
+        assert!(is_redirect_target_allowed(&loopback_http, true));
+    }
+
+    #[test]
+    fn client_refuses_a_remote_http_base_url() {
+        let error = DeepSeekClient::new(AiConfig {
+            api_key: "test-key".into(),
+            base_url: "http://api.example.com/v1".into(),
+            ..Default::default()
+        })
+        .unwrap_err();
+        assert!(matches!(error, AiError::InvalidBaseUrl(_)));
+    }
+
+    #[test]
+    fn client_normalizes_the_stored_base_url() {
+        let client = DeepSeekClient::new(AiConfig {
+            api_key: "test-key".into(),
+            base_url: " https://api.deepseek.com/ ".into(),
+            ..Default::default()
+        })
+        .expect("client");
+        assert_eq!(client.config().base_url, "https://api.deepseek.com");
     }
 }

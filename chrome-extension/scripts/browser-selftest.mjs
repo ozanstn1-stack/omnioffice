@@ -143,7 +143,7 @@ async function main() {
   `);
   const text = String(report ?? "no result");
   console.log(text);
-  const ok = text.includes("SELFTEST_RESULT=OK");
+  const selfTestOk = text.includes("SELFTEST_RESULT=OK");
 
   // 2. Screenshots for the README (home + reader with a demo document).
   await mkdir(outDir, { recursive: true });
@@ -157,6 +157,35 @@ async function main() {
   await sleep(6000);
   await cdp.screenshot(join(outDir, "22-extension-organize.png"));
 
+  // 3. Context-menu deep link: the consent prompt must show the linked host,
+  // and a hostile `javascript:` URL must be ignored instead of prompting.
+  const encoded = encodeURIComponent("https://example.com/docs/report.pdf");
+  await cdp.send("Page.navigate", { url: `${baseUrl}#url=${encoded}` });
+  const bannerText = await cdp.evaluate(`
+    new Promise((resolve) => {
+      const started = Date.now();
+      const timer = setInterval(() => {
+        const element = document.querySelector('[data-testid="remote-link-banner"]');
+        if (element) {
+          clearInterval(timer);
+          resolve(element.textContent || '');
+        } else if (Date.now() - started > 15000) {
+          clearInterval(timer);
+          resolve('');
+        }
+      }, 200);
+    })
+  `);
+  const deepLinkOk = String(bannerText).includes("example.com");
+  console.log(deepLinkOk ? "[PASS] deep link consent prompt shows the linked host" : `[FAIL] deep link consent prompt: ${bannerText}`);
+
+  await cdp.send("Page.navigate", { url: `${baseUrl}#url=javascript:alert(1)` });
+  await sleep(1500);
+  const hostilePrompt = await cdp.evaluate(`Boolean(document.querySelector('[data-testid="remote-link-banner"]'))`);
+  const hostileOk = hostilePrompt === false;
+  console.log(hostileOk ? "[PASS] hostile deep link is ignored" : "[FAIL] hostile deep link opened a prompt");
+
+  const ok = selfTestOk && deepLinkOk && hostileOk;
   cdp.close();
   await rm(profile, { recursive: true, force: true }).catch(() => undefined);
   chromeProcess.kill();

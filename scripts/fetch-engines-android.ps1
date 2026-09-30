@@ -12,6 +12,7 @@
 param(
     [switch]$Force,
     [switch]$UpdateLock,
+    [switch]$VerifyLock,
     [string[]]$Abis = @('arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86')
 )
 
@@ -33,12 +34,13 @@ $cacheDir = Join-Path $cacheBase 'pdf-sak-cache'
 $isWindowsHost = [bool]($env:OS -eq 'Windows_NT') -or [bool]$IsWindows
 $hostTag = if ($isWindowsHost) { 'windows-x86_64' } else { 'linux-x86_64' }
 
-New-Item -ItemType Directory -Force -Path $enginesDir, $assetsDir, $cacheDir | Out-Null
-
 # ---------------------------------------------------------------- supply chain
-# Every artifact below is pinned by SHA-256 in engines.lock.json: a download that
-# does not match stops the build instead of shipping an unverified binary. When an
-# upstream release is updated on purpose, verify it and re-pin with -UpdateLock.
+# Every artifact below is pinned by SHA-256 in engines.lock.json: a download
+# that does not match stops the build instead of shipping an unverified binary.
+# A missing entry is a hard failure too - never a warning. When an upstream
+# release is updated on purpose, verify it and re-pin with -UpdateLock.
+# `-VerifyLock` only checks that this script's whole download surface is
+# covered by the lock and is what CI runs.
 $lockPath = Join-Path $PSScriptRoot 'engines.lock.json'
 $lock = if (Test-Path $lockPath) { Get-Content $lockPath -Raw | ConvertFrom-Json } else { [pscustomobject]@{ comment = ''; artifacts = [pscustomobject]@{} } }
 
@@ -59,8 +61,6 @@ function Set-PinnedHash {
     [pscustomobject]@{ comment = $lock.comment; artifacts = [pscustomobject]$sorted } |
         ConvertTo-Json -Depth 6 | ForEach-Object { [System.IO.File]::WriteAllText($lockPath, $_, (New-Object System.Text.UTF8Encoding($false))) }
 }
-
-$script:unpinned = New-Object System.Collections.Generic.List[string]
 
 function Get-Sha256Hex {
     param([Parameter(Mandatory = $true)][string]$Path)
@@ -97,8 +97,8 @@ function Assert-Artifact {
     $expected = Get-PinnedHash -Url $Url
     if (-not $expected) {
         if ($UpdateLock) { Set-PinnedHash -Url $Url -Sha256 $actual; Write-Host "  pinned now: $actual"; return }
-        if (-not $script:unpinned.Contains($Url)) { $script:unpinned.Add($Url) }
-        return
+        throw ("No pinned SHA-256 for " + $Url + "`n" +
+            "Refusing to use an unverified download. Review the source, then record it deliberately with -UpdateLock.")
     }
     if ($actual -eq $expected) { return }
     if ($UpdateLock) { Set-PinnedHash -Url $Url -Sha256 $actual; Write-Host "  re-pinned: $actual"; return }
@@ -142,10 +142,16 @@ function Find-NdkStrip {
     return $null
 }
 
+# Every URL this script can download, kept next to the pinned map so a new
+# download cannot be added without also passing -VerifyLock in CI.
 $pinned = @{
     pdfiumUrl  = 'https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F8057/pdfium-android-{0}.tgz'
     tessUrl    = 'https://github.com/agnostic-apollo/tesseract-for-android/releases/download/v1.0.0/tesseract-binaries-v1.0.0.zip'
     tessLangs  = @('eng', 'tur', 'deu', 'nld', 'fra', 'spa', 'ita', 'bul', 'osd')
+    tessDataBase = 'https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main'
+    tessdataLicenseUrl = 'https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/LICENSE'
+    tessConfigsUrl = 'https://github.com/tesseract-ocr/tesseract/archive/refs/tags/4.1.0.tar.gz'
+    liberationUrl = 'https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz'
 }
 
 $pdfiumArch = @{
@@ -154,6 +160,27 @@ $pdfiumArch = @{
     'x86_64'      = 'x64'
     'x86'         = 'x86'
 }
+
+$allArtifactUrls = @(
+    $pinned.tessUrl,
+    $pinned.tessdataLicenseUrl,
+    $pinned.tessConfigsUrl,
+    $pinned.liberationUrl
+)
+$allArtifactUrls += $pdfiumArch.Values | ForEach-Object { $pinned.pdfiumUrl -f $_ }
+$allArtifactUrls += $pinned.tessLangs | ForEach-Object { "$($pinned.tessDataBase)/$_.traineddata" }
+
+if ($VerifyLock) {
+    $missing = @($allArtifactUrls | Where-Object { -not (Get-PinnedHash -Url $_) })
+    if ($missing.Count -gt 0) {
+        throw ("engines.lock.json is missing SHA-256 entries for:`n  " + ($missing -join "`n  ") +
+            "`nReview each source, then re-run the fetch script with -UpdateLock to record the hashes.")
+    }
+    Write-Host "engines.lock.json covers all $($allArtifactUrls.Count) artifacts this script can download."
+    exit 0
+}
+
+New-Item -ItemType Directory -Force -Path $enginesDir, $assetsDir, $cacheDir | Out-Null
 
 $strip = Find-NdkStrip
 if (-not $strip) { Write-Warning 'llvm-strip not found (install the Android NDK); tesseract binaries stay unstripped and much larger' }
@@ -212,7 +239,7 @@ foreach ($lang in $pinned.tessLangs) {
         Copy-Item $local $target -Force
     } else {
         Write-Host "==> tessdata $lang"
-        Download-File -Url "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/$name" -OutFile $target
+        Download-File -Url "$($pinned.tessDataBase)/$name" -OutFile $target
     }
 }
 # runtime configs (tesseract looks these up next to the language models)
@@ -225,7 +252,7 @@ foreach ($sub in @('configs', 'tessconfigs')) {
         Copy-Item $local $target -Recurse -Force
     } else {
         Write-Host "==> tessdata $sub (download)"
-        $url = "https://github.com/tesseract-ocr/tesseract/archive/refs/tags/4.1.0.tar.gz"
+        $url = $pinned.tessConfigsUrl
         $tgz = Join-Path $cacheDir 'tesseract-src-4.1.0.tar.gz'
         Download-File -Url $url -OutFile $tgz
         $tmp = Join-Path $cacheDir 'tesseract-src'
@@ -242,7 +269,7 @@ if (-not (Test-Path $pdfTtf)) {
 }
 $license = Join-Path $tessDataAssets 'LICENSE.tessdata_fast.txt'
 if (-not (Test-Path $license)) {
-    Download-File -Url 'https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/LICENSE' -OutFile $license
+    Download-File -Url $pinned.tessdataLicenseUrl -OutFile $license
 }
 
 # ---------------------------------------------------------------- bundled fonts
@@ -273,7 +300,7 @@ if ($missingFonts.Count -gt 0) {
             Write-Host "  -> $f (copy)"
         } elseif ($f -like 'LiberationSans-*') {
             $archive = Join-Path $cacheDir 'liberation-fonts-ttf-2.1.5.tar.gz'
-            Download-File -Url 'https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz' -OutFile $archive
+            Download-File -Url $pinned.liberationUrl -OutFile $archive
             $tmp = Join-Path $cacheDir 'liberation-x'
             if (-not (Test-Path (Join-Path $tmp $f))) {
                 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $tmp
@@ -291,10 +318,6 @@ if ($missingFonts.Count -gt 0) {
 } else { Write-Host '==> bundled fonts (already present)' }
 
 # ---------------------------------------------------------------- verify
-if ($script:unpinned.Count -gt 0) {
-    Write-Warning ("not pinned yet: " + ($script:unpinned -join ', '))
-    Write-Warning 'Verify these sources, then re-run with -UpdateLock to record their SHA-256 in engines.lock.json.'
-}
 Write-Host ''
 Write-Host ('host: PowerShell ' + $PSVersionTable.PSVersion + ' (' + $ExecutionContext.SessionState.LanguageMode + ')')
 Write-Host 'Android engine status:'

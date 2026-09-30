@@ -12,7 +12,8 @@
 
 param(
     [switch]$Force,
-    [switch]$UpdateLock
+    [switch]$UpdateLock,
+    [switch]$VerifyLock
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,14 +23,16 @@ $ProgressPreference = 'SilentlyContinue'
 $root = Split-Path -Parent $PSScriptRoot
 $enginesDir = Join-Path $root 'src-tauri\resources\engines'
 $fontsDir = Join-Path $root 'crates\pdfcore\assets\fonts'
-$cacheDir = Join-Path $env:LOCALAPPDATA 'pdf-sak-cache'
-
-New-Item -ItemType Directory -Force -Path $enginesDir, $fontsDir, $cacheDir | Out-Null
+$cacheBase = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { [System.IO.Path]::GetTempPath() }
+$cacheDir = Join-Path $cacheBase 'pdf-sak-cache'
 
 # ---------------------------------------------------------------- supply chain
-# Every artifact below is pinned by SHA-256 in engines.lock.json: a download that
-# does not match stops the build instead of shipping an unverified binary. When an
-# upstream release is updated on purpose, verify it and re-pin with -UpdateLock.
+# Every artifact below is pinned by SHA-256 in engines.lock.json: a download
+# that does not match stops the build instead of shipping an unverified binary.
+# A missing entry is a hard failure too - never a warning. When an upstream
+# release is updated on purpose, verify it and re-pin with -UpdateLock.
+# `-VerifyLock` only checks that this script's whole download surface is
+# covered by the lock and is what CI runs.
 $lockPath = Join-Path $PSScriptRoot 'engines.lock.json'
 $lock = if (Test-Path $lockPath) { Get-Content $lockPath -Raw | ConvertFrom-Json } else { [pscustomobject]@{ comment = ''; artifacts = [pscustomobject]@{} } }
 
@@ -50,8 +53,6 @@ function Set-PinnedHash {
     [pscustomobject]@{ comment = $lock.comment; artifacts = [pscustomobject]$sorted } |
         ConvertTo-Json -Depth 6 | ForEach-Object { [System.IO.File]::WriteAllText($lockPath, $_, (New-Object System.Text.UTF8Encoding($false))) }
 }
-
-$script:unpinned = New-Object System.Collections.Generic.List[string]
 
 function Get-Sha256Hex {
     param([Parameter(Mandatory = $true)][string]$Path)
@@ -88,8 +89,8 @@ function Assert-Artifact {
     $expected = Get-PinnedHash -Url $Url
     if (-not $expected) {
         if ($UpdateLock) { Set-PinnedHash -Url $Url -Sha256 $actual; Write-Host "  pinned now: $actual"; return }
-        if (-not $script:unpinned.Contains($Url)) { $script:unpinned.Add($Url) }
-        return
+        throw ("No pinned SHA-256 for " + $Url + "`n" +
+            "Refusing to use an unverified download. Review the source, then record it deliberately with -UpdateLock.")
     }
     if ($actual -eq $expected) { return }
     if ($UpdateLock) { Set-PinnedHash -Url $Url -Sha256 $actual; Write-Host "  re-pinned: $actual"; return }
@@ -111,12 +112,46 @@ function Download-File {
     Move-Item -Force $tmp $OutFile
 }
 
+# Every URL this script can download, kept next to the pinned map so a new
+# download cannot be added without also passing -VerifyLock in CI.
 $pinned = @{
     pdfiumUrl = 'https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F8057/pdfium-win-x64.tgz'
     qpdfUrl   = 'https://github.com/qpdf/qpdf/releases/download/v12.4.1/qpdf-12.4.1-msvc64.zip'
     tessUrl   = 'https://github.com/UB-Mannheim/tesseract/releases/download/v5.4.0.20240606/tesseract-ocr-w64-setup-5.4.0.20240606.exe'
     tessLangs = @('eng', 'tur', 'deu', 'nld', 'fra', 'spa', 'ita', 'bul', 'osd')
+    tessDataBase = 'https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main'
+    tessdataLicenseUrl = 'https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/LICENSE'
+    pdfTtfUrl = 'https://raw.githubusercontent.com/tesseract-ocr/tesseract/main/tessdata/pdf.ttf'
+    sevenZrUrl = 'https://www.7-zip.org/a/7zr.exe'
+    sevenZipUrl = 'https://www.7-zip.org/a/7z2301-x64.exe'
+    ptSansBase = 'https://raw.githubusercontent.com/google/fonts/main/ofl/ptsans'
+    liberationUrl = 'https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz'
 }
+
+$allArtifactUrls = @(
+    $pinned.pdfiumUrl,
+    $pinned.qpdfUrl,
+    $pinned.tessUrl,
+    $pinned.tessdataLicenseUrl,
+    $pinned.pdfTtfUrl,
+    $pinned.sevenZrUrl,
+    $pinned.sevenZipUrl,
+    $pinned.liberationUrl
+)
+$allArtifactUrls += $pinned.tessLangs | ForEach-Object { "$($pinned.tessDataBase)/$_.traineddata" }
+$allArtifactUrls += @('PT_Sans-Web-Regular.ttf', 'PT_Sans-Web-Bold.ttf', 'OFL.txt') | ForEach-Object { "$($pinned.ptSansBase)/$_" }
+
+if ($VerifyLock) {
+    $missing = @($allArtifactUrls | Where-Object { -not (Get-PinnedHash -Url $_) })
+    if ($missing.Count -gt 0) {
+        throw ("engines.lock.json is missing SHA-256 entries for:`n  " + ($missing -join "`n  ") +
+            "`nReview each source, then re-run the fetch script with -UpdateLock to record the hashes.")
+    }
+    Write-Host "engines.lock.json covers all $($allArtifactUrls.Count) artifacts this script can download."
+    exit 0
+}
+
+New-Item -ItemType Directory -Force -Path $enginesDir, $fontsDir, $cacheDir | Out-Null
 
 # ---------------------------------------------------------------- pdfium
 $pdfiumDir = Join-Path $enginesDir 'pdfium'
@@ -160,12 +195,12 @@ if ($Force -or -not (Test-Path $qpdfExe)) {
 # bootstrap by extracting the official 7-Zip self-extracting installer.
 $sevenZr = Join-Path $cacheDir '7zr.exe'
 if (-not (Test-Path $sevenZr)) {
-    Download-File -Url 'https://www.7-zip.org/a/7zr.exe' -OutFile $sevenZr
+    Download-File -Url $pinned.sevenZrUrl -OutFile $sevenZr
 }
 $sevenZip = Join-Path $cacheDir '7zip-full\7z.exe'
 if (-not (Test-Path $sevenZip)) {
     $sevenInstaller = Join-Path $cacheDir '7z-installer.exe'
-    Download-File -Url 'https://www.7-zip.org/a/7z2301-x64.exe' -OutFile $sevenInstaller
+    Download-File -Url $pinned.sevenZipUrl -OutFile $sevenInstaller
     $sevenTmp = Join-Path $cacheDir '7zip-full'
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $sevenTmp
     New-Item -ItemType Directory -Force -Path $sevenTmp | Out-Null
@@ -215,13 +250,13 @@ New-Item -ItemType Directory -Force -Path $tessDataDir | Out-Null
 foreach ($lang in $pinned.tessLangs) {
     $target = Join-Path $tessDataDir "$lang.traineddata"
     if ($Force -or -not (Test-Path $target)) {
-        Download-File -Url "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/$lang.traineddata" -OutFile $target
+        Download-File -Url "$($pinned.tessDataBase)/$lang.traineddata" -OutFile $target
     }
 }
 # keep tessdata_fast license text next to the models
 $lic = Join-Path $tessDataDir 'LICENSE.tessdata_fast.txt'
 if (-not (Test-Path $lic)) {
-    Download-File -Url 'https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/LICENSE' -OutFile $lic
+    Download-File -Url $pinned.tessdataLicenseUrl -OutFile $lic
 }
 # GlyphLessFont needed by tesseract's PDF renderer (searchable PDF output);
 # it is copied out of the installer payload during extraction, with a direct
@@ -229,7 +264,7 @@ if (-not (Test-Path $lic)) {
 $pdfFont = Join-Path $tessDataDir 'pdf.ttf'
 if (-not (Test-Path $pdfFont)) {
     try {
-        Download-File -Url 'https://raw.githubusercontent.com/tesseract-ocr/tesseract/main/tessdata/pdf.ttf' -OutFile $pdfFont
+        Download-File -Url $pinned.pdfTtfUrl -OutFile $pdfFont
         Write-Host '  -> pdf.ttf (downloaded)'
     } catch {
         Write-Warning 'pdf.ttf missing: searchable PDF output may fail'
@@ -246,12 +281,12 @@ foreach ($f in @('PT_Sans-Web-Regular.ttf', 'PT_Sans-Web-Bold.ttf')) {
     $target = Join-Path $fontsDir $f
     if ($Force -or -not (Test-Path $target)) {
         Write-Host "==> font $f"
-        Download-File -Url "https://raw.githubusercontent.com/google/fonts/main/ofl/ptsans/$f" -OutFile $target
+        Download-File -Url "$($pinned.ptSansBase)/$f" -OutFile $target
     }
 }
 $ofl = Join-Path $fontsDir 'OFL.txt'
 if (-not (Test-Path $ofl)) {
-    Download-File -Url 'https://raw.githubusercontent.com/google/fonts/main/ofl/ptsans/OFL.txt' -OutFile $ofl
+    Download-File -Url "$($pinned.ptSansBase)/OFL.txt" -OutFile $ofl
 }
 
 # ---------------------------------------------------------------- fonts (Liberation Sans, OFL)
@@ -281,7 +316,7 @@ if ($liberationMissing.Count -gt 0) {
     if ($missingFromVendor.Count -gt 0) {
         Write-Host '==> liberation fonts (download)'
         $archive = Join-Path $cacheDir 'liberation-fonts-ttf-2.1.5.tar.gz'
-        Download-File -Url 'https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz' -OutFile $archive
+        Download-File -Url $pinned.liberationUrl -OutFile $archive
         $tmp = Join-Path $cacheDir 'liberation-x'
         Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $tmp
         New-Item -ItemType Directory -Force -Path $tmp | Out-Null
@@ -295,10 +330,6 @@ if ($liberationMissing.Count -gt 0) {
 } else { Write-Host '==> liberation fonts (already present)' }
 
 # ---------------------------------------------------------------- verify
-if ($script:unpinned.Count -gt 0) {
-    Write-Warning ("not pinned yet: " + ($script:unpinned -join ', '))
-    Write-Warning 'Verify these sources, then re-run with -UpdateLock to record their SHA-256 in engines.lock.json.'
-}
 Write-Host ''
 Write-Host ('host: PowerShell ' + $PSVersionTable.PSVersion + ' (' + $ExecutionContext.SessionState.LanguageMode + ')')
 Write-Host 'Engine status:'

@@ -10,8 +10,6 @@ import android.util.Log
 import androidx.activity.enableEdgeToEdge
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
-import java.io.OutputStream
 import java.util.UUID
 
 class MainActivity : TauriActivity() {
@@ -43,19 +41,9 @@ class MainActivity : TauriActivity() {
   // read. Each incoming stream is copied into cacheDir/incoming/<uuid>/ under
   // its display name and its absolute path is appended to
   // cacheDir/pending-open.txt, which android_intent.rs drains for the webview.
+  // The untrusted-input handling lives in [IncomingFiles], covered by JVM
+  // unit tests (src/test/.../IncomingFilesTest.kt).
   // ---------------------------------------------------------------------------
-
-  /** Extensions the frontend can route. Anything else is logged and skipped. */
-  private val openableExtensions = setOf(
-    "docx", "odt", "rtf", "txt", "md", "html",
-    "xlsx", "ods", "csv", "tsv",
-    "pptx", "odp",
-    "pdf", "osed", "ospr", "osdt", "oswk",
-    "png", "jpg", "jpeg", "webp", "bmp", "gif", "tif", "tiff",
-  )
-
-  /** A single shared document may not exceed 256 MB. */
-  private val maxIncomingBytes = 256L * 1024L * 1024L
 
   private fun importOpenWithIntent(intent: Intent?) {
     if (intent == null) return
@@ -112,9 +100,8 @@ class MainActivity : TauriActivity() {
       Log.w(TAG, "open-with: no usable file name for $uri")
       return
     }
-    val extension = displayName.substringAfterLast('.', "").lowercase()
-    if (extension.isEmpty() || extension !in openableExtensions) {
-      Log.w(TAG, "open-with: rejected '.$extension' for $uri")
+    if (!IncomingFiles.isOpenableName(displayName)) {
+      Log.w(TAG, "open-with: rejected '${displayName.substringAfterLast('.', "")}' for $uri")
       return
     }
     val directory = File(File(cacheDir, "incoming"), UUID.randomUUID().toString())
@@ -131,7 +118,7 @@ class MainActivity : TauriActivity() {
           return
         }
         destination.outputStream().use { output ->
-          if (!copyCapped(input, output, maxIncomingBytes)) {
+          if (!IncomingFiles.copyCapped(input, output)) {
             Log.w(TAG, "open-with: $displayName exceeds the 256 MB limit")
             destination.delete()
             directory.delete()
@@ -150,14 +137,14 @@ class MainActivity : TauriActivity() {
 
   /** Resolves the provider's display name (OpenableColumns), sanitized. */
   private fun queryDisplayName(uri: Uri): String? {
-    if (uri.scheme == "file") return sanitizeDisplayName(uri.lastPathSegment)
+    if (uri.scheme == "file") return IncomingFiles.sanitizeDisplayName(uri.lastPathSegment)
     var cursor: Cursor? = null
     try {
       cursor = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
       if (cursor != null && cursor.moveToFirst()) {
         val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
         if (index >= 0) {
-          val name = sanitizeDisplayName(cursor.getString(index))
+          val name = IncomingFiles.sanitizeDisplayName(cursor.getString(index))
           if (name != null) return name
         }
       }
@@ -168,36 +155,8 @@ class MainActivity : TauriActivity() {
     }
     // Some providers only expose a document id as the last path segment; use it
     // when it at least looks like a file name.
-    val fallback = sanitizeDisplayName(uri.lastPathSegment)
+    val fallback = IncomingFiles.sanitizeDisplayName(uri.lastPathSegment)
     return if (fallback != null && fallback.contains('.')) fallback else null
-  }
-
-  /**
-   * Provider names are untrusted: keep the base name only, never path
-   * separators or "..", so the cache copy can never escape its directory.
-   */
-  private fun sanitizeDisplayName(raw: String?): String? {
-    var name = raw?.trim().orEmpty()
-    if (name.isEmpty()) return null
-    name = name.substringAfterLast('/').substringAfterLast('\\')
-    name = name.replace("..", "_")
-    name = name.replace(Regex("[\\\\/:*?\"<>|]"), "_")
-    name = name.trim().trimStart('.')
-    return name.ifEmpty { null }
-  }
-
-  /** Copies at most `limit` bytes; returns false when the stream is larger. */
-  private fun copyCapped(input: InputStream, output: OutputStream, limit: Long): Boolean {
-    val buffer = ByteArray(64 * 1024)
-    var total = 0L
-    while (true) {
-      val read = input.read(buffer)
-      if (read < 0) break
-      total += read
-      if (total > limit) return false
-      output.write(buffer, 0, read)
-    }
-    return true
   }
 
   /** Appends one absolute path per line; the Rust side drains the file. */

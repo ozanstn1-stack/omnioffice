@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability set for the main window. The fs:allow-* entries grant the commands, not a path scope: no standing scope is handed to the webview, so the frontend can only read and write paths the user picked in a dialog (the dialog plugin adds the picked path to the fs scope for that session). Everything else goes through the Rust commands. The android-fs scopes below are the only standing path grants and stay inside the app directories.",
+  "description": "Default capability set for the main window. The fs:allow-* entries grant the commands, not a path scope: no standing scope is handed to the webview, so the frontend can only read and write paths the user picked in a dialog (the dialog plugin adds the picked path to the fs scope for that session). Everything else goes through the Rust commands. The android-fs grants below cover only the app's private directories ($APPDATA, $APPCACHE, $TEMP). User-visible documents are read from and written to the Storage Access Framework (content:// URIs the user picked), which needs no standing path grant: no persistent access to shared storage (public Documents/Downloads or other apps' files) exists.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -16,19 +16,16 @@
     "fs:allow-write-file",
     "fs:allow-exists",
     "fs:allow-mkdir",
-    "opener:allow-open-path",
-    "opener:allow-open-url",
-    "opener:allow-reveal-item-in-dir",
     "os:allow-platform",
     "os:allow-version",
     "android-fs:default",
     {
       "identifier": "android-fs:scope",
-      "allow": ["$APPDATA/**", "$APPCACHE/**", "$DOCUMENT/**", "$DOWNLOAD/**", "$TEMP/**"]
+      "allow": ["$APPDATA/**", "$APPCACHE/**", "$TEMP/**"]
     },
     {
       "identifier": "android-fs:allow-copy-file",
-      "allow": ["$APPDATA/**", "$APPCACHE/**", "$DOCUMENT/**", "$TEMP/**"]
+      "allow": ["$APPDATA/**", "$APPCACHE/**", "$TEMP/**"]
     }
   ]
 }

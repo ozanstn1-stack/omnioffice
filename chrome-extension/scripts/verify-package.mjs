@@ -3,7 +3,8 @@
 // extension can only be loaded through chrome://extensions by hand; this
 // script checks everything that *can* be verified automatically:
 //
-//   1. manifest.json is MV3, complete and requests no remote/host powers
+//   1. manifest.json is MV3, complete, requests no standing host powers and
+//      only optional (per-origin, user-consented) host permissions
 //   2. every referenced file exists in dist/
 //   3. the bundle contains no remote code or remote network references
 //   4. the worker, fonts, cmaps and standard fonts are present
@@ -52,7 +53,18 @@ if (!manifest.background?.service_worker) fail("background service worker missin
 if (!manifest.action) fail("action (toolbar button) missing");
 const csp = manifest.content_security_policy?.extension_pages ?? "";
 if (!csp.includes("script-src 'self'")) fail("CSP must restrict scripts to 'self'");
-if (csp.includes("http")) fail("CSP must not allow remote origins");
+if (/script-src[^;]*https?:/.test(csp)) fail("CSP must not allow remote scripts");
+// Remote connect-src is only acceptable when it is gated by optional host
+// permissions (the context-menu download asks for one origin at a time).
+if (/connect-src[^;]*https?:/.test(csp) && !manifest.optional_host_permissions?.length) {
+  fail("remote connect-src requires optional_host_permissions");
+}
+if (/connect-src[^;]*https?:/.test(csp) && manifest.host_permissions?.length) {
+  fail("remote connect-src must not come with standing host permissions");
+}
+if (!manifest.optional_host_permissions?.length) {
+  fail("optional_host_permissions missing: the context-menu download cannot request its origin");
+}
 
 // 2. referenced files exist
 const referenced = [
@@ -88,6 +100,12 @@ const namespaceAllowList = [
   "https://developer.mozilla.org/",
   "https://react.dev/",
   "https://fonts.google.com/",
+  // RFC 2606 reserved domains: the self test uses them as inert fixtures
+  // (the fake fetch never leaves the page and the domain cannot resolve).
+  "https://example.com",
+  "http://example.com",
+  "https://example.invalid",
+  "http://example.invalid",
 ];
 const remoteFetchPatterns = [
   /\bfetch\(\s*["'`]https?:\/\//i,
@@ -128,6 +146,13 @@ for (const file of files) total += statSync(file).size;
 notes.push(`files: ${files.length}`);
 notes.push(`size: ${(total / 1024 / 1024).toFixed(2)} MB`);
 notes.push(`remote references found: ${remoteHits}`);
+// Budget: the extension bundles pdf.js, its worker, cmaps and fonts; 9 MB is
+// well above today's ~6.4 MB and still catches a dependency that doubles the
+// package by accident.
+const MAX_PACKAGE_BYTES = 9 * 1024 * 1024;
+if (total > MAX_PACKAGE_BYTES) {
+  fail(`package is ${(total / 1024 / 1024).toFixed(2)} MB (budget ${(MAX_PACKAGE_BYTES / 1024 / 1024).toFixed(0)} MB)`);
+}
 
 console.log("Extension package verification");
 for (const note of notes) console.log(`  · ${note}`);

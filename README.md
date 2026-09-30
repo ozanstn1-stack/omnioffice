@@ -10,9 +10,40 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.1.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.1.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.1.1
+
+Security and supply-chain hardening on top of 3.1.0:
+
+- **Transport security is enforced, not assumed.** AI provider and WebDAV
+  endpoints must be `https://`; plain `http://` is accepted only for loopback
+  servers (`localhost` / `127.0.0.1` / `::1`) and, for WebDAV, only with an
+  explicit opt-in in the settings. Redirects that downgrade to a public
+  `http://` endpoint are refused before the credentials (Basic Auth / Bearer
+  token) can leave the machine.
+- **Engine downloads are fully pinned.** Both previously missing SHA-256
+  entries are in `engines.lock.json` and a missing pin now fails the build
+  instead of printing a warning; CI runs `-VerifyLock` over the whole download
+  surface of both fetch scripts.
+- **The Chrome extension context menu works.** "Open with PDF Swiss Army
+  Knife" now hands the linked PDF to the app, which asks for consent, requests
+  the optional host permission for that one origin and opens the downloaded
+  file. Hostile `javascript:` / `data:` / `file:` links are ignored; covered
+  by unit tests and a headless-Chrome E2E check.
+- **Android storage access narrowed.** The WebView no longer holds a standing
+  grant to `$DOCUMENT/**` / `$DOWNLOAD/**`; intermediate files live in
+  app-private data/cache and every user-visible file goes through SAF. The
+  open-with intent pipeline (untrusted names, extension whitelist, size cap)
+  has JVM unit tests run by the release build.
+- **Smaller startup, guarded maintenance.** Screens load lazily (entry bundle
+  315 KB → 155 KB gzip) with a CI bundle budget, the ESLint gate is now a
+  per-rule baseline with four accessibility rules promoted to error, WebDAV
+  transfers stream instead of buffering up to 512 MB, OS open/reveal goes
+  through validated document-only commands, and every GitHub Action is pinned
+  to a commit SHA.
 
 ## What's new in 3.1.0
 
@@ -288,13 +319,15 @@ pdf and `.oswk`.
 
 **APK architectures.** `arm64-v8a` and `armeabi-v7a` release APKs are built
 and signed with the project release keystore; AABs are produced for both.
-minSdk 24, targetSdk 36, `versionName 3.1.0`, `versionCode 3001000`.
+minSdk 24, targetSdk 36, `versionName 3.1.1`, `versionCode 3001001`.
 
 **Storage behavior.** Documents opened from other apps are copied into app
 cache (extension and size validated) before parsing. Exports go to a SAF
-location you pick, or to the public Downloads folder. The vault imports
-copies into app-private storage; it does not watch live folders. Temporary
-files are cleaned up by the app; backups are disabled (`allowBackup=false`).
+location you pick, or to the public Downloads folder. Intermediates stay in
+app-private data/cache directories: the WebView has no standing access to
+shared storage. The vault imports copies into app-private storage; it does
+not watch live folders. Temporary files are cleaned up by the app; backups are
+disabled (`allowBackup=false`).
 
 **AI/privacy behavior.** AI is off until you enable it and configure a
 provider; every request shows what is sent. API keys on Android use a
@@ -497,6 +530,19 @@ trusting a visual check.
 - Only `aicore` (AI) and `synccore` (sync) perform network requests, and only
   after the user explicitly enables them; the AI activity line shows the
   provider and the character count being sent.
+- **Transport security**: provider and WebDAV URLs must be `https://`. Plain
+  `http://` is accepted only for loopback servers, and WebDAV requires an
+  explicit opt-in for it; redirects to a public `http://` endpoint are
+  refused, so Basic Auth credentials, Bearer tokens and document bytes never
+  travel in cleartext to a remote host.
+- **Supply chain**: engine binaries, fonts and language models are pinned by
+  SHA-256 in `engines.lock.json`; a missing or mismatched hash fails the build
+  (no warning-and-continue path), and CI verifies that the lock covers every
+  download both fetch scripts can perform.
+- **OS integration**: the WebView has no opener permission; opening or
+  revealing a file goes through Rust commands that only accept existing
+  documents with extensions the app itself produces, so a compromised
+  renderer cannot ask the shell to launch an executable.
 - Macros and embedded scripts are never executed; PDF JavaScript is never
   executed by forms; documents always open with macros disabled.
 - ZIP extraction is bounded (entry count, size, compression ratio) to resist
@@ -568,10 +614,12 @@ These are real and honest:
   engine escape. Installation is folder-based (no zip), and `doc.applyEdits`
   works on whole runs/cells.
 - **Android**: no foreground service (long jobs run only while the process
-  lives; state survives death as `interrupted`), no on-device automated test
-  run is claimed in the repository, `osed/ospr/osdt` are accepted by the
-  intent filter but the engine does not understand them yet, and the
-  launcher label is still "PDF Swiss Army Knife".
+  lives; state survives death as `interrupted`), the intent pipeline has JVM
+  unit tests (`./gradlew :app:testDebugUnitTest`, run by the Android release
+  workflow) but no on-device/emulator UI test run is claimed in the
+  repository, `osed/ospr/osdt` are accepted by the intent filter but the
+  engine does not understand them yet, and the launcher label is still
+  "PDF Swiss Army Knife".
 - Interoperability with Microsoft Office/LibreOffice was validated
   structurally (package parts, content types, relationships, independent
   readers) plus headless LibreOffice conversion during development, not by
@@ -589,6 +637,12 @@ embedded workbook; ODT/RTF notes and revisions; sandboxed plugin runtime;
 WebDAV sync with conflict detection; Android intents, SAF, vault import,
 persistent jobs and touch UX; data-loss protection; golden-file and
 performance contracts; release assets for Windows and Android.
+
+Hardened in 3.1.1: HTTPS-only AI/WebDAV endpoints with a loopback exception
+and downgrade-proof redirects, fully pinned engine downloads, a working
+extension context menu, app-private Android storage, streaming WebDAV
+transfers, lazy-loaded screens with a CI bundle budget, a per-rule lint
+baseline and SHA-pinned CI actions.
 
 Next (architecture prepared, not implemented):
 

@@ -549,6 +549,8 @@ export interface SyncConfigView {
   provider: SyncProviderId;
   url: string;
   username: string;
+  /** Explicit opt-in for plain HTTP, honored for loopback servers only. */
+  allowInsecureHttp: boolean;
   remoteDir: string;
   hasPassword: boolean;
   passwordStorage: "dpapi" | "plain" | "none";
@@ -559,6 +561,7 @@ export interface SyncSaveInput {
   provider: SyncProviderId;
   url: string;
   username: string;
+  allowInsecureHttp: boolean;
   /** null keeps the stored password, "" clears it, any value replaces it. */
   password: string | null;
   remoteDir: string;

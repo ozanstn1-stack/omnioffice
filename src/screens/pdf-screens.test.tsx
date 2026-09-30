@@ -78,7 +78,10 @@ const invoke = vi.fn(async (command: string) => {
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invoke(...(args as [string])) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
-vi.mock("@tauri-apps/api/path", () => ({ documentDir: vi.fn(async () => "C:/docs") }));
+vi.mock("@tauri-apps/api/path", () => ({
+  documentDir: vi.fn(async () => "C:/docs"),
+  appDataDir: vi.fn(async () => "C:/appdata"),
+}));
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: vi.fn(async () => null),
   save: vi.fn(async () => "C:/filled.pdf"),
@@ -309,21 +312,28 @@ describe("reader touch zoom", () => {
   });
 
   it("zooms to 200 % when the page area is double-tapped with touch", async () => {
-    render(<Reader initialFiles={["C:/a.pdf"]} dragging={false} />);
-    await waitFor(() => expect(document.querySelector(".reader-scroll")).not.toBeNull());
-    const scroller = document.querySelector<HTMLElement>(".reader-scroll")!;
+    let now = 1000;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => (now += 50));
+    try {
+      render(<Reader initialFiles={["C:/a.pdf"]} dragging={false} />);
+      await waitFor(() => expect(document.querySelector(".reader-scroll")).not.toBeNull());
+      const scroller = document.querySelector<HTMLElement>(".reader-scroll")!;
 
-    const tap = (pointerId: number) => {
-      fireEvent.pointerDown(scroller, { pointerId, pointerType: "touch", button: 0, clientX: 100, clientY: 100 });
-      fireEvent.pointerUp(scroller, { pointerId, pointerType: "touch", clientX: 100, clientY: 100 });
-    };
+      const tap = (pointerId: number) => {
+        fireEvent.pointerDown(scroller, { pointerId, pointerType: "touch", button: 0, clientX: 100, clientY: 100 });
+        fireEvent.pointerUp(scroller, { pointerId, pointerType: "touch", clientX: 100, clientY: 100 });
+      };
 
-    tap(1);
-    tap(2);
-    expect(screen.getByRole("button", { name: "200%" })).toBeInTheDocument();
+      tap(1);
+      tap(2);
+      expect(screen.getByRole("button", { name: "200%" })).toBeInTheDocument();
 
-    tap(3);
-    tap(4);
-    expect(screen.getByRole("button", { name: /fit width/i })).toBeInTheDocument();
+      now += 500;
+      tap(3);
+      tap(4);
+      expect(screen.getByRole("button", { name: /fit width/i })).toBeInTheDocument();
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 });

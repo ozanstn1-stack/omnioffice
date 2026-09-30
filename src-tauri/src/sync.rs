@@ -27,7 +27,7 @@ use synccore::metadata::{
     self, unknown_cloud_hash, BaseState, SyncMeta, SyncState,
 };
 use synccore::merge::{self, MergeAction, Resolution};
-use synccore::webdav::{normalize_remote_dir, normalize_remote_name, WebDavProvider};
+use synccore::webdav::{normalize_remote_dir, normalize_remote_name, promote_staged_download, WebDavProvider};
 use synccore::{RemoteEntry, SyncError, SyncProvider, MAX_TRANSFER_BYTES};
 use tauri::{AppHandle, Manager};
 
@@ -110,6 +110,11 @@ pub struct SyncConfigFile {
     pub url: String,
     #[serde(default)]
     pub username: String,
+    /// Explicit opt-in for the plain-HTTP loopback exception. Even with this
+    /// set, `normalize_base_url_with_options` only accepts `http://` for
+    /// loopback hosts; public HTTP endpoints are always refused.
+    #[serde(default)]
+    pub allow_insecure_http: bool,
     #[serde(default = "default_remote_dir")]
     pub remote_dir: String,
 }
@@ -129,6 +134,7 @@ impl Default for SyncConfigFile {
             provider: default_provider(),
             url: String::new(),
             username: String::new(),
+            allow_insecure_http: false,
             remote_dir: default_remote_dir(),
         }
     }
@@ -142,6 +148,9 @@ pub struct SyncConfigView {
     pub provider: String,
     pub url: String,
     pub username: String,
+    /// True when the user explicitly allowed plain HTTP for a loopback
+    /// server. Public HTTP endpoints are refused regardless.
+    pub allow_insecure_http: bool,
     pub remote_dir: String,
     pub has_password: bool,
     /// "dpapi" (OS encrypted), "plain" (no OS encryption available) or "none".
@@ -157,6 +166,9 @@ pub struct SyncSaveInput {
     pub url: String,
     #[serde(default)]
     pub username: String,
+    /// Explicit opt-in for plain HTTP on a loopback server only.
+    #[serde(default)]
+    pub allow_insecure_http: bool,
     /// `None` keeps the stored password; `Some("")` clears it.
     #[serde(default)]
     pub password: Option<String>,
@@ -232,6 +244,7 @@ fn config_view(app: &AppHandle) -> SyncConfigView {
         provider: config.provider,
         url: config.url,
         username: config.username,
+        allow_insecure_http: config.allow_insecure_http,
         remote_dir: config.remote_dir,
         has_password,
         password_storage: password_storage(app),
@@ -289,8 +302,13 @@ fn webdav_context(app: &AppHandle) -> Result<WebDavContext, PdfError> {
                 .ok()
                 .and_then(|path| secret::load_api_key(&path).ok())
                 .unwrap_or_default();
-            let provider =
-                WebDavProvider::new(&config.url, &config.username, &password).map_err(sync_error)?;
+            let provider = WebDavProvider::new_with_options(
+                &config.url,
+                &config.username,
+                &password,
+                config.allow_insecure_http,
+            )
+            .map_err(sync_error)?;
             Ok(WebDavContext { config, provider })
         }
     }
@@ -430,9 +448,12 @@ fn evaluate(app: &AppHandle, local_path: &Path) -> Result<Evaluated, PdfError> {
                     // so the cloud copy changed - no need to fetch it.
                     cloud_sha256 = Some(unknown_cloud_hash(entry.size, entry.etag.as_deref()));
                 } else {
-                    let (bytes, downloaded_etag) =
-                        context.provider.get(&remote_path).map_err(sync_error)?;
-                    cloud_sha256 = Some(metadata::hash_bytes(&bytes));
+                    // Hash the cloud copy without keeping it in memory.
+                    let (hash, _, downloaded_etag) = context
+                        .provider
+                        .get_to_writer(&remote_path, &mut std::io::sink())
+                        .map_err(sync_error)?;
+                    cloud_sha256 = Some(hash);
                     if downloaded_etag.is_some() {
                         cloud_etag = downloaded_etag;
                     }
@@ -573,22 +594,22 @@ fn upload_core(
         ))));
     }
 
-    // Re-read the file once; the same buffer is hashed and uploaded.
-    let (bytes, sha256) = metadata::read_capped(local_path).map_err(sync_error)?;
-
     // Create the remote folder chain on first use (no-op when it exists).
     context
         .provider
         .ensure_dir(&context.config.remote_dir)
         .map_err(sync_error)?;
 
+    // Stream the local file to the server: the hash is computed while the
+    // bytes travel, so a 512 MB document never sits in memory.
+    let (sha256, uploaded_size, new_etag) = context
+        .provider
+        .put_file(&evaluated.remote_path, local_path, evaluated.cloud_etag.as_deref())
+        .map_err(sync_error)?;
+
     // Conditional write: when the server still has the version we saw, the
     // write succeeds; otherwise 412 -> SyncError::Conflict.
     let previous = evaluated.meta.as_ref();
-    let new_etag = context
-        .provider
-        .put(&evaluated.remote_path, &bytes, evaluated.cloud_etag.as_deref())
-        .map_err(sync_error)?;
     let final_etag = new_etag.or(evaluated.cloud_etag.clone());
 
     commit_meta(
@@ -603,8 +624,8 @@ fn upload_core(
     let mut view = status_view(&evaluated, SyncState::Synced, Some("Uploaded to the cloud.".to_string()));
     view.local_sha256 = sha256.clone();
     view.cloud_sha256 = Some(sha256);
-    view.remote_size = Some(bytes.len() as u64);
-    view.local_size = bytes.len() as u64;
+    view.remote_size = Some(uploaded_size);
+    view.local_size = uploaded_size;
     view.remote_etag = final_etag.clone();
     view.base_etag = final_etag;
     view.base_sha256 = view.cloud_sha256.clone();
@@ -632,13 +653,25 @@ fn download_core(
         return Err(PdfError::NotFound(parent.display().to_string()));
     }
 
-    let (bytes, etag) = context.provider.get(&remote_path).map_err(sync_error)?;
-    let cloud_sha256 = metadata::hash_bytes(&bytes);
-    let cloud_size = bytes.len() as u64;
-
     let config_dir = config_dir(app)?;
     let previous = metadata::load_meta(&config_dir, local_path);
     let local_exists = local_path.exists();
+    let local_sha256 = if local_exists {
+        Some(metadata::hash_file(local_path).map_err(sync_error)?.0)
+    } else {
+        None
+    };
+
+    // Stream the cloud copy into a temporary sibling first: the decision to
+    // replace the local file is made after hashing, and nothing is written
+    // into place until that decision is final.
+    let (staged, cloud_sha256, cloud_size, etag) = context
+        .provider
+        .stage_download(&remote_path, local_path)
+        .map_err(sync_error)?;
+    let discard_staged = |staged: &Path| {
+        let _ = std::fs::remove_file(staged);
+    };
 
     // Builds the post-action view without another directory listing: after a
     // successful download the local copy holds exactly the downloaded bytes.
@@ -662,12 +695,12 @@ fn download_core(
         view
     };
 
-    if local_exists {
-        let (local_sha256, _) = metadata::hash_file(local_path).map_err(sync_error)?;
-        if local_sha256 == cloud_sha256 {
+    if let (true, Some(local_sha256)) = (local_exists, local_sha256.as_ref()) {
+        if local_sha256 == &cloud_sha256 {
             // Same bytes: adopt the etag (and hash) as the new base and report
             // success without writing. Without this, a stale base hash would
             // later be misread as "both sides changed".
+            discard_staged(&staged);
             let base_current = previous
                 .as_ref()
                 .and_then(|meta| meta.base.as_ref())
@@ -687,9 +720,10 @@ fn download_core(
         }
         let local_changed = previous
             .as_ref()
-            .map(|meta| meta.content_sha256 != local_sha256)
+            .map(|meta| meta.content_sha256 != *local_sha256)
             .unwrap_or(true);
         if local_changed && !force {
+            discard_staged(&staged);
             return Err(sync_error(SyncError::Conflict(format!(
                 "{} has local changes that a download would replace. Use the resolve panel (Keep cloud / Keep both) to decide.",
                 file_name
@@ -697,7 +731,7 @@ fn download_core(
         }
     }
 
-    metadata::write_atomic(local_path, &bytes).map_err(sync_error)?;
+    promote_staged_download(&staged, local_path).map_err(sync_error)?;
     commit_meta(app, local_path, previous.as_ref(), &cloud_sha256, etag.clone(), base_revision(previous.as_ref()))?;
     Ok(downloaded_view("Downloaded from the cloud."))
 }
@@ -721,7 +755,7 @@ pub fn sync_save_config(app: AppHandle, input: SyncSaveInput) -> Result<SyncConf
     .to_string();
     let url = input.url.trim().to_string();
     if !url.is_empty() {
-        synccore::webdav::normalize_base_url(&url).map_err(sync_error)?;
+        synccore::webdav::normalize_base_url_with_options(&url, input.allow_insecure_http).map_err(sync_error)?;
     }
     if input.enabled && provider == "webdav" && url.is_empty() {
         return Err(PdfError::coded(
@@ -742,6 +776,7 @@ pub fn sync_save_config(app: AppHandle, input: SyncSaveInput) -> Result<SyncConf
         provider,
         url,
         username: input.username.trim().to_string(),
+        allow_insecure_http: input.allow_insecure_http,
         remote_dir,
     };
     save_config_file(&app, &config)?;

@@ -37,6 +37,7 @@ fn ai_error(error: AiError) -> PdfError {
         AiError::Server(_) => ErrorCode::AiServerError,
         AiError::InvalidResponse => ErrorCode::AiInvalidResponse,
         AiError::ProviderUnreachable(_) => ErrorCode::AiNetwork,
+        AiError::InvalidBaseUrl(_) => ErrorCode::InvalidInput,
         AiError::Unsupported(_) => ErrorCode::Unsupported,
     };
     PdfError::coded(code, error.to_string())
@@ -286,11 +287,12 @@ pub fn ai_get_settings(app: AppHandle) -> AiSettingsView {
 #[tauri::command]
 pub fn ai_save_settings(app: AppHandle, input: AiSettingsInput) -> Result<AiSettingsView, PdfError> {
     let file = AiSettingsFile {
-        base_url: if input.base_url.trim().is_empty() {
-            aicore::DEFAULT_BASE_URL.to_string()
+        base_url: aicore::normalize_base_url(if input.base_url.trim().is_empty() {
+            aicore::DEFAULT_BASE_URL
         } else {
-            input.base_url.trim().to_string()
-        },
+            input.base_url.trim()
+        })
+        .map_err(ai_error)?,
         model: if input.model.trim().is_empty() {
             aicore::DEFAULT_MODEL.to_string()
         } else {

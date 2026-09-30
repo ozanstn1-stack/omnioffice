@@ -17,7 +17,7 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
-import { Badge, Button, Card, EmptyState, Field, IconButton, Spinner, TextInput, Toggle } from "../components/ui";
+import { Badge, Button, Card, Checkbox, EmptyState, Field, IconButton, Spinner, TextInput, Toggle } from "../components/ui";
 import { Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useRecent, useToasts } from "../lib/store";
@@ -62,6 +62,7 @@ interface Draft {
   url: string;
   username: string;
   password: string;
+  allowInsecureHttp: boolean;
   remoteDir: string;
 }
 
@@ -78,6 +79,7 @@ function draftFrom(config: SyncConfigView): Draft {
     url: config.url,
     username: config.username,
     password: "",
+    allowInsecureHttp: config.allowInsecureHttp,
     remoteDir: config.remoteDir,
   };
 }
@@ -319,6 +321,7 @@ export function Sync() {
         provider: draft.provider,
         url: draft.url,
         username: draft.username,
+        allowInsecureHttp: draft.allowInsecureHttp,
         // Empty field + existing password = keep it (null); a previously
         // empty field with no stored password is also null.
         password: draft.password.length > 0 ? draft.password : config?.hasPassword ? null : "",
@@ -462,6 +465,12 @@ export function Sync() {
                   />
                 </Field>
               </div>
+              <Checkbox
+                checked={draft?.allowInsecureHttp ?? false}
+                onChange={(value) => setDraft((current) => (current ? { ...current, allowInsecureHttp: value } : current))}
+                label={t("sync.allowInsecureHttp")}
+              />
+              <p className="text-xs muted -mt-1">{t("sync.allowInsecureHttpHint")}</p>
               <p className="text-xs muted">{t("sync.passwordHint")}</p>
 
               {settingsError ? (
