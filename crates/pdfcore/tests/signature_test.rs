@@ -731,3 +731,47 @@ fn a_byte_range_that_cannot_be_added_up_is_reported_not_panicked_on() {
     );
 }
 
+#[test]
+fn signing_an_already_signed_pdf_keeps_the_first_signature() {
+    // The signing path writes an incremental update, so a second signature must
+    // land in a new revision and leave the first one intact. Long-term
+    // validation and counter-signatures both depend on this property.
+    let first = sign_with(ecdsa_identity(), &[], &sign_options());
+    let second = sign::sign_pdf(
+        &first,
+        &rsa_identity().cert_der,
+        &rsa_identity().key_pkcs8_der,
+        &[],
+        &sign_options(),
+    )
+    .expect("the second signature must be written as an update");
+
+    assert!(second.starts_with(&first), "the original revision must stay byte-identical");
+
+    let report = sign::verify_signatures(&second);
+    assert_eq!(
+        report.signatures.len(),
+        2,
+        "both signatures must be found: {:?}",
+        report.signatures.iter().map(|info| info.field_name.clone()).collect::<Vec<_>>()
+    );
+    for info in &report.signatures {
+        assert!(info.digest_matches, "digest mismatch: {:?}", info.notes);
+        assert!(info.signature_valid, "signature invalid: {:?}", info.notes);
+        // An appended revision is not a modification: both signatures stay
+        // valid, the first one for the revision it signed.
+        assert!(!info.modified_after_signing, "reported as modified: {:?}", info.notes);
+    }
+    assert_eq!(
+        report.signatures.iter().filter(|info| info.superseded_by_later_revision).count(),
+        1,
+        "exactly the first signature is superseded by the second"
+    );
+    assert_eq!(
+        report.signatures.iter().filter(|info| info.covers_whole_document).count(),
+        1,
+        "only the last signature covers the whole file"
+    );
+}
+
+

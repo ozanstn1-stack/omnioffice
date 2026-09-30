@@ -429,6 +429,12 @@ export interface SignatureInfo {
   fieldName: string;
   subFilter: string;
   coversWholeDocument: boolean;
+  /**
+   * Bytes were appended after this signature's revision (a counter-signature,
+   * validation data, any incremental update). The signature is still valid for
+   * the revision it signed - it is simply not the last revision any more.
+   */
+  supersededByLaterRevision: boolean;
   modifiedAfterSigning: boolean;
   digestMatches: boolean;
   signatureValid: boolean;
@@ -481,6 +487,23 @@ export interface SigningCertificateSummary {
 }
 
 export const pdfVerifySignatures = (path: string) => invoke<SignatureReport>("pdf_verify_signatures", { path });
+
+/** What the validation-data archiving wrote into the document. */
+export interface LtvReport {
+  signatures: number;
+  certificates: number;
+  vriKeys: string[];
+  warnings: string[];
+}
+
+/**
+ * Archives the validation data of every signature (the offline half of PAdES
+ * B-LT): the certificate chains are written into a /DSS dictionary as an
+ * incremental update, so every existing signature keeps covering exactly what
+ * it signed.
+ */
+export const pdfArchiveValidationData = (input: string, output?: string) =>
+  invoke<LtvReport>("pdf_archive_validation_data", { input, output: output ?? null });
 
 export const pdfSign = (payload: {
   input: string;

@@ -121,9 +121,11 @@ const en: Dict = {
   "ai.title": "AI Assistant (DeepSeek)",
   "ai.subtitle": "Summaries, translation, document Q&A and text cleanup — using your own DeepSeek API key.",
   "ai.notConfigured": "AI is not set up",
-  "ai.notConfiguredBody": "Add your DeepSeek API key in Settings to use summaries, translation, Q&A and metadata suggestions.",
+  "ai.notConfiguredBody":
+    "Add your DeepSeek API key in Settings to use summaries, translation, Q&A and metadata suggestions.",
   "ai.privacyTitle": "What leaves your device",
-  "ai.privacyBody": "Only the extracted text of this document is sent to DeepSeek (api.deepseek.com) with your key — never the file, never passwords. Nothing is sent until you press Run, and every other tool stays fully offline.",
+  "ai.privacyBody":
+    "Only the extracted text of this document is sent to DeepSeek (api.deepseek.com) with your key — never the file, never passwords. Nothing is sent until you press Run, and every other tool stays fully offline.",
   "ai.consent": "I understand that the extracted text will be sent to DeepSeek",
   "ai.consentShort": "Data notice confirmed for this document",
   "ai.consentChange": "change",
@@ -135,7 +137,7 @@ const en: Dict = {
   "ai.tabCleanup": "Repair OCR text",
   "ai.tabMetadata": "Metadata ideas",
   "ai.language": "Output language",
-  "ai.languageHint": "\"auto\" keeps the document language (e.g. tr, English)",
+  "ai.languageHint": '"auto" keeps the document language (e.g. tr, English)',
   "ai.length": "Length",
   "ai.lengthShort": "Short",
   "ai.lengthMedium": "Medium",
@@ -170,7 +172,8 @@ const en: Dict = {
   "ai.keyPlain": "API key stored unencrypted (DPAPI unavailable)",
   "ai.keyMissing": "No API key stored",
   "ai.thinkingTitle": "Thinking (model reasoning)",
-  "ai.thinkingHint": "DeepSeek V4 is reasoning; the answer follows after the thinking trace. If the token budget runs out while thinking, this trace is shown as the result instead of an error.",
+  "ai.thinkingHint":
+    "DeepSeek V4 is reasoning; the answer follows after the thinking trace. If the token budget runs out while thinking, this trace is shown as the result instead of an error.",
   "ai.showThinking": "Show thinking",
   "ai.hideThinking": "Hide thinking",
   "ai.savedToLibrary": "Saved to the AI library",
@@ -187,7 +190,8 @@ const en: Dict = {
   "library.clearAll": "Clear library",
   "library.cleared": "AI library cleared",
   "library.empty": "No saved AI results yet",
-  "library.emptyHint": "Run a summary, translation, Q&A, OCR repair or metadata suggestion — results are stored here automatically.",
+  "library.emptyHint":
+    "Run a summary, translation, Q&A, OCR repair or metadata suggestion — results are stored here automatically.",
   "library.selectHint": "Select a saved result on the left to read it, open the Markdown file, or export a copy.",
   "library.exportAs": "Save as…",
   "library.exported": "Saved",
@@ -225,7 +229,8 @@ const en: Dict = {
   "reader.copied": "Page {page} text copied",
   "reader.openExternal": "Open in default app",
   "reader.jumpTo": "Go to page",
-  "reader.shortcutHint": "Ctrl+F search · Ctrl +/− zoom · Ctrl+0 fit width · PgUp/PgDn scroll · Home/End first/last page",
+  "reader.shortcutHint":
+    "Ctrl+F search · Ctrl +/− zoom · Ctrl+0 fit width · PgUp/PgDn scroll · Home/End first/last page",
   "home.recentEmpty": "No documents yet",
   "home.recentEmptyHint": "Drop a PDF here to get started.",
   "home.viewAll": "View all",
@@ -459,7 +464,8 @@ const en: Dict = {
   "settings.engines": "Engines",
   "settings.version": "Version",
   "settings.privacyTitle": "Privacy",
-  "settings.privacyBody": "PDF Swiss Army Knife never uploads your documents. Everything is processed on this machine with bundled open-source engines. No telemetry, no analytics, no cloud. The only exception is the optional AI assistant, which is disabled until you add your own DeepSeek API key and confirm the data notice each time.",
+  "settings.privacyBody":
+    "PDF Swiss Army Knife never uploads your documents. Everything is processed on this machine with bundled open-source engines. No telemetry, no analytics, no cloud. The only exception is the optional AI assistant, which is disabled until you add your own DeepSeek API key and confirm the data notice each time.",
   "settings.aiTitle": "AI assistant (DeepSeek)",
   "settings.aiKey": "DeepSeek API key",
   "settings.aiKeyHint": "Stored encrypted with Windows DPAPI · never logged",
@@ -468,18 +474,22 @@ const en: Dict = {
   "settings.aiBaseUrl": "API base URL",
   "settings.aiBaseUrlHint": "Change only if you use a compatible gateway",
   "settings.aiModel": "Model",
-  "settings.aiModelHint": "deepseek-flash is the default (DeepSeek V4.1 Flash, 1M context); V4 Pro is slower but stronger",
+  "settings.aiModelHint":
+    "deepseek-flash is the default (DeepSeek V4.1 Flash, 1M context); V4 Pro is slower but stronger",
   "settings.aiModelCustom": "Custom model id…",
   "settings.aiTemperature": "Temperature",
   "settings.aiMaxTokens": "Max output tokens",
   "settings.aiMaxTokensHint": "How long a single answer may be. DeepSeek V4 allows up to 384,000.",
   "settings.aiContextTokens": "Context budget (input tokens)",
-  "settings.aiContextTokensHint": "How much document text is sent per request. DeepSeek V4 Flash/Pro support 1,000,000 tokens; larger values mean fewer chunked requests (slower, higher cost).",
+  "settings.aiContextTokensHint":
+    "How much document text is sent per request. DeepSeek V4 Flash/Pro support 1,000,000 tokens; larger values mean fewer chunked requests (slower, higher cost).",
   "settings.aiTestConnection": "Test connection",
   "settings.aiTestOk": "Connected — {model} replied.",
   "settings.aiThinking": "Thinking mode (DeepSeek V4 reasoning)",
-  "settings.aiThinkingHint": "When enabled, the model reasons before answering (better quality, slower, uses more tokens). Turn it off for the fastest answers.",
-  "settings.aiThinkingModelWarning": "Thinking mode only applies to deepseek-v4-* models; it is ignored for other models.",
+  "settings.aiThinkingHint":
+    "When enabled, the model reasons before answering (better quality, slower, uses more tokens). Turn it off for the fastest answers.",
+  "settings.aiThinkingModelWarning":
+    "Thinking mode only applies to deepseek-v4-* models; it is ignored for other models.",
   "settings.aiReasoningEffort": "Reasoning effort",
   "settings.aiReasoningEffortHint": "How much the model may think before answering",
   "settings.aiEffortLow": "Low (fastest)",
@@ -487,10 +497,12 @@ const en: Dict = {
   "settings.aiEffortMax": "Max (deepest)",
   "settings.aiStorage": "Key storage",
   "settings.aiAutoSave": "Save AI results to the library automatically",
-  "settings.aiAutoSaveHint": "Each finished summary, translation, answer or cleaned text is stored as a Markdown file you can reopen later.",
+  "settings.aiAutoSaveHint":
+    "Each finished summary, translation, answer or cleaned text is stored as a Markdown file you can reopen later.",
   "settings.aiLibraryDir": "AI library folder",
   "settings.keepOperationLog": "Keep an operation log (paths and sizes only)",
-  "settings.aiWarning": "The AI assistant is the only feature that uses the internet: the extracted text of the document you choose is sent to DeepSeek with your key. Everything else in this application stays offline.",
+  "settings.aiWarning":
+    "The AI assistant is the only feature that uses the internet: the extracted text of the document you choose is sent to DeepSeek with your key. Everything else in this application stays offline.",
   "settings.enginePdfium": "PDF rendering (pdfium)",
   "settings.engineQpdf": "PDF engine (qpdf)",
   "settings.engineTesseract": "OCR (Tesseract)",
@@ -576,7 +588,8 @@ const en: Dict = {
   "office.recovered": "Document recovered",
   "office.recoveryAvailable": "Unsaved work was found. Recover it:",
   "office.recoveryKept": "Recovery snapshot kept",
-  "office.recoveryKeptHint": "This format cannot store everything in the document, so the autosave snapshot was kept. Save as .oswk for a lossless copy.",
+  "office.recoveryKeptHint":
+    "This format cannot store everything in the document, so the autosave snapshot was kept. Save as .oswk for a lossless copy.",
   "office.compatCheckFailed": "Compatibility check unavailable",
   "office.compatCheckFailedHint": "The compatibility report could not be loaded, so the save continues without it.",
   "office.discardAll": "Discard",
@@ -585,7 +598,7 @@ const en: Dict = {
   "office.versionRestore": "Restore",
   "office.versionClear": "Delete all versions",
   "office.unsavedTitle": "Unsaved changes",
-  "office.unsavedBody": "\"{name}\" has unsaved changes. A recovery snapshot is kept either way.",
+  "office.unsavedBody": '"{name}" has unsaved changes. A recovery snapshot is kept either way.',
   "office.closeDiscard": "Close and discard",
   "office.closeKeep": "Keep open",
   "office.noTabs": "No document open",
@@ -867,7 +880,8 @@ const en: Dict = {
   "converter.convert": "Convert",
   "converter.noFiles": "No files selected yet.",
   "converter.results": "Results",
-  "converter.hint": "PDF and image conversions live in the PDF module (PDF to JPG, JPG to PDF). Unsupported targets are reported clearly.",
+  "converter.hint":
+    "PDF and image conversions live in the PDF module (PDF to JPG, JPG to PDF). Unsupported targets are reported clearly.",
   "cleaner.title": "Document cleaner",
   "cleaner.subtitle": "Remove metadata, comments and heavy embedded images.",
   "cleaner.pickFile": "Choose document",
@@ -900,7 +914,8 @@ const en: Dict = {
   "calc.nameTarget": "Refers to",
   "calc.nameThisSheetOnly": "This sheet only",
   "calc.nameRequired": "Enter a name.",
-  "calc.nameInvalid": "A name must start with a letter, may contain letters, digits, dots and underscores, and cannot look like a cell reference.",
+  "calc.nameInvalid":
+    "A name must start with a letter, may contain letters, digits, dots and underscores, and cannot look like a cell reference.",
   "calc.nameColumn": "Name",
   "calc.nameScope": "Scope",
   "calc.nameWorkbookScope": "Workbook",
@@ -916,7 +931,8 @@ const en: Dict = {
   "calc.printHeadings": "Print row and column headings",
   "calc.centerHorizontally": "Center horizontally",
   "calc.header": "Header",
-  "calc.printSheetNote": "Applies to {sheet}. These settings are written to the XLSX pageSetup part and used by the PDF export.",
+  "calc.printSheetNote":
+    "Applies to {sheet}. These settings are written to the XLSX pageSetup part and used by the PDF export.",
   "common.clearAll": "Clear all",
   "common.added": "added",
   "common.removed": "removed",
@@ -949,7 +965,8 @@ const en: Dict = {
   "compare.needTwo": "Add a second PDF to compare. The first file is the original, the second the revision.",
   "compare.options": "Comparison",
   "compare.visualToggle": "Also compare pictures",
-  "compare.visualHint": "Renders both documents and marks the pixels that differ. Slower, but catches changes in stamps, signatures and scans.",
+  "compare.visualHint":
+    "Renders both documents and marks the pixels that differ. Slower, but catches changes in stamps, signatures and scans.",
   "compare.dpi": "Render resolution",
   "compare.tolerance": "Pixel tolerance",
   "compare.ignoreWhitespace": "Ignore whitespace and line breaks",
@@ -1051,24 +1068,30 @@ const en: Dict = {
   "jobs.status.failed": "Failed",
   "jobs.status.cancelled": "Cancelled",
   "jobs.status.interrupted": "Interrupted",
-  "jobs.interruptedHint": "This job was still running when the app closed, so it is not working anymore. Press Retry to start it again.",
-  "jobs.retryUnavailable": "This job type cannot be retried automatically; please run the operation again from its screen.",
+  "jobs.interruptedHint":
+    "This job was still running when the app closed, so it is not working anymore. Press Retry to start it again.",
+  "jobs.retryUnavailable":
+    "This job type cannot be retried automatically; please run the operation again from its screen.",
   "sync.title": "Cloud Sync",
-  "sync.subtitle": "Local-first sync for .oswk documents over WebDAV. Off by default; every upload and download is a deliberate action.",
+  "sync.subtitle":
+    "Local-first sync for .oswk documents over WebDAV. Off by default; every upload and download is a deliberate action.",
   "sync.offTitle": "Cloud sync is off",
   "sync.offHint": "Nothing is uploaded or downloaded until you enable it here.",
   "sync.enable": "Enable cloud sync",
-  "sync.enableHint": "Saving this switch does not transfer anything: uploads and downloads always need an explicit button press.",
+  "sync.enableHint":
+    "Saving this switch does not transfer anything: uploads and downloads always need an explicit button press.",
   "sync.provider": "Provider",
   "sync.provider.webdav": "WebDAV (Nextcloud, ownCloud, Synology…)",
   "sync.provider.onedrive": "OneDrive (OAuth required)",
   "sync.provider.google": "Google Drive (OAuth required)",
-  "sync.providerUnavailable": "OneDrive and Google Drive require OAuth sign-in, which is not available in this build. WebDAV works now; the other providers are shown for transparency.",
+  "sync.providerUnavailable":
+    "OneDrive and Google Drive require OAuth sign-in, which is not available in this build. WebDAV works now; the other providers are shown for transparency.",
   "sync.url": "Server URL",
   "sync.urlPlaceholder": "https://cloud.example.com/remote.php/dav/files/me",
   "sync.username": "Username",
   "sync.password": "Password",
-  "sync.passwordHint": "Stored with the platform secret store (DPAPI on Windows). Leave empty to keep the saved password; clear the field and save to remove it.",
+  "sync.passwordHint":
+    "Stored with the platform secret store (DPAPI on Windows). Leave empty to keep the saved password; clear the field and save to remove it.",
   "sync.passwordStored": "A password is stored ({storage}).",
   "sync.passwordMissing": "No password stored yet.",
   "sync.remoteDir": "Remote folder",
@@ -1109,7 +1132,8 @@ const en: Dict = {
   "sync.conflictExplanation": "Both the local file and the cloud copy changed since the last sync.",
   "sync.baseSha256Label": "base {hash}",
   "sync.keepLocal": "Keep local",
-  "sync.keepLocalHint": "Upload this device's version. The write is conditional: if the cloud changed again meanwhile, the upload is refused and you can retry.",
+  "sync.keepLocalHint":
+    "Upload this device's version. The write is conditional: if the cloud changed again meanwhile, the upload is refused and you can retry.",
   "sync.keepCloud": "Keep cloud",
   "sync.keepCloudHint": "Replace the local file with the cloud copy. Local changes are lost - keep both if unsure.",
   "sync.keepBoth": "Keep both",
@@ -1122,7 +1146,8 @@ const en: Dict = {
   "sync.downloadHint": "The cloud copy is written to a new local file; existing files are never replaced silently.",
   "sync.chooseDestination": "Choose destination…",
   "sync.limit": "Transfer limit: {size} per document.",
-  "sync.noBackground": "No background sync and no automatic merging in this version: nothing happens while the app is closed.",
+  "sync.noBackground":
+    "No background sync and no automatic merging in this version: nothing happens while the app is closed.",
   "sync.working": "Working…",
   "sync.errorTitle": "Sync failed",
   "sync.dismiss": "Dismiss",
@@ -1146,11 +1171,13 @@ const en: Dict = {
   "search.files": "Recent files",
   "search.indexed": "Indexed documents",
   "search.searching": "Searching the local index…",
-  "search.vaultMissing": "The document vault index is empty. Index a folder from the Vault screen to search inside documents.",
+  "search.vaultMissing":
+    "The document vault index is empty. Index a folder from the Vault screen to search inside documents.",
   "vault.title": "Document Vault",
   "vault.subtitle": "Opt-in local indexing and full-text search over your own folders.",
   "vault.privacyTitle": "Stays on this computer",
-  "vault.privacyBody": "Only folders you pick are scanned. The index, extracted text and search results never leave this machine, and no telemetry is sent.",
+  "vault.privacyBody":
+    "Only folders you pick are scanned. The index, extracted text and search results never leave this machine, and no telemetry is sent.",
   "vault.foldersTitle": "Indexed folders",
   "vault.addFolder": "Add folder",
   "vault.removeFolder": "Remove",
@@ -1170,7 +1197,8 @@ const en: Dict = {
   "vault.neverScanned": "Never scanned",
   "vault.indexMissing": "No index yet",
   "vault.indexMissingHint": "Run a scan to build the local index.",
-  "vault.savedFoldersHint": "Folders saved in a previous session are still indexed; add them again to manage them here.",
+  "vault.savedFoldersHint":
+    "Folders saved in a previous session are still indexed; add them again to manage them here.",
   "vault.searchTitle": "Search",
   "vault.query": "Query",
   "vault.queryPlaceholder": "Search inside indexed documents…",
@@ -1198,7 +1226,8 @@ const en: Dict = {
   "vault.importDone": "{count} documents imported",
   "vault.importNone": "Nothing new imported",
   "vault.importSkipped": "{count} skipped",
-  "vault.androidImportNote": "Android apps can only index folders they import documents from. Picked documents are copied into the app's private vault; the originals stay where they are.",
+  "vault.androidImportNote":
+    "Android apps can only index folders they import documents from. Picked documents are copied into the app's private vault; the originals stay where they are.",
   "vault.importedRootName": "Imported documents",
   "vault.appPrivate": "app-private",
   "vault.folderFilterAndroid": "imported",
@@ -1226,7 +1255,8 @@ const en: Dict = {
   "compat.no": "No",
   "compat.close": "Close",
   "loss.title": "Data loss warning",
-  "loss.body": "{target} cannot store everything in this document. Review what happens to each feature before you save.",
+  "loss.body":
+    "{target} cannot store everything in this document. Review what happens to each feature before you save.",
   "loss.summaryClean": "Everything in this document is supported by the target format.",
   "loss.summaryTransformed": "{transformed} feature(s) are converted rather than kept as-is.",
   "loss.summaryLost": "{lost} feature(s) cannot be represented and will be lost.",
@@ -1237,7 +1267,8 @@ const en: Dict = {
   "loss.exported": "Exported?",
   "loss.transformed": "Transformed?",
   "loss.lost": "Lost?",
-  "loss.columnHint": "Supported? = the target can represent the feature. Imported? = the feature is listed for this document (the backend report is conservative and also lists a few target limits before the document uses them). Exported? = written as-is. Transformed? = written in a converted form. Lost? = dropped.",
+  "loss.columnHint":
+    "Supported? = the target can represent the feature. Imported? = the feature is listed for this document (the backend report is conservative and also lists a few target limits before the document uses them). Exported? = written as-is. Transformed? = written in a converted form. Lost? = dropped.",
   "loss.nativeNote": "The .oswk master format keeps everything, so saving there loses nothing.",
   "loss.cancel": "Cancel",
   "loss.saveOs": "Save as .oswk",
@@ -1345,10 +1376,13 @@ const en: Dict = {
   "impress.chartRowCount": "Rows",
   "impress.chartAddRow": "Add row",
   "impress.chartRemoveRow": "Remove row",
-  "impress.chartPasteHint": "Paste a block of tab-, comma- or newline-separated values; the block lands at the focused cell.",
-  "impress.chartDataHint": "Values typed here are saved as chart caches and embedded in the exported PPTX, so the chart renders without the original workbook.",
+  "impress.chartPasteHint":
+    "Paste a block of tab-, comma- or newline-separated values; the block lands at the focused cell.",
+  "impress.chartDataHint":
+    "Values typed here are saved as chart caches and embedded in the exported PPTX, so the chart renders without the original workbook.",
   "impress.chartDataGapNote": "Clearing a cell inside a series stores 0; clearing the last cell shortens the series.",
-  "impress.chartRangeOnlyHint": "This chart only carries cell ranges. Type or paste the values here so exports render everywhere.",
+  "impress.chartRangeOnlyHint":
+    "This chart only carries cell ranges. Type or paste the values here so exports render everywhere.",
   "impress.chartCachedData": "Cached chart data",
   "impress.animations": "Animations",
   "impress.tabAnimations": "Animations",
@@ -1377,14 +1411,17 @@ const en: Dict = {
   "studio.title": "PDF Studio",
   "studio.subtitle": "Sanitize, flatten and validate PDFs against PDF/A - every result is a real check.",
   "studio.sanitize": "Sanitize",
-  "studio.sanitizeHint": "Removes JavaScript, embedded files, launch actions, unsafe annotations and metadata, then reports what was removed.",
+  "studio.sanitizeHint":
+    "Removes JavaScript, embedded files, launch actions, unsafe annotations and metadata, then reports what was removed.",
   "studio.sanitizeDone": "Sanitizer finished",
   "studio.sanitizeVerify": "Run Inspect on the result to confirm the risky content is gone.",
   "studio.flatten": "Flatten",
-  "studio.flattenHint": "Burns annotation and form appearances into the page content and removes the interactive objects.",
+  "studio.flattenHint":
+    "Burns annotation and form appearances into the page content and removes the interactive objects.",
   "studio.flattenDone": "Flatten finished",
   "studio.pdfa": "PDF/A",
-  "studio.pdfaHint": "Structural validation against PDF/A-1b, -2b and -3b. Conversion applies the fixes that are achievable and re-validates; it never claims compliance without it.",
+  "studio.pdfaHint":
+    "Structural validation against PDF/A-1b, -2b and -3b. Conversion applies the fixes that are achievable and re-validates; it never claims compliance without it.",
   "studio.validate": "Validate",
   "studio.convert": "Convert and validate",
   "studio.pdfaValid": "PDF/A compliant",
@@ -1403,7 +1440,8 @@ const en: Dict = {
   "studio.warnings": "warnings",
 
   "studio.signatures": "Signatures",
-  "studio.signaturesHint": "Real CMS/PKCS#7 detached signatures (SHA-256). Verification runs locally against the embedded certificate; trust is reported as unknown because this build has no system trust store and no revocation check.",
+  "studio.signaturesHint":
+    "Real CMS/PKCS#7 detached signatures (SHA-256). Verification runs locally against the embedded certificate; trust is reported as unknown because this build has no system trust store and no revocation check.",
   "studio.verify": "Verify signatures",
   "studio.verifyDone": "Verification finished",
   "studio.noSignatures": "No digital signatures found in this document.",
@@ -1413,6 +1451,12 @@ const en: Dict = {
   "studio.digestBad": "Digest mismatch",
   "studio.coversWhole": "Covers whole document",
   "studio.modifiedAfter": "Modified after signing",
+  "studio.superseded": "Updated after this signature (still valid for its own revision)",
+  "studio.ltv": "Archive validation data",
+  "studio.ltvHint":
+    "Writes the certificate chains the signatures need into the document itself (DSS), as an update that leaves every signature exactly as it was. Nothing is downloaded.",
+  "studio.ltvDone": "Validation data archived",
+  "studio.ltvResult": "certificates stored",
   "studio.trustUnknown": "Trust: unknown (offline)",
   "studio.signer": "Signer",
   "studio.issuer": "Issuer",
@@ -1432,7 +1476,8 @@ const en: Dict = {
   "studio.storeCertificates": "Windows certificate store (CurrentUser\\My)",
   "studio.refresh": "Refresh",
   "studio.noStoreCertificates": "No personal certificates found. Use a PFX/P12 file instead.",
-  "studio.storeSigningNote": "Signing with a store certificate requires an exportable private key. If Windows blocks the export the app says so and asks for a PFX file - nothing is faked.",
+  "studio.storeSigningNote":
+    "Signing with a store certificate requires an exportable private key. If Windows blocks the export the app says so and asks for a PFX file - nothing is faked.",
   "studio.choosePfx": "Choose PFX/P12…",
   "studio.pfxPassword": "PFX password",
   "studio.pfxHint": "The password is used in memory only and is never stored or logged.",
@@ -1446,7 +1491,8 @@ const en: Dict = {
   "studio.needCertificate": "Choose a certificate first.",
 
   "studio.objects": "Forms & objects",
-  "studio.objectsHint": "Real AcroForm fields and page objects. Fill writes /V and rebuilds widget appearances; object edits rewrite the annotation rectangle or the image placement matrix. Text and vector graphics inside content streams cannot be located safely and are not listed.",
+  "studio.objectsHint":
+    "Real AcroForm fields and page objects. Fill writes /V and rebuilds widget appearances; object edits rewrite the annotation rectangle or the image placement matrix. Text and vector graphics inside content streams cannot be located safely and are not listed.",
   "studio.refreshData": "Reload",
   "studio.noFields": "No form fields found in this document.",
   "studio.noObjects": "No annotations or images on this page.",
@@ -1489,8 +1535,10 @@ const en: Dict = {
   "nav.plugins": "Plugins",
   "palette.category.plugins": "Plugins",
   "plugins.title": "Plugins",
-  "plugins.subtitle": "Sandboxed extensions: each plugin runs in a worker with only the permissions its manifest declares.",
-  "plugins.sandboxNote": "Plugin code runs in a Web Worker without DOM or system access. Every capability goes through the app host and is checked against the manifest permissions; documents and files stay under the app's control.",
+  "plugins.subtitle":
+    "Sandboxed extensions: each plugin runs in a worker with only the permissions its manifest declares.",
+  "plugins.sandboxNote":
+    "Plugin code runs in a Web Worker without DOM or system access. Every capability goes through the app host and is checked against the manifest permissions; documents and files stay under the app's control.",
   "plugins.installFolder": "Install from folder…",
   "plugins.reloadSample": "Reload sample plugin",
   "plugins.refresh": "Refresh",
@@ -1520,32 +1568,9 @@ const en: Dict = {
 };
 
 const tr: Dict = {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   "office.recoveryKept": "Kurtarma anlık görüntüsü korundu",
-  "office.recoveryKeptHint": "Bu biçim belgedeki her şeyi saklayamaz, bu yüzden otomatik kayıt anlık görüntüsü tutuldu. Kayıpsız bir kopya için .oswk olarak kaydedin.",
+  "office.recoveryKeptHint":
+    "Bu biçim belgedeki her şeyi saklayamaz, bu yüzden otomatik kayıt anlık görüntüsü tutuldu. Kayıpsız bir kopya için .oswk olarak kaydedin.",
   "office.compatCheckFailed": "Uyumluluk denetimi kullanılamıyor",
   "office.compatCheckFailedHint": "Uyumluluk raporu yüklenemedi; kayıt raporsuz devam ediyor.",
   "office.versionHistory": "Sürüm geçmişi",
@@ -1553,7 +1578,8 @@ const tr: Dict = {
   "office.versionRestore": "Geri yükle",
   "office.versionClear": "Tüm sürümleri sil",
   "office.unsavedTitle": "Kaydedilmemiş değişiklikler",
-  "office.unsavedBody": "\"{name}\" kaydedilmemiş değişiklikler içeriyor. Her durumda bir kurtarma anlık görüntüsü tutulur.",
+  "office.unsavedBody":
+    '"{name}" kaydedilmemiş değişiklikler içeriyor. Her durumda bir kurtarma anlık görüntüsü tutulur.',
   "office.closeDiscard": "Kapat ve sil",
   "office.closeKeep": "Açık tut",
   "calc.names": "Adlar",
@@ -1562,7 +1588,8 @@ const tr: Dict = {
   "calc.nameTarget": "Şunu gösterir",
   "calc.nameThisSheetOnly": "Yalnızca bu sayfa",
   "calc.nameRequired": "Bir ad girin.",
-  "calc.nameInvalid": "Ad bir harfle başlamalı; harf, rakam, nokta ve alt çizgi içerebilir; hücre adresi gibi görünemez.",
+  "calc.nameInvalid":
+    "Ad bir harfle başlamalı; harf, rakam, nokta ve alt çizgi içerebilir; hücre adresi gibi görünemez.",
   "calc.nameColumn": "Ad",
   "calc.nameScope": "Kapsam",
   "calc.nameWorkbookScope": "Çalışma kitabı",
@@ -1578,7 +1605,8 @@ const tr: Dict = {
   "calc.printHeadings": "Satır ve sütun başlıklarını yazdır",
   "calc.centerHorizontally": "Yatayda ortala",
   "calc.header": "Üst bilgi",
-  "calc.printSheetNote": "{sheet} sayfası için geçerlidir. Bu ayarlar XLSX pageSetup bölümüne yazılır ve PDF dışa aktarımında kullanılır.",
+  "calc.printSheetNote":
+    "{sheet} sayfası için geçerlidir. Bu ayarlar XLSX pageSetup bölümüne yazılır ve PDF dışa aktarımında kullanılır.",
 
   "app.name": "Office Swiss Army Knife",
   "app.tagline": "Tüm PDF araçlarınız tek bir yerde.",
@@ -1620,7 +1648,7 @@ const tr: Dict = {
   "common.saveAs": "Farklı kaydet…",
   "common.share": "Paylaş",
   "common.androidDefaultDestination": "Sonuçlar Downloads/PDF Swiss Army Knife klasörüne kopyalanır",
-  "common.androidChosenDestination": "Sonuçlar \"{name}\" klasörüne kopyalanır",
+  "common.androidChosenDestination": 'Sonuçlar "{name}" klasörüne kopyalanır',
   "common.remove": "Kaldır",
   "common.clear": "Temizle",
   "common.apply": "Uygula",
@@ -1693,9 +1721,11 @@ const tr: Dict = {
   "ai.title": "AI asistanı (DeepSeek)",
   "ai.subtitle": "Özetleme, çeviri, belge soru-cevap ve metin temizleme — kendi DeepSeek API anahtarınızla.",
   "ai.notConfigured": "AI yapılandırılmadı",
-  "ai.notConfiguredBody": "Özetleme, çeviri, soru-cevap ve metaveri önerilerini kullanmak için Ayarlar bölümüne DeepSeek API anahtarınızı ekleyin.",
+  "ai.notConfiguredBody":
+    "Özetleme, çeviri, soru-cevap ve metaveri önerilerini kullanmak için Ayarlar bölümüne DeepSeek API anahtarınızı ekleyin.",
   "ai.privacyTitle": "Cihazınızdan ne çıkıyor",
-  "ai.privacyBody": "Bu belgeden yalnızca çıkarılan metin, kendi anahtarınızla DeepSeek'e (api.deepseek.com) gönderilir — dosyanın kendisi asla, parolalar asla gönderilmez. Çalıştır'a basana kadar hiçbir şey gönderilmez ve diğer tüm araçlar tamamen çevrimdışı kalır.",
+  "ai.privacyBody":
+    "Bu belgeden yalnızca çıkarılan metin, kendi anahtarınızla DeepSeek'e (api.deepseek.com) gönderilir — dosyanın kendisi asla, parolalar asla gönderilmez. Çalıştır'a basana kadar hiçbir şey gönderilmez ve diğer tüm araçlar tamamen çevrimdışı kalır.",
   "ai.consent": "Çıkarılan metnin DeepSeek'e gönderileceğini anlıyorum",
   "ai.consentShort": "Bu belge için veri bildirimi onaylandı",
   "ai.consentChange": "değiştir",
@@ -1707,7 +1737,7 @@ const tr: Dict = {
   "ai.tabCleanup": "OCR metnini onar",
   "ai.tabMetadata": "Metaveri önerileri",
   "ai.language": "Çıktı dili",
-  "ai.languageHint": "\"auto\" belge dilini korur (örn. tr, English)",
+  "ai.languageHint": '"auto" belge dilini korur (örn. tr, English)',
   "ai.length": "Uzunluk",
   "ai.lengthShort": "Kısa",
   "ai.lengthMedium": "Orta",
@@ -1723,7 +1753,8 @@ const tr: Dict = {
   "ai.question": "Soru",
   "ai.questionPlaceholder": "Toplam tutar nedir?",
   "ai.cleanupIntro": "OCR metnindeki bozuk kelimeleri, tirelemeyi ve boşlukları özetlemeden onarır.",
-  "ai.cleanupHint": "Kötü kaliteli bir tarama üzerinde OCR çalıştırdıktan sonra kullanışlıdır; sonuç Markdown veya düz metin olarak kaydedilir.",
+  "ai.cleanupHint":
+    "Kötü kaliteli bir tarama üzerinde OCR çalıştırdıktan sonra kullanışlıdır; sonuç Markdown veya düz metin olarak kaydedilir.",
   "ai.metadataIntro": "Belge metnine dayanarak başlık, yazar, konu ve anahtar kelime önerir.",
   "ai.metadataHint": "Öneri almak için Çalıştır'a basın, ardından bunları yeni bir PDF'e uygulayın.",
   "ai.metadataApply": "Yeni bir PDF'e uygula…",
@@ -1742,7 +1773,8 @@ const tr: Dict = {
   "ai.keyPlain": "API anahtarı şifresiz saklanıyor (DPAPI kullanılamıyor)",
   "ai.keyMissing": "Kayıtlı API anahtarı yok",
   "ai.thinkingTitle": "Düşünüyor (model akıl yürütmesi)",
-  "ai.thinkingHint": "DeepSeek V4 akıl yürütür; yanıt düşünme izinden sonra gelir. Düşünme sırasında jeton bütçesi tükenirse hata yerine bu iz sonuç olarak gösterilir.",
+  "ai.thinkingHint":
+    "DeepSeek V4 akıl yürütür; yanıt düşünme izinden sonra gelir. Düşünme sırasında jeton bütçesi tükenirse hata yerine bu iz sonuç olarak gösterilir.",
   "ai.showThinking": "Düşünmeyi göster",
   "ai.hideThinking": "Düşünmeyi gizle",
   "ai.savedToLibrary": "AI kitaplığına kaydedildi",
@@ -1751,7 +1783,8 @@ const tr: Dict = {
   "ai.openLibrary": "AI kitaplığını aç",
   "ai.libraryFolder": "Kitaplık klasörü",
   "library.title": "AI kitaplığı",
-  "library.subtitle": "Her AI sonucu burada Markdown olarak saklanır, böylece ekrandan ayrıldığınızda hiçbir şey kaybolmaz.",
+  "library.subtitle":
+    "Her AI sonucu burada Markdown olarak saklanır, böylece ekrandan ayrıldığınızda hiçbir şey kaybolmaz.",
   "library.folder": "Kitaplık klasörü",
   "library.changeFolder": "Klasörü değiştir…",
   "library.chooseFolder": "AI sonuçları için bir klasör seçin",
@@ -1759,8 +1792,10 @@ const tr: Dict = {
   "library.clearAll": "Kitaplığı temizle",
   "library.cleared": "AI kitaplığı temizlendi",
   "library.empty": "Henüz kayıtlı AI sonucu yok",
-  "library.emptyHint": "Bir özet, çeviri, soru-cevap, OCR onarımı veya metaveri önerisi çalıştırın — sonuçlar burada otomatik olarak saklanır.",
-  "library.selectHint": "Okumak, Markdown dosyasını açmak ya da bir kopyasını dışa aktarmak için soldaki kayıtlı bir sonucu seçin.",
+  "library.emptyHint":
+    "Bir özet, çeviri, soru-cevap, OCR onarımı veya metaveri önerisi çalıştırın — sonuçlar burada otomatik olarak saklanır.",
+  "library.selectHint":
+    "Okumak, Markdown dosyasını açmak ya da bir kopyasını dışa aktarmak için soldaki kayıtlı bir sonucu seçin.",
   "library.exportAs": "Farklı kaydet…",
   "library.exported": "Kaydedildi",
   "library.savedAt": "Kaydedilme",
@@ -1790,13 +1825,15 @@ const tr: Dict = {
   "reader.matches": "{pages} sayfada {count} eşleşme",
   "reader.noMatches": "Eşleşme bulunamadı",
   "reader.truncated": "İlk {count} eşleşme gösteriliyor",
-  "reader.noTextLayer": "Bu belgede kullanılabilir bir metin katmanı yok. Aranabilir hâle getirmek için OCR aracını çalıştırın.",
+  "reader.noTextLayer":
+    "Bu belgede kullanılabilir bir metin katmanı yok. Aranabilir hâle getirmek için OCR aracını çalıştırın.",
   "reader.noTextLayerShort": "Bu sayfada metin katmanı yok",
   "reader.copyText": "Sayfa metnini kopyala",
   "reader.copied": "{page}. sayfa metni kopyalandı",
   "reader.openExternal": "Varsayılan uygulamada aç",
   "reader.jumpTo": "Sayfaya git",
-  "reader.shortcutHint": "Ctrl+F ara · Ctrl +/− yakınlaştır · Ctrl+0 genişliğe sığdır · PgUp/PgDn kaydır · Home/End ilk/son sayfa",
+  "reader.shortcutHint":
+    "Ctrl+F ara · Ctrl +/− yakınlaştır · Ctrl+0 genişliğe sığdır · PgUp/PgDn kaydır · Home/End ilk/son sayfa",
   "home.recentEmpty": "Henüz belge yok",
   "home.recentEmptyHint": "Başlamak için buraya bir PDF bırakın.",
   "home.viewAll": "Tümünü gör",
@@ -1829,7 +1866,8 @@ const tr: Dict = {
   "split.modeAtPages": "Seçilen sayfalarda",
   "split.rangesHint": "Her satıra bir aralık, örn. 1-5, 6-10, 11-20",
   "split.everyN": "Dosya başına sayfa",
-  "split.atPagesHint": "Kesimler her sayfadan önce yerleştirilir, örn. 4, 10 yeni dosyaları 4. ve 10. sayfada başlatır.",
+  "split.atPagesHint":
+    "Kesimler her sayfadan önce yerleştirilir, örn. 4, 10 yeni dosyaları 4. ve 10. sayfada başlatır.",
   "split.run": "PDF böl",
   "split.created": "{count} dosya oluşturuldu",
   "compress.title": "PDF sıkıştır",
@@ -1838,7 +1876,8 @@ const tr: Dict = {
   "compress.lossless": "Kayıpsız",
   "compress.losslessHint": "Yapıyı optimize eder, metni metin olarak korur. Orta düzeyde tasarruf sağlar.",
   "compress.raster": "Güçlü (yeniden işleme)",
-  "compress.rasterHint": "Sayfaları görsel olarak yeniden işler. Taramalar için en iyisi; metin görselin bir parçası hâline gelir.",
+  "compress.rasterHint":
+    "Sayfaları görsel olarak yeniden işler. Taramalar için en iyisi; metin görselin bir parçası hâline gelir.",
   "compress.preset": "Düzey",
   "compress.low": "Düşük",
   "compress.medium": "Orta",
@@ -2017,7 +2056,8 @@ const tr: Dict = {
   "settings.engines": "Motorlar",
   "settings.version": "Sürüm",
   "settings.privacyTitle": "Gizlilik",
-  "settings.privacyBody": "PDF Swiss Army Knife belgelerinizi hiçbir zaman yüklemez. Her şey bu makinede, uygulamayla gelen açık kaynak motorlarla işlenir. Telemetri yok, analitik yok, bulut yok. Tek istisna isteğe bağlı AI asistanıdır; kendi DeepSeek API anahtarınızı ekleyene ve her seferinde veri bildirimini onaylayana kadar devre dışıdır.",
+  "settings.privacyBody":
+    "PDF Swiss Army Knife belgelerinizi hiçbir zaman yüklemez. Her şey bu makinede, uygulamayla gelen açık kaynak motorlarla işlenir. Telemetri yok, analitik yok, bulut yok. Tek istisna isteğe bağlı AI asistanıdır; kendi DeepSeek API anahtarınızı ekleyene ve her seferinde veri bildirimini onaylayana kadar devre dışıdır.",
   "settings.aiTitle": "AI asistanı (DeepSeek)",
   "settings.aiKey": "DeepSeek API anahtarı",
   "settings.aiKeyHint": "Windows DPAPI ile şifrelenerek saklanır · asla günlüğe yazılmaz",
@@ -2026,18 +2066,23 @@ const tr: Dict = {
   "settings.aiBaseUrl": "API temel URL'si",
   "settings.aiBaseUrlHint": "Yalnızca uyumlu bir ağ geçidi kullanıyorsanız değiştirin",
   "settings.aiModel": "Model",
-  "settings.aiModelHint": "deepseek-flash varsayılandır (DeepSeek V4.1 Flash, 1M bağlam); V4 Pro daha yavaş ama daha güçlüdür",
+  "settings.aiModelHint":
+    "deepseek-flash varsayılandır (DeepSeek V4.1 Flash, 1M bağlam); V4 Pro daha yavaş ama daha güçlüdür",
   "settings.aiModelCustom": "Özel model kimliği…",
   "settings.aiTemperature": "Sıcaklık",
   "settings.aiMaxTokens": "En fazla çıktı jetonu",
-  "settings.aiMaxTokensHint": "Tek bir yanıtın ne kadar uzun olabileceği. DeepSeek V4 en fazla 384.000 jetona izin verir.",
+  "settings.aiMaxTokensHint":
+    "Tek bir yanıtın ne kadar uzun olabileceği. DeepSeek V4 en fazla 384.000 jetona izin verir.",
   "settings.aiContextTokens": "Bağlam bütçesi (giriş jetonları)",
-  "settings.aiContextTokensHint": "Her istekte ne kadar belge metni gönderileceği. DeepSeek V4 Flash/Pro 1.000.000 jetonu destekler; daha büyük değerler daha az parçalı istek demektir (daha yavaş, daha maliyetli).",
+  "settings.aiContextTokensHint":
+    "Her istekte ne kadar belge metni gönderileceği. DeepSeek V4 Flash/Pro 1.000.000 jetonu destekler; daha büyük değerler daha az parçalı istek demektir (daha yavaş, daha maliyetli).",
   "settings.aiTestConnection": "Bağlantıyı test et",
   "settings.aiTestOk": "Bağlandı — {model} yanıt verdi.",
   "settings.aiThinking": "Düşünme modu (DeepSeek V4 akıl yürütmesi)",
-  "settings.aiThinkingHint": "Etkinleştirildiğinde model yanıtlamadan önce akıl yürütür (daha iyi kalite, daha yavaş, daha fazla jeton). En hızlı yanıtlar için kapatın.",
-  "settings.aiThinkingModelWarning": "Düşünme modu yalnızca deepseek-v4-* modellerinde geçerlidir; diğer modellerde yok sayılır.",
+  "settings.aiThinkingHint":
+    "Etkinleştirildiğinde model yanıtlamadan önce akıl yürütür (daha iyi kalite, daha yavaş, daha fazla jeton). En hızlı yanıtlar için kapatın.",
+  "settings.aiThinkingModelWarning":
+    "Düşünme modu yalnızca deepseek-v4-* modellerinde geçerlidir; diğer modellerde yok sayılır.",
   "settings.aiReasoningEffort": "Akıl yürütme yoğunluğu",
   "settings.aiReasoningEffortHint": "Modelin yanıtlamadan önce ne kadar düşünebileceği",
   "settings.aiEffortLow": "Düşük (en hızlı)",
@@ -2045,10 +2090,12 @@ const tr: Dict = {
   "settings.aiEffortMax": "En yüksek (en derin)",
   "settings.aiStorage": "Anahtar saklama",
   "settings.aiAutoSave": "AI sonuçlarını kitaplığa otomatik olarak kaydet",
-  "settings.aiAutoSaveHint": "Tamamlanan her özet, çeviri, yanıt ya da temizlenmiş metin, daha sonra yeniden açabileceğiniz bir Markdown dosyası olarak saklanır.",
+  "settings.aiAutoSaveHint":
+    "Tamamlanan her özet, çeviri, yanıt ya da temizlenmiş metin, daha sonra yeniden açabileceğiniz bir Markdown dosyası olarak saklanır.",
   "settings.aiLibraryDir": "AI kitaplığı klasörü",
   "settings.keepOperationLog": "İşlem günlüğü tut (yalnızca yollar ve boyutlar)",
-  "settings.aiWarning": "AI asistanı, interneti kullanan tek özelliktir: seçtiğiniz belgeden çıkarılan metin, anahtarınızla DeepSeek'e gönderilir. Bu uygulamadaki diğer her şey çevrimdışı kalır.",
+  "settings.aiWarning":
+    "AI asistanı, interneti kullanan tek özelliktir: seçtiğiniz belgeden çıkarılan metin, anahtarınızla DeepSeek'e gönderilir. Bu uygulamadaki diğer her şey çevrimdışı kalır.",
   "settings.enginePdfium": "PDF görüntüleme (pdfium)",
   "settings.engineQpdf": "PDF motoru (qpdf)",
   "settings.engineTesseract": "OCR (Tesseract)",
@@ -2408,7 +2455,8 @@ const tr: Dict = {
   "converter.convert": "Dönüştür",
   "converter.noFiles": "Henüz dosya seçilmedi.",
   "converter.results": "Sonuçlar",
-  "converter.hint": "PDF ve görsel dönüştürmeleri PDF modülünde bulunur (PDF'den JPG'ye, JPG'den PDF'e). Desteklenmeyen hedefler açıkça bildirilir.",
+  "converter.hint":
+    "PDF ve görsel dönüştürmeleri PDF modülünde bulunur (PDF'den JPG'ye, JPG'den PDF'e). Desteklenmeyen hedefler açıkça bildirilir.",
   "cleaner.title": "Belge temizleyici",
   "cleaner.subtitle": "Metaveriyi, yorumları ve ağır gömülü görselleri kaldırın.",
   "cleaner.pickFile": "Belge seç",
@@ -2420,7 +2468,8 @@ const tr: Dict = {
   "cleaner.optimizeImages": "Görselleri optimize et",
   "cleaner.maxPixels": "En fazla piksel",
   "cleaner.quality": "JPEG kalitesi",
-  "cleaner.note": "Temizleme, paketi atomik yazmalarla yerinde yeniden yazar. Desteklenmeyen bölümler olduğu gibi bırakılır.",
+  "cleaner.note":
+    "Temizleme, paketi atomik yazmalarla yerinde yeniden yazar. Desteklenmeyen bölümler olduğu gibi bırakılır.",
   "cleaner.results": "Sonuçlar",
   "forms.title": "PDF formları",
   "forms.subtitle": "Bir PDF'e metin alanları, onay kutuları ve açılır listeler ekleyin.",
@@ -2456,7 +2505,8 @@ const tr: Dict = {
   "redact.imageObscure": "Karart",
   "redact.imageRemove": "Pikseli sil",
   "redact.imageObscureHint": "Kutu altındaki pikseller dolgu rengiyle boyanır.",
-  "redact.imageRemoveHint": "Kutu altındaki pikseller görselden silinir ve saydamlaşır. Taranmış belgeler için en iyisi.",
+  "redact.imageRemoveHint":
+    "Kutu altındaki pikseller görselden silinir ve saydamlaşır. Taranmış belgeler için en iyisi.",
   "redact.kind.email": "E-posta",
   "redact.kind.card": "Kart",
   "redact.kind.iban": "IBAN",
@@ -2467,7 +2517,8 @@ const tr: Dict = {
   "compare.needTwo": "Karşılaştırmak için ikinci bir PDF ekleyin. İlk dosya asıl, ikinci dosya revizyondur.",
   "compare.options": "Karşılaştırma",
   "compare.visualToggle": "Görselleri de karşılaştır",
-  "compare.visualHint": "Her iki belgeyi de işleyip farklı pikselleri işaretler. Daha yavaştır ama damga, imza ve tarama değişikliklerini yakalar.",
+  "compare.visualHint":
+    "Her iki belgeyi de işleyip farklı pikselleri işaretler. Daha yavaştır ama damga, imza ve tarama değişikliklerini yakalar.",
   "compare.dpi": "İşleme çözünlüğü",
   "compare.tolerance": "Piksel toleransı",
   "compare.ignoreWhitespace": "Boşluk ve satır sonlarını yoksay",
@@ -2491,7 +2542,8 @@ const tr: Dict = {
   "compare.optional": "Dosya kilitliyse parola",
   "compare.running": "Karşılaştırılıyor…",
   "compare.localNote": "Her iki dosya yerelde okunur ve yerinde karşılaştırılır. Hiçbir dosya değiştirilmez.",
-  "inspect.subtitle": "Bir PDF'in içinde gerçekte ne olduğuna daır, nelerin yanlş olduğunu da gösteren salt okunur rapor.",
+  "inspect.subtitle":
+    "Bir PDF'in içinde gerçekte ne olduğuna daır, nelerin yanlş olduğunu da gösteren salt okunur rapor.",
   "inspect.document": "Belge",
   "inspect.analyze": "Analiz et",
   "inspect.analyzing": "Belge okunuyor…",
@@ -2569,24 +2621,30 @@ const tr: Dict = {
   "jobs.status.failed": "Başarısız",
   "jobs.status.cancelled": "İptal edildi",
   "jobs.status.interrupted": "Kesintiye uğradı",
-  "jobs.interruptedHint": "Uygulama kapanırken bu iş hâlâ çalışıyordu ve artık çalışmıyor. Yeniden başlatmak için Yeniden dene'ye basın.",
-  "jobs.retryUnavailable": "Bu iş türü otomatik olarak yeniden başlatılamıyor; lütfen işlemi kendi ekranından yeniden çalıştırın.",
+  "jobs.interruptedHint":
+    "Uygulama kapanırken bu iş hâlâ çalışıyordu ve artık çalışmıyor. Yeniden başlatmak için Yeniden dene'ye basın.",
+  "jobs.retryUnavailable":
+    "Bu iş türü otomatik olarak yeniden başlatılamıyor; lütfen işlemi kendi ekranından yeniden çalıştırın.",
   "sync.title": "Bulut Eşitleme",
-  "sync.subtitle": ".oswk belgeleri için WebDAV üzerinden yerel öncelikli eşitleme. Varsayılan olarak kapalı; her yükleme ve indirme bilinçli bir eylemdir.",
+  "sync.subtitle":
+    ".oswk belgeleri için WebDAV üzerinden yerel öncelikli eşitleme. Varsayılan olarak kapalı; her yükleme ve indirme bilinçli bir eylemdir.",
   "sync.offTitle": "Bulut eşitleme kapalı",
   "sync.offHint": "Buradan etkinleştirene kadar hiçbir şey yüklenmez veya indirilmez.",
   "sync.enable": "Bulut eşitlemeyi etkinleştir",
-  "sync.enableHint": "Bu anahtarı kaydetmek hiçbir şeyi aktarmaz: yükleme ve indirme her zaman açık bir düğme basışı gerektirir.",
+  "sync.enableHint":
+    "Bu anahtarı kaydetmek hiçbir şeyi aktarmaz: yükleme ve indirme her zaman açık bir düğme basışı gerektirir.",
   "sync.provider": "Sağlayıcı",
   "sync.provider.webdav": "WebDAV (Nextcloud, ownCloud, Synology…)",
   "sync.provider.onedrive": "OneDrive (OAuth gerekir)",
   "sync.provider.google": "Google Drive (OAuth gerekir)",
-  "sync.providerUnavailable": "OneDrive ve Google Drive OAuth oturumu gerektirir; bu sürümde mevcut değil. WebDAV şimdi çalışır; diğer sağlayıcılar yalnızca şeffaflık için gösterilir.",
+  "sync.providerUnavailable":
+    "OneDrive ve Google Drive OAuth oturumu gerektirir; bu sürümde mevcut değil. WebDAV şimdi çalışır; diğer sağlayıcılar yalnızca şeffaflık için gösterilir.",
   "sync.url": "Sunucu adresi",
   "sync.urlPlaceholder": "https://cloud.example.com/remote.php/dav/files/me",
   "sync.username": "Kullanıcı adı",
   "sync.password": "Parola",
-  "sync.passwordHint": "Platformun gizli deposuyla saklanır (Windows'ta DPAPI). Kayıtlı parolayı korumak için boş bırakın; kaldırmak için alanı temizleyip kaydedin.",
+  "sync.passwordHint":
+    "Platformun gizli deposuyla saklanır (Windows'ta DPAPI). Kayıtlı parolayı korumak için boş bırakın; kaldırmak için alanı temizleyip kaydedin.",
   "sync.passwordStored": "Kayıtlı bir parola var ({storage}).",
   "sync.passwordMissing": "Henüz parola kaydedilmedi.",
   "sync.remoteDir": "Uzak klasör",
@@ -2627,9 +2685,11 @@ const tr: Dict = {
   "sync.conflictExplanation": "Son eşitlemeden bu yana hem yerel dosya hem bulut kopyası değişti.",
   "sync.baseSha256Label": "temel {hash}",
   "sync.keepLocal": "Yereli koru",
-  "sync.keepLocalHint": "Bu cihazın sürümünü yükleyin. Yazma koşulludur: bu sırada bulut yine değiştiyse yükleme reddedilir ve yeniden deneyebilirsiniz.",
+  "sync.keepLocalHint":
+    "Bu cihazın sürümünü yükleyin. Yazma koşulludur: bu sırada bulut yine değiştiyse yükleme reddedilir ve yeniden deneyebilirsiniz.",
   "sync.keepCloud": "Bulutu koru",
-  "sync.keepCloudHint": "Yerel dosyayı bulut kopyasıyla değiştirin. Yerel değişiklikler kaybolur - emin değilseniz ikisini de saklayın.",
+  "sync.keepCloudHint":
+    "Yerel dosyayı bulut kopyasıyla değiştirin. Yerel değişiklikler kaybolur - emin değilseniz ikisini de saklayın.",
   "sync.keepBoth": "İkisini de sakla",
   "sync.keepBothHint": "Bulut kopyasını yeni bir “(cloud copy …)” belgesi olarak kaydedin ve yerel dosyaya dokunmayın.",
   "sync.remoteTitle": "Bulut klasörü",
@@ -2640,7 +2700,8 @@ const tr: Dict = {
   "sync.downloadHint": "Bulut kopyası yeni bir yerel dosyaya yazılır; var olan dosyaların üzerine sessizce yazılmaz.",
   "sync.chooseDestination": "Hedef seç…",
   "sync.limit": "Aktarım sınırı: belge başına {size}.",
-  "sync.noBackground": "Bu sürümde arka plan eşitlemesi ve otomatik birleştirme yok: uygulama kapalıyken hiçbir şey olmaz.",
+  "sync.noBackground":
+    "Bu sürümde arka plan eşitlemesi ve otomatik birleştirme yok: uygulama kapalıyken hiçbir şey olmaz.",
   "sync.working": "Çalışıyor…",
   "sync.errorTitle": "Eşitleme başarısız",
   "sync.dismiss": "Kapat",
@@ -2664,11 +2725,13 @@ const tr: Dict = {
   "search.files": "Son dosyalar",
   "search.indexed": "Dizinlenmiş belgeler",
   "search.searching": "Yerel dizinde aranıyor…",
-  "search.vaultMissing": "Belge kasası dizini boş. Belgelerin içinde aramak için Kasa ekranından bir klasör dizinleyin.",
+  "search.vaultMissing":
+    "Belge kasası dizini boş. Belgelerin içinde aramak için Kasa ekranından bir klasör dizinleyin.",
   "vault.title": "Belge Kasası",
   "vault.subtitle": "Kendi klasörlerinizde isteğe bağlı yerel dizinleme ve tam metin arama.",
   "vault.privacyTitle": "Bu bilgisayarda kalır",
-  "vault.privacyBody": "Yalnızca sizin seçtiğiniz klasörler taranır. Dizin, çıkarılan metin ve arama sonuçları bu makineden çıkmaz; telemetri gönderilmez.",
+  "vault.privacyBody":
+    "Yalnızca sizin seçtiğiniz klasörler taranır. Dizin, çıkarılan metin ve arama sonuçları bu makineden çıkmaz; telemetri gönderilmez.",
   "vault.foldersTitle": "Dizinlenen klasörler",
   "vault.addFolder": "Klasör ekle",
   "vault.removeFolder": "Kaldır",
@@ -2716,12 +2779,14 @@ const tr: Dict = {
   "vault.importDone": "{count} belge içe aktarıldı",
   "vault.importNone": "Yeni bir şey içe aktarılmadı",
   "vault.importSkipped": "{count} atlandı",
-  "vault.androidImportNote": "Android uygulamaları yalnızca belge içe aktardıkları klasörleri dizinleyebilir. Seçilen belgeler uygulamanın özel kasasına kopyalanır; asılları yerinde kalır.",
+  "vault.androidImportNote":
+    "Android uygulamaları yalnızca belge içe aktardıkları klasörleri dizinleyebilir. Seçilen belgeler uygulamanın özel kasasına kopyalanır; asılları yerinde kalır.",
   "vault.importedRootName": "İçe aktarılan belgeler",
   "vault.appPrivate": "uygulamaya özel",
   "vault.folderFilterAndroid": "içe aktarılan",
   "compat.title": "Uyumluluk Merkezi",
-  "compat.subtitle": "Bu sürümün hangi biçimleri açabildiği, düzenleyebildiği ve kaydedebildiği ve her biçimde neyin kaybolduğu.",
+  "compat.subtitle":
+    "Bu sürümün hangi biçimleri açabildiği, düzenleyebildiği ve kaydedebildiği ve her biçimde neyin kaybolduğu.",
   "compat.loading": "Yetenekler yükleniyor…",
   "compat.formats": "biçim",
   "compat.open": "Aç",
@@ -2731,7 +2796,8 @@ const tr: Dict = {
   "compat.edit": "Düzenle",
   "compat.supported": "Destekleniyor",
   "compat.unsupported": "Desteklenmiyor",
-  "compat.nativeHint": "Yerel .oswk biçimi her şeyi korur; diğer biçimler listelenen özellikleri dönüştürür veya düşürür.",
+  "compat.nativeHint":
+    "Yerel .oswk biçimi her şeyi korur; diğer biçimler listelenen özellikleri dönüştürür veya düşürür.",
   "compat.reportTitle": "Kayıp raporu",
   "compat.reportHint": "Düzenleyiciler kayıplı bir biçime kaydetmeden önce bunu çağırır.",
   "compat.noReport": "Bir belgenin ne kaybedeceğini görmek için kaydetme penceresinden raporu açın.",
@@ -2755,7 +2821,8 @@ const tr: Dict = {
   "loss.exported": "Dışa aktarıldı?",
   "loss.transformed": "Dönüştürüldü?",
   "loss.lost": "Kayboldu?",
-  "loss.columnHint": "Destekleniyor? = hedef biçim özelliği gösterebilir. İçe aktarıldı? = özellik bu belge için listelendi (arka uç raporu temkinlidir ve belge kullanmadan önce birkaç hedef sınırını da listeler). Dışa aktarıldı? = olduğu gibi yazılır. Dönüştürüldü? = dönüştürülmüş biçimde yazılır. Kayboldu? = düşürülür.",
+  "loss.columnHint":
+    "Destekleniyor? = hedef biçim özelliği gösterebilir. İçe aktarıldı? = özellik bu belge için listelendi (arka uç raporu temkinlidir ve belge kullanmadan önce birkaç hedef sınırını da listeler). Dışa aktarıldı? = olduğu gibi yazılır. Dönüştürüldü? = dönüştürülmüş biçimde yazılır. Kayboldu? = düşürülür.",
   "loss.nativeNote": ".oswk ana biçimi her şeyi korur; oraya kaydetmek hiçbir şey kaybettirmez.",
   "loss.cancel": "İptal",
   "loss.saveOs": ".oswk olarak kaydet",
@@ -2863,10 +2930,14 @@ const tr: Dict = {
   "impress.chartRowCount": "Satır",
   "impress.chartAddRow": "Satır ekle",
   "impress.chartRemoveRow": "Satırı sil",
-  "impress.chartPasteHint": "Sekme, virgül veya satır sonuyla ayrılmış bir bloğu yapıştırın; blok odaklanan hücreden başlar.",
-  "impress.chartDataHint": "Buraya yazılan değerler grafik önbelleğine kaydedilir ve dışa aktarılan PPTX dosyasına gömülür; grafik özgün çalışma kitabı olmadan da görüntülenir.",
-  "impress.chartDataGapNote": "Bir serinin içindeki hücre temizlenirse 0 saklanır; son hücre temizlenirse seri kısalır.",
-  "impress.chartRangeOnlyHint": "Bu grafik yalnızca hücre aralıkları taşıyor. Dışa aktarılan dosyanın her yerde görüntülenmesi için değerleri buraya yazın veya yapıştırın.",
+  "impress.chartPasteHint":
+    "Sekme, virgül veya satır sonuyla ayrılmış bir bloğu yapıştırın; blok odaklanan hücreden başlar.",
+  "impress.chartDataHint":
+    "Buraya yazılan değerler grafik önbelleğine kaydedilir ve dışa aktarılan PPTX dosyasına gömülür; grafik özgün çalışma kitabı olmadan da görüntülenir.",
+  "impress.chartDataGapNote":
+    "Bir serinin içindeki hücre temizlenirse 0 saklanır; son hücre temizlenirse seri kısalır.",
+  "impress.chartRangeOnlyHint":
+    "Bu grafik yalnızca hücre aralıkları taşıyor. Dışa aktarılan dosyanın her yerde görüntülenmesi için değerleri buraya yazın veya yapıştırın.",
   "impress.chartCachedData": "Önbelleğe alınmış grafik verisi",
   "impress.animations": "Animasyonlar",
   "impress.tabAnimations": "Animasyonlar",
@@ -2895,14 +2966,16 @@ const tr: Dict = {
   "studio.title": "PDF Stüdyo",
   "studio.subtitle": "PDF'leri temizleyin, düzleştirin ve PDF/A'ya karşı doğrulayın - her sonuç gerçek bir denetimdir.",
   "studio.sanitize": "Temizle",
-  "studio.sanitizeHint": "JavaScript, gömülü dosyalar, başlatma eylemleri, güvensiz açıklamalar ve üst veriyi kaldırır, ardından neyin kaldırıldığını raporlar.",
+  "studio.sanitizeHint":
+    "JavaScript, gömülü dosyalar, başlatma eylemleri, güvensiz açıklamalar ve üst veriyi kaldırır, ardından neyin kaldırıldığını raporlar.",
   "studio.sanitizeDone": "Temizleme tamamlandı",
   "studio.sanitizeVerify": "Riskli içeriğin gittiğini doğrulamak için sonuç üzerinde İncele'yi çalıştırın.",
   "studio.flatten": "Düzleştir",
   "studio.flattenHint": "Açıklama ve form görünümlerini sayfa içeriğine işler ve etkileşimli nesneleri kaldırır.",
   "studio.flattenDone": "Düzleştirme tamamlandı",
   "studio.pdfa": "PDF/A",
-  "studio.pdfaHint": "PDF/A-1b, -2b ve -3b'ye karşı yapısal doğrulama. Dönüştürme, başarılabilen düzeltmeleri uygular ve yeniden doğrular; doğrulamadan uyumluluk iddia etmez.",
+  "studio.pdfaHint":
+    "PDF/A-1b, -2b ve -3b'ye karşı yapısal doğrulama. Dönüştürme, başarılabilen düzeltmeleri uygular ve yeniden doğrular; doğrulamadan uyumluluk iddia etmez.",
   "studio.validate": "Doğrula",
   "studio.convert": "Dönüştür ve doğrula",
   "studio.pdfaValid": "PDF/A uyumlu",
@@ -2921,7 +2994,8 @@ const tr: Dict = {
   "studio.warnings": "uyarı",
 
   "studio.signatures": "İmzalar",
-  "studio.signaturesHint": "Gerçek CMS/PKCS#7 ayrık imzalar (SHA-256). Doğrulama, gömülü sertifikaya karşı tamamen yerelde çalışır; bu sürümde sistem güven deposu ve iptal denetimi olmadığı için güven bilinmiyor olarak raporlanır.",
+  "studio.signaturesHint":
+    "Gerçek CMS/PKCS#7 ayrık imzalar (SHA-256). Doğrulama, gömülü sertifikaya karşı tamamen yerelde çalışır; bu sürümde sistem güven deposu ve iptal denetimi olmadığı için güven bilinmiyor olarak raporlanır.",
   "studio.verify": "İmzaları doğrula",
   "studio.verifyDone": "Doğrulama tamamlandı",
   "studio.noSignatures": "Bu belgede dijital imza bulunamadı.",
@@ -2931,6 +3005,12 @@ const tr: Dict = {
   "studio.digestBad": "Özet uyuşmuyor",
   "studio.coversWhole": "Tüm belgeyi kapsıyor",
   "studio.modifiedAfter": "İmzadan sonra değiştirilmiş",
+  "studio.superseded": "Bu imzadan sonra belge güncellendi (imza kendi revizyonu için geçerli)",
+  "studio.ltv": "Doğrulama verisini göm",
+  "studio.ltvHint":
+    "İmzaların ihtiyaç duyduğu sertifika zincirini belgenin kendisine (DSS) yazar; güncelleme mevcut imzaları aynen korur. İnternetten hiçbir şey indirilmez.",
+  "studio.ltvDone": "Doğrulama verisi gömüldü",
+  "studio.ltvResult": "saklanan sertifika",
   "studio.trustUnknown": "Güven: bilinmiyor (çevrimdışı)",
   "studio.signer": "İmzalayan",
   "studio.issuer": "Veren",
@@ -2950,7 +3030,8 @@ const tr: Dict = {
   "studio.storeCertificates": "Windows sertifika deposu (CurrentUser\\My)",
   "studio.refresh": "Yenile",
   "studio.noStoreCertificates": "Kişisel sertifika bulunamadı. Bunun yerine bir PFX/P12 dosyası kullanın.",
-  "studio.storeSigningNote": "Depodan imzalama dışa aktarılabilir bir özel anahtar gerektirir. Windows dışa aktarmayı engellerse uygulama bunu söyler ve PFX dosyası ister - hiçbir şey taklit edilmez.",
+  "studio.storeSigningNote":
+    "Depodan imzalama dışa aktarılabilir bir özel anahtar gerektirir. Windows dışa aktarmayı engellerse uygulama bunu söyler ve PFX dosyası ister - hiçbir şey taklit edilmez.",
   "studio.choosePfx": "PFX/P12 seç…",
   "studio.pfxPassword": "PFX parolası",
   "studio.pfxHint": "Parola yalnızca bellekte kullanılır; hiçbir zaman saklanmaz veya günlüğe yazılmaz.",
@@ -2964,7 +3045,8 @@ const tr: Dict = {
   "studio.needCertificate": "Önce bir sertifika seçin.",
 
   "studio.objects": "Formlar ve nesneler",
-  "studio.objectsHint": "Gerçek AcroForm alanları ve sayfa nesneleri. Doldurma /V değerini yazar ve widget görünümlerini yeniden üretir; nesne düzenlemeleri açıklama dikdörtgenini veya görüntü yerleşim matrisini değiştirir. İçerik akışlarındaki metin ve vektör grafikler güvenle bulunamadığı için listelenmez.",
+  "studio.objectsHint":
+    "Gerçek AcroForm alanları ve sayfa nesneleri. Doldurma /V değerini yazar ve widget görünümlerini yeniden üretir; nesne düzenlemeleri açıklama dikdörtgenini veya görüntü yerleşim matrisini değiştirir. İçerik akışlarındaki metin ve vektör grafikler güvenle bulunamadığı için listelenmez.",
   "studio.refreshData": "Yenile",
   "studio.noFields": "Bu belgede form alanı bulunamadı.",
   "studio.noObjects": "Bu sayfada açıklama veya görüntü yok.",
@@ -2981,7 +3063,8 @@ const tr: Dict = {
   "studio.unsupportedField": "Bu alan türü buradan doldurulamaz.",
   "studio.radioManual": "Dışa aktarım durumu",
   "studio.objectsOnPage": "Sayfa {page} nesneleri",
-  "studio.selectObjectHint": "Seçmek için bir nesneye dokunun, taşımak için sürükleyin, boyutlandırmak için tutamaçları kullanın.",
+  "studio.selectObjectHint":
+    "Seçmek için bir nesneye dokunun, taşımak için sürükleyin, boyutlandırmak için tutamaçları kullanın.",
   "studio.deleteObject": "Nesneyi sil",
   "studio.rotateLeft": "-90° döndür",
   "studio.rotateRight": "+90° döndür",
@@ -3007,8 +3090,10 @@ const tr: Dict = {
   "nav.plugins": "Eklentiler",
   "palette.category.plugins": "Eklentiler",
   "plugins.title": "Eklentiler",
-  "plugins.subtitle": "Kum havuzunda çalışan uzantılar: her eklenti yalnızca bildirgesinde tanımlı izinlerle bir worker içinde çalışır.",
-  "plugins.sandboxNote": "Eklenti kodu DOM ve sistem erişimi olmayan bir Web Worker içinde çalışır. Her yetenek uygulama ana sürecinden geçer ve bildirgedeki izinlere göre denetlenir; belgeler ve dosyalar uygulamanın denetiminde kalır.",
+  "plugins.subtitle":
+    "Kum havuzunda çalışan uzantılar: her eklenti yalnızca bildirgesinde tanımlı izinlerle bir worker içinde çalışır.",
+  "plugins.sandboxNote":
+    "Eklenti kodu DOM ve sistem erişimi olmayan bir Web Worker içinde çalışır. Her yetenek uygulama ana sürecinden geçer ve bildirgedeki izinlere göre denetlenir; belgeler ve dosyalar uygulamanın denetiminde kalır.",
   "plugins.installFolder": "Klasörden kur…",
   "plugins.reloadSample": "Örnek eklentiyi yeniden yükle",
   "plugins.refresh": "Yenile",

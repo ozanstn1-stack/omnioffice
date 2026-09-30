@@ -28,6 +28,7 @@ import { DropZone, FileList } from "../components/files";
 import { Badge, Card, Field, Toggle } from "../components/ui";
 import { PageCanvas } from "../components/pages";
 import {
+  pdfArchiveValidationData,
   pdfEditObjects,
   pdfFillForm,
   pdfInfo,
@@ -42,6 +43,7 @@ import {
   type FieldIssue,
   type FieldValue,
   type FormFieldInfo,
+  type LtvReport,
   type ObjectEdit,
   type PageObjectInfo,
   type SignatureInfo,
@@ -236,6 +238,8 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
 
   // Signature tab state.
   const [signReport, setSignReport] = useState<SignatureReport | null>(null);
+  const [ltvReport, setLtvReport] = useState<LtvReport | null>(null);
+  const [archiving, setArchiving] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [certificates, setCertificates] = useState<SigningCertificateSummary[]>([]);
   const [certIndex, setCertIndex] = useState<number | null>(null);
@@ -733,6 +737,23 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
     }
   };
 
+  const archiveValidationData = async () => {
+    if (!input) {
+      toast("error", t("studio.needFile"));
+      return;
+    }
+    setArchiving(true);
+    try {
+      const report = await pdfArchiveValidationData(input);
+      setLtvReport(report);
+      toast("success", t("studio.ltvDone"));
+    } catch (error) {
+      toast("error", t("errors.title"), toAppError(error).message);
+    } finally {
+      setArchiving(false);
+    }
+  };
+
   const signDocument = async () => {
     if (!input) {
       toast("error", t("studio.needFile"));
@@ -1048,14 +1069,36 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
           <Card>
             <strong>{t("studio.signatures")}</strong>
             <p className="muted small">{t("studio.signaturesHint")}</p>
-            <button
-              type="button"
-              className="btn btn-soft"
-              disabled={!input || verifying || signing}
-              onClick={() => void verifySignatures()}
-            >
-              <ShieldCheck size={14} /> {t("studio.verify")}
-            </button>
+            <div className="row">
+              <button
+                type="button"
+                className="btn btn-soft"
+                disabled={!input || verifying || signing}
+                onClick={() => void verifySignatures()}
+              >
+                <ShieldCheck size={14} /> {t("studio.verify")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-soft"
+                disabled={!input || archiving || signing}
+                onClick={() => void archiveValidationData()}
+              >
+                <ShieldCheck size={14} /> {t("studio.ltv")}
+              </button>
+            </div>
+            <p className="muted small">{t("studio.ltvHint")}</p>
+            {ltvReport ? (
+              <p className="muted small" style={{ marginTop: 10 }}>
+                <Badge tone="ok">{t("studio.ltvDone")}</Badge> {t("studio.ltvResult")}: {ltvReport.certificates}
+                {ltvReport.warnings.map((warning, index) => (
+                  <span key={index} className="muted small">
+                    {" "}
+                    {warning}
+                  </span>
+                ))}
+              </p>
+            ) : null}
             {signReport ? (
               <>
                 {signReport.warnings.map((warning, index) => (
@@ -1075,6 +1118,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                         </Badge>
                         <Badge tone={info.coversWholeDocument ? "ok" : "warn"}>{t("studio.coversWhole")}</Badge>
                         {info.modifiedAfterSigning ? <Badge tone="danger">{t("studio.modifiedAfter")}</Badge> : null}
+                        {info.supersededByLaterRevision ? <Badge tone="warn">{t("studio.superseded")}</Badge> : null}
                         <Badge tone="warn">{t("studio.trustUnknown")}</Badge>
                       </div>
                       <p className="muted small">

@@ -37,6 +37,7 @@ pub mod flatten;
 pub mod fontembed;
 pub mod forms;
 pub mod images;
+pub mod ltv;
 pub mod info;
 pub mod inspect;
 pub mod merge;

@@ -1,4 +1,4 @@
-﻿//! Real PDF digital signature commands.
+//! Real PDF digital signature commands.
 //!
 //! All cryptography lives in `pdfcore::sign`; this module only bridges it to
 //! the UI: it reads files, optionally unlocks a certificate from the Windows
@@ -165,6 +165,34 @@ pub async fn pdf_sign(
             output,
             signature,
         })
+    })
+    .await
+    .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
+}
+
+/// Archives the validation data of every signature in the document.
+///
+/// This is the offline half of PAdES B-LT: the certificates of each chain (and
+/// any revocation data the CMS carries) are written into a /DSS dictionary as an
+/// incremental update, so the signed revision - and every signature in it -
+/// stays byte for byte as it was. Nothing is fetched from the network; what the
+/// signature already carries is what gets archived.
+#[tauri::command]
+pub async fn pdf_archive_validation_data(
+    input: String,
+    output: Option<String>,
+) -> Result<pdfcore::ltv::LtvReport, PdfError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let pdf = std::fs::read(&input).map_err(PdfError::from_io)?;
+        let (updated, report) = pdfcore::ltv::add_validation_data(&pdf)?;
+        let target = match output {
+            Some(path) => path,
+            None => pdfcore::docutil::default_output_for(Path::new(&input), "-ltv")
+                .to_string_lossy()
+                .to_string(),
+        };
+        write_atomic(&target, &updated)?;
+        Ok(report)
     })
     .await
     .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?

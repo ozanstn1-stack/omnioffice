@@ -4,9 +4,7 @@
 #![allow(dead_code)]
 
 use lopdf::{dictionary, Dictionary, Document, Object, Stream};
-use pdfcore::docutil::{
-    add_resource_entry, add_rgb_image_xobject, add_rgba_image_xobject, pdf_text_object, RawImage,
-};
+use pdfcore::docutil::{add_resource_entry, add_rgb_image_xobject, add_rgba_image_xobject, pdf_text_object, RawImage};
 use pdfcore::progress::ProgressEvent;
 use pdfcore::textimg::{render_text, TextRenderRequest};
 use std::path::{Path, PathBuf};
@@ -17,12 +15,7 @@ pub struct TestDir {
 
 impl TestDir {
     pub fn new() -> Self {
-        Self {
-            dir: tempfile::Builder::new()
-                .prefix("pdfsak-test-")
-                .tempdir()
-                .expect("tempdir"),
-        }
+        Self { dir: tempfile::Builder::new().prefix("pdfsak-test-").tempdir().expect("tempdir") }
     }
 
     pub fn path(&self, name: &str) -> PathBuf {
@@ -64,11 +57,7 @@ pub fn build_text_doc(pages: u32, label: &str, title: &str) -> Document {
             "0.9 0.9 0.95 rg\n40 40 515 760 re f\n0.1 0.35 0.8 RG\n3 w\n80 600 300 120 re\nS\nBT\n/F1 24 Tf\n72 700 Td\n({label} page {page}) Tj\nET\n",
         );
         let content_id = doc.add_object(Object::Stream(Stream::new(Dictionary::new(), content.into_bytes())));
-        doc.get_object_mut(page_id)
-            .unwrap()
-            .as_dict_mut()
-            .unwrap()
-            .set("Contents", Object::Reference(content_id));
+        doc.get_object_mut(page_id).unwrap().as_dict_mut().unwrap().set("Contents", Object::Reference(content_id));
         page_ids.push(page_id);
     }
     finish_doc(doc, page_ids, title)
@@ -108,18 +97,13 @@ pub fn build_scanned_doc(pages: u32, caption: &str, title: &str) -> Document {
                 let dst = ((sy as u32 * w + sx as u32) * 4) as usize;
                 let alpha = art.rgba[src + 3] as f32 / 255.0;
                 for c in 0..3 {
-                    rgba[dst + c] = (art.rgba[src + c] as f32 * alpha
-                        + rgba[dst + c] as f32 * (1.0 - alpha))
-                        .round() as u8;
+                    rgba[dst + c] =
+                        (art.rgba[src + c] as f32 * alpha + rgba[dst + c] as f32 * (1.0 - alpha)).round() as u8;
                 }
                 rgba[dst + 3] = 255;
             }
         }
-        let raw = RawImage {
-            width: w,
-            height: h,
-            rgba,
-        };
+        let raw = RawImage { width: w, height: h, rgba };
         let image_id = add_rgba_image_xobject(&mut doc, &raw).unwrap();
         let page_id = doc.add_object(Object::Dictionary(dictionary! {
             "Type" => "Page",
@@ -133,11 +117,7 @@ pub fn build_scanned_doc(pages: u32, caption: &str, title: &str) -> Document {
         add_resource_entry(&mut doc, page_id, b"XObject", "Im0", Object::Reference(image_id)).unwrap();
         let content = "q\n595.28 0 0 841.89 0 0 cm\n/Im0 Do\nQ\n";
         let content_id = doc.add_object(Object::Stream(Stream::new(Dictionary::new(), content.as_bytes().to_vec())));
-        doc.get_object_mut(page_id)
-            .unwrap()
-            .as_dict_mut()
-            .unwrap()
-            .set("Contents", Object::Reference(content_id));
+        doc.get_object_mut(page_id).unwrap().as_dict_mut().unwrap().set("Contents", Object::Reference(content_id));
         page_ids.push(page_id);
     }
     finish_doc(doc, page_ids, title)
@@ -173,11 +153,7 @@ pub fn build_image_doc(pages: u32, title: &str) -> Document {
         add_resource_entry(&mut doc, page_id, b"XObject", "Im0", Object::Reference(image_id)).unwrap();
         let content = "q\n595.28 0 0 841.89 0 0 cm\n/Im0 Do\nQ\n";
         let content_id = doc.add_object(Object::Stream(Stream::new(Dictionary::new(), content.as_bytes().to_vec())));
-        doc.get_object_mut(page_id)
-            .unwrap()
-            .as_dict_mut()
-            .unwrap()
-            .set("Contents", Object::Reference(content_id));
+        doc.get_object_mut(page_id).unwrap().as_dict_mut().unwrap().set("Contents", Object::Reference(content_id));
         page_ids.push(page_id);
     }
     finish_doc(doc, page_ids, title)
@@ -224,7 +200,8 @@ pub fn build_noisy_jpeg_scan(pages: u32, title: &str) -> Document {
                 let dst = ((sy as u32 * w + sx as u32) * 3) as usize;
                 let alpha = art.rgba[src + 3] as f32 / 255.0;
                 for c in 0..3 {
-                    rgb[dst + c] = (art.rgba[src + c] as f32 * alpha + rgb[dst + c] as f32 * (1.0 - alpha)).round() as u8;
+                    rgb[dst + c] =
+                        (art.rgba[src + c] as f32 * alpha + rgb[dst + c] as f32 * (1.0 - alpha)).round() as u8;
                 }
             }
         }
@@ -245,11 +222,7 @@ pub fn build_noisy_jpeg_scan(pages: u32, title: &str) -> Document {
         add_resource_entry(&mut doc, page_id, b"XObject", "Im0", Object::Reference(image_id)).unwrap();
         let content = "q\n595.28 0 0 841.89 0 0 cm\n/Im0 Do\nQ\n";
         let content_id = doc.add_object(Object::Stream(Stream::new(Dictionary::new(), content.as_bytes().to_vec())));
-        doc.get_object_mut(page_id)
-            .unwrap()
-            .as_dict_mut()
-            .unwrap()
-            .set("Contents", Object::Reference(content_id));
+        doc.get_object_mut(page_id).unwrap().as_dict_mut().unwrap().set("Contents", Object::Reference(content_id));
         page_ids.push(page_id);
     }
     finish_doc(doc, page_ids, title)
@@ -262,11 +235,7 @@ fn finish_doc(mut doc: Document, page_ids: Vec<lopdf::ObjectId>, title: &str) ->
         "Count" => page_ids.len() as i64,
     }));
     for page_id in &page_ids {
-        doc.get_object_mut(*page_id)
-            .unwrap()
-            .as_dict_mut()
-            .unwrap()
-            .set("Parent", Object::Reference(pages_id));
+        doc.get_object_mut(*page_id).unwrap().as_dict_mut().unwrap().set("Parent", Object::Reference(pages_id));
     }
     let catalog_id = doc.add_object(Object::Dictionary(dictionary! {
         "Type" => "Catalog",
@@ -290,11 +259,7 @@ pub fn write_doc(doc: &mut Document, path: &Path) {
 pub fn write_test_image(path: &Path, width: u32, height: u32, color: [u8; 3]) {
     let mut img = image::RgbImage::new(width, height);
     for (x, y, px) in img.enumerate_pixels_mut() {
-        px.0 = [
-            color[0].wrapping_add((x % 64) as u8),
-            color[1].wrapping_add((y % 64) as u8),
-            color[2],
-        ];
+        px.0 = [color[0].wrapping_add((x % 64) as u8), color[1].wrapping_add((y % 64) as u8), color[2]];
     }
     img.save(path).expect("save test image");
 }
@@ -373,11 +338,7 @@ pub fn mean_pixel_diff(a: &pdfcore::render::RenderedPage, b: &pdfcore::render::R
 }
 
 /// Number of pixels whose channel values differ by more than `tolerance`.
-pub fn changed_pixels(
-    a: &pdfcore::render::RenderedPage,
-    b: &pdfcore::render::RenderedPage,
-    tolerance: i64,
-) -> usize {
+pub fn changed_pixels(a: &pdfcore::render::RenderedPage, b: &pdfcore::render::RenderedPage, tolerance: i64) -> usize {
     let len = a.rgba.len().min(b.rgba.len());
     let mut changed = 0;
     for i in 0..len {

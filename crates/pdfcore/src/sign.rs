@@ -190,9 +190,15 @@ pub struct SignatureInfo {
     pub sub_filter: String,
     /// The ByteRange covers the whole revision except the `/Contents` value.
     pub covers_whole_document: bool,
-    /// The signed bytes no longer hash to the digest in the CMS, or the
-    /// ByteRange does not span the whole revision (an incremental update was
-    /// appended after signing).
+    /// Bytes were appended after this signature's own revision - a
+    /// counter-signature, validation data (DSS) or any other incremental
+    /// update. The signature is still valid for the revision it signed; it
+    /// simply is not the last revision any more.
+    #[serde(default)]
+    pub superseded_by_later_revision: bool,
+    /// The signed bytes no longer hash to the digest in the CMS, or the byte
+    /// range leaves unsigned bytes *inside* the signed revision. An appended
+    /// revision is not a modification and is reported separately above.
     pub modified_after_signing: bool,
     /// SHA-256 (or the declared digest) of the covered bytes matches the
     /// `messageDigest` signed attribute.
@@ -325,7 +331,7 @@ fn der_context(tag_number: u8, inner: &[u8]) -> Vec<u8> {
 // Hex helpers
 // ---------------------------------------------------------------------------
 
-fn to_hex_upper(bytes: &[u8]) -> String {
+pub(crate) fn to_hex_upper(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     let mut out = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
@@ -353,7 +359,7 @@ pub fn certificate_fingerprint(cert_der: &[u8]) -> PdfResult<String> {
 
 /// Returns the exact DER TLV at the start of `bytes` (ignoring any trailing
 /// zero padding), or `None` when the length field is malformed.
-fn der_exact_slice(bytes: &[u8]) -> Option<&[u8]> {
+pub(crate) fn der_exact_slice(bytes: &[u8]) -> Option<&[u8]> {
     if bytes.len() < 2 {
         return None;
     }
@@ -1802,6 +1808,8 @@ fn inspect_signature(
         .and_then(|values| byte_range_pairs(values));
 
     let mut covers_whole_document = false;
+    let mut superseded_by_later_revision = false;
+    let mut unsigned_gap_inside_revision = false;
     let mut digest_matches = false;
 
     // The CMS occupies a prefix of /Contents; zero padding follows it. Decode
@@ -1836,13 +1844,25 @@ fn inspect_signature(
             gaps.push((cursor, pdf.len()));
         }
         let token_length = contents.len() * 2 + 2;
+        let starts_at_zero = intervals.first().map(|(start, _)| *start == 0).unwrap_or(false);
+        let contents_gap = |gap: &(usize, usize)| {
+            gap.1 - gap.0 == token_length || gap.1 - gap.0 == token_length.saturating_sub(1)
+        };
         let whole = ranges.len() >= 2
-            && intervals.first().map(|(start, _)| *start == 0).unwrap_or(false)
+            && starts_at_zero
             && cursor == pdf.len()
             && gaps.len() == 1
-            && (gaps[0].1 - gaps[0].0 == token_length
-                || gaps[0].1 - gaps[0].0 == token_length.saturating_sub(1));
+            && contents_gap(&gaps[0]);
         covers_whole_document = whole;
+        // A gap that is neither the /Contents placeholder nor the tail of the
+        // file means the signed revision itself contains unsigned bytes.
+        unsigned_gap_inside_revision = gaps
+            .iter()
+            .any(|gap| gap.1 < pdf.len() && !contents_gap(gap));
+        // The revision signed here is intact, and the file simply continues:
+        // that is a counter-signature or an appended validation block, not a
+        // modification of this signature.
+        superseded_by_later_revision = starts_at_zero && cursor < pdf.len() && !covers_whole_document;
         if covered > pdf.len() {
             notes.push("the byte range extends beyond the end of the file".into());
         }
@@ -2011,15 +2031,17 @@ fn inspect_signature(
             .filter(|text| !text.trim().is_empty());
     }
 
-    // "Modified after signing" means the signed bytes no longer hash to the
-    // signed digest, or the byte range does not span the whole revision
-    // (for example an incremental update was appended after signing).
-    let modified_after_signing = !digest_matches || !covers_whole_document;
+    // Only a digest mismatch (or unsigned bytes inside the signed range) counts
+    // as a modification. Appending a revision used to set this flag too, which
+    // painted every countersigned or timestamped document as tampered.
+    let modified_after_signing = !digest_matches || unsigned_gap_inside_revision;
+    superseded_by_later_revision = superseded_by_later_revision && digest_matches && signature_valid;
 
     SignatureInfo {
         field_name,
         sub_filter,
         covers_whole_document,
+        superseded_by_later_revision,
         modified_after_signing,
         digest_matches,
         signature_valid,
