@@ -365,7 +365,12 @@ export const annotatePdf = (
   annotations: Annotation[],
   jobId: string,
   password?: string,
-) => invoke<OpResult>("annotate_pdf", { request: { input, output, annotations, password, jobId } });
+  /** Keep existing signatures by appending the stamp as a new revision. */
+  keepSignatures = true,
+) =>
+  invoke<OpResult>("annotate_pdf", {
+    request: { input, output, annotations, password, jobId, keepSignatures },
+  });
 
 export const redactPdf = (
   input: string,

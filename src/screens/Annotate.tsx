@@ -1,12 +1,5 @@
 import { useState } from "react";
-import {
-  Highlighter,
-  Image as ImageIcon,
-  Minus,
-  Square,
-  Trash2,
-  Type,
-} from "lucide-react";
+import { Highlighter, Image as ImageIcon, Minus, Square, Trash2, Type } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { isAndroid, pickAndroidFiles } from "../lib/mobile";
 import { Badge, Button, Card, ColorInput, Field, Slider, Toggle } from "../components/ui";
@@ -37,6 +30,7 @@ export function Annotate({ initialFiles, dragging }: { initialFiles?: string[]; 
   const [opacity, setOpacity] = useState(0.35);
   const [lineWidth, setLineWidth] = useState(2);
   const [imagePath, setImagePath] = useState<string | null>(null);
+  const [keepSignatures, setKeepSignatures] = useState(true);
   const [page, setPage] = useState(1);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
 
@@ -68,12 +62,21 @@ export function Annotate({ initialFiles, dragging }: { initialFiles?: string[]; 
   };
 
   const patchLast = (values: Partial<Annotation>) => {
-    setAnnotations((previous) => previous.map((item, index) => (index === previous.length - 1 ? { ...item, ...values } : item)));
+    setAnnotations((previous) =>
+      previous.map((item, index) => (index === previous.length - 1 ? { ...item, ...values } : item)),
+    );
   };
 
   const run = () =>
     session.run(async (jobId, overwrite) =>
-      annotatePdf(session.primary?.path ?? "", session.outputSpec(overwrite), annotations, jobId, session.password || undefined),
+      annotatePdf(
+        session.primary?.path ?? "",
+        session.outputSpec(overwrite),
+        annotations,
+        jobId,
+        session.password || undefined,
+        keepSignatures,
+      ),
     );
 
   const pickImage = async () => {
@@ -135,9 +138,16 @@ export function Annotate({ initialFiles, dragging }: { initialFiles?: string[]; 
                                 top,
                                 width: boxWidth,
                                 height: boxHeight,
-                                border: annotation.kind === "rect" ? `${annotation.line_width_pt}px solid ${annotation.color}` : "none",
+                                border:
+                                  annotation.kind === "rect"
+                                    ? `${annotation.line_width_pt}px solid ${annotation.color}`
+                                    : "none",
                                 background:
-                                  annotation.kind === "highlight" ? annotation.color : annotation.kind === "text" ? "transparent" : "transparent",
+                                  annotation.kind === "highlight"
+                                    ? annotation.color
+                                    : annotation.kind === "text"
+                                      ? "transparent"
+                                      : "transparent",
                                 opacity: annotation.kind === "highlight" ? annotation.opacity : 1,
                                 color: annotation.color,
                                 fontSize: `${Math.max(8, annotation.font_size_pt * 0.72)}px`,
@@ -161,7 +171,16 @@ export function Annotate({ initialFiles, dragging }: { initialFiles?: string[]; 
       }
       side={
         <>
-          <OutputBar session={session} runLabel={t("annotate.apply")} onRun={() => void run()} disabled={!session.primary || !annotations.length} />
+          <OutputBar
+            session={session}
+            runLabel={t("annotate.apply")}
+            onRun={() => void run()}
+            disabled={!session.primary || !annotations.length}
+          />
+          <OptionCard title={t("metadata.signatures")}>
+            <Toggle checked={keepSignatures} onChange={setKeepSignatures} label={t("metadata.keepSignatures")} />
+            <p className="muted small">{t("annotate.keepSignaturesHint")}</p>
+          </OptionCard>
           <OptionCard title={t("annotate.tools")}>
             <div className="flex flex-wrap gap-1.5">
               {KINDS.map((entry) => (
@@ -179,7 +198,12 @@ export function Annotate({ initialFiles, dragging }: { initialFiles?: string[]; 
             {kind === "text" ? (
               <>
                 <Field label={t("annotate.textPlaceholder")}>
-                  <textarea className="textarea" rows={2} value={text} onChange={(event) => setText(event.target.value)} />
+                  <textarea
+                    className="textarea"
+                    rows={2}
+                    value={text}
+                    onChange={(event) => setText(event.target.value)}
+                  />
                 </Field>
                 <Field label={t("annotate.fontSize")}>
                   <Slider value={fontSize} min={8} max={48} onChange={setFontSize} />
@@ -192,7 +216,7 @@ export function Annotate({ initialFiles, dragging }: { initialFiles?: string[]; 
                 {imagePath ? imagePath.split(/[\\/]/).pop() : t("annotate.imageFile")}
               </Button>
             ) : null}
-            {(kind === "rect" || kind === "line") ? (
+            {kind === "rect" || kind === "line" ? (
               <Field label={t("annotate.lineWidth")}>
                 <Slider value={lineWidth} min={1} max={10} onChange={setLineWidth} />
               </Field>
@@ -202,7 +226,13 @@ export function Annotate({ initialFiles, dragging }: { initialFiles?: string[]; 
             </Field>
             {kind === "highlight" ? (
               <Field label="Opacity">
-                <Slider value={opacity * 100} min={10} max={90} onChange={(value) => setOpacity(value / 100)} format={(value) => `${value}%`} />
+                <Slider
+                  value={opacity * 100}
+                  min={10}
+                  max={90}
+                  onChange={(value) => setOpacity(value / 100)}
+                  format={(value) => `${value}%`}
+                />
               </Field>
             ) : null}
           </OptionCard>

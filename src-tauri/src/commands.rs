@@ -1099,6 +1099,10 @@ pub struct AnnotateRequest {
     pub input: String,
     pub output: OutputSpec,
     pub annotations: Vec<pdfcore::annotate::Annotation>,
+    /// Keep existing signatures by appending the stamp as a new revision
+    /// (default on).
+    #[serde(default = "default_true")]
+    pub keep_signatures: bool,
     #[serde(default)]
     pub password: Option<String>,
     pub job_id: Option<String>,
@@ -1112,6 +1116,27 @@ pub async fn annotate_pdf(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let (output, policy) = request.output.resolve()?;
+        let bytes = std::fs::read(&request.input).map_err(PdfError::from_io)?;
+        let signatures = pdfcore::incremental::signature_count(&bytes);
+
+        // A stamp is additive: appending it as a new revision keeps every
+        // existing signature valid and visible as "what was signed".
+        if signatures > 0 && request.keep_signatures {
+            let updated = pdfcore::annotate::annotate_pdf_incremental(&bytes, &request.annotations)?;
+            let path = pdfcore::docutil::resolve_output_path(&output, policy)?;
+            pdfcore::docutil::write_bytes_atomic(&path, &updated)?;
+            return Ok(OpResult {
+                path: path.display().to_string(),
+                page_count: None,
+                original_bytes: Some(bytes.len() as u64),
+                output_bytes: Some(updated.len() as u64),
+                reduction: None,
+                message: Some(format!(
+                    "{signatures} signature(s) preserved - the stamp was appended as a new revision"
+                )),
+            });
+        }
+
         let path = pdfcore::annotate::annotate_pdf(
             Path::new(&request.input),
             &output,
@@ -1127,7 +1152,13 @@ pub async fn annotate_pdf(
             original_bytes: None,
             output_bytes: std::fs::metadata(&path).ok().map(|m| m.len()),
             reduction: None,
-            message: None,
+            message: if signatures > 0 {
+                Some(format!(
+                    "{signatures} signature(s) invalidated - this change rewrites the document"
+                ))
+            } else {
+                None
+            },
         })
     })
     .await

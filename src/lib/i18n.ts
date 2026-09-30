@@ -414,6 +414,8 @@ const en: Dict = {
   "metadata.keepSignatures": "Keep existing signatures",
   "metadata.keepSignaturesHint":
     "A signed document is extended with a new revision instead of being rewritten, so every signature stays valid and a reader can see exactly what was signed and what changed afterwards.",
+  "annotate.keepSignaturesHint":
+    "The stamp is added as a new revision of a signed document, so the existing signatures stay valid.",
   "metadata.fieldTitle": "Title",
   "metadata.author": "Author",
   "metadata.subject": "Subject",
@@ -2013,6 +2015,8 @@ const tr: Dict = {
   "metadata.keepSignatures": "Mevcut imzaları koru",
   "metadata.keepSignaturesHint":
     "İmzalı bir belge yeniden yazılmak yerine yeni bir revizyonla genişletilir; böylece her imza geçerli kalır ve okuyucu neyin imzalandığını, sonrasında neyin değiştiğini görebilir.",
+  "annotate.keepSignaturesHint":
+    "Damga, imzalı belgenin yeni bir revizyonu olarak eklenir; mevcut imzalar geçerli kalır.",
   "metadata.fieldTitle": "Başlık",
   "metadata.author": "Yazar",
   "metadata.subject": "Konu",
