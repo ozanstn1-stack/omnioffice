@@ -76,7 +76,12 @@ function InputColumn({ session, dragging }: { session: ReturnType<typeof useTool
   return (
     <>
       <OptionCard>
-        <FileList files={session.files} onRemove={session.removeFile} onAdd={session.pickFiles} addLabel={t("common.addPdf")} />
+        <FileList
+          files={session.files}
+          onRemove={session.removeFile}
+          onAdd={session.pickFiles}
+          addLabel={t("common.addPdf")}
+        />
       </OptionCard>
       {session.info ? (
         <Card className="p-4">
@@ -100,8 +105,16 @@ function SelectionField({
 }) {
   const t = useT();
   return (
-    <Field label={t("pageTools.selection")} hint={`${t("pageTools.selectionHint")} ${t("common.example")} 1,3,5-8 · ${pageCount} ${t("common.pages")}`}>
-      <TextInput value={value} onChange={(event) => onChange(event.target.value)} placeholder={disabled ? t("common.all") : "1,3,5-8"} spellCheck={false} />
+    <Field
+      label={t("pageTools.selection")}
+      hint={`${t("pageTools.selectionHint")} ${t("common.example")} 1,3,5-8 · ${pageCount} ${t("common.pages")}`}
+    >
+      <TextInput
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={disabled ? t("common.all") : "1,3,5-8"}
+        spellCheck={false}
+      />
     </Field>
   );
 }
@@ -159,7 +172,9 @@ function Delete({ initialFiles, dragging }: { initialFiles?: string[]; dragging:
           {confirming ? (
             <Card className="p-4 flex items-center gap-3" soft>
               <Trash2 size={16} style={{ color: "var(--danger)" }} />
-              <p className="text-[13px] flex-1">{t("organize.deleteConfirm", { count: selection.split(",").filter(Boolean).length })}</p>
+              <p className="text-[13px] flex-1">
+                {t("organize.deleteConfirm", { count: selection.split(",").filter(Boolean).length })}
+              </p>
               <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
                 {t("common.cancel")}
               </Button>
@@ -248,7 +263,12 @@ function Rotate({ initialFiles, dragging }: { initialFiles?: string[]; dragging:
                 ))}
               </div>
             </Field>
-            <SelectionField value={selection} onChange={setSelection} pageCount={session.info?.pageCount ?? 0} disabled />
+            <SelectionField
+              value={selection}
+              onChange={setSelection}
+              pageCount={session.info?.pageCount ?? 0}
+              disabled
+            />
             <p className="text-xs muted">{t("common.all")}</p>
           </OptionCard>
           {session.result ? <ResultCard result={session.result} onReset={session.resetResult} /> : null}
@@ -284,13 +304,23 @@ function Resize({ initialFiles, dragging }: { initialFiles?: string[]; dragging:
             disabled={!session.primary}
             onRun={() =>
               void session.run(async (jobId, overwrite) =>
-                resizePages(session.primary?.path ?? "", session.outputSpec(overwrite), options, jobId, session.password || undefined),
+                resizePages(
+                  session.primary?.path ?? "",
+                  session.outputSpec(overwrite),
+                  options,
+                  jobId,
+                  session.password || undefined,
+                ),
               )
             }
           />
           <OptionCard title={t("convert.pageSize")}>
             <Field label={t("convert.pageSize")}>
-              <select className="select" value={options.page_size} onChange={(event) => patch({ page_size: event.target.value })}>
+              <select
+                className="select"
+                value={options.page_size}
+                onChange={(event) => patch({ page_size: event.target.value })}
+              >
                 <option value="a4">A4</option>
                 <option value="letter">Letter</option>
                 <option value="legal">Legal</option>
@@ -302,10 +332,18 @@ function Resize({ initialFiles, dragging }: { initialFiles?: string[]; dragging:
             {options.page_size === "custom" ? (
               <div className="grid grid-cols-2 gap-2">
                 <Field label={t("convert.widthPt")}>
-                  <TextInput type="number" value={options.custom_width_pt} onChange={(event) => patch({ custom_width_pt: Number(event.target.value) })} />
+                  <TextInput
+                    type="number"
+                    value={options.custom_width_pt}
+                    onChange={(event) => patch({ custom_width_pt: Number(event.target.value) })}
+                  />
                 </Field>
                 <Field label={t("convert.heightPt")}>
-                  <TextInput type="number" value={options.custom_height_pt} onChange={(event) => patch({ custom_height_pt: Number(event.target.value) })} />
+                  <TextInput
+                    type="number"
+                    value={options.custom_height_pt}
+                    onChange={(event) => patch({ custom_height_pt: Number(event.target.value) })}
+                  />
                 </Field>
               </div>
             ) : null}
@@ -330,7 +368,12 @@ function Resize({ initialFiles, dragging }: { initialFiles?: string[]; dragging:
                 ]}
               />
             </Field>
-            <SelectionField value={selection} onChange={setSelection} pageCount={session.info?.pageCount ?? 0} disabled />
+            <SelectionField
+              value={selection}
+              onChange={setSelection}
+              pageCount={session.info?.pageCount ?? 0}
+              disabled
+            />
             <p className="text-xs muted flex items-center gap-1.5">
               <Scaling size={12} /> {t("pageTools.resizeHint")}
             </p>
@@ -369,7 +412,13 @@ function CropTool({ initialFiles, dragging }: { initialFiles?: string[]; draggin
       const crops: CropItem[] = applyAll
         ? Array.from({ length: pageCount }, (_, index) => ({ ...crop, page: index + 1 }))
         : [crop];
-      return cropPages(session.primary?.path ?? "", session.outputSpec(overwrite), crops, jobId, session.password || undefined);
+      return cropPages(
+        session.primary?.path ?? "",
+        session.outputSpec(overwrite),
+        crops,
+        jobId,
+        session.password || undefined,
+      );
     });
 
   return (
@@ -407,16 +456,15 @@ function CropTool({ initialFiles, dragging }: { initialFiles?: string[]; draggin
       }
       side={
         <>
-          <OutputBar session={session} runLabel={t("pageTools.applyCrop")} disabled={!session.primary || !rect} onRun={() => void apply()} />
+          <OutputBar
+            session={session}
+            runLabel={t("pageTools.applyCrop")}
+            disabled={!session.primary || !rect}
+            onRun={() => void apply()}
+          />
           <OptionCard title={t("common.crop")}>
             <Toggle checked={applyAll} onChange={setApplyAll} label={t("common.all")} />
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<Crop size={14} />}
-              onClick={() => setRect(null)}
-              disabled={!rect}
-            >
+            <Button size="sm" variant="ghost" icon={<Crop size={14} />} onClick={() => setRect(null)} disabled={!rect}>
               {t("pageTools.clearCrop")}
             </Button>
             {rect && geometry ? (
@@ -445,6 +493,7 @@ const POSITIONS: WatermarkPosition[] = [
 function Numbering({ initialFiles, dragging }: { initialFiles?: string[]; dragging: boolean }) {
   const t = useT();
   const session = useTool({ suffix: "_numbered", accept: "pdf", initialPaths: initialFiles });
+  const [keepSignatures, setKeepSignatures] = useState(true);
   const [options, setOptions] = useState<NumberingOptions>({
     position: "bottom_center",
     format: "n",
@@ -470,10 +519,21 @@ function Numbering({ initialFiles, dragging }: { initialFiles?: string[]; draggi
             disabled={!session.primary}
             onRun={() =>
               void session.run(async (jobId, overwrite) =>
-                addPageNumbers(session.primary?.path ?? "", session.outputSpec(overwrite), options, jobId, session.password || undefined),
+                addPageNumbers(
+                  session.primary?.path ?? "",
+                  session.outputSpec(overwrite),
+                  options,
+                  jobId,
+                  session.password || undefined,
+                  keepSignatures,
+                ),
               )
             }
           />
+          <OptionCard title={t("metadata.signatures")}>
+            <Toggle checked={keepSignatures} onChange={setKeepSignatures} label={t("metadata.keepSignatures")} />
+            <p className="muted small">{t("annotate.keepSignaturesHint")}</p>
+          </OptionCard>
           <OptionCard title={t("pageTools.numberingTitle")}>
             <Field label={t("pageTools.numberingPosition")}>
               <select
@@ -483,13 +543,20 @@ function Numbering({ initialFiles, dragging }: { initialFiles?: string[]; draggi
               >
                 {POSITIONS.map((position) => (
                   <option key={position} value={position}>
-                    {position.split("_").map((part) => part[0].toUpperCase() + part.slice(1)).join(" ")}
+                    {position
+                      .split("_")
+                      .map((part) => part[0].toUpperCase() + part.slice(1))
+                      .join(" ")}
                   </option>
                 ))}
               </select>
             </Field>
             <Field label={t("pageTools.numberingFormat")}>
-              <select className="select" value={options.format} onChange={(event) => patch({ format: event.target.value as NumberingOptions["format"] })}>
+              <select
+                className="select"
+                value={options.format}
+                onChange={(event) => patch({ format: event.target.value as NumberingOptions["format"] })}
+              >
                 <option value="n">1, 2, 3</option>
                 <option value="page_n">Page 1</option>
                 <option value="n_of_total">1 / 20</option>
@@ -504,7 +571,12 @@ function Numbering({ initialFiles, dragging }: { initialFiles?: string[]; draggi
               />
             </Field>
             <Field label={t("annotate.fontSize")}>
-              <Slider value={options.font_size_pt} min={7} max={28} onChange={(value) => patch({ font_size_pt: value })} />
+              <Slider
+                value={options.font_size_pt}
+                min={7}
+                max={28}
+                onChange={(value) => patch({ font_size_pt: value })}
+              />
             </Field>
             <Field label={t("convert.margin")}>
               <Slider value={options.margin_pt} min={6} max={90} onChange={(value) => patch({ margin_pt: value })} />
@@ -514,9 +586,15 @@ function Numbering({ initialFiles, dragging }: { initialFiles?: string[]; draggi
               onChange={(value) => patch({ count_from_start: value })}
               label={t("pageTools.countFromStart")}
             />
-            <SelectionField value={selection} onChange={setSelection} pageCount={session.info?.pageCount ?? 0} disabled />
+            <SelectionField
+              value={selection}
+              onChange={setSelection}
+              pageCount={session.info?.pageCount ?? 0}
+              disabled
+            />
             <p className="text-xs muted flex items-center gap-1.5">
-              <Hash size={12} /> {t("common.example")} {options.format === "n" ? "1" : options.format === "page_n" ? "Page 1" : "1 / 20"}
+              <Hash size={12} /> {t("common.example")}{" "}
+              {options.format === "n" ? "1" : options.format === "page_n" ? "Page 1" : "1 / 20"}
             </p>
           </OptionCard>
           {session.result ? <ResultCard result={session.result} onReset={session.resetResult} /> : null}

@@ -23,11 +23,7 @@ pub fn helvetica_text_width(text: &str, size_pt: f64) -> f64 {
     let mut width = 0.0;
     for ch in text.chars() {
         let code = ch as u32;
-        let w = if (32..=126).contains(&code) {
-            HELVETICA_WIDTHS[(code - 32) as usize] as f64
-        } else {
-            556.0
-        };
+        let w = if (32..=126).contains(&code) { HELVETICA_WIDTHS[(code - 32) as usize] as f64 } else { 556.0 };
         width += w;
     }
     width / 1000.0 * size_pt
@@ -94,11 +90,7 @@ impl Default for NumberingOptions {
 }
 
 fn label_for(options: &NumberingOptions, page_number: u32, total: u32) -> String {
-    let display_number = if options.count_from_start {
-        options.start_number + page_number - 1
-    } else {
-        page_number
-    };
+    let display_number = if options.count_from_start { options.start_number + page_number - 1 } else { page_number };
     match options.format.as_str() {
         "page_n" => format!("Page {display_number}"),
         "n_of_total" => format!("{display_number} / {total}"),
@@ -111,17 +103,17 @@ fn label_for(options: &NumberingOptions, page_number: u32, total: u32) -> String
 fn ensure_helvetica_font(doc: &mut Document, page_id: lopdf::ObjectId) -> PdfResult<()> {
     let existing = {
         let resources = doc.get_dictionary(page_id)?.get(b"Resources").ok();
-        resources.and_then(|r| match r {
-            Object::Reference(id) => doc.get_dictionary(*id).ok(),
-            Object::Dictionary(d) => Some(d),
-            _ => None,
-        }).and_then(|d| d.get(b"Font").ok()).cloned()
+        resources
+            .and_then(|r| match r {
+                Object::Reference(id) => doc.get_dictionary(*id).ok(),
+                Object::Dictionary(d) => Some(d),
+                _ => None,
+            })
+            .and_then(|d| d.get(b"Font").ok())
+            .cloned()
     };
     let has_helv = match &existing {
-        Some(Object::Reference(id)) => doc
-            .get_dictionary(*id)
-            .map(|d| d.has(b"Helv"))
-            .unwrap_or(false),
+        Some(Object::Reference(id)) => doc.get_dictionary(*id).map(|d| d.has(b"Helv")).unwrap_or(false),
         Some(Object::Dictionary(d)) => d.has(b"Helv"),
         _ => false,
     };
@@ -137,22 +129,22 @@ fn ensure_helvetica_font(doc: &mut Document, page_id: lopdf::ObjectId) -> PdfRes
     add_resource_entry(doc, page_id, b"Font", "Helv", Object::Reference(font_id))
 }
 
-pub fn add_page_numbers(
-    input: &Path,
-    output: &Path,
+/// Draws the page numbers into the document.
+///
+/// Shared by the rewrite path and the incremental one; it only appends content
+/// (and, when needed, a font resource), so the difference stays additive.
+fn apply_page_numbers(
+    doc: &mut Document,
     options: &NumberingOptions,
-    policy: OverwritePolicy,
-    password: Option<&str>,
     progress: &ProgressCallback,
     cancel: &CancelToken,
-) -> PdfResult<PathBuf> {
+) -> PdfResult<()> {
     let color = crate::watermark::parse_hex_color(&options.color);
-    let mut doc = load_document(input, password)?;
     let total = doc.get_pages().len() as u32;
     if total == 0 {
         return Err(PdfError::InvalidPdf("document has no pages".into()));
     }
-    materialize_all_pages(&mut doc)?;
+    materialize_all_pages(doc)?;
     let target: Vec<u32> = if options.pages.is_empty() {
         (1..=total).collect()
     } else {
@@ -166,19 +158,11 @@ pub fn add_page_numbers(
 
     for (index, page_number) in target.iter().enumerate() {
         cancel.check()?;
-        progress(ProgressEvent::new(
-            "numbering.page",
-            index as u64,
-            target.len() as u64,
-        ));
-        let page_id = doc
-            .get_pages()
-            .get(page_number)
-            .copied()
-            .ok_or(PdfError::RangeOutOfBounds)?;
+        progress(ProgressEvent::new("numbering.page", index as u64, target.len() as u64));
+        let page_id = doc.get_pages().get(page_number).copied().ok_or(PdfError::RangeOutOfBounds)?;
         let label = label_for(options, *page_number, total);
-        let rotation = page_rotation(&doc, page_id)?;
-        let media = page_mediabox(&doc, page_id)?;
+        let rotation = page_rotation(doc, page_id)?;
+        let media = page_mediabox(doc, page_id)?;
         let (page_w, page_h) = (media[2] - media[0], media[3] - media[1]);
         let (display_w, display_h) = Matrix::displayed_size(rotation, page_w, page_h);
         let to_page = Matrix::display_to_page(rotation, page_w, page_h);
@@ -195,7 +179,7 @@ pub fn add_page_numbers(
             _ => ((display_w - text_w) / 2.0, margin + baseline_offset),
         };
 
-        ensure_helvetica_font(&mut doc, page_id)?;
+        ensure_helvetica_font(&mut *doc, page_id)?;
         let content = format!(
             "q\n{}\nBT\n{r} {g} {b} rg\n/Helv {size:.2} Tf\n{x:.2} {y:.2} Td\n({text}) Tj\nET\nQ\n",
             to_page.to_cm(),
@@ -207,9 +191,37 @@ pub fn add_page_numbers(
             y = y,
             text = escape_pdf_literal(&label),
         );
-        append_page_content(&mut doc, page_id, content.into_bytes())?;
+        append_page_content(&mut *doc, page_id, content.into_bytes())?;
     }
 
+    Ok(())
+}
+
+/// Adds the page numbers as an appended revision instead of rewriting the file.
+///
+/// Every byte of `input` is preserved, so a document that is already signed
+/// keeps every signature valid.
+pub fn numbering_pdf_incremental(input: &[u8], options: &NumberingOptions) -> PdfResult<Vec<u8>> {
+    let mut doc = Document::load_mem(input).map_err(|error| PdfError::from_lopdf(error, None))?;
+    if doc.is_encrypted() || doc.was_encrypted() {
+        return Err(PdfError::PasswordRequired);
+    }
+    let silent = |_event: ProgressEvent| {};
+    apply_page_numbers(&mut doc, options, &silent, &CancelToken::new())?;
+    crate::incremental::apply_difference(input, &doc)
+}
+
+pub fn add_page_numbers(
+    input: &Path,
+    output: &Path,
+    options: &NumberingOptions,
+    policy: OverwritePolicy,
+    password: Option<&str>,
+    progress: &ProgressCallback,
+    cancel: &CancelToken,
+) -> PdfResult<PathBuf> {
+    let mut doc = load_document(input, password)?;
+    apply_page_numbers(&mut doc, options, progress, cancel)?;
     let final_path = resolve_output_path(output, policy)?;
     save_document(&mut doc, &final_path, true)?;
     Ok(final_path)

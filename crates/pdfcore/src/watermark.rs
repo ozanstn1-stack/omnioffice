@@ -95,18 +95,8 @@ pub fn parse_hex_color(input: &str) -> [u8; 4] {
     let hex = input.trim().trim_start_matches('#');
     let parse = |s: &str| u8::from_str_radix(s, 16).unwrap_or(0);
     match hex.len() {
-        6 => [
-            parse(&hex[0..2]),
-            parse(&hex[2..4]),
-            parse(&hex[4..6]),
-            255,
-        ],
-        8 => [
-            parse(&hex[0..2]),
-            parse(&hex[2..4]),
-            parse(&hex[4..6]),
-            parse(&hex[6..8]),
-        ],
+        6 => [parse(&hex[0..2]), parse(&hex[2..4]), parse(&hex[4..6]), 255],
+        8 => [parse(&hex[0..2]), parse(&hex[2..4]), parse(&hex[4..6]), parse(&hex[6..8])],
         _ => [0, 0, 0, 255],
     }
 }
@@ -145,11 +135,7 @@ fn build_text_artwork(options: &WatermarkOptions) -> PdfResult<Artwork> {
     let image = textimg::render_text(&request)?;
     let width_pt = image.width as f64 / scale;
     let height_pt = image.height as f64 / scale;
-    Ok(Artwork {
-        image,
-        width_pt,
-        height_pt,
-    })
+    Ok(Artwork { image, width_pt, height_pt })
 }
 
 fn build_image_artwork(options: &WatermarkOptions, page_width_pt: f64) -> PdfResult<Artwork> {
@@ -169,25 +155,10 @@ fn build_image_artwork(options: &WatermarkOptions, page_width_pt: f64) -> PdfRes
             px[3] = (px[3] as f64 * opacity).round() as u8;
         }
     }
-    Ok(Artwork {
-        image: RawImage {
-            width: w as u32,
-            height: h as u32,
-            rgba: pixels,
-        },
-        width_pt,
-        height_pt,
-    })
+    Ok(Artwork { image: RawImage { width: w as u32, height: h as u32, rgba: pixels }, width_pt, height_pt })
 }
 
-fn position_origin(
-    position: &str,
-    display_w: f64,
-    display_h: f64,
-    art_w: f64,
-    art_h: f64,
-    margin: f64,
-) -> (f64, f64) {
+fn position_origin(position: &str, display_w: f64, display_h: f64, art_w: f64, art_h: f64, margin: f64) -> (f64, f64) {
     let (x, y) = match position {
         "top_left" => (margin, display_h - margin - art_h),
         "top_center" => ((display_w - art_w) / 2.0, display_h - margin - art_h),
@@ -202,13 +173,7 @@ fn position_origin(
 }
 
 /// Paints the artwork once for a tile grid covering the displayed page.
-fn tile_placements(
-    display_w: f64,
-    display_h: f64,
-    art_w: f64,
-    art_h: f64,
-    rotation_deg: f64,
-) -> Vec<(f64, f64)> {
+fn tile_placements(display_w: f64, display_h: f64, art_w: f64, art_h: f64, rotation_deg: f64) -> Vec<(f64, f64)> {
     let step_x = (art_w * 1.6).max(40.0);
     let step_y = (art_h * 2.2).max(40.0);
     let diagonal = (display_w * display_w + display_h * display_h).sqrt();
@@ -277,22 +242,22 @@ fn paint_page(
     Ok(())
 }
 
-pub fn add_watermark(
-    input: &Path,
-    output: &Path,
+/// Paints the watermark into the document (page content and resources).
+///
+/// Shared by the rewrite path and the incremental one; it only appends content
+/// and adds objects, so the difference between two revisions stays additive.
+fn apply_watermark(
+    doc: &mut Document,
     options: &WatermarkOptions,
-    policy: OverwritePolicy,
-    password: Option<&str>,
     progress: &ProgressCallback,
     cancel: &CancelToken,
-) -> PdfResult<PathBuf> {
-    let mut doc = load_document(input, password)?;
+) -> PdfResult<()> {
     let pages = doc.get_pages();
     let total = pages.len() as u32;
     if total == 0 {
         return Err(PdfError::InvalidPdf("document has no pages".into()));
     }
-    materialize_all_pages(&mut doc)?;
+    materialize_all_pages(doc)?;
     let target: Vec<u32> = if options.pages.is_empty() {
         (1..=total).collect()
     } else {
@@ -306,7 +271,7 @@ pub fn add_watermark(
 
     let first_page_w = {
         let id = pages[&1];
-        let media = page_mediabox(&doc, id)?;
+        let media = page_mediabox(doc, id)?;
         media[2] - media[0]
     };
     let artwork = if options.kind.eq_ignore_ascii_case("image") {
@@ -317,23 +282,44 @@ pub fn add_watermark(
     if artwork.image.width == 0 || artwork.image.height == 0 {
         return Err(PdfError::InvalidInput("watermark artwork is empty".into()));
     }
-    let xobject_id = add_rgba_image_xobject(&mut doc, &artwork.image)?;
+    let xobject_id = add_rgba_image_xobject(&mut *doc, &artwork.image)?;
 
     for (index, page_number) in target.iter().enumerate() {
         cancel.check()?;
-        progress(ProgressEvent::new(
-            "watermark.page",
-            index as u64,
-            target.len() as u64,
-        ));
-        let page_id = doc
-            .get_pages()
-            .get(page_number)
-            .copied()
-            .ok_or(PdfError::RangeOutOfBounds)?;
-        paint_page(&mut doc, page_id, &artwork, options, xobject_id)?;
+        progress(ProgressEvent::new("watermark.page", index as u64, target.len() as u64));
+        let page_id = doc.get_pages().get(page_number).copied().ok_or(PdfError::RangeOutOfBounds)?;
+        paint_page(&mut *doc, page_id, &artwork, options, xobject_id)?;
     }
 
+    Ok(())
+}
+
+/// Adds the watermark as an appended revision instead of rewriting the file.
+///
+/// Every byte of `input` is preserved, so a document that is already signed
+/// keeps every signature valid: the watermark is a later revision, and a reader
+/// can still tell what was signed and what was added afterwards.
+pub fn watermark_pdf_incremental(input: &[u8], options: &WatermarkOptions) -> PdfResult<Vec<u8>> {
+    let mut doc = Document::load_mem(input).map_err(|error| PdfError::from_lopdf(error, None))?;
+    if doc.is_encrypted() || doc.was_encrypted() {
+        return Err(PdfError::PasswordRequired);
+    }
+    let silent = |_event: ProgressEvent| {};
+    apply_watermark(&mut doc, options, &silent, &CancelToken::new())?;
+    crate::incremental::apply_difference(input, &doc)
+}
+
+pub fn add_watermark(
+    input: &Path,
+    output: &Path,
+    options: &WatermarkOptions,
+    policy: OverwritePolicy,
+    password: Option<&str>,
+    progress: &ProgressCallback,
+    cancel: &CancelToken,
+) -> PdfResult<PathBuf> {
+    let mut doc = load_document(input, password)?;
+    apply_watermark(&mut doc, options, progress, cancel)?;
     let final_path = resolve_output_path(output, policy)?;
     save_document(&mut doc, &final_path, true)?;
     Ok(final_path)

@@ -41,6 +41,7 @@ export function Watermark({ initialFiles, dragging }: { initialFiles?: string[];
     pages: [],
   });
   const [pagesText, setPagesText] = useState("");
+  const [keepSignatures, setKeepSignatures] = useState(true);
 
   const patch = (values: Partial<WatermarkOptions>) => setOptions((previous) => ({ ...previous, ...values }));
   const pageCount = session.info?.pageCount ?? 1;
@@ -63,12 +64,22 @@ export function Watermark({ initialFiles, dragging }: { initialFiles?: string[];
   session.registerAutoRun(() => void run());
   const run = () =>
     session.run(async (jobId, overwrite) =>
-      watermarkPdf(session.primary?.path ?? "", session.outputSpec(overwrite), options, jobId, session.password || undefined),
+      watermarkPdf(
+        session.primary?.path ?? "",
+        session.outputSpec(overwrite),
+        options,
+        jobId,
+        session.password || undefined,
+        keepSignatures,
+      ),
     );
 
   const positionOptions: { value: WatermarkPosition; label: string }[] = POSITIONS.map((position) => ({
     value: position,
-    label: position.split("_").map((part) => part[0].toUpperCase() + part.slice(1)).join(" "),
+    label: position
+      .split("_")
+      .map((part) => part[0].toUpperCase() + part.slice(1))
+      .join(" "),
   }));
 
   return (
@@ -84,7 +95,12 @@ export function Watermark({ initialFiles, dragging }: { initialFiles?: string[];
           ) : (
             <>
               <OptionCard>
-                <FileList files={session.files} onRemove={session.removeFile} onAdd={session.pickFiles} addLabel={t("common.addPdf")} />
+                <FileList
+                  files={session.files}
+                  onRemove={session.removeFile}
+                  onAdd={session.pickFiles}
+                  addLabel={t("common.addPdf")}
+                />
               </OptionCard>
               {session.info ? (
                 <Card className="p-4">
@@ -92,7 +108,9 @@ export function Watermark({ initialFiles, dragging }: { initialFiles?: string[];
                 </Card>
               ) : null}
               <Card className="p-4">
-                <p className="text-xs muted mb-3">{t("common.preview")} · {t("common.page")} 1</p>
+                <p className="text-xs muted mb-3">
+                  {t("common.preview")} · {t("common.page")} 1
+                </p>
                 <div className="mx-auto" style={{ maxWidth: 520 }}>
                   <PageCanvas
                     path={session.primary.path}
@@ -124,8 +142,11 @@ export function Watermark({ initialFiles, dragging }: { initialFiles?: string[];
                         <div
                           className="absolute inset-0 flex"
                           style={{
-                            alignItems:
-                              options.position.startsWith("top") ? "flex-start" : options.position.startsWith("bottom") ? "flex-end" : "center",
+                            alignItems: options.position.startsWith("top")
+                              ? "flex-start"
+                              : options.position.startsWith("bottom")
+                                ? "flex-end"
+                                : "center",
                             justifyContent: options.position.endsWith("left")
                               ? "flex-start"
                               : options.position.endsWith("right")
@@ -156,7 +177,16 @@ export function Watermark({ initialFiles, dragging }: { initialFiles?: string[];
         }
         side={
           <>
-            <OutputBar session={session} runLabel={t("nav.watermark")} onRun={() => void run()} disabled={!session.primary} />
+            <OutputBar
+              session={session}
+              runLabel={t("nav.watermark")}
+              onRun={() => void run()}
+              disabled={!session.primary}
+            />
+            <OptionCard title={t("metadata.signatures")}>
+              <Toggle checked={keepSignatures} onChange={setKeepSignatures} label={t("metadata.keepSignatures")} />
+              <p className="muted small">{t("annotate.keepSignaturesHint")}</p>
+            </OptionCard>
             <OptionCard title={t("nav.watermark")}>
               <Segmented<WatermarkOptions["kind"]>
                 value={options.kind}
@@ -177,14 +207,24 @@ export function Watermark({ initialFiles, dragging }: { initialFiles?: string[];
                     />
                   </Field>
                   <Field label={t("annotate.fontSize")}>
-                    <Slider value={options.font_size_pt} min={12} max={160} onChange={(value) => patch({ font_size_pt: value })} />
+                    <Slider
+                      value={options.font_size_pt}
+                      min={12}
+                      max={160}
+                      onChange={(value) => patch({ font_size_pt: value })}
+                    />
                   </Field>
-                  <Toggle checked={options.bold} onChange={(value) => patch({ bold: value })} label={t("annotate.bold")} />
+                  <Toggle
+                    checked={options.bold}
+                    onChange={(value) => patch({ bold: value })}
+                    label={t("annotate.bold")}
+                  />
                 </>
               ) : (
                 <>
                   <button className="btn btn-sm self-start" type="button" onClick={() => void pickImage()}>
-                    <ImageIcon size={14} /> {options.image_path ? options.image_path.split(/[\\/]/).pop() : t("annotate.imageFile")}
+                    <ImageIcon size={14} />{" "}
+                    {options.image_path ? options.image_path.split(/[\\/]/).pop() : t("annotate.imageFile")}
                   </button>
                   <Field label={t("annotate.fontSize")}>
                     <Slider
@@ -198,10 +238,23 @@ export function Watermark({ initialFiles, dragging }: { initialFiles?: string[];
                 </>
               )}
               <Field label={t("common.size")}>
-                <Slider value={options.opacity * 100} min={5} max={100} onChange={(value) => patch({ opacity: value / 100 })} format={(value) => `${value}%`} />
+                <Slider
+                  value={options.opacity * 100}
+                  min={5}
+                  max={100}
+                  onChange={(value) => patch({ opacity: value / 100 })}
+                  format={(value) => `${value}%`}
+                />
               </Field>
               <Field label={t("common.rotation")}>
-                <Slider value={options.rotation_deg} min={0} max={90} step={5} onChange={(value) => patch({ rotation_deg: value })} format={(value) => `${value}°`} />
+                <Slider
+                  value={options.rotation_deg}
+                  min={0}
+                  max={90}
+                  step={5}
+                  onChange={(value) => patch({ rotation_deg: value })}
+                  format={(value) => `${value}°`}
+                />
               </Field>
               <Field label={t("pageTools.numberingPosition")}>
                 <select
@@ -221,7 +274,12 @@ export function Watermark({ initialFiles, dragging }: { initialFiles?: string[];
               </Field>
               <Toggle checked={options.tile} onChange={(value) => patch({ tile: value })} label="Tile across page" />
               <Field label={t("pageTools.selection")} hint={t("pageTools.selectionHint")}>
-                <input className="input" value={pagesText} onChange={(event) => setPagesText(event.target.value)} placeholder={t("common.all")} />
+                <input
+                  className="input"
+                  value={pagesText}
+                  onChange={(event) => setPagesText(event.target.value)}
+                  placeholder={t("common.all")}
+                />
               </Field>
             </OptionCard>
             {session.result ? <ResultCard result={session.result} onReset={session.resetResult} /> : null}

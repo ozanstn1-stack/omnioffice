@@ -349,7 +349,12 @@ export const addPageNumbers = (
   options: NumberingOptions,
   jobId: string,
   password?: string,
-) => invoke<OpResult>("add_page_numbers", { request: { input, output, options, password, jobId } });
+  /** Keep existing signatures by appending the numbers as a new revision. */
+  keepSignatures = true,
+) =>
+  invoke<OpResult>("add_page_numbers", {
+    request: { input, output, options, password, jobId, keepSignatures },
+  });
 
 export const watermarkPdf = (
   input: string,
@@ -357,7 +362,12 @@ export const watermarkPdf = (
   options: WatermarkOptions,
   jobId: string,
   password?: string,
-) => invoke<OpResult>("watermark_pdf", { request: { input, output, options, password, jobId } });
+  /** Keep existing signatures by appending the watermark as a new revision. */
+  keepSignatures = true,
+) =>
+  invoke<OpResult>("watermark_pdf", {
+    request: { input, output, options, password, jobId, keepSignatures },
+  });
 
 export const annotatePdf = (
   input: string,

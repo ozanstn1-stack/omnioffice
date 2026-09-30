@@ -1019,6 +1019,10 @@ pub struct NumberingRequest {
     pub input: String,
     pub output: OutputSpec,
     pub options: pdfcore::numbering::NumberingOptions,
+    /// Keep existing signatures by appending the numbers as a new revision
+    /// (default on).
+    #[serde(default = "default_true")]
+    pub keep_signatures: bool,
     #[serde(default)]
     pub password: Option<String>,
     pub job_id: Option<String>,
@@ -1032,6 +1036,27 @@ pub async fn add_page_numbers(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let (output, policy) = request.output.resolve()?;
+        let bytes = std::fs::read(&request.input).map_err(PdfError::from_io)?;
+        let signatures = pdfcore::incremental::signature_count(&bytes);
+
+        // Page numbers are additive: appending them as a new revision keeps
+        // every existing signature valid.
+        if signatures > 0 && request.keep_signatures {
+            let updated = pdfcore::numbering::numbering_pdf_incremental(&bytes, &request.options)?;
+            let path = pdfcore::docutil::resolve_output_path(&output, policy)?;
+            pdfcore::docutil::write_bytes_atomic(&path, &updated)?;
+            return Ok(OpResult {
+                path: path.display().to_string(),
+                page_count: None,
+                original_bytes: Some(bytes.len() as u64),
+                output_bytes: Some(updated.len() as u64),
+                reduction: None,
+                message: Some(format!(
+                    "{signatures} signature(s) preserved - the page numbers were appended as a new revision"
+                )),
+            });
+        }
+
         let path = pdfcore::numbering::add_page_numbers(
             Path::new(&request.input),
             &output,
@@ -1047,7 +1072,13 @@ pub async fn add_page_numbers(
             original_bytes: None,
             output_bytes: std::fs::metadata(&path).ok().map(|m| m.len()),
             reduction: None,
-            message: None,
+            message: if signatures > 0 {
+                Some(format!(
+                    "{signatures} signature(s) invalidated - this change rewrites the document"
+                ))
+            } else {
+                None
+            },
         })
     })
     .await
@@ -1059,6 +1090,10 @@ pub struct WatermarkRequest {
     pub input: String,
     pub output: OutputSpec,
     pub options: pdfcore::watermark::WatermarkOptions,
+    /// Keep existing signatures by appending the watermark as a new revision
+    /// (default on).
+    #[serde(default = "default_true")]
+    pub keep_signatures: bool,
     #[serde(default)]
     pub password: Option<String>,
     pub job_id: Option<String>,
@@ -1072,6 +1107,27 @@ pub async fn watermark_pdf(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let (output, policy) = request.output.resolve()?;
+        let bytes = std::fs::read(&request.input).map_err(PdfError::from_io)?;
+        let signatures = pdfcore::incremental::signature_count(&bytes);
+
+        // A watermark is additive: appending it as a new revision keeps every
+        // existing signature valid and visible as "what was signed".
+        if signatures > 0 && request.keep_signatures {
+            let updated = pdfcore::watermark::watermark_pdf_incremental(&bytes, &request.options)?;
+            let path = pdfcore::docutil::resolve_output_path(&output, policy)?;
+            pdfcore::docutil::write_bytes_atomic(&path, &updated)?;
+            return Ok(OpResult {
+                path: path.display().to_string(),
+                page_count: None,
+                original_bytes: Some(bytes.len() as u64),
+                output_bytes: Some(updated.len() as u64),
+                reduction: None,
+                message: Some(format!(
+                    "{signatures} signature(s) preserved - the watermark was appended as a new revision"
+                )),
+            });
+        }
+
         let path = pdfcore::watermark::add_watermark(
             Path::new(&request.input),
             &output,
@@ -1087,7 +1143,13 @@ pub async fn watermark_pdf(
             original_bytes: None,
             output_bytes: std::fs::metadata(&path).ok().map(|m| m.len()),
             reduction: None,
-            message: None,
+            message: if signatures > 0 {
+                Some(format!(
+                    "{signatures} signature(s) invalidated - this change rewrites the document"
+                ))
+            } else {
+                None
+            },
         })
     })
     .await
