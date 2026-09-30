@@ -2,13 +2,19 @@
 # three ecosystems, so all of them are watched here; the audit job in
 # .github/workflows/desktop.yml fails the build on a known vulnerable version,
 # this keeps the pull requests coming before that happens.
+#
+# Limits and groups keep each wave reviewable: a fresh repository opened the
+# default five pull requests per ecosystem at once (18 in one go), and the
+# GitHub Actions bumps are mechanical enough to share a single pull request.
+# Major bumps of a real dependency stay on their own so they can be reviewed
+# and migrated one at a time.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     groups:
       frontend:
         patterns: ["*"]
@@ -18,7 +24,7 @@ updates:
     directory: /chrome-extension
     schedule:
       interval: weekly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 2
     groups:
       extension:
         patterns: ["*"]
@@ -28,7 +34,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     groups:
       rust:
         patterns: ["*"]
@@ -38,3 +44,7 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    open-pull-requests-limit: 1
+    groups:
+      actions:
+        patterns: ["*"]
