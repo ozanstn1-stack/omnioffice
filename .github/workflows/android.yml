@@ -17,10 +17,10 @@ jobs:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
@@ -43,7 +43,7 @@ jobs:
           targets: aarch64-linux-android,armv7-linux-androideabi
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -52,7 +52,7 @@ jobs:
           key: ${{ runner.os }}-cargo-android-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -138,7 +138,7 @@ jobs:
           ls -lh release-artifacts
 
       - name: Upload APKs and AAB
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-apks
           path: |
@@ -170,7 +170,7 @@ jobs:
     name: Android version consistency
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: tauri.conf.json and Android metadata agree
         run: |
           node -e "
