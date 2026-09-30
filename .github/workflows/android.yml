@@ -143,11 +143,12 @@ jobs:
       # JVM unit tests for the Android-only logic: the open-with/share intent
       # pipeline (untrusted display names, extension whitelist, 256 MB copy
       # cap). They run after the Rust artifacts are warm, so Gradle does not
-      # rebuild the native library just for the tests. On-device UI tests
-      # remain a documented gap (README "Limitations").
+      # rebuild the native library just for the tests. The Tauri Gradle plugin
+      # defines the `arm`/`universal` flavors, so the task is flavor-qualified.
+      # On-device UI tests remain a documented gap (README "Limitations").
       - name: Android unit tests
         working-directory: src-tauri/gen/android
-        run: sh gradlew :app:testDebugUnitTest --no-daemon
+        run: sh gradlew :app:testUniversalDebugUnitTest --no-daemon
 
       - name: Upload APKs and AAB
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

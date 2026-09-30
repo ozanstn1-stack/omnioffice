@@ -615,8 +615,8 @@ These are real and honest:
   works on whole runs/cells.
 - **Android**: no foreground service (long jobs run only while the process
   lives; state survives death as `interrupted`), the intent pipeline has JVM
-  unit tests (`./gradlew :app:testDebugUnitTest`, run by the Android release
-  workflow) but no on-device/emulator UI test run is claimed in the
+  unit tests (`./gradlew :app:testUniversalDebugUnitTest`, run by the Android
+  release workflow) but no on-device/emulator UI test run is claimed in the
   repository, `osed/ospr/osdt` are accepted by the intent filter but the
   engine does not understand them yet, and the launcher label is still
   "PDF Swiss Army Knife".
