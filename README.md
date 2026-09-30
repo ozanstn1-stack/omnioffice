@@ -192,7 +192,10 @@ validation and conversion with **real font embedding and an ICC output
 intent**, **Signatures** (list/validate/sign with Windows store or PKCS#12,
 visible appearance, counter-signing: a second signature is appended as an
 incremental update and leaves the first one valid, and a signature that a later
-revision superseded is reported as such instead of "modified"), **Validation
+revision superseded is reported as such instead of "modified"), **sign-safe
+editing** (metadata changes on a signed document are appended as a new revision
+- the original bytes stay byte-identical, so every signature remains valid and
+the change is visible as a later revision), **Validation
 data archiving** (the certificate chains a signature needs are written into the
 document DSS as an incremental update - the offline half of PAdES B-LT, nothing
 is downloaded), and **Forms & objects** (list/fill/validate AcroForm
@@ -411,7 +414,7 @@ npm test
 npx tsc --noEmit
 ```
 
-**469 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **588
+**476 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **588
 frontend tests** (587 passing, 1 heavy case gated by `OSAK_PERF_HEAVY=1`) pass,
 with a strict TypeScript type check on top. The per-crate split is deliberately
 not repeated here - `cargo test --workspace` prints it, and the numbers written

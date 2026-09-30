@@ -410,6 +410,10 @@ const en: Dict = {
 
   "metadata.title": "Metadata editor",
   "metadata.subtitle": "Read and edit document properties such as title and author.",
+  "metadata.signatures": "Signatures",
+  "metadata.keepSignatures": "Keep existing signatures",
+  "metadata.keepSignaturesHint":
+    "A signed document is extended with a new revision instead of being rewritten, so every signature stays valid and a reader can see exactly what was signed and what changed afterwards.",
   "metadata.fieldTitle": "Title",
   "metadata.author": "Author",
   "metadata.subject": "Subject",
@@ -2005,6 +2009,10 @@ const tr: Dict = {
   "annotate.imageFile": "Görsel dosyası",
   "metadata.title": "Metaveri düzenleyici",
   "metadata.subtitle": "Başlık ve yazar gibi belge özelliklerini okuyun ve düzenleyin.",
+  "metadata.signatures": "İmzalar",
+  "metadata.keepSignatures": "Mevcut imzaları koru",
+  "metadata.keepSignaturesHint":
+    "İmzalı bir belge yeniden yazılmak yerine yeni bir revizyonla genişletilir; böylece her imza geçerli kalır ve okuyucu neyin imzalandığını, sonrasında neyin değiştiğini görebilir.",
   "metadata.fieldTitle": "Başlık",
   "metadata.author": "Yazar",
   "metadata.subject": "Konu",

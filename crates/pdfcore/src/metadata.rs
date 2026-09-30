@@ -1,7 +1,7 @@
 //! Document metadata (Info dictionary) reading, editing and removal.
 
 use crate::docutil::*;
-use crate::error::PdfResult;
+use crate::error::{PdfError, PdfResult};
 use lopdf::{dictionary, Dictionary, Document, Object};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -133,6 +133,20 @@ pub fn edit_metadata_file(
     let final_path = resolve_output_path(output, policy)?;
     save_document(&mut doc, &final_path, true)?;
     Ok(final_path)
+}
+
+/// Applies metadata changes as an incremental update.
+///
+/// Nothing in the original bytes is touched, so a document that is already
+/// signed keeps every signature valid: each one still covers exactly the
+/// revision it signed, and the metadata change is visible as a later revision.
+pub fn edit_metadata_incremental(input: &[u8], meta: &PdfMetadata) -> PdfResult<Vec<u8>> {
+    let mut edited = Document::load_mem(input).map_err(|error| PdfError::from_lopdf(error, None))?;
+    if edited.is_encrypted() || edited.was_encrypted() {
+        return Err(PdfError::PasswordRequired);
+    }
+    write_metadata(&mut edited, meta)?;
+    crate::incremental::apply_difference(input, &edited)
 }
 
 /// Convenience used by other operations that want a fresh Producer stamp.

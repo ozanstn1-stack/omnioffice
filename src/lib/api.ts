@@ -333,9 +333,14 @@ export const editMetadata = (
   remove: boolean,
   jobId: string,
   password?: string,
+  /**
+   * Keep existing signatures by appending the change as a new revision
+   * (default). Removal cannot be expressed that way, so it always rewrites.
+   */
+  keepSignatures = true,
 ) =>
   invoke<OpResult>("edit_metadata", {
-    request: { input, output, metadata, remove, password, jobId },
+    request: { input, output, metadata, remove, password, jobId, keepSignatures },
   });
 
 export const addPageNumbers = (

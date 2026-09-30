@@ -106,6 +106,26 @@ pub fn save_document(doc: &mut Document, output: &Path, compress_streams: bool) 
     })
 }
 
+/// Writes raw bytes atomically, the same way documents are saved (temp
+/// sibling first, then a move over the target).
+pub fn write_bytes_atomic(output: &Path, bytes: &[u8]) -> PdfResult<()> {
+    if let Some(parent) = output.parent() {
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            fs::create_dir_all(parent).map_err(PdfError::from_io)?;
+        }
+    }
+    let tmp_path = temp_sibling(output);
+    fs::write(&tmp_path, bytes).map_err(PdfError::from_io)?;
+    // Windows rename is not atomic over an existing file; remove first.
+    if output.exists() {
+        fs::remove_file(output).map_err(PdfError::from_io)?;
+    }
+    fs::rename(&tmp_path, output).map_err(|e| {
+        let _ = fs::remove_file(&tmp_path);
+        PdfError::from_io(e)
+    })
+}
+
 /// Same as `save_document` but disables cross-reference/object streams, which
 /// keeps maximum compatibility with third-party parsers (used by tests and
 /// for encrypted outputs).

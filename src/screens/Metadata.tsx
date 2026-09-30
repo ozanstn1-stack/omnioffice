@@ -22,6 +22,7 @@ export function Metadata({ initialFiles, dragging }: { initialFiles?: string[]; 
   const t = useT();
   const session = useTool({ suffix: "_metadata", accept: "pdf", initialPaths: initialFiles });
   const [form, setForm] = useState({ ...EMPTY });
+  const [keepSignatures, setKeepSignatures] = useState(true);
 
   useEffect(() => {
     if (session.info) {
@@ -43,12 +44,27 @@ export function Metadata({ initialFiles, dragging }: { initialFiles?: string[]; 
   session.registerAutoRun(() => void save());
   const save = () =>
     session.run(async (jobId, overwrite) =>
-      editMetadata(session.primary?.path ?? "", session.outputSpec(overwrite), form, false, jobId, session.password || undefined),
+      editMetadata(
+        session.primary?.path ?? "",
+        session.outputSpec(overwrite),
+        form,
+        false,
+        jobId,
+        session.password || undefined,
+        keepSignatures,
+      ),
     );
 
   const remove = () =>
     session.run(async (jobId, overwrite) =>
-      editMetadata(session.primary?.path ?? "", session.outputSpec(overwrite), { ...EMPTY }, true, jobId, session.password || undefined),
+      editMetadata(
+        session.primary?.path ?? "",
+        session.outputSpec(overwrite),
+        { ...EMPTY },
+        true,
+        jobId,
+        session.password || undefined,
+      ),
     );
 
   const fields: { key: keyof typeof form; label: string; readOnly?: boolean }[] = [
@@ -70,18 +86,37 @@ export function Metadata({ initialFiles, dragging }: { initialFiles?: string[]; 
         ) : (
           <>
             <OptionCard>
-              <FileList files={session.files} onRemove={session.removeFile} onAdd={session.pickFiles} addLabel={t("common.addPdf")} />
+              <FileList
+                files={session.files}
+                onRemove={session.removeFile}
+                onAdd={session.pickFiles}
+                addLabel={t("common.addPdf")}
+              />
             </OptionCard>
             {session.info ? (
               <Card className="p-4">
                 <InfoStrip info={session.info} error={session.infoError} />
               </Card>
             ) : null}
+            <OptionCard title={t("metadata.signatures")}>
+              <label className="row gap-2">
+                <input
+                  type="checkbox"
+                  checked={keepSignatures}
+                  onChange={(event) => setKeepSignatures(event.target.checked)}
+                />
+                <span className="small">{t("metadata.keepSignatures")}</span>
+              </label>
+              <p className="muted small">{t("metadata.keepSignaturesHint")}</p>
+            </OptionCard>
             <OptionCard title={t("metadata.title")}>
               <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
                 {fields.map((field) => (
                   <Field key={field.key} label={field.label}>
-                    <TextInput value={form[field.key]} onChange={(event) => patch({ [field.key]: event.target.value })} />
+                    <TextInput
+                      value={form[field.key]}
+                      onChange={(event) => patch({ [field.key]: event.target.value })}
+                    />
                   </Field>
                 ))}
               </div>
@@ -98,10 +133,20 @@ export function Metadata({ initialFiles, dragging }: { initialFiles?: string[]; 
             onRun={() => void save()}
           />
           <Card className="p-4 flex flex-col gap-2">
-            <Button variant="danger" icon={<Eraser size={15} />} onClick={() => void remove()} disabled={!session.primary}>
+            <Button
+              variant="danger"
+              icon={<Eraser size={15} />}
+              onClick={() => void remove()}
+              disabled={!session.primary}
+            >
               {t("metadata.remove")}
             </Button>
-            <Button variant="ghost" icon={<Save size={15} />} onClick={() => void session.reloadInfo()} disabled={!session.primary}>
+            <Button
+              variant="ghost"
+              icon={<Save size={15} />}
+              onClick={() => void session.reloadInfo()}
+              disabled={!session.primary}
+            >
               {t("common.reset")}
             </Button>
           </Card>

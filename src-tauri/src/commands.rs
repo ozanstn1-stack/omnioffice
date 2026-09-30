@@ -946,6 +946,11 @@ pub struct MetadataRequest {
     pub metadata: pdfcore::metadata::PdfMetadata,
     #[serde(default)]
     pub remove: bool,
+    /// Keep existing signatures by appending the change as a new revision
+    /// (default on). Removing metadata cannot be expressed that way, so it
+    /// always rewrites - and says so in the result message.
+    #[serde(default = "default_true")]
+    pub keep_signatures: bool,
     #[serde(default)]
     pub password: Option<String>,
     pub job_id: Option<String>,
@@ -959,6 +964,29 @@ pub async fn edit_metadata(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |_progress, _cancel| {
         let (output, policy) = request.output.resolve()?;
+        let bytes = std::fs::read(&request.input).map_err(PdfError::from_io)?;
+        let signatures = pdfcore::incremental::signature_count(&bytes);
+
+        // Appending a revision keeps every signature meaningful: each one still
+        // covers exactly the bytes it signed. A removal cannot be expressed as
+        // an appended revision, so it falls back to a rewrite (and reports what
+        // that cost).
+        if signatures > 0 && request.keep_signatures && !request.remove {
+            let updated = pdfcore::metadata::edit_metadata_incremental(&bytes, &request.metadata)?;
+            let path = pdfcore::docutil::resolve_output_path(&output, policy)?;
+            pdfcore::docutil::write_bytes_atomic(&path, &updated)?;
+            return Ok(OpResult {
+                path: path.display().to_string(),
+                page_count: None,
+                original_bytes: Some(bytes.len() as u64),
+                output_bytes: Some(updated.len() as u64),
+                reduction: None,
+                message: Some(format!(
+                    "{signatures} signature(s) preserved - the change was appended as a new revision"
+                )),
+            });
+        }
+
         let path = pdfcore::metadata::edit_metadata_file(
             Path::new(&request.input),
             &output,
@@ -973,7 +1001,13 @@ pub async fn edit_metadata(
             original_bytes: None,
             output_bytes: std::fs::metadata(&path).ok().map(|m| m.len()),
             reduction: None,
-            message: None,
+            message: if signatures > 0 {
+                Some(format!(
+                    "{signatures} signature(s) invalidated - this change rewrites the document"
+                ))
+            } else {
+                None
+            },
         })
     })
     .await
