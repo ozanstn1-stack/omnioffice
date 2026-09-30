@@ -117,14 +117,43 @@ jobs:
       - name: Workspace tests (Windows, with engines)
         if: runner.os == 'Windows'
         run: cargo test --workspace
-      - name: Library tests (engine-free)
+      # officecore has no native engine dependency at all, so its integration
+      # tests (golden fixtures, format round trips, the README contract) run on
+      # every platform. pdfcore and aicore stay on --lib: most of their
+      # integration tests need pdfium/tesseract, which only ship for Windows.
+      - name: Engine-free tests
         if: runner.os != 'Windows'
-        run: cargo test -p officecore -p pdfcore -p aicore --lib
+        run: |
+          cargo test -p officecore
+          cargo test -p pdfcore -p aicore --lib
       - name: Workspace compile
         if: runner.os != 'Windows'
         run: cargo build --workspace
       - name: Release build (library crates)
         run: cargo build --release -p officecore -p pdfcore -p aicore
+
+  # The workspace declares a rust-version; this job proves the declaration is
+  # true instead of trusting it. Cargo.lock already contains crates that need
+  # edition 2024 - the declaration used to say 1.82, which no longer built.
+  msrv:
+    name: MSRV (declared Rust version)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.89.0"
+      - uses: Swatinem/rust-cache@v2
+      - name: The pin below and Cargo.toml must agree
+        run: |
+          declared=$(node -p "require('fs').readFileSync('Cargo.toml','utf8').match(/rust-version = \"([^\"]+)\"/)[1]")
+          echo "Cargo.toml declares rust-version $declared"
+          if [ "$declared" != "1.89" ]; then
+            echo "::error::Cargo.toml declares $declared but this job pins 1.89.0 - bump both together."
+            exit 1
+          fi
+      - name: Library crates build with the declared MSRV
+        run: cargo check -p officecore -p pdfcore -p aicore -p synccore
 
   extension:
     name: Chrome extension

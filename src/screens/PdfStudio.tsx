@@ -9,7 +9,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { BadgeCheck, FileCheck2, Layers, Move, PenLine, RefreshCw, RotateCcw, RotateCw, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
+import {
+  BadgeCheck,
+  FileCheck2,
+  Layers,
+  Move,
+  PenLine,
+  RefreshCw,
+  RotateCcw,
+  RotateCw,
+  ShieldAlert,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react";
 import { useT } from "../lib/i18n";
 import { errorMessage, useToasts } from "../lib/store";
 import { DropZone, FileList } from "../components/files";
@@ -280,7 +292,8 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
   }, [running]);
 
   const input = files[0];
-  const toast = (kind: "success" | "error", title: string, detail?: string) => useToasts.getState().push({ kind, title, detail });
+  const toast = (kind: "success" | "error", title: string, detail?: string) =>
+    useToasts.getState().push({ kind, title, detail });
 
   const run = async (action: () => Promise<void>, jobId: string) => {
     if (!input) {
@@ -412,7 +425,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
 
   const pushEdit = (edit: ObjectEdit) => {
     setPendingEdits((previous) => [
-      ...previous.filter((entry) => !(entry.page === edit.page && entry.index === edit.index && entry.action === edit.action)),
+      ...previous.filter(
+        (entry) => !(entry.page === edit.page && entry.index === edit.index && entry.action === edit.action),
+      ),
       edit,
     ]);
   };
@@ -766,7 +781,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
       // Never keep the PFX password in component state after signing.
       setPfxPassword("");
       setLastResult(result);
-      setSignReport({ signatures: [result.signature] });
+      setSignReport({ signatures: [result.signature], warnings: [] });
       if (androidTarget) {
         await publishOutputs([result.output], { file: androidTarget });
       }
@@ -866,7 +881,13 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
 
       <div className="row" style={{ marginBottom: 12 }}>
         {tabs.map((entry) => (
-          <button key={entry.id} type="button" className="btn btn-soft" data-active={tab === entry.id} onClick={() => setTab(entry.id)}>
+          <button
+            key={entry.id}
+            type="button"
+            className="btn btn-soft"
+            data-active={tab === entry.id}
+            onClick={() => setTab(entry.id)}
+          >
             {entry.icon} {entry.label}
           </button>
         ))}
@@ -889,7 +910,8 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
       {progress ? (
         <Card soft>
           <p className="muted small">
-            {progress.stage} {progress.total > 0 ? `${progress.current}/${progress.total}` : ""} {progress.message ?? ""}
+            {progress.stage} {progress.total > 0 ? `${progress.current}/${progress.total}` : ""}{" "}
+            {progress.message ?? ""}
           </p>
         </Card>
       ) : null}
@@ -898,20 +920,35 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
         <Card>
           <strong>{t("studio.sanitize")}</strong>
           <p className="muted small">{t("studio.sanitizeHint")}</p>
-          <button type="button" className="btn btn-primary" disabled={!input || running !== null} onClick={() => void runSanitize()}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={!input || running !== null}
+            onClick={() => void runSanitize()}
+          >
             {t("studio.run")}
           </button>
           {sanitizeReport ? (
             <div className="stack" style={{ marginTop: 10 }}>
               <div className="row">
-                <Badge tone="ok">{t("studio.javascript")}: {sanitizeReport.javascriptRemoved}</Badge>
-                <Badge tone="ok">{t("studio.attachments")}: {sanitizeReport.embeddedFilesRemoved}</Badge>
-                <Badge tone="ok">{t("studio.actions")}: {sanitizeReport.actionsRemoved}</Badge>
+                <Badge tone="ok">
+                  {t("studio.javascript")}: {sanitizeReport.javascriptRemoved}
+                </Badge>
+                <Badge tone="ok">
+                  {t("studio.attachments")}: {sanitizeReport.embeddedFilesRemoved}
+                </Badge>
+                <Badge tone="ok">
+                  {t("studio.actions")}: {sanitizeReport.actionsRemoved}
+                </Badge>
                 <Badge tone={sanitizeReport.metadataRemoved ? "ok" : "warn"}>{t("studio.metadata")}</Badge>
-                <Badge tone="accent">{t("studio.annotations")}: {sanitizeReport.annotationsRemoved}</Badge>
+                <Badge tone="accent">
+                  {t("studio.annotations")}: {sanitizeReport.annotationsRemoved}
+                </Badge>
               </div>
               {sanitizeReport.warnings.map((warning, index) => (
-                <p key={index} className="muted small">{warning}</p>
+                <p key={index} className="muted small">
+                  {warning}
+                </p>
               ))}
               <p className="muted small">{t("studio.sanitizeVerify")}</p>
             </div>
@@ -923,18 +960,31 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
         <Card>
           <strong>{t("studio.flatten")}</strong>
           <p className="muted small">{t("studio.flattenHint")}</p>
-          <button type="button" className="btn btn-primary" disabled={!input || running !== null} onClick={() => void runFlatten()}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={!input || running !== null}
+            onClick={() => void runFlatten()}
+          >
             {t("studio.run")}
           </button>
           {flattenReport ? (
             <div className="stack" style={{ marginTop: 10 }}>
               <div className="row">
-                <Badge tone="ok">{t("studio.annotations")}: {flattenReport.annotationsFlattened}</Badge>
-                <Badge tone="ok">{t("studio.fields")}: {flattenReport.fieldsFlattened}</Badge>
-                <Badge tone="accent">{t("studio.pages")}: {flattenReport.pagesTouched}</Badge>
+                <Badge tone="ok">
+                  {t("studio.annotations")}: {flattenReport.annotationsFlattened}
+                </Badge>
+                <Badge tone="ok">
+                  {t("studio.fields")}: {flattenReport.fieldsFlattened}
+                </Badge>
+                <Badge tone="accent">
+                  {t("studio.pages")}: {flattenReport.pagesTouched}
+                </Badge>
               </div>
               {flattenReport.warnings.map((warning, index) => (
-                <p key={index} className="muted small">{warning}</p>
+                <p key={index} className="muted small">
+                  {warning}
+                </p>
               ))}
             </div>
           ) : null}
@@ -951,10 +1001,20 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
               <option value="A-2b">PDF/A-2b</option>
               <option value="A-3b">PDF/A-3b</option>
             </select>
-            <button type="button" className="btn btn-soft" disabled={!input || running !== null} onClick={() => void runValidate()}>
+            <button
+              type="button"
+              className="btn btn-soft"
+              disabled={!input || running !== null}
+              onClick={() => void runValidate()}
+            >
               {t("studio.validate")}
             </button>
-            <button type="button" className="btn btn-primary" disabled={!input || running !== null} onClick={() => void runConvert()}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!input || running !== null}
+              onClick={() => void runConvert()}
+            >
               {t("studio.convert")}
             </button>
           </div>
@@ -965,12 +1025,15 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                   {pdfaReport.valid ? t("studio.pdfaValid") : t("studio.pdfaInvalid")}
                 </Badge>
                 <span className="muted small">
-                  {pdfaReport.level} · {pdfaReport.failures} {t("studio.failures")} · {pdfaReport.warnings} {t("studio.warnings")}
+                  {pdfaReport.level} · {pdfaReport.failures} {t("studio.failures")} · {pdfaReport.warnings}{" "}
+                  {t("studio.warnings")}
                 </span>
               </div>
               {pdfaReport.checks.map((check) => (
                 <div key={check.id} className="row">
-                  <Badge tone={check.status === "pass" ? "ok" : check.status === "warning" ? "warn" : "danger"}>{check.status}</Badge>
+                  <Badge tone={check.status === "pass" ? "ok" : check.status === "warning" ? "warn" : "danger"}>
+                    {check.status}
+                  </Badge>
                   <strong className="small">{check.id}</strong>
                   <span className="muted small">{check.message}</span>
                 </div>
@@ -994,57 +1057,76 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
               <ShieldCheck size={14} /> {t("studio.verify")}
             </button>
             {signReport ? (
-              signReport.signatures.length ? (
-                signReport.signatures.map((info, index) => (
-                  <div key={index} className="stack" style={{ marginTop: 12 }}>
-                    <div className="row">
-                      <Badge tone={signatureTone(info)}>
-                        {info.signatureValid ? t("studio.signatureValid") : t("studio.signatureInvalid")}
-                      </Badge>
-                      <Badge tone={info.digestMatches ? "ok" : "danger"}>
-                        {info.digestMatches ? t("studio.digestOk") : t("studio.digestBad")}
-                      </Badge>
-                      <Badge tone={info.coversWholeDocument ? "ok" : "warn"}>{t("studio.coversWhole")}</Badge>
-                      {info.modifiedAfterSigning ? <Badge tone="danger">{t("studio.modifiedAfter")}</Badge> : null}
-                      <Badge tone="warn">{t("studio.trustUnknown")}</Badge>
-                    </div>
-                    <p className="muted small">
-                      <strong>{info.fieldName}</strong> · {info.subFilter || "?"} · {info.algorithm}
-                    </p>
-                    <p className="muted small">{t("studio.signer")}: {info.signer.subject || "?"}</p>
-                    <p className="muted small">{t("studio.issuer")}: {info.signer.issuer || "?"}</p>
-                    <p className="muted small">
-                      {t("studio.serial")}: {info.signer.serialHex || "?"} · {t("studio.validity")}:{" "}
-                      {info.signer.notBefore || "?"} → {info.signer.notAfter || "?"}
-                      {info.signer.expired ? ` (${t("studio.expired")})` : ""}
-                    </p>
-                    {info.signingTime ? (
-                      <p className="muted small">{t("studio.signingTime")}: {info.signingTime}</p>
-                    ) : null}
-                    <p className="muted small">{t("studio.fingerprint")}: {info.signer.sha256Fingerprint || "?"}</p>
-                    {info.chain.length > 1 ? (
-                      <div className="stack">
-                        <p className="muted small">
-                          {t("studio.chain")}: {info.chainLinked ? t("studio.chainLinked") : t("studio.chainBroken")}
-                          {info.selfSignedChain ? ` · ${t("studio.selfSigned")}` : ""}
-                        </p>
-                        {info.chain.map((cert, position) => (
-                          <p key={position} className="muted small">
-                            {position + 1}. {cert.subject}
-                            {cert.isCa ? " (CA)" : ""}
-                            {cert.expired ? ` (${t("studio.expired")})` : ""}
-                          </p>
-                        ))}
+              <>
+                {signReport.warnings.map((warning, index) => (
+                  <p key={index} className="muted small" style={{ marginTop: 10 }}>
+                    <Badge tone="warn">{t("studio.notes")}</Badge> {warning}
+                  </p>
+                ))}
+                {signReport.signatures.length ? (
+                  signReport.signatures.map((info, index) => (
+                    <div key={index} className="stack" style={{ marginTop: 12 }}>
+                      <div className="row">
+                        <Badge tone={signatureTone(info)}>
+                          {info.signatureValid ? t("studio.signatureValid") : t("studio.signatureInvalid")}
+                        </Badge>
+                        <Badge tone={info.digestMatches ? "ok" : "danger"}>
+                          {info.digestMatches ? t("studio.digestOk") : t("studio.digestBad")}
+                        </Badge>
+                        <Badge tone={info.coversWholeDocument ? "ok" : "warn"}>{t("studio.coversWhole")}</Badge>
+                        {info.modifiedAfterSigning ? <Badge tone="danger">{t("studio.modifiedAfter")}</Badge> : null}
+                        <Badge tone="warn">{t("studio.trustUnknown")}</Badge>
                       </div>
-                    ) : null}
-                    {info.notes.map((note, position) => (
-                      <p key={position} className="muted small">{t("studio.notes")}: {note}</p>
-                    ))}
-                  </div>
-                ))
-              ) : (
-                <p className="muted small" style={{ marginTop: 10 }}>{t("studio.noSignatures")}</p>
-              )
+                      <p className="muted small">
+                        <strong>{info.fieldName}</strong> · {info.subFilter || "?"} · {info.algorithm}
+                      </p>
+                      <p className="muted small">
+                        {t("studio.signer")}: {info.signer.subject || "?"}
+                      </p>
+                      <p className="muted small">
+                        {t("studio.issuer")}: {info.signer.issuer || "?"}
+                      </p>
+                      <p className="muted small">
+                        {t("studio.serial")}: {info.signer.serialHex || "?"} · {t("studio.validity")}:{" "}
+                        {info.signer.notBefore || "?"} → {info.signer.notAfter || "?"}
+                        {info.signer.expired ? ` (${t("studio.expired")})` : ""}
+                      </p>
+                      {info.signingTime ? (
+                        <p className="muted small">
+                          {t("studio.signingTime")}: {info.signingTime}
+                        </p>
+                      ) : null}
+                      <p className="muted small">
+                        {t("studio.fingerprint")}: {info.signer.sha256Fingerprint || "?"}
+                      </p>
+                      {info.chain.length > 1 ? (
+                        <div className="stack">
+                          <p className="muted small">
+                            {t("studio.chain")}: {info.chainLinked ? t("studio.chainLinked") : t("studio.chainBroken")}
+                            {info.selfSignedChain ? ` · ${t("studio.selfSigned")}` : ""}
+                          </p>
+                          {info.chain.map((cert, position) => (
+                            <p key={position} className="muted small">
+                              {position + 1}. {cert.subject}
+                              {cert.isCa ? " (CA)" : ""}
+                              {cert.expired ? ` (${t("studio.expired")})` : ""}
+                            </p>
+                          ))}
+                        </div>
+                      ) : null}
+                      {info.notes.map((note, position) => (
+                        <p key={position} className="muted small">
+                          {t("studio.notes")}: {note}
+                        </p>
+                      ))}
+                    </div>
+                  ))
+                ) : signReport.warnings.length ? null : (
+                  <p className="muted small" style={{ marginTop: 10 }}>
+                    {t("studio.noSignatures")}
+                  </p>
+                )}
+              </>
             ) : null}
           </Card>
 
@@ -1168,7 +1250,11 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
             {fields.map((field) => {
               const fieldIssues = issues.filter((issue) => issue.field === field.name);
               return (
-                <div key={field.name} className="stack" style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
+                <div
+                  key={field.name}
+                  className="stack"
+                  style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 8 }}
+                >
                   <div className="row">
                     <strong className="small">{field.name}</strong>
                     <Badge tone="accent">{field.fieldType}</Badge>
@@ -1187,7 +1273,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                         rows={3}
                         value={fieldInputs[field.name] ?? ""}
                         disabled={field.readOnly}
-                        onChange={(event) => setFieldInputs((previous) => ({ ...previous, [field.name]: event.target.value }))}
+                        onChange={(event) =>
+                          setFieldInputs((previous) => ({ ...previous, [field.name]: event.target.value }))
+                        }
                       />
                     ) : (
                       <input
@@ -1195,7 +1283,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                         type={field.password ? "password" : "text"}
                         value={fieldInputs[field.name] ?? ""}
                         disabled={field.readOnly}
-                        onChange={(event) => setFieldInputs((previous) => ({ ...previous, [field.name]: event.target.value }))}
+                        onChange={(event) =>
+                          setFieldInputs((previous) => ({ ...previous, [field.name]: event.target.value }))
+                        }
                       />
                     )
                   ) : null}
@@ -1205,7 +1295,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                         type="checkbox"
                         checked={fieldChecks[field.name] ?? false}
                         disabled={field.readOnly}
-                        onChange={(event) => setFieldChecks((previous) => ({ ...previous, [field.name]: event.target.checked }))}
+                        onChange={(event) =>
+                          setFieldChecks((previous) => ({ ...previous, [field.name]: event.target.checked }))
+                        }
                       />
                       {field.options.length ? field.options.map((option) => option.value).join(", ") : "Yes / Off"}
                     </label>
@@ -1216,7 +1308,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                         className="input"
                         value={fieldInputs[field.name] ?? ""}
                         disabled={field.readOnly}
-                        onChange={(event) => setFieldInputs((previous) => ({ ...previous, [field.name]: event.target.value }))}
+                        onChange={(event) =>
+                          setFieldInputs((previous) => ({ ...previous, [field.name]: event.target.value }))
+                        }
                       >
                         <option value="">—</option>
                         {field.options.map((option) => (
@@ -1231,7 +1325,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                         placeholder={t("studio.radioManual")}
                         value={fieldInputs[field.name] ?? ""}
                         disabled={field.readOnly}
-                        onChange={(event) => setFieldInputs((previous) => ({ ...previous, [field.name]: event.target.value }))}
+                        onChange={(event) =>
+                          setFieldInputs((previous) => ({ ...previous, [field.name]: event.target.value }))
+                        }
                       />
                     )
                   ) : null}
@@ -1241,7 +1337,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                         className="input"
                         value={fieldInputs[field.name] ?? ""}
                         disabled={field.readOnly}
-                        onChange={(event) => setFieldInputs((previous) => ({ ...previous, [field.name]: event.target.value }))}
+                        onChange={(event) =>
+                          setFieldInputs((previous) => ({ ...previous, [field.name]: event.target.value }))
+                        }
                       />
                     ) : field.multiSelect ? (
                       <select
@@ -1267,7 +1365,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                         className="input"
                         value={fieldInputs[field.name] ?? ""}
                         disabled={field.readOnly}
-                        onChange={(event) => setFieldInputs((previous) => ({ ...previous, [field.name]: event.target.value }))}
+                        onChange={(event) =>
+                          setFieldInputs((previous) => ({ ...previous, [field.name]: event.target.value }))
+                        }
                       >
                         <option value="">—</option>
                         {field.options.map((option) => (
@@ -1278,7 +1378,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                       </select>
                     )
                   ) : null}
-                  {field.fieldType === "pushbutton" || field.fieldType === "signature" || field.fieldType === "unknown" ? (
+                  {field.fieldType === "pushbutton" ||
+                  field.fieldType === "signature" ||
+                  field.fieldType === "unknown" ? (
                     <p className="muted small">{t("studio.unsupportedField")}</p>
                   ) : null}
                   {fieldIssues.map((issue, index) => (
@@ -1324,7 +1426,12 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
             <p className="muted small">{t("studio.selectObjectHint")}</p>
             {pageCount > 1 ? (
               <div className="row" style={{ justifyContent: "center", marginBottom: 8 }}>
-                <button type="button" className="btn btn-sm" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((value) => Math.max(1, value - 1))}
+                >
                   ‹
                 </button>
                 <span className="muted small">

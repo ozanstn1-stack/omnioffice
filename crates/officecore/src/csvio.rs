@@ -70,8 +70,10 @@ fn decode_text(bytes: &[u8], encoding: &str) -> String {
     let trimmed = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
     match encoding {
         "utf-8" | "utf8" => String::from_utf8_lossy(trimmed).into_owned(),
-        "windows-1252" | "latin1" | "ansi" => trimmed.iter().map(|&byte| byte as char).collect(),
-        _ => String::from_utf8(trimmed.to_vec()).unwrap_or_else(|_| trimmed.iter().map(|&byte| byte as char).collect()),
+        // The declared code page still wins; the fallback is Windows-1254/1252
+        // rather than a Latin-1 byte cast (see `crate::encoding`).
+        "windows-1252" | "latin1" | "ansi" => crate::encoding::decode_legacy(trimmed),
+        _ => String::from_utf8(trimmed.to_vec()).unwrap_or_else(|_| crate::encoding::decode_legacy(trimmed)),
     }
 }
 

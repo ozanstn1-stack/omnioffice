@@ -5,12 +5,25 @@
 //! prefixes are kept verbatim (`w:p`, `text:p`, ...) because that is exactly
 //! what document format code needs.
 
-use crate::error::{OfficeError, OfficeResult};
+use crate::error::{ErrorCode, OfficeError, OfficeResult};
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
 use std::collections::HashMap;
 
 const MAX_DEPTH: usize = 256;
+
+/// Element budget for one part.
+///
+/// Every `XmlNode` costs roughly 145 bytes once the name, the attribute map,
+/// the child vector and the text buffer are allocated: 8/16/32 MB inputs were
+/// measured to produce a tree about 25x their size, so a pathological part
+/// would turn the 256 MB per-entry limit into gigabytes of resident memory.
+/// One element per twelve input bytes is far above any real document (a
+/// minified sheet part is about one element per twenty bytes) and turns that
+/// case into a clean error instead of an allocation storm.
+fn max_nodes(input_len: usize) -> usize {
+    (input_len / 12).max(4_096)
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct XmlNode {
@@ -95,6 +108,8 @@ pub fn parse_xml(xml: &str) -> OfficeResult<XmlNode> {
     reader.config_mut().expand_empty_elements = false;
     let mut stack: Vec<XmlNode> = vec![XmlNode { name: "#document".into(), ..Default::default() }];
     let mut depth = 0usize;
+    let budget = max_nodes(xml.len());
+    let mut nodes = 0usize;
     loop {
         match reader.read_event() {
             Ok(Event::Start(start)) => {
@@ -102,12 +117,20 @@ pub fn parse_xml(xml: &str) -> OfficeResult<XmlNode> {
                 if depth > MAX_DEPTH {
                     return Err(OfficeError::corrupt("XML nesting is deeper than the safe limit"));
                 }
+                nodes += 1;
+                if nodes > budget {
+                    return Err(OfficeError::new(ErrorCode::TooLarge, "The XML part has more elements than can be parsed safely."));
+                }
                 stack.push(node_from_start(&start)?);
             }
             Ok(Event::Empty(start)) => {
                 depth += 1;
                 if depth > MAX_DEPTH {
                     return Err(OfficeError::corrupt("XML nesting is deeper than the safe limit"));
+                }
+                nodes += 1;
+                if nodes > budget {
+                    return Err(OfficeError::new(ErrorCode::TooLarge, "The XML part has more elements than can be parsed safely."));
                 }
                 let node = node_from_start(&start)?;
                 stack.last_mut().unwrap().children.push(node);
@@ -368,5 +391,33 @@ mod tests {
             xml.push_str("</a>");
         }
         assert!(parse_xml(&xml).is_err());
+    }
+
+    #[test]
+    fn rejects_an_element_flood_instead_of_allocating() {
+        // One element every four bytes: the tree for such a part costs about
+        // 25x the input (roughly 145 bytes per node), which is how a 256 MB
+        // part used to become gigabytes of resident memory. The budget is one
+        // element per twelve input bytes, so this 400 KB part is refused.
+        let mut xml = String::with_capacity(500_000);
+        for _ in 0..100_000 {
+            xml.push_str("<a/>");
+        }
+        let error = parse_xml(&xml).expect_err("an element flood must be refused");
+        assert_eq!(error.code, "too_large", "unexpected error: {error}");
+    }
+
+    #[test]
+    fn a_dense_but_realistic_part_still_parses() {
+        // A spreadsheet sheet part with one cell per ~40 bytes stays far below
+        // the budget and must keep working.
+        let mut xml = String::with_capacity(200_000);
+        xml.push_str("<worksheet><sheetData>");
+        for row in 0..1_000 {
+            xml.push_str(&format!("<row r=\"{}\"><c r=\"A{}\" t=\"n\"><v>{row}</v></c></row>", row + 1, row + 1));
+        }
+        xml.push_str("</sheetData></worksheet>");
+        let root = parse_xml(&xml).expect("a realistic sheet must parse");
+        assert_eq!(root.local_name(), "worksheet");
     }
 }

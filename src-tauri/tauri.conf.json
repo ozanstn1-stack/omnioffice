@@ -32,8 +32,8 @@
     "active": true,
     "targets": ["nsis"],
     "category": "Utility",
-    "shortDescription": "All your PDF tools in one place",
-    "longDescription": "PDF Swiss Army Knife is a local-first desktop toolkit for merging, splitting, compressing, OCR-ing, watermarking, protecting and converting PDF documents. All processing happens on your machine.",
+    "shortDescription": "Office suite and PDF toolkit that runs entirely on your machine",
+    "longDescription": "Office Swiss Army Knife is a local-first desktop suite: the Writer word processor, the Calc spreadsheet, the Impress presentation editor, a document vault and the complete PDF toolkit (merge, split, compress, OCR, watermark, protect, redact, sign, forms, PDF/A). Documents are never uploaded, there is no telemetry, and everything works offline.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

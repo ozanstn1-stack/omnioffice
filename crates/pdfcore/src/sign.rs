@@ -225,6 +225,11 @@ pub struct SignatureInfo {
 #[serde(rename_all = "camelCase")]
 pub struct SignatureReport {
     pub signatures: Vec<SignatureInfo>,
+    /// Problems with the document itself rather than with one signature - for
+    /// example a file that could not be parsed at all. Without this an empty
+    /// signature list read exactly like "this PDF is unsigned".
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 /// Decrypted PKCS#12 identity: the signer certificate, its private key in
@@ -1761,7 +1766,13 @@ fn byte_range_pairs(values: &[Object]) -> Option<Vec<(usize, usize)>> {
         if start < 0.0 || length < 0.0 {
             return None;
         }
-        pairs.push((start as usize, length as usize));
+        // Float to int casts saturate, but the *sum* of a crafted pair can
+        // still overflow: the release build would wrap silently and slice a
+        // bogus window out of the file.
+        let start = start as usize;
+        let length = length as usize;
+        start.checked_add(length)?;
+        pairs.push((start, length));
     }
     Some(pairs)
 }
@@ -1807,10 +1818,10 @@ fn inspect_signature(
     // Coverage: every byte except the `<...>` (or `(...)`) token of /Contents
     // must be signed. Hex tokens are 2 characters per byte plus the delimiters.
     if let Some(ranges) = &ranges {
-        let covered: usize = ranges.iter().map(|(_, length)| *length).sum();
+        let covered: usize = ranges.iter().fold(0usize, |total, (_, length)| total.saturating_add(*length));
         let mut intervals: Vec<(usize, usize)> = ranges
             .iter()
-            .map(|(start, length)| (*start, start + length))
+            .map(|(start, length)| (*start, start.saturating_add(*length)))
             .collect();
         intervals.sort();
         let mut gaps: Vec<(usize, usize)> = Vec::new();
@@ -1862,12 +1873,21 @@ fn inspect_signature(
                             signature_algorithm_name(info.signature_algorithm.oid),
                             digest_name(info.digest_alg.oid)
                         );
+                        // SHA-1 is still accepted (old signatures must stay
+                        // verifiable) but it must never be presented as equal
+                        // to a modern digest.
+                        if info.digest_alg.oid == OID_SHA1 || info.signature_algorithm.oid == OID_SHA1_WITH_RSA {
+                            notes.push(
+                                "This signature uses SHA-1, which is no longer considered collision resistant: treat it as weak even when every check passes."
+                                    .into(),
+                            );
+                        }
                         // The signed bytes must hash to the messageDigest
                         // attribute.
                         let mut covered_bytes: Vec<u8> = Vec::new();
                         if let Some(ranges) = &ranges {
                             for (start, length) in ranges {
-                                let end = (start + length).min(pdf.len());
+                                let end = start.saturating_add(*length).min(pdf.len());
                                 if *start <= end {
                                     covered_bytes.extend_from_slice(&pdf[*start..end]);
                                 }
@@ -2117,7 +2137,12 @@ pub fn verify_signatures(pdf: &[u8]) -> SignatureReport {
     let mut report = SignatureReport::default();
     let doc = match Document::load_mem(pdf) {
         Ok(doc) => doc,
-        Err(_) => return report,
+        Err(error) => {
+            report.warnings.push(format!(
+                "The file could not be parsed as a PDF ({error}), so signatures could not be checked."
+            ));
+            return report;
+        }
     };
     let field_names = collect_signature_field_names(&doc);
     for (id, object) in &doc.objects {

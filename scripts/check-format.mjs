@@ -83,9 +83,20 @@ function run(command, args) {
 
 function unformatted(files) {
   if (files.length === 0) return [];
-  const check = mode === "rust"
-    ? (file) => run("rustfmt", ["--edition", "2021", "--check", file])
-    : (file) => run("npx", ["--no-install", "prettier", "--check", file]);
+  let check;
+  if (mode === "rust") {
+    check = (file) => run("rustfmt", ["--edition", "2021", "--check", file]);
+  } else {
+    // Run the local CLI with the running Node. `npx` is a .cmd shim on Windows
+    // and execFileSync cannot spawn it without a shell (ENOENT), which used to
+    // report every file as unformatted on that platform.
+    const cli = path.join(root, "node_modules", "prettier", "bin", "prettier.cjs");
+    if (!existsSync(cli)) {
+      console.error("prettier is not installed (expected " + cli + "); run npm ci first.");
+      process.exit(2);
+    }
+    check = (file) => run(process.execPath, [cli, "--check", file]);
+  }
   return files.filter((file) => !check(file));
 }
 

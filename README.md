@@ -352,7 +352,9 @@ run on Windows and Android. File formats are import/export targets; the native
 
 ## Build
 
-Requirements: Node.js 20+, Rust 1.84+, Visual Studio Build Tools (Windows).
+Requirements: Node.js 20+, Rust 1.89+ (the dependency tree sets that floor:
+`rust-version` in `Cargo.toml` is the single source of truth and a CI job pins
+it), Visual Studio Build Tools (Windows).
 Android additionally needs JDK 21, Android SDK (platform 36, build-tools 36)
 and NDK 27.3.13750724.
 
@@ -404,10 +406,21 @@ npm test
 npx tsc --noEmit
 ```
 
-**451 Rust tests** (34 aicore, 146 officecore, 180 pdfcore, 40 synccore,
-51 src-tauri; 3 heavy performance cases are `#[ignore]`d) and **578 frontend
-tests** (577 passing, 1 heavy case gated by `OSAK_PERF_HEAVY=1`) pass, with a
-strict TypeScript type check on top.
+**465 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **588
+frontend tests** (587 passing, 1 heavy case gated by `OSAK_PERF_HEAVY=1`) pass,
+with a strict TypeScript type check on top. The per-crate split is deliberately
+not repeated here - `cargo test --workspace` prints it, and the numbers written
+out in prose went stale every release.
+
+### What runs where
+
+The Rust matrix builds and tests all three desktop platforms. Only the Windows
+runner has the native engines (pdfium, qpdf, tesseract are Windows binaries), so
+it runs the whole workspace suite; Linux and macOS run `cargo test -p officecore`
+(all of its integration tests: golden fixtures, format round trips, the README
+contract) plus the engine-free `--lib` tests of the other crates. Clippy runs
+on Windows for the same reason, and a separate `msrv` job builds the library
+crates with the declared `rust-version` so the declaration cannot drift again.
 
 ### Quality gates
 
@@ -433,7 +446,12 @@ Deliberate lint exceptions live in one place — `[workspace.lints]` in the root
 
 Highlights:
 
-- `officecore`: DOCX round trips for sections, footnotes/endnotes, tracked
+- `officecore`: the ZIP container refuses bombs whose header lies about the
+  uncompressed size, verifies every entry CRC, refuses duplicate entry names
+  and reads the central directory in one pass; the XML parser caps elements per
+  part; the legacy text decoder is Windows-1254 rather than a Latin-1 byte
+  cast, so old Turkish files keep İ, ş, ğ and ı. DOCX round trips for sections,
+  footnotes/endnotes, tracked
   changes, fields and comments; ODT/RTF note and revision round trips; PPTX
   V3 suite (masters, nested groups, charts with caches and embedded
   workbook); XLSX import fidelity (charts, pictures, print, protection,

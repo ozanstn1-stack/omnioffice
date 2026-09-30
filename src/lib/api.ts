@@ -136,7 +136,9 @@ export const clearOperations = () => invoke<void>("clear_operations");
 export const onAiChunk = (
   handler: (payload: { jobId: string; delta: string; kind: "content" | "reasoning" }) => void,
 ): Promise<UnlistenFn> =>
-  listen<{ jobId: string; delta: string; kind: "content" | "reasoning" }>("ai:chunk", (event) => handler(event.payload));
+  listen<{ jobId: string; delta: string; kind: "content" | "reasoning" }>("ai:chunk", (event) =>
+    handler(event.payload),
+  );
 
 export const onAiProgress = (
   handler: (payload: { jobId: string; stage: string; current: number; total: number }) => void,
@@ -181,13 +183,11 @@ export const searchDocument = (
     jobId,
   });
 
-export const checkPassword = (path: string, password: string) =>
-  invoke<boolean>("check_password", { path, password });
+export const checkPassword = (path: string, password: string) => invoke<boolean>("check_password", { path, password });
 
 export const outputExists = (path: string) => invoke<boolean>("output_exists", { path });
 
-export const suggestOutput = (input: string, suffix: string) =>
-  invoke<string>("suggest_output", { input, suffix });
+export const suggestOutput = (input: string, suffix: string) => invoke<string>("suggest_output", { input, suffix });
 
 export const fileSizes = (paths: string[]) => invoke<(number | null)[]>("file_sizes", { paths });
 
@@ -195,7 +195,13 @@ export const logFrontend = (level: string, message: string) =>
   invoke<void>("log_frontend", { level, message }).catch(() => undefined);
 
 export const devLaunchContext = () =>
-  invoke<{ startScreen: string | null; newTab: string | null; files: string[] | null; autoRun: boolean; tab: string | null }>("dev_launch_context");
+  invoke<{
+    startScreen: string | null;
+    newTab: string | null;
+    files: string[] | null;
+    autoRun: boolean;
+    tab: string | null;
+  }>("dev_launch_context");
 
 export const startupFiles = () => invoke<string[]>("office_startup_files");
 
@@ -203,12 +209,8 @@ export const startupFiles = () => invoke<string[]>("office_startup_files");
 // Operations
 // ---------------------------------------------------------------------------
 
-export const mergePdfs = (
-  inputs: string[],
-  output: OutputSpec,
-  preserveMetadata: boolean,
-  jobId: string,
-) => invoke<OpResult>("merge_pdfs", { request: { inputs, output, preserveMetadata, jobId } });
+export const mergePdfs = (inputs: string[], output: OutputSpec, preserveMetadata: boolean, jobId: string) =>
+  invoke<OpResult>("merge_pdfs", { request: { inputs, output, preserveMetadata, jobId } });
 
 interface PagesPayload {
   input: string;
@@ -220,14 +222,11 @@ interface PagesPayload {
   jobId: string;
 }
 
-export const extractPages = (payload: PagesPayload) =>
-  invoke<OpResult>("extract_pages", { request: payload });
+export const extractPages = (payload: PagesPayload) => invoke<OpResult>("extract_pages", { request: payload });
 
-export const deletePages = (payload: PagesPayload) =>
-  invoke<OpResult>("delete_pages", { request: payload });
+export const deletePages = (payload: PagesPayload) => invoke<OpResult>("delete_pages", { request: payload });
 
-export const rotatePages = (payload: PagesPayload) =>
-  invoke<OpResult>("rotate_pages", { request: payload });
+export const rotatePages = (payload: PagesPayload) => invoke<OpResult>("rotate_pages", { request: payload });
 
 export const applyPagePlan = (
   input: string,
@@ -245,10 +244,9 @@ export const splitPdf = (
   jobId: string,
   password?: string,
 ) =>
-  invoke<{ parts: { path: string; first_page: number; last_page: number }[]; outputDir: string }>(
-    "split_pdf",
-    { request: { input, mode, outputDir, overwrite, password, jobId } },
-  );
+  invoke<{ parts: { path: string; first_page: number; last_page: number }[]; outputDir: string }>("split_pdf", {
+    request: { input, mode, outputDir, overwrite, password, jobId },
+  });
 
 export const estimateCompression = (input: string, options: CompressOptions, password?: string) =>
   invoke<CompressEstimate>("estimate_compression", { input, options, password: password || null });
@@ -261,13 +259,8 @@ export const compressPdf = (
   password?: string,
 ) => invoke<OpResult>("compress_pdf", { request: { input, output, options, password, jobId } });
 
-export const ocrPdf = (
-  input: string,
-  output: OutputSpec,
-  options: OcrOptions,
-  jobId: string,
-  password?: string,
-) => invoke<OpResult>("ocr_pdf", { request: { input, output, options, password, jobId } });
+export const ocrPdf = (input: string, output: OutputSpec, options: OcrOptions, jobId: string, password?: string) =>
+  invoke<OpResult>("ocr_pdf", { request: { input, output, options, password, jobId } });
 
 export const protectPdf = (
   input: string,
@@ -283,48 +276,46 @@ export const protectPdf = (
 export const unlockPdf = (input: string, output: OutputSpec, password: string, jobId: string) =>
   invoke<OpResult>("unlock_pdf", { request: { input, output, password, jobId } });
 
-export const pdfToImages = (
-  request: {
-    input: string;
-    outputDir: string;
-    format: "jpeg" | "png";
+export const pdfToImages = (request: {
+  input: string;
+  outputDir: string;
+  format: "jpeg" | "png";
+  dpi: number;
+  jpegQuality: number;
+  grayscale: boolean;
+  namePrefix: string;
+  pages: number[];
+  overwrite?: OutputSpec["overwrite"];
+  password?: string;
+  jobId: string;
+}) =>
+  invoke<{
+    files: { path: string; page: number; width: number; height: number; bytes: number }[];
+    totalBytes: number;
     dpi: number;
-    jpegQuality: number;
-    grayscale: boolean;
-    namePrefix: string;
-    pages: number[];
-    overwrite?: OutputSpec["overwrite"];
-    password?: string;
-    jobId: string;
-  },
-) =>
-  invoke<{ files: { path: string; page: number; width: number; height: number; bytes: number }[]; totalBytes: number; dpi: number; format: string }>(
-    "pdf_to_images",
-    { request },
-  );
+    format: string;
+  }>("pdf_to_images", { request });
 
-export const imagesToPdf = (
-  items: ImageItem[],
-  output: OutputSpec,
-  options: ImageToPdfOptions,
-  jobId: string,
-) => invoke<OpResult>("images_to_pdf", { request: { items, output, options, jobId } });
+export const imagesToPdf = (items: ImageItem[], output: OutputSpec, options: ImageToPdfOptions, jobId: string) =>
+  invoke<OpResult>("images_to_pdf", { request: { items, output, options, jobId } });
 
 export const resizePages = (
   input: string,
   output: OutputSpec,
-  options: { page_size: string; custom_width_pt: number; custom_height_pt: number; orientation: string; mode: string; pages: number[] },
+  options: {
+    page_size: string;
+    custom_width_pt: number;
+    custom_height_pt: number;
+    orientation: string;
+    mode: string;
+    pages: number[];
+  },
   jobId: string,
   password?: string,
 ) => invoke<OpResult>("resize_pages", { request: { input, output, options, password, jobId } });
 
-export const cropPages = (
-  input: string,
-  output: OutputSpec,
-  crops: CropItem[],
-  jobId: string,
-  password?: string,
-) => invoke<OpResult>("crop_pages", { request: { input, output, crops, password, jobId } });
+export const cropPages = (input: string, output: OutputSpec, crops: CropItem[], jobId: string, password?: string) =>
+  invoke<OpResult>("crop_pages", { request: { input, output, crops, password, jobId } });
 
 export const editMetadata = (
   input: string,
@@ -453,6 +444,12 @@ export interface SignatureInfo {
 
 export interface SignatureReport {
   signatures: SignatureInfo[];
+  /**
+   * Problems with the document itself rather than with one signature - for
+   * example a file that could not be parsed. An empty `signatures` list alone
+   * reads like "this PDF is unsigned".
+   */
+  warnings: string[];
 }
 
 export interface SignOptionsInput {
@@ -483,8 +480,7 @@ export interface SigningCertificateSummary {
   sha256Fingerprint: string;
 }
 
-export const pdfVerifySignatures = (path: string) =>
-  invoke<SignatureReport>("pdf_verify_signatures", { path });
+export const pdfVerifySignatures = (path: string) => invoke<SignatureReport>("pdf_verify_signatures", { path });
 
 export const pdfSign = (payload: {
   input: string;
@@ -495,8 +491,7 @@ export const pdfSign = (payload: {
   options: SignOptionsInput;
 }) => invoke<SignResult>("pdf_sign", payload);
 
-export const pdfListSigningCertificates = () =>
-  invoke<SigningCertificateSummary[]>("pdf_list_signing_certificates");
+export const pdfListSigningCertificates = () => invoke<SigningCertificateSummary[]>("pdf_list_signing_certificates");
 
 // ---------------------------------------------------------------------------
 // Cloud sync (.oswk over WebDAV; off by default, everything explicit)

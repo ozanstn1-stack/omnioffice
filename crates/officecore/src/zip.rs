@@ -42,6 +42,7 @@ impl Default for ZipLimits {
 struct CentralEntry {
     name: String,
     method: u16,
+    crc: u32,
     compressed_size: u64,
     uncompressed_size: u64,
     local_offset: u64,
@@ -66,8 +67,13 @@ fn rd_u32(data: &[u8], at: usize) -> OfficeResult<u32> {
         .ok_or_else(|| OfficeError::corrupt("Truncated ZIP structure"))
 }
 
-pub fn read_entry_name(data: &[u8], at: usize) -> String {
-    String::from_utf8_lossy(data.get(at..).unwrap_or_default()).into_owned()
+/// Reads one entry name. Only the `len` bytes of the name are touched: the
+/// previous version copied everything from `at` to the end of the package for
+/// every entry, which made opening a 20 MB / 100 entry archive take 13 seconds
+/// (and an 8192 entry one minutes) for no reason at all.
+pub fn read_entry_name(data: &[u8], at: usize, len: usize) -> String {
+    let end = at.saturating_add(len);
+    String::from_utf8_lossy(data.get(at..end).unwrap_or_default()).into_owned()
 }
 
 impl ZipReader {
@@ -90,23 +96,27 @@ impl ZipReader {
             }
             let flags = rd_u16(&data, cursor + 8)?;
             let method = rd_u16(&data, cursor + 10)?;
+            let crc = rd_u32(&data, cursor + 16)?;
             let compressed_size = rd_u32(&data, cursor + 20)? as u64;
             let uncompressed_size = rd_u32(&data, cursor + 24)? as u64;
             let name_len = rd_u16(&data, cursor + 28)? as usize;
             let extra_len = rd_u16(&data, cursor + 30)? as usize;
             let comment_len = rd_u16(&data, cursor + 32)? as usize;
             let local_offset = rd_u32(&data, cursor + 42)? as u64;
-            let name = read_entry_name(&data, cursor + 46).get(..name_len).map(str::to_string).unwrap_or_default();
-            cursor += 46 + name_len + extra_len + comment_len;
-            entries.push(CentralEntry { name, method, compressed_size, uncompressed_size, local_offset, flags });
+            let name = read_entry_name(&data, cursor + 46, name_len);
+            cursor = cursor.saturating_add(46 + name_len + extra_len + comment_len);
+            entries.push(CentralEntry { name, method, crc, compressed_size, uncompressed_size, local_offset, flags });
         }
         let mut index = HashMap::new();
         for (position, entry) in entries.iter().enumerate() {
-            index.insert(entry.name.clone(), position);
+            // A duplicate name used to be resolved by overwriting the index, so
+            // the *last* entry silently won. Two entries with one name is
+            // exactly the shape an archive-confusion attack needs, so refuse it.
+            if index.insert(entry.name.clone(), position).is_some() {
+                return Err(OfficeError::corrupt(format!("The package contains the entry {} twice.", entry.name)));
+            }
         }
-        let reader = ZipReader { data, entries, index };
-        let _ = limits;
-        Ok(reader)
+        Ok(ZipReader { data, entries, index })
     }
 
     pub fn names(&self) -> impl Iterator<Item = &str> {
@@ -132,9 +142,12 @@ impl ZipReader {
     }
 
     fn read_entry(&self, entry: &CentralEntry, limits: ZipLimits) -> OfficeResult<Vec<u8>> {
-        if entry.uncompressed_size > limits.max_entry_size {
-            return Err(OfficeError::new(ErrorCode::ZipBomb, format!("Entry {} is too large to open safely.", entry.name)));
-        }
+        // The declared uncompressed size comes from whoever built the archive,
+        // so it is a hint and never a guarantee: the published bomb declares a
+        // kilobyte and inflates to hundreds of megabytes while the old check -
+        // which ran *after* `read_to_end` had materialised everything - happily
+        // blew the memory budget first. The cap is applied to the stream now.
+        let cap = limits.max_entry_size;
         let at = entry.local_offset as usize;
         if rd_u32(&self.data, at)? != LOCAL_SIG {
             return Err(OfficeError::corrupt("Damaged ZIP local header"));
@@ -142,30 +155,47 @@ impl ZipReader {
         let name_len = rd_u16(&self.data, at + 26)? as usize;
         let extra_len = rd_u16(&self.data, at + 28)? as usize;
         let start = at + 30 + name_len + extra_len;
-        let end = start + entry.compressed_size as usize;
-        let raw = self
-            .data
-            .get(start..end)
-            .ok_or_else(|| OfficeError::corrupt("Truncated ZIP entry data"))?;
+        let end = start
+            .checked_add(entry.compressed_size as usize)
+            .ok_or_else(|| OfficeError::corrupt("ZIP entry offset overflow"))?;
+        let raw = self.data.get(start..end).ok_or_else(|| OfficeError::corrupt("Truncated ZIP entry data"))?;
         let out = match entry.method {
-            0 => raw.to_vec(),
+            0 => {
+                if raw.len() as u64 > cap {
+                    return Err(OfficeError::new(ErrorCode::ZipBomb, format!("Entry {} is larger than the safe limit.", entry.name)));
+                }
+                raw.to_vec()
+            }
             8 => {
                 let mut decoder = DeflateDecoder::new(raw);
-                let mut out = Vec::with_capacity(entry.uncompressed_size.min(8 * 1024 * 1024) as usize);
-                decoder
+                let mut out = Vec::with_capacity(entry.uncompressed_size.min(1024 * 1024) as usize);
+                // One byte past the cap is enough to prove the stream keeps
+                // expanding, and only that byte is ever materialised.
+                let mut limited = decoder.by_ref().take(cap.saturating_add(1));
+                limited
                     .read_to_end(&mut out)
                     .map_err(|error| OfficeError::corrupt(format!("Could not decompress {}: {error}", entry.name)))?;
+                if out.len() as u64 > cap {
+                    return Err(OfficeError::new(ErrorCode::ZipBomb, format!("Entry {} expands beyond the safe limit.", entry.name)));
+                }
                 out
             }
             other => {
                 return Err(OfficeError::unsupported(format!("Unsupported ZIP compression method {other}")));
             }
         };
-        if out.len() as u64 > limits.max_entry_size {
-            return Err(OfficeError::new(ErrorCode::ZipBomb, format!("Entry {} expands beyond the safe limit.", entry.name)));
-        }
         if !raw.is_empty() && out.len() as u64 > raw.len() as u64 * limits.max_ratio.max(1) && out.len() as u64 > 1024 * 1024 {
             return Err(OfficeError::new(ErrorCode::ZipBomb, format!("Suspicious compression ratio in {}.", entry.name)));
+        }
+        // The CRC is the only integrity check the container offers. Skipping it
+        // meant a corrupted part decoded into plausible-looking text and the
+        // user only noticed when the numbers no longer added up.
+        let actual = crc32(&out);
+        if actual != entry.crc {
+            return Err(OfficeError::corrupt(format!(
+                "Entry {} failed its CRC check (stored {:08x}, computed {:08x}).",
+                entry.name, entry.crc, actual
+            )));
         }
         let _ = entry.flags;
         Ok(out)
@@ -176,7 +206,11 @@ impl ZipReader {
         let mut out = Vec::with_capacity(self.entries.len());
         let mut total = 0u64;
         for entry in &self.entries {
-            let data = self.read_entry(entry, limits)?;
+            // Never let one entry inflate past what is left of the whole-package
+            // budget: the total was only checked after the fact before.
+            let remaining = limits.max_total_size.saturating_sub(total);
+            let entry_limits = ZipLimits { max_entry_size: limits.max_entry_size.min(remaining), ..limits };
+            let data = self.read_entry(entry, entry_limits)?;
             total += data.len() as u64;
             if total > limits.max_total_size {
                 return Err(OfficeError::new(ErrorCode::ZipBomb, "The package expands beyond the safe total size."));
@@ -197,10 +231,11 @@ pub fn decode_utf8(bytes: &[u8], name: &str) -> OfficeResult<String> {
         // Strip a UTF-8 BOM when present.
         return Ok(text.strip_prefix('\u{feff}').unwrap_or(text).to_string());
     }
-    // Legacy 8-bit text: decode as Windows-1252 / Latin-1 so old documents
-    // still open instead of failing outright.
+    // Legacy 8-bit text: decode as Windows-1254/1252 (see `encoding`) so old
+    // documents still open instead of failing outright. Casting each byte to a
+    // `char` used to mangle Turkish letters and the C1 punctuation.
     let _ = name;
-    Ok(bytes.iter().map(|&byte| byte as char).collect())
+    Ok(crate::encoding::decode_legacy(bytes))
 }
 
 fn find_eocd(data: &[u8]) -> Option<usize> {
@@ -337,11 +372,37 @@ fn crc32(data: &[u8]) -> u32 {
 fn dos_now() -> (u16, u16) {
     use std::time::{SystemTime, UNIX_EPOCH};
     let secs = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let days = secs / 86_400;
-    let time = ((secs % 86_400) / 2) as u16;
-    let (year, month, day) = civil_from_days(days as i64 + 719_468);
-    let dos_date = (((year - 1980).max(0) as u16) << 9) | ((month as u16) << 5) | day as u16;
-    (time, dos_date)
+    dos_from_unix(secs)
+}
+
+/// Packs a Unix timestamp into the MS-DOS date/time pair ZIP stores.
+///
+/// The previous version was wrong twice over: it added the 719_468 day epoch
+/// offset once in the caller and again inside `civil_from_days`, and it stored
+/// `seconds_since_midnight / 2` as the raw time word instead of packing hours,
+/// minutes and seconds into their bit fields. A file written on 2026-09-29 was
+/// stamped 2076-07-31, with a nonsense clock as well.
+fn dos_from_unix(secs: u64) -> (u16, u16) {
+    let seconds_of_day = secs % 86_400;
+    let (year, month, day) = civil_from_days((secs / 86_400) as i64);
+    let time = (((seconds_of_day / 3_600) as u16) << 11)
+        | ((((seconds_of_day % 3_600) / 60) as u16) << 5)
+        | (((seconds_of_day % 60) / 2) as u16);
+    let date = (((year - 1980).clamp(0, 127) as u16) << 9) | ((month as u16) << 5) | day as u16;
+    (time, date)
+}
+
+/// Inverse of `dos_from_unix`: (year, month, day, hour, minute, second).
+/// Only the tests read a stored timestamp back; nothing in the app does yet.
+#[cfg(test)]
+fn dos_to_parts(time: u16, date: u16) -> (i64, u32, u32, u32, u32, u32) {
+    let year = 1980 + ((date >> 9) & 0x7f) as i64;
+    let month = ((date >> 5) & 0x0f) as u32;
+    let day = (date & 0x1f) as u32;
+    let hour = ((time >> 11) & 0x1f) as u32;
+    let minute = ((time >> 5) & 0x3f) as u32;
+    let second = ((time & 0x1f) * 2) as u32;
+    (year, month, day, hour, minute, second)
 }
 
 fn civil_from_days(z: i64) -> (i64, u32, u32) {
@@ -360,6 +421,7 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
     #[test]
     fn roundtrip_zip() {
@@ -387,5 +449,134 @@ mod tests {
         let reader = ZipReader::open(bytes).unwrap();
         let limits = ZipLimits { max_ratio: 5, max_entry_size: 1024 * 1024, ..ZipLimits::default() };
         assert!(reader.read_with_limits("bomb.xml", limits).is_err());
+    }
+
+    /// Rewrites the declared uncompressed size in the local header and in the
+    /// central directory, the way a crafted archive would.
+    fn declare_uncompressed_size(bytes: &mut [u8], value: u32) {
+        bytes[22..26].copy_from_slice(&value.to_le_bytes());
+        let eocd = bytes.windows(4).rposition(|window| window == EOCD_SIG.to_le_bytes()).expect("eocd");
+        let central = u32::from_le_bytes([bytes[eocd + 16], bytes[eocd + 17], bytes[eocd + 18], bytes[eocd + 19]]) as usize;
+        bytes[central + 24..central + 28].copy_from_slice(&value.to_le_bytes());
+    }
+
+    #[test]
+    fn a_lying_header_cannot_smuggle_a_bomb() {
+        let mut writer = ZipWriter::new();
+        // 32 MB of zeros compress to a few kilobytes: 596 KB is enough to
+        // allocate hundreds of megabytes when the limit is only checked after
+        // the whole stream has been inflated.
+        writer.add("bomb.xml", &vec![0u8; 32 * 1024 * 1024]);
+        let mut bytes = writer.finish();
+        assert!(bytes.len() < 128 * 1024, "the bomb should stay small on disk, got {}", bytes.len());
+        declare_uncompressed_size(&mut bytes, 1024);
+
+        let reader = match ZipReader::open(bytes) {
+            Ok(reader) => reader,
+            Err(error) => panic!("the header lie must not stop the open: {error}"),
+        };
+        let limits = ZipLimits { max_entry_size: 1024 * 1024, max_total_size: 4 * 1024 * 1024, ..ZipLimits::default() };
+        let error = match reader.read_with_limits("bomb.xml", limits) {
+            Err(error) => error,
+            Ok(_) => panic!("the bomb must be refused"),
+        };
+        assert_eq!(error.code, "zip_bomb", "unexpected error: {error}");
+    }
+
+    #[test]
+    fn a_corrupted_entry_is_rejected_by_its_crc() {
+        let mut writer = ZipWriter::new();
+        writer.add("a.txt", b"hello world");
+        let mut bytes = writer.finish();
+        // Short data stays stored, so the payload sits right behind the 30 byte
+        // local header plus the name.
+        let payload_at = 30 + "a.txt".len();
+        bytes[payload_at] ^= 0x20;
+
+        let reader = ZipReader::open(bytes).unwrap();
+        let error = match reader.read("a.txt") {
+            Err(error) => error,
+            Ok(_) => panic!("a corrupted entry must not decode"),
+        };
+        assert_eq!(error.code, "corrupt_document", "unexpected error: {error}");
+        assert!(error.message.contains("CRC"), "unexpected message: {}", error.message);
+    }
+
+    #[test]
+    fn duplicate_entry_names_are_rejected() {
+        let mut writer = ZipWriter::new();
+        writer.add("dup.txt", b"first");
+        writer.add("dup.txt", b"second");
+        let error = match ZipReader::open(writer.finish()) {
+            Err(error) => error,
+            Ok(_) => panic!("duplicate names must be refused"),
+        };
+        assert!(error.message.contains("twice"), "unexpected message: {}", error.message);
+    }
+
+    #[test]
+    fn entry_names_are_read_without_the_rest_of_the_package() {
+        // The old reader pushed the whole remaining buffer through
+        // String::from_utf8_lossy and only then sliced the name out of it,
+        // which copied the tail once per entry and sliced a lossy string by a
+        // byte length (an invalid byte turns into three bytes of replacement
+        // character, so the name came back empty).
+        let mut data = vec![0xffu8; 4 * 1024 * 1024];
+        data[0] = 0xE4;
+        data[1] = b'.';
+        let name = read_entry_name(&data, 0, 2);
+        assert_eq!(name.chars().count(), 2, "name: {name:?}");
+        assert!(name.ends_with('.'), "name: {name:?}");
+    }
+
+    #[test]
+    fn dos_timestamps_are_calendar_dates() {
+        // 2026-09-29T12:34:56Z. The old code applied the 719_468 day epoch
+        // offset twice and stored seconds/2 as the raw time word: this instant
+        // came out as 2076-07-31.
+        let (time, date) = dos_from_unix(1_790_685_296);
+        assert_eq!(dos_to_parts(time, date), (2026, 9, 29, 12, 34, 56));
+    }
+
+    #[test]
+    fn written_archives_carry_todays_date() {
+        let mut writer = ZipWriter::new();
+        writer.add_text("a.txt", "a");
+        let bytes = writer.finish();
+        let time = u16::from_le_bytes([bytes[10], bytes[11]]);
+        let date = u16::from_le_bytes([bytes[12], bytes[13]]);
+        let secs = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let (year, month, day) = civil_from_days((secs / 86_400) as i64);
+        let (stored_year, stored_month, stored_day, ..) = dos_to_parts(time, date);
+        assert_eq!((stored_year, stored_month, stored_day), (year, month, day));
+    }
+
+    #[test]
+    fn opening_a_large_archive_stays_fast() {
+        // Regression guard, not a benchmark: reading the central directory used
+        // to copy everything from each entry to the end of the package. The
+        // budget is loose on purpose, the old shape cannot make it.
+        let mut payload = vec![0u8; 16 * 1024 * 1024];
+        let mut state = 0x2545_f491_4f6c_dd1du64;
+        for byte in payload.iter_mut() {
+            // xorshift64: incompressible, so the archive really is ~16 MB.
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            *byte = (state >> 24) as u8;
+        }
+        let mut writer = ZipWriter::new();
+        writer.add("word/document.xml", &payload);
+        for index in 0..400 {
+            writer.add(&format!("word/part{index}.xml"), b"<x/>");
+        }
+        let bytes = writer.finish();
+        assert!(bytes.len() > 16 * 1024 * 1024, "archive should be large, got {}", bytes.len());
+
+        let started = Instant::now();
+        let reader = ZipReader::open(bytes).unwrap();
+        let elapsed = started.elapsed();
+        assert_eq!(reader.names().count(), 401);
+        assert!(elapsed.as_secs_f64() < 2.0, "opening the central directory took {elapsed:?}");
     }
 }

@@ -1,4 +1,4 @@
-﻿//! Real digital signature tests.
+//! Real digital signature tests.
 //!
 //! Every test here exercises the production code paths: certificates are
 //! generated at runtime, PKCS#12 containers are built and then parsed back,
@@ -11,7 +11,7 @@ mod common;
 use cbc::cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyIvInit};
 use der::{Decode, Encode};
 use hmac::{Hmac, Mac};
-use lopdf::{Document, Object, StringFormat};
+use lopdf::{dictionary, Document, Object, StringFormat};
 use pdfcore::sign::{self, SignOptions};
 use rand::rngs::OsRng;
 use rsa::pkcs8::{EncodePrivateKey, LineEnding};
@@ -680,9 +680,54 @@ fn signature_rejects_bad_rect_and_page() {
 fn signature_verify_reports_nothing_for_unsigned_pdf() {
     let report = sign::verify_signatures(&build_test_pdf());
     assert!(report.signatures.is_empty());
+    assert!(report.warnings.is_empty(), "a readable unsigned PDF is not a problem: {:?}", report.warnings);
+}
 
-    // Unparseable input yields an empty report instead of a panic.
+#[test]
+fn an_unparseable_file_is_not_mistaken_for_unsigned() {
+    // An empty signature list used to come back for a file that could not be
+    // parsed at all, which reads exactly like "this PDF has no signatures".
     let report = sign::verify_signatures(b"this is not a pdf");
     assert!(report.signatures.is_empty());
+    assert!(!report.warnings.is_empty(), "unreadable and unsigned must be distinguishable");
+    assert!(report.warnings[0].contains("could not be parsed"), "unexpected warning: {:?}", report.warnings);
+}
+
+#[test]
+fn a_byte_range_that_cannot_be_added_up_is_reported_not_panicked_on() {
+    // start + length overflows: the old arithmetic wrapped in release builds.
+    let mut doc = Document::with_version("1.7");
+    let pages_id = doc.new_object_id();
+    doc.add_object(dictionary! {
+        "Type" => "Sig",
+        "Filter" => "Adobe.PPKLite",
+        "SubFilter" => "adbe.pkcs7.detached",
+        // start + length overflows usize for this pair.
+        "ByteRange" => vec![
+            Object::Integer(i64::MAX),
+            Object::Integer(i64::MAX),
+            Object::Integer(0),
+            Object::Integer(0),
+        ],
+        "Contents" => Object::String(vec![0u8; 8], StringFormat::Hexadecimal),
+    });
+    doc.objects.insert(
+        pages_id,
+        Object::Dictionary(dictionary! { "Type" => "Pages", "Kids" => Vec::<Object>::new(), "Count" => 0 }),
+    );
+    let catalog_id = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+    doc.trailer.set("Root", catalog_id);
+    let mut bytes = Vec::new();
+    doc.save_to(&mut bytes).expect("save");
+
+    let report = sign::verify_signatures(&bytes);
+    assert_eq!(report.signatures.len(), 1, "the signature dictionary must be found");
+    let info = &report.signatures[0];
+    assert!(!info.covers_whole_document);
+    assert!(
+        info.notes.iter().any(|note| note.contains("no usable /ByteRange")),
+        "an impossible range must be reported as unusable, got: {:?}",
+        info.notes
+    );
 }
 

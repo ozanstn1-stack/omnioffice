@@ -27,7 +27,7 @@ import {
   splitRuns,
   wordRangeAt,
 } from "./runs";
-import { domToRuns, runsToHtml, textToBlocks } from "./writerDom";
+import { domToRuns, runsToHtml, safeHref, textToBlocks } from "./writerDom";
 
 function run(text: string, extra: Partial<Run> = {}): Run {
   return { ...emptyRun(text), ...extra };
@@ -291,7 +291,12 @@ describe("runsToHtml / domToRuns round trip", () => {
   });
 
   it("preserves bold, italic, underline and strike", () => {
-    const source = [run("b", { bold: true }), run("i", { italic: true }), run("u", { underline: true }), run("s", { strike: true })];
+    const source = [
+      run("b", { bold: true }),
+      run("i", { italic: true }),
+      run("u", { underline: true }),
+      run("s", { strike: true }),
+    ];
     const parsed = domToRuns(toDom(runsToHtml(source)));
     expect(parsed[0].bold).toBe(true);
     expect(parsed[1].italic).toBe(true);
@@ -342,6 +347,95 @@ describe("runsToHtml / domToRuns round trip", () => {
     expect(runsText(rejoined)).toBe("Hello world");
     expect(rejoined[0].bold).toBe(true);
     expect(rejoined[1].italic).toBe(true);
+  });
+});
+
+describe("runsToHtml injection hardening", () => {
+  function toDom(html: string): HTMLElement {
+    const element = document.createElement("div");
+    element.innerHTML = html;
+    return element;
+  }
+
+  it("drops a javascript: link and keeps the run text", () => {
+    const html = runsToHtml([run("click me", { link: "javascript:alert(1)" })]);
+    expect(html).toBe("click me");
+    expect(toDom(html).querySelector("a")).toBeNull();
+    expect(html.toLowerCase()).not.toContain("javascript:");
+  });
+
+  it("drops a link that tries to break out of the href attribute", () => {
+    const html = runsToHtml([run("link text", { link: ' x" onmouseover="alert(1) ' })]);
+    expect(html).toBe("link text");
+    expect(html).not.toContain("<a");
+    expect(html.toLowerCase()).not.toContain("onmouseover");
+  });
+
+  it("escapes a crafted revision author instead of letting it open an attribute", () => {
+    const html = runsToHtml([
+      run("<b>bold</b>", {
+        revision: {
+          id: 'rev-1" onmouseover="alert(1)',
+          kind: "insert",
+          author: 'A" onmouseover="alert(1) <i>',
+          date: '2024" onmouseover="alert(1)',
+        },
+      }),
+    ]);
+    // The literal payload text survives escaped, so the assertion that can
+    // actually catch a breakout is the parsed DOM: no element may carry the
+    // handler attribute, and the quote never closes an attribute early.
+    expect(toDom(html).querySelector("[onmouseover]")).toBeNull();
+    expect(html).not.toContain('" onmouseover="');
+    expect(html).toContain('data-revision-id="rev-1&quot; onmouseover=&quot;alert(1)"');
+    expect(html).toContain('title="A&quot; onmouseover=&quot;alert(1) &lt;i&gt;"');
+    // Markup supplied as a text value is escaped rather than parsed.
+    expect(html).toContain("&lt;b&gt;bold&lt;/b&gt;");
+    expect(html).not.toContain("<b>");
+  });
+
+  it("drops a colour value that tries to open an attribute", () => {
+    const html = runsToHtml([run("x", { color: ' red" onfocus="alert(1) ' })]);
+    expect(html).toBe("x");
+    expect(html.toLowerCase()).not.toContain("onfocus");
+    expect(html).not.toContain("style=");
+  });
+
+  it("drops a font family that tries to open an attribute", () => {
+    const html = runsToHtml([run("x", { font: " A'; onmouseover='alert(1) " })]);
+    expect(html).toBe("x");
+    expect(html.toLowerCase()).not.toContain("onmouseover");
+    expect(html).not.toContain("font-family");
+  });
+
+  it("still renders https links, with the ampersand escaped", () => {
+    const html = runsToHtml([run("site", { link: "https://example.com/a?b=1&c=2" })]);
+    expect(html).toContain('<a href="https://example.com/a?b=1&amp;c=2" target="_blank" rel="noreferrer">site</a>');
+    expect(domToRuns(toDom(html))[0].link).toBe("https://example.com/a?b=1&c=2");
+  });
+
+  it("still renders mailto: and same-document links", () => {
+    expect(runsToHtml([run("mail", { link: "mailto:a@b.c" })])).toContain('<a href="mailto:a@b.c"');
+    expect(runsToHtml([run("jump", { link: "#anchor" })])).toContain('<a href="#anchor"');
+  });
+
+  it("still renders hex and rgb colours", () => {
+    expect(runsToHtml([run("x", { color: "#ff0000" })])).toContain("color:#ff0000");
+    expect(runsToHtml([run("x", { color: "rgb(1, 2, 3)" })])).toContain("color:rgb(1, 2, 3)");
+  });
+
+  it("does not read an unsafe href back out of the DOM", () => {
+    const parsed = domToRuns(toDom('<a href="javascript:alert(1)">safe text</a>'));
+    expect(parsed[0].link).toBeNull();
+    expect(runsText(parsed)).toBe("safe text");
+  });
+
+  it("trims whitespace and control characters around a safe href", () => {
+    expect(safeHref("  \u0000https://example.com  ")).toBe("https://example.com");
+    expect(safeHref("javascript\u0000:alert(1)")).toBeNull();
+    expect(safeHref("data:text/html,<script>alert(1)</script>")).toBeNull();
+    expect(safeHref("vbscript:msgbox(1)")).toBeNull();
+    expect(safeHref("   ")).toBeNull();
   });
 });
 

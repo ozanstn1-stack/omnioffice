@@ -80,6 +80,19 @@ jobs:
             echo "keyPassword=$ANDROID_KEY_PASSWORD"
           } > src-tauri/gen/android/keystore.properties
 
+      # A release has to be signed. Without the secret the build silently falls
+      # back to the debug keystore, and the APK/AAB would still be uploaded and
+      # attached to the GitHub release as if it were a production build.
+      # Manual (workflow_dispatch) runs may stay debug-signed for sideloading.
+      - name: Require the release keystore (tag builds)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set: refusing to publish a debug-signed release."
+            exit 1
+          fi
+
       - name: Fetch Android engines
         run: pwsh -NoProfile -File scripts/fetch-engines-android.ps1 -Abis arm64-v8a,armeabi-v7a
 

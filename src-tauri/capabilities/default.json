@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability set for the main window",
+  "description": "Default capability set for the main window. The fs:allow-* entries grant the commands, not a path scope: no standing scope is handed to the webview, so the frontend can only read and write paths the user picked in a dialog (the dialog plugin adds the picked path to the fs scope for that session). Everything else goes through the Rust commands. The android-fs scopes below are the only standing path grants and stay inside the app directories.",
   "windows": ["main"],
   "permissions": [
     "core:default",

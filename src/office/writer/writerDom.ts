@@ -11,7 +11,79 @@ import { defaultParaProps } from "../../lib/office-types";
 import { emptyRun, normalizeParagraphRuns } from "./runs";
 
 export function escapeHtml(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/** True for the whitespace and control characters a URL may be padded with. */
+function isIgnorableHrefChar(code: number): boolean {
+  return code <= 0x20 || code === 0x7f;
+}
+
+/**
+ * Screens a link target before it reaches an `href` attribute.
+ *
+ * Escaping alone cannot make an `href` safe: `javascript:alert(1)` needs no
+ * character escaped, and `data:`/`vbscript:` are just as readable. Only the
+ * schemes the Writer knows how to open, plus same-document `#` references, are
+ * allowed through; anything else is dropped so the run renders as plain text.
+ */
+export function safeHref(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  let start = 0;
+  let end = value.length;
+  while (start < end && isIgnorableHrefChar(value.charCodeAt(start))) start += 1;
+  while (end > start && isIgnorableHrefChar(value.charCodeAt(end - 1))) end -= 1;
+  const trimmed = value.slice(start, end);
+  if (trimmed === "") return null;
+  if (trimmed.startsWith("#")) return trimmed;
+  return /^(?:https?:|mailto:)/i.test(trimmed) ? trimmed : null;
+}
+
+/**
+ * Style values are validated, not escaped.
+ *
+ * `&quot;` inside a `style` attribute still decodes to a quote before the CSS
+ * parser runs, so escaping buys nothing here: a value has to look like a colour,
+ * a font family or a font size, or it is dropped.
+ */
+const CSS_HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+const CSS_COLOR_KEYWORD = /^[a-z]+$/i;
+const CSS_RGB_COLOR = /^rgba?\(([^()]*)\)$/i;
+const CSS_RGB_CHANNEL = /^\d{1,3}(?:\.\d+)?$/;
+const CSS_ALPHA = /^(?:0|1|0?\.\d+|\d{1,3}%)$/;
+const CSS_FONT_FAMILY = /^[A-Za-z0-9 ,_-]+$/;
+/** Longest accepted `font-family` value. */
+const FONT_FAMILY_MAX_LENGTH = 100;
+
+function sanitizeColor(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const candidate = value.trim();
+  if (candidate === "") return null;
+  if (CSS_HEX_COLOR.test(candidate) || CSS_COLOR_KEYWORD.test(candidate)) return candidate;
+  const rgb = CSS_RGB_COLOR.exec(candidate);
+  if (!rgb) return null;
+  const parts = rgb[1].split(",").map((part) => part.trim());
+  if (parts.length !== 3 && parts.length !== 4) return null;
+  if (!parts.slice(0, 3).every((part) => CSS_RGB_CHANNEL.test(part) && Number(part) <= 255)) return null;
+  if (parts[3] !== undefined && !CSS_ALPHA.test(parts[3])) return null;
+  return candidate;
+}
+
+function sanitizeFontFamily(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const candidate = value.trim();
+  if (candidate === "" || candidate.length > FONT_FAMILY_MAX_LENGTH) return null;
+  return CSS_FONT_FAMILY.test(candidate) ? candidate : null;
+}
+
+function sanitizeFontSize(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return value >= 1 && value <= 1000 ? value : null;
 }
 
 export interface RunRenderOptions {
@@ -55,14 +127,24 @@ export function runsToHtml(runs: Run[], options: RunRenderOptions = {}): string 
       if (run.superscript) html = `<sup>${html}</sup>`;
       if (run.subscript) html = `<sub>${html}</sub>`;
       const styles: string[] = [];
-      if (run.color) styles.push(`color:${run.color}`);
-      if (run.highlight) styles.push(`background-color:${run.highlight}`);
-      if (run.sizePt) styles.push(`font-size:${run.sizePt}pt`);
-      if (run.font) styles.push(`font-family:'${run.font.replace(/'/g, "")}'`);
+      const color = sanitizeColor(run.color);
+      if (color) styles.push(`color:${color}`);
+      const highlight = sanitizeColor(run.highlight);
+      if (highlight) styles.push(`background-color:${highlight}`);
+      const sizePt = sanitizeFontSize(run.sizePt);
+      if (sizePt !== null) styles.push(`font-size:${sizePt}pt`);
+      const font = sanitizeFontFamily(run.font);
+      if (font) styles.push(`font-family:'${font}'`);
       if (styles.length) html = `<span style="${styles.join(";")}">${html}</span>`;
-      if (run.link) html = `<a href="${escapeHtml(run.link)}" target="_blank" rel="noreferrer">${html}</a>`;
+      const href = safeHref(run.link);
+      if (href) html = `<a href="${escapeHtml(href)}" target="_blank" rel="noreferrer">${html}</a>`;
       if (run.revision && showRevisions) {
-        const className = run.revision.kind === "delete" ? "writer-rev-delete" : run.revision.kind === "insert" ? "writer-rev-insert" : "writer-rev-format";
+        const className =
+          run.revision.kind === "delete"
+            ? "writer-rev-delete"
+            : run.revision.kind === "insert"
+              ? "writer-rev-insert"
+              : "writer-rev-format";
         html = `<span class="writer-rev ${className}"${revisionAttributes(run)} title="${escapeHtml(run.revision.author)}">${html}</span>`;
       } else if (run.revision) {
         html = `<span${revisionAttributes(run)}>${html}</span>`;
@@ -126,7 +208,13 @@ export function domToRuns(element: HTMLElement): Run[] {
     const noteId = el.getAttribute("data-note-id");
     if (noteId) {
       const footnote = el.getAttribute("data-note-kind") !== "endnote";
-      runs.push({ ...emptyRun(""), ...next, footnote: footnote ? noteId : null, endnote: footnote ? null : noteId, revision: null });
+      runs.push({
+        ...emptyRun(""),
+        ...next,
+        footnote: footnote ? noteId : null,
+        endnote: footnote ? null : noteId,
+        revision: null,
+      });
       return;
     }
     // Fields survive a DOM round trip through their data attributes.
@@ -138,7 +226,7 @@ export function domToRuns(element: HTMLElement): Run[] {
         field: {
           kind: fieldKind,
           target: el.getAttribute("data-field-target") ?? "",
-          cached: el.getAttribute("data-field-cached") ?? (el.textContent ?? ""),
+          cached: el.getAttribute("data-field-cached") ?? el.textContent ?? "",
         },
         revision: null,
       });
@@ -157,7 +245,9 @@ export function domToRuns(element: HTMLElement): Run[] {
       };
     }
     if (tag === "a") {
-      const href = el.getAttribute("href");
+      // A link pasted from the clipboard is untrusted too, so it clears the
+      // same scheme check before it can reach the model.
+      const href = safeHref(el.getAttribute("href"));
       if (href) next.link = href;
     }
     if (el.style?.color) next.color = el.style.color;
@@ -167,7 +257,10 @@ export function domToRuns(element: HTMLElement): Run[] {
       if (sizePt !== null) next.sizePt = sizePt;
     }
     if (el.style?.fontFamily) {
-      const family = el.style.fontFamily.split(",")[0]?.trim().replace(/^['"]|['"]$/g, "");
+      const family = el.style.fontFamily
+        .split(",")[0]
+        ?.trim()
+        .replace(/^['"]|['"]$/g, "");
       if (family) next.font = family;
     }
     if (tag === "br") {

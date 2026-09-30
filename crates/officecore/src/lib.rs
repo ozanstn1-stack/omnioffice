@@ -16,6 +16,7 @@ pub mod cleaner;
 pub mod compat;
 pub mod csvio;
 pub mod docx;
+pub mod encoding;
 pub mod error;
 pub mod io;
 pub mod layout;
