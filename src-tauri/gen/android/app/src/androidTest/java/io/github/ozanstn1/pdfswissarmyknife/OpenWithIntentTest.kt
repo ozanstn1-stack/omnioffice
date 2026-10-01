@@ -41,7 +41,7 @@ class OpenWithIntentTest {
   @Test
   fun openableDocumentIsCopiedIntoTheCache() {
     val body = "hello open-with".toByteArray()
-    TestDocumentProvider.stage(cacheDir, "report.pdf", body)
+    TestDocumentProvider.stage("report.pdf", body)
     val (file, result) = IncomingFiles.copyToCache(resolver, TestDocumentProvider.uriFor("report.pdf"), cacheDir)
     assertEquals(IncomingFiles.CopyResult.COPIED, result)
     assertNotNull(file)
@@ -53,7 +53,7 @@ class OpenWithIntentTest {
 
   @Test
   fun executableExtensionsAreRejected() {
-    TestDocumentProvider.stage(cacheDir, "installer.exe", "MZ".toByteArray())
+    TestDocumentProvider.stage("installer.exe", "MZ".toByteArray())
     val (file, result) = IncomingFiles.copyToCache(resolver, TestDocumentProvider.uriFor("installer.exe"), cacheDir)
     assertNull("an .exe must never be copied", file)
     assertEquals(IncomingFiles.CopyResult.UNSUPPORTED, result)
@@ -61,7 +61,7 @@ class OpenWithIntentTest {
 
   @Test
   fun unknownExtensionsAreRejected() {
-    TestDocumentProvider.stage(cacheDir, "archive.zip", byteArrayOf(1, 2, 3))
+    TestDocumentProvider.stage("archive.zip", byteArrayOf(1, 2, 3))
     val (file, result) = IncomingFiles.copyToCache(resolver, TestDocumentProvider.uriFor("archive.zip"), cacheDir)
     assertNull(file)
     assertEquals(IncomingFiles.CopyResult.UNSUPPORTED, result)
@@ -89,7 +89,7 @@ class OpenWithIntentTest {
 
   @Test
   fun aNormalPdfStillFlowsThroughTheRealCopyPath() {
-    TestDocumentProvider.stage(cacheDir, "ok.pdf", byteArrayOf(1, 2, 3))
+    TestDocumentProvider.stage("ok.pdf", byteArrayOf(1, 2, 3))
     val (file, result) = IncomingFiles.copyToCache(resolver, TestDocumentProvider.uriFor("ok.pdf"), cacheDir)
     assertEquals(IncomingFiles.CopyResult.COPIED, result)
     assertNotNull(file)

@@ -7,6 +7,7 @@ import android.database.MatrixCursor
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
+import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import java.io.FileOutputStream
 
@@ -15,8 +16,9 @@ import java.io.FileOutputStream
  * hand [MainActivity] a real `content://` stream plus an `OpenableColumns`
  * display name - the same shape Android's SAF providers expose.
  *
- * The provider instance is created by the system, so test data is written to
- * a well-known cache directory ([stage]) and read back from there.
+ * The provider instance is created by the system, so test data is staged in
+ * (and read from) the target app's cache directory via the instrumentation
+ * registry rather than the provider's own `context`.
  */
 class TestDocumentProvider : ContentProvider() {
   companion object {
@@ -24,13 +26,15 @@ class TestDocumentProvider : ContentProvider() {
 
     fun uriFor(name: String): Uri = Uri.parse("content://$AUTHORITY/$name")
 
+    private fun root(): File = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
+
     /** Writes the fixture a test will stream through the provider. */
-    fun stage(root: File, name: String, body: ByteArray) {
-      val directory = File(root, "testdocuments").apply { mkdirs() }
+    fun stage(name: String, body: ByteArray) {
+      val directory = File(root(), "testdocuments").apply { mkdirs() }
       FileOutputStream(File(directory, name)).use { it.write(body) }
     }
 
-    private fun fileFor(root: File, name: String): File = File(File(root, "testdocuments"), name)
+    private fun fileFor(name: String): File = File(File(root(), "testdocuments"), name)
   }
 
   override fun onCreate(): Boolean = true
@@ -43,7 +47,7 @@ class TestDocumentProvider : ContentProvider() {
     sortOrder: String?,
   ): Cursor {
     val name = uri.lastPathSegment ?: ""
-    val file = fileFor(context!!.cacheDir, name)
+    val file = fileFor(name)
     val columns = projection ?: arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)
     val cursor = MatrixCursor(columns)
     cursor.addRow(columns.map { column ->
@@ -60,7 +64,7 @@ class TestDocumentProvider : ContentProvider() {
 
   override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor? {
     val name = uri.lastPathSegment ?: return null
-    val file = fileFor(context!!.cacheDir, name)
+    val file = fileFor(name)
     if (!file.isFile) return null
     return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
   }
