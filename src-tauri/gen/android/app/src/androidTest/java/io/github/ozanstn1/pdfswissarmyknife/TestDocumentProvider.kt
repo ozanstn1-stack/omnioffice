@@ -26,7 +26,7 @@ class TestDocumentProvider : ContentProvider() {
 
     fun uriFor(name: String): Uri = Uri.parse("content://$AUTHORITY/$name")
 
-    private fun root(): File = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
+    private fun root(): File = InstrumentationRegistry.getInstrumentation().context.cacheDir
 
     /** Writes the fixture a test will stream through the provider. */
     fun stage(name: String, body: ByteArray) {

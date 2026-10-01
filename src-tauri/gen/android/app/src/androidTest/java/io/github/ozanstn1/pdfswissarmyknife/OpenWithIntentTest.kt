@@ -28,7 +28,9 @@ import java.io.File
  */
 @RunWith(AndroidJUnit4::class)
 class OpenWithIntentTest {
-  private val context = InstrumentationRegistry.getInstrumentation().targetContext
+  // The provider reads fixtures from the test app's context (it is declared in
+  // the androidTest manifest), so both sides use this cache directory.
+  private val context = InstrumentationRegistry.getInstrumentation().context
   private val cacheDir: File get() = context.cacheDir
   private val resolver get() = context.contentResolver
 
