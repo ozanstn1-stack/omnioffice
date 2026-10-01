@@ -496,25 +496,35 @@ pub fn plugin_install(app: AppHandle, manifest_json: String, source: String) -> 
 /// design where a compromised renderer could pass any directory on disk.
 #[tauri::command]
 pub async fn plugin_install_from_dialog(app: AppHandle) -> PluginResult<Option<PluginEntry>> {
-    use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = std::sync::mpsc::channel();
-    app.dialog()
-        .file()
-        .set_title("Choose a plugin folder (manifest.json + main.js)")
-        .pick_folder(move |folder| {
-            let _ = tx.send(folder);
-        });
-    let picked = tauri::async_runtime::spawn_blocking(move || rx.recv().ok().flatten())
-        .await
-        .map_err(|_| PluginErrorPayload::internal("The plugin dialog failed."))?;
-    let Some(picked) = picked else {
-        return Ok(None); // user cancelled
-    };
-    let source_dir = picked
-        .into_path()
-        .map_err(|_| PluginErrorPayload::internal("The chosen folder is not a local path."))?;
-    let entry = install_from_dir(&plugins_root(&app)?, &source_dir)?;
-    Ok(Some(entry))
+    #[cfg(any(desktop, target_os = "windows", target_os = "linux", target_os = "macos"))]
+    {
+        use tauri_plugin_dialog::DialogExt;
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.dialog()
+            .file()
+            .set_title("Choose a plugin folder (manifest.json + main.js)")
+            .pick_folder(move |folder| {
+                let _ = tx.send(folder);
+            });
+        let picked = tauri::async_runtime::spawn_blocking(move || rx.recv().ok().flatten())
+            .await
+            .map_err(|_| PluginErrorPayload::internal("The plugin dialog failed."))?;
+        let Some(picked) = picked else {
+            return Ok(None); // user cancelled
+        };
+        let source_dir = picked
+            .into_path()
+            .map_err(|_| PluginErrorPayload::internal("The chosen folder is not a local path."))?;
+        let entry = install_from_dir(&plugins_root(&app)?, &source_dir)?;
+        Ok(Some(entry))
+    }
+    #[cfg(not(any(desktop, target_os = "windows", target_os = "linux", target_os = "macos")))]
+    {
+        let _ = app;
+        Err(PluginErrorPayload::permission_denied(
+            "Plugin folder installation is only supported on desktop.",
+        ))
+    }
 }
 
 #[tauri::command]
