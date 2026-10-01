@@ -80,6 +80,51 @@ jobs:
       - name: Bundle budget
         run: npm run bundle:check
 
+  # Android-only compile errors (a desktop-only API behind the wrong cfg, a
+  # method missing from the mobile plugin build, …) do not show up in the
+  # desktop workspace check. Cross-checking the mobile target on every push/PR
+  # is what keeps a release tag from failing on Android for a reason that was
+  # catchable here in minutes. It caught the `plugin_install_from_dialog`
+  # regression that broke the v3.2.1 Android build.
+  android-target:
+    name: Android target compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Install Android NDK
+        run: |
+          set -e
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          export PATH="$SDK/cmdline-tools/latest/bin:$PATH"
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install "ndk;27.3.13750724" > /dev/null
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$SDK/ndk/27.3.13750724" >> "$GITHUB_ENV"
+      - run: npm ci
+      # The Tauri build script embeds the frontend, so ../dist has to exist.
+      - name: Frontend for the Tauri build script
+        run: npm run build
+      - name: Stub the engine resources
+        run: |
+          mkdir -p src-tauri/resources/engines
+          echo "Engine binaries are fetched by scripts/fetch-engines.ps1." > src-tauri/resources/engines/README.txt
+      - name: cargo check (aarch64-linux-android)
+        shell: bash
+        run: |
+          BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$BIN/aarch64-linux-android24-clang"
+          export AR_aarch64_linux_android="$BIN/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$BIN/aarch64-linux-android24-clang"
+          cargo check -p pdf-swiss-army-knife --target aarch64-linux-android
+
   rust:
     name: Rust (${{ matrix.os }})
     strategy:

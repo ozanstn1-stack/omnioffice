@@ -521,7 +521,7 @@ pub async fn plugin_install_from_dialog(app: AppHandle) -> PluginResult<Option<P
     #[cfg(not(any(desktop, target_os = "windows", target_os = "linux", target_os = "macos")))]
     {
         let _ = app;
-        Err(PluginErrorPayload::permission_denied(
+        Err(PluginErrorPayload::forbidden(
             "Plugin folder installation is only supported on desktop.",
         ))
     }
