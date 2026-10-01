@@ -35,21 +35,31 @@ if (!chrome) {
 }
 
 const port = 9333;
-const chromeProcess = spawn(
-  chrome,
-  [
-    "--headless=new",
-    "--disable-gpu",
-    "--no-first-run",
-    "--no-default-browser-check",
-    `--user-data-dir=${profile}`,
-    `--remote-debugging-port=${port}`,
-    "--window-size=1400,900",
-    "--hide-scrollbars",
-    "about:blank",
-  ],
-  { stdio: "ignore" },
-);
+const chromeArgs = [
+  "--headless=new",
+  "--disable-gpu",
+  "--no-first-run",
+  "--no-default-browser-check",
+  // The GitHub Actions Linux runners need --no-sandbox; harmless elsewhere.
+  "--no-sandbox",
+  "--disable-dev-shm-usage",
+  `--user-data-dir=${profile}`,
+  `--remote-debugging-port=${port}`,
+  "--remote-debugging-address=127.0.0.1",
+  "--window-size=1400,900",
+  "--hide-scrollbars",
+  "about:blank",
+];
+// Capture stderr so a launch failure is visible instead of a bare timeout.
+let chromeError = "";
+const chromeProcess = spawn(chrome, chromeArgs, { stdio: ["ignore", "ignore", "pipe"] });
+chromeProcess.stderr?.on("data", (data) => {
+  chromeError += String(data);
+  if (chromeError.length > 4000) chromeError = chromeError.slice(-4000);
+});
+chromeProcess.on("error", (error) => {
+  chromeError += `spawn error: ${error.message}\n`;
+});
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -65,7 +75,8 @@ async function findTarget() {
     }
     await sleep(250);
   }
-  throw new Error("DevTools endpoint did not appear");
+  const detail = chromeError.trim() ? `\nChrome output:\n${chromeError.trim()}` : "";
+  throw new Error(`DevTools endpoint did not appear on port ${port}${detail}`);
 }
 
 class Cdp {
