@@ -83,9 +83,7 @@ impl ImageData {
 
     /// Intrinsic size in pixels (0,0 when the format is unknown to the decoder).
     pub fn pixel_size(&self) -> (u32, u32) {
-        image::load_from_memory(&self.bytes())
-            .map(|image| (image.width(), image.height()))
-            .unwrap_or((0, 0))
+        image::load_from_memory(&self.bytes()).map(|image| (image.width(), image.height())).unwrap_or((0, 0))
     }
 
     pub fn extension(&self) -> &'static str {
@@ -298,7 +296,13 @@ pub fn default_styles() -> Vec<ParaStyle> {
     };
     list.push(normal);
 
-    let mut title = ParaStyle { id: "Title".into(), name: "Title".into(), based_on: Some("Normal".into()), next: Some("Subtitle".into()), ..Default::default() };
+    let mut title = ParaStyle {
+        id: "Title".into(),
+        name: "Title".into(),
+        based_on: Some("Normal".into()),
+        next: Some("Subtitle".into()),
+        ..Default::default()
+    };
     title.font = Some("Calibri Light".into());
     title.size_pt = Some(28.0);
     title.bold = Some(true);
@@ -306,7 +310,13 @@ pub fn default_styles() -> Vec<ParaStyle> {
     title.space_after_pt = Some(6.0);
     list.push(title);
 
-    let mut subtitle = ParaStyle { id: "Subtitle".into(), name: "Subtitle".into(), based_on: Some("Normal".into()), next: Some("Normal".into()), ..Default::default() };
+    let mut subtitle = ParaStyle {
+        id: "Subtitle".into(),
+        name: "Subtitle".into(),
+        based_on: Some("Normal".into()),
+        next: Some("Normal".into()),
+        ..Default::default()
+    };
     subtitle.size_pt = Some(15.0);
     subtitle.italic = Some(true);
     subtitle.color = Some("#475569".into());
@@ -332,7 +342,8 @@ pub fn default_styles() -> Vec<ParaStyle> {
         list.push(heading);
     }
 
-    let mut quote = ParaStyle { id: "Quote".into(), name: "Quote".into(), based_on: Some("Normal".into()), ..Default::default() };
+    let mut quote =
+        ParaStyle { id: "Quote".into(), name: "Quote".into(), based_on: Some("Normal".into()), ..Default::default() };
     quote.italic = Some(true);
     quote.color = Some("#334155".into());
     quote.indent_left_pt = Some(24.0);
@@ -341,14 +352,20 @@ pub fn default_styles() -> Vec<ParaStyle> {
     quote.space_after_pt = Some(8.0);
     list.push(quote);
 
-    let mut caption = ParaStyle { id: "Caption".into(), name: "Caption".into(), based_on: Some("Normal".into()), ..Default::default() };
+    let mut caption = ParaStyle {
+        id: "Caption".into(),
+        name: "Caption".into(),
+        based_on: Some("Normal".into()),
+        ..Default::default()
+    };
     caption.size_pt = Some(9.5);
     caption.italic = Some(true);
     caption.align = Some("center".into());
     caption.color = Some("#64748b".into());
     list.push(caption);
 
-    let mut code = ParaStyle { id: "Code".into(), name: "Code".into(), based_on: Some("Normal".into()), ..Default::default() };
+    let mut code =
+        ParaStyle { id: "Code".into(), name: "Code".into(), based_on: Some("Normal".into()), ..Default::default() };
     code.font = Some("Consolas".into());
     code.size_pt = Some(10.0);
     code.space_after_pt = Some(0.0);
@@ -624,18 +641,35 @@ impl Default for SectionProps {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum Block {
-    Paragraph { props: ParaProps, runs: Vec<Run> },
-    Table { table: TableData },
-    Image { image: ImageData, width_pt: f64, height_pt: f64, align: String, caption: String },
+    Paragraph {
+        props: ParaProps,
+        runs: Vec<Run>,
+    },
+    Table {
+        table: TableData,
+    },
+    Image {
+        image: ImageData,
+        width_pt: f64,
+        height_pt: f64,
+        align: String,
+        caption: String,
+    },
     PageBreak,
     Rule,
     /// A table of contents whose entries were last updated in the editor; the
     /// layout and DOCX export render them as static text.
-    Toc { #[serde(default)] entries: Vec<TocEntry> },
+    Toc {
+        #[serde(default)]
+        entries: Vec<TocEntry>,
+    },
     /// Starts a new section. The block itself renders no content; the section
     /// it carries applies from this point until the next break (or the end of
     /// the document).
-    SectionBreak { #[serde(default)] section: SectionProps },
+    SectionBreak {
+        #[serde(default)]
+        section: SectionProps,
+    },
 }
 
 impl Default for Block {
@@ -905,7 +939,6 @@ pub enum CellValue {
     Bool(bool),
     Error(String),
 }
-
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
@@ -1510,10 +1543,7 @@ impl Workbook {
 
     /// Names visible from `sheet`: workbook-level names plus that sheet's own.
     pub fn names_for(&self, sheet: &str) -> Vec<&NamedRange> {
-        self.names
-            .iter()
-            .filter(|entry| entry.is_workbook_scope() || entry.sheet.as_deref() == Some(sheet))
-            .collect()
+        self.names.iter().filter(|entry| entry.is_workbook_scope() || entry.sheet.as_deref() == Some(sheet)).collect()
     }
 
     pub fn unique_sheet_name(&self, base: &str) -> String {
@@ -1658,16 +1688,7 @@ impl Default for SlideObject {
 
 impl SlideObject {
     pub fn new(kind: &str, x: f64, y: f64, w: f64, h: f64) -> Self {
-        Self {
-            id: uuid::Uuid::new_v4().to_string(),
-            kind: kind.to_string(),
-            x,
-            y,
-            w,
-            h,
-            z: 1,
-            ..Default::default()
-        }
+        Self { id: uuid::Uuid::new_v4().to_string(), kind: kind.to_string(), x, y, w, h, z: 1, ..Default::default() }
     }
 }
 

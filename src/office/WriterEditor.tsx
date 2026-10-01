@@ -52,6 +52,7 @@ import { defaultPageSetup, defaultParaProps, defaultSectionProps, documentSectio
 import { Dialog, Ribbon, RibbonGroup, ToolButton, ToolColor, ToolNumber, ToolSelect, useTablePicker } from "./office-ui";
 import { openIntoWorkspace, useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
 import { acceptAll, acceptRevision, nextRevision, rejectAll, rejectRevision, revisionList, trackRunChanges } from "./writer/revisions";
+import { emptyHistory, record as recordHistory, redo as redoHistory, undo as undoHistory, type HistoryState } from "./writer/history";
 import { joinRuns, nextListLevel, nextParagraphProps, replaceRange, runsText, splitRuns, wordRangeAt } from "./writer/runs";
 import { caretOffset, caretOnFirstLine, caretOnLastLine, offsetFromPoint, paragraphAtPoint, repaintParagraph, selectedRange, setCaretOffset, setSelectionRange } from "./writer/caret";
 import { domToRuns, runsToHtml, wrapCellRuns } from "./writer/writerDom";
@@ -250,18 +251,81 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
 
   // Ctrl+Enter inserts a real page break at the caret. The ref keeps the
   // listener stable while still reaching the latest insert helper.
+  const undoRef = useRef<() => void>(() => {});
+  const redoRef = useRef<() => void>(() => {});
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      const mod = event.ctrlKey || event.metaKey;
+      if (mod && event.key === "Enter") {
         event.preventDefault();
         insertPageBreakRef.current();
+        return;
+      }
+      // Model-level undo/redo (Ctrl/Cmd+Z, Ctrl+Y, Ctrl/Cmd+Shift+Z). The
+      // browser's native undo cannot see structural edits, so it is replaced.
+      if (mod && (event.key === "z" || event.key === "Z")) {
+        event.preventDefault();
+        if (event.shiftKey) redoRef.current();
+        else undoRef.current();
+        return;
+      }
+      if (mod && (event.key === "y" || event.key === "Y")) {
+        event.preventDefault();
+        redoRef.current();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const update = useCallback((mutate: (document: TextDocument) => TextDocument) => edit(tab.id, (model) => mutate(model as TextDocument)), [edit, tab.id]);
+  // Model-level undo/redo. The browser's own `execCommand("undo")` only undoes
+  // typed DOM state and cannot see structural/format changes, so the editor
+  // keeps its own bounded history of model snapshots. Every model mutation
+  // goes through `recordHistory`, so Ctrl+Z / the toolbar always undo the last
+  // real edit.
+  const historyRef = useRef<HistoryState>(emptyHistory());
+  const [historyDepth, setHistoryDepth] = useState({ undo: 0, redo: 0 });
+
+  const applyModel = useCallback((before: TextDocument, model: TextDocument) => {
+    historyRef.current = recordHistory(
+      historyRef.current,
+      before,
+      { label: "edit", operations: [{ kind: "replaceDocument", before, after: model }], after: model },
+    );
+    setHistoryDepth({ undo: historyRef.current.undo.length, redo: historyRef.current.redo.length });
+    edit(tab.id, () => model);
+  }, [edit, tab.id]);
+
+  // `update` reads the model the editor actually renders, so it never applies
+  // an edit on top of a stale snapshot.
+  const update = useCallback((mutate: (document: TextDocument) => TextDocument) => {
+    applyModel(document, mutate(document));
+  }, [applyModel, document]);
+
+  const undoEdit = useCallback(() => {
+    const result = undoHistory(historyRef.current);
+    if (!result) return;
+    historyRef.current = result.state;
+    setHistoryDepth({ undo: result.state.undo.length, redo: result.state.redo.length });
+    edit(tab.id, () => result.model);
+  }, [edit, tab.id]);
+
+  const redoEdit = useCallback(() => {
+    const result = redoHistory(historyRef.current);
+    if (!result) return;
+    historyRef.current = result.state;
+    setHistoryDepth({ undo: result.state.undo.length, redo: result.state.redo.length });
+    edit(tab.id, () => result.model);
+  }, [edit, tab.id]);
+
+  // The global key listener stays mounted across renders, so it reaches the
+  // latest undo/redo through refs updated in an effect (never during render).
+  // The editor is remounted per tab (`key={active.id}` in the workspace), so
+  // the history starts empty for every document without a reset effect.
+  useEffect(() => {
+    undoRef.current = undoEdit;
+    redoRef.current = redoEdit;
+  }, [undoEdit, redoEdit]);
 
   const contentWidthPx = (document.page.widthPt - document.page.marginLeftPt - document.page.marginRightPt) * (96 / 72) * zoom;
   const contentHeightPx = (document.page.heightPt - document.page.marginTopPt - document.page.marginBottomPt) * (96 / 72) * zoom;
@@ -1212,8 +1276,8 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         {ribbon === "home" ? (
           <>
             <RibbonGroup label={t("writer.clipboard")}>
-              <ToolButton icon={<Undo2 size={16} />} label={t("common.undo")} onClick={() => exec("undo")} disabled={session.busy} />
-              <ToolButton icon={<Redo2 size={16} />} label={t("common.redo")} onClick={() => exec("redo")} disabled={session.busy} />
+              <ToolButton icon={<Undo2 size={16} />} label={t("common.undo")} onClick={undoEdit} disabled={session.busy || historyDepth.undo === 0} />
+              <ToolButton icon={<Redo2 size={16} />} label={t("common.redo")} onClick={redoEdit} disabled={session.busy || historyDepth.redo === 0} />
             </RibbonGroup>
             <RibbonGroup label={t("writer.font")}>
               <ToolSelect value={activeStyle} onChange={setParagraphStyle} options={styleOptions} title={t("writer.style")} width={132} />

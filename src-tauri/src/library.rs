@@ -57,10 +57,7 @@ pub struct OperationEntry {
 }
 
 fn now_seconds() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0)
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|duration| duration.as_secs()).unwrap_or(0)
 }
 
 fn read_json<T: for<'de> Deserialize<'de> + Default>(path: &Path) -> T {
@@ -187,7 +184,8 @@ fn unique_path(dir: &Path, file_name: &str) -> PathBuf {
         return candidate;
     }
     let stem = Path::new(file_name).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-    let extension = Path::new(file_name).extension().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "md".into());
+    let extension =
+        Path::new(file_name).extension().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "md".into());
     for index in 1..1000 {
         let next = dir.join(format!("{stem}-{index}.{extension}"));
         if !next.exists() {
@@ -265,10 +263,7 @@ impl AiLibraryEntry {
     /// Used by the library tests; the UI receives the full path instead.
     #[allow(dead_code)]
     fn file_name(&self) -> String {
-        Path::new(&self.file_path)
-            .file_name()
-            .map(|value| value.to_string_lossy().to_string())
-            .unwrap_or_default()
+        Path::new(&self.file_path).file_name().map(|value| value.to_string_lossy().to_string()).unwrap_or_default()
     }
 }
 
@@ -348,10 +343,8 @@ mod tests {
         let dir = temp_dir("ai-missing");
         let index = dir.join("ai-library.json");
         let library = dir.join("library");
-        let entry = save_ai_entry(
-            &index, &library, "ask", "C:/a.pdf", "a.pdf", "m", 1, 10, "", "answer text", 10,
-        )
-        .expect("save");
+        let entry = save_ai_entry(&index, &library, "ask", "C:/a.pdf", "a.pdf", "m", 1, 10, "", "answer text", 10)
+            .expect("save");
         std::fs::remove_file(&entry.file_path).expect("remove file");
         assert!(list_ai_entries(&index).is_empty(), "entries without files are filtered");
         let _ = std::fs::remove_dir_all(&dir);

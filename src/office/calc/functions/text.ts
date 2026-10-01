@@ -154,8 +154,17 @@ registerFunction("VALUE", (args) => {
   return number;
 }, 1, 1, false, { signature: "VALUE(text)", category: "Text" });
 registerFunction("NUMBERVALUE", (args) => {
-  const text = textArg(args, 0).replace(new RegExp(textArg(args, 2) || "\\.", "g"), "");
-  const parsed = Number(text.replace(new RegExp(textArg(args, 1) || ",", "g"), ""));
+  const raw = textArg(args, 0);
+  const decimalSep = textArg(args, 1) || ".";
+  // Only strip a group separator when it is not also the decimal separator;
+  // otherwise `NUMBERVALUE("3.5", ".")` removed the decimal point itself.
+  const groupArg = args[2] !== undefined ? textArg(args, 2) : decimalSep === "." ? "," : "";
+  const groupSep = groupArg && groupArg !== decimalSep ? groupArg : "";
+  let text = raw;
+  if (groupSep) text = text.split(groupSep).join("");
+  // Normalize a non-dot decimal separator to a dot for Number().
+  if (decimalSep !== ".") text = text.split(decimalSep).join(".");
+  const parsed = Number(text);
   return Number.isFinite(parsed) ? parsed : ERR.value();
 }, 1, 3, false, { signature: "NUMBERVALUE(text, [decimal_sep], [group_sep])", category: "Text" });
 

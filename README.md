@@ -10,9 +10,35 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.2.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.3.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.3.0
+
+Production readiness on top of the 3.2.1 audit. `RELEASE_READINESS.md` states
+what is tested, what is CI-only and what is not done yet.
+
+- **Canonical `.oswk`.** The native format is now a versioned envelope with
+  `documentType`, `applicationVersion`, a SHA-256 `checksum` of a canonical
+  model serialization, a `featureManifest` and an `extensions` bag. Unknown
+  fields survive a round trip, a checksum mismatch is reported as
+  `corrupt_document`, migrations recompute the digest, and a newer schema is
+  refused rather than rewritten.
+- **Writer transactions and model undo/redo.** Structural edits are reversible
+  operations with a bounded checkpoint + delta history, wired to Ctrl+Z /
+  Ctrl+Y / Shift+Ctrl+Z and the toolbar. The browser's native undo could not
+  see Enter/Backspace/format changes.
+- **External file-conflict guard.** A document's SHA-256 is captured at
+  open/save and re-checked before writing; if another program changed the
+  file, the app offers Reload / Save as new / Cancel instead of silently
+  overwriting it.
+- **Calc Excel compatibility.** Approximate `MATCH`/`HLOOKUP` now return the
+  position in the original range, `XLOOKUP` modes ±2 work, `COUNTIF`/`SUMIF`
+  accept `*`/`?` wildcards, `NUMBERVALUE` handles locale separators, `FILTER`
+  treats blank mask cells as FALSE, and `SUMPRODUCT(--(range>1))` works.
+- **Release metadata**: `build-info.json` records the version, git SHA and
+  toolchain of every build.
 
 ## What's new in 3.2.1
 
@@ -354,7 +380,7 @@ pdf and `.oswk`.
 
 **APK architectures.** `arm64-v8a` and `armeabi-v7a` release APKs are built
 and signed with the project release keystore; AABs are produced for both.
-minSdk 24, targetSdk 36, `versionName 3.2.1`, `versionCode 3002001`.
+minSdk 24, targetSdk 36, `versionName 3.3.0`, `versionCode 3003000`.
 
 **Storage behavior.** Documents opened from other apps are copied into app
 cache (extension and size validated) before parsing. Exports go to a SAF

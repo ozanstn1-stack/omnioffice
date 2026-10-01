@@ -166,10 +166,8 @@ pub struct AiSettingsInput {
 }
 
 fn config_dir(app: &AppHandle) -> Result<PathBuf, PdfError> {
-    let dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|error| PdfError::Internal(format!("config dir unavailable: {error}")))?;
+    let dir =
+        app.path().app_config_dir().map_err(|error| PdfError::Internal(format!("config dir unavailable: {error}")))?;
     std::fs::create_dir_all(&dir).map_err(PdfError::from_io)?;
     Ok(dir)
 }
@@ -199,33 +197,20 @@ fn load_settings_file(app: &AppHandle) -> AiSettingsFile {
 fn mask_key(key: &str) -> String {
     let trimmed = key.trim();
     if trimmed.len() <= 8 {
-        return if trimmed.is_empty() {
-            String::new()
-        } else {
-            "••••".into()
-        };
+        return if trimmed.is_empty() { String::new() } else { "••••".into() };
     }
     format!("{}••••{}", &trimmed[..4], &trimmed[trimmed.len() - 4..])
 }
 
 fn view(app: &AppHandle) -> AiSettingsView {
     let settings = load_settings_file(app);
-    let key = key_path(app)
-        .ok()
-        .and_then(|path| secret::load_api_key(&path).ok())
-        .unwrap_or_default();
+    let key = key_path(app).ok().and_then(|path| secret::load_api_key(&path).ok()).unwrap_or_default();
     let storage = key_path(app)
         .ok()
         .filter(|path| path.exists())
         .map(|path| {
             std::fs::read_to_string(&path)
-                .map(|content| {
-                    if content.starts_with("dpapi:") {
-                        "dpapi".to_string()
-                    } else {
-                        "plain".to_string()
-                    }
-                })
+                .map(|content| if content.starts_with("dpapi:") { "dpapi".to_string() } else { "plain".to_string() })
                 .unwrap_or_else(|_| "plain".to_string())
         })
         .unwrap_or_else(|| "none".to_string());
@@ -257,10 +242,7 @@ fn provider_kind(value: &str) -> aicore::ProviderKind {
 
 fn build_config(app: &AppHandle) -> Result<AiConfig, PdfError> {
     let settings = load_settings_file(app);
-    let key = key_path(app)
-        .ok()
-        .and_then(|path| secret::load_api_key(&path).ok())
-        .unwrap_or_default();
+    let key = key_path(app).ok().and_then(|path| secret::load_api_key(&path).ok()).unwrap_or_default();
     let config = AiConfig {
         api_key: key,
         base_url: settings.base_url,
@@ -350,16 +332,8 @@ pub async fn ai_test_connection(app: AppHandle) -> Result<AiTestResult, PdfError
     let model = config.model.clone();
     let client = DeepSeekClient::new(config).map_err(ai_error)?;
     match client.test_connection().await {
-        Ok(reply) => Ok(AiTestResult {
-            ok: true,
-            message: reply,
-            model,
-        }),
-        Err(error) => Ok(AiTestResult {
-            ok: false,
-            message: ai_error(error).to_string(),
-            model,
-        }),
+        Ok(reply) => Ok(AiTestResult { ok: true, message: reply, model }),
+        Err(error) => Ok(AiTestResult { ok: false, message: ai_error(error).to_string(), model }),
     }
 }
 
@@ -375,19 +349,13 @@ fn emit_progress(app: &AppHandle, job_id: &str, stage: &str, current: u64, total
 }
 
 fn emit_chunk(app: &AppHandle, job_id: &str, delta: &str) {
-    let _ = app.emit(
-        "ai:chunk",
-        serde_json::json!({ "jobId": job_id, "delta": delta, "kind": "content" }),
-    );
+    let _ = app.emit("ai:chunk", serde_json::json!({ "jobId": job_id, "delta": delta, "kind": "content" }));
 }
 
 /// Thinking-mode deltas are streamed separately so the UI can show them as a
 /// dimmed trace instead of mixing them into the answer.
 fn emit_reasoning(app: &AppHandle, job_id: &str, delta: &str) {
-    let _ = app.emit(
-        "ai:chunk",
-        serde_json::json!({ "jobId": job_id, "delta": delta, "kind": "reasoning" }),
-    );
+    let _ = app.emit("ai:chunk", serde_json::json!({ "jobId": job_id, "delta": delta, "kind": "reasoning" }));
 }
 
 /// Extracts the page texts of a PDF (and reports progress/cancellation).
@@ -457,14 +425,7 @@ pub async fn ai_document_preview(
     let job_id = "ai-preview".to_string();
     let cancel = CancelToken::new();
     let path = crate::paths::input_file(&path)?;
-    let extracted = extract_pages(
-        &app,
-        &job_id,
-        path.as_path(),
-        password.as_deref(),
-        pages.as_deref(),
-        &cancel,
-    )?;
+    let extracted = extract_pages(&app, &job_id, path.as_path(), password.as_deref(), pages.as_deref(), &cancel)?;
     let text = join_text(&extracted);
     Ok(AiPreview {
         pages: extracted.len() as u32,
@@ -527,15 +488,7 @@ pub async fn ai_summarize(
     let mut on_progress = |stage: &str, current: usize, total: usize| {
         emit_progress(&app, &request.job_id, stage, current as u64, total as u64)
     };
-    let result = aicore::run_plan(
-        &client,
-        &plan,
-        &cancel,
-        &mut on_progress,
-        &mut on_delta,
-        &mut on_reasoning,
-    )
-    .await;
+    let result = aicore::run_plan(&client, &plan, &cancel, &mut on_progress, &mut on_delta, &mut on_reasoning).await;
     let summary = result.map_err(ai_error)?;
     job_guard.succeed();
 
@@ -646,20 +599,9 @@ pub async fn ai_ask(
     let config = build_config(&app)?;
     let model = config.model.clone();
     let path = crate::paths::input_file(&request.path)?;
-    let extracted = extract_pages(
-        &app,
-        &request.job_id,
-        path.as_path(),
-        request.password.as_deref(),
-        None,
-        &cancel,
-    )?;
+    let extracted = extract_pages(&app, &request.job_id, path.as_path(), request.password.as_deref(), None, &cancel)?;
     let selected = prompts::select_relevant_pages(&extracted, &request.question, config.chunk_chars());
-    let context = selected
-        .iter()
-        .map(|(page, text)| format!("[page {page}]\n{text}"))
-        .collect::<Vec<_>>()
-        .join("\n\n");
+    let context = selected.iter().map(|(page, text)| format!("[page {page}]\n{text}")).collect::<Vec<_>>().join("\n\n");
     let client = DeepSeekClient::new(config).map_err(ai_error)?;
     let messages = prompts::ask_prompt(&context, &request.question);
     emit_progress(&app, &request.job_id, "generate", 0, 1);
@@ -753,26 +695,13 @@ pub async fn ai_suggest_metadata(
     let (cancel, mut job_guard) = registry.register_ai_managed(&request.job_id);
     let config = build_config(&app)?;
     let path = crate::paths::input_file(&request.path)?;
-    let extracted = extract_pages(
-        &app,
-        &request.job_id,
-        path.as_path(),
-        request.password.as_deref(),
-        None,
-        &cancel,
-    )?;
+    let extracted = extract_pages(&app, &request.job_id, path.as_path(), request.password.as_deref(), None, &cancel)?;
     let text = join_text(&extracted);
     let client = DeepSeekClient::new(config).map_err(ai_error)?;
     let messages: Vec<ChatMessage> = prompts::metadata_prompt(&text);
     emit_progress(&app, &request.job_id, "metadata", 0, 1);
     let reply = client
-        .chat(
-            &messages,
-            ChatOptions {
-                temperature: Some(0.0),
-                max_tokens: Some(512),
-            },
-        )
+        .chat(&messages, ChatOptions { temperature: Some(0.0), max_tokens: Some(512) })
         .await
         .map_err(ai_error)?;
     let suggestion = prompts::parse_metadata_reply(&reply)
@@ -788,11 +717,7 @@ pub fn ai_cancel(registry: State<'_, JobRegistry>, job_id: String) {
 
 /// Saves an AI result as a text/Markdown file (with the usual overwrite rules).
 #[tauri::command]
-pub fn ai_save_output(
-    path: String,
-    text: String,
-    overwrite: Option<String>,
-) -> Result<String, PdfError> {
+pub fn ai_save_output(path: String, text: String, overwrite: Option<String>) -> Result<String, PdfError> {
     let policy = match overwrite.as_deref() {
         Some("replace") => pdfcore::docutil::OverwritePolicy::Replace,
         Some("unique_name") => pdfcore::docutil::OverwritePolicy::UniqueName,
@@ -855,11 +780,7 @@ pub async fn ai_discover_models(app: AppHandle) -> Result<AiDiscoveredModels, Pd
         Ok(models) if !models.is_empty() => Ok(AiDiscoveredModels {
             models: models
                 .into_iter()
-                .map(|model| AiModelOption {
-                    recommended: false,
-                    id: model.id,
-                    label: model.label.unwrap_or_default(),
-                })
+                .map(|model| AiModelOption { recommended: false, id: model.id, label: model.label.unwrap_or_default() })
                 .collect(),
             discovered: true,
             message: String::new(),
@@ -869,11 +790,9 @@ pub async fn ai_discover_models(app: AppHandle) -> Result<AiDiscoveredModels, Pd
             discovered: false,
             message: "The provider did not list any models; using the built-in suggestions.".to_string(),
         }),
-        Err(error) => Ok(AiDiscoveredModels {
-            models: Vec::new(),
-            discovered: false,
-            message: ai_error(error).to_string(),
-        }),
+        Err(error) => {
+            Ok(AiDiscoveredModels { models: Vec::new(), discovered: false, message: ai_error(error).to_string() })
+        }
     }
 }
 

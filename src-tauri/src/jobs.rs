@@ -47,10 +47,7 @@ pub const PERSIST_THROTTLE: Duration = Duration::from_millis(500);
 pub const MAX_RECORDS: usize = 200;
 
 fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_millis() as i64)
-        .unwrap_or(0)
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|elapsed| elapsed.as_millis() as i64).unwrap_or(0)
 }
 
 /// The lifecycle of a persisted job. Serialized lowercase to match the
@@ -69,10 +66,7 @@ pub enum JobStatus {
 impl JobStatus {
     /// A terminal status will never change on its own anymore.
     pub fn is_terminal(self) -> bool {
-        matches!(
-            self,
-            JobStatus::Done | JobStatus::Failed | JobStatus::Cancelled | JobStatus::Interrupted
-        )
+        matches!(self, JobStatus::Done | JobStatus::Failed | JobStatus::Cancelled | JobStatus::Interrupted)
     }
 }
 
@@ -120,10 +114,7 @@ pub struct JobStore {
 
 impl Default for JobStore {
     fn default() -> Self {
-        Self {
-            inner: Mutex::new(StoreInner::default()),
-            path: OnceLock::new(),
-        }
+        Self { inner: Mutex::new(StoreInner::default()), path: OnceLock::new() }
     }
 }
 
@@ -264,14 +255,7 @@ impl JobStore {
     /// Progress update from [`emit_progress`] or the `jobs_progress` command.
     /// Unknown ids and terminal records are ignored: progress must not
     /// resurrect finished work. Only the disk write is throttled.
-    pub fn set_progress(
-        &self,
-        id: &str,
-        stage: &str,
-        current: u64,
-        total: u64,
-        message: Option<&str>,
-    ) {
+    pub fn set_progress(&self, id: &str, stage: &str, current: u64, total: u64, message: Option<&str>) {
         let now = now_ms();
         let mut inner = self.lock();
         {
@@ -292,11 +276,8 @@ impl JobStore {
             }
             record.updated_at = now;
         }
-        let throttled = inner
-            .last_persist_by_job
-            .get(id)
-            .map(|last| last.elapsed() < PERSIST_THROTTLE)
-            .unwrap_or(false);
+        let throttled =
+            inner.last_persist_by_job.get(id).map(|last| last.elapsed() < PERSIST_THROTTLE).unwrap_or(false);
         if !throttled {
             self.persist_locked(&inner);
             inner.last_persist_by_job.insert(id.to_string(), Instant::now());
@@ -439,10 +420,8 @@ impl JobStore {
             records.remove(&id);
         }
         if records.len() > MAX_RECORDS {
-            let mut all: Vec<(i64, String)> = records
-                .values()
-                .map(|record| (record.created_at, record.id.clone()))
-                .collect();
+            let mut all: Vec<(i64, String)> =
+                records.values().map(|record| (record.created_at, record.id.clone())).collect();
             all.sort_by_key(|(created, _)| *created);
             for (_, id) in all {
                 if records.len() <= MAX_RECORDS {
@@ -497,11 +476,7 @@ pub struct JobRegistry {
 
 impl JobRegistry {
     pub fn new(store: Arc<JobStore>) -> Self {
-        Self {
-            jobs: Mutex::new(HashMap::new()),
-            ai_jobs: Mutex::new(HashMap::new()),
-            store,
-        }
+        Self { jobs: Mutex::new(HashMap::new()), ai_jobs: Mutex::new(HashMap::new()), store }
     }
 
     pub fn register(&self, job_id: &str) -> CancelToken {
@@ -638,13 +613,7 @@ pub struct ProgressPayload {
 /// mirrors the update into the persistent store.
 pub fn emit_progress(app: &AppHandle, job_id: &str, event: &ProgressEvent) {
     if let Some(store) = app.try_state::<Arc<JobStore>>() {
-        store.set_progress(
-            job_id,
-            &event.stage,
-            event.current,
-            event.total,
-            event.message.as_deref(),
-        );
+        store.set_progress(job_id, &event.stage, event.current, event.total, event.message.as_deref());
     }
     let payload = ProgressPayload {
         job_id: job_id.to_string(),
@@ -683,9 +652,7 @@ pub fn jobs_register(
     payload: Option<serde_json::Value>,
 ) -> Result<JobRecord, String> {
     store.upsert(&id, &kind, &title, payload);
-    store
-        .record(&id)
-        .ok_or_else(|| format!("job {id} missing after register"))
+    store.record(&id).ok_or_else(|| format!("job {id} missing after register"))
 }
 
 /// Progress mirror for events the Rust side does not emit itself (AI jobs emit
@@ -761,10 +728,7 @@ mod tests {
         assert_eq!(persisted.len(), 1);
         assert_eq!(persisted[0].status, JobStatus::Done);
         assert_eq!(persisted[0].progress, 1.0);
-        assert_eq!(
-            persisted[0].payload.as_ref().unwrap()["path"].as_str(),
-            Some("in.pdf")
-        );
+        assert_eq!(persisted[0].payload.as_ref().unwrap()["path"].as_str(), Some("in.pdf"));
         let _ = std::fs::remove_file(&path);
     }
 
@@ -788,9 +752,7 @@ mod tests {
         assert_eq!(second.record("job-queued").unwrap().status, JobStatus::Interrupted);
         assert_eq!(second.record("job-done").unwrap().status, JobStatus::Done);
         let persisted = read_records(&path);
-        assert!(persisted
-            .iter()
-            .all(|record| record.status != JobStatus::Running));
+        assert!(persisted.iter().all(|record| record.status != JobStatus::Running));
         let _ = std::fs::remove_file(&path);
     }
 
@@ -943,14 +905,11 @@ mod tests {
         assert!(store.records().is_empty());
 
         let dir = path.parent().expect("temp dir").to_path_buf();
-        let preserved = std::fs::read_dir(&dir)
-            .expect("read temp dir")
-            .filter_map(|entry| entry.ok())
-            .any(|entry| {
-                let name = entry.file_name().to_string_lossy().to_string();
-                name.starts_with("jobs.corrupt-")
-                    && std::fs::read(entry.path()).map(|bytes| bytes == b"{not json").unwrap_or(false)
-            });
+        let preserved = std::fs::read_dir(&dir).expect("read temp dir").filter_map(|entry| entry.ok()).any(|entry| {
+            let name = entry.file_name().to_string_lossy().to_string();
+            name.starts_with("jobs.corrupt-")
+                && std::fs::read(entry.path()).map(|bytes| bytes == b"{not json").unwrap_or(false)
+        });
         assert!(preserved, "the unreadable history must be preserved in a quarantine file");
         let _ = std::fs::remove_file(&path);
     }

@@ -179,7 +179,8 @@ pub fn sandbox_file(root: &Path, id: &str, name: &str) -> PluginResult<PathBuf> 
 }
 
 fn read_capped(path: &Path, max: usize, label: &str) -> PluginResult<Vec<u8>> {
-    let metadata = std::fs::metadata(path).map_err(|_| PluginErrorPayload::not_found(format!("{label} was not found.")))?;
+    let metadata =
+        std::fs::metadata(path).map_err(|_| PluginErrorPayload::not_found(format!("{label} was not found.")))?;
     if metadata.len() > max as u64 {
         return Err(PluginErrorPayload::too_large(format!("{label} is larger than {} KB.", max / 1024)));
     }
@@ -192,14 +193,14 @@ fn read_text(path: &Path, max: usize, label: &str) -> PluginResult<String> {
 }
 
 fn write_text(path: &Path, text: &str, label: &str) -> PluginResult<()> {
-    officecore::io::write_atomic(path, text.as_bytes()).map_err(|error| {
-        PluginErrorPayload::internal(format!("Could not write {label} ({}).", error.code))
-    })
+    officecore::io::write_atomic(path, text.as_bytes())
+        .map_err(|error| PluginErrorPayload::internal(format!("Could not write {label} ({}).", error.code)))
 }
 
 fn require_permission(dir: &Path, permission: &str) -> PluginResult<()> {
     let text = read_text(&dir.join("manifest.json"), MAX_MANIFEST_BYTES, "manifest.json")?;
-    let manifest: Value = serde_json::from_str(&text).map_err(|_| PluginErrorPayload::invalid("manifest.json is not valid JSON."))?;
+    let manifest: Value =
+        serde_json::from_str(&text).map_err(|_| PluginErrorPayload::invalid("manifest.json is not valid JSON."))?;
     let allowed = manifest
         .get("permissions")
         .and_then(Value::as_array)
@@ -217,7 +218,10 @@ fn require_permission(dir: &Path, permission: &str) -> PluginResult<()> {
 
 pub fn install_into(root: &Path, manifest_json: &str, source: &str) -> PluginResult<PluginEntry> {
     if manifest_json.len() > MAX_MANIFEST_BYTES {
-        return Err(PluginErrorPayload::too_large(format!("The manifest is larger than {} KB.", MAX_MANIFEST_BYTES / 1024)));
+        return Err(PluginErrorPayload::too_large(format!(
+            "The manifest is larger than {} KB.",
+            MAX_MANIFEST_BYTES / 1024
+        )));
     }
     if source.trim().is_empty() {
         return Err(PluginErrorPayload::invalid("main.js is empty."));
@@ -225,7 +229,8 @@ pub fn install_into(root: &Path, manifest_json: &str, source: &str) -> PluginRes
     if source.len() > MAX_SOURCE_BYTES {
         return Err(PluginErrorPayload::too_large(format!("main.js is larger than {} KB.", MAX_SOURCE_BYTES / 1024)));
     }
-    let manifest: Value = serde_json::from_str(manifest_json).map_err(|_| PluginErrorPayload::invalid("The manifest is not valid JSON."))?;
+    let manifest: Value = serde_json::from_str(manifest_json)
+        .map_err(|_| PluginErrorPayload::invalid("The manifest is not valid JSON."))?;
     let id = manifest
         .get("id")
         .and_then(Value::as_str)
@@ -241,7 +246,8 @@ pub fn install_into(root: &Path, manifest_json: &str, source: &str) -> PluginRes
             return Err(PluginErrorPayload::forbidden("Refusing to install into a symlinked plugin directory."));
         }
     }
-    std::fs::create_dir_all(&dir).map_err(|_| PluginErrorPayload::internal("Could not create the plugin directory."))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|_| PluginErrorPayload::internal("Could not create the plugin directory."))?;
     // Re-check after creation: a directory created concurrently (or a link)
     // must not redirect the writes outside the plugins root.
     if let Ok(meta) = std::fs::symlink_metadata(&dir) {
@@ -339,10 +345,7 @@ fn is_metadata_address(ip: std::net::IpAddr) -> bool {
     match ip {
         std::net::IpAddr::V4(ip) => ip.octets() == [169, 254, 169, 254],
         // IPv4-mapped IPv6 (`::ffff:169.254.169.254`) must be unwrapped first.
-        std::net::IpAddr::V6(ip) => ip
-            .to_ipv4_mapped()
-            .map(|v4| v4.octets() == [169, 254, 169, 254])
-            .unwrap_or(false),
+        std::net::IpAddr::V6(ip) => ip.to_ipv4_mapped().map(|v4| v4.octets() == [169, 254, 169, 254]).unwrap_or(false),
     }
 }
 
@@ -412,7 +415,9 @@ pub fn validate_http_url(raw: &str) -> PluginResult<reqwest::Url> {
         "https" => {}
         "http" => {
             if !is_private_host(url.host_str()) {
-                return Err(PluginErrorPayload::forbidden("Plain http is only allowed for localhost and private network addresses."));
+                return Err(PluginErrorPayload::forbidden(
+                    "Plain http is only allowed for localhost and private network addresses.",
+                ));
             }
         }
         _ => return Err(PluginErrorPayload::forbidden("Only https (or private http) URLs are allowed.")),
@@ -513,30 +518,24 @@ pub async fn plugin_install_from_dialog(app: AppHandle) -> PluginResult<Option<P
     {
         use tauri_plugin_dialog::DialogExt;
         let (tx, rx) = std::sync::mpsc::channel();
-        app.dialog()
-            .file()
-            .set_title("Choose a plugin folder (manifest.json + main.js)")
-            .pick_folder(move |folder| {
-                let _ = tx.send(folder);
-            });
+        app.dialog().file().set_title("Choose a plugin folder (manifest.json + main.js)").pick_folder(move |folder| {
+            let _ = tx.send(folder);
+        });
         let picked = tauri::async_runtime::spawn_blocking(move || rx.recv().ok().flatten())
             .await
             .map_err(|_| PluginErrorPayload::internal("The plugin dialog failed."))?;
         let Some(picked) = picked else {
             return Ok(None); // user cancelled
         };
-        let source_dir = picked
-            .into_path()
-            .map_err(|_| PluginErrorPayload::internal("The chosen folder is not a local path."))?;
+        let source_dir =
+            picked.into_path().map_err(|_| PluginErrorPayload::internal("The chosen folder is not a local path."))?;
         let entry = install_from_dir(&plugins_root(&app)?, &source_dir)?;
         Ok(Some(entry))
     }
     #[cfg(not(any(desktop, target_os = "windows", target_os = "linux", target_os = "macos")))]
     {
         let _ = app;
-        Err(PluginErrorPayload::forbidden(
-            "Plugin folder installation is only supported on desktop.",
-        ))
+        Err(PluginErrorPayload::forbidden("Plugin folder installation is only supported on desktop."))
     }
 }
 
@@ -573,7 +572,11 @@ pub fn plugin_file_write(app: AppHandle, plugin_id: String, name: String, text: 
 }
 
 #[tauri::command]
-pub async fn plugin_http_request(app: AppHandle, plugin_id: String, request: PluginHttpRequest) -> PluginResult<PluginHttpResponse> {
+pub async fn plugin_http_request(
+    app: AppHandle,
+    plugin_id: String,
+    request: PluginHttpRequest,
+) -> PluginResult<PluginHttpResponse> {
     let root = plugins_root(&app)?;
     let dir = plugin_dir(&root, &plugin_id)?;
     require_permission(&dir, "network")?;
@@ -592,7 +595,10 @@ pub async fn plugin_http_request(app: AppHandle, plugin_id: String, request: Plu
     }
     let body = request.body.unwrap_or_default();
     if body.len() > MAX_REQUEST_BYTES {
-        return Err(PluginErrorPayload::too_large(format!("The request body is larger than {} KB.", MAX_REQUEST_BYTES / 1024)));
+        return Err(PluginErrorPayload::too_large(format!(
+            "The request body is larger than {} KB.",
+            MAX_REQUEST_BYTES / 1024
+        )));
     }
 
     let client = reqwest::Client::builder()
@@ -610,19 +616,22 @@ pub async fn plugin_http_request(app: AppHandle, plugin_id: String, request: Plu
         }
         let header_name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
             .map_err(|_| PluginErrorPayload::invalid("Invalid request header name."))?;
-        let header_value =
-            reqwest::header::HeaderValue::from_str(&value).map_err(|_| PluginErrorPayload::invalid("Invalid request header value."))?;
+        let header_value = reqwest::header::HeaderValue::from_str(&value)
+            .map_err(|_| PluginErrorPayload::invalid("Invalid request header value."))?;
         builder = builder.header(header_name, header_value);
     }
     if !body.is_empty() {
         builder = builder.body(body);
     }
 
-    let mut response = builder.send().await.map_err(|_| PluginErrorPayload::new("network", "The request could not be completed."))?;
+    let mut response =
+        builder.send().await.map_err(|_| PluginErrorPayload::new("network", "The request could not be completed."))?;
     let status = response.status().as_u16();
     let mut buffer: Vec<u8> = Vec::new();
     let mut truncated = false;
-    while let Some(chunk) = response.chunk().await.map_err(|_| PluginErrorPayload::new("network", "The response could not be read."))? {
+    while let Some(chunk) =
+        response.chunk().await.map_err(|_| PluginErrorPayload::new("network", "The response could not be read."))?
+    {
         let remaining = MAX_RESPONSE_BYTES.saturating_sub(buffer.len());
         if chunk.len() >= remaining {
             buffer.extend_from_slice(&chunk[..remaining]);
@@ -678,7 +687,8 @@ mod tests {
     #[test]
     fn plugin_install_rejects_bad_ids_and_traversal() {
         let root = temp_root();
-        let ids = vec!["../evil".to_string(), "Test.Tool".to_string(), "a/b".to_string(), String::new(), "x".repeat(65)];
+        let ids =
+            vec!["../evil".to_string(), "Test.Tool".to_string(), "a/b".to_string(), String::new(), "x".repeat(65)];
         for id in &ids {
             let manifest = valid_manifest().replace("test.tool", id);
             let result = install_into(&root, &manifest, "x");
@@ -726,7 +736,16 @@ mod tests {
     #[test]
     fn plugin_file_sandbox_rejects_traversal() {
         let root = temp_root();
-        for name in ["../secret.txt", "..", "sub/dir.txt", "sub\\dir.txt", "C:\\Windows\\win.ini", "/etc/passwd", ".hidden", "name."] {
+        for name in [
+            "../secret.txt",
+            "..",
+            "sub/dir.txt",
+            "sub\\dir.txt",
+            "C:\\Windows\\win.ini",
+            "/etc/passwd",
+            ".hidden",
+            "name.",
+        ] {
             assert!(sandbox_file(&root, "test.tool", name).is_err(), "{name} must be rejected");
         }
         let path = sandbox_file(&root, "test.tool", "notes.txt").expect("plain name");
@@ -737,7 +756,8 @@ mod tests {
     #[test]
     fn plugin_file_commands_require_permissions() {
         let root = temp_root();
-        let manifest_without_files = valid_manifest().replace(r#""read_files","write_files","network""#, r#""network""#);
+        let manifest_without_files =
+            valid_manifest().replace(r#""read_files","write_files","network""#, r#""network""#);
         install_into(&root, &manifest_without_files, "x").expect("install");
         let dir = root.join("test.tool");
         assert!(require_permission(&dir, "read_files").is_err());

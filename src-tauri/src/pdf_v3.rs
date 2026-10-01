@@ -157,8 +157,7 @@ pub async fn pdf_fill_form(request: FillFormRequest) -> Result<pdfcore::forms::F
     let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || {
         let input = crate::paths::input_file(&request.input)?;
-        let mut document =
-            pdfcore::docutil::load_document(input.as_path(), request.password.as_deref())?;
+        let mut document = pdfcore::docutil::load_document(input.as_path(), request.password.as_deref())?;
         let (output, policy) = request.output.resolve()?;
         let target = pdfcore::docutil::resolve_output_path(&output, policy)?;
         let report = pdfcore::forms::apply_field_values(&mut document, &request.values)?;
@@ -226,8 +225,7 @@ pub async fn pdf_edit_objects(request: EditObjectsRequest) -> Result<pdfcore::fo
     let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || {
         let input = crate::paths::input_file(&request.input)?;
-        let mut document =
-            pdfcore::docutil::load_document(input.as_path(), request.password.as_deref())?;
+        let mut document = pdfcore::docutil::load_document(input.as_path(), request.password.as_deref())?;
         let (output, policy) = request.output.resolve()?;
         let target = pdfcore::docutil::resolve_output_path(&output, policy)?;
         let report = pdfcore::forms::apply_object_edits(&mut document, &request.edits)?;

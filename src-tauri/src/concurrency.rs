@@ -29,10 +29,5 @@ pub struct HeavyPermit(#[allow(dead_code)] SemaphorePermit<'static>);
 
 /// Waits until a heavy-work slot is free.
 pub async fn acquire() -> HeavyPermit {
-    HeavyPermit(
-        semaphore()
-            .acquire()
-            .await
-            .expect("the heavy-work semaphore is never closed"),
-    )
+    HeavyPermit(semaphore().acquire().await.expect("the heavy-work semaphore is never closed"))
 }

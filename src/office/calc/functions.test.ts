@@ -283,6 +283,36 @@ describe("conditional aggregation", () => {
   it("SUMPRODUCT multiplies element-wise", () => {
     expect(n("=SUMPRODUCT(A1:A3,A1:A3)", { A1: 2, A2: 3, A3: 4 })).toBe(29);
   });
+
+  it("SUMPRODUCT counts a boolean mask via the -- idiom", () => {
+    // Regression: the unary operator collapsed an array operand to its first
+    // cell, so `--(A1:A3>1)` was always 0.
+    const values = { A1: 1, A2: 5, A3: 9 };
+    expect(n("=SUMPRODUCT(--(A1:A3>1))", values)).toBe(2);
+    expect(n("=SUMPRODUCT((A1:A3>1)*1)", values)).toBe(2);
+  });
+
+  it("COUNTIF and SUMIF support * and ? wildcards", () => {
+    const text = { A1: "apple", A2: "apricot", A3: "banana" };
+    expect(n('=COUNTIF(A1:A3,"ap*")', text)).toBe(2);
+    expect(n('=COUNTIF(A1:A3,"?????")', text)).toBe(1);
+    expect(n('=COUNTIF(A1:A3,"<>ap*")', text)).toBe(1);
+    expect(n('=SUMIF(A1:A3,"banana",A1:A3)', text)).toBe(0);
+  });
+
+  it("FILTER treats a blank mask cell as false and broadcasts a single boolean", () => {
+    const values = { A1: "x", A2: "y", A3: "z", B1: true, B2: "", B3: true };
+    // A blank mask cell must be FALSE (the old code treated "" as TRUE).
+    expect(evaluateToMatrix("=FILTER(A1:A3,B1:B3)", context(values))).toEqual([["x"], ["z"]]);
+    // A single boolean broadcasts over every data row.
+    expect(evaluateToMatrix("=FILTER(A1:A3,B1)", context({ A1: "x", A2: "y", A3: "z", B1: true }))).toEqual([
+      ["x"],
+      ["y"],
+      ["z"],
+    ]);
+    // A single FALSE yields the if_empty fallback.
+    expect(s('=FILTER(A1:A3,B1,"none")', { A1: "x", A2: "y", A3: "z", B1: false })).toBe("none");
+  });
 });
 
 describe("text functions", () => {
@@ -314,6 +344,14 @@ describe("text functions", () => {
 
   it("TEXTSPLIT handles a row delimiter too", () => {
     expect(evaluateToMatrix('=TEXTSPLIT("a,1; b,2",",",";")', context())).toEqual([["a", "1"], [" b", "2"]]);
+  });
+
+  it("NUMBERVALUE handles locale separators", () => {
+    // Regression: the decimal separator was stripped as if it were a group
+    // separator, so `NUMBERVALUE("3.5",".")` returned 0.
+    expect(n('=NUMBERVALUE("1,234.5")')).toBe(1234.5);
+    expect(n('=NUMBERVALUE("3.5",".")')).toBe(3.5);
+    expect(n('=NUMBERVALUE("1.234,5",",",".")')).toBe(1234.5);
   });
 
   it("FIND is case sensitive and 1-based", () => {
@@ -608,6 +646,22 @@ describe("lookup functions", () => {
     expect(n("=MATCH(35,B1:B3,1)", data)).toBe(3);
   });
 
+  it("MATCH approximate returns the position in the original (unsorted) range", () => {
+    // Regression: the old implementation sorted a copy, so an unsorted range
+    // returned an index that pointed at a different cell.
+    const unsorted = { A1: 10, A2: 5, A3: 20 };
+    expect(n("=MATCH(7,A1:A3,1)", unsorted)).toBe(2);
+    expect(n("=MATCH(5,A1:A3,1)", unsorted)).toBe(2);
+    expect(code("=MATCH(3,A1:A3,1)", unsorted)).toBe("#N/A");
+  });
+
+  it("HLOOKUP supports and honours the approximate flag", () => {
+    const table = { A1: 5, B1: 10, C1: 20, A2: "a", B2: "b", C2: "c" };
+    // Approximate: largest header <= 7 is 5 (column A) -> row 2 = "a".
+    expect(s("=HLOOKUP(7,A1:C2,2,TRUE)", table)).toBe("a");
+    expect(code("=HLOOKUP(7,A1:C2,2,FALSE)", table)).toBe("#N/A");
+  });
+
   it("XMATCH supports the search modes", () => {
     expect(n('=XMATCH("b",A1:A3)', data)).toBe(2);
     expect(n("=XMATCH(25,B1:B3,-1)", data)).toBe(2);
@@ -621,6 +675,25 @@ describe("lookup functions", () => {
   it("XLOOKUP uses the fallback when nothing matches", () => {
     expect(s('=XLOOKUP("z",A1:A3,B1:B3,"none")', data)).toBe("none");
     expect(code('=XLOOKUP("z",A1:A3,B1:B3)', data)).toBe("#N/A");
+  });
+
+  it("XLOOKUP approximate modes pick the nearest value", () => {
+    // Regression: mode 2 had a dead branch and mode -2 never matched.
+    const unsorted = { A1: 10, A2: 5, A3: 20, B1: "a", B2: "b", B3: "c" };
+    // mode 2: smallest value >= 15 -> 20 -> "c".
+    expect(s("=XLOOKUP(15,A1:A3,B1:B3,\"none\",2)", unsorted)).toBe("c");
+    // mode -2: largest value <= 15 -> 10 -> "a".
+    expect(s("=XLOOKUP(15,A1:A3,B1:B3,\"none\",-2)", unsorted)).toBe("a");
+    // mode 2: smallest >= 5 -> 5 -> "b".
+    expect(s("=XLOOKUP(5,A1:A3,B1:B3,\"none\",2)", unsorted)).toBe("b");
+  });
+
+  it("XLOOKUP approximate positions follow the original order", () => {
+    // The two-array form must not sort: the chosen result is the one paired
+    // with the selected lookup cell, not the result at a sorted position.
+    const data2 = { A1: 30, A2: 10, A3: 20, B1: "thirty", B2: "ten", B3: "twenty" };
+    // mode 2: smallest lookup >= 25 -> 30 (A1) -> "thirty".
+    expect(s("=XLOOKUP(25,A1:A3,B1:B3,\"none\",2)", data2)).toBe("thirty");
   });
 
   it("VLOOKUP finds a column", () => {

@@ -23,6 +23,12 @@ export interface OfficeTab {
   warnings: string[];
   lastSavedAt: string | null;
   openedAt: string;
+  /**
+   * SHA-256 of the file when it was opened or last saved. A save compares the
+   * on-disk hash against this so an external change is never overwritten
+   * silently; null means "never fingerprinted" (a brand-new unit).
+   */
+  fingerprint?: string | null;
 }
 
 interface OfficeTabsState {
@@ -37,7 +43,9 @@ interface OfficeTabsState {
   /** Mutates the model and marks the tab dirty. */
   edit: (id: string, mutate: (model: OfficeModel) => OfficeModel) => void;
   setDirty: (id: string, dirty: boolean) => void;
-  markSaved: (id: string, path: string) => void;
+  markSaved: (id: string, path: string, fingerprint?: string | null) => void;
+  /** Records the hash captured when a file was opened. */
+  setFingerprint: (id: string, fingerprint: string | null) => void;
 }
 
 export const useOfficeTabs = create<OfficeTabsState>((set, get) => ({
@@ -92,12 +100,22 @@ export const useOfficeTabs = create<OfficeTabsState>((set, get) => ({
       tabs: get().tabs.map((tab) => (tab.id === id ? { ...tab, model: mutate(tab.model), dirty: true } : tab)),
     }),
   setDirty: (id, dirty) => set({ tabs: get().tabs.map((tab) => (tab.id === id ? { ...tab, dirty } : tab)) }),
-  markSaved: (id, path) =>
+  markSaved: (id, path, fingerprint) =>
     set({
       tabs: get().tabs.map((tab) =>
-        tab.id === id ? { ...tab, path, dirty: false, lastSavedAt: new Date().toISOString() } : tab,
+        tab.id === id
+          ? {
+              ...tab,
+              path,
+              dirty: false,
+              lastSavedAt: new Date().toISOString(),
+              ...(fingerprint !== undefined ? { fingerprint } : {}),
+            }
+          : tab,
       ),
     }),
+  setFingerprint: (id, fingerprint) =>
+    set({ tabs: get().tabs.map((tab) => (tab.id === id ? { ...tab, fingerprint } : tab)) }),
 }));
 
 function defaultModelFor(kind: OfficeKind): OfficeModel {
@@ -493,13 +511,21 @@ export interface OpenPathResult {
 export async function openOfficePath(path: string): Promise<OpenPathResult> {
   try {
     const result = await api.openDocument(path);
-    useOfficeTabs.getState().open({
+    const id = useOfficeTabs.getState().open({
       kind: result.kind,
       title: result.title || path.split(/[\\/]/).pop() || "Document",
       path: result.path,
       model: result.model as OfficeModel,
       warnings: result.warnings,
     });
+    // Capture the file's hash now so a later save can tell whether another
+    // program changed it (a missing fingerprint simply skips the check).
+    try {
+      const fingerprint = await api.fileFingerprint(result.path);
+      useOfficeTabs.getState().setFingerprint(id, fingerprint.exists ? fingerprint.sha256 : null);
+    } catch {
+      useOfficeTabs.getState().setFingerprint(id, null);
+    }
     return { ok: true, kind: result.kind };
   } catch (error) {
     return { ok: false, error: toAppError(error).message };

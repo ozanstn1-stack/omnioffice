@@ -672,7 +672,20 @@ function evaluateNode(node: Node, state: EvalState): Scalar | CellMatrix {
     case "array":
       return evaluateArrayLiteral(node, state);
     case "unary": {
-      const operand = asScalar(evaluateNode(node.operand, state));
+      const operand = evaluateNode(node.operand, state);
+      // Array-aware: `--(A1:A3>1)` and `-(range)` must map over every cell,
+      // not collapse to the top-left one. This is the standard idiom for
+      // coercing a boolean mask into numbers for SUMPRODUCT.
+      if (Array.isArray(operand)) {
+        return operand.map((row) =>
+          row.map((cell) => {
+            if (isError(cell)) return cell;
+            const number = toNumber(cell);
+            if (isError(number)) return number;
+            return node.op === "-" ? -number : number;
+          }),
+        );
+      }
       if (isError(operand)) return operand;
       const number = toNumber(operand);
       if (isError(number)) return number;

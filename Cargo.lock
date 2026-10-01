@@ -57,7 +57,7 @@ dependencies = [
 
 [[package]]
 name = "aicore"
-version = "3.2.1"
+version = "3.3.0"
 dependencies = [
  "futures-util",
  "reqwest 0.12.28",
@@ -3114,7 +3114,7 @@ dependencies = [
 
 [[package]]
 name = "officecore"
-version = "3.2.1"
+version = "3.3.0"
 dependencies = [
  "ab_glyph",
  "base64 0.22.1",
@@ -3126,6 +3126,7 @@ dependencies = [
  "quick-xml 0.42.0",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.20",
  "uuid",
@@ -3267,7 +3268,7 @@ dependencies = [
 
 [[package]]
 name = "pdf-swiss-army-knife"
-version = "3.2.1"
+version = "3.3.0"
 dependencies = [
  "aicore",
  "base64 0.22.1",
@@ -3277,6 +3278,7 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "synccore",
  "tauri",
  "tauri-build",
@@ -3293,7 +3295,7 @@ dependencies = [
 
 [[package]]
 name = "pdfcore"
-version = "3.2.1"
+version = "3.3.0"
 dependencies = [
  "ab_glyph",
  "aes 0.8.4",
@@ -4760,7 +4762,7 @@ dependencies = [
 
 [[package]]
 name = "synccore"
-version = "3.2.1"
+version = "3.3.0"
 dependencies = [
  "percent-encoding",
  "quick-xml 0.42.0",

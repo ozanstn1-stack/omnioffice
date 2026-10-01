@@ -39,18 +39,27 @@ fn number(value: Option<&Value>) -> Option<u32> {
 
 /// The schema version declared by a unit, or 1 when it predates versioning.
 pub fn schema_version_of(unit: &Value) -> u32 {
-    number(unit.get("schemaVersion"))
-        .or_else(|| number(unit.get("version")))
-        .unwrap_or(1)
+    number(unit.get("schemaVersion")).or_else(|| number(unit.get("version"))).unwrap_or(1)
 }
 
-fn ensure_object<'a>(model: &'a mut Value, note: &mut Option<String>) -> OfficeResult<&'a mut serde_json::Map<String, Value>> {
-    model.as_object_mut().ok_or_else(|| OfficeError::corrupt("The document model is not a JSON object.")).inspect(|_object| {
-        let _ = note;
-    })
+fn ensure_object<'a>(
+    model: &'a mut Value,
+    note: &mut Option<String>,
+) -> OfficeResult<&'a mut serde_json::Map<String, Value>> {
+    model.as_object_mut().ok_or_else(|| OfficeError::corrupt("The document model is not a JSON object.")).inspect(
+        |_object| {
+            let _ = note;
+        },
+    )
 }
 
-fn ensure_key(object: &mut serde_json::Map<String, Value>, key: &str, value: Value, notes: &mut Vec<String>, label: &str) {
+fn ensure_key(
+    object: &mut serde_json::Map<String, Value>,
+    key: &str,
+    value: Value,
+    notes: &mut Vec<String>,
+    label: &str,
+) {
     if !object.contains_key(key) {
         object.insert(key.to_string(), value);
         notes.push(format!("Added missing {label} field `{key}`."));
@@ -132,10 +141,7 @@ pub fn migrate_model(kind: &str, model: &mut Value, from_version: u32) -> Office
         "calc" => migrate_calc(model, &mut notes)?,
         "impress" => migrate_impress(model, &mut notes)?,
         other => {
-            return Err(OfficeError::new(
-                ErrorCode::UnsupportedFormat,
-                format!("Unknown document kind '{other}'."),
-            ))
+            return Err(OfficeError::new(ErrorCode::UnsupportedFormat, format!("Unknown document kind '{other}'.")))
         }
     }
     Ok(notes)
@@ -168,13 +174,26 @@ pub fn migrate_unit(unit: &mut Value) -> OfficeResult<MigrationReport> {
         // it for readers that still look at it.
         object.insert("version".into(), json!(SCHEMA_VERSION));
     }
+    // When the model gained fields, its stored checksum no longer describes it.
+    // Recompute it so the file verifies after the migration (this is the only
+    // place a checksum is rewritten; a reader never trusts a stale digest).
+    // `notes` is non-empty whenever the model changed, even when the schema
+    // version already matched.
+    if migrated || !notes.is_empty() {
+        if let Some(model) = unit.get("model") {
+            let fresh = crate::unit::checksum_of(model);
+            if let Some(object) = unit.as_object_mut() {
+                object.insert("checksum".into(), json!(fresh));
+            }
+        }
+    }
     Ok(MigrationReport { from_version, to_version: SCHEMA_VERSION, migrated, notes })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{TextDocument, Workbook, Deck};
+    use crate::model::{Deck, TextDocument, Workbook};
 
     fn v2_writer_unit() -> Value {
         let mut document = TextDocument::new_blank("Legacy");
@@ -256,7 +275,8 @@ mod tests {
         assert!(workbook.sheets[0].tables.is_empty());
 
         let deck = Deck::new_blank("Legacy");
-        let mut impress_unit = json!({ "kind": "impress", "version": 2, "model": serde_json::to_value(&deck).unwrap() });
+        let mut impress_unit =
+            json!({ "kind": "impress", "version": 2, "model": serde_json::to_value(&deck).unwrap() });
         migrate_unit(&mut impress_unit).unwrap();
         let deck: Deck = serde_json::from_value(impress_unit["model"].clone()).unwrap();
         assert!(deck.masters.is_empty());

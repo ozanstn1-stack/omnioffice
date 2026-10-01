@@ -9,7 +9,7 @@
 //! are never logged or written to disk.
 
 use pdfcore::error::{PdfError, PdfResult};
-use pdfcore::sign::{self, SignatureInfo, SignatureReport, SignOptions};
+use pdfcore::sign::{self, SignOptions, SignatureInfo, SignatureReport};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -118,37 +118,24 @@ pub async fn pdf_sign(
             {
                 let _ = index;
                 return Err(PdfError::Unsupported(
-                    "the system certificate store is only available on Windows; choose a PFX file"
-                        .into(),
+                    "the system certificate store is only available on Windows; choose a PFX file".into(),
                 ));
             }
         } else {
-            return Err(PdfError::InvalidInput(
-                "choose a certificate (a PFX file, or a Windows store entry)".into(),
-            ));
+            return Err(PdfError::InvalidInput("choose a certificate (a PFX file, or a Windows store entry)".into()));
         };
 
-        let signed = sign::sign_pdf(
-            &pdf,
-            &cert_der,
-            &key_der,
-            &chain,
-            &options.into_options(),
-        )?;
+        let signed = sign::sign_pdf(&pdf, &cert_der, &key_der, &chain, &options.into_options())?;
         let target = crate::paths::output_file(&output)?;
         write_atomic(target.as_path(), &signed)?;
 
         // Re-verify the file that was written and report that real result.
         let report = sign::verify_signatures(&signed);
         let expected = sign::certificate_fingerprint(&cert_der)?;
-        let signature = report
-            .signatures
-            .into_iter().rfind(|entry| entry.signer.sha256_fingerprint == expected)
-            .ok_or_else(|| {
-                PdfError::ProcessingFailed(
-                    "the produced signature could not be verified after writing".into(),
-                )
-            })?;
+        let signature =
+            report.signatures.into_iter().rfind(|entry| entry.signer.sha256_fingerprint == expected).ok_or_else(
+                || PdfError::ProcessingFailed("the produced signature could not be verified after writing".into()),
+            )?;
 
         // Never report success on a signature that did not verify: the file was
         // written, so the honest outcome is an error the UI can surface.
@@ -159,15 +146,11 @@ pub async fn pdf_sign(
         }
         if !signature.digest_matches {
             return Err(PdfError::ProcessingFailed(
-                "the produced signature does not cover the saved document bytes; the file was not trusted"
-                    .into(),
+                "the produced signature does not cover the saved document bytes; the file was not trusted".into(),
             ));
         }
 
-        Ok(SignResultDto {
-            output,
-            signature,
-        })
+        Ok(SignResultDto { output, signature })
     })
     .await
     .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
@@ -261,9 +244,7 @@ mod windows_store {
             CERT_OPEN_STORE_FLAGS(CERT_SYSTEM_STORE_CURRENT_USER) | CERT_STORE_READONLY_FLAG,
             Some(name.as_ptr() as *const c_void),
         )
-        .map_err(|error| {
-            PdfError::ProcessingFailed(format!("could not open the certificate store: {error}"))
-        })
+        .map_err(|error| PdfError::ProcessingFailed(format!("could not open the certificate store: {error}")))
     }
 
     unsafe fn close_store(store: HCERTSTORE) {
@@ -294,10 +275,7 @@ mod windows_store {
         while start + 1 < bytes.len() && bytes[start] == 0 {
             start += 1;
         }
-        bytes[start..]
-            .iter()
-            .map(|byte| format!("{byte:02X}"))
-            .collect()
+        bytes[start..].iter().map(|byte| format!("{byte:02X}")).collect()
     }
 
     /// Converts a FILETIME to a UTC timestamp string.
@@ -331,16 +309,10 @@ mod windows_store {
 
     unsafe fn summarize(context: *const CERT_CONTEXT, index: usize) -> CertificateSummaryDto {
         let info = &*(*context).pCertInfo;
-        let certificate_der =
-            std::slice::from_raw_parts((*context).pbCertEncoded, (*context).cbCertEncoded as usize);
+        let certificate_der = std::slice::from_raw_parts((*context).pbCertEncoded, (*context).cbCertEncoded as usize);
         let mut property_size = 0u32;
-        let has_private_key = CertGetCertificateContextProperty(
-            context,
-            CERT_KEY_PROV_INFO_PROP_ID,
-            None,
-            &mut property_size,
-        )
-        .is_ok();
+        let has_private_key =
+            CertGetCertificateContextProperty(context, CERT_KEY_PROV_INFO_PROP_ID, None, &mut property_size).is_ok();
         CertificateSummaryDto {
             index,
             subject: name_string(context, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0),
@@ -350,8 +322,7 @@ mod windows_store {
             not_after: filetime_string(&info.NotAfter),
             expired: filetime_expired(&info.NotAfter),
             has_private_key,
-            sha256_fingerprint: pdfcore::sign::certificate_fingerprint(certificate_der)
-                .unwrap_or_default(),
+            sha256_fingerprint: pdfcore::sign::certificate_fingerprint(certificate_der).unwrap_or_default(),
         }
     }
 
@@ -407,8 +378,7 @@ mod windows_store {
             }
 
             let certificate_der =
-                std::slice::from_raw_parts((*context).pbCertEncoded, (*context).cbCertEncoded as usize)
-                    .to_vec();
+                std::slice::from_raw_parts((*context).pbCertEncoded, (*context).cbCertEncoded as usize).to_vec();
             let key = export_private_key(context);
             let _ = CertFreeCertificateContext(Some(context));
             close_store(store);
@@ -423,10 +393,7 @@ mod windows_store {
         context: *const CERT_CONTEXT,
     ) -> Result<(HCRYPTPROV_OR_NCRYPT_KEY_HANDLE, CERT_KEY_SPEC, BOOL), windows::core::Error> {
         let mut last_error = None;
-        for flags in [
-            CRYPT_ACQUIRE_SILENT_FLAG | CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG,
-            CRYPT_ACQUIRE_SILENT_FLAG,
-        ] {
+        for flags in [CRYPT_ACQUIRE_SILENT_FLAG | CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG, CRYPT_ACQUIRE_SILENT_FLAG] {
             let mut handle = HCRYPTPROV_OR_NCRYPT_KEY_HANDLE(0);
             let mut key_spec = CERT_KEY_SPEC(0);
             let mut caller_must_free = BOOL(0);
@@ -452,11 +419,8 @@ mod windows_store {
                  export the certificate as a PFX file and sign with that instead"
             ))
         })?;
-        let result = if key_spec == CERT_NCRYPT_KEY_SPEC {
-            export_cng(handle.0)
-        } else {
-            export_capi(handle.0, key_spec.0)
-        };
+        let result =
+            if key_spec == CERT_NCRYPT_KEY_SPEC { export_cng(handle.0) } else { export_capi(handle.0, key_spec.0) };
 
         if caller_must_free.as_bool() {
             if key_spec == CERT_NCRYPT_KEY_SPEC {
@@ -469,36 +433,17 @@ mod windows_store {
     }
 
     /// CAPI provider key -> PKCS#8.
-    unsafe fn export_capi(provider: usize, key_spec: u32) -> PdfResult<Vec<u8>> {        let mut length = 0u32;
-        CryptExportPKCS8(
-            provider,
-            key_spec,
-            szOID_RSA_RSA,
-            0,
-            None,
-            None,
-            &mut length,
-        )
-        .map_err(|error| {
-            PdfError::Unsupported(format!(
-                "the private key is not exportable ({error}); use a PFX file instead"
-            ))
+    unsafe fn export_capi(provider: usize, key_spec: u32) -> PdfResult<Vec<u8>> {
+        let mut length = 0u32;
+        CryptExportPKCS8(provider, key_spec, szOID_RSA_RSA, 0, None, None, &mut length).map_err(|error| {
+            PdfError::Unsupported(format!("the private key is not exportable ({error}); use a PFX file instead"))
         })?;
         let mut buffer = vec![0u8; length as usize];
-        CryptExportPKCS8(
-            provider,
-            key_spec,
-            szOID_RSA_RSA,
-            0,
-            None,
-            Some(buffer.as_mut_ptr()),
-            &mut length,
-        )
-        .map_err(|error| {
-            PdfError::Unsupported(format!(
-                "the private key is not exportable ({error}); use a PFX file instead"
-            ))
-        })?;
+        CryptExportPKCS8(provider, key_spec, szOID_RSA_RSA, 0, None, Some(buffer.as_mut_ptr()), &mut length).map_err(
+            |error| {
+                PdfError::Unsupported(format!("the private key is not exportable ({error}); use a PFX file instead"))
+            },
+        )?;
         buffer.truncate(length as usize);
         Ok(buffer)
     }
@@ -507,20 +452,11 @@ mod windows_store {
     unsafe fn export_cng(handle: usize) -> PdfResult<Vec<u8>> {
         let key = NCRYPT_KEY_HANDLE(handle);
         let mut length = 0u32;
-        NCryptExportKey(
-            key,
-            None,
-            NCRYPT_PKCS8_PRIVATE_KEY_BLOB,
-            None,
-            None,
-            &mut length,
-            NCRYPT_FLAGS(0),
-        )
-        .map_err(|error| {
-            PdfError::Unsupported(format!(
-                "the private key is not exportable ({error}); use a PFX file instead"
-            ))
-        })?;
+        NCryptExportKey(key, None, NCRYPT_PKCS8_PRIVATE_KEY_BLOB, None, None, &mut length, NCRYPT_FLAGS(0)).map_err(
+            |error| {
+                PdfError::Unsupported(format!("the private key is not exportable ({error}); use a PFX file instead"))
+            },
+        )?;
         let mut buffer = vec![0u8; length as usize];
         NCryptExportKey(
             key,
@@ -532,9 +468,7 @@ mod windows_store {
             NCRYPT_FLAGS(0),
         )
         .map_err(|error| {
-            PdfError::Unsupported(format!(
-                "the private key is not exportable ({error}); use a PFX file instead"
-            ))
+            PdfError::Unsupported(format!("the private key is not exportable ({error}); use a PFX file instead"))
         })?;
         buffer.truncate(length as usize);
         Ok(buffer)
@@ -565,11 +499,9 @@ mod tests {
                         // Exportable keys export; non-exportable (TPM) keys
                         // must produce a clear error, never a fake signature.
                         match super::windows_store::certificate_with_private_key(certificate.index) {
-                            Ok((cert_der, key, _)) => println!(
-                                "    export ok: cert {} bytes, pkcs8 {} bytes",
-                                cert_der.len(),
-                                key.len()
-                            ),
+                            Ok((cert_der, key, _)) => {
+                                println!("    export ok: cert {} bytes, pkcs8 {} bytes", cert_der.len(), key.len())
+                            }
                             Err(error) => println!("    refused: {error}"),
                         }
                     }
@@ -590,9 +522,8 @@ mod tests {
             Ok(certificates) => certificates,
             Err(_) => return,
         };
-        let Some(certificate) = certificates
-            .iter()
-            .find(|certificate| certificate.subject.contains("PDF SAK Store Test"))
+        let Some(certificate) =
+            certificates.iter().find(|certificate| certificate.subject.contains("PDF SAK Store Test"))
         else {
             println!("no test certificate in the store; skipping");
             return;
@@ -600,14 +531,9 @@ mod tests {
         let (cert_der, key_der, chain) =
             super::windows_store::certificate_with_private_key(certificate.index).expect("export");
         let input = std::fs::read("../samples/sample-1.pdf").expect("sample pdf");
-        let signed = pdfcore::sign::sign_pdf(
-            &input,
-            &cert_der,
-            &key_der,
-            &chain,
-            &pdfcore::sign::SignOptions::default(),
-        )
-        .expect("sign with store key");
+        let signed =
+            pdfcore::sign::sign_pdf(&input, &cert_der, &key_der, &chain, &pdfcore::sign::SignOptions::default())
+                .expect("sign with store key");
         let report = pdfcore::sign::verify_signatures(&signed);
         let info = report.signatures.first().expect("one signature");
         assert!(info.signature_valid, "store signature must verify: {info:?}");

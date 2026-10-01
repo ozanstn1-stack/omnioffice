@@ -41,6 +41,8 @@ jobs:
         run: npm run tauri build
       - name: Package installer and portable ZIP
         run: npm run package
+      - name: Build info
+        run: npm run build:info
 
       # A bill of materials for both dependency graphs, generated from the
       # lockfiles that the build actually used and attached to the release

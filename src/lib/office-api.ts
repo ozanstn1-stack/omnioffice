@@ -85,6 +85,16 @@ export const cleanDocument = (path: string, options: CleanOptions) => invoke<Cle
 
 export const imageFootprint = (path: string) => invoke<number>("office_image_footprint", { path });
 
+export interface FileFingerprint {
+  exists: boolean;
+  size: number;
+  modifiedMs: number;
+  sha256: string;
+}
+
+/** Fingerprints a local file so a save can detect an external change. */
+export const fileFingerprint = (path: string) => invoke<FileFingerprint>("file_fingerprint", { path });
+
 export const storeLoad = <T>(key: string) => invoke<T | null>("store_load", { key });
 
 export const storeSave = (key: string, value: unknown) => invoke<void>("store_save", { key, value });

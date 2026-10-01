@@ -15,6 +15,36 @@ import { useT } from "../lib/i18n";
 import * as api from "../lib/office-api";
 import { compatibilityReport, gatingLossItems, type CompatibilityReport } from "../components/compatibility";
 import { useDataLossPrompt } from "../components/data-loss-dialog";
+import { useFileConflictPrompt, type ConflictDetails } from "../components/file-conflict-dialog";
+
+/** Shortens a hash for display without pretending it is the full digest. */
+function shortHash(hash: string): string {
+  return hash ? `${hash.slice(0, 12)}…` : "";
+}
+
+/**
+ * Returns conflict details when the file on disk no longer matches the
+ * fingerprint captured at open/save, or null when it is unchanged (or the
+ * check itself failed, in which case the write proceeds rather than trapping
+ * the user's data).
+ */
+async function detectExternalChange(path: string, openedFingerprint: string): Promise<ConflictDetails | null> {
+  try {
+    const current = await api.fileFingerprint(path);
+    if (!current.exists) {
+      return { name: fileBaseName(path), openedHash: shortHash(openedFingerprint), currentHash: "", missing: true };
+    }
+    if (current.sha256 === openedFingerprint) return null;
+    return {
+      name: fileBaseName(path),
+      openedHash: shortHash(openedFingerprint),
+      currentHash: shortHash(current.sha256),
+      missing: false,
+    };
+  } catch {
+    return null;
+  }
+}
 
 const FILTERS: Record<OfficeKind, { name: string; extensions: string[] }[]> = {
   writer: [
@@ -157,6 +187,28 @@ export function useOfficeSession(tab: OfficeTab) {
       setBusy(true);
       try {
         const extension = extensionOf(path);
+        // External-change guard: only for a path that already existed and was
+        // fingerprinted at open/save. A brand-new target (fingerprint null) or
+        // an unchanged file continues silently.
+        if (!androidTarget && tab.path && tab.path === path && tab.fingerprint) {
+          const conflict = await detectExternalChange(path, tab.fingerprint);
+          if (conflict) {
+            setBusy(false);
+            const choice = await useFileConflictPrompt.getState().ask(conflict);
+            if (choice === "cancel") return null;
+            if (choice === "saveAs") {
+              // Re-open the save dialog seeded with a new name beside the file.
+              return saveImpl(undefined, { forceDestination: true, extension });
+            }
+            // "reload": adopt the on-disk file, discarding the in-app edits.
+            const reloaded = await openOfficePath(path);
+            if (reloaded.ok) {
+              useToasts.getState().push({ kind: "info", title: t("conflict.reload"), detail: fileBaseName(path) });
+            }
+            return path;
+          }
+          setBusy(true);
+        }
         // The native unit format carries everything the suite understands, so it
         // is the one target where a save is a full snapshot. Every other format
         // can drop features, which the engine reports through `warnings`.
@@ -183,7 +235,18 @@ export function useOfficeSession(tab: OfficeTab) {
         const result = lossless
           ? await api.saveUnit(tab.kind, tab.title, tab.model, path)
           : await api.saveDocument(tab.kind, tab.model, path);
-        markSaved(tab.id, result.path);
+        // Re-fingerprint the file we just wrote so the next save compares
+        // against our own bytes, not the pre-save version.
+        let savedFingerprint: string | null = null;
+        try {
+          if (!androidTarget) {
+            const fingerprint = await api.fileFingerprint(result.path);
+            savedFingerprint = fingerprint.exists ? fingerprint.sha256 : null;
+          }
+        } catch {
+          savedFingerprint = null;
+        }
+        markSaved(tab.id, result.path, savedFingerprint);
         if (isAndroid()) {
           await publishAndroidResult(result.path, androidTarget, androidTarget?.name ?? fileBaseName(path));
           if (result.warnings.length > 0) {

@@ -90,7 +90,9 @@ fn extension(path: &Path) -> String {
 
 fn kind_for_extension(extension: &str) -> Option<&'static str> {
     match extension {
-        "docx" | "docm" | "dotx" | "odt" | "rtf" | "txt" | "md" | "markdown" | "html" | "htm" | "oswk-writer" => Some("writer"),
+        "docx" | "docm" | "dotx" | "odt" | "rtf" | "txt" | "md" | "markdown" | "html" | "htm" | "oswk-writer" => {
+            Some("writer")
+        }
         "xlsx" | "xlsm" | "xls" | "ods" | "csv" | "tsv" | "oswk-calc" => Some("calc"),
         "pptx" | "pptm" | "odp" | "oswk-impress" => Some("impress"),
         _ => None,
@@ -102,19 +104,23 @@ fn is_native(path: &Path) -> bool {
 }
 
 fn to_value<T: Serialize>(model: T) -> Result<Value, OfficeErrorPayload> {
-    serde_json::to_value(model).map_err(|error| payload(OfficeError::internal(format!("Could not serialize the document model: {error}"))))
+    serde_json::to_value(model)
+        .map_err(|error| payload(OfficeError::internal(format!("Could not serialize the document model: {error}"))))
 }
 
 fn writer_from_value(model: Value) -> Result<TextDocument, OfficeErrorPayload> {
-    serde_json::from_value(model).map_err(|error| payload(OfficeError::invalid(format!("The document model is not valid: {error}"))))
+    serde_json::from_value(model)
+        .map_err(|error| payload(OfficeError::invalid(format!("The document model is not valid: {error}"))))
 }
 
 fn workbook_from_value(model: Value) -> Result<Workbook, OfficeErrorPayload> {
-    serde_json::from_value(model).map_err(|error| payload(OfficeError::invalid(format!("The spreadsheet model is not valid: {error}"))))
+    serde_json::from_value(model)
+        .map_err(|error| payload(OfficeError::invalid(format!("The spreadsheet model is not valid: {error}"))))
 }
 
 fn deck_from_value(model: Value) -> Result<Deck, OfficeErrorPayload> {
-    serde_json::from_value(model).map_err(|error| payload(OfficeError::invalid(format!("The presentation model is not valid: {error}"))))
+    serde_json::from_value(model)
+        .map_err(|error| payload(OfficeError::invalid(format!("The presentation model is not valid: {error}"))))
 }
 
 // ---------------------------------------------------------------------------
@@ -175,10 +181,14 @@ pub fn open_path(path: &Path) -> Result<OpenDocument, OfficeErrorPayload> {
             let bytes = officecore::io::read_bytes(path).map_err(payload)?;
             let mut raw: Value = serde_json::from_slice(&bytes)
                 .map_err(|error| payload(OfficeError::corrupt(format!("The unit file is not valid: {error}"))))?;
+            // Corrupt-file detection: verify the content checksum before the
+            // migration touches anything. A mismatch means damage or an
+            // out-of-app edit, not a file we should silently reinterpret.
+            officecore::unit::verify_checksum(&raw).map_err(payload)?;
             // Schema migration: older files gain the V3 fields with defaults,
             // newer files are refused instead of being misread.
             let migration = officecore::schema::migrate_unit(&mut raw).map_err(payload)?;
-            let unit: NativeUnit = serde_json::from_value(raw)
+            let mut unit: NativeUnit = serde_json::from_value(raw)
                 .map_err(|error| payload(OfficeError::corrupt(format!("The unit file is not valid: {error}"))))?;
             let title = unit.title.clone();
             let kind = unit.kind.clone();
@@ -188,9 +198,21 @@ pub fn open_path(path: &Path) -> Result<OpenDocument, OfficeErrorPayload> {
                     "This document was migrated from schema {} to {}{}",
                     migration.from_version,
                     migration.to_version,
-                    if migration.notes.is_empty() { ".".to_string() } else { format!(" ({} change(s)).", migration.notes.len()) }
+                    if migration.notes.is_empty() {
+                        ".".to_string()
+                    } else {
+                        format!(" ({} change(s)).", migration.notes.len())
+                    }
                 ));
                 warnings.extend(migration.notes);
+            }
+            // Unknown envelope fields survive: hand the extensions map back so a
+            // later save can merge it in. Stored on the model value under a
+            // reserved key the frontend ignores and returns unchanged.
+            if !unit.extensions.is_empty() {
+                if let Value::Object(ref mut model) = unit.model {
+                    model.insert("__oswkExtensions".into(), Value::Object(unit.extensions));
+                }
             }
             (kind, title, unit.model, warnings)
         }
@@ -213,8 +235,7 @@ pub async fn office_open_document(path: String) -> Result<OpenDocument, OfficeEr
         let path = input_path(&path)?;
         open_path(&path)
     });
-    task.await
-        .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
 
 // ---------------------------------------------------------------------------
@@ -240,20 +261,25 @@ pub fn save_model(kind: &str, model: Value, path: &Path) -> Result<SaveDocument,
                     rtf::write_rtf_file(path, &document).map_err(payload)?;
                 }
                 "txt" => {
-                    officecore::io::write_atomic(path, textio::document_to_text(&document).as_bytes()).map_err(payload)?;
+                    officecore::io::write_atomic(path, textio::document_to_text(&document).as_bytes())
+                        .map_err(payload)?;
                 }
                 "md" | "markdown" => {
-                    officecore::io::write_atomic(path, textio::document_to_markdown(&document).as_bytes()).map_err(payload)?;
+                    officecore::io::write_atomic(path, textio::document_to_markdown(&document).as_bytes())
+                        .map_err(payload)?;
                 }
                 "html" | "htm" => {
-                    officecore::io::write_atomic(path, textio::document_to_html(&document).as_bytes()).map_err(payload)?;
+                    officecore::io::write_atomic(path, textio::document_to_html(&document).as_bytes())
+                        .map_err(payload)?;
                 }
                 "pdf" => {
                     let bytes = layout::document_to_pdf(&document);
                     officecore::io::write_atomic(path, &bytes).map_err(payload)?;
                 }
                 other => {
-                    return Err(payload(OfficeError::unsupported(format!("Saving Writer documents as .{other} is not supported."))));
+                    return Err(payload(OfficeError::unsupported(format!(
+                        "Saving Writer documents as .{other} is not supported."
+                    ))));
                 }
             }
             if document.comments.iter().any(|comment| !comment.resolved) {
@@ -283,10 +309,15 @@ pub fn save_model(kind: &str, model: Value, path: &Path) -> Result<SaveDocument,
                 "pdf" => {
                     let bytes = layout::workbook_to_pdf(&workbook, 20);
                     officecore::io::write_atomic(path, &bytes).map_err(payload)?;
-                    warnings.push("Charts are rendered in the app; the PDF export draws their data ranges as labelled boxes.".into());
+                    warnings.push(
+                        "Charts are rendered in the app; the PDF export draws their data ranges as labelled boxes."
+                            .into(),
+                    );
                 }
                 other => {
-                    return Err(payload(OfficeError::unsupported(format!("Saving spreadsheets as .{other} is not supported."))));
+                    return Err(payload(OfficeError::unsupported(format!(
+                        "Saving spreadsheets as .{other} is not supported."
+                    ))));
                 }
             }
         }
@@ -307,7 +338,9 @@ pub fn save_model(kind: &str, model: Value, path: &Path) -> Result<SaveDocument,
                     officecore::io::write_atomic(path, &bytes).map_err(payload)?;
                 }
                 other => {
-                    return Err(payload(OfficeError::unsupported(format!("Saving presentations as .{other} is not supported."))));
+                    return Err(payload(OfficeError::unsupported(format!(
+                        "Saving presentations as .{other} is not supported."
+                    ))));
                 }
             }
         }
@@ -319,16 +352,26 @@ pub fn save_model(kind: &str, model: Value, path: &Path) -> Result<SaveDocument,
 }
 
 #[tauri::command]
-pub async fn office_save_document(kind: String, model: Value, path: String) -> Result<SaveDocument, OfficeErrorPayload> {
+pub async fn office_save_document(
+    kind: String,
+    model: Value,
+    path: String,
+) -> Result<SaveDocument, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let path = output_path(&path)?;
         save_model(&kind, model, &path)
     });
-    task.await
-        .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
 
+/// The canonical `.oswk` envelope.
+///
+/// `documentType` is the model family (`writer`/`calc`/`impress`), `kind` is
+/// kept as an alias for older readers, `applicationVersion` records the build
+/// that wrote the file, `checksum` is a SHA-256 of the serialized `model`, and
+/// `extensions` is a free-form bag for future metadata that older builds must
+/// preserve rather than drop. Unknown keys are round-tripped untouched.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeUnit {
@@ -337,9 +380,23 @@ pub struct NativeUnit {
     pub version: u32,
     #[serde(default)]
     pub schema_version: Option<u32>,
+    /// Canonical document family. Older files only carry `kind`.
+    #[serde(default)]
+    pub document_type: Option<String>,
     pub kind: String,
+    #[serde(default)]
+    pub application_version: Option<String>,
     pub title: String,
     pub saved_at: String,
+    /// SHA-256 hex of the canonical serialization of `model`.
+    #[serde(default)]
+    pub checksum: Option<String>,
+    /// Feature names the model actually uses, so a reader knows what matters.
+    #[serde(default)]
+    pub feature_manifest: Vec<String>,
+    /// Free-form extension bag; never pruned by a save.
+    #[serde(default)]
+    pub extensions: serde_json::Map<String, Value>,
     #[serde(default)]
     pub warnings: Vec<String>,
     pub model: Value,
@@ -348,13 +405,32 @@ pub struct NativeUnit {
 /// Saves the native unit format (`.oswk`): the complete model as JSON so no
 /// information the suite understands is ever lost.
 pub fn save_native(kind: &str, title: &str, model: Value, path: &Path) -> Result<SaveDocument, OfficeErrorPayload> {
+    save_native_with_metadata(kind, title, model, path, serde_json::Map::new())
+}
+
+/// Like [`save_native`] but merges preserved `extensions` from a previously
+/// read unit so unknown keys survive a round trip.
+pub fn save_native_with_metadata(
+    kind: &str,
+    title: &str,
+    model: Value,
+    path: &Path,
+    extensions: serde_json::Map<String, Value>,
+) -> Result<SaveDocument, OfficeErrorPayload> {
+    let checksum = officecore::unit::checksum_of(&model);
+    let features = officecore::unit::feature_manifest(kind, &model);
     let unit = NativeUnit {
         format: "office-swiss-army-knife".into(),
         version: officecore::schema::SCHEMA_VERSION,
         schema_version: Some(officecore::schema::SCHEMA_VERSION),
+        document_type: Some(kind.to_string()),
         kind: kind.to_string(),
+        application_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         title: title.to_string(),
         saved_at: timestamp(),
+        checksum: Some(checksum),
+        feature_manifest: features,
+        extensions,
         warnings: Vec::new(),
         model,
     };
@@ -365,14 +441,18 @@ pub fn save_native(kind: &str, title: &str, model: Value, path: &Path) -> Result
 }
 
 #[tauri::command]
-pub async fn office_save_unit(kind: String, title: String, model: Value, path: String) -> Result<SaveDocument, OfficeErrorPayload> {
+pub async fn office_save_unit(
+    kind: String,
+    title: String,
+    model: Value,
+    path: String,
+) -> Result<SaveDocument, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let path = output_path(&path)?;
         save_native(&kind, &title, model, &path)
     });
-    task.await
-        .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
 
 /// The capability matrix for one file extension (Compatibility Center).
@@ -395,7 +475,11 @@ pub fn office_supported_extensions() -> Vec<String> {
 
 /// Reports what `kind`'s model would lose if it were saved as `target`.
 #[tauri::command]
-pub fn office_compatibility(kind: String, model: Value, target: String) -> Result<officecore::compat::CompatibilityReport, OfficeErrorPayload> {
+pub fn office_compatibility(
+    kind: String,
+    model: Value,
+    target: String,
+) -> Result<officecore::compat::CompatibilityReport, OfficeErrorPayload> {
     let report = match kind.as_str() {
         "writer" => officecore::compat::document_feature_report(&writer_from_value(model)?, &target),
         "calc" => officecore::compat::workbook_feature_report(&workbook_from_value(model)?, &target),
@@ -406,7 +490,8 @@ pub fn office_compatibility(kind: String, model: Value, target: String) -> Resul
 }
 
 pub fn timestamp() -> String {
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|value| value.as_secs()).unwrap_or(0);
+    let now =
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|value| value.as_secs()).unwrap_or(0);
     let days = now / 86_400;
     let seconds = now % 86_400;
     let (year, month, day) = civil_from_days(days as i64 + 719_468);
@@ -450,8 +535,7 @@ pub async fn office_export_pdf(kind: String, model: Value, path: String) -> Resu
         let path = output_path(&path)?;
         export_pdf(&kind, model, &path)
     });
-    task.await
-        .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
 
 // ---------------------------------------------------------------------------
@@ -473,7 +557,9 @@ pub fn convert(input: &Path, output: &Path, _options: &ConvertOptions) -> Result
     let mut warnings = Vec::new();
 
     // Image -> PDF and PDF -> image are handled by the PDF engine tools.
-    if matches!(input_extension.as_str(), "jpg" | "jpeg" | "png" | "bmp" | "gif" | "webp" | "tiff" | "tif") && output_extension == "pdf" {
+    if matches!(input_extension.as_str(), "jpg" | "jpeg" | "png" | "bmp" | "gif" | "webp" | "tiff" | "tif")
+        && output_extension == "pdf"
+    {
         return Err(payload(OfficeError::unsupported(
             "Converting images to PDF is handled by the PDF module's JPG to PDF tool.",
         )));
@@ -484,8 +570,9 @@ pub fn convert(input: &Path, output: &Path, _options: &ConvertOptions) -> Result
         )));
     }
 
-    let kind = kind_for_extension(&input_extension)
-        .ok_or_else(|| payload(OfficeError::unsupported(format!("Converting .{input_extension} files is not supported."))))?;
+    let kind = kind_for_extension(&input_extension).ok_or_else(|| {
+        payload(OfficeError::unsupported(format!("Converting .{input_extension} files is not supported.")))
+    })?;
 
     let model = if is_native(input) {
         let bytes = officecore::io::read_bytes(input).map_err(payload)?;
@@ -515,7 +602,11 @@ pub fn convert(input: &Path, output: &Path, _options: &ConvertOptions) -> Result
 }
 
 #[tauri::command]
-pub async fn office_convert(input: String, output: String, options: Option<ConvertOptions>) -> Result<ConversionInfo, OfficeErrorPayload> {
+pub async fn office_convert(
+    input: String,
+    output: String,
+    options: Option<ConvertOptions>,
+) -> Result<ConversionInfo, OfficeErrorPayload> {
     let options = options.unwrap_or_default();
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -523,18 +614,23 @@ pub async fn office_convert(input: String, output: String, options: Option<Conve
         let output = output_path(&output)?;
         convert(&input, &output, &options)
     });
-    task.await
-        .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
 
 /// Lists the conversions the converter can perform for a given extension.
 #[tauri::command]
 pub fn office_conversion_targets(extension: String) -> Vec<String> {
     match extension.trim_start_matches('.').to_ascii_lowercase().as_str() {
-        "docx" | "odt" | "rtf" | "txt" | "md" => vec!["pdf".into(), "docx".into(), "odt".into(), "rtf".into(), "txt".into(), "html".into(), "oswk".into()],
-        "xlsx" | "ods" | "csv" | "tsv" | "xls" => vec!["pdf".into(), "xlsx".into(), "ods".into(), "csv".into(), "oswk".into()],
+        "docx" | "odt" | "rtf" | "txt" | "md" => {
+            vec!["pdf".into(), "docx".into(), "odt".into(), "rtf".into(), "txt".into(), "html".into(), "oswk".into()]
+        }
+        "xlsx" | "ods" | "csv" | "tsv" | "xls" => {
+            vec!["pdf".into(), "xlsx".into(), "ods".into(), "csv".into(), "oswk".into()]
+        }
         "pptx" | "odp" => vec!["pdf".into(), "pptx".into(), "odp".into(), "oswk".into()],
-        "oswk" => vec!["pdf".into(), "docx".into(), "xlsx".into(), "pptx".into(), "odt".into(), "ods".into(), "odp".into()],
+        "oswk" => {
+            vec!["pdf".into(), "docx".into(), "xlsx".into(), "pptx".into(), "odt".into(), "ods".into(), "odp".into()]
+        }
         "pdf" => vec!["jpg".into(), "png".into()],
         "jpg" | "jpeg" | "png" | "bmp" | "webp" => vec!["pdf".into()],
         _ => Vec::new(),
@@ -553,8 +649,7 @@ pub async fn office_clean(path: String, options: CleanOptions) -> Result<CleanRe
         cleaner::ensure_supported(&source).map_err(payload)?;
         cleaner::clean_package(&source, &options).map_err(payload)
     });
-    task.await
-        .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
 
 #[tauri::command]
@@ -564,8 +659,7 @@ pub async fn office_image_footprint(path: String) -> Result<u64, OfficeErrorPayl
         let path = input_path(&path)?;
         cleaner::image_footprint(&path).map_err(payload)
     });
-    task.await
-        .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
 
 // ---------------------------------------------------------------------------
@@ -573,11 +667,8 @@ pub async fn office_image_footprint(path: String) -> Result<u64, OfficeErrorPayl
 // ---------------------------------------------------------------------------
 
 fn sanitize_key(key: &str) -> Result<String, OfficeErrorPayload> {
-    let cleaned: String = key
-        .chars()
-        .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-' || *ch == '_')
-        .take(64)
-        .collect();
+    let cleaned: String =
+        key.chars().filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-' || *ch == '_').take(64).collect();
     if cleaned.is_empty() || cleaned != key {
         return Err(payload(OfficeError::invalid("Invalid store key.")));
     }
@@ -602,7 +693,8 @@ pub fn store_load(app: AppHandle, key: String) -> Result<Value, OfficeErrorPaylo
         return Ok(Value::Null);
     }
     let bytes = officecore::io::read_bytes(&path).map_err(payload)?;
-    serde_json::from_slice(&bytes).map_err(|error| payload(OfficeError::corrupt(format!("Stored data is damaged: {error}"))))
+    serde_json::from_slice(&bytes)
+        .map_err(|error| payload(OfficeError::corrupt(format!("Stored data is damaged: {error}"))))
 }
 
 #[tauri::command]
@@ -644,7 +736,13 @@ fn history_dir(app: &AppHandle, document_id: &str) -> Result<PathBuf, OfficeErro
 }
 
 #[tauri::command]
-pub fn history_push(app: AppHandle, document_id: String, kind: String, title: String, model: Value) -> Result<HistoryEntry, OfficeErrorPayload> {
+pub fn history_push(
+    app: AppHandle,
+    document_id: String,
+    kind: String,
+    title: String,
+    model: Value,
+) -> Result<HistoryEntry, OfficeErrorPayload> {
     let dir = history_dir(&app, &document_id)?;
     std::fs::create_dir_all(&dir).map_err(|error| payload(OfficeError::from_io(error, &dir)))?;
     let mut index = read_history_index(&dir);
@@ -660,13 +758,7 @@ pub fn history_push(app: AppHandle, document_id: String, kind: String, title: St
         .map_err(|error| payload(OfficeError::internal(format!("Could not encode the version: {error}"))))?;
     let file = dir.join(format!("v{version}.json"));
     officecore::io::write_atomic(&file, &bytes).map_err(payload)?;
-    let entry = HistoryEntry {
-        version,
-        saved_at: timestamp(),
-        title,
-        kind,
-        size: bytes.len() as u64,
-    };
+    let entry = HistoryEntry { version, saved_at: timestamp(), title, kind, size: bytes.len() as u64 };
     index.push(entry.clone());
     // Keep the newest 25 versions.
     index.sort_by_key(|entry| entry.version);
@@ -738,7 +830,14 @@ fn recovery_dir(app: &AppHandle) -> Result<PathBuf, OfficeErrorPayload> {
 }
 
 #[tauri::command]
-pub fn recovery_save(app: AppHandle, document_id: String, kind: String, title: String, path: Option<String>, model: Value) -> Result<(), OfficeErrorPayload> {
+pub fn recovery_save(
+    app: AppHandle,
+    document_id: String,
+    kind: String,
+    title: String,
+    path: Option<String>,
+    model: Value,
+) -> Result<(), OfficeErrorPayload> {
     let id = sanitize_key(&document_id)?;
     let dir = recovery_dir(&app)?;
     std::fs::create_dir_all(&dir).map_err(|error| payload(OfficeError::from_io(error, &dir)))?;

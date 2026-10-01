@@ -151,17 +151,20 @@ registerFunction("MATCH", (args) => {
     const found = findInMatrix(matrix, needle);
     return found ? found.row + 1 : ERR.na();
   }
-  const flat = flatten([matrix]).filter((value) => !isError(value));
-  const numeric = flat.filter((value) => typeof value === "number" || (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))));
+  // Approximate modes scan the *original* array in order and return its
+  // position. The previous version sorted a copy, so an unsorted range
+  // returned an index that pointed at a different cell (silently wrong row).
+  const flat = flatten([matrix]);
   const target = toNumber(needle);
   if (isError(target)) return ERR.na();
-  const sorted = [...numeric].map((value) => Number(value)).sort((a, b) => (mode > 0 ? a - b : b - a));
   let best = -1;
-  sorted.forEach((value, index) => {
-    if (mode > 0 ? value <= target : value >= target) best = index;
+  flat.forEach((value, index) => {
+    if (isError(value)) return;
+    const numeric = typeof value === "number" ? value : typeof value === "string" && value.trim() !== "" ? Number(value) : Number.NaN;
+    if (!Number.isFinite(numeric)) return;
+    if (mode > 0 ? numeric <= target : numeric >= target) best = index;
   });
-  if (best < 0) return mode > 0 ? ERR.na() : sorted.length - 1 + 1;
-  return best + 1;
+  return best < 0 ? ERR.na() : best + 1;
 }, 2, 3, false, { signature: "MATCH(lookup, array, [type])", category: "Lookup" });
 
 registerFunction("XMATCH", (args) => {
@@ -254,7 +257,18 @@ registerFunction("HLOOKUP", (args) => {
   const row = Math.trunc(rowArg);
   if (row < 1 || row > table.length) return ERR.ref();
   const header = table[0] ?? [];
-  const index = header.findIndex((value) => compareScalars(value, needle) === 0);
+  const approximate = args[3] ? toNumber(args[3]?.[0]?.[0] ?? 1) !== 0 : true;
+  let index = header.findIndex((value) => compareScalars(value, needle) === 0);
+  if (index < 0) {
+    if (!approximate) return ERR.na();
+    // Largest header value <= needle, scanning left to right like Excel.
+    let best = -1;
+    header.forEach((value, position) => {
+      if (String(value) === "") return;
+      if (compareScalars(value, needle) <= 0) best = position;
+    });
+    index = best;
+  }
   if (index < 0) return ERR.na();
   return table[row - 1]?.[index] ?? "";
 }, 3, 4, false, { signature: "HLOOKUP(lookup, table, row, [approx])", category: "Lookup" });
@@ -289,11 +303,20 @@ registerFunction("XLOOKUP", (args) => {
     return best < 0 ? fallback : flatResult[best] ?? fallback;
   }
   if (mode === 2) {
-    // Binary search over a sorted list: first value >= needle (or <= for -2).
-    const sorted = flatLookup.map((value) => ({ value, order: compareScalars(value, needle) }));
-    const want = mode === 2 ? 1 : -1;
-    const index = sorted.findIndex((entry) => entry.order === 0 || (want === 1 ? entry.order > 0 : entry.order < 0));
-    return index < 0 ? fallback : flatResult[index] ?? fallback;
+    // Smallest value >= needle (ascending approximate match).
+    let best = -1;
+    flatLookup.forEach((value, index) => {
+      if (compareScalars(value, needle) >= 0 && (best < 0 || compareScalars(value, flatLookup[best]) < 0)) best = index;
+    });
+    return best < 0 ? fallback : flatResult[best] ?? fallback;
+  }
+  if (mode === -2) {
+    // Largest value <= needle (descending approximate match).
+    let best = -1;
+    flatLookup.forEach((value, index) => {
+      if (compareScalars(value, needle) <= 0 && (best < 0 || compareScalars(value, flatLookup[best]) > 0)) best = index;
+    });
+    return best < 0 ? fallback : flatResult[best] ?? fallback;
   }
   return fallback;
 }, 3, 6, false, { signature: "XLOOKUP(lookup, lookup_array, return_array, [if_not_found], [mode])", category: "Lookup" });

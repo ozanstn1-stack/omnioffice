@@ -151,27 +151,11 @@ pub async fn page_thumbnail(
     let path = crate::paths::input_file(&path)?.into_path_buf();
     run_blocking(move || {
         let max_width = max_width.unwrap_or(220).clamp(60, 3000);
-        let options = pdfcore::render::RenderOptions {
-            dpi: 96.0,
-            max_width: Some(max_width),
-            max_height: None,
-        };
+        let options = pdfcore::render::RenderOptions { dpi: 96.0, max_width: Some(max_width), max_height: None };
         let rendered = pdfcore::render::render_page(&path, password.as_deref(), page, &options)?;
-        let bytes = pdfcore::images::encode_image(
-            &rendered,
-            pdfcore::images::ImageFormat::Jpeg,
-            82,
-            false,
-        )?;
-        let data_url = format!(
-            "data:image/jpeg;base64,{}",
-            base64::engine::general_purpose::STANDARD.encode(bytes)
-        );
-        Ok(Thumbnail {
-            data_url,
-            width: rendered.width,
-            height: rendered.height,
-        })
+        let bytes = pdfcore::images::encode_image(&rendered, pdfcore::images::ImageFormat::Jpeg, 82, false)?;
+        let data_url = format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes));
+        Ok(Thumbnail { data_url, width: rendered.width, height: rendered.height })
     })
     .await
 }
@@ -188,11 +172,7 @@ pub async fn page_preview(
     let path = crate::paths::input_file(&path)?.into_path_buf();
     run_blocking(move || {
         let max_width = max_width.unwrap_or(1100).clamp(200, 4000);
-        let options = pdfcore::render::RenderOptions {
-            dpi: 96.0,
-            max_width: Some(max_width),
-            max_height: None,
-        };
+        let options = pdfcore::render::RenderOptions { dpi: 96.0, max_width: Some(max_width), max_height: None };
         let rendered = pdfcore::render::render_page(&path, password.as_deref(), page, &options)?;
         // Reading mode requests JPEG (much smaller for large pages); the
         // thumbnail/preview default stays lossless PNG.
@@ -206,20 +186,10 @@ pub async fn page_preview(
                 )?,
                 "image/jpeg",
             ),
-            _ => (
-                pdfcore::images::encode_image(&rendered, pdfcore::images::ImageFormat::Png, 90, false)?,
-                "image/png",
-            ),
+            _ => (pdfcore::images::encode_image(&rendered, pdfcore::images::ImageFormat::Png, 90, false)?, "image/png"),
         };
-        let data_url = format!(
-            "data:{mime};base64,{}",
-            base64::engine::general_purpose::STANDARD.encode(bytes)
-        );
-        Ok(Thumbnail {
-            data_url,
-            width: rendered.width,
-            height: rendered.height,
-        })
+        let data_url = format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes));
+        Ok(Thumbnail { data_url, width: rendered.width, height: rendered.height })
     })
     .await
 }
@@ -325,9 +295,7 @@ pub async fn merge_pdfs(
         let (path, pages) = pdfcore::merge::merge_files(
             &inputs,
             &output,
-            &pdfcore::merge::MergeOptions {
-                preserve_metadata: request.preserve_metadata,
-            },
+            &pdfcore::merge::MergeOptions { preserve_metadata: request.preserve_metadata },
             policy,
             &progress,
             &cancel,
@@ -335,7 +303,11 @@ pub async fn merge_pdfs(
         Ok(OpResult {
             path: path.display().to_string(),
             page_count: Some(pages),
-            original_bytes: inputs.iter().filter_map(|p| std::fs::metadata(p).ok()).map(|m| m.len()).reduce(|a, b| a + b),
+            original_bytes: inputs
+                .iter()
+                .filter_map(|p| std::fs::metadata(p).ok())
+                .map(|m| m.len())
+                .reduce(|a, b| a + b),
             output_bytes: std::fs::metadata(&path).ok().map(|m| m.len()),
             reduction: None,
             message: None,
@@ -399,10 +371,7 @@ pub async fn extract_pages(
     .await
 }
 
-fn validate_pages(
-    input: &Path,
-    request: &PagesRequest,
-) -> Result<Vec<u32>, PdfError> {
+fn validate_pages(input: &Path, request: &PagesRequest) -> Result<Vec<u32>, PdfError> {
     if request.pages.is_empty() {
         if let Some(selection) = &request.selection {
             let doc = pdfcore::docutil::load_document(input, request.password.as_deref())?;
@@ -424,13 +393,8 @@ pub async fn delete_pages(
         let (output, policy) = request.output.resolve()?;
         let input = crate::paths::input_file(&request.input)?;
         let pages = validate_pages(input.as_path(), &request)?;
-        let path = pdfcore::organize::delete_pages(
-            input.as_path(),
-            &pages,
-            &output,
-            policy,
-            request.password.as_deref(),
-        )?;
+        let path =
+            pdfcore::organize::delete_pages(input.as_path(), &pages, &output, policy, request.password.as_deref())?;
         Ok(OpResult {
             path: path.display().to_string(),
             page_count: None,
@@ -555,10 +519,7 @@ pub async fn split_pdf(
             progress,
             cancel,
         )?;
-        Ok(SplitResponse {
-            parts,
-            output_dir: request.output_dir.clone(),
-        })
+        Ok(SplitResponse { parts, output_dir: request.output_dir.clone() })
     })
     .await
 }
@@ -587,7 +548,8 @@ pub async fn estimate_compression(
     run_blocking(move || {
         let input = crate::paths::input_file(&input)?;
         pdfcore::compress::estimate_compression(input.as_path(), &options, password.as_deref())
-    }).await
+    })
+    .await
 }
 
 #[tauri::command]
@@ -745,12 +707,7 @@ pub async fn unlock_pdf(
     operation_with_progress(app, registry, request.job_id.clone(), move |_progress, _cancel| {
         let (output, policy) = request.output.resolve()?;
         let input = crate::paths::input_file(&request.input)?;
-        let path = pdfcore::security::unlock_pdf(
-            input.as_path(),
-            &output,
-            &request.password,
-            policy,
-        )?;
+        let path = pdfcore::security::unlock_pdf(input.as_path(), &output, &request.password, policy)?;
         Ok(OpResult {
             path: path.display().to_string(),
             page_count: None,
@@ -864,22 +821,12 @@ pub async fn images_to_pdf(
             .iter()
             .map(|item| {
                 Ok(pdfcore::images::ImageItem {
-                    path: crate::paths::input_file(&item.path)?
-                        .into_path_buf()
-                        .to_string_lossy()
-                        .to_string(),
+                    path: crate::paths::input_file(&item.path)?.into_path_buf().to_string_lossy().to_string(),
                     rotation_delta: item.rotation_delta,
                 })
             })
             .collect::<Result<_, PdfError>>()?;
-        let path = pdfcore::images::images_to_pdf(
-            &items,
-            &request.options,
-            &output,
-            policy,
-            progress,
-            cancel,
-        )?;
+        let path = pdfcore::images::images_to_pdf(&items, &request.options, &output, policy, progress, cancel)?;
         Ok(OpResult {
             path: path.display().to_string(),
             page_count: Some(items.len() as u32),
@@ -1045,9 +992,7 @@ pub async fn edit_metadata(
             output_bytes: std::fs::metadata(&path).ok().map(|m| m.len()),
             reduction: None,
             message: if signatures > 0 {
-                Some(format!(
-                    "{signatures} signature(s) invalidated - this change rewrites the document"
-                ))
+                Some(format!("{signatures} signature(s) invalidated - this change rewrites the document"))
             } else {
                 None
             },
@@ -1117,9 +1062,7 @@ pub async fn add_page_numbers(
             output_bytes: std::fs::metadata(&path).ok().map(|m| m.len()),
             reduction: None,
             message: if signatures > 0 {
-                Some(format!(
-                    "{signatures} signature(s) invalidated - this change rewrites the document"
-                ))
+                Some(format!("{signatures} signature(s) invalidated - this change rewrites the document"))
             } else {
                 None
             },
@@ -1189,9 +1132,7 @@ pub async fn watermark_pdf(
             output_bytes: std::fs::metadata(&path).ok().map(|m| m.len()),
             reduction: None,
             message: if signatures > 0 {
-                Some(format!(
-                    "{signatures} signature(s) invalidated - this change rewrites the document"
-                ))
+                Some(format!("{signatures} signature(s) invalidated - this change rewrites the document"))
             } else {
                 None
             },
@@ -1261,9 +1202,7 @@ pub async fn annotate_pdf(
             output_bytes: std::fs::metadata(&path).ok().map(|m| m.len()),
             reduction: None,
             message: if signatures > 0 {
-                Some(format!(
-                    "{signatures} signature(s) invalidated - this change rewrites the document"
-                ))
+                Some(format!("{signatures} signature(s) invalidated - this change rewrites the document"))
             } else {
                 None
             },
@@ -1346,17 +1285,10 @@ pub async fn detect_sensitive_text(
     run_blocking(move || {
         let path = crate::paths::input_file(&path)?;
         let cancel = CancelToken::new();
-        let (pages, _) = pdfcore::textbox::page_chars(
-            path.as_path(),
-            password.as_deref(),
-            &[page],
-            1,
-            &cancel,
-            &|_, _| {},
-        )?;
-        let chars = pages.get(&page).ok_or_else(|| {
-            PdfError::Internal(format!("page {page} has no extractable text"))
-        })?;
+        let (pages, _) =
+            pdfcore::textbox::page_chars(path.as_path(), password.as_deref(), &[page], 1, &cancel, &|_, _| {})?;
+        let chars =
+            pages.get(&page).ok_or_else(|| PdfError::Internal(format!("page {page} has no extractable text")))?;
         Ok(pdfcore::redact::detect_sensitive(chars))
     })
     .await
@@ -1422,10 +1354,7 @@ pub async fn inspect_document(
 // ---------------------------------------------------------------------------
 
 fn config_dir(app: &AppHandle) -> Result<PathBuf, PdfError> {
-    let dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| PdfError::Internal(format!("config dir unavailable: {e}")))?;
+    let dir = app.path().app_config_dir().map_err(|e| PdfError::Internal(format!("config dir unavailable: {e}")))?;
     std::fs::create_dir_all(&dir).map_err(PdfError::from_io)?;
     Ok(dir)
 }
@@ -1480,18 +1409,15 @@ pub fn load_recent(app: AppHandle) -> Result<Vec<RecentEntry>, PdfError> {
 pub fn add_recent(app: AppHandle, entry: RecentEntry) -> Result<(), PdfError> {
     let path = config_dir(&app)?.join("recent.json");
     let mut entries: Vec<RecentEntry> = if path.exists() {
-        read_config_text(&path)
-            .ok()
-            .and_then(|t| serde_json::from_str(&t).ok())
-            .unwrap_or_default()
+        read_config_text(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
     } else {
         Vec::new()
     };
     entries.retain(|e| e.path != entry.path);
     entries.insert(0, entry);
     entries.truncate(30);
-    let text = serde_json::to_string(&entries)
-        .map_err(|e| PdfError::Internal(format!("recent serialize error: {e}")))?;
+    let text =
+        serde_json::to_string(&entries).map_err(|e| PdfError::Internal(format!("recent serialize error: {e}")))?;
     write_atomic(&path, text.as_bytes())
 }
 
@@ -1508,9 +1434,7 @@ pub fn clear_recent(app: AppHandle) -> Result<(), PdfError> {
 /// a probe for *absence*, so only the path shape is validated.
 #[tauri::command]
 pub fn output_exists(path: String) -> bool {
-    crate::paths::lexical(&path)
-        .map(|validated| validated.as_path().exists())
-        .unwrap_or(false)
+    crate::paths::lexical(&path).map(|validated| validated.as_path().exists()).unwrap_or(false)
 }
 
 /// Creates a directory (including its parents). The Android shell uses this to
@@ -1530,9 +1454,7 @@ pub fn suggest_output(input: String, suffix: String) -> String {
     let Ok(input) = crate::paths::input_file(&input) else {
         return String::new();
     };
-    pdfcore::docutil::default_output_for(input.as_path(), &suffix)
-        .display()
-        .to_string()
+    pdfcore::docutil::default_output_for(input.as_path(), &suffix).display().to_string()
 }
 
 /// File sizes for the selected files (used by the file list UI). Missing or
@@ -1550,6 +1472,46 @@ pub fn file_sizes(paths: Vec<String>) -> Vec<Option<u64>> {
         .collect()
 }
 
+/// A file fingerprint used to detect that a document changed on disk since it
+/// was opened (another program, another tab, or a cloud client). `sha256` is
+/// lowercase hex; `size` and `modified_ms` let the caller short-circuit the
+/// hash when only the timestamp moved.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileFingerprint {
+    pub exists: bool,
+    pub size: u64,
+    pub modified_ms: i64,
+    pub sha256: String,
+}
+
+/// Fingerprints a local file for the file-conflict check. A missing file is
+/// reported as `exists: false` rather than an error, so the caller can tell
+/// "deleted outside the app" apart from "check failed".
+#[tauri::command]
+pub fn file_fingerprint(path: String) -> Result<FileFingerprint, PdfError> {
+    let validated = crate::paths::lexical(&path)?;
+    let target = validated.as_path();
+    match std::fs::metadata(target) {
+        Err(_) => Ok(FileFingerprint { exists: false, size: 0, modified_ms: 0, sha256: String::new() }),
+        Ok(metadata) => {
+            if !metadata.is_file() {
+                return Ok(FileFingerprint { exists: false, size: 0, modified_ms: 0, sha256: String::new() });
+            }
+            let bytes = std::fs::read(target).map_err(PdfError::from_io)?;
+            let digest = <sha2::Sha256 as sha2::Digest>::digest(&bytes);
+            let sha256 = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+            let modified_ms = metadata
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|duration| duration.as_millis() as i64)
+                .unwrap_or(0);
+            Ok(FileFingerprint { exists: true, size: metadata.len(), modified_ms, sha256 })
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // OS integration (open / reveal)
 // ---------------------------------------------------------------------------
@@ -1560,8 +1522,8 @@ pub fn file_sizes(paths: Vec<String>) -> Vec<Option<u64>> {
 /// `opener` permissions are not granted to the webview at all; it reaches the
 /// OS only through the two validated commands below.
 const OPENABLE_EXTENSIONS: &[&str] = &[
-    "pdf", "png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif", "txt", "md", "csv", "json",
-    "docx", "odt", "rtf", "xlsx", "ods", "tsv", "pptx", "odp", "oswk", "osed", "ospr", "osdt",
+    "pdf", "png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif", "txt", "md", "csv", "json", "docx", "odt", "rtf",
+    "xlsx", "ods", "tsv", "pptx", "odp", "oswk", "osed", "ospr", "osdt",
 ];
 
 fn openable_document_path(raw: &str) -> Result<PathBuf, PdfError> {
@@ -1573,9 +1535,7 @@ fn openable_document_path(raw: &str) -> Result<PathBuf, PdfError> {
         .map(|value| value.to_ascii_lowercase())
         .unwrap_or_default();
     if !OPENABLE_EXTENSIONS.contains(&extension.as_str()) {
-        return Err(PdfError::InvalidInput(format!(
-            "refusing to hand this file type to the operating system: {raw}"
-        )));
+        return Err(PdfError::InvalidInput(format!("refusing to hand this file type to the operating system: {raw}")));
     }
     Ok(path.into_path_buf())
 }
@@ -1626,10 +1586,8 @@ pub fn log_frontend(app: AppHandle, level: String, message: String) {
     };
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join("frontend.log");
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    let timestamp =
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let line = format!("[{timestamp}] [{level}] {message}\n");
     let _ = std::fs::OpenOptions::new()
         .create(true)
@@ -1722,7 +1680,11 @@ pub fn ai_library_text(app: AppHandle, id: String) -> Result<String, PdfError> {
 }
 
 #[tauri::command]
-pub fn ai_library_delete(app: AppHandle, id: String, delete_file: Option<bool>) -> Result<Vec<AiLibraryEntry>, PdfError> {
+pub fn ai_library_delete(
+    app: AppHandle,
+    id: String,
+    delete_file: Option<bool>,
+) -> Result<Vec<AiLibraryEntry>, PdfError> {
     let index = ai_library_index(&app)?;
     library::delete_ai_entry(&index, &id, delete_file.unwrap_or(true))?;
     Ok(library::list_ai_entries(&index))
@@ -1738,10 +1700,7 @@ pub fn ai_library_clear(app: AppHandle, delete_files: Option<bool>) -> Result<()
 pub fn ai_library_export(app: AppHandle, id: String, target: String) -> Result<String, PdfError> {
     let text = library::read_ai_entry_text(&ai_library_index(&app)?, &id)?;
     let target = crate::paths::output_file(&target)?;
-    let path = pdfcore::docutil::resolve_output_path(
-        target.as_path(),
-        pdfcore::docutil::OverwritePolicy::UniqueName,
-    )?;
+    let path = pdfcore::docutil::resolve_output_path(target.as_path(), pdfcore::docutil::OverwritePolicy::UniqueName)?;
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
             std::fs::create_dir_all(parent).map_err(PdfError::from_io)?;
@@ -1796,9 +1755,7 @@ pub fn log_operation(app: AppHandle, entry: OperationLogRequest) -> Result<(), P
 
 #[tauri::command]
 pub fn load_operations(app: AppHandle) -> Vec<OperationEntry> {
-    operations_log(&app)
-        .map(|path| library::list_operations(&path))
-        .unwrap_or_default()
+    operations_log(&app).map(|path| library::list_operations(&path)).unwrap_or_default()
 }
 
 #[tauri::command]
@@ -1810,12 +1767,7 @@ pub fn clear_operations(app: AppHandle) -> Result<(), PdfError> {
 // Helpers for the async command wrappers
 // ---------------------------------------------------------------------------
 
-fn emit_progress_simple(
-    progress: &pdfcore::progress::ProgressCallback,
-    stage: &str,
-    current: u64,
-    total: u64,
-) {
+fn emit_progress_simple(progress: &pdfcore::progress::ProgressCallback, stage: &str, current: u64, total: u64) {
     progress(pdfcore::progress::ProgressEvent::new(stage, current, total));
 }
 

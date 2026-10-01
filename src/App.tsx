@@ -97,6 +97,7 @@ import { resumeJobs, useJobs as useBackgroundJobs } from "./lib/jobs";
 import { CommandPalette, GlobalSearch } from "./components/command-palette";
 import { OverwriteDialog, PasswordDialog, Toasts } from "./components/files";
 import { DataLossDialogHost } from "./components/data-loss-dialog";
+import { FileConflictDialogHost } from "./components/file-conflict-dialog";
 import { Badge, IconButton, Spinner } from "./components/ui";
 import { isAndroid, openAnyFile, pickAndroidFiles } from "./lib/mobile";
 import { isImage } from "./lib/format";
@@ -723,6 +724,7 @@ export default function App() {
         {/* One global host so the compatibility gate also covers the
             converter, which is not rendered inside the office workspace. */}
         <DataLossDialogHost />
+        <FileConflictDialogHost />
         <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} context={{ screen }} onNavigate={(next) => setScreen(next as ScreenId)} />
         <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} onOpenPath={openAnyPath} onNavigate={(next) => setScreen(next as ScreenId)} />
       </div>
@@ -803,6 +805,7 @@ export default function App() {
       <PasswordDialog />
       {/* Global compatibility gate host (converter + office workspace). */}
       <DataLossDialogHost />
+      <FileConflictDialogHost />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} context={{ screen }} onNavigate={(next) => setScreen(next as ScreenId)} />
       <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} onOpenPath={openAnyPath} onNavigate={(next) => setScreen(next as ScreenId)} />
     </div>

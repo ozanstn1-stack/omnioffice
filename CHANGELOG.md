@@ -4,11 +4,12 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.3.0]
 
-Stabilisation audit: data-loss prevention, security fixes, correctness fixes
-and regression tests. No new features. See `AUDIT_REPORT.md` for the full
-findings list and `AUDIT_BASELINE.md` for the pre-change state.
+Production-readiness: the security, data-loss and correctness hardening from
+the post-3.2.1 audit plus a canonical `.oswk` format, a transactional Writer
+history, Excel-compatibility fixes in Calc, an external file-conflict guard and
+release metadata. See `AUDIT_REPORT.md` and `RELEASE_READINESS.md` for detail.
 
 ### Security
 
@@ -22,13 +23,9 @@ findings list and `AUDIT_BASELINE.md` for the pre-change state.
   `paths::*` wrappers instead of accepting raw webview strings.
 - AI responses and streams are capped at 16 MB and provider error text is
   bounded before it reaches the UI log.
-
-### Fixed
-
-- Failed background jobs are persisted as `failed`, not `done`
-  (`JobRegistry::complete`); a corrupt `jobs.json` is quarantined instead of
-  overwritten; reusing a job id cancels the previous worker; the job store
-  uses a unique temp file with fsync and reports rename failures.
+- Failed background jobs are persisted as `failed`, not `done`; a corrupt
+  `jobs.json` is quarantined instead of overwritten; reusing a job id cancels
+  the previous worker; the job store uses a unique temp file with fsync.
 - All "atomic" writers (`officecore`, `pdfcore`, `synccore`, signing, jobs)
   no longer delete the target before renaming and now fsync before the rename;
   settings, recents, AI settings, library index, operation log and stored
@@ -48,17 +45,55 @@ findings list and `AUDIT_BASELINE.md` for the pre-change state.
   `SanitizeReport.metadataRemoved` is typed as a count.
 - Vault: a stale `scanning: true` left by a crash is repaired at startup.
 - Jobs: live jobs appear in the job center without an app restart.
-
-### Added
-
 - Process-wide heavy-work semaphore (`src-tauri/src/concurrency.rs`) bounding
   concurrent PDF render/OCR/compression, vault scans, office import/export and
   signing to roughly the CPU count instead of Tokio's 512-thread default.
+
+### Added
+
+- **Canonical `.oswk` envelope** (`crates/officecore/src/unit.rs`):
+  `documentType`, `applicationVersion`, a SHA-256 `checksum` of a canonical
+  (key-sorted) model serialization, a `featureManifest`, and a free-form
+  `extensions` bag. Unknown envelope fields survive a round trip; a checksum
+  mismatch is reported as `corrupt_document`; migration recomputes the digest
+  when it adds fields, and a newer schema is refused, not rewritten. Golden
+  fixture tests in `crates/officecore/tests/unit_envelope_test.rs`.
+- **Writer transaction history** (`src/office/writer/history.ts`): reversible
+  `EditOperation`s and a bounded checkpoint + delta undo/redo stack wired to
+  Ctrl+Z / Ctrl+Y / Shift+Ctrl+Z and the toolbar. The browser's native
+  `execCommand("undo")` could not see structural or formatting edits.
+- **External file-conflict guard**: the office session fingerprints a file at
+  open/save (`file_fingerprint`) and, before writing, offers Reload external
+  changes / Save as new file / Cancel when the file changed on disk.
+- **Release metadata**: `scripts/build-info.mjs` writes `build-info.json`
+  (version, git SHA, Node/Rust/Java/toolchain versions) into
+  `release-artifacts/`, attached by the release workflow.
+
+### Fixed
+
+- **Calc Excel compatibility**: `MATCH`/`HLOOKUP` approximate modes return the
+  position in the original range (they used to sort a copy); `XLOOKUP` modes
+  ±2 work and follow the original order; `COUNTIF`/`SUMIF` support `*`/`?`
+  wildcards and `~` escapes; `NUMBERVALUE` no longer strips the decimal
+  separator; `FILTER` treats a blank mask cell as FALSE; the unary operator
+  maps over arrays so `SUMPRODUCT(--(range>1))` works; a stray NUL byte in
+  `arrays.ts` was removed.
+- `.oswk` open verifies the content checksum before migration and reports
+  `corrupt_document` instead of silently reinterpreting a damaged file.
+
+### Changed
+
 - Regression tests: job failure/quarantine/id-reuse, vault status repair,
   WebDAV ETag quoting (strict in-process server), plugin private-IPv4/host
   literals, Writer structural runs/caret/hard breaks/revision hiding,
   pagination numbering, Calc broadcasting and error literals, `TEXT`/`TIME`,
   XLSX link-only cells.
+
+### Changed
+
+- Version bumped to 3.3.0 across `package.json`, `Cargo.toml`,
+  `tauri.conf.json` and the generated Android `tauri.properties`
+  (`versionCode 3003000`).
 
 ## [3.2.1]
 

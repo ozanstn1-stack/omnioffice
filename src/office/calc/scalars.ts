@@ -133,10 +133,19 @@ export function criteriaMatcher(criteria: Scalar): (value: Scalar) => boolean {
   const operand = match ? match[2] : text;
   const operandNumber = Number(operand);
   const isNumeric = operand.trim() !== "" && Number.isFinite(operandNumber);
+  // `*` and `?` are wildcards for text criteria in Excel; `~` escapes the next
+  // wildcard. Only build the regex when the operand actually contains one, so
+  // plain text keeps the exact (case-insensitive) comparison.
+  const hasWildcard = !isNumeric && /[*?]/.test(operand);
+  const wildcard = hasWildcard ? wildcardRegex(operand) : null;
   return (value: Scalar) => {
     if (isError(value)) return false;
     const valueNumber = typeof value === "number" ? value : typeof value === "boolean" ? (value ? 1 : 0) : Number(String(value));
     const numeric = isNumeric && Number.isFinite(valueNumber);
+    if (wildcard && (operator === "=" || operator === "<>")) {
+      const isMatch = wildcard.test(String(value));
+      return operator === "=" ? isMatch : !isMatch;
+    }
     switch (operator) {
       case "=":
         return numeric ? valueNumber === operandNumber : String(value).toUpperCase() === operand.toUpperCase();
@@ -154,6 +163,32 @@ export function criteriaMatcher(criteria: Scalar): (value: Scalar) => boolean {
         return false;
     }
   };
+}
+
+/** Compiles an Excel wildcard pattern (`*`, `?`, `~` escape) to a RegExp. */
+function wildcardRegex(pattern: string): RegExp {
+  let out = "^";
+  for (let index = 0; index < pattern.length; index += 1) {
+    const ch = pattern[index];
+    if (ch === "~") {
+      const next = pattern[index + 1];
+      if (next === "*" || next === "?" || next === "~") {
+        out += escapeRegex(next);
+        index += 1;
+        continue;
+      }
+      out += "~";
+      continue;
+    }
+    if (ch === "*") out += ".*";
+    else if (ch === "?") out += ".";
+    else out += escapeRegex(ch);
+  }
+  return new RegExp(`${out}$`, "i");
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** Pads ragged matrices to a common width so element-wise ops line up. */

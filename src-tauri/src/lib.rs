@@ -56,10 +56,7 @@ pub fn run() {
             // covered: <install>/resources/engines (bundler default) and
             // <exe dir>/engines (portable layout).
             if let Ok(resource_dir) = app.path().resource_dir() {
-                for candidate in [
-                    resource_dir.join("resources").join("engines"),
-                    resource_dir.join("engines"),
-                ] {
+                for candidate in [resource_dir.join("resources").join("engines"), resource_dir.join("engines")] {
                     if candidate.exists() {
                         pdfcore::engines::set_engine_base(candidate);
                         break;
@@ -94,11 +91,8 @@ pub fn run() {
             // never larger than the screen (laptops, high-DPI displays).
             #[cfg(desktop)]
             if let Some(window) = app.get_webview_window("main") {
-                let monitor = window
-                    .current_monitor()
-                    .ok()
-                    .flatten()
-                    .or_else(|| window.primary_monitor().ok().flatten());
+                let monitor =
+                    window.current_monitor().ok().flatten().or_else(|| window.primary_monitor().ok().flatten());
                 if let Some(monitor) = monitor {
                     // Work in physical pixels: WebView2 applies the Windows
                     // DPI scale to the CSS viewport, so sizing in logical units
@@ -170,6 +164,7 @@ pub fn run() {
             commands::ensure_dir,
             commands::suggest_output,
             commands::file_sizes,
+            commands::file_fingerprint,
             commands::open_document_file,
             commands::reveal_document_file,
             commands::dev_launch_context,

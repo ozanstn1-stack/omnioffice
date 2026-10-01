@@ -9,7 +9,10 @@ pub const MAX_INPUT_BYTES: u64 = 512 * 1024 * 1024;
 pub fn read_bytes(path: &Path) -> OfficeResult<Vec<u8>> {
     let metadata = std::fs::metadata(path).map_err(|error| OfficeError::from_io(error, path))?;
     if metadata.len() > MAX_INPUT_BYTES {
-        return Err(OfficeError::new(ErrorCode::TooLarge, format!("{} is larger than the supported limit.", path.display())));
+        return Err(OfficeError::new(
+            ErrorCode::TooLarge,
+            format!("{} is larger than the supported limit.", path.display()),
+        ));
     }
     std::fs::read(path).map_err(|error| OfficeError::from_io(error, path))
 }

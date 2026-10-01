@@ -14,14 +14,9 @@ const PLAIN_PREFIX: &str = "plain:";
 #[cfg(windows)]
 fn protect(plaintext: &[u8]) -> Result<Vec<u8>, String> {
     use windows::Win32::Foundation::LocalFree;
-    use windows::Win32::Security::Cryptography::{
-        CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
-    };
+    use windows::Win32::Security::Cryptography::{CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB};
     unsafe {
-        let input = CRYPT_INTEGER_BLOB {
-            cbData: plaintext.len() as u32,
-            pbData: plaintext.as_ptr() as *mut u8,
-        };
+        let input = CRYPT_INTEGER_BLOB { cbData: plaintext.len() as u32, pbData: plaintext.as_ptr() as *mut u8 };
         let mut output = CRYPT_INTEGER_BLOB::default();
         CryptProtectData(
             &input,
@@ -42,25 +37,12 @@ fn protect(plaintext: &[u8]) -> Result<Vec<u8>, String> {
 #[cfg(windows)]
 fn unprotect(blob: &[u8]) -> Result<Vec<u8>, String> {
     use windows::Win32::Foundation::LocalFree;
-    use windows::Win32::Security::Cryptography::{
-        CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
-    };
+    use windows::Win32::Security::Cryptography::{CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB};
     unsafe {
-        let input = CRYPT_INTEGER_BLOB {
-            cbData: blob.len() as u32,
-            pbData: blob.as_ptr() as *mut u8,
-        };
+        let input = CRYPT_INTEGER_BLOB { cbData: blob.len() as u32, pbData: blob.as_ptr() as *mut u8 };
         let mut output = CRYPT_INTEGER_BLOB::default();
-        CryptUnprotectData(
-            &input,
-            None,
-            None,
-            None,
-            None,
-            CRYPTPROTECT_UI_FORBIDDEN,
-            &mut output,
-        )
-        .map_err(|error| format!("DPAPI unprotect failed: {error}"))?;
+        CryptUnprotectData(&input, None, None, None, None, CRYPTPROTECT_UI_FORBIDDEN, &mut output)
+            .map_err(|error| format!("DPAPI unprotect failed: {error}"))?;
         let slice = std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec();
         LocalFree(Some(windows::Win32::Foundation::HLOCAL(output.pbData as *mut _)));
         Ok(slice)
@@ -93,9 +75,7 @@ pub fn save_api_key(path: &Path, key: &str) -> Result<bool, PdfError> {
     // A torn write here would make the key unrecoverable, so it must never
     // truncate the previous blob in place.
     crate::commands::write_atomic(path, payload.as_bytes())?;
-    Ok(std::fs::read_to_string(path)
-        .map(|content| content.starts_with(DPAPI_PREFIX))
-        .unwrap_or(false))
+    Ok(std::fs::read_to_string(path).map(|content| content.starts_with(DPAPI_PREFIX)).unwrap_or(false))
 }
 
 /// Reads the API key, decrypting it when it was stored with DPAPI.
@@ -131,7 +111,5 @@ fn base64_encode(bytes: &[u8]) -> String {
 
 fn base64_decode(value: &str) -> Option<Vec<u8>> {
     use base64::Engine;
-    base64::engine::general_purpose::STANDARD
-        .decode(value.trim())
-        .ok()
+    base64::engine::general_purpose::STANDARD.decode(value.trim()).ok()
 }

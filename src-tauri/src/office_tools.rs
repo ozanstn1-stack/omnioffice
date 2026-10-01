@@ -87,22 +87,25 @@ pub async fn office_images_to_pdf(request: ImagesToPdfRequest) -> Result<String,
             .iter()
             .map(|path| {
                 Ok(ImageItem {
-                    path: crate::paths::input_file(path)?
-                        .into_path_buf()
-                        .to_string_lossy()
-                        .to_string(),
+                    path: crate::paths::input_file(path)?.into_path_buf().to_string_lossy().to_string(),
                     rotation_delta: 0,
                 })
             })
             .collect::<Result<_, pdfcore::error::PdfError>>()
             .map_err(pdf_error)?;
         let output = crate::paths::output_file(&request.output).map_err(pdf_error)?.into_path_buf();
-        let result = pdfcore::images::images_to_pdf(&items, &options, &output, policy(&request.overwrite), &silent, &CancelToken::new())
-            .map_err(pdf_error)?;
+        let result = pdfcore::images::images_to_pdf(
+            &items,
+            &options,
+            &output,
+            policy(&request.overwrite),
+            &silent,
+            &CancelToken::new(),
+        )
+        .map_err(pdf_error)?;
         Ok(result.to_string_lossy().to_string())
     });
-    task.await
-        .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
 
 #[tauri::command]
@@ -132,8 +135,7 @@ pub async fn office_pdf_to_images(request: PdfToImagesRequest) -> Result<Vec<Str
         .map_err(pdf_error)?;
         Ok(result.files.iter().map(|file| file.path.clone()).collect())
     });
-    task.await
-        .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -150,18 +152,19 @@ pub async fn office_pdf_to_text(request: PdfTextRequest) -> Result<String, Offic
     let task = tauri::async_runtime::spawn_blocking(move || {
         let input = crate::paths::input_file(&request.input).map_err(pdf_error)?;
         let output = crate::paths::output_file(&request.output).map_err(pdf_error)?;
-        let pages = pdfcore::render::page_geometries(input.as_path(), request.password.as_deref()).map_err(pdf_error)?;
+        let pages =
+            pdfcore::render::page_geometries(input.as_path(), request.password.as_deref()).map_err(pdf_error)?;
         let mut text = String::new();
         for page in &pages {
-            let content = pdfcore::render::extract_page_text(input.as_path(), request.password.as_deref(), page.page).map_err(pdf_error)?;
+            let content = pdfcore::render::extract_page_text(input.as_path(), request.password.as_deref(), page.page)
+                .map_err(pdf_error)?;
             text.push_str(&content);
             text.push_str("\n\n");
         }
         officecore::io::write_atomic(output.as_path(), text.as_bytes()).map_err(payload)?;
         Ok(request.output)
     });
-    task.await
-        .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
 
 // ---------------------------------------------------------------------------
@@ -205,9 +208,10 @@ pub async fn office_pdf_add_form(request: PdfFormRequest) -> Result<String, Offi
         }
         let input = crate::paths::input_file(&request.input).map_err(pdf_error)?;
         let output_target = crate::paths::output_file(&request.output).map_err(pdf_error)?;
-        let mut document = pdfcore::docutil::load_document(input.as_path(), request.password.as_deref())
+        let mut document =
+            pdfcore::docutil::load_document(input.as_path(), request.password.as_deref()).map_err(pdf_error)?;
+        let output = pdfcore::docutil::resolve_output_path(output_target.as_path(), policy(&request.overwrite))
             .map_err(pdf_error)?;
-        let output = pdfcore::docutil::resolve_output_path(output_target.as_path(), policy(&request.overwrite)).map_err(pdf_error)?;
 
         let mut field_refs: Vec<lopdf::Object> = Vec::new();
         for (index, field) in request.fields.iter().enumerate() {
@@ -242,7 +246,16 @@ pub async fn office_pdf_add_form(request: PdfFormRequest) -> Result<String, Offi
             match field_kind {
                 "checkbox" => {
                     widget.set("FT", lopdf::Object::Name(b"Btn".to_vec()));
-                    widget.set("V", lopdf::Object::Name(if field.value == "true" || field.value == "1" || field.value.eq_ignore_ascii_case("on") { b"Yes".to_vec() } else { b"Off".to_vec() }));
+                    widget.set(
+                        "V",
+                        lopdf::Object::Name(
+                            if field.value == "true" || field.value == "1" || field.value.eq_ignore_ascii_case("on") {
+                                b"Yes".to_vec()
+                            } else {
+                                b"Off".to_vec()
+                            },
+                        ),
+                    );
                     let width = field.w.min(field.h);
                     appearance = Some(format!(
                         "q\n0.9 0.9 0.9 rg\n{:.2} {:.2} {:.2} {:.2} re f\n0.2 0.2 0.2 RG\n1 w\n{:.2} {:.2} {:.2} {:.2} re S\nQ\n",
@@ -273,7 +286,8 @@ pub async fn office_pdf_add_form(request: PdfFormRequest) -> Result<String, Offi
                 }
                 "dropdown" => {
                     widget.set("FT", lopdf::Object::Name(b"Ch".to_vec()));
-                    let options: Vec<lopdf::Object> = field.options.iter().map(|value| lopdf::Object::string_literal(value.clone())).collect();
+                    let options: Vec<lopdf::Object> =
+                        field.options.iter().map(|value| lopdf::Object::string_literal(value.clone())).collect();
                     widget.set("Opt", lopdf::Object::Array(options));
                     if !field.value.is_empty() {
                         widget.set("V", lopdf::Object::string_literal(field.value.clone()));
@@ -315,15 +329,18 @@ pub async fn office_pdf_add_form(request: PdfFormRequest) -> Result<String, Offi
                 }
             }
             if let Some(stream) = appearance {
-                let stream_id = document.add_object(lopdf::Stream::new(
-                    dictionary! {
-                        "Type" => "XObject",
-                        "Subtype" => "Form",
-                        "BBox" => vec![0.into(), 0.into(), field.w.into(), field.h.into()],
-                        "Resources" => dictionary! {},
-                    },
-                    stream.into_bytes(),
-                ).with_compression(true));
+                let stream_id = document.add_object(
+                    lopdf::Stream::new(
+                        dictionary! {
+                            "Type" => "XObject",
+                            "Subtype" => "Form",
+                            "BBox" => vec![0.into(), 0.into(), field.w.into(), field.h.into()],
+                            "Resources" => dictionary! {},
+                        },
+                        stream.into_bytes(),
+                    )
+                    .with_compression(true),
+                );
                 let mut resources = lopdf::Dictionary::new();
                 resources.set("XObject", dictionary! { "FRM" => lopdf::Object::Reference(stream_id) });
                 widget.set("AP", dictionary! { "N" => lopdf::Object::Reference(stream_id) });
@@ -370,8 +387,7 @@ pub async fn office_pdf_add_form(request: PdfFormRequest) -> Result<String, Offi
         pdfcore::docutil::save_document(&mut document, &output, true).map_err(pdf_error)?;
         Ok(output.to_string_lossy().to_string())
     });
-    task.await
-        .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
 
 /// Reading form fields back out of a PDF (used for previews and batch flows).
@@ -435,8 +451,7 @@ pub async fn office_pdf_list_form(input: String) -> Result<Vec<PdfFormField>, Of
             .collect();
         Ok(fields)
     });
-    task.await
-        .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
 
 #[allow(dead_code)]

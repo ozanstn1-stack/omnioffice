@@ -29,6 +29,7 @@ pub mod revisions;
 pub mod rtf;
 pub mod schema;
 pub mod textio;
+pub mod unit;
 pub mod xlsx;
 pub mod xml;
 pub mod zip;

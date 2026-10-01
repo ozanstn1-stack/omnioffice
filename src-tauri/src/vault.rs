@@ -311,8 +311,8 @@ fn office_to_pdf(error: OfficeError) -> PdfError {
 }
 
 fn write_json_atomic(path: &Path, value: &impl Serialize) -> Result<u64, PdfError> {
-    let bytes = serde_json::to_vec(value)
-        .map_err(|error| PdfError::Internal(format!("store serialize failed: {error}")))?;
+    let bytes =
+        serde_json::to_vec(value).map_err(|error| PdfError::Internal(format!("store serialize failed: {error}")))?;
     officecore::io::write_atomic(path, &bytes).map_err(office_to_pdf)?;
     Ok(bytes.len() as u64)
 }
@@ -324,10 +324,7 @@ pub fn load_config(root: &Path) -> VaultConfig {
     if !path.exists() {
         return VaultConfig::default();
     }
-    std::fs::read(&path)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<VaultConfig>(&bytes).ok())
-        .unwrap_or_default()
+    std::fs::read(&path).ok().and_then(|bytes| serde_json::from_slice::<VaultConfig>(&bytes).ok()).unwrap_or_default()
 }
 
 /// Saves the configuration and stamps `updated_at`.
@@ -375,10 +372,7 @@ fn read_stored_status(root: &Path) -> StoredStatus {
     if !path.exists() {
         return StoredStatus::default();
     }
-    std::fs::read(&path)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<StoredStatus>(&bytes).ok())
-        .unwrap_or_default()
+    std::fs::read(&path).ok().and_then(|bytes| serde_json::from_slice::<StoredStatus>(&bytes).ok()).unwrap_or_default()
 }
 
 fn write_stored_status(root: &Path, status: &StoredStatus) -> Result<(), PdfError> {
@@ -551,7 +545,13 @@ fn truncate_chars(text: &str, max: usize) -> (String, bool) {
     (out, truncated)
 }
 
-fn push_location(locations: &mut Vec<TextLocation>, label: String, text: &str, path: &Path, warnings: &mut WarningSink) {
+fn push_location(
+    locations: &mut Vec<TextLocation>,
+    label: String,
+    text: &str,
+    path: &Path,
+    warnings: &mut WarningSink,
+) {
     let trimmed = text.trim();
     if trimmed.is_empty() {
         return;
@@ -572,7 +572,12 @@ fn report_reader_warnings(read_warnings: &[String], path: &Path, warnings: &mut 
     }
 }
 
-fn writer_extract(document: &TextDocument, read_warnings: &[String], path: &Path, warnings: &mut WarningSink) -> ExtractedDocument {
+fn writer_extract(
+    document: &TextDocument,
+    read_warnings: &[String],
+    path: &Path,
+    warnings: &mut WarningSink,
+) -> ExtractedDocument {
     report_reader_warnings(read_warnings, path, warnings);
     let mut locations = Vec::new();
     let mut headings = Vec::new();
@@ -607,12 +612,7 @@ fn writer_extract(document: &TextDocument, read_warnings: &[String], path: &Path
             }
         }
     }
-    ExtractedDocument {
-        title: document.title.clone(),
-        headings,
-        text: document.plain_text(),
-        locations,
-    }
+    ExtractedDocument { title: document.title.clone(), headings, text: document.plain_text(), locations }
 }
 
 fn cell_value_text(value: &CellValue) -> Option<String> {
@@ -629,7 +629,12 @@ fn cell_value_text(value: &CellValue) -> Option<String> {
     }
 }
 
-fn workbook_extract(workbook: &Workbook, read_warnings: &[String], path: &Path, warnings: &mut WarningSink) -> ExtractedDocument {
+fn workbook_extract(
+    workbook: &Workbook,
+    read_warnings: &[String],
+    path: &Path,
+    warnings: &mut WarningSink,
+) -> ExtractedDocument {
     report_reader_warnings(read_warnings, path, warnings);
     let mut locations = Vec::new();
     let mut all_text = String::new();
@@ -673,15 +678,15 @@ fn workbook_extract(workbook: &Workbook, read_warnings: &[String], path: &Path, 
         all_text.push('\n');
         push_location(&mut locations, label, &text, path, warnings);
     }
-    ExtractedDocument {
-        title: workbook.title.clone(),
-        headings: Vec::new(),
-        text: all_text,
-        locations,
-    }
+    ExtractedDocument { title: workbook.title.clone(), headings: Vec::new(), text: all_text, locations }
 }
 
-fn deck_extract(deck: &officecore::model::Deck, read_warnings: &[String], path: &Path, warnings: &mut WarningSink) -> ExtractedDocument {
+fn deck_extract(
+    deck: &officecore::model::Deck,
+    read_warnings: &[String],
+    path: &Path,
+    warnings: &mut WarningSink,
+) -> ExtractedDocument {
     report_reader_warnings(read_warnings, path, warnings);
     let mut locations = Vec::new();
     let mut all_text = String::new();
@@ -715,12 +720,7 @@ fn deck_extract(deck: &officecore::model::Deck, read_warnings: &[String], path: 
         all_text.push('\n');
         push_location(&mut locations, label, &text, path, warnings);
     }
-    ExtractedDocument {
-        title: deck.title.clone(),
-        headings: Vec::new(),
-        text: all_text,
-        locations,
-    }
+    ExtractedDocument { title: deck.title.clone(), headings: Vec::new(), text: all_text, locations }
 }
 
 /// Best-effort HTML to text: drops `<...>` tags. Script/style bodies stay (the
@@ -745,7 +745,10 @@ fn strip_html_tags(text: &str) -> String {
 fn pdf_extract(path: &Path, warnings: &mut WarningSink) -> ExtractedDocument {
     let mut extracted = metadata_only(path);
     if !pdfcore::render::is_available() {
-        warnings.push(format!("{}: the PDF engine is not available; the file is indexed without a text layer.", path.display()));
+        warnings.push(format!(
+            "{}: the PDF engine is not available; the file is indexed without a text layer.",
+            path.display()
+        ));
         return extracted;
     }
     let pdfium = match pdfcore::render::pdfium_instance() {
@@ -834,11 +837,7 @@ fn extract_path(path: &Path, extension: &str, warnings: &mut WarningSink) -> Ext
                     return metadata_only(path);
                 }
             };
-            let text = if extension == "html" || extension == "htm" {
-                strip_html_tags(&decoded)
-            } else {
-                decoded
-            };
+            let text = if extension == "html" || extension == "htm" { strip_html_tags(&decoded) } else { decoded };
             let title = officecore::io::file_stem(path);
             let document = textio::text_to_document(&text, &title);
             writer_extract(&document, &[], path, warnings)
@@ -904,8 +903,8 @@ fn extract_path(path: &Path, extension: &str, warnings: &mut WarningSink) -> Ext
 fn is_supported(extension: &str, config: &VaultConfig) -> bool {
     match extension {
         "pdf" => config.include_pdf,
-        "docx" | "docm" | "dotx" | "odt" | "rtf" | "txt" | "md" | "markdown" | "html" | "htm" | "xlsx" | "xlsm" | "xls"
-        | "ods" | "csv" | "tsv" | "pptx" | "pptm" | "odp" => config.include_office,
+        "docx" | "docm" | "dotx" | "odt" | "rtf" | "txt" | "md" | "markdown" | "html" | "htm" | "xlsx" | "xlsm"
+        | "xls" | "ods" | "csv" | "tsv" | "pptx" | "pptm" | "odp" => config.include_office,
         _ => false,
     }
 }
@@ -946,7 +945,12 @@ fn path_is_under(path_key: &str, folder_key: &str) -> bool {
 /// testable. `request.folders` never adds discovery roots - only folders
 /// already saved in the configuration are walked. On Android the app-private
 /// import directory is always an additional root (imported documents).
-pub fn scan_folders(root: &Path, config: &VaultConfig, request: &VaultScanRequest, cancel: &CancelToken) -> ScanOutcome {
+pub fn scan_folders(
+    root: &Path,
+    config: &VaultConfig,
+    request: &VaultScanRequest,
+    cancel: &CancelToken,
+) -> ScanOutcome {
     scan_folders_with(root, config, request, cancel, cfg!(target_os = "android"))
 }
 
@@ -962,11 +966,8 @@ pub fn scan_folders_with(
 ) -> ScanOutcome {
     let (mut index, load_warnings) = load_index(root);
     let mut warnings = WarningSink::new(load_warnings);
-    let previous: HashMap<String, VaultDocument> = index
-        .documents
-        .drain(..)
-        .map(|document| (normalize_path_key(&document.path), document))
-        .collect();
+    let previous: HashMap<String, VaultDocument> =
+        index.documents.drain(..).map(|document| (normalize_path_key(&document.path), document)).collect();
 
     let mut roots: Vec<(String, PathBuf)> = Vec::new();
     for folder in &config.folders {
@@ -1129,7 +1130,10 @@ pub fn scan_folders_with(
             let mut full_text = extracted.text;
             let (bounded, was_truncated) = truncate_chars(&full_text, MAX_EXTRACTED_CHARS);
             if was_truncated {
-                warnings.push(format!("{}: extracted text was truncated to {MAX_EXTRACTED_CHARS} characters.", path.display()));
+                warnings.push(format!(
+                    "{}: extracted text was truncated to {MAX_EXTRACTED_CHARS} characters.",
+                    path.display()
+                ));
             }
             full_text = bounded;
             let id = document_id(&path_text);
@@ -1786,10 +1790,7 @@ fn evaluate_document(
             best_snippet = make_snippet(&document.title, &needles);
         } else if headings.iter().any(|heading| needles_match_any(heading, &needles)) {
             best_label = "heading".into();
-            if let Some(heading) = document
-                .headings
-                .iter()
-                .find(|heading| needles_match_any(&fold(heading), &needles))
+            if let Some(heading) = document.headings.iter().find(|heading| needles_match_any(&fold(heading), &needles))
             {
                 best_snippet = make_snippet(heading, &needles);
             }
@@ -1809,13 +1810,7 @@ fn evaluate_document(
         score += 20.0;
     }
 
-    Some(ScoredHit {
-        document: 0,
-        score,
-        label: best_label,
-        snippet: best_snippet,
-        matched_terms,
-    })
+    Some(ScoredHit { document: 0, score, label: best_label, snippet: best_snippet, matched_terms })
 }
 
 /// Pure search over an in-memory index. Modes: `exact` (whole query as a
@@ -1901,12 +1896,7 @@ pub fn search_index(index: &VaultIndex, request: &VaultSearchRequest) -> VaultSe
         })
         .collect();
 
-    VaultSearchResponse {
-        hits,
-        total,
-        took_ms: started.elapsed().as_millis() as u64,
-        index_missing: false,
-    }
+    VaultSearchResponse { hits, total, took_ms: started.elapsed().as_millis() as u64, index_missing: false }
 }
 
 /// Search on disk: `index_missing` is true when there is no usable index.
@@ -1958,7 +1948,11 @@ pub fn vault_configure(app: AppHandle, config: VaultConfig) -> Result<VaultConfi
 /// user-selected folders are added to the saved configuration first; folders
 /// outside the saved configuration are never walked.
 #[tauri::command]
-pub async fn vault_scan(app: AppHandle, registry: State<'_, JobRegistry>, request: VaultScanRequest) -> Result<VaultStatus, PdfError> {
+pub async fn vault_scan(
+    app: AppHandle,
+    registry: State<'_, JobRegistry>,
+    request: VaultScanRequest,
+) -> Result<VaultStatus, PdfError> {
     let job_id = "vault-scan".to_string();
     let cancel = registry.register(&job_id);
     let app_for_work = app.clone();
@@ -2072,13 +2066,7 @@ mod tests {
     }
 
     fn test_config(folders: Vec<String>) -> VaultConfig {
-        VaultConfig {
-            folders,
-            include_pdf: false,
-            include_office: true,
-            max_file_mb: 8,
-            updated_at: String::new(),
-        }
+        VaultConfig { folders, include_pdf: false, include_office: true, max_file_mb: 8, updated_at: String::new() }
     }
 
     fn scan_request() -> VaultScanRequest {
@@ -2086,11 +2074,7 @@ mod tests {
     }
 
     fn document_with_extension<'a>(index: &'a VaultIndex, extension: &str) -> &'a VaultDocument {
-        index
-            .documents
-            .iter()
-            .find(|document| document.extension == extension)
-            .expect("document with extension")
+        index.documents.iter().find(|document| document.extension == extension).expect("document with extension")
     }
 
     fn search_request(query: &str) -> VaultSearchRequest {
@@ -2272,7 +2256,8 @@ mod tests {
         assert_eq!(second.index.documents.len(), 2);
 
         // A changed file is re-extracted even without a full rescan.
-        std::fs::write(&txt_path, "Hello vault world\n\nSecond paragraph about jars and a much longer tail of words.").expect("rewrite");
+        std::fs::write(&txt_path, "Hello vault world\n\nSecond paragraph about jars and a much longer tail of words.")
+            .expect("rewrite");
         let third = scan_folders(&root, &config, &scan_request(), &CancelToken::new());
         assert_eq!(third.indexed, 1);
         assert_eq!(third.skipped, 1);
@@ -2451,27 +2436,35 @@ mod tests {
         assert_eq!(default_and.hits[0].file_name, "beta.md");
         assert!(default_and.hits[0].matched_terms.iter().any(|term| term == "alpha"));
 
-        let exact = search_index(&index, &VaultSearchRequest { query: "rown fo".into(), exact: true, ..Default::default() });
+        let exact =
+            search_index(&index, &VaultSearchRequest { query: "rown fo".into(), exact: true, ..Default::default() });
         assert_eq!(exact.total, 1);
         assert_eq!(exact.hits[0].file_name, "alpha.txt");
         assert!(exact.hits[0].snippet.contains("<<rown fo>>"));
 
-        let phrase = search_index(&index, &VaultSearchRequest { query: "quick brown".into(), phrase: true, ..Default::default() });
+        let phrase = search_index(
+            &index,
+            &VaultSearchRequest { query: "quick brown".into(), phrase: true, ..Default::default() },
+        );
         assert_eq!(phrase.total, 1);
         assert_eq!(phrase.hits[0].file_name, "alpha.txt");
 
-        let wrong_order = search_index(&index, &VaultSearchRequest { query: "fox brown".into(), phrase: true, ..Default::default() });
+        let wrong_order =
+            search_index(&index, &VaultSearchRequest { query: "fox brown".into(), phrase: true, ..Default::default() });
         assert_eq!(wrong_order.total, 0, "phrase requires adjacent words in order");
 
-        let not_adjacent = search_index(&index, &VaultSearchRequest { query: "quick fox".into(), phrase: true, ..Default::default() });
+        let not_adjacent =
+            search_index(&index, &VaultSearchRequest { query: "quick fox".into(), phrase: true, ..Default::default() });
         assert_eq!(not_adjacent.total, 0);
 
-        let fuzzy = search_index(&index, &VaultSearchRequest { query: "colr".into(), fuzzy: true, ..Default::default() });
+        let fuzzy =
+            search_index(&index, &VaultSearchRequest { query: "colr".into(), fuzzy: true, ..Default::default() });
         assert_eq!(fuzzy.total, 1);
         assert_eq!(fuzzy.hits[0].file_name, "alpha.txt");
         assert!(fuzzy.hits[0].snippet.to_lowercase().contains("<<color>>"), "fuzzy highlights the matched word");
 
-        let short_fuzzy = search_index(&index, &VaultSearchRequest { query: "cat".into(), fuzzy: true, ..Default::default() });
+        let short_fuzzy =
+            search_index(&index, &VaultSearchRequest { query: "cat".into(), fuzzy: true, ..Default::default() });
         assert_eq!(short_fuzzy.total, 0, "below the fuzzy word-length guard only substrings match");
 
         let headings = search_index(&index, &search_request("quick start"));
@@ -2480,10 +2473,7 @@ mod tests {
 
         let filename_only = search_index(&index, &search_request("gamma"));
         assert!(filename_only.total >= 1);
-        assert!(filename_only
-            .hits
-            .iter()
-            .any(|hit| hit.file_name == "gamma.csv" && hit.match_label == "file name"));
+        assert!(filename_only.hits.iter().any(|hit| hit.file_name == "gamma.csv" && hit.match_label == "file name"));
 
         let empty = search_index(&index, &search_request("   "));
         assert_eq!(empty.total, 0);
@@ -2493,28 +2483,57 @@ mod tests {
     fn search_filters_snippets_and_paging() {
         let index = sample_index();
 
-        let by_extension = search_index(&index, &VaultSearchRequest { query: "alpha".into(), extensions: vec![".MD".into()], ..Default::default() });
+        let by_extension = search_index(
+            &index,
+            &VaultSearchRequest { query: "alpha".into(), extensions: vec![".MD".into()], ..Default::default() },
+        );
         assert_eq!(by_extension.total, 1);
         assert_eq!(by_extension.hits[0].extension, "md");
 
-        let in_folder = search_index(&index, &VaultSearchRequest { query: "alpha".into(), folder: Some("C:/vault".into()), ..Default::default() });
+        let in_folder = search_index(
+            &index,
+            &VaultSearchRequest { query: "alpha".into(), folder: Some("C:/vault".into()), ..Default::default() },
+        );
         assert_eq!(in_folder.total, 2);
-        let in_sub = search_index(&index, &VaultSearchRequest { query: "alpha".into(), folder: Some("C:/vault/sub".into()), ..Default::default() });
+        let in_sub = search_index(
+            &index,
+            &VaultSearchRequest { query: "alpha".into(), folder: Some("C:/vault/sub".into()), ..Default::default() },
+        );
         assert_eq!(in_sub.total, 1);
         assert_eq!(in_sub.hits[0].file_name, "beta.md");
-        let boundary = search_index(&index, &VaultSearchRequest { query: "alpha".into(), folder: Some("C:/vau".into()), ..Default::default() });
+        let boundary = search_index(
+            &index,
+            &VaultSearchRequest { query: "alpha".into(), folder: Some("C:/vau".into()), ..Default::default() },
+        );
         assert_eq!(boundary.total, 0, "folder filters respect path boundaries");
 
-        let after = search_index(&index, &VaultSearchRequest { query: "alpha".into(), modified_after: Some("2026-02-15T00:00:00Z".into()), ..Default::default() });
+        let after = search_index(
+            &index,
+            &VaultSearchRequest {
+                query: "alpha".into(),
+                modified_after: Some("2026-02-15T00:00:00Z".into()),
+                ..Default::default()
+            },
+        );
         assert_eq!(after.total, 1);
         assert_eq!(after.hits[0].file_name, "gamma.csv");
-        let before = search_index(&index, &VaultSearchRequest { query: "alpha".into(), modified_before: Some("2026-02-15T00:00:00Z".into()), ..Default::default() });
+        let before = search_index(
+            &index,
+            &VaultSearchRequest {
+                query: "alpha".into(),
+                modified_before: Some("2026-02-15T00:00:00Z".into()),
+                ..Default::default()
+            },
+        );
         assert_eq!(before.total, 2);
 
         let paged = search_index(&index, &VaultSearchRequest { query: "alpha".into(), limit: 2, ..Default::default() });
         assert_eq!(paged.total, 3);
         assert_eq!(paged.hits.len(), 2);
-        let offset = search_index(&index, &VaultSearchRequest { query: "alpha".into(), limit: 10, offset: 1, ..Default::default() });
+        let offset = search_index(
+            &index,
+            &VaultSearchRequest { query: "alpha".into(), limit: 10, offset: 1, ..Default::default() },
+        );
         assert_eq!(offset.total, 3);
         assert_eq!(offset.hits.len(), 2);
 
@@ -2571,11 +2590,7 @@ mod tests {
 
         let report = import_files(
             &root,
-            &[
-                report_source.display().to_string(),
-                duplicate.display().to_string(),
-                notes.display().to_string(),
-            ],
+            &[report_source.display().to_string(), duplicate.display().to_string(), notes.display().to_string()],
         );
         assert_eq!(report.imported.len(), 2);
         assert_eq!(report.skipped.len(), 1);
