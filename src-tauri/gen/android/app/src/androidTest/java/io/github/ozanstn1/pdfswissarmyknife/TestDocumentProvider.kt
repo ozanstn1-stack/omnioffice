@@ -26,15 +26,30 @@ class TestDocumentProvider : ContentProvider() {
 
     fun uriFor(name: String): Uri = Uri.parse("content://$AUTHORITY/$name")
 
-    private fun root(): File = InstrumentationRegistry.getInstrumentation().context.cacheDir
-
-    /** Writes the fixture a test will stream through the provider. */
-    fun stage(name: String, body: ByteArray) {
-      val directory = File(root(), "testdocuments").apply { mkdirs() }
-      FileOutputStream(File(directory, name)).use { it.write(body) }
+    private fun candidateRoots(): List<File> {
+      val instrumentation = InstrumentationRegistry.getInstrumentation()
+      return listOf(
+        File(instrumentation.context.cacheDir, "testdocuments"),
+        File(instrumentation.targetContext.cacheDir, "testdocuments"),
+        context?.let { File(it.cacheDir, "testdocuments") },
+      ).filterNotNull()
     }
 
-    private fun fileFor(name: String): File = File(File(root(), "testdocuments"), name)
+    /** Writes the fixture into every candidate root a provider might read. */
+    fun stage(name: String, body: ByteArray) {
+      val instrumentation = InstrumentationRegistry.getInstrumentation()
+      val roots = listOf(
+        File(instrumentation.context.cacheDir, "testdocuments"),
+        File(instrumentation.targetContext.cacheDir, "testdocuments"),
+      )
+      for (directory in roots) {
+        directory.mkdirs()
+        FileOutputStream(File(directory, name)).use { it.write(body) }
+      }
+    }
+
+    private fun fileFor(name: String): File? =
+      candidateRoots().map { File(it, name) }.firstOrNull { it.isFile }
   }
 
   override fun onCreate(): Boolean = true
@@ -53,7 +68,7 @@ class TestDocumentProvider : ContentProvider() {
     cursor.addRow(columns.map { column ->
       when (column) {
         OpenableColumns.DISPLAY_NAME -> name
-        OpenableColumns.SIZE -> file.length()
+        OpenableColumns.SIZE -> file?.length() ?: 0L
         else -> null
       }
     })
@@ -64,8 +79,7 @@ class TestDocumentProvider : ContentProvider() {
 
   override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor? {
     val name = uri.lastPathSegment ?: return null
-    val file = fileFor(name)
-    if (!file.isFile) return null
+    val file = fileFor(name) ?: return null
     return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
   }
 
