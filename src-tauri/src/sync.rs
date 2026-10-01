@@ -87,6 +87,7 @@ where
     T: Send + 'static,
     F: FnOnce() -> Result<T, PdfError> + Send + 'static,
 {
+    let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(work)
         .await
         .map_err(|error| PdfError::Internal(format!("sync worker failed: {error}")))?
@@ -834,8 +835,11 @@ pub async fn sync_test_connection(app: AppHandle) -> Result<SyncTestResult, PdfE
 
 #[tauri::command]
 pub async fn sync_status(app: AppHandle, local_path: String) -> Result<SyncStatusView, PdfError> {
+    // The webview is untrusted: every sync path goes through the same
+    // centralized validation as the rest of the command surface (absolute,
+    // regular file, no traversal, no device names).
+    let path = crate::paths::input_file(&local_path)?.into_path_buf();
     run_blocking(move || {
-        let path = PathBuf::from(&local_path);
         let evaluated = evaluate(&app, &path)?;
         let state = evaluated.state();
         // Adopting an already-synced file is not a data movement: it only
@@ -885,7 +889,8 @@ pub async fn sync_status(app: AppHandle, local_path: String) -> Result<SyncStatu
 
 #[tauri::command]
 pub async fn sync_upload(app: AppHandle, local_path: String) -> Result<SyncStatusView, PdfError> {
-    run_blocking(move || upload_core(&app, Path::new(&local_path), false)).await
+    let path = crate::paths::input_file(&local_path)?.into_path_buf();
+    run_blocking(move || upload_core(&app, &path, false)).await
 }
 
 #[tauri::command]
@@ -894,7 +899,9 @@ pub async fn sync_download(
     remote_name: String,
     local_path: String,
 ) -> Result<SyncStatusView, PdfError> {
-    run_blocking(move || download_core(&app, &remote_name, Path::new(&local_path), false)).await
+    // The destination may not exist yet, but its parent folder must.
+    let target = crate::paths::output_file(&local_path)?.into_path_buf();
+    run_blocking(move || download_core(&app, &remote_name, &target, false)).await
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -936,8 +943,8 @@ pub async fn sync_resolve(
     local_path: String,
     resolution: String,
 ) -> Result<SyncStatusView, PdfError> {
+    let path = crate::paths::input_file(&local_path)?.into_path_buf();
     run_blocking(move || {
-        let path = PathBuf::from(&local_path);
         let resolution = Resolution::parse(&resolution).ok_or_else(|| {
             PdfError::coded(
                 ErrorCode::InvalidInput,
@@ -983,7 +990,9 @@ pub async fn sync_resolve(
 /// This works even while sync is turned off (local cleanup).
 #[tauri::command]
 pub fn sync_forget(app: AppHandle, local_path: String) -> Result<(), PdfError> {
-    let path = PathBuf::from(&local_path);
+    // Forgetting must also work for a file that no longer exists, so only the
+    // path shape is validated (still absolute, no traversal/device names).
+    let path = crate::paths::lexical(&local_path)?.into_path_buf();
     metadata::delete_meta(&config_dir(&app)?, &path).map_err(sync_error)
 }
 

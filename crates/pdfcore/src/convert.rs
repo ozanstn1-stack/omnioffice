@@ -80,7 +80,9 @@ pub fn pdf_to_images(
         let bytes = encode_image(&rendered, format, jpeg_quality, grayscale)?;
         let name = format!("{prefix}_{page:03}.{}", format.extension());
         let target_path = resolve_output_path(&output_dir.join(name), policy)?;
-        std::fs::write(&target_path, &bytes).map_err(PdfError::from_io)?;
+        // Atomic: an interrupted conversion must not truncate an image that is
+        // already there under the Replace policy.
+        crate::docutil::write_bytes_atomic(&target_path, &bytes)?;
         total_bytes += bytes.len() as u64;
         files.push(ImageOutput {
             path: target_path.display().to_string(),

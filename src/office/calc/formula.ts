@@ -155,6 +155,19 @@ function tokenize(input: string): Token[] {
       tokens.push({ type: "name", value: sheet });
       continue;
     }
+    // Error literals (`#N/A`, `#DIV/0!`, ...) start with `#`, which no other
+    // token can. They used to fall into the unknown-character branch and turn
+    // the whole formula into `#VALUE!`, so IFERROR(#N/A, ...) never worked.
+    if (ch === "#") {
+      const literal = /^#(REF!|VALUE!|NAME\?|DIV\/0!|N\/A|NUM!|CIRC!|SPILL!)/.exec(
+        input.slice(index).toUpperCase(),
+      );
+      if (literal) {
+        tokens.push({ type: "error", value: literal[0] });
+        index += literal[0].length;
+        continue;
+      }
+    }
     if (/[A-Za-z_$]/.test(ch)) {
       const start = index;
       while (index < input.length && /[A-Za-z0-9_$.]/.test(input[index])) index += 1;
@@ -173,10 +186,6 @@ function tokenize(input: string): Token[] {
       const upper = word.toUpperCase();
       if (upper === "TRUE" || upper === "FALSE") {
         tokens.push({ type: "bool", value: upper });
-        continue;
-      }
-      if (/^#(REF|VALUE|NAME|DIV\/0|N\/A|NUM|CIRC|SPILL)[!?]$/i.test(upper)) {
-        tokens.push({ type: "error", value: upper });
         continue;
       }
       // A function call is an identifier immediately followed by "(".
@@ -736,15 +745,24 @@ function applyBinary(op: string, left: Scalar, right: Scalar): Scalar {
   }
 }
 
-/** Element-wise operator over one or two matrices, padding to a common shape. */
+/** Element-wise operator over one or two matrices, padding to a common shape.
+ * A 1x1 operand is broadcast over the whole other matrix (Excel semantics):
+ * without this, `=A1:A3*2` only multiplied the first row and padded the rest
+ * with empty cells that coerce to 0. */
 function broadcastBinary(op: string, left: CellMatrix, right: CellMatrix): CellMatrix {
   const height = Math.max(left.length, right.length);
   const width = Math.max(1, ...left.map((row) => row.length), ...right.map((row) => row.length));
+  const isSingle = (matrix: CellMatrix) =>
+    matrix.length === 1 && Math.max(1, ...matrix.map((row) => row.length)) === 1;
+  const leftScalar = isSingle(left);
+  const rightScalar = isSingle(right);
   const out: CellMatrix = [];
   for (let row = 0; row < height; row += 1) {
     const line: Scalar[] = [];
     for (let col = 0; col < width; col += 1) {
-      line.push(applyBinary(op, left[row]?.[col] ?? "", right[row]?.[col] ?? ""));
+      const leftCell = leftScalar ? (left[0]?.[0] ?? "") : (left[row]?.[col] ?? "");
+      const rightCell = rightScalar ? (right[0]?.[0] ?? "") : (right[row]?.[col] ?? "");
+      line.push(applyBinary(op, leftCell, rightCell));
     }
     out.push(line);
   }

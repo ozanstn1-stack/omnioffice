@@ -128,7 +128,10 @@ fn handle_connection(mut stream: TcpStream, state: Arc<Mutex<ServerState>>) {
     body.truncate(content_length);
 
     let mut guard = state.lock().unwrap();
-    guard.requests.push(format!("{method} {path} depth={depth}"));
+    let if_match_logged = headers.get("if-match").cloned().unwrap_or_default();
+    guard
+        .requests
+        .push(format!("{method} {path} depth={depth} if-match={if_match_logged}"));
     let key = normalize_key(path);
 
     let response: Vec<u8> = match method {
@@ -174,9 +177,12 @@ fn handle_connection(mut stream: TcpStream, state: Arc<Mutex<ServerState>>) {
             respond(201, "text/plain", Vec::new())
         }
         "PUT" => {
+            // Strict, RFC 7232-style comparison: Sabre/Nextcloud compare the
+            // quoted entity-tag character for character, so an unquoted
+            // `If-Match` from the client is a 412 here too.
             if let Some(if_match) = headers.get("if-match") {
                 match guard.objects.get(&key) {
-                    Some(existing) if strip_quotes(&existing.etag) == strip_quotes(if_match) => {}
+                    Some(existing) if &existing.etag == if_match => {}
                     Some(_) => {
                         drop(guard);
                         let _ = stream.write_all(
@@ -210,7 +216,7 @@ fn handle_connection(mut stream: TcpStream, state: Arc<Mutex<ServerState>>) {
         "DELETE" => {
             if let Some(if_match) = headers.get("if-match") {
                 if let Some(existing) = guard.objects.get(&key) {
-                    if strip_quotes(&existing.etag) != strip_quotes(if_match) {
+                    if &existing.etag != if_match {
                         drop(guard);
                         let _ = stream.write_all(
                             b"HTTP/1.1 412 Precondition Failed\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
@@ -233,12 +239,6 @@ fn handle_connection(mut stream: TcpStream, state: Arc<Mutex<ServerState>>) {
 fn normalize_key(path: &str) -> String {
     let trimmed = path.trim_start_matches("/dav").trim_start_matches('/').trim_end_matches('/');
     percent_decode(trimmed)
-}
-
-/// Compares ETags ignoring the surrounding quotes, matching the provider's
-/// normalization (it strips `W/` and quotes before sending `If-Match`).
-fn strip_quotes(etag: &str) -> String {
-    etag.trim().trim_matches('"').to_string()
 }
 
 fn percent_decode(value: &str) -> String {
@@ -375,5 +375,14 @@ fn requests_carry_conditional_headers_and_depth() {
     assert!(
         requests.iter().any(|request| request.starts_with("PROPFIND") && request.contains("depth=1")),
         "listing must use Depth: 1, got {requests:?}"
+    );
+
+    // The conditional PUT must send an RFC 7232 quoted entity-tag; a bare
+    // token is rejected by strict servers (Sabre/Nextcloud) with 412.
+    let etag = etag.expect("server returned an etag");
+    let quoted = format!("if-match=\"{etag}\"");
+    assert!(
+        requests.iter().any(|request| request.starts_with("PUT") && request.contains(&quoted)),
+        "conditional PUT must quote the If-Match etag, got {requests:?}"
     );
 }

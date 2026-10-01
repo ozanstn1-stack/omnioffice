@@ -338,7 +338,8 @@ export interface SummaryOptions {
 }
 
 export interface TranslateOptions {
-  target_language: string;
+  /** The Rust struct is `#[serde(rename_all = "camelCase")]`. */
+  targetLanguage: string;
   bilingual: boolean;
 }
 
@@ -407,7 +408,7 @@ export interface AiModelOption {
 export interface AiExamplePrompts {
   summarize: string[];
   ask: string[];
-  translate_targets: string[];
+  translateTargets: string[];
 }
 
 export interface AiSummarizeRequest {

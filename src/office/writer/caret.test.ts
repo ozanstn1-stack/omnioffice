@@ -8,7 +8,7 @@
  * the hit test and pin the DOM-to-text offset arithmetic.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { offsetFromPoint, paragraphAtPoint, textOffsetWithin } from "./caret";
+import { caretOffset, offsetFromPoint, paragraphAtPoint, setCaretOffset, textOffsetWithin } from "./caret";
 
 function buildParagraph(html: string, blockIndex = 0): HTMLElement {
   const row = document.createElement("div");
@@ -83,5 +83,27 @@ describe("caret point mapping", () => {
     const restore = stubCaretRangeFromPoint(div, 0);
     expect(paragraphAtPoint(document, 1, 1)).toBeNull();
     restore();
+  });
+
+  it("does not count note markers or fields in the model offset", () => {
+    // Regression: the rendered `<sup>1</sup>` was counted, so structural edits
+    // around a footnote were offset by the marker's glyph length.
+    const para = buildParagraph('ab<sup data-note-id="n1">1</sup>cd');
+    const after = Array.from(para.childNodes).find(
+      (node) => node.nodeType === Node.TEXT_NODE && node.textContent === "cd",
+    ) as Text;
+    expect(textOffsetWithin(para, after, 0)).toBe(2);
+    expect(textOffsetWithin(para, after, 2)).toBe(4);
+    // A caret inside the marker snaps to its model position (before it).
+    const marker = para.querySelector("sup")?.firstChild as Text;
+    expect(textOffsetWithin(para, marker, 1)).toBe(2);
+  });
+
+  it("restores a model offset without landing inside an atomic marker", () => {
+    const para = buildParagraph('ab<sup data-note-id="n1">1</sup>cd');
+    setCaretOffset(para, 2);
+    const anchor = window.getSelection()?.anchorNode;
+    expect(anchor?.parentElement?.closest("[data-note-id]") ?? null).toBeNull();
+    expect(caretOffset(para)).toBe(2);
   });
 });

@@ -287,10 +287,26 @@ export const useJobs = create<JobsState>((set, get) => ({
   },
   progress: (id, update) => {
     set((state) => {
-      let found = false;
+      const existing = state.jobs.find((job) => job.id === id);
+      if (!existing) {
+        // The Rust side tracks jobs a screen never registered through `start`
+        // (every PDF tool does; before this, live rows were invisible until an
+        // app restart because `progress` only updated existing entries).
+        const created: BackgroundJob = {
+          id,
+          kind: "pdf",
+          title: id,
+          status: "running",
+          stage: update.stage ?? "",
+          current: update.current ?? 0,
+          total: update.total ?? 0,
+          message: update.message,
+          startedAt: Date.now(),
+        };
+        return { jobs: prune([created, ...state.jobs]) };
+      }
       const jobs = state.jobs.map((job) => {
         if (job.id !== id) return job;
-        found = true;
         const next = { ...job };
         if (update.stage !== undefined) next.stage = update.stage;
         if (update.current !== undefined) next.current = update.current;
@@ -298,7 +314,7 @@ export const useJobs = create<JobsState>((set, get) => ({
         if (update.message !== undefined) next.message = update.message;
         return next;
       });
-      return found ? { jobs } : state;
+      return { jobs };
     });
     // Mirror AI progress (Rust emits `ai:progress` itself, not job:progress).
     const job = get().jobs.find((entry) => entry.id === id);

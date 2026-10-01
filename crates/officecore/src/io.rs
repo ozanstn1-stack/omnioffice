@@ -14,8 +14,15 @@ pub fn read_bytes(path: &Path) -> OfficeResult<Vec<u8>> {
     std::fs::read(path).map_err(|error| OfficeError::from_io(error, path))
 }
 
-/// Writes atomically: a temp sibling is written first and then renamed over the
-/// target, so a crash mid-write never leaves a half-written document behind.
+/// Writes atomically: a temp sibling is written, flushed to stable storage and
+/// then renamed over the target, so a crash mid-write never leaves a
+/// half-written document behind.
+///
+/// The rename intentionally does **not** remove the target first: `fs::rename`
+/// replaces an existing file atomically on both Unix and Windows
+/// (`MoveFileExW` with `MOVEFILE_REPLACE_EXISTING`). The previous
+/// remove-then-rename sequence opened a window where the target did not exist
+/// at all and a crash there lost the old file.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> OfficeResult<()> {
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
@@ -23,14 +30,38 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> OfficeResult<()> {
         }
     }
     let temp = temp_sibling(path);
-    std::fs::write(&temp, bytes).map_err(|error| OfficeError::from_io(error, &temp))?;
-    if path.exists() {
-        std::fs::remove_file(path).map_err(|error| OfficeError::from_io(error, path))?;
+    {
+        use std::io::Write;
+        let mut file = std::fs::File::create(&temp).map_err(|error| OfficeError::from_io(error, &temp))?;
+        file.write_all(bytes).map_err(|error| OfficeError::from_io(error, &temp))?;
+        // Durability barrier: without this a power failure after the rename can
+        // leave a zero-length or partially written file.
+        file.sync_all().map_err(|error| OfficeError::from_io(error, &temp))?;
     }
     std::fs::rename(&temp, path).map_err(|error| {
         let _ = std::fs::remove_file(&temp);
         OfficeError::from_io(error, path)
-    })
+    })?;
+    sync_parent_dir(path);
+    Ok(())
+}
+
+/// Best-effort directory fsync so the rename itself is durable. Windows cannot
+/// open directories for sync; there the rename is already ordered by the
+/// filesystem journal, so the call is a no-op.
+fn sync_parent_dir(path: &Path) {
+    #[cfg(unix)]
+    {
+        if let Some(parent) = path.parent() {
+            if let Ok(dir) = std::fs::File::open(parent) {
+                let _ = dir.sync_all();
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
 }
 
 fn temp_sibling(path: &Path) -> std::path::PathBuf {

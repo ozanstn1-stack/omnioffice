@@ -8,17 +8,65 @@
  */
 import { runsToHtml } from "./writerDom";
 
+const ATOMIC_SELECTOR = "[data-note-id], [data-field-kind]";
+
+function isAtomicNode(node: Node): boolean {
+  const element = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+  return Boolean(element?.closest(ATOMIC_SELECTOR));
+}
+
+/**
+ * Model length from the element start to a DOM position, excluding note
+ * markers and fields. Those render visible glyphs (`<sup>1</sup>`, a cached
+ * date) but exist as empty runs in the model, so counting them shifted every
+ * structural edit (Enter/Backspace/bookmarks) by their rendered length.
+ */
+function modelOffsetWithin(element: HTMLElement, node: Node, nodeOffset: number): number {
+  if (node !== element && !element.contains(node)) return 0;
+  const range = element.ownerDocument.createRange();
+  range.selectNodeContents(element);
+  if (isAtomicNode(node)) {
+    // A caret inside/at a note or field snaps to the anchor's model position.
+    try {
+      range.setEndBefore(atomicAnchor(node));
+    } catch {
+      return 0;
+    }
+  } else {
+    try {
+      range.setEnd(node, nodeOffset);
+    } catch {
+      return element.textContent?.length ?? 0;
+    }
+  }
+  const fragment = range.cloneContents();
+  let length = 0;
+  const visit = (current: Node) => {
+    if (current.nodeType === Node.TEXT_NODE) {
+      length += current.textContent?.length ?? 0;
+      return;
+    }
+    if (current.nodeType !== Node.ELEMENT_NODE) return;
+    if ((current as Element).matches(ATOMIC_SELECTOR)) return;
+    current.childNodes.forEach(visit);
+  };
+  fragment.childNodes.forEach(visit);
+  return length;
+}
+
+/** The atomic ancestor of a node, used to snap an in-anchor caret to its start. */
+function atomicAnchor(node: Node): Node {
+  const element = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+  return element?.closest(ATOMIC_SELECTOR) ?? node;
+}
+
 /** Reads the caret offset of a contentEditable element as a plain-text index. */
 export function caretOffset(element: HTMLElement): number {
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0) return element.textContent?.length ?? 0;
   const range = selection.getRangeAt(0);
   if (!element.contains(range.startContainer)) return 0;
-
-  const probe = range.cloneRange();
-  probe.selectNodeContents(element);
-  probe.setEnd(range.startContainer, range.startOffset);
-  return probe.toString().length;
+  return modelOffsetWithin(element, range.startContainer, range.startOffset);
 }
 
 /** True when the selection covers more than a collapsed caret. */
@@ -34,11 +82,9 @@ export function selectedRange(element: HTMLElement): [number, number] | null {
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
   const range = selection.getRangeAt(0);
   if (!element.contains(range.startContainer) || !element.contains(range.endContainer)) return null;
-  const probe = range.cloneRange();
-  probe.selectNodeContents(element);
-  probe.setEnd(range.startContainer, range.startOffset);
-  const start = probe.toString().length;
-  return [start, start + range.toString().length];
+  const start = modelOffsetWithin(element, range.startContainer, range.startOffset);
+  const end = modelOffsetWithin(element, range.endContainer, range.endOffset);
+  return [start, Math.max(start, end)];
 }
 
 /** True when the caret sits on the first visual line of the element. */
@@ -101,17 +147,7 @@ export function setSelectionRange(element: HTMLElement, from: number, to: number
  * to 0 so a caller cannot produce an offset the model does not have.
  */
 export function textOffsetWithin(element: HTMLElement, node: Node, nodeOffset: number): number {
-  if (node !== element && !element.contains(node)) return 0;
-  const probe = element.ownerDocument.createRange();
-  probe.selectNodeContents(element);
-  try {
-    probe.setEnd(node, nodeOffset);
-  } catch {
-    // An out-of-range DOM position (stale node, text since replaced) falls back
-    // to the end of the element rather than throwing during a caret move.
-    return element.textContent?.length ?? 0;
-  }
-  return probe.toString().length;
+  return modelOffsetWithin(element, node, nodeOffset);
 }
 
 /** Browser caret hit-test at a viewport point, across the two API spellings. */
@@ -168,21 +204,40 @@ export function paragraphAtPoint(document: Document, x: number, y: number): Para
   return { element, block, offset: textOffsetWithin(element, position.node, position.offset) };
 }
 
-/** Walks the text nodes of an element to find the node holding `offset`. */
-function findTextNodeAt(element: HTMLElement, offset: number): { node: Text; offset: number } | null {
-  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+/** Walks the text nodes of an element to find the node holding `offset`.
+ * Text inside note/field anchors is skipped (not part of the model) and a
+ * `<br>` counts as the single `"\n"` it represents, so a caret restored after
+ * a hard line break lands after the break instead of before it. */
+function findTextNodeAt(element: HTMLElement, offset: number): { node: Node; offset: number } | null {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+    acceptNode(node) {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        return (node as Element).tagName.toLowerCase() === "br" ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+      }
+      return isAtomicNode(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+    },
+  });
   let remaining = offset;
-  let last: Text | null = null;
-  let node = walker.nextNode() as Text | null;
+  let last: { node: Node; offset: number } | null = null;
+  let node = walker.nextNode();
   while (node) {
-    const length = node.textContent?.length ?? 0;
-    if (remaining <= length) return { node, offset: remaining };
-    remaining -= length;
-    last = node;
-    node = walker.nextNode() as Text | null;
+    if (node.nodeType === Node.TEXT_NODE) {
+      const length = node.textContent?.length ?? 0;
+      last = { node, offset: length };
+      if (remaining <= length) return { node, offset: remaining };
+      remaining -= length;
+    } else {
+      if (remaining === 0) {
+        const parent = node.parentNode ?? element;
+        return { node: parent, offset: Array.prototype.indexOf.call(parent.childNodes, node) };
+      }
+      remaining -= 1;
+      // A break does not hold text; a later text node is still the fallback.
+      last = null;
+    }
+    node = walker.nextNode();
   }
-  if (last) return { node: last, offset: last.textContent?.length ?? 0 };
-  return null;
+  return last;
 }
 
 /**

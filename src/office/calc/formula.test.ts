@@ -4,6 +4,7 @@ import {
   addressesInRange,
   columnLabel,
   evaluateFormula,
+  evaluateToMatrix,
   formatAddress,
   formatNumber,
   functionNames,
@@ -83,6 +84,15 @@ describe("formatNumber", () => {
   it("applies currency prefixes", () => {
     expect(formatNumber(10, "$#,##0.00")).toContain("10");
     expect(formatNumber(10, "$#,##0.00")).toContain("$");
+  });
+
+  it("formats times with minutes, not months", () => {
+    // Regression: the old replacement order wrote the month into `hh:mm`.
+    expect(formatNumber(0.5, "hh:mm")).toBe("12:00");
+    expect(formatNumber(0.25, "h:mm")).toBe("6:00");
+    expect(formatNumber(0.5, "hh:mm:ss")).toBe("12:00:00");
+    // `mm` before an hour token is still a month.
+    expect(formatNumber(45306, "yyyy-mm-dd")).toBe("2024-01-15");
   });
 });
 
@@ -326,6 +336,25 @@ describe("array returning functions", () => {
     const ctx = context({ A1: 2, A2: 3, B1: 4, B2: 5 });
     expect(evaluateFormula("=SUMPRODUCT(A1:A2,B1:B2)", ctx)).toBe(2 * 4 + 3 * 5);
     expect(evaluateFormula("=SUMPRODUCT(A1:A2)", ctx)).toBe(5);
+  });
+
+  it("broadcasts a scalar over the whole range", () => {
+    // Regression: `=A1:A3*2` only multiplied the first row; the rest were
+    // padded with empty cells that coerce to 0.
+    const ctx = context({ A1: 1, A2: 2, A3: 3 });
+    expect(evaluateToMatrix("=A1:A3*2", ctx)).toEqual([[2], [4], [6]]);
+    expect(evaluateToMatrix("=10+A1:A3", ctx)).toEqual([[11], [12], [13]]);
+    expect(evaluateFormula("=SUM(A1:A3*10)", ctx)).toBe(60);
+    expect(evaluateToMatrix("=2*A1:A3", ctx)).toEqual([[2], [4], [6]]);
+  });
+
+  it("parses error literals and lets IFERROR catch them", () => {
+    // Regression: `#` was an unknown character, so `=#N/A` became #VALUE!.
+    const ctx = context({});
+    expect(evaluateFormula("=#N/A", ctx)).toMatchObject({ code: "#N/A" });
+    expect(evaluateFormula('=IFERROR(#N/A,"safe")', ctx)).toBe("safe");
+    expect(evaluateFormula("=ISERROR(#N/A)", ctx)).toBe(true);
+    expect(evaluateFormula("=IF(TRUE,1,#DIV/0!)", ctx)).toBe(1);
   });
 });
 

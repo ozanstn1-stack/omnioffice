@@ -199,6 +199,26 @@ fn xlsx_roundtrip_preserves_every_value_and_formula() {
 }
 
 #[test]
+fn xlsx_roundtrip_keeps_a_hyperlink_on_a_blank_cell() {
+    // Regression: `Cell::is_empty` ignored `link`, so a link-only cell (which
+    // is what the importer itself creates) was skipped on export and lost.
+    let mut workbook = Workbook::new_blank("Links");
+    workbook.sheets[0].name = "Links".into();
+    workbook.sheets[0].set(
+        "B2",
+        Cell { link: Some("https://example.org/report".into()), ..Default::default() },
+    );
+    let bytes = xlsx::write_xlsx(&workbook).unwrap();
+    let read = xlsx::read_workbook_bytes(&bytes).unwrap();
+    let sheet = sheet_by_name(&read.workbook, "Links").expect("sheet");
+    assert_eq!(
+        sheet.get("B2").and_then(|cell| cell.link.as_deref()),
+        Some("https://example.org/report"),
+        "a hyperlink on a blank cell must survive the round trip"
+    );
+}
+
+#[test]
 fn xlsx_roundtrip_keeps_cross_sheet_references_and_fifty_thousand_values() {
     let original = golden_workbook();
     let bytes = xlsx::write_xlsx(&original).unwrap();

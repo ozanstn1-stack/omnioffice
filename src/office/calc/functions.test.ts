@@ -480,6 +480,18 @@ describe("date and time functions", () => {
   it("an unparseable date is an error, not a wrong number", () => {
     expect(code('=DATEVALUE("not a date")')).toBe("#VALUE!");
   });
+
+  it("TIME builds a day fraction and wraps past midnight", () => {
+    expect(n("=TIME(12,0,0)")).toBe(0.5);
+    expect(n("=TIME(6,30,0)")).toBeCloseTo(6.5 / 24, 10);
+    // 25:00 wraps to 01:00 of the next day, as in Excel.
+    expect(n("=TIME(25,0,0)")).toBeCloseTo(1 / 24, 10);
+  });
+
+  it("TIME rejects negative components", () => {
+    expect(code("=TIME(0,-1,0)")).toBe("#NUM!");
+    expect(code("=TIME(-1,0,0)")).toBe("#NUM!");
+  });
 });
 
 describe("financial functions", () => {

@@ -106,6 +106,10 @@ export function runsToHtml(runs: Run[], options: RunRenderOptions = {}): string 
   const showRevisions = options.showRevisions !== false;
   return runs
     .map((run) => {
+      // Final view: a tracked deletion is hidden, exactly like "All markup off"
+      // in Word. Previously it was rendered as plain text, so deleted content
+      // looked like final content.
+      if (!showRevisions && run.revision?.kind === "delete") return "";
       const noteId = run.footnote ?? run.endnote;
       if (noteId) {
         const number = options.noteNumbers?.[noteId] ?? 1;
@@ -117,7 +121,9 @@ export function runsToHtml(runs: Run[], options: RunRenderOptions = {}): string 
         const value = options.fieldValues?.[`${field.kind}:${field.target}`] ?? field.cached ?? "";
         return `<span class="writer-field" data-field-kind="${escapeHtml(field.kind)}" data-field-target="${escapeHtml(field.target)}" data-field-cached="${escapeHtml(field.cached ?? "")}"${revisionAttributes(run)}>${escapeHtml(value)}</span>`;
       }
-      const text = escapeHtml(run.text).replace(/\t/g, "&emsp;");
+      // Hard line breaks (Shift+Enter stores "\n") must render as <br>, or HTML
+      // collapses them to a space and the page preview disagrees with the model.
+      const text = escapeHtml(run.text).replace(/\t/g, "&emsp;").replace(/\n/g, "<br>");
       if (text === "") return "";
       let html = text;
       if (run.bold) html = `<strong>${html}</strong>`;
@@ -273,7 +279,7 @@ export function domToRuns(element: HTMLElement): Run[] {
   return normalizeParagraphRuns(runs);
 }
 
-export function wrapCellRuns(runs: Run[]): Block {
+export function wrapCellRuns(runs: Run[]): Extract<Block, { type: "paragraph" }> {
   return { type: "paragraph", props: defaultParaProps(), runs: normalizeParagraphRuns(runs) };
 }
 

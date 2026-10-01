@@ -90,7 +90,9 @@ pub fn save_api_key(path: &Path, key: &str) -> Result<bool, PdfError> {
         Ok(blob) => format!("{DPAPI_PREFIX}{}", base64_encode(&blob)),
         Err(_) => format!("{PLAIN_PREFIX}{}", base64_encode(trimmed.as_bytes())),
     };
-    std::fs::write(path, payload).map_err(PdfError::from_io)?;
+    // A torn write here would make the key unrecoverable, so it must never
+    // truncate the previous blob in place.
+    crate::commands::write_atomic(path, payload.as_bytes())?;
     Ok(std::fs::read_to_string(path)
         .map(|content| content.starts_with(DPAPI_PREFIX))
         .unwrap_or(false))

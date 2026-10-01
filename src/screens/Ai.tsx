@@ -270,7 +270,9 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
 
   const fail = (message: string) => {
     setError(message);
-    void logFrontend("ai-error", message);
+    // A provider (or a compromised endpoint) can echo the request back in its
+    // error body; bound what is persisted to the local log.
+    void logFrontend("ai-error", message.slice(0, 500));
     console.warn("[ai]", message);
   };
   useEffect(() => {
@@ -343,7 +345,7 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
     try {
       const result = await aiTranslate({
         path: session.primary.path,
-        options: { target_language: targetLanguage, bilingual },
+        options: { targetLanguage, bilingual },
         password: session.password || undefined,
         jobId: jobId.current,
       });
@@ -736,7 +738,7 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                   {tab === "translate" ? (
                     <div className="flex flex-col gap-3">
                       <div className="flex flex-wrap gap-2">
-                        {(examples?.translate_targets ?? ["tr", "en", "de", "fr", "es"]).map((code) => (
+                        {(examples?.translateTargets ?? ["tr", "en", "de", "fr", "es"]).map((code) => (
                           <button
                             key={code}
                             className="badge"

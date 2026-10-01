@@ -705,6 +705,16 @@ pub struct DeepSeekClient {
     http: reqwest::Client,
 }
 
+/// Hard cap for a provider response (non-streaming body or the accumulated
+/// stream). Without it a hostile/compromised endpoint can stream unbounded
+/// data into memory within the 180 s request timeout.
+const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
+
+/// Longest provider error message echoed into an `AiError` and from there into
+/// the UI/log. A server can echo the request (document text) in its error
+/// body, so the text is bounded before it is persisted.
+const MAX_ERROR_MESSAGE_CHARS: usize = 500;
+
 impl DeepSeekClient {
     pub fn new(mut config: AiConfig) -> AiResult<Self> {
         if !config.is_configured() {
@@ -777,7 +787,7 @@ impl DeepSeekClient {
         };
         let response = builder.send().await.map_err(|error| self.unreachable(error))?;
         let status = response.status();
-        let body = response.text().await.map_err(|error| self.unreachable(error))?;
+        let body = self.response_text(response).await?;
         if !status.is_success() {
             return Err(map_http_error(status.as_u16(), &body, &self.provider_name()));
         }
@@ -805,6 +815,25 @@ impl DeepSeekClient {
         } else {
             builder.bearer_auth(self.config.api_key.trim())
         }
+    }
+
+    /// Reads a response body with a hard byte cap. The cap protects the process
+    /// from an endpoint that answers with unbounded data (or an endless body).
+    async fn response_text(&self, mut response: reqwest::Response) -> AiResult<String> {
+        let mut bytes: Vec<u8> = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(|error| self.unreachable(error))? {
+            if bytes.len() + chunk.len() > MAX_RESPONSE_BYTES {
+                return Err(AiError::Server(
+                    self.provider_name(),
+                    format!(
+                        "the provider response exceeded the {} MB safety limit",
+                        MAX_RESPONSE_BYTES / (1024 * 1024)
+                    ),
+                ));
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        Ok(String::from_utf8_lossy(&bytes).to_string())
     }
 
     fn unreachable(&self, error: reqwest::Error) -> AiError {
@@ -843,7 +872,7 @@ impl DeepSeekClient {
             .map_err(|error| self.unreachable(error))?;
 
         let status = response.status();
-        let text = response.text().await.map_err(|error| self.unreachable(error))?;
+        let text = self.response_text(response).await?;
         if !status.is_success() {
             return Err(map_http_error(status.as_u16(), &text, &self.provider_name()));
         }
@@ -866,7 +895,7 @@ impl DeepSeekClient {
             .map_err(|error| self.unreachable(error))?;
 
         let status = response.status();
-        let text = response.text().await.map_err(|error| self.unreachable(error))?;
+        let text = self.response_text(response).await?;
         if !status.is_success() {
             return Err(map_http_error(status.as_u16(), &text, &self.provider_name()));
         }
@@ -917,7 +946,7 @@ impl DeepSeekClient {
             .map_err(|error| self.unreachable(error))?;
         let status = response.status();
         if !status.is_success() {
-            let text = response.text().await.unwrap_or_default();
+            let text = self.response_text(response).await.unwrap_or_default();
             return Err(map_http_error(status.as_u16(), &text, &self.provider_name()));
         }
 
@@ -928,6 +957,15 @@ impl DeepSeekClient {
         while let Some(chunk) = stream.next().await {
             cancel.check()?;
             let bytes = chunk.map_err(|error| self.unreachable(error))?;
+            if full.len() + reasoning_text.len() + buffer.len() + bytes.len() > MAX_RESPONSE_BYTES {
+                return Err(AiError::Server(
+                    self.provider_name(),
+                    format!(
+                        "the provider stream exceeded the {} MB safety limit",
+                        MAX_RESPONSE_BYTES / (1024 * 1024)
+                    ),
+                ));
+            }
             buffer.push_str(&String::from_utf8_lossy(&bytes));
             // Server-sent events: lines like `data: {...}` separated by blank lines.
             while let Some(position) = buffer.find('\n') {
@@ -986,7 +1024,7 @@ impl DeepSeekClient {
             .map_err(|error| self.unreachable(error))?;
         let status = response.status();
         if !status.is_success() {
-            let text = response.text().await.unwrap_or_default();
+            let text = self.response_text(response).await.unwrap_or_default();
             return Err(map_http_error(status.as_u16(), &text, &self.provider_name()));
         }
 
@@ -999,6 +1037,15 @@ impl DeepSeekClient {
         while let Some(chunk) = stream.next().await {
             cancel.check()?;
             let bytes = chunk.map_err(|error| self.unreachable(error))?;
+            if full.len() + buffer.len() + bytes.len() > MAX_RESPONSE_BYTES {
+                return Err(AiError::Server(
+                    self.provider_name(),
+                    format!(
+                        "the provider stream exceeded the {} MB safety limit",
+                        MAX_RESPONSE_BYTES / (1024 * 1024)
+                    ),
+                ));
+            }
             buffer.push_str(&String::from_utf8_lossy(&bytes));
             while let Some(position) = buffer.find('\n') {
                 let line = buffer[..position].trim().to_string();
@@ -1080,7 +1127,12 @@ fn map_http_error(status: u16, body: &str, provider: &str) -> AiError {
         .as_ref()
         .map(|error| format!("{} {}", error.code, error.kind).to_lowercase())
         .unwrap_or_default();
-    let message = detail.map(|error| error.message).unwrap_or_default();
+    let message: String = detail
+        .map(|error| error.message)
+        .unwrap_or_default()
+        .chars()
+        .take(MAX_ERROR_MESSAGE_CHARS)
+        .collect();
     match status {
         401 | 403 => AiError::InvalidApiKey(provider.to_string()),
         402 => AiError::InsufficientBalance(provider.to_string()),

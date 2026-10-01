@@ -37,6 +37,7 @@ where
     // Commands are async; heavy work happens on the blocking pool so the UI
     // thread and the async runtime stay responsive. Await the handle instead
     // of block_on(): blocking inside an async runtime would panic.
+    let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(work)
         .await
         .map_err(|e| PdfError::Internal(format!("worker thread failed: {e}")))?
@@ -341,7 +342,7 @@ pub async fn merge_pdfs(
         })
     })
     .await;
-    registry.finish(&job_id);
+    registry.complete(&job_id, result.is_ok());
     result
 }
 
@@ -1436,6 +1437,13 @@ fn read_config_text(path: &Path) -> Result<String, PdfError> {
     Ok(text)
 }
 
+/// Shared crash-safe write for the small JSON stores (settings, recents, AI
+/// settings/library/logs, secrets): temp sibling + fsync + atomic rename.
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), PdfError> {
+    officecore::io::write_atomic(path, bytes)
+        .map_err(|error| PdfError::Internal(format!("could not write {}: {error}", path.display())))
+}
+
 #[tauri::command]
 pub fn load_settings(app: AppHandle) -> Result<serde_json::Value, PdfError> {
     let path = config_dir(&app)?.join("settings.json");
@@ -1451,7 +1459,7 @@ pub fn save_settings(app: AppHandle, settings: serde_json::Value) -> Result<(), 
     let path = config_dir(&app)?.join("settings.json");
     let text = serde_json::to_string_pretty(&settings)
         .map_err(|e| PdfError::Internal(format!("settings serialize error: {e}")))?;
-    std::fs::write(&path, text).map_err(PdfError::from_io)
+    write_atomic(&path, text.as_bytes())
 }
 
 #[tauri::command]
@@ -1484,7 +1492,7 @@ pub fn add_recent(app: AppHandle, entry: RecentEntry) -> Result<(), PdfError> {
     entries.truncate(30);
     let text = serde_json::to_string(&entries)
         .map_err(|e| PdfError::Internal(format!("recent serialize error: {e}")))?;
-    std::fs::write(&path, text).map_err(PdfError::from_io)
+    write_atomic(&path, text.as_bytes())
 }
 
 #[tauri::command]
@@ -1834,6 +1842,6 @@ where
         work(&progress, &cancel)
     })
     .await;
-    registry.finish(&job_id);
+    registry.complete(&job_id, result.is_ok());
     result
 }

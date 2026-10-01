@@ -65,6 +65,19 @@ registerFunction("DATE", (args) => {
   const base = new Date(Date.UTC(year, month - 1, day));
   return isNaN(base.getTime()) ? ERR.num() : dateToSerial(base);
 }, 3, 3, false, { signature: "DATE(year, month, day)", category: "Date" });
+registerFunction("TIME", (args) => {
+  const hours = numberArg(args, 0, 0);
+  if (isError(hours)) return hours;
+  const minutes = numberArg(args, 1, 0);
+  if (isError(minutes)) return minutes;
+  const seconds = numberArg(args, 2, 0);
+  if (isError(seconds)) return seconds;
+  // Excel's documented limits: the hour may not exceed 32767 and negative
+  // components are rejected; everything else wraps modulo 24h.
+  if (hours < 0 || minutes < 0 || seconds < 0 || hours > 32767) return ERR.num();
+  const totalSeconds = Math.trunc(hours) * 3600 + Math.trunc(minutes) * 60 + Math.trunc(seconds);
+  return (totalSeconds % 86_400) / 86_400;
+}, 3, 3, false, { signature: "TIME(hour, minute, second)", category: "Date" });
 registerFunction("DATEVALUE", (args) => {
   const raw = args[0]?.[0]?.[0];
   const text = String(raw ?? "").trim();

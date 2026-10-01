@@ -1056,6 +1056,10 @@ impl Cell {
             && self.formula.is_none()
             && self.style == CellStyle::default()
             && self.comment.is_none()
+            // A hyperlink on a blank cell is real content (and exactly what the
+            // XLSX importer produces); treating it as empty dropped the link on
+            // the next export.
+            && self.link.is_none()
     }
 }
 

@@ -79,23 +79,11 @@ pub struct CertificateSummaryDto {
     pub sha256_fingerprint: String,
 }
 
-/// Writes `bytes` to `output` atomically: a sibling temporary file is written
-/// and flushed first, then renamed over the target.
+/// Writes `bytes` to `output` atomically: a sibling temporary file is written,
+/// flushed to stable storage and renamed over the target (which replaces it
+/// atomically on Windows and Unix, with no missing-file window).
 fn write_atomic(output: &Path, bytes: &[u8]) -> PdfResult<()> {
-    if let Some(parent) = output.parent() {
-        if !parent.as_os_str().is_empty() && !parent.exists() {
-            std::fs::create_dir_all(parent).map_err(PdfError::from_io)?;
-        }
-    }
-    let temporary = pdfcore::docutil::temp_sibling(output);
-    std::fs::write(&temporary, bytes).map_err(PdfError::from_io)?;
-    if output.exists() {
-        std::fs::remove_file(output).map_err(PdfError::from_io)?;
-    }
-    std::fs::rename(&temporary, output).map_err(|error| {
-        let _ = std::fs::remove_file(&temporary);
-        PdfError::from_io(error)
-    })
+    pdfcore::docutil::write_bytes_atomic(output, bytes)
 }
 
 /// Signs a PDF with either a PKCS#12 file or a certificate from the Windows
@@ -110,6 +98,7 @@ pub async fn pdf_sign(
     cert_index: Option<usize>,
     options: SignOptionsDto,
 ) -> Result<SignResultDto, PdfError> {
+    let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || {
         let pdf = crate::paths::read_input_file(&input, 2u64 * 1024 * 1024 * 1024)?;
 
@@ -196,6 +185,7 @@ pub async fn pdf_archive_validation_data(
     input: String,
     output: Option<String>,
 ) -> Result<pdfcore::ltv::LtvReport, PdfError> {
+    let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || {
         let input_path = crate::paths::input_file(&input)?;
         let pdf = crate::paths::read_input_file(&input, 2u64 * 1024 * 1024 * 1024)?;
@@ -214,6 +204,7 @@ pub async fn pdf_archive_validation_data(
 /// Verifies every signature embedded in a PDF on disk.
 #[tauri::command]
 pub async fn pdf_verify_signatures(path: String) -> Result<SignatureReport, PdfError> {
+    let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || {
         let bytes = crate::paths::read_input_file(&path, 2u64 * 1024 * 1024 * 1024)?;
         Ok(sign::verify_signatures(&bytes))
@@ -229,6 +220,7 @@ pub async fn pdf_verify_signatures(path: String) -> Result<SignatureReport, PdfE
 /// PFX/P12 file.
 #[tauri::command]
 pub async fn pdf_list_signing_certificates() -> Result<Vec<CertificateSummaryDto>, PdfError> {
+    let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || {
         #[cfg(windows)]
         {

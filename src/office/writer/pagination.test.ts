@@ -149,4 +149,14 @@ describe("pagination", () => {
     expect(pageOfBlock(pages, 1)).toBe(2);
     expect(pageOfBlock(pages, 2)).toBe(2);
   });
+
+  it("numbers pages monotonically inside one section", () => {
+    // Regression: `pushPage` read `page.sectionPage` after replacing the page,
+    // so every page after the first was numbered 2 (odd/even headers wrong).
+    const pages = paginate(
+      [paragraph(0, [50]), breakBlock(1), paragraph(2, [50]), breakBlock(3), paragraph(4, [50])],
+      500,
+    );
+    expect(pages.map((page) => page.sectionPage)).toEqual([1, 2, 3]);
+  });
 });

@@ -52,17 +52,7 @@ import { defaultPageSetup, defaultParaProps, defaultSectionProps, documentSectio
 import { Dialog, Ribbon, RibbonGroup, ToolButton, ToolColor, ToolNumber, ToolSelect, useTablePicker } from "./office-ui";
 import { openIntoWorkspace, useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
 import { acceptAll, acceptRevision, nextRevision, rejectAll, rejectRevision, revisionList, trackRunChanges } from "./writer/revisions";
-import {
-  insertText,
-  joinRuns,
-  nextListLevel,
-  nextParagraphProps,
-  replaceRange,
-  runsText,
-  splitAtLineBreak,
-  splitRuns,
-  wordRangeAt,
-} from "./writer/runs";
+import { joinRuns, nextListLevel, nextParagraphProps, replaceRange, runsText, splitRuns, wordRangeAt } from "./writer/runs";
 import { caretOffset, caretOnFirstLine, caretOnLastLine, offsetFromPoint, paragraphAtPoint, repaintParagraph, selectedRange, setCaretOffset, setSelectionRange } from "./writer/caret";
 import { domToRuns, runsToHtml, wrapCellRuns } from "./writer/writerDom";
 import { emptyRun as emptyWriterRun } from "./writer/runs";
@@ -436,7 +426,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     }
   };
 
-  const syncCell = (tableIndex: number, rowIndex: number, cellIndex: number, element: HTMLElement) => {
+  const syncCell = (tableIndex: number, rowIndex: number, cellIndex: number, blockIndex: number, element: HTMLElement) => {
     const block = currentBlocks()[tableIndex];
     if (!block || block.type !== "table") return;
     const table: TableData = {
@@ -446,9 +436,21 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
           ? row
           : {
               ...row,
-              cells: row.cells.map((cell, c) =>
-                c !== cellIndex ? cell : { ...cell, blocks: [wrapCellRuns(domToRuns(element))] },
-              ),
+              cells: row.cells.map((cell, c) => {
+                if (c !== cellIndex) return cell;
+                const synced = wrapCellRuns(domToRuns(element));
+                // Splice only the edited inner paragraph: replacing the whole
+                // block list dropped every other paragraph of a multi-paragraph
+                // cell on the first keystroke.
+                const blocks =
+                  cell.blocks.length === 0
+                    ? [synced]
+                    : cell.blocks.map((inner, innerIndex) => {
+                        if (innerIndex !== blockIndex) return inner;
+                        return inner.type === "paragraph" ? { ...inner, runs: synced.runs } : synced;
+                      });
+                return { ...cell, blocks };
+              }),
             },
       ),
     };
@@ -704,8 +706,9 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         const next = blocks[action.index + 1];
         if (!paragraph || !next) return;
         if (next.type !== "paragraph") {
-          blocks.splice(action.index + 1, 1);
-          withBlocks(blocks);
+          // Delete at the end of a paragraph must not remove the following
+          // table/image/rule/page break: those live only in the model, so the
+          // splice was silent, unrecoverable data loss. Word does nothing here.
           return;
         }
         const caret = runsText(paragraph.runs).length;
@@ -1166,7 +1169,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     return true;
   };
 
-  const renderBlocks = (blocks: Block[], scope: "body" | "header" | "footer" | "cell", tablePath?: [number, number, number]) => (
+  const renderBlocks = (blocks: Block[], scope: "body" | "header" | "footer" | "cell", tablePath?: [number, number, number, number]) => (
     <>
       {blocks.map((block, index) => (
         <BlockView
@@ -1181,11 +1184,11 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
           onSelectImage={setSelectedImage}
           onFocusParagraph={handleParagraphFocus}
           onSync={(element) => {
-            if (scope === "cell" && tablePath) syncCell(tablePath[0], tablePath[1], tablePath[2], element);
+            if (scope === "cell" && tablePath) syncCell(tablePath[0], tablePath[1], tablePath[2], tablePath[3], element);
             else if (scope === "body" || scope === "header" || scope === "footer") syncParagraph(index, element);
           }}
           onUpdate={(next) => updateBlock(index, next)}
-          onSyncCell={(path, element) => syncCell(path[0], path[1], path[2], element)}
+          onSyncCell={(path, element) => syncCell(path[0], path[1], path[2], path[3], element)}
           onStructure={(action) => handleStructure(action, scope)}
           onOpenBlock={editBlock}
         />
@@ -2378,7 +2381,7 @@ function BlockView({
   onFocusParagraph: (block: Extract<Block, { type: "paragraph" }>) => void;
   onSync: (element: HTMLElement) => void;
   onUpdate: (block: Block) => void;
-  onSyncCell: (path: [number, number, number], element: HTMLElement) => void;
+  onSyncCell: (path: [number, number, number, number], element: HTMLElement) => void;
   onStructure: (action: StructureAction) => void;
   onOpenBlock: (index: number) => void;
 }) {
@@ -2472,11 +2475,11 @@ function handleParagraphKeyDown(
   switch (event.key) {
     case "Enter": {
       if (event.shiftKey) {
-        // Shift+Enter is a hard line break inside the same paragraph.
+        // Shift+Enter is a hard line break inside the same paragraph. Building
+        // it with replaceRange also removes a selection: the old split-based
+        // path left the selected text in the model.
         event.preventDefault();
-        const [left, right] = splitAtLineBreak(plain, to);
-        const tail = replaceRange(right, 0, 0, "\n");
-        onStructure({ kind: "replace", index, block: { ...block, runs: insertText(joinRuns(left, tail), from, "") } });
+        onStructure({ kind: "replace", index, block: { ...block, runs: replaceRange(plain, from, to, "\n") } });
         // The repaint below puts the caret after the new line break.
         pendingCaret.current = from + 1;
         return;
@@ -2676,7 +2679,7 @@ function TableView({
   index: number;
   zoom: number;
   onUpdate: (block: Block) => void;
-  onSyncCell: (path: [number, number, number], element: HTMLElement) => void;
+  onSyncCell: (path: [number, number, number, number], element: HTMLElement) => void;
 }) {
   const table = block.table;
   const [menuCell, setMenuCell] = useState<{ row: number; cell: number } | null>(null);
@@ -2709,7 +2712,7 @@ function TableView({
                       <CellParagraph
                         key={innerIndex}
                         block={inner}
-                        tablePath={[index, rowIndex, cellIndex]}
+                        tablePath={[index, rowIndex, cellIndex, innerIndex]}
                         onSyncCell={onSyncCell}
                       />
                     ) : null,
@@ -2748,7 +2751,7 @@ function TableView({
   );
 }
 
-function CellParagraph({ block, tablePath, onSyncCell }: { block: Extract<Block, { type: "paragraph" }>; tablePath: [number, number, number]; onSyncCell: (path: [number, number, number], element: HTMLElement) => void }) {
+function CellParagraph({ block, tablePath, onSyncCell }: { block: Extract<Block, { type: "paragraph" }>; tablePath: [number, number, number, number]; onSyncCell: (path: [number, number, number, number], element: HTMLElement) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [focused, setFocused] = useState(false);
   useEffect(() => {

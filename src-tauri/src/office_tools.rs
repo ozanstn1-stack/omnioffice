@@ -64,6 +64,7 @@ fn pdf_error(error: pdfcore::error::PdfError) -> OfficeErrorPayload {
 
 #[tauri::command]
 pub async fn office_images_to_pdf(request: ImagesToPdfRequest) -> Result<String, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
         if request.images.is_empty() {
             return Err(payload(OfficeError::invalid("Select at least one image.")));
@@ -106,6 +107,7 @@ pub async fn office_images_to_pdf(request: ImagesToPdfRequest) -> Result<String,
 
 #[tauri::command]
 pub async fn office_pdf_to_images(request: PdfToImagesRequest) -> Result<Vec<String>, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let format = match request.format.as_deref() {
             Some("png") => pdfcore::images::ImageFormat::Png,
@@ -144,6 +146,7 @@ pub struct PdfTextRequest {
 
 #[tauri::command]
 pub async fn office_pdf_to_text(request: PdfTextRequest) -> Result<String, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let input = crate::paths::input_file(&request.input).map_err(pdf_error)?;
         let output = crate::paths::output_file(&request.output).map_err(pdf_error)?;
@@ -195,6 +198,7 @@ pub struct PdfFormRequest {
 
 #[tauri::command]
 pub async fn office_pdf_add_form(request: PdfFormRequest) -> Result<String, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
         if request.fields.is_empty() {
             return Err(payload(OfficeError::invalid("Add at least one form field.")));
@@ -381,6 +385,7 @@ pub async fn office_pdf_add_form(request: PdfFormRequest) -> Result<String, Offi
 /// field where it was.
 #[tauri::command]
 pub async fn office_pdf_list_form(input: String) -> Result<Vec<PdfFormField>, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let input = crate::paths::input_file(&input).map_err(pdf_error)?;
         let document = pdfcore::docutil::load_document(input.as_path(), None).map_err(pdf_error)?;

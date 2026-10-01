@@ -3286,6 +3286,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-os",
  "time",
+ "tokio",
  "uuid",
  "windows",
 ]

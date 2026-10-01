@@ -57,19 +57,62 @@ export function formatNumber(value: number, format: string): string {
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+const DATE_TOKEN = /yyyy|yy|mmm|mm|m|dd|hh|h|ss|s/gi;
+
 function formatDateSerial(value: number, pattern: string): string {
   const date = serialToDate(value);
   if (!date) return formatPlainNumber(value);
   const pad = (input: number) => String(input).padStart(2, "0");
-  // `mm` is month when it follows a date token, minutes otherwise - matching
-  // the way Excel disambiguates the same letter.
-  return pattern
-    .replace(/yyyy/gi, String(date.getUTCFullYear()))
-    .replace(/yy/gi, String(date.getUTCFullYear()).slice(-2))
-    .replace(/mmm/gi, MONTH_NAMES[date.getUTCMonth()])
-    .replace(/mm/gi, pad(date.getUTCMonth() + 1))
-    .replace(/dd/gi, pad(date.getUTCDate()))
-    .replace(/hh/gi, pad(date.getUTCHours()))
-    .replace(/ss/gi, pad(date.getUTCSeconds()))
-    .replace(/m(?![a-z])/gi, String(date.getUTCMinutes()));
+  // Tokenize in one pass and disambiguate `m`/`mm` by position: minutes when
+  // the previous token was an hour or the next token is seconds, month
+  // otherwise. The old ordered `.replace()` chain substituted the month into
+  // `hh:mm` (and the minute branch could then never match), so every time
+  // format showed the month number as minutes.
+  const parts: { text: string; index: number }[] = [];
+  DATE_TOKEN.lastIndex = 0;
+  for (let match = DATE_TOKEN.exec(pattern); match; match = DATE_TOKEN.exec(pattern)) {
+    parts.push({ text: match[0].toLowerCase(), index: match.index });
+  }
+  let result = "";
+  let cursor = 0;
+  for (let index = 0; index < parts.length; index += 1) {
+    const token = parts[index];
+    result += pattern.slice(cursor, token.index);
+    cursor = token.index + token.text.length;
+    const previous = parts[index - 1]?.text;
+    const next = parts[index + 1]?.text;
+    switch (token.text) {
+      case "yyyy":
+        result += String(date.getUTCFullYear());
+        break;
+      case "yy":
+        result += String(date.getUTCFullYear()).slice(-2);
+        break;
+      case "mmm":
+        result += MONTH_NAMES[date.getUTCMonth()];
+        break;
+      case "m":
+      case "mm": {
+        const isMinutes = previous === "hh" || previous === "h" || next === "ss" || next === "s";
+        const minutes = isMinutes ? date.getUTCMinutes() : date.getUTCMonth() + 1;
+        result += token.text === "mm" ? pad(minutes) : String(minutes);
+        break;
+      }
+      case "dd":
+        result += pad(date.getUTCDate());
+        break;
+      case "h":
+      case "hh":
+        result += token.text === "hh" ? pad(date.getUTCHours()) : String(date.getUTCHours());
+        break;
+      case "s":
+      case "ss":
+        result += token.text === "ss" ? pad(date.getUTCSeconds()) : String(date.getUTCSeconds());
+        break;
+      default:
+        result += token.text;
+        break;
+    }
+  }
+  return result + pattern.slice(cursor);
 }

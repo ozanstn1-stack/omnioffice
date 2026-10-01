@@ -66,7 +66,7 @@ describe("job store", () => {
     expect(job.finishedAt).toBeUndefined();
   });
 
-  it("updates progress for a known job only", () => {
+  it("updates progress for a known job", () => {
     useJobs.getState().start({ id: "job-1", kind: "ai", title: "Summarize" });
     useJobs.getState().progress("job-1", { stage: "Reading", current: 2, total: 10, message: "page 2" });
     const job = useJobs.getState().jobs.find((entry) => entry.id === "job-1")!;
@@ -74,8 +74,16 @@ describe("job store", () => {
     expect(job.current).toBe(2);
     expect(job.total).toBe(10);
     expect(job.message).toBe("page 2");
-    useJobs.getState().progress("missing", { stage: "Nope" });
-    expect(useJobs.getState().jobs).toHaveLength(1);
+  });
+
+  it("surfaces a Rust-tracked job that never called start", () => {
+    // Every PDF tool reports progress through this store without registering
+    // first; before this, live rows were invisible until an app restart.
+    useJobs.getState().progress("rust-job", { stage: "merge", current: 1, total: 4 });
+    const job = useJobs.getState().jobs.find((entry) => entry.id === "rust-job");
+    expect(job?.status).toBe("running");
+    expect(job?.current).toBe(1);
+    expect(job?.total).toBe(4);
   });
 
   it("finishes jobs as succeeded or failed", () => {

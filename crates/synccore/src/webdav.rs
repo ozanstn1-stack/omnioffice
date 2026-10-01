@@ -240,8 +240,8 @@ impl WebDavProvider {
             .header("Content-Type", "application/octet-stream")
             .body(reqwest::blocking::Body::sized(body, metadata.len()));
         if let Some(etag) = if_match_etag {
-            if !etag.trim().is_empty() {
-                request = request.header("If-Match", etag.trim());
+            if let Some(value) = if_match_header_value(etag) {
+                request = request.header("If-Match", value);
             }
         }
         let response = request.send().map_err(network_error)?;
@@ -450,8 +450,8 @@ impl SyncProvider for WebDavProvider {
             // blocking client; the buffer is already capped at 512 MB above.
             .body(bytes.to_vec());
         if let Some(etag) = if_match_etag {
-            if !etag.trim().is_empty() {
-                request = request.header("If-Match", etag.trim());
+            if let Some(value) = if_match_header_value(etag) {
+                request = request.header("If-Match", value);
             }
         }
         let response = request.send().map_err(network_error)?;
@@ -717,6 +717,30 @@ fn encode_segment(segment: &str) -> String {
 
 fn decode_percent(value: &str) -> String {
     percent_encoding::percent_decode_str(value).decode_utf8_lossy().to_string()
+}
+
+/// Builds the `If-Match` header value for a normalized (unquoted) ETag.
+///
+/// RFC 7232 requires the entity-tag quotes on the wire: strict servers (Sabre,
+/// and therefore Nextcloud) compare the header item character for character
+/// against their quoted etag, so sending the bare token made every conditional
+/// PUT fail with 412 and turned every ordinary re-upload into a false conflict.
+pub fn if_match_header_value(etag: &str) -> Option<String> {
+    let trimmed = etag.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed == "*" {
+        return Some(trimmed.to_string());
+    }
+    // `normalize_etag` already removed quotes and the weak prefix; a stray
+    // quote inside the opaque tag is impossible per RFC 7232, but guard the
+    // header anyway.
+    let sanitized = trimmed.replace('"', "");
+    if sanitized.is_empty() {
+        return None;
+    }
+    Some(format!("\"{sanitized}\""))
 }
 
 /// Normalizes an ETag: strips the weak prefix and surrounding quotes so that
@@ -1256,6 +1280,16 @@ mod tests {
         assert_eq!(normalize_etag("  abc ").as_deref(), Some("abc"));
         assert_eq!(normalize_etag(""), None);
         assert_eq!(normalize_etag("\"\""), None);
+    }
+
+    #[test]
+    fn if_match_requotes_the_entity_tag() {
+        // RFC 7232 requires the quotes on the wire.
+        assert_eq!(if_match_header_value("abc").as_deref(), Some("\"abc\""));
+        assert_eq!(if_match_header_value("  \"abc\" ").as_deref(), Some("\"abc\""));
+        assert_eq!(if_match_header_value("*").as_deref(), Some("*"));
+        assert_eq!(if_match_header_value(""), None);
+        assert_eq!(if_match_header_value("\"\""), None);
     }
 
     #[test]

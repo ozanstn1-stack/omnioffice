@@ -423,9 +423,15 @@ pub fn validate_http_url(raw: &str) -> PluginResult<reqwest::Url> {
     Ok(url)
 }
 
-/// Resolves a URL's host and refuses it when any resolved address is private or
-/// the metadata endpoint. This closes DNS names that point at internal
-/// services (e.g. `metadata.google.internal`) which the literal check misses.
+/// Refuses private/metadata destinations for the request that is about to be
+/// made. The policy mirrors [`validate_http_url`]:
+///
+/// * `https` may only reach public addresses (literal private IPs and names
+///   that resolve to private addresses are refused);
+/// * `http` was already restricted to localhost/private literal hosts, so the
+///   explicit private exception stays available there and only the metadata
+///   endpoint is refused.
+///
 /// It is a best-effort pre-flight: a rebinding server could still change its
 /// answer, so the resolved address is not pinned for the actual connect (the
 /// redirects are disabled and the response is size-capped regardless).
@@ -433,22 +439,30 @@ pub fn ensure_public_destination(url: &reqwest::Url) -> PluginResult<()> {
     let Some(host) = url.host_str() else {
         return Err(PluginErrorPayload::invalid("The URL has no host."));
     };
+    let is_https = url.scheme() == "https";
     let bare = host.trim_start_matches('[').trim_end_matches(']');
     if let Ok(ip) = bare.parse::<std::net::IpAddr>() {
-        if is_private_address(ip) {
-            // A literal private/metadata host over https is refused here too,
-            // matching the http exception's intent.
-            if is_metadata_address(ip) {
-                return Err(PluginErrorPayload::forbidden("The cloud metadata address is not allowed."));
-            }
+        if is_metadata_address(ip) {
+            return Err(PluginErrorPayload::forbidden("The cloud metadata address is not allowed."));
+        }
+        // A private literal over https is the same bypass as a private DNS
+        // answer and must be refused; the http branch is the documented
+        // local-network exception.
+        if is_https && is_private_address(ip) {
+            return Err(PluginErrorPayload::forbidden(
+                "Private and loopback addresses are not reachable over https from a plugin.",
+            ));
         }
         return Ok(());
     }
+    if !is_https {
+        // `validate_http_url` only lets private/localhost literal hosts through
+        // for http; a public hostname that resolves privately cannot occur.
+        return Ok(());
+    }
     let port = url.port_or_known_default().unwrap_or(443);
-    let mut resolved_any = false;
     if let Ok(addresses) = std::net::ToSocketAddrs::to_socket_addrs(&(bare, port)) {
         for address in addresses {
-            resolved_any = true;
             if is_private_address(address.ip()) {
                 return Err(PluginErrorPayload::forbidden(
                     "The URL resolves to a private or metadata address; it is not reachable from a plugin.",
@@ -458,7 +472,6 @@ pub fn ensure_public_destination(url: &reqwest::Url) -> PluginResult<()> {
     }
     // Resolution failure is not fatal: the connection will simply fail. Only a
     // resolved private address is a hard refusal.
-    let _ = resolved_any;
     Ok(())
 }
 
@@ -783,5 +796,34 @@ mod tests {
         assert!(!is_private_host(Some("example.com")));
         assert!(!is_private_host(Some("8.8.8.8")));
         assert!(!is_private_host(None));
+    }
+
+    #[test]
+    fn https_private_literal_destinations_are_refused() {
+        for raw in [
+            "https://127.0.0.1/",
+            "https://[::1]/",
+            "https://10.0.0.5/",
+            "https://192.168.1.1/",
+            "https://172.16.0.1/",
+            "https://[fd00::1]/",
+            "https://100.64.0.1/",
+            "https://[::ffff:127.0.0.1]/",
+            "https://169.254.169.254/latest/meta-data/",
+        ] {
+            let url = reqwest::Url::parse(raw).expect("url");
+            assert!(ensure_public_destination(&url).is_err(), "{raw} must be refused over https");
+        }
+        // A public literal is still reachable over https.
+        let public = reqwest::Url::parse("https://8.8.8.8/").expect("url");
+        assert!(ensure_public_destination(&public).is_ok());
+    }
+
+    #[test]
+    fn plain_http_private_exception_stays_available_but_metadata_is_not() {
+        let loopback = reqwest::Url::parse("http://127.0.0.1:8080/health").expect("url");
+        assert!(ensure_public_destination(&loopback).is_ok());
+        let metadata = reqwest::Url::parse("http://169.254.169.254/latest/meta-data/").expect("url");
+        assert!(ensure_public_destination(&metadata).is_err());
     }
 }

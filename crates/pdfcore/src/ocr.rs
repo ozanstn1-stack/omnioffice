@@ -703,7 +703,7 @@ pub fn ocr_pdf(
                     body.push_str(&format!("--- Page {page} ---\n{}\n", text.trim()));
                 }
             }
-            std::fs::write(&final_path, body).map_err(PdfError::from_io)?;
+            crate::docutil::write_bytes_atomic(&final_path, body.as_bytes())?;
             OcrResult {
                 path: final_path.display().to_string(),
                 pages_processed,
@@ -749,7 +749,7 @@ pub fn ocr_pdf(
             // A single-page document (or a one-page selection) has nothing to
             // merge: copy it straight to the destination instead.
             let merged_path = if merge_list.len() == 1 {
-                std::fs::copy(&merge_list[0], &final_path).map_err(PdfError::from_io)?;
+                crate::docutil::copy_atomic(&merge_list[0], &final_path)?;
                 final_path.clone()
             } else {
                 crate::merge::merge_files(

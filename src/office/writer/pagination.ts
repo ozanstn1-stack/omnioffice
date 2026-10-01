@@ -115,12 +115,16 @@ export function paginate(blocks: BlockMetrics[], contentHeightPx: number, option
   const queue: WorkItem[] = blocks.map((metrics) => ({ metrics, fromLine: 0, fromRow: 0, continuation: false, deferred: false }));
 
   const pushPage = (continuation: boolean) => {
-    const sameSection = page.sectionIndex === section;
-    const hadContent = page.fragments.length > 0;
-    if (hadContent) pages.push(page);
+    // Capture the outgoing page before replacing it: `pageOf` starts at 1, so
+    // reading `page.sectionPage` after the replacement always produced 2 and
+    // every page after the first was treated as an even page.
+    const previous = page;
+    const sameSection = previous.sectionIndex === section;
+    const hadContent = previous.fragments.length > 0;
+    if (hadContent) pages.push(previous);
     page = pageOf(section);
     page.continuation = continuation;
-    page.sectionPage = sameSection && hadContent ? page.sectionPage + 1 : 1;
+    page.sectionPage = sameSection && hadContent ? previous.sectionPage + 1 : 1;
   };
 
   while (queue.length > 0) {

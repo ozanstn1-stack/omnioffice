@@ -4,6 +4,62 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Stabilisation audit: data-loss prevention, security fixes, correctness fixes
+and regression tests. No new features. See `AUDIT_REPORT.md` for the full
+findings list and `AUDIT_BASELINE.md` for the pre-change state.
+
+### Security
+
+- WebDAV conditional uploads now quote the `If-Match` entity-tag as RFC 7232
+  requires. Strict servers (Sabre/Nextcloud) were answering 412 to every
+  ordinary re-upload, and lax servers silently ignored the precondition.
+- Plugin HTTP requests refuse literal private/loopback IP destinations over
+  `https` (previously only the metadata address was blocked in that branch).
+- Sync commands (`sync_status`, `sync_upload`, `sync_download`,
+  `sync_resolve`, `sync_forget`) now validate local paths with the centralized
+  `paths::*` wrappers instead of accepting raw webview strings.
+- AI responses and streams are capped at 16 MB and provider error text is
+  bounded before it reaches the UI log.
+
+### Fixed
+
+- Failed background jobs are persisted as `failed`, not `done`
+  (`JobRegistry::complete`); a corrupt `jobs.json` is quarantined instead of
+  overwritten; reusing a job id cancels the previous worker; the job store
+  uses a unique temp file with fsync and reports rename failures.
+- All "atomic" writers (`officecore`, `pdfcore`, `synccore`, signing, jobs)
+  no longer delete the target before renaming and now fsync before the rename;
+  settings, recents, AI settings, library index, operation log and stored
+  secrets use the same atomic path. PDF→images, OCR text/PDF and visual-diff
+  outputs are atomic too.
+- Writer: footnote/endnote/field anchors survive any keystroke; Shift+Enter
+  with a selection removes it; Delete no longer removes a following object;
+  multi-paragraph table cells keep their other paragraphs; caret offsets skip
+  note/field glyphs and hard breaks; `Show revisions` off hides deletions;
+  pagination numbers pages monotonically; hard line breaks render as `<br>`.
+- Calc: `range <op> scalar` broadcasts the scalar to every cell; error
+  literals (`#N/A`, `#DIV/0!`, …) parse and work with `IFERROR`/`ISERROR`;
+  `TEXT` time formats show minutes (not the month); `TIME(h,m,s)` added.
+- XLSX: a hyperlink on a blank cell round-trips instead of being dropped.
+- IPC: `ai_translate` sends `targetLanguage` (the feature previously failed
+  deserialization); `ai_example_prompts.translateTargets` is read;
+  `SanitizeReport.metadataRemoved` is typed as a count.
+- Vault: a stale `scanning: true` left by a crash is repaired at startup.
+- Jobs: live jobs appear in the job center without an app restart.
+
+### Added
+
+- Process-wide heavy-work semaphore (`src-tauri/src/concurrency.rs`) bounding
+  concurrent PDF render/OCR/compression, vault scans, office import/export and
+  signing to roughly the CPU count instead of Tokio's 512-thread default.
+- Regression tests: job failure/quarantine/id-reuse, vault status repair,
+  WebDAV ETag quoting (strict in-process server), plugin private-IPv4/host
+  literals, Writer structural runs/caret/hard breaks/revision hiding,
+  pagination numbering, Calc broadcasting and error literals, `TEXT`/`TIME`,
+  XLSX link-only cells.
+
 ## [3.2.1]
 
 Comprehensive security hardening, centralized path validation, and job reliability.

@@ -243,9 +243,15 @@ pub fn delete_meta(config_dir: &Path, local_path: &Path) -> Result<(), SyncError
     }
 }
 
-/// Atomic write: a uniquely named temp sibling is written and then renamed
-/// over the target, so a crash never leaves a half-written sidecar behind.
+/// Atomic write: a uniquely named temp sibling is written, flushed to stable
+/// storage and then renamed over the target, so a crash never leaves a
+/// half-written sidecar behind.
+///
+/// `fs::rename` replaces an existing target atomically on Windows
+/// (`MoveFileExW` + `MOVEFILE_REPLACE_EXISTING`) and Unix; the old
+/// remove-then-rename sequence lost the file if the process died in between.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), SyncError> {
+    use std::io::Write;
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
             std::fs::create_dir_all(parent)?;
@@ -256,16 +262,34 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), SyncError> {
         .map(|value| value.to_string_lossy().to_string())
         .unwrap_or_else(|| "sync".to_string());
     let temp = path.with_file_name(format!(".{name}.{}.tmp", uuid::Uuid::new_v4().simple()));
-    std::fs::write(&temp, bytes)?;
-    // Windows `rename` fails when the target exists; removing first keeps the
-    // worst case at "old or new", never "half-written".
-    if path.exists() {
-        std::fs::remove_file(path)?;
+    {
+        let mut file = std::fs::File::create(&temp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
     }
     std::fs::rename(&temp, path).map_err(|error| {
         let _ = std::fs::remove_file(&temp);
         SyncError::Io(error.to_string())
-    })
+    })?;
+    sync_parent_dir(path);
+    Ok(())
+}
+
+/// Best-effort parent directory fsync; a no-op where directories cannot be
+/// opened for sync (Windows).
+fn sync_parent_dir(path: &Path) {
+    #[cfg(unix)]
+    {
+        if let Some(parent) = path.parent() {
+            if let Ok(dir) = std::fs::File::open(parent) {
+                let _ = dir.sync_all();
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -95,15 +95,19 @@ pub fn save_document(doc: &mut Document, output: &Path, compress_streams: bool) 
         let mut file = fs::File::create(&tmp_path).map_err(PdfError::from_io)?;
         doc.save_to(&mut file).map_err(PdfError::from_io)?;
         file.flush().map_err(PdfError::from_io)?;
+        // Durability barrier before the rename: a power failure after the
+        // rename must not expose an empty/partial file.
+        file.sync_all().map_err(PdfError::from_io)?;
     }
-    // Windows rename is not atomic over an existing file; remove first.
-    if output.exists() {
-        fs::remove_file(output).map_err(PdfError::from_io)?;
-    }
+    // `fs::rename` replaces an existing target atomically on Windows
+    // (MoveFileExW + MOVEFILE_REPLACE_EXISTING) and Unix. The old
+    // remove-then-rename sequence had a window where the target was missing.
     fs::rename(&tmp_path, output).map_err(|e| {
         let _ = fs::remove_file(&tmp_path);
         PdfError::from_io(e)
-    })
+    })?;
+    sync_parent_dir(output);
+    Ok(())
 }
 
 /// Writes raw bytes atomically, the same way documents are saved (temp
@@ -115,15 +119,59 @@ pub fn write_bytes_atomic(output: &Path, bytes: &[u8]) -> PdfResult<()> {
         }
     }
     let tmp_path = temp_sibling(output);
-    fs::write(&tmp_path, bytes).map_err(PdfError::from_io)?;
-    // Windows rename is not atomic over an existing file; remove first.
-    if output.exists() {
-        fs::remove_file(output).map_err(PdfError::from_io)?;
-    }
+    write_bytes_durable(&tmp_path, bytes)?;
+    // Replaces the target atomically (see `save_document`).
     fs::rename(&tmp_path, output).map_err(|e| {
         let _ = fs::remove_file(&tmp_path);
         PdfError::from_io(e)
-    })
+    })?;
+    sync_parent_dir(output);
+    Ok(())
+}
+
+/// Writes `bytes` and flushes them to stable storage before returning.
+fn write_bytes_durable(path: &Path, bytes: &[u8]) -> PdfResult<()> {
+    use std::io::Write;
+    let mut file = fs::File::create(path).map_err(PdfError::from_io)?;
+    file.write_all(bytes).map_err(PdfError::from_io)?;
+    file.sync_all().map_err(PdfError::from_io)?;
+    Ok(())
+}
+
+/// Copies a file atomically: the copy lands in a sibling temp file that is
+/// flushed and then renamed over the target, so an interrupted copy never
+/// truncates the destination.
+pub fn copy_atomic(source: &Path, output: &Path) -> PdfResult<()> {
+    if let Some(parent) = output.parent() {
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            fs::create_dir_all(parent).map_err(PdfError::from_io)?;
+        }
+    }
+    let tmp_path = temp_sibling(output);
+    fs::copy(source, &tmp_path).map_err(PdfError::from_io)?;
+    fs::rename(&tmp_path, output).map_err(|e| {
+        let _ = fs::remove_file(&tmp_path);
+        PdfError::from_io(e)
+    })?;
+    sync_parent_dir(output);
+    Ok(())
+}
+
+/// Best-effort parent directory fsync; a no-op where directories cannot be
+/// opened for sync (Windows).
+fn sync_parent_dir(path: &Path) {
+    #[cfg(unix)]
+    {
+        if let Some(parent) = path.parent() {
+            if let Ok(dir) = fs::File::open(parent) {
+                let _ = dir.sync_all();
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
 }
 
 /// Same as `save_document` but disables cross-reference/object streams, which
@@ -134,16 +182,21 @@ pub fn save_document_classic(doc: &mut Document, output: &Path) -> PdfResult<()>
 }
 
 pub fn temp_sibling(path: &Path) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
     let pid = std::process::id();
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.subsec_nanos())
         .unwrap_or(0);
+    // A process-wide counter closes the (theoretical) same-nanosecond
+    // collision between two threads writing the same target.
+    let sequence = COUNTER.fetch_add(1, Ordering::Relaxed);
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "output.pdf".to_string());
-    path.with_file_name(format!(".{name}.{pid}{nanos}.tmp"))
+    path.with_file_name(format!(".{name}.{pid}{nanos}-{sequence}.tmp"))
 }
 
 // ---------------------------------------------------------------------------

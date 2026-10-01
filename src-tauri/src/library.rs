@@ -82,7 +82,9 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), PdfError> {
     }
     let text = serde_json::to_string_pretty(value)
         .map_err(|error| PdfError::Internal(format!("store serialize failed: {error}")))?;
-    std::fs::write(path, text).map_err(PdfError::from_io)
+    // Crash-safe: a torn write here used to silently drop the whole library or
+    // operation log because the readers fall back to `Default`.
+    crate::commands::write_atomic(path, text.as_bytes())
 }
 
 fn slug(value: &str, max: usize) -> String {
@@ -156,7 +158,7 @@ pub fn save_ai_entry(
     let created_at = now_seconds();
     let file_name = library_file_name(kind, source_name, created_at);
     let file_path = unique_path(library_dir, &file_name);
-    std::fs::write(&file_path, text).map_err(PdfError::from_io)?;
+    crate::commands::write_atomic(&file_path, text.as_bytes())?;
 
     let entry = AiLibraryEntry {
         id: format!("{created_at}-{}", slug(kind, 12)),
@@ -192,7 +194,9 @@ fn unique_path(dir: &Path, file_name: &str) -> PathBuf {
             return next;
         }
     }
-    candidate
+    // Never fall back to the taken candidate: with an atomic (replacing) write
+    // that would silently overwrite an existing library file.
+    dir.join(format!("{stem}-{}.{extension}", uuid::Uuid::new_v4().simple()))
 }
 
 pub fn list_ai_entries(index_path: &Path) -> Vec<AiLibraryEntry> {

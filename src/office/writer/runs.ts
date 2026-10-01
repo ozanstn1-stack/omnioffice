@@ -39,11 +39,19 @@ export function runsText(runs: Run[]): string {
   return runs.map((run) => run.text).join("");
 }
 
-/** Drops empty runs and merges neighbours that share the same formatting. */
+/** True for runs that exist only as an anchor (footnote/endnote/field). Their
+ * text is empty by design; dropping them deletes the note or field from the
+ * document on the next synchronisation. */
+function isStructuralRun(run: Run): boolean {
+  return Boolean(run.footnote || run.endnote || run.field);
+}
+
+/** Drops empty runs and merges neighbours that share the same formatting.
+ * Empty structural runs (notes, fields) are kept. */
 export function normalizeRuns(runs: Run[]): Run[] {
   const out: Run[] = [];
   for (const run of runs) {
-    if (!run.text) continue;
+    if (!run.text && !isStructuralRun(run)) continue;
     const previous = out[out.length - 1];
     if (previous && sameFormat(previous, run)) {
       out[out.length - 1] = { ...previous, text: previous.text + run.text };
@@ -110,7 +118,9 @@ export function replaceRange(runs: Run[], from: number, to: number, text: string
   return normalizeParagraphRuns([...left, ...(text ? [{ ...template, text }] : []), ...right]);
 }
 
-/** The formatting that a character inserted at `offset` should receive. */
+/** The formatting that a character inserted at `offset` should receive.
+ * Structural anchors (notes/fields) are not inherited: typing next to a note
+ * marker must produce plain text, never a second note reference. */
 export function formatAtOffset(runs: Run[], offset: number): Run {
   const text = runsText(runs);
   const at = Math.max(0, Math.min(offset, text.length));
@@ -120,8 +130,10 @@ export function formatAtOffset(runs: Run[], offset: number): Run {
     if (at > position) previous = run;
     position += run.text.length;
   }
-  if (previous) return { ...emptyRun(), ...previous, text: "" };
-  return { ...emptyRun(), ...(runs[0] ?? {}), text: "" };
+  const template = previous ?? runs[0] ?? null;
+  if (!template) return emptyRun();
+  const { footnote: _footnote, endnote: _endnote, field: _field, revision: _revision, ...format } = template;
+  return { ...emptyRun(), ...format, text: "" };
 }
 
 /**

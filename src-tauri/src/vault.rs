@@ -385,6 +385,22 @@ fn write_stored_status(root: &Path, status: &StoredStatus) -> Result<(), PdfErro
     write_json_atomic(&stored_status_path(root), status).map(|_| ())
 }
 
+/// Startup repair for the persisted vault status.
+///
+/// `scanning` is written as `true` before a scan and back to `false` only at
+/// the end of the same closure. A crash, power loss or Android process death
+/// in between leaves it `true` forever, and the UI then disables Index/Import
+/// with no way out. No scan can survive a process restart, so any persisted
+/// `true` at startup is stale by definition.
+pub fn repair_stored_status(root: &Path) -> Result<(), PdfError> {
+    let mut status = read_stored_status(root);
+    if status.scanning {
+        status.scanning = false;
+        write_stored_status(root, &status)?;
+    }
+    Ok(())
+}
+
 fn sanitize_id(id: &str) -> Result<String, PdfError> {
     let cleaned: String = id.chars().take(32).collect();
     if cleaned.is_empty() || cleaned.len() != id.len() || !cleaned.chars().all(|ch| ch.is_ascii_hexdigit()) {
@@ -1919,6 +1935,7 @@ where
     T: Send + 'static,
     F: FnOnce() -> Result<T, PdfError> + Send + 'static,
 {
+    let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(work)
         .await
         .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
@@ -1989,7 +2006,7 @@ pub async fn vault_scan(app: AppHandle, registry: State<'_, JobRegistry>, reques
         })
     })
     .await;
-    registry.finish(&job_id);
+    registry.complete(&job_id, result.is_ok());
     result
 }
 
@@ -2673,6 +2690,23 @@ mod tests {
         assert!(status.can_import_files, "import works on every platform");
         assert_eq!(status.can_scan_folders, cfg!(not(target_os = "android")));
         assert_eq!(status.folders, usize::from(cfg!(target_os = "android")));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn startup_repair_clears_a_stale_scanning_flag() {
+        let base = temp_root("repair");
+        let root = base.join("root");
+        let mut status = read_stored_status(&root);
+        status.scanning = true;
+        status.last_scan = Some("2026-01-01T00:00:00Z".into());
+        write_stored_status(&root, &status).expect("write");
+        assert!(vault_status_at(&root).scanning);
+
+        repair_stored_status(&root).expect("repair");
+        let repaired = vault_status_at(&root);
+        assert!(!repaired.scanning, "a scan cannot survive a restart");
+        assert_eq!(repaired.last_scan.as_deref(), Some("2026-01-01T00:00:00Z"), "other fields are preserved");
         let _ = std::fs::remove_dir_all(&base);
     }
 

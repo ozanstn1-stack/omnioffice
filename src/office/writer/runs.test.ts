@@ -451,3 +451,46 @@ describe("sameFormat", () => {
     expect(sameFormat(run("a"), run("b", { bold: true }))).toBe(false);
   });
 });
+
+describe("structural run preservation", () => {
+  it("keeps an empty footnote/field run through normalization", () => {
+    // Regression: typing one character in a paragraph with a footnote marker
+    // used to delete the note from the model (empty structural runs were
+    // dropped by normalizeRuns).
+    const runs = [run("before "), run("", { footnote: "note-1" }), run(" after")];
+    const normalized = normalizeRuns(runs);
+    expect(normalized.some((entry) => entry.footnote === "note-1")).toBe(true);
+    const field = run("", { field: { kind: "page", target: "", cached: "1" } });
+    expect(normalizeRuns([run("x"), field]).some((entry) => entry.field?.kind === "page")).toBe(true);
+  });
+
+  it("keeps the anchor when text is inserted next to it", () => {
+    const runs = [run("ab"), run("", { footnote: "n1" })];
+    expect(insertText(runs, 2, "X").some((entry) => entry.footnote === "n1")).toBe(true);
+    expect(splitRuns(runs, 1)[1].some((entry) => entry.footnote === "n1")).toBe(true);
+  });
+
+  it("does not inherit a note or field when typing next to it", () => {
+    const runs = [run("", { footnote: "n1" }), run("plain")];
+    const template = formatAtOffset(runs, 0);
+    expect(template.footnote ?? null).toBeNull();
+    expect(template.field ?? null).toBeNull();
+  });
+
+  it("renders a hard line break as <br> and reads it back", () => {
+    const html = runsToHtml([run("one\ntwo")]);
+    expect(html).toContain("<br>");
+    const element = document.createElement("div");
+    element.innerHTML = html;
+    expect(runsText(domToRuns(element))).toBe("one\ntwo");
+  });
+
+  it("hides a tracked deletion when revisions are off", () => {
+    const deleted = run("old", { revision: { id: "r1", kind: "delete", author: "A", date: "" } });
+    const kept = run("new", { revision: { id: "r2", kind: "insert", author: "A", date: "" } });
+    const final = runsToHtml([deleted, kept], { showRevisions: false });
+    expect(final).not.toContain("old");
+    expect(final).toContain("new");
+    expect(runsToHtml([deleted, kept], { showRevisions: true })).toContain("old");
+  });
+});

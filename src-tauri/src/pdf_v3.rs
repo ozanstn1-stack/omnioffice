@@ -93,6 +93,7 @@ pub struct PdfaRequest {
 pub async fn pdfa_validate(request: PdfaRequest) -> Result<PdfaReport, PdfError> {
     let level = level_from(&request.level)?;
     let input = crate::paths::input_file(&request.input)?.into_path_buf();
+    let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || pdfcore::pdfa::validate_pdfa(&input, level))
         .await
         .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
@@ -128,6 +129,7 @@ pub async fn pdf_list_form_fields(
     path: String,
     password: Option<String>,
 ) -> Result<Vec<pdfcore::forms::FormFieldInfo>, PdfError> {
+    let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || {
         let path = crate::paths::input_file(&path)?;
         pdfcore::forms::list_fields_in_file(path.as_path(), password.as_deref())
@@ -152,6 +154,7 @@ pub struct FillFormRequest {
 /// before anything is written.
 #[tauri::command]
 pub async fn pdf_fill_form(request: FillFormRequest) -> Result<pdfcore::forms::FillReport, PdfError> {
+    let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || {
         let input = crate::paths::input_file(&request.input)?;
         let mut document =
@@ -175,6 +178,7 @@ pub async fn pdf_validate_form(
     values: Vec<pdfcore::forms::FieldValue>,
     password: Option<String>,
 ) -> Result<Vec<pdfcore::forms::FieldIssue>, PdfError> {
+    let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || {
         let path = crate::paths::input_file(&path)?;
         let document = pdfcore::docutil::load_document(path.as_path(), password.as_deref())?;
@@ -194,6 +198,7 @@ pub async fn pdf_list_objects(
     path: String,
     password: Option<String>,
 ) -> Result<Vec<pdfcore::forms::PageObjectInfo>, PdfError> {
+    let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || {
         let path = crate::paths::input_file(&path)?;
         pdfcore::forms::list_page_objects_in_file(path.as_path(), password.as_deref())
@@ -218,6 +223,7 @@ pub struct EditObjectsRequest {
 /// mutation, so a bad index cannot leave a half-edited file.
 #[tauri::command]
 pub async fn pdf_edit_objects(request: EditObjectsRequest) -> Result<pdfcore::forms::EditReport, PdfError> {
+    let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || {
         let input = crate::paths::input_file(&request.input)?;
         let mut document =

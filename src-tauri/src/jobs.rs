@@ -144,10 +144,20 @@ impl JobStore {
     /// running anymore. The normalized history is written back immediately.
     pub fn attach_path(&self, path: PathBuf) {
         let _ = self.path.set(path.clone());
-        let loaded: Vec<JobRecord> = std::fs::read(&path)
-            .ok()
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .unwrap_or_default();
+        let mut preserved_corrupt_file = false;
+        let loaded: Vec<JobRecord> = match std::fs::read(&path) {
+            Ok(bytes) => match serde_json::from_slice(&bytes) {
+                Ok(records) => records,
+                Err(_) => {
+                    // Never overwrite an unreadable history: keep the bytes
+                    // aside so nothing is silently destroyed. Only if the
+                    // quarantine itself fails do we skip the rewrite below.
+                    preserved_corrupt_file = !Self::quarantine_corrupt(&path);
+                    Vec::new()
+                }
+            },
+            Err(_) => Vec::new(),
+        };
         let now = now_ms();
         let mut inner = self.lock();
         for mut record in loaded {
@@ -158,7 +168,21 @@ impl JobStore {
             inner.records.insert(record.id.clone(), record);
         }
         Self::prune_locked(&mut inner.records);
-        self.persist_locked(&inner);
+        if !preserved_corrupt_file {
+            self.persist_locked(&inner);
+        }
+    }
+
+    /// Moves a corrupt `jobs.json` to a timestamped sibling. Returns `false`
+    /// when the file could not be moved or copied (caller must then not write
+    /// over it).
+    fn quarantine_corrupt(path: &std::path::Path) -> bool {
+        let stamp = now_ms();
+        let backup = path.with_file_name(format!("jobs.corrupt-{stamp}.json"));
+        if std::fs::rename(path, &backup).is_ok() {
+            return true;
+        }
+        std::fs::copy(path, &backup).is_ok()
     }
 
     /// All records, newest first.
@@ -369,11 +393,13 @@ impl JobStore {
         }
     }
 
-    /// Atomic write: serialize the whole history to a temp file next to the
-    /// target and rename it over the old file. Renames are atomic on both NTFS
-    /// and Android's ext4/f2fs, so a crash mid-write can never truncate the
-    /// previous history.
+    /// Atomic write: serialize the whole history to a uniquely named temp file
+    /// next to the target, flush it to stable storage and rename it over the
+    /// old file. Renames are atomic on both NTFS and Android's ext4/f2fs, so a
+    /// crash mid-write can never truncate the previous history; the unique name
+    /// prevents two app instances from clobbering each other's staging file.
     fn persist_locked(&self, inner: &StoreInner) {
+        use std::io::Write;
         let Some(path) = self.path.get() else { return };
         let mut records: Vec<&JobRecord> = inner.records.values().collect();
         records.sort_by_key(|record| std::cmp::Reverse(record.created_at));
@@ -381,10 +407,17 @@ impl JobStore {
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let tmp = path.with_extension("json.tmp");
-        if std::fs::write(&tmp, &json).is_ok() {
-            let _ = std::fs::rename(&tmp, path);
+        let tmp = path.with_file_name(format!(".jobs.{}.tmp", uuid::Uuid::new_v4().simple()));
+        let written = std::fs::File::create(&tmp)
+            .and_then(|mut file| {
+                file.write_all(&json)?;
+                file.sync_all()
+            })
+            .is_ok();
+        if written && std::fs::rename(&tmp, path).is_ok() {
+            return;
         }
+        let _ = std::fs::remove_file(&tmp);
     }
 
     /// Keeps the history bounded: oldest terminal records go first, and if
@@ -475,6 +508,13 @@ impl JobRegistry {
         self.store.ensure_tracked(job_id, "pdf");
         let token = CancelToken::new();
         if let Ok(mut jobs) = self.jobs.lock() {
+            // Reusing an id while a previous worker is alive must not orphan
+            // that worker: cancel the old token first so it stops at its next
+            // cooperative check, and the UI's Cancel always reaches the run it
+            // sees.
+            if let Some(previous) = jobs.remove(job_id) {
+                previous.cancel();
+            }
             jobs.retain(|_, token| !token.is_cancelled());
             jobs.insert(job_id.to_string(), token.clone());
         }
@@ -507,6 +547,10 @@ impl JobRegistry {
         self.store.ensure_tracked(job_id, "ai");
         let token = aicore::CancelToken::new();
         if let Ok(mut jobs) = self.ai_jobs.lock() {
+            // Same as `register`: cancel a previous token for a reused id.
+            if let Some(previous) = jobs.remove(job_id) {
+                previous.cancel();
+            }
             jobs.retain(|_, token| !token.is_cancelled());
             jobs.insert(job_id.to_string(), token.clone());
         }
@@ -545,6 +589,22 @@ impl JobRegistry {
             jobs.remove(job_id);
         }
         self.store.finish(job_id);
+    }
+
+    /// Result-aware end of a worker: `Done` on success, `Failed` otherwise.
+    /// Terminal states set by the frontend (cancel) stay sticky.
+    pub fn complete(&self, job_id: &str, succeeded: bool) {
+        if let Ok(mut jobs) = self.jobs.lock() {
+            jobs.remove(job_id);
+        }
+        if let Ok(mut jobs) = self.ai_jobs.lock() {
+            jobs.remove(job_id);
+        }
+        if succeeded {
+            self.store.finish(job_id);
+        } else {
+            self.store.fail_if_active(job_id);
+        }
     }
 
     pub fn cancel_all(&self) {
@@ -834,6 +894,64 @@ mod tests {
         assert!(ai.is_cancelled());
         assert_eq!(store.record("pdf-job").unwrap().status, JobStatus::Cancelled);
         assert_eq!(store.record("ai-job").unwrap().status, JobStatus::Cancelled);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn complete_marks_a_failure_as_failed_not_done() {
+        let path = temp_path("complete");
+        let store = JobStore::shared();
+        store.attach_path(path.clone());
+        let registry = JobRegistry::new(store.clone());
+
+        let _ = registry.register("job-fail");
+        registry.complete("job-fail", false);
+        assert_eq!(store.record("job-fail").unwrap().status, JobStatus::Failed);
+        assert_eq!(read_records(&path)[0].status, JobStatus::Failed);
+
+        let _ = registry.register("job-ok");
+        registry.complete("job-ok", true);
+        assert_eq!(store.record("job-ok").unwrap().status, JobStatus::Done);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn reusing_an_id_cancels_the_previous_run() {
+        let path = temp_path("reuse");
+        let store = JobStore::shared();
+        store.attach_path(path.clone());
+        let registry = JobRegistry::new(store.clone());
+
+        let first = registry.register("vault-scan");
+        let second = registry.register("vault-scan");
+        assert!(first.is_cancelled(), "the old worker must be cancelled, not orphaned");
+        assert!(!second.is_cancelled());
+
+        // Cancel now reaches the run the UI sees.
+        registry.cancel("vault-scan");
+        assert!(second.is_cancelled());
+        assert_eq!(store.record("vault-scan").unwrap().status, JobStatus::Cancelled);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn corrupt_history_is_quarantined_not_destroyed() {
+        let path = temp_path("corrupt");
+        std::fs::write(&path, b"{not json").expect("write corrupt");
+        let store = JobStore::default();
+        store.attach_path(path.clone());
+        assert!(store.records().is_empty());
+
+        let dir = path.parent().expect("temp dir").to_path_buf();
+        let preserved = std::fs::read_dir(&dir)
+            .expect("read temp dir")
+            .filter_map(|entry| entry.ok())
+            .any(|entry| {
+                let name = entry.file_name().to_string_lossy().to_string();
+                name.starts_with("jobs.corrupt-")
+                    && std::fs::read(entry.path()).map(|bytes| bytes == b"{not json").unwrap_or(false)
+            });
+        assert!(preserved, "the unreadable history must be preserved in a quarantine file");
         let _ = std::fs::remove_file(&path);
     }
 

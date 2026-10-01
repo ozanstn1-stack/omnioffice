@@ -321,7 +321,7 @@ pub fn ai_save_settings(app: AppHandle, input: AiSettingsInput) -> Result<AiSett
     };
     let text = serde_json::to_string_pretty(&file)
         .map_err(|error| PdfError::Internal(format!("settings serialize failed: {error}")))?;
-    std::fs::write(settings_path(&app)?, text).map_err(PdfError::from_io)?;
+    crate::commands::write_atomic(&settings_path(&app)?, text.as_bytes())?;
     if let Some(key) = input.api_key {
         if !key.trim().is_empty() {
             secret::save_api_key(&key_path(&app)?, &key)?;
@@ -805,7 +805,7 @@ pub fn ai_save_output(
             std::fs::create_dir_all(parent).map_err(PdfError::from_io)?;
         }
     }
-    std::fs::write(&target, text).map_err(PdfError::from_io)?;
+    pdfcore::docutil::write_bytes_atomic(&target, text.as_bytes())?;
     Ok(target.display().to_string())
 }
 

@@ -402,9 +402,13 @@ pub fn write_visual_diff(
     let out_width = width * 2 + gap as u32;
     let image = image::RgbImage::from_raw(out_width, height, rgb)
         .ok_or_else(|| PdfError::InvalidImage("the difference image had an unexpected size".into()))?;
-    image
-        .save(&target)
-        .map_err(|error| PdfError::ProcessingFailed(format!("write difference image: {error}")))?;
+    // Encode in memory and write atomically: `image.save` truncates the target
+    // in place, so an error halfway would destroy an existing diff image.
+    let mut encoded = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(image)
+        .write_to(&mut encoded, image::ImageFormat::Png)
+        .map_err(|error| PdfError::ProcessingFailed(format!("encode difference image: {error}")))?;
+    crate::docutil::write_bytes_atomic(&target, encoded.get_ref())?;
     Ok(target.to_string_lossy().to_string())
 }
 

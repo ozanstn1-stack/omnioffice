@@ -182,14 +182,26 @@ interface ProgressEvent {
   message?: string;
 }
 
+interface SanitizeFindingsBefore {
+  javascriptEntries: number;
+  embeddedFiles: number;
+  actions: number;
+  unsafeAnnotations: number;
+  linkAnnotations: number;
+  metadataPresent: boolean;
+  openActionPresent: boolean;
+}
+
 interface SanitizeReport {
   javascriptRemoved: number;
   embeddedFilesRemoved: number;
   actionsRemoved: number;
-  metadataRemoved: boolean;
+  /** Count of removed metadata entries (Rust `u32`), not a boolean. */
+  metadataRemoved: number;
   annotationsRemoved: number;
   linksRemoved: number;
   warnings: string[];
+  findingsBefore?: SanitizeFindingsBefore;
 }
 
 interface FlattenReport {

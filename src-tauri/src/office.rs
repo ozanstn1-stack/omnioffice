@@ -208,6 +208,7 @@ pub fn open_path(path: &Path) -> Result<OpenDocument, OfficeErrorPayload> {
 
 #[tauri::command]
 pub async fn office_open_document(path: String) -> Result<OpenDocument, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let path = input_path(&path)?;
         open_path(&path)
@@ -319,6 +320,7 @@ pub fn save_model(kind: &str, model: Value, path: &Path) -> Result<SaveDocument,
 
 #[tauri::command]
 pub async fn office_save_document(kind: String, model: Value, path: String) -> Result<SaveDocument, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let path = output_path(&path)?;
         save_model(&kind, model, &path)
@@ -364,6 +366,7 @@ pub fn save_native(kind: &str, title: &str, model: Value, path: &Path) -> Result
 
 #[tauri::command]
 pub async fn office_save_unit(kind: String, title: String, model: Value, path: String) -> Result<SaveDocument, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let path = output_path(&path)?;
         save_native(&kind, &title, model, &path)
@@ -442,6 +445,7 @@ pub fn export_pdf(kind: &str, model: Value, path: &Path) -> Result<SaveDocument,
 
 #[tauri::command]
 pub async fn office_export_pdf(kind: String, model: Value, path: String) -> Result<SaveDocument, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let path = output_path(&path)?;
         export_pdf(&kind, model, &path)
@@ -513,6 +517,7 @@ pub fn convert(input: &Path, output: &Path, _options: &ConvertOptions) -> Result
 #[tauri::command]
 pub async fn office_convert(input: String, output: String, options: Option<ConvertOptions>) -> Result<ConversionInfo, OfficeErrorPayload> {
     let options = options.unwrap_or_default();
+    let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let input = input_path(&input)?;
         let output = output_path(&output)?;
@@ -542,6 +547,7 @@ pub fn office_conversion_targets(extension: String) -> Vec<String> {
 
 #[tauri::command]
 pub async fn office_clean(path: String, options: CleanOptions) -> Result<CleanResult, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let source = input_path(&path)?;
         cleaner::ensure_supported(&source).map_err(payload)?;
@@ -553,6 +559,7 @@ pub async fn office_clean(path: String, options: CleanOptions) -> Result<CleanRe
 
 #[tauri::command]
 pub async fn office_image_footprint(path: String) -> Result<u64, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let path = input_path(&path)?;
         cleaner::image_footprint(&path).map_err(payload)

@@ -6,6 +6,7 @@
 mod ai;
 mod android_intent;
 mod commands;
+mod concurrency;
 mod jobs;
 mod library;
 mod office;
@@ -42,10 +43,14 @@ pub fn run() {
             // process died to `interrupted` (Android activity recreation or an
             // app restart). This only preserves state; it does not keep the
             // process - and therefore the work - alive.
-            if let Some(store) = app.try_state::<std::sync::Arc<JobStore>>() {
-                if let Ok(config_dir) = app.path().app_config_dir() {
+            if let Ok(config_dir) = app.path().app_config_dir() {
+                if let Some(store) = app.try_state::<std::sync::Arc<JobStore>>() {
                     store.attach_path(config_dir.join("jobs.json"));
                 }
+                // A scan cannot survive restart, so a persisted `scanning:
+                // true` (crash / Android process death) is stale and must not
+                // leave the vault UI permanently disabled.
+                let _ = vault::repair_stored_status(&config_dir);
             }
             // Teach pdfcore where the bundled engines live. Both layouts are
             // covered: <install>/resources/engines (bundler default) and
