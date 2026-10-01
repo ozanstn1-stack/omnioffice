@@ -77,9 +77,9 @@ export function useOfficeSession(tab: OfficeTab) {
   const markSaved = useOfficeTabs((state) => state.markSaved);
   const [busy, setBusy] = useState(false);
 
-  const notify = (title: string, detail?: string) => {
+  const notify = useCallback((title: string, detail?: string) => {
     useToasts.getState().push({ kind: "success", title, detail });
-  };
+  }, []);
 
   /**
    * Runs the backend feature report for `target`. Returns null when the check
@@ -103,7 +103,7 @@ export function useOfficeSession(tab: OfficeTab) {
   );
 
   /** Copies the saved document to its Android destination, or explains why not. */
-  const publishAndroidResult = async (sourcePath: string, target: AndroidTarget | null, name: string): Promise<void> => {
+  const publishAndroidResult = useCallback(async (sourcePath: string, target: AndroidTarget | null, name: string): Promise<void> => {
     if (target) {
       const failures = await publishOutputs([sourcePath], { file: target });
       if (failures.length) {
@@ -125,13 +125,13 @@ export function useOfficeSession(tab: OfficeTab) {
     } else {
       notify(t("office.saved"), fileBaseName(sourcePath));
     }
-  };
+  }, [notify, t]);
 
   const save = useCallback(
-    async (
+    async function saveImpl(
       targetPath?: string,
       options?: { forceDestination?: boolean; defaultPath?: string; extension?: string },
-    ): Promise<string | null> => {
+    ): Promise<string | null> {
       // Ctrl+S keeps the current path; `saveAs` forces a fresh destination.
       const forceDestination = options?.forceDestination ?? false;
       let path = targetPath ?? (forceDestination ? undefined : tab.path) ?? undefined;
@@ -172,7 +172,7 @@ export function useOfficeSession(tab: OfficeTab) {
             if (choice === "oswk") {
               // Close the warning and run the real lossless flow: a fresh save
               // dialog seeded with the lossless sibling of the chosen target.
-              return save(undefined, {
+              return saveImpl(undefined, {
                 forceDestination: true,
                 extension: "oswk",
                 defaultPath: replaceExtension(path, "oswk"),
@@ -210,7 +210,7 @@ export function useOfficeSession(tab: OfficeTab) {
         setBusy(false);
       }
     },
-    [loadCompatibility, markSaved, t, tab],
+    [loadCompatibility, markSaved, notify, publishAndroidResult, t, tab],
   );
 
   /** Always asks for a destination, even when the tab already has a path. */
@@ -341,6 +341,8 @@ export function useEditorShortcuts(
   session: ReturnType<typeof useOfficeSession>,
   handlers?: { onFind?: () => void; onReplace?: () => void },
 ) {
+  const onFind = handlers?.onFind;
+  const onReplace = handlers?.onReplace;
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey)) return;
@@ -363,21 +365,21 @@ export function useEditorShortcuts(
         window.print();
         return;
       }
-      if (key === "f" && handlers?.onFind) {
+      if (key === "f" && onFind) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        handlers.onFind();
+        onFind();
         return;
       }
-      if (key === "h" && handlers?.onReplace) {
+      if (key === "h" && onReplace) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        handlers.onReplace();
+        onReplace();
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [handlers?.onFind, handlers?.onReplace, session]);
+  }, [onFind, onReplace, session]);
 }
 
 /** Opens a file dialog and adds the chosen document as a workspace tab. */

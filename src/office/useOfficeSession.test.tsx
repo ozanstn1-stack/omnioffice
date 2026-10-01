@@ -1,4 +1,5 @@
-﻿import { act, render, screen } from "@testing-library/react";
+﻿import { useEffect } from "react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -69,7 +70,10 @@ let session: Session | null = null;
 
 /** Renders the hook together with the dialog host the workspace mounts. */
 function Harness({ tab }: { tab: OfficeTab }) {
-  session = useOfficeSession(tab);
+  const current = useOfficeSession(tab);
+  useEffect(() => {
+    session = current;
+  }, [current]);
   return <DataLossDialogHost />;
 }
 

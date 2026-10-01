@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertTriangle, FileSearch } from "lucide-react";
 import { Badge, Card, Field, Segmented, Slider, Toggle } from "../components/ui";
 import { DropZone, FileList, InfoStrip, OutputBar, ResultCard } from "../components/files";
@@ -30,11 +30,17 @@ export function Ocr({ initialFiles, dragging }: { initialFiles?: string[]; dragg
     grayscale: false,
   });
 
-  useEffect(() => {
-    if (settings.ocrLanguages.length) setSelectedLanguages(settings.ocrLanguages);
-  }, [settings.ocrLanguages]);
+  // Settings-supplied languages seed the selection once they load. Derived
+  // during render from the settings value so there is no setState cascade.
+  const [languagesTouched, setLanguagesTouched] = useState(false);
+  const [lastSettingsLanguages, setLastSettingsLanguages] = useState(settings.ocrLanguages);
+  if (!languagesTouched && settings.ocrLanguages.length && settings.ocrLanguages !== lastSettingsLanguages) {
+    setLastSettingsLanguages(settings.ocrLanguages);
+    setSelectedLanguages(settings.ocrLanguages);
+  }
 
   const toggleLanguage = (code: string) => {
+    setLanguagesTouched(true);
     setSelectedLanguages((previous) =>
       previous.includes(code) ? previous.filter((value) => value !== code) : [...previous, code],
     );

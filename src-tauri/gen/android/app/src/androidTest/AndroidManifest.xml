@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!-- In-process document provider for the open-with instrumentation tests. -->
+    <provider
+      android:name="io.github.ozanstn1.pdfswissarmyknife.TestDocumentProvider"
+      android:authorities="io.github.ozanstn1.pdfswissarmyknife.testdocuments"
+      android:exported="false" />
+  </application>
+</manifest>

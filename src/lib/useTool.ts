@@ -99,11 +99,18 @@ export function useTool(options: ToolOptions): ToolSession {
   const androidTargetRef = useRef<PublishTarget | null>(null);
   const taskRef = useRef<((jobId: string, overwrite: OverwriteMode) => Promise<OpResult | void>) | null>(null);
 
-  androidTargetRef.current = androidTarget;
+  // Keep the refs in sync in an effect (writing refs during render is unsafe
+  // under concurrent rendering) instead of assigning them in the render body.
+  useEffect(() => {
+    androidTargetRef.current = androidTarget;
+  }, [androidTarget]);
 
-  filesRef.current = files;
   const primary = files.length ? files[0] : null;
   const progress = progressMap[jobId] ?? null;
+
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
 
   const accepted = useCallback(
     (path: string) => {
@@ -185,6 +192,7 @@ export function useTool(options: ToolOptions): ToolSession {
   }, []);
 
   // Load document info for the primary file (with password prompting).
+  const loadInfoForRef = useRef<(file: SelectedFile, secret?: string) => Promise<void>>(async () => undefined);
   const loadInfoFor = useCallback(
     async (file: SelectedFile, secret?: string) => {
       if (!isPdf(file.path)) {
@@ -205,7 +213,7 @@ export function useTool(options: ToolOptions): ToolSession {
           setInfo(null);
           const entered = await askPassword(file.path);
           if (entered) {
-            await loadInfoFor(file, entered);
+            await loadInfoForRef.current(file, entered);
           }
           return;
         }
@@ -216,6 +224,12 @@ export function useTool(options: ToolOptions): ToolSession {
     [askPassword],
   );
 
+  // Indirection so the retry-with-password path does not reference the not-yet
+  // declared `loadInfoFor` binding.
+  useEffect(() => {
+    loadInfoForRef.current = loadInfoFor;
+  }, [loadInfoFor]);
+
   const reloadInfo = useCallback(async () => {
     if (primary) await loadInfoFor(primary, password || undefined);
   }, [loadInfoFor, password, primary]);
@@ -223,16 +237,20 @@ export function useTool(options: ToolOptions): ToolSession {
   useEffect(() => {
     if (!loadInfo) return;
     if (primary) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the loader sets info from an async response
       void loadInfoFor(primary, password || undefined);
     } else {
       setInfo(null);
     }
+    // The load is keyed on the file path; including loadInfoFor/password here
+    // would refetch on every password keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [primary?.path, loadInfo]);
 
   // Default output path suggestion.
   useEffect(() => {
     if (!primary) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing the suggestion for an empty selection
       setOutputPath("");
       setOutputDir("");
       return;
@@ -267,12 +285,16 @@ export function useTool(options: ToolOptions): ToolSession {
           if (!cancelled) setOutputPath(suggestedName);
         });
     } else {
+       
       setOutputPath(target);
     }
+     
     setOutputDir(settings.defaultOutputDir || dirName(primary.path));
     return () => {
       cancelled = true;
     };
+    // The suggestion is derived from the active file/output settings; the async
+    // callbacks own the state they set.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [primary?.path, suffix, settings.defaultOutputDir]);
 
@@ -282,6 +304,7 @@ export function useTool(options: ToolOptions): ToolSession {
     if (initialised.current) return;
     if (initialPaths && initialPaths.length) {
       initialised.current = true;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- addPaths owns the file/info state
       void addPaths(initialPaths);
     }
   }, [addPaths, initialPaths]);
@@ -434,8 +457,12 @@ export function useTool(options: ToolOptions): ToolSession {
 }
 
 export function useProgressPercent(progress: ProgressPayload | null): number | null {
+  // `progress` changes identity every event; the percentage is a pure function
+  // of the two counters, so keying on them preserves (and narrows) the memo.
+  const current = progress?.current ?? 0;
+  const total = progress?.total ?? 0;
   return useMemo(() => {
-    if (!progress || !progress.total) return null;
-    return Math.min(100, Math.round((progress.current / progress.total) * 100));
-  }, [progress]);
+    if (!total) return null;
+    return Math.min(100, Math.round((current / total) * 100));
+  }, [current, total]);
 }

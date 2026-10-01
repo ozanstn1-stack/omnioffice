@@ -282,6 +282,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
   const windows = !isAndroid() && typeof navigator !== "undefined" && /windows/i.test(navigator.userAgent);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- adopting the files handed to the tool
     if (initialFiles?.length) setFiles(initialFiles);
   }, [initialFiles]);
 
@@ -351,11 +352,16 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
   // Forms & objects: real AcroForm fields plus annotation/widget/image editing
   // -------------------------------------------------------------------------
 
+  const pageCount = studioInfo?.pageCount ?? 0;
+  // Keep the current page inside the (possibly shrunken) document by deriving
+  // the clamped value instead of clamping in an effect.
+  const shownPage = pageCount && page > pageCount ? pageCount : page;
+
   const studioGeometry = useMemo<StudioPageGeometry | null>(() => {
-    const found = studioInfo?.pageGeometries.find((entry) => entry.page === page);
+    const found = studioInfo?.pageGeometries.find((entry) => entry.page === shownPage);
     if (!found) return null;
     return { width: found.width_pt, height: found.height_pt, rotation: found.rotation ?? 0 };
-  }, [studioInfo, page]);
+  }, [studioInfo, shownPage]);
 
   // Reload the field tree, the page object list and the geometry from the
   // actual file whenever the tab is opened, the input changes or the user
@@ -364,6 +370,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
   useEffect(() => {
     if (tab !== "objects" || !input) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the async load owns loading/error
     setDataLoading(true);
     void (async () => {
       try {
@@ -412,14 +419,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, input, dataVersion]);
 
-  const pageCount = studioInfo?.pageCount ?? 0;
-  useEffect(() => {
-    if (pageCount && page > pageCount) setPage(pageCount);
-  }, [page, pageCount]);
-
   const pageObjects = useMemo(
-    () => objects.filter((object) => object.page === page && !removedObjects.has(objectKey(object))),
-    [objects, page, removedObjects],
+    () => objects.filter((object) => object.page === shownPage && !removedObjects.has(objectKey(object))),
+    [objects, shownPage, removedObjects],
   );
 
   const currentRectOf = useCallback(
@@ -688,8 +690,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the certificate loader owns its state
     if (tab === "signatures" && windows) void loadCertificates();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the loader is stable and tab/windows gate it
   }, [tab, windows]);
 
   /** Picks a PFX: on Android through the mobile bridge, otherwise the dialog. */
@@ -792,7 +795,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
         pfxPassword: pfxPath ? pfxPassword : null,
         certIndex: pfxPath ? null : certIndex,
         options: {
-          page,
+          page: shownPage,
           reason,
           location,
           appearance,
@@ -827,6 +830,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
   // the same pixels the image shows.
   const objectOverlay = studioGeometry ? (
     <div className="absolute inset-0">
+      {/* The pointer handlers below drive a ref-based drag; the compiler flags
+          the closure's ref reads, but the overlay itself only renders state. */}
+      {/* eslint-disable-next-line react-hooks/refs -- drag handlers own the refs; the overlay renders state */}
       {pageObjects.map((object) => {
         const key = objectKey(object);
         const display = pageRectToDisplayRect(currentRectOf(object), studioGeometry);
@@ -844,6 +850,12 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
             onClick={(event) => {
               event.stopPropagation();
               setSelectedObject(key);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setSelectedObject(key);
+              }
             }}
             style={{
               position: "absolute",
@@ -1233,7 +1245,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                     className="input"
                     type="number"
                     min={1}
-                    value={page}
+                    value={shownPage}
                     onChange={(event) => setPage(Math.max(1, Number(event.target.value) || 1))}
                     style={{ width: 90 }}
                   />
@@ -1466,25 +1478,25 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
           </Card>
 
           <Card>
-            <strong>{t("studio.objectsOnPage", { page })}</strong>
+            <strong>{t("studio.objectsOnPage", { page: shownPage })}</strong>
             <p className="muted small">{t("studio.selectObjectHint")}</p>
             {pageCount > 1 ? (
               <div className="row" style={{ justifyContent: "center", marginBottom: 8 }}>
                 <button
                   type="button"
                   className="btn btn-sm"
-                  disabled={page <= 1}
+                  disabled={shownPage <= 1}
                   onClick={() => setPage((value) => Math.max(1, value - 1))}
                 >
                   ‹
                 </button>
                 <span className="muted small">
-                  {page} / {pageCount}
+                  {shownPage} / {pageCount}
                 </span>
                 <button
                   type="button"
                   className="btn btn-sm"
-                  disabled={page >= pageCount}
+                  disabled={shownPage >= pageCount}
                   onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
                 >
                   ›
@@ -1494,7 +1506,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
             {input ? (
               <div className="mx-auto" style={{ maxWidth: 620 }}>
                 <div ref={canvasRef} style={{ width: "fit-content", margin: "0 auto" }}>
-                  <PageCanvas path={input} page={page} maxWidth={820} overlay={objectOverlay} />
+                  <PageCanvas path={input} page={shownPage} maxWidth={820} overlay={objectOverlay} />
                 </div>
               </div>
             ) : null}

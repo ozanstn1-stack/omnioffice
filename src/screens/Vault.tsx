@@ -221,6 +221,8 @@ export function Vault() {
   }, [t]);
 
   useEffect(() => {
+    // Initial status load; the loader owns the state it sets.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refreshStatus();
   }, [refreshStatus]);
 

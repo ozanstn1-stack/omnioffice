@@ -129,12 +129,15 @@ export function FileList({
 }) {
   const t = useT();
   const dragIndex = useRef<number | null>(null);
+  // State (not a ref) so the drop-target highlight is honest about the drag.
+  const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
 
   const handlePointerDown = (index: number) => (event: React.PointerEvent) => {
     if (!reorder) return;
     if ((event.target as HTMLElement).closest("button")) return;
     dragIndex.current = index;
+    setDragFromIndex(index);
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   };
 
@@ -153,6 +156,7 @@ export function FileList({
       onMove?.(dragIndex.current, overIndex);
     }
     dragIndex.current = null;
+    setDragFromIndex(null);
     setOverIndex(null);
   };
 
@@ -169,7 +173,7 @@ export function FileList({
           className="card-soft flex items-center gap-3 px-3 py-2.5"
           style={{
             cursor: reorder ? "grab" : "default",
-            outline: overIndex === index && dragIndex.current !== null && dragIndex.current !== index ? "2px solid var(--accent)" : "none",
+            outline: overIndex === index && dragFromIndex !== null && dragFromIndex !== index ? "2px solid var(--accent)" : "none",
           }}
         >
           {reorder ? (
@@ -522,8 +526,16 @@ export function OverwriteDialog() {
 }
 
 export function PasswordDialog() {
-  const t = useT();
   const request = usePasswordPrompt((s) => s.request);
+  if (!request) return null;
+  // Mounting a fresh body per request resets the draft and the error flag
+  // without a setState cascade.
+  return <PasswordDialogBody key={request.path} />;
+}
+
+function PasswordDialogBody() {
+  const t = useT();
+  const request = usePasswordPrompt((s) => s.request)!;
   const answer = usePasswordPrompt((s) => s.answer);
   const [value, setValue] = useState("");
   const [checking, setChecking] = useState(false);
@@ -531,12 +543,8 @@ export function PasswordDialog() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setValue("");
-    setIncorrect(false);
-    if (request) setTimeout(() => inputRef.current?.focus(), 50);
-  }, [request]);
-
-  if (!request) return null;
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, []);
 
   const submit = async () => {
     if (!value) return;

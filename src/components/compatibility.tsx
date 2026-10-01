@@ -300,22 +300,24 @@ export function CompatibilityCenterDialog({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const modelRef = useRef(model);
-  modelRef.current = model;
+  // Keep the ref in sync without touching it during render (React forbids ref
+  // writes while rendering).
+  useEffect(() => {
+    modelRef.current = model;
+  }, [model]);
+
+  // When the document kind changes, fall back to its first target. A `key` on
+  // the dialog (see the host) remounts this component per kind, so this is the
+  // initial value rather than an effect.
+  const effectiveTarget = targets.includes(target) ? target : targets[0];
 
   useEffect(() => {
-    setTarget(TARGETS[kind]?.[0] ?? TARGETS.writer[0]);
-  }, [kind]);
-
-  useEffect(() => {
-    if (!open) {
-      setReport(null);
-      setError(null);
-      return;
-    }
+    if (!open) return;
     let alive = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the async fetch owns loading/error
     setLoading(true);
     setError(null);
-    compatibilityReport(kind, modelRef.current, target)
+    compatibilityReport(kind, modelRef.current, effectiveTarget)
       .then((value) => {
         if (alive) setReport(value);
       })
@@ -328,7 +330,7 @@ export function CompatibilityCenterDialog({
     return () => {
       alive = false;
     };
-  }, [open, kind, target, t]);
+  }, [open, kind, effectiveTarget, t]);
 
   if (!open) return null;
 
@@ -338,7 +340,7 @@ export function CompatibilityCenterDialog({
         <p className="muted">{t("compat.intro")}</p>
         <label className="field">
           <span>{t("compat.target")}</span>
-          <select value={target} onChange={(event) => setTarget(event.target.value)}>
+          <select value={effectiveTarget} onChange={(event) => setTarget(event.target.value)}>
             {targets.map((option) => (
               <option key={option} value={option}>
                 {option.toUpperCase()}

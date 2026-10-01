@@ -32,12 +32,17 @@ function Thumb({
   const [failed, setFailed] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const requested = useRef(false);
-
-  useEffect(() => {
-    requested.current = false;
+  // A refresh (or a new path/page) is a different thumbnail: the reset is
+  // derived from the identity below instead of a setState effect.
+  const identity = `${path}:${page}:${refreshedAt}`;
+  const [lastIdentity, setLastIdentity] = useState(identity);
+  if (lastIdentity !== identity) {
+    // Render-phase reset of derived state: React re-runs the render with the
+    // fresh values before committing (no extra DOM pass, no cascade).
+    setLastIdentity(identity);
     setSrc(null);
     setFailed(false);
-  }, [refreshedAt, path, page]);
+  }
 
   useEffect(() => {
     const element = containerRef.current;
@@ -54,8 +59,13 @@ function Thumb({
       { rootMargin: "320px" },
     );
     observer.observe(element);
-    return () => observer.disconnect();
-  }, [path, page, size, password]);
+    return () => {
+      observer.disconnect();
+      // A new identity means a new thumbnail: clear the once-only guard here
+      // (effects may touch refs, render may not).
+      requested.current = false;
+    };
+  }, [path, page, size, password, identity]);
 
   return (
     <div
@@ -100,6 +110,8 @@ export function ThumbGrid({
   onPageDoubleClick?: (index: number) => void;
 }) {
   const t = useT();
+  // State (not a ref) so the render can honestly reflect the drag highlight.
+  const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
   const dragFrom = useRef<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const [shiftAnchor, setShiftAnchor] = useState<number | null>(null);
@@ -133,6 +145,7 @@ export function ThumbGrid({
     if (event.button !== 0) return;
     if ((event.target as HTMLElement).closest("button")) return;
     dragFrom.current = index;
+    setDragFromIndex(index);
     setOverIndex(index);
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   };
@@ -151,6 +164,7 @@ export function ThumbGrid({
       onReorder?.(dragFrom.current, overIndex);
     }
     dragFrom.current = null;
+    setDragFromIndex(null);
     setOverIndex(null);
   };
 
@@ -173,8 +187,8 @@ export function ThumbGrid({
             data-page-index={index}
             className="thumb"
             data-selected={selected.has(index)}
-            data-dragging={dragFrom.current === index}
-            data-droptarget={overIndex === index && dragFrom.current !== null && dragFrom.current !== index}
+            data-dragging={dragFromIndex === index}
+            data-droptarget={overIndex === index && dragFromIndex !== null && dragFromIndex !== index}
             style={{ aspectRatio: "1 / 1.3" }}
             onPointerDown={handlePointerDown(index)}
             onClick={(event) => handleClick(index, event)}
@@ -266,11 +280,18 @@ export function PageCanvas({
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
+  // A different page/width is a different preview: reset in render instead of
+  // an effect, so the old image never paints against the new geometry.
+  const identity = `${path}:${page}:${maxWidth}:${password ?? ""}`;
+  const [lastIdentity, setLastIdentity] = useState(identity);
+  if (lastIdentity !== identity) {
+    setLastIdentity(identity);
     setImage(null);
     setError(false);
     setRect(null);
+  }
+
+  useEffect(() => {
     void pagePreview(path, page, maxWidth, password)
       .then((preview) => setImage({ dataUrl: preview.dataUrl, width: preview.width, height: preview.height }))
       .catch(() => setError(true));

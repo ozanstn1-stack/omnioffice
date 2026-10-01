@@ -218,26 +218,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
       - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2
         with:
-          # Prebuilt binary: keeps the audit job under a minute instead of
-          # compiling cargo-audit on every push.
-          tool: cargo-audit
-      # Reviewed exceptions. Everything else stays blocking: a new advisory
-      # fails this job rather than scrolling past in a log.
-      #
-      # RUSTSEC-2023-0071 (rsa 0.9.x, Marvin timing side channel): no fixed
-      #   release exists. The suite signs PDFs locally with a user-supplied key
-      #   and never exposes a signing oracle, so the attack needs a timing
-      #   measurement the app does not offer. Revisit when rsa ships a fix or
-      #   the signing path moves to another implementation.
-      # RUSTSEC-2024-0429 (glib 0.18.5, unsound VariantStrIter): reachable only
-      #   through the Linux/macOS GTK stack that Tauri pulls in; the Windows and
-      #   Android builds this repository ships do not include it. Fixed in
-      #   glib 0.20, which the current Tauri/wry dependency chain does not allow.
-      #
-      # Unmaintained-crate advisories (proc-macro-error, unic-*, ttf-parser)
-      # are warnings and do not fail the job.
+          # Prebuilt binaries: keeps the audit job under a minute instead of
+          # compiling these tools on every push.
+          tool: cargo-audit,cargo-deny
+      # cargo audit is the quick gate; deny.toml is the reviewed policy with an
+      # owner and a review date for every ignored advisory.
       - name: cargo audit
         run: |
           cargo audit \
             --ignore RUSTSEC-2023-0071 \
             --ignore RUSTSEC-2024-0429
+      # `deny.toml` owns the advisory policy (owned, time-boxed exceptions).
+      # A new advisory, or an exception whose review date has passed, fails here.
+      - name: cargo deny (advisories)
+        run: cargo deny check advisories

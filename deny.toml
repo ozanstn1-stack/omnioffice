@@ -1,0 +1,32 @@
+# cargo-deny configuration.
+#
+# One place for the dependency-advisory policy: the CI "Dependency audit" job
+# runs `cargo deny check advisories`, so an unreviewed advisory fails the build
+# instead of scrolling past in a log.
+#
+# Every entry in the ignore list below carries an explicit owner and a review
+# date (see the comments). Reviewing an exception means rereading the advisory,
+# confirming the reachability reasoning still holds, and updating the
+# "reviewed ... review by ..." line. If the review date has passed, remove the
+# ignore (and fix the dependency) or re-justify it in the same change.
+
+[advisories]
+ignore = [
+  # RUSTSEC-2023-0071 - rsa 0.9.x Marvin timing side channel.
+  # reachability: the app signs PDFs locally with a user-supplied key and never
+  #   exposes a signing oracle; the attack needs a timing measurement the app
+  #   does not offer. No fixed release exists.
+  # owner: @ozanstn1-stack
+  # reviewed 2026-10-01; review by 2027-01-01 (or when rsa ships a fix, or the
+  #   signing path moves to another implementation).
+  "RUSTSEC-2023-0071",
+
+  # RUSTSEC-2024-0429 - glib 0.18.5 unsound VariantStrIter.
+  # reachability: only via the Linux/macOS GTK stack Tauri pulls in; the Windows
+  #   and Android builds this repository ships do not include it. Fixed in glib
+  #   0.20, which the current Tauri/wry chain does not allow.
+  # owner: @ozanstn1-stack
+  # reviewed 2026-10-01; review by 2027-01-01 (or when the Tauri/wry chain
+  #   allows glib 0.20).
+  "RUSTSEC-2024-0429",
+]

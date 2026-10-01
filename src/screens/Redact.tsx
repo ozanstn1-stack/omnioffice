@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Eye, Eraser, ShieldCheck, Trash2 } from "lucide-react";
 import { Badge, Card, Field, Segmented, Slider, Spinner, Toggle } from "../components/ui";
 import { DropZone, FileList, InfoStrip, OutputBar, ResultCard } from "../components/files";
@@ -51,16 +51,21 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
   }, [session.info, page]);
 
   // Boxes belong to the page they were drawn on; a new document starts clean.
-  useEffect(() => {
+  // The reset is derived from the document identity during render instead of an
+  // effect so no stale boxes paint for the new file.
+  const docIdentity = session.primary?.path ?? "";
+  const [lastDoc, setLastDoc] = useState(docIdentity);
+  if (lastDoc !== docIdentity) {
+    setLastDoc(docIdentity);
     setBoxes([]);
     setMatches([]);
     setDetected(false);
     setScanError(null);
-  }, [session.primary?.path]);
+  }
 
-  useEffect(() => {
-    if (pageCount && page > pageCount) setPage(pageCount);
-  }, [page, pageCount]);
+  // Keep the current page inside the (possibly shrunken) document instead of
+  // clamping in an effect.
+  const shownPage = pageCount && page > pageCount ? pageCount : page;
 
   /**
    * The canvas reports a rectangle normalized to the rendered image with the
@@ -73,12 +78,12 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
       if (!geometry) return;
       const area = rectToUserSpace(rect, geometry);
       if (!area) return;
-      setBoxes((previous) => [...previous, { ...area, page, id: `box-${page}-${previous.length}` }]);
+      setBoxes((previous) => [...previous, { ...area, page: shownPage, id: `box-${shownPage}-${previous.length}` }]);
     },
-    [geometry, page],
+    [geometry, shownPage],
   );
 
-  const pageBoxes = useMemo(() => boxes.filter((box) => box.page === page), [boxes, page]);
+  const pageBoxes = useMemo(() => boxes.filter((box) => box.page === shownPage), [boxes, shownPage]);
 
   const overlayBoxes = geometry ? (
     <div className="absolute inset-0">
@@ -119,7 +124,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
         setBoxes((previous) => [
           ...previous.filter((box) => box.page !== page),
           ...found.map((match, index) => ({
-            id: `auto-${page}-${index}`,
+            id: `auto-${shownPage}-${index}`,
             page: match.page,
             left: match.left,
             bottom: match.bottom,
@@ -140,7 +145,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
   };
 
   const toggleMatch = (match: RedactionMatch, index: number) => {
-    const id = `auto-${page}-${index}`;
+    const id = `auto-${shownPage}-${index}`;
     setBoxes((previous) => {
       const existing = previous.find((box) => box.id === id);
       if (existing) return previous.filter((box) => box.id !== id);
@@ -213,19 +218,19 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
                   <button
                     className="btn btn-sm"
                     type="button"
-                    disabled={page <= 1}
+                    disabled={shownPage <= 1}
                     onClick={() => setPage((value) => Math.max(1, value - 1))}
                   >
                     <ChevronLeft size={14} />
                   </button>
                   <span className="text-xs muted">
-                    {t("common.page")} {page} / {pageCount}
-                    {counts.perPage.get(page) ? ` · ${counts.perPage.get(page)} ${t("redact.box")}` : ""}
+                    {t("common.page")} {shownPage} / {pageCount}
+                    {counts.perPage.get(shownPage) ? ` · ${counts.perPage.get(shownPage)} ${t("redact.box")}` : ""}
                   </span>
                   <button
                     className="btn btn-sm"
                     type="button"
-                    disabled={page >= pageCount}
+                    disabled={shownPage >= pageCount}
                     onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
                   >
                     <ChevronRight size={14} />
@@ -244,7 +249,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
                 <div className="mx-auto" style={{ maxWidth: 620 }}>
                   <PageCanvas
                     path={session.primary.path}
-                    page={page}
+                    page={shownPage}
                     password={session.password || undefined}
                     maxWidth={820}
                     onDragRect={addBox}
@@ -267,7 +272,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
                   ) : (
                     <div className="flex flex-col gap-1.5 max-h-64 overflow-auto">
                       {matches.map((match, index) => {
-                        const included = pageBoxes.some((box) => box.id === `auto-${page}-${index}`);
+                        const included = pageBoxes.some((box) => box.id === `auto-${shownPage}-${index}`);
                         return (
                           <label
                             key={`${match.kind}-${index}`}

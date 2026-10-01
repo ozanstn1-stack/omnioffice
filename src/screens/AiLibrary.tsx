@@ -59,6 +59,7 @@ export function AiLibrary({ onOpenAi }: { onOpenAi: () => void }) {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async loaders own the list/directory state
     void refresh();
     void aiLibraryDefaultDir()
       .then((value) => setDirectory(settings.aiLibraryDir || value))

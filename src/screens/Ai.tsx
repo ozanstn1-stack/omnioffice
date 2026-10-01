@@ -88,10 +88,13 @@ const CITATION_PATTERN = /(\[page\s+\d+\])/gi;
 
 export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; dragging: boolean }) {
   const t = useT();
-  const label = (key: string, fallback: string) => {
-    const value = t(key);
-    return value === key ? fallback : value;
-  };
+  const label = useCallback(
+    (key: string, fallback: string) => {
+      const value = t(key);
+      return value === key ? fallback : value;
+    },
+    [t],
+  );
   const session = useTool({ suffix: "_ai", accept: "pdf", initialPaths: initialFiles });
   const settingsLoaded = useSettings((s) => s.loaded);
   const settings = useSettings((s) => s.settings);
@@ -133,6 +136,7 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
 
   // Development hook: start on a specific tab for screenshots.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- dev/screenshot-only initial tab
     if (devTab && ["summary", "translate", "ask", "chat", "cleanup", "metadata"].includes(devTab)) setTab(devTab);
   }, [devTab]);
 
@@ -142,6 +146,7 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
       setAiSettings(await aiGetSettings().catch(() => null));
     });
     void aiExamplePrompts().then(setExamples).catch(() => undefined);
+     
   }, [settingsLoaded]);
 
   // Streamed answer chunks + progress.
@@ -190,6 +195,10 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
     if (element) element.scrollTop = element.scrollHeight;
   }, [chatMessages]);
 
+  // `fail` is declared later; the ref indirection lets `refreshPreview` call
+  // the current implementation without referencing a not-yet-declared binding.
+  const failRef = useRef<(message: string) => void>(() => undefined);
+
   const refreshPreview = useCallback(async () => {
     if (!session.primary) {
       setPreview(null);
@@ -200,11 +209,14 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
       setPreview(result);
     } catch (previewError) {
       setPreview(null);
-      fail(String((previewError as { message?: string })?.message ?? previewError));
+      failRef.current(String((previewError as { message?: string })?.message ?? previewError));
     }
   }, [session.password, session.primary]);
 
   useEffect(() => {
+    // Resetting the per-document run state when the document changes is the
+    // point of this effect; `refreshPreview` depends on the active file.
+    /* eslint-disable react-hooks/set-state-in-effect */
     setOutput("");
     setError(null);
     setMetadataSuggestion(null);
@@ -212,6 +224,7 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
     setConsent(false);
     setChatMessages([]);
     setChatPage(1);
+    /* eslint-enable react-hooks/set-state-in-effect */
     void refreshPreview();
   }, [refreshPreview]);
 
@@ -260,6 +273,9 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
     void logFrontend("ai-error", message);
     console.warn("[ai]", message);
   };
+  useEffect(() => {
+    failRef.current = fail;
+  });
   const resetJob = () => {
     jobId.current = uid("ai");
     setStage(null);
@@ -267,6 +283,9 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
   };
 
   // Development automation (PDFSAK_DEV_RUN=1) runs the active tab once ready.
+  // `registerAutoRun` stores the handler in a ref (no behavior change); the
+  // assignment happens inside useTool's callback, not here.
+  // eslint-disable-next-line react-hooks/refs -- registering the dev auto-run handler
   session.registerAutoRun(() => {
     setConsent(true);
     if (tab === "ask") setQuestion("What is the total amount?");

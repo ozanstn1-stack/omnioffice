@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0]
+
+Quality gates and test confidence.
+
+### Changed
+
+- ESLint now fails on every warning: the React Compiler diagnostics
+  (`set-state-in-effect`, `refs`, `immutability`, `purity`, `use-memo`,
+  `preserve-manual-memoization`, `globals`, `exhaustive-deps`) and the
+  jsx-a11y interaction rules were burned down from 143 warnings to zero and
+  promoted to errors. The per-rule warning budget
+  (`scripts/lint-baseline.*`) is removed; `npm run lint` is a plain
+  `eslint .`. Several real fixes fell out of this: state that must reflect the
+  active document is derived during render instead of cleared in an effect,
+  drag-highlight state replaces ref reads during render, and `Date.now()`
+  call sites moved out of render.
+- Accessibility: keyboard handlers/roles/`aria-label`s were added to the
+  editors and screens (spreadsheet grid and tabs, slide thumbnails, writer
+  paragraphs and image captions, modal backdrops), and a `.sr-only` helper
+  labels icon-only controls.
+
+### Added
+
+- WebDAV end-to-end tests (`crates/synccore/tests/webdav_e2e.rs`): an
+  in-process DAV server exercises `list`/`put`/`get`/`delete`, conditional
+  uploads (HTTP 412 → `Conflict`), streaming hashing and the Depth header.
+- Android on-device instrumentation tests for the open-with / share pipeline
+  (`app/src/androidTest`): a `TestDocumentProvider` serves a real
+  `content://` stream through the same `IncomingFiles.copyToCache` the
+  Activity uses; the extension whitelist, display-name sanitization, the size
+  cap and the cache hand-off are verified on an emulator in CI.
+- `deny.toml`: the RustSec advisory exceptions now carry an owner and a review
+  date, and CI enforces them with `cargo deny check advisories` (in addition
+  to `cargo audit`).
+
 ## [3.1.1]
 
 Security and supply-chain patch on top of 3.1.0.

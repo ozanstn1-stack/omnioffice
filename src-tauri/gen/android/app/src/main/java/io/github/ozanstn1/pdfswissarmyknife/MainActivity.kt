@@ -1,16 +1,14 @@
 package io.github.ozanstn1.pdfswissarmyknife
 
 import android.content.Intent
-import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.OpenableColumns
 import android.util.Log
 import androidx.activity.enableEdgeToEdge
+import androidx.annotation.VisibleForTesting
 import java.io.File
 import java.io.FileOutputStream
-import java.util.UUID
 
 class MainActivity : TauriActivity() {
   // The generated TauriActivity disables the WebView back handling so plugins
@@ -95,68 +93,34 @@ class MainActivity : TauriActivity() {
   }
 
   private fun copyIncoming(uri: Uri) {
-    val displayName = queryDisplayName(uri)
-    if (displayName == null) {
-      Log.w(TAG, "open-with: no usable file name for $uri")
-      return
+    val (destination, result) = IncomingFiles.copyToCache(contentResolver, uri, cacheDir)
+    when (result) {
+      IncomingFiles.CopyResult.COPIED -> appendPendingOpen(destination!!.absolutePath)
+      IncomingFiles.CopyResult.NO_NAME -> Log.w(TAG, "open-with: no usable file name for $uri")
+      IncomingFiles.CopyResult.UNSUPPORTED -> Log.w(TAG, "open-with: rejected extension for $uri")
+      IncomingFiles.CopyResult.NO_STREAM -> Log.w(TAG, "open-with: provider returned no stream for $uri")
+      IncomingFiles.CopyResult.TOO_LARGE -> Log.w(TAG, "open-with: $uri exceeds the size limit")
+      IncomingFiles.CopyResult.FAILED -> Log.w(TAG, "open-with: copy failed for $uri")
     }
-    if (!IncomingFiles.isOpenableName(displayName)) {
-      Log.w(TAG, "open-with: rejected '${displayName.substringAfterLast('.', "")}' for $uri")
-      return
-    }
-    val directory = File(File(cacheDir, "incoming"), UUID.randomUUID().toString())
-    if (!directory.mkdirs()) {
-      Log.w(TAG, "open-with: cannot create ${directory.absolutePath}")
-      return
-    }
-    val destination = File(directory, displayName)
-    try {
-      contentResolver.openInputStream(uri).use { input ->
-        if (input == null) {
-          Log.w(TAG, "open-with: provider returned no stream for $uri")
-          directory.delete()
-          return
-        }
-        destination.outputStream().use { output ->
-          if (!IncomingFiles.copyCapped(input, output)) {
-            Log.w(TAG, "open-with: $displayName exceeds the 256 MB limit")
-            destination.delete()
-            directory.delete()
-            return
-          }
-        }
-      }
-    } catch (error: Exception) {
-      Log.w(TAG, "open-with: copy failed for $uri (${error.message})")
-      destination.delete()
-      directory.delete()
-      return
-    }
-    appendPendingOpen(destination.absolutePath)
   }
 
-  /** Resolves the provider's display name (OpenableColumns), sanitized. */
-  private fun queryDisplayName(uri: Uri): String? {
-    if (uri.scheme == "file") return IncomingFiles.sanitizeDisplayName(uri.lastPathSegment)
-    var cursor: Cursor? = null
-    try {
-      cursor = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-      if (cursor != null && cursor.moveToFirst()) {
-        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-        if (index >= 0) {
-          val name = IncomingFiles.sanitizeDisplayName(cursor.getString(index))
-          if (name != null) return name
-        }
-      }
-    } catch (error: Exception) {
-      Log.w(TAG, "open-with: cannot resolve a name for $uri (${error.message})")
-    } finally {
-      cursor?.close()
-    }
-    // Some providers only expose a document id as the last path segment; use it
-    // when it at least looks like a file name.
-    val fallback = IncomingFiles.sanitizeDisplayName(uri.lastPathSegment)
-    return if (fallback != null && fallback.contains('.')) fallback else null
+  /**
+   * Test-only entry point for the open-with pipeline: runs the same copy the
+   * intent handler does and returns the queued path (null when the file was
+   * rejected). Instrumented tests drive it with a real `content://` provider.
+   */
+  @VisibleForTesting
+  internal fun importIncomingUriForTest(uri: Uri): String? {
+    val before = pendingOpenPaths()
+    copyIncoming(uri)
+    val after = pendingOpenPaths()
+    return after.lastOrNull { it !in before }
+  }
+
+  private fun pendingOpenPaths(): List<String> {
+    val file = File(cacheDir, PENDING_OPEN_FILE)
+    if (!file.isFile) return emptyList()
+    return file.readLines().filter { it.isNotBlank() }
   }
 
   /** Appends one absolute path per line; the Rust side drains the file. */

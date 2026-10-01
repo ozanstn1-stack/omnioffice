@@ -167,7 +167,21 @@ export function OfficeWorkspace() {
       <div className="office-tabs">
         <div className="office-tab-list">
           {tabs.map((tab) => (
-            <div key={tab.id} className={`office-tab${tab.id === active?.id ? " is-active" : ""}`} onClick={() => activate(tab.id)} title={tab.path ?? tab.title}>
+            <div
+              key={tab.id}
+              className={`office-tab${tab.id === active?.id ? " is-active" : ""}`}
+              role="tab"
+              tabIndex={tab.id === active?.id ? 0 : -1}
+              aria-selected={tab.id === active?.id}
+              onClick={() => activate(tab.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  activate(tab.id);
+                }
+              }}
+              title={tab.path ?? tab.title}
+            >
               <span className={`office-tab-dot kind-${tab.kind}`} />
               <span className="office-tab-title">
                 {tab.title}

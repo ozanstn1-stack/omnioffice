@@ -336,7 +336,7 @@ export function Sync() {
     } finally {
       setSaving(false);
     }
-  }, [config?.hasPassword, draft, pushToast, t]);
+  }, [config, draft, pushToast, t]);
 
   const testConnection = useCallback(async () => {
     setTesting(true);

@@ -107,17 +107,21 @@ function ReaderPage({
   const [failed, setFailed] = useState(false);
   const elementRef = useRef<HTMLDivElement | null>(null);
   const requested = useRef(false);
-
-  useEffect(() => {
-    const cached = cache.get(key);
-    requested.current = Boolean(cached);
-    setSrc(cached ?? null);
+  // A new page key means a different preview: reset the src/failed and the
+  // once-only guard together with the key (derived during render).
+  const [lastKey, setLastKey] = useState(key);
+  if (lastKey !== key) {
+    setLastKey(key);
+    setSrc(cache.get(key) ?? null);
     setFailed(false);
-  }, [cache, key]);
+  }
 
   useEffect(() => {
     const element = elementRef.current;
     if (!element) return;
+    // A new key means a new thumbnail: reset the once-only guard in an effect
+    // (effects may touch refs; render may not).
+    requested.current = false;
     // Lazy rendering: pages are only rasterized when they come near the
     // viewport, which keeps memory flat for very large documents.
     const observer = new IntersectionObserver(
@@ -135,7 +139,10 @@ function ReaderPage({
       { rootMargin: "900px 0px" },
     );
     observer.observe(element);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      requested.current = false;
+    };
   }, [cache, key, page, password, path, width]);
 
   const ratio = geometry.display_height_pt / Math.max(1, geometry.display_width_pt);
@@ -178,7 +185,9 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
-  const imageCache = useRef<Map<string, string>>(new Map());
+  // A plain memo value (not a ref) so rendering and effects share the persistent
+  // cache map without reading a ref during render.
+  const [imageCacheMap] = useState(() => new Map<string, string>());
   const currentPageRef = useRef(1);
   const framePending = useRef(false);
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
@@ -205,7 +214,10 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
     if (debouncedZoom === "fit") return Math.round(available);
     const base = (geometries[0]?.display_width_pt ?? 595) * PT_TO_CSS;
     return Math.round(clamp(base * debouncedZoom, 200, 3200));
-  }, [containerWidth, debouncedZoom, geometries]);
+    // `geometries` is recreated each render from session.info; keying on the
+    // first page width is what actually affects the fit-width math.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [containerWidth, debouncedZoom, geometries[0]?.display_width_pt]);
 
   // Track the reading area width for "fit width" and current page on scroll.
   useEffect(() => {
@@ -215,6 +227,8 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
       setContainerWidth(entries[0]?.contentRect.width ?? 900);
     });
     observer.observe(element);
+    // The initial measurement is a read of layout, not a state cascade.
+     
     setContainerWidth(element.clientWidth || 900);
     return () => observer.disconnect();
   }, [session.primary]);
@@ -243,19 +257,27 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
     });
   }, []);
 
-  // New document: reset the view state and caches.
-  useEffect(() => {
-    imageCache.current.clear();
+  // New document: reset the view state and caches. The reset is derived from
+  // the document identity so no stale search/query paints for the new file.
+  const docKey = session.primary?.path ?? "";
+  const [lastDocKey, setLastDocKey] = useState(docKey);
+  if (lastDocKey !== docKey) {
+    setLastDocKey(docKey);
     setSearchResult(null);
     setQuery("");
     setCurrentPage(1);
-    currentPageRef.current = 1;
     setZoom("fit");
-    // Plain scrollTop instead of scrollTo: jsdom has no scrollTo and the
-    // effect must not throw while tests render the reader.
+  }
+
+  // Scroll the reading area back to the top once per document (effects may
+  // touch refs; render may not).
+  useEffect(() => {
     const container = scrollRef.current;
     if (container) container.scrollTop = 0;
-  }, [session.primary?.path]);
+    imageCacheMap.clear();
+    currentPageRef.current = 1;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docKey]);
 
   const register = useCallback((page: number, element: HTMLDivElement | null) => {
     if (element) pageRefs.current.set(page, element);
@@ -612,7 +634,7 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
                 geometry={geometry}
                 width={renderWidth}
                 password={session.password || undefined}
-                cache={imageCache.current}
+                cache={imageCacheMap}
                 register={register}
                 highlight={
                   matchesByPage.get(geometry.page)?.[0]?.snippet

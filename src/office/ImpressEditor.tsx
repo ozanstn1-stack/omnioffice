@@ -587,6 +587,7 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   const [undoStack, setUndoStack] = useState<Deck[]>([]);
   const [redoStack, setRedoStack] = useState<Deck[]>([]);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const [canvasWidth, setCanvasWidth] = useState(0);
   const dragState = useRef<{ path: SelectionPath; mode: "move" | "resize" | "rotate"; startX: number; startY: number; object: SlideObject } | null>(null);
   const lastTapRef = useRef<{ key: string; time: number } | null>(null);
   const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -596,6 +597,19 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   const stepIndexRef = useRef(0);
   const advanceRef = useRef<() => void>(() => undefined);
 
+  // Resets the slideshow state exactly on the boundaries (entering/leaving the
+  // show), derived during render so no effect has to call setState.
+  const showActive = slideshow !== null;
+  const [lastShowActive, setLastShowActive] = useState(showActive);
+  if (lastShowActive !== showActive) {
+    setLastShowActive(showActive);
+    setStepIndex(0);
+    setElapsedMs(0);
+    setAnimRunning({});
+    setAnimDone({});
+    if (!showActive) setPresenterView(false);
+  }
+
   const slide = deck.slides[Math.min(slideIndex, deck.slides.length - 1)] ?? deck.slides[0];
 
   useEditorShortcuts(session);
@@ -603,10 +617,14 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   const masters = useMemo(() => deck.masters ?? [], [deck.masters]);
   const selectedMaster = useMemo(() => masters.find((candidate) => candidate.id === slide.masterId) ?? masters[0] ?? null, [masters, slide.masterId]);
   const inherited = useMemo(() => inheritedObjects(deck, slide), [deck, slide]);
-  const scale = useMemo(() => {
-    const width = canvasRef.current?.clientWidth ?? 800;
-    return Math.min(1.4, Math.max(0.2, (width - 48) / deck.size.widthPt));
-  }, [deck.size.widthPt, canvasRef.current?.clientWidth]);
+  useEffect(() => {
+    const element = canvasRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => setCanvasWidth(element.clientWidth));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const scale = useMemo(() => Math.min(1.4, Math.max(0.2, (canvasWidth - 48) / deck.size.widthPt)), [canvasWidth, deck.size.widthPt]);
 
   const update = useCallback(
     (mutate: (deck: Deck) => Deck, recordUndo = true) => {
@@ -1142,7 +1160,7 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
 
   const showSlide = slideshow === null ? undefined : deck.slides[Math.min(slideshow, deck.slides.length - 1)];
   const nextSlide = slideshow === null ? undefined : deck.slides[slideshow + 1];
-  const showAnimations = showSlide?.animations ?? [];
+  const showAnimations = useMemo(() => showSlide?.animations ?? [], [showSlide]);
   const stepList = useMemo(() => animationTimeline(showAnimations), [showAnimations]);
 
   const advanceShow = useCallback(() => {
@@ -1171,15 +1189,10 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   }, [runStep, slideshow, stepIndex, stepList]);
 
   useEffect(() => {
-    if (slideshow !== null) return;
+    if (showActive) return;
     clearShowTimers();
     stepIndexRef.current = 0;
-    setStepIndex(0);
-    setAnimRunning({});
-    setAnimDone({});
-    setPresenterView(false);
-    setElapsedMs(0);
-  }, [clearShowTimers, slideshow]);
+  }, [clearShowTimers, showActive]);
 
   useEffect(() => {
     if (slideshow === null) return;
@@ -1206,15 +1219,11 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   }, [goToSlide, slideshow]);
 
   useEffect(() => {
-    if (slideshow === null) {
-      setElapsedMs(0);
-      return;
-    }
+    if (!showActive) return;
     const startedAt = Date.now();
-    setElapsedMs(0);
     const interval = window.setInterval(() => setElapsedMs(Date.now() - startedAt), 500);
     return () => window.clearInterval(interval);
-  }, [slideshow === null]);
+  }, [showActive]);
 
   useEffect(() => () => clearShowTimers(), [clearShowTimers]);
 
@@ -1272,7 +1281,7 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   ) : null;
 
   const slideshowNav = (
-    <div className="slideshow-nav" onClick={(event) => event.stopPropagation()} style={presenterView ? { position: "static" } : undefined}>
+    <div className="slideshow-nav" role="presentation" onClick={(event) => event.stopPropagation()} style={presenterView ? { position: "static" } : undefined}>
       <button type="button" className="btn btn-soft" onClick={() => goToSlide(Math.max(0, (slideshow ?? 0) - 1))}>
         ‹
       </button>
@@ -1438,7 +1447,21 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
       <div className="impress-layout">
         <div className="slide-list">
           {deck.slides.map((candidate, index) => (
-            <div key={candidate.id} className={`slide-thumb${index === slideIndex ? " is-active" : ""}`} onClick={() => { setSlideIndex(index); setSelected([]); }}>
+            <div
+              key={candidate.id}
+              className={`slide-thumb${index === slideIndex ? " is-active" : ""}`}
+              role="button"
+              tabIndex={0}
+              aria-label={`${t("impress.slide")} ${index + 1}`}
+              onClick={() => { setSlideIndex(index); setSelected([]); }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setSlideIndex(index);
+                  setSelected([]);
+                }
+              }}
+            >
               <span className="slide-number">{index + 1}</span>
               <SlidePreview deck={deck} slide={candidate} theme={theme} width={148} />
               <div className="slide-thumb-actions">
@@ -1456,9 +1479,10 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
           </button>
         </div>
 
-        <div className="slide-stage" ref={canvasRef} onPointerDown={(event) => { if (event.target === event.currentTarget) setSelected([]); }}>
+        <div className="slide-stage" ref={canvasRef} role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setSelected([]); }}>
           <div
             className="slide-canvas"
+            role="presentation"
             style={{
               width: deck.size.widthPt * scale,
               height: deck.size.heightPt * scale,
@@ -1661,6 +1685,7 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
       {slideshow !== null && showSlide ? (
         <div
           className="slideshow"
+          role="presentation"
           onClick={(event) => {
             // Clicks inside the presenter control panel must not advance the
             // show to the next slide.
@@ -2108,7 +2133,9 @@ function ChartDialog({ chart, theme, onClose, onSave }: { chart: ChartData; them
                           </td>
                         );
                       })}
-                      <td style={{ borderBottom: "1px solid var(--border)" }} />
+                      <td style={{ borderBottom: "1px solid var(--border)" }}>
+                        <span className="sr-only">{t("common.actions")}</span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -2365,11 +2392,10 @@ function ChartPreview({ chart, theme, scale }: { chart: ChartData | null; theme:
       const pieValues = pieIndex >= 0 ? values[pieIndex] : [];
       const pieTotal = pieValues.reduce((sum, value) => sum + Math.max(0, value), 0);
       if (pieTotal > 0) {
-        let progress = 0;
-        const slices = pieValues.map((value, row) => {
-          const start = progress;
-          progress += Math.max(0, value) / pieTotal;
-          return `${CHART_PALETTE[row % CHART_PALETTE.length]} ${start * 100}% ${progress * 100}%`;
+        const fractions = pieValues.map((value) => Math.max(0, value) / pieTotal);
+        const slices = fractions.map((fraction, row) => {
+          const start = fractions.slice(0, row).reduce((sum, value) => sum + value, 0);
+          return `${CHART_PALETTE[row % CHART_PALETTE.length]} ${start * 100}% ${(start + fraction) * 100}%`;
         });
         plot = (
           <div style={{ display: "flex", alignItems: "center", gap: 8 * scale, width: "100%", height: "100%" }}>

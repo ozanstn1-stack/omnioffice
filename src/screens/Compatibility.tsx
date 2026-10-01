@@ -28,6 +28,8 @@ export function CompatibilityScreen() {
         setSelected(all[0] ?? null);
       })
       .catch((reason) => setError(errorMessage(reason, t)));
+    // The loader runs once; `t` only affects the error text.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

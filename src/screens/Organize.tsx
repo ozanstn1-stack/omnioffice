@@ -18,10 +18,6 @@ import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
 import { applyPagePlan } from "../lib/api";
 
-function fid(sourcePage: number, rotation: number, seed: number): PageItem {
-  return { id: `p${sourcePage}-${rotation}-${seed}`, sourcePage, rotationDelta: rotation };
-}
-
 export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; dragging: boolean }) {
   const t = useT();
   const session = useTool({ suffix: "_organized", accept: "pdf", initialPaths: initialFiles });
@@ -32,27 +28,28 @@ export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; 
   const [thumbWidth, setThumbWidth] = useState(180);
   const [refreshedAt, setRefreshedAt] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const seedRef = useRef(1);
+  const copyRef = useRef(1);
 
   const pageCount = session.info?.pageCount ?? 0;
 
-  // Build the initial page model whenever the document changes.
-  useEffect(() => {
+  // Build the initial page model whenever the document changes. This is a
+  // render-phase reset derived from the document identity: no extra render pass
+  // and no stale thumbnails between documents. Ids are deterministic from the
+  // document key, so no mutable counter is read during render.
+  const docKey = `${session.primary?.path ?? ""}:${pageCount}`;
+  const [builtFor, setBuiltFor] = useState<string | null>(null);
+  if (builtFor !== docKey) {
+    setBuiltFor(docKey);
     if (!session.primary || !pageCount) {
       setPages([]);
-      setSelected(new Set());
-      setHistory([]);
-      setFuture([]);
-      return;
+    } else {
+      setPages(Array.from({ length: pageCount }, (_, index) => ({ id: `${docKey}#${index + 1}`, sourcePage: index + 1, rotationDelta: 0 })));
+      setRefreshedAt((value) => value + 1);
     }
-    seedRef.current = 1;
-    const initial: PageItem[] = Array.from({ length: pageCount }, (_, index) => fid(index + 1, 0, seedRef.current++));
-    setPages(initial);
     setSelected(new Set());
     setHistory([]);
     setFuture([]);
-    setRefreshedAt((value) => value + 1);
-  }, [pageCount, session.primary]);
+  }
 
   const changed = useMemo(() => {
     return pages.some((page, index) => page.sourcePage !== index + 1 || page.rotationDelta !== 0) || pages.length !== pageCount;
@@ -104,7 +101,7 @@ export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; 
     pages.forEach((page, index) => {
       next.push(page);
       if (selected.has(index)) {
-        next.push({ ...page, id: `${page.id}-copy${seedRef.current++}` });
+        next.push({ ...page, id: `${page.id}-copy${copyRef.current++}` });
       }
     });
     commit(next);

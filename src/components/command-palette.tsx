@@ -28,22 +28,23 @@ interface VaultResponse {
 }
 
 export function CommandPalette({ open, onClose, context, onNavigate }: { open: boolean; onClose: () => void; context?: CommandContext; onNavigate?: (screen: string) => void }) {
+  if (!open) return null;
+  return <CommandPaletteBody onClose={onClose} context={context} onNavigate={onNavigate} />;
+}
+
+function CommandPaletteBody({ onClose, context, onNavigate }: { onClose: () => void; context?: CommandContext; onNavigate?: (screen: string) => void }) {
   const t = useT();
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // The body mounts fresh on every open, so "reset and focus" is its initial
+  // state plus one focus effect instead of a setState cascade.
   useEffect(() => {
-    if (open) {
-      setQuery("");
-      setIndex(0);
-      window.setTimeout(() => inputRef.current?.focus(), 0);
-    }
-  }, [open]);
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }, []);
 
-  const results = useMemo(() => (open ? searchCommands(query, context) : []), [open, query, context]);
-
-  if (!open) return null;
+  const results = useMemo(() => searchCommands(query, context), [query, context]);
 
   const run = (command: CommandDefinition) => {
     onClose();
@@ -55,7 +56,11 @@ export function CommandPalette({ open, onClose, context, onNavigate }: { open: b
   };
 
   return (
-    <div className="palette-overlay" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div
+      className="palette-overlay"
+      role="presentation"
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+    >
       <div className="palette" role="dialog" aria-modal="true">
         <div className="palette-input">
           <CommandIcon size={15} />
@@ -108,6 +113,11 @@ export function CommandPalette({ open, onClose, context, onNavigate }: { open: b
 }
 
 export function GlobalSearch({ open, onClose, onOpenPath, onNavigate }: { open: boolean; onClose: () => void; onOpenPath: (path: string) => void; onNavigate?: (screen: string) => void }) {
+  if (!open) return null;
+  return <GlobalSearchBody onClose={onClose} onOpenPath={onOpenPath} onNavigate={onNavigate} />;
+}
+
+function GlobalSearchBody({ onClose, onOpenPath, onNavigate }: { onClose: () => void; onOpenPath: (path: string) => void; onNavigate?: (screen: string) => void }) {
   const t = useT();
   const recent = useRecent((state) => state.entries);
   const [query, setQuery] = useState("");
@@ -116,20 +126,16 @@ export function GlobalSearch({ open, onClose, onOpenPath, onNavigate }: { open: 
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // The body mounts fresh on every open, so the reset is just its initial
+  // state; only the autofocus needs an effect.
   useEffect(() => {
-    if (open) {
-      setQuery("");
-      setVault([]);
-      setVaultState("idle");
-      setError(null);
-      window.setTimeout(() => inputRef.current?.focus(), 0);
-    }
-  }, [open]);
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }, []);
 
   useEffect(() => {
-    if (!open || query.trim().length < 2) {
-      setVault([]);
-      setVaultState("idle");
+    if (query.trim().length < 2) {
+      // Nothing to search: the derived view below already shows no hits, so
+      // no state needs clearing here.
       return;
     }
     let cancelled = false;
@@ -156,19 +162,23 @@ export function GlobalSearch({ open, onClose, onOpenPath, onNavigate }: { open: 
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [open, query]);
+  }, [query, t]);
 
-  const commands = useMemo(() => (open ? searchCommands(query) : []), [open, query]);
+  const commands = useMemo(() => searchCommands(query), [query]);
+  const effectiveVault = query.trim().length < 2 ? [] : vault;
+  const effectiveVaultState = query.trim().length < 2 ? "idle" : vaultState;
   const fileHits = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return recent.slice(0, 8);
     return recent.filter((entry) => entry.fileName.toLowerCase().includes(needle) || entry.path.toLowerCase().includes(needle)).slice(0, 10);
   }, [query, recent]);
 
-  if (!open) return null;
-
   return (
-    <div className="palette-overlay" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div
+      className="palette-overlay"
+      role="presentation"
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+    >
       <div className="palette" role="dialog" aria-modal="true">
         <div className="palette-input">
           <Search size={15} />
@@ -219,11 +229,11 @@ export function GlobalSearch({ open, onClose, onOpenPath, onNavigate }: { open: 
             </button>
           ))}
 
-          {vaultState === "searching" ? <p className="muted small">{t("search.searching")}</p> : null}
-          {vaultState === "missing" ? <p className="muted small">{t("search.vaultMissing")}</p> : null}
+          {effectiveVaultState === "searching" ? <p className="muted small">{t("search.searching")}</p> : null}
+          {effectiveVaultState === "missing" ? <p className="muted small">{t("search.vaultMissing")}</p> : null}
           {error ? <p className="muted small">{error}</p> : null}
-          {vault.length > 0 ? <p className="palette-section">{t("search.indexed")}</p> : null}
-          {vault.map((hit) => (
+          {effectiveVault.length > 0 ? <p className="palette-section">{t("search.indexed")}</p> : null}
+          {effectiveVault.map((hit) => (
             <button
               key={`${hit.documentId}-${hit.matchLabel}`}
               type="button"

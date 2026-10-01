@@ -290,7 +290,13 @@ export function Slider({
 
 export function ColorInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const [text, setText] = useState(value);
-  useEffect(() => setText(value), [value]);
+  // Re-sync the text field when the value changes from outside, without an
+  // effect that would render once with the stale text first.
+  const [lastValue, setLastValue] = useState(value);
+  if (lastValue !== value) {
+    setLastValue(value);
+    setText(value);
+  }
   return (
     <div className="flex items-center gap-2">
       <input
@@ -343,6 +349,7 @@ export function Modal({
   return (
     <div
       className="overlay"
+      role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose?.();
       }}
@@ -404,5 +411,7 @@ export function useIsDark(): boolean {
 }
 
 export function useMemoOnce<T>(factory: () => T): T {
-  return useMemo(factory, []);
+  // "Once" is the contract: the factory is expected to be stable and cheap.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => factory(), []);
 }

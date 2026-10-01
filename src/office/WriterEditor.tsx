@@ -146,12 +146,13 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [insertTable, setInsertTable] = useState(false);
   const [selectedImage, setSelectedImage] = useState<number | null>(null);
-  const [pageCount, setPageCount] = useState(1);
+  const [measuredPageCount, setMeasuredPageCount] = useState(1);
   // V2.5: a real paginated view. The page layout is measured from a hidden
   // probe column and computed by the pagination engine; "continuous" keeps the
   // pre-2.5 editing surface for users who prefer it.
   const [view, setView] = useState<"paginated" | "continuous">("paginated");
   const [pages, setPages] = useState<PageLayout[]>([{ fragments: [], usedPx: 0, continuation: false, sectionIndex: 0, noteHeightPx: 0, sectionPage: 1 }]);
+  const pageCount = view === "paginated" ? pages.length : measuredPageCount;
   const [navOpen, setNavOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [sectionsOpen, setSectionsOpen] = useState(false);
@@ -172,7 +173,15 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   // clipped by the page, exactly like the static preview did. The caret request
   // below is separate from `pendingFocus` because it targets `data-scope="page"`.
   const [pageEdit, setPageEdit] = useState<PageEditState | null>(null);
+  const pageEditGuard = `${view}|${editingHeader ?? ""}`;
+  const [lastPageEditGuard, setLastPageEditGuard] = useState(pageEditGuard);
+  if (lastPageEditGuard !== pageEditGuard) {
+    setLastPageEditGuard(pageEditGuard);
+    if (view !== "paginated" || editingHeader) setPageEdit(null);
+  }
   const pendingPageFocus = useRef<{ block: number; offset: number } | null>(null);
+  const insertPageBreakRef = useRef<() => void>(() => undefined);
+  const insertTableBlockRef = useRef<(rows: number, cols: number) => void>(() => undefined);
   // Last (block, offset) recorded before a model update. A reflow can remount
   // the editable when fragment boundaries move; this is what the restore in the
   // layout effect uses so the caret never jumps to the start.
@@ -249,24 +258,18 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     }
   });
 
-  // The paginated in-place editor is body-only; leaving the view must not leave
-  // an invisible editable behind.
-  useEffect(() => {
-    if (view !== "paginated" || editingHeader) setPageEdit(null);
-  }, [view, editingHeader]);
-
-  // Ctrl+Enter inserts a real page break at the caret.
+  // Ctrl+Enter inserts a real page break at the caret. The ref keeps the
+  // listener stable while still reaching the latest insert helper.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
         event.preventDefault();
-        insertPageBreak();
+        insertPageBreakRef.current();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [document]);
+  }, []);
 
   const update = useCallback((mutate: (document: TextDocument) => TextDocument) => edit(tab.id, (model) => mutate(model as TextDocument)), [edit, tab.id]);
 
@@ -315,20 +318,17 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   // The status bar shows the laid-out page count in the paginated view and the
   // height estimate in the continuous one.
   useEffect(() => {
-    if (view === "paginated") {
-      setPageCount(pages.length);
-      return;
-    }
+    if (view === "paginated") return;
     if (!bodyRef.current) return;
     const height = bodyRef.current.scrollHeight;
     const pageHeight = document.page.heightPt * (96 / 72);
-    setPageCount(Math.max(1, Math.ceil(height / Math.max(200, pageHeight))));
+    setMeasuredPageCount(Math.max(1, Math.ceil(height / Math.max(200, pageHeight))));
   }, [document, zoom, view, pages]);
 
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ rows: number; cols: number }>).detail;
-      insertTableBlock(detail.rows, detail.cols);
+      insertTableBlockRef.current(detail.rows, detail.cols);
       setInsertTable(false);
     };
     window.addEventListener("oswk-insert-table", handler);
@@ -606,6 +606,11 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     const index = active?.dataset?.blockIndex ? Number(active.dataset.blockIndex) : currentBlocks().length - 1;
     insertBlockAfter(index, { type: "pageBreak" });
   };
+
+  useEffect(() => {
+    insertPageBreakRef.current = insertPageBreak;
+    insertTableBlockRef.current = insertTableBlock;
+  });
 
   const insertRule = () => {
     const active = window.document.activeElement as HTMLElement | null;
@@ -1516,7 +1521,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
               })}
             </div>
           ) : (
-            <div className="writer-page" ref={bodyRef} data-scope={editingHeader ?? "body"} onMouseDown={handlePageMouseDown} style={{ width: pageWidth, minHeight: pageHeight, padding: `${marginTop}px ${marginX}px` }}>
+            <div className="writer-page" ref={bodyRef} data-scope={editingHeader ?? "body"} role="presentation" onMouseDown={handlePageMouseDown} style={{ width: pageWidth, minHeight: pageHeight, padding: `${marginTop}px ${marginX}px` }}>
               {editingHeader ? (
                 <div className="writer-header-zone">{renderBlocks(editingHeader === "header" ? document.header : document.footer, editingHeader)}</div>
               ) : (
@@ -1680,7 +1685,20 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
           </div>
           {revisionList(document).length === 0 ? <p className="muted">{t("writer.noRevisions")}</p> : null}
           {revisionList(document).map((revision) => (
-            <div key={revision.id} className={`comment-card${activeRevision === revision.id ? " is-active" : ""}`} onClick={() => setActiveRevision(revision.id)}>
+            <div
+              key={revision.id}
+              className={`comment-card${activeRevision === revision.id ? " is-active" : ""}`}
+              role="button"
+              tabIndex={0}
+              aria-pressed={activeRevision === revision.id}
+              onClick={() => setActiveRevision(revision.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setActiveRevision(revision.id);
+                }
+              }}
+            >
               <div className="row">
                 <strong>{t(`writer.revision_${revision.kind}`)}</strong>
                 <span className="spacer" />
@@ -1880,7 +1898,25 @@ function StaticParagraph({
   const props = block.props;
   const listMarker = props.list ? (props.list.kind === "number" ? `${props.list.start}.` : ["•", "◦", "▪"][props.list.level % 3]) : null;
   return (
-    <div className="para-row" data-block-index={index} data-scope={scope} onClick={onOpen} style={{ marginLeft: props.list ? props.list.level * 24 : 0 }}>
+    <div
+      className="para-row"
+      data-block-index={index}
+      data-scope={scope}
+      {...(onOpen
+        ? {
+            role: "button",
+            tabIndex: 0,
+            onClick: onOpen,
+            onKeyDown: (event: React.KeyboardEvent) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onOpen();
+              }
+            },
+          }
+        : { role: "presentation" })}
+      style={{ marginLeft: props.list ? props.list.level * 24 : 0 }}
+    >
       {listMarker ? <span className="list-marker">{listMarker}</span> : null}
       <div
         className={`para para-${props.style.toLowerCase()}${props.pageBreakBefore ? " page-break-before" : ""}`}
@@ -2110,13 +2146,35 @@ function PageFragmentView({
   }
   if (fragment.mode === "rows" && block.type === "table") {
     return (
-      <div className="writer-fragment" onClick={() => onOpen(fragment.index, 0)}>
+      <div
+        className="writer-fragment"
+        role="button"
+        tabIndex={0}
+        onClick={() => onOpen(fragment.index, 0)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onOpen(fragment.index, 0);
+          }
+        }}
+      >
         <StaticTable table={block.table} zoom={zoom} from={fragment.from} to={fragment.to} />
       </div>
     );
   }
   return (
-    <div className="writer-fragment" onClick={() => onOpen(fragment.index, 0)}>
+    <div
+      className="writer-fragment"
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(fragment.index, 0)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen(fragment.index, 0);
+        }
+      }}
+    >
       <StaticBlocks blocks={[block]} scope="page" page={0} pages={0} zoom={zoom} noteNumbers={noteNumbers} showRevisions={showRevisions} onOpen={() => onOpen(fragment.index, 0)} />
     </div>
   );
@@ -2158,6 +2216,7 @@ function PageEditableParagraph({
   onCaretOut: (direction: -1 | 1) => void;
   onArrowAtEdge: (direction: -1 | 1) => boolean;
 }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const [focused, setFocused] = useState(false);
   // Caret to restore after a structural change, consumed by the effect below.
@@ -2257,6 +2316,7 @@ function PageEditableParagraph({
         contentEditable
         role="textbox"
         aria-multiline="true"
+        aria-label={`${t("writer.paragraph")} ${index + 1}`}
         suppressContentEditableWarning
         spellCheck
         tabIndex={0}
@@ -2558,7 +2618,7 @@ function ParagraphView({
     pendingCaret.current = null;
     if (ref.current.innerHTML !== html) ref.current.innerHTML = html;
     setCaretOffset(ref.current, Math.min(at, modelText.length));
-  }, [block.runs, focused]);
+  }, [block.runs, focused, noteNumbers, showRevisions]);
 
   const heading = props.style.startsWith("Heading");
   const Tag = (heading ? (`h${Math.min(6, Number(props.style.replace("Heading", "")) || 1)}`) : "div") as "div";

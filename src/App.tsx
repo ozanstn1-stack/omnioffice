@@ -687,7 +687,10 @@ export default function App() {
         </header>
 
         {navOpen ? (
-          <div className="drawer-overlay" onClick={(event) => { if (event.target === event.currentTarget) setNavOpen(false); }}>
+          <div
+            className="drawer-overlay"
+            role="presentation"
+            onClick={(event) => { if (event.target === event.currentTarget) setNavOpen(false); }}>
             <aside className="drawer">
               <div className="flex items-center gap-2.5 px-3.5 py-4">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--accent)", color: "var(--accent-text)" }}>

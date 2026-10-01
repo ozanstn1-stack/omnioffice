@@ -355,7 +355,7 @@ export function DataScreen() {
       <div className="data-layout">
         <div className="card data-list">
           {sheets.map((sheet) => (
-            <button key={sheet.id} type="button" className={`note-item${active?.id === sheet.id ? " is-active" : ""}`} onClick={() => setActiveId(sheet.id)}>
+            <button key={sheet.id} type="button" className={`note-item${active?.id === sheet.id ? " is-active" : ""}`} onClick={() => setActiveId(sheet.id)} aria-label={sheet.name}>
               <div className="row">
                 <strong>{sheet.name}</strong>
                 <span className="spacer" />
@@ -383,7 +383,7 @@ export function DataScreen() {
                 >
                   <Plus size={14} /> {t("data.addColumn")}
                 </button>
-                <button type="button" className="btn btn-soft" onClick={() => { remove(active.id); setActiveId(null); }}>
+                <button type="button" className="btn btn-soft" onClick={() => { remove(active.id); setActiveId(null); }} aria-label={t("data.deleteTable")}>
                   <Trash2 size={14} />
                 </button>
               </div>
@@ -391,10 +391,11 @@ export function DataScreen() {
                 <table className="table data-grid">
                   <thead>
                     <tr>
-                      <th />
+                      <th><span className="sr-only">{t("data.row")}</span></th>
                       {active.columns.map((column, columnIndex) => (
                         <th key={columnIndex}>
                           <input
+                            aria-label={t("data.columnName", { index: columnIndex + 1 })}
                             value={column}
                             onChange={(event) => update(active.id, { columns: active.columns.map((candidate, index) => (index === columnIndex ? event.target.value : candidate)) })}
                           />
@@ -406,9 +407,10 @@ export function DataScreen() {
                     {active.rows.map((row, rowIndex) => (
                       <tr key={rowIndex}>
                         <td className="row-index">{rowIndex + 1}</td>
-                        {active.columns.map((_, columnIndex) => (
+                        {active.columns.map((column, columnIndex) => (
                           <td key={columnIndex}>
                             <input
+                              aria-label={`${column || t("data.columnName", { index: columnIndex + 1 })} — ${t("data.row")} ${rowIndex + 1}`}
                               value={row[columnIndex] ?? ""}
                               onChange={(event) =>
                                 update(active.id, {
@@ -1056,14 +1058,14 @@ export function PdfFormsScreen() {
               <th>H</th>
               <th>{t("forms.value")}</th>
               <th>{t("forms.options")}</th>
-              <th />
+              <th><span className="sr-only">{t("common.actions")}</span></th>
             </tr>
           </thead>
           <tbody>
             {fields.map((field, index) => (
               <tr key={index}>
                 <td>
-                  <select value={field.kind} onChange={(event) => setFields(fields.map((candidate, position) => (position === index ? { ...candidate, kind: event.target.value } : candidate)))}>
+                  <select aria-label={t("forms.type")} value={field.kind} onChange={(event) => setFields(fields.map((candidate, position) => (position === index ? { ...candidate, kind: event.target.value } : candidate)))}>
                     <option value="text">text</option>
                     <option value="checkbox">checkbox</option>
                     <option value="radio">radio</option>
@@ -1071,29 +1073,31 @@ export function PdfFormsScreen() {
                   </select>
                 </td>
                 <td>
-                  <input value={field.name} onChange={(event) => setFields(fields.map((candidate, position) => (position === index ? { ...candidate, name: event.target.value } : candidate)))} />
+                  <input aria-label={t("forms.name")} value={field.name} onChange={(event) => setFields(fields.map((candidate, position) => (position === index ? { ...candidate, name: event.target.value } : candidate)))} />
                 </td>
                 {(["page", "x", "y", "w", "h"] as const).map((key) => (
                   <td key={key}>
                     <input
                       type="number"
+                      aria-label={t(`forms.${key}`)}
                       value={field[key]}
                       onChange={(event) => setFields(fields.map((candidate, position) => (position === index ? { ...candidate, [key]: Number(event.target.value) } : candidate)))}
                     />
                   </td>
                 ))}
                 <td>
-                  <input value={field.value} onChange={(event) => setFields(fields.map((candidate, position) => (position === index ? { ...candidate, value: event.target.value } : candidate)))} />
+                  <input aria-label={t("forms.value")} value={field.value} onChange={(event) => setFields(fields.map((candidate, position) => (position === index ? { ...candidate, value: event.target.value } : candidate)))} />
                 </td>
                 <td>
                   <input
+                    aria-label={t("forms.options")}
                     value={field.options.join(",")}
                     placeholder="A,B,C"
                     onChange={(event) => setFields(fields.map((candidate, position) => (position === index ? { ...candidate, options: event.target.value.split(",").map((option) => option.trim()).filter(Boolean) } : candidate)))}
                   />
                 </td>
                 <td>
-                  <button type="button" className="icon-btn" onClick={() => setFields(fields.filter((_, position) => position !== index))}>
+                  <button type="button" className="icon-btn" onClick={() => setFields(fields.filter((_, position) => position !== index))} aria-label={t("forms.removeField")}>
                     <Trash2 size={13} />
                   </button>
                 </td>

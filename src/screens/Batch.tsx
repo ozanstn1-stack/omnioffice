@@ -47,6 +47,8 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
   const [imageDpi, setImageDpi] = useState(150);
   const batchLanguages = useSettings((state) => state.languages);
   const currentJobRef = useRef<string | null>(null);
+  // Monotonic per-run job counter (Date.now is impure and may collide).
+  const jobCounter = useRef(0);
 
   const outputDir = session.outputDir || session.outputPath.replace(/[^\\/]*$/, "");
 
@@ -57,10 +59,9 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
     setQueue(items);
     setResult(null);
 
-    for (let index = 0; index < items.length; index += 1) {
-      const item = items[index];
+    for (const [index, item] of items.entries()) {
       setQueue((previous) => previous.map((entry, i) => (i === index ? { ...entry, status: "processing" } : entry)));
-      const jobId = `batch-${index}-${Date.now().toString(36)}`;
+      const jobId = `batch-${index}-${jobCounter.current++}`;
       currentJobRef.current = jobId;
       try {
         const stem = fileBaseName(item.path).replace(/\.[^.]+$/, "");

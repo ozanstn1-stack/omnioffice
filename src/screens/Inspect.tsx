@@ -71,6 +71,7 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
     if (!session.primary) return;
     setLoading(true);
     setError(null);
+    setReport(null);
     try {
       const result = await inspectDocument(session.primary.path, session.password || undefined);
       setReport(result);
@@ -82,9 +83,11 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
     }
   }, [session.primary, session.password]);
 
+  // `load` already clears the report/error it owns; the only thing the
+  // document change has to do is kick off the new load. Stale results from the
+  // previous document are ignored because `load` is keyed on the active file.
   useEffect(() => {
-    setReport(null);
-    setError(null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the loader owns the report/error state
     if (session.primary) void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.primary?.path]);

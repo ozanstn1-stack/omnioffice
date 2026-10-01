@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Activity, Gauge } from "lucide-react";
 import { Button, Card, Field, Segmented, Slider, Spinner, Toggle } from "../components/ui";
 import { DropZone, FileList, InfoStrip, OutputBar, ResultCard } from "../components/files";
@@ -25,16 +25,19 @@ export function Compress({ initialFiles, dragging }: { initialFiles?: string[]; 
     remove_metadata: true,
   });
   const [estimate, setEstimate] = useState<CompressEstimate | null>(null);
+  const [estimatedFor, setEstimatedFor] = useState<string | null>(null);
   const [analysing, setAnalysing] = useState(false);
 
   const patch = (values: Partial<CompressOptions>) => {
     setOptions((previous) => ({ ...previous, ...values }));
     setEstimate(null);
+    setEstimatedFor(null);
   };
 
-  useEffect(() => {
-    setEstimate(null);
-  }, [session.primary?.path]);
+  // A new document invalidates the previous estimate; the derived guard keeps
+  // the stale estimate from rendering instead of clearing it in an effect.
+  const estimateFor = `${session.primary?.path ?? ""}`;
+  const shownEstimate = estimate && estimateFor === estimatedFor ? estimate : null;
 
   const analyse = useCallback(async () => {
     if (!session.primary) return;
@@ -42,6 +45,7 @@ export function Compress({ initialFiles, dragging }: { initialFiles?: string[]; 
     try {
       const result = await estimateCompression(session.primary.path, options, session.password || undefined);
       setEstimate(result);
+      setEstimatedFor(`${session.primary.path}`);
     } catch (error) {
       pushToast({ kind: "error", title: t("errors.title"), detail: String((error as { message?: string })?.message ?? error) });
     } finally {
@@ -150,30 +154,30 @@ export function Compress({ initialFiles, dragging }: { initialFiles?: string[]; 
                     <p className="font-semibold text-[13.5px]">{t("common.estimated")}</p>
                     {analysing ? <Spinner size={14} /> : null}
                   </div>
-                  {estimate ? (
+                  {shownEstimate ? (
                     <div className="flex flex-col gap-3">
                       <div className="grid grid-cols-3 gap-3 text-center">
                         <div className="card-soft p-3">
                           <p className="text-xs muted">{t("common.original")}</p>
-                          <p className="font-bold text-[15px] tabular-nums">{formatBytes(estimate.original_bytes)}</p>
+                          <p className="font-bold text-[15px] tabular-nums">{formatBytes(shownEstimate.original_bytes)}</p>
                         </div>
                         <div className="card-soft p-3">
                           <p className="text-xs muted">{t("common.estimated")}</p>
-                          <p className="font-bold text-[15px] tabular-nums">{formatBytes(estimate.estimated_bytes)}</p>
+                          <p className="font-bold text-[15px] tabular-nums">{formatBytes(shownEstimate.estimated_bytes)}</p>
                         </div>
                         <div className="card-soft p-3">
                           <p className="text-xs muted">{t("common.reduction")}</p>
                           <p
                             className="font-bold text-[15px] tabular-nums"
-                            style={{ color: estimate.reduction > 0 ? "var(--ok)" : "var(--danger)" }}
+                            style={{ color: shownEstimate.reduction > 0 ? "var(--ok)" : "var(--danger)" }}
                           >
-                            {Math.round(estimate.reduction * 100)}%
+                            {Math.round(shownEstimate.reduction * 100)}%
                           </p>
                         </div>
                       </div>
                       <p className="text-xs muted">
-                        {estimate.method} · {estimate.sample_pages} {t("common.pages")} ·{" "}
-                        {estimate.accurate ? (defaults.language === "tr" ? "tam" : "exact") : t("common.estimated")}
+                        {shownEstimate.method} · {shownEstimate.sample_pages} {t("common.pages")} ·{" "}
+                        {shownEstimate.accurate ? (defaults.language === "tr" ? "tam" : "exact") : t("common.estimated")}
                       </p>
                       <p className="text-xs muted">{t("compress.estimateNote")}</p>
                     </div>

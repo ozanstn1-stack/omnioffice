@@ -10,9 +10,28 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.1.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.2.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.2.0
+
+Quality gates and test confidence on top of 3.1.1:
+
+- **Zero-warning lint, every rule an error.** The React Compiler diagnostics
+  (set-state-in-effect, refs, immutability, purity, exhaustive-deps…) and the
+  jsx-a11y interaction rules were burned down to zero and promoted to errors;
+  the per-rule warning budget is gone.
+- **WebDAV end-to-end tests.** A self-contained in-process DAV server
+  (PROPFIND/MKCOL/PUT/GET/DELETE with conditional writes) drives the real
+  provider through list/upload/download/delete, 412-conflict mapping and
+  Depth-header assertions.
+- **On-device Android intent tests.** The open-with / share pipeline
+  (untrusted display names, extension whitelist, size cap) now runs against a
+  real `content://` provider on an emulator in CI, next to the JVM unit tests.
+- **Owned, time-boxed advisory exceptions.** `deny.toml` records an owner and
+  a review date for every ignored RustSec advisory and CI enforces it with
+  `cargo deny check advisories`.
 
 ## What's new in 3.1.1
 
@@ -319,7 +338,7 @@ pdf and `.oswk`.
 
 **APK architectures.** `arm64-v8a` and `armeabi-v7a` release APKs are built
 and signed with the project release keystore; AABs are produced for both.
-minSdk 24, targetSdk 36, `versionName 3.1.1`, `versionCode 3001001`.
+minSdk 24, targetSdk 36, `versionName 3.2.0`, `versionCode 3002000`.
 
 **Storage behavior.** Documents opened from other apps are copied into app
 cache (extension and size validated) before parsing. Exports go to a SAF
@@ -615,10 +634,11 @@ These are real and honest:
   works on whole runs/cells.
 - **Android**: no foreground service (long jobs run only while the process
   lives; state survives death as `interrupted`), the intent pipeline has JVM
-  unit tests (`./gradlew :app:testUniversalDebugUnitTest`, run by the Android
-  release workflow) but no on-device/emulator UI test run is claimed in the
-  repository, `osed/ospr/osdt` are accepted by the intent filter but the
-  engine does not understand them yet, and the launcher label is still
+  unit tests (`./gradlew :app:testUniversalDebugUnitTest`) and on-device
+  instrumentation tests (`./gradlew :app:connectedUniversalDebugAndroidTest`),
+  both run by the Android release workflow; the full SAExplorer *picker* UI is
+  still not automated, `osed/ospr/osdt` are accepted by the intent filter but
+  the engine does not understand them yet, and the launcher label is still
   "PDF Swiss Army Knife".
 - Interoperability with Microsoft Office/LibreOffice was validated
   structurally (package parts, content types, relationships, independent
@@ -643,6 +663,11 @@ and downgrade-proof redirects, fully pinned engine downloads, a working
 extension context menu, app-private Android storage, streaming WebDAV
 transfers, lazy-loaded screens with a CI bundle budget, a per-rule lint
 baseline and SHA-pinned CI actions.
+
+Quality gates in 3.2.0: zero-warning lint with every React Compiler and
+accessibility rule as an error, WebDAV end-to-end tests against an in-process
+DAV server, on-device Android intent tests on an emulator, and owned,
+time-boxed RustSec advisory exceptions in `deny.toml`.
 
 Next (architecture prepared, not implemented):
 

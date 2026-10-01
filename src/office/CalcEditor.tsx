@@ -429,7 +429,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const pinchFocalRef = useRef<PinchGesture | null>(null);
   const lastTapRef = useRef<{ row: number; col: number; time: number } | null>(null);
   const gridZoomRef = useRef(gridZoom);
-  gridZoomRef.current = gridZoom;
+  useLayoutEffect(() => {
+    gridZoomRef.current = gridZoom;
+  }, [gridZoom]);
 
   const setEditing = useCallback((next: EditingCell | null) => {
     editingRef.current = next;
@@ -455,14 +457,21 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     return argumentHintFor(assistText, assistCaret, catalogue);
   }, [focusMode, assistText, assistCaret, catalogue]);
   const suggestionKey = suggestions?.items.map((item) => item.label).join("|") ?? "";
-  useEffect(() => setSuggestIndex(0), [suggestionKey]);
+  const [lastSuggestionKey, setLastSuggestionKey] = useState(suggestionKey);
+  if (lastSuggestionKey !== suggestionKey) {
+    setLastSuggestionKey(suggestionKey);
+    setSuggestIndex(0);
+  }
+
+  const [lastFocusMode, setLastFocusMode] = useState(focusMode);
+  if (lastFocusMode !== focusMode) {
+    setLastFocusMode(focusMode);
+    if (focusMode === null) setAssistAnchor(null);
+  }
 
   // Keep the popup glued under the focused input as the draft changes.
   useLayoutEffect(() => {
-    if (focusMode === null) {
-      setAssistAnchor(null);
-      return;
-    }
+    if (focusMode === null) return;
     const input = focusMode === "cell" ? cellInputRef.current : formulaInputRef.current;
     if (!input) {
       setAssistAnchor(null);
@@ -566,9 +575,13 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     };
   }, [android]);
 
-  useEffect(() => {
-    setFormulaDraft(activeCell?.formula ?? cellText(activeCell));
-  }, [selection.focus.row, selection.focus.col, activeCell]);
+  const formulaDraftValue = activeCell?.formula ?? cellText(activeCell);
+  const draftKey = `${selection.focus.row}:${selection.focus.col}|${formulaDraftValue}`;
+  const [lastDraftKey, setLastDraftKey] = useState<string | null>(null);
+  if (lastDraftKey !== draftKey) {
+    setLastDraftKey(draftKey);
+    setFormulaDraft(formulaDraftValue);
+  }
 
   // Focus the inline editor as soon as it opens and put the caret at the end,
   // so fast typing never loses characters. When the editor closes again the
@@ -972,7 +985,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     // Double-tap on a cell opens the inline editor: touch never produces a
     // native dblclick once the grid claims the gesture.
     if (gesture.kind === "cells" && !gesture.moved && event.pointerType !== "mouse") {
-      const now = Date.now();
+      const now = event.timeStamp;
       const previous = lastTapRef.current;
       if (previous && now - previous.time < 350 && previous.row === gesture.anchor.row && previous.col === gesture.anchor.col) {
         lastTapRef.current = null;
@@ -984,8 +997,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     }
   };
 
-  pointerMoveRef.current = handleWindowPointerMove;
-  pointerUpRef.current = handleWindowPointerUp;
+  useEffect(() => {
+    pointerMoveRef.current = handleWindowPointerMove;
+    pointerUpRef.current = handleWindowPointerUp;
+  });
 
   useEffect(() => {
     const move = (event: PointerEvent) => pointerMoveRef.current(event);
@@ -1630,10 +1645,11 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     return { rows, columns, startCol };
   }, [scroll, sheet, gridZoom]);
 
-  const selectionBounds = useMemo(() => {
-    const parts = parseRange(`${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`);
-    return parts ?? { start: selection.anchor, end: selection.focus };
-  }, [selection]);
+  const parsedSelectionBounds = parseRange(`${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`);
+  const selectionBounds = parsedSelectionBounds ?? {
+    start: { row: selection.anchor.row, col: selection.anchor.col },
+    end: { row: selection.focus.row, col: selection.focus.col },
+  };
 
   // Structured tables and audit overlays are derived once per sheet/selection
   // change; the per-cell render only looks up whether a cell participates.
@@ -2227,7 +2243,21 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           <Plus size={14} />
         </button>
         {workbook.sheets.map((candidate, index) => (
-          <div key={candidate.id} className={`sheet-tab${index === sheetIndex ? " is-active" : ""}`} onClick={() => { setSheetIndex(index); setSelection({ anchor: { row: 0, col: 0 }, focus: { row: 0, col: 0 } }); }}>
+          <div
+            key={candidate.id}
+            className={`sheet-tab${index === sheetIndex ? " is-active" : ""}`}
+            role="tab"
+            tabIndex={index === sheetIndex ? 0 : -1}
+            aria-selected={index === sheetIndex}
+            onClick={() => { setSheetIndex(index); setSelection({ anchor: { row: 0, col: 0 }, focus: { row: 0, col: 0 } }); }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setSheetIndex(index);
+                setSelection({ anchor: { row: 0, col: 0 }, focus: { row: 0, col: 0 } });
+              }
+            }}
+          >
             <span onDoubleClick={() => renameSheet(index)}>{candidate.name}</span>
             {workbook.sheets.length > 1 ? (
               <button
@@ -2715,6 +2745,7 @@ function PivotBox({
   // Recomputing on every relevant render keeps the pivot live; the refresh
   // button is for an explicit "show me the current data" action and bumps a
   // token so the memo is invalidated even when nothing else changed.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- refreshToken forces the explicit refresh; sheet keeps the pivot live across sheet edits
   const result = useMemo(() => computePivot(workbook, pivot), [workbook, pivot, refreshToken, sheet]);
   return (
     <div className="pivot-box" style={{ left: x, top: y }}>
@@ -3191,7 +3222,7 @@ function NameManagerDialog({
               <th>{t("calc.nameColumn")}</th>
               <th>{t("calc.nameTarget")}</th>
               <th>{t("calc.nameScope")}</th>
-              <th />
+              <th><span className="sr-only">{t("common.actions")}</span></th>
             </tr>
           </thead>
           <tbody>
@@ -3207,6 +3238,7 @@ function NameManagerDialog({
                 <td>
                   <input
                     className="input"
+                    aria-label={t("calc.nameColumn")}
                     defaultValue={entry.name}
                     onBlur={(event) => {
                       const next = event.target.value.trim().toUpperCase();
@@ -3218,6 +3250,7 @@ function NameManagerDialog({
                 <td>
                   <input
                     className="input"
+                    aria-label={t("calc.nameTarget")}
                     defaultValue={entry.definition}
                     onBlur={(event) => onChange(names.map((candidate) => (candidate === entry ? { ...candidate, definition: event.target.value.trim() } : candidate)))}
                   />

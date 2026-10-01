@@ -12,47 +12,41 @@ import jsxA11y from "eslint-plugin-jsx-a11y";
  * plugin. The Chrome extension has its own package.json, and the Rust crates
  * are covered by clippy (see .github/workflows/desktop.yml).
  *
- * Severity policy - the point of the split is that CI can stay strict:
- *
- *  * correctness rules (eslint recommended, TypeScript recommended, the two
- *    classic react-hooks rules) are **errors** and must stay at zero;
- *  * the React Compiler rules that ship in eslint-plugin-react-hooks v7 and
- *    the jsx-a11y interaction rules are **warnings**. They are a real backlog
- *    (mostly `setState` inside effects and clickable non-interactive
- *    elements), but fixing them is a refactor, not a lint change, so they run
- *    under a frozen warning budget: `npm run lint` fails if the count grows.
+ * V3.2 promoted the entire backlog to errors: correctness rules, the React
+ * Compiler diagnostics (eslint-plugin-react-hooks v7) and the jsx-a11y
+ * interaction rules all fail the build now. The code base is clean, so there
+ * is no warning budget left to freeze.
  *
  * Type-aware linting is deliberately off so `npm run lint` stays fast enough
  * for every commit; `tsc --noEmit` already covers the type-level checks.
  */
 
-// React Compiler diagnostics from eslint-plugin-react-hooks v7. Each one is
-// accurate, and each one needs a code change before it can become an error.
-const reactCompilerBacklog = {
-  "react-hooks/static-components": "warn",
-  "react-hooks/use-memo": "warn",
-  "react-hooks/preserve-manual-memoization": "warn",
-  "react-hooks/incompatible-library": "warn",
-  "react-hooks/immutability": "warn",
-  "react-hooks/globals": "warn",
-  "react-hooks/refs": "warn",
-  "react-hooks/set-state-in-effect": "warn",
-  "react-hooks/error-boundaries": "warn",
-  "react-hooks/purity": "warn",
-  "react-hooks/set-state-in-render": "warn",
-  "react-hooks/unsupported-syntax": "warn",
-  "react-hooks/config": "warn",
-  "react-hooks/gating": "warn",
-  "react-hooks/void-use-memo": "warn",
+// React Compiler diagnostics from eslint-plugin-react-hooks v7. Every rule is
+// an error now that the code base passes them.
+const reactCompilerRules = {
+  "react-hooks/static-components": "error",
+  "react-hooks/use-memo": "error",
+  "react-hooks/preserve-manual-memoization": "error",
+  "react-hooks/incompatible-library": "error",
+  "react-hooks/immutability": "error",
+  "react-hooks/globals": "error",
+  "react-hooks/refs": "error",
+  "react-hooks/set-state-in-effect": "error",
+  "react-hooks/error-boundaries": "error",
+  "react-hooks/purity": "error",
+  "react-hooks/set-state-in-render": "error",
+  "react-hooks/unsupported-syntax": "error",
+  "react-hooks/config": "error",
+  "react-hooks/gating": "error",
+  "react-hooks/void-use-memo": "error",
 };
 
-// jsx-a11y ships its recommended set as errors; the interaction rules are
-// downgraded to warnings until the clickable `div`s in the editors and PDF
-// screens carry a role and a keyboard handler.
-const a11yAsWarnings = Object.fromEntries(
+// jsx-a11y's recommended set as errors (its default severity), explicit here
+// so the whole accessibility contract is visible in one place.
+const a11yAsErrors = Object.fromEntries(
   Object.entries(jsxA11y.flatConfigs.recommended.rules).map(([rule, value]) => [
     rule,
-    Array.isArray(value) ? ["warn", ...value.slice(1)] : "warn",
+    Array.isArray(value) ? ["error", ...value.slice(1)] : "error",
   ]),
 );
 
@@ -85,22 +79,12 @@ export default [
     rules: {
       // The two rules React itself ships as the baseline contract.
       "react-hooks/rules-of-hooks": "error",
-      "react-hooks/exhaustive-deps": "warn",
-      ...reactCompilerBacklog,
-      ...a11yAsWarnings,
-      // Promoted to errors after the V3.1.1 accessibility pass. The remaining
-      // interaction backlog (`click-events-have-key-events`,
-      // `no-static-element-interactions`, `control-has-associated-label`) is
-      // frozen per rule in scripts/lint-baseline.json and must be burned down
-      // in V3.2 before those rules are promoted too.
-      "jsx-a11y/no-autofocus": "error",
-      "jsx-a11y/no-noninteractive-element-interactions": "error",
-      "jsx-a11y/no-noninteractive-tabindex": "error",
-      "jsx-a11y/interactive-supports-focus": "error",
+      "react-hooks/exhaustive-deps": "error",
+      ...reactCompilerRules,
+      ...a11yAsErrors,
       // `label-has-for` is deprecated in eslint-plugin-jsx-a11y (v6.3) and is
       // scheduled for removal in v7; `label-has-associated-control` replaces
-      // it and belongs to the same accessibility backlog as the interaction
-      // rules above.
+      // it and is already part of the recommended (error) set above.
       "jsx-a11y/label-has-for": "off",
       // Fast Refresh granularity only (it never fires in the production
       // bundle): many modules intentionally export a screen plus its helpers.

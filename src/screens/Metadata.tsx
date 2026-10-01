@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Eraser, Save } from "lucide-react";
 import { Button, Card, Field, TextInput } from "../components/ui";
 import { DropZone, FileList, InfoStrip, OutputBar, ResultCard } from "../components/files";
@@ -24,20 +24,25 @@ export function Metadata({ initialFiles, dragging }: { initialFiles?: string[]; 
   const [form, setForm] = useState({ ...EMPTY });
   const [keepSignatures, setKeepSignatures] = useState(true);
 
-  useEffect(() => {
-    if (session.info) {
-      setForm({
-        title: session.info.metadata.title,
-        author: session.info.metadata.author,
-        subject: session.info.metadata.subject,
-        keywords: session.info.metadata.keywords,
-        creator: session.info.metadata.creator,
-        producer: session.info.metadata.producer,
-        creation_date: session.info.metadata.creation_date,
-        mod_date: session.info.metadata.mod_date,
-      });
-    }
-  }, [session.info]);
+  // Seed the form from the document once its info arrives, without clobbering
+  // in-progress edits. Seeding during render (derived-from-props) avoids the
+  // "render with empty, then setState" cascade.
+  const info = session.info;
+  const [seededFor, setSeededFor] = useState<string | null>(null);
+  const docKey = session.primary?.path ? `${session.primary.path}:${info?.metadata.title ?? ""}` : null;
+  if (info && docKey && seededFor !== docKey) {
+    setSeededFor(docKey);
+    setForm({
+      title: info.metadata.title,
+      author: info.metadata.author,
+      subject: info.metadata.subject,
+      keywords: info.metadata.keywords,
+      creator: info.metadata.creator,
+      producer: info.metadata.producer,
+      creation_date: info.metadata.creation_date,
+      mod_date: info.metadata.mod_date,
+    });
+  }
 
   const patch = (values: Partial<typeof form>) => setForm((previous) => ({ ...previous, ...values }));
 
