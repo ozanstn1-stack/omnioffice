@@ -225,9 +225,9 @@ async fn http_errors_map_to_friendly_codes() {
             .await
             .expect_err("should fail");
         let code = match error {
-            AiError::InvalidApiKey => "invalid_api_key",
-            AiError::InsufficientBalance => "insufficient_balance",
-            AiError::RateLimited => "rate_limited",
+            AiError::InvalidApiKey(_) => "invalid_api_key",
+            AiError::InsufficientBalance(_) => "insufficient_balance",
+            AiError::RateLimited(_) => "rate_limited",
             other => panic!("unexpected error {other:?}"),
         };
         assert_eq!(code, expected);

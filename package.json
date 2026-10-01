@@ -27,6 +27,8 @@
     "fmt:rust:check": "cargo fmt --all -- --check",
     "i18n:audit": "node scripts/i18n-audit.mjs",
     "check": "npm run lint && npm run i18n:audit && npx tsc --noEmit && npm run test",
+    "check:fast": "npm run lint && npm run i18n:audit && npx tsc --noEmit && npm run test",
+    "check:all": "npm run check:fast && npm run format:check && npm run fmt:rust:check && npm run lint:rust && npm run test:rust && npm run build",
     "engines:fetch": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-engines.ps1",
     "engines:verify-lock": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-engines.ps1 -VerifyLock",
     "package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package.ps1",

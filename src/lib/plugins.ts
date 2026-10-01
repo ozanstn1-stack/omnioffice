@@ -229,7 +229,8 @@ export interface PluginTransport {
   list: () => Promise<PluginArchivedRecord[]>;
   readSource: (id: string) => Promise<string>;
   install: (manifestJson: string, source: string) => Promise<PluginArchivedRecord>;
-  installFromPath: (path: string) => Promise<PluginArchivedRecord>;
+  /** Opens a native folder picker on the Rust side; resolves null on cancel. */
+  installFromDialog: () => Promise<PluginArchivedRecord | null>;
   installSample: () => Promise<PluginArchivedRecord>;
   remove: (id: string) => Promise<void>;
   readFile: (pluginId: string, name: string) => Promise<string>;
@@ -246,7 +247,7 @@ export const tauriPluginTransport: PluginTransport = {
   list: () => invoke<PluginArchivedRecord[]>("plugin_list"),
   readSource: (id) => invoke<string>("plugin_read_source", { id }),
   install: (manifestJson, source) => invoke<PluginArchivedRecord>("plugin_install", { manifestJson, source }),
-  installFromPath: (path) => invoke<PluginArchivedRecord>("plugin_install_from_path", { path }),
+  installFromDialog: () => invoke<PluginArchivedRecord | null>("plugin_install_from_dialog"),
   installSample: () => invoke<PluginArchivedRecord>("plugin_install_sample"),
   remove: (id) => invoke<void>("plugin_delete", { id }),
   readFile: (pluginId, name) => invoke<string>("plugin_file_read", { pluginId, name }),
@@ -1043,7 +1044,7 @@ interface PluginStoreState {
   loaded: boolean;
   busy: boolean;
   load: () => Promise<void>;
-  install: (path: string) => Promise<void>;
+  install: () => Promise<void>;
   reloadSample: () => Promise<void>;
   enable: (id: string) => Promise<void>;
   disable: (id: string) => void;
@@ -1081,10 +1082,12 @@ export const usePluginStore = create<PluginStoreState>((set, get) => ({
     }
   },
 
-  install: async (path) => {
+  install: async () => {
     set({ busy: true });
     try {
-      await activeTransport.installFromPath(path);
+      // The folder is chosen by the Rust-side native dialog; the webview never
+      // supplies a filesystem path.
+      await activeTransport.installFromDialog();
       await get().load();
     } catch (error) {
       useToasts.getState().push({ kind: "error", title: "Plugins", detail: errorText(error) });

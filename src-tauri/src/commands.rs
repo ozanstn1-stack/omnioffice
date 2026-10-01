@@ -64,7 +64,14 @@ pub struct OutputSpec {
 impl OutputSpec {
     pub(crate) fn resolve(&self) -> Result<(PathBuf, OverwritePolicy), PdfError> {
         let path = crate::paths::output_file(&self.path)?;
-        Ok((path, policy(&self.overwrite)))
+        Ok((path.into_path_buf(), policy(&self.overwrite)))
+    }
+
+    /// Validates the input file for commands that carry one alongside the
+    /// output spec. Centralized so every such command uses the same rules.
+    #[allow(dead_code)]
+    pub(crate) fn input(raw: &str) -> Result<PathBuf, PdfError> {
+        Ok(crate::paths::input_file(raw)?.into_path_buf())
     }
 }
 
@@ -129,7 +136,8 @@ pub fn cancel_job(registry: State<'_, JobRegistry>, job_id: String) {
 
 #[tauri::command]
 pub async fn pdf_info(path: String, password: Option<String>) -> Result<pdfcore::info::PdfInfo, PdfError> {
-    run_blocking(move || pdfcore::info::pdf_info(Path::new(&path), password.as_deref())).await
+    let path = crate::paths::input_file(&path)?.into_path_buf();
+    run_blocking(move || pdfcore::info::pdf_info(&path, password.as_deref())).await
 }
 
 #[tauri::command]
@@ -139,6 +147,7 @@ pub async fn page_thumbnail(
     max_width: Option<u32>,
     password: Option<String>,
 ) -> Result<Thumbnail, PdfError> {
+    let path = crate::paths::input_file(&path)?.into_path_buf();
     run_blocking(move || {
         let max_width = max_width.unwrap_or(220).clamp(60, 3000);
         let options = pdfcore::render::RenderOptions {
@@ -146,7 +155,7 @@ pub async fn page_thumbnail(
             max_width: Some(max_width),
             max_height: None,
         };
-        let rendered = pdfcore::render::render_page(Path::new(&path), password.as_deref(), page, &options)?;
+        let rendered = pdfcore::render::render_page(&path, password.as_deref(), page, &options)?;
         let bytes = pdfcore::images::encode_image(
             &rendered,
             pdfcore::images::ImageFormat::Jpeg,
@@ -175,6 +184,7 @@ pub async fn page_preview(
     format: Option<String>,
     quality: Option<u8>,
 ) -> Result<Thumbnail, PdfError> {
+    let path = crate::paths::input_file(&path)?.into_path_buf();
     run_blocking(move || {
         let max_width = max_width.unwrap_or(1100).clamp(200, 4000);
         let options = pdfcore::render::RenderOptions {
@@ -182,7 +192,7 @@ pub async fn page_preview(
             max_width: Some(max_width),
             max_height: None,
         };
-        let rendered = pdfcore::render::render_page(Path::new(&path), password.as_deref(), page, &options)?;
+        let rendered = pdfcore::render::render_page(&path, password.as_deref(), page, &options)?;
         // Reading mode requests JPEG (much smaller for large pages); the
         // thumbnail/preview default stays lossless PNG.
         let (bytes, mime) = match format.as_deref() {
@@ -216,7 +226,8 @@ pub async fn page_preview(
 /// Extracts the text layer of a single page (reading mode: "copy page text").
 #[tauri::command]
 pub async fn page_text(path: String, page: u32, password: Option<String>) -> Result<String, PdfError> {
-    run_blocking(move || pdfcore::render::extract_page_text(Path::new(&path), password.as_deref(), page)).await
+    let path = crate::paths::input_file(&path)?.into_path_buf();
+    run_blocking(move || pdfcore::render::extract_page_text(&path, password.as_deref(), page)).await
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -240,9 +251,10 @@ pub async fn search_document(
     password: Option<String>,
     job_id: Option<String>,
 ) -> Result<SearchResponse, PdfError> {
+    let path = crate::paths::input_file(&path)?.into_path_buf();
     operation_with_progress(app, registry, job_id, move |progress, cancel| {
         let result = pdfcore::render::search_document(
-            Path::new(&path),
+            &path,
             password.as_deref(),
             &query,
             match_case.unwrap_or(false),
@@ -264,7 +276,8 @@ pub async fn search_document(
 
 #[tauri::command]
 pub async fn check_password(path: String, password: String) -> Result<bool, PdfError> {
-    run_blocking(move || pdfcore::security::check_password(Path::new(&path), &password)).await
+    let path = crate::paths::input_file(&path)?.into_path_buf();
+    run_blocking(move || pdfcore::security::check_password(&path, &password)).await
 }
 
 // ---------------------------------------------------------------------------
@@ -300,7 +313,11 @@ pub async fn merge_pdfs(
             emit_progress(&app_for_progress, &job_for_progress, &event);
         };
         let (output, policy) = request.output.resolve()?;
-        let inputs: Vec<PathBuf> = request.inputs.iter().map(PathBuf::from).collect();
+        let inputs: Vec<PathBuf> = request
+            .inputs
+            .iter()
+            .map(|input| crate::paths::input_file(input).map(|path| path.into_path_buf()))
+            .collect::<Result<_, _>>()?;
         if inputs.len() < 2 {
             return Err(PdfError::InvalidInput("select at least two PDF files".into()));
         }
@@ -356,10 +373,11 @@ pub async fn extract_pages(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let (output, policy) = request.output.resolve()?;
-        validate_pages(Path::new(&request.input), &request)?;
+        let input = crate::paths::input_file(&request.input)?;
+        validate_pages(input.as_path(), &request)?;
         emit_progress_simple(progress, "extract", 0, 1);
         let path = pdfcore::organize::extract_pages(
-            Path::new(&request.input),
+            input.as_path(),
             &request.pages,
             &output,
             policy,
@@ -371,7 +389,7 @@ pub async fn extract_pages(
         Ok(OpResult {
             path: path.display().to_string(),
             page_count: Some(pages),
-            original_bytes: std::fs::metadata(&request.input).ok().map(|m| m.len()),
+            original_bytes: std::fs::metadata(input.as_path()).ok().map(|m| m.len()),
             output_bytes: std::fs::metadata(&path).ok().map(|m| m.len()),
             reduction: None,
             message: None,
@@ -403,9 +421,10 @@ pub async fn delete_pages(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |_progress, _cancel| {
         let (output, policy) = request.output.resolve()?;
-        let pages = validate_pages(Path::new(&request.input), &request)?;
+        let input = crate::paths::input_file(&request.input)?;
+        let pages = validate_pages(input.as_path(), &request)?;
         let path = pdfcore::organize::delete_pages(
-            Path::new(&request.input),
+            input.as_path(),
             &pages,
             &output,
             policy,
@@ -431,10 +450,11 @@ pub async fn rotate_pages(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |_progress, _cancel| {
         let (output, policy) = request.output.resolve()?;
-        let pages = validate_pages(Path::new(&request.input), &request)?;
+        let input = crate::paths::input_file(&request.input)?;
+        let pages = validate_pages(input.as_path(), &request)?;
         let degrees = request.degrees.unwrap_or(90);
         let path = pdfcore::organize::rotate_pages(
-            Path::new(&request.input),
+            input.as_path(),
             &pages,
             degrees,
             &output,
@@ -473,9 +493,10 @@ pub async fn apply_page_plan(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let (output, policy) = request.output.resolve()?;
+        let input = crate::paths::input_file(&request.input)?;
         emit_progress_simple(progress, "organize", 0, 1);
         let path = pdfcore::organize::apply_page_plan(
-            Path::new(&request.input),
+            input.as_path(),
             &request.plan,
             &output,
             policy,
@@ -486,7 +507,7 @@ pub async fn apply_page_plan(
         Ok(OpResult {
             path: path.display().to_string(),
             page_count: Some(request.plan.len() as u32),
-            original_bytes: std::fs::metadata(&request.input).ok().map(|m| m.len()),
+            original_bytes: std::fs::metadata(input.as_path()).ok().map(|m| m.len()),
             output_bytes: std::fs::metadata(&path).ok().map(|m| m.len()),
             reduction: None,
             message: None,
@@ -522,10 +543,12 @@ pub async fn split_pdf(
     request: SplitRequest,
 ) -> Result<SplitResponse, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
+        let input = crate::paths::input_file(&request.input)?;
+        let output_dir = crate::paths::directory(&request.output_dir)?;
         let parts = pdfcore::organize::split_pdf(
-            Path::new(&request.input),
+            input.as_path(),
             &request.mode,
-            Path::new(&request.output_dir),
+            output_dir.as_path(),
             policy(&request.overwrite),
             request.password.as_deref(),
             progress,
@@ -561,7 +584,8 @@ pub async fn estimate_compression(
     password: Option<String>,
 ) -> Result<pdfcore::compress::CompressEstimate, PdfError> {
     run_blocking(move || {
-        pdfcore::compress::estimate_compression(Path::new(&input), &options, password.as_deref())
+        let input = crate::paths::input_file(&input)?;
+        pdfcore::compress::estimate_compression(input.as_path(), &options, password.as_deref())
     }).await
 }
 
@@ -573,8 +597,9 @@ pub async fn compress_pdf(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let (output, policy) = request.output.resolve()?;
+        let input = crate::paths::input_file(&request.input)?;
         let result = pdfcore::compress::compress_pdf(
-            Path::new(&request.input),
+            input.as_path(),
             &output,
             &request.options,
             policy,
@@ -617,8 +642,9 @@ pub async fn ocr_pdf(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let (output, policy) = request.output.resolve()?;
+        let input = crate::paths::input_file(&request.input)?;
         let result = pdfcore::ocr::ocr_pdf(
-            Path::new(&request.input),
+            input.as_path(),
             &output,
             &request.options,
             policy,
@@ -629,7 +655,7 @@ pub async fn ocr_pdf(
         Ok(OpResult {
             path: result.path.clone(),
             page_count: Some(result.pages_processed),
-            original_bytes: std::fs::metadata(&request.input).ok().map(|m| m.len()),
+            original_bytes: std::fs::metadata(input.as_path()).ok().map(|m| m.len()),
             output_bytes: std::fs::metadata(&result.path).ok().map(|m| m.len()),
             reduction: None,
             message: Some(format!(
@@ -673,8 +699,9 @@ pub async fn protect_pdf(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |_progress, _cancel| {
         let (output, policy) = request.output.resolve()?;
+        let input = crate::paths::input_file(&request.input)?;
         let path = pdfcore::security::protect_pdf(
-            Path::new(&request.input),
+            input.as_path(),
             &output,
             &pdfcore::security::ProtectOptions {
                 user_password: request.user_password.clone(),
@@ -716,8 +743,9 @@ pub async fn unlock_pdf(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |_progress, _cancel| {
         let (output, policy) = request.output.resolve()?;
+        let input = crate::paths::input_file(&request.input)?;
         let path = pdfcore::security::unlock_pdf(
-            Path::new(&request.input),
+            input.as_path(),
             &output,
             &request.password,
             policy,
@@ -787,9 +815,11 @@ pub async fn pdf_to_images(
     request: PdfToImagesRequest,
 ) -> Result<PdfToImagesResponse, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
+        let input = crate::paths::input_file(&request.input)?;
+        let output_dir = crate::paths::directory(&request.output_dir)?;
         let result = pdfcore::convert::pdf_to_images(
-            Path::new(&request.input),
-            Path::new(&request.output_dir),
+            input.as_path(),
+            output_dir.as_path(),
             request.format,
             request.dpi,
             request.jpeg_quality,
@@ -828,8 +858,21 @@ pub async fn images_to_pdf(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let (output, policy) = request.output.resolve()?;
+        let items: Vec<pdfcore::images::ImageItem> = request
+            .items
+            .iter()
+            .map(|item| {
+                Ok(pdfcore::images::ImageItem {
+                    path: crate::paths::input_file(&item.path)?
+                        .into_path_buf()
+                        .to_string_lossy()
+                        .to_string(),
+                    rotation_delta: item.rotation_delta,
+                })
+            })
+            .collect::<Result<_, PdfError>>()?;
         let path = pdfcore::images::images_to_pdf(
-            &request.items,
+            &items,
             &request.options,
             &output,
             policy,
@@ -838,9 +881,8 @@ pub async fn images_to_pdf(
         )?;
         Ok(OpResult {
             path: path.display().to_string(),
-            page_count: Some(request.items.len() as u32),
-            original_bytes: request
-                .items
+            page_count: Some(items.len() as u32),
+            original_bytes: items
                 .iter()
                 .filter_map(|i| std::fs::metadata(&i.path).ok())
                 .map(|m| m.len())
@@ -876,8 +918,9 @@ pub async fn resize_pages(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let (output, policy) = request.output.resolve()?;
+        let input = crate::paths::input_file(&request.input)?;
         let path = pdfcore::pagelayout::resize_pages(
-            Path::new(&request.input),
+            input.as_path(),
             &output,
             &request.options,
             policy,
@@ -916,8 +959,9 @@ pub async fn crop_pages(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |_progress, _cancel| {
         let (output, policy) = request.output.resolve()?;
+        let input = crate::paths::input_file(&request.input)?;
         let path = pdfcore::pagelayout::crop_pages(
-            Path::new(&request.input),
+            input.as_path(),
             &output,
             &request.crops,
             policy,
@@ -961,7 +1005,8 @@ pub async fn edit_metadata(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |_progress, _cancel| {
         let (output, policy) = request.output.resolve()?;
-        let bytes = std::fs::read(&request.input).map_err(PdfError::from_io)?;
+        let input = crate::paths::input_file(&request.input)?;
+        let bytes = crate::paths::read_input_file(&request.input, 2u64 * 1024 * 1024 * 1024)?;
         let signatures = pdfcore::incremental::signature_count(&bytes);
 
         // Appending a revision keeps every signature meaningful: each one still
@@ -985,7 +1030,7 @@ pub async fn edit_metadata(
         }
 
         let path = pdfcore::metadata::edit_metadata_file(
-            Path::new(&request.input),
+            input.as_path(),
             &output,
             &request.metadata,
             request.remove,
@@ -1033,7 +1078,8 @@ pub async fn add_page_numbers(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let (output, policy) = request.output.resolve()?;
-        let bytes = std::fs::read(&request.input).map_err(PdfError::from_io)?;
+        let input = crate::paths::input_file(&request.input)?;
+        let bytes = crate::paths::read_input_file(&request.input, 2u64 * 1024 * 1024 * 1024)?;
         let signatures = pdfcore::incremental::signature_count(&bytes);
 
         // Page numbers are additive: appending them as a new revision keeps
@@ -1055,7 +1101,7 @@ pub async fn add_page_numbers(
         }
 
         let path = pdfcore::numbering::add_page_numbers(
-            Path::new(&request.input),
+            input.as_path(),
             &output,
             &request.options,
             policy,
@@ -1104,7 +1150,8 @@ pub async fn watermark_pdf(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let (output, policy) = request.output.resolve()?;
-        let bytes = std::fs::read(&request.input).map_err(PdfError::from_io)?;
+        let input = crate::paths::input_file(&request.input)?;
+        let bytes = crate::paths::read_input_file(&request.input, 2u64 * 1024 * 1024 * 1024)?;
         let signatures = pdfcore::incremental::signature_count(&bytes);
 
         // A watermark is additive: appending it as a new revision keeps every
@@ -1126,7 +1173,7 @@ pub async fn watermark_pdf(
         }
 
         let path = pdfcore::watermark::add_watermark(
-            Path::new(&request.input),
+            input.as_path(),
             &output,
             &request.options,
             policy,
@@ -1175,7 +1222,8 @@ pub async fn annotate_pdf(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let (output, policy) = request.output.resolve()?;
-        let bytes = std::fs::read(&request.input).map_err(PdfError::from_io)?;
+        let input = crate::paths::input_file(&request.input)?;
+        let bytes = crate::paths::read_input_file(&request.input, 2u64 * 1024 * 1024 * 1024)?;
         let signatures = pdfcore::incremental::signature_count(&bytes);
 
         // A stamp is additive: appending it as a new revision keeps every
@@ -1197,7 +1245,7 @@ pub async fn annotate_pdf(
         }
 
         let path = pdfcore::annotate::annotate_pdf(
-            Path::new(&request.input),
+            input.as_path(),
             &output,
             &request.annotations,
             policy,
@@ -1247,8 +1295,9 @@ pub async fn redact_pdf(
 ) -> Result<OpResult, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let (output, policy) = request.output.resolve()?;
+        let input = crate::paths::input_file(&request.input)?;
         let result = pdfcore::redact::redact_pdf(
-            Path::new(&request.input),
+            input.as_path(),
             &output,
             &request.areas,
             &request.options,
@@ -1257,11 +1306,22 @@ pub async fn redact_pdf(
             progress,
             cancel,
         )?;
-        let message = if result.characters_removed == 0 && result.unmatched_areas > 0 {
-            Some(format!("{} area(s) did not match any text.", result.unmatched_areas))
-        } else {
-            None
-        };
+        // Surface the real verification outcome. A redaction that still leaves
+        // selected values extractable must never look like a clean success.
+        let mut notes: Vec<String> = Vec::new();
+        if result.characters_removed == 0 && result.unmatched_areas > 0 {
+            notes.push(format!("{} area(s) did not match any text.", result.unmatched_areas));
+        }
+        if let Some(remaining) = result.remaining_matches.first() {
+            notes.push(format!(
+                "WARNING: {} selected value(s) are still extractable after redaction (e.g. {}). The output is not safe to share.",
+                result.remaining_matches.len(),
+                remaining
+            ));
+        } else if !result.verification_message.is_empty() {
+            notes.push(result.verification_message.clone());
+        }
+        let message = if notes.is_empty() { None } else { Some(notes.join(" ")) };
         Ok(OpResult {
             path: result.output.clone(),
             page_count: None,
@@ -1283,9 +1343,10 @@ pub async fn detect_sensitive_text(
     password: Option<String>,
 ) -> Result<Vec<pdfcore::redact::RedactionMatch>, PdfError> {
     run_blocking(move || {
+        let path = crate::paths::input_file(&path)?;
         let cancel = CancelToken::new();
         let (pages, _) = pdfcore::textbox::page_chars(
-            Path::new(&path),
+            path.as_path(),
             password.as_deref(),
             &[page],
             1,
@@ -1324,9 +1385,11 @@ pub async fn compare_pdfs(
     request: CompareRequest,
 ) -> Result<pdfcore::compare::CompareReport, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
+        let left = crate::paths::input_file(&request.left)?;
+        let right = crate::paths::input_file(&request.right)?;
         pdfcore::compare::compare_pdfs(
-            Path::new(&request.left),
-            Path::new(&request.right),
+            left.as_path(),
+            right.as_path(),
             request.left_password.as_deref(),
             request.right_password.as_deref(),
             &request.options,
@@ -1346,7 +1409,11 @@ pub async fn inspect_document(
     path: String,
     password: Option<String>,
 ) -> Result<pdfcore::inspect::DocumentInspection, PdfError> {
-    run_blocking(move || pdfcore::inspect::inspect_document(Path::new(&path), password.as_deref())).await
+    run_blocking(move || {
+        let path = crate::paths::input_file(&path)?;
+        pdfcore::inspect::inspect_document(path.as_path(), password.as_deref())
+    })
+    .await
 }
 
 // ---------------------------------------------------------------------------
@@ -1429,33 +1496,49 @@ pub fn clear_recent(app: AppHandle) -> Result<(), PdfError> {
     Ok(())
 }
 
-/// Checks whether an output path exists (drives the overwrite dialog).
+/// Checks whether an output path exists (drives the overwrite dialog). This is
+/// a probe for *absence*, so only the path shape is validated.
 #[tauri::command]
 pub fn output_exists(path: String) -> bool {
-    Path::new(&path).exists()
+    crate::paths::lexical(&path)
+        .map(|validated| validated.as_path().exists())
+        .unwrap_or(false)
 }
 
 /// Creates a directory (including its parents). The Android shell uses this to
 /// stage documents picked through the system file picker inside the app cache.
+///
+/// The directory intentionally does not exist yet, so this validates the path's
+/// shape only (absolute, no `..`, no reserved names) instead of requiring it.
 #[tauri::command]
 pub fn ensure_dir(path: String) -> Result<(), PdfError> {
-    std::fs::create_dir_all(Path::new(&path)).map_err(PdfError::from_io)
+    let path = crate::paths::lexical(&path)?;
+    std::fs::create_dir_all(path.as_path()).map_err(PdfError::from_io)
 }
 
 /// Suggests a default output path next to the input.
 #[tauri::command]
 pub fn suggest_output(input: String, suffix: String) -> String {
-    pdfcore::docutil::default_output_for(Path::new(&input), &suffix)
+    let Ok(input) = crate::paths::input_file(&input) else {
+        return String::new();
+    };
+    pdfcore::docutil::default_output_for(input.as_path(), &suffix)
         .display()
         .to_string()
 }
 
-/// File sizes for the selected files (used by the file list UI).
+/// File sizes for the selected files (used by the file list UI). Missing or
+/// invalid paths are reported as `None` instead of failing the whole call.
 #[tauri::command]
 pub fn file_sizes(paths: Vec<String>) -> Vec<Option<u64>> {
     paths
         .iter()
-        .map(|p| std::fs::metadata(p).ok().map(|m| m.len()))
+        .map(|p| {
+            crate::paths::input_file(p)
+                .ok()
+                .and_then(|validated| std::fs::metadata(validated.as_path()).ok())
+                .map(|m| m.len())
+        })
         .collect()
 }
 
@@ -1476,6 +1559,7 @@ const OPENABLE_EXTENSIONS: &[&str] = &[
 fn openable_document_path(raw: &str) -> Result<PathBuf, PdfError> {
     let path = crate::paths::input_file(raw)?;
     let extension = path
+        .as_path()
         .extension()
         .and_then(|value| value.to_str())
         .map(|value| value.to_ascii_lowercase())
@@ -1485,7 +1569,7 @@ fn openable_document_path(raw: &str) -> Result<PathBuf, PdfError> {
             "refusing to hand this file type to the operating system: {raw}"
         )));
     }
-    Ok(path)
+    Ok(path.into_path_buf())
 }
 
 /// Opens a document the app produced with the OS default handler.
@@ -1599,12 +1683,11 @@ pub struct SaveAiEntryRequest {
 #[tauri::command]
 pub fn ai_library_save(app: AppHandle, request: SaveAiEntryRequest) -> Result<AiLibraryEntry, PdfError> {
     let index = ai_library_index(&app)?;
-    let dir = request
-        .directory
-        .as_ref()
-        .map(PathBuf::from)
-        .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or_else(|| default_library_dir(&app));
+    // The library folder may be created below, so validate its shape only.
+    let dir = match request.directory.as_deref() {
+        Some(raw) if !raw.is_empty() => crate::paths::lexical(raw)?.into_path_buf(),
+        _ => default_library_dir(&app),
+    };
     library::save_ai_entry(
         &index,
         &dir,
@@ -1646,8 +1729,9 @@ pub fn ai_library_clear(app: AppHandle, delete_files: Option<bool>) -> Result<()
 #[tauri::command]
 pub fn ai_library_export(app: AppHandle, id: String, target: String) -> Result<String, PdfError> {
     let text = library::read_ai_entry_text(&ai_library_index(&app)?, &id)?;
+    let target = crate::paths::output_file(&target)?;
     let path = pdfcore::docutil::resolve_output_path(
-        Path::new(&target),
+        target.as_path(),
         pdfcore::docutil::OverwritePolicy::UniqueName,
     )?;
     if let Some(parent) = path.parent() {

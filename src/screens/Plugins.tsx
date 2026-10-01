@@ -4,7 +4,6 @@
  * Worker; this screen only talks to the plugin manager in `src/lib/plugins.ts`.
  */
 import { useEffect, useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
 import { FolderPlus, Package, Play, Power, RefreshCw, RotateCw, Trash2 } from "lucide-react";
 import { Badge, Card, EmptyState } from "../components/ui";
 import { useT } from "../lib/i18n";
@@ -38,9 +37,10 @@ export function Plugins() {
     void load();
   }, [load]);
 
+  // The folder picker runs on the Rust side (the webview never supplies a
+  // path); `install` opens it and does nothing when the user cancels.
   const pickFolder = async () => {
-    const picked = await open({ directory: true, multiple: false, title: t("plugins.installFolder") });
-    if (typeof picked === "string" && picked) await install(picked);
+    await install();
   };
 
   return (

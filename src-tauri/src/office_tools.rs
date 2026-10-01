@@ -12,7 +12,6 @@ use pdfcore::progress::{CancelToken, ProgressEvent};
 
 fn silent(_event: ProgressEvent) {}
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -85,9 +84,18 @@ pub async fn office_images_to_pdf(request: ImagesToPdfRequest) -> Result<String,
         let items: Vec<ImageItem> = request
             .images
             .iter()
-            .map(|path| ImageItem { path: path.clone(), rotation_delta: 0 })
-            .collect();
-        let output = PathBuf::from(&request.output);
+            .map(|path| {
+                Ok(ImageItem {
+                    path: crate::paths::input_file(path)?
+                        .into_path_buf()
+                        .to_string_lossy()
+                        .to_string(),
+                    rotation_delta: 0,
+                })
+            })
+            .collect::<Result<_, pdfcore::error::PdfError>>()
+            .map_err(pdf_error)?;
+        let output = crate::paths::output_file(&request.output).map_err(pdf_error)?.into_path_buf();
         let result = pdfcore::images::images_to_pdf(&items, &options, &output, policy(&request.overwrite), &silent, &CancelToken::new())
             .map_err(pdf_error)?;
         Ok(result.to_string_lossy().to_string())
@@ -103,9 +111,11 @@ pub async fn office_pdf_to_images(request: PdfToImagesRequest) -> Result<Vec<Str
             Some("png") => pdfcore::images::ImageFormat::Png,
             _ => pdfcore::images::ImageFormat::Jpeg,
         };
+        let input = crate::paths::input_file(&request.input).map_err(pdf_error)?;
+        let output_dir = crate::paths::directory(&request.output_dir).map_err(pdf_error)?;
         let result = pdfcore::convert::pdf_to_images(
-            Path::new(&request.input),
-            Path::new(&request.output_dir),
+            input.as_path(),
+            output_dir.as_path(),
             format,
             request.dpi.unwrap_or(150),
             request.jpeg_quality.unwrap_or(85),
@@ -135,15 +145,16 @@ pub struct PdfTextRequest {
 #[tauri::command]
 pub async fn office_pdf_to_text(request: PdfTextRequest) -> Result<String, OfficeErrorPayload> {
     let task = tauri::async_runtime::spawn_blocking(move || {
-        let input = Path::new(&request.input);
-        let pages = pdfcore::render::page_geometries(input, request.password.as_deref()).map_err(pdf_error)?;
+        let input = crate::paths::input_file(&request.input).map_err(pdf_error)?;
+        let output = crate::paths::output_file(&request.output).map_err(pdf_error)?;
+        let pages = pdfcore::render::page_geometries(input.as_path(), request.password.as_deref()).map_err(pdf_error)?;
         let mut text = String::new();
         for page in &pages {
-            let content = pdfcore::render::extract_page_text(input, request.password.as_deref(), page.page).map_err(pdf_error)?;
+            let content = pdfcore::render::extract_page_text(input.as_path(), request.password.as_deref(), page.page).map_err(pdf_error)?;
             text.push_str(&content);
             text.push_str("\n\n");
         }
-        officecore::io::write_atomic(Path::new(&request.output), text.as_bytes()).map_err(payload)?;
+        officecore::io::write_atomic(output.as_path(), text.as_bytes()).map_err(payload)?;
         Ok(request.output)
     });
     task.await
@@ -188,9 +199,11 @@ pub async fn office_pdf_add_form(request: PdfFormRequest) -> Result<String, Offi
         if request.fields.is_empty() {
             return Err(payload(OfficeError::invalid("Add at least one form field.")));
         }
-        let mut document = pdfcore::docutil::load_document(Path::new(&request.input), request.password.as_deref())
+        let input = crate::paths::input_file(&request.input).map_err(pdf_error)?;
+        let output_target = crate::paths::output_file(&request.output).map_err(pdf_error)?;
+        let mut document = pdfcore::docutil::load_document(input.as_path(), request.password.as_deref())
             .map_err(pdf_error)?;
-        let output = pdfcore::docutil::resolve_output_path(Path::new(&request.output), policy(&request.overwrite)).map_err(pdf_error)?;
+        let output = pdfcore::docutil::resolve_output_path(output_target.as_path(), policy(&request.overwrite)).map_err(pdf_error)?;
 
         let mut field_refs: Vec<lopdf::Object> = Vec::new();
         for (index, field) in request.fields.iter().enumerate() {
@@ -369,7 +382,8 @@ pub async fn office_pdf_add_form(request: PdfFormRequest) -> Result<String, Offi
 #[tauri::command]
 pub async fn office_pdf_list_form(input: String) -> Result<Vec<PdfFormField>, OfficeErrorPayload> {
     let task = tauri::async_runtime::spawn_blocking(move || {
-        let document = pdfcore::docutil::load_document(Path::new(&input), None).map_err(pdf_error)?;
+        let input = crate::paths::input_file(&input).map_err(pdf_error)?;
+        let document = pdfcore::docutil::load_document(input.as_path(), None).map_err(pdf_error)?;
         let pages = document.get_pages();
         let fields = pdfcore::forms::list_fields(&document)
             .into_iter()

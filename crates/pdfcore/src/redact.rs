@@ -82,6 +82,23 @@ impl Default for RedactionOptions {
     }
 }
 
+/// The three-valued outcome of redaction verification. A boolean was not
+/// enough: "the check ran" and "the check passed" are different statements, and
+/// conflating them let a leak look like a success.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum RedactionVerification {
+    /// The output was re-opened, the affected pages were re-extracted and none
+    /// of the selected text remains.
+    Removed,
+    /// The check ran and still found selected text (or could not cover every
+    /// affected page). The output must not be treated as safe.
+    PossiblyPresent,
+    /// The check could not run (no pdfium, or no extractable text layer on any
+    /// affected page). Nothing is claimed either way.
+    NotVerified,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RedactionReport {
@@ -93,7 +110,10 @@ pub struct RedactionReport {
     pub unmatched_areas: u32,
     /// Notes the user must read, including any area to check by hand.
     pub warnings: Vec<String>,
-    /// True when the output was re-opened and its text layer re-checked.
+    /// Three-valued verification outcome. Prefer this over `verified`.
+    pub verification: RedactionVerification,
+    /// True only when [`RedactionVerification::Removed`] holds: the output was
+    /// re-opened, re-extracted and shown to be clean. Kept for compatibility.
     pub verified: bool,
     /// Masked samples of pre-redaction words that are still extractable from
     /// the output. Short samples only: the report must not restart the leak.
@@ -716,13 +736,18 @@ pub fn redact_pdf(
     // Verification happens on the written file, not on the in-memory model:
     // the question is what a reader can extract from what was actually saved.
     let affected_pages: Vec<u32> = verification_words.iter().map(|(page, _)| *page).collect();
-    let (verified, remaining_matches, verification_message) =
+    let (verification, verified, remaining_matches, verification_message) =
         verify_redaction(&target, &verification_words, &affected_pages, &geometry);
-    if verified && !remaining_matches.is_empty() {
+    if !remaining_matches.is_empty() {
         warnings.push(format!(
             "Verification found {} redacted value(s) that can still be extracted from the output.",
             remaining_matches.len()
         ));
+    }
+    if verification == RedactionVerification::PossiblyPresent {
+        warnings.push(
+            "The output is not safe to share until the flagged values are removed.".to_string(),
+        );
     }
 
     Ok(RedactionReport {
@@ -732,6 +757,7 @@ pub fn redact_pdf(
         images_removed,
         unmatched_areas,
         warnings,
+        verification,
         verified,
         remaining_matches,
         verification_message,
@@ -741,17 +767,20 @@ pub fn redact_pdf(
 /// Re-opens the written output and checks that none of the words that sat
 /// under a redaction area can still be extracted.
 ///
-/// Returns `verified = false` - with an explanation - when the check could not
-/// run at all: no pdfium, or an affected page with no text layer. The report
-/// must never imply a verification that did not happen.
+/// Returns a three-valued [`RedactionVerification`]. `Removed` is only returned
+/// when every affected page was re-extracted and none of the selected text
+/// remains; a leak or an uncovered page yields `PossiblyPresent`; a check that
+/// could not run at all yields `NotVerified`. The report must never imply a
+/// verification that did not happen or a success that is not true.
 fn verify_redaction(
     output: &Path,
     words: &[(u32, String)],
     affected_pages: &[u32],
     geometry: &BTreeMap<u32, PageChars>,
-) -> (bool, Vec<String>, String) {
+) -> (RedactionVerification, bool, Vec<String>, String) {
     if !crate::render::is_available() {
         return (
+            RedactionVerification::NotVerified,
             false,
             Vec::new(),
             "Verification skipped: pdfium is not available.".to_string(),
@@ -762,6 +791,7 @@ fn verify_redaction(
     pages.dedup();
     if pages.is_empty() {
         return (
+            RedactionVerification::NotVerified,
             false,
             Vec::new(),
             "Verification skipped: no text areas were redacted.".to_string(),
@@ -797,6 +827,7 @@ fn verify_redaction(
 
     if checked_pages.is_empty() {
         return (
+            RedactionVerification::NotVerified,
             false,
             remaining,
             format!(
@@ -805,33 +836,36 @@ fn verify_redaction(
             ),
         );
     }
+    // A leak on any checked page is the strongest signal: report it even when
+    // some pages could not be checked.
+    if !remaining.is_empty() {
+        let message = format!(
+            "Verification found {} selected value(s) still extractable; the output is not safe to share.",
+            remaining.len()
+        );
+        return (RedactionVerification::PossiblyPresent, false, remaining, message);
+    }
     if !skipped_pages.is_empty() {
         return (
+            RedactionVerification::PossiblyPresent,
             false,
             remaining,
             format!(
-                "Verification ran on page(s) {}; page(s) {} have no text layer and were skipped.",
+                "Verification ran on page(s) {}; page(s) {} have no text layer and were skipped, so removal could not be confirmed there.",
                 join_pages(&checked_pages),
                 join_pages(&skipped_pages)
             ),
         );
     }
-    if remaining.is_empty() {
-        (
-            true,
-            remaining,
-            format!(
-                "Verification passed: page(s) {} were re-extracted and none of the selected text remains.",
-                join_pages(&checked_pages)
-            ),
-        )
-    } else {
-        let message = format!(
-            "Verification found {} selected value(s) still extractable; check the output.",
-            remaining.len()
-        );
-        (true, remaining, message)
-    }
+    (
+        RedactionVerification::Removed,
+        true,
+        remaining,
+        format!(
+            "Verification passed: page(s) {} were re-extracted and none of the selected text remains.",
+            join_pages(&checked_pages)
+        ),
+    )
 }
 
 fn join_pages(pages: &[u32]) -> String {

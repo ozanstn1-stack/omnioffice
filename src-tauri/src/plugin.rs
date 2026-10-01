@@ -234,18 +234,51 @@ pub fn install_into(root: &Path, manifest_json: &str, source: &str) -> PluginRes
         return Err(PluginErrorPayload::invalid("Invalid plugin id."));
     }
     let dir = root.join(id);
+    // The plugin directory must not be a symlink: otherwise manifest.json and
+    // main.js would be written through a link to an arbitrary location.
+    if let Ok(meta) = std::fs::symlink_metadata(&dir) {
+        if meta.file_type().is_symlink() {
+            return Err(PluginErrorPayload::forbidden("Refusing to install into a symlinked plugin directory."));
+        }
+    }
     std::fs::create_dir_all(&dir).map_err(|_| PluginErrorPayload::internal("Could not create the plugin directory."))?;
+    // Re-check after creation: a directory created concurrently (or a link)
+    // must not redirect the writes outside the plugins root.
+    if let Ok(meta) = std::fs::symlink_metadata(&dir) {
+        if meta.file_type().is_symlink() {
+            return Err(PluginErrorPayload::forbidden("Refusing to install into a symlinked plugin directory."));
+        }
+    }
     write_text(&dir.join("manifest.json"), manifest_json, "manifest.json")?;
     write_text(&dir.join("main.js"), source, "main.js")?;
     Ok(PluginEntry { manifest, source_bytes: source.len() as u64 })
 }
 
+/// Reads a plugin folder the *user* selected. The folder and its two manifest
+/// files must be real files, not symlinks, so a plugin cannot smuggle host
+/// files into its own directory.
 pub fn install_from_dir(root: &Path, source_dir: &Path) -> PluginResult<PluginEntry> {
-    if !source_dir.is_dir() {
+    let link_meta = std::fs::symlink_metadata(source_dir)
+        .map_err(|_| PluginErrorPayload::invalid("Choose a folder that contains manifest.json and main.js."))?;
+    if link_meta.file_type().is_symlink() {
+        return Err(PluginErrorPayload::forbidden("Refusing to install a plugin from a symlinked folder."));
+    }
+    if !link_meta.is_dir() {
         return Err(PluginErrorPayload::invalid("Choose a folder that contains manifest.json and main.js."));
     }
-    let manifest_json = read_text(&source_dir.join("manifest.json"), MAX_MANIFEST_BYTES, "manifest.json")?;
-    let source = read_text(&source_dir.join("main.js"), MAX_SOURCE_BYTES, "main.js")?;
+    let manifest_path = source_dir.join("manifest.json");
+    let source_path = source_dir.join("main.js");
+    for (path, label) in [(&manifest_path, "manifest.json"), (&source_path, "main.js")] {
+        let meta = std::fs::symlink_metadata(path)
+            .map_err(|_| PluginErrorPayload::invalid(format!("{label} was not found.")))?;
+        if meta.file_type().is_symlink() || !meta.is_file() {
+            return Err(PluginErrorPayload::forbidden(format!(
+                "Refusing to install a plugin whose {label} is a symlink."
+            )));
+        }
+    }
+    let manifest_json = read_text(&manifest_path, MAX_MANIFEST_BYTES, "manifest.json")?;
+    let source = read_text(&source_path, MAX_SOURCE_BYTES, "main.js")?;
     install_into(root, &manifest_json, &source)
 }
 
@@ -299,6 +332,50 @@ pub fn delete_plugin(root: &Path, id: &str) -> PluginResult<()> {
 // Network guard
 // ---------------------------------------------------------------------------
 
+/// True for the cloud instance-metadata endpoint every major provider uses
+/// (AWS/GCP/Azure/OpenStack). It is link-local, so the generic class check would
+/// otherwise wave it through; block it explicitly on every scheme.
+fn is_metadata_address(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(ip) => ip.octets() == [169, 254, 169, 254],
+        // IPv4-mapped IPv6 (`::ffff:169.254.169.254`) must be unwrapped first.
+        std::net::IpAddr::V6(ip) => ip
+            .to_ipv4_mapped()
+            .map(|v4| v4.octets() == [169, 254, 169, 254])
+            .unwrap_or(false),
+    }
+}
+
+/// True when the address is loopback, private, link-local, CGNAT, unspecified
+/// or otherwise non-routable on the public internet. Used both for the plain
+/// http exception and to re-check a DNS result.
+fn is_private_address(ip: std::net::IpAddr) -> bool {
+    if is_metadata_address(ip) {
+        return true;
+    }
+    match ip {
+        std::net::IpAddr::V4(ip) => {
+            // 100.64.0.0/10 (carrier-grade NAT) is not covered by is_private().
+            let octets = ip.octets();
+            ip.is_private()
+                || ip.is_loopback()
+                || ip.is_link_local()
+                || ip.is_unspecified()
+                || ip.is_broadcast()
+                || (octets[0] == 100 && (64..128).contains(&octets[1]))
+        }
+        std::net::IpAddr::V6(ip) => {
+            ip.is_loopback()
+                || ip.is_unique_local()
+                || ip.is_unicast_link_local()
+                || ip.is_unspecified()
+                || ip.is_multicast()
+                // IPv4-mapped forms are classified by their IPv4 address.
+                || ip.to_ipv4_mapped().map(std::net::IpAddr::V4).map(is_private_address).unwrap_or(false)
+        }
+    }
+}
+
 fn is_private_host(host: Option<&str>) -> bool {
     let Some(host) = host else {
         return false;
@@ -308,16 +385,29 @@ fn is_private_host(host: Option<&str>) -> bool {
         return true;
     }
     match host.parse::<std::net::IpAddr>() {
-        Ok(std::net::IpAddr::V4(ip)) => ip.is_private() || ip.is_loopback() || ip.is_link_local(),
-        Ok(std::net::IpAddr::V6(ip)) => ip.is_loopback() || ip.is_unique_local() || ip.is_unicast_link_local(),
+        Ok(ip) => is_private_address(ip),
         Err(_) => false,
     }
 }
 
-/// https always; http only for localhost/private addresses; no credentials in
-/// the URL.
+/// Validates a plugin URL and rejects access to the cloud metadata endpoint on
+/// every scheme.
+///
+/// Policy: https is allowed to any host *except* the metadata endpoint; plain
+/// http is allowed only to localhost/private/link-local addresses (and still
+/// never to the metadata endpoint). Credentials in the URL are refused.
 pub fn validate_http_url(raw: &str) -> PluginResult<reqwest::Url> {
     let url = reqwest::Url::parse(raw).map_err(|_| PluginErrorPayload::invalid("The URL is not valid."))?;
+    let host = url.host_str().map(|value| value.trim_start_matches('[').trim_end_matches(']').to_string());
+    // A literal metadata IP is blocked before the scheme branch so https cannot
+    // reach it either.
+    if let Some(host) = host.as_deref() {
+        if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+            if is_metadata_address(ip) {
+                return Err(PluginErrorPayload::forbidden("The cloud metadata address is not allowed."));
+            }
+        }
+    }
     match url.scheme() {
         "https" => {}
         "http" => {
@@ -331,6 +421,45 @@ pub fn validate_http_url(raw: &str) -> PluginResult<reqwest::Url> {
         return Err(PluginErrorPayload::invalid("Credentials in the URL are not allowed."));
     }
     Ok(url)
+}
+
+/// Resolves a URL's host and refuses it when any resolved address is private or
+/// the metadata endpoint. This closes DNS names that point at internal
+/// services (e.g. `metadata.google.internal`) which the literal check misses.
+/// It is a best-effort pre-flight: a rebinding server could still change its
+/// answer, so the resolved address is not pinned for the actual connect (the
+/// redirects are disabled and the response is size-capped regardless).
+pub fn ensure_public_destination(url: &reqwest::Url) -> PluginResult<()> {
+    let Some(host) = url.host_str() else {
+        return Err(PluginErrorPayload::invalid("The URL has no host."));
+    };
+    let bare = host.trim_start_matches('[').trim_end_matches(']');
+    if let Ok(ip) = bare.parse::<std::net::IpAddr>() {
+        if is_private_address(ip) {
+            // A literal private/metadata host over https is refused here too,
+            // matching the http exception's intent.
+            if is_metadata_address(ip) {
+                return Err(PluginErrorPayload::forbidden("The cloud metadata address is not allowed."));
+            }
+        }
+        return Ok(());
+    }
+    let port = url.port_or_known_default().unwrap_or(443);
+    let mut resolved_any = false;
+    if let Ok(addresses) = std::net::ToSocketAddrs::to_socket_addrs(&(bare, port)) {
+        for address in addresses {
+            resolved_any = true;
+            if is_private_address(address.ip()) {
+                return Err(PluginErrorPayload::forbidden(
+                    "The URL resolves to a private or metadata address; it is not reachable from a plugin.",
+                ));
+            }
+        }
+    }
+    // Resolution failure is not fatal: the connection will simply fail. Only a
+    // resolved private address is a hard refusal.
+    let _ = resolved_any;
+    Ok(())
 }
 
 fn forbidden_header(name: &str) -> bool {
@@ -361,9 +490,31 @@ pub fn plugin_install(app: AppHandle, manifest_json: String, source: String) -> 
     install_into(&plugins_root(&app)?, &manifest_json, &source)
 }
 
+/// Installs a plugin from a folder the user picks in a native dialog that the
+/// *Rust* side opens. The webview cannot supply the path: it only triggers this
+/// command, and the folder is chosen by the human. This removes the previous
+/// design where a compromised renderer could pass any directory on disk.
 #[tauri::command]
-pub fn plugin_install_from_path(app: AppHandle, path: String) -> PluginResult<PluginEntry> {
-    install_from_dir(&plugins_root(&app)?, Path::new(&path))
+pub async fn plugin_install_from_dialog(app: AppHandle) -> PluginResult<Option<PluginEntry>> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.dialog()
+        .file()
+        .set_title("Choose a plugin folder (manifest.json + main.js)")
+        .pick_folder(move |folder| {
+            let _ = tx.send(folder);
+        });
+    let picked = tauri::async_runtime::spawn_blocking(move || rx.recv().ok().flatten())
+        .await
+        .map_err(|_| PluginErrorPayload::internal("The plugin dialog failed."))?;
+    let Some(picked) = picked else {
+        return Ok(None); // user cancelled
+    };
+    let source_dir = picked
+        .into_path()
+        .map_err(|_| PluginErrorPayload::internal("The chosen folder is not a local path."))?;
+    let entry = install_from_dir(&plugins_root(&app)?, &source_dir)?;
+    Ok(Some(entry))
 }
 
 #[tauri::command]
@@ -405,6 +556,8 @@ pub async fn plugin_http_request(app: AppHandle, plugin_id: String, request: Plu
     require_permission(&dir, "network")?;
 
     let url = validate_http_url(&request.url)?;
+    // Reject names that resolve to private/metadata addresses (DNS-based SSRF).
+    ensure_public_destination(&url)?;
     let method = match request.method.as_deref().unwrap_or("GET").to_ascii_uppercase().as_str() {
         "GET" => reqwest::Method::GET,
         "POST" => reqwest::Method::POST,

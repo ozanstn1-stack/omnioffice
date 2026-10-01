@@ -27,15 +27,15 @@ const MIN_TEXT_CHARS: usize = 20;
 fn ai_error(error: AiError) -> PdfError {
     let code = match error {
         AiError::MissingApiKey => ErrorCode::AiNotConfigured,
-        AiError::InvalidApiKey => ErrorCode::AiInvalidKey,
-        AiError::RateLimited => ErrorCode::AiRateLimited,
-        AiError::InsufficientBalance => ErrorCode::AiInsufficientBalance,
-        AiError::Network => ErrorCode::AiNetwork,
+        AiError::InvalidApiKey(_) => ErrorCode::AiInvalidKey,
+        AiError::RateLimited(_) => ErrorCode::AiRateLimited,
+        AiError::InsufficientBalance(_) => ErrorCode::AiInsufficientBalance,
+        AiError::Network(_) => ErrorCode::AiNetwork,
         AiError::Cancelled => ErrorCode::Cancelled,
         AiError::NoText => ErrorCode::AiNoText,
         AiError::TooLarge => ErrorCode::AiTooLarge,
-        AiError::Server(_) => ErrorCode::AiServerError,
-        AiError::InvalidResponse => ErrorCode::AiInvalidResponse,
+        AiError::Server(_, _) => ErrorCode::AiServerError,
+        AiError::InvalidResponse(_) => ErrorCode::AiInvalidResponse,
         AiError::ProviderUnreachable(_) => ErrorCode::AiNetwork,
         AiError::InvalidBaseUrl(_) => ErrorCode::InvalidInput,
         AiError::Unsupported(_) => ErrorCode::Unsupported,
@@ -456,10 +456,11 @@ pub async fn ai_document_preview(
 ) -> Result<AiPreview, PdfError> {
     let job_id = "ai-preview".to_string();
     let cancel = CancelToken::new();
+    let path = crate::paths::input_file(&path)?;
     let extracted = extract_pages(
         &app,
         &job_id,
-        Path::new(&path),
+        path.as_path(),
         password.as_deref(),
         pages.as_deref(),
         &cancel,
@@ -504,13 +505,14 @@ pub async fn ai_summarize(
     request: AiSummarizeRequest,
 ) -> Result<AiTextResult, PdfError> {
     let started = std::time::Instant::now();
-    let cancel = registry.register_ai(&request.job_id);
+    let (cancel, mut job_guard) = registry.register_ai_managed(&request.job_id);
     let config = build_config(&app)?;
     let model = config.model.clone();
+    let path = crate::paths::input_file(&request.path)?;
     let extracted = extract_pages(
         &app,
         &request.job_id,
-        Path::new(&request.path),
+        path.as_path(),
         request.password.as_deref(),
         request.pages.as_deref(),
         &cancel,
@@ -534,8 +536,8 @@ pub async fn ai_summarize(
         &mut on_reasoning,
     )
     .await;
-    registry.finish(&request.job_id);
     let summary = result.map_err(ai_error)?;
+    job_guard.succeed();
 
     Ok(AiTextResult {
         text: summary,
@@ -567,13 +569,14 @@ pub async fn ai_translate(
     request: AiTranslateRequest,
 ) -> Result<AiTextResult, PdfError> {
     let started = std::time::Instant::now();
-    let cancel = registry.register_ai(&request.job_id);
+    let (cancel, mut job_guard) = registry.register_ai_managed(&request.job_id);
     let config = build_config(&app)?;
     let model = config.model.clone();
+    let path = crate::paths::input_file(&request.path)?;
     let extracted = extract_pages(
         &app,
         &request.job_id,
-        Path::new(&request.path),
+        path.as_path(),
         request.password.as_deref(),
         request.pages.as_deref(),
         &cancel,
@@ -585,7 +588,7 @@ pub async fn ai_translate(
 
     for (index, (page, text)) in extracted.iter().enumerate() {
         if cancel.is_cancelled() {
-            registry.finish(&request.job_id);
+            // The guard marks the (already Cancelled) record terminal on drop.
             return Err(ai_error(AiError::Cancelled));
         }
         emit_progress(&app, &request.job_id, "translate", index as u64, total as u64);
@@ -605,7 +608,7 @@ pub async fn ai_translate(
         characters += translated.chars().count() as u64;
     }
     emit_progress(&app, &request.job_id, "translate", total as u64, total as u64);
-    registry.finish(&request.job_id);
+    job_guard.succeed();
     Ok(AiTextResult {
         text: output,
         pages: total as u32,
@@ -635,17 +638,18 @@ pub async fn ai_ask(
     request: AiAskRequest,
 ) -> Result<AiTextResult, PdfError> {
     let started = std::time::Instant::now();
+    // Register first so the guard marks a validation failure terminal too.
+    let (cancel, mut job_guard) = registry.register_ai_managed(&request.job_id);
     if request.question.trim().is_empty() {
-        registry.finish(&request.job_id);
         return Err(PdfError::InvalidInput("Enter a question.".into()));
     }
-    let cancel = registry.register_ai(&request.job_id);
     let config = build_config(&app)?;
     let model = config.model.clone();
+    let path = crate::paths::input_file(&request.path)?;
     let extracted = extract_pages(
         &app,
         &request.job_id,
-        Path::new(&request.path),
+        path.as_path(),
         request.password.as_deref(),
         None,
         &cancel,
@@ -664,9 +668,8 @@ pub async fn ai_ask(
     let answer = client
         .chat_stream(&messages, ChatOptions::default(), &cancel, &mut on_delta, &mut on_reasoning)
         .await
-        .map_err(ai_error);
-    registry.finish(&request.job_id);
-    let answer = answer?;
+        .map_err(ai_error)?;
+    job_guard.succeed();
     Ok(AiTextResult {
         text: answer,
         pages: selected.len() as u32,
@@ -692,13 +695,14 @@ pub async fn ai_cleanup_text(
     request: AiCleanupRequest,
 ) -> Result<AiTextResult, PdfError> {
     let started = std::time::Instant::now();
-    let cancel = registry.register_ai(&request.job_id);
+    let (cancel, mut job_guard) = registry.register_ai_managed(&request.job_id);
     let config = build_config(&app)?;
     let model = config.model.clone();
+    let path = crate::paths::input_file(&request.path)?;
     let extracted = extract_pages(
         &app,
         &request.job_id,
-        Path::new(&request.path),
+        path.as_path(),
         request.password.as_deref(),
         request.pages.as_deref(),
         &cancel,
@@ -709,7 +713,6 @@ pub async fn ai_cleanup_text(
     let mut output = String::new();
     for (index, chunk) in chunks.iter().enumerate() {
         if cancel.is_cancelled() {
-            registry.finish(&request.job_id);
             return Err(ai_error(AiError::Cancelled));
         }
         emit_progress(&app, &request.job_id, "cleanup", index as u64, chunks.len() as u64);
@@ -723,7 +726,7 @@ pub async fn ai_cleanup_text(
         }
         output.push_str(cleaned.trim());
     }
-    registry.finish(&request.job_id);
+    job_guard.succeed();
     Ok(AiTextResult {
         text: output.clone(),
         pages: extracted.len() as u32,
@@ -747,12 +750,13 @@ pub async fn ai_suggest_metadata(
     registry: State<'_, JobRegistry>,
     request: AiMetadataRequest,
 ) -> Result<prompts::MetadataSuggestion, PdfError> {
-    let cancel = registry.register_ai(&request.job_id);
+    let (cancel, mut job_guard) = registry.register_ai_managed(&request.job_id);
     let config = build_config(&app)?;
+    let path = crate::paths::input_file(&request.path)?;
     let extracted = extract_pages(
         &app,
         &request.job_id,
-        Path::new(&request.path),
+        path.as_path(),
         request.password.as_deref(),
         None,
         &cancel,
@@ -770,11 +774,11 @@ pub async fn ai_suggest_metadata(
             },
         )
         .await
-        .map_err(ai_error);
-    registry.finish(&request.job_id);
-    let reply = reply?;
-    prompts::parse_metadata_reply(&reply)
-        .ok_or_else(|| PdfError::coded(ErrorCode::AiInvalidResponse, "The model did not return metadata."))
+        .map_err(ai_error)?;
+    let suggestion = prompts::parse_metadata_reply(&reply)
+        .ok_or_else(|| PdfError::coded(ErrorCode::AiInvalidResponse, "The model did not return metadata."))?;
+    job_guard.succeed();
+    Ok(suggestion)
 }
 
 #[tauri::command]
@@ -794,7 +798,8 @@ pub fn ai_save_output(
         Some("unique_name") => pdfcore::docutil::OverwritePolicy::UniqueName,
         _ => pdfcore::docutil::OverwritePolicy::Error,
     };
-    let target = pdfcore::docutil::resolve_output_path(Path::new(&path), policy)?;
+    let path = crate::paths::output_file(&path)?;
+    let target = pdfcore::docutil::resolve_output_path(path.as_path(), policy)?;
     if let Some(parent) = target.parent() {
         if !parent.as_os_str().is_empty() {
             std::fs::create_dir_all(parent).map_err(PdfError::from_io)?;
@@ -813,6 +818,8 @@ pub struct AiModelOption {
     pub recommended: bool,
 }
 
+/// Static fallback list (used before a provider answers, or when discovery is
+/// unavailable). The live list comes from [`ai_discover_models`].
 #[tauri::command]
 pub fn ai_models() -> Vec<AiModelOption> {
     aicore::SUGGESTED_MODELS
@@ -823,6 +830,51 @@ pub fn ai_models() -> Vec<AiModelOption> {
             recommended: *id == aicore::DEFAULT_MODEL,
         })
         .collect()
+}
+
+/// Result of a live model lookup. `models` is empty when the provider does not
+/// expose a listing (the UI then keeps its fallback list). `message` explains
+/// what happened without ever containing a key.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiDiscoveredModels {
+    pub models: Vec<AiModelOption>,
+    pub discovered: bool,
+    pub message: String,
+}
+
+/// Asks the configured provider which models it currently serves. Best-effort:
+/// a provider that does not answer returns `discovered: false` with an empty
+/// list and the settings screen keeps its static suggestions. This removes the
+/// hard-coded assumption that only the models in `SUGGESTED_MODELS` exist.
+#[tauri::command]
+pub async fn ai_discover_models(app: AppHandle) -> Result<AiDiscoveredModels, PdfError> {
+    let config = build_config(&app)?;
+    let client = DeepSeekClient::new(config).map_err(ai_error)?;
+    match client.discover_models().await {
+        Ok(models) if !models.is_empty() => Ok(AiDiscoveredModels {
+            models: models
+                .into_iter()
+                .map(|model| AiModelOption {
+                    recommended: false,
+                    id: model.id,
+                    label: model.label.unwrap_or_default(),
+                })
+                .collect(),
+            discovered: true,
+            message: String::new(),
+        }),
+        Ok(_) => Ok(AiDiscoveredModels {
+            models: Vec::new(),
+            discovered: false,
+            message: "The provider did not list any models; using the built-in suggestions.".to_string(),
+        }),
+        Err(error) => Ok(AiDiscoveredModels {
+            models: Vec::new(),
+            discovered: false,
+            message: ai_error(error).to_string(),
+        }),
+    }
 }
 
 /// Also referenced by the UI to know if AI features are worth showing.

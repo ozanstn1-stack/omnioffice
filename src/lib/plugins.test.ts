@@ -65,7 +65,7 @@ function fakeTransport(): PluginTransport {
     list: vi.fn(async () => []),
     readSource: vi.fn(async () => "self.onPluginMessage = () => 'ok';"),
     install: vi.fn(async () => ({ manifest: manifestJson(), sourceBytes: 24 })),
-    installFromPath: vi.fn(async () => ({ manifest: manifestJson(), sourceBytes: 24 })),
+    installFromDialog: vi.fn(async () => ({ manifest: manifestJson(), sourceBytes: 24 })),
     installSample: vi.fn(async () => ({ manifest: manifestJson(), sourceBytes: 24 })),
     remove: vi.fn(async () => undefined),
     readFile: vi.fn(async () => "file-contents"),

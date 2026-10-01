@@ -281,9 +281,22 @@ impl JobStore {
 
     /// Explicit status transition (frontend `jobs_finish`, cancel). Always
     /// forces a disk write.
+    ///
+    /// Terminal states are sticky: once a job is `Cancelled`, `Failed` or
+    /// `Interrupted`, a late `jobs_finish("succeeded")` from a slow worker must
+    /// not turn it back into `Done`. This closes the cancellation race where a
+    /// cancelled job could later report success. Only a non-terminal record may
+    /// move to a new terminal state.
     pub fn set_status(&self, id: &str, status: JobStatus, error: Option<String>) {
         let mut inner = self.lock();
         let Some(record) = inner.records.get_mut(id) else { return };
+        if record.status.is_terminal() {
+            // Allow only an idempotent re-write of the same terminal status (for
+            // the error message), never a cross-terminal flip.
+            if record.status != status {
+                return;
+            }
+        }
         record.status = status;
         record.error = error;
         record.updated_at = now_ms();
@@ -306,6 +319,20 @@ impl JobStore {
         }
         record.status = JobStatus::Done;
         record.progress = 1.0;
+        record.updated_at = now_ms();
+        self.persist_locked(&inner);
+        inner.last_persist_by_job.insert(id.to_string(), Instant::now());
+    }
+
+    /// Marks a still-active record `Failed`; a terminal record is untouched (a
+    /// cancellation therefore survives an early return).
+    pub fn fail_if_active(&self, id: &str) {
+        let mut inner = self.lock();
+        let Some(record) = inner.records.get_mut(id) else { return };
+        if record.status.is_terminal() {
+            return;
+        }
+        record.status = JobStatus::Failed;
         record.updated_at = now_ms();
         self.persist_locked(&inner);
         inner.last_persist_by_job.insert(id.to_string(), Instant::now());
@@ -394,6 +421,36 @@ impl JobStore {
     }
 }
 
+/// Finishes a registered job when dropped, so a command that returns early
+/// (an error, a cancellation) still leaves the record terminal instead of
+/// `Running` until the next process start.
+///
+/// Default outcome on drop is `Failed`: a command that never called
+/// [`JobFinishGuard::succeed`] did not complete. A job already cancelled keeps
+/// its `Cancelled` state (terminal states are sticky).
+pub struct JobFinishGuard<'a> {
+    registry: &'a JobRegistry,
+    job_id: String,
+    succeeded: bool,
+}
+
+impl<'a> JobFinishGuard<'a> {
+    /// Marks the job as completed successfully; the drop then writes `Done`.
+    pub fn succeed(&mut self) {
+        self.succeeded = true;
+    }
+}
+
+impl Drop for JobFinishGuard<'_> {
+    fn drop(&mut self) {
+        if self.succeeded {
+            self.registry.finish(&self.job_id);
+        } else {
+            self.registry.fail_active(&self.job_id);
+        }
+    }
+}
+
 /// Cancellation registry. Keeps the existing method surface used by
 /// commands.rs/ai.rs/vault.rs/pdf_v3.rs and additionally maintains the
 /// persistent store.
@@ -425,6 +482,27 @@ impl JobRegistry {
     }
 
     /// Registers an AI job and returns its cancellation token.
+    /// Registers an AI job and returns a guard that finishes it on drop. The
+    /// guard bridges the `State<'_, JobRegistry>` lifetime in a command.
+    pub fn register_ai_managed(&self, job_id: &str) -> (aicore::CancelToken, JobFinishGuard<'_>) {
+        let token = self.register_ai(job_id);
+        let guard = JobFinishGuard { registry: self, job_id: job_id.to_string(), succeeded: false };
+        (token, guard)
+    }
+
+    /// Removes the token and marks a still-active record `Failed` (used by the
+    /// managed guard when a command returned early). A cancelled/failed record
+    /// is left as it is.
+    pub fn fail_active(&self, job_id: &str) {
+        if let Ok(mut jobs) = self.jobs.lock() {
+            jobs.remove(job_id);
+        }
+        if let Ok(mut jobs) = self.ai_jobs.lock() {
+            jobs.remove(job_id);
+        }
+        self.store.fail_if_active(job_id);
+    }
+
     pub fn register_ai(&self, job_id: &str) -> aicore::CancelToken {
         self.store.ensure_tracked(job_id, "ai");
         let token = aicore::CancelToken::new();

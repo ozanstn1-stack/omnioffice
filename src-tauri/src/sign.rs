@@ -81,8 +81,7 @@ pub struct CertificateSummaryDto {
 
 /// Writes `bytes` to `output` atomically: a sibling temporary file is written
 /// and flushed first, then renamed over the target.
-fn write_atomic(output: &str, bytes: &[u8]) -> PdfResult<()> {
-    let output = Path::new(output);
+fn write_atomic(output: &Path, bytes: &[u8]) -> PdfResult<()> {
     if let Some(parent) = output.parent() {
         if !parent.as_os_str().is_empty() && !parent.exists() {
             std::fs::create_dir_all(parent).map_err(PdfError::from_io)?;
@@ -112,11 +111,11 @@ pub async fn pdf_sign(
     options: SignOptionsDto,
 ) -> Result<SignResultDto, PdfError> {
     tauri::async_runtime::spawn_blocking(move || {
-        let pdf = std::fs::read(&input).map_err(PdfError::from_io)?;
+        let pdf = crate::paths::read_input_file(&input, 2u64 * 1024 * 1024 * 1024)?;
 
         // Certificate selection. Exactly one source must be provided.
         let (cert_der, key_der, chain) = if let Some(path) = pfx_path.as_deref() {
-            let pfx = std::fs::read(path).map_err(PdfError::from_io)?;
+            let pfx = crate::paths::read_input_file(path, 2u64 * 1024 * 1024 * 1024)?;
             // The password lives only in this scope; it is never logged.
             let password = pfx_password.as_deref().unwrap_or("");
             let identity = sign::parse_pkcs12(&pfx, password)?;
@@ -147,7 +146,8 @@ pub async fn pdf_sign(
             &chain,
             &options.into_options(),
         )?;
-        write_atomic(&output, &signed)?;
+        let target = crate::paths::output_file(&output)?;
+        write_atomic(target.as_path(), &signed)?;
 
         // Re-verify the file that was written and report that real result.
         let report = sign::verify_signatures(&signed);
@@ -160,6 +160,20 @@ pub async fn pdf_sign(
                     "the produced signature could not be verified after writing".into(),
                 )
             })?;
+
+        // Never report success on a signature that did not verify: the file was
+        // written, so the honest outcome is an error the UI can surface.
+        if !signature.signature_valid {
+            return Err(PdfError::ProcessingFailed(
+                "the produced signature failed cryptographic verification; the file was not trusted".into(),
+            ));
+        }
+        if !signature.digest_matches {
+            return Err(PdfError::ProcessingFailed(
+                "the produced signature does not cover the saved document bytes; the file was not trusted"
+                    .into(),
+            ));
+        }
 
         Ok(SignResultDto {
             output,
@@ -183,13 +197,12 @@ pub async fn pdf_archive_validation_data(
     output: Option<String>,
 ) -> Result<pdfcore::ltv::LtvReport, PdfError> {
     tauri::async_runtime::spawn_blocking(move || {
-        let pdf = std::fs::read(&input).map_err(PdfError::from_io)?;
+        let input_path = crate::paths::input_file(&input)?;
+        let pdf = crate::paths::read_input_file(&input, 2u64 * 1024 * 1024 * 1024)?;
         let (updated, report) = pdfcore::ltv::add_validation_data(&pdf)?;
         let target = match output {
-            Some(path) => path,
-            None => pdfcore::docutil::default_output_for(Path::new(&input), "-ltv")
-                .to_string_lossy()
-                .to_string(),
+            Some(path) => crate::paths::output_file(&path)?.into_path_buf(),
+            None => pdfcore::docutil::default_output_for(input_path.as_path(), "-ltv"),
         };
         write_atomic(&target, &updated)?;
         Ok(report)
@@ -202,7 +215,7 @@ pub async fn pdf_archive_validation_data(
 #[tauri::command]
 pub async fn pdf_verify_signatures(path: String) -> Result<SignatureReport, PdfError> {
     tauri::async_runtime::spawn_blocking(move || {
-        let bytes = std::fs::read(&path).map_err(PdfError::from_io)?;
+        let bytes = crate::paths::read_input_file(&path, 2u64 * 1024 * 1024 * 1024)?;
         Ok(sign::verify_signatures(&bytes))
     })
     .await

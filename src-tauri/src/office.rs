@@ -31,6 +31,22 @@ fn payload(error: OfficeError) -> OfficeErrorPayload {
     error.into()
 }
 
+/// Validates an input file coming from the frontend through the shared path
+/// policy, surfacing a normal office error on rejection.
+fn input_path(raw: &str) -> Result<PathBuf, OfficeErrorPayload> {
+    crate::paths::input_file(raw)
+        .map(|path| path.into_path_buf())
+        .map_err(|error| payload(OfficeError::invalid(error.to_string())))
+}
+
+/// Validates an output file coming from the frontend through the shared path
+/// policy.
+fn output_path(raw: &str) -> Result<PathBuf, OfficeErrorPayload> {
+    crate::paths::output_file(raw)
+        .map(|path| path.into_path_buf())
+        .map_err(|error| payload(OfficeError::invalid(error.to_string())))
+}
+
 // ---------------------------------------------------------------------------
 // Wire types
 // ---------------------------------------------------------------------------
@@ -192,7 +208,10 @@ pub fn open_path(path: &Path) -> Result<OpenDocument, OfficeErrorPayload> {
 
 #[tauri::command]
 pub async fn office_open_document(path: String) -> Result<OpenDocument, OfficeErrorPayload> {
-    let task = tauri::async_runtime::spawn_blocking(move || open_path(Path::new(&path)));
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let path = input_path(&path)?;
+        open_path(&path)
+    });
     task.await
         .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
@@ -300,7 +319,10 @@ pub fn save_model(kind: &str, model: Value, path: &Path) -> Result<SaveDocument,
 
 #[tauri::command]
 pub async fn office_save_document(kind: String, model: Value, path: String) -> Result<SaveDocument, OfficeErrorPayload> {
-    let task = tauri::async_runtime::spawn_blocking(move || save_model(&kind, model, Path::new(&path)));
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let path = output_path(&path)?;
+        save_model(&kind, model, &path)
+    });
     task.await
         .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
@@ -342,7 +364,10 @@ pub fn save_native(kind: &str, title: &str, model: Value, path: &Path) -> Result
 
 #[tauri::command]
 pub async fn office_save_unit(kind: String, title: String, model: Value, path: String) -> Result<SaveDocument, OfficeErrorPayload> {
-    let task = tauri::async_runtime::spawn_blocking(move || save_native(&kind, &title, model, Path::new(&path)));
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let path = output_path(&path)?;
+        save_native(&kind, &title, model, &path)
+    });
     task.await
         .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
@@ -417,7 +442,10 @@ pub fn export_pdf(kind: &str, model: Value, path: &Path) -> Result<SaveDocument,
 
 #[tauri::command]
 pub async fn office_export_pdf(kind: String, model: Value, path: String) -> Result<SaveDocument, OfficeErrorPayload> {
-    let task = tauri::async_runtime::spawn_blocking(move || export_pdf(&kind, model, Path::new(&path)));
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let path = output_path(&path)?;
+        export_pdf(&kind, model, &path)
+    });
     task.await
         .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
@@ -485,7 +513,11 @@ pub fn convert(input: &Path, output: &Path, _options: &ConvertOptions) -> Result
 #[tauri::command]
 pub async fn office_convert(input: String, output: String, options: Option<ConvertOptions>) -> Result<ConversionInfo, OfficeErrorPayload> {
     let options = options.unwrap_or_default();
-    let task = tauri::async_runtime::spawn_blocking(move || convert(Path::new(&input), Path::new(&output), &options));
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let input = input_path(&input)?;
+        let output = output_path(&output)?;
+        convert(&input, &output, &options)
+    });
     task.await
         .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
@@ -511,7 +543,7 @@ pub fn office_conversion_targets(extension: String) -> Vec<String> {
 #[tauri::command]
 pub async fn office_clean(path: String, options: CleanOptions) -> Result<CleanResult, OfficeErrorPayload> {
     let task = tauri::async_runtime::spawn_blocking(move || {
-        let source = PathBuf::from(&path);
+        let source = input_path(&path)?;
         cleaner::ensure_supported(&source).map_err(payload)?;
         cleaner::clean_package(&source, &options).map_err(payload)
     });
@@ -522,7 +554,8 @@ pub async fn office_clean(path: String, options: CleanOptions) -> Result<CleanRe
 #[tauri::command]
 pub async fn office_image_footprint(path: String) -> Result<u64, OfficeErrorPayload> {
     let task = tauri::async_runtime::spawn_blocking(move || {
-        cleaner::image_footprint(Path::new(&path)).map_err(payload)
+        let path = input_path(&path)?;
+        cleaner::image_footprint(&path).map_err(payload)
     });
     task.await
         .map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?

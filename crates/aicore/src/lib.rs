@@ -56,6 +56,106 @@ pub fn clamp_output_tokens(max_tokens: u32) -> u32 {
     max_tokens.clamp(256, MAX_OUTPUT_TOKENS)
 }
 
+/// One model a provider advertises. Fields the provider does not expose are
+/// `None`; callers fall back to their defaults rather than guessing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelInfo {
+    pub id: String,
+    /// Human label when the provider supplies one (`owned_by` on OpenAI, etc.).
+    #[serde(default)]
+    pub label: Option<String>,
+    /// Context window in tokens, when the provider reports it.
+    #[serde(default)]
+    pub context_tokens: Option<u32>,
+    /// Maximum output tokens, when the provider reports it.
+    #[serde(default)]
+    pub max_output_tokens: Option<u32>,
+    /// True when the provider marks the model as free/local.
+    #[serde(default)]
+    pub local: bool,
+}
+
+/// Parses the OpenAI-compatible `GET /models` envelope
+/// (`{"data":[{"id":"...","owned_by":"..."}]}`) and, defensively, a bare array.
+/// Unknown shapes return an empty list rather than failing: discovery is a
+/// convenience, the configured model still works when it returns nothing.
+pub fn parse_openai_models(body: &str) -> Vec<ModelInfo> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
+        return Vec::new();
+    };
+    let entries = value
+        .get("data")
+        .and_then(|data| data.as_array())
+        .or_else(|| value.as_array());
+    let Some(entries) = entries else {
+        return Vec::new();
+    };
+    let mut models: Vec<ModelInfo> = entries
+        .iter()
+        .filter_map(|entry| {
+            let id = entry.get("id").and_then(|id| id.as_str())?.trim();
+            if id.is_empty() {
+                return None;
+            }
+            let label = entry
+                .get("owned_by")
+                .and_then(|owner| owner.as_str())
+                .filter(|owner| !owner.trim().is_empty())
+                .map(|owner| owner.to_string());
+            let context_tokens = entry
+                .get("context_length")
+                .or_else(|| entry.get("context_window"))
+                .and_then(|value| value.as_u64())
+                .and_then(|value| u32::try_from(value).ok());
+            Some(ModelInfo {
+                id: id.to_string(),
+                label,
+                context_tokens,
+                max_output_tokens: None,
+                local: false,
+            })
+        })
+        .collect();
+    models.sort_by(|a, b| a.id.cmp(&b.id));
+    models.dedup_by(|a, b| a.id == b.id);
+    models
+}
+
+/// Parses Ollama's native `GET /api/tags` envelope
+/// (`{"models":[{"name":"llama3.2:latest","size":...}]}`).
+pub fn parse_ollama_models(body: &str) -> Vec<ModelInfo> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
+        return Vec::new();
+    };
+    let Some(entries) = value.get("models").and_then(|models| models.as_array()) else {
+        return Vec::new();
+    };
+    let mut models: Vec<ModelInfo> = entries
+        .iter()
+        .filter_map(|entry| {
+            let id = entry
+                .get("name")
+                .or_else(|| entry.get("model"))
+                .and_then(|name| name.as_str())?
+                .trim();
+            if id.is_empty() {
+                return None;
+            }
+            Some(ModelInfo {
+                id: id.to_string(),
+                label: None,
+                context_tokens: None,
+                max_output_tokens: None,
+                local: true,
+            })
+        })
+        .collect();
+    models.sort_by(|a, b| a.id.cmp(&b.id));
+    models.dedup_by(|a, b| a.id == b.id);
+    models
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
@@ -380,18 +480,20 @@ impl ChatMessage {
 pub enum AiError {
     #[error("no API key configured")]
     MissingApiKey,
-    #[error("the API key was rejected by DeepSeek")]
-    InvalidApiKey,
-    #[error("DeepSeek rate limit reached, try again in a moment")]
-    RateLimited,
-    #[error("the DeepSeek account has insufficient balance")]
-    InsufficientBalance,
-    #[error("could not reach api.deepseek.com")]
-    Network,
-    #[error("DeepSeek returned an error: {0}")]
-    Server(String),
-    #[error("unexpected response from DeepSeek")]
-    InvalidResponse,
+    // The provider name is supplied by the caller so the message is honest for
+    // OpenAI-compatible, Gemini and custom endpoints too - not only DeepSeek.
+    #[error("the API key was rejected by {0}")]
+    InvalidApiKey(String),
+    #[error("{0} rate limit reached, try again in a moment")]
+    RateLimited(String),
+    #[error("the {0} account has insufficient balance")]
+    InsufficientBalance(String),
+    #[error("could not reach {0}")]
+    Network(String),
+    #[error("{0} returned an error: {1}")]
+    Server(String, String),
+    #[error("unexpected response from {0}")]
+    InvalidResponse(String),
     #[error("operation cancelled")]
     Cancelled,
     #[error("the document has no extractable text (run OCR first)")]
@@ -631,7 +733,7 @@ impl DeepSeekClient {
                 }
             }))
             .build()
-            .map_err(|_| AiError::Network)?;
+            .map_err(|_| AiError::ProviderUnreachable("the HTTP client could not be created".to_string()))?;
         Ok(Self { config, http })
     }
 
@@ -645,6 +747,44 @@ impl DeepSeekClient {
 
     pub fn capabilities(&self) -> ProviderCapabilities {
         ProviderCapabilities::for_kind(self.provider())
+    }
+
+    /// The provider's display name, used in honest error messages.
+    fn provider_name(&self) -> String {
+        self.provider().label().to_string()
+    }
+
+    /// Endpoint for model discovery. OpenAI-compatible providers list models at
+    /// `{base}/models`; Ollama uses its native `{base}/api/tags`.
+    fn models_endpoint(&self) -> String {
+        let base = self.config.base_url.trim().trim_end_matches('/');
+        match self.provider() {
+            ProviderKind::Ollama => format!("{base}/api/tags"),
+            _ => format!("{base}/models"),
+        }
+    }
+
+    /// Discovers the models the provider advertises, when it exposes a listing
+    /// endpoint. This is best-effort: a provider that does not answer returns an
+    /// empty list and the caller keeps its configured model. No API key is ever
+    /// logged; on failure only the provider label is named.
+    pub async fn discover_models(&self) -> AiResult<Vec<ModelInfo>> {
+        let builder = self.http.get(self.models_endpoint());
+        let builder = if self.provider() == ProviderKind::Ollama {
+            builder
+        } else {
+            builder.bearer_auth(self.config.api_key.trim())
+        };
+        let response = builder.send().await.map_err(|error| self.unreachable(error))?;
+        let status = response.status();
+        let body = response.text().await.map_err(|error| self.unreachable(error))?;
+        if !status.is_success() {
+            return Err(map_http_error(status.as_u16(), &body, &self.provider_name()));
+        }
+        Ok(match self.provider() {
+            ProviderKind::Ollama => parse_ollama_models(&body),
+            _ => parse_openai_models(&body),
+        })
     }
 
     fn endpoint(&self) -> String {
@@ -705,15 +845,15 @@ impl DeepSeekClient {
         let status = response.status();
         let text = response.text().await.map_err(|error| self.unreachable(error))?;
         if !status.is_success() {
-            return Err(map_http_error(status.as_u16(), &text));
+            return Err(map_http_error(status.as_u16(), &text, &self.provider_name()));
         }
-        let parsed: ChatResponseBody = serde_json::from_str(&text).map_err(|_| AiError::InvalidResponse)?;
+        let parsed: ChatResponseBody = serde_json::from_str(&text).map_err(|_| AiError::InvalidResponse(self.provider_name()))?;
         parsed
             .choices
             .into_iter()
             .next()
             .and_then(|choice| choice.message.text())
-            .ok_or(AiError::InvalidResponse)
+            .ok_or_else(|| AiError::InvalidResponse(self.provider_name()))
     }
 
     async fn chat_ollama(&self, messages: &[ChatMessage], options: &ChatOptions) -> AiResult<String> {
@@ -728,14 +868,14 @@ impl DeepSeekClient {
         let status = response.status();
         let text = response.text().await.map_err(|error| self.unreachable(error))?;
         if !status.is_success() {
-            return Err(map_http_error(status.as_u16(), &text));
+            return Err(map_http_error(status.as_u16(), &text, &self.provider_name()));
         }
-        let parsed: OllamaChatResponse = serde_json::from_str(&text).map_err(|_| AiError::InvalidResponse)?;
+        let parsed: OllamaChatResponse = serde_json::from_str(&text).map_err(|_| AiError::InvalidResponse(self.provider_name()))?;
         if !parsed.error.trim().is_empty() {
-            return Err(AiError::Server(parsed.error));
+            return Err(AiError::Server(self.provider_name(), parsed.error));
         }
         if parsed.message.content.trim().is_empty() {
-            return Err(AiError::InvalidResponse);
+            return Err(AiError::InvalidResponse(self.provider_name()));
         }
         Ok(parsed.message.content)
     }
@@ -778,7 +918,7 @@ impl DeepSeekClient {
         let status = response.status();
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(map_http_error(status.as_u16(), &text));
+            return Err(map_http_error(status.as_u16(), &text, &self.provider_name()));
         }
 
         let mut stream = response.bytes_stream();
@@ -825,7 +965,7 @@ impl DeepSeekClient {
             if !reasoning_text.trim().is_empty() {
                 return Ok(reasoning_text);
             }
-            return Err(AiError::InvalidResponse);
+            return Err(AiError::InvalidResponse(self.provider_name()));
         }
         Ok(full)
     }
@@ -847,7 +987,7 @@ impl DeepSeekClient {
         let status = response.status();
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(map_http_error(status.as_u16(), &text));
+            return Err(map_http_error(status.as_u16(), &text, &self.provider_name()));
         }
 
         // Ollama streams newline-delimited JSON objects, one per line:
@@ -867,9 +1007,9 @@ impl DeepSeekClient {
                     continue;
                 }
                 let parsed: OllamaChatResponse =
-                    serde_json::from_str(&line).map_err(|_| AiError::InvalidResponse)?;
+                    serde_json::from_str(&line).map_err(|_| AiError::InvalidResponse(self.provider_name()))?;
                 if !parsed.error.trim().is_empty() {
-                    return Err(AiError::Server(parsed.error));
+                    return Err(AiError::Server(self.provider_name(), parsed.error));
                 }
                 if !parsed.message.content.is_empty() {
                     full.push_str(&parsed.message.content);
@@ -888,9 +1028,9 @@ impl DeepSeekClient {
             let line = buffer.trim();
             if !line.is_empty() {
                 let parsed: OllamaChatResponse =
-                    serde_json::from_str(line).map_err(|_| AiError::InvalidResponse)?;
+                    serde_json::from_str(line).map_err(|_| AiError::InvalidResponse(self.provider_name()))?;
                 if !parsed.error.trim().is_empty() {
-                    return Err(AiError::Server(parsed.error));
+                    return Err(AiError::Server(self.provider_name(), parsed.error));
                 }
                 if !parsed.message.content.is_empty() {
                     full.push_str(&parsed.message.content);
@@ -899,7 +1039,7 @@ impl DeepSeekClient {
             }
         }
         if full.trim().is_empty() {
-            return Err(AiError::InvalidResponse);
+            return Err(AiError::InvalidResponse(self.provider_name()));
         }
         Ok(full)
     }
@@ -920,7 +1060,7 @@ impl DeepSeekClient {
     }
 }
 
-fn map_http_error(status: u16, body: &str) -> AiError {
+fn map_http_error(status: u16, body: &str, provider: &str) -> AiError {
     let detail = serde_json::from_str::<ApiErrorBody>(body)
         .ok()
         .map(|parsed| parsed.error)
@@ -942,9 +1082,9 @@ fn map_http_error(status: u16, body: &str) -> AiError {
         .unwrap_or_default();
     let message = detail.map(|error| error.message).unwrap_or_default();
     match status {
-        401 | 403 => AiError::InvalidApiKey,
-        402 => AiError::InsufficientBalance,
-        429 => AiError::RateLimited,
+        401 | 403 => AiError::InvalidApiKey(provider.to_string()),
+        402 => AiError::InsufficientBalance(provider.to_string()),
+        429 => AiError::RateLimited(provider.to_string()),
         400 if code.contains("context") || message.to_lowercase().contains("context") => AiError::TooLarge,
         _ => {
             let summary = if message.is_empty() {
@@ -952,7 +1092,7 @@ fn map_http_error(status: u16, body: &str) -> AiError {
             } else {
                 format!("HTTP {status}: {message}")
             };
-            AiError::Server(summary)
+            AiError::Server(provider.to_string(), summary)
         }
     }
 }

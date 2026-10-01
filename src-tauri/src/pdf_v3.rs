@@ -14,7 +14,6 @@ use pdfcore::error::PdfError;
 use pdfcore::flatten::FlattenReport;
 use pdfcore::pdfa::{PdfaLevel, PdfaReport};
 use pdfcore::sanitize::SanitizeReport;
-use std::path::Path;
 use tauri::{AppHandle, State};
 
 fn level_from(value: &str) -> Result<PdfaLevel, PdfError> {
@@ -39,12 +38,13 @@ pub async fn sanitize_pdf(
     request: SanitizeRequest,
 ) -> Result<SanitizeReport, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
+        let input = crate::paths::input_file(&request.input)?;
         let output = match &request.output {
             Some(spec) => spec.resolve()?.0,
-            None => pdfcore::docutil::default_output_for(Path::new(&request.input), "-clean"),
+            None => pdfcore::docutil::default_output_for(input.as_path(), "-clean"),
         };
         let options = request.options.clone().unwrap_or_default();
-        pdfcore::sanitize::sanitize_pdf(Path::new(&request.input), &output, &options, progress, cancel)
+        pdfcore::sanitize::sanitize_pdf(input.as_path(), &output, &options, progress, cancel)
     })
     .await
 }
@@ -67,12 +67,13 @@ pub async fn flatten_pdf(
     request: FlattenRequest,
 ) -> Result<FlattenReport, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
+        let input = crate::paths::input_file(&request.input)?;
         let output = match &request.output {
             Some(spec) => spec.resolve()?.0,
-            None => pdfcore::docutil::default_output_for(Path::new(&request.input), "-flat"),
+            None => pdfcore::docutil::default_output_for(input.as_path(), "-flat"),
         };
         let options = request.options.clone().unwrap_or_default();
-        pdfcore::flatten::flatten_pdf(Path::new(&request.input), &output, &options, progress, cancel)
+        pdfcore::flatten::flatten_pdf(input.as_path(), &output, &options, progress, cancel)
     })
     .await
 }
@@ -91,8 +92,8 @@ pub struct PdfaRequest {
 #[tauri::command]
 pub async fn pdfa_validate(request: PdfaRequest) -> Result<PdfaReport, PdfError> {
     let level = level_from(&request.level)?;
-    let input = request.input.clone();
-    tauri::async_runtime::spawn_blocking(move || pdfcore::pdfa::validate_pdfa(Path::new(&input), level))
+    let input = crate::paths::input_file(&request.input)?.into_path_buf();
+    tauri::async_runtime::spawn_blocking(move || pdfcore::pdfa::validate_pdfa(&input, level))
         .await
         .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
 }
@@ -105,11 +106,12 @@ pub async fn pdfa_convert(
 ) -> Result<PdfaReport, PdfError> {
     let level = level_from(&request.level)?;
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
+        let input = crate::paths::input_file(&request.input)?;
         let output = match &request.output {
             Some(spec) => spec.resolve()?.0,
-            None => pdfcore::docutil::default_output_for(Path::new(&request.input), "-pdfa"),
+            None => pdfcore::docutil::default_output_for(input.as_path(), "-pdfa"),
         };
-        pdfcore::pdfa::convert_pdfa(Path::new(&request.input), &output, level, progress, cancel)
+        pdfcore::pdfa::convert_pdfa(input.as_path(), &output, level, progress, cancel)
     })
     .await
 }
@@ -127,7 +129,8 @@ pub async fn pdf_list_form_fields(
     password: Option<String>,
 ) -> Result<Vec<pdfcore::forms::FormFieldInfo>, PdfError> {
     tauri::async_runtime::spawn_blocking(move || {
-        pdfcore::forms::list_fields_in_file(Path::new(&path), password.as_deref())
+        let path = crate::paths::input_file(&path)?;
+        pdfcore::forms::list_fields_in_file(path.as_path(), password.as_deref())
     })
     .await
     .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
@@ -150,8 +153,9 @@ pub struct FillFormRequest {
 #[tauri::command]
 pub async fn pdf_fill_form(request: FillFormRequest) -> Result<pdfcore::forms::FillReport, PdfError> {
     tauri::async_runtime::spawn_blocking(move || {
+        let input = crate::paths::input_file(&request.input)?;
         let mut document =
-            pdfcore::docutil::load_document(Path::new(&request.input), request.password.as_deref())?;
+            pdfcore::docutil::load_document(input.as_path(), request.password.as_deref())?;
         let (output, policy) = request.output.resolve()?;
         let target = pdfcore::docutil::resolve_output_path(&output, policy)?;
         let report = pdfcore::forms::apply_field_values(&mut document, &request.values)?;
@@ -172,7 +176,8 @@ pub async fn pdf_validate_form(
     password: Option<String>,
 ) -> Result<Vec<pdfcore::forms::FieldIssue>, PdfError> {
     tauri::async_runtime::spawn_blocking(move || {
-        let document = pdfcore::docutil::load_document(Path::new(&path), password.as_deref())?;
+        let path = crate::paths::input_file(&path)?;
+        let document = pdfcore::docutil::load_document(path.as_path(), password.as_deref())?;
         Ok(pdfcore::forms::validate_fields(&document, &values))
     })
     .await
@@ -190,7 +195,8 @@ pub async fn pdf_list_objects(
     password: Option<String>,
 ) -> Result<Vec<pdfcore::forms::PageObjectInfo>, PdfError> {
     tauri::async_runtime::spawn_blocking(move || {
-        pdfcore::forms::list_page_objects_in_file(Path::new(&path), password.as_deref())
+        let path = crate::paths::input_file(&path)?;
+        pdfcore::forms::list_page_objects_in_file(path.as_path(), password.as_deref())
     })
     .await
     .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
@@ -213,8 +219,9 @@ pub struct EditObjectsRequest {
 #[tauri::command]
 pub async fn pdf_edit_objects(request: EditObjectsRequest) -> Result<pdfcore::forms::EditReport, PdfError> {
     tauri::async_runtime::spawn_blocking(move || {
+        let input = crate::paths::input_file(&request.input)?;
         let mut document =
-            pdfcore::docutil::load_document(Path::new(&request.input), request.password.as_deref())?;
+            pdfcore::docutil::load_document(input.as_path(), request.password.as_deref())?;
         let (output, policy) = request.output.resolve()?;
         let target = pdfcore::docutil::resolve_output_path(&output, policy)?;
         let report = pdfcore::forms::apply_object_edits(&mut document, &request.edits)?;
