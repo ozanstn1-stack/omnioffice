@@ -154,11 +154,11 @@ jobs:
       # builds a "universal" flavor whose test task wants every ABI's
       # libpdf_sak_lib.so, so the x86_64 (emulator) and x86 libraries are built
       # here first; the small test APK is then assembled against them.
-      - name: Build x86_64 and x86 Android libraries (for the emulator)
+      - name: Build x86_64 and i686 Android libraries (for the emulator)
         run: |
           set -e
           npm run tauri android build -- --apk --ci --target x86_64
-          npm run tauri android build -- --apk --ci --target x86
+          npm run tauri android build -- --apk --ci --target i686
       - name: Enable KVM (emulator acceleration)
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
