@@ -7,18 +7,18 @@ import android.database.MatrixCursor
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
-import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import java.io.FileOutputStream
 
 /**
  * Minimal in-process document provider used by the instrumentation tests to
- * hand [MainActivity] a real `content://` stream plus an `OpenableColumns`
- * display name - the same shape Android's SAF providers expose.
+ * hand the app a real `content://` stream plus an `OpenableColumns` display
+ * name - the same shape Android's SAF providers expose.
  *
- * The provider instance is created by the system, so test data is staged in
- * (and read from) the target app's cache directory via the instrumentation
- * registry rather than the provider's own `context`.
+ * The provider is declared in the androidTest manifest, so its own `context`
+ * is the test app; fixtures staged by `TestDocumentProvider.stage` land in that
+ * same cache directory (the tests reach it through the instrumentation
+ * context).
  */
 class TestDocumentProvider : ContentProvider() {
   companion object {
@@ -26,29 +26,18 @@ class TestDocumentProvider : ContentProvider() {
 
     fun uriFor(name: String): Uri = Uri.parse("content://$AUTHORITY/$name")
 
-    private fun candidateRoots(): List<File> {
-      val instrumentation = InstrumentationRegistry.getInstrumentation()
-      return listOf(
-        File(instrumentation.context.cacheDir, "testdocuments"),
-        File(instrumentation.targetContext.cacheDir, "testdocuments"),
-      )
-    }
+    private fun directory(root: File): File = File(root, "testdocuments").apply { mkdirs() }
 
-    /** Writes the fixture into every candidate root a provider might read. */
-    fun stage(name: String, body: ByteArray) {
-      val instrumentation = InstrumentationRegistry.getInstrumentation()
-      val roots = listOf(
-        File(instrumentation.context.cacheDir, "testdocuments"),
-        File(instrumentation.targetContext.cacheDir, "testdocuments"),
-      )
-      for (directory in roots) {
-        directory.mkdirs()
-        FileOutputStream(File(directory, name)).use { it.write(body) }
-      }
+    /** Writes the fixture a test will stream through the provider. */
+    fun stage(root: File, name: String, body: ByteArray) {
+      FileOutputStream(File(directory(root), name)).use { it.write(body) }
     }
+  }
 
-    private fun fileFor(name: String): File? =
-      candidateRoots().map { File(it, name) }.firstOrNull { it.isFile }
+  private fun fileFor(name: String): File? {
+    val root = context?.cacheDir ?: return null
+    val file = File(directory(root), name)
+    return if (file.isFile) file else null
   }
 
   override fun onCreate(): Boolean = true
