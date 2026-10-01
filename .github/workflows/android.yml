@@ -150,9 +150,15 @@ jobs:
         run: sh gradlew :app:testUniversalDebugUnitTest --no-daemon
 
       # Instrumented tests run the real content:// open-with pipeline on an
-      # emulator (served by a test DocumentsProvider). Kept in the same job
-      # because it reuses the engines/Rust artifacts already built above; the
-      # emulator step only rebuilds the small test APK.
+      # emulator (served by a test DocumentsProvider). The Tauri Gradle plugin
+      # builds a "universal" flavor whose test task wants every ABI's
+      # libpdf_sak_lib.so, so the x86_64 (emulator) and x86 libraries are built
+      # here first; the small test APK is then assembled against them.
+      - name: Build x86_64 and x86 Android libraries (for the emulator)
+        run: |
+          set -e
+          npm run tauri android build -- --apk --ci --target x86_64
+          npm run tauri android build -- --apk --ci --target x86
       - name: Enable KVM (emulator acceleration)
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
