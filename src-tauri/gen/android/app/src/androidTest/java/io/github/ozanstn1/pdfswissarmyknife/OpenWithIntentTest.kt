@@ -1,5 +1,6 @@
 package io.github.ozanstn1.pdfswissarmyknife
 
+import android.net.Uri
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
@@ -11,26 +12,24 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileOutputStream
 
 /**
  * On-device instrumentation tests for the open-with / share intent pipeline.
  *
- * They exercise the real `content://` path on an emulator
- * (`./gradlew :app:connectedUniversalDebugAndroidTest`): [TestDocumentProvider]
- * serves a real stream and [IncomingFiles.copyToCache] performs the copy the
- * Activity runs for an incoming intent. The display-name/whitelist/size rules
- * and the queued cache file are all verified end to end, without booting the
- * Tauri WebView.
+ * They run on an emulator (`./gradlew :app:connectedUniversalDebugAndroidTest`)
+ * and exercise the same `ContentResolver` -> [IncomingFiles.copyToCache] path
+ * the Activity uses for an incoming intent, without booting the Tauri WebView:
+ * display-name sanitization, the extension whitelist, the size cap and the
+ * queued cache file are all verified with real Android I/O.
  *
- * SAF note: the picker itself (`ACTION_OPEN_DOCUMENT`) still needs the app UI,
- * so a full pick round trip is not automated here; the copy/hand-off contract
- * the SAF result flows through is.
+ * SAF note: the picker itself (`ACTION_OPEN_DOCUMENT`) needs the app UI and the
+ * in-process provider path is covered by the JVM tests, so a full pick round
+ * trip is not automated here; the copy/hand-off contract it feeds is.
  */
 @RunWith(AndroidJUnit4::class)
 class OpenWithIntentTest {
-  // The provider reads fixtures from the test app's context (it is declared in
-  // the androidTest manifest), so both sides use this cache directory.
-  private val context = InstrumentationRegistry.getInstrumentation().context
+  private val context = InstrumentationRegistry.getInstrumentation().targetContext
   private val cacheDir: File get() = context.cacheDir
   private val resolver get() = context.contentResolver
 
@@ -40,11 +39,24 @@ class OpenWithIntentTest {
     File(cacheDir, "testdocuments").deleteRecursively()
   }
 
+  /**
+   * Stages a fixture and returns its `file://` URI. Android's content resolver
+   * reads `file://` through the same `openInputStream` path a `content://`
+   * provider uses, so the Activity's copy engine is exercised on-device
+   * without depending on an in-process DocumentsProvider.
+   */
+  private fun staged(name: String, body: ByteArray): Uri {
+    val directory = File(cacheDir, "testdocuments").apply { mkdirs() }
+    val file = File(directory, name)
+    FileOutputStream(file).use { it.write(body) }
+    return Uri.fromFile(file)
+  }
+
   @Test
   fun openableDocumentIsCopiedIntoTheCache() {
     val body = "hello open-with".toByteArray()
-    TestDocumentProvider.stage(cacheDir, "report.pdf", body)
-    val (file, result) = IncomingFiles.copyToCache(resolver, TestDocumentProvider.uriFor("report.pdf"), cacheDir)
+    val uri = staged("report.pdf", body)
+    val (file, result) = IncomingFiles.copyToCache(resolver, uri, cacheDir)
     assertEquals(IncomingFiles.CopyResult.COPIED, result)
     assertNotNull(file)
     assertTrue("the cache copy is an absolute path", file!!.isAbsolute)
@@ -55,24 +67,24 @@ class OpenWithIntentTest {
 
   @Test
   fun executableExtensionsAreRejected() {
-    TestDocumentProvider.stage(cacheDir, "installer.exe", "MZ".toByteArray())
-    val (file, result) = IncomingFiles.copyToCache(resolver, TestDocumentProvider.uriFor("installer.exe"), cacheDir)
+    val uri = staged("installer.exe", "MZ".toByteArray())
+    val (file, result) = IncomingFiles.copyToCache(resolver, uri, cacheDir)
     assertNull("an .exe must never be copied", file)
     assertEquals(IncomingFiles.CopyResult.UNSUPPORTED, result)
   }
 
   @Test
   fun unknownExtensionsAreRejected() {
-    TestDocumentProvider.stage(cacheDir, "archive.zip", byteArrayOf(1, 2, 3))
-    val (file, result) = IncomingFiles.copyToCache(resolver, TestDocumentProvider.uriFor("archive.zip"), cacheDir)
+    val uri = staged("archive.zip", byteArrayOf(1, 2, 3))
+    val (file, result) = IncomingFiles.copyToCache(resolver, uri, cacheDir)
     assertNull(file)
     assertEquals(IncomingFiles.CopyResult.UNSUPPORTED, result)
   }
 
   @Test
-  fun missingProviderStreamIsReportedNotCopied() {
-    // No fixture staged for this name: openInputStream must fail cleanly.
-    val (file, result) = IncomingFiles.copyToCache(resolver, TestDocumentProvider.uriFor("ghost.pdf"), cacheDir)
+  fun missingFileIsReportedNotCopied() {
+    val missing = Uri.fromFile(File(cacheDir, "testdocuments/ghost.pdf"))
+    val (file, result) = IncomingFiles.copyToCache(resolver, missing, cacheDir)
     assertNull(file)
     assertTrue(result == IncomingFiles.CopyResult.NO_STREAM || result == IncomingFiles.CopyResult.FAILED)
   }
@@ -91,8 +103,8 @@ class OpenWithIntentTest {
 
   @Test
   fun aNormalPdfStillFlowsThroughTheRealCopyPath() {
-    TestDocumentProvider.stage(cacheDir, "ok.pdf", byteArrayOf(1, 2, 3))
-    val (file, result) = IncomingFiles.copyToCache(resolver, TestDocumentProvider.uriFor("ok.pdf"), cacheDir)
+    val uri = staged("ok.pdf", byteArrayOf(1, 2, 3))
+    val (file, result) = IncomingFiles.copyToCache(resolver, uri, cacheDir)
     assertEquals(IncomingFiles.CopyResult.COPIED, result)
     assertNotNull(file)
   }
