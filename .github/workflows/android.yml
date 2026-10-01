@@ -166,11 +166,6 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Instrumented tests (open-with pipeline)
-        # Informational while the in-process content:// fixture is calibrated:
-        # the emulator boots and the suite runs, but two copy-path assertions
-        # are still being stabilised across emulator images. The JVM unit tests
-        # below are the blocking contract for the intent logic.
-        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 34

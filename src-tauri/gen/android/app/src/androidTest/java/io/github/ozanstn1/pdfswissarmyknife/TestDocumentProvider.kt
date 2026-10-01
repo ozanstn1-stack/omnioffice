@@ -31,8 +31,7 @@ class TestDocumentProvider : ContentProvider() {
       return listOf(
         File(instrumentation.context.cacheDir, "testdocuments"),
         File(instrumentation.targetContext.cacheDir, "testdocuments"),
-        context?.let { File(it.cacheDir, "testdocuments") },
-      ).filterNotNull()
+      )
     }
 
     /** Writes the fixture into every candidate root a provider might read. */
