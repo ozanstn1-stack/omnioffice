@@ -11,6 +11,13 @@
 # ignore (and fix the dependency) or re-justify it in the same change.
 
 [advisories]
+# Unmaintained-crate notices are informational: they do not by themselves make
+# a shipped binary vulnerable. Restricting them to direct workspace
+# dependencies keeps the build honest (a direct dependency going unmaintained
+# still fails) while not blocking on the transitive glib/unic-*/ttf-parser
+# notices Tauri's GTK stack pulls in.
+unmaintained = "workspace"
+
 ignore = [
   # RUSTSEC-2023-0071 - rsa 0.9.x Marvin timing side channel.
   # reachability: the app signs PDFs locally with a user-supplied key and never
