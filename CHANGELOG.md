@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.1]
+
+Comprehensive security hardening, centralized path validation, and job reliability.
+
+### Security
+
+- Native Folder Dialog for Plugins: Replaced webview-provided path installation (`plugin_install_from_path`) with Rust-side native folder selection (`plugin_install_from_dialog`), preventing compromised or malicious webviews from installing arbitrary filesystem directories.
+- Plugin SSRF & Cloud Metadata Protection: Implemented DNS resolution and strict IP filtering in `plugin_http_request` blocking cloud metadata endpoints (`169.254.169.254`, IPv4-mapped IPv6), CGNAT, multicast, and private networks.
+- Centralized Filesystem Validation: Enforced `ValidatedInputFile`, `ValidatedOutputFile`, and `ValidatedDirectory` across all 78 Tauri filesystem commands in `commands.rs`, `pdf_v3.rs`, `office.rs`, `office_tools.rs`, `sign.rs`, and `ai.rs`. Rejects traversal (`..`), NUL, control characters, Windows reserved device names, UNC (`\\server\share`), and extended paths (`\\?\`).
+- Trinary PDF Redaction Verification: Upgraded redaction verification to a trinary state (`Removed`, `PossiblyPresent`, `NotVerified`), preventing false successes and surfacing potential remaining content warnings to the user.
+- Digital Signature Post-Sign Verification: Gated `pdf_sign` on immediate cryptographic and ByteRange verification prior to returning success.
+
+### Fixed
+
+- Job Lifecycle Reliability: Implemented RAII `JobFinishGuard` to ensure async commands transition deterministically to terminal states (`success`, `failure`, `cancelled`, `interrupted`) even on early errors or cancellations.
+- Dynamic AI Model Discovery: Added `discover_models` for OpenAI-compatible and Ollama endpoints with credential-safe error messages.
+
+### Added
+
+- CI Quality Scripts: Added `check:fast` and `check:all` in `package.json` for rapid and exhaustive local and CI validation.
+
 ## [3.2.0]
 
 Quality gates and test confidence.

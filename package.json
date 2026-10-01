@@ -1,7 +1,7 @@
 {
   "name": "pdf-swiss-army-knife",
   "private": true,
-  "version": "3.2.0",
+  "version": "3.2.1",
   "type": "module",
   "description": "Office Swiss Army Knife - local-first desktop office and PDF suite (Writer, Calc, Impress, PDF tools)",
   "scripts": {

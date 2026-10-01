@@ -10,9 +10,25 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.2.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.2.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.2.1
+
+Security hardening, centralized path validation, and job reliability on top of 3.2.0:
+
+- **Centralized Filesystem Validation.** All 78 Tauri filesystem commands are
+  strictly guarded by typed `ValidatedInputFile`, `ValidatedOutputFile`, and
+  `ValidatedDirectory` wrappers, blocking traversal, NULs, device names, and UNC paths.
+- **Plugin Sandbox & SSRF Defense.** Plugin installs use native Rust folder dialogs
+  rather than trusting webview paths. Plugin HTTP requests validate destinations
+  with DNS resolution, blocking cloud metadata (`169.254.169.254`), private IPs, and loopbacks.
+- **Trinary PDF Redaction Verification.** Redaction results enforce a trinary contract
+  (`Removed`, `PossiblyPresent`, `NotVerified`) to prevent false successes and warn on remaining text.
+- **Digital Signature Gate.** `pdf_sign` cryptographically verifies output signatures and
+  ByteRange before reporting success.
+- **Job Lifecycle Reliability.** RAII `JobFinishGuard` ensures determinism across all terminal states.
 
 ## What's new in 3.2.0
 
@@ -338,7 +354,7 @@ pdf and `.oswk`.
 
 **APK architectures.** `arm64-v8a` and `armeabi-v7a` release APKs are built
 and signed with the project release keystore; AABs are produced for both.
-minSdk 24, targetSdk 36, `versionName 3.2.0`, `versionCode 3002000`.
+minSdk 24, targetSdk 36, `versionName 3.2.1`, `versionCode 3002001`.
 
 **Storage behavior.** Documents opened from other apps are copied into app
 cache (extension and size validated) before parsing. Exports go to a SAF
