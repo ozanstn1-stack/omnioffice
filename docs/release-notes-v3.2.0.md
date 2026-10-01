@@ -29,10 +29,11 @@ tests, and the RustSec advisory exceptions are owned and time-boxed.
   `WebDavProvider` through listing, streaming upload/download, deletion,
   HTTP 412 → `Conflict` mapping and `Depth: 1` listing assertions.
 - **On-device Android intent tests.** The open-with / share pipeline now runs
-  on an emulator in CI against a real `content://` provider
-  (`TestDocumentProvider`): untrusted display names, the extension
-  whitelist, the 256 MB copy cap and the cache hand-off are all verified
-  through the same `IncomingFiles.copyToCache` the Activity uses.
+  on an emulator in CI against real Android I/O (`ContentResolver` →
+  `IncomingFiles.copyToCache`, fed by a `file://` fixture that uses the same
+  `openInputStream` path SAF results do): untrusted display names, the
+  extension whitelist, the 256 MB copy cap and the cache hand-off are all
+  verified.
 - **Owned, time-boxed advisory exceptions.** `deny.toml` records an owner and
   a review date for every ignored RustSec advisory, and CI enforces the policy
   with `cargo deny check advisories`.

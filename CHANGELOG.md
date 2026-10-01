@@ -31,10 +31,11 @@ Quality gates and test confidence.
   in-process DAV server exercises `list`/`put`/`get`/`delete`, conditional
   uploads (HTTP 412 → `Conflict`), streaming hashing and the Depth header.
 - Android on-device instrumentation tests for the open-with / share pipeline
-  (`app/src/androidTest`): a `TestDocumentProvider` serves a real
-  `content://` stream through the same `IncomingFiles.copyToCache` the
-  Activity uses; the extension whitelist, display-name sanitization, the size
-  cap and the cache hand-off are verified on an emulator in CI.
+  (`app/src/androidTest`): real Android I/O through
+  `ContentResolver` → `IncomingFiles.copyToCache` verifies display-name
+  sanitization, the extension whitelist, the size cap and the cache hand-off
+  on an emulator in CI (a `file://` fixture feeds the same `openInputStream`
+  path the SAF result uses).
 - `deny.toml`: the RustSec advisory exceptions now carry an owner and a review
   date, and CI enforces them with `cargo deny check advisories` (in addition
   to `cargo audit`).

@@ -635,11 +635,11 @@ These are real and honest:
 - **Android**: no foreground service (long jobs run only while the process
   lives; state survives death as `interrupted`), the intent pipeline has JVM
   unit tests (`./gradlew :app:testUniversalDebugUnitTest`) and on-device
-  instrumentation tests (`./gradlew :app:connectedUniversalDebugAndroidTest`),
-  both run by the Android release workflow; the full SAExplorer *picker* UI is
-  still not automated, `osed/ospr/osdt` are accepted by the intent filter but
-  the engine does not understand them yet, and the launcher label is still
-  "PDF Swiss Army Knife".
+  instrumentation tests (`./gradlew :app:connectedUniversalDebugAndroidTest`,
+  real Android I/O on an emulator), both run by the Android release workflow;
+  the picker UI itself (`ACTION_OPEN_DOCUMENT`) is still not automated,
+  `osed/ospr/osdt` are accepted by the intent filter but the engine does not
+  understand them yet, and the launcher label is still "PDF Swiss Army Knife".
 - Interoperability with Microsoft Office/LibreOffice was validated
   structurally (package parts, content types, relationships, independent
   readers) plus headless LibreOffice conversion during development, not by
