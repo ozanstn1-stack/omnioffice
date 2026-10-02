@@ -73,7 +73,9 @@ describe("local productivity tools render and act on their stores", () => {
     expect(await screen.findByRole("heading", { name: "Planner" })).toBeInTheDocument();
     const input = screen.getByPlaceholderText("Add a task");
     await user.type(input, "Write the release notes{Enter}");
-    expect(await screen.findByText("Write the release notes")).toBeInTheDocument();
+    // The planner can show the task in more than one panel (day cell + agenda),
+    // so require at least one rendered occurrence rather than an exact match.
+    expect((await screen.findAllByText("Write the release notes")).length).toBeGreaterThan(0);
   });
 
   it("renders the data grid and adds rows and columns", async () => {
