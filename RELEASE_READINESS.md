@@ -1,4 +1,4 @@
-# Release Readiness — Office Swiss Army Knife 3.3.0
+# Release Readiness — Office Swiss Army Knife 3.3.1
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -26,7 +26,7 @@ by CI.
 
 | Gate | Command | Result |
 |---|---|---|
-| Frontend unit/integration | `npm test` | 30 files, 617 passed, 1 skipped |
+| Frontend unit/integration | `npm test` | 30 files, 620 passed, 1 skipped |
 | TypeScript | `npx tsc --noEmit` | clean |
 | ESLint | `npm run lint` | 0 errors, 0 warnings |
 | i18n parity | `npm run i18n:audit` | en = tr = 1514 keys |
@@ -95,11 +95,11 @@ the script deliberately never writes there.
 
 ## Release artifacts expected from CI
 
-Windows: `Office-Swiss-Army-Knife-Setup-3.3.0.exe`,
-`Office Swiss Army Knife_3.3.0_x64-setup.exe`,
-`Office-Swiss-Army-Knife-Portable-3.3.0.zip`, `SHA256SUMS.txt`,
+Windows: `Office-Swiss-Army-Knife-Setup-3.3.1.exe`,
+`Office Swiss Army Knife_3.3.1_x64-setup.exe`,
+`Office-Swiss-Army-Knife-Portable-3.3.1.zip`, `SHA256SUMS.txt`,
 `sbom-rust.cyclonedx.json`, `sbom-npm.cyclonedx.json`, `build-info.json`.
-Android: `PDF-Swiss-Army-Knife-Android-3.3.0-arm64-v8a.apk`,
+Android: `PDF-Swiss-Army-Knife-Android-3.3.1-arm64-v8a.apk`,
 `…-armeabi-v7a.apk`, and the AABs. Extension: package ZIP.
 
 Only artifacts actually produced by CI are published; this file does not claim

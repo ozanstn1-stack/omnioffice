@@ -4,6 +4,68 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.1] - Security hardening and reliability patch
+
+### Security
+
+- **AES-256 key generation**: `random_key()` now fills the key from the OS
+  entropy source (`getrandom`) instead of concatenating two UUIDv4 values
+  (122 random bits each and not intended as key material). `uuid` is no longer
+  a pdfcore dependency.
+- **TOCTOU mitigation**: `input_file()` validates an **open handle** and, on
+  Unix, compares the handle's device/inode with a fresh path lookup so a
+  symlink swapped in between open and check is rejected. `NotFound` and the
+  "not a file" contract are preserved.
+- **Credential redaction**: the AI request structs (`AiSummarizeRequest`,
+  `AiTranslateRequest`, `AiAskRequest`, `AiCleanupRequest`,
+  `AiMetadataRequest`) no longer derive `Debug`; their manual implementations
+  print `**REDACTED**` for the document password, with a regression test.
+- **WebDAV plain-http restriction verified**: `allow_insecure_http` was already
+  limited to loopback hosts by `normalize_base_url_with_options` (a public
+  `http://` endpoint is refused even when the flag is on, covered by
+  `crates/synccore` tests). No code change was needed; a naive
+  `starts_with("http://127.0.0.1")` check would have accepted
+  `http://127.0.0.1.evil.com` and was deliberately not added.
+
+### Bug Fixes
+
+- **PDF page duplication**: cloning a page now **copies** each annotation
+  dictionary and points its `/P` at the duplicate. Previously the duplicate
+  shared the annotation objects with the original page, so the `/P` back
+  references were wrong; re-pointing the shared objects would have corrupted
+  the original. Regression test covers both pages.
+- **Date conversion**: the `civil_from_days` helpers (office, vault, library,
+  sync metadata, layout, zip) use `saturating_sub` so the floor-division
+  branch cannot overflow on extreme negative input.
+- **Calc `LET`**: added regression tests proving a self-referential binding
+  terminates as `#NAME?` (Excel semantics) instead of looping, and that a
+  self-referential **defined name** reports a circular reference. No infinite
+  loop existed; the guard proposed for `evaluateLet` would have changed the
+  correct `#NAME?` result and was not applied.
+- **Calc array literals**: separator-only literals (`{,}`, `{;}`, `{,;}`)
+  are pinned to `#VALUE!` by tests (the parser already reported it).
+- **PDF merge**: the object remap preserves generation numbers and offsets
+  object numbers; a new regression test merges a document containing the same
+  object number with two generations and proves no object is lost. Resetting
+  every generation to 0 (a suggested "fix") would have collapsed those two
+  objects onto one key, so it was not applied.
+- **`.oswk` migration checksums**: verified that `schema::migrate_unit`
+  already recomputes the checksum when it adds fields (implemented in 3.3.0);
+  no duplicate logic was added to `office.rs`.
+
+### Code Quality
+
+- UTF-16 round-trip tests for PDF text objects cover Turkish, Japanese and
+  astral-plane (emoji) text.
+
+### Notes
+
+- A 500 ms sleep on `CloseRequested` was proposed as a "graceful shutdown"
+  wait. It was **not** applied: blocking the window event handler does not wait
+  for worker threads and delays every close, while the atomic write path
+  (temp + fsync + atomic rename) already guarantees that an interrupted save
+  cannot leave a partial document behind. Cancellation stays cooperative.
+
 ## [3.3.0]
 
 Production-readiness: the security, data-loss and correctness hardening from
