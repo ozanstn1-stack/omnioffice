@@ -14,7 +14,6 @@
 #   powershell ... -File scripts/build-android.ps1 -Debug -SkipFrontend
 
 param(
-    [ValidateSet('arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86')]
     [string[]]$Abi = @('arm64-v8a'),
     [switch]$Debug,
     [switch]$SkipFrontend,
@@ -28,8 +27,18 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 # `powershell -File script.ps1 -Abi a,b` passes "a,b" as a single string, so
-# accept both forms.
+# accept both forms. The ABIs are validated after the split because a
+# ValidateSet would reject the comma form before this normalization runs
+# (release-local.ps1 and the documented CLI usage both pass it that way).
 $Abi = @($Abi | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+$validAbis = @('arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86')
+$unknownAbis = @($Abi | Where-Object { $_ -notin $validAbis })
+if ($unknownAbis.Count -gt 0) {
+    throw "Unknown ABI(s): $($unknownAbis -join ', '). Valid values: $($validAbis -join ', ')."
+}
+if ($Abi.Count -eq 0) {
+    throw 'No ABI selected. Pass -Abi arm64-v8a,armeabi-v7a or similar.'
+}
 
 $root = Split-Path -Parent $PSScriptRoot
 $tauriDir = Join-Path $root 'src-tauri'
