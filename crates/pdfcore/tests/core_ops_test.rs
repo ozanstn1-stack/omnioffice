@@ -1,8 +1,9 @@
 mod common;
 
 use common::*;
+use lopdf::{dictionary, Object};
 use pdfcore::docutil::{OverwritePolicy, PagePlanItem};
-use pdfcore::merge::{merge_files, MergeOptions};
+use pdfcore::merge::{merge_documents, merge_files, MergeOptions};
 use pdfcore::metadata::{edit_metadata_file, read_metadata_from_file, PdfMetadata};
 use pdfcore::organize::{apply_page_plan, delete_pages, extract_pages, rotate_pages, split_pdf};
 use pdfcore::pagelayout::{crop_pages, resize_pages, CropItem, ResizeOptions};
@@ -47,6 +48,40 @@ fn merge_preserves_order_pages_and_metadata() {
 }
 
 #[test]
+fn merge_keeps_nonzero_generations_without_collisions() {
+    // A PDF updated in place can legally hold the same object number with two
+    // generations. Remapping must keep them apart; resetting every generation
+    // to 0 (a suggested "fix") would collapse them onto one key and lose an
+    // object. This test pins the safe behaviour.
+    let mut first = build_text_doc(1, "GEN", "Generations");
+    first.objects.insert(
+        (2, 7),
+        Object::Dictionary(dictionary! {
+            "Type" => "Metadata",
+            "Note" => Object::string_literal("generation-7"),
+        }),
+    );
+    let second = build_text_doc(1, "PLAIN", "Plain");
+
+    let merged = merge_documents(
+        vec![("gen.pdf".to_string(), first), ("plain.pdf".to_string(), second)],
+        &MergeOptions::default(),
+    )
+    .expect("merge succeeds");
+
+    assert!(merged.objects.keys().any(|id| id.1 == 7), "the non-zero generation must survive the remap");
+    let notes = merged
+        .objects
+        .values()
+        .filter_map(|object| {
+            object.as_dict().ok().and_then(|dict| dict.get(b"Note").ok()).and_then(|note| note.as_str().ok())
+        })
+        .filter(|note| *note == b"generation-7")
+        .count();
+    assert_eq!(notes, 1, "the hand-inserted object must not be overwritten");
+}
+
+#[test]
 fn merge_requires_two_inputs() {
     let dir = TestDir::new();
     let a = dir.path("a.pdf");
@@ -86,13 +121,7 @@ fn delete_and_extract_pages() {
 #[test]
 fn deleting_every_page_is_rejected() {
     let (dir, input) = setup("alldel", 3);
-    let result = delete_pages(
-        &input,
-        &[1, 2, 3],
-        &dir.path("out.pdf"),
-        OverwritePolicy::Replace,
-        None,
-    );
+    let result = delete_pages(&input, &[1, 2, 3], &dir.path("out.pdf"), OverwritePolicy::Replace, None);
     assert!(result.is_err());
 }
 
@@ -133,31 +162,17 @@ fn split_modes_produce_expected_files() {
     let cancel = CancelToken::new();
 
     let every = dir.path("every");
-    let parts = split_pdf(
-        &input,
-        &SplitMode::EveryN { n: 2 },
-        &every,
-        OverwritePolicy::Replace,
-        None,
-        &no_progress,
-        &cancel,
-    )
-    .unwrap();
+    let parts =
+        split_pdf(&input, &SplitMode::EveryN { n: 2 }, &every, OverwritePolicy::Replace, None, &no_progress, &cancel)
+            .unwrap();
     assert_eq!(parts.len(), 3);
     assert_eq!(page_count(std::path::Path::new(&parts[0].path)), 2);
     assert_eq!(page_count(std::path::Path::new(&parts[2].path)), 1);
 
     let individual = dir.path("single");
-    let parts = split_pdf(
-        &input,
-        &SplitMode::Individual,
-        &individual,
-        OverwritePolicy::Replace,
-        None,
-        &no_progress,
-        &cancel,
-    )
-    .unwrap();
+    let parts =
+        split_pdf(&input, &SplitMode::Individual, &individual, OverwritePolicy::Replace, None, &no_progress, &cancel)
+            .unwrap();
     assert_eq!(parts.len(), 5);
     for part in &parts {
         assert_eq!(page_count(std::path::Path::new(&part.path)), 1);
@@ -180,9 +195,7 @@ fn split_modes_produce_expected_files() {
     let ranges = dir.path("ranges");
     let parts = split_pdf(
         &input,
-        &SplitMode::Ranges {
-            ranges: vec!["1-3".into(), "4-5".into()],
-        },
+        &SplitMode::Ranges { ranges: vec!["1-3".into(), "4-5".into()] },
         &ranges,
         OverwritePolicy::Replace,
         None,
@@ -215,13 +228,7 @@ fn resize_to_letter_scales_content() {
 fn crop_sets_cropbox_only() {
     let (dir, input) = setup("crop", 1);
     let out = dir.path("cropped.pdf");
-    let crops = vec![CropItem {
-        page: 1,
-        x: 50.0,
-        y: 60.0,
-        w: 300.0,
-        h: 400.0,
-    }];
+    let crops = vec![CropItem { page: 1, x: 50.0, y: 60.0, w: 300.0, h: 400.0 }];
     crop_pages(&input, &out, &crops, OverwritePolicy::Replace, None).unwrap();
     let crop = crop_box(&out, 1).expect("cropbox present");
     let media = media_box(&out, 1);

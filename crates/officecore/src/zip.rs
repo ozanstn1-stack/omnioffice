@@ -82,7 +82,8 @@ impl ZipReader {
     }
 
     pub fn open_with_limits(data: Vec<u8>, limits: ZipLimits) -> OfficeResult<Self> {
-        let eocd_at = find_eocd(&data).ok_or_else(|| OfficeError::corrupt("Not a ZIP package (no end-of-central-directory record)"))?;
+        let eocd_at = find_eocd(&data)
+            .ok_or_else(|| OfficeError::corrupt("Not a ZIP package (no end-of-central-directory record)"))?;
         let count = rd_u16(&data, eocd_at + 10)? as usize;
         let central_offset = rd_u32(&data, eocd_at + 16)? as u64;
         if count > limits.max_entries {
@@ -162,7 +163,10 @@ impl ZipReader {
         let out = match entry.method {
             0 => {
                 if raw.len() as u64 > cap {
-                    return Err(OfficeError::new(ErrorCode::ZipBomb, format!("Entry {} is larger than the safe limit.", entry.name)));
+                    return Err(OfficeError::new(
+                        ErrorCode::ZipBomb,
+                        format!("Entry {} is larger than the safe limit.", entry.name),
+                    ));
                 }
                 raw.to_vec()
             }
@@ -176,7 +180,10 @@ impl ZipReader {
                     .read_to_end(&mut out)
                     .map_err(|error| OfficeError::corrupt(format!("Could not decompress {}: {error}", entry.name)))?;
                 if out.len() as u64 > cap {
-                    return Err(OfficeError::new(ErrorCode::ZipBomb, format!("Entry {} expands beyond the safe limit.", entry.name)));
+                    return Err(OfficeError::new(
+                        ErrorCode::ZipBomb,
+                        format!("Entry {} expands beyond the safe limit.", entry.name),
+                    ));
                 }
                 out
             }
@@ -184,8 +191,14 @@ impl ZipReader {
                 return Err(OfficeError::unsupported(format!("Unsupported ZIP compression method {other}")));
             }
         };
-        if !raw.is_empty() && out.len() as u64 > raw.len() as u64 * limits.max_ratio.max(1) && out.len() as u64 > 1024 * 1024 {
-            return Err(OfficeError::new(ErrorCode::ZipBomb, format!("Suspicious compression ratio in {}.", entry.name)));
+        if !raw.is_empty()
+            && out.len() as u64 > raw.len() as u64 * limits.max_ratio.max(1)
+            && out.len() as u64 > 1024 * 1024
+        {
+            return Err(OfficeError::new(
+                ErrorCode::ZipBomb,
+                format!("Suspicious compression ratio in {}.", entry.name),
+            ));
         }
         // The CRC is the only integrity check the container offers. Skipping it
         // meant a corrupted part decoded into plausible-looking text and the
@@ -283,11 +296,8 @@ impl ZipWriter {
         let crc = crc32(data);
         let mut encoder = DeflateEncoder::new(Vec::new(), Compression::new(6));
         let compressed = encoder.write_all(data).and_then(|_| encoder.finish()).unwrap_or_default();
-        let (method, payload) = if compressed.len() < data.len() && data.len() > 64 {
-            (8u16, compressed)
-        } else {
-            (0u16, data.to_vec())
-        };
+        let (method, payload) =
+            if compressed.len() < data.len() && data.len() > 64 { (8u16, compressed) } else { (0u16, data.to_vec()) };
         self.entries.push(WriteEntry {
             name: name.to_string(),
             crc,
@@ -407,7 +417,7 @@ fn dos_to_parts(time: u16, date: u16) -> (i64, u32, u32, u32, u32, u32) {
 
 fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let era = if z >= 0 { z } else { z.saturating_sub(146_096) } / 146_097;
     let doe = (z - era * 146_097) as u64;
     let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
     let y = yoe as i64 + era * 400;
@@ -456,7 +466,8 @@ mod tests {
     fn declare_uncompressed_size(bytes: &mut [u8], value: u32) {
         bytes[22..26].copy_from_slice(&value.to_le_bytes());
         let eocd = bytes.windows(4).rposition(|window| window == EOCD_SIG.to_le_bytes()).expect("eocd");
-        let central = u32::from_le_bytes([bytes[eocd + 16], bytes[eocd + 17], bytes[eocd + 18], bytes[eocd + 19]]) as usize;
+        let central =
+            u32::from_le_bytes([bytes[eocd + 16], bytes[eocd + 17], bytes[eocd + 18], bytes[eocd + 19]]) as usize;
         bytes[central + 24..central + 28].copy_from_slice(&value.to_le_bytes());
     }
 

@@ -449,7 +449,7 @@ pub struct AiTextResult {
 // Summarize
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiSummarizeRequest {
     pub path: String,
@@ -457,6 +457,20 @@ pub struct AiSummarizeRequest {
     pub pages: Option<Vec<u32>>,
     pub password: Option<String>,
     pub job_id: String,
+}
+
+/// Manual `Debug`: the derived one would print the document password into any
+/// log line or error context that formats the request.
+impl std::fmt::Debug for AiSummarizeRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AiSummarizeRequest")
+            .field("path", &self.path)
+            .field("options", &self.options)
+            .field("pages", &self.pages)
+            .field("password", &self.password.as_ref().map(|_| "**REDACTED**"))
+            .field("job_id", &self.job_id)
+            .finish()
+    }
 }
 
 #[tauri::command]
@@ -505,7 +519,7 @@ pub async fn ai_summarize(
 // Translate
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiTranslateRequest {
     pub path: String,
@@ -513,6 +527,19 @@ pub struct AiTranslateRequest {
     pub pages: Option<Vec<u32>>,
     pub password: Option<String>,
     pub job_id: String,
+}
+
+/// Manual `Debug`; see [`AiSummarizeRequest`] for why the password is redacted.
+impl std::fmt::Debug for AiTranslateRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AiTranslateRequest")
+            .field("path", &self.path)
+            .field("options", &self.options)
+            .field("pages", &self.pages)
+            .field("password", &self.password.as_ref().map(|_| "**REDACTED**"))
+            .field("job_id", &self.job_id)
+            .finish()
+    }
 }
 
 #[tauri::command]
@@ -575,13 +602,25 @@ pub async fn ai_translate(
 // Ask the document / cleanup / metadata
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiAskRequest {
     pub path: String,
     pub question: String,
     pub password: Option<String>,
     pub job_id: String,
+}
+
+/// Manual `Debug`; see [`AiSummarizeRequest`] for why the password is redacted.
+impl std::fmt::Debug for AiAskRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AiAskRequest")
+            .field("path", &self.path)
+            .field("question", &self.question)
+            .field("password", &self.password.as_ref().map(|_| "**REDACTED**"))
+            .field("job_id", &self.job_id)
+            .finish()
+    }
 }
 
 #[tauri::command]
@@ -621,13 +660,25 @@ pub async fn ai_ask(
     })
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiCleanupRequest {
     pub path: String,
     pub pages: Option<Vec<u32>>,
     pub password: Option<String>,
     pub job_id: String,
+}
+
+/// Manual `Debug`; see [`AiSummarizeRequest`] for why the password is redacted.
+impl std::fmt::Debug for AiCleanupRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AiCleanupRequest")
+            .field("path", &self.path)
+            .field("pages", &self.pages)
+            .field("password", &self.password.as_ref().map(|_| "**REDACTED**"))
+            .field("job_id", &self.job_id)
+            .finish()
+    }
 }
 
 #[tauri::command]
@@ -678,12 +729,23 @@ pub async fn ai_cleanup_text(
     })
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiMetadataRequest {
     pub path: String,
     pub password: Option<String>,
     pub job_id: String,
+}
+
+/// Manual `Debug`; see [`AiSummarizeRequest`] for why the password is redacted.
+impl std::fmt::Debug for AiMetadataRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AiMetadataRequest")
+            .field("path", &self.path)
+            .field("password", &self.password.as_ref().map(|_| "**REDACTED**"))
+            .field("job_id", &self.job_id)
+            .finish()
+    }
 }
 
 #[tauri::command]
@@ -827,5 +889,67 @@ pub fn ai_example_prompts() -> AiExamplePrompts {
             "ar".into(),
             "ru".into(),
         ],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every request type that carries a document password must redact it in
+    /// its `Debug` output; a derived `Debug` would print it into any log line
+    /// or error context.
+    #[test]
+    fn request_debug_redacts_document_passwords() {
+        let password = "correct horse battery staple";
+        let summarize = AiSummarizeRequest {
+            path: "C:/docs/report.pdf".into(),
+            options: SummaryOptions::default(),
+            pages: Some(vec![1, 2]),
+            password: Some(password.into()),
+            job_id: "job-1".into(),
+        };
+        let translate = AiTranslateRequest {
+            path: "C:/docs/report.pdf".into(),
+            options: TranslateOptions { target_language: "tr".into(), bilingual: true },
+            pages: None,
+            password: Some(password.into()),
+            job_id: "job-2".into(),
+        };
+        let ask = AiAskRequest {
+            path: "C:/docs/report.pdf".into(),
+            question: "total?".into(),
+            password: Some(password.into()),
+            job_id: "job-3".into(),
+        };
+        let cleanup = AiCleanupRequest {
+            path: "C:/docs/report.pdf".into(),
+            pages: None,
+            password: Some(password.into()),
+            job_id: "job-4".into(),
+        };
+        let metadata = AiMetadataRequest {
+            path: "C:/docs/report.pdf".into(),
+            password: Some(password.into()),
+            job_id: "job-5".into(),
+        };
+
+        for formatted in [
+            format!("{summarize:?}"),
+            format!("{translate:?}"),
+            format!("{ask:?}"),
+            format!("{cleanup:?}"),
+            format!("{metadata:?}"),
+        ] {
+            assert!(!formatted.contains(password), "password leaked: {formatted}");
+            assert!(formatted.contains("REDACTED"), "redaction marker missing: {formatted}");
+        }
+    }
+
+    #[test]
+    fn request_debug_without_a_password_is_clean() {
+        let request = AiMetadataRequest { path: "C:/docs/a.pdf".into(), password: None, job_id: "job-6".into() };
+        let formatted = format!("{request:?}");
+        assert!(!formatted.contains("REDACTED"), "no marker when there is nothing to redact: {formatted}");
     }
 }

@@ -68,14 +68,60 @@ describe("library wiring", () => {
 
   it("registers every function the suite documents", () => {
     const required = [
-      "FILTER", "SORT", "SORTBY", "UNIQUE", "SEQUENCE", "LET",
-      "SUMIFS", "COUNTIFS", "AVERAGEIFS", "MAXIFS", "MINIFS",
-      "TEXTBEFORE", "TEXTAFTER", "TEXTSPLIT", "FIND", "SEARCH", "REPLACE", "EXACT",
-      "EDATE", "EOMONTH", "NETWORKDAYS", "WORKDAY", "DAYS", "DATEDIF", "WEEKDAY", "WEEKNUM", "ISOWEEKNUM",
-      "PMT", "PV", "FV", "NPER", "RATE", "IRR", "XIRR", "NPV", "XNPV", "MIRR",
-      "SLN", "SYD", "DB", "DDB", "EFFECT", "NOMINAL",
-      "XLOOKUP", "XMATCH", "LOOKUP", "CHOOSE", "ROWS", "COLUMNS",
-      "TRANSPOSE", "SWITCH", "IFNA", "ISERR", "ISNA",
+      "FILTER",
+      "SORT",
+      "SORTBY",
+      "UNIQUE",
+      "SEQUENCE",
+      "LET",
+      "SUMIFS",
+      "COUNTIFS",
+      "AVERAGEIFS",
+      "MAXIFS",
+      "MINIFS",
+      "TEXTBEFORE",
+      "TEXTAFTER",
+      "TEXTSPLIT",
+      "FIND",
+      "SEARCH",
+      "REPLACE",
+      "EXACT",
+      "EDATE",
+      "EOMONTH",
+      "NETWORKDAYS",
+      "WORKDAY",
+      "DAYS",
+      "DATEDIF",
+      "WEEKDAY",
+      "WEEKNUM",
+      "ISOWEEKNUM",
+      "PMT",
+      "PV",
+      "FV",
+      "NPER",
+      "RATE",
+      "IRR",
+      "XIRR",
+      "NPV",
+      "XNPV",
+      "MIRR",
+      "SLN",
+      "SYD",
+      "DB",
+      "DDB",
+      "EFFECT",
+      "NOMINAL",
+      "XLOOKUP",
+      "XMATCH",
+      "LOOKUP",
+      "CHOOSE",
+      "ROWS",
+      "COLUMNS",
+      "TRANSPOSE",
+      "SWITCH",
+      "IFNA",
+      "ISERR",
+      "ISNA",
     ];
     const names = new Set(functionNames());
     for (const name of required) expect(names.has(name), `${name} is missing`).toBe(true);
@@ -87,10 +133,15 @@ describe("library wiring", () => {
   });
 
   it("lets callers register their own function", () => {
-    registerFunction("DOUBLEX", (args) => {
-      const value = args[0]?.[0]?.[0];
-      return typeof value === "number" ? value * 2 : ERR.value();
-    }, 1, 1);
+    registerFunction(
+      "DOUBLEX",
+      (args) => {
+        const value = args[0]?.[0]?.[0];
+        return typeof value === "number" ? value * 2 : ERR.value();
+      },
+      1,
+      1,
+    );
     expect(n("=DOUBLEX(21)")).toBe(42);
   });
 });
@@ -101,7 +152,10 @@ describe("inline array literals", () => {
   });
 
   it("uses a semicolon for a new row", () => {
-    expect(evaluateToMatrix("={1,2;3,4}", context())).toEqual([[1, 2], [3, 4]]);
+    expect(evaluateToMatrix("={1,2;3,4}", context())).toEqual([
+      [1, 2],
+      [3, 4],
+    ]);
   });
 
   it("parses strings and booleans inside a literal", () => {
@@ -109,11 +163,22 @@ describe("inline array literals", () => {
   });
 
   it("pads a ragged literal to a rectangle", () => {
-    expect(evaluateToMatrix("={1,2,3;4}", context())).toEqual([[1, 2, 3], [4, "", ""]]);
+    expect(evaluateToMatrix("={1,2,3;4}", context())).toEqual([
+      [1, 2, 3],
+      [4, "", ""],
+    ]);
   });
 
   it("an empty literal is a #VALUE!", () => {
     expect(code("={}")).toBe("#VALUE!");
+  });
+
+  it("separator-only literals are #VALUE!, not ambiguous values", () => {
+    // `{,}` / `{;}` used to parse into a 1x1 error matrix; they must report a
+    // plain #VALUE! so the user sees a malformed literal.
+    expect(code("={,}")).toBe("#VALUE!");
+    expect(code("={;}")).toBe("#VALUE!");
+    expect(code("={,;}")).toBe("#VALUE!");
   });
 
   it("feeds straight into an aggregate", () => {
@@ -131,7 +196,10 @@ describe("dynamic arrays", () => {
   });
 
   it("SEQUENCE builds a grid with a start and step", () => {
-    expect(evaluateToMatrix("=SEQUENCE(2,3,10,5)", context())).toEqual([[10, 15, 20], [25, 30, 35]]);
+    expect(evaluateToMatrix("=SEQUENCE(2,3,10,5)", context())).toEqual([
+      [10, 15, 20],
+      [25, 30, 35],
+    ]);
   });
 
   it("SEQUENCE rejects a non-positive size", () => {
@@ -139,7 +207,10 @@ describe("dynamic arrays", () => {
   });
 
   it("UNIQUE removes duplicate rows", () => {
-    expect(evaluateToMatrix('=UNIQUE({1,"a";2,"b";1,"a"})', context())).toEqual([[1, "a"], [2, "b"]]);
+    expect(evaluateToMatrix('=UNIQUE({1,"a";2,"b";1,"a"})', context())).toEqual([
+      [1, "a"],
+      [2, "b"],
+    ]);
   });
 
   it("UNIQUE with exactly_once drops repeated values", () => {
@@ -164,7 +235,10 @@ describe("dynamic arrays", () => {
   });
 
   it("SORT sorts by a chosen column", () => {
-    expect(evaluateToMatrix('=SORT({"b",1;"a",2})', context())).toEqual([["a", 2], ["b", 1]]);
+    expect(evaluateToMatrix('=SORT({"b",1;"a",2})', context())).toEqual([
+      ["a", 2],
+      ["b", 1],
+    ]);
   });
 
   it("SORTBY orders by a separate key", () => {
@@ -176,7 +250,7 @@ describe("dynamic arrays", () => {
   });
 
   it("SORTBY rejects a key of the wrong length", () => {
-    expect(code('=SORTBY({1;2;3},{1;2})')).toBe("#VALUE!");
+    expect(code("=SORTBY({1;2;3},{1;2})")).toBe("#VALUE!");
   });
 
   it("FILTER keeps the rows a boolean array selects", () => {
@@ -193,7 +267,10 @@ describe("dynamic arrays", () => {
   });
 
   it("TRANSPOSE flips a matrix", () => {
-    expect(evaluateToMatrix("=TRANSPOSE({1,2;3,4})", context())).toEqual([[1, 3], [2, 4]]);
+    expect(evaluateToMatrix("=TRANSPOSE({1,2;3,4})", context())).toEqual([
+      [1, 3],
+      [2, 4],
+    ]);
   });
 
   it("a spilled array collapses to its first cell in a single cell", () => {
@@ -229,6 +306,21 @@ describe("LET", () => {
 
   it("does not leak the binding into another formula", () => {
     expect(code("=x")).toBe("#NAME?");
+  });
+
+  it("a self-referential binding terminates as an unbound name, not a hang", () => {
+    // Regression guard: `x` is not yet bound while its own value is evaluated,
+    // so it must resolve to #NAME? (Excel semantics) instead of recursing.
+    expect(code("=LET(x,x+1,x)")).toBe("#NAME?");
+    expect(code("=LET(x,LET(x,x,x),x)")).toBe("#NAME?");
+  });
+
+  it("a defined name that references itself is a circular reference", () => {
+    const ctx = context();
+    ctx.names = { SELF: { definition: "=SELF+1" } };
+    const result = evaluateFormula("=SELF", ctx);
+    expect(isError(result)).toBe(true);
+    expect((result as { code: string }).code).toBe("#REF!");
   });
 });
 
@@ -343,7 +435,10 @@ describe("text functions", () => {
   });
 
   it("TEXTSPLIT handles a row delimiter too", () => {
-    expect(evaluateToMatrix('=TEXTSPLIT("a,1; b,2",",",";")', context())).toEqual([["a", "1"], [" b", "2"]]);
+    expect(evaluateToMatrix('=TEXTSPLIT("a,1; b,2",",",";")', context())).toEqual([
+      ["a", "1"],
+      [" b", "2"],
+    ]);
   });
 
   it("NUMBERVALUE handles locale separators", () => {
@@ -681,11 +776,11 @@ describe("lookup functions", () => {
     // Regression: mode 2 had a dead branch and mode -2 never matched.
     const unsorted = { A1: 10, A2: 5, A3: 20, B1: "a", B2: "b", B3: "c" };
     // mode 2: smallest value >= 15 -> 20 -> "c".
-    expect(s("=XLOOKUP(15,A1:A3,B1:B3,\"none\",2)", unsorted)).toBe("c");
+    expect(s('=XLOOKUP(15,A1:A3,B1:B3,"none",2)', unsorted)).toBe("c");
     // mode -2: largest value <= 15 -> 10 -> "a".
-    expect(s("=XLOOKUP(15,A1:A3,B1:B3,\"none\",-2)", unsorted)).toBe("a");
+    expect(s('=XLOOKUP(15,A1:A3,B1:B3,"none",-2)', unsorted)).toBe("a");
     // mode 2: smallest >= 5 -> 5 -> "b".
-    expect(s("=XLOOKUP(5,A1:A3,B1:B3,\"none\",2)", unsorted)).toBe("b");
+    expect(s('=XLOOKUP(5,A1:A3,B1:B3,"none",2)', unsorted)).toBe("b");
   });
 
   it("XLOOKUP approximate positions follow the original order", () => {
@@ -693,7 +788,7 @@ describe("lookup functions", () => {
     // with the selected lookup cell, not the result at a sorted position.
     const data2 = { A1: 30, A2: 10, A3: 20, B1: "thirty", B2: "ten", B3: "twenty" };
     // mode 2: smallest lookup >= 25 -> 30 (A1) -> "thirty".
-    expect(s("=XLOOKUP(25,A1:A3,B1:B3,\"none\",2)", data2)).toBe("thirty");
+    expect(s('=XLOOKUP(25,A1:A3,B1:B3,"none",2)', data2)).toBe("thirty");
   });
 
   it("VLOOKUP finds a column", () => {
@@ -952,7 +1047,10 @@ describe("workbook integration", () => {
     let wb: Workbook = { ...newWorkbook("Fmt"), sheets: [newSheet("Sheet1")] };
     const styled = emptyCell();
     styled.style = { ...styled.style, numberFormat: "#,##0.00" };
-    wb = { ...wb, sheets: [{ ...wb.sheets[0], cells: { A1: { ...styled, value: { kind: "number" as const, value: 5 } } } }] };
+    wb = {
+      ...wb,
+      sheets: [{ ...wb.sheets[0], cells: { A1: { ...styled, value: { kind: "number" as const, value: 5 } } } }],
+    };
     expect(wb.sheets[0].cells.A1).toBeDefined();
     wb = applyCellEdit(wb, 0, 0, 0, "");
     expect(wb.sheets[0].cells.A1?.value).toEqual({ kind: "empty" });
@@ -1001,7 +1099,7 @@ describe("extended statistics and covariance", () => {
   });
 
   it("COVARIANCE.P and COVARIANCE.S differ by the divisor", () => {
-    expect(n("=COVARIANCE.P({1,2,3},{2,4,6})")).toBeCloseTo(2 / 3 * 2, 10);
+    expect(n("=COVARIANCE.P({1,2,3},{2,4,6})")).toBeCloseTo((2 / 3) * 2, 10);
     expect(n("=COVARIANCE.S({1,2,3},{2,4,6})")).toBeCloseTo(2, 10);
     expect(n("=COVAR({1,2,3},{2,4,6})")).toBe(n("=COVARIANCE.P({1,2,3},{2,4,6})"));
   });

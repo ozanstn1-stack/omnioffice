@@ -122,7 +122,7 @@ pub fn library_file_name(kind: &str, source_name: &str, created_at: u64) -> Stri
 
 fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let era = if z >= 0 { z } else { z.saturating_sub(146_096) } / 146_097;
     let doe = z - era * 146_097;
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
     let year = yoe + era * 400;

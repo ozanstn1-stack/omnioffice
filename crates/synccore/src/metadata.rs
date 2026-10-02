@@ -99,11 +99,7 @@ pub enum SyncState {
 }
 
 /// Three-way state detection. See the module docs for the full matrix.
-pub fn detect_state(
-    local_sha256: Option<&str>,
-    cloud_sha256: Option<&str>,
-    base: Option<&BaseState>,
-) -> SyncState {
+pub fn detect_state(local_sha256: Option<&str>, cloud_sha256: Option<&str>, base: Option<&BaseState>) -> SyncState {
     match (local_sha256, cloud_sha256) {
         // Nothing anywhere: report as LocalOnly; callers only deal with
         // existing local files, so this combination is not actionable.
@@ -257,10 +253,7 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), SyncError> {
             std::fs::create_dir_all(parent)?;
         }
     }
-    let name = path
-        .file_name()
-        .map(|value| value.to_string_lossy().to_string())
-        .unwrap_or_else(|| "sync".to_string());
+    let name = path.file_name().map(|value| value.to_string_lossy().to_string()).unwrap_or_else(|| "sync".to_string());
     let temp = path.with_file_name(format!(".{name}.{}.tmp", uuid::Uuid::new_v4().simple()));
     {
         let mut file = std::fs::File::create(&temp)?;
@@ -381,27 +374,17 @@ pub fn stamp_for_name(time: SystemTime) -> String {
 }
 
 fn utc_parts(time: SystemTime) -> (i64, u32, u32, u32, u32, u32) {
-    let seconds = time
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs() as i64)
-        .unwrap_or(0);
+    let seconds = time.duration_since(UNIX_EPOCH).map(|duration| duration.as_secs() as i64).unwrap_or(0);
     let days = seconds.div_euclid(86_400);
     let remainder = seconds.rem_euclid(86_400);
     let (year, month, day) = civil_from_days(days);
-    (
-        year,
-        month,
-        day,
-        (remainder / 3600) as u32,
-        ((remainder % 3600) / 60) as u32,
-        (remainder % 60) as u32,
-    )
+    (year, month, day, (remainder / 3600) as u32, ((remainder % 3600) / 60) as u32, (remainder % 60) as u32)
 }
 
 /// Howard Hinnant's `civil_from_days`: days since 1970-01-01 -> (y, m, d).
 fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let era = if z >= 0 { z } else { z.saturating_sub(146_096) } / 146_097;
     let doe = (z - era * 146_097) as u64; // [0, 146096]
     let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365; // [0, 399]
     let year = yoe as i64 + era * 400;
@@ -418,11 +401,7 @@ mod tests {
     use std::time::Duration;
 
     fn base(sha: &str) -> BaseState {
-        BaseState {
-            cloud_etag: Some("\"etag-1\"".to_string()),
-            cloud_sha256: sha.to_string(),
-            revision: 1,
-        }
+        BaseState { cloud_etag: Some("\"etag-1\"".to_string()), cloud_sha256: sha.to_string(), revision: 1 }
     }
 
     // -- state machine: the full three-way matrix ---------------------------
