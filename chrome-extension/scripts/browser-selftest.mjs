@@ -64,7 +64,11 @@ chromeProcess.on("error", (error) => {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function findTarget() {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  // A loaded CI runner can take longer than 15 s to expose the DevTools
+  // endpoint (this flaked once on the release workflow). Wait up to a minute,
+  // and fail fast with Chrome's own output when the process already exited.
+  for (let attempt = 0; attempt < 240; attempt += 1) {
+    if (chromeProcess.exitCode !== null) break;
     try {
       const response = await fetch(`http://127.0.0.1:${port}/json/list`);
       const targets = await response.json();
@@ -75,8 +79,9 @@ async function findTarget() {
     }
     await sleep(250);
   }
+  const exit = chromeProcess.exitCode !== null ? `\nChrome exited with code ${chromeProcess.exitCode}.` : "";
   const detail = chromeError.trim() ? `\nChrome output:\n${chromeError.trim()}` : "";
-  throw new Error(`DevTools endpoint did not appear on port ${port}${detail}`);
+  throw new Error(`DevTools endpoint did not appear on port ${port}${exit}${detail}`);
 }
 
 class Cdp {
@@ -206,5 +211,7 @@ async function main() {
 main().catch(async (error) => {
   console.error(error);
   chromeProcess.kill();
+  // Do not leave the temporary Chrome profile behind on a failed run.
+  await rm(profile, { recursive: true, force: true }).catch(() => undefined);
   process.exit(1);
 });
