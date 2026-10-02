@@ -103,21 +103,36 @@ try {
 
     if ($Publish) {
         Write-Host "==> GitHub release $tag"
-        $existing = & gh release view $tag --json tagName 2>$null
-        if (-not $existing) {
-            & git tag $tag 2>$null
-            & git push origin $tag
-            $draftFlag = if ($Draft) { '--draft' } else { '--latest' }
-            & gh release create $tag --title "Office Swiss Army Knife $tag" --generate-notes $draftFlag
-            if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
+        # `gh release view` writes "release not found" to stderr when the
+        # release does not exist yet; with $ErrorActionPreference = 'Stop' that
+        # native stderr terminates the script before the release is created.
+        # Relax the preference for the probe and restore it afterwards.
+        $previousPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $null = & gh release view $tag 2>&1
+            $releaseExists = ($LASTEXITCODE -eq 0)
+            if (-not $releaseExists) {
+                $null = & git rev-parse -q --verify "refs/tags/$tag" 2>&1
+                if ($LASTEXITCODE -ne 0) {
+                    $null = & git tag $tag 2>&1
+                }
+                & git push origin $tag
+                if ($LASTEXITCODE -ne 0) { throw "git push origin $tag failed ($LASTEXITCODE)" }
+                $draftFlag = if ($Draft) { '--draft' } else { '--latest' }
+                & gh release create $tag --title "Office Swiss Army Knife $tag" --generate-notes $draftFlag
+                if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
+            }
+            Get-ChildItem $releaseDir -File | Where-Object {
+                $_.Name -like "*$version*" -or $_.Name -like 'sbom-*' -or $_.Name -like 'SHA256SUMS*' -or $_.Name -eq 'build-info.json'
+            } | ForEach-Object {
+                & gh release upload $tag $_.FullName --clobber
+                if ($LASTEXITCODE -ne 0) { throw "gh release upload failed for $($_.Name)" }
+            }
+            & gh release view $tag --json url --jq .url
+        } finally {
+            $ErrorActionPreference = $previousPreference
         }
-        Get-ChildItem $releaseDir -File | Where-Object {
-            $_.Name -like "*$version*" -or $_.Name -like 'sbom-*' -or $_.Name -like 'SHA256SUMS*' -or $_.Name -eq 'build-info.json'
-        } | ForEach-Object {
-            & gh release upload $tag $_.FullName --clobber
-            if ($LASTEXITCODE -ne 0) { throw "gh release upload failed for $($_.Name)" }
-        }
-        & gh release view $tag --json url --jq .url
     }
 
     Write-Host "Done. Version $version."
