@@ -5,17 +5,23 @@
 # new build to this machine (per-user, no administrator needed) and, with
 # -Publish, creates/updates the GitHub release for the current version.
 #
+# The finished artifacts are also copied to a discoverable folder next to the
+# project (default: <projects>\Office-Swiss-Army-Knife-<version>) so the
+# installer and APKs are easy to find without digging through release-artifacts.
+#
 # Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-local.ps1
 #   powershell ... -File scripts/release-local.ps1 -SkipBuild          # reuse existing binaries
 #   powershell ... -File scripts/release-local.ps1 -SkipAndroid        # Windows only
 #   powershell ... -File scripts/release-local.ps1 -Publish            # also publish to GitHub
+#   powershell ... -File scripts/release-local.ps1 -ExportDir D:\releases
 param(
     [switch]$SkipBuild,
     [switch]$SkipAndroid,
     [switch]$SkipInstall,
     [switch]$Publish,
-    [switch]$Draft
+    [switch]$Draft,
+    [string]$ExportDir
 )
 
 $ErrorActionPreference = 'Stop'
@@ -76,6 +82,19 @@ try {
     }
     Set-Content (Join-Path $releaseDir 'SHA256SUMS.txt') -Value ($lines -join "`n") -Encoding ASCII
 
+    # Copy the finished artifacts somewhere obvious. `release-artifacts` is
+    # inside the repo and gets mixed with older versions; this folder is named
+    # after the release so the installer/APKs are easy to find.
+    $export = if ($ExportDir) { $ExportDir } else { Join-Path (Split-Path -Parent $root) "Office-Swiss-Army-Knife-$version" }
+    Write-Host "==> Exporting artifacts to $export"
+    New-Item -ItemType Directory -Force -Path $export | Out-Null
+    Get-ChildItem $releaseDir -File | Where-Object {
+        $_.Name -like "*$version*" -or $_.Name -like 'sbom-*' -or $_.Name -like 'SHA256SUMS*' -or $_.Name -eq 'build-info.json'
+    } | ForEach-Object {
+        Copy-Item $_.FullName (Join-Path $export $_.Name) -Force
+    }
+    Get-ChildItem $export | Select-Object Name, @{ n = 'MB'; e = { [math]::Round($_.Length / 1MB, 1) } } | Format-Table -AutoSize
+
     if (-not $SkipInstall) {
         Write-Host "==> Applying to this machine (per-user)"
         & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'install-local.ps1') -Version $version
@@ -93,7 +112,7 @@ try {
             if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
         }
         Get-ChildItem $releaseDir -File | Where-Object {
-            $_.Name -match "3\.3\.0|$version" -or $_.Name -like 'sbom-*' -or $_.Name -like 'SHA256SUMS*' -or $_.Name -eq 'build-info.json'
+            $_.Name -like "*$version*" -or $_.Name -like 'sbom-*' -or $_.Name -like 'SHA256SUMS*' -or $_.Name -eq 'build-info.json'
         } | ForEach-Object {
             & gh release upload $tag $_.FullName --clobber
             if ($LASTEXITCODE -ne 0) { throw "gh release upload failed for $($_.Name)" }
