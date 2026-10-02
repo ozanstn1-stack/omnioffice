@@ -477,6 +477,14 @@ The installer is written as both `Office-Swiss-Army-Knife-Setup-<version>.exe`
 and `Office Swiss Army Knife_<version>_x64-setup.exe`; `SHA256SUMS.txt` covers
 both plus the portable ZIP.
 
+`npm run release:local` runs the whole update loop in one command: Windows +
+Android builds, `build-info.json`, CycloneDX SBOMs, checksums, and a per-user
+install of the new build on this machine (no administrator rights needed) with
+refreshed Start Menu / Desktop shortcuts. Add `-Publish` to create or update
+the GitHub release for the current version. The per-machine copy in
+`C:\Program Files\Office Swiss Army Knife` is only replaced by running the
+installer elevated.
+
 Every engine download is pinned by SHA-256 in `scripts/engines.lock.json` and
 verified by the fetch scripts: a mismatch stops the build instead of shipping an
 unverified binary. When an upstream release is updated on purpose, verify it and

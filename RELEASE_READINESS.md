@@ -79,6 +79,20 @@ and this file say so rather than implying coverage:
 - **Linux/macOS desktop**: built and tested by CI.
 - **Chrome extension**: unchanged from 3.1.1; CI runs its self test.
 
+## Applying a release locally
+
+`npm run release:local` (or `scripts/release-local.ps1`) builds Windows and
+Android, writes `build-info.json` + CycloneDX SBOMs + `SHA256SUMS.txt`, and
+applies the new build to this machine **per-user** via
+`scripts/install-local.ps1` (portable ZIP into
+`%LOCALAPPDATA%\Programs\Office Swiss Army Knife`, Start Menu and Desktop
+shortcuts refreshed). No administrator rights are needed. Add `-Publish` to
+also create/update the GitHub release for the current version.
+
+The per-machine copy in `C:\Program Files\Office Swiss Army Knife` (if one is
+installed) can only be replaced by running the NSIS installer **elevated**;
+the script deliberately never writes there.
+
 ## Release artifacts expected from CI
 
 Windows: `Office-Swiss-Army-Knife-Setup-3.3.0.exe`,

@@ -9,6 +9,8 @@
     "build": "tsc --noEmit && vite build",
     "bundle:check": "node scripts/check-bundle-budget.mjs",
     "build:info": "node scripts/build-info.mjs",
+    "sbom:rust": "node scripts/sbom-rust.mjs",
+    "release:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-local.ps1",
     "preview": "vite preview",
     "tauri": "tauri",
     "app:dev": "tauri dev",
