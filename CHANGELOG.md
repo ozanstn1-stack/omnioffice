@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] - Test coverage gate and screen coverage
+
+### Added
+
+- **Coverage floors in CI.** `npm run test:coverage` now enforces statement,
+  branch, function and line floors (58/68/46/58) measured from this suite, and
+  the frontend CI job runs it. The comment in `vite.config.ts` states the
+  ratchet rule: raise the floors as coverage grows, never lower them.
+- **Screen tests for the previously untested paths**: Merge, Split, Compress,
+  Security protect, Watermark, Metadata, Info, History, Home, Settings
+  (`src/screens/tools-screens.test.tsx`); AI Library, Jobs, Compatibility,
+  OCR and PDF→images (`src/screens/more-screens.test.tsx`); Notes, Planner,
+  Data, Draw, Templates, Converter, Cleaner and PDF forms
+  (`src/office/tools-screens.test.tsx`). The tests render the real screens and
+  assert the `request` envelopes the Rust commands deserialize.
+- **Templates contract test** (`src/office/templates.test.ts`): unique ids,
+  complete metadata and the model kind each template promises.
+
+### Changed
+
+- Frontend coverage moved from 49.2 % to 60.7 % statements (branches 71.2 %,
+  functions 48.5 %) with 24 new tests and no production code changes.
+
 ## [3.4.0] - Quick wins: commands, settings, Home and accessibility
 
 ### Added

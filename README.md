@@ -10,9 +10,26 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.4.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.5.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.5.0
+
+Test coverage became a gate instead of a number.
+
+- **Coverage ratchet.** `npm run test:coverage` now fails below the measured
+  floors (statements 58 %, branches 68 %, functions 46 %, lines 58 %), and the
+  frontend CI job runs the coverage command. The floors move up with the
+  suite; they are never lowered to make a red build green.
+- **The untested screens have tests.** 24 new tests render the real screens
+  against mocked backends and pin the request envelopes: Merge, Split,
+  Compress, Security (protect), Watermark, Metadata, Info, History, Home,
+  Settings, Notes, Planner, Data, Draw, Templates, Converter, Cleaner, PDF
+  forms, AI Library, Jobs, Compatibility, OCR and PDF→images. Coverage moved
+  from 49.2 % to 60.7 % statements on the same source.
+- **Templates contract.** The built-in templates are tested for unique ids,
+  complete metadata and the model kind each card promises.
 
 ## What's new in 3.4.0
 
@@ -570,11 +587,12 @@ npm test
 npx tsc --noEmit
 ```
 
-**528 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **626
+**528 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **650
 frontend tests** pass, plus the 1 heavy case gated by `OSAK_PERF_HEAVY=1`,
-with a strict TypeScript type check on top. The per-crate split is deliberately
-not repeated here - `cargo test --workspace` prints it, and the numbers written
-out in prose went stale every release.
+with a strict TypeScript type check on top. Frontend coverage floors are
+enforced by `npm run test:coverage` (see `vite.config.ts`). The per-crate split
+is deliberately not repeated here - `cargo test --workspace` prints it, and
+the numbers written out in prose went stale every release.
 
 ### What runs where
 
@@ -597,7 +615,7 @@ npm run i18n:audit -- --check   # en/tr tables must stay in sync
 npm run format:gate        # Prettier on the files this change adds
 npm run format:gate:rust   # rustfmt on the files this change adds
 npm run lint:rust          # cargo clippy --workspace --all-targets -- -D warnings
-npm run test:coverage      # Vitest + a coverage summary (informational for now)
+npm run test:coverage      # Vitest + coverage floors (enforced)
 ```
 
 Neither rustfmt nor Prettier had ever run over this code base, so the

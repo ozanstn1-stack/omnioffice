@@ -10,7 +10,7 @@ Effort estimates assume a single developer.
 |---|---|---|
 | 0 | Docs consistency, `compat.rs` freshness contract, frontend coverage baseline, roadmap | Done in 3.4.0 |
 | 1 (v3.4) | Quick wins: command palette + keybindings, Settings completion, Home IA, a11y pass, dead ends | Done in 3.4.0 |
-| 2 (v3.5) | Quality infrastructure: coverage thresholds, desktop E2E, fuzzing, benchmark trends, screen tests, CI hardening | Planned |
+| 2 (v3.5) | Quality infrastructure: coverage thresholds, screen tests, desktop E2E, fuzzing, benchmark trends, CI hardening | Partial: coverage gate + 24 screen tests in 3.5.0; E2E, fuzzing, benchmark trends remain |
 | 3 (v3.6) | PDF depth: content-stream object editing, render cache, Reader, Studio UX, PDF/A subsetting, signature chain (RFC 3161/OCSP) | Planned |
 | 4 (v3.7) | Office depth: Writer fields/revisions, Calc data tools + chart UI, Impress timeline + media, format fidelity | Planned |
 | 5 (v4.x) | Platform: auto-update, macOS/Linux packaging, stores, Android foreground service + Keystore, sync OAuth, Vault 2.0, plugins, AI | Planned |
@@ -37,7 +37,24 @@ Effort estimates assume a single developer.
 
 ## 3.4.0 — Not done (honest)
 
-- Coverage is informational, not a blocking threshold yet.
+- Coverage is informational, not a blocking threshold yet. (Closed in 3.5.0.)
 - Desktop E2E, fuzzing and benchmark trends are still Phase 2.
 - Jobs "Retry" has no registered handler yet; `vault_clear` has no UI path.
 - `AUDIT_REPORT.md` items not touched by 3.4.0 remain as listed there.
+
+## 3.5.0 — Coverage gate and screen tests (delivered)
+
+- `npm run test:coverage` enforces statement/branch/function/line floors
+  (58/68/46/58) measured from the suite; the frontend CI job runs it.
+- 24 new tests cover Merge, Split, Compress, Security, Watermark, Metadata,
+  Info, History, Home, Settings, Notes, Planner, Data, Draw, Templates,
+  Converter, Cleaner, PDF forms, AI Library, Jobs, Compatibility, OCR and
+  PDF→images; statements moved 49.2 % → 60.7 %.
+- Templates contract test for ids, metadata and model kind.
+
+## 3.5.0 — Not done (honest)
+
+- Desktop E2E (tauri-driver or a mocked-invoke browser suite) and fuzzing are
+  still not started; benchmark trend tracking is not started either.
+- The coverage floors keep a few points of headroom and should be raised as
+  the suite grows.
