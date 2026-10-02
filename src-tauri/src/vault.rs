@@ -474,7 +474,7 @@ fn iso_from_system_time(time: SystemTime) -> String {
 
 fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let era = if z >= 0 { z } else { z.saturating_sub(146_096) } / 146_097;
     let doe = (z - era * 146_097) as u64;
     let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
     let year = yoe as i64 + era * 400;

@@ -120,7 +120,8 @@ fn effective_style(document: &TextDocument, props: &ParaProps, run: Option<&Run>
     if props.line_spacing > 0.0 {
         style.line_spacing = props.line_spacing;
     }
-    style.space_before_pt = props.space_before_pt.max(style.space_before_pt.min(props.space_before_pt.max(style.space_before_pt)));
+    style.space_before_pt =
+        props.space_before_pt.max(style.space_before_pt.min(props.space_before_pt.max(style.space_before_pt)));
     if props.space_before_pt > 0.0 {
         style.space_before_pt = props.space_before_pt;
     }
@@ -193,12 +194,7 @@ struct LaidLine {
     ascent: f64,
 }
 
-fn break_line(
-    fonts: &FontSet,
-    words: &[(String, TextStyle, bool)],
-    width: f64,
-    align: &str,
-) -> Vec<LaidLine> {
+fn break_line(fonts: &FontSet, words: &[(String, TextStyle, bool)], width: f64, align: &str) -> Vec<LaidLine> {
     let mut lines: Vec<LaidLine> = Vec::new();
     let mut current: Vec<(String, TextStyle, bool)> = Vec::new();
     let mut current_width = 0.0;
@@ -235,15 +231,19 @@ fn break_line(
     lines
 }
 
-fn finalize_line(fonts: &FontSet, items: &[(String, TextStyle, bool)], natural_width: f64, width: f64, align: &str) -> LaidLine {
+fn finalize_line(
+    fonts: &FontSet,
+    items: &[(String, TextStyle, bool)],
+    natural_width: f64,
+    width: f64,
+    align: &str,
+) -> LaidLine {
     let mut trimmed: Vec<(String, TextStyle, bool)> = items.to_vec();
     while trimmed.last().map(|(_, _, is_space)| *is_space).unwrap_or(false) {
         trimmed.pop();
     }
-    let line_width = trimmed
-        .iter()
-        .map(|(text, style, _)| fonts.pick(style.bold).advance_pt(text, style.size_pt))
-        .sum::<f64>();
+    let line_width =
+        trimmed.iter().map(|(text, style, _)| fonts.pick(style.bold).advance_pt(text, style.size_pt)).sum::<f64>();
     let mut height: f64 = 0.0;
     let mut ascent: f64 = 0.0;
     for (_, style, _) in &trimmed {
@@ -277,7 +277,11 @@ fn finalize_line(fonts: &FontSet, items: &[(String, TextStyle, bool)], natural_w
     LaidLine { items: laid_items, width: line_width, height, ascent }
 }
 
-fn paragraph_words(document: &TextDocument, props: &ParaProps, runs: &[Run]) -> (Vec<(String, TextStyle, bool)>, EffectiveStyle) {
+fn paragraph_words(
+    document: &TextDocument,
+    props: &ParaProps,
+    runs: &[Run],
+) -> (Vec<(String, TextStyle, bool)>, EffectiveStyle) {
     let base = effective_style(document, props, None);
     let mut words: Vec<(String, TextStyle, bool)> = Vec::new();
     let mut first = true;
@@ -308,11 +312,12 @@ fn paragraph_words(document: &TextDocument, props: &ParaProps, runs: &[Run]) -> 
             }
         }
         let mut buffer = String::new();
-        let push_buffer = |words: &mut Vec<(String, TextStyle, bool)>, buffer: &mut String, style: &TextStyle, is_space: bool| {
-            if !buffer.is_empty() {
-                words.push((std::mem::take(buffer), *style, is_space));
-            }
-        };
+        let push_buffer =
+            |words: &mut Vec<(String, TextStyle, bool)>, buffer: &mut String, style: &TextStyle, is_space: bool| {
+                if !buffer.is_empty() {
+                    words.push((std::mem::take(buffer), *style, is_space));
+                }
+            };
         for ch in run.text.chars() {
             match ch {
                 ' ' | '\t' | '\u{a0}' => {
@@ -390,16 +395,19 @@ struct Renderer<'a> {
 }
 
 impl<'a> Renderer<'a> {
-    fn new(fonts: &'a FontSet, document: &'a TextDocument, total_pages: usize, known_bookmark_pages: std::collections::HashMap<String, u32>) -> Self {
+    fn new(
+        fonts: &'a FontSet,
+        document: &'a TextDocument,
+        total_pages: usize,
+        known_bookmark_pages: std::collections::HashMap<String, u32>,
+    ) -> Self {
         let section = document.first_section();
         let columns = section.columns.max(section.page.columns.max(1));
         let gap = section.page.column_spacing_pt.max(12.0);
-        let content_width = (section.page.width_pt - section.page.margin_left_pt - section.page.margin_right_pt).max(40.0);
-        let column_width = if columns > 1 {
-            (content_width - gap * (columns as f64 - 1.0)) / columns as f64
-        } else {
-            content_width
-        };
+        let content_width =
+            (section.page.width_pt - section.page.margin_left_pt - section.page.margin_right_pt).max(40.0);
+        let column_width =
+            if columns > 1 { (content_width - gap * (columns as f64 - 1.0)) / columns as f64 } else { content_width };
         let top = section.page.margin_top_pt.max(4.0);
         let bottom = section.page.height_pt - section.page.margin_bottom_pt.max(4.0);
         Self {
@@ -477,7 +485,11 @@ impl<'a> Renderer<'a> {
                     field.cached.clone()
                 } else {
                     let (date, time) = utc_now();
-                    if field.kind == "time" { time } else { date }
+                    if field.kind == "time" {
+                        time
+                    } else {
+                        date
+                    }
                 }
             }
             "title" => self.document.title.clone(),
@@ -625,7 +637,9 @@ impl<'a> Renderer<'a> {
         let props = ParaProps { style: "Normal".into(), space_after_pt: 2.0, line_spacing: 1.0, ..Default::default() };
         let blocks = vec![Block::Paragraph { props, runs: runs.to_vec() }];
         let height = measure_blocks(self.fonts, self.document, &blocks, width).min(160.0) + 8.0;
-        let content_height = (self.section.page.height_pt - self.section.page.margin_top_pt - self.section.page.margin_bottom_pt).max(60.0);
+        let content_height =
+            (self.section.page.height_pt - self.section.page.margin_top_pt - self.section.page.margin_bottom_pt)
+                .max(60.0);
         let max_reserve = content_height * 0.5;
         // When the notes for this page would take more than half the content
         // height, the page is closed and the note continues on the next one.
@@ -650,7 +664,15 @@ impl<'a> Renderer<'a> {
         // Separator line above the note area.
         {
             let canvas = self.canvas();
-            canvas.line(page.margin_left_pt, y + 2.0, page.margin_left_pt + width * 0.35, y + 2.0, Rgb(120, 130, 145), 0.6, "solid");
+            canvas.line(
+                page.margin_left_pt,
+                y + 2.0,
+                page.margin_left_pt + width * 0.35,
+                y + 2.0,
+                Rgb(120, 130, 145),
+                0.6,
+                "solid",
+            );
         }
         for (id, runs) in note_runs {
             let number = self.document.footnote_number(&id).or_else(|| self.document.endnote_number(&id)).unwrap_or(0);
@@ -659,7 +681,8 @@ impl<'a> Renderer<'a> {
                 run.size_pt = Some(run.size_pt.unwrap_or(8.5));
                 run
             }));
-            let props = ParaProps { style: "Normal".into(), space_after_pt: 2.0, line_spacing: 1.0, ..Default::default() };
+            let props =
+                ParaProps { style: "Normal".into(), space_after_pt: 2.0, line_spacing: 1.0, ..Default::default() };
             let (words, base) = paragraph_words(self.document, &props, &all_runs);
             for segment in split_on_newlines(words) {
                 let lines = break_line(self.fonts, &segment, width, "left");
@@ -742,8 +765,13 @@ impl<'a> Renderer<'a> {
         for (segment_index, segment) in segments.iter().enumerate() {
             let lines = break_line(self.fonts, segment, available, &base.align);
             for line in lines {
-                let marker_width = list_marker.as_ref().map(|marker| self.fonts.regular.advance_pt(marker, base.size_pt) + 4.0).unwrap_or(0.0);
-                let left = self.column_x(self.column) + indent_left + if first_line { base.first_line_pt.max(0.0) } else { 0.0 };
+                let marker_width = list_marker
+                    .as_ref()
+                    .map(|marker| self.fonts.regular.advance_pt(marker, base.size_pt) + 4.0)
+                    .unwrap_or(0.0);
+                let left = self.column_x(self.column)
+                    + indent_left
+                    + if first_line { base.first_line_pt.max(0.0) } else { 0.0 };
                 let line_height = line.height * line_spacing;
                 if self.remaining() < line_height {
                     self.next_column();
@@ -821,7 +849,13 @@ impl<'a> Renderer<'a> {
                     let canvas = self.canvas();
                     canvas.fill_rect(x, top, width, row_height, background, 1.0);
                 }
-                let content_height = draw_blocks_in_cell(self, &cell.blocks, x + padding, top + padding, (width - padding * 2.0).max(12.0));
+                let content_height = draw_blocks_in_cell(
+                    self,
+                    &cell.blocks,
+                    x + padding,
+                    top + padding,
+                    (width - padding * 2.0).max(12.0),
+                );
                 let _ = content_height;
                 x += width;
             }
@@ -845,11 +879,7 @@ impl<'a> Renderer<'a> {
             return;
         }
         let (pixel_width, pixel_height) = image.pixel_size();
-        let aspect = if pixel_width > 0 && pixel_height > 0 {
-            pixel_height as f64 / pixel_width as f64
-        } else {
-            0.66
-        };
+        let aspect = if pixel_width > 0 && pixel_height > 0 { pixel_height as f64 / pixel_width as f64 } else { 0.66 };
         let mut width = width_pt.max(24.0);
         let mut height = height_pt.max(18.0);
         if width > self.column_width {
@@ -883,7 +913,9 @@ impl<'a> Renderer<'a> {
                 self.draw_paragraph(props, runs);
             }
             Block::Table { table } => self.draw_table(table),
-            Block::Image { image, width_pt, height_pt, align, .. } => self.draw_image(image, *width_pt, *height_pt, align),
+            Block::Image { image, width_pt, height_pt, align, .. } => {
+                self.draw_image(image, *width_pt, *height_pt, align)
+            }
             Block::PageBreak => self.next_column(),
             Block::Rule => {
                 if self.remaining() < 18.0 {
@@ -922,10 +954,7 @@ impl<'a> Renderer<'a> {
 /// Current UTC date and time as `(yyyy-mm-dd, hh:mm:ss)` without a date crate.
 fn utc_now() -> (String, String) {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let seconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs() as i64)
-        .unwrap_or(0);
+    let seconds = SystemTime::now().duration_since(UNIX_EPOCH).map(|duration| duration.as_secs() as i64).unwrap_or(0);
     let days = seconds.div_euclid(86_400);
     let remainder = seconds.rem_euclid(86_400);
     let (year, month, day) = civil_from_days(days);
@@ -938,7 +967,7 @@ fn utc_now() -> (String, String) {
 /// Days since the Unix epoch to a civil date (Howard Hinnant's algorithm).
 fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let era = if z >= 0 { z } else { z.saturating_sub(146_096) } / 146_097;
     let doe = (z - era * 146_097) as u64;
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
     let year = yoe as i64 + era * 400;
@@ -981,7 +1010,8 @@ fn measure_blocks(fonts: &FontSet, document: &TextDocument, blocks: &[Block], wi
             }
             Block::Image { height_pt, width_pt, image, .. } => {
                 let (pixel_width, pixel_height) = image.pixel_size();
-                let aspect = if pixel_width > 0 && pixel_height > 0 { pixel_height as f64 / pixel_width as f64 } else { 0.66 };
+                let aspect =
+                    if pixel_width > 0 && pixel_height > 0 { pixel_height as f64 / pixel_width as f64 } else { 0.66 };
                 let mut image_height = height_pt.max(18.0);
                 if *width_pt > width {
                     image_height = width * aspect;
@@ -1012,7 +1042,8 @@ fn measure_blocks(fonts: &FontSet, document: &TextDocument, blocks: &[Block], wi
                 for row in &table.rows {
                     let mut row_height: f64 = 12.0;
                     for cell in &row.cells {
-                        row_height = row_height.max(measure_blocks(fonts, document, &cell.blocks, (column_width - 10.0).max(12.0)) + 8.0);
+                        row_height = row_height
+                            .max(measure_blocks(fonts, document, &cell.blocks, (column_width - 10.0).max(12.0)) + 8.0);
                     }
                     height += row_height;
                 }
@@ -1058,8 +1089,10 @@ fn draw_blocks_in_cell(renderer: &mut Renderer<'_>, blocks: &[Block], x: f64, y:
                 }
                 let image_width = width_pt.min(width).max(16.0);
                 let (pixel_width, pixel_height) = image.pixel_size();
-                let aspect = if pixel_width > 0 && pixel_height > 0 { pixel_height as f64 / pixel_width as f64 } else { 0.66 };
-                let image_height = (height_pt * (image_width / width_pt.max(1.0))).max(12.0).min(width * aspect.max(0.1) * 4.0);
+                let aspect =
+                    if pixel_width > 0 && pixel_height > 0 { pixel_height as f64 / pixel_width as f64 } else { 0.66 };
+                let image_height =
+                    (height_pt * (image_width / width_pt.max(1.0))).max(12.0).min(width * aspect.max(0.1) * 4.0);
                 let canvas = renderer.canvas();
                 canvas.image(x, cursor, image_width, image_height, &bytes, &image.mime);
                 cursor += image_height + 4.0;
@@ -1209,7 +1242,17 @@ fn render_sheet(fonts: &FontSet, sheet: &Sheet, workbook: &Workbook) -> Vec<Buil
             let title_style = TextStyle { size_pt: 13.0, bold: true, ..Default::default() };
             let small = TextStyle { size_pt: 8.5, color: Rgb(90, 100, 115), ..Default::default() };
             canvas.text(margin, margin + 12.0, &sheet.name, &title_style);
-            canvas.text(margin, margin + 26.0, &format!("{} | columns {}-{}", workbook.title, crate::address::column_name(strip_start), crate::address::column_name(strip_end)), &small);
+            canvas.text(
+                margin,
+                margin + 26.0,
+                &format!(
+                    "{} | columns {}-{}",
+                    workbook.title,
+                    crate::address::column_name(strip_start),
+                    crate::address::column_name(strip_end)
+                ),
+                &small,
+            );
 
             // Column headers.
             let mut x = margin;
@@ -1239,14 +1282,24 @@ fn render_sheet(fonts: &FontSet, sheet: &Sheet, workbook: &Workbook) -> Vec<Buil
                         if !text.is_empty() {
                             let bold = cell.style.bold;
                             let color = cell.style.color.as_deref().and_then(parse_hex).unwrap_or(Rgb::BLACK);
-                            let style = TextStyle { size_pt: cell.style.size_pt.unwrap_or(9.0), bold, color, ..Default::default() };
+                            let style = TextStyle {
+                                size_pt: cell.style.size_pt.unwrap_or(9.0),
+                                bold,
+                                color,
+                                ..Default::default()
+                            };
                             let text_width = fonts.pick(bold).advance_pt(&text, style.size_pt);
                             let text_x = match cell.style.align.as_str() {
                                 "center" => x + (width - text_width) / 2.0,
                                 "right" => x + width - text_width - 3.0,
                                 _ => x + 3.0,
                             };
-                            canvas.text(text_x, y + row_height * 0.68, &truncate_to_width(fonts, &text, &style, width - 6.0), &style);
+                            canvas.text(
+                                text_x,
+                                y + row_height * 0.68,
+                                &truncate_to_width(fonts, &text, &style, width - 6.0),
+                                &style,
+                            );
                         }
                         if let Some(fill) = cell.style.fill.as_deref().and_then(parse_hex) {
                             // Draw fills behind text: repaint for cells with a fill.
@@ -1298,11 +1351,8 @@ pub fn deck_to_pdf(deck: &Deck) -> Vec<u8> {
     let mut pages = Vec::new();
     for slide in &deck.slides {
         let mut canvas = Canvas::new(width, height, &fonts);
-        let background = slide
-            .background
-            .as_deref()
-            .and_then(parse_hex)
-            .unwrap_or_else(|| theme_background(deck, slide));
+        let background =
+            slide.background.as_deref().and_then(parse_hex).unwrap_or_else(|| theme_background(deck, slide));
         canvas.fill_rect(0.0, 0.0, width, height, background, 1.0);
         let mut objects: Vec<&SlideObject> = slide.objects.iter().collect();
         objects.sort_by_key(|object| object.z);
@@ -1413,7 +1463,8 @@ fn draw_arrow_head(canvas: &mut Canvas<'_>, x1: f64, y1: f64, x2: f64, y2: f64, 
     let angle = (y2 - y1).atan2(x2 - x1);
     let size = (width * 4.0).max(6.0);
     let left = (x2 - angle.cos() * size + angle.sin() * size * 0.5, y2 - angle.sin() * size - angle.cos() * size * 0.5);
-    let right = (x2 - angle.cos() * size - angle.sin() * size * 0.5, y2 - angle.sin() * size + angle.cos() * size * 0.5);
+    let right =
+        (x2 - angle.cos() * size - angle.sin() * size * 0.5, y2 - angle.sin() * size + angle.cos() * size * 0.5);
     canvas.polygon(&[(x2, y2), left, right], Some(color), None);
 }
 
@@ -1425,10 +1476,30 @@ fn draw_text_frame(canvas: &mut Canvas<'_>, object: &SlideObject, frame: &TextFr
     for paragraph in &frame.paragraphs {
         let size = paragraph.size_pt.or(frame.size_pt).unwrap_or(16.0);
         let bold = paragraph.bold;
-        let color = paragraph.color.as_deref().and_then(parse_hex).or_else(|| frame.color.as_deref().and_then(parse_hex)).unwrap_or(Rgb::BLACK);
-        let style = TextStyle { size_pt: size, bold, italic: paragraph.italic, underline: paragraph.underline, color, ..Default::default() };
+        let color = paragraph
+            .color
+            .as_deref()
+            .and_then(parse_hex)
+            .or_else(|| frame.color.as_deref().and_then(parse_hex))
+            .unwrap_or(Rgb::BLACK);
+        let style = TextStyle {
+            size_pt: size,
+            bold,
+            italic: paragraph.italic,
+            underline: paragraph.underline,
+            color,
+            ..Default::default()
+        };
         let face = fonts.pick(bold);
-        let bullet = if paragraph.bullet { if paragraph.bullet && !paragraph.text.starts_with('•') { "• " } else { "" } } else { "" };
+        let bullet = if paragraph.bullet {
+            if paragraph.bullet && !paragraph.text.starts_with('•') {
+                "• "
+            } else {
+                ""
+            }
+        } else {
+            ""
+        };
         let text = format!("{bullet}{}", paragraph.text);
         let line_height = face.line_height_pt(size, 1.2);
         if text.is_empty() {
@@ -1504,7 +1575,15 @@ fn draw_slide_chart(canvas: &mut Canvas<'_>, object: &SlideObject, chart: &Chart
     canvas.stroke_rect(plot_x, plot_y, plot_w, plot_h, Rgb(203, 213, 225), 0.6);
     // Charts from spreadsheets are resolved by the UI; here we draw a labelled
     // placeholder that makes the data range explicit and never fakes values.
-    let note = format!("{} chart · {}", chart.kind, if chart.series.is_empty() { "no series".to_string() } else { chart.series.iter().map(|series| series.range.clone()).collect::<Vec<_>>().join(", ") });
+    let note = format!(
+        "{} chart · {}",
+        chart.kind,
+        if chart.series.is_empty() {
+            "no series".to_string()
+        } else {
+            chart.series.iter().map(|series| series.range.clone()).collect::<Vec<_>>().join(", ")
+        }
+    );
     let note_style = TextStyle { size_pt: 9.5, color: Rgb(100, 116, 139), ..Default::default() };
     let wrapped = truncate_to_width(fonts, &note, &note_style, plot_w - 12.0);
     canvas.text(plot_x + 6.0, plot_y + plot_h / 2.0, &wrapped, &note_style);
@@ -1518,9 +1597,14 @@ mod tests {
         let mut document = TextDocument::new_blank("Layout");
         document.blocks = vec![
             Block::heading("Heading", 1),
-            Block::paragraph("A paragraph with enough words to wrap across at least two lines when the column is narrow."),
+            Block::paragraph(
+                "A paragraph with enough words to wrap across at least two lines when the column is narrow.",
+            ),
             Block::Paragraph {
-                props: ParaProps { list: Some(ListInfo { kind: "bullet".into(), level: 0, start: 1, marker: "•".into() }), ..Default::default() },
+                props: ParaProps {
+                    list: Some(ListInfo { kind: "bullet".into(), level: 0, start: 1, marker: "•".into() }),
+                    ..Default::default()
+                },
                 runs: vec![Run { text: "item one".into(), ..Default::default() }],
             },
             Block::Table { table: TableData::simple(3, 3, 460.0) },
@@ -1557,8 +1641,14 @@ mod tests {
         let sheet = &mut workbook.sheets[0];
         for row in 0..40u32 {
             crate::address::format(row, 0);
-            sheet.set(&crate::address::format(row, 0), Cell { value: CellValue::Text(format!("Row {row}")), ..Default::default() });
-            sheet.set(&crate::address::format(row, 1), Cell { value: CellValue::Number(row as f64 * 12.5), ..Default::default() });
+            sheet.set(
+                &crate::address::format(row, 0),
+                Cell { value: CellValue::Text(format!("Row {row}")), ..Default::default() },
+            );
+            sheet.set(
+                &crate::address::format(row, 1),
+                Cell { value: CellValue::Number(row as f64 * 12.5), ..Default::default() },
+            );
         }
         let bytes = workbook_to_pdf(&workbook, 1);
         assert!(bytes.starts_with(b"%PDF"));

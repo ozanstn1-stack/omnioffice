@@ -51,9 +51,11 @@ impl ProtectOptions {
 
 fn random_key() -> [u8; 32] {
     let mut key = [0u8; 32];
-    let (a, b) = (uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
-    key[..16].copy_from_slice(a.as_bytes());
-    key[16..].copy_from_slice(b.as_bytes());
+    // OS entropy directly: a UUIDv4 only carries 122 random bits per value and
+    // is not intended as key material. `getrandom` fails only when the OS
+    // entropy source is unavailable, which must never be papered over with a
+    // weaker key.
+    getrandom::getrandom(&mut key).expect("getrandom failed: OS entropy source unavailable");
     key
 }
 
@@ -77,9 +79,7 @@ pub fn protect_pdf(
         doc = std::mem::take(&mut fresh);
     }
     if doc.is_encrypted() {
-        return Err(PdfError::InvalidInput(
-            "this document is already password protected".into(),
-        ));
+        return Err(PdfError::InvalidInput("this document is already password protected".into()));
     }
 
     let crypt_filter: Arc<dyn CryptFilter> = Arc::new(Aes256CryptFilter);
@@ -95,8 +95,7 @@ pub fn protect_pdf(
     })
     .map_err(|e| PdfError::ProcessingFailed(format!("encryption setup failed: {e}")))?;
 
-    doc.encrypt(&state)
-        .map_err(|e| PdfError::ProcessingFailed(format!("encryption failed: {e}")))?;
+    doc.encrypt(&state).map_err(|e| PdfError::ProcessingFailed(format!("encryption failed: {e}")))?;
 
     let final_path = resolve_output_path(output, policy)?;
     // Streams are already encrypted: do not compress or mutate content.
@@ -106,12 +105,7 @@ pub fn protect_pdf(
 
 /// Removes password protection from a PDF. The password must be supplied by
 /// the user; no cracking or brute forcing is performed.
-pub fn unlock_pdf(
-    input: &Path,
-    output: &Path,
-    password: &str,
-    policy: OverwritePolicy,
-) -> PdfResult<PathBuf> {
+pub fn unlock_pdf(input: &Path, output: &Path, password: &str, policy: OverwritePolicy) -> PdfResult<PathBuf> {
     let mut doc = Document::load_with_password(input, password).map_err(|err| {
         let msg = err.to_string().to_lowercase();
         if msg.contains("password") || msg.contains("decrypt") || msg.contains("encrypt") {

@@ -44,7 +44,7 @@ sha2 = "0.10"
 tempfile = "3.27.0"
 thiserror = "2.0.20"
 time = "0.3"
-uuid = { version = "1.26.1", features = ["v4"] }
+getrandom = "0.2"
 x509-cert = { version = "0.2", default-features = false, features = ["std"] }
 
 [dev-dependencies]

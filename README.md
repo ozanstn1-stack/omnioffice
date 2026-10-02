@@ -10,9 +10,30 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.3.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.3.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.3.1
+
+Security hardening and reliability patch on top of 3.3.0:
+
+- **AES-256 keys come from the OS entropy source** (`getrandom`) instead of
+  UUIDv4 values, which only carry 122 random bits each.
+- **Input path validation uses an open handle.** `input_file()` validates the
+  object that was actually opened and, on Unix, compares the handle identity
+  with a fresh path lookup so a symlink swapped in between is rejected.
+- **AI request structs redact document passwords** in their manual `Debug`
+  implementations, so a log line or error context can never leak them.
+- **Duplicated pages copy their annotations.** Cloning a page now copies each
+  annotation dictionary and points its `/P` at the duplicate; previously the
+  duplicate shared the annotation objects with the original page.
+- **`LET` self-reference regression tests** prove the evaluator terminates
+  (unbound name → `#NAME?`, matching Excel) and defined-name cycles report a
+  circular reference; separator-only array literals (`{,}`, `{;}`) report
+  `#VALUE!`.
+- **UTF-16 round-trip tests** cover Turkish, Japanese and astral-plane text,
+  and the date conversion helpers guard against integer underflow.
 
 ## What's new in 3.3.0
 
@@ -380,7 +401,7 @@ pdf and `.oswk`.
 
 **APK architectures.** `arm64-v8a` and `armeabi-v7a` release APKs are built
 and signed with the project release keystore; AABs are produced for both.
-minSdk 24, targetSdk 36, `versionName 3.3.0`, `versionCode 3003000`.
+minSdk 24, targetSdk 36, `versionName 3.3.1`, `versionCode 3003001`.
 
 **Storage behavior.** Documents opened from other apps are copied into app
 cache (extension and size validated) before parsing. Exports go to a SAF

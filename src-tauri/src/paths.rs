@@ -55,16 +55,12 @@ fn reject_unc_and_extended(path: &Path) -> Result<(), PdfError> {
     // both start with two separators; the engines shell out and do not accept
     // them. Refuse everywhere so behavior is identical across platforms.
     if text.starts_with("\\\\") {
-        return Err(PdfError::InvalidInput(format!(
-            "UNC and extended-length paths are not supported: {text}"
-        )));
+        return Err(PdfError::InvalidInput(format!("UNC and extended-length paths are not supported: {text}")));
     }
     // A verbatim prefix can also appear as `\\?\` after normalization on some
     // hosts; the check above already covers it, but keep this explicit.
     if text.starts_with(r"\\?\") || text.starts_with(r"\\.\") {
-        return Err(PdfError::InvalidInput(format!(
-            "extended-length paths are not supported: {text}"
-        )));
+        return Err(PdfError::InvalidInput(format!("extended-length paths are not supported: {text}")));
     }
     Ok(())
 }
@@ -136,13 +132,36 @@ fn is_windows_reserved(name: &str) -> bool {
 
 /// Validates an input path coming from the webview. The file must exist and be
 /// a regular file; nothing is rewritten (no `\\?\` prefix surprises).
+///
+/// The check is done on an **open handle**, not on the path: `File::open`
+/// resolves the path once and every later `metadata()` call reads the object
+/// that was actually opened. On Unix the handle identity is additionally
+/// compared against a fresh path lookup, so a symlink swapped in between the
+/// open and the check is rejected. This narrows the TOCTOU window for callers
+/// that pass the path on; callers that read the bytes should prefer
+/// [`read_input_file`], which keeps using the same handle for the whole read.
 pub fn input_file(raw: &str) -> Result<ValidatedPath, PdfError> {
     let path = normalize(raw)?;
-    if !path.exists() {
-        return Err(PdfError::NotFound(raw.to_string()));
-    }
-    if !path.is_file() {
+    // A directory is rejected before the open: on Windows opening one with
+    // `File::open` fails with a permission error instead of the honest
+    // "not a file" message the callers and tests expect.
+    if path.is_dir() {
         return Err(PdfError::InvalidInput(format!("not a file: {raw}")));
+    }
+    let file = std::fs::File::open(path).map_err(PdfError::from_io)?;
+    let handle_meta = file.metadata().map_err(PdfError::from_io)?;
+    if !handle_meta.is_file() {
+        return Err(PdfError::InvalidInput(format!("not a file: {raw}")));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let path_meta = std::fs::metadata(path).map_err(PdfError::from_io)?;
+        if handle_meta.dev() != path_meta.dev() || handle_meta.ino() != path_meta.ino() {
+            return Err(PdfError::InvalidInput(
+                "the file changed between validation and open (possible symlink swap)".to_string(),
+            ));
+        }
     }
     Ok(ValidatedPath(path.to_path_buf()))
 }

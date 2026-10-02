@@ -4,9 +4,7 @@
 //! XObjects and 2D affine math for rotation-aware placement.
 
 use crate::error::{PdfError, PdfResult};
-use lopdf::{
-    dictionary, Dictionary, Document, Object, ObjectId, Stream, StringFormat,
-};
+use lopdf::{dictionary, Dictionary, Document, Object, ObjectId, Stream, StringFormat};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -58,11 +56,7 @@ pub fn looks_encrypted(path: &Path) -> bool {
     match fs::read(path) {
         Ok(bytes) => {
             let needle = b"/Encrypt";
-            bytes
-                .windows(needle.len())
-                .rev()
-                .take(4096)
-                .any(|w| w == needle)
+            bytes.windows(needle.len()).rev().take(4096).any(|w| w == needle)
         }
         Err(_) => false,
     }
@@ -185,17 +179,12 @@ pub fn temp_sibling(path: &Path) -> PathBuf {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let pid = std::process::id();
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.subsec_nanos())
-        .unwrap_or(0);
+    let nanos =
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0);
     // A process-wide counter closes the (theoretical) same-nanosecond
     // collision between two threads writing the same target.
     let sequence = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "output.pdf".to_string());
+    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "output.pdf".to_string());
     path.with_file_name(format!(".{name}.{pid}{nanos}-{sequence}.tmp"))
 }
 
@@ -224,22 +213,14 @@ pub fn resolve_output_path(output: &Path, policy: OverwritePolicy) -> PdfResult<
     match policy {
         OverwritePolicy::Error => Err(PdfError::OutputExists(output.display().to_string())),
         OverwritePolicy::Replace => {
-            fs::OpenOptions::new()
-                .write(true)
-                .open(output)
-                .map_err(PdfError::from_io)?;
+            fs::OpenOptions::new().write(true).open(output).map_err(PdfError::from_io)?;
             Ok(output.to_path_buf())
         }
         OverwritePolicy::UniqueName => {
             let parent = output.parent().unwrap_or_else(|| Path::new("."));
-            let stem = output
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| "output".to_string());
-            let ext = output
-                .extension()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| "pdf".to_string());
+            let stem =
+                output.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "output".to_string());
+            let ext = output.extension().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "pdf".to_string());
             for i in 1..10_000 {
                 let candidate = parent.join(format!("{stem} ({i}).{ext}"));
                 if !candidate.exists() {
@@ -254,10 +235,7 @@ pub fn resolve_output_path(output: &Path, policy: OverwritePolicy) -> PdfResult<
 /// Default output path: next to the input file, with a suffix and .pdf ext.
 pub fn default_output_for(input: &Path, suffix: &str) -> PathBuf {
     let parent = input.parent().unwrap_or_else(|| Path::new("."));
-    let stem = input
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "document".to_string());
+    let stem = input.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "document".to_string());
     parent.join(format!("{stem}{suffix}.pdf"))
 }
 
@@ -268,10 +246,7 @@ pub struct JobDir {
 
 impl JobDir {
     pub fn new(prefix: &str) -> PdfResult<Self> {
-        let dir = tempfile::Builder::new()
-            .prefix(&format!("pdfsak-{prefix}-"))
-            .tempdir()
-            .map_err(PdfError::from_io)?;
+        let dir = tempfile::Builder::new().prefix(&format!("pdfsak-{prefix}-")).tempdir().map_err(PdfError::from_io)?;
         Ok(Self { inner: Some(dir) })
     }
 
@@ -302,11 +277,7 @@ pub fn materialize_inherited_attrs(doc: &mut Document, page_id: ObjectId) -> Pdf
     let mut collected: Vec<(Vec<u8>, Object)> = Vec::new();
     {
         let page = doc.get_dictionary(page_id)?;
-        let mut missing: Vec<&[u8]> = INHERITED_ATTRS
-            .iter()
-            .copied()
-            .filter(|k| !page.has(k))
-            .collect();
+        let mut missing: Vec<&[u8]> = INHERITED_ATTRS.iter().copied().filter(|k| !page.has(k)).collect();
         if missing.is_empty() {
             return Ok(());
         }
@@ -372,10 +343,7 @@ pub fn rebuild_page_tree(doc: &mut Document, plan: &[PagePlanItem]) -> PdfResult
     let current_pages = doc.get_pages();
     for item in plan {
         if let std::collections::hash_map::Entry::Vacant(e) = rotation_snapshot.entry(item.source_page) {
-            let page_id = current_pages
-                .get(&item.source_page)
-                .copied()
-                .ok_or(PdfError::RangeOutOfBounds)?;
+            let page_id = current_pages.get(&item.source_page).copied().ok_or(PdfError::RangeOutOfBounds)?;
             e.insert(page_rotation(doc, page_id)?);
         }
     }
@@ -397,9 +365,7 @@ pub fn rebuild_page_tree(doc: &mut Document, plan: &[PagePlanItem]) -> PdfResult
         if item.rotation_delta % 360 != 0 {
             let base = *rotation_snapshot.get(&item.source_page).unwrap_or(&0);
             let next = ((base + item.rotation_delta) % 360 + 360) % 360;
-            doc.get_object_mut(object_id)?
-                .as_dict_mut()?
-                .set("Rotate", Object::Integer(next as i64));
+            doc.get_object_mut(object_id)?.as_dict_mut()?.set("Rotate", Object::Integer(next as i64));
         }
         new_kids.push(Object::Reference(object_id));
     }
@@ -431,43 +397,61 @@ pub struct PagePlanItem {
 
 /// Deep-ish copy of a page dictionary (one level, references shared) used for
 /// duplicated pages in a plan.
+///
+/// Annotation dictionaries are **copied**, not shared: each carries a `/P`
+/// back-reference to its page, and re-pointing the shared object would corrupt
+/// the original page's annotations. The copy gets `/P` set to the duplicate.
 fn clone_page_object(doc: &mut Document, page_id: ObjectId) -> PdfResult<ObjectId> {
-    let dict = doc.get_dictionary(page_id)?.clone();
-    let mut dict = dict;
+    let mut dict = doc.get_dictionary(page_id)?.clone();
     dict.remove(b"Parent");
-    // Annotations reference their page; strip those references so duplicates
-    // do not contain dangling /P pointers to the original page.
-    if let Ok(annots) = dict.get(b"Annots") {
-        let keep: Vec<Object> = match annots {
-            Object::Array(items) => items.to_vec(),
-            Object::Reference(_) => vec![annots.clone()],
-            _ => Vec::new(),
-        };
-        if !keep.is_empty() {
-            dict.set("Annots", Object::Array(keep));
+    let new_page_id = doc.add_object(Object::Dictionary(dict));
+
+    let annots = doc.get_dictionary(new_page_id).ok().and_then(|page| page.get(b"Annots").ok().cloned());
+    let Some(annots) = annots else {
+        return Ok(new_page_id);
+    };
+    let items: Vec<Object> = match annots {
+        Object::Array(items) => items,
+        Object::Reference(id) => vec![Object::Reference(id)],
+        _ => return Ok(new_page_id),
+    };
+    let mut copied_items: Vec<Object> = Vec::with_capacity(items.len());
+    for item in items {
+        match item {
+            Object::Reference(annot_id) => {
+                let annotation = doc.get_dictionary(annot_id).ok().cloned();
+                match annotation {
+                    Some(mut annotation) => {
+                        annotation.set("P", Object::Reference(new_page_id));
+                        copied_items.push(Object::Reference(doc.add_object(Object::Dictionary(annotation))));
+                    }
+                    // A dangling annotation reference is preserved rather than
+                    // silently dropped.
+                    None => copied_items.push(Object::Reference(annot_id)),
+                }
+            }
+            Object::Dictionary(mut annotation) => {
+                annotation.set("P", Object::Reference(new_page_id));
+                copied_items.push(Object::Dictionary(annotation));
+            }
+            other => copied_items.push(other),
         }
     }
-    Ok(doc.add_object(Object::Dictionary(dict)))
+    if let Ok(page) = doc.get_object_mut(new_page_id).and_then(Object::as_dict_mut) {
+        page.set("Annots", Object::Array(copied_items));
+    }
+    Ok(new_page_id)
 }
 
 pub fn page_rotation(doc: &Document, page_id: ObjectId) -> PdfResult<i32> {
     let page = doc.get_dictionary(page_id)?;
-    Ok(page
-        .get(b"Rotate")
-        .ok()
-        .and_then(|o| o.as_i64().ok())
-        .map(|v| v.rem_euclid(360) as i32)
-        .unwrap_or(0))
+    Ok(page.get(b"Rotate").ok().and_then(|o| o.as_i64().ok()).map(|v| v.rem_euclid(360) as i32).unwrap_or(0))
 }
 
 pub fn page_mediabox(doc: &Document, page_id: ObjectId) -> PdfResult<[f64; 4]> {
     let page = doc.get_dictionary(page_id)?;
-    let mb = page
-        .get(b"MediaBox")
-        .map_err(|_| PdfError::CorruptPdf("page has no MediaBox".into()))?;
-    let arr = mb
-        .as_array()
-        .map_err(|_| PdfError::CorruptPdf("MediaBox is not an array".into()))?;
+    let mb = page.get(b"MediaBox").map_err(|_| PdfError::CorruptPdf("page has no MediaBox".into()))?;
+    let arr = mb.as_array().map_err(|_| PdfError::CorruptPdf("MediaBox is not an array".into()))?;
     if arr.len() != 4 {
         return Err(PdfError::CorruptPdf("MediaBox must have 4 entries".into()));
     }
@@ -482,9 +466,7 @@ pub fn page_cropbox(doc: &Document, page_id: ObjectId) -> PdfResult<Option<[f64;
     let page = doc.get_dictionary(page_id)?;
     match page.get(b"CropBox") {
         Ok(cb) => {
-            let arr = cb
-                .as_array()
-                .map_err(|_| PdfError::CorruptPdf("CropBox is not an array".into()))?;
+            let arr = cb.as_array().map_err(|_| PdfError::CorruptPdf("CropBox is not an array".into()))?;
             if arr.len() != 4 {
                 return Ok(None);
             }
@@ -512,17 +494,12 @@ pub fn object_to_f64(obj: &Object) -> Option<f64> {
 
 /// Appends a content stream to a page (drawn on top of existing content).
 pub fn append_page_content(doc: &mut Document, page_id: ObjectId, content: Vec<u8>) -> PdfResult<()> {
-    doc.add_page_contents(page_id, content)
-        .map_err(|e| PdfError::from_lopdf(e, None))
+    doc.add_page_contents(page_id, content).map_err(|e| PdfError::from_lopdf(e, None))
 }
 
 /// Wraps all existing page content in a `q ... cm ... Q` transform, used for
 /// scaling/translating pages (resize, custom page sizes).
-pub fn wrap_page_content_transform(
-    doc: &mut Document,
-    page_id: ObjectId,
-    matrix: Matrix,
-) -> PdfResult<()> {
+pub fn wrap_page_content_transform(doc: &mut Document, page_id: ObjectId, matrix: Matrix) -> PdfResult<()> {
     let existing = doc.get_page_content(page_id);
     let mut wrapped = Vec::with_capacity(existing.len() + 64);
     wrapped.extend_from_slice(b"q\n");
@@ -609,24 +586,18 @@ pub fn own_page_resources(doc: &mut Document, page_id: ObjectId) -> PdfResult<Ob
             } else {
                 let dict = doc.get_dictionary(id)?.clone();
                 let new_id = doc.add_object(Object::Dictionary(dict));
-                doc.get_object_mut(page_id)?
-                    .as_dict_mut()?
-                    .set("Resources", Object::Reference(new_id));
+                doc.get_object_mut(page_id)?.as_dict_mut()?.set("Resources", Object::Reference(new_id));
                 Ok(new_id)
             }
         }
         Some(Object::Dictionary(dict)) => {
             let new_id = doc.add_object(Object::Dictionary(dict));
-            doc.get_object_mut(page_id)?
-                .as_dict_mut()?
-                .set("Resources", Object::Reference(new_id));
+            doc.get_object_mut(page_id)?.as_dict_mut()?.set("Resources", Object::Reference(new_id));
             Ok(new_id)
         }
         _ => {
             let new_id = doc.add_object(Object::Dictionary(Dictionary::new()));
-            doc.get_object_mut(page_id)?
-                .as_dict_mut()?
-                .set("Resources", Object::Reference(new_id));
+            doc.get_object_mut(page_id)?.as_dict_mut()?.set("Resources", Object::Reference(new_id));
             Ok(new_id)
         }
     }
@@ -660,15 +631,11 @@ pub fn add_resource_entry(
                 }
             };
             let new_id = doc.add_object(Object::Dictionary(existing_dict.unwrap_or_default()));
-            doc.get_object_mut(resources_id)?
-                .as_dict_mut()?
-                .set(category, Object::Reference(new_id));
+            doc.get_object_mut(resources_id)?.as_dict_mut()?.set(category, Object::Reference(new_id));
             new_id
         }
     };
-    doc.get_object_mut(sub_id)?
-        .as_dict_mut()?
-        .set(name, value);
+    doc.get_object_mut(sub_id)?.as_dict_mut()?.set(name, value);
     Ok(())
 }
 
@@ -785,16 +752,12 @@ pub fn pdf_text_value(obj: &Object) -> Option<String> {
     match obj {
         Object::String(bytes, _) => {
             if bytes.starts_with(&[0xFE, 0xFF]) {
-                let units: Vec<u16> = bytes[2..]
-                    .as_chunks::<2>().0.iter()
-                    .map(|c| u16::from_be_bytes([c[0], c[1]]))
-                    .collect();
+                let units: Vec<u16> =
+                    bytes[2..].as_chunks::<2>().0.iter().map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
                 Some(String::from_utf16_lossy(&units))
             } else if bytes.starts_with(&[0xFF, 0xFE]) {
-                let units: Vec<u16> = bytes[2..]
-                    .as_chunks::<2>().0.iter()
-                    .map(|c| u16::from_le_bytes([c[0], c[1]]))
-                    .collect();
+                let units: Vec<u16> =
+                    bytes[2..].as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
                 Some(String::from_utf16_lossy(&units))
             } else {
                 Some(String::from_utf8_lossy(bytes).to_string())
@@ -860,10 +823,7 @@ impl Matrix {
     }
 
     pub fn apply(&self, x: f64, y: f64) -> (f64, f64) {
-        (
-            self.0[0] * x + self.0[2] * y + self.0[4],
-            self.0[1] * x + self.0[3] * y + self.0[5],
-        )
+        (self.0[0] * x + self.0[2] * y + self.0[4], self.0[1] * x + self.0[3] * y + self.0[5])
     }
 
     /// Inverse of an affine transform (None when degenerate).
@@ -873,14 +833,7 @@ impl Matrix {
         if det.abs() < 1e-12 {
             return None;
         }
-        Some(Matrix([
-            d / det,
-            -b / det,
-            -c / det,
-            a / det,
-            (c * f - d * e) / det,
-            (b * e - a * f) / det,
-        ]))
+        Some(Matrix([d / det, -b / det, -c / det, a / det, (c * f - d * e) / det, (b * e - a * f) / det]))
     }
 
     pub fn to_cm(&self) -> String {
@@ -921,12 +874,7 @@ impl Matrix {
 
 /// Converts a display-space rectangle back to page coordinates (used by crop
 /// preview -> CropBox conversion).
-pub fn display_rect_to_page_rect(
-    rotation: i32,
-    page_w: f64,
-    page_h: f64,
-    rect: [f64; 4],
-) -> [f64; 4] {
+pub fn display_rect_to_page_rect(rotation: i32, page_w: f64, page_h: f64, rect: [f64; 4]) -> [f64; 4] {
     let to_page = Matrix::display_to_page(rotation, page_w, page_h);
     let corners = [
         to_page.apply(rect[0], rect[1]),
@@ -963,9 +911,7 @@ mod tests {
         let m = Matrix::for_rotated_page(rot, w, h, 50.0, 60.0, 100.0, 20.0);
         // The page->display transform must map the placed corners back onto
         // the same display rect.
-        let to_display = Matrix::display_to_page(rot, w, h)
-            .inverse()
-            .expect("invertible");
+        let to_display = Matrix::display_to_page(rot, w, h).inverse().expect("invertible");
         let corners_display = [(50.0, 60.0), (150.0, 60.0), (50.0, 80.0), (150.0, 80.0)];
         for (i, (dx, dy)) in corners_display.iter().enumerate() {
             // unit square corner for this display corner
@@ -1005,5 +951,61 @@ mod tests {
         assert_eq!(pdf_text_value(&obj).unwrap(), "Rapor: şğüöç 2026");
         let ascii = pdf_text_object("plain");
         assert_eq!(pdf_text_value(&ascii).unwrap(), "plain");
+    }
+
+    #[test]
+    fn utf16_encoding_roundtrip() {
+        // UTF-16BE with a BOM is the encoding `pdf_text_object` writes; every
+        // script and astral-plane character must survive the round trip.
+        for text in ["Hello World", "Türkçe karakterler: şğüöç 2026", "日本語テスト", "Emoji: 🎉"] {
+            let obj = pdf_text_object(text);
+            assert_eq!(pdf_text_value(&obj).unwrap(), text, "round trip failed for {text}");
+        }
+    }
+
+    #[test]
+    fn duplicating_a_page_copies_annotations_and_repoints_parent() {
+        use lopdf::{dictionary, Object};
+
+        let mut doc = Document::new();
+        let page_id = doc.add_object(Object::Dictionary(dictionary! {
+            "Type" => "Page",
+            "MediaBox" => vec![
+                Object::Integer(0),
+                Object::Integer(0),
+                Object::Integer(612),
+                Object::Integer(792),
+            ],
+        }));
+        let annot_id = doc.add_object(Object::Dictionary(dictionary! {
+            "Type" => "Annot",
+            "Subtype" => "Text",
+            "Rect" => vec![
+                Object::Integer(10),
+                Object::Integer(10),
+                Object::Integer(30),
+                Object::Integer(30),
+            ],
+            "P" => Object::Reference(page_id),
+        }));
+        doc.get_object_mut(page_id)
+            .and_then(Object::as_dict_mut)
+            .unwrap()
+            .set("Annots", Object::Array(vec![Object::Reference(annot_id)]));
+
+        let duplicate_id = clone_page_object(&mut doc, page_id).expect("clone page");
+
+        // The duplicate references a *new* annotation object...
+        let duplicate_annots =
+            doc.get_dictionary(duplicate_id).unwrap().get(b"Annots").unwrap().as_array().unwrap().clone();
+        let copied_annot_id = duplicate_annots[0].as_reference().unwrap();
+        assert_ne!(copied_annot_id, annot_id, "the annotation dictionary must be copied");
+
+        // ...whose /P points at the duplicate, while the original still points
+        // at the original page.
+        let copied_parent = doc.get_dictionary(copied_annot_id).unwrap().get(b"P").unwrap().as_reference().unwrap();
+        let original_parent = doc.get_dictionary(annot_id).unwrap().get(b"P").unwrap().as_reference().unwrap();
+        assert_eq!(copied_parent, duplicate_id);
+        assert_eq!(original_parent, page_id);
     }
 }

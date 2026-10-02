@@ -500,7 +500,9 @@ pub fn timestamp() -> String {
 
 fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    // `saturating_sub` keeps the floor-division branch well-defined for
+    // extreme negative input instead of overflowing in debug builds.
+    let era = if z >= 0 { z } else { z.saturating_sub(146_096) } / 146_097;
     let doe = (z - era * 146_097) as u64;
     let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
     let y = yoe as i64 + era * 400;
