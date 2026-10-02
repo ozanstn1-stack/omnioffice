@@ -38,14 +38,23 @@ export default defineConfig({
     // machine (or while cargo tests run next to them) the default 5 s timeout
     // is tight enough to fail a passing test.
     testTimeout: 20_000,
-    // Coverage is informational today (CI prints the summary); raising it to a
-    // blocking threshold is a follow-up once the baseline has settled.
+    // Coverage thresholds are ratchet floors: raise them as coverage grows,
+    // never lower them to make a red build green.
     coverage: {
       provider: "v8",
       reporter: ["text-summary", "json-summary", "html"],
       reportsDirectory: "coverage",
       include: ["src/**/*.{ts,tsx}"],
       exclude: ["src/**/*.test.{ts,tsx}", "src/test-setup.ts"],
+      // Ratchet floors measured from the 3.5.0 suite (60.7/71.2/48.5/60.7).
+      // Raise them as coverage grows; never lower them to make a red build
+      // green - write the missing test instead.
+      thresholds: {
+        statements: 58,
+        branches: 68,
+        functions: 46,
+        lines: 58,
+      },
     },
   },
 });
