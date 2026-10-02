@@ -15,10 +15,10 @@ The only differences are in how the operating system lets an app touch files
 
 | Tool | Version | Notes |
 | --- | --- | --- |
-| JDK | 17 or newer | `JAVA_HOME` must point at it |
+| JDK | 21 or newer | `JAVA_HOME` must point at it |
 | Android SDK | platform 36, build-tools 36 | `ANDROID_HOME` / `ANDROID_SDK_ROOT` |
 | Android NDK | 27.x (e.g. `27.3.13750724`) | `sdkmanager "ndk;27.3.13750724"` |
-| Rust | 1.82+ with the Android targets | `rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android` |
+| Rust | 1.89+ with the Android targets | `rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android` |
 
 The Gradle project lives in `src-tauri/gen/android` and is part of the
 repository (only build outputs are ignored), so no `tauri android init` is
@@ -50,14 +50,14 @@ powershell -File scripts/build-android.ps1 -AndroidHome D:\Sdk -NdkHome D:\Sdk\n
 ```
 
 The app version comes from `src-tauri/tauri.conf.json`; the build script
-writes `app/tauri.properties` (`versionName=3.1.0`,
-`versionCode=3001000` — `major*1e6 + minor*1e3 + patch`, monotonically
+writes `app/tauri.properties` (`versionName=3.4.0`,
+`versionCode=3004000` — `major*1e6 + minor*1e3 + patch`, monotonically
 increasing).
 
 Install on a device or emulator:
 
 ```powershell
-adb install -r release-artifacts\PDF-Swiss-Army-Knife-Android-3.1.0-arm64-v8a.apk
+adb install -r release-artifacts\PDF-Swiss-Army-Knife-Android-3.4.0-arm64-v8a.apk
 ```
 
 > **Why not `tauri android build`?** The Tauri CLI prepares `jniLibs` with

@@ -135,6 +135,18 @@ fn the_matrix_describes_the_features_it_claims() {
         "the signature note no longer matches the engine: {}",
         signatures.note
     );
+    // DSS archiving shipped (pdfcore::ltv); the note may only claim the
+    // timestamp half is missing, never that the whole validation-data path is.
+    assert!(
+        signatures.note.contains("DSS") && !signatures.note.contains("DSS, RFC 3161 timestamps"),
+        "the signature note must describe DSS as written and timestamps as missing: {}",
+        signatures.note
+    );
+    assert!(
+        signatures.note.contains("RFC 3161 timestamps are not"),
+        "the signature note must state that RFC 3161 timestamps are not requested yet: {}",
+        signatures.note
+    );
     // Macro-enabled formats must say what happens to the macros.
     for extension in ["docm", "xlsm", "pptm"] {
         let capabilities = format_capabilities(extension);

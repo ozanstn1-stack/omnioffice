@@ -4,6 +4,46 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] - Quick wins: commands, settings, Home and accessibility
+
+### Added
+
+- **Command platform.** Every screen is a palette command and every registered
+  keybinding now executes through `matchKeybinding`; the palette grew from 7
+  view commands to all 42 screens plus `file.open`, `app.commandPalette` and
+  `app.globalSearch`. `Ctrl+O` opens office formats into the workspace and
+  routes other documents through the active screen's drop handler.
+- **Settings.** `midnight`/`paper` themes, office default formats
+  (`defaultWriterFormat`, `defaultCalcFormat`, `defaultImpressFormat`),
+  version-history and import-warning toggles. The format defaults now drive
+  the save dialog, version history gates `historyPush`, and import warnings
+  surface once per open. The shortcut list reflects real bindings.
+- **Home tool directory.** Searchable, grouped grid covering every screen;
+  recent PDFs open in the Reader; the reveal action is a labeled `IconButton`.
+- **Calc.** `CUMIPMT` and `CUMPRINC` implemented with Excel reference values,
+  range/type validation and regression tests; the unused
+  `UNSUPPORTED_FINANCIAL` export is gone.
+- **Accessibility.** Modal focus trap and focus restore, `aria-current` on the
+  sidebar, roving tabindex + arrow-key navigation in `Segmented`,
+  `aria-live` job announcements, `documentElement.lang` follows the language,
+  translated labels for previously hard-coded controls, and a
+  `prefers-reduced-motion` stylesheet rule.
+- **Quality.** `npm run test:coverage` (Vitest v8 provider) runs in the
+  frontend CI job; `src/components/ui.test.tsx` covers the modal focus
+  behavior; `docs/roadmap.md` tracks the phases after 3.4.0.
+
+### Fixed
+
+- **Multi-file drop suggestion** on Home kept only the first file, so running
+  Merge from the suggestion silently dropped the rest of the selection.
+- **`officecore::compat`** still claimed long-term validation data
+  (`DSS`) was not written; the note now matches `pdfcore::ltv` (DSS is written
+  for offline PAdES B-LT, RFC 3161 timestamps are not requested yet) and the
+  README contract test enforces the wording.
+- **Docs drift**: `docs/android.md` now matches the README (JDK 21, Rust
+  1.89+), and the README test counts are refreshed (528 Rust, 626 frontend).
+- **Slide move buttons** and the color picker use localized accessible names.
+
 ## [3.3.1] - Security hardening and reliability patch
 
 ### Security

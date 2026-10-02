@@ -1465,10 +1465,10 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
               <span className="slide-number">{index + 1}</span>
               <SlidePreview deck={deck} slide={candidate} theme={theme} width={148} />
               <div className="slide-thumb-actions">
-                <button type="button" className="icon-btn" onClick={(event) => { event.stopPropagation(); moveSlide(index, index - 1); }} title="Move up">
+                <button type="button" className="icon-btn" onClick={(event) => { event.stopPropagation(); moveSlide(index, index - 1); }} title={t("common.moveUp")}>
                   ↑
                 </button>
-                <button type="button" className="icon-btn" onClick={(event) => { event.stopPropagation(); moveSlide(index, index + 1); }} title="Move down">
+                <button type="button" className="icon-btn" onClick={(event) => { event.stopPropagation(); moveSlide(index, index + 1); }} title={t("common.moveDown")}>
                   ↓
                 </button>
               </div>

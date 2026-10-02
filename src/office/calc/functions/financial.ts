@@ -388,8 +388,62 @@ registerFunction("NOMINAL", (args) => {
   return ((1 + effective) ** (1 / periods) - 1) * periods;
 }, 2, 2, false, { signature: "NOMINAL(effect_rate, npery)", category: "Financial" });
 
-/** CUMIPMT/CUMPRINC are not implemented; the picker says so instead of guessing. */
-export const UNSUPPORTED_FINANCIAL = ["CUMIPMT", "CUMPRINC", "CUMPRINC", "DBM", "DOLLARDE", "DOLLARFR"] as const;
+/**
+ * Interest part of a single annuity payment (Excel's IPMT with fv = 0).
+ * `payment` comes from the same closed form as `PMT` above; with `kind = 1`
+ * the first period carries no interest because the payment is made at the
+ * beginning of the period.
+ */
+function periodInterest(rate: number, period: number, present: number, payment: number, kind: number): number {
+  if (rate === 0) return 0;
+  let index = period;
+  if (kind === 1) {
+    if (index === 1) return 0;
+    index -= 1;
+  }
+  const factor = powerFactor(rate, index - 1);
+  const balance = -(present * factor + payment * ((factor - 1) / rate));
+  return balance * rate;
+}
+
+/** Shared body of CUMIPMT/CUMPRINC; `principal` selects the principal part. */
+function cumulativePayment(args: Scalar[][][], principal: boolean): number | FormulaError {
+  const rate = readNumber(args, 0, 0);
+  if (typeof rate !== "number") return rate;
+  const periods = readNumber(args, 1, 0);
+  if (typeof periods !== "number") return periods;
+  const present = readNumber(args, 2, 0);
+  if (typeof present !== "number") return present;
+  const startValue = readNumber(args, 3, 0);
+  if (typeof startValue !== "number") return startValue;
+  const endValue = readNumber(args, 4, 0);
+  if (typeof endValue !== "number") return endValue;
+  const kindValue = readNumber(args, 5, 0);
+  if (typeof kindValue !== "number") return kindValue;
+  const start = Math.trunc(startValue);
+  const end = Math.trunc(endValue);
+  const kind = Math.trunc(kindValue);
+  if (rate <= 0 || periods <= 0 || present <= 0) return ERR.num();
+  if (start < 1 || end < start || end > periods || (kind !== 0 && kind !== 1)) return ERR.num();
+  const factor = powerFactor(rate, periods);
+  const payment = (-present * factor) * rate / ((factor - 1) * (1 + kind * rate));
+  let total = 0;
+  for (let period = start; period <= end; period += 1) {
+    const interest = periodInterest(rate, period, present, payment, kind);
+    total += principal ? payment - interest : interest;
+  }
+  return total;
+}
+
+registerFunction("CUMIPMT", (args) => cumulativePayment(args, false), 6, 6, false, {
+  signature: "CUMIPMT(rate, nper, pv, start_period, end_period, type)",
+  category: "Financial",
+});
+
+registerFunction("CUMPRINC", (args) => cumulativePayment(args, true), 6, 6, false, {
+  signature: "CUMPRINC(rate, nper, pv, start_period, end_period, type)",
+  category: "Financial",
+});
 
 export { toText as financialToText };
 export type { Args as FinancialArgs };

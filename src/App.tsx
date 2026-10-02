@@ -92,7 +92,7 @@ const NotesScreen = React.lazy(() => import("./office/ToolsScreens").then((modul
 const PdfFormsScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.PdfFormsScreen })));
 const PlannerScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.PlannerScreen })));
 const TemplatesScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.TemplatesScreen })));
-import { registerCommand, setCommandTranslator, unregisterCommand } from "./lib/commands";
+import { matchKeybinding, registerCommand, runCommand, setCommandTranslator, unregisterCommand } from "./lib/commands";
 import { resumeJobs, useJobs as useBackgroundJobs } from "./lib/jobs";
 import { CommandPalette, GlobalSearch } from "./components/command-palette";
 import { OverwriteDialog, PasswordDialog, Toasts } from "./components/files";
@@ -278,6 +278,11 @@ export default function App() {
       .catch(() => undefined);
   }, [settings.theme]);
 
+  // The document language drives spell check and assistive technology.
+  useEffect(() => {
+    document.documentElement.lang = settings.language;
+  }, [settings.language]);
+
   // OS drag & drop from Explorer
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -316,80 +321,159 @@ export default function App() {
     setCommandTranslator(t);
   }, [t]);
 
+  // Files picked through the global open dialog (Ctrl+O / file.open command):
+  // office documents open as workspace tabs, everything else goes through the
+  // active screen's drop handler (or seeds the Home suggestion card).
+  const openPickedFiles = useCallback(
+    (paths: string[]) => {
+      if (!paths.length) return;
+      const officePaths = paths.filter((path) => isOfficePath(path));
+      const documentPaths = paths.filter((path) => !isOfficePath(path));
+      if (officePaths.length > 0) {
+        setScreen("office");
+        for (const path of officePaths) void openOfficePath(path);
+      }
+      if (documentPaths.length === 0) return;
+      if (screen === "home" || officePaths.length > 0) {
+        setFiles(documentPaths);
+        return;
+      }
+      const handler = useDrop.getState().handler;
+      if (handler) handler(documentPaths);
+    },
+    [screen],
+  );
+
+  const pickFiles = useCallback(() => {
+    if (isAndroid()) {
+      void pickAndroidFiles({ multiple: true, accept: "any" })
+        .then(openPickedFiles)
+        .catch(() => undefined);
+      return;
+    }
+    void open({
+      multiple: true,
+      filters: [
+        {
+          name: "Documents",
+          extensions: [
+            "pdf", "jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff",
+            "docx", "odt", "rtf", "txt", "md", "html", "xlsx", "ods", "csv", "tsv", "pptx", "odp", "oswk",
+          ],
+        },
+      ],
+    }).then((picked) => {
+      if (!picked) return;
+      openPickedFiles((Array.isArray(picked) ? picked : [picked]).map(String));
+    });
+  }, [openPickedFiles]);
+
+  // Command platform: every screen is a command, alongside the global file,
+  // palette and search actions. The keybindings registered here are the single
+  // source of truth for the former hard-coded shortcut handler.
   useEffect(() => {
-    const views: { id: ScreenId; key: string; category: "view" | "file" | "settings" }[] = [
+    const views: { id: ScreenId; key: string; category: "view" | "settings"; keybinding?: string }[] = [
       { id: "home", key: "nav.home", category: "view" },
       { id: "office", key: "nav.office", category: "view" },
       { id: "reader", key: "nav.reader", category: "view" },
+      { id: "ai", key: "nav.ai", category: "view" },
+      { id: "aiLibrary", key: "nav.aiLibrary", category: "view" },
+      { id: "merge", key: "nav.merge", category: "view" },
+      { id: "organize", key: "nav.organize", category: "view" },
+      { id: "split", key: "nav.split", category: "view" },
+      { id: "compress", key: "nav.compress", category: "view" },
+      { id: "ocr", key: "nav.ocr", category: "view" },
+      { id: "pdfToImages", key: "nav.pdfToImages", category: "view" },
+      { id: "imagesToPdf", key: "nav.imagesToPdf", category: "view" },
+      { id: "protect", key: "nav.protect", category: "view" },
+      { id: "unlock", key: "nav.unlock", category: "view" },
+      { id: "watermark", key: "nav.watermark", category: "view" },
+      { id: "annotate", key: "nav.annotate", category: "view" },
+      { id: "redact", key: "nav.redact", category: "view" },
+      { id: "compare", key: "nav.compare", category: "view" },
+      { id: "inspect", key: "nav.inspect", category: "view" },
+      { id: "metadata", key: "nav.metadata", category: "view" },
+      { id: "pageTools", key: "nav.pageTools", category: "view" },
+      { id: "batch", key: "nav.batch", category: "view" },
+      { id: "pdfStudio", key: "nav.pdfStudio", category: "view" },
+      { id: "pdfForms", key: "nav.pdfForms", category: "view" },
       { id: "vault", key: "nav.vault", category: "view" },
-      { id: "compat", key: "nav.compat", category: "view" },
+      { id: "documents", key: "nav.documents", category: "view" },
+      { id: "spreadsheets", key: "nav.spreadsheets", category: "view" },
+      { id: "presentations", key: "nav.presentations", category: "view" },
+      { id: "templates", key: "nav.templates", category: "view" },
+      { id: "notes", key: "nav.notes", category: "view" },
+      { id: "planner", key: "nav.planner", category: "view" },
+      { id: "data", key: "nav.data", category: "view" },
+      { id: "draw", key: "nav.draw", category: "view" },
+      { id: "converter", key: "nav.converter", category: "view" },
+      { id: "cleaner", key: "nav.cleaner", category: "view" },
+      { id: "history", key: "nav.history", category: "view" },
       { id: "jobs", key: "nav.jobs", category: "view" },
-      { id: "settings", key: "nav.settings", category: "settings" },
+      { id: "sync", key: "nav.sync", category: "view" },
+      { id: "plugins", key: "nav.plugins", category: "view" },
+      { id: "compat", key: "nav.compat", category: "view" },
+      { id: "info", key: "nav.info", category: "view" },
+      { id: "settings", key: "nav.settings", category: "settings", keybinding: "Ctrl+," },
     ];
     for (const view of views) {
       registerCommand({
         id: `view.${view.id}`,
         titleKey: view.key,
         category: view.category,
+        keybinding: view.keybinding,
         enabled: () => true,
         execute: () => setScreen(view.id),
       });
     }
-    return () => views.forEach((view) => unregisterCommand(`view.${view.id}`));
-  }, []);
+    registerCommand({
+      id: "file.open",
+      titleKey: "common.openFile",
+      category: "file",
+      keybinding: "Ctrl+O",
+      enabled: () => true,
+      execute: () => pickFiles(),
+    });
+    registerCommand({
+      id: "app.commandPalette",
+      titleKey: "palette.open",
+      category: "view",
+      keybinding: "Ctrl+Shift+P",
+      enabled: () => true,
+      execute: () => setPaletteOpen(true),
+    });
+    registerCommand({
+      id: "app.globalSearch",
+      titleKey: "palette.search",
+      category: "view",
+      keybinding: "Ctrl+Shift+F",
+      enabled: () => true,
+      execute: () => setSearchOpen(true),
+    });
+    const ids = [...views.map((view) => `view.${view.id}`), "file.open", "app.commandPalette", "app.globalSearch"];
+    return () => ids.forEach((id) => unregisterCommand(id));
+  }, [pickFiles]);
 
-  // Global keyboard shortcuts
+  // One keyboard entry point: the command registry decides. Modified chords
+  // run commands (palette, search, open, settings); unmodified keys are left
+  // to the focused editor or control.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement;
-      const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+      const target = event.target as HTMLElement | null;
+      const typing =
+        !!target && (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable);
       const mod = event.ctrlKey || event.metaKey;
-      if (mod && event.shiftKey && event.key.toLowerCase() === "p") {
-        event.preventDefault();
-        setPaletteOpen(true);
-        return;
-      }
-      if (mod && event.shiftKey && event.key.toLowerCase() === "f") {
-        event.preventDefault();
-        setSearchOpen(true);
-        return;
-      }
-      if (mod && event.key === ",") {
-        event.preventDefault();
-        setScreen("settings");
-        return;
-      }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "o") {
-        event.preventDefault();
-        const handlePicked = (paths: string[]) => {
-          if (!paths.length) return;
-          if (screen === "home") {
-            setFiles(paths);
-          } else {
-            const handler = useDrop.getState().handler;
-            if (handler) handler(paths);
-          }
-        };
-        if (isAndroid()) {
-          void pickAndroidFiles({ multiple: true, accept: "any" })
-            .then(handlePicked)
-            .catch(() => undefined);
-          return;
-        }
-        void open({
-          multiple: true,
-          filters: [{ name: "Documents", extensions: ["pdf", "jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"] }],
-        }).then((picked) => {
-          if (!picked) return;
-          handlePicked((Array.isArray(picked) ? picked : [picked]).map(String));
-        });
-        return;
-      }
-      if (event.key === "Escape") {
-        // Esc is handled by modals; nothing global to do here.
-        return;
-      }
-      void typing;
+      if ((typing || event.key === "Escape") && !mod && !event.altKey) return;
+      const id = matchKeybinding({
+        key: event.key,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+      });
+      if (!id) return;
+      event.preventDefault();
+      runCommand(id, { screen });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -652,6 +736,7 @@ export default function App() {
                 key={item.id}
                 className="nav-item"
                 data-active={active}
+                aria-current={active ? "page" : undefined}
                 onClick={() => {
                   navigate(item.id);
                   setNavOpen(false);
@@ -675,7 +760,7 @@ export default function App() {
     return (
       <div className="flex flex-col h-full" style={{ background: "var(--bg)" }}>
         <header className="mobile-bar">
-          <IconButton label={t("app.name")} onClick={() => setNavOpen(true)}>
+          <IconButton label={t("app.name")} onClick={() => setNavOpen(true)} aria-expanded={navOpen}>
             <Menu size={18} />
           </IconButton>
           <p className="font-semibold text-[14px] truncate flex-1">{activeLabel}</p>
@@ -719,6 +804,9 @@ export default function App() {
         </main>
 
         <Toasts />
+        <div className="sr-only" role="status" aria-live="polite">
+          {backgroundJobs > 0 ? t("jobs.runningCount", { count: backgroundJobs }) : ""}
+        </div>
         <OverwriteDialog />
         <PasswordDialog />
         {/* One global host so the compatibility gate also covers the
@@ -776,7 +864,7 @@ export default function App() {
             >
               {isDark ? <Sun size={15} /> : <Moon size={15} />}
             </IconButton>
-            <IconButton label="Sidebar" onClick={() => setSidebarCompact((previous) => !previous)}>
+            <IconButton label={t("nav.sidebar")} onClick={() => setSidebarCompact((previous) => !previous)}>
               <Layers size={15} />
             </IconButton>
           </div>
@@ -801,6 +889,9 @@ export default function App() {
       </main>
 
       <Toasts />
+      <div className="sr-only" role="status" aria-live="polite">
+        {backgroundJobs > 0 ? t("jobs.runningCount", { count: backgroundJobs }) : ""}
+      </div>
       <OverwriteDialog />
       <PasswordDialog />
       {/* Global compatibility gate host (converter + office workspace). */}

@@ -49,9 +49,8 @@ function CommandPaletteBody({ onClose, context, onNavigate }: { onClose: () => v
   const run = (command: CommandDefinition) => {
     onClose();
     void runCommand(command.id, context);
-    if (command.category === "view" && onNavigate) {
-      const screen = command.id.replace("view.", "");
-      onNavigate(screen);
+    if (command.id.startsWith("view.") && onNavigate) {
+      onNavigate(command.id.slice("view.".length));
     }
   };
 
@@ -203,7 +202,7 @@ function GlobalSearchBody({ onClose, onOpenPath, onNavigate }: { onClose: () => 
               onClick={() => {
                 onClose();
                 void runCommand(command.id);
-                if (command.category === "view" && onNavigate) onNavigate(command.id.replace("view.", ""));
+                if (command.id.startsWith("view.") && onNavigate) onNavigate(command.id.slice("view.".length));
               }}
             >
               <CommandIcon size={13} />

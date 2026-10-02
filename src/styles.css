@@ -914,3 +914,16 @@ body {
 .compat-layout { display: grid; grid-template-columns: 280px 1fr; gap: 14px; align-items: start; }
 @media (max-width: 900px) { .compat-layout { grid-template-columns: 1fr; } }
 .compat-list { max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+
+/* Respect the OS "reduce motion" preference for every transition and
+   animation in the app (the slideshow keeps its own explicit durations). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
