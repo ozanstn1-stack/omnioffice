@@ -39,6 +39,7 @@ desktop.ini
 # test artifacts
 tests/artifacts/
 crates/pdfcore/tests/artifacts/
+coverage/
 
 # sample documents produced by running the tools on samples/
 samples/*_compressed.pdf

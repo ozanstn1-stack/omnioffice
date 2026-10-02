@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   FileSearch,
+  FileText,
   HardDrive,
   KeyRound,
   ShieldCheck,
@@ -45,13 +46,13 @@ export function Settings() {
   };
 
   const shortcuts: [string, string][] = [
-    ["Ctrl + O", t("nav.home")],
+    ["Ctrl + Shift + P", t("palette.open")],
+    ["Ctrl + Shift + F", t("palette.search")],
+    ["Ctrl + O", t("common.openFile")],
     ["Ctrl + ,", t("nav.settings")],
-    ["Ctrl + A", t("common.selectAll")],
-    ["Delete", t("common.delete")],
+    ["Ctrl + S", t("common.save")],
     ["Ctrl + Z", t("common.undo")],
     ["Ctrl + Y", t("common.redo")],
-    ["Esc", t("common.cancel")],
   ];
 
   return (
@@ -64,7 +65,7 @@ export function Settings() {
           <div>
             <label className="label">{t("settings.theme")}</label>
             <div className="seg">
-              {(["dark", "light", "system"] as const).map((theme) => (
+              {(["dark", "light", "system", "midnight", "paper"] as const).map((theme) => (
                 <button key={theme} data-active={settings.theme === theme} onClick={() => void update({ theme })}>
                   {t(`settings.${theme}`)}
                 </button>
@@ -154,6 +155,70 @@ export function Settings() {
 
         <Card className="p-5 flex flex-col gap-4">
           <h3 className="font-semibold flex items-center gap-2">
+            <FileText size={16} style={{ color: "var(--accent)" }} /> {t("settings.officeDefaults")}
+          </h3>
+          <div>
+            <label className="label">{t("settings.defaultWriterFormat")}</label>
+            <div className="seg">
+              {(["docx", "odt"] as const).map((format) => (
+                <button
+                  key={format}
+                  data-active={settings.defaultWriterFormat === format}
+                  onClick={() => void update({ defaultWriterFormat: format })}
+                >
+                  {format.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="label">{t("settings.defaultCalcFormat")}</label>
+            <div className="seg">
+              {(["xlsx", "ods"] as const).map((format) => (
+                <button
+                  key={format}
+                  data-active={settings.defaultCalcFormat === format}
+                  onClick={() => void update({ defaultCalcFormat: format })}
+                >
+                  {format.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="label">{t("settings.defaultImpressFormat")}</label>
+            <div className="seg">
+              {(["pptx", "odp"] as const).map((format) => (
+                <button
+                  key={format}
+                  data-active={settings.defaultImpressFormat === format}
+                  onClick={() => void update({ defaultImpressFormat: format })}
+                >
+                  {format.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={settings.versionHistory}
+              onChange={(event) => void update({ versionHistory: event.target.checked })}
+            />
+            <span>{t("settings.versionHistory")}</span>
+          </label>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={settings.showImportWarnings}
+              onChange={(event) => void update({ showImportWarnings: event.target.checked })}
+            />
+            <span>{t("settings.showImportWarnings")}</span>
+          </label>
+        </Card>
+
+        <Card className="p-5 flex flex-col gap-4">
+          <h3 className="font-semibold flex items-center gap-2">
             <FileSearch size={16} style={{ color: "var(--accent)" }} /> {t("settings.ocrLanguage")}
           </h3>
           <div className="flex flex-wrap gap-2">
@@ -231,6 +296,7 @@ export function Settings() {
               </li>
             ))}
           </ul>
+          <p className="text-xs muted">{t("settings.shortcutsHint")}</p>
         </Card>
 
         <AiSettings />

@@ -10,9 +10,40 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.3.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.4.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.4.0
+
+Quick wins from the roadmap: the command platform, Settings and Home become
+useful instead of aspirational, and accessibility gets a first pass.
+
+- **The command palette runs the app.** Every screen is a registered command
+  and the palette keyboard bindings are wired through `matchKeybinding`
+  instead of a hard-coded key handler. `Ctrl+Shift+P` (palette),
+  `Ctrl+Shift+F` (search), `Ctrl+,` (settings) and `Ctrl+O` (open) are
+  commands like any other, and the global open dialog accepts office formats
+  too — documents open as workspace tabs.
+- **Settings completion.** `midnight` and `paper` themes are selectable, the
+  office defaults (Writer/Calc/Impress save format, version history, import
+  warnings) are in the UI and reach the save/open code paths, the shortcut
+  list is real, and editor shortcuts are labeled as editor-scoped.
+- **Home is a tool directory.** The drop suggestion keeps every dropped file
+  (multi-file Merge no longer loses the selection), the grid is searchable
+  and grouped (all 42 screens), recent PDFs open in the Reader, and the
+  reveal action is a labeled button.
+- **Accessibility pass.** `aria-current` navigation, modal focus trap and
+  focus restore, roving tabindex + arrow keys in segmented controls, a live
+  region for background jobs, `lang` follows the UI language, translated
+  control labels, and `prefers-reduced-motion` support.
+- **Calc `CUMIPMT`/`CUMPRINC`** implemented with Excel reference values and
+  argument validation (the dead "unsupported" list is gone).
+- **Quality.** Frontend coverage now runs in CI (informational baseline), the
+  README test counts are generated from a run rather than prose, and the
+  `compat.rs` matrix has a contract test for the DSS/RFC 3161 note. The
+  capability matrix now describes the signature state accurately (DSS is
+  written for offline PAdES B-LT; RFC 3161 timestamps are not requested yet).
 
 ## What's new in 3.3.1
 
@@ -539,8 +570,8 @@ npm test
 npx tsc --noEmit
 ```
 
-**482 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **588
-frontend tests** (587 passing, 1 heavy case gated by `OSAK_PERF_HEAVY=1`) pass,
+**528 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **626
+frontend tests** pass, plus the 1 heavy case gated by `OSAK_PERF_HEAVY=1`,
 with a strict TypeScript type check on top. The per-crate split is deliberately
 not repeated here - `cargo test --workspace` prints it, and the numbers written
 out in prose went stale every release.
@@ -566,6 +597,7 @@ npm run i18n:audit -- --check   # en/tr tables must stay in sync
 npm run format:gate        # Prettier on the files this change adds
 npm run format:gate:rust   # rustfmt on the files this change adds
 npm run lint:rust          # cargo clippy --workspace --all-targets -- -D warnings
+npm run test:coverage      # Vitest + a coverage summary (informational for now)
 ```
 
 Neither rustfmt nor Prettier had ever run over this code base, so the

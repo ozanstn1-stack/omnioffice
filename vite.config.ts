@@ -38,5 +38,14 @@ export default defineConfig({
     // machine (or while cargo tests run next to them) the default 5 s timeout
     // is tight enough to fail a passing test.
     testTimeout: 20_000,
+    // Coverage is informational today (CI prints the summary); raising it to a
+    // blocking threshold is a follow-up once the baseline has settled.
+    coverage: {
+      provider: "v8",
+      reporter: ["text-summary", "json-summary", "html"],
+      reportsDirectory: "coverage",
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/**/*.test.{ts,tsx}", "src/test-setup.ts"],
+    },
   },
 });

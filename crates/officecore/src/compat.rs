@@ -216,7 +216,7 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
             vec![
                 feature("editing", SupportLevel::Partial, "Page tools, annotations, forms and object editing where the PDF allows it."),
                 feature("pdfa", SupportLevel::Partial, "Validation and best-effort conversion: simple fonts are embedded as FontFile2 and the output intent carries an sRGB profile; CID/Type0, symbolic and custom-encoded fonts are reported instead of embedded, and there is no subsetting."),
-                feature("signatures", SupportLevel::Partial, "Detached CMS/PKCS#7 signatures are created and validated (digest, coverage, signer, chain); long-term validation data (DSS, RFC 3161 timestamps) is not written yet."),
+                feature("signatures", SupportLevel::Partial, "Detached CMS/PKCS#7 signatures are created and validated (digest, coverage, signer, chain); archived validation data (DSS) is written for offline PAdES B-LT, RFC 3161 timestamps are not requested yet."),
             ],
         ),
         "oswk" => (

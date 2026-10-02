@@ -111,6 +111,8 @@ describe("library wiring", () => {
       "DDB",
       "EFFECT",
       "NOMINAL",
+      "CUMIPMT",
+      "CUMPRINC",
       "XLOOKUP",
       "XMATCH",
       "LOOKUP",
@@ -688,6 +690,32 @@ describe("financial functions", () => {
 
   it("MIRR accounts for both financing and reinvestment", () => {
     expect(n("=MIRR({-120000,39000,30000,21000,37000,46000},0.1,0.12)")).toBeCloseTo(0.1261, 3);
+  });
+
+  it("CUMIPMT sums the interest of a period range", () => {
+    // Microsoft's reference case: 125000 at 9%/year over 30 years.
+    expect(n("=CUMIPMT(0.09/12,360,125000,13,24,0)")).toBeCloseTo(-11135.23, 2);
+    expect(n("=CUMIPMT(0.09/12,360,125000,1,1,0)")).toBeCloseTo(-937.5, 2);
+  });
+
+  it("CUMPRINC sums the principal of a period range", () => {
+    expect(n("=CUMPRINC(0.09/12,360,125000,13,24,0)")).toBeCloseTo(-934.1071, 3);
+    expect(n("=CUMPRINC(0.09/12,360,125000,1,1,0)")).toBeCloseTo(-68.27827, 4);
+  });
+
+  it("CUMIPMT and CUMPRINC add up to the payments over the same range", () => {
+    const interest = n("=CUMIPMT(0.05/12,120,50000,1,120,0)");
+    const principal = n("=CUMPRINC(0.05/12,120,50000,1,120,0)");
+    const payment = n("=PMT(0.05/12,120,50000)");
+    expect(interest + principal).toBeCloseTo(payment * 120, 3);
+  });
+
+  it("CUMIPMT validates its arguments", () => {
+    expect(code("=CUMIPMT(0.05/12,120,50000,0,10,0)")).toBe("#NUM!");
+    expect(code("=CUMIPMT(0.05/12,120,50000,10,5,0)")).toBe("#NUM!");
+    expect(code("=CUMIPMT(0.05/12,120,50000,1,121,0)")).toBe("#NUM!");
+    expect(code("=CUMIPMT(0.05/12,120,50000,1,10,2)")).toBe("#NUM!");
+    expect(code("=CUMIPMT(-0.01,120,50000,1,10,0)")).toBe("#NUM!");
   });
 
   it("SLN spreads the cost evenly", () => {

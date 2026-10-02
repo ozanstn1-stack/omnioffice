@@ -73,8 +73,8 @@ jobs:
       - run: npm ci
       - name: TypeScript
         run: npx tsc --noEmit
-      - name: Tests
-        run: npm test
+      - name: Tests (with coverage)
+        run: npm run test:coverage
       - name: Production build
         run: npx vite build
       - name: Bundle budget

@@ -85,6 +85,17 @@ export function replaceExtension(path: string, extension: string): string {
 
 const DEFAULT_EXTENSION: Record<OfficeKind, string> = { writer: "docx", calc: "xlsx", impress: "pptx" };
 
+/**
+ * The extension the save dialog suggests for a new document. The choice comes
+ * from Settings ▸ Office defaults; the built-in pair stays the fallback.
+ */
+function defaultExtensionFor(kind: OfficeKind): string {
+  const settings = useSettings.getState().settings;
+  const configured =
+    kind === "writer" ? settings.defaultWriterFormat : kind === "calc" ? settings.defaultCalcFormat : settings.defaultImpressFormat;
+  return configured || DEFAULT_EXTENSION[kind];
+}
+
 /** Suggests a file name for the save dialog when the tab has never been saved. */
 function suggestedName(tab: OfficeTab, extension: string): string {
   const stem = (tab.title || "Untitled").replace(/[\\/:*?"<>|]/g, "-").trim() || "Untitled";
@@ -171,14 +182,14 @@ export function useOfficeSession(tab: OfficeTab) {
           // Android never hands out a writable path for the user's documents:
           // pick the destination first, let the engine write into the app
           // cache, then copy the finished file over.
-          const extension = options?.extension ?? DEFAULT_EXTENSION[tab.kind];
+          const extension = options?.extension ?? defaultExtensionFor(tab.kind);
           androidTarget = await pickAndroidSaveTarget(suggestedName(tab, extension));
           if (!androidTarget) return null;
           path = await scratchPath(extension);
         } else {
           path = (await saveDialog({
             title: `Save ${tab.title}`,
-            defaultPath: options?.defaultPath ?? suggestedName(tab, options?.extension ?? DEFAULT_EXTENSION[tab.kind]),
+            defaultPath: options?.defaultPath ?? suggestedName(tab, options?.extension ?? defaultExtensionFor(tab.kind)),
             filters: FILTERS[tab.kind],
           })) ?? undefined;
           if (!path) return null;
@@ -257,7 +268,9 @@ export function useOfficeSession(tab: OfficeTab) {
         } else {
           notify(t("office.saved"), result.path);
         }
-        void api.historyPush(tab.id, tab.kind, tab.title, tab.model).catch(() => undefined);
+        if (useSettings.getState().settings.versionHistory) {
+          void api.historyPush(tab.id, tab.kind, tab.title, tab.model).catch(() => undefined);
+        }
         if (!lossless && result.warnings.length > 0) {
           // A lossy export may have dropped something the user cares about, so
           // the recovery snapshot stays on disk until the next clean save.
@@ -285,7 +298,7 @@ export function useOfficeSession(tab: OfficeTab) {
     }
     const chosen = (await saveDialog({
       title: `Save ${tab.title} as`,
-      defaultPath: tab.path ?? suggestedName(tab, extensionOf(tab.path ?? "") || DEFAULT_EXTENSION[tab.kind]),
+      defaultPath: tab.path ?? suggestedName(tab, extensionOf(tab.path ?? "") || defaultExtensionFor(tab.kind)),
       filters: FILTERS[tab.kind],
     })) as string | null;
     if (!chosen) return null;

@@ -10,6 +10,8 @@ import { newDeck, newTextDocument, newWorkbook, uid } from "./office-types";
 export type { Deck, Slide, SlideObject, TextDocument, Workbook } from "./office-types";
 import * as api from "./office-api";
 import { toAppError } from "./api";
+import { makeTranslate } from "./i18n";
+import { useSettings, useToasts } from "./store";
 
 export type OfficeModel = TextDocument | Workbook | Deck;
 
@@ -525,6 +527,14 @@ export async function openOfficePath(path: string): Promise<OpenPathResult> {
       useOfficeTabs.getState().setFingerprint(id, fingerprint.exists ? fingerprint.sha256 : null);
     } catch {
       useOfficeTabs.getState().setFingerprint(id, null);
+    }
+    if (result.warnings.length > 0 && useSettings.getState().settings.showImportWarnings) {
+      const t = makeTranslate(useSettings.getState().settings.language);
+      useToasts.getState().push({
+        kind: "info",
+        title: t("office.openedWithNotes"),
+        detail: result.warnings.slice(0, 3).join(" "),
+      });
     }
     return { ok: true, kind: result.kind };
   } catch (error) {

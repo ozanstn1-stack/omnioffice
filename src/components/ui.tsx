@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronDown, Loader2, X } from "lucide-react";
+import { useT } from "../lib/i18n";
 
 // ---------------------------------------------------------------------------
 // Buttons
@@ -184,16 +185,36 @@ export function Segmented<T extends string>({
   options: { value: T; label: ReactNode }[];
   className?: string;
 }) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const move = (direction: 1 | -1) => {
+    const current = options.findIndex((option) => option.value === value);
+    const next = (current + direction + options.length) % options.length;
+    onChange(options[next].value);
+    refs.current[next]?.focus();
+  };
   return (
     <div className={`seg ${className}`} role="tablist">
-      {options.map((option) => (
+      {options.map((option, index) => (
         <button
           key={option.value}
+          ref={(node) => {
+            refs.current[index] = node;
+          }}
           type="button"
           role="tab"
           data-active={value === option.value}
           aria-selected={value === option.value}
+          tabIndex={value === option.value ? 0 : -1}
           onClick={() => onChange(option.value)}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+              event.preventDefault();
+              move(1);
+            } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+              event.preventDefault();
+              move(-1);
+            }
+          }}
         >
           {option.label}
         </button>
@@ -289,6 +310,7 @@ export function Slider({
 }
 
 export function ColorInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const t = useT();
   const [text, setText] = useState(value);
   // Re-sync the text field when the value changes from outside, without an
   // effect that would render once with the stale text first.
@@ -305,7 +327,7 @@ export function ColorInput({ value, onChange }: { value: string; onChange: (valu
         onChange={(event) => onChange(event.target.value)}
         className="w-10 h-9 rounded-lg border cursor-pointer"
         style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
-        aria-label="Color"
+        aria-label={t("common.color")}
       />
       <input
         className="input input-sm flex-1"
@@ -336,14 +358,48 @@ export function Modal({
   onClose?: () => void;
   width?: number;
 }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const container = ref.current;
+    const focusable = (): HTMLElement[] =>
+      container
+        ? Array.from(
+            container.querySelectorAll<HTMLElement>(
+              'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            ),
+          )
+        : [];
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose?.();
+      if (event.key === "Escape") {
+        onClose?.();
+        return;
+      }
+      if (event.key !== "Tab" || !container) return;
+      const items = focusable();
+      if (items.length === 0) {
+        event.preventDefault();
+        container.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || active === container)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", onKey);
-    ref.current?.focus();
-    return () => window.removeEventListener("keydown", onKey);
+    container?.focus();
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      opener?.focus();
+    };
   }, [onClose]);
 
   return (
@@ -358,7 +414,7 @@ export function Modal({
         <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
           <h2 className="font-semibold text-[15px]">{title}</h2>
           {onClose ? (
-            <IconButton label="Close" onClick={onClose}>
+            <IconButton label={t("common.close")} onClick={onClose}>
               <X size={16} />
             </IconButton>
           ) : null}
