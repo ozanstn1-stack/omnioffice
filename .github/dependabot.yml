@@ -19,6 +19,37 @@ updates:
       frontend:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # eslint 10 is blocked by eslint-plugin-jsx-a11y@6.10.2, whose latest
+      # release declares a peer range up to ^9. Lift this once the plugin
+      # ships an eslint-10-compatible release.
+      - dependency-name: eslint
+        versions: [">=10.0.0"]
+      - dependency-name: "@eslint/js"
+        versions: [">=10.0.0"]
+      # TypeScript 7 is the native (Go) compiler; typescript-eslint 8 declares
+      # `typescript >=4.8.4 <6.1.0`, so the type-aware toolchain cannot consume
+      # it yet. Revisit when typescript-eslint supports TS 7.
+      - dependency-name: typescript
+        versions: [">=7.0.0"]
+      # Vitest 4/5 change the coverage instrumentation completely (the same
+      # suite measures 64.6/71.5/48.7/64.6 percent on 3.2.7 and
+      # 53.0/46.4/41.4/57.0 percent on 4.1.11 - transformed-statement and
+      # branch counting differ). Accepting that re-baselines the enforcement
+      # floors, which is a scheduled task (v3.6), not a patch-release change.
+      # Vitest 3.2.7 keeps the npm audit high gate green; GHSA-82fw-gwwq-j7x9
+      # in @vitest/mocker is moderate and dev-only, fixed by the same move.
+      - dependency-name: vitest
+        versions: [">=4.0.0"]
+      - dependency-name: "@vitest/coverage-v8"
+        versions: [">=4.0.0"]
+      # Vite 7/8 ride with the vitest move (the test runner pins the Vite
+      # major it is verified against) and the rolldown-based 8 additionally
+      # needs the manualChunks function form.
+      - dependency-name: vite
+        versions: [">=7.0.0"]
+      - dependency-name: "@vitejs/plugin-react"
+        versions: [">=5.0.0"]
 
   - package-ecosystem: npm
     directory: /chrome-extension
@@ -39,6 +70,18 @@ updates:
       rust:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # der 0.8 is blocked by the cms 0.2 / x509-cert 0.2 family, which pins
+      # der 0.7; our own DER types (EncryptedPrivateKeyInfoLite, the signer
+      # structures) are shared with those crates. cms 0.3 is still a
+      # pre-release. Lift when the formats family ships der 0.8 stably.
+      - dependency-name: der
+        versions: [">=0.8.0"]
+      # rsa 0.9 (via num-bigint-dig) generates keys from rand_core 0.6, so the
+      # signing tests' RNG must be rand 0.8. The rand 0.10 entry Dependabot
+      # sees in the tree belongs to lopdf and is not ours to bump.
+      - dependency-name: rand
+        versions: [">=0.9.0"]
 
   - package-ecosystem: github-actions
     directory: /

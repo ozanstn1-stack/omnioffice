@@ -1203,6 +1203,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "des"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "916a94e407b54f9034d71dd748234cd1e516ced6284009906ae246f177eafe5a"
+dependencies = [
+ "cipher 0.5.2",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3445,13 +3454,12 @@ name = "pdfcore"
 version = "3.5.4"
 dependencies = [
  "ab_glyph",
- "aes 0.8.4",
- "cbc 0.1.2",
+ "cbc 0.2.1",
  "cms",
  "const-oid 0.9.6",
  "criterion",
  "der",
- "des",
+ "des 0.9.0",
  "getrandom 0.2.17",
  "hmac",
  "image",
@@ -3637,7 +3645,7 @@ dependencies = [
  "aes 0.8.4",
  "cbc 0.1.2",
  "der",
- "des",
+ "des 0.8.1",
  "pbkdf2",
  "scrypt",
  "sha1",

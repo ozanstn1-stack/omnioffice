@@ -8,7 +8,7 @@
 
 mod common;
 
-use cbc::cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyIvInit};
+use cbc::cipher::{block_padding::Pkcs7, BlockModeEncrypt, KeyIvInit};
 use der::{Decode, Encode};
 use hmac::{Hmac, Mac};
 use lopdf::{dictionary, Document, Object, StringFormat};
@@ -49,9 +49,7 @@ fn rsa_identity() -> &'static Identity {
         // A 2048-bit key keeps the test honest while staying tolerable in a
         // debug build; generation happens once per test binary.
         let key = RsaPrivateKey::new(&mut OsRng, 2048).expect("rsa key");
-        let pem = key
-            .to_pkcs8_pem(LineEnding::LF)
-            .expect("pkcs8 pem");
+        let pem = key.to_pkcs8_pem(LineEnding::LF).expect("pkcs8 pem");
         let key_pair = rcgen::KeyPair::from_pkcs8_pem_and_sign_algo(&pem, &rcgen::PKCS_RSA_SHA256)
             .expect("ring accepts the RSA key");
         make_identity(&key_pair, "PDF SAK RSA Test Signer", rcgen::IsCa::ExplicitNoCa)
@@ -63,9 +61,7 @@ fn chained_identity() -> &'static ChainIdentity {
     IDENTITY.get_or_init(|| {
         let ca_key = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).expect("ca key");
         let mut ca_params = rcgen::CertificateParams::new(Vec::<String>::new()).expect("ca params");
-        ca_params
-            .distinguished_name
-            .push(rcgen::DnType::CommonName, "PDF SAK Test Root CA");
+        ca_params.distinguished_name.push(rcgen::DnType::CommonName, "PDF SAK Test Root CA");
         ca_params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
         let ca_cert = ca_params.self_signed(&ca_key).expect("ca cert");
         let ca = Identity {
@@ -76,13 +72,9 @@ fn chained_identity() -> &'static ChainIdentity {
 
         let leaf_key = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).expect("leaf key");
         let mut leaf_params = rcgen::CertificateParams::new(Vec::<String>::new()).expect("leaf params");
-        leaf_params
-            .distinguished_name
-            .push(rcgen::DnType::CommonName, "PDF SAK Chained Test Signer");
+        leaf_params.distinguished_name.push(rcgen::DnType::CommonName, "PDF SAK Chained Test Signer");
         leaf_params.is_ca = rcgen::IsCa::ExplicitNoCa;
-        let leaf_cert = leaf_params
-            .signed_by(&leaf_key, &ca_cert, &ca_key)
-            .expect("leaf cert");
+        let leaf_cert = leaf_params.signed_by(&leaf_key, &ca_cert, &ca_key).expect("leaf cert");
         let leaf = Identity {
             cert_der: leaf_cert.der().to_vec(),
             key_pkcs8_der: leaf_key.serialize_der(),
@@ -94,9 +86,7 @@ fn chained_identity() -> &'static ChainIdentity {
 
 fn make_identity(key_pair: &rcgen::KeyPair, common_name: &str, is_ca: rcgen::IsCa) -> Identity {
     let mut params = rcgen::CertificateParams::new(Vec::<String>::new()).expect("params");
-    params
-        .distinguished_name
-        .push(rcgen::DnType::CommonName, common_name);
+    params.distinguished_name.push(rcgen::DnType::CommonName, common_name);
     params.is_ca = is_ca;
     let cert = params.self_signed(key_pair).expect("self signed");
     Identity {
@@ -133,14 +123,7 @@ fn sign_options() -> SignOptions {
 
 fn sign_with(identity: &Identity, chain: &[Vec<u8>], options: &SignOptions) -> Vec<u8> {
     let pdf = build_test_pdf();
-    sign::sign_pdf(
-        &pdf,
-        &identity.cert_der,
-        &identity.key_pkcs8_der,
-        chain,
-        options,
-    )
-    .expect("sign pdf")
+    sign::sign_pdf(&pdf, &identity.cert_der, &identity.key_pkcs8_der, chain, options).expect("sign pdf")
 }
 
 /// Finds the signature dictionary in a signed document.
@@ -254,12 +237,9 @@ fn build_pfx(identity: &Identity, password: &str, pbes2: bool, sha256_mac: bool)
         let key_bag = der_seq(&[der_oid(PKCS12_KEY_BAG), der_context_zero(&identity.key_pkcs8_der)]);
         let key_contents = der_seq(&[key_bag]);
         let params =
-            pkcs5::pbes2::Parameters::pbkdf2_sha256_aes256cbc(iterations as u32, salt, iv)
-                .expect("pbes2 params");
+            pkcs5::pbes2::Parameters::pbkdf2_sha256_aes256cbc(iterations as u32, salt, iv).expect("pbes2 params");
         let scheme = pkcs5::EncryptionScheme::from(params);
-        let ciphertext = scheme
-            .encrypt(password.as_bytes(), &key_contents)
-            .expect("encrypt key");
+        let ciphertext = scheme.encrypt(password.as_bytes(), &key_contents).expect("encrypt key");
         let algorithm = scheme.to_der().expect("alg der");
         let enc_content_info = der_seq(&[der_oid(OID_DATA), algorithm, der_tlv(0x80, &ciphertext)]);
         let encrypted_data = der_seq(&[der_int(0), enc_content_info]);
@@ -275,24 +255,15 @@ fn build_pfx(identity: &Identity, password: &str, pbes2: bool, sha256_mac: bool)
             24,
         )
         .expect("derive key");
-        let iv = pkcs12::kdf::derive_key_utf8::<Sha1>(
-            password,
-            salt,
-            pkcs12::kdf::Pkcs12KeyType::Iv,
-            iterations,
-            8,
-        )
-        .expect("derive iv");
+        let iv = pkcs12::kdf::derive_key_utf8::<Sha1>(password, salt, pkcs12::kdf::Pkcs12KeyType::Iv, iterations, 8)
+            .expect("derive iv");
         let ciphertext = cbc::Encryptor::<des::TdesEde3>::new_from_slices(&key, &iv)
             .expect("3des setup")
-            .encrypt_padded_vec_mut::<Pkcs7>(&identity.key_pkcs8_der);
+            .encrypt_padded_vec::<Pkcs7>(&identity.key_pkcs8_der);
         let pbe_params = der_seq(&[der_octet(salt), der_int(iterations as i64)]);
         let algorithm = der_seq(&[der_oid(PKCS12_PBE_3DES_3KEY), pbe_params]);
         let encrypted_key = der_seq(&[algorithm, der_octet(&ciphertext)]);
-        let shrouded = der_seq(&[
-            der_oid(PKCS12_SHROUDED_KEY_BAG),
-            der_context_zero(&encrypted_key),
-        ]);
+        let shrouded = der_seq(&[der_oid(PKCS12_SHROUDED_KEY_BAG), der_context_zero(&encrypted_key)]);
         let contents = der_seq(&[shrouded, cert_bag]);
         vec![der_seq(&[der_oid(OID_DATA), der_context_zero(&der_octet(&contents))])]
     };
@@ -303,26 +274,16 @@ fn build_pfx(identity: &Identity, password: &str, pbes2: bool, sha256_mac: bool)
     // Integrity MAC over the authSafe OCTET STRING content.
     let mac_salt = b"mac-salt-0123456";
     let mac_digest = if sha256_mac {
-        let key = pkcs12::kdf::derive_key_utf8::<Sha256>(
-            password,
-            mac_salt,
-            pkcs12::kdf::Pkcs12KeyType::Mac,
-            iterations,
-            32,
-        )
-        .expect("mac key");
+        let key =
+            pkcs12::kdf::derive_key_utf8::<Sha256>(password, mac_salt, pkcs12::kdf::Pkcs12KeyType::Mac, iterations, 32)
+                .expect("mac key");
         let mut mac = Hmac::<Sha256>::new_from_slice(&key).expect("hmac");
         mac.update(&authenticated_safe);
         (const_oid::ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.2.1"), mac.finalize().into_bytes().to_vec())
     } else {
-        let key = pkcs12::kdf::derive_key_utf8::<Sha1>(
-            password,
-            mac_salt,
-            pkcs12::kdf::Pkcs12KeyType::Mac,
-            iterations,
-            20,
-        )
-        .expect("mac key");
+        let key =
+            pkcs12::kdf::derive_key_utf8::<Sha1>(password, mac_salt, pkcs12::kdf::Pkcs12KeyType::Mac, iterations, 20)
+                .expect("mac key");
         let mut mac = Hmac::<Sha1>::new_from_slice(&key).expect("hmac");
         mac.update(&authenticated_safe);
         (const_oid::ObjectIdentifier::new_unwrap("1.3.14.3.2.26"), mac.finalize().into_bytes().to_vec())
@@ -374,16 +335,10 @@ fn signature_rsa_sign_and_verify() {
     let doc = Document::load_mem(&signed).expect("signed pdf loads");
     assert_eq!(doc.get_pages().len(), 2);
     let sig = find_signature_dict(&doc);
-    assert_eq!(
-        sig.get(b"SubFilter").unwrap().as_name().unwrap(),
-        b"adbe.pkcs7.detached"
-    );
+    assert_eq!(sig.get(b"SubFilter").unwrap().as_name().unwrap(), b"adbe.pkcs7.detached");
     assert!(sig.get(b"Contents").is_ok());
     assert!(sig.get(b"ByteRange").is_ok());
-    assert_eq!(
-        sig.get(b"Filter").unwrap().as_name().unwrap(),
-        b"Adobe.PPKLite"
-    );
+    assert_eq!(sig.get(b"Filter").unwrap().as_name().unwrap(), b"Adobe.PPKLite");
     assert_eq!(sig.get(b"Reason").unwrap().as_str().unwrap(), b"Approval");
 
     // The original pages and their content streams are untouched.
@@ -406,8 +361,7 @@ fn signature_rsa_sign_and_verify() {
             .as_dict()
             .map(|dict| {
                 dict.get(b"FT").ok().and_then(|v| v.as_name().ok()) == Some(b"Sig".as_slice())
-                    && dict.get(b"Subtype").ok().and_then(|v| v.as_name().ok())
-                        == Some(b"Widget".as_slice())
+                    && dict.get(b"Subtype").ok().and_then(|v| v.as_name().ok()) == Some(b"Widget".as_slice())
             })
             .unwrap_or(false)
     });
@@ -442,10 +396,7 @@ fn signature_chain_links_to_self_signed_root() {
     assert!(info.signature_valid, "{info:?}");
     assert!(info.digest_matches);
     assert_eq!(info.chain.len(), 2, "leaf plus CA");
-    assert!(
-        info.chain[0].subject.contains(&chained.leaf.common_name),
-        "chain starts at the signer"
-    );
+    assert!(info.chain[0].subject.contains(&chained.leaf.common_name), "chain starts at the signer");
     assert!(info.chain[1].subject.contains(&chained.ca.common_name));
     assert!(info.chain[1].is_ca, "root carries basicConstraints CA");
     assert!(info.chain_linked, "leaf must be issued by the CA");
@@ -484,10 +435,7 @@ fn signature_byte_range_and_cms_structure() {
     let doc = Document::load_mem(&signed).unwrap();
     let sig = find_signature_dict(&doc);
     let range = sig.get(b"ByteRange").unwrap().as_array().unwrap();
-    let numbers: Vec<i64> = range
-        .iter()
-        .map(|value| value.as_i64().expect("integer byte range"))
-        .collect();
+    let numbers: Vec<i64> = range.iter().map(|value| value.as_i64().expect("integer byte range")).collect();
     assert_eq!(numbers.len(), 4);
     assert_eq!(numbers[0], 0);
 
@@ -519,17 +467,11 @@ fn signature_byte_range_and_cms_structure() {
         (2 + count, length)
     };
     let der = contents[..header + length].to_vec();
-    assert!(
-        contents[header + length..].iter().all(|byte| *byte == 0),
-        "the rest of /Contents is zero padding"
-    );
+    assert!(contents[header + length..].iter().all(|byte| *byte == 0), "the rest of /Contents is zero padding");
 
     // Independent parser: RustCrypto `cms`.
     let content_info = cms::content_info::ContentInfo::from_der(&der).expect("cms parses");
-    let signed_data = content_info
-        .content
-        .decode_as::<cms::signed_data::SignedData>()
-        .expect("SignedData parses");
+    let signed_data = content_info.content.decode_as::<cms::signed_data::SignedData>().expect("SignedData parses");
     assert!(signed_data.encap_content_info.econtent.is_none(), "detached");
     assert_eq!(
         signed_data.encap_content_info.econtent_type,
@@ -551,28 +493,19 @@ fn signature_appearance_stream_is_present() {
     let has_appearance = doc.objects.values().any(|object| {
         object
             .as_stream()
-            .map(|stream| {
-                stream.dict.get(b"Subtype").ok().and_then(|v| v.as_name().ok())
-                    == Some(b"Form".as_slice())
-            })
+            .map(|stream| stream.dict.get(b"Subtype").ok().and_then(|v| v.as_name().ok()) == Some(b"Form".as_slice()))
             .unwrap_or(false)
     });
     assert!(has_appearance, "visible appearance stream expected");
 
     // Without the appearance option there must be no form XObject.
-    let invisible = SignOptions {
-        appearance: false,
-        ..sign_options()
-    };
+    let invisible = SignOptions { appearance: false, ..sign_options() };
     let signed = sign_with(identity, &[], &invisible);
     let doc = Document::load_mem(&signed).unwrap();
     let has_appearance = doc.objects.values().any(|object| {
         object
             .as_stream()
-            .map(|stream| {
-                stream.dict.get(b"Subtype").ok().and_then(|v| v.as_name().ok())
-                    == Some(b"Form".as_slice())
-            })
+            .map(|stream| stream.dict.get(b"Subtype").ok().and_then(|v| v.as_name().ok()) == Some(b"Form".as_slice()))
             .unwrap_or(false)
     });
     assert!(!has_appearance);
@@ -600,14 +533,8 @@ fn signature_pkcs12_roundtrip_and_wrong_password() {
 
     // The parsed identity signs a PDF that verifies.
     let pdf = build_test_pdf();
-    let signed = sign::sign_pdf(
-        &pdf,
-        &parsed.cert_der,
-        &parsed.key_pkcs8_der,
-        &parsed.chain_der,
-        &sign_options(),
-    )
-    .expect("sign with pfx identity");
+    let signed = sign::sign_pdf(&pdf, &parsed.cert_der, &parsed.key_pkcs8_der, &parsed.chain_der, &sign_options())
+        .expect("sign with pfx identity");
     let report = sign::verify_signatures(&signed);
     assert!(report.signatures[0].signature_valid);
 }
@@ -630,11 +557,7 @@ fn signature_pkcs12_legacy_3des() {
 
 #[test]
 fn signature_pkcs12_garbage_is_an_error() {
-    for garbage in [
-        b"not a pfx".as_slice(),
-        &[0x30, 0x03, 0x02, 0x01, 0x03][..],
-        &[0x00, 0x01, 0x02, 0x03, 0x04][..],
-    ] {
+    for garbage in [b"not a pfx".as_slice(), &[0x30, 0x03, 0x02, 0x01, 0x03][..], &[0x00, 0x01, 0x02, 0x03, 0x04][..]] {
         match sign::parse_pkcs12(garbage, "anything") {
             Err(_) => {}
             Ok(_) => panic!("garbage must not parse as PKCS#12"),
@@ -649,13 +572,7 @@ fn signature_rejects_mismatched_key() {
     let rsa = rsa_identity();
     let ec = ecdsa_identity();
     let pdf = build_test_pdf();
-    let error = sign::sign_pdf(
-        &pdf,
-        &rsa.cert_der,
-        &ec.key_pkcs8_der,
-        &[],
-        &sign_options(),
-    );
+    let error = sign::sign_pdf(&pdf, &rsa.cert_der, &ec.key_pkcs8_der, &[], &sign_options());
     assert!(error.is_err(), "a mismatched key must be rejected");
 }
 
@@ -663,16 +580,10 @@ fn signature_rejects_mismatched_key() {
 fn signature_rejects_bad_rect_and_page() {
     let identity = ecdsa_identity();
     let pdf = build_test_pdf();
-    let options = SignOptions {
-        rect: Some([10.0, 10.0, 10.0, 20.0]),
-        ..sign_options()
-    };
+    let options = SignOptions { rect: Some([10.0, 10.0, 10.0, 20.0]), ..sign_options() };
     assert!(sign::sign_pdf(&pdf, &identity.cert_der, &identity.key_pkcs8_der, &[], &options).is_err());
 
-    let options = SignOptions {
-        page: 99,
-        ..sign_options()
-    };
+    let options = SignOptions { page: 99, ..sign_options() };
     assert!(sign::sign_pdf(&pdf, &identity.cert_der, &identity.key_pkcs8_der, &[], &options).is_err());
 }
 
@@ -737,14 +648,8 @@ fn signing_an_already_signed_pdf_keeps_the_first_signature() {
     // land in a new revision and leave the first one intact. Long-term
     // validation and counter-signatures both depend on this property.
     let first = sign_with(ecdsa_identity(), &[], &sign_options());
-    let second = sign::sign_pdf(
-        &first,
-        &rsa_identity().cert_der,
-        &rsa_identity().key_pkcs8_der,
-        &[],
-        &sign_options(),
-    )
-    .expect("the second signature must be written as an update");
+    let second = sign::sign_pdf(&first, &rsa_identity().cert_der, &rsa_identity().key_pkcs8_der, &[], &sign_options())
+        .expect("the second signature must be written as an update");
 
     assert!(second.starts_with(&first), "the original revision must stay byte-identical");
 
@@ -773,5 +678,3 @@ fn signing_an_already_signed_pdf_keeps_the_first_signature() {
         "only the last signature covers the whole file"
     );
 }
-
-
