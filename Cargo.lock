@@ -3446,7 +3446,7 @@ version = "3.5.4"
 dependencies = [
  "ab_glyph",
  "aes 0.8.4",
- "cbc 0.1.2",
+ "cbc 0.2.1",
  "cms",
  "const-oid 0.9.6",
  "criterion",
