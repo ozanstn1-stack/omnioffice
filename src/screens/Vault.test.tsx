@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -68,6 +68,8 @@ const invoke = vi.fn(async (command: string) => {
         ],
         skipped: [],
       };
+    case "vault_clear":
+      return { ...statusFixture, indexed: 0, indexBytes: 0, warnings: [] };
     default:
       return null;
   }
@@ -155,5 +157,28 @@ describe("the vault screen renders against the real wire format", () => {
       ),
     );
     expect(pickOfficeFiles).toHaveBeenCalledWith(true);
+  });
+
+  it("clears the index after confirmation and can delete imported copies on Android", async () => {
+    const user = userEvent.setup();
+    const desktop = render(<Vault />);
+    await waitFor(() => expect(screen.getByText("vault.indexed")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "vault.clearAction" }));
+    const dialog = await screen.findByRole("dialog");
+    // A plain clear keeps the imported copies (the checkbox is Android-only).
+    expect(within(dialog).queryByRole("checkbox")).toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "vault.clearAction" }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("vault_clear", { deleteImports: false }));
+    desktop.unmount();
+
+    invoke.mockClear();
+    vi.mocked(isAndroid).mockReturnValue(true);
+    render(<Vault />);
+    await waitFor(() => expect(screen.getByText("vault.indexed")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "vault.clearAction" }));
+    const androidDialog = await screen.findByRole("dialog");
+    await user.click(within(androidDialog).getByRole("checkbox"));
+    await user.click(within(androidDialog).getByRole("button", { name: "vault.clearAction" }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("vault_clear", { deleteImports: true }));
   });
 });

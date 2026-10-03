@@ -55,7 +55,7 @@ import { acceptAll, acceptRevision, nextRevision, rejectAll, rejectRevision, rev
 import { emptyHistory, record as recordHistory, redo as redoHistory, undo as undoHistory, type HistoryState } from "./writer/history";
 import { joinRuns, nextListLevel, nextParagraphProps, replaceRange, runsText, splitRuns, wordRangeAt } from "./writer/runs";
 import { caretOffset, caretOnFirstLine, caretOnLastLine, offsetFromPoint, paragraphAtPoint, repaintParagraph, selectedRange, setCaretOffset, setSelectionRange } from "./writer/caret";
-import { domToRuns, runsToHtml, wrapCellRuns } from "./writer/writerDom";
+import { domToRuns, fieldValuesFor, orderedListMarker, orderedListNumbers, runsToHtml, wrapCellRuns } from "./writer/writerDom";
 import { emptyRun as emptyWriterRun } from "./writer/runs";
 import { measureBlocks } from "./writer/measure";
 import { paginate, pageOfBlock, type Fragment, type PageLayout } from "./writer/pagination";
@@ -181,6 +181,14 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
 
   const document = tab.model;
   const revisionAuthor = document.metadata.author.trim() || "You";
+  // Ordered-list numbering and live field values (page/pages/date/time/
+  // title/author) are derived at render time instead of freezing at insertion
+  // (audit M16: every ordered item showed "1" and PAGE never refreshed).
+  const listNumbers = useMemo(() => orderedListNumbers(document.blocks), [document.blocks]);
+  const documentFields = useMemo(
+    () => fieldValuesFor({ pages: pageCount, title: document.metadata.title, author: document.metadata.author }),
+    [pageCount, document.metadata.title, document.metadata.author],
+  );
   const sections = useMemo(() => documentSections(document), [document]);
   const stats = useMemo(() => wordCount(document), [document]);
   const noteNumbers = useMemo(() => {
@@ -1233,32 +1241,38 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     return true;
   };
 
-  const renderBlocks = (blocks: Block[], scope: "body" | "header" | "footer" | "cell", tablePath?: [number, number, number, number]) => (
-    <>
-      {blocks.map((block, index) => (
-        <BlockView
-          key={`${scope}-${index}-${block.type}`}
-          block={block}
-          index={index}
-          scope={scope}
-          zoom={zoom}
-          noteNumbers={noteNumbers}
-          showRevisions={document.showRevisions !== false}
-          selectedImage={selectedImage}
-          onSelectImage={setSelectedImage}
-          onFocusParagraph={handleParagraphFocus}
-          onSync={(element) => {
-            if (scope === "cell" && tablePath) syncCell(tablePath[0], tablePath[1], tablePath[2], tablePath[3], element);
-            else if (scope === "body" || scope === "header" || scope === "footer") syncParagraph(index, element);
-          }}
-          onUpdate={(next) => updateBlock(index, next)}
-          onSyncCell={(path, element) => syncCell(path[0], path[1], path[2], path[3], element)}
-          onStructure={(action) => handleStructure(action, scope)}
-          onOpenBlock={editBlock}
-        />
-      ))}
-    </>
-  );
+  const renderBlocks = (blocks: Block[], scope: "body" | "header" | "footer" | "cell", tablePath?: [number, number, number, number]) => {
+    const numbers = scope === "body" ? listNumbers : orderedListNumbers(blocks);
+    const fields = scope === "cell" ? undefined : documentFields;
+    return (
+      <>
+        {blocks.map((block, index) => (
+          <BlockView
+            key={`${scope}-${index}-${block.type}`}
+            block={block}
+            index={index}
+            scope={scope}
+            zoom={zoom}
+            noteNumbers={noteNumbers}
+            showRevisions={document.showRevisions !== false}
+            listNumber={numbers.get(index)}
+            fieldValues={fields}
+            selectedImage={selectedImage}
+            onSelectImage={setSelectedImage}
+            onFocusParagraph={handleParagraphFocus}
+            onSync={(element) => {
+              if (scope === "cell" && tablePath) syncCell(tablePath[0], tablePath[1], tablePath[2], tablePath[3], element);
+              else if (scope === "body" || scope === "header" || scope === "footer") syncParagraph(index, element);
+            }}
+            onUpdate={(next) => updateBlock(index, next)}
+            onSyncCell={(path, element) => syncCell(path[0], path[1], path[2], path[3], element)}
+            onStructure={(action) => handleStructure(action, scope)}
+            onOpenBlock={editBlock}
+          />
+        ))}
+      </>
+    );
+  };
 
   return (
     <div className="editor writer-editor">
@@ -1547,6 +1561,11 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                           fragment={fragment}
                           block={document.blocks[fragment.index]}
                           zoom={zoom}
+                          page={pageIndex + 1}
+                          pages={pages.length}
+                          title={document.metadata.title}
+                          author={document.metadata.author}
+                          listNumbers={listNumbers}
                           noteNumbers={noteNumbers}
                           showRevisions={document.showRevisions !== false}
                           active={pageEdit?.block === fragment.index && activeFragmentFrom(fragment.index) === fragment.from}
@@ -1605,7 +1624,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
 
       {/* Hidden probe: the pagination engine measures this column. */}
       <div className="writer-probe" aria-hidden="true" ref={probeRef} style={{ width: contentWidthPx }}>
-        <StaticBlocks blocks={document.blocks} scope="probe" page={1} pages={1} zoom={zoom} onOpen={() => undefined} />
+        <StaticBlocks blocks={document.blocks} scope="probe" page={1} pages={1} zoom={zoom} listNumbers={listNumbers} fieldValues={documentFields} onOpen={() => undefined} />
       </div>
 
       <div className="editor-status">
@@ -1949,6 +1968,8 @@ function StaticParagraph({
   pages = 0,
   noteNumbers,
   showRevisions = true,
+  listNumber,
+  fieldValues,
   onOpen,
 }: {
   block: Extract<Block, { type: "paragraph" }>;
@@ -1959,11 +1980,18 @@ function StaticParagraph({
   pages?: number;
   noteNumbers?: Record<string, number>;
   showRevisions?: boolean;
+  /** Computed ordered-list position for this block. */
+  listNumber?: number;
+  /** Live field values (page/pages/date/time/title/author). */
+  fieldValues?: Record<string, string>;
   /** Click target for header/footer previews; page fragments use pointer events. */
   onOpen?: () => void;
 }) {
   const props = block.props;
-  const listMarker = props.list ? (props.list.kind === "number" ? `${props.list.start}.` : ["•", "◦", "▪"][props.list.level % 3]) : null;
+  const listMarker = props.list ? orderedListMarker(props, listNumber) : null;
+  // Callers with full document context pass the map; previews without it still
+  // get page/pages/date/time.
+  const fields = fieldValues ?? fieldValuesFor({ page, pages });
   return (
     <div
       className="para-row"
@@ -1995,7 +2023,7 @@ function StaticParagraph({
           textIndent: props.firstLinePt,
           fontSize: `${(effectiveFontSize(block) ?? 11) * zoom}pt`,
         }}
-        dangerouslySetInnerHTML={{ __html: runsToHtml(substituteTokens(block.runs, page, pages), { noteNumbers, showRevisions }) }}
+        dangerouslySetInnerHTML={{ __html: runsToHtml(substituteTokens(block.runs, page, pages), { noteNumbers, showRevisions, fieldValues: fields }) }}
       />
     </div>
   );
@@ -2060,6 +2088,8 @@ function StaticBlocks({
   zoom,
   noteNumbers,
   showRevisions = true,
+  listNumbers,
+  fieldValues,
   onOpen,
 }: {
   blocks: Block[];
@@ -2069,6 +2099,9 @@ function StaticBlocks({
   zoom: number;
   noteNumbers?: Record<string, number>;
   showRevisions?: boolean;
+  /** Ordered-list positions for `blocks` (index -> number). */
+  listNumbers?: Map<number, number>;
+  fieldValues?: Record<string, string>;
   onOpen: (index: number) => void;
 }) {
   return (
@@ -2076,7 +2109,20 @@ function StaticBlocks({
       {blocks.map((block, index) => {
         if (block.type === "paragraph") {
           return (
-            <StaticParagraph key={index} block={block} index={index} scope={scope} zoom={zoom} page={page} pages={pages} noteNumbers={noteNumbers} showRevisions={showRevisions} onOpen={() => onOpen(index)} />
+            <StaticParagraph
+              key={index}
+              block={block}
+              index={index}
+              scope={scope}
+              zoom={zoom}
+              page={page}
+              pages={pages}
+              noteNumbers={noteNumbers}
+              showRevisions={showRevisions}
+              listNumber={listNumbers?.get(index)}
+              fieldValues={fieldValues}
+              onOpen={() => onOpen(index)}
+            />
           );
         }
         return (
@@ -2107,6 +2153,11 @@ function PageFragmentView({
   fragment,
   block,
   zoom,
+  page,
+  pages,
+  title,
+  author,
+  listNumbers,
   noteNumbers,
   showRevisions,
   active,
@@ -2123,6 +2174,11 @@ function PageFragmentView({
   fragment: Fragment;
   block: Block | undefined;
   zoom: number;
+  page: number;
+  pages: number;
+  title: string;
+  author: string;
+  listNumbers: Map<number, number>;
   noteNumbers?: Record<string, number>;
   showRevisions?: boolean;
   active: boolean;
@@ -2140,6 +2196,7 @@ function PageFragmentView({
   // extend the browser selection by itself, so the moves rebuild the range on
   // the active editable with pointer capture.
   const drag = useRef<number | null>(null);
+  const fieldValues = useMemo(() => fieldValuesFor({ page, pages, title, author }), [page, pages, title, author]);
   if (!block) return null;
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -2197,6 +2254,8 @@ function PageFragmentView({
               zoom={zoom}
               noteNumbers={noteNumbers}
               showRevisions={showRevisions}
+              listNumber={listNumbers.get(fragment.index)}
+              fieldValues={fieldValues}
               onSync={onSync}
               onStructure={onStructure}
               onFocusParagraph={onFocusParagraph}
@@ -2205,7 +2264,16 @@ function PageFragmentView({
               onArrowAtEdge={onArrowAtEdge}
             />
           ) : (
-            <StaticParagraph block={block} index={fragment.index} scope="page" zoom={zoom} noteNumbers={noteNumbers} showRevisions={showRevisions} />
+            <StaticParagraph
+              block={block}
+              index={fragment.index}
+              scope="page"
+              zoom={zoom}
+              noteNumbers={noteNumbers}
+              showRevisions={showRevisions}
+              listNumber={listNumbers.get(fragment.index)}
+              fieldValues={fieldValues}
+            />
           )}
         </div>
       </div>
@@ -2263,6 +2331,8 @@ function PageEditableParagraph({
   zoom,
   noteNumbers,
   showRevisions,
+  listNumber,
+  fieldValues,
   onSync,
   onStructure,
   onFocusParagraph,
@@ -2276,6 +2346,8 @@ function PageEditableParagraph({
   zoom: number;
   noteNumbers?: Record<string, number>;
   showRevisions?: boolean;
+  listNumber?: number;
+  fieldValues?: Record<string, string>;
   onSync: (element: HTMLElement) => void;
   onStructure: (action: StructureAction) => void;
   onFocusParagraph: (block: Extract<Block, { type: "paragraph" }>) => void;
@@ -2296,7 +2368,7 @@ function PageEditableParagraph({
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
-    const html = runsToHtml(block.runs, { noteNumbers, showRevisions });
+    const html = runsToHtml(block.runs, { noteNumbers, showRevisions, fieldValues });
     if (!focused) {
       if (element.innerHTML !== html) element.innerHTML = html;
       return;
@@ -2308,7 +2380,7 @@ function PageEditableParagraph({
     pendingCaret.current = null;
     if (element.innerHTML !== html) element.innerHTML = html;
     setCaretOffset(element, Math.min(at, modelText.length));
-  }, [block.runs, focused, noteNumbers, showRevisions]);
+  }, [block.runs, fieldValues, focused, noteNumbers, showRevisions]);
 
   // The caret can land on a line the fragment clips away (ArrowDown past the
   // visible band, typing at the page boundary). Hand the surface to the
@@ -2366,7 +2438,7 @@ function PageEditableParagraph({
     handleParagraphKeyDown(event, { element, block, index, onStructure, pendingCaret });
   };
 
-  const listMarker = props.list ? (props.list.kind === "number" ? `${props.list.start}.` : ["•", "◦", "▪"][props.list.level % 3]) : null;
+  const listMarker = props.list ? orderedListMarker(props, listNumber) : null;
   return (
     <div className="para-row" style={{ marginLeft: props.list ? props.list.level * 24 : 0 }}>
       {listMarker ? (
@@ -2426,6 +2498,8 @@ function BlockView({
   zoom,
   noteNumbers,
   showRevisions,
+  listNumber,
+  fieldValues,
   onSelectImage,
   onFocusParagraph,
   onSync,
@@ -2440,6 +2514,8 @@ function BlockView({
   zoom: number;
   noteNumbers: Record<string, number>;
   showRevisions: boolean;
+  listNumber?: number;
+  fieldValues?: Record<string, string>;
   selectedImage: number | null;
   onSelectImage: (index: number | null) => void;
   onFocusParagraph: (block: Extract<Block, { type: "paragraph" }>) => void;
@@ -2458,6 +2534,8 @@ function BlockView({
         zoom={zoom}
         noteNumbers={noteNumbers}
         showRevisions={showRevisions}
+        listNumber={listNumber}
+        fieldValues={fieldValues}
         onFocus={() => onFocusParagraph(block)}
         onSync={onSync}
         onUpdate={onUpdate}
@@ -2643,6 +2721,8 @@ function ParagraphView({
   zoom,
   noteNumbers,
   showRevisions,
+  listNumber,
+  fieldValues,
   onFocus,
   onSync,
   onStructure,
@@ -2653,6 +2733,8 @@ function ParagraphView({
   zoom: number;
   noteNumbers: Record<string, number>;
   showRevisions: boolean;
+  listNumber?: number;
+  fieldValues?: Record<string, string>;
   onFocus: () => void;
   onSync: (element: HTMLElement) => void;
   onUpdate: (block: Block) => void;
@@ -2669,7 +2751,7 @@ function ParagraphView({
   // effects run before the parent's, which makes that ordering guaranteed.
   useLayoutEffect(() => {
     if (!ref.current) return;
-    const html = runsToHtml(block.runs, { noteNumbers, showRevisions });
+    const html = runsToHtml(block.runs, { noteNumbers, showRevisions, fieldValues });
     if (!focused) {
       if (ref.current.innerHTML !== html) ref.current.innerHTML = html;
       return;
@@ -2685,11 +2767,11 @@ function ParagraphView({
     pendingCaret.current = null;
     if (ref.current.innerHTML !== html) ref.current.innerHTML = html;
     setCaretOffset(ref.current, Math.min(at, modelText.length));
-  }, [block.runs, focused, noteNumbers, showRevisions]);
+  }, [block.runs, fieldValues, focused, noteNumbers, showRevisions]);
 
   const heading = props.style.startsWith("Heading");
   const Tag = (heading ? (`h${Math.min(6, Number(props.style.replace("Heading", "")) || 1)}`) : "div") as "div";
-  const listMarker = props.list ? (props.list.kind === "number" ? `${props.list.start}.` : ["•", "◦", "▪"][props.list.level % 3]) : null;
+  const listMarker = props.list ? orderedListMarker(props, listNumber) : null;
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     handleParagraphKeyDown(event, { element: event.currentTarget, block, index, onStructure, pendingCaret });

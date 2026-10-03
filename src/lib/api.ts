@@ -45,6 +45,19 @@ import type {
   Thumbnail,
   WatermarkOptions,
 } from "./types";
+import { trackJobInvocation } from "./job-retries";
+
+/**
+ * Every long operation goes through here: the retry metadata (kind + the exact
+ * invoke args) is persisted before the work starts, so the Jobs screen can
+ * re-run it after a restart. A no-op for commands without a job.
+ */
+function invokeTracked<T>(command: string, args: Record<string, unknown>): Promise<T> {
+  trackJobInvocation(command, args);
+  return invoke<T>(command, args);
+}
+
+export { invokeTracked };
 
 /** Normalizes any thrown value into a friendly {code, message} pair. */
 export function toAppError(error: unknown): { code: string; message: string } {
@@ -83,12 +96,12 @@ export const aiClearKey = () => invoke<AiSettingsView>("ai_clear_key");
 export const aiTestConnection = () => invoke<AiTestResult>("ai_test_connection");
 export const aiDocumentPreview = (path: string, pages: number[] | undefined, password?: string) =>
   invoke<AiPreview>("ai_document_preview", { path, pages: pages ?? null, password: password || null });
-export const aiSummarize = (request: AiSummarizeRequest) => invoke<AiTextResult>("ai_summarize", { request });
-export const aiTranslate = (request: AiTranslateRequest) => invoke<AiTextResult>("ai_translate", { request });
-export const aiAsk = (request: AiAskRequest) => invoke<AiTextResult>("ai_ask", { request });
-export const aiCleanupText = (request: AiCleanupRequest) => invoke<AiTextResult>("ai_cleanup_text", { request });
+export const aiSummarize = (request: AiSummarizeRequest) => invokeTracked<AiTextResult>("ai_summarize", { request });
+export const aiTranslate = (request: AiTranslateRequest) => invokeTracked<AiTextResult>("ai_translate", { request });
+export const aiAsk = (request: AiAskRequest) => invokeTracked<AiTextResult>("ai_ask", { request });
+export const aiCleanupText = (request: AiCleanupRequest) => invokeTracked<AiTextResult>("ai_cleanup_text", { request });
 export const aiSuggestMetadata = (path: string, password: string | undefined, jobId: string) =>
-  invoke<AiMetadataSuggestion>("ai_suggest_metadata", { request: { path, password: password || null, jobId } });
+  invokeTracked<AiMetadataSuggestion>("ai_suggest_metadata", { request: { path, password: password || null, jobId } });
 export const aiSaveOutput = (path: string, text: string, overwrite?: string) =>
   invoke<string>("ai_save_output", { path, text, overwrite: overwrite ?? null });
 export const aiExamplePrompts = () => invoke<AiExamplePrompts>("ai_example_prompts");
@@ -210,7 +223,7 @@ export const startupFiles = () => invoke<string[]>("office_startup_files");
 // ---------------------------------------------------------------------------
 
 export const mergePdfs = (inputs: string[], output: OutputSpec, preserveMetadata: boolean, jobId: string) =>
-  invoke<OpResult>("merge_pdfs", { request: { inputs, output, preserveMetadata, jobId } });
+  invokeTracked<OpResult>("merge_pdfs", { request: { inputs, output, preserveMetadata, jobId } });
 
 interface PagesPayload {
   input: string;
@@ -222,11 +235,11 @@ interface PagesPayload {
   jobId: string;
 }
 
-export const extractPages = (payload: PagesPayload) => invoke<OpResult>("extract_pages", { request: payload });
+export const extractPages = (payload: PagesPayload) => invokeTracked<OpResult>("extract_pages", { request: payload });
 
-export const deletePages = (payload: PagesPayload) => invoke<OpResult>("delete_pages", { request: payload });
+export const deletePages = (payload: PagesPayload) => invokeTracked<OpResult>("delete_pages", { request: payload });
 
-export const rotatePages = (payload: PagesPayload) => invoke<OpResult>("rotate_pages", { request: payload });
+export const rotatePages = (payload: PagesPayload) => invokeTracked<OpResult>("rotate_pages", { request: payload });
 
 export const applyPagePlan = (
   input: string,
@@ -234,7 +247,7 @@ export const applyPagePlan = (
   output: OutputSpec,
   jobId: string,
   password?: string,
-) => invoke<OpResult>("apply_page_plan", { request: { input, plan, output, password, jobId } });
+) => invokeTracked<OpResult>("apply_page_plan", { request: { input, plan, output, password, jobId } });
 
 export const splitPdf = (
   input: string,
@@ -244,7 +257,7 @@ export const splitPdf = (
   jobId: string,
   password?: string,
 ) =>
-  invoke<{ parts: { path: string; first_page: number; last_page: number }[]; outputDir: string }>("split_pdf", {
+  invokeTracked<{ parts: { path: string; first_page: number; last_page: number }[]; outputDir: string }>("split_pdf", {
     request: { input, mode, outputDir, overwrite, password, jobId },
   });
 
@@ -257,10 +270,10 @@ export const compressPdf = (
   options: CompressOptions,
   jobId: string,
   password?: string,
-) => invoke<OpResult>("compress_pdf", { request: { input, output, options, password, jobId } });
+) => invokeTracked<OpResult>("compress_pdf", { request: { input, output, options, password, jobId } });
 
 export const ocrPdf = (input: string, output: OutputSpec, options: OcrOptions, jobId: string, password?: string) =>
-  invoke<OpResult>("ocr_pdf", { request: { input, output, options, password, jobId } });
+  invokeTracked<OpResult>("ocr_pdf", { request: { input, output, options, password, jobId } });
 
 export const protectPdf = (
   input: string,
@@ -269,12 +282,12 @@ export const protectPdf = (
   jobId: string,
   password?: string,
 ) =>
-  invoke<OpResult>("protect_pdf", {
+  invokeTracked<OpResult>("protect_pdf", {
     request: { input, output, ...options, password, jobId },
   });
 
 export const unlockPdf = (input: string, output: OutputSpec, password: string, jobId: string) =>
-  invoke<OpResult>("unlock_pdf", { request: { input, output, password, jobId } });
+  invokeTracked<OpResult>("unlock_pdf", { request: { input, output, password, jobId } });
 
 export const pdfToImages = (request: {
   input: string;
@@ -289,7 +302,7 @@ export const pdfToImages = (request: {
   password?: string;
   jobId: string;
 }) =>
-  invoke<{
+  invokeTracked<{
     files: { path: string; page: number; width: number; height: number; bytes: number }[];
     totalBytes: number;
     dpi: number;
@@ -297,7 +310,7 @@ export const pdfToImages = (request: {
   }>("pdf_to_images", { request });
 
 export const imagesToPdf = (items: ImageItem[], output: OutputSpec, options: ImageToPdfOptions, jobId: string) =>
-  invoke<OpResult>("images_to_pdf", { request: { items, output, options, jobId } });
+  invokeTracked<OpResult>("images_to_pdf", { request: { items, output, options, jobId } });
 
 export const resizePages = (
   input: string,
@@ -312,10 +325,10 @@ export const resizePages = (
   },
   jobId: string,
   password?: string,
-) => invoke<OpResult>("resize_pages", { request: { input, output, options, password, jobId } });
+) => invokeTracked<OpResult>("resize_pages", { request: { input, output, options, password, jobId } });
 
 export const cropPages = (input: string, output: OutputSpec, crops: CropItem[], jobId: string, password?: string) =>
-  invoke<OpResult>("crop_pages", { request: { input, output, crops, password, jobId } });
+  invokeTracked<OpResult>("crop_pages", { request: { input, output, crops, password, jobId } });
 
 export const editMetadata = (
   input: string,
@@ -339,7 +352,7 @@ export const editMetadata = (
    */
   keepSignatures = true,
 ) =>
-  invoke<OpResult>("edit_metadata", {
+  invokeTracked<OpResult>("edit_metadata", {
     request: { input, output, metadata, remove, password, jobId, keepSignatures },
   });
 
@@ -352,7 +365,7 @@ export const addPageNumbers = (
   /** Keep existing signatures by appending the numbers as a new revision. */
   keepSignatures = true,
 ) =>
-  invoke<OpResult>("add_page_numbers", {
+  invokeTracked<OpResult>("add_page_numbers", {
     request: { input, output, options, password, jobId, keepSignatures },
   });
 
@@ -365,7 +378,7 @@ export const watermarkPdf = (
   /** Keep existing signatures by appending the watermark as a new revision. */
   keepSignatures = true,
 ) =>
-  invoke<OpResult>("watermark_pdf", {
+  invokeTracked<OpResult>("watermark_pdf", {
     request: { input, output, options, password, jobId, keepSignatures },
   });
 
@@ -378,7 +391,7 @@ export const annotatePdf = (
   /** Keep existing signatures by appending the stamp as a new revision. */
   keepSignatures = true,
 ) =>
-  invoke<OpResult>("annotate_pdf", {
+  invokeTracked<OpResult>("annotate_pdf", {
     request: { input, output, annotations, password, jobId, keepSignatures },
   });
 
@@ -389,7 +402,7 @@ export const redactPdf = (
   options: RedactionOptions,
   jobId: string,
   password?: string,
-) => invoke<OpResult>("redact_pdf", { request: { input, output, areas, options, password, jobId } });
+) => invokeTracked<OpResult>("redact_pdf", { request: { input, output, areas, options, password, jobId } });
 
 export const detectSensitiveText = (path: string, page: number, password?: string) =>
   invoke<RedactionMatch[]>("detect_sensitive_text", { path, page, password: password || null });
@@ -402,7 +415,7 @@ export const comparePdfs = (
   leftPassword?: string,
   rightPassword?: string,
 ) =>
-  invoke<CompareReport>("compare_pdfs", {
+  invokeTracked<CompareReport>("compare_pdfs", {
     request: {
       left,
       right,
@@ -425,6 +438,10 @@ export const saveSettings = (settings: Settings) => invoke<void>("save_settings"
 export const loadRecent = () => invoke<RecentEntry[]>("load_recent");
 export const addRecent = (entry: RecentEntry) => invoke<void>("add_recent", { entry });
 export const clearRecent = () => invoke<void>("clear_recent");
+
+/** Vault scan: tracked so a failed/interrupted scan can be retried from Jobs. */
+export const vaultScan = <T>(request: { folders: string[]; rescan: boolean; maxFiles: number }) =>
+  invokeTracked<T>("vault_scan", { request });
 
 // ---------------------------------------------------------------------------
 // Digital signatures - real CMS/PKCS#7 detached signatures (SHA-256)

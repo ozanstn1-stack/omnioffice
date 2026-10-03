@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { errorMessage, useToasts } from "../lib/store";
+import { invokeTracked } from "../lib/api";
 import { DropZone, FileList } from "../components/files";
 import { Badge, Card, Field, Toggle } from "../components/ui";
 import { PageCanvas } from "../components/pages";
@@ -331,7 +332,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
 
   const runSanitize = () =>
     run(async () => {
-      const report = await invoke<SanitizeReport>("sanitize_pdf", {
+      const report = await invokeTracked<SanitizeReport>("sanitize_pdf", {
         request: { input, jobId: "studio-sanitize", options: null },
       });
       setSanitizeReport(report);
@@ -340,7 +341,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
 
   const runFlatten = () =>
     run(async () => {
-      const report = await invoke<FlattenReport>("flatten_pdf", {
+      const report = await invokeTracked<FlattenReport>("flatten_pdf", {
         request: { input, jobId: "studio-flatten", options: null },
       });
       setFlattenReport(report);
@@ -355,7 +356,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
 
   const runConvert = () =>
     run(async () => {
-      const report = await invoke<PdfaReport>("pdfa_convert", { request: { input, level, jobId: "studio-pdfa" } });
+      const report = await invokeTracked<PdfaReport>("pdfa_convert", { request: { input, level, jobId: "studio-pdfa" } });
       setPdfaReport(report);
       toast(report.valid ? "success" : "error", report.valid ? t("studio.pdfaValid") : t("studio.pdfaStillFailing"));
     }, "studio-pdfa");

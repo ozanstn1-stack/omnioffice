@@ -391,6 +391,65 @@ describe("Writer paginated in-place editing", () => {
     expect(document.activeElement).toBe(editable);
     expect(caretOffset(editable)).toBe(3);
   });
+
+  it("numbers ordered lists across the document instead of repeating 1", () => {
+    const id = useOfficeTabs.getState().create("writer", "Untitled");
+    const tab = useOfficeTabs.getState().tabs[0];
+    const model = tab.model as TextDocument;
+    const first = model.blocks.find((block) => block.type === "paragraph") as Extract<Block, { type: "paragraph" }>;
+    const numbered = (text: string, start = 1) => ({
+      type: "paragraph" as const,
+      props: { ...first.props, list: { kind: "number" as const, level: 0, start, marker: "" } },
+      runs: [{ ...first.runs[0], text }],
+    });
+    const blocks = [
+      numbered("First", 1),
+      numbered("Second"),
+      { type: "paragraph" as const, props: { ...first.props, list: null }, runs: [{ ...first.runs[0], text: "Break" }] },
+      numbered("Restart", 5),
+    ];
+    useOfficeTabs.setState((state) => ({ tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, blocks } } : entry)) }));
+    render(<Harness id={id} />);
+
+    const markers = Array.from(document.querySelectorAll<HTMLElement>(".writer-page-sheet .list-marker")).map(
+      (marker) => marker.textContent,
+    );
+    // Consecutive items increment; a body paragraph ends the series and the
+    // next numbered paragraph starts at its own `start`.
+    expect(markers).toEqual(["1.", "2.", "5."]);
+  });
+
+  it("renders page and title fields from the live document, not the cached text", () => {
+    const id = useOfficeTabs.getState().create("writer", "Report Title");
+    const tab = useOfficeTabs.getState().tabs[0];
+    const model = tab.model as TextDocument;
+    const first = model.blocks.find((block) => block.type === "paragraph") as Extract<Block, { type: "paragraph" }>;
+    const field = (kind: string, cached: string) => ({
+      ...first.runs[0],
+      text: "",
+      field: { kind, target: "", cached },
+    });
+    const blocks = [
+      {
+        type: "paragraph" as const,
+        props: { ...first.props },
+        runs: [field("page", "99"), { ...first.runs[0], text: " of " }, field("pages", "99"), { ...first.runs[0], text: " — " }, field("title", "stale")],
+      },
+    ];
+    useOfficeTabs.setState((state) => ({
+      tabs: state.tabs.map((entry) =>
+        (entry.id === id ? { ...entry, model: { ...model, metadata: { ...model.metadata, title: "Report Title" }, blocks } } : entry),
+      ),
+    }));
+    render(<Harness id={id} />);
+
+    const fields = Array.from(document.querySelectorAll<HTMLElement>(".writer-page-sheet .writer-field")).map(
+      (element) => element.textContent,
+    );
+    // PAGE/NUMPAGES/TITLE come from the pagination result and metadata; the
+    // cached values are only the fallback.
+    expect(fields).toEqual(["1", "1", "Report Title"]);
+  });
 });
 
 

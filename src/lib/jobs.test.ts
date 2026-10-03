@@ -304,29 +304,36 @@ describe("persisted history", () => {
 
 describe("JobsScreen", () => {
   it("renders an interrupted job with an interrupted badge and a retry action", () => {
-    useJobs.setState({
-      jobs: [
-        {
-          id: "stopped",
-          kind: "vault",
-          title: "Vault scan",
-          status: "interrupted",
-          stage: "",
-          current: 0,
-          total: 0,
-          startedAt: 1,
-          finishedAt: 2,
-          persisted: true,
-          payload: { folders: [] },
-        },
-      ],
-    });
-    render(createElement(JobsScreen));
-    expect(screen.getByText("Interrupted")).toBeInTheDocument();
-    expect(screen.getByText("Vault scan")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Retry/ })).toBeInTheDocument();
-    // The honest hint: the job is not running anymore.
-    expect(screen.getByText(/not working anymore/)).toBeInTheDocument();
+    // The Retry button only renders for kinds with a registered handler; the
+    // app installs them at startup (job-retries.ts).
+    const unregister = registerJobRetryHandler("vault", () => undefined);
+    try {
+      useJobs.setState({
+        jobs: [
+          {
+            id: "stopped",
+            kind: "vault",
+            title: "Vault scan",
+            status: "interrupted",
+            stage: "",
+            current: 0,
+            total: 0,
+            startedAt: 1,
+            finishedAt: 2,
+            persisted: true,
+            payload: { folders: [] },
+          },
+        ],
+      });
+      render(createElement(JobsScreen));
+      expect(screen.getByText("Interrupted")).toBeInTheDocument();
+      expect(screen.getByText("Vault scan")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Retry/ })).toBeInTheDocument();
+      // The honest hint: the job is not running anymore.
+      expect(screen.getByText(/not working anymore/)).toBeInTheDocument();
+    } finally {
+      unregister();
+    }
   });
 
   it("renders a running job without a retry action", () => {
