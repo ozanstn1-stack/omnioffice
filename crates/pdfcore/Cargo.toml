@@ -23,7 +23,7 @@ ab_glyph = "0.2.32"
 cbc = { version = "0.1", features = ["alloc"] }
 cms = { version = "0.2", features = ["std"] }
 const-oid = "0.9"
-der = { version = "0.7", features = ["std", "oid", "derive"] }
+der = { version = "0.8", features = ["std", "oid", "derive"] }
 des = "0.8"
 hmac = "0.12"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "bmp", "tiff", "gif"] }
@@ -52,7 +52,7 @@ x509-cert = { version = "0.2", default-features = false, features = ["std"] }
 # containers so the real parse/decrypt/verify paths are exercised end to end.
 aes = "0.8"
 cbc = { version = "0.1", features = ["alloc"] }
-der = { version = "0.7", features = ["std", "oid", "derive"] }
+der = { version = "0.8", features = ["std", "oid", "derive"] }
 des = "0.8"
 hmac = "0.12"
 pbkdf2 = { version = "0.12", features = ["hmac"] }
