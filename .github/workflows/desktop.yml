@@ -38,6 +38,10 @@ jobs:
         run: npm run lint
       - name: Translation tables (en/tr parity)
         run: npm run i18n:audit -- --check
+      # `tauri build` refuses an npm/Rust plugin version mismatch, and a
+      # Dependabot bump of only one side shipped exactly that once.
+      - name: Tauri plugin version sync
+        run: node scripts/check-tauri-plugin-versions.mjs
       - name: Formatting gate (files added by this change)
         env:
           FORMAT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
