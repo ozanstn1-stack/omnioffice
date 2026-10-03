@@ -3117,7 +3117,7 @@ name = "officecore"
 version = "3.5.2"
 dependencies = [
  "ab_glyph",
- "base64 0.22.1",
+ "base64 0.23.1",
  "calamine",
  "crc32fast",
  "flate2",
@@ -3271,7 +3271,7 @@ name = "pdf-swiss-army-knife"
 version = "3.5.2"
 dependencies = [
  "aicore",
- "base64 0.22.1",
+ "base64 0.23.1",
  "lopdf",
  "officecore",
  "pdfcore",
