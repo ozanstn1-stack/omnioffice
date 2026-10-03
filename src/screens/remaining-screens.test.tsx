@@ -117,19 +117,17 @@ describe("organize, annotate and batch screens", () => {
   it("places an annotation where the preview was clicked and passes it on", async () => {
     // jsdom has no layout: give the preview a real box so the click maps to a
     // document coordinate.
-    const rectSpy = vi
-      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
-      .mockReturnValue({
-        x: 0,
-        y: 0,
-        left: 0,
-        top: 0,
-        right: 500,
-        bottom: 700,
-        width: 500,
-        height: 700,
-        toJSON: () => ({}),
-      } as DOMRect);
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 500,
+      bottom: 700,
+      width: 500,
+      height: 700,
+      toJSON: () => ({}),
+    } as DOMRect);
     try {
       const user = userEvent.setup();
       render(<Annotate {...props} />);
