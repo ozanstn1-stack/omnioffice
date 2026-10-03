@@ -10,9 +10,30 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.5.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.5.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.5.1
+
+Reader zoom on Android is sharp and light.
+
+- **Physical-pixel previews.** Page previews were rendered at a fixed 96 dpi
+  and only ever downscaled, so the webview upscaled the bitmap and zoomed text
+  was blurry. The preview pipeline now renders at a high dpi and caps the
+  result at the requested raster width, and the reader asks for CSS width ×
+  device pixel ratio (capped at 3000 px; backend accepts up to 4000).
+- **Progressive, reusable cache.** The reader keeps one bitmap per page (LRU,
+  24 entries): zooming out reuses a sharper cached page instantly, and only a
+  sharper zoom triggers a render. The page stays visible while the sharper
+  bitmap loads instead of flashing a spinner, and the prefetch margin shrinks
+  for high-resolution renders so Android does not rasterize neighbours it may
+  never show.
+- **Smoother pinch.** Pinch updates are coalesced to one state change per
+  frame and pages are memoized, so a gesture no longer re-renders every page
+  on every pointer event.
+- Page previews on the other screens (`PageCanvas`: Info, Watermark, PDF
+  Studio) get the same physical-pixel rendering.
 
 ## What's new in 3.5.0
 
@@ -761,6 +782,10 @@ These are real and honest:
   the picker UI itself (`ACTION_OPEN_DOCUMENT`) is still not automated,
   `osed/ospr/osdt` are accepted by the intent filter but the engine does not
   understand them yet, and the launcher label is still "PDF Swiss Army Knife".
+- **Reader zoom**: page previews are rasterized up to 3000 px wide (backend
+  cap 4000) and cached per page (24 entries); zooming past what the bitmap
+  covers on very high-density screens still upscales until tiled rendering is
+  implemented.
 - Interoperability with Microsoft Office/LibreOffice was validated
   structurally (package parts, content types, relationships, independent
   readers) plus headless LibreOffice conversion during development, not by

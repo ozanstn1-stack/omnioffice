@@ -73,6 +73,30 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/**
+ * Device pixel ratio for page raster previews, clamped so a 4K desktop does
+ * not ask for an 8K render and Android bitmap memory stays bounded.
+ */
+export function previewPixelRatio(): number {
+  const ratio = typeof window === "undefined" ? 1 : window.devicePixelRatio;
+  return clamp(Number.isFinite(ratio) ? ratio : 1, 1, 2.5);
+}
+
+/** Widest raster a preview may request. The backend accepts up to 4000 px;
+ *  the reader keeps a lower ceiling because a full-page RGBA render costs
+ *  roughly 4 bytes per pixel and Android has to hold it during encoding. */
+export const MAX_PREVIEW_RASTER_WIDTH = 3000;
+
+/**
+ * Raster width a page preview should be rendered at for a CSS width. The
+ * bitmap has to cover physical pixels, not CSS pixels, or the browser upscales
+ * it and text blurs on high-density displays (phones/tablets).
+ */
+export function previewRasterWidth(cssWidth: number, ratio: number = previewPixelRatio()): number {
+  const wanted = Math.round(Math.max(1, cssWidth) * ratio);
+  return Math.round(clamp(wanted, 200, MAX_PREVIEW_RASTER_WIDTH));
+}
+
 export function parsePageList(input: string, total: number): number[] | null {
   const trimmed = input.trim();
   if (!trimmed) return null;

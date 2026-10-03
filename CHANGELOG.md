@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.1] - Sharp, light reader zoom
+
+### Fixed
+
+- **Blurry zoom (Android).** Page previews were rendered at a fixed 96 dpi
+  and could only be downscaled, so a requested raster width was never
+  produced; the webview upscaled the small bitmap and text blurred as soon as
+  the reader was zoomed. `page_preview` now renders at a high dpi and lets
+  `max_width` cap the result, and the web layer requests CSS width × device
+  pixel ratio (capped at 3000 px; the backend accepts up to 4000).
+- **Heavy zoom.** Every settled zoom step re-requested every nearby page and
+  remounted the page components, flashing a spinner and re-rendering pages
+  that had just been rasterized. Previews are now cached per page (one entry
+  per page, LRU 24), reused whenever the cached bitmap is at least as sharp,
+  and the previous bitmap stays on screen while a sharper one loads. The
+  prefetch margin shrinks for high-resolution renders so Android does not
+  rasterize pages it may never show.
+- **Pinch jank.** Pinch updates are coalesced to one React update per frame
+  and the page component is memoized, so a gesture no longer re-renders every
+  page on every pointer event.
+- `PageCanvas` (Info, Watermark, PDF Studio) previews use the same
+  physical-pixel rendering.
+
+### Added
+
+- Rust regression `high_dpi_render_honours_the_requested_raster_width`
+  (pdfcore) proving the high-dpi + `max_width` pipeline reaches the requested
+  raster width, plus reader helper tests for `previewRasterWidth` and the
+  preview cache (`rememberPreview` / `reusablePreview`).
+
 ## [3.5.0] - Test coverage gate and screen coverage
 
 ### Added

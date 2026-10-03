@@ -75,6 +75,38 @@ fn pdf_to_images_at_dpi() {
     assert_eq!(img.color(), image::ColorType::L8);
 }
 
+/// Regression for the blurry reader zoom: `page_preview` used to render at a
+/// fixed 96 dpi and only ever downscale, so asking for a larger raster
+/// returned the same ~793 px A4 bitmap and the webview upscaled it. A high
+/// render dpi with the same `max_width` must produce the requested width.
+#[test]
+fn high_dpi_render_honours_the_requested_raster_width() {
+    if !engine_available() {
+        eprintln!("skipping: pdfium not available");
+        return;
+    }
+    let (_dir, input) = setup("previewdpi", 1);
+    let low = pdfcore::render::render_page(
+        &input,
+        None,
+        1,
+        &RenderOptions { dpi: 96.0, max_width: Some(2000), max_height: None },
+    )
+    .unwrap();
+    let high = pdfcore::render::render_page(
+        &input,
+        None,
+        1,
+        &RenderOptions { dpi: 600.0, max_width: Some(2000), max_height: None },
+    )
+    .unwrap();
+    // A4 at 96 dpi is ~793 px, so the low-dpi render stays at its own width…
+    assert!(low.width < 1000, "expected the 96 dpi render to stay small, got {}", low.width);
+    // …while the high-dpi render reaches the requested raster width.
+    assert_eq!(high.width, 2000, "high dpi render must reach the requested width");
+    assert!(high.height > low.height);
+}
+
 #[test]
 fn images_to_pdf_builds_pages() {
     let dir = TestDir::new();

@@ -58,3 +58,12 @@ Effort estimates assume a single developer.
   still not started; benchmark trend tracking is not started either.
 - The coverage floors keep a few points of headroom and should be raised as
   the suite grows.
+
+## 3.5.1 — Reader zoom quality (delivered)
+
+- Previews render in physical pixels (high-dpi + `max_width` cap) instead of a
+  fixed 96 dpi, and the reader caches one bitmap per page (LRU 24) with reuse
+  when the cached bitmap is already sharp enough.
+- Pinch updates coalesce per frame and pages are memoized.
+- Extreme zoom on very high-density screens still upscales until tiled
+  rendering (Phase 3) lands.

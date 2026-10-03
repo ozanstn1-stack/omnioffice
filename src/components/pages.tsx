@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, RotateCw } from "lucide-react";
 import { pageThumbnail, pagePreview } from "../lib/api";
 import { IconButton, Spinner } from "./ui";
 import { useT } from "../lib/i18n";
-import { clamp } from "../lib/format";
+import { clamp, previewRasterWidth } from "../lib/format";
 
 // ---------------------------------------------------------------------------
 // Lazy thumbnail grid with selection and pointer-based reordering
@@ -280,9 +280,12 @@ export function PageCanvas({
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // The raster is requested in physical pixels for the CSS width so text stays
+  // sharp on high-density screens; the page still lays out at `maxWidth`.
+  const rasterWidth = previewRasterWidth(maxWidth);
   // A different page/width is a different preview: reset in render instead of
   // an effect, so the old image never paints against the new geometry.
-  const identity = `${path}:${page}:${maxWidth}:${password ?? ""}`;
+  const identity = `${path}:${page}:${rasterWidth}:${password ?? ""}`;
   const [lastIdentity, setLastIdentity] = useState(identity);
   if (lastIdentity !== identity) {
     setLastIdentity(identity);
@@ -292,10 +295,10 @@ export function PageCanvas({
   }
 
   useEffect(() => {
-    void pagePreview(path, page, maxWidth, password)
+    void pagePreview(path, page, rasterWidth, password)
       .then((preview) => setImage({ dataUrl: preview.dataUrl, width: preview.width, height: preview.height }))
       .catch(() => setError(true));
-  }, [path, page, maxWidth, password]);
+  }, [path, page, rasterWidth, password]);
 
   const toNatural = useCallback(
     (event: { clientX: number; clientY: number }) => {

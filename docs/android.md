@@ -50,14 +50,14 @@ powershell -File scripts/build-android.ps1 -AndroidHome D:\Sdk -NdkHome D:\Sdk\n
 ```
 
 The app version comes from `src-tauri/tauri.conf.json`; the build script
-writes `app/tauri.properties` (`versionName=3.5.0`,
-`versionCode=3005000` — `major*1e6 + minor*1e3 + patch`, monotonically
+writes `app/tauri.properties` (`versionName=3.5.1`,
+`versionCode=3005001` — `major*1e6 + minor*1e3 + patch`, monotonically
 increasing).
 
 Install on a device or emulator:
 
 ```powershell
-adb install -r release-artifacts\PDF-Swiss-Army-Knife-Android-3.5.0-arm64-v8a.apk
+adb install -r release-artifacts\PDF-Swiss-Army-Knife-Android-3.5.1-arm64-v8a.apk
 ```
 
 > **Why not `tauri android build`?** The Tauri CLI prepares `jniLibs` with
