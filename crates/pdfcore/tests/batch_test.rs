@@ -57,28 +57,13 @@ fn batch_watermark_and_compress_all_files() {
 
     // Batch 2: compress every file (raster is slow; use lossless here as the
     // representative operation, plus one raster pass to cover both paths).
-    let lossless = CompressOptions {
-        strategy: "lossless".into(),
-        ..Default::default()
-    };
-    let raster = CompressOptions {
-        strategy: "raster".into(),
-        preset: "high".into(),
-        ..Default::default()
-    };
+    let lossless = CompressOptions { strategy: "lossless".into(), ..Default::default() };
+    let raster = CompressOptions { strategy: "raster".into(), preset: "high".into(), ..Default::default() };
     for (i, input) in inputs.iter().enumerate() {
         let out = dir.path(&format!("cmp-{i}.pdf"));
         let options = if i % 2 == 0 { &lossless } else { &raster };
-        compress_pdf(
-            input,
-            &out,
-            options,
-            OverwritePolicy::Replace,
-            None,
-            &no_progress,
-            &CancelToken::new(),
-        )
-        .unwrap_or_else(|e| panic!("compress failed for {i}: {e}"));
+        compress_pdf(input, &out, options, OverwritePolicy::Replace, None, &no_progress, &CancelToken::new())
+            .unwrap_or_else(|e| panic!("compress failed for {i}: {e}"));
         assert_eq!(page_count(&out), 2);
     }
 }

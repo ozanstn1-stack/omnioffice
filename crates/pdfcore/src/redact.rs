@@ -260,10 +260,7 @@ pub fn looks_like_email(token: &str) -> bool {
 
 /// 15-34 alphanumerics that pass the ISO 13616 mod-97 check.
 pub fn looks_like_iban(compact: &str) -> bool {
-    let characters: Vec<char> = compact
-        .chars()
-        .filter(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
-        .collect();
+    let characters: Vec<char> = compact.chars().filter(|c| c.is_ascii_uppercase() || c.is_ascii_digit()).collect();
     if characters.len() < 15 || characters.len() > 34 {
         return false;
     }
@@ -714,9 +711,8 @@ pub fn redact_pdf(
                     keep
                 });
             }
-            let encoded = content
-                .encode()
-                .map_err(|error| PdfError::ProcessingFailed(format!("encode content: {error}")))?;
+            let encoded =
+                content.encode().map_err(|error| PdfError::ProcessingFailed(format!("encode content: {error}")))?;
             doc.change_page_content(*page_id, encoded)
                 .map_err(|error| PdfError::ProcessingFailed(format!("write content: {error}")))?;
         }
@@ -745,9 +741,7 @@ pub fn redact_pdf(
         ));
     }
     if verification == RedactionVerification::PossiblyPresent {
-        warnings.push(
-            "The output is not safe to share until the flagged values are removed.".to_string(),
-        );
+        warnings.push("The output is not safe to share until the flagged values are removed.".to_string());
     }
 
     Ok(RedactionReport {
@@ -802,15 +796,8 @@ fn verify_redaction(
     let mut checked_pages: Vec<u32> = Vec::new();
     let mut skipped_pages: Vec<u32> = Vec::new();
     for page in &pages {
-        let has_text_layer = geometry
-            .get(page)
-            .map(|chars| !chars.chars.is_empty())
-            .unwrap_or(false);
-        let text = if has_text_layer {
-            crate::render::extract_page_text(output, None, *page).ok()
-        } else {
-            None
-        };
+        let has_text_layer = geometry.get(page).map(|chars| !chars.chars.is_empty()).unwrap_or(false);
+        let text = if has_text_layer { crate::render::extract_page_text(output, None, *page).ok() } else { None };
         let Some(text) = text else {
             skipped_pages.push(*page);
             continue;
@@ -830,10 +817,7 @@ fn verify_redaction(
             RedactionVerification::NotVerified,
             false,
             remaining,
-            format!(
-                "Verification skipped: page(s) {} carry no extractable text layer.",
-                join_pages(&skipped_pages)
-            ),
+            format!("Verification skipped: page(s) {} carry no extractable text layer.", join_pages(&skipped_pages)),
         );
     }
     // A leak on any checked page is the strongest signal: report it even when
@@ -869,11 +853,7 @@ fn verify_redaction(
 }
 
 fn join_pages(pages: &[u32]) -> String {
-    pages
-        .iter()
-        .map(|page| page.to_string())
-        .collect::<Vec<_>>()
-        .join(", ")
+    pages.iter().map(|page| page.to_string()).collect::<Vec<_>>().join(", ")
 }
 
 /// Masks the middle of a sample so the report can name what leaked without
@@ -1127,10 +1107,7 @@ mod tests {
     fn detect_joins_a_number_split_across_words() {
         let page = page_from("call 0532 123 4567 now");
         let found = detect_sensitive(&page);
-        assert!(
-            found.iter().any(|entry| entry.kind == "phone"),
-            "expected a phone match, got {found:?}"
-        );
+        assert!(found.iter().any(|entry| entry.kind == "phone"), "expected a phone match, got {found:?}");
     }
 
     #[test]

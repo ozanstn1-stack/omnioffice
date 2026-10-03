@@ -1,15 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import {
-  BookOpen,
-  ChevronLeft,
-  ChevronRight,
-  Copy,
-  ExternalLink,
-  Search,
-  X,
-  ZoomIn,
-  ZoomOut,
-} from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, Copy, ExternalLink, Search, X, ZoomIn, ZoomOut } from "lucide-react";
 import { openAnyFile } from "../lib/mobile";
 import { Badge, Button, IconButton, Spinner, useDebounced } from "../components/ui";
 import { DropZone, InfoStrip } from "../components/files";
@@ -225,7 +215,13 @@ const ReaderPage = memo(function ReaderPage({
       style={{ width, minHeight: height, background: "white" }}
     >
       {src ? (
-        <img src={src} alt={`Page ${page}`} width={width} style={{ display: "block", width: "100%", height: "auto" }} draggable={false} />
+        <img
+          src={src}
+          alt={`Page ${page}`}
+          width={width}
+          style={{ display: "block", width: "100%", height: "auto" }}
+          draggable={false}
+        />
       ) : failed ? (
         <div className="flex items-center justify-center text-sm muted" style={{ height }}>
           —
@@ -236,7 +232,10 @@ const ReaderPage = memo(function ReaderPage({
         </div>
       )}
       {highlight ? (
-        <div className="px-3 py-1.5 text-[12px] muted border-t" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+        <div
+          className="px-3 py-1.5 text-[12px] muted border-t"
+          style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+        >
           {highlight}
         </div>
       ) : null}
@@ -294,7 +293,7 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
     });
     observer.observe(element);
     // The initial measurement is a read of layout, not a state cascade.
-     
+
     setContainerWidth(element.clientWidth || 900);
     return () => observer.disconnect();
   }, [session.primary]);
@@ -413,7 +412,12 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
       };
       return;
     }
-    panRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, scrollLeft: container.scrollLeft };
+    panRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: container.scrollLeft,
+    };
   };
 
   const handleReaderPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -492,7 +496,12 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
     if (Math.abs(event.clientX - pan.startX) + Math.abs(event.clientY - pan.startY) > 8) return;
     const now = Date.now();
     const previous = lastTapRef.current;
-    if (previous && now - previous.time < 320 && Math.abs(previous.x - event.clientX) < 40 && Math.abs(previous.y - event.clientY) < 40) {
+    if (
+      previous &&
+      now - previous.time < 320 &&
+      Math.abs(previous.x - event.clientX) < 40 &&
+      Math.abs(previous.y - event.clientY) < 40
+    ) {
       lastTapRef.current = null;
       setZoom((current) => doubleTapZoom(current));
     } else {
@@ -531,7 +540,14 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
     const jobId = uid("search");
     setSearchJobId(jobId);
     try {
-      const result = await searchDocument(session.primary.path, trimmed, false, 300, session.password || undefined, jobId);
+      const result = await searchDocument(
+        session.primary.path,
+        trimmed,
+        false,
+        300,
+        session.password || undefined,
+        jobId,
+      );
       setSearchResult(result);
       if (result.matches.length) scrollToPage(result.matches[0].page);
     } catch (error) {
@@ -656,7 +672,11 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
           </div>
 
           <div className="flex items-center gap-1">
-            <IconButton label={t("common.page")} onClick={() => scrollToPage(Math.max(1, currentPage - 1))} disabled={currentPage <= 1}>
+            <IconButton
+              label={t("common.page")}
+              onClick={() => scrollToPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage <= 1}
+            >
               <ChevronLeft size={15} />
             </IconButton>
             <IconButton
@@ -704,27 +724,40 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
             <IconButton label={t("reader.copyText")} onClick={() => void copyPage()}>
               <Copy size={15} />
             </IconButton>
-            <IconButton label={t("reader.openExternal")} onClick={() => void openAnyFile(session.primary!.path).catch(() => undefined)}>
+            <IconButton
+              label={t("reader.openExternal")}
+              onClick={() => void openAnyFile(session.primary!.path).catch(() => undefined)}
+            >
               <ExternalLink size={15} />
             </IconButton>
           </div>
         </div>
 
         {searchJobId ? (
-          <div className="px-4 py-1.5 text-xs muted shrink-0 flex items-center gap-2" style={{ background: "var(--surface-2)" }}>
+          <div
+            className="px-4 py-1.5 text-xs muted shrink-0 flex items-center gap-2"
+            style={{ background: "var(--surface-2)" }}
+          >
             <Spinner size={12} /> {t("reader.searching")}
             {searchProgress?.total ? ` (${searchProgress.current} / ${searchProgress.total})` : ""}
           </div>
         ) : null}
 
         {searchResult ? (
-          <div className="px-4 py-1.5 text-xs shrink-0 flex items-center gap-3" style={{ background: "var(--surface-2)" }}>
+          <div
+            className="px-4 py-1.5 text-xs shrink-0 flex items-center gap-3"
+            style={{ background: "var(--surface-2)" }}
+          >
             <span className={searchResult.totalMatches ? "" : "muted"}>
               {searchResult.totalMatches
                 ? t("reader.matches", { count: searchResult.totalMatches, pages: searchResult.pagesWithMatches })
                 : t("reader.noMatches")}
             </span>
-            {searchResult.truncated ? <span style={{ color: "var(--warn)" }}>{t("reader.truncated", { count: searchResult.totalMatches })}</span> : null}
+            {searchResult.truncated ? (
+              <span style={{ color: "var(--warn)" }}>
+                {t("reader.truncated", { count: searchResult.totalMatches })}
+              </span>
+            ) : null}
           </div>
         ) : null}
 

@@ -58,7 +58,9 @@ export const useOfficeTabs = create<OfficeTabsState>((set, get) => ({
     const tab: OfficeTab = {
       id,
       kind,
-      title: title ?? (kind === "writer" ? "Untitled document" : kind === "calc" ? "Untitled spreadsheet" : "Untitled presentation"),
+      title:
+        title ??
+        (kind === "writer" ? "Untitled document" : kind === "calc" ? "Untitled spreadsheet" : "Untitled presentation"),
       path: null,
       model: (model ?? defaultModelFor(kind)) as OfficeModel,
       dirty: false,
@@ -89,7 +91,7 @@ export const useOfficeTabs = create<OfficeTabsState>((set, get) => ({
   activate: (id) => set({ activeId: id }),
   close: (id) => {
     const tabs = get().tabs.filter((tab) => tab.id !== id);
-    const activeId = get().activeId === id ? tabs[tabs.length - 1]?.id ?? null : get().activeId;
+    const activeId = get().activeId === id ? (tabs[tabs.length - 1]?.id ?? null) : get().activeId;
     set({ tabs, activeId });
   },
   closeOthers: (id) => {
@@ -216,7 +218,10 @@ export const useFavorites = create<FavoritesState>((set, get) => ({
     if (existing) {
       entries = get().entries.map((entry) => (entry.path === path ? { ...entry, [field]: !entry[field] } : entry));
     } else {
-      entries = [...get().entries, { path, kind, pinned: field === "pinned", favorite: field === "favorite", addedAt: new Date().toISOString() }];
+      entries = [
+        ...get().entries,
+        { path, kind, pinned: field === "pinned", favorite: field === "favorite", addedAt: new Date().toISOString() },
+      ];
     }
     set({ entries });
     await api.storeSave(FAVORITES_KEY, entries).catch(() => undefined);
@@ -272,9 +277,7 @@ export const useNotes = create<NotesState>((set, get) => ({
   folders: [],
   loaded: false,
   load: async () => {
-    const stored = await api
-      .storeLoad<{ notes: Note[]; folders: NoteFolder[] }>(NOTES_KEY)
-      .catch(() => null);
+    const stored = await api.storeLoad<{ notes: Note[]; folders: NoteFolder[] }>(NOTES_KEY).catch(() => null);
     set({ notes: stored?.notes ?? [], folders: stored?.folders ?? [], loaded: true });
   },
   create: (partial) => {
@@ -298,7 +301,9 @@ export const useNotes = create<NotesState>((set, get) => ({
     return note;
   },
   update: (id, patch) => {
-    const notes = get().notes.map((note) => (note.id === id ? { ...note, ...patch, updatedAt: new Date().toISOString() } : note));
+    const notes = get().notes.map((note) =>
+      note.id === id ? { ...note, ...patch, updatedAt: new Date().toISOString() } : note,
+    );
     set({ notes });
     persistNotes(notes, get().folders);
   },
@@ -353,7 +358,18 @@ export const usePlanner = create<PlannerState>((set, get) => ({
     set({ tasks: stored ?? [], loaded: true });
   },
   add: (date, title) => {
-    const tasks = [...get().tasks, { id: uid(), title, date, done: false, priority: "normal" as const, note: "", createdAt: new Date().toISOString() }];
+    const tasks = [
+      ...get().tasks,
+      {
+        id: uid(),
+        title,
+        date,
+        done: false,
+        priority: "normal" as const,
+        note: "",
+        createdAt: new Date().toISOString(),
+      },
+    ];
     set({ tasks });
     void api.storeSave(PLANNER_KEY, tasks).catch(() => undefined);
   },
@@ -413,7 +429,9 @@ export const useDataSheets = create<DataState>((set, get) => ({
     return sheet;
   },
   update: (id, patch) => {
-    const sheets = get().sheets.map((sheet) => (sheet.id === id ? { ...sheet, ...patch, updatedAt: new Date().toISOString() } : sheet));
+    const sheets = get().sheets.map((sheet) =>
+      sheet.id === id ? { ...sheet, ...patch, updatedAt: new Date().toISOString() } : sheet,
+    );
     set({ sheets });
     void api.storeSave(DATA_KEY, sheets).catch(() => undefined);
   },
@@ -488,7 +506,28 @@ export const useDraw = create<DrawState>((set, get) => ({
 // drag & drop, file associations and the command line)
 // ---------------------------------------------------------------------------
 
-export const OFFICE_EXTENSIONS = ["docx", "docm", "dotx", "odt", "rtf", "txt", "md", "markdown", "html", "htm", "xlsx", "xlsm", "xls", "ods", "csv", "tsv", "pptx", "pptm", "odp", "oswk"];
+export const OFFICE_EXTENSIONS = [
+  "docx",
+  "docm",
+  "dotx",
+  "odt",
+  "rtf",
+  "txt",
+  "md",
+  "markdown",
+  "html",
+  "htm",
+  "xlsx",
+  "xlsm",
+  "xls",
+  "ods",
+  "csv",
+  "tsv",
+  "pptx",
+  "pptm",
+  "odp",
+  "oswk",
+];
 
 export function isOfficePath(path: string): boolean {
   const extension = (path.split(".").pop() ?? "").toLowerCase();

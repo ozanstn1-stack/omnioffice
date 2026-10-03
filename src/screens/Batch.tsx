@@ -141,7 +141,14 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
             dpi: 250,
             output_mode: "searchable_pdf",
             pages: [],
-            preprocess: { auto_rotate: false, deskew: false, contrast: true, denoise: false, binarize: false, grayscale: false },
+            preprocess: {
+              auto_rotate: false,
+              deskew: false,
+              contrast: true,
+              denoise: false,
+              binarize: false,
+              grayscale: false,
+            },
             skip_text_pages: true,
           },
           jobId,
@@ -203,7 +210,9 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
       subtitle={t("batch.subtitle")}
       actions={
         queue.length ? (
-          <Badge tone={running ? "accent" : "default"}>{t("batch.completedOf", { done: completed, total: queue.length })}</Badge>
+          <Badge tone={running ? "accent" : "default"}>
+            {t("batch.completedOf", { done: completed, total: queue.length })}
+          </Badge>
         ) : null
       }
     >
@@ -232,7 +241,10 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
                 </p>
                 <div className="flex flex-col gap-1.5 max-h-[360px] overflow-y-auto">
                   {queue.map((item, index) => (
-                    <div key={`${item.path}-${index}`} className="card-soft flex items-center gap-3 px-3 py-2 text-[13px]">
+                    <div
+                      key={`${item.path}-${index}`}
+                      className="card-soft flex items-center gap-3 px-3 py-2 text-[13px]"
+                    >
                       <span className="w-24 shrink-0">
                         {item.status === "completed" ? (
                           <Badge tone="ok">{t("common.done")}</Badge>
@@ -250,7 +262,9 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
                         {item.name}
                       </span>
                       {item.detail ? <span className="text-xs muted truncate max-w-[220px]">{item.detail}</span> : null}
-                      {item.output ? <span className="text-xs muted truncate max-w-[200px]">{fileBaseName(item.output)}</span> : null}
+                      {item.output ? (
+                        <span className="text-xs muted truncate max-w-[200px]">{fileBaseName(item.output)}</span>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -279,7 +293,11 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
               {operation === "compress" ? (
                 <div className="seg self-start">
                   {(["low", "medium", "high"] as const).map((level) => (
-                    <button key={level} data-active={compressionLevel === level} onClick={() => setCompressionLevel(level)}>
+                    <button
+                      key={level}
+                      data-active={compressionLevel === level}
+                      onClick={() => setCompressionLevel(level)}
+                    >
                       {t(`compress.${level}`)}
                     </button>
                   ))}
@@ -288,13 +306,21 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
 
               {operation === "watermark" ? (
                 <Field label={t("annotate.textPlaceholder")}>
-                  <input className="input" value={watermarkText} onChange={(event) => setWatermarkText(event.target.value)} />
+                  <input
+                    className="input"
+                    value={watermarkText}
+                    onChange={(event) => setWatermarkText(event.target.value)}
+                  />
                 </Field>
               ) : null}
 
               {operation === "ocr" ? (
                 <Field label={t("ocr.languages")}>
-                  <select className="select" value={ocrLanguage} onChange={(event) => setOcrLanguage(event.target.value)}>
+                  <select
+                    className="select"
+                    value={ocrLanguage}
+                    onChange={(event) => setOcrLanguage(event.target.value)}
+                  >
                     {(batchLanguages.length ? batchLanguages : [{ code: "eng", name: "English" }]).map((language) => (
                       <option key={language.code} value={language.code}>
                         {language.name}
@@ -306,7 +332,12 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
 
               {operation === "protect" ? (
                 <Field label={t("security.userPassword")}>
-                  <input className="input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+                  <input
+                    className="input"
+                    type="password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
                 </Field>
               ) : null}
 
@@ -314,7 +345,12 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
                 <Field label={t("pageTools.degrees")}>
                   <div className="flex gap-2">
                     {[90, 180, 270].map((value) => (
-                      <Button key={value} size="sm" variant={rotateDegrees === value ? "primary" : "default"} onClick={() => setRotateDegrees(value as 90 | 180 | 270)}>
+                      <Button
+                        key={value}
+                        size="sm"
+                        variant={rotateDegrees === value ? "primary" : "default"}
+                        onClick={() => setRotateDegrees(value as 90 | 180 | 270)}
+                      >
                         {value}°
                       </Button>
                     ))}
@@ -335,7 +371,14 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
                     </div>
                   </Field>
                   <Field label={t("convert.resolution")}>
-                    <Slider value={imageDpi} min={72} max={300} step={2} onChange={setImageDpi} format={(value) => `${value}`} />
+                    <Slider
+                      value={imageDpi}
+                      min={72}
+                      max={300}
+                      step={2}
+                      onChange={setImageDpi}
+                      format={(value) => `${value}`}
+                    />
                   </Field>
                 </>
               ) : null}
@@ -364,7 +407,14 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
                 </Button>
               </div>
               {running ? (
-                <Button variant="danger" size="sm" icon={<XCircle size={14} />} onClick={() => { if (currentJobRef.current) void cancelJob(currentJobRef.current).catch(() => undefined); }}>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon={<XCircle size={14} />}
+                  onClick={() => {
+                    if (currentJobRef.current) void cancelJob(currentJobRef.current).catch(() => undefined);
+                  }}
+                >
                   {t("progress.cancel")}
                 </Button>
               ) : null}
@@ -382,5 +432,3 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
     </Screen>
   );
 }
-
-

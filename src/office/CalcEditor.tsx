@@ -43,7 +43,24 @@ import type { OfficeTab, Workbook } from "../lib/office-store";
 import { useOfficeTabs } from "../lib/office-store";
 import { useT, type Translate } from "../lib/i18n";
 import { useToasts } from "../lib/store";
-import { cellText, defaultCellStyle, defaultPrintSettings, emptyCell, newSheet, newSpreadsheetTable, type Cell, type CellStyle, type ChartData, type CondRule, type NamedRange, type PivotTable, type PivotValueField, type PrintSettings, type Sheet, type SpreadsheetTable } from "../lib/office-types";
+import {
+  cellText,
+  defaultCellStyle,
+  defaultPrintSettings,
+  emptyCell,
+  newSheet,
+  newSpreadsheetTable,
+  type Cell,
+  type CellStyle,
+  type ChartData,
+  type CondRule,
+  type NamedRange,
+  type PivotTable,
+  type PivotValueField,
+  type PrintSettings,
+  type Sheet,
+  type SpreadsheetTable,
+} from "../lib/office-types";
 import { computePivot, pivotFields } from "./calc/pivot";
 import {
   addressesInRange,
@@ -199,7 +216,12 @@ function buildSuggestions(
   }
   for (const candidate of workbook.sheets) {
     if (candidate.name.toUpperCase().startsWith(upper)) {
-      items.push({ kind: "sheet", label: candidate.name, insert: `${candidate.name}!`, detail: t("calc.sheetReference") });
+      items.push({
+        kind: "sheet",
+        label: candidate.name,
+        insert: `${candidate.name}!`,
+        detail: t("calc.sheetReference"),
+      });
     }
   }
   for (const table of sheet.tables ?? []) {
@@ -319,15 +341,18 @@ export function pinchGridZoom(startZoom: number, startDistance: number, distance
  */
 export function shiftFormulaColumns(formula: string | null, delta: number): string | null {
   if (!formula || delta === 0) return formula;
-  return formula.replace(/(?<![A-Za-z0-9_$])(\$?)([A-Za-z]{1,3})(\$?)(\d{1,7})(?![A-Za-z0-9_(])/g, (match, dollarCol: string, letters: string, dollarRow: string, digits: string) => {
-    const position = parseAddress(`${letters}${digits}`);
-    if (position === null || dollarCol) return match;
-    const next = position.col + delta;
-    if (next < 0 || next >= 16_384) return match;
-    const label = columnLabel(next);
-    // Keep the case the author typed, like shiftFormulaRows keeps the letters.
-    return `${letters === letters.toLowerCase() ? label.toLowerCase() : label}${dollarRow}${digits}`;
-  });
+  return formula.replace(
+    /(?<![A-Za-z0-9_$])(\$?)([A-Za-z]{1,3})(\$?)(\d{1,7})(?![A-Za-z0-9_(])/g,
+    (match, dollarCol: string, letters: string, dollarRow: string, digits: string) => {
+      const position = parseAddress(`${letters}${digits}`);
+      if (position === null || dollarCol) return match;
+      const next = position.col + delta;
+      if (next < 0 || next >= 16_384) return match;
+      const label = columnLabel(next);
+      // Keep the case the author typed, like shiftFormulaRows keeps the letters.
+      return `${letters === letters.toLowerCase() ? label.toLowerCase() : label}${dollarRow}${digits}`;
+    },
+  );
 }
 
 /** The element carrying `attribute` under a pointer event: the event target
@@ -392,7 +417,12 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const [validationDialog, setValidationDialog] = useState(false);
   const [nameDialog, setNameDialog] = useState(false);
   const [printDialog, setPrintDialog] = useState(false);
-  const [filterOpen, setFilterOpen] = useState<{ col: number; values: Array<{ value: string; checked: boolean }>; tableId?: string; tableName?: string } | null>(null);
+  const [filterOpen, setFilterOpen] = useState<{
+    col: number;
+    values: Array<{ value: string; checked: boolean }>;
+    tableId?: string;
+    tableName?: string;
+  } | null>(null);
   const [undoStack, setUndoStack] = useState<Workbook[]>([]);
   const [redoStack, setRedoStack] = useState<Workbook[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -446,7 +476,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   // The draft and caret of whichever input owns the focus. The suggestion
   // popup and the argument hint are derived from these, never from the grid
   // selection, so the inline editor and the formula bar stay independent.
-  const assistText = focusMode === "cell" ? editing?.value ?? "" : focusMode === "bar" ? formulaDraft : "";
+  const assistText = focusMode === "cell" ? (editing?.value ?? "") : focusMode === "bar" ? formulaDraft : "";
   const assistCaret = Math.min(Math.max(0, draftCaret), assistText.length);
   const suggestions = useMemo(() => {
     if (focusMode === null || suggestDismissed) return null;
@@ -482,7 +512,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     // (or covers) the visible area, so the popup flips above the input when
     // space runs out. visualViewport is the usable height in overlay mode.
     const viewport = window.visualViewport;
-    const usableBottom = Math.min(window.innerHeight, viewport ? viewport.height + viewport.offsetTop : window.innerHeight);
+    const usableBottom = Math.min(
+      window.innerHeight,
+      viewport ? viewport.height + viewport.offsetTop : window.innerHeight,
+    );
     const above = rect.bottom + 200 > usableBottom;
     setAssistAnchor({ left: rect.left, top: above ? rect.top - 4 : rect.bottom + 2, above });
   }, [focusMode, assistText, assistCaret, editing]);
@@ -544,7 +577,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const updateSheet = useCallback(
     (mutate: (sheet: Sheet) => Sheet, recordUndo = true) => {
       update(
-        (current) => ({ ...current, sheets: current.sheets.map((candidate, index) => (index === sheetIndex ? mutate(candidate) : candidate)) }),
+        (current) => ({
+          ...current,
+          sheets: current.sheets.map((candidate, index) => (index === sheetIndex ? mutate(candidate) : candidate)),
+        }),
         recordUndo,
       );
     },
@@ -565,7 +601,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   useEffect(() => {
     if (!android || !window.visualViewport) return;
     const viewport = window.visualViewport;
-    const update = () => setKeyboardInset(Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop)));
+    const update = () =>
+      setKeyboardInset(Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop)));
     viewport.addEventListener("resize", update);
     viewport.addEventListener("scroll", update);
     update();
@@ -663,7 +700,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       const top = clamped.row * (sheet.rowHeights[String(clamped.row)] ?? ROW_HEIGHT);
       const height = sheet.rowHeights[String(clamped.row)] ?? ROW_HEIGHT;
       if (top * zoom < grid.scrollTop) grid.scrollTop = top * zoom;
-      else if ((top + height) * zoom > grid.scrollTop + grid.clientHeight) grid.scrollTop = (top + height) * zoom - grid.clientHeight;
+      else if ((top + height) * zoom > grid.scrollTop + grid.clientHeight)
+        grid.scrollTop = (top + height) * zoom - grid.clientHeight;
       if (left * zoom < grid.scrollLeft) grid.scrollLeft = Math.max(0, left * zoom);
       else if ((left + width) * zoom > grid.scrollLeft + grid.clientWidth - HEADER_WIDTH * zoom) {
         grid.scrollLeft = (left + width) * zoom - grid.clientWidth + HEADER_WIDTH * zoom;
@@ -831,15 +869,29 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     const handle = target.closest?.<HTMLElement>("[data-fill-handle]");
     if (handle) {
       const bounds = selectionBounds;
-      gestureRef.current = { kind: "fill", pointerId: event.pointerId, source: { start: { ...bounds.start }, end: { ...bounds.end } }, target: { ...bounds.end } };
+      gestureRef.current = {
+        kind: "fill",
+        pointerId: event.pointerId,
+        source: { start: { ...bounds.start }, end: { ...bounds.end } },
+        target: { ...bounds.end },
+      };
       captureGridPointer(event);
       return;
     }
     const cell = target.closest?.<HTMLElement>("[data-cell]");
     if (cell) {
       const position = { row: Number(cell.dataset.row), col: Number(cell.dataset.col) };
-      gestureRef.current = { kind: "cells", pointerId: event.pointerId, anchor: position, startX: event.clientX, startY: event.clientY, moved: false };
-      setSelection(event.shiftKey ? { anchor: selection.anchor, focus: position } : { anchor: position, focus: position });
+      gestureRef.current = {
+        kind: "cells",
+        pointerId: event.pointerId,
+        anchor: position,
+        startX: event.clientX,
+        startY: event.clientY,
+        moved: false,
+      };
+      setSelection(
+        event.shiftKey ? { anchor: selection.anchor, focus: position } : { anchor: position, focus: position },
+      );
       captureGridPointer(event);
       return;
     }
@@ -862,7 +914,14 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     // Empty canvas: one-finger pan for touch, drag-pan for the mouse.
     const grid = gridRef.current;
     if (grid) {
-      gestureRef.current = { kind: "pan", pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, scrollLeft: grid.scrollLeft, scrollTop: grid.scrollTop };
+      gestureRef.current = {
+        kind: "pan",
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        scrollLeft: grid.scrollLeft,
+        scrollTop: grid.scrollTop,
+      };
       captureGridPointer(event);
     }
   };
@@ -973,7 +1032,14 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         const [remaining] = points.entries();
         const grid = gridRef.current;
         if (remaining && grid && event.pointerType !== "mouse") {
-          gestureRef.current = { kind: "pan", pointerId: remaining[0], startX: remaining[1].x, startY: remaining[1].y, scrollLeft: grid.scrollLeft, scrollTop: grid.scrollTop };
+          gestureRef.current = {
+            kind: "pan",
+            pointerId: remaining[0],
+            startX: remaining[1].x,
+            startY: remaining[1].y,
+            scrollLeft: grid.scrollLeft,
+            scrollTop: grid.scrollTop,
+          };
         }
       }
       return;
@@ -987,7 +1053,12 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     if (gesture.kind === "cells" && !gesture.moved && event.pointerType !== "mouse") {
       const now = event.timeStamp;
       const previous = lastTapRef.current;
-      if (previous && now - previous.time < 350 && previous.row === gesture.anchor.row && previous.col === gesture.anchor.col) {
+      if (
+        previous &&
+        now - previous.time < 350 &&
+        previous.row === gesture.anchor.row &&
+        previous.col === gesture.anchor.col
+      ) {
         lastTapRef.current = null;
         const cell = sheet.cells[formatAddress(gesture.anchor.row, gesture.anchor.col)];
         setEditing({ row: gesture.anchor.row, col: gesture.anchor.col, value: cell?.formula ?? cellText(cell) });
@@ -1029,7 +1100,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   }, [gridZoom]);
 
   const applyStyle = (patch: Partial<CellStyle>) => {
-    const addresses = addressesInRange(`${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`);
+    const addresses = addressesInRange(
+      `${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`,
+    );
     const entries = addresses.map((address) => {
       const position = parseAddress(address)!;
       const cell = sheet.cells[address] ?? emptyCell();
@@ -1039,7 +1112,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   };
 
   const applyBorder = (side: "top" | "right" | "bottom" | "left" | "all") => {
-    const addresses = addressesInRange(`${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`);
+    const addresses = addressesInRange(
+      `${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`,
+    );
     const entries = addresses.map((address) => {
       const position = parseAddress(address)!;
       const cell = sheet.cells[address] ?? emptyCell();
@@ -1059,7 +1134,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   };
 
   const clearSelection = () => {
-    const addresses = addressesInRange(`${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`);
+    const addresses = addressesInRange(
+      `${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`,
+    );
     updateSheet((current) => {
       const cells = { ...current.cells };
       for (const address of addresses) delete cells[address];
@@ -1070,7 +1147,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const clipboardRef = useRef<{ rows: Scalar[][]; start: CellPosition } | null>(null);
 
   const copySelection = () => {
-    const parts = parseRange(`${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`);
+    const parts = parseRange(
+      `${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`,
+    );
     if (!parts) return;
     const rows: Scalar[][] = [];
     for (let row = parts.start.row; row <= parts.end.row; row += 1) {
@@ -1089,7 +1168,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     try {
       const text = await navigator.clipboard.readText();
       if (text) {
-        const rows = text.split(/\r?\n/).filter((line) => line.length > 0).map((line) => line.split("\t"));
+        const rows = text
+          .split(/\r?\n/)
+          .filter((line) => line.length > 0)
+          .map((line) => line.split("\t"));
         applyPasted(rows);
         return;
       }
@@ -1312,7 +1394,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const renameSheet = (index: number) => {
     const name = window.prompt(t("calc.sheetName"), workbook.sheets[index]?.name ?? "");
     if (!name) return;
-    update((current) => ({ ...current, sheets: current.sheets.map((candidate, position) => (position === index ? { ...candidate, name } : candidate)) }));
+    update((current) => ({
+      ...current,
+      sheets: current.sheets.map((candidate, position) => (position === index ? { ...candidate, name } : candidate)),
+    }));
   };
 
   // -------------------------------------------------------------------------
@@ -1337,13 +1422,17 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       const right = b.key;
       const leftNumber = typeof left === "number" ? left : Number(left);
       const rightNumber = typeof right === "number" ? right : Number(right);
-      if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) return ascending ? leftNumber - rightNumber : rightNumber - leftNumber;
+      if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber))
+        return ascending ? leftNumber - rightNumber : rightNumber - leftNumber;
       const compare = String(left).localeCompare(String(right));
       return ascending ? compare : -compare;
     });
     updateSheet((current) => {
       const cells = { ...current.cells };
-      for (const address of addressesInRange(`${formatAddress(startRow, parts.start.col)}:${formatAddress(parts.end.row, parts.end.col)}`)) delete cells[address];
+      for (const address of addressesInRange(
+        `${formatAddress(startRow, parts.start.col)}:${formatAddress(parts.end.row, parts.end.col)}`,
+      ))
+        delete cells[address];
       rows.forEach((row, rowOffset) => {
         row.values.forEach((value) => {
           if (value.cell) cells[formatAddress(startRow + rowOffset, value.col)] = value.cell;
@@ -1390,7 +1479,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     const state = filterOpen;
     const allowed = new Set(state.values.filter((entry) => entry.checked).map((entry) => entry.value));
     updateSheet((current) => {
-      const table = state.tableId ? (current.tables ?? []).find((candidate) => candidate.id === state.tableId) : undefined;
+      const table = state.tableId
+        ? (current.tables ?? []).find((candidate) => candidate.id === state.tableId)
+        : undefined;
       const parts = parseRange(table ? table.range : usedRange(current));
       if (!parts) return current;
       // A structured table filters its body only; the plain sheet filter keeps
@@ -1416,7 +1507,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           ...current,
           rowHeights,
           tables: (current.tables ?? []).map((candidate) =>
-            candidate.id === table.id ? { ...candidate, filter: { range: table.range, column: state.col, values: [...allowed] } } : candidate,
+            candidate.id === table.id
+              ? { ...candidate, filter: { range: table.range, column: state.col, values: [...allowed] } }
+              : candidate,
           ),
         };
       }
@@ -1426,7 +1519,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   };
 
   const addChart = (kind: string) => {
-    const parts = parseRange(`${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`);
+    const parts = parseRange(
+      `${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`,
+    );
     if (!parts || parts.start.row === parts.end.row) {
       useToasts.getState().push({ kind: "info", title: t("calc.chartNeedsData") });
       return;
@@ -1440,14 +1535,32 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         color: null,
       });
     }
-    const chart: ChartData = { kind, title: t("calc.chartTitle"), categories, series, legend: true, xTitle: "", yTitle: "", stacked: false, showLabels: false };
+    const chart: ChartData = {
+      kind,
+      title: t("calc.chartTitle"),
+      categories,
+      series,
+      legend: true,
+      xTitle: "",
+      yTitle: "",
+      stacked: false,
+      showLabels: false,
+    };
     const anchor = formatAddress(parts.end.row + 2, parts.start.col);
-    updateSheet((current) => ({ ...current, charts: [...current.charts, { id: crypto.randomUUID(), chart, anchor, widthPx: 420, heightPx: 260 }] }));
+    updateSheet((current) => ({
+      ...current,
+      charts: [...current.charts, { id: crypto.randomUUID(), chart, anchor, widthPx: 420, heightPx: 260 }],
+    }));
     setChartDialog(false);
   };
 
   /** Adds a pivot over the current selection, anchored below it. */
-  const addPivot = (config: { rows: string[]; columns: string[]; values: PivotValueField[]; filters: PivotTable["filters"] }) => {
+  const addPivot = (config: {
+    rows: string[];
+    columns: string[];
+    values: PivotValueField[];
+    filters: PivotTable["filters"];
+  }) => {
     const parts = parseRange(usedRange(sheet));
     if (!parts) {
       useToasts.getState().push({ kind: "info", title: t("calc.pivotNeedsData") });
@@ -1476,17 +1589,44 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       ...current,
       conditional: [
         ...current.conditional,
-        { id: crypto.randomUUID(), range, kind: rule.kind, values: rule.values, fill: rule.fill, color: null, topN: rule.topN ?? null, stopIfTrue: false },
+        {
+          id: crypto.randomUUID(),
+          range,
+          kind: rule.kind,
+          values: rule.values,
+          fill: rule.fill,
+          color: null,
+          topN: rule.topN ?? null,
+          stopIfTrue: false,
+        },
       ],
     }));
     setConditionalDialog(false);
   };
 
-  const addValidation = (validation: { kind: string; values: string[]; min: number | null; max: number | null; message: string }) => {
+  const addValidation = (validation: {
+    kind: string;
+    values: string[];
+    min: number | null;
+    max: number | null;
+    message: string;
+  }) => {
     const range = `${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`;
     updateSheet((current) => ({
       ...current,
-      validations: [...current.validations, { id: crypto.randomUUID(), range, kind: validation.kind, values: validation.values, min: validation.min, max: validation.max, message: validation.message, allowBlank: true }],
+      validations: [
+        ...current.validations,
+        {
+          id: crypto.randomUUID(),
+          range,
+          kind: validation.kind,
+          values: validation.values,
+          min: validation.min,
+          max: validation.max,
+          message: validation.message,
+          allowBlank: true,
+        },
+      ],
     }));
     setValidationDialog(false);
   };
@@ -1494,7 +1634,11 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const toggleFreeze = () => {
     const row = selection.focus.row;
     const col = selection.focus.col;
-    updateSheet((current) => (current.freezeRows === row && current.freezeCols === col ? { ...current, freezeRows: 0, freezeCols: 0 } : { ...current, freezeRows: row, freezeCols: col }));
+    updateSheet((current) =>
+      current.freezeRows === row && current.freezeCols === col
+        ? { ...current, freezeRows: 0, freezeCols: 0 }
+        : { ...current, freezeRows: row, freezeCols: col },
+    );
   };
 
   // -------------------------------------------------------------------------
@@ -1502,7 +1646,13 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   // -------------------------------------------------------------------------
 
   /** Creates a table over the dialog's range, naming columns from the header row. */
-  const addTable = (config: { name: string; range: string; hasHeaders: boolean; hasTotals: boolean; bandedRows: boolean }) => {
+  const addTable = (config: {
+    name: string;
+    range: string;
+    hasHeaders: boolean;
+    hasTotals: boolean;
+    bandedRows: boolean;
+  }) => {
     const parts = parseRange(config.range);
     if (!parts) return;
     const columns: string[] = [];
@@ -1510,7 +1660,11 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       const header = config.hasHeaders ? String(computed.get(formatAddress(parts.start.row, col)) ?? "").trim() : "";
       columns.push(uniqueColumnName(columns, header || `Column${col - parts.start.col + 1}`));
     }
-    const table = newSpreadsheetTable(uniqueTableName(sheet.tables ?? [], config.name.trim() || "Table1"), config.range, columns);
+    const table = newSpreadsheetTable(
+      uniqueTableName(sheet.tables ?? [], config.name.trim() || "Table1"),
+      config.range,
+      columns,
+    );
     table.hasHeaders = config.hasHeaders;
     table.hasTotals = config.hasTotals;
     table.bandedRows = config.bandedRows;
@@ -1520,7 +1674,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   };
 
   const patchTable = (tableId: string, patch: (table: SpreadsheetTable) => SpreadsheetTable) => {
-    updateSheet((current) => ({ ...current, tables: (current.tables ?? []).map((table) => (table.id === tableId ? patch(table) : table)) }));
+    updateSheet((current) => ({
+      ...current,
+      tables: (current.tables ?? []).map((table) => (table.id === tableId ? patch(table) : table)),
+    }));
   };
 
   const deleteTable = (tableId: string) => {
@@ -1532,7 +1689,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     if (!name || name.trim() === "") return;
     patchTable(table.id, (current) => ({
       ...current,
-      name: uniqueTableName((sheet.tables ?? []).filter((candidate) => candidate.id !== table.id), name.trim()),
+      name: uniqueTableName(
+        (sheet.tables ?? []).filter((candidate) => candidate.id !== table.id),
+        name.trim(),
+      ),
     }));
   };
 
@@ -1560,7 +1720,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       const parts = table2 ? parseRange(table2.range) : null;
       if (!table2 || !parts) return current;
       const column = parts.end.col + 1;
-      const resolved = uniqueColumnName(table2.columns.map((entry) => entry.name), name);
+      const resolved = uniqueColumnName(
+        table2.columns.map((entry) => entry.name),
+        name,
+      );
       let next: Workbook = {
         ...current,
         sheets: current.sheets.map((candidate, at) =>
@@ -1596,7 +1759,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
 
   const traceFromSelection = (kind: "precedents" | "dependents") => {
     const address = formatAddress(selection.focus.row, selection.focus.col);
-    const cells = kind === "precedents" ? tracePrecedents(workbook, sheet.name, address) : traceDependents(workbook, sheet.name, address);
+    const cells =
+      kind === "precedents"
+        ? tracePrecedents(workbook, sheet.name, address)
+        : traceDependents(workbook, sheet.name, address);
     if (cells.length === 0) {
       setTrace(null);
       useToasts.getState().push({ kind: "info", title: t("calc.traceEmpty") });
@@ -1604,7 +1770,6 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     }
     setTrace({ kind, cells });
   };
-
 
   // -------------------------------------------------------------------------
   // Rendering
@@ -1645,7 +1810,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     return { rows, columns, startCol };
   }, [scroll, sheet, gridZoom]);
 
-  const parsedSelectionBounds = parseRange(`${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`);
+  const parsedSelectionBounds = parseRange(
+    `${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`,
+  );
   const selectionBounds = parsedSelectionBounds ?? {
     start: { row: selection.anchor.row, col: selection.anchor.col },
     end: { row: selection.focus.row, col: selection.focus.col },
@@ -1744,7 +1911,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   // The touch-only fill handle sits on the selection's bottom-right corner.
   const fillHandle = {
     x: columnX(selectionBounds.end.col) + (sheet.colWidths[String(selectionBounds.end.col)] ?? DEFAULT_COL_WIDTH),
-    y: ROW_HEIGHT + selectionBounds.end.row * ROW_HEIGHT + (sheet.rowHeights[String(selectionBounds.end.row)] ?? ROW_HEIGHT),
+    y:
+      ROW_HEIGHT +
+      selectionBounds.end.row * ROW_HEIGHT +
+      (sheet.rowHeights[String(selectionBounds.end.row)] ?? ROW_HEIGHT),
   };
 
   const selectionAddress = formatAddress(selection.focus.row, selection.focus.col);
@@ -1794,10 +1964,14 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   // editor; on desktop it keeps its place under the ribbon, byte for byte.
   const formulaBar = (
     <div className={`calc-formula-bar${android ? " is-docked" : ""}`}>
-      <input className="name-box" value={nameBox} onChange={(event) => {
-        const parts = parseRange(event.target.value.trim());
-        if (parts) setSelection({ anchor: parts.start, focus: parts.end });
-      }} />
+      <input
+        className="name-box"
+        value={nameBox}
+        onChange={(event) => {
+          const parts = parseRange(event.target.value.trim());
+          if (parts) setSelection({ anchor: parts.start, focus: parts.end });
+        }}
+      />
       <span className="fx">fx</span>
       <input
         className="formula-input"
@@ -1850,10 +2024,20 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       />
       {android ? (
         <>
-          <button type="button" className="icon-btn calc-bar-action" aria-label={t("common.cancel")} onClick={cancelFormulaBar}>
+          <button
+            type="button"
+            className="icon-btn calc-bar-action"
+            aria-label={t("common.cancel")}
+            onClick={cancelFormulaBar}
+          >
             <X size={17} />
           </button>
-          <button type="button" className="icon-btn calc-bar-action is-primary" aria-label={t("common.apply")} onClick={commitFormulaBar}>
+          <button
+            type="button"
+            className="icon-btn calc-bar-action is-primary"
+            aria-label={t("common.apply")}
+            onClick={commitFormulaBar}
+          >
             <Check size={17} />
           </button>
         </>
@@ -1862,7 +2046,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   );
 
   return (
-    <div className={`editor calc-editor${android ? " is-android" : ""}`} style={android && keyboardInset > 0 ? { paddingBottom: keyboardInset } : undefined}>
+    <div
+      className={`editor calc-editor${android ? " is-android" : ""}`}
+      style={android && keyboardInset > 0 ? { paddingBottom: keyboardInset } : undefined}
+    >
       <Ribbon
         tabs={[
           { id: "home", label: t("calc.tabHome") },
@@ -1877,23 +2064,75 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         {ribbon === "home" ? (
           <>
             <RibbonGroup label={t("writer.clipboard")}>
-              <ToolButton icon={<Undo2 size={16} />} onClick={undo} disabled={undoStack.length === 0} title={t("common.undo")} />
-              <ToolButton icon={<Redo2 size={16} />} onClick={redo} disabled={redoStack.length === 0} title={t("common.redo")} />
+              <ToolButton
+                icon={<Undo2 size={16} />}
+                onClick={undo}
+                disabled={undoStack.length === 0}
+                title={t("common.undo")}
+              />
+              <ToolButton
+                icon={<Redo2 size={16} />}
+                onClick={redo}
+                disabled={redoStack.length === 0}
+                title={t("common.redo")}
+              />
               <ToolButton icon={<Copy size={16} />} onClick={copySelection} title={t("common.copy")} />
               <ToolButton icon={<Eraser size={16} />} onClick={clearSelection} title={t("calc.clearCells")} />
             </RibbonGroup>
             <RibbonGroup label={t("writer.font")}>
-              <ToolButton icon={<Bold size={16} />} onClick={() => applyStyle({ bold: !(activeCell?.style.bold ?? false) })} active={activeCell?.style.bold} title={t("writer.bold")} />
-              <ToolButton icon={<Italic size={16} />} onClick={() => applyStyle({ italic: !(activeCell?.style.italic ?? false) })} active={activeCell?.style.italic} title={t("writer.italic")} />
-              <ToolButton icon={<Underline size={16} />} onClick={() => applyStyle({ underline: !(activeCell?.style.underline ?? false) })} active={activeCell?.style.underline} title={t("writer.underline")} />
-              <ToolColor value={activeCell?.style.color ?? "#1f2328"} onChange={(color) => applyStyle({ color })} title={t("writer.textColor")} />
-              <ToolColor value={activeCell?.style.fill ?? "#ffffff"} onChange={(fill) => applyStyle({ fill })} title={t("calc.fillColor")} />
+              <ToolButton
+                icon={<Bold size={16} />}
+                onClick={() => applyStyle({ bold: !(activeCell?.style.bold ?? false) })}
+                active={activeCell?.style.bold}
+                title={t("writer.bold")}
+              />
+              <ToolButton
+                icon={<Italic size={16} />}
+                onClick={() => applyStyle({ italic: !(activeCell?.style.italic ?? false) })}
+                active={activeCell?.style.italic}
+                title={t("writer.italic")}
+              />
+              <ToolButton
+                icon={<Underline size={16} />}
+                onClick={() => applyStyle({ underline: !(activeCell?.style.underline ?? false) })}
+                active={activeCell?.style.underline}
+                title={t("writer.underline")}
+              />
+              <ToolColor
+                value={activeCell?.style.color ?? "#1f2328"}
+                onChange={(color) => applyStyle({ color })}
+                title={t("writer.textColor")}
+              />
+              <ToolColor
+                value={activeCell?.style.fill ?? "#ffffff"}
+                onChange={(fill) => applyStyle({ fill })}
+                title={t("calc.fillColor")}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("writer.paragraph")}>
-              <ToolButton icon={<AlignLeft size={16} />} onClick={() => applyStyle({ align: "left" })} active={activeCell?.style.align === "left"} title={t("writer.alignLeft")} />
-              <ToolButton icon={<AlignCenter size={16} />} onClick={() => applyStyle({ align: "center" })} active={activeCell?.style.align === "center"} title={t("writer.alignCenter")} />
-              <ToolButton icon={<AlignRight size={16} />} onClick={() => applyStyle({ align: "right" })} active={activeCell?.style.align === "right"} title={t("writer.alignRight")} />
-              <ToolButton icon={<Merge size={16} />} onClick={() => toggleMerge(sheet, selection, updateSheet)} title={t("calc.mergeCells")} />
+              <ToolButton
+                icon={<AlignLeft size={16} />}
+                onClick={() => applyStyle({ align: "left" })}
+                active={activeCell?.style.align === "left"}
+                title={t("writer.alignLeft")}
+              />
+              <ToolButton
+                icon={<AlignCenter size={16} />}
+                onClick={() => applyStyle({ align: "center" })}
+                active={activeCell?.style.align === "center"}
+                title={t("writer.alignCenter")}
+              />
+              <ToolButton
+                icon={<AlignRight size={16} />}
+                onClick={() => applyStyle({ align: "right" })}
+                active={activeCell?.style.align === "right"}
+                title={t("writer.alignRight")}
+              />
+              <ToolButton
+                icon={<Merge size={16} />}
+                onClick={() => toggleMerge(sheet, selection, updateSheet)}
+                title={t("calc.mergeCells")}
+              />
               <ToolButton icon={<Grid3x3 size={16} />} onClick={() => applyBorder("all")} title={t("calc.borders")} />
             </RibbonGroup>
             <RibbonGroup label={t("calc.numberFormat")}>
@@ -1923,11 +2162,24 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
               <ToolButton icon={<BarChart3 size={16} />} label={t("calc.chart")} onClick={() => setChartDialog(true)} />
             </RibbonGroup>
             <RibbonGroup label={t("calc.pivotTable")}>
-              <ToolButton icon={<Grid3x3 size={16} />} label={t("calc.pivotTable")} onClick={() => setPivotDialog(true)} />
+              <ToolButton
+                icon={<Grid3x3 size={16} />}
+                label={t("calc.pivotTable")}
+                onClick={() => setPivotDialog(true)}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("calc.structuredTables")}>
-              <ToolButton icon={<Table2 size={16} />} label={t("calc.insertTable")} onClick={() => setTableDialog(true)} />
-              <ToolButton icon={<Eye size={16} />} label={t("calc.tableList")} onClick={() => setTablesPanel((open) => !open)} active={tablesPanel} />
+              <ToolButton
+                icon={<Table2 size={16} />}
+                label={t("calc.insertTable")}
+                onClick={() => setTableDialog(true)}
+              />
+              <ToolButton
+                icon={<Eye size={16} />}
+                label={t("calc.tableList")}
+                onClick={() => setTablesPanel((open) => !open)}
+                active={tablesPanel}
+              />
             </RibbonGroup>
           </>
         ) : null}
@@ -1943,16 +2195,42 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
               <ToolButton label="VLOOKUP" onClick={() => insertFunction("VLOOKUP")} />
             </RibbonGroup>
             <RibbonGroup label={t("calc.auditing")}>
-              <ToolButton icon={<GitBranch size={16} />} label={t("calc.tracePrecedents")} onClick={() => traceFromSelection("precedents")} />
-              <ToolButton icon={<GitBranch size={16} />} label={t("calc.traceDependents")} onClick={() => traceFromSelection("dependents")} />
-              <ToolButton icon={<XCircle size={16} />} label={t("calc.clearTrace")} onClick={() => setTrace(null)} disabled={trace === null} />
+              <ToolButton
+                icon={<GitBranch size={16} />}
+                label={t("calc.tracePrecedents")}
+                onClick={() => traceFromSelection("precedents")}
+              />
+              <ToolButton
+                icon={<GitBranch size={16} />}
+                label={t("calc.traceDependents")}
+                onClick={() => traceFromSelection("dependents")}
+              />
+              <ToolButton
+                icon={<XCircle size={16} />}
+                label={t("calc.clearTrace")}
+                onClick={() => setTrace(null)}
+                disabled={trace === null}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("calc.structuredTables")}>
-              <ToolButton icon={<Table2 size={16} />} label={t("calc.insertTable")} onClick={() => setTableDialog(true)} />
-              <ToolButton icon={<Eye size={16} />} label={t("calc.tableList")} onClick={() => setTablesPanel((open) => !open)} active={tablesPanel} />
+              <ToolButton
+                icon={<Table2 size={16} />}
+                label={t("calc.insertTable")}
+                onClick={() => setTableDialog(true)}
+              />
+              <ToolButton
+                icon={<Eye size={16} />}
+                label={t("calc.tableList")}
+                onClick={() => setTablesPanel((open) => !open)}
+                active={tablesPanel}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("calc.conditional")}>
-              <ToolButton icon={<Filter size={16} />} label={t("calc.conditionalFormatting")} onClick={() => setConditionalDialog(true)} />
+              <ToolButton
+                icon={<Filter size={16} />}
+                label={t("calc.conditionalFormatting")}
+                onClick={() => setConditionalDialog(true)}
+              />
               <ToolButton label={t("calc.dataValidation")} onClick={() => setValidationDialog(true)} />
             </RibbonGroup>
           </>
@@ -1961,21 +2239,53 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         {ribbon === "data" ? (
           <>
             <RibbonGroup label={t("calc.sort")}>
-              <ToolButton icon={<ArrowUpAZ size={16} />} label={t("calc.sortAsc")} onClick={() => sortByColumn(selection.focus.col, true)} />
-              <ToolButton icon={<ArrowDownAZ size={16} />} label={t("calc.sortDesc")} onClick={() => sortByColumn(selection.focus.col, false)} />
-              <ToolButton icon={<Filter size={16} />} label={t("calc.filter")} onClick={() => openFilter(selection.focus.col)} />
+              <ToolButton
+                icon={<ArrowUpAZ size={16} />}
+                label={t("calc.sortAsc")}
+                onClick={() => sortByColumn(selection.focus.col, true)}
+              />
+              <ToolButton
+                icon={<ArrowDownAZ size={16} />}
+                label={t("calc.sortDesc")}
+                onClick={() => sortByColumn(selection.focus.col, false)}
+              />
+              <ToolButton
+                icon={<Filter size={16} />}
+                label={t("calc.filter")}
+                onClick={() => openFilter(selection.focus.col)}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("calc.structure")}>
-              <ToolButton icon={<Plus size={16} />} label={t("calc.insertRow")} onClick={() => insertRow(sheet, selection.focus.row, updateSheet)} />
-              <ToolButton icon={<Minus size={16} />} label={t("calc.deleteRow")} onClick={() => deleteRow(sheet, selection.focus.row, updateSheet)} />
-              <ToolButton icon={<Plus size={16} />} label={t("calc.insertColumn")} onClick={() => insertColumn(sheet, selection.focus.col, updateSheet)} />
-              <ToolButton icon={<Minus size={16} />} label={t("calc.deleteColumn")} onClick={() => deleteColumn(sheet, selection.focus.col, updateSheet)} />
+              <ToolButton
+                icon={<Plus size={16} />}
+                label={t("calc.insertRow")}
+                onClick={() => insertRow(sheet, selection.focus.row, updateSheet)}
+              />
+              <ToolButton
+                icon={<Minus size={16} />}
+                label={t("calc.deleteRow")}
+                onClick={() => deleteRow(sheet, selection.focus.row, updateSheet)}
+              />
+              <ToolButton
+                icon={<Plus size={16} />}
+                label={t("calc.insertColumn")}
+                onClick={() => insertColumn(sheet, selection.focus.col, updateSheet)}
+              />
+              <ToolButton
+                icon={<Minus size={16} />}
+                label={t("calc.deleteColumn")}
+                onClick={() => deleteColumn(sheet, selection.focus.col, updateSheet)}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("calc.names")}>
               <ToolButton icon={<Tag size={16} />} label={t("calc.nameManager")} onClick={() => setNameDialog(true)} />
             </RibbonGroup>
             <RibbonGroup label={t("calc.printLayout")}>
-              <ToolButton icon={<Printer size={16} />} label={t("calc.printSetup")} onClick={() => setPrintDialog(true)} />
+              <ToolButton
+                icon={<Printer size={16} />}
+                label={t("calc.printSetup")}
+                onClick={() => setPrintDialog(true)}
+              />
             </RibbonGroup>
           </>
         ) : null}
@@ -1983,8 +2293,16 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         {ribbon === "view" ? (
           <>
             <RibbonGroup label={t("calc.view")}>
-              <ToolButton icon={<Snowflake size={16} />} label={t("calc.freezePanes")} onClick={toggleFreeze} active={sheet.freezeRows > 0 || sheet.freezeCols > 0} />
-              <ToolButton label={sheet.showGridlines ? t("calc.hideGridlines") : t("calc.showGridlines")} onClick={() => updateSheet((current) => ({ ...current, showGridlines: !current.showGridlines }))} />
+              <ToolButton
+                icon={<Snowflake size={16} />}
+                label={t("calc.freezePanes")}
+                onClick={toggleFreeze}
+                active={sheet.freezeRows > 0 || sheet.freezeCols > 0}
+              />
+              <ToolButton
+                label={sheet.showGridlines ? t("calc.hideGridlines") : t("calc.showGridlines")}
+                onClick={() => updateSheet((current) => ({ ...current, showGridlines: !current.showGridlines }))}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("calc.sheets")}>
               <ToolButton icon={<Plus size={16} />} label={t("calc.addSheet")} onClick={addSheet} />
@@ -1994,8 +2312,17 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
 
         <div className="ribbon-spacer" />
         <RibbonGroup>
-          <ToolButton icon={<FolderOpen size={16} />} label={t("common.open")} onClick={() => void openIntoWorkspace()} />
-          <ToolButton icon={<Save size={16} />} label={t("common.save")} onClick={() => void session.save()} disabled={session.busy} />
+          <ToolButton
+            icon={<FolderOpen size={16} />}
+            label={t("common.open")}
+            onClick={() => void openIntoWorkspace()}
+          />
+          <ToolButton
+            icon={<Save size={16} />}
+            label={t("common.save")}
+            onClick={() => void session.save()}
+            disabled={session.busy}
+          />
           <ToolButton label={t("common.saveAs")} onClick={() => void session.saveAs()} disabled={session.busy} />
           <ToolButton icon={<Printer size={16} />} label={t("common.print")} onClick={() => window.print()} />
         </RibbonGroup>
@@ -2004,12 +2331,25 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       {!android ? formulaBar : null}
 
       {trace || selectedError ? (
-        <div className="calc-audit-banner" style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 10px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)", fontSize: 12 }}>
+        <div
+          className="calc-audit-banner"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "4px 10px",
+            borderBottom: "1px solid var(--border)",
+            background: "var(--surface-2)",
+            fontSize: 12,
+          }}
+        >
           {trace ? (
             <>
               <strong>{trace.kind === "precedents" ? t("calc.tracePrecedents") : t("calc.traceDependents")}</strong>
               <span className="muted" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {trace.cells.map((node) => (node.sheet === sheet.name ? node.address : `${node.sheet}!${node.address}`)).join(", ")}
+                {trace.cells
+                  .map((node) => (node.sheet === sheet.name ? node.address : `${node.sheet}!${node.address}`))
+                  .join(", ")}
               </span>
             </>
           ) : (
@@ -2033,11 +2373,23 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           ref={gridRef}
           onPointerDown={handleGridPointerDown}
           onKeyDown={handleKeyDown}
-          onScroll={(event) => setScroll((current) => ({ ...current, top: (event.target as HTMLDivElement).scrollTop, left: (event.target as HTMLDivElement).scrollLeft }))}
+          onScroll={(event) =>
+            setScroll((current) => ({
+              ...current,
+              top: (event.target as HTMLDivElement).scrollTop,
+              left: (event.target as HTMLDivElement).scrollLeft,
+            }))
+          }
           style={{ width: "100%", height: "100%" }}
         >
-          <div className="calc-canvas" style={{ width: HEADER_WIDTH + totalWidth, height: ROW_HEIGHT * (sheet.rowCount + 1), zoom: gridZoom }}>
-            <div className="calc-col-headers" style={{ transform: `translate(${HEADER_WIDTH}px, ${scroll.top / gridZoom}px)` }}>
+          <div
+            className="calc-canvas"
+            style={{ width: HEADER_WIDTH + totalWidth, height: ROW_HEIGHT * (sheet.rowCount + 1), zoom: gridZoom }}
+          >
+            <div
+              className="calc-col-headers"
+              style={{ transform: `translate(${HEADER_WIDTH}px, ${scroll.top / gridZoom}px)` }}
+            >
               {visible.columns.map(({ col, x }) => (
                 <div
                   key={col}
@@ -2066,7 +2418,14 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 </div>
               ))}
             </div>
-            <div className="calc-cells" style={{ transform: `translate(${HEADER_WIDTH}px, 0)`, width: totalWidth, height: ROW_HEIGHT * sheet.rowCount }}>
+            <div
+              className="calc-cells"
+              style={{
+                transform: `translate(${HEADER_WIDTH}px, 0)`,
+                width: totalWidth,
+                height: ROW_HEIGHT * sheet.rowCount,
+              }}
+            >
               {visible.rows.map((row) =>
                 visible.columns.map(({ col, x }) => {
                   const address = formatAddress(row, col);
@@ -2074,15 +2433,22 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   const cell = sheet.cells[address];
                   const width = sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH;
                   const isEditing = editing?.row === row && editing?.col === col;
-                  const inSelection = row >= selectionBounds.start.row && row <= selectionBounds.end.row && col >= selectionBounds.start.col && col <= selectionBounds.end.col;
+                  const inSelection =
+                    row >= selectionBounds.start.row &&
+                    row <= selectionBounds.end.row &&
+                    col >= selectionBounds.start.col &&
+                    col <= selectionBounds.end.col;
                   const fill = conditionalFills.get(address);
                   const style = cell?.style ?? defaultCellStyle();
-                  const validation = sheet.validations.find((rule) => addressesInRange(rule.range, 100).includes(address));
+                  const validation = sheet.validations.find((rule) =>
+                    addressesInRange(rule.range, 100).includes(address),
+                  );
                   const invalid = validation ? !isValid(validation, value) : false;
                   // The structured table (if any) that owns this cell decides
                   // header/banding/outline; the cell's own formatting still wins.
                   const tableEntry = sheetTables.find(
-                    ({ parts }) => row >= parts.start.row && row <= parts.end.row && col >= parts.start.col && col <= parts.end.col,
+                    ({ parts }) =>
+                      row >= parts.start.row && row <= parts.end.row && col >= parts.start.col && col <= parts.end.col,
                   );
                   let tableFill: string | undefined;
                   let tableHeader = false;
@@ -2112,10 +2478,22 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                         background: fill ?? tableFill ?? style.fill ?? undefined,
                         fontWeight: style.bold || (tableHeader && tableEntry!.table.headerBold) ? 700 : undefined,
                         fontStyle: style.italic ? "italic" : undefined,
-                        textDecoration: [style.underline ? "underline" : "", style.strike ? "line-through" : ""].filter(Boolean).join(" ") || undefined,
+                        textDecoration:
+                          [style.underline ? "underline" : "", style.strike ? "line-through" : ""]
+                            .filter(Boolean)
+                            .join(" ") || undefined,
                         color: style.color ?? (tableFill && tableHeader ? "#ffffff" : undefined),
-                        textAlign: (style.align === "general" ? (typeof value === "number" ? "right" : "left") : style.align) as "left" | "right" | "center",
-                        justifyContent: style.align === "center" ? "center" : style.align === "right" || (style.align === "general" && typeof value === "number") ? "flex-end" : "flex-start",
+                        textAlign: (style.align === "general"
+                          ? typeof value === "number"
+                            ? "right"
+                            : "left"
+                          : style.align) as "left" | "right" | "center",
+                        justifyContent:
+                          style.align === "center"
+                            ? "center"
+                            : style.align === "right" || (style.align === "general" && typeof value === "number")
+                              ? "flex-end"
+                              : "flex-start",
                       }}
                       onDoubleClick={() => setEditing({ row, col, value: cell?.formula ?? cellText(cell) })}
                     >
@@ -2131,7 +2509,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                             setSuggestDismissed(false);
                             setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length);
                           }}
-                          onSelect={(event) => setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
+                          onSelect={(event) =>
+                            setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
+                          }
                           onChange={(event) => {
                             setDraftCaret(event.target.selectionStart ?? event.target.value.length);
                             setSuggestDismissed(false);
@@ -2205,7 +2585,11 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 }),
               )}
             </div>
-            <span className="calc-fill-handle" data-fill-handle="" style={{ left: fillHandle.x - 5, top: fillHandle.y - 5 }} />
+            <span
+              className="calc-fill-handle"
+              data-fill-handle=""
+              style={{ left: fillHandle.x - 5, top: fillHandle.y - 5 }}
+            />
             {sheet.charts.map((chart) => {
               const position = parseAddress(chart.anchor) ?? { row: 0, col: 0 };
               return (
@@ -2216,7 +2600,12 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   workbook={workbook}
                   x={columnX(position.col)}
                   y={position.row * ROW_HEIGHT + ROW_HEIGHT}
-                  onRemove={() => updateSheet((current) => ({ ...current, charts: current.charts.filter((candidate) => candidate.id !== chart.id) }))}
+                  onRemove={() =>
+                    updateSheet((current) => ({
+                      ...current,
+                      charts: current.charts.filter((candidate) => candidate.id !== chart.id),
+                    }))
+                  }
                 />
               );
             })}
@@ -2230,7 +2619,12 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   workbook={workbook}
                   x={columnX(position.col)}
                   y={position.row * ROW_HEIGHT + ROW_HEIGHT}
-                  onRemove={() => updateSheet((current) => ({ ...current, pivotTables: (current.pivotTables ?? []).filter((candidate) => candidate.id !== pivot.id) }))}
+                  onRemove={() =>
+                    updateSheet((current) => ({
+                      ...current,
+                      pivotTables: (current.pivotTables ?? []).filter((candidate) => candidate.id !== pivot.id),
+                    }))
+                  }
                 />
               );
             })}
@@ -2249,7 +2643,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
             role="tab"
             tabIndex={index === sheetIndex ? 0 : -1}
             aria-selected={index === sheetIndex}
-            onClick={() => { setSheetIndex(index); setSelection({ anchor: { row: 0, col: 0 }, focus: { row: 0, col: 0 } }); }}
+            onClick={() => {
+              setSheetIndex(index);
+              setSelection({ anchor: { row: 0, col: 0 }, focus: { row: 0, col: 0 } });
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
@@ -2282,7 +2679,14 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
 
       <div className="editor-status">
         <span>{nameBox}</span>
-        <span>{activeCell?.formula ? t("calc.formula") : formatCellDisplay(computed.get(formatAddress(selection.focus.row, selection.focus.col)) ?? "", activeCell?.style ?? defaultCellStyle())}</span>
+        <span>
+          {activeCell?.formula
+            ? t("calc.formula")
+            : formatCellDisplay(
+                computed.get(formatAddress(selection.focus.row, selection.focus.col)) ?? "",
+                activeCell?.style ?? defaultCellStyle(),
+              )}
+        </span>
         <span className="spacer" />
         <span>
           {sheet.rowCount} × {sheet.colCount}
@@ -2342,7 +2746,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       ) : null}
 
       {filterOpen ? (
-        <Dialog title={filterOpen.tableName ? `${t("calc.filter")} · ${filterOpen.tableName}` : t("calc.filter")} onClose={() => setFilterOpen(null)}>
+        <Dialog
+          title={filterOpen.tableName ? `${t("calc.filter")} · ${filterOpen.tableName}` : t("calc.filter")}
+          onClose={() => setFilterOpen(null)}
+        >
           <div className="stack filter-list">
             {filterOpen.values.map((entry, index) => (
               <label key={entry.value} className="check">
@@ -2352,7 +2759,12 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   onChange={(event) =>
                     setFilterOpen((current) =>
                       current
-                        ? { ...current, values: current.values.map((candidate, position) => (position === index ? { ...candidate, checked: event.target.checked } : candidate)) }
+                        ? {
+                            ...current,
+                            values: current.values.map((candidate, position) =>
+                              position === index ? { ...candidate, checked: event.target.checked } : candidate,
+                            ),
+                          }
                         : current,
                     )
                   }
@@ -2362,7 +2774,17 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
             ))}
           </div>
           <div className="row">
-            <button type="button" className="btn btn-soft" onClick={() => setFilterOpen((current) => (current ? { ...current, values: current.values.map((entry) => ({ ...entry, checked: true })) } : current))}>
+            <button
+              type="button"
+              className="btn btn-soft"
+              onClick={() =>
+                setFilterOpen((current) =>
+                  current
+                    ? { ...current, values: current.values.map((entry) => ({ ...entry, checked: true })) }
+                    : current,
+                )
+              }
+            >
               {t("calc.selectAll")}
             </button>
             <button type="button" className="btn btn-primary" onClick={applyFilter}>
@@ -2375,7 +2797,13 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 const tableId = filterOpen.tableId;
                 updateSheet((current) =>
                   tableId
-                    ? { ...current, rowHeights: {}, tables: (current.tables ?? []).map((table) => (table.id === tableId ? { ...table, filter: null } : table)) }
+                    ? {
+                        ...current,
+                        rowHeights: {},
+                        tables: (current.tables ?? []).map((table) =>
+                          table.id === tableId ? { ...table, filter: null } : table,
+                        ),
+                      }
                     : { ...current, rowHeights: {}, filter: null },
                 );
                 setFilterOpen(null);
@@ -2405,14 +2833,29 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           onRename={renameTable}
           onDelete={(table) => deleteTable(table.id)}
           onToggleTotals={(table) => patchTable(table.id, (current) => ({ ...current, hasTotals: !current.hasTotals }))}
-          onToggleBanded={(table) => patchTable(table.id, (current) => ({ ...current, bandedRows: !current.bandedRows }))}
+          onToggleBanded={(table) =>
+            patchTable(table.id, (current) => ({ ...current, bandedRows: !current.bandedRows }))
+          }
           onAddColumn={addCalculatedColumn}
           onFilter={(table, column) => openTableFilter(table, column)}
         />
       ) : null}
 
       {assistAnchor && focusMode !== null && (suggestions || argumentHint) ? (
-        <div className="calc-assist" style={{ position: "fixed", left: assistAnchor.left, top: assistAnchor.top, transform: assistAnchor.above ? "translateY(-100%)" : undefined, zIndex: 60, display: "flex", flexDirection: "column", gap: 4, maxWidth: 460 }}>
+        <div
+          className="calc-assist"
+          style={{
+            position: "fixed",
+            left: assistAnchor.left,
+            top: assistAnchor.top,
+            transform: assistAnchor.above ? "translateY(-100%)" : undefined,
+            zIndex: 60,
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+            maxWidth: 460,
+          }}
+        >
           {argumentHint ? (
             <div
               style={{
@@ -2436,7 +2879,13 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   <span
                     style={
                       index === argumentHint.active
-                        ? { background: "var(--accent-weak)", color: "var(--accent-text)", borderRadius: 3, padding: "0 3px", fontWeight: 600 }
+                        ? {
+                            background: "var(--accent-weak)",
+                            color: "var(--accent-text)",
+                            borderRadius: 3,
+                            padding: "0 3px",
+                            fontWeight: 600,
+                          }
                         : undefined
                     }
                   >
@@ -2451,7 +2900,14 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
             <div
               role="listbox"
               aria-label={t("calc.suggestions")}
-              style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, boxShadow: "var(--shadow)", maxHeight: 220, overflowY: "auto" }}
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                boxShadow: "var(--shadow)",
+                maxHeight: 220,
+                overflowY: "auto",
+              }}
             >
               {suggestions.items.map((item, index) => (
                 <div
@@ -2480,7 +2936,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   }}
                 >
                   <span style={{ fontWeight: 600, fontFamily: "Consolas, monospace" }}>{item.label}</span>
-                  <span className="muted small" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span
+                    className="muted small"
+                    style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  >
                     {item.detail}
                   </span>
                 </div>
@@ -2498,31 +2957,43 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
 // ---------------------------------------------------------------------------
 
 /** The highlight one rule paints on one cell, or null when it does not match. */
-function ruleFill(rule: CondRule, value: Scalar, number: number, counts: Map<string, number>, threshold: number): string | null {
+function ruleFill(
+  rule: CondRule,
+  value: Scalar,
+  number: number,
+  counts: Map<string, number>,
+  threshold: number,
+): string | null {
   const [first, second] = rule.values;
   switch (rule.kind) {
     case "greater":
-      return Number.isFinite(number) && number > Number(first) ? rule.fill ?? "#FEE2E2" : null;
+      return Number.isFinite(number) && number > Number(first) ? (rule.fill ?? "#FEE2E2") : null;
     case "less":
-      return Number.isFinite(number) && number < Number(first) ? rule.fill ?? "#FEE2E2" : null;
+      return Number.isFinite(number) && number < Number(first) ? (rule.fill ?? "#FEE2E2") : null;
     case "between":
-      return Number.isFinite(number) && number >= Number(first) && number <= Number(second) ? rule.fill ?? "#FEF3C7" : null;
+      return Number.isFinite(number) && number >= Number(first) && number <= Number(second)
+        ? (rule.fill ?? "#FEF3C7")
+        : null;
     case "equal":
-      return String(value) === String(first) ? rule.fill ?? "#DBEAFE" : null;
+      return String(value) === String(first) ? (rule.fill ?? "#DBEAFE") : null;
     case "textContains":
-      return String(value).toLowerCase().includes(String(first).toLowerCase()) ? rule.fill ?? "#E0E7FF" : null;
+      return String(value).toLowerCase().includes(String(first).toLowerCase()) ? (rule.fill ?? "#E0E7FF") : null;
     case "duplicate":
-      return String(value ?? "") !== "" && (counts.get(String(value ?? "")) ?? 0) > 1 ? rule.fill ?? "#FECACA" : null;
+      return String(value ?? "") !== "" && (counts.get(String(value ?? "")) ?? 0) > 1 ? (rule.fill ?? "#FECACA") : null;
     case "top":
-      return Number.isFinite(number) && number >= threshold ? rule.fill ?? "#BBF7D0" : null;
+      return Number.isFinite(number) && number >= threshold ? (rule.fill ?? "#BBF7D0") : null;
     default:
       return null;
   }
 }
 
-function isValid(rule: { kind: string; values: string[]; min: number | null; max: number | null }, value: Scalar): boolean {
+function isValid(
+  rule: { kind: string; values: string[]; min: number | null; max: number | null },
+  value: Scalar,
+): boolean {
   if (value === "" || value === undefined) return true;
-  if (rule.kind === "list") return rule.values.map((entry) => entry.trim().toLowerCase()).includes(String(value).trim().toLowerCase());
+  if (rule.kind === "list")
+    return rule.values.map((entry) => entry.trim().toLowerCase()).includes(String(value).trim().toLowerCase());
   const number = Number(value);
   if (!Number.isFinite(number)) return rule.kind !== "number";
   if (rule.kind === "number") {
@@ -2593,8 +3064,14 @@ function deleteColumn(_sheet: Sheet, col: number, updateSheet: (mutate: (sheet: 
 }
 
 function toggleMerge(_sheet: Sheet, selection: Selection, updateSheet: (mutate: (sheet: Sheet) => Sheet) => void) {
-  const start = formatAddress(Math.min(selection.anchor.row, selection.focus.row), Math.min(selection.anchor.col, selection.focus.col));
-  const end = formatAddress(Math.max(selection.anchor.row, selection.focus.row), Math.max(selection.anchor.col, selection.focus.col));
+  const start = formatAddress(
+    Math.min(selection.anchor.row, selection.focus.row),
+    Math.min(selection.anchor.col, selection.focus.col),
+  );
+  const end = formatAddress(
+    Math.max(selection.anchor.row, selection.focus.row),
+    Math.max(selection.anchor.col, selection.focus.col),
+  );
   updateSheet((current) => {
     const existing = current.merges.findIndex((merge) => merge.start === start && merge.end === end);
     if (existing >= 0) return { ...current, merges: current.merges.filter((_, index) => index !== existing) };
@@ -2670,20 +3147,48 @@ function ChartBox({
                 const barWidth = Math.max(2, (bandWidth * 0.7) / series.length);
                 const px = 40 + index * bandWidth + bandWidth * 0.15 + seriesIndex * barWidth;
                 const py = 34 + plotHeight - ((value - min) / (max - min || 1)) * plotHeight;
-                return <rect key={`${seriesIndex}-${index}`} x={chart.chart.kind === "bar" ? py : px} y={chart.chart.kind === "bar" ? 34 + index * bandWidth : py} width={chart.chart.kind === "bar" ? 40 + plotHeight - py : barWidth} height={chart.chart.kind === "bar" ? barWidth : 34 + plotHeight - py} fill={entry.color ?? palette[seriesIndex % palette.length]} opacity={0.85} />;
+                return (
+                  <rect
+                    key={`${seriesIndex}-${index}`}
+                    x={chart.chart.kind === "bar" ? py : px}
+                    y={chart.chart.kind === "bar" ? 34 + index * bandWidth : py}
+                    width={chart.chart.kind === "bar" ? 40 + plotHeight - py : barWidth}
+                    height={chart.chart.kind === "bar" ? barWidth : 34 + plotHeight - py}
+                    fill={entry.color ?? palette[seriesIndex % palette.length]}
+                    opacity={0.85}
+                  />
+                );
               }),
             )
           : null}
         {chart.chart.kind === "line" || chart.chart.kind === "area"
           ? series.map((entry, index) => (
               <g key={index}>
-                {chart.chart.kind === "area" ? <polygon points={`40,${34 + plotHeight} ${pointsFor(entry.values)} ${40 + plotWidth},${34 + plotHeight}`} fill={entry.color ?? palette[index % palette.length]} opacity={0.25} /> : null}
-                <polyline points={pointsFor(entry.values)} fill="none" stroke={entry.color ?? palette[index % palette.length]} strokeWidth={2} />
+                {chart.chart.kind === "area" ? (
+                  <polygon
+                    points={`40,${34 + plotHeight} ${pointsFor(entry.values)} ${40 + plotWidth},${34 + plotHeight}`}
+                    fill={entry.color ?? palette[index % palette.length]}
+                    opacity={0.25}
+                  />
+                ) : null}
+                <polyline
+                  points={pointsFor(entry.values)}
+                  fill="none"
+                  stroke={entry.color ?? palette[index % palette.length]}
+                  strokeWidth={2}
+                />
               </g>
             ))
           : null}
         {categories.map((label, index) => (
-          <text key={index} x={40 + (index + 0.5) * (plotWidth / count)} y={height - 8} fontSize={9} textAnchor="middle" fill="#64748b">
+          <text
+            key={index}
+            x={40 + (index + 0.5) * (plotWidth / count)}
+            y={height - 8}
+            fontSize={9}
+            textAnchor="middle"
+            fill="#64748b"
+          >
             {label.length > 8 ? `${label.slice(0, 7)}…` : label}
           </text>
         ))}
@@ -2716,7 +3221,10 @@ function pieSlices(values: number[], palette: string[]): Array<{ path: string; c
     const x2 = cx + radius * Math.cos(angle);
     const y2 = cy + radius * Math.sin(angle);
     const large = sweep > Math.PI ? 1 : 0;
-    return { path: `M ${cx} ${cy} L ${x1} ${y1} A ${radius} ${radius} 0 ${large} 1 ${x2} ${y2} Z`, color: palette[index % palette.length] };
+    return {
+      path: `M ${cx} ${cy} L ${x1} ${y1} A ${radius} ${radius} 0 ${large} 1 ${x2} ${y2} Z`,
+      color: palette[index % palette.length],
+    };
   });
 }
 
@@ -2752,7 +3260,12 @@ function PivotBox({
       <div className="chart-head">
         <strong>{pivot.name}</strong>
         <span className="spacer" />
-        <button type="button" className="icon-btn" onClick={() => setRefreshToken((value) => value + 1)} title={t("calc.pivotRefresh")}>
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={() => setRefreshToken((value) => value + 1)}
+          title={t("calc.pivotRefresh")}
+        >
           <RefreshCw size={12} />
         </button>
         <button type="button" className="icon-btn" onClick={onRemove} title={t("common.delete")}>
@@ -2765,7 +3278,10 @@ function PivotBox({
             {result.grid.map((line, rowIndex) => (
               <tr key={rowIndex}>
                 {line.map((value, colIndex) => (
-                  <td key={colIndex} className={colIndex < result.rowFieldCount || rowIndex === 0 ? "is-label" : undefined}>
+                  <td
+                    key={colIndex}
+                    className={colIndex < result.rowFieldCount || rowIndex === 0 ? "is-label" : undefined}
+                  >
                     {isError(value) ? value.code : value === "" ? "" : String(value)}
                   </td>
                 ))}
@@ -2792,7 +3308,12 @@ function PivotDialog({
   workbook: Workbook;
   sheet: Sheet;
   onClose: () => void;
-  onApply: (config: { rows: string[]; columns: string[]; values: PivotValueField[]; filters: PivotTable["filters"] }) => void;
+  onApply: (config: {
+    rows: string[];
+    columns: string[];
+    values: PivotValueField[];
+    filters: PivotTable["filters"];
+  }) => void;
 }) {
   const t = useT();
   const source = usedRange(sheet);
@@ -2840,7 +3361,10 @@ function PivotDialog({
         </label>
         <label className="field">
           <span>{t("calc.pivotAggregation")}</span>
-          <select value={aggregation} onChange={(event) => setAggregation(event.target.value as PivotValueField["aggregation"])}>
+          <select
+            value={aggregation}
+            onChange={(event) => setAggregation(event.target.value as PivotValueField["aggregation"])}
+          >
             {(["sum", "count", "average", "min", "max"] as const).map((kind) => (
               <option key={kind} value={kind}>
                 {t(`calc.agg_${kind}`)}
@@ -2852,7 +3376,14 @@ function PivotDialog({
           type="button"
           className="btn btn-primary"
           disabled={fields.length < 2}
-          onClick={() => onApply({ rows: row ? [row] : [], columns: column ? [column] : [], values: value ? [{ field: value, aggregation }] : [], filters: [] })}
+          onClick={() =>
+            onApply({
+              rows: row ? [row] : [],
+              columns: column ? [column] : [],
+              values: value ? [{ field: value, aggregation }] : [],
+              filters: [],
+            })
+          }
         >
           {t("calc.pivotInsert")}
         </button>
@@ -2861,7 +3392,13 @@ function PivotDialog({
   );
 }
 
-function ConditionalDialog({ onClose, onApply }: { onClose: () => void; onApply: (rule: { kind: string; values: string[]; fill: string; topN?: number }) => void }) {
+function ConditionalDialog({
+  onClose,
+  onApply,
+}: {
+  onClose: () => void;
+  onApply: (rule: { kind: string; values: string[]; fill: string; topN?: number }) => void;
+}) {
   const t = useT();
   const [kind, setKind] = useState("greater");
   const [first, setFirst] = useState("100");
@@ -2872,7 +3409,13 @@ function ConditionalDialog({ onClose, onApply }: { onClose: () => void; onApply:
       <div className="stack">
         <label className="field">
           <span>{t("calc.rule")}</span>
-          <select value={kind} onChange={(event) => { setKind(event.target.value); if (event.target.value === "dataBar") setFill("#638EC6"); }}>
+          <select
+            value={kind}
+            onChange={(event) => {
+              setKind(event.target.value);
+              if (event.target.value === "dataBar") setFill("#638EC6");
+            }}
+          >
             <option value="greater">{t("calc.ruleGreater")}</option>
             <option value="less">{t("calc.ruleLess")}</option>
             <option value="between">{t("calc.ruleBetween")}</option>
@@ -2901,7 +3444,13 @@ function ConditionalDialog({ onClose, onApply }: { onClose: () => void; onApply:
           <span>{t("calc.fillColor")}</span>
           <input type="color" value={fill} onChange={(event) => setFill(event.target.value)} />
         </label>
-        <button type="button" className="btn btn-primary" onClick={() => onApply({ kind, values: [first, second], fill, topN: kind === "top" ? Number(first) || 10 : undefined })}>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() =>
+            onApply({ kind, values: [first, second], fill, topN: kind === "top" ? Number(first) || 10 : undefined })
+          }
+        >
           {t("common.apply")}
         </button>
       </div>
@@ -2909,7 +3458,19 @@ function ConditionalDialog({ onClose, onApply }: { onClose: () => void; onApply:
   );
 }
 
-function ValidationDialog({ onClose, onApply }: { onClose: () => void; onApply: (validation: { kind: string; values: string[]; min: number | null; max: number | null; message: string }) => void }) {
+function ValidationDialog({
+  onClose,
+  onApply,
+}: {
+  onClose: () => void;
+  onApply: (validation: {
+    kind: string;
+    values: string[];
+    min: number | null;
+    max: number | null;
+    message: string;
+  }) => void;
+}) {
   const t = useT();
   const [kind, setKind] = useState("list");
   const [list, setList] = useState("Open,In progress,Done");
@@ -2947,7 +3508,19 @@ function ValidationDialog({ onClose, onApply }: { onClose: () => void; onApply: 
           <span>{t("calc.validationMessage")}</span>
           <input value={message} onChange={(event) => setMessage(event.target.value)} />
         </label>
-        <button type="button" className="btn btn-primary" onClick={() => onApply({ kind, values: list.split(",").map((entry) => entry.trim()), min: kind === "number" ? Number(min) : null, max: kind === "number" ? Number(max) : null, message })}>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() =>
+            onApply({
+              kind,
+              values: list.split(",").map((entry) => entry.trim()),
+              min: kind === "number" ? Number(min) : null,
+              max: kind === "number" ? Number(max) : null,
+              message,
+            })
+          }
+        >
           {t("common.apply")}
         </button>
       </div>
@@ -2965,7 +3538,13 @@ function InsertTableDialog({
   defaultName: string;
   defaultRange: string;
   onClose: () => void;
-  onApply: (config: { name: string; range: string; hasHeaders: boolean; hasTotals: boolean; bandedRows: boolean }) => void;
+  onApply: (config: {
+    name: string;
+    range: string;
+    hasHeaders: boolean;
+    hasTotals: boolean;
+    bandedRows: boolean;
+  }) => void;
 }) {
   const t = useT();
   const [name, setName] = useState(defaultName);
@@ -2998,7 +3577,12 @@ function InsertTableDialog({
           {t("calc.tableBanded")}
         </label>
         <p className="muted small">=SUM(Name[Column])</p>
-        <button type="button" className="btn btn-primary" disabled={!valid} onClick={() => onApply({ name, range, hasHeaders, hasTotals, bandedRows })}>
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={!valid}
+          onClick={() => onApply({ name, range, hasHeaders, hasTotals, bandedRows })}
+        >
           {t("common.apply")}
         </button>
       </div>
@@ -3044,11 +3628,15 @@ function TablesPanel({
 }) {
   const t = useT();
   const [drafts, setDrafts] = useState<Record<string, TablePanelDraft>>({});
-  const draftFor = (table: SpreadsheetTable): TablePanelDraft => drafts[table.id] ?? { name: "", formula: "", filter: table.columns[0]?.name ?? "" };
+  const draftFor = (table: SpreadsheetTable): TablePanelDraft =>
+    drafts[table.id] ?? { name: "", formula: "", filter: table.columns[0]?.name ?? "" };
   const patchDraft = (table: SpreadsheetTable, patch: Partial<TablePanelDraft>) => {
     setDrafts((current) => ({
       ...current,
-      [table.id]: { ...(current[table.id] ?? { name: "", formula: "", filter: table.columns[0]?.name ?? "" }), ...patch },
+      [table.id]: {
+        ...(current[table.id] ?? { name: "", formula: "", filter: table.columns[0]?.name ?? "" }),
+        ...patch,
+      },
     }));
   };
 
@@ -3085,16 +3673,30 @@ function TablesPanel({
         {tables.map((table) => {
           const draft = draftFor(table);
           return (
-            <div key={table.id} className="stack" style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 8 }}>
+            <div
+              key={table.id}
+              className="stack"
+              style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 8 }}
+            >
               <div className="row" style={{ alignItems: "center", gap: 6 }}>
-                <button type="button" className="btn btn-soft" onClick={() => onJump(table)} title={t("calc.tableJump")}>
+                <button
+                  type="button"
+                  className="btn btn-soft"
+                  onClick={() => onJump(table)}
+                  title={t("calc.tableJump")}
+                >
                   {table.name}
                 </button>
                 <span className="muted small">
                   {table.range} · {table.columns.length}
                 </span>
                 <span className="spacer" />
-                <button type="button" className="icon-btn" onClick={() => onRename(table)} title={t("calc.tableRename")}>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => onRename(table)}
+                  title={t("calc.tableRename")}
+                >
                   <Tag size={13} />
                 </button>
                 <button type="button" className="icon-btn" onClick={() => onDelete(table)} title={t("common.delete")}>
@@ -3114,7 +3716,11 @@ function TablesPanel({
               <div className="row wrap" style={{ gap: 6, alignItems: "flex-end" }}>
                 <label className="field" style={{ flex: 1 }}>
                   <span>{t("calc.tableFilter")}</span>
-                  <select className="input" value={draft.filter} onChange={(event) => patchDraft(table, { filter: event.target.value })}>
+                  <select
+                    className="input"
+                    value={draft.filter}
+                    onChange={(event) => patchDraft(table, { filter: event.target.value })}
+                  >
                     {table.columns.map((column) => (
                       <option key={column.name} value={column.name}>
                         {column.name}
@@ -3122,14 +3728,23 @@ function TablesPanel({
                     ))}
                   </select>
                 </label>
-                <button type="button" className="btn btn-soft" onClick={() => onFilter(table, draft.filter)} disabled={draft.filter === ""}>
+                <button
+                  type="button"
+                  className="btn btn-soft"
+                  onClick={() => onFilter(table, draft.filter)}
+                  disabled={draft.filter === ""}
+                >
                   {t("calc.filter")}
                 </button>
               </div>
               <div className="row wrap" style={{ gap: 6, alignItems: "flex-end" }}>
                 <label className="field" style={{ flex: 1 }}>
                   <span>{t("calc.tableNewColumn")}</span>
-                  <input className="input" value={draft.name} onChange={(event) => patchDraft(table, { name: event.target.value })} />
+                  <input
+                    className="input"
+                    value={draft.name}
+                    onChange={(event) => patchDraft(table, { name: event.target.value })}
+                  />
                 </label>
                 <label className="field" style={{ flex: 1.4 }}>
                   <span>{t("calc.tableFormula")}</span>
@@ -3185,7 +3800,12 @@ function NameManagerDialog({
   const [entryTarget, setEntryTarget] = useState(selection);
   const [entryScope, setEntryScope] = useState<"workbook" | "sheet">("workbook");
 
-  const problem = entryName.trim() === "" ? t("calc.nameRequired") : !isValidDefinedName(entryName.trim()) ? t("calc.nameInvalid") : "";
+  const problem =
+    entryName.trim() === ""
+      ? t("calc.nameRequired")
+      : !isValidDefinedName(entryName.trim())
+        ? t("calc.nameInvalid")
+        : "";
 
   const save = () => {
     if (problem) return;
@@ -3204,10 +3824,24 @@ function NameManagerDialog({
     <Dialog title={t("calc.nameManager")} onClose={onClose} wide>
       <div className="stack">
         <div className="row wrap" style={{ gap: 8 }}>
-          <input className="input" value={entryName} placeholder={t("calc.namePlaceholder")} onChange={(event) => setEntryName(event.target.value)} />
-          <input className="input" value={entryTarget} placeholder={t("calc.nameTarget")} onChange={(event) => setEntryTarget(event.target.value)} />
+          <input
+            className="input"
+            value={entryName}
+            placeholder={t("calc.namePlaceholder")}
+            onChange={(event) => setEntryName(event.target.value)}
+          />
+          <input
+            className="input"
+            value={entryTarget}
+            placeholder={t("calc.nameTarget")}
+            onChange={(event) => setEntryTarget(event.target.value)}
+          />
           <label className="check">
-            <input type="checkbox" checked={entryScope === "sheet"} onChange={(event) => setEntryScope(event.target.checked ? "sheet" : "workbook")} />
+            <input
+              type="checkbox"
+              checked={entryScope === "sheet"}
+              onChange={(event) => setEntryScope(event.target.checked ? "sheet" : "workbook")}
+            />
             {t("calc.nameThisSheetOnly")}
           </label>
           <button type="button" className="btn btn-primary" onClick={save} disabled={problem !== ""}>
@@ -3222,7 +3856,9 @@ function NameManagerDialog({
               <th>{t("calc.nameColumn")}</th>
               <th>{t("calc.nameTarget")}</th>
               <th>{t("calc.nameScope")}</th>
-              <th><span className="sr-only">{t("common.actions")}</span></th>
+              <th>
+                <span className="sr-only">{t("common.actions")}</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -3243,7 +3879,9 @@ function NameManagerDialog({
                     onBlur={(event) => {
                       const next = event.target.value.trim().toUpperCase();
                       if (!isValidDefinedName(next) || next === entry.name) return;
-                      onChange(names.map((candidate) => (candidate === entry ? { ...candidate, name: next } : candidate)));
+                      onChange(
+                        names.map((candidate) => (candidate === entry ? { ...candidate, name: next } : candidate)),
+                      );
                     }}
                   />
                 </td>
@@ -3252,7 +3890,13 @@ function NameManagerDialog({
                     className="input"
                     aria-label={t("calc.nameTarget")}
                     defaultValue={entry.definition}
-                    onBlur={(event) => onChange(names.map((candidate) => (candidate === entry ? { ...candidate, definition: event.target.value.trim() } : candidate)))}
+                    onBlur={(event) =>
+                      onChange(
+                        names.map((candidate) =>
+                          candidate === entry ? { ...candidate, definition: event.target.value.trim() } : candidate,
+                        ),
+                      )
+                    }
                   />
                 </td>
                 <td className="muted">{entry.sheet ?? t("calc.nameWorkbookScope")}</td>
@@ -3306,7 +3950,11 @@ function PrintLayoutDialog({
       <div className="stack">
         <label className="field">
           <span>{t("calc.paperSize")}</span>
-          <select className="input" value={draft.paperSize} onChange={(event) => patch({ paperSize: Number(event.target.value) })}>
+          <select
+            className="input"
+            value={draft.paperSize}
+            onChange={(event) => patch({ paperSize: Number(event.target.value) })}
+          >
             <option value={9}>A4</option>
             <option value={1}>Letter</option>
             <option value={5}>Legal</option>
@@ -3316,16 +3964,34 @@ function PrintLayoutDialog({
           </select>
         </label>
         <label className="check">
-          <input type="checkbox" checked={draft.landscape} onChange={(event) => patch({ landscape: event.target.checked })} />
+          <input
+            type="checkbox"
+            checked={draft.landscape}
+            onChange={(event) => patch({ landscape: event.target.checked })}
+          />
           {t("calc.landscape")}
         </label>
         <label className="field">
           <span>{t("calc.scale")}</span>
-          <input className="input" type="number" min={10} max={400} value={draft.scale} onChange={(event) => patch({ scale: Math.min(400, Math.max(10, Number(event.target.value) || 100)) })} />
+          <input
+            className="input"
+            type="number"
+            min={10}
+            max={400}
+            value={draft.scale}
+            onChange={(event) => patch({ scale: Math.min(400, Math.max(10, Number(event.target.value) || 100)) })}
+          />
         </label>
         <label className="field">
           <span>{t("calc.fitToWidth")}</span>
-          <input className="input" type="number" min={0} max={10} value={draft.fitToWidth} onChange={(event) => patch({ fitToWidth: Math.max(0, Number(event.target.value) || 0) })} />
+          <input
+            className="input"
+            type="number"
+            min={0}
+            max={10}
+            value={draft.fitToWidth}
+            onChange={(event) => patch({ fitToWidth: Math.max(0, Number(event.target.value) || 0) })}
+          />
         </label>
         <label className="field">
           <span>{t("calc.printTitlesRows")}</span>
@@ -3333,19 +3999,33 @@ function PrintLayoutDialog({
             className="input"
             placeholder="1:1"
             value={draft.printTitlesRows ?? ""}
-            onChange={(event) => patch({ printTitlesRows: event.target.value.trim() === "" ? null : event.target.value.trim() })}
+            onChange={(event) =>
+              patch({ printTitlesRows: event.target.value.trim() === "" ? null : event.target.value.trim() })
+            }
           />
         </label>
         <label className="check">
-          <input type="checkbox" checked={draft.printGridlines} onChange={(event) => patch({ printGridlines: event.target.checked })} />
+          <input
+            type="checkbox"
+            checked={draft.printGridlines}
+            onChange={(event) => patch({ printGridlines: event.target.checked })}
+          />
           {t("calc.printGridlines")}
         </label>
         <label className="check">
-          <input type="checkbox" checked={draft.printHeadings} onChange={(event) => patch({ printHeadings: event.target.checked })} />
+          <input
+            type="checkbox"
+            checked={draft.printHeadings}
+            onChange={(event) => patch({ printHeadings: event.target.checked })}
+          />
           {t("calc.printHeadings")}
         </label>
         <label className="check">
-          <input type="checkbox" checked={draft.centerHorizontally} onChange={(event) => patch({ centerHorizontally: event.target.checked })} />
+          <input
+            type="checkbox"
+            checked={draft.centerHorizontally}
+            onChange={(event) => patch({ centerHorizontally: event.target.checked })}
+          />
           {t("calc.centerHorizontally")}
         </label>
         <label className="field">

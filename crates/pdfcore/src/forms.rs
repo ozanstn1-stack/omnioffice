@@ -257,12 +257,7 @@ fn rect_of(doc: &Document, dict: &Dictionary) -> Option<[f64; 4]> {
 }
 
 fn rect_normalize(rect: [f64; 4]) -> [f64; 4] {
-    [
-        rect[0].min(rect[2]),
-        rect[1].min(rect[3]),
-        rect[0].max(rect[2]),
-        rect[1].max(rect[3]),
-    ]
+    [rect[0].min(rect[2]), rect[1].min(rect[3]), rect[0].max(rect[2]), rect[1].max(rect[3])]
 }
 
 fn rect_dims(rect: [f64; 4]) -> (f64, f64) {
@@ -307,11 +302,7 @@ fn matrix_to_object(matrix: Matrix) -> Object {
 
 /// Applies a closure to an indirect object's dictionary.
 fn with_object_dict<R>(doc: &mut Document, id: ObjectId, f: impl FnOnce(&mut Dictionary) -> R) -> PdfResult<R> {
-    let dict = doc
-        .get_object_mut(id)
-        .map_err(PdfError::from)?
-        .as_dict_mut()
-        .map_err(PdfError::from)?;
+    let dict = doc.get_object_mut(id).map_err(PdfError::from)?.as_dict_mut().map_err(PdfError::from)?;
     Ok(f(dict))
 }
 
@@ -449,13 +440,7 @@ fn walk_field(
     } else {
         format!("{prefix}.{partial}")
     };
-    let next = Inherited {
-        ft: ft.clone(),
-        ff,
-        v: v.clone(),
-        dv: dv.clone(),
-        da: da.clone(),
-    };
+    let next = Inherited { ft: ft.clone(), ff, v: v.clone(), dv: dv.clone(), da: da.clone() };
 
     let mut widgets: Vec<(ObjectId, Dictionary)> = Vec::new();
     let mut field_kids: Vec<ObjectId> = Vec::new();
@@ -528,10 +513,7 @@ fn choice_options(doc: &Document, dict: &Dictionary) -> Vec<FieldOption> {
         match &item {
             Object::Array(pair) => {
                 let value = pair.first().and_then(docutil::pdf_text_value).unwrap_or_default();
-                let label = pair
-                    .get(1)
-                    .and_then(docutil::pdf_text_value)
-                    .unwrap_or_else(|| value.clone());
+                let label = pair.get(1).and_then(docutil::pdf_text_value).unwrap_or_else(|| value.clone());
                 out.push(FieldOption { value, label });
             }
             other => {
@@ -573,21 +555,16 @@ fn widget_on_states(doc: &Document, widget: &Dictionary) -> Vec<String> {
 fn value_strings(doc: &Document, value: &Object) -> Vec<String> {
     match value {
         Object::Array(items) => items.iter().flat_map(|item| value_strings(doc, item)).collect(),
-        Object::Reference(id) => doc
-            .get_object(*id)
-            .ok()
-            .map(|resolved| value_strings(doc, resolved))
-            .unwrap_or_default(),
+        Object::Reference(id) => {
+            doc.get_object(*id).ok().map(|resolved| value_strings(doc, resolved)).unwrap_or_default()
+        }
         other => docutil::pdf_text_value(other).map(|text| vec![text]).unwrap_or_default(),
     }
 }
 
 /// The current value of a node (inherited /V).
 fn node_values(doc: &Document, node: &FieldNode) -> Vec<String> {
-    node.value
-        .as_ref()
-        .map(|value| value_strings(doc, value))
-        .unwrap_or_default()
+    node.value.as_ref().map(|value| value_strings(doc, value)).unwrap_or_default()
 }
 
 fn node_field_type(node: &FieldNode) -> &'static str {
@@ -659,11 +636,8 @@ pub fn list_fields(doc: &Document) -> Vec<FormFieldInfo> {
             }
         }
         let has_script = node.dict.get(b"AA").is_ok() || node.dict.get(b"A").is_ok();
-        let default_value = node
-            .default_value
-            .as_ref()
-            .map(|value| value_strings(doc, value).join(", "))
-            .unwrap_or_default();
+        let default_value =
+            node.default_value.as_ref().map(|value| value_strings(doc, value).join(", ")).unwrap_or_default();
         out.push(FormFieldInfo {
             name: node.full_name.clone(),
             field_type: field_type.to_string(),
@@ -700,10 +674,7 @@ fn radio_options(doc: &Document, node: &FieldNode) -> Vec<FieldOption> {
     let mut out = Vec::new();
     for (index, (_, widget)) in node.widgets.iter().enumerate() {
         for state in widget_on_states(doc, widget) {
-            let label = labels
-                .get(index)
-                .map(|option| option.label.clone())
-                .unwrap_or_else(|| state.clone());
+            let label = labels.get(index).map(|option| option.label.clone()).unwrap_or_else(|| state.clone());
             out.push(FieldOption { value: state, label });
         }
     }
@@ -751,9 +722,7 @@ fn ensure_acroform(doc: &mut Document) -> PdfResult<ObjectId> {
         Object::Reference(id) => Ok(id),
         Object::Dictionary(dict) => {
             let id = doc.add_object(Object::Dictionary(dict));
-            doc.get_dictionary_mut(catalog_id)
-                .map_err(PdfError::from)?
-                .set("AcroForm", Object::Reference(id));
+            doc.get_dictionary_mut(catalog_id).map_err(PdfError::from)?.set("AcroForm", Object::Reference(id));
             Ok(id)
         }
         _ => Err(PdfError::CorruptPdf("/AcroForm is not a dictionary".into())),
@@ -852,10 +821,7 @@ fn parse_da_size(da: &Option<String>) -> f64 {
 /// keeps the content stream encodable with the WinAnsi font the appearance
 /// declares instead of emitting bytes no Base14 font can render.
 fn appearance_text(text: &str) -> String {
-    let mapped: String = text
-        .chars()
-        .map(|c| if c.is_ascii() && c != '\r' && c != '\n' { c } else { '?' })
-        .collect();
+    let mapped: String = text.chars().map(|c| if c.is_ascii() && c != '\r' && c != '\n' { c } else { '?' }).collect();
     docutil::escape_pdf_literal(&mapped)
 }
 
@@ -923,7 +889,11 @@ fn choice_appearance_content(
 ) -> String {
     let size = size.max(4.0);
     let mut out = String::from("q\n");
-    out.push_str(&format!("0.97 0.98 1 rg\n0.5 0.5 {} {} re f\n", format_pt((width - 1.0).max(0.1)), format_pt((height - 1.0).max(0.1))));
+    out.push_str(&format!(
+        "0.97 0.98 1 rg\n0.5 0.5 {} {} re f\n",
+        format_pt((width - 1.0).max(0.1)),
+        format_pt((height - 1.0).max(0.1))
+    ));
     out.push_str(&format!(
         "0.4 0.45 0.55 RG\n0.7 w\n0.5 0.5 {} {} re S\n",
         format_pt((width - 1.0).max(0.1)),
@@ -934,7 +904,12 @@ fn choice_appearance_content(
         let per_line = (((width - 20.0).max(4.0)) / (size * 0.5)).floor().max(1.0) as usize;
         let shown: String = text.chars().take(per_line).collect();
         let baseline = ((height - size) / 2.0 + size * 0.2).max(1.0);
-        out.push_str(&format!("BT\n/Helv {} Tf\n0 g\n2 {} Td\n({}) Tj\nET\n", format_pt(size), format_pt(baseline), appearance_text(&shown)));
+        out.push_str(&format!(
+            "BT\n/Helv {} Tf\n0 g\n2 {} Td\n({}) Tj\nET\n",
+            format_pt(size),
+            format_pt(baseline),
+            appearance_text(&shown)
+        ));
         out.push_str(&format!(
             "0.3 0.35 0.45 rg\n{} {} m\n{} {} l\n{} {} l\nf\n",
             format_pt(width - 12.0),
@@ -959,7 +934,11 @@ fn choice_appearance_content(
                     format_pt(line_height)
                 ));
             }
-            let shown: String = option.label.chars().take((((width - 8.0).max(4.0)) / (size * 0.5)).floor().max(1.0) as usize).collect();
+            let shown: String = option
+                .label
+                .chars()
+                .take((((width - 8.0).max(4.0)) / (size * 0.5)).floor().max(1.0) as usize)
+                .collect();
             out.push_str(&format!(
                 "BT\n/Helv {} Tf\n0 g\n3 {} Td\n({}) Tj\nET\n",
                 format_pt(size),
@@ -1094,8 +1073,10 @@ fn regenerate_button_appearance(
 ) -> PdfResult<()> {
     let rect = widget_rect(doc, widget_id).unwrap_or([0.0, 0.0, 14.0, 14.0]);
     let (width, height) = rect_dims(rect);
-    let off_id = add_appearance_stream(doc, width, height, button_appearance_content(width, height, false, round), font_id);
-    let on_id = add_appearance_stream(doc, width, height, button_appearance_content(width, height, true, round), font_id);
+    let off_id =
+        add_appearance_stream(doc, width, height, button_appearance_content(width, height, false, round), font_id);
+    let on_id =
+        add_appearance_stream(doc, width, height, button_appearance_content(width, height, true, round), font_id);
     let mut states = Dictionary::new();
     states.set(b"Off".to_vec(), Object::Reference(off_id));
     if on_states.is_empty() {
@@ -1170,15 +1151,12 @@ pub fn apply_field_values(doc: &mut Document, values: &[FieldValue]) -> PdfResul
                 // Password fields keep the real value in /V but must never
                 // draw it: the generated appearance shows one mask character
                 // per typed character, like a viewer would.
-                let shown = if ff & FLAG_PASSWORD != 0 {
-                    "*".repeat(text.chars().count())
-                } else {
-                    text.clone()
-                };
+                let shown = if ff & FLAG_PASSWORD != 0 { "*".repeat(text.chars().count()) } else { text.clone() };
                 for widget_id in &widget_ids {
                     let rect = widget_rect(doc, *widget_id).unwrap_or([0.0, 0.0, 120.0, 20.0]);
                     let (width, height) = rect_dims(rect);
-                    let content = text_appearance_content(&shown, width, height, parse_da_size(&da), ff & FLAG_MULTILINE != 0);
+                    let content =
+                        text_appearance_content(&shown, width, height, parse_da_size(&da), ff & FLAG_MULTILINE != 0);
                     regenerate_value_appearance(doc, *widget_id, content, font_id)?;
                 }
                 report.filled += 1;
@@ -1204,9 +1182,10 @@ pub fn apply_field_values(doc: &mut Document, values: &[FieldValue]) -> PdfResul
                     vec![value.value.clone()]
                 };
                 if ff & FLAG_MULTI_SELECT == 0 && selected.len() > 1 {
-                    report
-                        .warnings
-                        .push(format!("{}: field does not allow multiple values; only the first is written", value.name));
+                    report.warnings.push(format!(
+                        "{}: field does not allow multiple values; only the first is written",
+                        value.name
+                    ));
                 }
                 let effective: Vec<String> = if ff & FLAG_MULTI_SELECT == 0 {
                     selected.iter().take(1).cloned().collect()
@@ -1270,9 +1249,7 @@ fn fill_checkbox(
     } else if states.iter().any(|state| state == &raw) {
         raw.clone()
     } else {
-        report
-            .warnings
-            .push(format!("{}: unknown checkbox state '{raw}', using the first declared state", value.name));
+        report.warnings.push(format!("{}: unknown checkbox state '{raw}', using the first declared state", value.name));
         states.first().cloned().unwrap_or_else(|| "Yes".to_string())
     };
     set_dict_entry(doc, node.id, b"V", Object::Name(chosen.as_bytes().to_vec()))?;
@@ -1291,15 +1268,13 @@ fn fill_radio(
     report: &mut FillReport,
 ) -> PdfResult<()> {
     // Collect per-widget states first: each widget owns one export value.
-    let per_widget: Vec<Vec<String>> = node
-        .widgets
-        .iter()
-        .map(|(_, widget)| widget_on_states(doc, widget))
-        .collect();
+    let per_widget: Vec<Vec<String>> = node.widgets.iter().map(|(_, widget)| widget_on_states(doc, widget)).collect();
     let all_states: Vec<String> = per_widget.iter().flatten().cloned().collect();
     let raw = value.value.trim().to_string();
     let lower = raw.to_lowercase();
-    let chosen: Option<String> = if raw.is_empty() || matches!(lower.as_str(), "off" | "false" | "0" | "no" | "unchecked") {
+    let chosen: Option<String> = if raw.is_empty()
+        || matches!(lower.as_str(), "off" | "false" | "0" | "no" | "unchecked")
+    {
         None
     } else if all_states.iter().any(|state| state == &raw) {
         Some(raw.clone())
@@ -1310,9 +1285,7 @@ fn fill_radio(
         // appearance below gives that state a stream so the value is visible.
         Some(raw.clone())
     } else {
-        report
-            .warnings
-            .push(format!("{}: '{raw}' is not a declared radio state; leaving the group off", value.name));
+        report.warnings.push(format!("{}: '{raw}' is not a declared radio state; leaving the group off", value.name));
         None
     };
     match &chosen {
@@ -1377,9 +1350,7 @@ pub fn validate_fields(doc: &Document, values: &[FieldValue]) -> Vec<FieldIssue>
         };
         let field_type = node_field_type(node);
         let filled = match field_type {
-            "checkbox" => effective
-                .iter()
-                .any(|value| !value.is_empty() && !value.eq_ignore_ascii_case("off")),
+            "checkbox" => effective.iter().any(|value| !value.is_empty() && !value.eq_ignore_ascii_case("off")),
             _ => effective.iter().any(|value| !value.is_empty()),
         };
         if !filled {
@@ -1523,8 +1494,7 @@ pub fn validate_fields(doc: &Document, values: &[FieldValue]) -> Vec<FieldIssue>
                                 message: format!(
                                     "'{entry}' is not in the option list of '{}' ({}).",
                                     value.name,
-                                    node
-                                        .options
+                                    node.options
                                         .iter()
                                         .map(|option| option.value.as_str())
                                         .collect::<Vec<_>>()
@@ -1535,15 +1505,14 @@ pub fn validate_fields(doc: &Document, values: &[FieldValue]) -> Vec<FieldIssue>
                     }
                 }
             }
-            "pushbutton" | "signature"
-                if (!value.value.is_empty() || !value.values.is_empty()) => {
-                    issues.push(FieldIssue {
-                        field: value.name.clone(),
-                        code: "not_fillable".into(),
-                        severity: "error".into(),
-                        message: format!("'{}' is a {} field and cannot take a value.", value.name, field_type),
-                    });
-                }
+            "pushbutton" | "signature" if (!value.value.is_empty() || !value.values.is_empty()) => {
+                issues.push(FieldIssue {
+                    field: value.name.clone(),
+                    code: "not_fillable".into(),
+                    severity: "error".into(),
+                    message: format!("'{}' is a {} field and cannot take a value.", value.name, field_type),
+                });
+            }
             _ => {}
         }
     }
@@ -1560,22 +1529,27 @@ fn check_name_based_format(doc: &Document, node: &FieldNode, name: &str, text: &
     let date_hint = ["date", "tarih", "birth", "dogum", "doğum", "validuntil", "expiry", "geçerlilik"]
         .iter()
         .any(|needle| hint.contains(needle));
-    let number_hint = ["amount", "total", "price", "tutar", "fiyat", "toplam", "number", "sayı", "sayi", "quantity", "adet"]
-        .iter()
-        .any(|needle| hint.contains(needle));
+    let number_hint =
+        ["amount", "total", "price", "tutar", "fiyat", "toplam", "number", "sayı", "sayi", "quantity", "adet"]
+            .iter()
+            .any(|needle| hint.contains(needle));
     if date_hint && !looks_like_date(text) {
         issues.push(FieldIssue {
             field: name.to_string(),
             code: "invalid_date".into(),
             severity: "warning".into(),
-            message: format!("'{text}' does not look like a date; the field name suggests one (checked without scripts)."),
+            message: format!(
+                "'{text}' does not look like a date; the field name suggests one (checked without scripts)."
+            ),
         });
     } else if number_hint && !looks_like_number(text) {
         issues.push(FieldIssue {
             field: name.to_string(),
             code: "invalid_number".into(),
             severity: "warning".into(),
-            message: format!("'{text}' does not look like a number; the field name suggests one (checked without scripts)."),
+            message: format!(
+                "'{text}' does not look like a number; the field name suggests one (checked without scripts)."
+            ),
         });
     }
 }
@@ -1597,9 +1571,8 @@ fn looks_like_date(value: &str) -> bool {
             if numbers.len() != 3 {
                 continue;
             }
-            let plausible = |year: u32, month: u32, day: u32| {
-                (1..=12).contains(&month) && (1..=31).contains(&day) && year <= 9999
-            };
+            let plausible =
+                |year: u32, month: u32, day: u32| (1..=12).contains(&month) && (1..=31).contains(&day) && year <= 9999;
             let (a, b, c) = (numbers[0], numbers[1], numbers[2]);
             // y-m-d or d-m-y / m-d-y; accept when either reading is plausible.
             if plausible(a, b, c) || plausible(c, b, a) || plausible(c, a, b) {
@@ -1628,18 +1601,18 @@ fn looks_like_number(value: &str) -> bool {
         return false;
     }
     if unsigned.matches(['.', ',']).count() <= 1 {
-        return unsigned
-            .chars()
-            .filter(|c| *c != '.' && *c != ',')
-            .all(|c| c.is_ascii_digit())
+        return unsigned.chars().filter(|c| *c != '.' && *c != ',').all(|c| c.is_ascii_digit())
             && unsigned.chars().any(|c| c.is_ascii_digit());
     }
     // Thousands groups: 1.234.567 or 1,234,567 (consistent separator).
-    let (separator, others): (char, &[char]) = if unsigned.contains('.') { ('.', &['.', ',']) } else { (',', &['.', ',']) };
+    let (separator, others): (char, &[char]) =
+        if unsigned.contains('.') { ('.', &['.', ',']) } else { (',', &['.', ',']) };
     let parts: Vec<&str> = unsigned.split(separator).collect();
     !parts.is_empty()
         && parts.iter().all(|part| {
-            !part.is_empty() && part.chars().all(|c| c.is_ascii_digit()) && !others.iter().any(|other| part.contains(*other))
+            !part.is_empty()
+                && part.chars().all(|c| c.is_ascii_digit())
+                && !others.iter().any(|other| part.contains(*other))
         })
 }
 
@@ -1732,10 +1705,7 @@ fn page_object_entries(doc: &Document, page_id: ObjectId) -> Vec<PageObjectEntry
             match entry {
                 Object::Reference(id) => {
                     if let Ok(dict) = doc.get_dictionary(*id) {
-                        out.push(PageObjectEntry::Annot {
-                            handle: AnnotHandle::Ref(*id),
-                            dict: dict.clone(),
-                        });
+                        out.push(PageObjectEntry::Annot { handle: AnnotHandle::Ref(*id), dict: dict.clone() });
                     }
                 }
                 Object::Dictionary(dict) => {
@@ -1823,12 +1793,7 @@ pub fn list_page_objects_in_file(path: &Path, password: Option<&str>) -> PdfResu
 }
 
 fn matrix_bbox(matrix: Matrix) -> [f64; 4] {
-    let corners = [
-        matrix.apply(0.0, 0.0),
-        matrix.apply(1.0, 0.0),
-        matrix.apply(0.0, 1.0),
-        matrix.apply(1.0, 1.0),
-    ];
+    let corners = [matrix.apply(0.0, 0.0), matrix.apply(1.0, 0.0), matrix.apply(0.0, 1.0), matrix.apply(1.0, 1.0)];
     let min_x = corners.iter().map(|corner| corner.0).fold(f64::MAX, f64::min);
     let max_x = corners.iter().map(|corner| corner.0).fold(f64::MIN, f64::max);
     let min_y = corners.iter().map(|corner| corner.1).fold(f64::MAX, f64::min);
@@ -1987,11 +1952,7 @@ fn scan_content(bytes: &[u8]) -> Vec<Token> {
             while index < bytes.len() && !is_content_delimiter(bytes[index]) {
                 index += 1;
             }
-            tokens.push(Token {
-                kind: TokenKind::Name(bytes[start + 1..index].to_vec()),
-                start,
-                end: index,
-            });
+            tokens.push(Token { kind: TokenKind::Name(bytes[start + 1..index].to_vec()), start, end: index });
             continue;
         }
         if byte.is_ascii_digit() || byte == b'+' || byte == b'-' || byte == b'.' {
@@ -2001,9 +1962,7 @@ fn scan_content(bytes: &[u8]) -> Vec<Token> {
             {
                 index += 1;
             }
-            let parsed = std::str::from_utf8(&bytes[start..index])
-                .ok()
-                .and_then(|text| text.parse::<f64>().ok());
+            let parsed = std::str::from_utf8(&bytes[start..index]).ok().and_then(|text| text.parse::<f64>().ok());
             match parsed {
                 Some(value) => tokens.push(Token { kind: TokenKind::Number(value), start, end: index }),
                 None => tokens.push(Token { kind: TokenKind::Other, start, end: index }),
@@ -2015,11 +1974,7 @@ fn scan_content(bytes: &[u8]) -> Vec<Token> {
             while index < bytes.len() && !is_content_delimiter(bytes[index]) {
                 index += 1;
             }
-            tokens.push(Token {
-                kind: TokenKind::Operator(bytes[start..index].to_vec()),
-                start,
-                end: index,
-            });
+            tokens.push(Token { kind: TokenKind::Operator(bytes[start..index].to_vec()), start, end: index });
             continue;
         }
         index += 1;
@@ -2134,29 +2089,26 @@ fn image_placements(doc: &Document, page_id: ObjectId) -> Vec<ImagePlacement> {
                         if let Some(values) = values {
                             let matrix = Matrix([values[0], values[1], values[2], values[3], values[4], values[5]]);
                             ctm = matrix.mul(ctm);
-                            last_cm = Some((
-                                matrix,
-                                operands.iter().map(|operand| (operand.start, operand.end)).collect(),
-                            ));
+                            last_cm =
+                                Some((matrix, operands.iter().map(|operand| (operand.start, operand.end)).collect()));
                         }
                     }
                 }
-                b"Do"
-                    if index >= 1 => {
-                        if let TokenKind::Name(name) = &tokens[index - 1].kind {
-                            let name = String::from_utf8_lossy(name).to_string();
-                            if images.contains_key(&name) {
-                                out.push(ImagePlacement {
-                                    stream_id,
-                                    name,
-                                    matrix: ctm,
-                                    last_cm: last_cm.clone(),
-                                    name_range: (tokens[index - 1].start, tokens[index - 1].end),
-                                    do_range: (token.start, token.end),
-                                });
-                            }
+                b"Do" if index >= 1 => {
+                    if let TokenKind::Name(name) = &tokens[index - 1].kind {
+                        let name = String::from_utf8_lossy(name).to_string();
+                        if images.contains_key(&name) {
+                            out.push(ImagePlacement {
+                                stream_id,
+                                name,
+                                matrix: ctm,
+                                last_cm: last_cm.clone(),
+                                name_range: (tokens[index - 1].start, tokens[index - 1].end),
+                                do_range: (token.start, token.end),
+                            });
                         }
                     }
+                }
                 _ => {}
             }
         }
@@ -2228,12 +2180,19 @@ fn insert_matrix_bytes(bytes: &[u8], at: usize, values: [f64; 6]) -> Option<Vec<
 #[serde(rename_all = "camelCase", tag = "action")]
 pub enum ObjectAction {
     /// Translate by (dx, dy) page points.
-    Move { dx: f64, dy: f64 },
+    Move {
+        dx: f64,
+        dy: f64,
+    },
     /// New page-space rectangle `[x0, y0, x1, y1]` (bottom-left origin).
-    Resize { rect: [f64; 4] },
+    Resize {
+        rect: [f64; 4],
+    },
     Delete,
     /// Rotate around the object's center, in degrees.
-    Rotate { degrees: f64 },
+    Rotate {
+        degrees: f64,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2282,10 +2241,7 @@ pub fn apply_object_edits(doc: &mut Document, edits: &[ObjectEdit]) -> PdfResult
     let mut snapshots: HashMap<u32, Vec<PageObjectEntry>> = HashMap::new();
     for edit in edits {
         if let std::collections::hash_map::Entry::Vacant(e) = snapshots.entry(edit.page) {
-            let page_id = pages
-                .get(&edit.page)
-                .copied()
-                .ok_or(PdfError::RangeOutOfBounds)?;
+            let page_id = pages.get(&edit.page).copied().ok_or(PdfError::RangeOutOfBounds)?;
             e.insert(page_object_entries(doc, page_id));
         }
     }
@@ -2293,10 +2249,7 @@ pub fn apply_object_edits(doc: &mut Document, edits: &[ObjectEdit]) -> PdfResult
     for edit in edits {
         let entries = &snapshots[&edit.page];
         if entries.get(edit.index as usize).is_none() {
-            return Err(PdfError::InvalidInput(format!(
-                "page {} has no object at index {}",
-                edit.page, edit.index
-            )));
+            return Err(PdfError::InvalidInput(format!("page {} has no object at index {}", edit.page, edit.index)));
         }
         validate_action(&edit.action)?;
     }
@@ -2416,23 +2369,17 @@ pub fn apply_object_edits(doc: &mut Document, edits: &[ObjectEdit]) -> PdfResult
                     Some((last_cm, ranges)) if ranges.len() == 6 => {
                         // New value for the last `cm`: desired ∘ CTM⁻¹ ∘ M_last.
                         let new_matrix = desired.mul(inverse).mul(*last_cm);
-                        ops_by_stream.entry(placement.stream_id).or_default().push((
-                            ranges[0].0,
-                            StreamOp::Replace {
-                                ranges: ranges.clone(),
-                                values: new_matrix.0,
-                            },
-                        ));
+                        ops_by_stream
+                            .entry(placement.stream_id)
+                            .or_default()
+                            .push((ranges[0].0, StreamOp::Replace { ranges: ranges.clone(), values: new_matrix.0 }));
                     }
                     _ => {
                         // No single patchable `cm`: insert one before `Do`.
                         let new_matrix = desired.mul(inverse);
                         ops_by_stream.entry(placement.stream_id).or_default().push((
                             placement.do_range.0,
-                            StreamOp::Insert {
-                                at: placement.do_range.0,
-                                values: new_matrix.0,
-                            },
+                            StreamOp::Insert { at: placement.do_range.0, values: new_matrix.0 },
                         ));
                     }
                 }
@@ -2440,10 +2387,7 @@ pub fn apply_object_edits(doc: &mut Document, edits: &[ObjectEdit]) -> PdfResult
             ImageIntent::Delete(placement) => {
                 ops_by_stream.entry(placement.stream_id).or_default().push((
                     placement.name_range.0,
-                    StreamOp::Blank {
-                        start: placement.name_range.0,
-                        end: placement.do_range.1,
-                    },
+                    StreamOp::Blank { start: placement.name_range.0, end: placement.do_range.1 },
                 ));
             }
         }
@@ -2529,9 +2473,9 @@ fn drop_empty_acroform(doc: &mut Document) {
             .ok()
             .map(|acro| resolve_array(doc, acro.get(b"Fields").ok()).map(|fields| fields.is_empty()).unwrap_or(true))
             .unwrap_or(true),
-        Object::Dictionary(acro) => resolve_array(doc, acro.get(b"Fields").ok())
-            .map(|fields| fields.is_empty())
-            .unwrap_or(true),
+        Object::Dictionary(acro) => {
+            resolve_array(doc, acro.get(b"Fields").ok()).map(|fields| fields.is_empty()).unwrap_or(true)
+        }
         _ => return,
     };
     if !empty {
@@ -2594,10 +2538,7 @@ fn rotate_annotation(doc: &mut Document, handle: AnnotHandle, degrees: f64) -> P
     let normal = ap.and_then(|ap| ap.get(b"N").ok().cloned());
     let stream_ids: Vec<ObjectId> = match normal {
         Some(Object::Reference(id)) => vec![id],
-        Some(Object::Dictionary(states)) => states
-            .iter()
-            .filter_map(|(_, value)| value.as_reference().ok())
-            .collect(),
+        Some(Object::Dictionary(states)) => states.iter().filter_map(|(_, value)| value.as_reference().ok()).collect(),
         _ => Vec::new(),
     };
     for stream_id in stream_ids {
@@ -2610,18 +2551,11 @@ fn rotate_annotation(doc: &mut Document, handle: AnnotHandle, degrees: f64) -> P
                 .filter(|values| values.len() >= 4)
                 .map(|values| [values[0], values[1], values[2], values[3]])
                 .unwrap_or([0.0, 0.0, 1.0, 1.0]);
-            let old = stream
-                .dict
-                .get(b"Matrix")
-                .ok()
-                .and_then(matrix_from_object)
-                .unwrap_or(Matrix::IDENTITY);
+            let old = stream.dict.get(b"Matrix").ok().and_then(matrix_from_object).unwrap_or(Matrix::IDENTITY);
             let cx = (bbox[0] + bbox[2]) / 2.0;
             let cy = (bbox[1] + bbox[3]) / 2.0;
-            let rotated = Matrix::translate(cx, cy)
-                .mul(Matrix::rotate_deg(normalized))
-                .mul(Matrix::translate(-cx, -cy))
-                .mul(old);
+            let rotated =
+                Matrix::translate(cx, cy).mul(Matrix::rotate_deg(normalized)).mul(Matrix::translate(-cx, -cy)).mul(old);
             stream.dict.set("Matrix", matrix_to_object(rotated));
         }
     }
@@ -2629,11 +2563,7 @@ fn rotate_annotation(doc: &mut Document, handle: AnnotHandle, degrees: f64) -> P
 }
 
 fn replace_stream_bytes(doc: &mut Document, stream_id: ObjectId, bytes: Vec<u8>) -> PdfResult<()> {
-    let stream = doc
-        .get_object_mut(stream_id)
-        .map_err(PdfError::from)?
-        .as_stream_mut()
-        .map_err(PdfError::from)?;
+    let stream = doc.get_object_mut(stream_id).map_err(PdfError::from)?.as_stream_mut().map_err(PdfError::from)?;
     // The patched bytes are plain content: dropping the filters keeps them
     // readable. The writer re-compresses streams on save when asked to.
     stream.dict.remove(b"Filter");
@@ -2657,15 +2587,12 @@ fn annot_dict_snapshot(doc: &Document, handle: AnnotHandle) -> Option<Dictionary
 }
 
 /// Applies a closure to an annotation dictionary, indirect or inline.
-fn with_annot_dict(
-    doc: &mut Document,
-    handle: AnnotHandle,
-    f: impl FnOnce(&mut Dictionary),
-) -> PdfResult<()> {
+fn with_annot_dict(doc: &mut Document, handle: AnnotHandle, f: impl FnOnce(&mut Dictionary)) -> PdfResult<()> {
     match handle {
         AnnotHandle::Ref(id) => with_object_dict(doc, id, f),
         AnnotHandle::Inline { page_id, position } => {
-            let storage = annots_storage(doc, page_id).ok_or_else(|| PdfError::CorruptPdf("page has no /Annots".into()))?;
+            let storage =
+                annots_storage(doc, page_id).ok_or_else(|| PdfError::CorruptPdf("page has no /Annots".into()))?;
             let mut items = storage.1;
             let mut dict = match items.get(position) {
                 Some(Object::Dictionary(dict)) => dict.clone(),
@@ -2680,7 +2607,12 @@ fn with_annot_dict(
     }
 }
 
-fn write_annot_array(doc: &mut Document, page_id: ObjectId, storage: AnnotsStorage, items: Vec<Object>) -> PdfResult<()> {
+fn write_annot_array(
+    doc: &mut Document,
+    page_id: ObjectId,
+    storage: AnnotsStorage,
+    items: Vec<Object>,
+) -> PdfResult<()> {
     match storage {
         AnnotsStorage::Inline => {
             let page = doc.get_object_mut(page_id).map_err(PdfError::from)?.as_dict_mut().map_err(PdfError::from)?;

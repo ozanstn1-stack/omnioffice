@@ -154,11 +154,7 @@ fn locked_output_is_reported_as_file_locked() {
     // reader that does not share write access).
     let lock = {
         use std::os::windows::fs::OpenOptionsExt;
-        std::fs::OpenOptions::new()
-            .read(true)
-            .share_mode(0)
-            .open(&target)
-            .unwrap()
+        std::fs::OpenOptions::new().read(true).share_mode(0).open(&target).unwrap()
     };
     // A locked target must surface a controlled error, not a panic.
     let result = extract_pages(&input, &[1], &target, OverwritePolicy::Replace, None);

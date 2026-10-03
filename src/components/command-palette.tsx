@@ -27,12 +27,30 @@ interface VaultResponse {
   indexMissing: boolean;
 }
 
-export function CommandPalette({ open, onClose, context, onNavigate }: { open: boolean; onClose: () => void; context?: CommandContext; onNavigate?: (screen: string) => void }) {
+export function CommandPalette({
+  open,
+  onClose,
+  context,
+  onNavigate,
+}: {
+  open: boolean;
+  onClose: () => void;
+  context?: CommandContext;
+  onNavigate?: (screen: string) => void;
+}) {
   if (!open) return null;
   return <CommandPaletteBody onClose={onClose} context={context} onNavigate={onNavigate} />;
 }
 
-function CommandPaletteBody({ onClose, context, onNavigate }: { onClose: () => void; context?: CommandContext; onNavigate?: (screen: string) => void }) {
+function CommandPaletteBody({
+  onClose,
+  context,
+  onNavigate,
+}: {
+  onClose: () => void;
+  context?: CommandContext;
+  onNavigate?: (screen: string) => void;
+}) {
   const t = useT();
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
@@ -58,7 +76,9 @@ function CommandPaletteBody({ onClose, context, onNavigate }: { onClose: () => v
     <div
       className="palette-overlay"
       role="presentation"
-      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
     >
       <div className="palette" role="dialog" aria-modal="true">
         <div className="palette-input">
@@ -111,12 +131,30 @@ function CommandPaletteBody({ onClose, context, onNavigate }: { onClose: () => v
   );
 }
 
-export function GlobalSearch({ open, onClose, onOpenPath, onNavigate }: { open: boolean; onClose: () => void; onOpenPath: (path: string) => void; onNavigate?: (screen: string) => void }) {
+export function GlobalSearch({
+  open,
+  onClose,
+  onOpenPath,
+  onNavigate,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onOpenPath: (path: string) => void;
+  onNavigate?: (screen: string) => void;
+}) {
   if (!open) return null;
   return <GlobalSearchBody onClose={onClose} onOpenPath={onOpenPath} onNavigate={onNavigate} />;
 }
 
-function GlobalSearchBody({ onClose, onOpenPath, onNavigate }: { onClose: () => void; onOpenPath: (path: string) => void; onNavigate?: (screen: string) => void }) {
+function GlobalSearchBody({
+  onClose,
+  onOpenPath,
+  onNavigate,
+}: {
+  onClose: () => void;
+  onOpenPath: (path: string) => void;
+  onNavigate?: (screen: string) => void;
+}) {
   const t = useT();
   const recent = useRecent((state) => state.entries);
   const [query, setQuery] = useState("");
@@ -169,14 +207,18 @@ function GlobalSearchBody({ onClose, onOpenPath, onNavigate }: { onClose: () => 
   const fileHits = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return recent.slice(0, 8);
-    return recent.filter((entry) => entry.fileName.toLowerCase().includes(needle) || entry.path.toLowerCase().includes(needle)).slice(0, 10);
+    return recent
+      .filter((entry) => entry.fileName.toLowerCase().includes(needle) || entry.path.toLowerCase().includes(needle))
+      .slice(0, 10);
   }, [query, recent]);
 
   return (
     <div
       className="palette-overlay"
       role="presentation"
-      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
     >
       <div className="palette" role="dialog" aria-modal="true">
         <div className="palette-input">

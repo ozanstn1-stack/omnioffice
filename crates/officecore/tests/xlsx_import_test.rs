@@ -15,12 +15,7 @@ use officecore::xlsx;
 use officecore::zip::{ZipLimits, ZipReader, ZipWriter};
 
 fn header_style() -> CellStyle {
-    CellStyle {
-        bold: true,
-        fill: Some("#DDEBF7".into()),
-        color: Some("#1F4E78".into()),
-        ..Default::default()
-    }
+    CellStyle { bold: true, fill: Some("#DDEBF7".into()), color: Some("#1F4E78".into()), ..Default::default() }
 }
 
 fn fidelity_workbook() -> Workbook {
@@ -32,52 +27,62 @@ fn fidelity_workbook() -> Workbook {
     sheet.set("A1", Cell { value: CellValue::Text("Region".into()), style: header_style(), ..Default::default() });
     sheet.set("B1", Cell { value: CellValue::Text("Amount".into()), style: header_style(), ..Default::default() });
     sheet.set("A2", Cell { value: CellValue::Text("North".into()), ..Default::default() });
-    sheet.set("B2", Cell {
-        value: CellValue::Number(1200.5),
-        style: CellStyle { number_format: "#,##0.00".into(), ..Default::default() },
-        ..Default::default()
-    });
-    sheet.set("A3", Cell {
-        value: CellValue::Text("South".into()),
-        comment: Some("check this".into()),
-        ..Default::default()
-    });
-    sheet.set("B3", Cell {
-        value: CellValue::Number(900.0),
-        style: CellStyle { number_format: "#,##0.00".into(), ..Default::default() },
-        ..Default::default()
-    });
-    sheet.set("C3", Cell {
-        value: CellValue::Text("site".into()),
-        link: Some("https://example.org/report".into()),
-        ..Default::default()
-    });
-    sheet.set("D3", Cell {
-        value: CellValue::Number(2401.0),
-        formula: Some("=B2*2".into()),
-        ..Default::default()
-    });
-    sheet.set("E3", Cell {
-        value: CellValue::Number(46023.0),
-        style: CellStyle { number_format: "dd.mm.yyyy".into(), ..Default::default() },
-        ..Default::default()
-    });
+    sheet.set(
+        "B2",
+        Cell {
+            value: CellValue::Number(1200.5),
+            style: CellStyle { number_format: "#,##0.00".into(), ..Default::default() },
+            ..Default::default()
+        },
+    );
+    sheet.set(
+        "A3",
+        Cell { value: CellValue::Text("South".into()), comment: Some("check this".into()), ..Default::default() },
+    );
+    sheet.set(
+        "B3",
+        Cell {
+            value: CellValue::Number(900.0),
+            style: CellStyle { number_format: "#,##0.00".into(), ..Default::default() },
+            ..Default::default()
+        },
+    );
+    sheet.set(
+        "C3",
+        Cell {
+            value: CellValue::Text("site".into()),
+            link: Some("https://example.org/report".into()),
+            ..Default::default()
+        },
+    );
+    sheet.set("D3", Cell { value: CellValue::Number(2401.0), formula: Some("=B2*2".into()), ..Default::default() });
+    sheet.set(
+        "E3",
+        Cell {
+            value: CellValue::Number(46023.0),
+            style: CellStyle { number_format: "dd.mm.yyyy".into(), ..Default::default() },
+            ..Default::default()
+        },
+    );
     sheet.set("E5", Cell { comment: Some("standalone note".into()), ..Default::default() });
-    sheet.set("A6", Cell {
-        value: CellValue::Text("aligned".into()),
-        style: CellStyle {
-            align: "center".into(),
-            valign: "top".into(),
-            wrap: true,
-            rotation: 45,
-            borders: CellBorders {
-                bottom: Some(BorderStyle { style: "thin".into(), color: "#000000".into() }),
+    sheet.set(
+        "A6",
+        Cell {
+            value: CellValue::Text("aligned".into()),
+            style: CellStyle {
+                align: "center".into(),
+                valign: "top".into(),
+                wrap: true,
+                rotation: 45,
+                borders: CellBorders {
+                    bottom: Some(BorderStyle { style: "thin".into(), color: "#000000".into() }),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
             ..Default::default()
         },
-        ..Default::default()
-    });
+    );
 
     sheet.col_widths.insert(0, 120.0);
     sheet.col_widths.insert(1, 80.0);
@@ -293,7 +298,9 @@ fn xlsx_table_export_writes_parts_and_does_not_double_write_filters() {
 
     let sheet_xml = reader.read_text("xl/worksheets/sheet1.xml").unwrap();
     assert!(!sheet_xml.contains("<autoFilter"), "the table-owned filter was written twice");
-    assert!(sheet_xml.contains("<tableParts count=\"2\"><tablePart r:id=\"rIdTable0\"/><tablePart r:id=\"rIdTable1\"/></tableParts>"));
+    assert!(sheet_xml.contains(
+        "<tableParts count=\"2\"><tablePart r:id=\"rIdTable0\"/><tablePart r:id=\"rIdTable1\"/></tableParts>"
+    ));
     let workbook_xml = reader.read_text("xl/workbook.xml").unwrap();
     assert!(!workbook_xml.contains("_FilterDatabase"), "the table-owned filter name was written twice");
 
@@ -333,13 +340,7 @@ fn xlsx_table_export_writes_parts_and_does_not_double_write_filters() {
 #[test]
 fn corrupt_styles_and_table_parts_degrade_to_values_with_warnings() {
     let bytes = xlsx::write_xlsx(&fidelity_workbook()).unwrap();
-    let broken = rebuild(
-        &bytes,
-        &[
-            ("xl/styles.xml", "<styleSheet><cellXfs"),
-            ("xl/tables/table1.xml", "<table"),
-        ],
-    );
+    let broken = rebuild(&bytes, &[("xl/styles.xml", "<styleSheet><cellXfs"), ("xl/tables/table1.xml", "<table")]);
     let read = xlsx::read_workbook_bytes(&broken).expect("a corrupt style/table part must not fail the import");
     let sheet = read.workbook.sheets.iter().find(|sheet| sheet.name == "Sales").expect("Sales sheet");
     assert_eq!(sheet.get("A1").map(|cell| cell.value.clone()), Some(CellValue::Text("Region".into())));

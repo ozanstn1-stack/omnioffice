@@ -314,14 +314,13 @@ fn collect_font_sites(
                     ));
                 }
             }
-            Object::Dictionary(_)
-                if reports.len() < MAX_REPORTS => {
-                    reports.push(EmbeddedFontReport::skipped(
-                        &resource_name,
-                        "",
-                        "the font dictionary is written inline; only indirect font objects can be rewritten in place",
-                    ));
-                }
+            Object::Dictionary(_) if reports.len() < MAX_REPORTS => {
+                reports.push(EmbeddedFontReport::skipped(
+                    &resource_name,
+                    "",
+                    "the font dictionary is written inline; only indirect font objects can be rewritten in place",
+                ));
+            }
             _ => {}
         }
     }
@@ -359,11 +358,7 @@ fn process_font(doc: &mut Document, font_id: ObjectId, resource_name: &str) -> E
     // 1. A font that already carries a program passes the validator; leave it.
     if let Some(existing) = &descriptor {
         if has_font_program(existing) {
-            return EmbeddedFontReport::skipped(
-                resource_name,
-                &base_font,
-                "the font program is already embedded",
-            );
+            return EmbeddedFontReport::skipped(resource_name, &base_font, "the font program is already embedded");
         }
     }
 
@@ -446,11 +441,7 @@ fn process_font(doc: &mut Document, font_id: ObjectId, resource_name: &str) -> E
             "the font has no /Widths and uses MacRomanEncoding; MacRoman width synthesis is not implemented",
         );
     }
-    let generated_widths = if existing_widths {
-        None
-    } else {
-        synthetic_widths(program, metrics.units_per_em)
-    };
+    let generated_widths = if existing_widths { None } else { synthetic_widths(program, metrics.units_per_em) };
     if !existing_widths && generated_widths.is_none() {
         return EmbeddedFontReport::skipped(
             resource_name,
@@ -517,10 +508,8 @@ fn process_font(doc: &mut Document, font_id: ObjectId, resource_name: &str) -> E
 
     // 9. The program stream. /Length1 is the length of the uncompressed
     // TrueType program, as the spec requires for FontFile2.
-    let program_id = doc.add_object(Object::Stream(Stream::new(
-        dictionary! { "Length1" => program.len() as i64 },
-        program.to_vec(),
-    )));
+    let program_id = doc
+        .add_object(Object::Stream(Stream::new(dictionary! { "Length1" => program.len() as i64 }, program.to_vec())));
     if let Ok(descriptor_mut) = doc.get_dictionary_mut(descriptor_id) {
         descriptor_mut.set("FontFile2", Object::Reference(program_id));
     }
@@ -540,10 +529,7 @@ fn process_font(doc: &mut Document, font_id: ObjectId, resource_name: &str) -> E
         if let Some(widths) = generated_widths {
             font_mut.set("FirstChar", 32i64);
             font_mut.set("LastChar", 255i64);
-            font_mut.set(
-                "Widths",
-                Object::Array(widths.into_iter().map(Object::Integer).collect::<Vec<_>>()),
-            );
+            font_mut.set("Widths", Object::Array(widths.into_iter().map(Object::Integer).collect::<Vec<_>>()));
         }
     }
 
@@ -559,13 +545,7 @@ fn process_font(doc: &mut Document, font_id: ObjectId, resource_name: &str) -> E
         }
         Some(note)
     };
-    EmbeddedFontReport::embedded(
-        resource_name,
-        &base_font,
-        &postscript_name,
-        substitute.metric_compatible(),
-        warning,
-    )
+    EmbeddedFontReport::embedded(resource_name, &base_font, &postscript_name, substitute.metric_compatible(), warning)
 }
 
 /// Maps a normalized (lowercase, no spaces, `,` -> `-`) base font name to a
@@ -574,9 +554,7 @@ fn substitute_for(normalized: &str) -> Result<Substitute, String> {
     if normalized.is_empty() {
         return Err("the font has no usable /BaseFont name".to_string());
     }
-    if normalized.starts_with("symbol")
-        || normalized.starts_with("zapfdingbats")
-        || normalized.starts_with("dingbats")
+    if normalized.starts_with("symbol") || normalized.starts_with("zapfdingbats") || normalized.starts_with("dingbats")
     {
         return Err(format!(
             "/{normalized} is a symbolic font; the bundled Latin substitutes have no matching glyph mapping"
@@ -590,7 +568,10 @@ fn substitute_for(normalized: &str) -> Result<Substitute, String> {
         }
         "helvetica-oblique" | "helvetica-italic" | "helv-oblique" | "arial-italic" | "arial-italicmt"
         | "arial-oblique" => Ok(Substitute::LiberationSansItalic),
-        "helvetica-boldoblique" | "helvetica-bolditalic" | "arial-bolditalic" | "arial-bolditalicmt"
+        "helvetica-boldoblique"
+        | "helvetica-bolditalic"
+        | "arial-bolditalic"
+        | "arial-bolditalicmt"
         | "arial-boldoblique" => Ok(Substitute::LiberationSansBoldItalic),
         // Times/Courier and unknown names fall back to PT Sans. This is not a
         // metric match; the caller reports that warning.
@@ -602,8 +583,7 @@ fn substitute_for(normalized: &str) -> Result<Substitute, String> {
 fn normalize_base_font(name: &str) -> String {
     let trimmed = name.trim();
     let bytes = trimmed.as_bytes();
-    let stripped = if bytes.len() > 7 && bytes[6] == b'+' && bytes[..6].iter().all(u8::is_ascii_uppercase)
-    {
+    let stripped = if bytes.len() > 7 && bytes[6] == b'+' && bytes[..6].iter().all(u8::is_ascii_uppercase) {
         &trimmed[7..]
     } else {
         trimmed
@@ -802,28 +782,21 @@ fn read_postscript_name(program: &[u8]) -> Option<String> {
             Some(record) => record,
             None => break,
         };
-        let (Some(platform), Some(name_id), Some(length), Some(offset)) = (
-            be_u16(record, 0),
-            be_u16(record, 6),
-            be_u16(record, 8),
-            be_u16(record, 10),
-        ) else {
+        let (Some(platform), Some(name_id), Some(length), Some(offset)) =
+            (be_u16(record, 0), be_u16(record, 6), be_u16(record, 8), be_u16(record, 10))
+        else {
             continue;
         };
         let offset = offset as usize;
         if name_id != 6 {
             continue;
         }
-        let Some(bytes) = name.get(string_offset + offset..string_offset + offset + length as usize)
-        else {
+        let Some(bytes) = name.get(string_offset + offset..string_offset + offset + length as usize) else {
             continue;
         };
         if platform == 3 {
-            let units: Vec<u16> = bytes
-                .as_chunks::<2>().0.iter()
-                .take(256)
-                .map(|pair| u16::from_be_bytes([pair[0], pair[1]]))
-                .collect();
+            let units: Vec<u16> =
+                bytes.as_chunks::<2>().0.iter().take(256).map(|pair| u16::from_be_bytes([pair[0], pair[1]])).collect();
             return Some(String::from_utf16_lossy(&units).trim().to_string());
         }
         if platform == 1 || platform == 0 {

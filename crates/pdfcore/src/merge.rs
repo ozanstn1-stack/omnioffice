@@ -2,7 +2,7 @@
 
 use crate::docutil::*;
 use crate::error::{PdfError, PdfResult};
-use crate::progress::{CancelToken, ProgressEvent, ProgressCallback};
+use crate::progress::{CancelToken, ProgressCallback, ProgressEvent};
 use lopdf::{dictionary, Dictionary, Document, Object, ObjectId};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -111,10 +111,7 @@ pub fn merge_documents(sources: Vec<(String, Document)>, options: &MergeOptions)
 
 pub fn lopdf_date_now() -> String {
     // PDF date string: D:YYYYMMDDHHmmSS+HH'mm'
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
     let (y, mo, d, h, mi, s) = civil_from_unix(now as i64);
     format!("D:{y:04}{mo:02}{d:02}{h:02}{mi:02}{s:02}Z")
 }

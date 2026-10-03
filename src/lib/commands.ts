@@ -1,16 +1,5 @@
 export type CommandCategory =
-  | "file"
-  | "edit"
-  | "view"
-  | "writer"
-  | "calc"
-  | "impress"
-  | "pdf"
-  | "ai"
-  | "vault"
-  | "plugins"
-  | "settings"
-  | "help";
+  "file" | "edit" | "view" | "writer" | "calc" | "impress" | "pdf" | "ai" | "vault" | "plugins" | "settings" | "help";
 
 export interface CommandContext {
   screen?: string;
@@ -172,7 +161,8 @@ function scoreText(haystack: string, needle: string): number {
   }
   if (index > 0) {
     const before = haystack.charAt(index - 1);
-    const boundary = before === " " || before === "-" || before === "_" || before === "/" || before === "." || before === ":";
+    const boundary =
+      before === " " || before === "-" || before === "_" || before === "/" || before === "." || before === ":";
     const base = boundary ? 600 : 400;
     return base - Math.min(index, 100) - Math.min(haystack.length - needle.length, 50) * 0.5;
   }

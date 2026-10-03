@@ -17,13 +17,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
-import {
-  isAndroid,
-  pickAndroidSaveTarget,
-  publishOutputs,
-  saveTextOnAndroid,
-  type PublishTarget,
-} from "../lib/mobile";
+import { isAndroid, pickAndroidSaveTarget, publishOutputs, saveTextOnAndroid, type PublishTarget } from "../lib/mobile";
 import {
   aiAsk,
   aiCleanupText,
@@ -145,8 +139,9 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
     void import("../lib/api").then(async ({ aiGetSettings }) => {
       setAiSettings(await aiGetSettings().catch(() => null));
     });
-    void aiExamplePrompts().then(setExamples).catch(() => undefined);
-     
+    void aiExamplePrompts()
+      .then(setExamples)
+      .catch(() => undefined);
   }, [settingsLoaded]);
 
   // Streamed answer chunks + progress.
@@ -260,7 +255,8 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
   const configured = aiSettings?.configured ?? false;
   const canRun = configured && consent && Boolean(session.primary) && !running;
 
-  const providerLabel = aiSettings?.providerLabel ?? (aiSettings?.provider === "ollama" ? "Ollama (local)" : "DeepSeek");
+  const providerLabel =
+    aiSettings?.providerLabel ?? (aiSettings?.provider === "ollama" ? "Ollama (local)" : "DeepSeek");
   const networkActivityKey = "ai.networkActivity";
   const networkActivityText = t(networkActivityKey, { chars: preview?.characters ?? 0, provider: providerLabel });
   const networkActivity =
@@ -761,11 +757,7 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                           placeholder="tr / Turkish"
                         />
                       </div>
-                      <Checkbox
-                        checked={bilingual}
-                        onChange={setBilingual}
-                        label={t("ai.bilingual")}
-                      />
+                      <Checkbox checked={bilingual} onChange={setBilingual} label={t("ai.bilingual")} />
                       <p className="text-xs muted">{t("ai.translateHint")}</p>
                     </div>
                   ) : null}
@@ -816,7 +808,9 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                             min={1}
                             max={preview?.pages ?? undefined}
                             value={chatPage}
-                            onChange={(event) => setChatPage(clamp(Number(event.target.value) || 1, 1, preview?.pages || 1))}
+                            onChange={(event) =>
+                              setChatPage(clamp(Number(event.target.value) || 1, 1, preview?.pages || 1))
+                            }
                           />
                         </Field>
                       ) : null}
@@ -827,7 +821,10 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                             value={chatSelection}
                             rows={4}
                             onChange={(event) => setChatSelection(event.target.value)}
-                            placeholder={label("ai.scopeSelectionPlaceholder", "Paste the text you selected in the document")}
+                            placeholder={label(
+                              "ai.scopeSelectionPlaceholder",
+                              "Paste the text you selected in the document",
+                            )}
                           />
                         </Field>
                       ) : null}
@@ -841,7 +838,9 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
 
                       <div ref={chatRef} className="card-soft p-3 max-h-[380px] overflow-y-auto flex flex-col gap-2">
                         {chatMessages.length === 0 ? (
-                          <p className="text-xs muted">{label("ai.chatEmpty", "Ask a question about this document.")}</p>
+                          <p className="text-xs muted">
+                            {label("ai.chatEmpty", "Ask a question about this document.")}
+                          </p>
                         ) : (
                           chatMessages.map((message, index) => (
                             <div
@@ -856,7 +855,11 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                             >
                               {message.role === "assistant" ? (
                                 <div className="whitespace-pre-wrap leading-relaxed">
-                                  {message.content ? renderChatContent(message.content) : running ? <Spinner size={13} /> : null}
+                                  {message.content ? (
+                                    renderChatContent(message.content)
+                                  ) : running ? (
+                                    <Spinner size={13} />
+                                  ) : null}
                                 </div>
                               ) : (
                                 <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
@@ -878,7 +881,9 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                         <Button
                           variant="primary"
                           icon={running ? <Spinner size={14} /> : <Send size={14} />}
-                          disabled={!canRun || !chatInput.trim() || (chatScope === "selection" && !chatSelection.trim())}
+                          disabled={
+                            !canRun || !chatInput.trim() || (chatScope === "selection" && !chatSelection.trim())
+                          }
                           onClick={() => void runChat()}
                         >
                           {label("ai.chatSend", "Send")}
@@ -932,7 +937,9 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                       {running ? <Spinner size={13} /> : null}
                     </p>
                     <p className="text-xs muted">{t("ai.thinkingHint")}</p>
-                    <div className="card-soft p-3 max-h-[220px] overflow-y-auto whitespace-pre-wrap text-[12.5px] muted italic">{reasoning}</div>
+                    <div className="card-soft p-3 max-h-[220px] overflow-y-auto whitespace-pre-wrap text-[12.5px] muted italic">
+                      {reasoning}
+                    </div>
                   </Card>
                 ) : null}
 
@@ -947,14 +954,22 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                         <Button size="sm" variant="ghost" icon={<Copy size={14} />} onClick={() => void copyOutput()}>
                           {t("ai.copy")}
                         </Button>
-                        <Button size="sm" icon={<Save size={14} />} onClick={() => void saveOutput()} disabled={running}>
+                        <Button
+                          size="sm"
+                          icon={<Save size={14} />}
+                          onClick={() => void saveOutput()}
+                          disabled={running}
+                        >
                           {t("ai.save")}
                         </Button>
                       </div>
                     </div>
                     {reasoning ? (
                       <div className="text-xs">
-                        <button className="btn btn-sm btn-ghost" onClick={() => setShowReasoning((previous) => !previous)}>
+                        <button
+                          className="btn btn-sm btn-ghost"
+                          onClick={() => setShowReasoning((previous) => !previous)}
+                        >
                           <Brain size={13} /> {showReasoning ? t("ai.hideThinking") : t("ai.showThinking")}
                         </button>
                         {showReasoning ? (
@@ -964,7 +979,10 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                         ) : null}
                       </div>
                     ) : null}
-                    <div ref={outputRef} className="card-soft p-3 max-h-[420px] overflow-y-auto whitespace-pre-wrap text-[13.5px] leading-relaxed">
+                    <div
+                      ref={outputRef}
+                      className="card-soft p-3 max-h-[420px] overflow-y-auto whitespace-pre-wrap text-[13.5px] leading-relaxed"
+                    >
                       {output}
                     </div>
                     {savedPath ? (
@@ -1032,8 +1050,12 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
               ) : !consent ? (
                 <p className="text-xs muted">{t("ai.needConsent")}</p>
               ) : null}
-              {tab === "ask" && !question.trim() ? <p className="text-xs muted">{t("ai.questionPlaceholder")}</p> : null}
-              {tab === "chat" && !chatInput.trim() ? <p className="text-xs muted">{label("ai.chatPlaceholder", "Ask about this document…")}</p> : null}
+              {tab === "ask" && !question.trim() ? (
+                <p className="text-xs muted">{t("ai.questionPlaceholder")}</p>
+              ) : null}
+              {tab === "chat" && !chatInput.trim() ? (
+                <p className="text-xs muted">{label("ai.chatPlaceholder", "Ask about this document…")}</p>
+              ) : null}
               {settings.aiAutoSave ? <p className="text-xs muted">{t("ai.autoSaveOn")}</p> : null}
               {lastResult && !settings.aiAutoSave ? (
                 <Button size="sm" variant="ghost" icon={<Save size={14} />} onClick={saveToLibrary}>
@@ -1054,7 +1076,8 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                 </p>
                 {aiSettings.providerLabel ? (
                   <p>
-                    {label("ai.provider", "Provider")}: <strong className="text-[var(--text)]">{aiSettings.providerLabel}</strong>
+                    {label("ai.provider", "Provider")}:{" "}
+                    <strong className="text-[var(--text)]">{aiSettings.providerLabel}</strong>
                   </p>
                 ) : null}
                 <p>Key: {aiSettings.maskedKey || "—"}</p>

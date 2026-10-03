@@ -60,7 +60,6 @@ fn stripped_odf_meta(title: &str) -> String {
     )
 }
 
-
 fn optimize_image(name: &str, data: &[u8], options: &CleanOptions) -> Option<Vec<u8>> {
     if options.image_quality == 0 {
         return None;
@@ -68,13 +67,13 @@ fn optimize_image(name: &str, data: &[u8], options: &CleanOptions) -> Option<Vec
     let dynamic = image::load_from_memory(data).ok()?;
     let (width, height) = (dynamic.width(), dynamic.height());
     let max_pixels = if options.image_max_pixels == 0 { 1600 } else { options.image_max_pixels };
-    let scale = if width.max(height) > max_pixels {
-        max_pixels as f64 / width.max(height) as f64
-    } else {
-        1.0
-    };
+    let scale = if width.max(height) > max_pixels { max_pixels as f64 / width.max(height) as f64 } else { 1.0 };
     let resized = if scale < 0.999 {
-        dynamic.resize((width as f64 * scale) as u32, (height as f64 * scale) as u32, image::imageops::FilterType::Triangle)
+        dynamic.resize(
+            (width as f64 * scale) as u32,
+            (height as f64 * scale) as u32,
+            image::imageops::FilterType::Triangle,
+        )
     } else {
         dynamic.clone()
     };
@@ -166,7 +165,9 @@ fn clean_odf(reader: &ZipReader, options: &CleanOptions, result: &mut CleanResul
             result.actions.push("Removed document metadata.".into());
             continue;
         }
-        if options.optimize_images && (lower.starts_with("pictures/") || lower.starts_with("images/") || lower.starts_with("thumbnails/")) {
+        if options.optimize_images
+            && (lower.starts_with("pictures/") || lower.starts_with("images/") || lower.starts_with("thumbnails/"))
+        {
             if let Some(optimized) = optimize_image(name, &data, options) {
                 result.actions.push(format!("Optimised embedded image {}.", name.rsplit('/').next().unwrap_or(name)));
                 writer.add(name, &optimized);
@@ -184,11 +185,8 @@ pub fn clean_package(path: &Path, options: &CleanOptions) -> OfficeResult<CleanR
     let mut result = CleanResult { bytes_before: bytes.len() as u64, ..Default::default() };
     let reader = ZipReader::open(bytes.clone())?;
     let is_odf = reader.contains("mimetype");
-    let cleaned = if is_odf {
-        clean_odf(&reader, options, &mut result)?
-    } else {
-        clean_ooxml(&reader, options, &mut result)?
-    };
+    let cleaned =
+        if is_odf { clean_odf(&reader, options, &mut result)? } else { clean_ooxml(&reader, options, &mut result)? };
     result.bytes_after = cleaned.len() as u64;
     if result.bytes_after >= result.bytes_before {
         result.warnings.push("Cleaning did not reduce the file size.".into());
@@ -205,11 +203,8 @@ pub fn clean_package_to(path: &Path, output: &Path, options: &CleanOptions) -> O
     let reader = ZipReader::open(bytes.clone())?;
     let mut result = CleanResult { bytes_before: bytes.len() as u64, ..Default::default() };
     let is_odf = reader.contains("mimetype");
-    let cleaned = if is_odf {
-        clean_odf(&reader, options, &mut result)?
-    } else {
-        clean_ooxml(&reader, options, &mut result)?
-    };
+    let cleaned =
+        if is_odf { clean_odf(&reader, options, &mut result)? } else { clean_ooxml(&reader, options, &mut result)? };
     result.bytes_after = cleaned.len() as u64;
     if result.actions.is_empty() {
         result.warnings.push("Nothing matched the selected cleaning options.".into());
@@ -247,9 +242,7 @@ pub fn ensure_supported(path: &Path) -> OfficeResult<()> {
     if supported_extension(path) {
         Ok(())
     } else {
-        Err(OfficeError::unsupported(
-            "The cleaner supports DOCX, XLSX, PPTX, ODT, ODS and ODP packages.",
-        ))
+        Err(OfficeError::unsupported("The cleaner supports DOCX, XLSX, PPTX, ODT, ODS and ODP packages."))
     }
 }
 
@@ -260,7 +253,10 @@ mod tests {
     fn make_package() -> Vec<u8> {
         let mut writer = ZipWriter::new();
         writer.add_text("[Content_Types].xml", "<Types/>");
-        writer.add_text("docProps/core.xml", "<cp:coreProperties xmlns:cp=\"x\"><dc:creator xmlns:dc=\"y\">Ada</dc:creator></cp:coreProperties>");
+        writer.add_text(
+            "docProps/core.xml",
+            "<cp:coreProperties xmlns:cp=\"x\"><dc:creator xmlns:dc=\"y\">Ada</dc:creator></cp:coreProperties>",
+        );
         writer.add_text("docProps/custom.xml", "<Properties><property name=\"secret\">1</property></Properties>");
         writer.add_text("word/document.xml", "<w:document xmlns:w=\"x\"><w:body/></w:document>");
         writer.finish()
@@ -290,13 +286,16 @@ mod tests {
 
     #[test]
     fn optimize_skips_small_images() {
-        let options = CleanOptions { optimize_images: true, image_quality: 80, image_max_pixels: 2000, ..Default::default() };
+        let options =
+            CleanOptions { optimize_images: true, image_quality: 80, image_max_pixels: 2000, ..Default::default() };
         let mut buffer = image::RgbaImage::new(8, 8);
         for pixel in buffer.pixels_mut() {
             *pixel = image::Rgba([1, 2, 3, 255]);
         }
         let mut png = Vec::new();
-        image::DynamicImage::ImageRgba8(buffer).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+        image::DynamicImage::ImageRgba8(buffer)
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
         assert!(optimize_image("word/media/image1.png", &png, &options).is_none());
     }
 }

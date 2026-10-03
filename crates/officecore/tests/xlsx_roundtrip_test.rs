@@ -34,34 +34,71 @@ fn golden_workbook() -> Workbook {
     let mut workbook = Workbook::new_blank("Golden");
     let sheet = &mut workbook.sheets[0];
     sheet.name = "Data".into();
-    sheet.set("A1", Cell { value: CellValue::Text("Month".into()), style: CellStyle { bold: true, ..Default::default() }, ..Default::default() });
-    sheet.set("B1", Cell { value: CellValue::Text("Sales".into()), style: CellStyle { bold: true, ..Default::default() }, ..Default::default() });
-    sheet.set("C1", Cell { value: CellValue::Text("Cost".into()), style: CellStyle { bold: true, ..Default::default() }, ..Default::default() });
-    sheet.set("D1", Cell { value: CellValue::Text("Margin".into()), style: CellStyle { bold: true, ..Default::default() }, ..Default::default() });
+    sheet.set(
+        "A1",
+        Cell {
+            value: CellValue::Text("Month".into()),
+            style: CellStyle { bold: true, ..Default::default() },
+            ..Default::default()
+        },
+    );
+    sheet.set(
+        "B1",
+        Cell {
+            value: CellValue::Text("Sales".into()),
+            style: CellStyle { bold: true, ..Default::default() },
+            ..Default::default()
+        },
+    );
+    sheet.set(
+        "C1",
+        Cell {
+            value: CellValue::Text("Cost".into()),
+            style: CellStyle { bold: true, ..Default::default() },
+            ..Default::default()
+        },
+    );
+    sheet.set(
+        "D1",
+        Cell {
+            value: CellValue::Text("Margin".into()),
+            style: CellStyle { bold: true, ..Default::default() },
+            ..Default::default()
+        },
+    );
     for row in 2..=101u32 {
         let index = row - 1;
-        sheet.set(&format!("A{row}"), Cell {
-            value: CellValue::Text(format!("2026-{:02}", (index % 12) + 1)),
-            ..Default::default()
-        });
+        sheet.set(
+            &format!("A{row}"),
+            Cell { value: CellValue::Text(format!("2026-{:02}", (index % 12) + 1)), ..Default::default() },
+        );
         sheet.set(&format!("B{row}"), Cell { value: CellValue::Number(index as f64 * 10.0), ..Default::default() });
-        sheet.set(&format!("C{row}"), Cell {
-            value: CellValue::Number(index as f64 * 4.0),
-            style: CellStyle { number_format: "#,##0.00".into(), ..Default::default() },
-            ..Default::default()
-        });
-        sheet.set(&format!("D{row}"), Cell {
-            value: CellValue::Number(index as f64 * 6.0),
-            formula: Some(format!("=B{row}-C{row}")),
-            style: CellStyle { number_format: "#,##0.00".into(), ..Default::default() },
-            ..Default::default()
-        });
+        sheet.set(
+            &format!("C{row}"),
+            Cell {
+                value: CellValue::Number(index as f64 * 4.0),
+                style: CellStyle { number_format: "#,##0.00".into(), ..Default::default() },
+                ..Default::default()
+            },
+        );
+        sheet.set(
+            &format!("D{row}"),
+            Cell {
+                value: CellValue::Number(index as f64 * 6.0),
+                formula: Some(format!("=B{row}-C{row}")),
+                style: CellStyle { number_format: "#,##0.00".into(), ..Default::default() },
+                ..Default::default()
+            },
+        );
     }
-    sheet.set("E1", Cell {
-        value: CellValue::Number(46023.0),
-        style: CellStyle { number_format: "dd.mm.yyyy".into(), ..Default::default() },
-        ..Default::default()
-    });
+    sheet.set(
+        "E1",
+        Cell {
+            value: CellValue::Number(46023.0),
+            style: CellStyle { number_format: "dd.mm.yyyy".into(), ..Default::default() },
+            ..Default::default()
+        },
+    );
     sheet.set("F1", Cell { value: CellValue::Text("Total".into()), ..Default::default() });
     sheet.set("G1", Cell { value: CellValue::Number(5050.0), ..Default::default() });
     sheet.set("H1", Cell { value: CellValue::Bool(true), ..Default::default() });
@@ -138,9 +175,15 @@ fn golden_workbook() -> Workbook {
     summary.set("A1", Cell { value: CellValue::Text("Metric".into()), ..Default::default() });
     summary.set("B1", Cell { value: CellValue::Text("Value".into()), ..Default::default() });
     summary.set("A2", Cell { value: CellValue::Text("Sales total".into()), ..Default::default() });
-    summary.set("B2", Cell { value: CellValue::Number(50500.0), formula: Some("=SUM(Data!B2:B101)".into()), ..Default::default() });
+    summary.set(
+        "B2",
+        Cell { value: CellValue::Number(50500.0), formula: Some("=SUM(Data!B2:B101)".into()), ..Default::default() },
+    );
     summary.set("A3", Cell { value: CellValue::Text("Rows".into()), ..Default::default() });
-    summary.set("B3", Cell { value: CellValue::Number(100.0), formula: Some("=COUNTA(Data!A2:A101)".into()), ..Default::default() });
+    summary.set(
+        "B3",
+        Cell { value: CellValue::Number(100.0), formula: Some("=COUNTA(Data!A2:A101)".into()), ..Default::default() },
+    );
     summary.charts.push(ChartPlacement {
         id: "chart-2".into(),
         chart: ChartData {
@@ -181,16 +224,10 @@ fn xlsx_roundtrip_preserves_every_value_and_formula() {
                 continue;
             };
             if cell_text(&cell.value) != cell_text(&round.value) {
-                value_losses.push(format!(
-                    "{}!{address}: {:?} -> {:?}",
-                    before.name, cell.value, round.value
-                ));
+                value_losses.push(format!("{}!{address}: {:?} -> {:?}", before.name, cell.value, round.value));
             }
             if cell.formula != round.formula {
-                formula_losses.push(format!(
-                    "{}!{address}: {:?} -> {:?}",
-                    before.name, cell.formula, round.formula
-                ));
+                formula_losses.push(format!("{}!{address}: {:?} -> {:?}", before.name, cell.formula, round.formula));
             }
         }
     }
@@ -204,10 +241,7 @@ fn xlsx_roundtrip_keeps_a_hyperlink_on_a_blank_cell() {
     // is what the importer itself creates) was skipped on export and lost.
     let mut workbook = Workbook::new_blank("Links");
     workbook.sheets[0].name = "Links".into();
-    workbook.sheets[0].set(
-        "B2",
-        Cell { link: Some("https://example.org/report".into()), ..Default::default() },
-    );
+    workbook.sheets[0].set("B2", Cell { link: Some("https://example.org/report".into()), ..Default::default() });
     let bytes = xlsx::write_xlsx(&workbook).unwrap();
     let read = xlsx::read_workbook_bytes(&bytes).unwrap();
     let sheet = sheet_by_name(&read.workbook, "Links").expect("sheet");
@@ -307,7 +341,11 @@ fn xlsx_export_materializes_pivot_tables_as_values() {
             sheet.set(
                 &format!("{}{}", (b'A' + column as u8) as char, row + 1),
                 Cell {
-                    value: if numeric { CellValue::Number(value.parse().unwrap()) } else { CellValue::Text((*value).into()) },
+                    value: if numeric {
+                        CellValue::Number(value.parse().unwrap())
+                    } else {
+                        CellValue::Text((*value).into())
+                    },
                     ..Default::default()
                 },
             );
@@ -354,11 +392,7 @@ fn xlsx_roundtrip_preserves_values_and_presentation_metadata() {
 
     let before = &original.sheets[0];
     let after = sheet_by_name(&read.workbook, "Data").unwrap();
-    assert_eq!(
-        after.cells.len(),
-        before.cells.len(),
-        "every value and formula cell must survive the round trip"
-    );
+    assert_eq!(after.cells.len(), before.cells.len(), "every value and formula cell must survive the round trip");
     assert_eq!(after.merges.len(), before.merges.len(), "merges must survive");
     assert!(!after.col_widths.is_empty(), "column widths must survive");
     assert!(!after.row_heights.is_empty(), "row heights must survive");
@@ -392,7 +426,6 @@ fn xlsx_roundtrip_preserves_values_and_presentation_metadata() {
     assert!(pie.chart.show_labels);
     assert_eq!(pie.anchor, "D2");
 }
-
 
 // ---------------------------------------------------------------------------
 // V3.1: pictures, print settings, protection and preserved pivots

@@ -26,7 +26,9 @@ function withData(rows: Array<[string, string]>, workbook: Workbook = book()): W
 }
 
 function sorted(nodes: Array<{ sheet: string; address: string; depth: number }>): Array<[string, number]> {
-  return nodes.map((node) => [`${node.sheet}!${node.address}`, node.depth] as [string, number]).sort((a, b) => a[0].localeCompare(b[0]));
+  return nodes
+    .map((node) => [`${node.sheet}!${node.address}`, node.depth] as [string, number])
+    .sort((a, b) => a[0].localeCompare(b[0]));
 }
 
 describe("tracePrecedents", () => {
@@ -53,7 +55,10 @@ describe("tracePrecedents", () => {
   });
 
   it("returns nothing for a cell that is not a formula", () => {
-    const workbook = withData([["A1", "1"], ["A2", "2"]]);
+    const workbook = withData([
+      ["A1", "1"],
+      ["A2", "2"],
+    ]);
     expect(tracePrecedents(workbook, "Sheet1", "A1")).toEqual([]);
     expect(tracePrecedents(workbook, "Sheet1", "Z99")).toEqual([]);
   });

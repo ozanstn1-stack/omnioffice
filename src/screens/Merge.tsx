@@ -10,7 +10,13 @@ import { mergePdfs } from "../lib/api";
 
 export function Merge({ initialFiles, dragging }: { initialFiles?: string[]; dragging: boolean }) {
   const t = useT();
-  const session = useTool({ suffix: "_merged", multiple: true, accept: "pdf", loadInfo: true, initialPaths: initialFiles });
+  const session = useTool({
+    suffix: "_merged",
+    multiple: true,
+    accept: "pdf",
+    loadInfo: true,
+    initialPaths: initialFiles,
+  });
   const [preserveMetadata, setPreserveMetadata] = useState(true);
   const defaultCompression = useSettings((s) => s.settings);
 
@@ -61,10 +67,19 @@ export function Merge({ initialFiles, dragging }: { initialFiles?: string[]; dra
         }
         side={
           <>
-            <OutputBar session={session} runLabel={t("merge.run")} onRun={() => void run()} disabled={session.files.length < 2} />
+            <OutputBar
+              session={session}
+              runLabel={t("merge.run")}
+              onRun={() => void run()}
+              disabled={session.files.length < 2}
+            />
             <Card className="p-4 flex flex-col gap-3">
               <label className="checkbox">
-                <input type="checkbox" checked={preserveMetadata} onChange={(event) => setPreserveMetadata(event.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={preserveMetadata}
+                  onChange={(event) => setPreserveMetadata(event.target.checked)}
+                />
                 <span>{t("merge.preserveMetadata")}</span>
               </label>
               <p className="text-xs muted">

@@ -157,10 +157,10 @@ describe("evaluateFormula", () => {
 
   it("supports IF/IFS/IFERROR", () => {
     const ctx = context({ A1: 5 });
-    expect(evaluateFormula("=IF(A1>3,\"big\",\"small\")", ctx)).toBe("big");
-    expect(evaluateFormula("=IF(A1>30,\"big\",\"small\")", ctx)).toBe("small");
-    expect(evaluateFormula("=IFS(A1>10,\"a\",A1>3,\"b\")", ctx)).toBe("b");
-    expect(evaluateFormula("=IFERROR(1/0,\"safe\")", ctx)).toBe("safe");
+    expect(evaluateFormula('=IF(A1>3,"big","small")', ctx)).toBe("big");
+    expect(evaluateFormula('=IF(A1>30,"big","small")', ctx)).toBe("small");
+    expect(evaluateFormula('=IFS(A1>10,"a",A1>3,"b")', ctx)).toBe("b");
+    expect(evaluateFormula('=IFERROR(1/0,"safe")', ctx)).toBe("safe");
   });
 
   it("supports lookup functions", () => {
@@ -172,8 +172,8 @@ describe("evaluateFormula", () => {
 
   it("supports conditional aggregates with comparison criteria", () => {
     const ctx = context({ A1: 1, A2: 5, A3: 9, B1: 10, B2: 20, B3: 30 });
-    expect(evaluateFormula("=SUMIF(A1:A3,\">2\",B1:B3)", ctx)).toBe(50);
-    expect(evaluateFormula("=COUNTIF(A1:A3,\">=5\")", ctx)).toBe(2);
+    expect(evaluateFormula('=SUMIF(A1:A3,">2",B1:B3)', ctx)).toBe(50);
+    expect(evaluateFormula('=COUNTIF(A1:A3,">=5")', ctx)).toBe(2);
   });
 
   it("supports text functions", () => {
@@ -183,7 +183,7 @@ describe("evaluateFormula", () => {
     expect(evaluateFormula("=MID(A1,7,5)", ctx)).toBe("World");
     expect(evaluateFormula("=LEN(A1)", ctx)).toBe(11);
     expect(evaluateFormula("=UPPER(A1)", ctx)).toBe("HELLO WORLD");
-    expect(evaluateFormula("=SUBSTITUTE(A1,\"World\",\"There\")", ctx)).toBe("Hello There");
+    expect(evaluateFormula('=SUBSTITUTE(A1,"World","There")', ctx)).toBe("Hello There");
   });
 
   it("supports date helpers on serial numbers", () => {
@@ -231,10 +231,10 @@ describe("evaluateFormula", () => {
 });
 
 describe("reference forms", () => {
-  const ctx = context(
-    { A1: 5, A2: 9, B1: 7, "Sheet1!A1": 5, "My Sheet!A1": 11, "My Sheet!A2": 13 },
-    ["Sheet1", "My Sheet"],
-  );
+  const ctx = context({ A1: 5, A2: 9, B1: 7, "Sheet1!A1": 5, "My Sheet!A1": 11, "My Sheet!A2": 13 }, [
+    "Sheet1",
+    "My Sheet",
+  ]);
 
   it("treats absolute, relative and mixed anchors as the same cell", () => {
     expect(evaluateFormula("=$A$1", ctx)).toBe(5);
@@ -285,21 +285,21 @@ describe("reference forms", () => {
 describe("error handling contract", () => {
   it("IFERROR still catches an error argument", () => {
     const ctx = context({ A1: ERR.value() });
-    expect(evaluateFormula("=IFERROR(A1,\"safe\")", ctx)).toBe("safe");
-    expect(evaluateFormula("=IFERROR(5,\"safe\")", ctx)).toBe(5);
+    expect(evaluateFormula('=IFERROR(A1,"safe")', ctx)).toBe("safe");
+    expect(evaluateFormula('=IFERROR(5,"safe")', ctx)).toBe(5);
   });
 
   it("IF does not leak the error of the branch it does not take", () => {
     const ctx = context({ A1: 1 });
-    expect(evaluateFormula("=IF(A1>0,\"yes\",1/0)", ctx)).toBe("yes");
+    expect(evaluateFormula('=IF(A1>0,"yes",1/0)', ctx)).toBe("yes");
     // ...but the taken branch is still allowed to fail.
-    const failing = evaluateFormula("=IF(A1>0,1/0,\"no\")", ctx);
+    const failing = evaluateFormula('=IF(A1>0,1/0,"no")', ctx);
     expect(isError(failing)).toBe(true);
   });
 
   it("IFS does not leak errors from later unmatched conditions", () => {
     const ctx = context({ A1: 1 });
-    expect(evaluateFormula("=IFS(A1>10,\"big\",A1>0,\"small\")", ctx)).toBe("small");
+    expect(evaluateFormula('=IFS(A1>10,"big",A1>0,"small")', ctx)).toBe("small");
   });
 
   it("ISERROR and friends inspect errors instead of propagating them", () => {
@@ -316,11 +316,11 @@ describe("error handling contract", () => {
 
   it("IFNA only catches #N/A and passes other errors through", () => {
     const div = context({ A1: ERR.div() });
-    const passthrough = evaluateFormula("=IFNA(A1,\"fallback\")", div);
+    const passthrough = evaluateFormula('=IFNA(A1,"fallback")', div);
     expect(isError(passthrough)).toBe(true);
     expect((passthrough as { code: string }).code).toBe("#DIV/0!");
     const na = context({ A1: ERR.na() });
-    expect(evaluateFormula("=IFNA(A1,\"fallback\")", na)).toBe("fallback");
+    expect(evaluateFormula('=IFNA(A1,"fallback")', na)).toBe("fallback");
   });
 });
 
@@ -367,10 +367,15 @@ describe("registry", () => {
   });
 
   it("accepts a newly registered function", () => {
-    registerFunction("OSWKTESTDOUBLE", (args) => {
-      const value = args[0]?.[0]?.[0];
-      return typeof value === "number" ? value * 2 : ERR.value();
-    }, 1, 1);
+    registerFunction(
+      "OSWKTESTDOUBLE",
+      (args) => {
+        const value = args[0]?.[0]?.[0];
+        return typeof value === "number" ? value * 2 : ERR.value();
+      },
+      1,
+      1,
+    );
     expect(evaluateFormula("=OSWKTESTDOUBLE(21)", context({}))).toBe(42);
     expect(functionNames()).toContain("OSWKTESTDOUBLE");
   });

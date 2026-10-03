@@ -71,13 +71,17 @@ export function CompatibilityScreen() {
               <div className="row">
                 <strong>.{selected.extension}</strong>
                 <span className="spacer" />
-                <Badge tone={selected.open ? "ok" : "danger"}>{selected.open ? t("compat.supported") : t("compat.unsupported")}</Badge>
+                <Badge tone={selected.open ? "ok" : "danger"}>
+                  {selected.open ? t("compat.supported") : t("compat.unsupported")}
+                </Badge>
               </div>
               <p className="muted small">{t("compat.nativeHint")}</p>
               <div className="stack" style={{ marginTop: 8 }}>
                 {selected.features.map((feature) => (
                   <div key={feature.feature} className="row">
-                    <Badge tone={feature.level === "full" ? "ok" : feature.level === "partial" ? "warn" : "danger"}>{feature.level}</Badge>
+                    <Badge tone={feature.level === "full" ? "ok" : feature.level === "partial" ? "warn" : "danger"}>
+                      {feature.level}
+                    </Badge>
                     <strong className="small">{feature.feature}</strong>
                     <span className="muted small">{feature.note}</span>
                   </div>

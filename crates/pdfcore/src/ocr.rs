@@ -36,14 +36,7 @@ pub struct OcrPreprocess {
 
 impl Default for OcrPreprocess {
     fn default() -> Self {
-        Self {
-            auto_rotate: false,
-            deskew: false,
-            contrast: true,
-            denoise: false,
-            binarize: false,
-            grayscale: false,
-        }
+        Self { auto_rotate: false, deskew: false, contrast: true, denoise: false, binarize: false, grayscale: false }
     }
 }
 
@@ -145,26 +138,18 @@ fn run_tesseract(args: &[String], cancel: &CancelToken) -> PdfResult<()> {
     let log_path = std::env::temp_dir().join(format!(
         "pdfsak-tesseract-{}-{:x}.log",
         std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.subsec_nanos())
-            .unwrap_or(0)
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0)
     ));
-    cmd.args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(match std::fs::File::create(&log_path) {
-            Ok(file) => Stdio::from(file),
-            Err(_) => Stdio::null(),
-        });
+    cmd.args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(match std::fs::File::create(&log_path) {
+        Ok(file) => Stdio::from(file),
+        Err(_) => Stdio::null(),
+    });
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| PdfError::ProcessingFailed(format!("could not start OCR engine: {e}")))?;
+    let mut child = cmd.spawn().map_err(|e| PdfError::ProcessingFailed(format!("could not start OCR engine: {e}")))?;
     loop {
         if cancel.is_cancelled() {
             let _ = child.kill();
@@ -193,11 +178,7 @@ fn run_tesseract(args: &[String], cancel: &CancelToken) -> PdfResult<()> {
                 return Err(PdfError::ProcessingFailed(format!(
                     "OCR engine exited with code {}{} [TESSDATA_PREFIX={env_hint}] [args={arg_hint}]",
                     status.code().unwrap_or(-1),
-                    if diagnostic.is_empty() {
-                        String::new()
-                    } else {
-                        format!(": {diagnostic}")
-                    }
+                    if diagnostic.is_empty() { String::new() } else { format!(": {diagnostic}") }
                 )));
             }
             Ok(None) => std::thread::sleep(std::time::Duration::from_millis(40)),
@@ -213,13 +194,7 @@ fn run_tesseract(args: &[String], cancel: &CancelToken) -> PdfResult<()> {
 /// rotation in degrees that must be applied to make the page upright.
 fn detect_orientation(path: &Path) -> Option<i32> {
     let mut cmd = engines::tesseract_command()?;
-    cmd.args([
-        path.to_string_lossy().to_string(),
-        "stdout".into(),
-        "--psm".into(),
-        "0".into(),
-    ])
-    .stdin(Stdio::null());
+    cmd.args([path.to_string_lossy().to_string(), "stdout".into(), "--psm".into(), "0".into()]).stdin(Stdio::null());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -294,11 +269,7 @@ fn binarize_otsu(gray: &GrayImage) -> GrayImage {
         histogram[px[0] as usize] += 1;
     }
     let total: u64 = gray.width() as u64 * gray.height() as u64;
-    let sum_all: f64 = histogram
-        .iter()
-        .enumerate()
-        .map(|(i, c)| i as f64 * *c as f64)
-        .sum();
+    let sum_all: f64 = histogram.iter().enumerate().map(|(i, c)| i as f64 * *c as f64).sum();
     let mut sum_background = 0.0;
     let mut weight_background = 0u64;
     let mut best_threshold = 127u8;
@@ -315,9 +286,8 @@ fn binarize_otsu(gray: &GrayImage) -> GrayImage {
         sum_background += threshold as f64 * histogram[threshold as usize] as f64;
         let mean_background = sum_background / weight_background as f64;
         let mean_foreground = (sum_all - sum_background) / weight_foreground as f64;
-        let variance = weight_background as f64
-            * weight_foreground as f64
-            * (mean_background - mean_foreground).powi(2);
+        let variance =
+            weight_background as f64 * weight_foreground as f64 * (mean_background - mean_foreground).powi(2);
         if variance > best_variance {
             best_variance = variance;
             best_threshold = threshold as u8;
@@ -410,11 +380,7 @@ fn estimate_skew_angle_inner(gray: &GrayImage) -> Option<f64> {
             }
         }
         let mean = rows.iter().map(|v| *v as f64).sum::<f64>() / rows.len() as f64;
-        let variance = rows
-            .iter()
-            .map(|v| (*v as f64 - mean).powi(2))
-            .sum::<f64>()
-            / rows.len() as f64;
+        let variance = rows.iter().map(|v| (*v as f64 - mean).powi(2)).sum::<f64>() / rows.len() as f64;
         if variance > best_score {
             best_score = variance;
             best_angle = angle;
@@ -536,11 +502,7 @@ pub fn describe_preprocessing(options: &OcrPreprocess, rotation: i32, out: &mut 
     }
 }
 
-fn apply_pixel_filters(
-    image: DynamicImage,
-    options: &OcrPreprocess,
-    cancel: &CancelToken,
-) -> PdfResult<DynamicImage> {
+fn apply_pixel_filters(image: DynamicImage, options: &OcrPreprocess, cancel: &CancelToken) -> PdfResult<DynamicImage> {
     let mut current = image;
     if options.grayscale || options.contrast || options.denoise || options.binarize || options.deskew {
         let mut gray = to_gray(&current);
@@ -609,11 +571,7 @@ pub fn ocr_pdf(
 
     let job = JobDir::new("ocr")?;
     let dpi = options.dpi.clamp(100, 600);
-    let render_options = RenderOptions {
-        dpi: dpi as f32,
-        max_width: Some(6000),
-        max_height: Some(6000),
-    };
+    let render_options = RenderOptions { dpi: dpi as f32, max_width: Some(6000), max_height: Some(6000) };
 
     let mut page_pdfs: Vec<(u32, PathBuf)> = Vec::new();
     let mut text_for_page: Vec<(u32, String)> = Vec::new();
@@ -667,9 +625,7 @@ pub fn ocr_pdf(
         if output_mode == "searchable_pdf" {
             let page_pdf = out_base.with_extension("pdf");
             if !page_pdf.exists() {
-                return Err(PdfError::ProcessingFailed(format!(
-                    "OCR produced no output for page {page_number}"
-                )));
+                return Err(PdfError::ProcessingFailed(format!("OCR produced no output for page {page_number}")));
             }
             match fit_ocr_page(&page_pdf, &geometries[(page_number - 1) as usize]) {
                 Ok(()) => {}
@@ -719,8 +675,7 @@ pub fn ocr_pdf(
             // Assemble in page order: OCR pdfs for processed pages, original
             // pages otherwise (extracted in consecutive runs).
             let mut merge_list: Vec<PathBuf> = Vec::new();
-            let processed_pages: std::collections::HashMap<u32, PathBuf> =
-                page_pdfs.into_iter().collect();
+            let processed_pages: std::collections::HashMap<u32, PathBuf> = page_pdfs.into_iter().collect();
             let mut page = 1u32;
             let mut run_start: Option<u32> = None;
             let flush_run = |run_start: &mut Option<u32>, page: u32, list: &mut Vec<PathBuf>| -> PdfResult<()> {

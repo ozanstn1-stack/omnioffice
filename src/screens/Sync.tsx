@@ -17,7 +17,18 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
-import { Badge, Button, Card, Checkbox, EmptyState, Field, IconButton, Spinner, TextInput, Toggle } from "../components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  EmptyState,
+  Field,
+  IconButton,
+  Spinner,
+  TextInput,
+  Toggle,
+} from "../components/ui";
 import { Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useRecent, useToasts } from "../lib/store";
@@ -67,10 +78,7 @@ interface Draft {
 }
 
 type RowState =
-  | { kind: "idle" }
-  | { kind: "loading" }
-  | { kind: "ready"; view: SyncStatusView }
-  | { kind: "error"; message: string };
+  { kind: "idle" } | { kind: "loading" } | { kind: "ready"; view: SyncStatusView } | { kind: "error"; message: string };
 
 function draftFrom(config: SyncConfigView): Draft {
   return {
@@ -366,18 +374,18 @@ export function Sync() {
         </span>
       }
       subtitle={t("sync.subtitle")}
-      actions={
-        <Badge tone={enabled ? "ok" : "default"}>
-          {enabled ? t("sync.enable") : t("sync.offTitle")}
-        </Badge>
-      }
+      actions={<Badge tone={enabled ? "ok" : "default"}>{enabled ? t("sync.enable") : t("sync.offTitle")}</Badge>}
     >
       <TwoColumn
         main={
           <>
             <Card>
               <div className="flex items-start gap-3">
-                {enabled ? <CheckCircle2 size={18} className="mt-0.5" /> : <CloudOff size={18} className="mt-0.5 muted" />}
+                {enabled ? (
+                  <CheckCircle2 size={18} className="mt-0.5" />
+                ) : (
+                  <CloudOff size={18} className="mt-0.5 muted" />
+                )}
                 <div className="flex-1">
                   <Toggle
                     checked={draft?.enabled ?? false}
@@ -430,14 +438,18 @@ export function Sync() {
                     value={draft?.url ?? ""}
                     placeholder={t("sync.urlPlaceholder")}
                     spellCheck={false}
-                    onChange={(event) => setDraft((current) => (current ? { ...current, url: event.target.value } : current))}
+                    onChange={(event) =>
+                      setDraft((current) => (current ? { ...current, url: event.target.value } : current))
+                    }
                   />
                 </Field>
                 <Field label={t("sync.remoteDir")} hint={t("sync.remoteDirHint")}>
                   <TextInput
                     value={draft?.remoteDir ?? "/"}
                     spellCheck={false}
-                    onChange={(event) => setDraft((current) => (current ? { ...current, remoteDir: event.target.value } : current))}
+                    onChange={(event) =>
+                      setDraft((current) => (current ? { ...current, remoteDir: event.target.value } : current))
+                    }
                   />
                 </Field>
                 <Field label={t("sync.username")}>
@@ -445,7 +457,9 @@ export function Sync() {
                     value={draft?.username ?? ""}
                     autoComplete="off"
                     spellCheck={false}
-                    onChange={(event) => setDraft((current) => (current ? { ...current, username: event.target.value } : current))}
+                    onChange={(event) =>
+                      setDraft((current) => (current ? { ...current, username: event.target.value } : current))
+                    }
                   />
                 </Field>
                 <Field
@@ -461,13 +475,17 @@ export function Sync() {
                     value={draft?.password ?? ""}
                     autoComplete="new-password"
                     placeholder={config?.hasPassword ? "••••••••" : ""}
-                    onChange={(event) => setDraft((current) => (current ? { ...current, password: event.target.value } : current))}
+                    onChange={(event) =>
+                      setDraft((current) => (current ? { ...current, password: event.target.value } : current))
+                    }
                   />
                 </Field>
               </div>
               <Checkbox
                 checked={draft?.allowInsecureHttp ?? false}
-                onChange={(value) => setDraft((current) => (current ? { ...current, allowInsecureHttp: value } : current))}
+                onChange={(value) =>
+                  setDraft((current) => (current ? { ...current, allowInsecureHttp: value } : current))
+                }
                 label={t("sync.allowInsecureHttp")}
               />
               <p className="text-xs muted -mt-1">{t("sync.allowInsecureHttpHint")}</p>
@@ -480,16 +498,32 @@ export function Sync() {
               ) : null}
 
               <div className="flex flex-wrap items-center gap-2">
-                <Button variant="primary" onClick={() => void saveSettings()} disabled={saving || !draft} icon={saving ? <Spinner size={14} /> : undefined}>
+                <Button
+                  variant="primary"
+                  onClick={() => void saveSettings()}
+                  disabled={saving || !draft}
+                  icon={saving ? <Spinner size={14} /> : undefined}
+                >
                   {t("sync.save")}
                 </Button>
-                <Button onClick={() => void testConnection()} disabled={testing || !enabled} icon={testing ? <Spinner size={14} /> : <RefreshCw size={14} />}>
+                <Button
+                  onClick={() => void testConnection()}
+                  disabled={testing || !enabled}
+                  icon={testing ? <Spinner size={14} /> : <RefreshCw size={14} />}
+                >
                   {testing ? t("sync.testing") : t("sync.test")}
                 </Button>
               </div>
               {testResult ? (
-                <p className="text-xs flex items-start gap-2" style={{ color: testResult.ok ? "var(--text-2)" : "var(--danger, #b91c1c)" }}>
-                  {testResult.ok ? <CheckCircle2 size={13} className="mt-0.5 shrink-0" /> : <AlertTriangle size={13} className="mt-0.5 shrink-0" />}
+                <p
+                  className="text-xs flex items-start gap-2"
+                  style={{ color: testResult.ok ? "var(--text-2)" : "var(--danger, #b91c1c)" }}
+                >
+                  {testResult.ok ? (
+                    <CheckCircle2 size={13} className="mt-0.5 shrink-0" />
+                  ) : (
+                    <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                  )}
                   {testResult.message}
                 </p>
               ) : null}
@@ -498,7 +532,13 @@ export function Sync() {
             <Card>
               <div className="flex items-center justify-between gap-2 mb-2">
                 <h3 className="text-[13px] font-bold uppercase tracking-wider muted">{t("sync.remoteTitle")}</h3>
-                <Button size="sm" variant="ghost" onClick={() => void loadRemote()} disabled={loadingRemote || !enabled} icon={loadingRemote ? <Spinner size={13} /> : <FolderOpen size={13} />}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => void loadRemote()}
+                  disabled={loadingRemote || !enabled}
+                  icon={loadingRemote ? <Spinner size={13} /> : <FolderOpen size={13} />}
+                >
                   {t("sync.loadRemote")}
                 </Button>
               </div>
@@ -542,7 +582,11 @@ export function Sync() {
                   <IconButton label={t("sync.addFile")} onClick={() => void addDocuments()}>
                     <Plus size={15} />
                   </IconButton>
-                  <IconButton label={t("sync.checkAll")} onClick={() => void checkAll()} disabled={!enabled || tracked.length === 0}>
+                  <IconButton
+                    label={t("sync.checkAll")}
+                    onClick={() => void checkAll()}
+                    disabled={!enabled || tracked.length === 0}
+                  >
                     <RefreshCw size={15} />
                   </IconButton>
                 </div>
@@ -597,7 +641,8 @@ export function Sync() {
                             {" · "}
                             {t("sync.cloud")}: {formatBytes(view.remoteSize)}
                             {" · "}
-                            {t("sync.lastSynced")}: {view.lastSyncedAt ? formatDate(view.lastSyncedAt) : t("sync.never")}
+                            {t("sync.lastSynced")}:{" "}
+                            {view.lastSyncedAt ? formatDate(view.lastSyncedAt) : t("sync.never")}
                             {view.localRevision > 0 ? ` · r${view.localRevision}` : ""}
                           </span>
                         ) : (
@@ -659,32 +704,55 @@ export function Sync() {
 
             <Card>
               <h3 className="text-[13px] font-bold uppercase tracking-wider muted mb-2">{t("sync.resolveTitle")}</h3>
-              {!selected || !rows[selected] || rows[selected].kind !== "ready" || !needsResolution((rows[selected] as { kind: "ready"; view: SyncStatusView }).view.state) ? (
+              {!selected ||
+              !rows[selected] ||
+              rows[selected].kind !== "ready" ||
+              !needsResolution((rows[selected] as { kind: "ready"; view: SyncStatusView }).view.state) ? (
                 <p className="text-xs muted">{t("sync.resolveHint")}</p>
               ) : (
                 (() => {
                   const view = (rows[selected] as { kind: "ready"; view: SyncStatusView }).view;
                   return (
                     <div className="flex flex-col gap-3">
-                      <p className="text-[13px] font-medium">
-                        {t("sync.resolveFor", { file: view.file })}
-                      </p>
-                      {view.state === "conflict" ? <p className="text-xs" style={{ color: "var(--danger, #b91c1c)" }}>{t("sync.conflictExplanation")}</p> : null}
+                      <p className="text-[13px] font-medium">{t("sync.resolveFor", { file: view.file })}</p>
+                      {view.state === "conflict" ? (
+                        <p className="text-xs" style={{ color: "var(--danger, #b91c1c)" }}>
+                          {t("sync.conflictExplanation")}
+                        </p>
+                      ) : null}
                       <p className="text-xs muted">{t("sync.resolveHint")}</p>
                       <div className="text-xs muted">
-                        {t("sync.local")}: {shortHash(view.localSha256)} · {t("sync.cloud")}: {shortHash(view.cloudSha256)} ·{" "}
+                        {t("sync.local")}: {shortHash(view.localSha256)} · {t("sync.cloud")}:{" "}
+                        {shortHash(view.cloudSha256)} ·{" "}
                         {t("sync.baseSha256Label", { hash: shortHash(view.baseSha256) })}
                       </div>
                       <div className="flex flex-col gap-2">
-                        <Button variant="primary" size="sm" onClick={() => void runResolve(view.localPath, "keep_local")} disabled={busy === view.localPath} icon={<UploadCloud size={13} />}>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => void runResolve(view.localPath, "keep_local")}
+                          disabled={busy === view.localPath}
+                          icon={<UploadCloud size={13} />}
+                        >
                           {t("sync.keepLocal")}
                         </Button>
                         <p className="text-xs muted -mt-1">{t("sync.keepLocalHint")}</p>
-                        <Button variant="danger" size="sm" onClick={() => void runResolve(view.localPath, "keep_cloud")} disabled={busy === view.localPath} icon={<Download size={13} />}>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => void runResolve(view.localPath, "keep_cloud")}
+                          disabled={busy === view.localPath}
+                          icon={<Download size={13} />}
+                        >
                           {t("sync.keepCloud")}
                         </Button>
                         <p className="text-xs muted -mt-1">{t("sync.keepCloudHint")}</p>
-                        <Button size="sm" onClick={() => void runResolve(view.localPath, "keep_both")} disabled={busy === view.localPath} icon={<GitMerge size={13} />}>
+                        <Button
+                          size="sm"
+                          onClick={() => void runResolve(view.localPath, "keep_both")}
+                          disabled={busy === view.localPath}
+                          icon={<GitMerge size={13} />}
+                        >
                           {t("sync.keepBoth")}
                         </Button>
                         <p className="text-xs muted -mt-1">{t("sync.keepBothHint")}</p>

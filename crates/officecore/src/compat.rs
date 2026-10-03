@@ -228,15 +228,7 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
         ),
         _ => (false, false, false, false, vec![]),
     };
-    FormatCapabilities {
-        extension,
-        open,
-        edit,
-        save,
-        pdf_export,
-        lossless_native: true,
-        features,
-    }
+    FormatCapabilities { extension, open, edit, save, pdf_export, lossless_native: true, features }
 }
 
 fn item(feature: &str, status: &str, message: &str) -> FeatureLoss {
@@ -248,7 +240,11 @@ fn has_revisions(document: &TextDocument) -> bool {
 }
 
 fn has_notes(document: &TextDocument, endnotes: bool) -> bool {
-    if endnotes { !document.endnotes.is_empty() } else { !document.footnotes.is_empty() }
+    if endnotes {
+        !document.endnotes.is_empty()
+    } else {
+        !document.footnotes.is_empty()
+    }
 }
 
 fn table_comment(document: &TextDocument) -> bool {
@@ -287,10 +283,18 @@ pub fn document_feature_report(document: &TextDocument, format: &str) -> Compati
         }
         "odt" => {
             if sections > 0 {
-                items.push(item("sections", "transformed", "Sections are written as page breaks; per-section page setup is lost."));
+                items.push(item(
+                    "sections",
+                    "transformed",
+                    "Sections are written as page breaks; per-section page setup is lost.",
+                ));
             }
             if has_revisions(document) {
-                items.push(item("trackChanges", "lost", "Pending tracked changes are not written to ODT; keep the .oswk copy."));
+                items.push(item(
+                    "trackChanges",
+                    "lost",
+                    "Pending tracked changes are not written to ODT; keep the .oswk copy.",
+                ));
             }
             if document.track_changes || !document.comments.is_empty() {
                 items.push(item("comments", "lost", "Comments are not written to ODT; keep the .oswk copy."));
@@ -315,7 +319,11 @@ pub fn document_feature_report(document: &TextDocument, format: &str) -> Compati
                 items.push(item("sections", "transformed", "Sections become page breaks."));
             }
             if has_notes(document, false) || has_notes(document, true) {
-                items.push(item("footnotes", "transformed", "Note references become plain markers and the note text is appended at the end."));
+                items.push(item(
+                    "footnotes",
+                    "transformed",
+                    "Note references become plain markers and the note text is appended at the end.",
+                ));
             }
             if has_revisions(document) || !document.comments.is_empty() {
                 items.push(item("review", "lost", "Tracked changes and comments are not written to this format."));
@@ -382,18 +390,20 @@ pub fn workbook_feature_report(workbook: &Workbook, format: &str) -> Compatibili
 pub fn deck_feature_report(deck: &Deck, format: &str) -> CompatibilityReport {
     let format = format.trim_start_matches('.').to_ascii_lowercase();
     let mut items = Vec::new();
-    let groups: usize = deck
-        .slides
-        .iter()
-        .map(|slide| slide.objects.iter().filter(|object| object.kind == "group").count())
-        .sum();
-    let charts: usize = deck.slides.iter().map(|slide| slide.objects.iter().filter(|object| object.chart.is_some()).count()).sum();
+    let groups: usize =
+        deck.slides.iter().map(|slide| slide.objects.iter().filter(|object| object.kind == "group").count()).sum();
+    let charts: usize =
+        deck.slides.iter().map(|slide| slide.objects.iter().filter(|object| object.chart.is_some()).count()).sum();
     let animations: usize = deck.slides.iter().map(|slide| slide.animations.len()).sum();
     match format.as_str() {
         "oswk" => {}
         "pptx" | "pptm" => {
             if animations > 0 {
-                items.push(item("animations", "partial", "The effects the built-in slideshow can run round-trip; other effects are simplified."));
+                items.push(item(
+                    "animations",
+                    "partial",
+                    "The effects the built-in slideshow can run round-trip; other effects are simplified.",
+                ));
             }
         }
         "odp" => {
@@ -522,7 +532,13 @@ mod tests {
             props: Default::default(),
             runs: vec![Run {
                 text: "changed".into(),
-                revision: Some(RevisionMark { id: "r1".into(), kind: "insert".into(), author: "A".into(), date: String::new(), original: None }),
+                revision: Some(RevisionMark {
+                    id: "r1".into(),
+                    kind: "insert".into(),
+                    author: "A".into(),
+                    date: String::new(),
+                    original: None,
+                }),
                 ..Default::default()
             }],
         });
@@ -539,7 +555,11 @@ mod tests {
     #[test]
     fn calc_report_mentions_pivot_and_table_limits() {
         let mut workbook = Workbook::new_blank("Report");
-        workbook.sheets[0].tables.push(SpreadsheetTable::new("Sales", "A1:C4", vec!["A".into(), "B".into(), "C".into()]));
+        workbook.sheets[0].tables.push(SpreadsheetTable::new(
+            "Sales",
+            "A1:C4",
+            vec!["A".into(), "B".into(), "C".into()],
+        ));
         let xlsx = workbook_feature_report(&workbook, "xlsx");
         assert!(!xlsx.lossy(), "xlsx should keep structured tables");
         let ods = workbook_feature_report(&workbook, "ods");

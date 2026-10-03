@@ -179,7 +179,12 @@ export function History({ onNavigate }: { onNavigate: Navigate }) {
                       >
                         {t("common.open")}
                       </Button>
-                      <Button size="sm" variant="ghost" icon={<FolderOpen size={13} />} onClick={() => void revealAnyFile(entry.path).catch(() => undefined)} />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        icon={<FolderOpen size={13} />}
+                        onClick={() => void revealAnyFile(entry.path).catch(() => undefined)}
+                      />
                     </div>
                   </td>
                   <td className="muted text-xs">{formatDate(entry.timestamp)}</td>

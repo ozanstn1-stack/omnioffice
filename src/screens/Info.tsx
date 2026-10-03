@@ -48,8 +48,8 @@ export function InfoScreen({ initialFiles }: { initialFiles?: string[] }) {
                 </ul>
               </Card>
               <Card className="p-4 text-xs muted">
-                {t("common.original")}: {formatBytes(session.info.fileSizeBytes)} · {session.info.pageCount} {t("common.pages")} ·{" "}
-                {session.info.pdfVersion === "unknown" ? "PDF" : `PDF ${session.info.pdfVersion}`}
+                {t("common.original")}: {formatBytes(session.info.fileSizeBytes)} · {session.info.pageCount}{" "}
+                {t("common.pages")} · {session.info.pdfVersion === "unknown" ? "PDF" : `PDF ${session.info.pdfVersion}`}
               </Card>
             </>
           ) : (
@@ -65,7 +65,10 @@ export function InfoScreen({ initialFiles }: { initialFiles?: string[] }) {
                 password={session.password || undefined}
                 maxWidth={1000}
                 overlay={
-                  <div className="absolute bottom-2 right-2 text-[11px] px-2 py-0.5 rounded-md" style={{ background: "rgb(0 0 0 / 0.5)", color: "white" }}>
+                  <div
+                    className="absolute bottom-2 right-2 text-[11px] px-2 py-0.5 rounded-md"
+                    style={{ background: "rgb(0 0 0 / 0.5)", color: "white" }}
+                  >
                     {Math.min(previewPage, session.info.pageCount || 1)} / {session.info.pageCount}
                   </div>
                 }

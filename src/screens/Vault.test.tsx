@@ -54,7 +54,13 @@ const invoke = vi.fn(async (command: string) => {
     case "vault_document_text":
       return "Full preview text of the indexed document.";
     case "vault_configure":
-      return { folders: ["C:/vault"], includePdf: true, includeOffice: true, maxFileMb: 25, updatedAt: "2026-01-02T03:04:05Z" };
+      return {
+        folders: ["C:/vault"],
+        includePdf: true,
+        includeOffice: true,
+        maxFileMb: 25,
+        updatedAt: "2026-01-02T03:04:05Z",
+      };
     case "vault_import_files":
       return {
         imported: [

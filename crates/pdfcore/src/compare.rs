@@ -62,14 +62,7 @@ pub struct CompareOptions {
 
 impl Default for CompareOptions {
     fn default() -> Self {
-        Self {
-            max_pages: 200,
-            tolerance: 24,
-            dpi: 96,
-            visual: false,
-            ignore_whitespace: true,
-            max_differences: 500,
-        }
+        Self { max_pages: 200, tolerance: 24, dpi: 96, visual: false, ignore_whitespace: true, max_differences: 500 }
     }
 }
 
@@ -102,12 +95,8 @@ pub fn compare_pdfs(
     cancel: &CancelToken,
 ) -> PdfResult<CompareReport> {
     let reporter = ProgressReporter::new(progress);
-    let left_count = crate::info::pdf_info(left, left_password)
-        .map(|info| info.page_count)
-        .unwrap_or(0);
-    let right_count = crate::info::pdf_info(right, right_password)
-        .map(|info| info.page_count)
-        .unwrap_or(0);
+    let left_count = crate::info::pdf_info(left, left_password).map(|info| info.page_count).unwrap_or(0);
+    let right_count = crate::info::pdf_info(right, right_password).map(|info| info.page_count).unwrap_or(0);
     if left_count == 0 || right_count == 0 {
         return Err(PdfError::InvalidPdf("one of the documents has no readable pages".into()));
     }
@@ -115,14 +104,10 @@ pub fn compare_pdfs(
     let shared = left_count.min(right_count).min(options.max_pages.max(1));
     let mut warnings: Vec<String> = Vec::new();
     if left_count > shared {
-        warnings.push(format!(
-            "Only the first {shared} pages were compared; the original has {left_count}."
-        ));
+        warnings.push(format!("Only the first {shared} pages were compared; the original has {left_count}."));
     }
     if right_count > shared {
-        warnings.push(format!(
-            "Only the first {shared} pages were compared; the modified document has {right_count}."
-        ));
+        warnings.push(format!("Only the first {shared} pages were compared; the modified document has {right_count}."));
     }
 
     let removed_pages: Vec<u32> = ((shared + 1)..=left_count).collect();
@@ -222,11 +207,8 @@ fn visual_pass(
     cancel: &CancelToken,
 ) -> PdfResult<(Vec<VisualDifference>, bool)> {
     let reporter = ProgressReporter::new(progress);
-    let render_options = RenderOptions {
-        dpi: options.dpi.clamp(36, 300) as f32,
-        max_width: Some(1200),
-        max_height: Some(1600),
-    };
+    let render_options =
+        RenderOptions { dpi: options.dpi.clamp(36, 300) as f32, max_width: Some(1200), max_height: Some(1600) };
     let mut out: Vec<VisualDifference> = Vec::new();
     let mut truncated = false;
     for page in 1..=pages {
@@ -267,7 +249,13 @@ fn visual_pass(
             difference,
             changed_pixels: changed,
             total_pixels: (left_page.width as u64) * (left_page.height as u64),
-            preview: tint(left_page.width, left_page.height, &left_page.rgba, Some(&right_page.rgba), options.tolerance),
+            preview: tint(
+                left_page.width,
+                left_page.height,
+                &left_page.rgba,
+                Some(&right_page.rgba),
+                options.tolerance,
+            ),
         });
     }
     Ok((out, truncated))

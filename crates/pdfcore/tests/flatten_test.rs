@@ -54,11 +54,7 @@ fn widget_doc() -> Document {
         "Fields" => vec![Object::Reference(widget)],
         "NeedAppearances" => Object::Boolean(true),
     }));
-    doc.get_object_mut(catalog_id)
-        .unwrap()
-        .as_dict_mut()
-        .unwrap()
-        .set("AcroForm", Object::Reference(acro));
+    doc.get_object_mut(catalog_id).unwrap().as_dict_mut().unwrap().set("AcroForm", Object::Reference(acro));
     doc
 }
 
@@ -99,14 +95,8 @@ fn flattening_a_widget_burns_the_appearance_and_removes_the_form() {
     let source = dir.path("form.pdf");
     write_doc(&mut widget_doc(), &source);
     let output = dir.path("flat.pdf");
-    let report = flatten_pdf(
-        &source,
-        &output,
-        &FlattenOptions::default(),
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .expect("flatten");
+    let report =
+        flatten_pdf(&source, &output, &FlattenOptions::default(), &no_progress, &CancelToken::new()).expect("flatten");
 
     assert_eq!(report.annotations_flattened, 1);
     assert_eq!(report.fields_flattened, 1);
@@ -115,10 +105,7 @@ fn flattening_a_widget_burns_the_appearance_and_removes_the_form() {
     let flat = Document::load(&output).expect("reopen");
     assert_eq!(flat.get_pages().len(), 1, "the page count must be preserved");
     assert!(annots(&flat, 1).is_empty(), "/Annots must be empty after flattening");
-    assert!(
-        flat.catalog().unwrap().get(b"AcroForm").is_err(),
-        "/AcroForm must be gone once every field is flattened"
-    );
+    assert!(flat.catalog().unwrap().get(b"AcroForm").is_err(), "/AcroForm must be gone once every field is flattened");
 
     let page_id = flat.get_pages().get(&1).copied().unwrap();
     let content = flat.get_page_content(page_id);
@@ -140,39 +127,18 @@ fn flattening_changes_what_the_page_renders() {
     let source = dir.path("form.pdf");
     write_doc(&mut widget_doc(), &source);
     let output = dir.path("flat.pdf");
-    flatten_pdf(
-        &source,
-        &output,
-        &FlattenOptions::default(),
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .expect("flatten");
+    flatten_pdf(&source, &output, &FlattenOptions::default(), &no_progress, &CancelToken::new()).expect("flatten");
 
     // Control: the same document with the widget deleted but nothing burned in.
     let mut control = widget_doc();
     let page_id = control.get_pages().get(&1).copied().unwrap();
-    control
-        .get_object_mut(page_id)
-        .unwrap()
-        .as_dict_mut()
-        .unwrap()
-        .remove(b"Annots");
+    control.get_object_mut(page_id).unwrap().as_dict_mut().unwrap().remove(b"Annots");
     let catalog_id = control.trailer.get(b"Root").unwrap().as_reference().unwrap();
-    control
-        .get_object_mut(catalog_id)
-        .unwrap()
-        .as_dict_mut()
-        .unwrap()
-        .remove(b"AcroForm");
+    control.get_object_mut(catalog_id).unwrap().as_dict_mut().unwrap().remove(b"AcroForm");
     let control_path = dir.path("control.pdf");
     write_doc(&mut control, &control_path);
 
-    let options = pdfcore::render::RenderOptions {
-        dpi: 96.0,
-        max_width: Some(900),
-        max_height: Some(900),
-    };
+    let options = pdfcore::render::RenderOptions { dpi: 96.0, max_width: Some(900), max_height: Some(900) };
     let before = pdfcore::render::render_page(&control_path, None, 1, &options).expect("render control");
     let after = pdfcore::render::render_page(&output, None, 1, &options).expect("render flattened");
     assert!(
@@ -186,21 +152,12 @@ fn appearances_only_generates_a_missing_text_field_appearance() {
     let dir = TestDir::new();
     let mut doc = widget_doc();
     let widget = widget_id(&doc);
-    doc.get_object_mut(widget)
-        .unwrap()
-        .as_dict_mut()
-        .unwrap()
-        .remove(b"AP");
+    doc.get_object_mut(widget).unwrap().as_dict_mut().unwrap().remove(b"AP");
     let source = dir.path("no-ap.pdf");
     write_doc(&mut doc, &source);
     let output = dir.path("generated.pdf");
-    let options = FlattenOptions {
-        annotations: false,
-        forms: false,
-        appearances: true,
-    };
-    let report = flatten_pdf(&source, &output, &options, &no_progress, &CancelToken::new())
-        .expect("appearances");
+    let options = FlattenOptions { annotations: false, forms: false, appearances: true };
+    let report = flatten_pdf(&source, &output, &options, &no_progress, &CancelToken::new()).expect("appearances");
     assert_eq!(report.annotations_flattened, 0, "nothing must be flattened");
 
     let result = Document::load(&output).expect("reopen");
@@ -208,13 +165,7 @@ fn appearances_only_generates_a_missing_text_field_appearance() {
     let widget_dict = result.get_dictionary(widget).expect("widget");
     assert!(widget_dict.get(b"AP").is_ok(), "an appearance must be generated");
     assert_eq!(annots(&result, 1).len(), 1, "the annotation must stay");
-    let acro = result
-        .catalog()
-        .unwrap()
-        .get(b"AcroForm")
-        .expect("acroform")
-        .as_reference()
-        .unwrap();
+    let acro = result.catalog().unwrap().get(b"AcroForm").expect("acroform").as_reference().unwrap();
     assert!(
         result.get_dictionary(acro).unwrap().get(b"NeedAppearances").is_err(),
         "/NeedAppearances must be off once appearances are generated"

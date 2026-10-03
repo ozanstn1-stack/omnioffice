@@ -109,7 +109,13 @@ function replaceSheet(workbook: Workbook, index: number, sheet: Sheet): Workbook
  * never one edit behind - the bug that made chained commits write stale
  * numbers to disk.
  */
-export function applyCellEdit(workbook: Workbook, sheetIndex: number, row: number, col: number, rawValue: string): Workbook {
+export function applyCellEdit(
+  workbook: Workbook,
+  sheetIndex: number,
+  row: number,
+  col: number,
+  rawValue: string,
+): Workbook {
   const index = Math.min(Math.max(0, sheetIndex), workbook.sheets.length - 1);
   const target = workbook.sheets[index];
   if (!target) return workbook;
@@ -136,12 +142,20 @@ export function applyCellEdit(workbook: Workbook, sheetIndex: number, row: numbe
   // cache that only recalculates the cells this edit can affect.
   const stagedDirty = markDirty(stagedWorkbook, workbook, target.name, [address]);
   const resolved: Cell = { ...staged, value: formulaResult(rawValue, stagedDirty, stagedSheet, row + 1) };
-  const final = replaceSheet(stagedDirty, index, { ...stagedSheet, cells: { ...stagedSheet.cells, [address]: resolved } });
+  const final = replaceSheet(stagedDirty, index, {
+    ...stagedSheet,
+    cells: { ...stagedSheet.cells, [address]: resolved },
+  });
   return markDirty(final, workbook, target.name, [address]);
 }
 
 /** Applies a block of typed values starting at a cell (used by paste). */
-export function applyCellEdits(workbook: Workbook, sheetIndex: number, start: { row: number; col: number }, values: string[][]): Workbook {
+export function applyCellEdits(
+  workbook: Workbook,
+  sheetIndex: number,
+  start: { row: number; col: number },
+  values: string[][],
+): Workbook {
   let next = workbook;
   values.forEach((line, rowOffset) => {
     line.forEach((value, colOffset) => {
@@ -159,13 +173,16 @@ export function applyCellEdits(workbook: Workbook, sheetIndex: number, start: { 
  */
 export function shiftFormulaRows(formula: string | null, delta: number): string | null {
   if (!formula || delta === 0) return formula;
-  return formula.replace(/(?<![A-Za-z0-9_$])(\$?)([A-Za-z]{1,3})(\$?)(\d{1,7})(?![A-Za-z0-9_(])/g, (match, dollarCol: string, letters: string, dollarRow: string, digits: string) => {
-    if (parseAddress(`${letters}${digits}`) === null) return match;
-    if (dollarRow) return match;
-    const nextRow = Number(digits) + delta;
-    if (nextRow < 1 || nextRow > 1_048_576) return match;
-    return `${dollarCol}${letters}${nextRow}`;
-  });
+  return formula.replace(
+    /(?<![A-Za-z0-9_$])(\$?)([A-Za-z]{1,3})(\$?)(\d{1,7})(?![A-Za-z0-9_(])/g,
+    (match, dollarCol: string, letters: string, dollarRow: string, digits: string) => {
+      if (parseAddress(`${letters}${digits}`) === null) return match;
+      if (dollarRow) return match;
+      const nextRow = Number(digits) + delta;
+      if (nextRow < 1 || nextRow > 1_048_576) return match;
+      return `${dollarCol}${letters}${nextRow}`;
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -225,7 +242,10 @@ function splitKey(key: string): { sheet: string; address: string } {
 }
 
 /** Sheet-scoped names shadow workbook-level ones, compared case-insensitively. */
-function namesContext(workbook: Workbook): { names: Record<string, string>; scoped: Map<string, Record<string, string>> } {
+function namesContext(workbook: Workbook): {
+  names: Record<string, string>;
+  scoped: Map<string, Record<string, string>>;
+} {
   const names: Record<string, string> = {};
   const scoped = new Map<string, Record<string, string>>();
   for (const entry of workbook.names ?? []) {
@@ -561,7 +581,10 @@ export function lastComputeStats(workbook: Workbook): ComputeStats | null {
 }
 
 /** Precedent/dependent sets of the last computation, for the auditing UI. */
-export function dependencyGraph(workbook: Workbook): { precedents: Map<string, Set<string>>; dependents: Map<string, Set<string>> } {
+export function dependencyGraph(workbook: Workbook): {
+  precedents: Map<string, Set<string>>;
+  dependents: Map<string, Set<string>>;
+} {
   if (!computeEntries.has(workbook)) computeWorkbookValues(workbook);
   const entry = computeEntries.get(workbook);
   return { precedents: entry?.precedents ?? new Map(), dependents: entry?.dependents ?? new Map() };

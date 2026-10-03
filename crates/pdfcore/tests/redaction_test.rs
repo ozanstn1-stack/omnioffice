@@ -36,16 +36,7 @@ fn run_redaction(
     let mut source = doc.clone();
     write_doc(&mut source, output);
     let result = output.with_extension("redacted.pdf");
-    redact_pdf(
-        output,
-        &result,
-        areas,
-        options,
-        OverwritePolicy::Replace,
-        None,
-        &no_progress,
-        &CancelToken::new(),
-    )
+    redact_pdf(output, &result, areas, options, OverwritePolicy::Replace, None, &no_progress, &CancelToken::new())
 }
 
 /// The character rectangle pdfium reports for a string drawn at a known origin.
@@ -82,10 +73,7 @@ fn redacting_a_line_removes_it_from_text_extraction() {
     assert!(before.contains("ada@example.com"), "fixture must contain the target text: {before:?}");
 
     let after = page_text(Path::new(&report.output), 1);
-    assert!(
-        !after.contains("ada@example.com"),
-        "the redacted text is still extractable: {after:?}"
-    );
+    assert!(!after.contains("ada@example.com"), "the redacted text is still extractable: {after:?}");
     assert!(after.contains("IBAN"), "unrelated text must survive: {after:?}");
     assert!(report.characters_removed > 0, "the report must count the removed characters");
     assert_eq!(report.unmatched_areas, 0, "a matched line must not be reported as unmatched");
@@ -124,23 +112,12 @@ fn removing_metadata_strips_the_title() {
     write_doc(&mut written, &source);
     let result = source.with_extension("stripped.pdf");
     let options = RedactionOptions { remove_metadata: true, ..Default::default() };
-    let report = redact_pdf(
-        &source,
-        &result,
-        &[],
-        &options,
-        OverwritePolicy::Replace,
-        None,
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .expect("metadata strip");
+    let report =
+        redact_pdf(&source, &result, &[], &options, OverwritePolicy::Replace, None, &no_progress, &CancelToken::new())
+            .expect("metadata strip");
     let info = lopdf::Document::load(&report.output).expect("reopen");
     let trailer = info.trailer;
-    assert!(
-        trailer.get(b"Info").is_err(),
-        "the Info dictionary must be gone, otherwise the author survives redaction"
-    );
+    assert!(trailer.get(b"Info").is_err(), "the Info dictionary must be gone, otherwise the author survives redaction");
 }
 
 #[test]
@@ -152,17 +129,9 @@ fn keeping_metadata_leaves_the_title_alone() {
     write_doc(&mut written, &source);
     let result = source.with_extension("kept.pdf");
     let options = RedactionOptions { remove_metadata: false, ..Default::default() };
-    let report = redact_pdf(
-        &source,
-        &result,
-        &[],
-        &options,
-        OverwritePolicy::Replace,
-        None,
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .expect("no-op redaction");
+    let report =
+        redact_pdf(&source, &result, &[], &options, OverwritePolicy::Replace, None, &no_progress, &CancelToken::new())
+            .expect("no-op redaction");
     assert!(Path::new(&report.output).exists());
 }
 
@@ -308,10 +277,7 @@ fn a_redacted_literal_is_absent_from_the_rendered_text_layer() {
         }
     };
     let after = pdfcore::render::extract_page_text(Path::new(&report.output), None, 1).unwrap_or_default();
-    assert!(
-        !after.contains("GB82WEST12345698765432"),
-        "the redacted literal is still extractable: {after:?}"
-    );
+    assert!(!after.contains("GB82WEST12345698765432"), "the redacted literal is still extractable: {after:?}");
     assert!(report.verified);
     assert!(report.remaining_matches.is_empty());
 }

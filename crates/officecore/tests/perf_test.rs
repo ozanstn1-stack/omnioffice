@@ -40,11 +40,7 @@ fn writer_document(pages: usize) -> TextDocument {
 }
 
 fn report(label: &str, elapsed: Duration, bound: Duration) {
-    eprintln!(
-        "perf: {label} took {:.3}s (bound {:.1}s)",
-        elapsed.as_secs_f64(),
-        bound.as_secs_f64()
-    );
+    eprintln!("perf: {label} took {:.3}s (bound {:.1}s)", elapsed.as_secs_f64(), bound.as_secs_f64());
 }
 
 /// The Writer PDF export is the most expensive pure-Rust path in the engine

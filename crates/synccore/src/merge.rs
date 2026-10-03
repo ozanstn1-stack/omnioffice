@@ -71,12 +71,10 @@ pub fn plan(resolution: Resolution, state: SyncState) -> Result<MergeAction, Syn
         SyncState::Synced => Ok(MergeAction::Nothing),
         SyncState::LocalOnly => match resolution {
             Resolution::KeepLocal => Ok(MergeAction::UploadLocal),
-            Resolution::KeepCloud => Err(SyncError::InvalidInput(
-                "there is no cloud copy to download yet".to_string(),
-            )),
-            Resolution::KeepBoth => Err(SyncError::InvalidInput(
-                "there is no cloud copy to keep a copy of yet".to_string(),
-            )),
+            Resolution::KeepCloud => Err(SyncError::InvalidInput("there is no cloud copy to download yet".to_string())),
+            Resolution::KeepBoth => {
+                Err(SyncError::InvalidInput("there is no cloud copy to keep a copy of yet".to_string()))
+            }
         },
         SyncState::LocalAhead | SyncState::CloudAhead | SyncState::Conflict => match resolution {
             Resolution::KeepLocal => Ok(MergeAction::UploadLocal),
@@ -105,11 +103,7 @@ pub fn cloud_copy_name(file_name: &str, stamp: &str) -> String {
 /// Same as [`cloud_copy_name`] but guarantees uniqueness: when the candidate
 /// already exists, ` (2)`, ` (3)`... is inserted before the timestamp until a
 /// free name is found. `exists` is injected so the function stays pure.
-pub fn unique_cloud_copy_name(
-    file_name: &str,
-    stamp: &str,
-    exists: impl Fn(&str) -> bool,
-) -> String {
+pub fn unique_cloud_copy_name(file_name: &str, stamp: &str, exists: impl Fn(&str) -> bool) -> String {
     let base = cloud_copy_name(file_name, stamp);
     if !exists(&base) {
         return base;
@@ -134,13 +128,8 @@ pub fn unique_cloud_copy_name(
 mod tests {
     use super::*;
 
-    const ALL_STATES: [SyncState; 5] = [
-        SyncState::LocalOnly,
-        SyncState::Synced,
-        SyncState::LocalAhead,
-        SyncState::CloudAhead,
-        SyncState::Conflict,
-    ];
+    const ALL_STATES: [SyncState; 5] =
+        [SyncState::LocalOnly, SyncState::Synced, SyncState::LocalAhead, SyncState::CloudAhead, SyncState::Conflict];
 
     #[test]
     fn resolution_parses_all_spellings() {
@@ -157,9 +146,24 @@ mod tests {
             // (state, keep_local, keep_cloud, keep_both)
             (SyncState::LocalOnly, MergeAction::UploadLocal, MergeAction::Nothing, None),
             (SyncState::Synced, MergeAction::Nothing, MergeAction::Nothing, Some(MergeAction::Nothing)),
-            (SyncState::LocalAhead, MergeAction::UploadLocal, MergeAction::DownloadCloud, Some(MergeAction::DownloadCloudCopy)),
-            (SyncState::CloudAhead, MergeAction::UploadLocal, MergeAction::DownloadCloud, Some(MergeAction::DownloadCloudCopy)),
-            (SyncState::Conflict, MergeAction::UploadLocal, MergeAction::DownloadCloud, Some(MergeAction::DownloadCloudCopy)),
+            (
+                SyncState::LocalAhead,
+                MergeAction::UploadLocal,
+                MergeAction::DownloadCloud,
+                Some(MergeAction::DownloadCloudCopy),
+            ),
+            (
+                SyncState::CloudAhead,
+                MergeAction::UploadLocal,
+                MergeAction::DownloadCloud,
+                Some(MergeAction::DownloadCloudCopy),
+            ),
+            (
+                SyncState::Conflict,
+                MergeAction::UploadLocal,
+                MergeAction::DownloadCloud,
+                Some(MergeAction::DownloadCloudCopy),
+            ),
         ];
         for (state, keep_local, keep_cloud, keep_both) in expected {
             assert_eq!(plan(Resolution::KeepLocal, state).unwrap(), keep_local, "{state:?} keep_local");
@@ -170,11 +174,7 @@ mod tests {
                 assert!(plan(Resolution::KeepBoth, state).is_err());
             } else {
                 assert_eq!(plan(Resolution::KeepCloud, state).unwrap(), keep_cloud, "{state:?} keep_cloud");
-                assert_eq!(
-                    plan(Resolution::KeepBoth, state).unwrap(),
-                    keep_both.unwrap(),
-                    "{state:?} keep_both"
-                );
+                assert_eq!(plan(Resolution::KeepBoth, state).unwrap(), keep_both.unwrap(), "{state:?} keep_both");
             }
         }
     }
@@ -192,28 +192,20 @@ mod tests {
 
     #[test]
     fn cloud_copy_naming() {
-        assert_eq!(
-            cloud_copy_name("report.oswk", "2026-09-27 141530"),
-            "report (cloud copy 2026-09-27 141530).oswk"
-        );
+        assert_eq!(cloud_copy_name("report.oswk", "2026-09-27 141530"), "report (cloud copy 2026-09-27 141530).oswk");
         // Dots inside the stem stay in the stem.
         assert_eq!(
             cloud_copy_name("Q3.report.oswk", "2026-09-27 141530"),
             "Q3.report (cloud copy 2026-09-27 141530).oswk"
         );
         // No extension: keep the document usable.
-        assert_eq!(
-            cloud_copy_name("report", "2026-09-27 141530"),
-            "report (cloud copy 2026-09-27 141530).oswk"
-        );
+        assert_eq!(cloud_copy_name("report", "2026-09-27 141530"), "report (cloud copy 2026-09-27 141530).oswk");
     }
 
     #[test]
     fn cloud_copy_collision_appends_index() {
         let stamp = "2026-09-27 141530";
-        let taken = std::cell::RefCell::new(vec![
-            "report (cloud copy 2026-09-27 141530).oswk".to_string(),
-        ]);
+        let taken = std::cell::RefCell::new(vec!["report (cloud copy 2026-09-27 141530).oswk".to_string()]);
         let name = unique_cloud_copy_name("report.oswk", stamp, |candidate| {
             taken.borrow().iter().any(|entry| entry == candidate)
         });

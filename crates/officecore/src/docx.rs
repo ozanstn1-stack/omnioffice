@@ -66,10 +66,7 @@ impl Relationships {
     fn xml(&self) -> String {
         let mut writer = XmlWriter::new();
         writer.declaration();
-        writer.open(
-            "Relationships",
-            &[("xmlns", "http://schemas.openxmlformats.org/package/2006/relationships")],
-        );
+        writer.open("Relationships", &[("xmlns", "http://schemas.openxmlformats.org/package/2006/relationships")]);
         for (id, payload, external) in &self.entries {
             let (kind, target) = payload.split_once('|').unwrap_or(("", ""));
             let mut attrs: Vec<(&str, &str)> = vec![("Id", id), ("Type", kind), ("Target", target)];
@@ -107,11 +104,20 @@ impl Media {
 const CONTENT_TYPE_HEADER: &str = "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml";
 const CONTENT_TYPE_FOOTER: &str = "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml";
 
-fn content_types(header_parts: &[String], footer_parts: &[String], footnotes: bool, endnotes: bool, comments: bool) -> String {
+fn content_types(
+    header_parts: &[String],
+    footer_parts: &[String],
+    footnotes: bool,
+    endnotes: bool,
+    comments: bool,
+) -> String {
     let mut writer = XmlWriter::new();
     writer.declaration();
     writer.open("Types", &[("xmlns", "http://schemas.openxmlformats.org/package/2006/content-types")]);
-    writer.empty("Default", &[("Extension", "rels"), ("ContentType", "application/vnd.openxmlformats-package.relationships+xml")]);
+    writer.empty(
+        "Default",
+        &[("Extension", "rels"), ("ContentType", "application/vnd.openxmlformats-package.relationships+xml")],
+    );
     writer.empty("Default", &[("Extension", "xml"), ("ContentType", "application/xml")]);
     for (extension, mime) in [
         ("png", "image/png"),
@@ -125,7 +131,10 @@ fn content_types(header_parts: &[String], footer_parts: &[String], footnotes: bo
         writer.empty("Default", &[("Extension", extension), ("ContentType", mime)]);
     }
     let mut overrides: Vec<(String, &str)> = vec![
-        ("/word/document.xml".into(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"),
+        (
+            "/word/document.xml".into(),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+        ),
         ("/word/styles.xml".into(), "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"),
         ("/word/numbering.xml".into(), "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"),
         ("/word/settings.xml".into(), "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"),
@@ -139,13 +148,22 @@ fn content_types(header_parts: &[String], footer_parts: &[String], footnotes: bo
         overrides.push((format!("/word/{part}"), CONTENT_TYPE_FOOTER));
     }
     if footnotes {
-        overrides.push(("/word/footnotes.xml".into(), "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"));
+        overrides.push((
+            "/word/footnotes.xml".into(),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
+        ));
     }
     if endnotes {
-        overrides.push(("/word/endnotes.xml".into(), "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml"));
+        overrides.push((
+            "/word/endnotes.xml".into(),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml",
+        ));
     }
     if comments {
-        overrides.push(("/word/comments.xml".into(), "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"));
+        overrides.push((
+            "/word/comments.xml".into(),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
+        ));
     }
     for (part, mime) in overrides {
         writer.empty("Override", &[("PartName", &part), ("ContentType", mime)]);
@@ -158,16 +176,42 @@ fn root_relationships() -> String {
     let mut writer = XmlWriter::new();
     writer.declaration();
     writer.open("Relationships", &[("xmlns", "http://schemas.openxmlformats.org/package/2006/relationships")]);
-    writer.empty("Relationship", &[("Id", "rId1"), ("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"), ("Target", "word/document.xml")]);
-    writer.empty("Relationship", &[("Id", "rId2"), ("Type", "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"), ("Target", "docProps/core.xml")]);
-    writer.empty("Relationship", &[("Id", "rId3"), ("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties"), ("Target", "docProps/app.xml")]);
+    writer.empty(
+        "Relationship",
+        &[
+            ("Id", "rId1"),
+            ("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"),
+            ("Target", "word/document.xml"),
+        ],
+    );
+    writer.empty(
+        "Relationship",
+        &[
+            ("Id", "rId2"),
+            ("Type", "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"),
+            ("Target", "docProps/core.xml"),
+        ],
+    );
+    writer.empty(
+        "Relationship",
+        &[
+            ("Id", "rId3"),
+            ("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties"),
+            ("Target", "docProps/app.xml"),
+        ],
+    );
     writer.close("Relationships");
     writer.finish()
 }
 
 fn core_properties(document: &TextDocument) -> String {
-    let created = if document.metadata.created.is_empty() { "1970-01-01T00:00:00Z".to_string() } else { document.metadata.created.clone() };
-    let modified = if document.metadata.modified.is_empty() { created.clone() } else { document.metadata.modified.clone() };
+    let created = if document.metadata.created.is_empty() {
+        "1970-01-01T00:00:00Z".to_string()
+    } else {
+        document.metadata.created.clone()
+    };
+    let modified =
+        if document.metadata.modified.is_empty() { created.clone() } else { document.metadata.modified.clone() };
     let mut writer = XmlWriter::new();
     writer.declaration();
     writer.open(
@@ -238,7 +282,10 @@ fn write_paragraph_properties(writer: &mut XmlWriter, props: &ParaProps, sect: O
         ));
     }
     if props.line_spacing > 0.0 {
-        children.push(format!("<w:spacing w:line=\"{}\" w:lineRule=\"auto\"/>", (props.line_spacing * 240.0).round() as i64));
+        children.push(format!(
+            "<w:spacing w:line=\"{}\" w:lineRule=\"auto\"/>",
+            (props.line_spacing * 240.0).round() as i64
+        ));
     }
     if props.indent_left_pt != 0.0 || props.indent_right_pt != 0.0 || props.first_line_pt != 0.0 {
         let mut attrs = String::new();
@@ -276,8 +323,22 @@ fn write_paragraph_properties(writer: &mut XmlWriter, props: &ParaProps, sect: O
 }
 
 const HIGHLIGHTS: [&str; 16] = [
-    "yellow", "green", "cyan", "magenta", "blue", "red", "darkBlue", "darkGreen", "darkRed", "darkYellow", "gray",
-    "lightGray", "black", "white", "darkGray", "none",
+    "yellow",
+    "green",
+    "cyan",
+    "magenta",
+    "blue",
+    "red",
+    "darkBlue",
+    "darkGreen",
+    "darkRed",
+    "darkYellow",
+    "gray",
+    "lightGray",
+    "black",
+    "white",
+    "darkGray",
+    "none",
 ];
 
 fn highlight_value(color: &str) -> String {
@@ -413,7 +474,11 @@ fn write_text_run(state: &mut DocxState, writer: &mut XmlWriter, run: &Run) {
             writer.raw(&format!(
                 "<w:del w:id=\"{id}\" w:author=\"{}\" w:date=\"{}\">",
                 crate::xml::escape_attr(&revision.as_ref().unwrap().author),
-                crate::xml::escape_attr(if revision.as_ref().unwrap().date.is_empty() { "1970-01-01T00:00:00Z" } else { &revision.as_ref().unwrap().date })
+                crate::xml::escape_attr(if revision.as_ref().unwrap().date.is_empty() {
+                    "1970-01-01T00:00:00Z"
+                } else {
+                    &revision.as_ref().unwrap().date
+                })
             ));
             write_run_content(state, writer, run, true);
             writer.raw("</w:del>");
@@ -423,7 +488,11 @@ fn write_text_run(state: &mut DocxState, writer: &mut XmlWriter, run: &Run) {
             writer.raw(&format!(
                 "<w:ins w:id=\"{id}\" w:author=\"{}\" w:date=\"{}\">",
                 crate::xml::escape_attr(&revision.as_ref().unwrap().author),
-                crate::xml::escape_attr(if revision.as_ref().unwrap().date.is_empty() { "1970-01-01T00:00:00Z" } else { &revision.as_ref().unwrap().date })
+                crate::xml::escape_attr(if revision.as_ref().unwrap().date.is_empty() {
+                    "1970-01-01T00:00:00Z"
+                } else {
+                    &revision.as_ref().unwrap().date
+                })
             ));
             write_run_content(state, writer, run, false);
             writer.raw("</w:ins>");
@@ -435,7 +504,8 @@ fn write_text_run(state: &mut DocxState, writer: &mut XmlWriter, run: &Run) {
 fn write_run_content(state: &mut DocxState, writer: &mut XmlWriter, run: &Run, deleted: bool) {
     if let Some(id) = &run.footnote {
         if let Some(number) = state.footnote_ids.get(id).copied() {
-            writer.raw("<w:r><w:rPr><w:rStyle w:val=\"FootnoteReference\"/><w:vertAlign w:val=\"superscript\"/></w:rPr>");
+            writer
+                .raw("<w:r><w:rPr><w:rStyle w:val=\"FootnoteReference\"/><w:vertAlign w:val=\"superscript\"/></w:rPr>");
             writer.raw(&format!("<w:footnoteReference w:id=\"{number}\"/>"));
             writer.raw("</w:r>");
             return;
@@ -443,7 +513,8 @@ fn write_run_content(state: &mut DocxState, writer: &mut XmlWriter, run: &Run, d
     }
     if let Some(id) = &run.endnote {
         if let Some(number) = state.endnote_ids.get(id).copied() {
-            writer.raw("<w:r><w:rPr><w:rStyle w:val=\"EndnoteReference\"/><w:vertAlign w:val=\"superscript\"/></w:rPr>");
+            writer
+                .raw("<w:r><w:rPr><w:rStyle w:val=\"EndnoteReference\"/><w:vertAlign w:val=\"superscript\"/></w:rPr>");
             writer.raw(&format!("<w:endnoteReference w:id=\"{number}\"/>"));
             writer.raw("</w:r>");
             return;
@@ -461,7 +532,13 @@ fn write_run_content(state: &mut DocxState, writer: &mut XmlWriter, run: &Run, d
             let next_page = remaining.find("{{page}}");
             let next_pages = remaining.find("{{pages}}");
             let (index, token) = match (next_page, next_pages) {
-                (Some(a), Some(b)) => if a < b { (a, "{{page}}") } else { (b, "{{pages}}") },
+                (Some(a), Some(b)) => {
+                    if a < b {
+                        (a, "{{page}}")
+                    } else {
+                        (b, "{{pages}}")
+                    }
+                }
                 (Some(a), None) => (a, "{{page}}"),
                 (None, Some(b)) => (b, "{{pages}}"),
                 (None, None) => {
@@ -473,7 +550,11 @@ fn write_run_content(state: &mut DocxState, writer: &mut XmlWriter, run: &Run, d
                 write_plain_run(state, writer, run, &remaining[..index], deleted);
             }
             let mut field_run = run.clone();
-            field_run.field = Some(FieldRef { kind: if token == "{{pages}}" { "pages".into() } else { "page".into() }, target: String::new(), cached: "1".into() });
+            field_run.field = Some(FieldRef {
+                kind: if token == "{{pages}}" { "pages".into() } else { "page".into() },
+                target: String::new(),
+                cached: "1".into(),
+            });
             write_field_run(state, writer, &field_run, field_run.field.as_ref().unwrap());
             remaining = &remaining[index + token.len()..];
         }
@@ -597,10 +678,12 @@ fn write_image(state: &mut DocxState, writer: &mut XmlWriter, image: &ImageData,
     writer.raw("<a:graphic xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">");
     writer.raw("<a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">");
     writer.raw("<pic:pic xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">");
-    writer.raw(&format!("<pic:nvPicPr><pic:cNvPr id=\"{id_counter}\" name=\"{}\"/><pic:cNvPicPr/></pic:nvPicPr>", crate::xml::escape_attr(&name)));
     writer.raw(&format!(
-        "<pic:blipFill><a:blip r:embed=\"{id}\"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>",
+        "<pic:nvPicPr><pic:cNvPr id=\"{id_counter}\" name=\"{}\"/><pic:cNvPicPr/></pic:nvPicPr>",
+        crate::xml::escape_attr(&name)
     ));
+    writer
+        .raw(&format!("<pic:blipFill><a:blip r:embed=\"{id}\"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>",));
     writer.raw(&format!(
         "<pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{}\" cy=\"{}\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr>",
         emu(width),
@@ -615,11 +698,8 @@ fn write_table(state: &mut DocxState, writer: &mut XmlWriter, table: &TableData,
     }
     writer.raw("<w:tbl>");
     writer.raw("<w:tblPr>");
-    let total: f64 = if table.column_widths_pt.is_empty() {
-        9360.0
-    } else {
-        table.column_widths_pt.iter().sum::<f64>().max(100.0)
-    };
+    let total: f64 =
+        if table.column_widths_pt.is_empty() { 9360.0 } else { table.column_widths_pt.iter().sum::<f64>().max(100.0) };
     writer.raw(&format!("<w:tblW w:w=\"{}\" w:type=\"dxa\"/>", twips(total)));
     if table.borders {
         let color = bare_hex(&table.border_color).unwrap_or_else(|| "94A3B8".into());
@@ -738,7 +818,12 @@ fn write_head_foot(state: &mut DocxState, blocks: &[Block], is_header: bool) -> 
 /// The `w:sectPr` payload for one section, registering header/footer parts.
 fn section_properties_xml(state: &mut DocxState, section: &SectionProps, parts: &mut DocxParts) -> String {
     let mut out = String::new();
-    let mut add_part = |state: &mut DocxState, parts: &mut DocxParts, blocks: &[Block], is_header: bool, kind: &str| -> Option<String> {
+    let mut add_part = |state: &mut DocxState,
+                        parts: &mut DocxParts,
+                        blocks: &[Block],
+                        is_header: bool,
+                        kind: &str|
+     -> Option<String> {
         if blocks.is_empty() {
             return None;
         }
@@ -827,7 +912,11 @@ fn write_styles(document: &TextDocument) -> String {
     }
     writer.raw(&format!("<w:sz w:val=\"{}\"/>", half_points(normal.size_pt.unwrap_or(11.0))));
     writer.raw("</w:rPr></w:rPrDefault>");
-    writer.raw(&format!("<w:pPrDefault><w:pPr><w:spacing w:after=\"{}\" w:line=\"{}\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault>", twips(8.0), (1.15 * 240.0) as i64));
+    writer.raw(&format!(
+        "<w:pPrDefault><w:pPr><w:spacing w:after=\"{}\" w:line=\"{}\" w:lineRule=\"auto\"/></w:pPr></w:pPrDefault>",
+        twips(8.0),
+        (1.15 * 240.0) as i64
+    ));
     writer.raw("</w:docDefaults>");
     for style in &document.styles {
         let is_default = style.id == "Normal";
@@ -1036,7 +1125,10 @@ fn write_comments(state: &mut DocxState, document: &TextDocument) -> Option<Stri
             crate::xml::escape_attr(&initials(&comment.author))
         ));
         writer.raw("<w:p><w:pPr><w:pStyle w:val=\"CommentText\"/></w:pPr><w:r><w:annotationRef/></w:r>");
-        writer.raw(&format!("<w:r><w:t xml:space=\"preserve\">{}</w:t></w:r></w:p>", crate::xml::escape_text(&comment.text)));
+        writer.raw(&format!(
+            "<w:r><w:t xml:space=\"preserve\">{}</w:t></w:r></w:p>",
+            crate::xml::escape_text(&comment.text)
+        ));
         for reply in &comment.replies {
             writer.raw("<w:p><w:pPr><w:pStyle w:val=\"CommentText\"/></w:pPr>");
             writer.raw(&format!(
@@ -1052,12 +1144,7 @@ fn write_comments(state: &mut DocxState, document: &TextDocument) -> Option<Stri
 }
 
 fn initials(author: &str) -> String {
-    author
-        .split_whitespace()
-        .filter_map(|word| word.chars().next())
-        .take(3)
-        .collect::<String>()
-        .to_uppercase()
+    author.split_whitespace().filter_map(|word| word.chars().next()).take(3).collect::<String>().to_uppercase()
 }
 
 pub fn write_docx(document: &TextDocument) -> OfficeResult<Vec<u8>> {
@@ -1096,7 +1183,13 @@ pub fn write_docx(document: &TextDocument) -> OfficeResult<Vec<u8>> {
             // Word stores the properties of the section that just ended in the
             // last paragraph of that section.
             let sect = section_xml.get(current).cloned().unwrap_or_default();
-            write_paragraph(&mut state, &mut body, &ParaProps::default(), &[], Some(&format!("<w:sectPr>{sect}</w:sectPr>")));
+            write_paragraph(
+                &mut state,
+                &mut body,
+                &ParaProps::default(),
+                &[],
+                Some(&format!("<w:sectPr>{sect}</w:sectPr>")),
+            );
             current += 1;
             continue;
         }
@@ -1118,23 +1211,47 @@ pub fn write_docx(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     let comments_xml = write_comments(&mut state, document);
 
     if let Some(xml) = &footnotes_xml {
-        state.rels.add("http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes", "footnotes.xml", false);
+        state.rels.add(
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes",
+            "footnotes.xml",
+            false,
+        );
         let _ = xml;
     }
     if let Some(xml) = &endnotes_xml {
-        state.rels.add("http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes", "endnotes.xml", false);
+        state.rels.add(
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes",
+            "endnotes.xml",
+            false,
+        );
         let _ = xml;
     }
     if let Some(xml) = &comments_xml {
-        state.rels.add("http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments", "comments.xml", false);
+        state.rels.add(
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments",
+            "comments.xml",
+            false,
+        );
         let _ = xml;
     }
 
     // document.xml.rels: styles/numbering/settings first (rId1..3), then the rest.
     let mut entries = vec![
-        ("rId1".to_string(), "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles|styles.xml".to_string(), false),
-        ("rId2".to_string(), "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering|numbering.xml".to_string(), false),
-        ("rId3".to_string(), "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings|settings.xml".to_string(), false),
+        (
+            "rId1".to_string(),
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles|styles.xml".to_string(),
+            false,
+        ),
+        (
+            "rId2".to_string(),
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering|numbering.xml".to_string(),
+            false,
+        ),
+        (
+            "rId3".to_string(),
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings|settings.xml".to_string(),
+            false,
+        ),
     ];
     entries.extend(state.rels.entries.iter().cloned());
     let mut rels_writer = Relationships::new(0);
@@ -1144,7 +1261,13 @@ pub fn write_docx(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     let mut zip = ZipWriter::new();
     zip.add_text(
         "[Content_Types].xml",
-        &content_types(&parts.headers, &parts.footers, footnotes_xml.is_some(), endnotes_xml.is_some(), comments_xml.is_some()),
+        &content_types(
+            &parts.headers,
+            &parts.footers,
+            footnotes_xml.is_some(),
+            endnotes_xml.is_some(),
+            comments_xml.is_some(),
+        ),
     );
     zip.add_text("_rels/.rels", &root_relationships());
     zip.add_text("docProps/core.xml", &core_properties(document));
@@ -1213,7 +1336,15 @@ struct PartContext {
 
 impl PartContext {
     fn new(rels: HashMap<String, RelLink>) -> Self {
-        Self { rels, warnings: Vec::new(), field_skip: false, revision_seq: 0, pending_revision: None, pending_comment: None, field_capture: None }
+        Self {
+            rels,
+            warnings: Vec::new(),
+            field_skip: false,
+            revision_seq: 0,
+            pending_revision: None,
+            pending_comment: None,
+            field_capture: None,
+        }
     }
 }
 
@@ -1258,14 +1389,12 @@ fn read_numbering(reader: &ZipReader) -> Numbering {
         return numbering;
     };
     for node in root.children_named("abstractNum") {
-        let Some(abstract_id) = node.attr_any_ns("abstractNumId").and_then(|value| value.parse::<u32>().ok()) else { continue };
+        let Some(abstract_id) = node.attr_any_ns("abstractNumId").and_then(|value| value.parse::<u32>().ok()) else {
+            continue;
+        };
         for level in node.children_named("lvl") {
             let lvl = level.attr_any_ns("ilvl").and_then(|value| value.parse::<u32>().ok()).unwrap_or(0);
-            let format = level
-                .child("numFmt")
-                .and_then(|node| node.attr_any_ns("val"))
-                .unwrap_or("bullet")
-                .to_string();
+            let format = level.child("numFmt").and_then(|node| node.attr_any_ns("val")).unwrap_or("bullet").to_string();
             let start = level
                 .child("start")
                 .and_then(|node| node.attr_any_ns("val"))
@@ -1277,7 +1406,11 @@ fn read_numbering(reader: &ZipReader) -> Numbering {
     }
     for node in root.children_named("num") {
         let Some(num_id) = node.attr_any_ns("numId").and_then(|value| value.parse::<u32>().ok()) else { continue };
-        if let Some(abstract_id) = node.child("abstractNumId").and_then(|node| node.attr_any_ns("val")).and_then(|value| value.parse::<u32>().ok()) {
+        if let Some(abstract_id) = node
+            .child("abstractNumId")
+            .and_then(|node| node.attr_any_ns("val"))
+            .and_then(|value| value.parse::<u32>().ok())
+        {
             numbering.num_to_abstract.insert(num_id, abstract_id);
         }
     }
@@ -1325,7 +1458,11 @@ fn read_styles(reader: &ZipReader) -> Vec<ParaStyle> {
                     style.space_after_pt = Some(value / 20.0);
                 }
             }
-            if let Some(value) = properties.child("outlineLvl").and_then(|node| node.attr_any_ns("val")).and_then(|value| value.parse::<u32>().ok()) {
+            if let Some(value) = properties
+                .child("outlineLvl")
+                .and_then(|node| node.attr_any_ns("val"))
+                .and_then(|value| value.parse::<u32>().ok())
+            {
                 style.outline_level = Some(value);
             }
             if properties.child("keepNext").is_some() {
@@ -1445,7 +1582,12 @@ fn read_run_properties(node: Option<&XmlNode>) -> Run {
     run
 }
 
-fn read_image_block(node: &XmlNode, rels: &HashMap<String, RelLink>, reader: &ZipReader, warnings: &mut Vec<String>) -> Option<Block> {
+fn read_image_block(
+    node: &XmlNode,
+    rels: &HashMap<String, RelLink>,
+    reader: &ZipReader,
+    warnings: &mut Vec<String>,
+) -> Option<Block> {
     let mut blips = Vec::new();
     node.find_all("a:blip", &mut blips);
     if blips.is_empty() {
@@ -1518,14 +1660,17 @@ fn map_field_instruction(instruction: &str, cached: &str) -> Option<FieldRef> {
 }
 
 fn field_argument(instruction: &str, prefix_len: usize) -> String {
-    instruction[prefix_len.min(instruction.len())..]
-        .split_whitespace()
-        .next()
-        .unwrap_or("")
-        .to_string()
+    instruction[prefix_len.min(instruction.len())..].split_whitespace().next().unwrap_or("").to_string()
 }
 
-fn read_runs(node: &XmlNode, context: &mut PartContext, reader: &ZipReader, runs: &mut Vec<Run>, blocks: &mut Vec<Block>, first_break: &mut bool) {
+fn read_runs(
+    node: &XmlNode,
+    context: &mut PartContext,
+    reader: &ZipReader,
+    runs: &mut Vec<Run>,
+    blocks: &mut Vec<Block>,
+    first_break: &mut bool,
+) {
     for child in &node.children {
         match child.local_name() {
             "r" => {
@@ -1583,7 +1728,14 @@ fn read_runs(node: &XmlNode, context: &mut PartContext, reader: &ZipReader, runs
                             match map_field_instruction(&instruction, "") {
                                 Some(field) if field.kind == "page" || field.kind == "pages" => {
                                     // Keep the token the editors already render.
-                                    runs.push(Run { text: if field.kind == "pages" { "{{pages}}".into() } else { "{{page}}".into() }, ..run.clone() });
+                                    runs.push(Run {
+                                        text: if field.kind == "pages" {
+                                            "{{pages}}".into()
+                                        } else {
+                                            "{{page}}".into()
+                                        },
+                                        ..run.clone()
+                                    });
                                     context.field_skip = true;
                                 }
                                 Some(field) => {
@@ -1591,7 +1743,9 @@ fn read_runs(node: &XmlNode, context: &mut PartContext, reader: &ZipReader, runs
                                     context.field_skip = true;
                                 }
                                 None => {
-                                    context.warnings.push("A field this build does not understand was imported as plain text.".into());
+                                    context.warnings.push(
+                                        "A field this build does not understand was imported as plain text.".into(),
+                                    );
                                     context.field_skip = true;
                                 }
                             }
@@ -1641,7 +1795,11 @@ fn read_runs(node: &XmlNode, context: &mut PartContext, reader: &ZipReader, runs
                 }
             }
             "hyperlink" => {
-                let link = child.attr_any_ns("id").and_then(|id| context.rels.get(id)).filter(|link| link.external).map(|link| link.target.clone());
+                let link = child
+                    .attr_any_ns("id")
+                    .and_then(|id| context.rels.get(id))
+                    .filter(|link| link.external)
+                    .map(|link| link.target.clone());
                 let mut inner_runs = Vec::new();
                 let mut ignored = Vec::new();
                 read_runs(child, context, reader, &mut inner_runs, &mut ignored, first_break);
@@ -1680,7 +1838,10 @@ fn read_runs(node: &XmlNode, context: &mut PartContext, reader: &ZipReader, runs
                 let instruction = child.attr_any_ns("instr").unwrap_or_default().to_string();
                 match map_field_instruction(&instruction, "") {
                     Some(field) if field.kind == "page" || field.kind == "pages" => {
-                        runs.push(Run { text: if field.kind == "pages" { "{{pages}}".into() } else { "{{page}}".into() }, ..Default::default() });
+                        runs.push(Run {
+                            text: if field.kind == "pages" { "{{pages}}".into() } else { "{{page}}".into() },
+                            ..Default::default()
+                        });
                     }
                     Some(mut field) => {
                         let mut inner_runs = Vec::new();
@@ -1765,11 +1926,8 @@ fn read_paragraph(node: &XmlNode, context: &mut PartContext, reader: &ZipReader,
                 .unwrap_or(0);
             if let Some(num_id) = num_id {
                 let abstract_id = numbering.num_to_abstract.get(&num_id).copied().unwrap_or(0);
-                let (kind, start) = numbering
-                    .levels
-                    .get(&(abstract_id, level))
-                    .cloned()
-                    .unwrap_or_else(|| ("bullet".to_string(), 1));
+                let (kind, start) =
+                    numbering.levels.get(&(abstract_id, level)).cloned().unwrap_or_else(|| ("bullet".to_string(), 1));
                 props.list = Some(ListInfo { kind, level, start, marker: String::new() });
             }
         }
@@ -1785,7 +1943,13 @@ fn read_paragraph(node: &XmlNode, context: &mut PartContext, reader: &ZipReader,
     blocks
 }
 
-fn read_table(node: &XmlNode, context: &mut PartContext, reader: &ZipReader, numbering: &Numbering, warnings: &mut Vec<String>) -> Block {
+fn read_table(
+    node: &XmlNode,
+    context: &mut PartContext,
+    reader: &ZipReader,
+    numbering: &Numbering,
+    warnings: &mut Vec<String>,
+) -> Block {
     let mut widths = Vec::new();
     if let Some(grid) = node.child("tblGrid") {
         for column in grid.children_named("gridCol") {
@@ -1798,7 +1962,9 @@ fn read_table(node: &XmlNode, context: &mut PartContext, reader: &ZipReader, num
         let mut row = TableRow::default();
         if let Some(properties) = row_node.child("trPr") {
             row.header = properties.child("tblHeader").is_some();
-            if let Some(height) = properties.child("trHeight").and_then(|node| node.attr_any_ns("val")).and_then(parse_f64) {
+            if let Some(height) =
+                properties.child("trHeight").and_then(|node| node.attr_any_ns("val")).and_then(parse_f64)
+            {
                 if height > 0.0 {
                     row.height_pt = Some(height / 20.0);
                 }
@@ -1807,7 +1973,11 @@ fn read_table(node: &XmlNode, context: &mut PartContext, reader: &ZipReader, num
         for cell_node in row_node.children_named("tc") {
             let mut cell = TableCell::default();
             if let Some(properties) = cell_node.child("tcPr") {
-                if let Some(span) = properties.child("gridSpan").and_then(|node| node.attr_any_ns("val")).and_then(|value| value.parse::<u32>().ok()) {
+                if let Some(span) = properties
+                    .child("gridSpan")
+                    .and_then(|node| node.attr_any_ns("val"))
+                    .and_then(|value| value.parse::<u32>().ok())
+                {
                     cell.colspan = span.max(1);
                 }
                 if properties.child("vMerge").is_some() {
@@ -1821,7 +1991,8 @@ fn read_table(node: &XmlNode, context: &mut PartContext, reader: &ZipReader, num
                 if let Some(valign) = properties.child("vAlign").and_then(|node| node.attr_any_ns("val")) {
                     cell.valign = valign.to_string();
                 }
-                if let Some(width) = properties.child("tcW").and_then(|node| node.attr_any_ns("w")).and_then(parse_f64) {
+                if let Some(width) = properties.child("tcW").and_then(|node| node.attr_any_ns("w")).and_then(parse_f64)
+                {
                     cell.width_pt = Some(width / 20.0);
                 }
             }
@@ -1845,7 +2016,13 @@ fn read_table(node: &XmlNode, context: &mut PartContext, reader: &ZipReader, num
         }
     }
     Block::Table {
-        table: TableData { rows, column_widths_pt: widths, borders: true, border_color: "#94A3B8".into(), align: "left".into() },
+        table: TableData {
+            rows,
+            column_widths_pt: widths,
+            borders: true,
+            border_color: "#94A3B8".into(),
+            align: "left".into(),
+        },
     }
 }
 
@@ -1973,7 +2150,12 @@ struct SectionPlan {
 }
 
 /// Reads the main document part, returning blocks plus the section plan.
-fn read_body(reader: &ZipReader, part: &str, numbering: &Numbering, warnings: &mut Vec<String>) -> (Vec<Block>, SectionPlan) {
+fn read_body(
+    reader: &ZipReader,
+    part: &str,
+    numbering: &Numbering,
+    warnings: &mut Vec<String>,
+) -> (Vec<Block>, SectionPlan) {
     let mut plan = SectionPlan { paragraph_sections: Vec::new(), body: None };
     let Ok(text) = reader.read_text(part) else {
         return (Vec::new(), plan);
@@ -2056,7 +2238,13 @@ fn apply_section_plan(document: &mut TextDocument, mut blocks: Vec<Block>, plan:
 }
 
 /// Reads `word/footnotes.xml` / `word/endnotes.xml` into model notes.
-fn read_notes(reader: &ZipReader, part: &str, endnotes: bool, numbering: &Numbering, warnings: &mut Vec<String>) -> Vec<Footnote> {
+fn read_notes(
+    reader: &ZipReader,
+    part: &str,
+    endnotes: bool,
+    numbering: &Numbering,
+    warnings: &mut Vec<String>,
+) -> Vec<Footnote> {
     let mut notes = Vec::new();
     let Ok(text) = reader.read_text(part) else {
         return notes;
@@ -2209,7 +2397,9 @@ pub fn read_docx(bytes: &[u8]) -> OfficeResult<DocxRead> {
             if let Some(value) = root.child("dc:subject").map(XmlNode::deep_text) {
                 document.metadata.subject = value;
             }
-            if let Some(value) = root.attr_any_ns("keywords").or_else(|| root.child("cp:keywords").map(|node| node.text.as_str())) {
+            if let Some(value) =
+                root.attr_any_ns("keywords").or_else(|| root.child("cp:keywords").map(|node| node.text.as_str()))
+            {
                 document.metadata.keywords = value.to_string();
             }
             if let Some(value) = root.child("dcterms:created").map(XmlNode::deep_text) {
@@ -2260,11 +2450,17 @@ mod tests {
                 ],
             },
             Block::Paragraph {
-                props: ParaProps { list: Some(ListInfo { kind: "bullet".into(), level: 0, start: 1, marker: "•".into() }), ..Default::default() },
+                props: ParaProps {
+                    list: Some(ListInfo { kind: "bullet".into(), level: 0, start: 1, marker: "•".into() }),
+                    ..Default::default()
+                },
                 runs: vec![Run { text: "first".into(), ..Default::default() }],
             },
             Block::Paragraph {
-                props: ParaProps { list: Some(ListInfo { kind: "number".into(), level: 0, start: 1, marker: "1.".into() }), ..Default::default() },
+                props: ParaProps {
+                    list: Some(ListInfo { kind: "number".into(), level: 0, start: 1, marker: "1.".into() }),
+                    ..Default::default()
+                },
                 runs: vec![Run { text: "second".into(), ..Default::default() }],
             },
             Block::Image {
@@ -2386,7 +2582,10 @@ mod tests {
     #[test]
     fn reads_minimal_hand_built_package() {
         let mut zip = ZipWriter::new();
-        zip.add_text("[Content_Types].xml", r#"<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>"#);
+        zip.add_text(
+            "[Content_Types].xml",
+            r#"<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>"#,
+        );
         zip.add_text("_rels/.rels", r#"<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>"#);
         zip.add_text("word/document.xml", r#"<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Minimal</w:t></w:r></w:p><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Bold</w:t></w:r></w:p></w:body></w:document>"#);
         let read = read_docx(&zip.finish()).unwrap();
@@ -2472,10 +2671,22 @@ mod tests {
     fn roundtrip_footnotes_and_endnotes() {
         let mut document = TextDocument::new_blank("Notes");
         document.footnotes = vec![
-            Footnote { id: "fn-a".into(), runs: vec![Run { text: "First note".into(), ..Default::default() }], marker: String::new() },
-            Footnote { id: "fn-b".into(), runs: vec![Run { text: "Second note".into(), ..Default::default() }], marker: String::new() },
+            Footnote {
+                id: "fn-a".into(),
+                runs: vec![Run { text: "First note".into(), ..Default::default() }],
+                marker: String::new(),
+            },
+            Footnote {
+                id: "fn-b".into(),
+                runs: vec![Run { text: "Second note".into(), ..Default::default() }],
+                marker: String::new(),
+            },
         ];
-        document.endnotes = vec![Footnote { id: "en-a".into(), runs: vec![Run { text: "End note".into(), ..Default::default() }], marker: String::new() }];
+        document.endnotes = vec![Footnote {
+            id: "en-a".into(),
+            runs: vec![Run { text: "End note".into(), ..Default::default() }],
+            marker: String::new(),
+        }];
         document.blocks = vec![Block::Paragraph {
             props: ParaProps::default(),
             runs: vec![
@@ -2505,7 +2716,9 @@ mod tests {
             .blocks
             .iter()
             .filter_map(|block| match block {
-                Block::Paragraph { runs, .. } => Some(runs.iter().filter_map(|run| run.footnote.clone()).collect::<Vec<_>>()),
+                Block::Paragraph { runs, .. } => {
+                    Some(runs.iter().filter_map(|run| run.footnote.clone()).collect::<Vec<_>>())
+                }
                 _ => None,
             })
             .flatten()
@@ -2531,12 +2744,24 @@ mod tests {
                 Run { text: "kept ".into(), ..Default::default() },
                 Run {
                     text: "inserted".into(),
-                    revision: Some(RevisionMark { id: "i1".into(), kind: "insert".into(), author: "Ada".into(), date: "2026-02-02T10:00:00Z".into(), original: None }),
+                    revision: Some(RevisionMark {
+                        id: "i1".into(),
+                        kind: "insert".into(),
+                        author: "Ada".into(),
+                        date: "2026-02-02T10:00:00Z".into(),
+                        original: None,
+                    }),
                     ..Default::default()
                 },
                 Run {
                     text: "removed".into(),
-                    revision: Some(RevisionMark { id: "d1".into(), kind: "delete".into(), author: "Grace".into(), date: "2026-02-02T11:00:00Z".into(), original: None }),
+                    revision: Some(RevisionMark {
+                        id: "d1".into(),
+                        kind: "delete".into(),
+                        author: "Grace".into(),
+                        date: "2026-02-02T11:00:00Z".into(),
+                        original: None,
+                    }),
                     ..Default::default()
                 },
                 format_run,
@@ -2575,7 +2800,11 @@ mod tests {
             created: "2026-03-03T09:00:00Z".into(),
             resolved: false,
             modified: "2026-03-03T09:00:00Z".into(),
-            replies: vec![CommentReply { author: "Grace".into(), text: "Checked".into(), created: "2026-03-03T10:00:00Z".into() }],
+            replies: vec![CommentReply {
+                author: "Grace".into(),
+                text: "Checked".into(),
+                created: "2026-03-03T10:00:00Z".into(),
+            }],
         }];
         document.blocks = vec![Block::Paragraph {
             props: ParaProps::default(),
@@ -2600,17 +2829,23 @@ mod tests {
     fn roundtrip_cross_reference_fields() {
         let mut document = TextDocument::new_blank("Fields");
         document.bookmarks = vec![Bookmark { id: "b1".into(), name: "Target".into(), block: 0, offset: 0 }];
-        document.blocks = vec![
-            Block::Paragraph {
-                props: ParaProps::default(),
-                runs: vec![
-                    Run { text: "See page ".into(), ..Default::default() },
-                    Run { text: "3".into(), field: Some(FieldRef { kind: "refPage".into(), target: "Target".into(), cached: "3".into() }), ..Default::default() },
-                    Run { text: " and ".into(), ..Default::default() },
-                    Run { text: "Target".into(), field: Some(FieldRef { kind: "ref".into(), target: "Target".into(), cached: "Target".into() }), ..Default::default() },
-                ],
-            },
-        ];
+        document.blocks = vec![Block::Paragraph {
+            props: ParaProps::default(),
+            runs: vec![
+                Run { text: "See page ".into(), ..Default::default() },
+                Run {
+                    text: "3".into(),
+                    field: Some(FieldRef { kind: "refPage".into(), target: "Target".into(), cached: "3".into() }),
+                    ..Default::default()
+                },
+                Run { text: " and ".into(), ..Default::default() },
+                Run {
+                    text: "Target".into(),
+                    field: Some(FieldRef { kind: "ref".into(), target: "Target".into(), cached: "Target".into() }),
+                    ..Default::default()
+                },
+            ],
+        }];
         let bytes = write_docx(&document).unwrap();
         let read = read_docx(&bytes).unwrap();
         let fields: Vec<&FieldRef> = read
@@ -2618,7 +2853,9 @@ mod tests {
             .blocks
             .iter()
             .filter_map(|block| match block {
-                Block::Paragraph { runs, .. } => Some(runs.iter().filter_map(|run| run.field.as_ref()).collect::<Vec<_>>()),
+                Block::Paragraph { runs, .. } => {
+                    Some(runs.iter().filter_map(|run| run.field.as_ref()).collect::<Vec<_>>())
+                }
                 _ => None,
             })
             .flatten()
@@ -2628,4 +2865,3 @@ mod tests {
         assert!(fields.iter().any(|field| field.kind == "ref" && field.target == "Target"));
     }
 }
-

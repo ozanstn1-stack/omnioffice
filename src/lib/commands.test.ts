@@ -93,24 +93,24 @@ describe("keybinding matching", () => {
     expect(
       matchKeybinding({ key: "P", ctrlKey: true, metaKey: false, shiftKey: false, altKey: false }),
     ).toBeUndefined();
-    expect(
-      matchKeybinding({ key: "P", ctrlKey: true, metaKey: false, shiftKey: true, altKey: false }),
-    ).toBe("view.palette");
-    expect(
-      matchKeybinding({ key: "p", ctrlKey: false, metaKey: true, shiftKey: true, altKey: false }),
-    ).toBe("view.palette");
-    expect(
-      matchKeybinding({ key: "s", ctrlKey: true, metaKey: false, shiftKey: true, altKey: false }),
-    ).toBe("file.save");
-    expect(
-      matchKeybinding({ key: "ArrowDown", ctrlKey: false, metaKey: false, shiftKey: false, altKey: true }),
-    ).toBe("view.next");
+    expect(matchKeybinding({ key: "P", ctrlKey: true, metaKey: false, shiftKey: true, altKey: false })).toBe(
+      "view.palette",
+    );
+    expect(matchKeybinding({ key: "p", ctrlKey: false, metaKey: true, shiftKey: true, altKey: false })).toBe(
+      "view.palette",
+    );
+    expect(matchKeybinding({ key: "s", ctrlKey: true, metaKey: false, shiftKey: true, altKey: false })).toBe(
+      "file.save",
+    );
+    expect(matchKeybinding({ key: "ArrowDown", ctrlKey: false, metaKey: false, shiftKey: false, altKey: true })).toBe(
+      "view.next",
+    );
     expect(
       matchKeybinding({ key: "ArrowDown", ctrlKey: true, metaKey: false, shiftKey: false, altKey: true }),
     ).toBeUndefined();
-    expect(
-      matchKeybinding({ key: "+", ctrlKey: true, metaKey: false, shiftKey: false, altKey: false }),
-    ).toBe("edit.plus");
+    expect(matchKeybinding({ key: "+", ctrlKey: true, metaKey: false, shiftKey: false, altKey: false })).toBe(
+      "edit.plus",
+    );
   });
 
   it("ignores disabled commands and reports keybindings", () => {
@@ -119,9 +119,9 @@ describe("keybinding matching", () => {
     expect(
       matchKeybinding({ key: "u", ctrlKey: true, metaKey: false, shiftKey: false, altKey: false }),
     ).toBeUndefined();
-    expect(
-      matchKeybinding({ key: "k", ctrlKey: true, metaKey: false, shiftKey: false, altKey: false }),
-    ).toBe("view.on");
+    expect(matchKeybinding({ key: "k", ctrlKey: true, metaKey: false, shiftKey: false, altKey: false })).toBe(
+      "view.on",
+    );
     expect(commandKeybinding("view.on")).toBe("Ctrl+K");
     expect(commandKeybinding("missing")).toBeUndefined();
   });
@@ -146,12 +146,7 @@ describe("search", () => {
 
   it("ranks an exact title first and a fuzzy subsequence last", () => {
     defineOrganizeCommands();
-    expect(searchCommands("org").map((command) => command.id)).toEqual([
-      "exact",
-      "prefix",
-      "contains",
-      "fuzzy",
-    ]);
+    expect(searchCommands("org").map((command) => command.id)).toEqual(["exact", "prefix", "contains", "fuzzy"]);
   });
 
   it("searches the localized title and hides disabled commands", () => {
@@ -177,9 +172,6 @@ describe("search", () => {
     define({ id: "writer", titleKey: "cmd.same", category: "writer" });
     define({ id: "pdf", titleKey: "cmd.same", category: "pdf" });
     expect(searchCommands("same").map((command) => command.id)).toEqual(["pdf", "writer"]);
-    expect(searchCommands("same", { documentKind: "writer" }).map((command) => command.id)).toEqual([
-      "writer",
-      "pdf",
-    ]);
+    expect(searchCommands("same", { documentKind: "writer" }).map((command) => command.id)).toEqual(["writer", "pdf"]);
   });
 });

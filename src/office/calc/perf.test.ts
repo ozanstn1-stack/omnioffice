@@ -156,4 +156,3 @@ describe("dependency-chain performance", () => {
     300_000,
   );
 });
-

@@ -7,10 +7,7 @@ use pdfcore::progress::CancelToken;
 
 fn setup_scanned(dir: &TestDir, label: &str) -> std::path::PathBuf {
     let path = dir.path(&format!("{label}.pdf"));
-    write_doc(
-        &mut build_scanned_doc(2, "HELLO OCR 12345 MEETING NOTES", &format!("{label} scanned")),
-        &path,
-    );
+    write_doc(&mut build_scanned_doc(2, "HELLO OCR 12345 MEETING NOTES", &format!("{label} scanned")), &path);
     path
 }
 
@@ -32,16 +29,8 @@ fn ocr_searchable_pdf_adds_text_layer() {
         preprocess: OcrPreprocess { contrast: true, ..Default::default() },
         skip_text_pages: false,
     };
-    let result = ocr_pdf(
-        &input,
-        &out,
-        &options,
-        OverwritePolicy::Replace,
-        None,
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .expect("ocr runs");
+    let result = ocr_pdf(&input, &out, &options, OverwritePolicy::Replace, None, &no_progress, &CancelToken::new())
+        .expect("ocr runs");
 
     assert_eq!(result.pages_processed, 2);
     assert!(result.characters > 10, "characters: {}", result.characters);
@@ -54,10 +43,7 @@ fn ocr_searchable_pdf_adds_text_layer() {
     // The output must carry a searchable text layer.
     let text = pdfcore::render::extract_page_text(path, None, 1).unwrap_or_default();
     let normalized = text.to_uppercase();
-    assert!(
-        normalized.contains("HELLO") || normalized.contains("OCR"),
-        "text layer was: {text}"
-    );
+    assert!(normalized.contains("HELLO") || normalized.contains("OCR"), "text layer was: {text}");
 }
 
 #[test]
@@ -68,12 +54,8 @@ fn ocr_text_and_markdown_modes() {
     }
     let dir = TestDir::new();
     let input = setup_scanned(&dir, "text-mode");
-    let mut options = OcrOptions {
-        languages: vec!["eng".into()],
-        output_mode: "text".into(),
-        dpi: 200,
-        ..Default::default()
-    };
+    let mut options =
+        OcrOptions { languages: vec!["eng".into()], output_mode: "text".into(), dpi: 200, ..Default::default() };
     let result = ocr_pdf(
         &input,
         &dir.path("out.txt"),
@@ -120,16 +102,8 @@ fn ocr_reads_noisy_jpeg_scans() {
         skip_text_pages: true,
         ..Default::default()
     };
-    let result = ocr_pdf(
-        &input,
-        &out,
-        &options,
-        OverwritePolicy::Replace,
-        None,
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .expect("ocr runs on noisy scans");
+    let result = ocr_pdf(&input, &out, &options, OverwritePolicy::Replace, None, &no_progress, &CancelToken::new())
+        .expect("ocr runs on noisy scans");
     assert_eq!(result.pages_processed, 1, "contrast preprocessing must not destroy the text");
     let path = std::path::Path::new(&result.path);
     let text = pdfcore::render::extract_page_text(path, None, 1).unwrap_or_default().to_uppercase();
@@ -144,10 +118,7 @@ fn ocr_unknown_language_is_rejected() {
     }
     let dir = TestDir::new();
     let input = setup_scanned(&dir, "lang");
-    let options = OcrOptions {
-        languages: vec!["zzz".into()],
-        ..Default::default()
-    };
+    let options = OcrOptions { languages: vec!["zzz".into()], ..Default::default() };
     let result = ocr_pdf(
         &input,
         &dir.path("out.pdf"),
@@ -176,16 +147,8 @@ fn ocr_selected_pages_keep_others_original() {
         pages: vec![2],
         ..Default::default()
     };
-    let result = ocr_pdf(
-        &input,
-        &out,
-        &options,
-        OverwritePolicy::Replace,
-        None,
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .unwrap();
+    let result =
+        ocr_pdf(&input, &out, &options, OverwritePolicy::Replace, None, &no_progress, &CancelToken::new()).unwrap();
     assert_eq!(result.pages_processed, 1);
     let path = std::path::Path::new(&result.path);
     assert_eq!(page_count(path), 2);
@@ -271,11 +234,7 @@ fn ocr_auto_rotates_a_quarter_turned_scan() {
         &source,
         None,
         1,
-        &pdfcore::render::RenderOptions {
-            dpi: 150.0,
-            max_width: Some(2500),
-            max_height: Some(2500),
-        },
+        &pdfcore::render::RenderOptions { dpi: 150.0, max_width: Some(2500), max_height: Some(2500) },
     )
     .expect("render");
     let image = rendered.to_dynamic_image().expect("rgba").to_rgba8();
@@ -285,14 +244,8 @@ fn ocr_auto_rotates_a_quarter_turned_scan() {
 
     let rotated_pdf = dir.path("rotated.pdf");
     pdfcore::images::images_to_pdf(
-        &[pdfcore::images::ImageItem {
-            path: png.to_string_lossy().to_string(),
-            rotation_delta: 0,
-        }],
-        &pdfcore::images::ImageToPdfOptions {
-            page_size: "original".into(),
-            ..Default::default()
-        },
+        &[pdfcore::images::ImageItem { path: png.to_string_lossy().to_string(), rotation_delta: 0 }],
+        &pdfcore::images::ImageToPdfOptions { page_size: "original".into(), ..Default::default() },
         &rotated_pdf,
         OverwritePolicy::Replace,
         &no_progress,
@@ -304,11 +257,7 @@ fn ocr_auto_rotates_a_quarter_turned_scan() {
         languages: vec!["eng".into()],
         output_mode: "searchable_pdf".into(),
         dpi: 200,
-        preprocess: OcrPreprocess {
-            auto_rotate: true,
-            contrast: false,
-            ..Default::default()
-        },
+        preprocess: OcrPreprocess { auto_rotate: true, contrast: false, ..Default::default() },
         skip_text_pages: false,
         ..Default::default()
     };

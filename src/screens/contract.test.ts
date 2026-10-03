@@ -35,7 +35,10 @@ describe("the inspection payload and the inspector agree", () => {
     const declared = new Set<string>();
     const body = typesSource.slice(typesSource.indexOf("export interface DocumentInspection {"));
     for (const match of body.matchAll(/^ {2}([A-Za-z0-9]+)\??:/gm)) declared.add(match[1]);
-    expect(keys.filter((key) => !declared.has(key)), "DocumentInspection is missing fields the backend sends").toEqual([]);
+    expect(
+      keys.filter((key) => !declared.has(key)),
+      "DocumentInspection is missing fields the backend sends",
+    ).toEqual([]);
   });
 
   it("uses every field the backend sends", () => {
@@ -50,7 +53,10 @@ describe("the inspection payload and the inspector agree", () => {
 
   it("does not read fields the backend never sends", () => {
     const read = [...new Set([...inspectSource.matchAll(/report\.([A-Za-z0-9]+)/g)].map((match) => match[1]))];
-    expect(read.filter((key) => !keys.includes(key)), "the inspector reads fields that are not in the payload").toEqual([]);
+    expect(
+      read.filter((key) => !keys.includes(key)),
+      "the inspector reads fields that are not in the payload",
+    ).toEqual([]);
   });
 
   it("captured documents that exercise fonts, images and findings", () => {

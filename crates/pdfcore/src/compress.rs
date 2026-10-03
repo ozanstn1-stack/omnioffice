@@ -72,11 +72,7 @@ impl CompressOptions {
             "low" => (200, 78, self.grayscale),
             "medium" => (150, 60, self.grayscale),
             "high" => (110, 45, self.grayscale),
-            _ => (
-                self.dpi.clamp(36, 600),
-                self.jpeg_quality.clamp(1, 100),
-                self.grayscale,
-            ),
+            _ => (self.dpi.clamp(36, 600), self.jpeg_quality.clamp(1, 100), self.grayscale),
         }
     }
 }
@@ -142,16 +138,9 @@ pub fn estimate_compression(
         return Err(PdfError::InvalidPdf("document has no pages".into()));
     }
     let (dpi, quality, grayscale) = options.effective();
-    let sample_indices: Vec<u32> = if page_count <= 2 {
-        (1..=page_count).collect()
-    } else {
-        vec![1, page_count / 2, page_count]
-    };
-    let render_options = RenderOptions {
-        dpi: dpi as f32,
-        max_width: Some(8000),
-        max_height: Some(8000),
-    };
+    let sample_indices: Vec<u32> =
+        if page_count <= 2 { (1..=page_count).collect() } else { vec![1, page_count / 2, page_count] };
+    let render_options = RenderOptions { dpi: dpi as f32, max_width: Some(8000), max_height: Some(8000) };
     let mut total_sample_bytes: u64 = 0;
     for page in &sample_indices {
         let rendered = render::render_page(input, password, *page, &render_options)?;
@@ -161,9 +150,7 @@ pub fn estimate_compression(
     let avg = total_sample_bytes / sample_indices.len() as u64;
     // Rough per-page PDF overhead (xref, page dict, resources).
     let overhead_per_page: u64 = 900;
-    let estimated = avg.saturating_mul(page_count as u64)
-        + overhead_per_page * page_count as u64
-        + 4096;
+    let estimated = avg.saturating_mul(page_count as u64) + overhead_per_page * page_count as u64 + 4096;
     Ok(CompressEstimate {
         original_bytes,
         estimated_bytes: estimated,
@@ -219,11 +206,7 @@ pub fn compress_pdf(
     if page_count == 0 {
         return Err(PdfError::InvalidPdf("document has no pages".into()));
     }
-    let render_options = RenderOptions {
-        dpi: dpi as f32,
-        max_width: Some(8000),
-        max_height: Some(8000),
-    };
+    let render_options = RenderOptions { dpi: dpi as f32, max_width: Some(8000), max_height: Some(8000) };
 
     let mut doc = Document::new();
     doc.version = "1.6".to_string();
@@ -231,20 +214,10 @@ pub fn compress_pdf(
 
     for (index, geometry) in geometries.iter().enumerate() {
         cancel.check()?;
-        progress(ProgressEvent::new(
-            "compress.render",
-            index as u64,
-            page_count as u64,
-        ));
+        progress(ProgressEvent::new("compress.render", index as u64, page_count as u64));
         let rendered = render::render_page(input, password, geometry.page, &render_options)?;
         let jpeg = images::encode_image(&rendered, ImageFormat::Jpeg, quality, grayscale)?;
-        let xobject_id = add_jpeg_image_xobject(
-            &mut doc,
-            rendered.width,
-            rendered.height,
-            jpeg,
-            grayscale,
-        )?;
+        let xobject_id = add_jpeg_image_xobject(&mut doc, rendered.width, rendered.height, jpeg, grayscale)?;
         let page_w = geometry.display_width_pt.max(1.0);
         let page_h = geometry.display_height_pt.max(1.0);
         let page_id = doc.add_object(Object::Dictionary(dictionary! {
@@ -320,10 +293,6 @@ pub fn render_for_analysis(
         input,
         password,
         page,
-        &RenderOptions {
-            dpi: dpi as f32,
-            max_width: Some(8000),
-            max_height: Some(8000),
-        },
+        &RenderOptions { dpi: dpi as f32, max_width: Some(8000), max_height: Some(8000) },
     )
 }

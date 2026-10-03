@@ -57,42 +57,78 @@ export function NotesScreen() {
     return notes
       .filter((note) => (showArchived ? note.archived : !note.archived))
       .filter((note) => (folderFilter ? note.folderId === folderFilter : true))
-      .filter((note) => (query ? `${note.title} ${note.body} ${note.tags.join(" ")}`.toLowerCase().includes(query) : true))
+      .filter((note) =>
+        query ? `${note.title} ${note.body} ${note.tags.join(" ")}`.toLowerCase().includes(query) : true,
+      )
       .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
   }, [notes, search, folderFilter, showArchived]);
 
   const active = notes.find((note) => note.id === activeId) ?? filtered[0] ?? null;
 
   return (
-    <Screen title={t("notes.title")} subtitle={t("notes.subtitle")} actions={
-      <div className="row">
-        <button type="button" className="btn btn-soft" onClick={() => addFolder(window.prompt(t("notes.folderName")) ?? "Folder")}>
-          <FolderPlus size={15} /> {t("notes.newFolder")}
-        </button>
-        <button type="button" className="btn btn-primary" onClick={() => setActiveId(create().id)}>
-          <Plus size={15} /> {t("notes.newNote")}
-        </button>
-      </div>
-    }>
+    <Screen
+      title={t("notes.title")}
+      subtitle={t("notes.subtitle")}
+      actions={
+        <div className="row">
+          <button
+            type="button"
+            className="btn btn-soft"
+            onClick={() => addFolder(window.prompt(t("notes.folderName")) ?? "Folder")}
+          >
+            <FolderPlus size={15} /> {t("notes.newFolder")}
+          </button>
+          <button type="button" className="btn btn-primary" onClick={() => setActiveId(create().id)}>
+            <Plus size={15} /> {t("notes.newNote")}
+          </button>
+        </div>
+      }
+    >
       <div className="notes-layout">
         <div className="notes-sidebar card">
-          <input className="text-input" placeholder={t("notes.searchPlaceholder")} value={search} onChange={(event) => setSearch(event.target.value)} />
+          <input
+            className="text-input"
+            placeholder={t("notes.searchPlaceholder")}
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
           <div className="notes-filters">
-            <button type="button" className={`chip${folderFilter === null && !showArchived ? " is-active" : ""}`} onClick={() => { setFolderFilter(null); setShowArchived(false); }}>
+            <button
+              type="button"
+              className={`chip${folderFilter === null && !showArchived ? " is-active" : ""}`}
+              onClick={() => {
+                setFolderFilter(null);
+                setShowArchived(false);
+              }}
+            >
               {t("notes.all")}
             </button>
             {folders.map((folder) => (
-              <button key={folder.id} type="button" className={`chip${folderFilter === folder.id ? " is-active" : ""}`} onClick={() => setFolderFilter(folder.id)}>
+              <button
+                key={folder.id}
+                type="button"
+                className={`chip${folderFilter === folder.id ? " is-active" : ""}`}
+                onClick={() => setFolderFilter(folder.id)}
+              >
                 {folder.name}
               </button>
             ))}
-            <button type="button" className={`chip${showArchived ? " is-active" : ""}`} onClick={() => setShowArchived(true)}>
+            <button
+              type="button"
+              className={`chip${showArchived ? " is-active" : ""}`}
+              onClick={() => setShowArchived(true)}
+            >
               <Archive size={12} /> {t("notes.archived")}
             </button>
           </div>
           <div className="notes-list">
             {filtered.map((note) => (
-              <button key={note.id} type="button" className={`note-item${active?.id === note.id ? " is-active" : ""}`} onClick={() => setActiveId(note.id)}>
+              <button
+                key={note.id}
+                type="button"
+                className={`note-item${active?.id === note.id ? " is-active" : ""}`}
+                onClick={() => setActiveId(note.id)}
+              >
                 <div className="row">
                   <strong>{note.title || t("notes.untitled")}</strong>
                   <span className="spacer" />
@@ -109,22 +145,52 @@ export function NotesScreen() {
           {active ? (
             <>
               <div className="row note-toolbar">
-                <input className="note-title" value={active.title} onChange={(event) => update(active.id, { title: event.target.value })} />
-                <button type="button" className={`icon-btn${active.pinned ? " is-on" : ""}`} title={t("notes.pin")} onClick={() => update(active.id, { pinned: !active.pinned })}>
+                <input
+                  className="note-title"
+                  value={active.title}
+                  onChange={(event) => update(active.id, { title: event.target.value })}
+                />
+                <button
+                  type="button"
+                  className={`icon-btn${active.pinned ? " is-on" : ""}`}
+                  title={t("notes.pin")}
+                  onClick={() => update(active.id, { pinned: !active.pinned })}
+                >
                   <Pin size={14} />
                 </button>
-                <button type="button" className={`icon-btn${active.favorite ? " is-on" : ""}`} title={t("notes.favorite")} onClick={() => update(active.id, { favorite: !active.favorite })}>
+                <button
+                  type="button"
+                  className={`icon-btn${active.favorite ? " is-on" : ""}`}
+                  title={t("notes.favorite")}
+                  onClick={() => update(active.id, { favorite: !active.favorite })}
+                >
                   <Star size={14} />
                 </button>
-                <button type="button" className="icon-btn" title={t("notes.archive")} onClick={() => update(active.id, { archived: !active.archived })}>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  title={t("notes.archive")}
+                  onClick={() => update(active.id, { archived: !active.archived })}
+                >
                   <Archive size={14} />
                 </button>
-                <button type="button" className="icon-btn" title={t("common.delete")} onClick={() => { remove(active.id); setActiveId(null); }}>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  title={t("common.delete")}
+                  onClick={() => {
+                    remove(active.id);
+                    setActiveId(null);
+                  }}
+                >
                   <Trash2 size={14} />
                 </button>
               </div>
               <div className="row note-meta">
-                <select value={active.folderId ?? ""} onChange={(event) => update(active.id, { folderId: event.target.value || null })}>
+                <select
+                  value={active.folderId ?? ""}
+                  onChange={(event) => update(active.id, { folderId: event.target.value || null })}
+                >
                   <option value="">{t("notes.noFolder")}</option>
                   {folders.map((folder) => (
                     <option key={folder.id} value={folder.id}>
@@ -135,10 +201,22 @@ export function NotesScreen() {
                 <input
                   placeholder={t("notes.tagsPlaceholder")}
                   value={active.tags.join(", ")}
-                  onChange={(event) => update(active.id, { tags: event.target.value.split(",").map((tag) => tag.trim()).filter(Boolean) })}
+                  onChange={(event) =>
+                    update(active.id, {
+                      tags: event.target.value
+                        .split(",")
+                        .map((tag) => tag.trim())
+                        .filter(Boolean),
+                    })
+                  }
                 />
               </div>
-              <textarea className="note-body" value={active.body} placeholder={t("notes.bodyPlaceholder")} onChange={(event) => update(active.id, { body: event.target.value })} />
+              <textarea
+                className="note-body"
+                value={active.body}
+                placeholder={t("notes.bodyPlaceholder")}
+                onChange={(event) => update(active.id, { body: event.target.value })}
+              />
             </>
           ) : (
             <div className="empty-state">
@@ -195,13 +273,19 @@ export function PlannerScreen() {
       subtitle={t("planner.subtitle")}
       actions={
         <div className="row">
-          <button type="button" className="btn btn-soft" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>
+          <button
+            type="button"
+            className="btn btn-soft"
+            onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+          >
             ‹
           </button>
-          <strong>
-            {month.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
-          </strong>
-          <button type="button" className="btn btn-soft" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>
+          <strong>{month.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</strong>
+          <button
+            type="button"
+            className="btn btn-soft"
+            onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+          >
             ›
           </button>
         </div>
@@ -238,18 +322,45 @@ export function PlannerScreen() {
         <div className="card planner-side">
           <h3>{selectedDate}</h3>
           <div className="row">
-            <input className="text-input" placeholder={t("planner.addTask")} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && draft.trim()) { add(selectedDate, draft.trim()); setDraft(""); } }} />
-            <button type="button" className="btn btn-primary" onClick={() => { if (draft.trim()) { add(selectedDate, draft.trim()); setDraft(""); } }}>
+            <input
+              className="text-input"
+              placeholder={t("planner.addTask")}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && draft.trim()) {
+                  add(selectedDate, draft.trim());
+                  setDraft("");
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                if (draft.trim()) {
+                  add(selectedDate, draft.trim());
+                  setDraft("");
+                }
+              }}
+            >
               <Plus size={15} />
             </button>
           </div>
           <div className="stack">
             {tasksFor(selectedDate).map((task) => (
               <div key={task.id} className="row task-row">
-                <input type="checkbox" checked={task.done} onChange={(event) => update(task.id, { done: event.target.checked })} />
+                <input
+                  type="checkbox"
+                  checked={task.done}
+                  onChange={(event) => update(task.id, { done: event.target.checked })}
+                />
                 <span className={task.done ? "is-done" : ""}>{task.title}</span>
                 <span className="spacer" />
-                <select value={task.priority} onChange={(event) => update(task.id, { priority: event.target.value as "low" | "normal" | "high" })}>
+                <select
+                  value={task.priority}
+                  onChange={(event) => update(task.id, { priority: event.target.value as "low" | "normal" | "high" })}
+                >
                   <option value="low">{t("planner.low")}</option>
                   <option value="normal">{t("planner.normal")}</option>
                   <option value="high">{t("planner.high")}</option>
@@ -299,13 +410,25 @@ export function DataScreen() {
       if (path.toLowerCase().endsWith(".json")) {
         const parsed = JSON.parse(text) as Array<Record<string, string>>;
         const columns = Object.keys(parsed[0] ?? {});
-        const sheet = create(path.split(/[\\/]/).pop()?.replace(/\.json$/i, "") ?? "Imported");
+        const sheet = create(
+          path
+            .split(/[\\/]/)
+            .pop()
+            ?.replace(/\.json$/i, "") ?? "Imported",
+        );
         update(sheet.id, { columns, rows: parsed.map((row) => columns.map((column) => String(row[column] ?? ""))) });
         setActiveId(sheet.id);
       } else {
         const lines = text.split(/\r?\n/).filter((line) => line.trim() !== "");
-        const cells = lines.map((line) => line.split(line.includes(";") ? ";" : ",").map((cell) => cell.replace(/^"|"$/g, "")));
-        const sheet = create(path.split(/[\\/]/).pop()?.replace(/\.csv$/i, "") ?? "Imported");
+        const cells = lines.map((line) =>
+          line.split(line.includes(";") ? ";" : ",").map((cell) => cell.replace(/^"|"$/g, "")),
+        );
+        const sheet = create(
+          path
+            .split(/[\\/]/)
+            .pop()
+            ?.replace(/\.csv$/i, "") ?? "Imported",
+        );
         update(sheet.id, { columns: cells[0] ?? [], rows: cells.slice(1) });
         setActiveId(sheet.id);
       }
@@ -318,12 +441,25 @@ export function DataScreen() {
   const exportFile = async (format: "csv" | "json") => {
     if (!active) return;
     try {
-      const path = await saveDialog({ defaultPath: `${active.name}.${format}`, filters: [{ name: format.toUpperCase(), extensions: [format] }] });
+      const path = await saveDialog({
+        defaultPath: `${active.name}.${format}`,
+        filters: [{ name: format.toUpperCase(), extensions: [format] }],
+      });
       if (!path) return;
       const content =
         format === "csv"
-          ? [active.columns, ...active.rows].map((row) => row.map((cell) => (/[",;\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell)).join(",")).join("\r\n")
-          : JSON.stringify(active.rows.map((row) => Object.fromEntries(active.columns.map((column, index) => [column, row[index] ?? ""]))), null, 2);
+          ? [active.columns, ...active.rows]
+              .map((row) =>
+                row.map((cell) => (/[",;\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell)).join(","),
+              )
+              .join("\r\n")
+          : JSON.stringify(
+              active.rows.map((row) =>
+                Object.fromEntries(active.columns.map((column, index) => [column, row[index] ?? ""])),
+              ),
+              null,
+              2,
+            );
       await writeFile(path, new TextEncoder().encode(content));
       useToasts.getState().push({ kind: "success", title: t("data.exported"), detail: path });
     } catch (error) {
@@ -355,7 +491,13 @@ export function DataScreen() {
       <div className="data-layout">
         <div className="card data-list">
           {sheets.map((sheet) => (
-            <button key={sheet.id} type="button" className={`note-item${active?.id === sheet.id ? " is-active" : ""}`} onClick={() => setActiveId(sheet.id)} aria-label={sheet.name}>
+            <button
+              key={sheet.id}
+              type="button"
+              className={`note-item${active?.id === sheet.id ? " is-active" : ""}`}
+              onClick={() => setActiveId(sheet.id)}
+              aria-label={sheet.name}
+            >
               <div className="row">
                 <strong>{sheet.name}</strong>
                 <span className="spacer" />
@@ -369,8 +511,16 @@ export function DataScreen() {
           {active ? (
             <>
               <div className="row">
-                <input className="note-title" value={active.name} onChange={(event) => update(active.id, { name: event.target.value })} />
-                <button type="button" className="btn btn-soft" onClick={() => update(active.id, { rows: [...active.rows, active.columns.map(() => "")] })}>
+                <input
+                  className="note-title"
+                  value={active.name}
+                  onChange={(event) => update(active.id, { name: event.target.value })}
+                />
+                <button
+                  type="button"
+                  className="btn btn-soft"
+                  onClick={() => update(active.id, { rows: [...active.rows, active.columns.map(() => "")] })}
+                >
                   <Plus size={14} /> {t("data.addRow")}
                 </button>
                 <button
@@ -378,12 +528,24 @@ export function DataScreen() {
                   className="btn btn-soft"
                   onClick={() => {
                     const column = window.prompt(t("data.columnName"));
-                    if (column) update(active.id, { columns: [...active.columns, column], rows: active.rows.map((row) => [...row, ""]) });
+                    if (column)
+                      update(active.id, {
+                        columns: [...active.columns, column],
+                        rows: active.rows.map((row) => [...row, ""]),
+                      });
                   }}
                 >
                   <Plus size={14} /> {t("data.addColumn")}
                 </button>
-                <button type="button" className="btn btn-soft" onClick={() => { remove(active.id); setActiveId(null); }} aria-label={t("data.deleteTable")}>
+                <button
+                  type="button"
+                  className="btn btn-soft"
+                  onClick={() => {
+                    remove(active.id);
+                    setActiveId(null);
+                  }}
+                  aria-label={t("data.deleteTable")}
+                >
                   <Trash2 size={14} />
                 </button>
               </div>
@@ -391,13 +553,21 @@ export function DataScreen() {
                 <table className="table data-grid">
                   <thead>
                     <tr>
-                      <th><span className="sr-only">{t("data.row")}</span></th>
+                      <th>
+                        <span className="sr-only">{t("data.row")}</span>
+                      </th>
                       {active.columns.map((column, columnIndex) => (
                         <th key={columnIndex}>
                           <input
                             aria-label={t("data.columnName", { index: columnIndex + 1 })}
                             value={column}
-                            onChange={(event) => update(active.id, { columns: active.columns.map((candidate, index) => (index === columnIndex ? event.target.value : candidate)) })}
+                            onChange={(event) =>
+                              update(active.id, {
+                                columns: active.columns.map((candidate, index) =>
+                                  index === columnIndex ? event.target.value : candidate,
+                                ),
+                              })
+                            }
                           />
                         </th>
                       ))}
@@ -414,7 +584,13 @@ export function DataScreen() {
                               value={row[columnIndex] ?? ""}
                               onChange={(event) =>
                                 update(active.id, {
-                                  rows: active.rows.map((candidate, index) => (index === rowIndex ? candidate.map((cell, cellIndex) => (cellIndex === columnIndex ? event.target.value : cell)) : candidate)),
+                                  rows: active.rows.map((candidate, index) =>
+                                    index === rowIndex
+                                      ? candidate.map((cell, cellIndex) =>
+                                          cellIndex === columnIndex ? event.target.value : cell,
+                                        )
+                                      : candidate,
+                                  ),
                                 })
                               }
                             />
@@ -446,7 +622,11 @@ export function DrawScreen() {
   const [tool, setTool] = useState<DrawDocument["elements"][number]["kind"]>("rect");
   const [color, setColor] = useState("#2563eb");
   const [stroke, setStroke] = useState("#1e293b");
-  const [drawing, setDrawing] = useState<{ startX: number; startY: number; points: Array<{ x: number; y: number }> } | null>(null);
+  const [drawing, setDrawing] = useState<{
+    startX: number;
+    startY: number;
+    points: Array<{ x: number; y: number }>;
+  } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -456,7 +636,14 @@ export function DrawScreen() {
   const active = documents.find((document) => document.id === activeId) ?? documents[0] ?? null;
 
   const createDocument = () => {
-    const document: DrawDocument = { id: uid(), name: `Drawing ${documents.length + 1}`, width: 800, height: 520, elements: [], updatedAt: new Date().toISOString() };
+    const document: DrawDocument = {
+      id: uid(),
+      name: `Drawing ${documents.length + 1}`,
+      width: 800,
+      height: 520,
+      elements: [],
+      updatedAt: new Date().toISOString(),
+    };
     save(document);
     setActiveId(document.id);
   };
@@ -498,21 +685,44 @@ export function DrawScreen() {
     const left = Math.min(x, drawing.startX);
     const top = Math.min(y, drawing.startY);
     if (tool === "path") {
-      if (drawing.points.length > 2) addElement({ id: uid(), kind: "path", x: 0, y: 0, w: 0, h: 0, points: drawing.points, stroke, strokeWidth: 2 });
+      if (drawing.points.length > 2)
+        addElement({ id: uid(), kind: "path", x: 0, y: 0, w: 0, h: 0, points: drawing.points, stroke, strokeWidth: 2 });
     } else if (tool === "line" || tool === "arrow") {
-      addElement({ id: uid(), kind: tool, x: drawing.startX, y: drawing.startY, w: x - drawing.startX, h: y - drawing.startY, stroke, strokeWidth: 2 });
+      addElement({
+        id: uid(),
+        kind: tool,
+        x: drawing.startX,
+        y: drawing.startY,
+        w: x - drawing.startX,
+        h: y - drawing.startY,
+        stroke,
+        strokeWidth: 2,
+      });
     } else if (tool === "text") {
       const text = window.prompt(t("draw.textPrompt")) ?? "Text";
       addElement({ id: uid(), kind: "text", x: left, y: top + 18, w: Math.max(80, width), h: 28, text, fill: color });
     } else {
-      addElement({ id: uid(), kind: tool, x: left, y: top, w: Math.max(6, width), h: Math.max(6, height), fill: tool === "rect" || tool === "ellipse" ? color : null, stroke: tool === "rect" || tool === "ellipse" ? undefined : stroke, strokeWidth: 2 });
+      addElement({
+        id: uid(),
+        kind: tool,
+        x: left,
+        y: top,
+        w: Math.max(6, width),
+        h: Math.max(6, height),
+        fill: tool === "rect" || tool === "ellipse" ? color : null,
+        stroke: tool === "rect" || tool === "ellipse" ? undefined : stroke,
+        strokeWidth: 2,
+      });
     }
     setDrawing(null);
   };
 
   const exportSvg = async () => {
     if (!active) return;
-    const path = await saveDialog({ defaultPath: `${active.name}.svg`, filters: [{ name: "SVG", extensions: ["svg"] }] });
+    const path = await saveDialog({
+      defaultPath: `${active.name}.svg`,
+      filters: [{ name: "SVG", extensions: ["svg"] }],
+    });
     if (!path) return;
     await writeFile(path, new TextEncoder().encode(buildSvg(active)));
     useToasts.getState().push({ kind: "success", title: t("draw.exported"), detail: path });
@@ -520,7 +730,10 @@ export function DrawScreen() {
 
   const exportPng = async () => {
     if (!active) return;
-    const path = await saveDialog({ defaultPath: `${active.name}.png`, filters: [{ name: "PNG", extensions: ["png"] }] });
+    const path = await saveDialog({
+      defaultPath: `${active.name}.png`,
+      filters: [{ name: "PNG", extensions: ["png"] }],
+    });
     if (!path) return;
     try {
       const svg = buildSvg(active);
@@ -552,7 +765,10 @@ export function DrawScreen() {
 
   const exportPdf = async () => {
     if (!active) return;
-    const path = await saveDialog({ defaultPath: `${active.name}.pdf`, filters: [{ name: "PDF", extensions: ["pdf"] }] });
+    const path = await saveDialog({
+      defaultPath: `${active.name}.pdf`,
+      filters: [{ name: "PDF", extensions: ["pdf"] }],
+    });
     if (!path) return;
     try {
       // Render the canvas to a temporary PNG, then wrap it into a PDF page.
@@ -591,7 +807,10 @@ export function DrawScreen() {
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
     URL.revokeObjectURL(url);
     const base64 = canvas.toDataURL("image/png").split(",")[1];
-    await writeFile(target, Uint8Array.from(atob(base64), (char) => char.charCodeAt(0)));
+    await writeFile(
+      target,
+      Uint8Array.from(atob(base64), (char) => char.charCodeAt(0)),
+    );
   };
 
   return (
@@ -618,7 +837,12 @@ export function DrawScreen() {
       <div className="draw-layout">
         <div className="card draw-toolbar">
           {(["rect", "ellipse", "line", "arrow", "text", "path"] as const).map((candidate) => (
-            <button key={candidate} type="button" className={`chip${tool === candidate ? " is-active" : ""}`} onClick={() => setTool(candidate)}>
+            <button
+              key={candidate}
+              type="button"
+              className={`chip${tool === candidate ? " is-active" : ""}`}
+              onClick={() => setTool(candidate)}
+            >
               {t(`draw.tool_${candidate}`)}
             </button>
           ))}
@@ -646,7 +870,14 @@ export function DrawScreen() {
               {active.elements.map((element) => (
                 <DrawElementView key={element.id} element={element} />
               ))}
-              {drawing && tool === "path" ? <polyline points={drawing.points.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke={stroke} strokeWidth={2} /> : null}
+              {drawing && tool === "path" ? (
+                <polyline
+                  points={drawing.points.map((point) => `${point.x},${point.y}`).join(" ")}
+                  fill="none"
+                  stroke={stroke}
+                  strokeWidth={2}
+                />
+              ) : null}
             </svg>
           ) : (
             <div className="empty-state">
@@ -661,7 +892,11 @@ export function DrawScreen() {
         <div className="card draw-list">
           {documents.map((document) => (
             <div key={document.id} className="row">
-              <button type="button" className={`note-item${active?.id === document.id ? " is-active" : ""}`} onClick={() => setActiveId(document.id)}>
+              <button
+                type="button"
+                className={`note-item${active?.id === document.id ? " is-active" : ""}`}
+                onClick={() => setActiveId(document.id)}
+              >
                 {document.name}
               </button>
               <button type="button" className="icon-btn" onClick={() => remove(document.id)}>
@@ -676,12 +911,42 @@ export function DrawScreen() {
 }
 
 function DrawElementView({ element }: { element: DrawDocument["elements"][number] }) {
-  if (element.kind === "rect") return <rect x={element.x} y={element.y} width={element.w} height={element.h} fill={element.fill ?? "none"} stroke={element.stroke === null ? undefined : element.stroke} strokeWidth={element.strokeWidth ?? 0} rx={6} />;
-  if (element.kind === "ellipse") return <ellipse cx={element.x + element.w / 2} cy={element.y + element.h / 2} rx={element.w / 2} ry={element.h / 2} fill={element.fill ?? "none"} stroke={element.stroke === null ? undefined : element.stroke} strokeWidth={element.strokeWidth ?? 0} />;
+  if (element.kind === "rect")
+    return (
+      <rect
+        x={element.x}
+        y={element.y}
+        width={element.w}
+        height={element.h}
+        fill={element.fill ?? "none"}
+        stroke={element.stroke === null ? undefined : element.stroke}
+        strokeWidth={element.strokeWidth ?? 0}
+        rx={6}
+      />
+    );
+  if (element.kind === "ellipse")
+    return (
+      <ellipse
+        cx={element.x + element.w / 2}
+        cy={element.y + element.h / 2}
+        rx={element.w / 2}
+        ry={element.h / 2}
+        fill={element.fill ?? "none"}
+        stroke={element.stroke === null ? undefined : element.stroke}
+        strokeWidth={element.strokeWidth ?? 0}
+      />
+    );
   if (element.kind === "line" || element.kind === "arrow")
     return (
       <g>
-        <line x1={element.x} y1={element.y} x2={element.x + element.w} y2={element.y + element.h} stroke={element.stroke ?? "#1e293b"} strokeWidth={element.strokeWidth ?? 2} />
+        <line
+          x1={element.x}
+          y1={element.y}
+          x2={element.x + element.w}
+          y2={element.y + element.h}
+          stroke={element.stroke ?? "#1e293b"}
+          strokeWidth={element.strokeWidth ?? 2}
+        />
         {element.kind === "arrow" ? (
           <polygon
             points={`${element.x + element.w},${element.y + element.h} ${element.x + element.w - 10},${element.y + element.h - 4} ${element.x + element.w - 4},${element.y + element.h - 10}`}
@@ -690,19 +955,37 @@ function DrawElementView({ element }: { element: DrawDocument["elements"][number
         ) : null}
       </g>
     );
-  if (element.kind === "text") return <text x={element.x} y={element.y} fill={element.fill ?? "#1e293b"} fontSize={18}>{element.text}</text>;
-  if (element.kind === "path" && element.points) return <polyline points={element.points.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke={element.stroke ?? "#1e293b"} strokeWidth={element.strokeWidth ?? 2} />;
+  if (element.kind === "text")
+    return (
+      <text x={element.x} y={element.y} fill={element.fill ?? "#1e293b"} fontSize={18}>
+        {element.text}
+      </text>
+    );
+  if (element.kind === "path" && element.points)
+    return (
+      <polyline
+        points={element.points.map((point) => `${point.x},${point.y}`).join(" ")}
+        fill="none"
+        stroke={element.stroke ?? "#1e293b"}
+        strokeWidth={element.strokeWidth ?? 2}
+      />
+    );
   return null;
 }
 
 function buildSvg(document: DrawDocument): string {
   const elements = document.elements
     .map((element) => {
-      if (element.kind === "rect") return `<rect x="${element.x}" y="${element.y}" width="${element.w}" height="${element.h}" fill="${element.fill ?? "none"}" stroke="${element.stroke ?? "none"}" stroke-width="${element.strokeWidth ?? 0}" rx="6"/>`;
-      if (element.kind === "ellipse") return `<ellipse cx="${element.x + element.w / 2}" cy="${element.y + element.h / 2}" rx="${element.w / 2}" ry="${element.h / 2}" fill="${element.fill ?? "none"}" stroke="${element.stroke ?? "none"}" stroke-width="${element.strokeWidth ?? 0}"/>`;
-      if (element.kind === "line" || element.kind === "arrow") return `<line x1="${element.x}" y1="${element.y}" x2="${element.x + element.w}" y2="${element.y + element.h}" stroke="${element.stroke ?? "#1e293b"}" stroke-width="${element.strokeWidth ?? 2}"/>`;
-      if (element.kind === "text") return `<text x="${element.x}" y="${element.y}" fill="${element.fill ?? "#1e293b"}" font-size="18" font-family="Segoe UI, sans-serif">${escapeXml(element.text ?? "")}</text>`;
-      if (element.kind === "path" && element.points) return `<polyline points="${element.points.map((point) => `${point.x},${point.y}`).join(" ")}" fill="none" stroke="${element.stroke ?? "#1e293b"}" stroke-width="${element.strokeWidth ?? 2}"/>`;
+      if (element.kind === "rect")
+        return `<rect x="${element.x}" y="${element.y}" width="${element.w}" height="${element.h}" fill="${element.fill ?? "none"}" stroke="${element.stroke ?? "none"}" stroke-width="${element.strokeWidth ?? 0}" rx="6"/>`;
+      if (element.kind === "ellipse")
+        return `<ellipse cx="${element.x + element.w / 2}" cy="${element.y + element.h / 2}" rx="${element.w / 2}" ry="${element.h / 2}" fill="${element.fill ?? "none"}" stroke="${element.stroke ?? "none"}" stroke-width="${element.strokeWidth ?? 0}"/>`;
+      if (element.kind === "line" || element.kind === "arrow")
+        return `<line x1="${element.x}" y1="${element.y}" x2="${element.x + element.w}" y2="${element.y + element.h}" stroke="${element.stroke ?? "#1e293b"}" stroke-width="${element.strokeWidth ?? 2}"/>`;
+      if (element.kind === "text")
+        return `<text x="${element.x}" y="${element.y}" fill="${element.fill ?? "#1e293b"}" font-size="18" font-family="Segoe UI, sans-serif">${escapeXml(element.text ?? "")}</text>`;
+      if (element.kind === "path" && element.points)
+        return `<polyline points="${element.points.map((point) => `${point.x},${point.y}`).join(" ")}" fill="none" stroke="${element.stroke ?? "#1e293b"}" stroke-width="${element.strokeWidth ?? 2}"/>`;
       return "";
     })
     .join("\n");
@@ -726,7 +1009,12 @@ export function TemplatesScreen() {
     <Screen title={t("templates.title")} subtitle={t("templates.subtitle")}>
       <div className="row">
         {(["all", "writer", "calc", "impress"] as const).map((candidate) => (
-          <button key={candidate} type="button" className={`chip${filter === candidate ? " is-active" : ""}`} onClick={() => setFilter(candidate)}>
+          <button
+            key={candidate}
+            type="button"
+            className={`chip${filter === candidate ? " is-active" : ""}`}
+            onClick={() => setFilter(candidate)}
+          >
             {t(`templates.${candidate}`)}
           </button>
         ))}
@@ -740,7 +1028,13 @@ export function TemplatesScreen() {
             onClick={() => create(template.kind, template.name, template.build() as never)}
           >
             <span className={`template-icon kind-${template.kind}`}>
-              {template.kind === "writer" ? <FileText size={20} /> : template.kind === "calc" ? <FileSpreadsheet size={20} /> : <ImageIcon size={20} />}
+              {template.kind === "writer" ? (
+                <FileText size={20} />
+              ) : template.kind === "calc" ? (
+                <FileSpreadsheet size={20} />
+              ) : (
+                <ImageIcon size={20} />
+              )}
             </span>
             <strong>{template.name}</strong>
             <span className="muted">{template.description}</span>
@@ -759,7 +1053,18 @@ export function ConverterScreen() {
   const t = useT();
   const [files, setFiles] = useState<string[]>([]);
   const [target, setTarget] = useState("pdf");
-  const [targets, setTargets] = useState<string[]>(["pdf", "docx", "xlsx", "pptx", "odt", "ods", "odp", "csv", "html", "oswk"]);
+  const [targets, setTargets] = useState<string[]>([
+    "pdf",
+    "docx",
+    "xlsx",
+    "pptx",
+    "odt",
+    "ods",
+    "odp",
+    "csv",
+    "html",
+    "oswk",
+  ]);
   const [outputDir, setOutputDir] = useState("");
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<Array<{ input: string; output: string; ok: boolean; detail: string }>>([]);
@@ -817,7 +1122,10 @@ export function ConverterScreen() {
     for (const input of files) {
       const base = input.replace(/\.[^.\\/]+$/, "");
       const directory = outputDir || input.replace(/[\\/][^\\/]+$/, "");
-      const output = `${base}.${effectiveTarget === "html" ? "html" : effectiveTarget}`.replace(/^.*[\\/]/, `${directory}/`);
+      const output = `${base}.${effectiveTarget === "html" ? "html" : effectiveTarget}`.replace(
+        /^.*[\\/]/,
+        `${directory}/`,
+      );
       try {
         const info = await api.convertFile(input, output);
         converted.push({ input, output: info.output, ok: true, detail: info.warnings.join(" ") });
@@ -861,7 +1169,11 @@ export function ConverterScreen() {
           </label>
           <label className="field grow">
             <span>{t("converter.outputFolder")}</span>
-            <input value={outputDir} placeholder={t("converter.sameFolder")} onChange={(event) => setOutputDir(event.target.value)} />
+            <input
+              value={outputDir}
+              placeholder={t("converter.sameFolder")}
+              onChange={(event) => setOutputDir(event.target.value)}
+            />
           </label>
         </div>
         <ul className="file-pick-list">
@@ -895,7 +1207,13 @@ export function ConverterScreen() {
 export function CleanerScreen() {
   const t = useT();
   const [path, setPath] = useState("");
-  const [options, setOptions] = useState({ removeMetadata: true, removeComments: false, optimizeImages: true, imageMaxPixels: 1600, imageQuality: 82 });
+  const [options, setOptions] = useState({
+    removeMetadata: true,
+    removeComments: false,
+    optimizeImages: true,
+    imageMaxPixels: 1600,
+    imageQuality: 82,
+  });
   const [footprint, setFootprint] = useState<number | null>(null);
   const [result, setResult] = useState<api.CleanResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -903,7 +1221,10 @@ export function CleanerScreen() {
   void setShowCleaner;
 
   const pick = async () => {
-    const selection = await openDialog({ multiple: false, filters: [{ name: "Office documents", extensions: ["docx", "xlsx", "pptx", "odt", "ods", "odp"] }] });
+    const selection = await openDialog({
+      multiple: false,
+      filters: [{ name: "Office documents", extensions: ["docx", "xlsx", "pptx", "odt", "ods", "odp"] }],
+    });
     if (typeof selection === "string") {
       setPath(selection);
       setFootprint(await api.imageFootprint(selection).catch(() => null));
@@ -925,16 +1246,20 @@ export function CleanerScreen() {
   };
 
   return (
-    <Screen title={t("cleaner.title")} subtitle={t("cleaner.subtitle")} actions={
-      <div className="row">
-        <button type="button" className="btn btn-soft" onClick={pick}>
-          {t("cleaner.pickFile")}
-        </button>
-        <button type="button" className="btn btn-primary" onClick={run} disabled={!path || busy}>
-          <Wand2 size={15} /> {t("cleaner.clean")}
-        </button>
-      </div>
-    }>
+    <Screen
+      title={t("cleaner.title")}
+      subtitle={t("cleaner.subtitle")}
+      actions={
+        <div className="row">
+          <button type="button" className="btn btn-soft" onClick={pick}>
+            {t("cleaner.pickFile")}
+          </button>
+          <button type="button" className="btn btn-primary" onClick={run} disabled={!path || busy}>
+            <Wand2 size={15} /> {t("cleaner.clean")}
+          </button>
+        </div>
+      }
+    >
       {showCleaner ? (
         <div className="card">
           <p className="mono">{path || t("cleaner.noFile")}</p>
@@ -945,22 +1270,47 @@ export function CleanerScreen() {
           ) : null}
           <div className="stack">
             <label className="check">
-              <input type="checkbox" checked={options.removeMetadata} onChange={(event) => setOptions({ ...options, removeMetadata: event.target.checked })} /> {t("cleaner.removeMetadata")}
+              <input
+                type="checkbox"
+                checked={options.removeMetadata}
+                onChange={(event) => setOptions({ ...options, removeMetadata: event.target.checked })}
+              />{" "}
+              {t("cleaner.removeMetadata")}
             </label>
             <label className="check">
-              <input type="checkbox" checked={options.removeComments} onChange={(event) => setOptions({ ...options, removeComments: event.target.checked })} /> {t("cleaner.removeComments")}
+              <input
+                type="checkbox"
+                checked={options.removeComments}
+                onChange={(event) => setOptions({ ...options, removeComments: event.target.checked })}
+              />{" "}
+              {t("cleaner.removeComments")}
             </label>
             <label className="check">
-              <input type="checkbox" checked={options.optimizeImages} onChange={(event) => setOptions({ ...options, optimizeImages: event.target.checked })} /> {t("cleaner.optimizeImages")}
+              <input
+                type="checkbox"
+                checked={options.optimizeImages}
+                onChange={(event) => setOptions({ ...options, optimizeImages: event.target.checked })}
+              />{" "}
+              {t("cleaner.optimizeImages")}
             </label>
             <div className="row">
               <label className="field">
                 <span>{t("cleaner.maxPixels")}</span>
-                <input type="number" value={options.imageMaxPixels} onChange={(event) => setOptions({ ...options, imageMaxPixels: Number(event.target.value) })} />
+                <input
+                  type="number"
+                  value={options.imageMaxPixels}
+                  onChange={(event) => setOptions({ ...options, imageMaxPixels: Number(event.target.value) })}
+                />
               </label>
               <label className="field">
                 <span>{t("cleaner.quality")}</span>
-                <input type="number" min={40} max={95} value={options.imageQuality} onChange={(event) => setOptions({ ...options, imageQuality: Number(event.target.value) })} />
+                <input
+                  type="number"
+                  min={40}
+                  max={95}
+                  value={options.imageQuality}
+                  onChange={(event) => setOptions({ ...options, imageQuality: Number(event.target.value) })}
+                />
               </label>
             </div>
           </div>
@@ -1008,12 +1358,30 @@ export function PdfFormsScreen() {
   };
 
   const addField = () => {
-    setFields([...fields, { kind: "text", name: `field_${fields.length + 1}`, page: 1, x: 72, y: 120 + fields.length * 36, w: 200, h: 22, value: "", options: [], fontSize: 11, required: false }]);
+    setFields([
+      ...fields,
+      {
+        kind: "text",
+        name: `field_${fields.length + 1}`,
+        page: 1,
+        x: 72,
+        y: 120 + fields.length * 36,
+        w: 200,
+        h: 22,
+        value: "",
+        options: [],
+        fontSize: 11,
+        required: false,
+      },
+    ]);
   };
 
   const save = async () => {
     if (!path) return;
-    const output = await saveDialog({ defaultPath: path.replace(/\.pdf$/i, "-form.pdf"), filters: [{ name: "PDF", extensions: ["pdf"] }] });
+    const output = await saveDialog({
+      defaultPath: path.replace(/\.pdf$/i, "-form.pdf"),
+      filters: [{ name: "PDF", extensions: ["pdf"] }],
+    });
     if (!output) return;
     setBusy(true);
     try {
@@ -1038,7 +1406,12 @@ export function PdfFormsScreen() {
           <button type="button" className="btn btn-soft" onClick={addField}>
             <Plus size={15} /> {t("forms.addField")}
           </button>
-          <button type="button" className="btn btn-primary" onClick={save} disabled={!path || busy || fields.length === 0}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={save}
+            disabled={!path || busy || fields.length === 0}
+          >
             <Save size={15} /> {t("forms.save")}
           </button>
         </div>
@@ -1058,14 +1431,26 @@ export function PdfFormsScreen() {
               <th>H</th>
               <th>{t("forms.value")}</th>
               <th>{t("forms.options")}</th>
-              <th><span className="sr-only">{t("common.actions")}</span></th>
+              <th>
+                <span className="sr-only">{t("common.actions")}</span>
+              </th>
             </tr>
           </thead>
           <tbody>
             {fields.map((field, index) => (
               <tr key={index}>
                 <td>
-                  <select aria-label={t("forms.type")} value={field.kind} onChange={(event) => setFields(fields.map((candidate, position) => (position === index ? { ...candidate, kind: event.target.value } : candidate)))}>
+                  <select
+                    aria-label={t("forms.type")}
+                    value={field.kind}
+                    onChange={(event) =>
+                      setFields(
+                        fields.map((candidate, position) =>
+                          position === index ? { ...candidate, kind: event.target.value } : candidate,
+                        ),
+                      )
+                    }
+                  >
                     <option value="text">text</option>
                     <option value="checkbox">checkbox</option>
                     <option value="radio">radio</option>
@@ -1073,7 +1458,17 @@ export function PdfFormsScreen() {
                   </select>
                 </td>
                 <td>
-                  <input aria-label={t("forms.name")} value={field.name} onChange={(event) => setFields(fields.map((candidate, position) => (position === index ? { ...candidate, name: event.target.value } : candidate)))} />
+                  <input
+                    aria-label={t("forms.name")}
+                    value={field.name}
+                    onChange={(event) =>
+                      setFields(
+                        fields.map((candidate, position) =>
+                          position === index ? { ...candidate, name: event.target.value } : candidate,
+                        ),
+                      )
+                    }
+                  />
                 </td>
                 {(["page", "x", "y", "w", "h"] as const).map((key) => (
                   <td key={key}>
@@ -1081,23 +1476,58 @@ export function PdfFormsScreen() {
                       type="number"
                       aria-label={t(`forms.${key}`)}
                       value={field[key]}
-                      onChange={(event) => setFields(fields.map((candidate, position) => (position === index ? { ...candidate, [key]: Number(event.target.value) } : candidate)))}
+                      onChange={(event) =>
+                        setFields(
+                          fields.map((candidate, position) =>
+                            position === index ? { ...candidate, [key]: Number(event.target.value) } : candidate,
+                          ),
+                        )
+                      }
                     />
                   </td>
                 ))}
                 <td>
-                  <input aria-label={t("forms.value")} value={field.value} onChange={(event) => setFields(fields.map((candidate, position) => (position === index ? { ...candidate, value: event.target.value } : candidate)))} />
+                  <input
+                    aria-label={t("forms.value")}
+                    value={field.value}
+                    onChange={(event) =>
+                      setFields(
+                        fields.map((candidate, position) =>
+                          position === index ? { ...candidate, value: event.target.value } : candidate,
+                        ),
+                      )
+                    }
+                  />
                 </td>
                 <td>
                   <input
                     aria-label={t("forms.options")}
                     value={field.options.join(",")}
                     placeholder="A,B,C"
-                    onChange={(event) => setFields(fields.map((candidate, position) => (position === index ? { ...candidate, options: event.target.value.split(",").map((option) => option.trim()).filter(Boolean) } : candidate)))}
+                    onChange={(event) =>
+                      setFields(
+                        fields.map((candidate, position) =>
+                          position === index
+                            ? {
+                                ...candidate,
+                                options: event.target.value
+                                  .split(",")
+                                  .map((option) => option.trim())
+                                  .filter(Boolean),
+                              }
+                            : candidate,
+                        ),
+                      )
+                    }
                   />
                 </td>
                 <td>
-                  <button type="button" className="icon-btn" onClick={() => setFields(fields.filter((_, position) => position !== index))} aria-label={t("forms.removeField")}>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={() => setFields(fields.filter((_, position) => position !== index))}
+                    aria-label={t("forms.removeField")}
+                  >
                     <Trash2 size={13} />
                   </button>
                 </td>

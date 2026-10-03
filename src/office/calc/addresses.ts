@@ -93,7 +93,12 @@ export function addressInRange(address: string, range: string): boolean {
   const parts = parseRange(range);
   const position = parseAddress(address);
   if (!parts || !position) return false;
-  return position.row >= parts.start.row && position.row <= parts.end.row && position.col >= parts.start.col && position.col <= parts.end.col;
+  return (
+    position.row >= parts.start.row &&
+    position.row <= parts.end.row &&
+    position.col >= parts.start.col &&
+    position.col <= parts.end.col
+  );
 }
 
 /** Row/column count of a range, without materialising every address. */

@@ -33,8 +33,7 @@ pub const METADATA_SYSTEM: &str =
 keys title, author, subject, keywords (array of 3-8 short strings). Use empty strings or an \
 empty array when a value is not present in the text.";
 
-pub const MAP_SYSTEM: &str =
-    "Summarize this part of a larger document in 3-6 sentences. Keep every important number, \
+pub const MAP_SYSTEM: &str = "Summarize this part of a larger document in 3-6 sentences. Keep every important number, \
 name and date. Do not add introductions or conclusions.";
 
 pub const REDUCE_SYSTEM: &str =
@@ -84,12 +83,7 @@ fn paragraph_style() -> SummaryStyle {
 
 impl Default for SummaryOptions {
     fn default() -> Self {
-        Self {
-            language: auto_language(),
-            length: medium_length(),
-            style: paragraph_style(),
-            focus: String::new(),
-        }
+        Self { language: auto_language(), length: medium_length(), style: paragraph_style(), focus: String::new() }
     }
 }
 
@@ -183,9 +177,7 @@ fn style_instruction(style: SummaryStyle) -> &'static str {
     match style {
         SummaryStyle::Paragraph => "Write flowing paragraphs.",
         SummaryStyle::Bullets => "Write a short intro line followed by bullet points.",
-        SummaryStyle::Executive => {
-            "Write an executive brief: one-line takeaway first, then key facts as bullets."
-        }
+        SummaryStyle::Executive => "Write an executive brief: one-line takeaway first, then key facts as bullets.",
     }
 }
 
@@ -212,16 +204,10 @@ pub fn summarize_prompt_with_budget(text: &str, options: &SummaryOptions, chunk_
 
     if text.len() <= budget {
         return Plan::Single {
-            messages: vec![
-                ChatMessage::system(SUMMARY_SYSTEM),
-                ChatMessage::user(format!("{instruction}{text}")),
-            ],
+            messages: vec![ChatMessage::system(SUMMARY_SYSTEM), ChatMessage::user(format!("{instruction}{text}"))],
         };
     }
-    Plan::MapReduce {
-        chunks: chunk_text(text, CHUNK_CHARS),
-        reduce: instruction,
-    }
+    Plan::MapReduce { chunks: chunk_text(text, CHUNK_CHARS), reduce: instruction }
 }
 
 pub fn translate_prompt(chunks: &[String], options: &TranslateOptions) -> Vec<ChatMessage> {
@@ -261,34 +247,22 @@ pub fn translate_page_prompt(page_marker: &str, text: &str, options: &TranslateO
 pub fn ask_prompt(context: &str, question: &str) -> Vec<ChatMessage> {
     vec![
         ChatMessage::system(ASK_SYSTEM),
-        ChatMessage::user(format!(
-            "Document excerpts:\n\n{context}\n\nQuestion: {question}\n\nAnswer:"
-        )),
+        ChatMessage::user(format!("Document excerpts:\n\n{context}\n\nQuestion: {question}\n\nAnswer:")),
     ]
 }
 
 pub fn cleanup_prompt(text: &str) -> Vec<ChatMessage> {
-    vec![
-        ChatMessage::system(CLEANUP_SYSTEM),
-        ChatMessage::user(format!("Repair the following OCR text:\n\n{text}")),
-    ]
+    vec![ChatMessage::system(CLEANUP_SYSTEM), ChatMessage::user(format!("Repair the following OCR text:\n\n{text}"))]
 }
 
 pub fn metadata_prompt(text: &str) -> Vec<ChatMessage> {
     let excerpt: String = text.chars().take(8_000).collect();
-    vec![
-        ChatMessage::system(METADATA_SYSTEM),
-        ChatMessage::user(format!("Document text:\n\n{excerpt}")),
-    ]
+    vec![ChatMessage::system(METADATA_SYSTEM), ChatMessage::user(format!("Document text:\n\n{excerpt}"))]
 }
 
 /// Very small keyword retriever used by the Q&A feature: scores pages by the
 /// number of question terms they contain and returns the best ones.
-pub fn select_relevant_pages<'a>(
-    pages: &'a [(u32, String)],
-    question: &str,
-    max_chars: usize,
-) -> Vec<(u32, &'a str)> {
+pub fn select_relevant_pages<'a>(pages: &'a [(u32, String)], question: &str, max_chars: usize) -> Vec<(u32, &'a str)> {
     let terms: Vec<String> = question
         .to_lowercase()
         .split(|character: char| !character.is_alphanumeric())
@@ -300,10 +274,7 @@ pub fn select_relevant_pages<'a>(
         .iter()
         .map(|(page, text)| {
             let lower = text.to_lowercase();
-            let score: usize = terms
-                .iter()
-                .map(|term| lower.matches(term.as_str()).count())
-                .sum();
+            let score: usize = terms.iter().map(|term| lower.matches(term.as_str()).count()).sum();
             (score, *page, text.as_str())
         })
         .collect();
@@ -354,14 +325,7 @@ pub fn parse_metadata_reply(reply: &str) -> Option<MetadataSuggestion> {
     let end = reply.rfind('}')?;
     let slice = &reply[start..=end];
     let value: serde_json::Value = serde_json::from_str(slice).ok()?;
-    let string_field = |key: &str| {
-        value
-            .get(key)
-            .and_then(|item| item.as_str())
-            .unwrap_or_default()
-            .trim()
-            .to_string()
-    };
+    let string_field = |key: &str| value.get(key).and_then(|item| item.as_str()).unwrap_or_default().trim().to_string();
     let keywords = value
         .get("keywords")
         .and_then(|item| item.as_array())
@@ -408,40 +372,24 @@ pub struct DocChatMessage {
 
 impl DocChatMessage {
     pub fn user(content: impl Into<String>) -> Self {
-        Self {
-            role: "user".into(),
-            content: content.into(),
-        }
+        Self { role: "user".into(), content: content.into() }
     }
 
     pub fn assistant(content: impl Into<String>) -> Self {
-        Self {
-            role: "assistant".into(),
-            content: content.into(),
-        }
+        Self { role: "assistant".into(), content: content.into() }
     }
 }
 
 /// Builds the request for a document chat turn: system rules, the retrieved
 /// context, the previous conversation, then the new question.
-pub fn doc_chat_messages(
-    question: &str,
-    context: &[(u32, String)],
-    history: &[DocChatMessage],
-) -> Vec<ChatMessage> {
-    let context_text = context
-        .iter()
-        .map(|(page, text)| format!("[page {page}]\n{}", text.trim()))
-        .collect::<Vec<_>>()
-        .join("\n\n");
+pub fn doc_chat_messages(question: &str, context: &[(u32, String)], history: &[DocChatMessage]) -> Vec<ChatMessage> {
+    let context_text =
+        context.iter().map(|(page, text)| format!("[page {page}]\n{}", text.trim())).collect::<Vec<_>>().join("\n\n");
     let mut messages = Vec::with_capacity(history.len() + 3);
     messages.push(ChatMessage::system(DOC_CHAT_SYSTEM));
     messages.push(ChatMessage::user(format!("Document context:\n\n{context_text}")));
     for item in history {
-        messages.push(ChatMessage {
-            role: item.role.clone(),
-            content: item.content.clone(),
-        });
+        messages.push(ChatMessage { role: item.role.clone(), content: item.content.clone() });
     }
     messages.push(ChatMessage::user(question));
     messages
@@ -466,10 +414,7 @@ pub fn doc_chat_focus(question: &str, pages: &[(u32, String)], max_pages: usize)
         .iter()
         .enumerate()
         .map(|(index, (page, _))| {
-            let score: usize = terms
-                .iter()
-                .map(|term| lower[index].matches(term.as_str()).count())
-                .sum();
+            let score: usize = terms.iter().map(|term| lower[index].matches(term.as_str()).count()).sum();
             (score, *page)
         })
         .collect();
@@ -484,10 +429,7 @@ pub fn doc_chat_focus(question: &str, pages: &[(u32, String)], max_pages: usize)
     scored
         .into_iter()
         .map(|(_, page)| {
-            let (_, text) = pages
-                .iter()
-                .find(|(candidate, _)| *candidate == page)
-                .expect("page present");
+            let (_, text) = pages.iter().find(|(candidate, _)| *candidate == page).expect("page present");
             (page, text.clone())
         })
         .collect()
@@ -528,10 +470,7 @@ pub fn writer_action_prompt(action: &str, text: &str) -> AiResult<Vec<ChatMessag
         }
         _ => return Err(AiError::Unsupported(format!("unknown writer action: {normalized}"))),
     };
-    Ok(vec![
-        ChatMessage::system(WRITER_SYSTEM),
-        ChatMessage::user(format!("{instruction}\n\nText:\n{text}")),
-    ])
+    Ok(vec![ChatMessage::system(WRITER_SYSTEM), ChatMessage::user(format!("{instruction}\n\nText:\n{text}"))])
 }
 
 // ---------------------------------------------------------------------------
@@ -584,13 +523,8 @@ fn fenced_block(text: &str, language: &str) -> Option<String> {
 /// present, keeps a leading `=`, and trims. Replies without any formula return
 /// `None`.
 pub fn parse_formula_reply(reply: &str) -> Option<String> {
-    let candidate = fenced_block(reply, "formula").or_else(|| {
-        reply
-            .lines()
-            .map(str::trim)
-            .find(|line| line.starts_with('='))
-            .map(|line| line.to_string())
-    })?;
+    let candidate = fenced_block(reply, "formula")
+        .or_else(|| reply.lines().map(str::trim).find(|line| line.starts_with('=')).map(|line| line.to_string()))?;
     let trimmed = candidate.trim();
     if trimmed.is_empty() {
         None

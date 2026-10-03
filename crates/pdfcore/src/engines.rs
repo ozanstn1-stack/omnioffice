@@ -134,9 +134,7 @@ pub fn pdfium_path() -> Option<PathBuf> {
     {
         // Packaged as a native library; the system loader finds it by name,
         // but an explicit path keeps the diagnostic output useful.
-        return native_library_dir()
-            .map(|dir| dir.join("libpdfium.so"))
-            .filter(|path| path.exists());
+        return native_library_dir().map(|dir| dir.join("libpdfium.so")).filter(|path| path.exists());
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -144,9 +142,7 @@ pub fn pdfium_path() -> Option<PathBuf> {
             return Some(p);
         }
         // Dev convenience: the fetch script also drops a copy next to the lib.
-        let dev = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("assets")
-            .join("pdfium.dll");
+        let dev = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets").join("pdfium.dll");
         if dev.exists() {
             return Some(dev);
         }
@@ -262,10 +258,7 @@ pub fn ocr_languages() -> Vec<OcrLanguage> {
                         .find(|(c, _)| *c == code)
                         .map(|(_, n)| n.to_string())
                         .unwrap_or_else(|| code.to_string());
-                    out.push(OcrLanguage {
-                        code: code.to_string(),
-                        name: display,
-                    });
+                    out.push(OcrLanguage { code: code.to_string(), name: display });
                 }
             }
         }

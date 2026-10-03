@@ -99,11 +99,9 @@ pub struct SanitizeReport {
     pub findings_before: SanitizeFindingsBefore,
 }
 
-const UNSAFE_ANNOTATION_SUBTYPES: [&[u8]; 5] =
-    [b"FileAttachment", b"Sound", b"Movie", b"Screen", b"RichMedia"];
+const UNSAFE_ANNOTATION_SUBTYPES: [&[u8]; 5] = [b"FileAttachment", b"Sound", b"Movie", b"Screen", b"RichMedia"];
 
-const DANGEROUS_ACTIONS: [&[u8]; 6] =
-    [b"Launch", b"URI", b"SubmitForm", b"ImportData", b"GoToR", b"GoToE"];
+const DANGEROUS_ACTIONS: [&[u8]; 6] = [b"Launch", b"URI", b"SubmitForm", b"ImportData", b"GoToR", b"GoToE"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DropKind {
@@ -145,10 +143,7 @@ fn is_unsafe_annotation(dict: &Dictionary) -> bool {
     if subtype == b"Link" {
         return false;
     }
-    UNSAFE_ANNOTATION_SUBTYPES.contains(&subtype)
-        || dict.has(b"A")
-        || dict.has(b"AA")
-        || dict.has(b"FS")
+    UNSAFE_ANNOTATION_SUBTYPES.contains(&subtype) || dict.has(b"A") || dict.has(b"AA") || dict.has(b"FS")
 }
 
 fn is_form_field(dict: &Dictionary) -> bool {
@@ -337,10 +332,7 @@ pub(crate) fn sanitize_document(
     let mut sanitizer = Sanitizer {
         options,
         drop: BTreeMap::new(),
-        report: SanitizeReport {
-            findings_before: scan_findings(doc),
-            ..Default::default()
-        },
+        report: SanitizeReport { findings_before: scan_findings(doc), ..Default::default() },
         changed: false,
     };
     for (id, object) in &doc.objects {
@@ -349,14 +341,15 @@ pub(crate) fn sanitize_document(
         }
     }
 
-    let xfa = doc.catalog().ok().is_some_and(|catalog| {
-        resolve_dict(doc, catalog.get(b"AcroForm").ok())
-            .is_some_and(|acro| acro.has(b"XFA"))
-    });
+    let xfa = doc
+        .catalog()
+        .ok()
+        .is_some_and(|catalog| resolve_dict(doc, catalog.get(b"AcroForm").ok()).is_some_and(|acro| acro.has(b"XFA")));
     if xfa {
-        sanitizer.report.warnings.push(
-            "The form uses XFA; dynamic form content cannot be fully inspected by this sanitizer.".into(),
-        );
+        sanitizer
+            .report
+            .warnings
+            .push("The form uses XFA; dynamic form content cannot be fully inspected by this sanitizer.".into());
     }
 
     for _round in 0..4 {

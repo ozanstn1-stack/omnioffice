@@ -16,7 +16,9 @@ export function Ocr({ initialFiles, dragging }: { initialFiles?: string[]; dragg
   const languages = useSettings((s) => s.languages);
   const session = useTool({ suffix: "_ocr", accept: "pdf", initialPaths: initialFiles });
 
-  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(settings.ocrLanguages.length ? settings.ocrLanguages : ["eng"]);
+  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(
+    settings.ocrLanguages.length ? settings.ocrLanguages : ["eng"],
+  );
   const [psm, setPsm] = useState(3);
   const [outputMode, setOutputMode] = useState<OcrOptions["output_mode"]>("searchable_pdf");
   const [dpi, setDpi] = useState(300);
@@ -65,7 +67,13 @@ export function Ocr({ initialFiles, dragging }: { initialFiles?: string[]; dragg
         preprocess,
         skip_text_pages: skipText,
       };
-      return ocrPdf(session.primary?.path ?? "", session.outputSpec(overwrite), options, jobId, session.password || undefined);
+      return ocrPdf(
+        session.primary?.path ?? "",
+        session.outputSpec(overwrite),
+        options,
+        jobId,
+        session.password || undefined,
+      );
     });
 
   const engineMissing = engine !== null && !engine.tesseract;
@@ -93,7 +101,12 @@ export function Ocr({ initialFiles, dragging }: { initialFiles?: string[]; dragg
               ) : null}
 
               <OptionCard>
-                <FileList files={session.files} onRemove={session.removeFile} onAdd={session.pickFiles} addLabel={t("common.addPdf")} />
+                <FileList
+                  files={session.files}
+                  onRemove={session.removeFile}
+                  onAdd={session.pickFiles}
+                  addLabel={t("common.addPdf")}
+                />
               </OptionCard>
               {session.info ? (
                 <Card className="p-4">
@@ -131,23 +144,54 @@ export function Ocr({ initialFiles, dragging }: { initialFiles?: string[]; dragg
                     ))
                   )}
                 </div>
-                <p className="text-xs muted">{t("ocr.skipText")}: {skipText ? t("info.yes") : t("info.no")}</p>
+                <p className="text-xs muted">
+                  {t("ocr.skipText")}: {skipText ? t("info.yes") : t("info.no")}
+                </p>
               </OptionCard>
 
               <OptionCard title={t("ocr.preprocess")}>
-                <Toggle checked={preprocess.auto_rotate} onChange={(value) => setPreprocess({ ...preprocess, auto_rotate: value })} label={t("ocr.autoRotate")} />
-                <Toggle checked={preprocess.deskew} onChange={(value) => setPreprocess({ ...preprocess, deskew: value })} label={t("ocr.deskew")} />
-                <Toggle checked={preprocess.contrast} onChange={(value) => setPreprocess({ ...preprocess, contrast: value })} label={t("ocr.contrast")} />
-                <Toggle checked={preprocess.denoise} onChange={(value) => setPreprocess({ ...preprocess, denoise: value })} label={t("ocr.denoise")} />
-                <Toggle checked={preprocess.binarize} onChange={(value) => setPreprocess({ ...preprocess, binarize: value })} label={t("ocr.binarize")} />
-                <Toggle checked={preprocess.grayscale} onChange={(value) => setPreprocess({ ...preprocess, grayscale: value })} label={t("ocr.grayscale")} />
+                <Toggle
+                  checked={preprocess.auto_rotate}
+                  onChange={(value) => setPreprocess({ ...preprocess, auto_rotate: value })}
+                  label={t("ocr.autoRotate")}
+                />
+                <Toggle
+                  checked={preprocess.deskew}
+                  onChange={(value) => setPreprocess({ ...preprocess, deskew: value })}
+                  label={t("ocr.deskew")}
+                />
+                <Toggle
+                  checked={preprocess.contrast}
+                  onChange={(value) => setPreprocess({ ...preprocess, contrast: value })}
+                  label={t("ocr.contrast")}
+                />
+                <Toggle
+                  checked={preprocess.denoise}
+                  onChange={(value) => setPreprocess({ ...preprocess, denoise: value })}
+                  label={t("ocr.denoise")}
+                />
+                <Toggle
+                  checked={preprocess.binarize}
+                  onChange={(value) => setPreprocess({ ...preprocess, binarize: value })}
+                  label={t("ocr.binarize")}
+                />
+                <Toggle
+                  checked={preprocess.grayscale}
+                  onChange={(value) => setPreprocess({ ...preprocess, grayscale: value })}
+                  label={t("ocr.grayscale")}
+                />
               </OptionCard>
             </>
           )
         }
         side={
           <>
-            <OutputBar session={session} runLabel={t("ocr.run")} onRun={() => void run()} disabled={!session.primary || engineMissing} />
+            <OutputBar
+              session={session}
+              runLabel={t("ocr.run")}
+              onRun={() => void run()}
+              disabled={!session.primary || engineMissing}
+            />
             {session.primary ? (
               <>
                 <OptionCard title={t("ocr.outputMode")}>
@@ -177,7 +221,14 @@ export function Ocr({ initialFiles, dragging }: { initialFiles?: string[]; dragg
                     </select>
                   </Field>
                   <Field label={t("ocr.dpi")}>
-                    <Slider value={dpi} min={150} max={450} step={25} onChange={setDpi} format={(value) => `${value}`} />
+                    <Slider
+                      value={dpi}
+                      min={150}
+                      max={450}
+                      step={25}
+                      onChange={setDpi}
+                      format={(value) => `${value}`}
+                    />
                   </Field>
                   <p className="text-xs muted flex items-center gap-1.5">
                     <FileSearch size={12} />

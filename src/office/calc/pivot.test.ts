@@ -65,10 +65,16 @@ describe("pivot computation", () => {
       ["Hardware", 3],
       ["Software", 2],
     ]);
-    const average = computePivot(workbook, pivotOf({ columns: [], rows: ["Region"], values: [{ field: "Sales", aggregation: "average" }] }))!;
+    const average = computePivot(
+      workbook,
+      pivotOf({ columns: [], rows: ["Region"], values: [{ field: "Sales", aggregation: "average" }] }),
+    )!;
     expect(average.grid[1][1]).toBeCloseTo((100 + 200 + 50) / 3, 10);
     expect(average.grid[2][1]).toBeCloseTo(225, 10);
-    const extremes = computePivot(workbook, pivotOf({ columns: [], values: [{ field: "Sales", aggregation: "min" }] }))!;
+    const extremes = computePivot(
+      workbook,
+      pivotOf({ columns: [], values: [{ field: "Sales", aggregation: "min" }] }),
+    )!;
     expect(extremes.grid[1][1]).toBe(50);
     const max = computePivot(workbook, pivotOf({ columns: [], values: [{ field: "Sales", aggregation: "max" }] }))!;
     expect(max.grid[1][1]).toBe(150);
@@ -90,14 +96,17 @@ describe("pivot computation", () => {
 
   it("renders two value fields side by side", () => {
     const workbook = dataBook();
-    const grid = computePivot(workbook, pivotOf({
-      columns: [],
-      rows: ["Department"],
-      values: [
-        { field: "Sales", aggregation: "sum" },
-        { field: "Sales", aggregation: "count" },
-      ],
-    }))!;
+    const grid = computePivot(
+      workbook,
+      pivotOf({
+        columns: [],
+        rows: ["Department"],
+        values: [
+          { field: "Sales", aggregation: "sum" },
+          { field: "Sales", aggregation: "count" },
+        ],
+      }),
+    )!;
     expect(grid.grid).toEqual([
       ["Department", "Sales (sum)", "Sales (count)"],
       ["Hardware", 300, 3],

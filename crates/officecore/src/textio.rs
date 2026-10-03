@@ -118,11 +118,7 @@ pub fn document_to_markdown(document: &TextDocument) -> String {
     if notes.is_empty() {
         return body;
     }
-    let list = notes
-        .iter()
-        .map(|(number, text)| format!("{number}. {text}"))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let list = notes.iter().map(|(number, text)| format!("{number}. {text}")).collect::<Vec<_>>().join("\n");
     format!("{body}\n\n---\n\n{list}\n")
 }
 
@@ -256,7 +252,11 @@ fn block_html(block: &Block) -> String {
             let style_attr = if styles.is_empty() { String::new() } else { format!(" style=\"{}\"", styles.join(";")) };
             if let Some(list) = &props.list {
                 let kind = if list.kind == "number" { "ol" } else { "ul" };
-                let indent = if list.level > 0 { format!(" style=\"margin-left:{}px\"", list.level * 24) } else { String::new() };
+                let indent = if list.level > 0 {
+                    format!(" style=\"margin-left:{}px\"", list.level * 24)
+                } else {
+                    String::new()
+                };
                 return format!("<{kind}{indent}><li>{content}</li></{kind}>");
             }
             format!("<{tag}{style_attr}>{content}</{tag}>")
@@ -274,7 +274,8 @@ fn block_html(block: &Block) -> String {
                     if cell.align != "left" && !cell.align.is_empty() {
                         styles.push(format!("text-align:{}", cell.align));
                     }
-                    let style_attr = if styles.is_empty() { String::new() } else { format!(" style=\"{}\"", styles.join(";")) };
+                    let style_attr =
+                        if styles.is_empty() { String::new() } else { format!(" style=\"{}\"", styles.join(";")) };
                     let content: String = cell.blocks.iter().map(block_html).collect();
                     out.push_str(&format!("<td{span}{style_attr}>{content}</td>"));
                 }
@@ -306,7 +307,11 @@ fn block_html(block: &Block) -> String {
                         "<li class=\"toc-level-{}\">{}{}</li>",
                         entry.level.clamp(1, 6),
                         escape_text(&entry.text),
-                        if entry.page > 0 { format!(" <span class=\"toc-page\">{}</span>", entry.page) } else { String::new() }
+                        if entry.page > 0 {
+                            format!(" <span class=\"toc-page\">{}</span>", entry.page)
+                        } else {
+                            String::new()
+                        }
                     )
                 })
                 .collect::<Vec<_>>()
@@ -352,8 +357,9 @@ pub fn text_to_document(text: &str, title: &str) -> TextDocument {
     let mut document = TextDocument::new_blank(title);
     let mut blocks: Vec<Block> = text
         .lines()
-        .map(|line| {
-            Block::Paragraph { props: ParaProps::default(), runs: vec![Run { text: line.to_string(), ..Default::default() }] }
+        .map(|line| Block::Paragraph {
+            props: ParaProps::default(),
+            runs: vec![Run { text: line.to_string(), ..Default::default() }],
         })
         .collect();
     if blocks.is_empty() {
@@ -392,10 +398,16 @@ mod tests {
             Block::heading("Title here", 1),
             Block::Paragraph {
                 props: ParaProps::default(),
-                runs: vec![Run { text: "plain ".into(), ..Default::default() }, Run { text: "bold".into(), bold: true, ..Default::default() }],
+                runs: vec![
+                    Run { text: "plain ".into(), ..Default::default() },
+                    Run { text: "bold".into(), bold: true, ..Default::default() },
+                ],
             },
             Block::Paragraph {
-                props: ParaProps { list: Some(ListInfo { kind: "bullet".into(), level: 0, start: 1, marker: "•".into() }), ..Default::default() },
+                props: ParaProps {
+                    list: Some(ListInfo { kind: "bullet".into(), level: 0, start: 1, marker: "•".into() }),
+                    ..Default::default()
+                },
                 runs: vec![Run { text: "item".into(), ..Default::default() }],
             },
             Block::Table { table: TableData::simple(2, 2, 400.0) },

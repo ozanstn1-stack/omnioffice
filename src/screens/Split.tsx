@@ -102,7 +102,12 @@ export function Split({ initialFiles, dragging }: { initialFiles?: string[]; dra
             ) : (
               <>
                 <OptionCard title={t("common.selectFile")}>
-                  <FileList files={session.files} onRemove={session.removeFile} onAdd={session.pickFiles} addLabel={t("common.addPdf")} />
+                  <FileList
+                    files={session.files}
+                    onRemove={session.removeFile}
+                    onAdd={session.pickFiles}
+                    addLabel={t("common.addPdf")}
+                  />
                 </OptionCard>
                 {session.info ? (
                   <Card className="p-4">
@@ -124,7 +129,12 @@ export function Split({ initialFiles, dragging }: { initialFiles?: string[]; dra
                   </Field>
                   {mode === "ranges" ? (
                     <Field label={t("common.pageRange")} hint={t("split.rangesHint")}>
-                      <TextArea value={rangesText} onChange={(event) => setRangesText(event.target.value)} rows={4} spellCheck={false} />
+                      <TextArea
+                        value={rangesText}
+                        onChange={(event) => setRangesText(event.target.value)}
+                        rows={4}
+                        spellCheck={false}
+                      />
                     </Field>
                   ) : null}
                   {mode === "every_n" ? (
@@ -139,7 +149,11 @@ export function Split({ initialFiles, dragging }: { initialFiles?: string[]; dra
                   ) : null}
                   {mode === "at_pages" ? (
                     <Field label={t("common.pageRange")} hint={t("split.atPagesHint")}>
-                      <TextInput value={atPagesText} onChange={(event) => setAtPagesText(event.target.value)} placeholder="4, 10" />
+                      <TextInput
+                        value={atPagesText}
+                        onChange={(event) => setAtPagesText(event.target.value)}
+                        placeholder="4, 10"
+                      />
                     </Field>
                   ) : null}
                   {mode === "individual" ? (
@@ -147,7 +161,11 @@ export function Split({ initialFiles, dragging }: { initialFiles?: string[]; dra
                       {pageCount ? `${pageCount} ${t("common.pages")} → ${pageCount} PDF` : t("common.loading")}
                     </p>
                   ) : null}
-                  {validationError ? <p className="text-xs" style={{ color: "var(--danger)" }}>{validationError}</p> : null}
+                  {validationError ? (
+                    <p className="text-xs" style={{ color: "var(--danger)" }}>
+                      {validationError}
+                    </p>
+                  ) : null}
                 </OptionCard>
               </>
             )}
@@ -158,7 +176,9 @@ export function Split({ initialFiles, dragging }: { initialFiles?: string[]; dra
                   <Button
                     size="sm"
                     icon={<FolderOpen size={14} />}
-                    onClick={() => void revealAnyFile(parts[0] ? parts[0].path : session.outputDir).catch(() => undefined)}
+                    onClick={() =>
+                      void revealAnyFile(parts[0] ? parts[0].path : session.outputDir).catch(() => undefined)
+                    }
                   >
                     {isAndroid() ? t("common.share") : t("common.openFolder")}
                   </Button>
@@ -171,7 +191,10 @@ export function Split({ initialFiles, dragging }: { initialFiles?: string[]; dra
                       onClick={() => void openAnyFile(part.path).catch(() => undefined)}
                       title={part.path}
                     >
-                      {part.path.split(/[\\/]/).pop()} <span className="muted">({part.first_page}-{part.last_page})</span>
+                      {part.path.split(/[\\/]/).pop()}{" "}
+                      <span className="muted">
+                        ({part.first_page}-{part.last_page})
+                      </span>
                     </button>
                   ))}
                 </div>

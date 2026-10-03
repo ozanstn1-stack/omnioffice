@@ -79,11 +79,7 @@ impl PdfaLevel {
 
     /// Parses `1b`, `A-1b`, `PDF/A-2B`... into a level.
     pub fn parse(value: &str) -> PdfResult<Self> {
-        let normalized: String = value
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric())
-            .collect::<String>()
-            .to_lowercase();
+        let normalized: String = value.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_lowercase();
         match normalized.as_str() {
             "a1b" | "1b" | "pdfa1b" | "pdfa1" => Ok(PdfaLevel::A1b),
             "a2b" | "2b" | "pdfa2b" | "pdfa2" => Ok(PdfaLevel::A2b),
@@ -226,12 +222,7 @@ fn gts_pdfa1_output_intent(doc: &Document) -> OutputIntentState {
         }
         match resolve_stream(doc, intent.get(b"DestOutputProfile").ok()) {
             Some(stream) => {
-                let components = stream
-                    .dict
-                    .get(b"N")
-                    .ok()
-                    .and_then(|value| value.as_i64().ok())
-                    .unwrap_or(0);
+                let components = stream.dict.get(b"N").ok().and_then(|value| value.as_i64().ok()).unwrap_or(0);
                 if components <= 0 {
                     if matches!(state, OutputIntentState::Missing | OutputIntentState::NoProfile) {
                         state = OutputIntentState::BadProfile("has no positive /N component count".to_string());
@@ -310,12 +301,8 @@ pub fn validate_pdfa(path: &Path, level: PdfaLevel) -> PdfResult<PdfaReport> {
     // An encrypted file cannot be read further, so report the one definitive
     // failure instead of producing noise from unreadable streams.
     if doc.is_encrypted() {
-        let checks = vec![check(
-            "pdfa.encryption",
-            level,
-            "fail",
-            "The document is encrypted; PDF/A forbids encryption.",
-        )];
+        let checks =
+            vec![check("pdfa.encryption", level, "fail", "The document is encrypted; PDF/A forbids encryption.")];
         return Ok(finish(level, checks, false));
     }
 
@@ -368,9 +355,7 @@ pub fn validate_pdfa(path: &Path, level: PdfaLevel) -> PdfResult<PdfaReport> {
         Some(text) => {
             let part = xmp_value(text, "pdfaid:part");
             let conformance = xmp_value(text, "pdfaid:conformance");
-            if part.as_deref() == Some(expected_part.as_str())
-                && conformance.as_deref() == Some("B")
-            {
+            if part.as_deref() == Some(expected_part.as_str()) && conformance.as_deref() == Some("B") {
                 checks.push(check(
                     "pdfa.xmp-pdfaid",
                     level,
@@ -442,19 +427,10 @@ pub fn validate_pdfa(path: &Path, level: PdfaLevel) -> PdfResult<PdfaReport> {
         }
     }
 
-    let unembedded: Vec<String> = inspection
-        .fonts
-        .iter()
-        .filter(|font| !font.embedded)
-        .map(|font| font.name.clone())
-        .collect();
+    let unembedded: Vec<String> =
+        inspection.fonts.iter().filter(|font| !font.embedded).map(|font| font.name.clone()).collect();
     if unembedded.is_empty() {
-        checks.push(check(
-            "pdfa.fonts-embedded",
-            level,
-            "pass",
-            "Every font in the document is embedded.",
-        ));
+        checks.push(check("pdfa.fonts-embedded", level, "pass", "Every font in the document is embedded."));
     } else {
         checks.push(check(
             "pdfa.fonts-embedded",
@@ -537,12 +513,7 @@ pub fn validate_pdfa(path: &Path, level: PdfaLevel) -> PdfResult<PdfaReport> {
             "The AcroForm requests /NeedAppearances, which PDF/A forbids.",
         ));
     } else {
-        checks.push(check(
-            "pdfa.need-appearances",
-            level,
-            "pass",
-            "The form does not request /NeedAppearances.",
-        ));
+        checks.push(check("pdfa.need-appearances", level, "pass", "The form does not request /NeedAppearances."));
     }
 
     if has_launch_action(&doc) {
@@ -640,13 +611,13 @@ fn icc_xyz_tag(x: f64, y: f64, z: f64) -> Vec<u8> {
 /// IEC 61966-2.1 constants. The same tag body is shared by rTRC/gTRC/bTRC.
 fn srgb_trc_tag() -> Vec<u8> {
     const PARAMETERS: [f64; 7] = [
-        2.4,             // g
-        1.0 / 1.055,     // a
-        0.055 / 1.055,   // b
-        1.0 / 12.92,     // c
-        0.04045,         // d
-        0.0,             // e
-        0.0,             // f
+        2.4,           // g
+        1.0 / 1.055,   // a
+        0.055 / 1.055, // b
+        1.0 / 12.92,   // c
+        0.04045,       // d
+        0.0,           // e
+        0.0,           // f
     ];
     let mut out = Vec::with_capacity(40);
     out.extend_from_slice(b"para");
@@ -745,7 +716,7 @@ pub fn srgb_v4_icc_profile() -> Vec<u8> {
     profile[12..16].copy_from_slice(b"mntr"); // display device profile
     profile[16..20].copy_from_slice(b"RGB "); // data colour space
     profile[20..24].copy_from_slice(b"XYZ "); // profile connection space
-    // Fixed creation date keeps the output deterministic; only ranges matter.
+                                              // Fixed creation date keeps the output deterministic; only ranges matter.
     profile[24..26].copy_from_slice(&2026u16.to_be_bytes());
     profile[26..28].copy_from_slice(&1u16.to_be_bytes());
     profile[28..30].copy_from_slice(&1u16.to_be_bytes());
@@ -776,8 +747,7 @@ fn write_output_intent(doc: &mut Document) -> PdfResult<()> {
         "Info" => Object::String(b"sRGB IEC61966-2.1".to_vec(), lopdf::StringFormat::Literal),
         "DestOutputProfile" => Object::Reference(profile_id),
     }));
-    doc.catalog_mut()?
-        .set("OutputIntents", Object::Array(vec![Object::Reference(intent)]));
+    doc.catalog_mut()?.set("OutputIntents", Object::Array(vec![Object::Reference(intent)]));
     Ok(())
 }
 

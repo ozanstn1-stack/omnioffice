@@ -79,19 +79,35 @@ const Settings = React.lazy(() => import("./screens/Settings").then((module) => 
 const InfoScreen = React.lazy(() => import("./screens/Info").then((module) => ({ default: module.InfoScreen })));
 const Vault = React.lazy(() => import("./screens/Vault").then((module) => ({ default: module.Vault })));
 const PdfStudio = React.lazy(() => import("./screens/PdfStudio").then((module) => ({ default: module.PdfStudio })));
-const CompatibilityScreen = React.lazy(() => import("./screens/Compatibility").then((module) => ({ default: module.CompatibilityScreen })));
+const CompatibilityScreen = React.lazy(() =>
+  import("./screens/Compatibility").then((module) => ({ default: module.CompatibilityScreen })),
+);
 const JobsScreen = React.lazy(() => import("./screens/Jobs").then((module) => ({ default: module.JobsScreen })));
 const Sync = React.lazy(() => import("./screens/Sync").then((module) => ({ default: module.Sync })));
 const Plugins = React.lazy(() => import("./screens/Plugins").then((module) => ({ default: module.Plugins })));
-const OfficeWorkspace = React.lazy(() => import("./office/OfficeWorkspace").then((module) => ({ default: module.OfficeWorkspace })));
-const CleanerScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.CleanerScreen })));
-const ConverterScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.ConverterScreen })));
+const OfficeWorkspace = React.lazy(() =>
+  import("./office/OfficeWorkspace").then((module) => ({ default: module.OfficeWorkspace })),
+);
+const CleanerScreen = React.lazy(() =>
+  import("./office/ToolsScreens").then((module) => ({ default: module.CleanerScreen })),
+);
+const ConverterScreen = React.lazy(() =>
+  import("./office/ToolsScreens").then((module) => ({ default: module.ConverterScreen })),
+);
 const DataScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.DataScreen })));
 const DrawScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.DrawScreen })));
-const NotesScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.NotesScreen })));
-const PdfFormsScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.PdfFormsScreen })));
-const PlannerScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.PlannerScreen })));
-const TemplatesScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.TemplatesScreen })));
+const NotesScreen = React.lazy(() =>
+  import("./office/ToolsScreens").then((module) => ({ default: module.NotesScreen })),
+);
+const PdfFormsScreen = React.lazy(() =>
+  import("./office/ToolsScreens").then((module) => ({ default: module.PdfFormsScreen })),
+);
+const PlannerScreen = React.lazy(() =>
+  import("./office/ToolsScreens").then((module) => ({ default: module.PlannerScreen })),
+);
+const TemplatesScreen = React.lazy(() =>
+  import("./office/ToolsScreens").then((module) => ({ default: module.TemplatesScreen })),
+);
 import { matchKeybinding, registerCommand, runCommand, setCommandTranslator, unregisterCommand } from "./lib/commands";
 import { resumeJobs, useJobs as useBackgroundJobs } from "./lib/jobs";
 import { installJobRetryHandlers } from "./lib/job-retries";
@@ -102,7 +118,12 @@ import { FileConflictDialogHost } from "./components/file-conflict-dialog";
 import { Badge, IconButton, Spinner } from "./components/ui";
 import { isAndroid, openAnyFile, pickAndroidFiles } from "./lib/mobile";
 import { isImage } from "./lib/format";
-import { navigationActionFromState, overlayHistoryState, recordScreenVisit, type NavigationSnapshot } from "./lib/nav-history";
+import {
+  navigationActionFromState,
+  overlayHistoryState,
+  recordScreenVisit,
+  type NavigationSnapshot,
+} from "./lib/nav-history";
 import { openIntoWorkspace } from "./office/useOfficeSession";
 import { isOfficePath, openOfficePath, useOfficeTabs } from "./lib/office-store";
 import * as officeApi from "./lib/office-api";
@@ -259,7 +280,10 @@ export default function App() {
           tab: context.tab,
         });
         void import("./lib/api").then(({ logFrontend }) =>
-          logFrontend("info", `dev-context: screen=${context.startScreen} files=${(context.files ?? []).length} autoRun=${context.autoRun}`),
+          logFrontend(
+            "info",
+            `dev-context: screen=${context.startScreen} files=${(context.files ?? []).length} autoRun=${context.autoRun}`,
+          ),
         );
         if (context.startScreen) {
           navigate(context.startScreen as ScreenId, { files: context.files ?? [] });
@@ -273,7 +297,14 @@ export default function App() {
 
   // Keep the native window chrome in sync with the selected theme.
   useEffect(() => {
-    const resolved: "dark" | "light" = settings.theme === "system" ? (document.documentElement.classList.contains("dark") ? "dark" : "light") : settings.theme === "paper" ? "light" : "dark";
+    const resolved: "dark" | "light" =
+      settings.theme === "system"
+        ? document.documentElement.classList.contains("dark")
+          ? "dark"
+          : "light"
+        : settings.theme === "paper"
+          ? "light"
+          : "dark";
     void import("@tauri-apps/api/window")
       .then(({ getCurrentWindow }) => getCurrentWindow().setTheme(resolved))
       .catch(() => undefined);
@@ -358,8 +389,27 @@ export default function App() {
         {
           name: "Documents",
           extensions: [
-            "pdf", "jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff",
-            "docx", "odt", "rtf", "txt", "md", "html", "xlsx", "ods", "csv", "tsv", "pptx", "odp", "oswk",
+            "pdf",
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "bmp",
+            "tif",
+            "tiff",
+            "docx",
+            "odt",
+            "rtf",
+            "txt",
+            "md",
+            "html",
+            "xlsx",
+            "ods",
+            "csv",
+            "tsv",
+            "pptx",
+            "odp",
+            "oswk",
           ],
         },
       ],
@@ -466,8 +516,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      const typing =
-        !!target && (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable);
+      const typing = !!target && (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable);
       const mod = event.ctrlKey || event.metaKey;
       if ((typing || event.key === "Escape") && !mod && !event.altKey) return;
       const id = matchKeybinding({
@@ -571,10 +620,13 @@ export default function App() {
     };
   }, [handleIncomingPaths]);
 
-  const homeDrop = useCallback((paths: string[]) => {
-    setFiles(paths);
-    setDropHandler(null);
-  }, [setDropHandler]);
+  const homeDrop = useCallback(
+    (paths: string[]) => {
+      setFiles(paths);
+      setDropHandler(null);
+    },
+    [setDropHandler],
+  );
 
   // Global search opens any real file: office documents go to the workspace,
   // everything else to the PDF reader.
@@ -725,7 +777,8 @@ export default function App() {
     },
   ];
 
-  const isDark = settings.theme === "dark" || (settings.theme === "system" && document.documentElement.classList.contains("dark"));
+  const isDark =
+    settings.theme === "dark" || (settings.theme === "system" && document.documentElement.classList.contains("dark"));
 
   const renderNav = (showLabels: boolean) => (
     <>
@@ -759,7 +812,8 @@ export default function App() {
     </>
   );
 
-  const activeLabel = navGroups.flatMap((group) => group.items).find((item) => item.id === screen)?.label ?? t("app.name");
+  const activeLabel =
+    navGroups.flatMap((group) => group.items).find((item) => item.id === screen)?.label ?? t("app.name");
 
   // Phones (and narrow desktop windows): drawer navigation with a top bar.
   if (compactNav) {
@@ -770,10 +824,7 @@ export default function App() {
             <Menu size={18} />
           </IconButton>
           <p className="font-semibold text-[14px] truncate flex-1">{activeLabel}</p>
-          <IconButton
-            label={t("settings.theme")}
-            onClick={() => void update({ theme: isDark ? "light" : "dark" })}
-          >
+          <IconButton label={t("settings.theme")} onClick={() => void update({ theme: isDark ? "light" : "dark" })}>
             {isDark ? <Sun size={16} /> : <Moon size={16} />}
           </IconButton>
         </header>
@@ -782,10 +833,16 @@ export default function App() {
           <div
             className="drawer-overlay"
             role="presentation"
-            onClick={(event) => { if (event.target === event.currentTarget) setNavOpen(false); }}>
+            onClick={(event) => {
+              if (event.target === event.currentTarget) setNavOpen(false);
+            }}
+          >
             <aside className="drawer">
               <div className="flex items-center gap-2.5 px-3.5 py-4">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--accent)", color: "var(--accent-text)" }}>
+                <div
+                  className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+                >
                   <Puzzle size={18} />
                 </div>
                 <div className="min-w-0">
@@ -819,8 +876,18 @@ export default function App() {
             converter, which is not rendered inside the office workspace. */}
         <DataLossDialogHost />
         <FileConflictDialogHost />
-        <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} context={{ screen }} onNavigate={(next) => setScreen(next as ScreenId)} />
-        <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} onOpenPath={openAnyPath} onNavigate={(next) => setScreen(next as ScreenId)} />
+        <CommandPalette
+          open={paletteOpen}
+          onClose={() => setPaletteOpen(false)}
+          context={{ screen }}
+          onNavigate={(next) => setScreen(next as ScreenId)}
+        />
+        <GlobalSearch
+          open={searchOpen}
+          onClose={() => setSearchOpen(false)}
+          onOpenPath={openAnyPath}
+          onNavigate={(next) => setScreen(next as ScreenId)}
+        />
       </div>
     );
   }
@@ -838,7 +905,10 @@ export default function App() {
         }}
       >
         <div className="flex items-center gap-2.5 px-3.5 py-4">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--accent)", color: "var(--accent-text)" }}>
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+            style={{ background: "var(--accent)", color: "var(--accent-text)" }}
+          >
             <Puzzle size={18} />
           </div>
           {!sidebarCompact ? (
@@ -849,9 +919,7 @@ export default function App() {
           ) : null}
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-2 pb-3">
-          {renderNav(!sidebarCompact)}
-        </nav>
+        <nav className="flex-1 overflow-y-auto px-2 pb-3">{renderNav(!sidebarCompact)}</nav>
 
         <div className="px-3 py-3 border-t flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
           {!sidebarCompact ? (
@@ -860,14 +928,17 @@ export default function App() {
             </Badge>
           ) : null}
           <div className="flex items-center gap-1">
-            <button type="button" className="icon-btn" title={t("nav.jobs")} onClick={() => setScreen("jobs")} style={{ position: "relative" }}>
+            <button
+              type="button"
+              className="icon-btn"
+              title={t("nav.jobs")}
+              onClick={() => setScreen("jobs")}
+              style={{ position: "relative" }}
+            >
               <ListChecks size={15} />
               {backgroundJobs > 0 ? <span className="jobs-dot">{backgroundJobs}</span> : null}
             </button>
-            <IconButton
-              label={t("settings.theme")}
-              onClick={() => void update({ theme: isDark ? "light" : "dark" })}
-            >
+            <IconButton label={t("settings.theme")} onClick={() => void update({ theme: isDark ? "light" : "dark" })}>
               {isDark ? <Sun size={15} /> : <Moon size={15} />}
             </IconButton>
             <IconButton label={t("nav.sidebar")} onClick={() => setSidebarCompact((previous) => !previous)}>
@@ -882,7 +953,10 @@ export default function App() {
         {dragging ? (
           <div
             className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none"
-            style={{ background: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "2px dashed var(--accent)" }}
+            style={{
+              background: "color-mix(in srgb, var(--accent) 8%, transparent)",
+              border: "2px dashed var(--accent)",
+            }}
           >
             <p className="font-semibold" style={{ color: "var(--accent)" }}>
               {t("common.dropHere")}
@@ -903,13 +977,21 @@ export default function App() {
       {/* Global compatibility gate host (converter + office workspace). */}
       <DataLossDialogHost />
       <FileConflictDialogHost />
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} context={{ screen }} onNavigate={(next) => setScreen(next as ScreenId)} />
-      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} onOpenPath={openAnyPath} onNavigate={(next) => setScreen(next as ScreenId)} />
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        context={{ screen }}
+        onNavigate={(next) => setScreen(next as ScreenId)}
+      />
+      <GlobalSearch
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onOpenPath={openAnyPath}
+        onNavigate={(next) => setScreen(next as ScreenId)}
+      />
     </div>
   );
 }
-
-
 
 interface OfficeLauncherProps {
   kind: "writer" | "calc" | "impress";
@@ -934,14 +1016,22 @@ function OfficeLauncher({ kind, onOpen }: OfficeLauncherProps) {
   const openPath = async (path: string) => {
     try {
       const result = await officeApi.openDocument(path);
-      useOfficeTabs.getState().open({ kind: result.kind, title: result.title, path: result.path, model: result.model as never, warnings: result.warnings });
+      useOfficeTabs.getState().open({
+        kind: result.kind,
+        title: result.title,
+        path: result.path,
+        model: result.model as never,
+        warnings: result.warnings,
+      });
       onOpen();
     } catch (error) {
       useToasts.getState().push({ kind: "error", title: t("errors.title"), detail: errorMessage(error, t) });
     }
   };
 
-  const related = recent.filter((entry) => OFFICE_EXTENSIONS[kind].includes((entry.path.split(".").pop() ?? "").toLowerCase()));
+  const related = recent.filter((entry) =>
+    OFFICE_EXTENSIONS[kind].includes((entry.path.split(".").pop() ?? "").toLowerCase()),
+  );
 
   return (
     <div className="screen">
@@ -950,16 +1040,16 @@ function OfficeLauncher({ kind, onOpen }: OfficeLauncherProps) {
           <h1>{t(kind === "writer" ? "nav.documents" : kind === "calc" ? "nav.spreadsheets" : "nav.presentations")}</h1>
           <p className="muted">{t("office.noTabsHint")}</p>
         </div>
-          <button
-            type="button"
-            className="btn btn-soft"
-            onClick={async () => {
-              const opened = await openIntoWorkspace();
-              if (opened) onOpen();
-            }}
-          >
-            <FolderOpen size={16} /> {t("common.open")}
-          </button>
+        <button
+          type="button"
+          className="btn btn-soft"
+          onClick={async () => {
+            const opened = await openIntoWorkspace();
+            if (opened) onOpen();
+          }}
+        >
+          <FolderOpen size={16} /> {t("common.open")}
+        </button>
         <button
           type="button"
           className="btn btn-primary"
@@ -968,7 +1058,14 @@ function OfficeLauncher({ kind, onOpen }: OfficeLauncherProps) {
             onOpen();
           }}
         >
-          <FilePlus2 size={16} /> {t(kind === "writer" ? "office.newDocument" : kind === "calc" ? "office.newSpreadsheet" : "office.newPresentation")}
+          <FilePlus2 size={16} />{" "}
+          {t(
+            kind === "writer"
+              ? "office.newDocument"
+              : kind === "calc"
+                ? "office.newSpreadsheet"
+                : "office.newPresentation",
+          )}
         </button>
       </div>
       <div className="card">

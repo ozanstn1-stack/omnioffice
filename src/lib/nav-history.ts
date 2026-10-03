@@ -53,7 +53,9 @@ export function parseScreenHistoryState(state: unknown): NavigationSnapshot | nu
   if (typeof state !== "object" || state === null) return null;
   const candidate = state as { marker?: unknown; screen?: unknown; files?: unknown };
   if (candidate.marker !== SCREEN_MARKER || typeof candidate.screen !== "string") return null;
-  const files = Array.isArray(candidate.files) ? candidate.files.filter((file): file is string => typeof file === "string") : [];
+  const files = Array.isArray(candidate.files)
+    ? candidate.files.filter((file): file is string => typeof file === "string")
+    : [];
   return { screen: candidate.screen as ScreenId, files };
 }
 
@@ -78,9 +80,7 @@ export function recordScreenVisit(
 
 /** What the app should do when a `popstate` event arrives. */
 export type NavigationAction =
-  | { kind: "close-overlays" }
-  | { kind: "navigate"; screen: ScreenId; files: string[] }
-  | { kind: "home" };
+  { kind: "close-overlays" } | { kind: "navigate"; screen: ScreenId; files: string[] } | { kind: "home" };
 
 /**
  * Maps a history state to an app action. An unknown (null) state means the

@@ -176,7 +176,10 @@ function parseBracketedContent(content: string): { kind: StructuredReferenceKind
  * is malformed). A declared table with an unknown column still parses; it is
  * `resolveStructuredReference` that then reports the range as unresolvable.
  */
-export function parseStructuredReference(reference: string, tables: readonly SpreadsheetTable[] | undefined): StructuredReference | null {
+export function parseStructuredReference(
+  reference: string,
+  tables: readonly SpreadsheetTable[] | undefined,
+): StructuredReference | null {
   const text = reference.trim();
   const open = text.indexOf("[");
   if (open <= 0 || !text.endsWith("]")) return null;
@@ -193,7 +196,11 @@ export function parseStructuredReference(reference: string, tables: readonly Spr
  * table, column or requested part does not exist (or a this-row reference has
  * no row to anchor to).
  */
-export function resolveStructuredReference(reference: string, tables: readonly SpreadsheetTable[] | undefined, currentRow?: number): string | null {
+export function resolveStructuredReference(
+  reference: string,
+  tables: readonly SpreadsheetTable[] | undefined,
+  currentRow?: number,
+): string | null {
   const parsed = parseStructuredReference(reference, tables);
   if (!parsed) return null;
   const { table, column, kind } = parsed;
@@ -216,7 +223,8 @@ export function resolveStructuredReference(reference: string, tables: readonly S
     });
   }
 
-  const base = kind === "headers" ? tableHeaderRange(table) : kind === "totals" ? tableTotalsRange(table) : tableBodyRange(table);
+  const base =
+    kind === "headers" ? tableHeaderRange(table) : kind === "totals" ? tableTotalsRange(table) : tableBodyRange(table);
   if (!base) return null;
   if (column === null) return rangeString(base);
   const col = columnColumnOf(table, column);
@@ -290,7 +298,11 @@ export function collectStructuredReferences(formula: string): string[] {
  * Used to wire dependency edges: the body range of `Sales[Amount]` has to mark
  * the reading formula dirty when any of its cells changes.
  */
-export function structuredReferenceRanges(formula: string, tables: readonly SpreadsheetTable[] | undefined, currentRow?: number): string[] {
+export function structuredReferenceRanges(
+  formula: string,
+  tables: readonly SpreadsheetTable[] | undefined,
+  currentRow?: number,
+): string[] {
   const ranges: string[] = [];
   for (const reference of collectStructuredReferences(formula)) {
     const resolved = resolveStructuredReference(reference, tables, currentRow);

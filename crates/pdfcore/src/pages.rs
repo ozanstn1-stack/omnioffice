@@ -22,14 +22,10 @@ pub fn parse_page_selection(input: &str, total_pages: u32) -> PdfResult<Vec<u32>
             continue;
         }
         if let Some((a, b)) = part.split_once('-') {
-            let start: u32 = a
-                .trim()
-                .parse()
-                .map_err(|_| PdfError::InvalidInput(format!("invalid page range '{part}'")))?;
-            let end: u32 = b
-                .trim()
-                .parse()
-                .map_err(|_| PdfError::InvalidInput(format!("invalid page range '{part}'")))?;
+            let start: u32 =
+                a.trim().parse().map_err(|_| PdfError::InvalidInput(format!("invalid page range '{part}'")))?;
+            let end: u32 =
+                b.trim().parse().map_err(|_| PdfError::InvalidInput(format!("invalid page range '{part}'")))?;
             if start == 0 || end == 0 || start > end {
                 return Err(PdfError::InvalidInput(format!("invalid page range '{part}'")));
             }
@@ -40,9 +36,7 @@ pub fn parse_page_selection(input: &str, total_pages: u32) -> PdfResult<Vec<u32>
         } else if part.eq_ignore_ascii_case("end") {
             pages.push(total_pages);
         } else {
-            let n: u32 = part
-                .parse()
-                .map_err(|_| PdfError::InvalidInput(format!("invalid page number '{part}'")))?;
+            let n: u32 = part.parse().map_err(|_| PdfError::InvalidInput(format!("invalid page number '{part}'")))?;
             if n == 0 || n > total_pages {
                 return Err(PdfError::RangeOutOfBounds);
             }
@@ -83,21 +77,15 @@ pub fn plan_split(mode: &SplitMode, total_pages: u32) -> PdfResult<Vec<(u32, u32
                 let parts: Vec<&str> = r.split('-').collect();
                 let (a, b) = match parts.as_slice() {
                     [only] => {
-                        let n: u32 = only
-                            .trim()
-                            .parse()
-                            .map_err(|_| PdfError::InvalidInput(format!("invalid range '{r}'")))?;
+                        let n: u32 =
+                            only.trim().parse().map_err(|_| PdfError::InvalidInput(format!("invalid range '{r}'")))?;
                         (n, n)
                     }
                     [a, b] => {
-                        let a: u32 = a
-                            .trim()
-                            .parse()
-                            .map_err(|_| PdfError::InvalidInput(format!("invalid range '{r}'")))?;
-                        let b: u32 = b
-                            .trim()
-                            .parse()
-                            .map_err(|_| PdfError::InvalidInput(format!("invalid range '{r}'")))?;
+                        let a: u32 =
+                            a.trim().parse().map_err(|_| PdfError::InvalidInput(format!("invalid range '{r}'")))?;
+                        let b: u32 =
+                            b.trim().parse().map_err(|_| PdfError::InvalidInput(format!("invalid range '{r}'")))?;
                         (a, b)
                     }
                     _ => return Err(PdfError::InvalidInput(format!("invalid range '{r}'"))),
@@ -157,11 +145,7 @@ pub fn groups_to_pages(groups: &[(u32, u32)]) -> Vec<u32> {
 
 /// Formats a group list like "1-5, 6-10" for output file naming.
 pub fn format_groups(groups: &[(u32, u32)]) -> String {
-    groups
-        .iter()
-        .map(|(a, b)| if a == b { format!("{a}") } else { format!("{a}-{b}") })
-        .collect::<Vec<_>>()
-        .join(", ")
+    groups.iter().map(|(a, b)| if a == b { format!("{a}") } else { format!("{a}-{b}") }).collect::<Vec<_>>().join(", ")
 }
 
 #[cfg(test)]
@@ -178,10 +162,7 @@ mod tests {
 
     #[test]
     fn rejects_out_of_bounds_and_garbage() {
-        assert!(matches!(
-            parse_page_selection("9-12", 10),
-            Err(PdfError::RangeOutOfBounds)
-        ));
+        assert!(matches!(parse_page_selection("9-12", 10), Err(PdfError::RangeOutOfBounds)));
         assert!(matches!(parse_page_selection("abc", 10), Err(PdfError::InvalidInput(_))));
         assert!(matches!(parse_page_selection("", 10), Err(PdfError::InvalidInput(_))));
         assert!(matches!(parse_page_selection("5-2", 10), Err(PdfError::InvalidInput(_))));
@@ -190,17 +171,12 @@ mod tests {
     #[test]
     fn plans_splits() {
         let every = SplitMode::EveryN { n: 4 };
-        assert_eq!(
-            plan_split(&every, 10).unwrap(),
-            vec![(1, 4), (5, 8), (9, 10)]
-        );
+        assert_eq!(plan_split(&every, 10).unwrap(), vec![(1, 4), (5, 8), (9, 10)]);
         let individual = SplitMode::Individual;
         assert_eq!(plan_split(&individual, 3).unwrap().len(), 3);
         let at = SplitMode::AtPages { pages: vec![4, 8] };
         assert_eq!(plan_split(&at, 10).unwrap(), vec![(1, 3), (4, 7), (8, 10)]);
-        let ranges = SplitMode::Ranges {
-            ranges: vec!["1-5".into(), "6-10".into()],
-        };
+        let ranges = SplitMode::Ranges { ranges: vec!["1-5".into(), "6-10".into()] };
         assert_eq!(plan_split(&ranges, 10).unwrap(), vec![(1, 5), (6, 10)]);
     }
 }

@@ -10,9 +10,9 @@
 
 use pdfcore::annotate::Annotation;
 use pdfcore::compress::{CompressEstimate, CompressOptions};
+use pdfcore::convert::ImageOutput;
 use pdfcore::convert::PdfToImagesResult;
 use pdfcore::docutil::PagePlanItem;
-use pdfcore::convert::ImageOutput;
 use pdfcore::images::{ImageItem, ImageToPdfOptions};
 use pdfcore::info::PdfInfo;
 use pdfcore::metadata::PdfMetadata;
@@ -30,10 +30,7 @@ fn keys(value: &serde_json::Value) -> Vec<String> {
 fn assert_keys(value: &serde_json::Value, expected: &[&str]) {
     let present = keys(value);
     for key in expected {
-        assert!(
-            present.contains(&key.to_string()),
-            "missing key '{key}' in {present:?}"
-        );
+        assert!(present.contains(&key.to_string()), "missing key '{key}' in {present:?}");
     }
 }
 
@@ -80,10 +77,7 @@ fn geometry_and_metadata_keep_snake_case() {
         display_height_pt: 841.89,
         rotation: 0,
     };
-    assert_keys(
-        &serde_json::to_value(&geometry).unwrap(),
-        &["display_width_pt", "display_height_pt", "rotation"],
-    );
+    assert_keys(&serde_json::to_value(&geometry).unwrap(), &["display_width_pt", "display_height_pt", "rotation"]);
 
     let metadata = serde_json::to_value(PdfMetadata::default()).unwrap();
     assert_keys(&metadata, &["creation_date", "mod_date", "title", "author"]);
@@ -103,7 +97,19 @@ fn options_keep_snake_case() {
     assert_keys(&ocr["preprocess"], &["auto_rotate", "deskew", "contrast", "denoise", "binarize", "grayscale"]);
     assert_keys(
         &serde_json::to_value(WatermarkOptions::default()).unwrap(),
-        &["kind", "text", "font_size_pt", "opacity", "rotation_deg", "position", "margin_pt", "tile", "image_path", "image_scale", "pages"],
+        &[
+            "kind",
+            "text",
+            "font_size_pt",
+            "opacity",
+            "rotation_deg",
+            "position",
+            "margin_pt",
+            "tile",
+            "image_path",
+            "image_scale",
+            "pages",
+        ],
     );
     assert_keys(
         &serde_json::to_value(NumberingOptions::default()).unwrap(),
@@ -122,11 +128,7 @@ fn options_keep_snake_case() {
 #[test]
 fn plans_annotations_and_results_keep_their_shapes() {
     assert_keys(
-        &serde_json::to_value(PagePlanItem {
-            source_page: 2,
-            rotation_delta: 90,
-        })
-        .unwrap(),
+        &serde_json::to_value(PagePlanItem { source_page: 2, rotation_delta: 90 }).unwrap(),
         &["source_page", "rotation_delta"],
     );
 
@@ -153,33 +155,18 @@ fn plans_annotations_and_results_keep_their_shapes() {
     );
 
     assert_keys(
-        &serde_json::to_value(SplitPart {
-            path: "x.pdf".into(),
-            first_page: 1,
-            last_page: 3,
-        })
-        .unwrap(),
+        &serde_json::to_value(SplitPart { path: "x.pdf".into(), first_page: 1, last_page: 3 }).unwrap(),
         &["path", "first_page", "last_page"],
     );
 
     assert_keys(
-        &serde_json::to_value(ImageItem {
-            path: "a.png".into(),
-            rotation_delta: 90,
-        })
-        .unwrap(),
+        &serde_json::to_value(ImageItem { path: "a.png".into(), rotation_delta: 90 }).unwrap(),
         &["path", "rotation_delta"],
     );
 
     assert_keys(
-        &serde_json::to_value(ImageOutput {
-            path: "a.jpg".into(),
-            page: 1,
-            width: 100,
-            height: 200,
-            bytes: 4096,
-        })
-        .unwrap(),
+        &serde_json::to_value(ImageOutput { path: "a.jpg".into(), page: 1, width: 100, height: 200, bytes: 4096 })
+            .unwrap(),
         &["path", "page", "width", "height", "bytes"],
     );
 
@@ -201,14 +188,6 @@ fn plans_annotations_and_results_keep_their_shapes() {
 #[test]
 fn pdf_to_images_result_is_camel_case() {
     // The Rust struct mixes words, so it is explicitly camelCase for the UI.
-    let result = PdfToImagesResult {
-        files: vec![],
-        total_bytes: 1234,
-        dpi: 150,
-        format: "jpg".into(),
-    };
-    assert_keys(
-        &serde_json::to_value(&result).unwrap(),
-        &["files", "totalBytes", "dpi", "format"],
-    );
+    let result = PdfToImagesResult { files: vec![], total_bytes: 1234, dpi: 150, format: "jpg".into() };
+    assert_keys(&serde_json::to_value(&result).unwrap(), &["files", "totalBytes", "dpi", "format"]);
 }

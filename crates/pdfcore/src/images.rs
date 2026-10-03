@@ -54,25 +54,19 @@ impl ImageFormat {
 }
 
 /// Encodes an RGBA buffer as JPEG or PNG, optionally converting to grayscale.
-pub fn encode_image(
-    page: &RenderedPage,
-    format: ImageFormat,
-    jpeg_quality: u8,
-    grayscale: bool,
-) -> PdfResult<Vec<u8>> {
+pub fn encode_image(page: &RenderedPage, format: ImageFormat, jpeg_quality: u8, grayscale: bool) -> PdfResult<Vec<u8>> {
     let img = page.to_dynamic_image()?;
     let img = if grayscale {
         image::DynamicImage::ImageLuma8(img.to_luma8())
     } else {
         image::DynamicImage::ImageRgb8(img.to_rgb8())
-    };    let mut out = Vec::new();
+    };
+    let mut out = Vec::new();
     match format {
         ImageFormat::Jpeg => {
             let quality = jpeg_quality.clamp(1, 100);
             let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality);
-            encoder
-                .encode_image(&img)
-                .map_err(|e| PdfError::ConversionFailed(format!("JPEG encoding failed: {e}")))?;
+            encoder.encode_image(&img).map_err(|e| PdfError::ConversionFailed(format!("JPEG encoding failed: {e}")))?;
         }
         ImageFormat::Png => {
             img.write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
@@ -87,8 +81,8 @@ pub fn decode_image(path: &Path) -> PdfResult<image::DynamicImage> {
     if !path.exists() {
         return Err(PdfError::NotFound(path.display().to_string()));
     }
-    let reader = image::ImageReader::open(path)
-        .map_err(|e| PdfError::InvalidImage(format!("{}: {e}", path.display())))?;
+    let reader =
+        image::ImageReader::open(path).map_err(|e| PdfError::InvalidImage(format!("{}: {e}", path.display())))?;
     reader
         .with_guessed_format()
         .map_err(|e| PdfError::InvalidImage(format!("{}: {e}", path.display())))?
@@ -109,10 +103,7 @@ pub const PAGE_SIZES_PT: &[(&str, f64, f64)] = &[
 ];
 
 pub fn page_size_points(name: &str) -> Option<(f64, f64)> {
-    PAGE_SIZES_PT
-        .iter()
-        .find(|(n, _, _)| n.eq_ignore_ascii_case(name))
-        .map(|(_, w, h)| (*w, *h))
+    PAGE_SIZES_PT.iter().find(|(n, _, _)| n.eq_ignore_ascii_case(name)).map(|(_, w, h)| (*w, *h))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -199,11 +190,7 @@ pub fn images_to_pdf(
 
     for (index, item) in items.iter().enumerate() {
         cancel.check()?;
-        progress(ProgressEvent::new(
-            "images.embed",
-            index as u64,
-            items.len() as u64,
-        ));
+        progress(ProgressEvent::new("images.embed", index as u64, items.len() as u64));
         let path = PathBuf::from(&item.path);
         let image = decode_image(&path)?;
         let (img_w, img_h) = (image.width() as f64, image.height() as f64);
@@ -213,12 +200,10 @@ pub fn images_to_pdf(
 
         let (page_w, page_h) = match options.page_size.to_lowercase().as_str() {
             "original" => (img_w * 72.0 / options.dpi.max(1) as f64, img_h * 72.0 / options.dpi.max(1) as f64),
-            "custom" => (
-                options.custom_width_pt.max(1.0),
-                options.custom_height_pt.max(1.0),
-            ),
-            other => page_size_points(other)
-                .ok_or_else(|| PdfError::InvalidInput(format!("unknown page size '{other}'")))?,
+            "custom" => (options.custom_width_pt.max(1.0), options.custom_height_pt.max(1.0)),
+            other => {
+                page_size_points(other).ok_or_else(|| PdfError::InvalidInput(format!("unknown page size '{other}'")))?
+            }
         };
         let landscape_image = img_w > img_h;
         let (page_w, page_h) = match options.orientation.to_lowercase().as_str() {
@@ -272,9 +257,7 @@ pub fn images_to_pdf(
         }
         let rotation = ((item.rotation_delta % 360) + 360) % 360;
         if rotation == 0 {
-            content.push_str(&format!(
-                "{draw_w:.4} 0 0 {draw_h:.4} {x:.4} {y:.4} cm\n/Im0 Do\n"
-            ));
+            content.push_str(&format!("{draw_w:.4} 0 0 {draw_h:.4} {x:.4} {y:.4} cm\n/Im0 Do\n"));
         } else {
             // Rotate the image around the center of its placement rect.
             let center = Matrix::translate(x + draw_w / 2.0, y + draw_h / 2.0);
@@ -311,11 +294,7 @@ pub fn images_to_pdf(
 
     let final_path = resolve_output_path(output, policy)?;
     save_document(&mut doc, &final_path, true)?;
-    progress(ProgressEvent::new(
-        "images.embed",
-        items.len() as u64,
-        items.len() as u64,
-    ));
+    progress(ProgressEvent::new("images.embed", items.len() as u64, items.len() as u64));
     Ok(final_path)
 }
 
@@ -338,11 +317,7 @@ fn embed_image(
     let has_alpha = image.color().has_alpha();
     if has_alpha {
         let rgba = image.to_rgba8();
-        let raw = RawImage {
-            width,
-            height,
-            rgba: rgba.into_raw(),
-        };
+        let raw = RawImage { width, height, rgba: rgba.into_raw() };
         add_rgba_image_xobject(doc, &raw)
     } else {
         let rgb = image.to_rgb8();

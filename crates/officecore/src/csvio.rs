@@ -223,10 +223,8 @@ fn escape_field(value: &str, delimiter: char, quote: char) -> String {
 }
 
 pub fn write_csv(workbook: &Workbook, sheet_index: usize, options: &CsvOptions) -> OfficeResult<Vec<u8>> {
-    let sheet = workbook
-        .sheets
-        .get(sheet_index)
-        .ok_or_else(|| OfficeError::invalid("The requested sheet does not exist."))?;
+    let sheet =
+        workbook.sheets.get(sheet_index).ok_or_else(|| OfficeError::invalid("The requested sheet does not exist."))?;
     let delimiter = delimiter_char(&options.delimiter).unwrap_or(',');
     let quote = options.quote.chars().next().unwrap_or('"');
     let mut max_row = 0u32;

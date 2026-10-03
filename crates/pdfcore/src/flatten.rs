@@ -38,11 +38,7 @@ pub struct FlattenOptions {
 
 impl Default for FlattenOptions {
     fn default() -> Self {
-        Self {
-            annotations: true,
-            forms: true,
-            appearances: true,
-        }
+        Self { annotations: true, forms: true, appearances: true }
     }
 }
 
@@ -151,9 +147,8 @@ fn appearance_stream_id(doc: &Document, annot: &Dictionary) -> Option<ObjectId> 
 
 fn select_state(doc: &Document, annot: &Dictionary, states: &Dictionary) -> Option<ObjectId> {
     let state = annot.get(b"AS").ok().and_then(|value| value.as_name().ok());
-    let chosen = state
-        .and_then(|name| states.get(name).ok())
-        .or_else(|| states.iter().next().map(|(_, value)| value))?;
+    let chosen =
+        state.and_then(|name| states.get(name).ok()).or_else(|| states.iter().next().map(|(_, value)| value))?;
     let id = chosen.as_reference().ok()?;
     match doc.get_object(id).ok()? {
         Object::Stream(_) => Some(id),
@@ -197,10 +192,7 @@ fn generated_appearance(doc: &mut Document, annot_id: ObjectId, annot: &Dictiona
         "BaseFont" => "Helvetica",
         "Encoding" => "WinAnsiEncoding",
     }));
-    let content = format!(
-        "q\nBT\n/Helv 10 Tf\n2 2 Td\n({}) Tj\nET\nQ\n",
-        docutil::escape_pdf_literal(&text)
-    );
+    let content = format!("q\nBT\n/Helv 10 Tf\n2 2 Td\n({}) Tj\nET\nQ\n", docutil::escape_pdf_literal(&text));
     let stream_id = doc.add_object(Object::Stream(Stream::new(
         dictionary! {
             "Type" => "XObject",
@@ -232,10 +224,9 @@ fn generated_appearance(doc: &mut Document, annot_id: ObjectId, annot: &Dictiona
 
 fn appearance_matrix(doc: &Document, appearance_id: ObjectId, rect: [f64; 4]) -> Matrix {
     let (bbox, matrix) = match doc.get_object(appearance_id) {
-        Ok(Object::Stream(stream)) => (
-            read_box(&stream.dict, b"BBox").unwrap_or([0.0, 0.0, 1.0, 1.0]),
-            read_matrix(&stream.dict),
-        ),
+        Ok(Object::Stream(stream)) => {
+            (read_box(&stream.dict, b"BBox").unwrap_or([0.0, 0.0, 1.0, 1.0]), read_matrix(&stream.dict))
+        }
         _ => return Matrix::IDENTITY,
     };
     let corners = [
@@ -314,11 +305,7 @@ fn filter_annots(
 ) -> PdfResult<()> {
     match storage {
         AnnotsStorage::Inline => {
-            let items = doc
-                .get_object_mut(page_id)?
-                .as_dict_mut()?
-                .get_mut(b"Annots")?
-                .as_array_mut()?;
+            let items = doc.get_object_mut(page_id)?.as_dict_mut()?.get_mut(b"Annots")?.as_array_mut()?;
             retain_annots(items, remove_ids, remove_indices);
         }
         AnnotsStorage::Array(id) => {
@@ -418,24 +405,16 @@ fn finish_acroform(doc: &mut Document) {
         Ok(id) => id,
         Err(_) => return,
     };
-    let acro_value = doc
-        .get_dictionary(catalog_id)
-        .ok()
-        .and_then(|catalog| catalog.get(b"AcroForm").ok())
-        .cloned();
+    let acro_value = doc.get_dictionary(catalog_id).ok().and_then(|catalog| catalog.get(b"AcroForm").ok()).cloned();
     let empty = match &acro_value {
         Some(Object::Reference(id)) => doc
             .get_dictionary(*id)
             .ok()
-            .map(|acro| {
-                resolve_array(doc, acro.get(b"Fields").ok())
-                    .map(|fields| fields.is_empty())
-                    .unwrap_or(true)
-            })
+            .map(|acro| resolve_array(doc, acro.get(b"Fields").ok()).map(|fields| fields.is_empty()).unwrap_or(true))
             .unwrap_or(true),
-        Some(Object::Dictionary(acro)) => resolve_array(doc, acro.get(b"Fields").ok())
-            .map(|fields| fields.is_empty())
-            .unwrap_or(true),
+        Some(Object::Dictionary(acro)) => {
+            resolve_array(doc, acro.get(b"Fields").ok()).map(|fields| fields.is_empty()).unwrap_or(true)
+        }
         _ => return,
     };
     if empty {
@@ -503,9 +482,7 @@ pub fn flatten_pdf(
                 Object::Dictionary(dict) => dict.clone(),
                 _ => continue,
             };
-            let is_field = annot_id
-                .map(|id| field_ids.contains(&id))
-                .unwrap_or(false);
+            let is_field = annot_id.map(|id| field_ids.contains(&id)).unwrap_or(false);
             let flatten = options.annotations || (options.forms && is_field);
 
             if flatten {

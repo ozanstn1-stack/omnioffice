@@ -131,9 +131,7 @@ describe("job store", () => {
     });
     useJobs.getState().cancel("job-restored");
     expect(useJobs.getState().jobs[0].status).toBe("cancelled");
-    await vi.waitFor(() =>
-      expect(invokeMock).toHaveBeenCalledWith("cancel_job", { jobId: "job-restored" }),
-    );
+    await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("cancel_job", { jobId: "job-restored" }));
   });
 
   it("retries a finished job through its callback and restarts it", () => {
@@ -261,11 +259,13 @@ describe("persisted history", () => {
   });
 
   it("clears interrupted rows but keeps queued and running work, mirroring it to Rust", async () => {
-    useJobs.getState().hydrate([
-      makeRecord({ id: "stopped", status: "interrupted", createdAt: 1 }),
-      makeRecord({ id: "queued", status: "queued", createdAt: 2 }),
-      makeRecord({ id: "running", status: "running", createdAt: 3 }),
-    ]);
+    useJobs
+      .getState()
+      .hydrate([
+        makeRecord({ id: "stopped", status: "interrupted", createdAt: 1 }),
+        makeRecord({ id: "queued", status: "queued", createdAt: 2 }),
+        makeRecord({ id: "running", status: "running", createdAt: 3 }),
+      ]);
     useJobs.getState().clearFinished();
     expect(useJobs.getState().jobs.map((job) => job.id)).toEqual(["running", "queued"]);
     await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("jobs_clear_finished"));

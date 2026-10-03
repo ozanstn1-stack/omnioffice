@@ -4,7 +4,16 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { cancelJob, fileSizes, logOperation, pdfInfo, suggestOutput, toAppError } from "./api";
 import { dirName, fileBaseName, isImage, isPdf, joinPath, uid } from "./format";
 import { isAndroid, pickAndroidFiles, publishOutputs, type PublishTarget } from "./mobile";
-import { reportError, useDev, useDrop, useJobs, useOverwritePrompt, usePasswordPrompt, useRecent, useSettings } from "./store";
+import {
+  reportError,
+  useDev,
+  useDrop,
+  useJobs,
+  useOverwritePrompt,
+  usePasswordPrompt,
+  useRecent,
+  useSettings,
+} from "./store";
 import { useT } from "./i18n";
 import type { OpResult, OutputSpec, OverwriteMode, PdfInfo, ProgressPayload, SelectedFile } from "./types";
 
@@ -72,7 +81,15 @@ export interface ToolSession {
 }
 
 export function useTool(options: ToolOptions): ToolSession {
-  const { suffix, accept = "pdf", multiple = false, loadInfo = true, dropEnabled = true, initialPaths, multiOutput = false } = options;
+  const {
+    suffix,
+    accept = "pdf",
+    multiple = false,
+    loadInfo = true,
+    dropEnabled = true,
+    initialPaths,
+    multiOutput = false,
+  } = options;
   const t = useT();
   const settings = useSettings((s) => s.settings);
   const addRecentEntry = useRecent((s) => s.add);
@@ -155,22 +172,17 @@ export function useTool(options: ToolOptions): ToolSession {
         ? [{ name: "PDF", extensions: ["pdf"] }]
         : accept === "image"
           ? [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"] }]
-          : [
-              { name: "Documents & images", extensions: ["pdf", "jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"] },
-            ];
+          : [{ name: "Documents & images", extensions: ["pdf", "jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"] }];
     const picked = await open({ multiple, filters, title: t("common.selectFiles") });
     if (!picked) return;
     const paths = Array.isArray(picked) ? picked : [picked];
     await addPaths(paths.map(String));
   }, [accept, addPaths, multiple, t]);
 
-  const removeFile = useCallback(
-    (index: number) => {
-      setFiles((previous) => previous.filter((_, i) => i !== index));
-      setResult(null);
-    },
-    [],
-  );
+  const removeFile = useCallback((index: number) => {
+    setFiles((previous) => previous.filter((_, i) => i !== index));
+    setResult(null);
+  }, []);
 
   const moveFile = useCallback((from: number, to: number) => {
     setFiles((previous) => {
@@ -275,7 +287,9 @@ export function useTool(options: ToolOptions): ToolSession {
         cancelled = true;
       };
     }
-    const target = settings.defaultOutputDir ? joinPath(settings.defaultOutputDir, fileBaseName(suggestedName)) : suggestedName;
+    const target = settings.defaultOutputDir
+      ? joinPath(settings.defaultOutputDir, fileBaseName(suggestedName))
+      : suggestedName;
     if (!settings.defaultOutputDir) {
       void suggestOutput(primary.path, suffix)
         .then((path) => {
@@ -285,10 +299,9 @@ export function useTool(options: ToolOptions): ToolSession {
           if (!cancelled) setOutputPath(suggestedName);
         });
     } else {
-       
       setOutputPath(target);
     }
-     
+
     setOutputDir(settings.defaultOutputDir || dirName(primary.path));
     return () => {
       cancelled = true;

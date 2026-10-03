@@ -166,10 +166,9 @@ impl FontFace {
 
     fn build_font_objects(&self, doc: &mut Document) -> lopdf::ObjectId {
         let file = if self.bold { FONT_BOLD } else { FONT_REGULAR };
-        let file_id = doc.add_object(Stream::new(
-            dictionary! { "Length1" => file.len() as i64 },
-            file.to_vec(),
-        ).with_compression(true));
+        let file_id = doc.add_object(
+            Stream::new(dictionary! { "Length1" => file.len() as i64 }, file.to_vec()).with_compression(true),
+        );
 
         let scale = 1000.0 / self.units_per_em as f64;
         let ascent = self.ascent_em * 1000.0;
@@ -261,7 +260,15 @@ pub struct TextStyle {
 
 impl Default for TextStyle {
     fn default() -> Self {
-        Self { bold: false, italic: false, color: Rgb::BLACK, size_pt: 11.0, underline: false, strike: false, highlight: None }
+        Self {
+            bold: false,
+            italic: false,
+            color: Rgb::BLACK,
+            size_pt: 11.0,
+            underline: false,
+            strike: false,
+            highlight: None,
+        }
     }
 }
 
@@ -307,11 +314,7 @@ pub struct Canvas<'a> {
 
 impl<'a> Canvas<'a> {
     pub fn new(width: f64, height: f64, fonts: &'a FontSet) -> Self {
-        Self {
-            page: BuiltPage { width, height, ..Default::default() },
-            fonts,
-            image_counter: 0,
-        }
+        Self { page: BuiltPage { width, height, ..Default::default() }, fonts, image_counter: 0 }
     }
 
     pub fn finish(self) -> BuiltPage {
@@ -349,7 +352,16 @@ impl<'a> Canvas<'a> {
         self.page.ops.push_str(&format!("{:.2} {:.2} {:.2} {:.2} re\nS\n", x, self.flip(y + h), w, h));
     }
 
-    pub fn rounded_rect(&mut self, x: f64, y: f64, w: f64, h: f64, radius: f64, fill: Option<Rgb>, stroke: Option<(Rgb, f64)>) {
+    pub fn rounded_rect(
+        &mut self,
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+        radius: f64,
+        fill: Option<Rgb>,
+        stroke: Option<(Rgb, f64)>,
+    ) {
         let radius = radius.min(w / 2.0).min(h / 2.0).max(0.0);
         let top = self.flip(y);
         let bottom = self.flip(y + h);
@@ -435,7 +447,13 @@ impl<'a> Canvas<'a> {
     }
 
     /// Cubic Bezier path in top-left coordinates.
-    pub fn bezier_path(&mut self, start: (f64, f64), curves: &[(f64, f64, f64, f64, f64, f64)], fill: Option<Rgb>, stroke: Option<(Rgb, f64)>) {
+    pub fn bezier_path(
+        &mut self,
+        start: (f64, f64),
+        curves: &[(f64, f64, f64, f64, f64, f64)],
+        fill: Option<Rgb>,
+        stroke: Option<(Rgb, f64)>,
+    ) {
         self.page.ops.push_str(&format!("{:.2} {:.2} m\n", start.0, self.flip(start.1)));
         for (c1x, c1y, c2x, c2y, x, y) in curves {
             self.page.ops.push_str(&format!(
@@ -507,13 +525,21 @@ impl<'a> Canvas<'a> {
         self.image_counter += 1;
         self.page.images.push(prepared);
         self.page.ops.push_str("q\n");
-        self.page.ops
-            .push_str(&format!("{:.2} 0 0 {:.2} {:.2} {:.2} cm\n", w, h, x, self.flip(y + h)));
+        self.page.ops.push_str(&format!("{:.2} 0 0 {:.2} {:.2} {:.2} cm\n", w, h, x, self.flip(y + h)));
         self.page.ops.push_str(&format!("/{name} Do\nQ\n"));
         true
     }
 
-    pub fn rotated_image(&mut self, cx: f64, cy: f64, w: f64, h: f64, rotation_deg: f64, bytes: &[u8], mime: &str) -> bool {
+    pub fn rotated_image(
+        &mut self,
+        cx: f64,
+        cy: f64,
+        w: f64,
+        h: f64,
+        rotation_deg: f64,
+        bytes: &[u8],
+        mime: &str,
+    ) -> bool {
         let prepared = match prepare_image(bytes, mime, self.image_counter) {
             Some(value) => value,
             None => return false,
@@ -606,7 +632,11 @@ fn jpeg_info(bytes: &[u8]) -> Option<(u32, u32, u8)> {
             continue;
         }
         let marker = bytes[at + 1];
-        if (0xC0..=0xC3).contains(&marker) || (0xC5..=0xC7).contains(&marker) || (0xC9..=0xCB).contains(&marker) || (0xCD..=0xCF).contains(&marker) {
+        if (0xC0..=0xC3).contains(&marker)
+            || (0xC5..=0xC7).contains(&marker)
+            || (0xC9..=0xCB).contains(&marker)
+            || (0xCD..=0xCF).contains(&marker)
+        {
             let height = u16::from_be_bytes([bytes[at + 5], bytes[at + 6]]) as u32;
             let width = u16::from_be_bytes([bytes[at + 7], bytes[at + 8]]) as u32;
             let components = bytes[at + 9];
@@ -708,7 +738,8 @@ pub fn write_pdf(pages: &[BuiltPage], fonts: &FontSet) -> Vec<u8> {
             resources.set("XObject", Object::Dictionary(xobject_dict));
         }
 
-        let content_id = doc.add_object(Stream::new(dictionary! {}, page.ops.clone().into_bytes()).with_compression(true));
+        let content_id =
+            doc.add_object(Stream::new(dictionary! {}, page.ops.clone().into_bytes()).with_compression(true));
 
         let mut page_dict = dictionary! {
             "Type" => "Page",

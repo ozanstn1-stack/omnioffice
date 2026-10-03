@@ -43,13 +43,7 @@ pub fn extract_pages(
     policy: OverwritePolicy,
     password: Option<&str>,
 ) -> PdfResult<PathBuf> {
-    let plan: Vec<PagePlanItem> = pages
-        .iter()
-        .map(|p| PagePlanItem {
-            source_page: *p,
-            rotation_delta: 0,
-        })
-        .collect();
+    let plan: Vec<PagePlanItem> = pages.iter().map(|p| PagePlanItem { source_page: *p, rotation_delta: 0 }).collect();
     apply_page_plan(input, &plan, output, policy, password)
 }
 
@@ -67,16 +61,11 @@ pub fn delete_pages(
     }
     let delete: std::collections::HashSet<u32> = pages.iter().copied().collect();
     if delete.len() as u32 >= total {
-        return Err(PdfError::InvalidInput(
-            "cannot delete every page of the document".into(),
-        ));
+        return Err(PdfError::InvalidInput("cannot delete every page of the document".into()));
     }
     let plan: Vec<PagePlanItem> = (1..=total)
         .filter(|p| !delete.contains(p))
-        .map(|p| PagePlanItem {
-            source_page: p,
-            rotation_delta: 0,
-        })
+        .map(|p| PagePlanItem { source_page: p, rotation_delta: 0 })
         .collect();
     materialize_all_pages(&mut doc)?;
     rebuild_page_tree(&mut doc, &plan)?;
@@ -94,27 +83,19 @@ pub fn rotate_pages(
     password: Option<&str>,
 ) -> PdfResult<PathBuf> {
     if !matches!(degrees, 90 | 180 | 270 | -90 | -180 | -270) {
-        return Err(PdfError::InvalidInput(
-            "rotation must be 90, 180 or 270 degrees".into(),
-        ));
+        return Err(PdfError::InvalidInput("rotation must be 90, 180 or 270 degrees".into()));
     }
     let mut doc = load_document(input, password)?;
     let total = doc.get_pages().len() as u32;
-    let target: std::collections::HashSet<u32> = if pages.is_empty() {
-        (1..=total).collect()
-    } else {
-        pages.iter().copied().collect()
-    };
+    let target: std::collections::HashSet<u32> =
+        if pages.is_empty() { (1..=total).collect() } else { pages.iter().copied().collect() };
     for p in &target {
         if *p == 0 || *p > total {
             return Err(PdfError::RangeOutOfBounds);
         }
     }
     let plan: Vec<PagePlanItem> = (1..=total)
-        .map(|p| PagePlanItem {
-            source_page: p,
-            rotation_delta: if target.contains(&p) { degrees } else { 0 },
-        })
+        .map(|p| PagePlanItem { source_page: p, rotation_delta: if target.contains(&p) { degrees } else { 0 } })
         .collect();
     materialize_all_pages(&mut doc)?;
     rebuild_page_tree(&mut doc, &plan)?;
@@ -147,22 +128,14 @@ pub fn split_pdf(
     if !output_dir.exists() {
         std::fs::create_dir_all(output_dir).map_err(PdfError::from_io)?;
     }
-    let stem = input
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "document".to_string());
+    let stem = input.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "document".to_string());
     let mut parts = Vec::new();
     for (index, (a, b)) in groups.iter().enumerate() {
         cancel.check()?;
         progress(ProgressEvent::new("split.part", (index + 1) as u64, groups.len() as u64));
         let mut working = doc.clone();
         materialize_all_pages(&mut working)?;
-        let plan: Vec<PagePlanItem> = (*a..=*b)
-            .map(|p| PagePlanItem {
-                source_page: p,
-                rotation_delta: 0,
-            })
-            .collect();
+        let plan: Vec<PagePlanItem> = (*a..=*b).map(|p| PagePlanItem { source_page: p, rotation_delta: 0 }).collect();
         rebuild_page_tree(&mut working, &plan)?;
         let name = if groups.len() == 1 || a == b && groups.len() > 50 {
             format!("{stem}_page_{a:04}.pdf")
@@ -171,11 +144,7 @@ pub fn split_pdf(
         };
         let target = resolve_output_path(&output_dir.join(name), policy)?;
         save_document(&mut working, &target, true)?;
-        parts.push(SplitPart {
-            path: target.display().to_string(),
-            first_page: *a,
-            last_page: *b,
-        });
+        parts.push(SplitPart { path: target.display().to_string(), first_page: *a, last_page: *b });
     }
     Ok(parts)
 }

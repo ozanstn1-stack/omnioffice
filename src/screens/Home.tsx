@@ -67,22 +67,84 @@ const GROUPS: { key: ToolGroup; labelKey: string }[] = [
 ];
 
 const CARDS: ToolCardSpec[] = [
-  { id: "reader", titleKey: "nav.reader", descKey: "reader.subtitle", icon: <BookOpen size={20} />, group: "pdf", accent: true },
-  { id: "merge", titleKey: "nav.merge", descKey: "merge.subtitle", icon: <Combine size={20} />, group: "pdf", accent: true },
+  {
+    id: "reader",
+    titleKey: "nav.reader",
+    descKey: "reader.subtitle",
+    icon: <BookOpen size={20} />,
+    group: "pdf",
+    accent: true,
+  },
+  {
+    id: "merge",
+    titleKey: "nav.merge",
+    descKey: "merge.subtitle",
+    icon: <Combine size={20} />,
+    group: "pdf",
+    accent: true,
+  },
   { id: "organize", titleKey: "nav.organize", descKey: "organize.subtitle", icon: <Layers size={20} />, group: "pdf" },
   { id: "split", titleKey: "nav.split", descKey: "split.subtitle", icon: <Scissors size={20} />, group: "pdf" },
-  { id: "compress", titleKey: "nav.compress", descKey: "compress.subtitle", icon: <Minimize2 size={20} />, group: "pdf", accent: true },
-  { id: "ocr", titleKey: "nav.ocr", descKey: "ocr.subtitle", icon: <FileSearch size={20} />, group: "pdf", accent: true },
-  { id: "pdfToImages", titleKey: "nav.pdfToImages", descKey: "convert.pdfToImagesSubtitle", icon: <FileImage size={20} />, group: "pdf", accent: true },
-  { id: "imagesToPdf", titleKey: "nav.imagesToPdf", descKey: "convert.imagesToPdfSubtitle", icon: <Images size={20} />, group: "pdf", accent: true },
-  { id: "watermark", titleKey: "nav.watermark", descKey: "watermark.subtitle", icon: <Stamp size={20} />, group: "pdf", accent: true },
+  {
+    id: "compress",
+    titleKey: "nav.compress",
+    descKey: "compress.subtitle",
+    icon: <Minimize2 size={20} />,
+    group: "pdf",
+    accent: true,
+  },
+  {
+    id: "ocr",
+    titleKey: "nav.ocr",
+    descKey: "ocr.subtitle",
+    icon: <FileSearch size={20} />,
+    group: "pdf",
+    accent: true,
+  },
+  {
+    id: "pdfToImages",
+    titleKey: "nav.pdfToImages",
+    descKey: "convert.pdfToImagesSubtitle",
+    icon: <FileImage size={20} />,
+    group: "pdf",
+    accent: true,
+  },
+  {
+    id: "imagesToPdf",
+    titleKey: "nav.imagesToPdf",
+    descKey: "convert.imagesToPdfSubtitle",
+    icon: <Images size={20} />,
+    group: "pdf",
+    accent: true,
+  },
+  {
+    id: "watermark",
+    titleKey: "nav.watermark",
+    descKey: "watermark.subtitle",
+    icon: <Stamp size={20} />,
+    group: "pdf",
+    accent: true,
+  },
   { id: "annotate", titleKey: "nav.annotate", descKey: "annotate.subtitle", icon: <Type size={20} />, group: "pdf" },
   { id: "redact", titleKey: "nav.redact", descKey: "redact.subtitle", icon: <Eraser size={20} />, group: "pdf" },
   { id: "compare", titleKey: "nav.compare", descKey: "compare.subtitle", icon: <FileDiff size={20} />, group: "pdf" },
   { id: "inspect", titleKey: "nav.inspect", descKey: "inspect.subtitle", icon: <Search size={20} />, group: "pdf" },
   { id: "metadata", titleKey: "nav.metadata", descKey: "metadata.subtitle", icon: <Puzzle size={20} />, group: "pdf" },
-  { id: "pageTools", titleKey: "nav.pageTools", descKey: "pageTools.resizeSubtitle", icon: <Wand2 size={20} />, group: "pdf" },
-  { id: "protect", titleKey: "nav.protect", descKey: "security.protectSubtitle", icon: <Lock size={20} />, group: "pdf", accent: true },
+  {
+    id: "pageTools",
+    titleKey: "nav.pageTools",
+    descKey: "pageTools.resizeSubtitle",
+    icon: <Wand2 size={20} />,
+    group: "pdf",
+  },
+  {
+    id: "protect",
+    titleKey: "nav.protect",
+    descKey: "security.protectSubtitle",
+    icon: <Lock size={20} />,
+    group: "pdf",
+    accent: true,
+  },
   { id: "pdfStudio", titleKey: "nav.pdfStudio", icon: <ShieldCheck size={20} />, group: "pdf" },
   { id: "pdfForms", titleKey: "nav.pdfForms", icon: <ClipboardList size={20} />, group: "pdf" },
   { id: "batch", titleKey: "nav.batch", descKey: "batch.subtitle", icon: <Archive size={20} />, group: "pdf" },
@@ -90,15 +152,45 @@ const CARDS: ToolCardSpec[] = [
   { id: "documents", titleKey: "nav.documents", icon: <FileText size={20} />, group: "office" },
   { id: "spreadsheets", titleKey: "nav.spreadsheets", icon: <FileSpreadsheet size={20} />, group: "office" },
   { id: "presentations", titleKey: "nav.presentations", icon: <Presentation size={20} />, group: "office" },
-  { id: "templates", titleKey: "nav.templates", descKey: "templates.subtitle", icon: <LayoutTemplate size={20} />, group: "office" },
-  { id: "converter", titleKey: "nav.converter", descKey: "converter.subtitle", icon: <Repeat size={20} />, group: "office" },
-  { id: "cleaner", titleKey: "nav.cleaner", descKey: "cleaner.subtitle", icon: <Sparkles size={20} />, group: "office" },
+  {
+    id: "templates",
+    titleKey: "nav.templates",
+    descKey: "templates.subtitle",
+    icon: <LayoutTemplate size={20} />,
+    group: "office",
+  },
+  {
+    id: "converter",
+    titleKey: "nav.converter",
+    descKey: "converter.subtitle",
+    icon: <Repeat size={20} />,
+    group: "office",
+  },
+  {
+    id: "cleaner",
+    titleKey: "nav.cleaner",
+    descKey: "cleaner.subtitle",
+    icon: <Sparkles size={20} />,
+    group: "office",
+  },
   { id: "notes", titleKey: "nav.notes", descKey: "notes.subtitle", icon: <NotebookPen size={20} />, group: "tools" },
-  { id: "planner", titleKey: "nav.planner", descKey: "planner.subtitle", icon: <CalendarDays size={20} />, group: "tools" },
+  {
+    id: "planner",
+    titleKey: "nav.planner",
+    descKey: "planner.subtitle",
+    icon: <CalendarDays size={20} />,
+    group: "tools",
+  },
   { id: "data", titleKey: "nav.data", descKey: "data.subtitle", icon: <Database size={20} />, group: "tools" },
   { id: "draw", titleKey: "nav.draw", descKey: "draw.subtitle", icon: <PenTool size={20} />, group: "tools" },
   { id: "vault", titleKey: "nav.vault", descKey: "vault.subtitle", icon: <Library size={20} />, group: "tools" },
-  { id: "history", titleKey: "nav.history", descKey: "history.subtitle", icon: <FolderClock size={20} />, group: "tools" },
+  {
+    id: "history",
+    titleKey: "nav.history",
+    descKey: "history.subtitle",
+    icon: <FolderClock size={20} />,
+    group: "tools",
+  },
   { id: "jobs", titleKey: "nav.jobs", descKey: "jobs.subtitle", icon: <ListChecks size={20} />, group: "tools" },
   { id: "sync", titleKey: "nav.sync", descKey: "sync.subtitle", icon: <RefreshCw size={20} />, group: "tools" },
   { id: "plugins", titleKey: "nav.plugins", icon: <Puzzle size={20} />, group: "tools" },
@@ -156,7 +248,10 @@ export function Home({
   }, [cards, needle, t]);
 
   const grouped = useMemo(
-    () => GROUPS.map((group) => ({ ...group, items: matches.filter((card) => card.group === group.key) })).filter((group) => group.items.length > 0),
+    () =>
+      GROUPS.map((group) => ({ ...group, items: matches.filter((card) => card.group === group.key) })).filter(
+        (group) => group.items.length > 0,
+      ),
     [matches],
   );
 
@@ -197,7 +292,12 @@ export function Home({
                 {t(`nav.${id}`)}
               </Button>
             ))}
-            <Button size="sm" variant="ghost" icon={<KeyRound size={14} />} onClick={() => onNavigate("info", { files: suggestion })}>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<KeyRound size={14} />}
+              onClick={() => onNavigate("info", { files: suggestion })}
+            >
               {t("nav.info")}
             </Button>
           </div>
@@ -255,14 +355,24 @@ export function Home({
           </div>
           {recent.length === 0 ? (
             <Card>
-              <EmptyState icon={<FileImage size={22} />} title={t("home.recentEmpty")} hint={t("home.recentEmptyHint")} />
+              <EmptyState
+                icon={<FileImage size={22} />}
+                title={t("home.recentEmpty")}
+                hint={t("home.recentEmptyHint")}
+              />
             </Card>
           ) : (
             <Card className="p-2">
               <div className="flex flex-col">
                 {recent.slice(0, 6).map((entry) => (
-                  <div key={entry.path} className="flex items-center gap-3 px-2.5 py-2 rounded-lg hover:bg-[var(--surface-2)]">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--accent-weak)", color: "var(--accent)" }}>
+                  <div
+                    key={entry.path}
+                    className="flex items-center gap-3 px-2.5 py-2 rounded-lg hover:bg-[var(--surface-2)]"
+                  >
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ background: "var(--accent-weak)", color: "var(--accent)" }}
+                    >
                       <FileImage size={15} />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -285,7 +395,10 @@ export function Home({
                       >
                         {t("common.open")}
                       </Button>
-                      <IconButton label={t("common.openFolder")} onClick={() => void revealAnyFile(entry.path).catch(() => undefined)}>
+                      <IconButton
+                        label={t("common.openFolder")}
+                        onClick={() => void revealAnyFile(entry.path).catch(() => undefined)}
+                      >
                         <FolderOpen size={14} />
                       </IconButton>
                     </div>
@@ -301,7 +414,9 @@ export function Home({
         <Lock size={16} style={{ color: "var(--ok)", marginTop: 2 }} />
         <div>
           <p className="font-semibold text-[13px]">{t("nav.privacy")}</p>
-          <p className="text-xs muted mt-1">{t("home.privacyNote")} {t("home.supportedFormats")}</p>
+          <p className="text-xs muted mt-1">
+            {t("home.privacyNote")} {t("home.supportedFormats")}
+          </p>
         </div>
       </Card>
     </Screen>
@@ -311,7 +426,10 @@ export function Home({
 function ToolCard({ card, onOpen, t }: { card: ToolCardSpec; onOpen: () => void; t: (key: string) => string }) {
   return (
     <button className="tool-card" onClick={onOpen}>
-      <span className="tool-icon" style={card.accent ? { background: "var(--accent)", color: "var(--accent-text)" } : undefined}>
+      <span
+        className="tool-icon"
+        style={card.accent ? { background: "var(--accent)", color: "var(--accent-text)" } : undefined}
+      >
         {card.icon}
       </span>
       <span>

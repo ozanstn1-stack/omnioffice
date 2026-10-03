@@ -61,16 +61,8 @@ pub fn pdf_to_images(
         std::fs::create_dir_all(output_dir).map_err(PdfError::from_io)?;
     }
     let dpi = dpi.clamp(36, 600);
-    let render_options = RenderOptions {
-        dpi: dpi as f32,
-        max_width: Some(20000),
-        max_height: Some(20000),
-    };
-    let prefix = if name_prefix.trim().is_empty() {
-        "page"
-    } else {
-        name_prefix.trim()
-    };
+    let render_options = RenderOptions { dpi: dpi as f32, max_width: Some(20000), max_height: Some(20000) };
+    let prefix = if name_prefix.trim().is_empty() { "page" } else { name_prefix.trim() };
     let mut files = Vec::with_capacity(target.len());
     let mut total_bytes = 0u64;
     for (index, page) in target.iter().enumerate() {
@@ -93,10 +85,5 @@ pub fn pdf_to_images(
         });
     }
     progress(ProgressEvent::new("convert.page", target.len() as u64, target.len() as u64));
-    Ok(PdfToImagesResult {
-        files,
-        total_bytes,
-        dpi,
-        format: format.extension().to_string(),
-    })
+    Ok(PdfToImagesResult { files, total_bytes, dpi, format: format.extension().to_string() })
 }

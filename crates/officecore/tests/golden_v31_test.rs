@@ -98,11 +98,7 @@ fn impress_unit() -> Value {
 }
 
 fn golden_units() -> Vec<(&'static str, Value)> {
-    vec![
-        ("writer-v31.oswk", writer_unit()),
-        ("calc-v31.oswk", calc_unit()),
-        ("impress-v31.oswk", impress_unit()),
-    ]
+    vec![("writer-v31.oswk", writer_unit()), ("calc-v31.oswk", calc_unit()), ("impress-v31.oswk", impress_unit())]
 }
 
 /// Returns the fixture path, generating the bytes only when the file is
@@ -204,7 +200,13 @@ fn v31_writer() -> TextDocument {
                 Run { text: "Intro ".into(), ..Default::default() },
                 Run { text: "inserted".into(), revision: Some(insert), ..Default::default() },
                 Run { text: "removed".into(), revision: Some(delete), ..Default::default() },
-                Run { text: "reformatted".into(), bold: true, italic: true, revision: Some(format), ..Default::default() },
+                Run {
+                    text: "reformatted".into(),
+                    bold: true,
+                    italic: true,
+                    revision: Some(format),
+                    ..Default::default()
+                },
                 Run { text: "commented".into(), comment: Some("comment-1".into()), ..Default::default() },
                 Run { footnote: Some("fn-1".into()), ..Default::default() },
                 Run { endnote: Some("en-1".into()), ..Default::default() },
@@ -239,7 +241,13 @@ fn v31_writer() -> TextDocument {
         },
         Block::paragraph("Section two content"),
         Block::Table { table },
-        Block::Image { image: pixel_png(), width_pt: 96.0, height_pt: 96.0, align: "center".into(), caption: "Golden pixel".into() },
+        Block::Image {
+            image: pixel_png(),
+            width_pt: 96.0,
+            height_pt: 96.0,
+            align: "center".into(),
+            caption: "Golden pixel".into(),
+        },
     ];
     document
 }
@@ -300,11 +308,7 @@ fn v31_workbook() -> Workbook {
     // A structured reference outside the table body.
     sheet.set(
         "F1",
-        Cell {
-            value: CellValue::Number(200.0),
-            formula: Some("=SUM(Sales[Amount])".into()),
-            ..Default::default()
-        },
+        Cell { value: CellValue::Number(200.0), formula: Some("=SUM(Sales[Amount])".into()), ..Default::default() },
     );
     sheet.tables.push(SpreadsheetTable {
         id: "table-sales".into(),
@@ -412,7 +416,12 @@ fn v31_workbook() -> Workbook {
         fields: vec!["Item".into(), "Units".into(), "Price".into(), "Amount".into()],
     });
 
-    workbook.names.push(NamedRange { name: "VAT_RATE".into(), definition: "0.2".into(), sheet: None, comment: String::new() });
+    workbook.names.push(NamedRange {
+        name: "VAT_RATE".into(),
+        definition: "0.2".into(),
+        sheet: None,
+        comment: String::new(),
+    });
     workbook
 }
 
@@ -467,7 +476,10 @@ fn v31_deck() -> Deck {
             theme: "business".into(),
             background: Some("#F8FAFC".into()),
             objects: vec![placeholder_shape("master-a-footer", "footer", "Confidential", 300.0, 496.0, 360.0, 28.0)],
-            layouts: vec![layout_object("layout-a-title", "title", "Title Slide"), layout_object("layout-a-content", "titleContent", "Content")],
+            layouts: vec![
+                layout_object("layout-a-title", "title", "Title Slide"),
+                layout_object("layout-a-content", "titleContent", "Content"),
+            ],
         },
         SlideMaster {
             id: "master-b".into(),
@@ -587,19 +599,12 @@ fn golden_writer_oswk_save_reload_is_lossless_and_stable() {
     assert_eq!(reloaded_raw["version"], json!(3));
     assert_eq!(reloaded_raw["format"], json!("office-swiss-army-knife"));
     let reloaded: TextDocument = serde_json::from_value(reloaded_raw["model"].clone()).unwrap();
-    assert_eq!(
-        serde_json::to_value(&reloaded).unwrap(),
-        original_value,
-        "the native unit must keep every model field"
-    );
+    assert_eq!(serde_json::to_value(&reloaded).unwrap(), original_value, "the native unit must keep every model field");
 
     // Save the reloaded model again and reload: values must not drift.
     let second = unit_envelope("writer", &reloaded.title, &serde_json::to_value(&reloaded).unwrap());
     let reloaded_again = load_oswk(&serde_json::to_vec_pretty(&second).unwrap());
-    assert_eq!(
-        reloaded_again["model"], reloaded_raw["model"],
-        "a second save/reload must be structurally stable"
-    );
+    assert_eq!(reloaded_again["model"], reloaded_raw["model"], "a second save/reload must be structurally stable");
 }
 
 #[test]
@@ -698,8 +703,12 @@ fn golden_writer_docx_roundtrip_keeps_the_v31_features_docx_can_represent() {
     // author; the format revision keeps its captured original formatting.
     let list = revisions::revision_list(&document);
     assert_eq!(list.len(), 3, "warnings: {:?}", read.warnings);
-    assert!(list.iter().any(|revision| revision.kind == "insert" && revision.author == "Ada" && revision.text == "inserted"));
-    assert!(list.iter().any(|revision| revision.kind == "delete" && revision.author == "Grace" && revision.text == "removed"));
+    assert!(list
+        .iter()
+        .any(|revision| revision.kind == "insert" && revision.author == "Ada" && revision.text == "inserted"));
+    assert!(list
+        .iter()
+        .any(|revision| revision.kind == "delete" && revision.author == "Grace" && revision.text == "removed"));
     let format = list.iter().find(|revision| revision.kind == "format").expect("format revision");
     assert_eq!(format.text, "reformatted");
     let anchor_run = document.blocks.iter().find_map(|block| match block {
@@ -739,10 +748,7 @@ fn golden_writer_docx_roundtrip_keeps_the_v31_features_docx_can_represent() {
         fields.iter().any(|field| field.kind == "refPage" && field.target == "GoldenTarget" && field.cached == "2"),
         "fields: {fields:?}"
     );
-    assert!(
-        fields.iter().any(|field| field.kind == "date" && field.cached == "2026-01-01"),
-        "fields: {fields:?}"
-    );
+    assert!(fields.iter().any(|field| field.kind == "date" && field.cached == "2026-01-01"), "fields: {fields:?}");
 
     // Table and image survive with their bytes.
     assert!(document.plain_text().contains("Answer"));
@@ -755,11 +761,23 @@ fn golden_writer_docx_roundtrip_keeps_the_v31_features_docx_can_represent() {
             _ => None,
         })
         .expect("image block");
-    assert_eq!(image.0.bytes(), original.blocks.iter().find_map(|block| match block {
-        Block::Image { image, .. } => Some(image.bytes()),
-        _ => None,
-    }).unwrap());
-    assert!((image.1 - 96.0).abs() < 0.5 && (image.2 - 96.0).abs() < 0.5, "image size drifted: {}x{}", image.1, image.2);
+    assert_eq!(
+        image.0.bytes(),
+        original
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                Block::Image { image, .. } => Some(image.bytes()),
+                _ => None,
+            })
+            .unwrap()
+    );
+    assert!(
+        (image.1 - 96.0).abs() < 0.5 && (image.2 - 96.0).abs() < 0.5,
+        "image size drifted: {}x{}",
+        image.1,
+        image.2
+    );
 
     // A second cycle must not lose anything either.
     let second = docx::read_docx(&docx::write_docx(&document).unwrap()).unwrap().document;
@@ -941,10 +959,7 @@ fn golden_committed_fixtures_pin_the_v31_feature_summary() {
                 assert_eq!(sheet.tables.len(), 1);
                 assert_eq!(sheet.tables[0].name, "Sales");
                 assert_eq!(sheet.tables[0].columns[3].formula.as_deref(), Some("=[@Units]*[@Price]"));
-                assert_eq!(
-                    sheet.get("F1").and_then(|cell| cell.formula.as_deref()),
-                    Some("=SUM(Sales[Amount])")
-                );
+                assert_eq!(sheet.get("F1").and_then(|cell| cell.formula.as_deref()), Some("=SUM(Sales[Amount])"));
                 assert_eq!(sheet.charts.len(), 1);
                 assert_eq!(sheet.charts[0].chart.categories_cache, vec!["Widget", "Gadget", "Gizmo"]);
                 assert_eq!(sheet.charts[0].chart.series_values_cache, vec![vec![20.0, 60.0, 120.0]]);

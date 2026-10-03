@@ -103,9 +103,7 @@ export function Compare({ initialFiles, dragging }: { initialFiles?: string[]; d
                   addLabel={t("common.addPdf")}
                 />
               )}
-              {session.files.length < 2 ? (
-                <p className="text-xs muted">{t("compare.needTwo")}</p>
-              ) : null}
+              {session.files.length < 2 ? <p className="text-xs muted">{t("compare.needTwo")}</p> : null}
             </OptionCard>
 
             {report ? (
@@ -156,7 +154,10 @@ export function Compare({ initialFiles, dragging }: { initialFiles?: string[]; d
                           </div>
                           <div className="grid gap-1 sm:grid-cols-2">
                             {entry.left ? (
-                              <pre className="text-xs whitespace-pre-wrap break-words p-2 rounded" style={{ background: "var(--surface-2)" }}>
+                              <pre
+                                className="text-xs whitespace-pre-wrap break-words p-2 rounded"
+                                style={{ background: "var(--surface-2)" }}
+                              >
                                 {entry.left.slice(0, 1200)}
                               </pre>
                             ) : (
@@ -177,7 +178,9 @@ export function Compare({ initialFiles, dragging }: { initialFiles?: string[]; d
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs muted">{report.identical ? t("compare.noTextDiff") : t("compare.noTextDiffShort")}</p>
+                    <p className="text-xs muted">
+                      {report.identical ? t("compare.noTextDiff") : t("compare.noTextDiffShort")}
+                    </p>
                   )
                 ) : report.visualDifferences.length ? (
                   <>
@@ -185,7 +188,8 @@ export function Compare({ initialFiles, dragging }: { initialFiles?: string[]; d
                       {report.visualDifferences.map((entry) => (
                         <div key={entry.page} className="flex flex-col gap-1">
                           <span className="text-xs muted">
-                            {t("common.page")} {entry.page} · {(entry.difference * 100).toFixed(2)}% {t("compare.pixels")}
+                            {t("common.page")} {entry.page} · {(entry.difference * 100).toFixed(2)}%{" "}
+                            {t("compare.pixels")}
                           </span>
                           <img
                             src={entry.preview}
@@ -238,7 +242,12 @@ export function Compare({ initialFiles, dragging }: { initialFiles?: string[]; d
                     />
                   </Field>
                   <Field label={t("compare.tolerance")}>
-                    <Slider value={options.tolerance} min={0} max={64} onChange={(value) => patch({ tolerance: value })} />
+                    <Slider
+                      value={options.tolerance}
+                      min={0}
+                      max={64}
+                      onChange={(value) => patch({ tolerance: value })}
+                    />
                   </Field>
                 </>
               ) : null}

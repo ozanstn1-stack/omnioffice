@@ -8,7 +8,13 @@
  * body cell recalculates the formulas that read the table.
  */
 import { describe, expect, it } from "vitest";
-import { newSheet, newSpreadsheetTable, newWorkbook, type SpreadsheetTable, type Workbook } from "../../lib/office-types";
+import {
+  newSheet,
+  newSpreadsheetTable,
+  newWorkbook,
+  type SpreadsheetTable,
+  type Workbook,
+} from "../../lib/office-types";
 import { applyCellEdit, computeSheetValues, computeWorkbookValues, lastComputeStats } from "./cells";
 import type { FormulaContext, Scalar } from "./formula";
 import { evaluateFormula, isError } from "./formula";
@@ -91,12 +97,24 @@ describe("parseStructuredReference", () => {
   const sales = salesTable();
 
   it("parses Table[Column] as a data reference", () => {
-    expect(parseStructuredReference("Sales[Amount]", [sales])).toEqual({ table: sales, column: "Amount", kind: "data" });
+    expect(parseStructuredReference("Sales[Amount]", [sales])).toEqual({
+      table: sales,
+      column: "Amount",
+      kind: "data",
+    });
   });
 
   it("parses the this-row forms with and without nested brackets", () => {
-    expect(parseStructuredReference("Sales[@Amount]", [sales])).toEqual({ table: sales, column: "Amount", kind: "thisRow" });
-    expect(parseStructuredReference("Sales[@[Amount]]", [sales])).toEqual({ table: sales, column: "Amount", kind: "thisRow" });
+    expect(parseStructuredReference("Sales[@Amount]", [sales])).toEqual({
+      table: sales,
+      column: "Amount",
+      kind: "thisRow",
+    });
+    expect(parseStructuredReference("Sales[@[Amount]]", [sales])).toEqual({
+      table: sales,
+      column: "Amount",
+      kind: "thisRow",
+    });
   });
 
   it("parses #All/#Headers/#Data/#Totals", () => {

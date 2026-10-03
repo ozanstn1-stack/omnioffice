@@ -27,7 +27,6 @@ export function OfficeWorkspace() {
   const [pendingClose, setPendingClose] = useState<{ tabId: string; title: string } | null>(null);
   const [historyFor, setHistoryFor] = useState<string | null>(null);
 
-
   // Automation hook (screenshots/tests) and external open requests.
   useEffect(() => {
     if (bootstrapped.current) return;
@@ -114,7 +113,10 @@ export function OfficeWorkspace() {
         return;
       }
       // A clean document has nothing to lose, so drop its stale snapshot too.
-      void useRecovery.getState().discard(tabId).catch(() => undefined);
+      void useRecovery
+        .getState()
+        .discard(tabId)
+        .catch(() => undefined);
       close(tabId);
     },
     [close],
@@ -123,7 +125,11 @@ export function OfficeWorkspace() {
   const confirmClose = useCallback(
     (discard: boolean) => {
       if (!pendingClose) return;
-      if (discard) void useRecovery.getState().discard(pendingClose.tabId).catch(() => undefined);
+      if (discard)
+        void useRecovery
+          .getState()
+          .discard(pendingClose.tabId)
+          .catch(() => undefined);
       close(pendingClose.tabId);
       setPendingClose(null);
     },
@@ -144,7 +150,6 @@ export function OfficeWorkspace() {
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [requestClose]);
-
 
   const restore = useCallback(
     async (documentId: string) => {
@@ -212,13 +217,28 @@ export function OfficeWorkspace() {
           >
             <History size={15} />
           </button>
-          <button type="button" className="tool-btn is-icon-only" title={t("office.newDocument")} onClick={() => create("writer")}>
+          <button
+            type="button"
+            className="tool-btn is-icon-only"
+            title={t("office.newDocument")}
+            onClick={() => create("writer")}
+          >
             <FileText size={15} />
           </button>
-          <button type="button" className="tool-btn is-icon-only" title={t("office.newSpreadsheet")} onClick={() => create("calc")}>
+          <button
+            type="button"
+            className="tool-btn is-icon-only"
+            title={t("office.newSpreadsheet")}
+            onClick={() => create("calc")}
+          >
             <FileSpreadsheet size={15} />
           </button>
-          <button type="button" className="tool-btn is-icon-only" title={t("office.newPresentation")} onClick={() => create("impress")}>
+          <button
+            type="button"
+            className="tool-btn is-icon-only"
+            title={t("office.newPresentation")}
+            onClick={() => create("impress")}
+          >
             <Presentation size={15} />
           </button>
         </div>
@@ -230,7 +250,12 @@ export function OfficeWorkspace() {
           <span>{t("office.recoveryAvailable")}</span>
           <span className="spacer" />
           {recovered.slice(0, 3).map((entry) => (
-            <button key={entry.documentId} type="button" className="btn btn-soft" onClick={() => void restore(entry.documentId)}>
+            <button
+              key={entry.documentId}
+              type="button"
+              className="btn btn-soft"
+              onClick={() => void restore(entry.documentId)}
+            >
               {entry.title}
             </button>
           ))}
@@ -293,9 +318,7 @@ export function OfficeWorkspace() {
         </Dialog>
       ) : null}
 
-      {historyFor ? (
-        <VersionHistoryDialog documentId={historyFor} onClose={() => setHistoryFor(null)} />
-      ) : null}
+      {historyFor ? <VersionHistoryDialog documentId={historyFor} onClose={() => setHistoryFor(null)} /> : null}
 
       {/* The Data Loss dialog host lives in App so the converter is covered too. */}
     </div>
@@ -310,7 +333,9 @@ export function OfficeWorkspace() {
  */
 function VersionHistoryDialog({ documentId, onClose }: { documentId: string; onClose: () => void }) {
   const t = useT();
-  const [entries, setEntries] = useState<Array<{ version: number; savedAt: string; title: string; kind: string; size: number }>>([]);
+  const [entries, setEntries] = useState<
+    Array<{ version: number; savedAt: string; title: string; kind: string; size: number }>
+  >([]);
   const [busy, setBusy] = useState(true);
 
   useEffect(() => {
@@ -321,7 +346,8 @@ function VersionHistoryDialog({ documentId, onClose }: { documentId: string; onC
         if (alive) setEntries([...list].sort((a, b) => b.version - a.version));
       })
       .catch((error) => {
-        if (alive) useToasts.getState().push({ kind: "error", title: t("common.error"), detail: errorMessage(error, t) });
+        if (alive)
+          useToasts.getState().push({ kind: "error", title: t("common.error"), detail: errorMessage(error, t) });
       })
       .finally(() => {
         if (alive) setBusy(false);

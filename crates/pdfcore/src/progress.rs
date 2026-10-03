@@ -14,12 +14,7 @@ pub struct ProgressEvent {
 
 impl ProgressEvent {
     pub fn new(stage: &str, current: u64, total: u64) -> Self {
-        Self {
-            stage: stage.to_string(),
-            current,
-            total,
-            message: None,
-        }
+        Self { stage: stage.to_string(), current, total, message: None }
     }
 
     pub fn with_message(mut self, message: impl Into<String>) -> Self {

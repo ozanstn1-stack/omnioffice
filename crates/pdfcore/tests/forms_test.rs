@@ -276,41 +276,33 @@ fn form_doc() -> Document {
         "P" => Object::Reference(page_id),
     }));
 
-    doc.get_object_mut(page_id)
-        .unwrap()
-        .as_dict_mut()
-        .unwrap()
-        .set(
-            "Annots",
-            Object::Array(vec![
-                Object::Reference(text_widget),
-                Object::Reference(person_name),
-                Object::Reference(country),
-                Object::Reference(colors),
-                Object::Reference(agree),
-                Object::Reference(male),
-                Object::Reference(female),
-                Object::Reference(pin),
-                Object::Reference(signup_date),
-                Object::Reference(submit),
-            ]),
-        );
+    doc.get_object_mut(page_id).unwrap().as_dict_mut().unwrap().set(
+        "Annots",
+        Object::Array(vec![
+            Object::Reference(text_widget),
+            Object::Reference(person_name),
+            Object::Reference(country),
+            Object::Reference(colors),
+            Object::Reference(agree),
+            Object::Reference(male),
+            Object::Reference(female),
+            Object::Reference(pin),
+            Object::Reference(signup_date),
+            Object::Reference(submit),
+        ]),
+    );
     // A /Tabs number tree gives the first two annotations an explicit order.
-    doc.get_object_mut(page_id)
-        .unwrap()
-        .as_dict_mut()
-        .unwrap()
-        .set(
-            "Tabs",
-            Object::Dictionary(dictionary! {
-                "Nums" => vec![
-                    Object::Integer(0),
-                    Object::Reference(text_widget),
-                    Object::Integer(1),
-                    Object::Reference(country),
-                ],
-            }),
-        );
+    doc.get_object_mut(page_id).unwrap().as_dict_mut().unwrap().set(
+        "Tabs",
+        Object::Dictionary(dictionary! {
+            "Nums" => vec![
+                Object::Integer(0),
+                Object::Reference(text_widget),
+                Object::Integer(1),
+                Object::Reference(country),
+            ],
+        }),
+    );
 
     let font = doc.add_object(Object::Dictionary(dictionary! {
         "Type" => "Font",
@@ -339,11 +331,7 @@ fn form_doc() -> Document {
         "Kids" => vec![Object::Reference(page_id)],
         "Count" => 1i64,
     }));
-    doc.get_object_mut(page_id)
-        .unwrap()
-        .as_dict_mut()
-        .unwrap()
-        .set("Parent", Object::Reference(pages_id));
+    doc.get_object_mut(page_id).unwrap().as_dict_mut().unwrap().set("Parent", Object::Reference(pages_id));
     let catalog_id = doc.add_object(Object::Dictionary(dictionary! {
         "Type" => "Catalog",
         "Pages" => Object::Reference(pages_id),
@@ -402,10 +390,7 @@ fn value_of(dict: &Dictionary) -> Vec<String> {
     match dict.get(b"V").ok() {
         Some(Object::String(bytes, _)) => vec![String::from_utf8_lossy(bytes).to_string()],
         Some(Object::Name(bytes)) => vec![String::from_utf8_lossy(bytes).to_string()],
-        Some(Object::Array(items)) => items
-            .iter()
-            .filter_map(pdfcore::docutil::pdf_text_value)
-            .collect(),
+        Some(Object::Array(items)) => items.iter().filter_map(pdfcore::docutil::pdf_text_value).collect(),
         _ => Vec::new(),
     }
 }
@@ -438,19 +423,13 @@ fn forms_list_reports_types_flags_values_and_options() {
     let country = find("country");
     assert_eq!(country.field_type, "choice");
     assert!(country.combo);
-    assert_eq!(
-        country.options.iter().map(|option| option.value.as_str()).collect::<Vec<_>>(),
-        vec!["TR", "US", "DE"]
-    );
+    assert_eq!(country.options.iter().map(|option| option.value.as_str()).collect::<Vec<_>>(), vec!["TR", "US", "DE"]);
     assert_eq!(country.value, "TR");
     assert_eq!(country.tab_order, Some(1));
 
     let colors = find("colors");
     assert!(colors.multi_select);
-    assert_eq!(
-        colors.options.iter().map(|option| option.label.as_str()).collect::<Vec<_>>(),
-        vec!["Red", "Green"]
-    );
+    assert_eq!(colors.options.iter().map(|option| option.label.as_str()).collect::<Vec<_>>(), vec!["Red", "Green"]);
 
     let agree = find("agree");
     assert_eq!(agree.field_type, "checkbox");
@@ -547,16 +526,8 @@ fn forms_fill_sets_values_and_regenerates_appearances() {
     assert!(female_id.0 > 0);
 
     // /NeedAppearances is the compatibility safety net.
-    let acro = filled
-        .catalog()
-        .unwrap()
-        .get(b"AcroForm")
-        .unwrap()
-        .as_reference()
-        .unwrap();
-    assert!(
-        filled.get_dictionary(acro).unwrap().get(b"NeedAppearances").unwrap().as_bool().unwrap()
-    );
+    let acro = filled.catalog().unwrap().get(b"AcroForm").unwrap().as_reference().unwrap();
+    assert!(filled.get_dictionary(acro).unwrap().get(b"NeedAppearances").unwrap().as_bool().unwrap());
 }
 
 #[test]
@@ -566,8 +537,7 @@ fn forms_fill_reports_skips_and_warnings_without_faking() {
         FieldValue { name: "full_name".into(), value: "This is much too long".into(), values: vec![] },
         FieldValue { name: "submit".into(), value: "go".into(), values: vec![] },
     ];
-    let report = pdfcore::forms::apply_field_values(&mut Document::load_mem(&input).unwrap(), &values)
-        .expect("fill");
+    let report = pdfcore::forms::apply_field_values(&mut Document::load_mem(&input).unwrap(), &values).expect("fill");
     assert_eq!(report.filled, 1);
     assert!(report.skipped.iter().any(|entry| entry.contains("push button")));
     assert!(report.warnings.iter().any(|entry| entry.contains("MaxLen")));
@@ -606,16 +576,10 @@ fn forms_validate_reports_only_provable_problems() {
 #[test]
 fn forms_validate_reports_max_length_as_an_error() {
     let doc = form_doc();
-    let values = vec![FieldValue {
-        name: "full_name".into(),
-        value: "This is far too long".into(),
-        values: vec![],
-    }];
+    let values = vec![FieldValue { name: "full_name".into(), value: "This is far too long".into(), values: vec![] }];
     let issues = pdfcore::forms::validate_fields(&doc, &values);
-    let max_length = issues
-        .iter()
-        .find(|issue| issue.field == "full_name" && issue.code == "max_length")
-        .expect("max length issue");
+    let max_length =
+        issues.iter().find(|issue| issue.field == "full_name" && issue.code == "max_length").expect("max length issue");
     assert_eq!(max_length.severity, "error");
     assert!(max_length.message.contains("10"), "the declared limit is reported: {}", max_length.message);
 }
@@ -627,10 +591,8 @@ fn forms_validate_reports_max_length_as_an_error() {
 #[test]
 fn forms_fill_unknown_field_errors_cleanly() {
     let (_dir, input) = doc_bytes("fill-unknown.pdf", form_doc());
-    let result = fill_fields(
-        &input,
-        &[FieldValue { name: "does_not_exist".into(), value: "x".into(), values: vec![] }],
-    );
+    let result =
+        fill_fields(&input, &[FieldValue { name: "does_not_exist".into(), value: "x".into(), values: vec![] }]);
     match result {
         Err(pdfcore::PdfError::InvalidInput(message)) => {
             assert!(message.contains("does_not_exist"), "the message names the field: {message}");
@@ -741,11 +703,7 @@ fn object_doc() -> Document {
         "Kids" => vec![Object::Reference(page_id)],
         "Count" => 1i64,
     }));
-    doc.get_object_mut(page_id)
-        .unwrap()
-        .as_dict_mut()
-        .unwrap()
-        .set("Parent", Object::Reference(pages_id));
+    doc.get_object_mut(page_id).unwrap().as_dict_mut().unwrap().set("Parent", Object::Reference(pages_id));
     let catalog_id = doc.add_object(Object::Dictionary(dictionary! {
         "Type" => "Catalog",
         "Pages" => Object::Reference(pages_id),
@@ -779,15 +737,9 @@ fn objects_list_annotations_widgets_and_image_placements() {
 #[test]
 fn objects_move_rewrites_only_the_matching_matrix() {
     let (_dir, input) = doc_bytes("objects.pdf", object_doc());
-    let output = transform_objects(
-        &input,
-        &[ObjectEdit {
-            page: 1,
-            index: 2,
-            action: ObjectAction::Move { dx: 5.0, dy: 7.0 },
-        }],
-    )
-    .expect("transform");
+    let output =
+        transform_objects(&input, &[ObjectEdit { page: 1, index: 2, action: ObjectAction::Move { dx: 5.0, dy: 7.0 } }])
+            .expect("transform");
     let doc = Document::load_mem(&output).expect("reopen");
     let page_id = doc.get_pages().get(&1).copied().unwrap();
     let content = String::from_utf8_lossy(&doc.get_page_content(page_id)).to_string();
@@ -807,11 +759,7 @@ fn objects_resize_rotate_and_delete_do_exactly_that() {
     // Resize the text annotation.
     let resized = transform_objects(
         &input,
-        &[ObjectEdit {
-            page: 1,
-            index: 0,
-            action: ObjectAction::Resize { rect: [60.0, 60.0, 160.0, 80.0] },
-        }],
+        &[ObjectEdit { page: 1, index: 0, action: ObjectAction::Resize { rect: [60.0, 60.0, 160.0, 80.0] } }],
     )
     .expect("resize");
     let doc = Document::load_mem(&resized).unwrap();
@@ -829,15 +777,9 @@ fn objects_resize_rotate_and_delete_do_exactly_that() {
     assert_eq!(values, vec![60.0, 60.0, 160.0, 80.0]);
 
     // Rotate it 90 degrees: the rect is reshaped around the same center.
-    let rotated = transform_objects(
-        &input,
-        &[ObjectEdit {
-            page: 1,
-            index: 0,
-            action: ObjectAction::Rotate { degrees: 90.0 },
-        }],
-    )
-    .expect("rotate");
+    let rotated =
+        transform_objects(&input, &[ObjectEdit { page: 1, index: 0, action: ObjectAction::Rotate { degrees: 90.0 } }])
+            .expect("rotate");
     let doc = Document::load_mem(&rotated).unwrap();
     let annot = doc
         .objects
@@ -853,20 +795,11 @@ fn objects_resize_rotate_and_delete_do_exactly_that() {
     assert_eq!(values, vec![90.0, 10.0, 110.0, 110.0], "w/h swap around the original center");
 
     // Delete the widget: gone from /Annots and from the AcroForm field tree.
-    let deleted = transform_objects(
-        &input,
-        &[ObjectEdit { page: 1, index: 1, action: ObjectAction::Delete }],
-    )
-    .expect("delete");
+    let deleted =
+        transform_objects(&input, &[ObjectEdit { page: 1, index: 1, action: ObjectAction::Delete }]).expect("delete");
     let doc = Document::load_mem(&deleted).unwrap();
     let page_id = doc.get_pages().get(&1).copied().unwrap();
-    let annots = doc
-        .get_dictionary(page_id)
-        .unwrap()
-        .get(b"Annots")
-        .unwrap()
-        .as_array()
-        .unwrap();
+    let annots = doc.get_dictionary(page_id).unwrap().get(b"Annots").unwrap().as_array().unwrap();
     assert_eq!(annots.len(), 1);
     assert!(
         doc.catalog().unwrap().get(b"AcroForm").is_err(),
@@ -877,10 +810,7 @@ fn objects_resize_rotate_and_delete_do_exactly_that() {
 #[test]
 fn objects_unknown_index_errors_without_panic() {
     let (_dir, input) = doc_bytes("objects-bad.pdf", object_doc());
-    let result = transform_objects(
-        &input,
-        &[ObjectEdit { page: 1, index: 99, action: ObjectAction::Delete }],
-    );
+    let result = transform_objects(&input, &[ObjectEdit { page: 1, index: 99, action: ObjectAction::Delete }]);
     match result {
         Err(pdfcore::PdfError::InvalidInput(message)) => assert!(message.contains("index 99")),
         other => panic!("expected InvalidInput, got {other:?}"),

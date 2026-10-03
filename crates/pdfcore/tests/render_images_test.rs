@@ -6,7 +6,7 @@ use pdfcore::docutil::OverwritePolicy;
 use pdfcore::images::{images_to_pdf, ImageFormat, ImageItem, ImageToPdfOptions};
 use pdfcore::numbering::{add_page_numbers, NumberingOptions};
 use pdfcore::progress::CancelToken;
-use pdfcore::render::{RenderOptions};
+use pdfcore::render::RenderOptions;
 use pdfcore::watermark::{add_watermark, WatermarkOptions};
 
 fn engine_available() -> bool {
@@ -127,15 +127,8 @@ fn images_to_pdf_builds_pages() {
     };
 
     let out = dir.path("album.pdf");
-    let path = images_to_pdf(
-        &items,
-        &options,
-        &out,
-        OverwritePolicy::Replace,
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .unwrap();
+    let path =
+        images_to_pdf(&items, &options, &out, OverwritePolicy::Replace, &no_progress, &CancelToken::new()).unwrap();
     assert_eq!(page_count(&path), 2);
     let first = media_box(&path, 1);
     // Landscape source in auto mode -> landscape A4
@@ -146,15 +139,7 @@ fn images_to_pdf_builds_pages() {
     // Original page size mode
     let original = ImageToPdfOptions { page_size: "original".into(), dpi: 96, ..Default::default() };
     let out2 = dir.path("original.pdf");
-    images_to_pdf(
-        &items[..1],
-        &original,
-        &out2,
-        OverwritePolicy::Replace,
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .unwrap();
+    images_to_pdf(&items[..1], &original, &out2, OverwritePolicy::Replace, &no_progress, &CancelToken::new()).unwrap();
     let box_ = media_box(&out2, 1);
     assert!((box_[2] - 800.0 * 72.0 / 96.0).abs() < 1.0);
 }
@@ -197,16 +182,7 @@ fn watermark_text_changes_render_and_only_selected_pages() {
         pages: vec![1, 3],
         ..Default::default()
     };
-    add_watermark(
-        &input,
-        &out,
-        &options,
-        OverwritePolicy::Replace,
-        None,
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .unwrap();
+    add_watermark(&input, &out, &options, OverwritePolicy::Replace, None, &no_progress, &CancelToken::new()).unwrap();
     assert_eq!(page_count(&out), 3);
 
     // Render page 1 (watermarked) and 2 (untouched) and compare against the source.
@@ -242,16 +218,7 @@ fn watermark_image_and_tile() {
         tile: true,
         ..Default::default()
     };
-    add_watermark(
-        &input,
-        &out,
-        &options,
-        OverwritePolicy::Replace,
-        None,
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .unwrap();
+    add_watermark(&input, &out, &options, OverwritePolicy::Replace, None, &no_progress, &CancelToken::new()).unwrap();
     let render_options = RenderOptions { dpi: 72.0, max_width: Some(800), max_height: Some(800) };
     let src = pdfcore::render::render_page(&input, None, 1, &render_options).unwrap();
     let tiled = pdfcore::render::render_page(&out, None, 1, &render_options).unwrap();
@@ -268,16 +235,8 @@ fn page_numbers_are_added() {
         start_number: 1,
         ..Default::default()
     };
-    add_page_numbers(
-        &input,
-        &out,
-        &options,
-        OverwritePolicy::Replace,
-        None,
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .unwrap();
+    add_page_numbers(&input, &out, &options, OverwritePolicy::Replace, None, &no_progress, &CancelToken::new())
+        .unwrap();
     assert_eq!(page_count(&out), 2);
     let text = page_text(&out, 1);
     assert!(text.contains("Page 1 of 2"), "text was: {text}");
@@ -295,16 +254,8 @@ fn text_search_finds_matches_across_pages() {
     // The sample generator labels pages "<label> page N"; search for a phrase
     // that exists on several pages plus one that does not exist at all.
     let cancel = CancelToken::new();
-    let result = pdfcore::render::search_document(
-        &input,
-        None,
-        "search page",
-        false,
-        50,
-        &cancel,
-        &|_, _| {},
-    )
-    .expect("search runs");
+    let result = pdfcore::render::search_document(&input, None, "search page", false, 50, &cancel, &|_, _| {})
+        .expect("search runs");
     assert_eq!(result.total_matches, 4, "one match on each page");
     assert_eq!(result.pages_with_matches, 4);
     assert!(!result.truncated);
@@ -313,13 +264,16 @@ fn text_search_finds_matches_across_pages() {
     assert!(first.snippet.to_lowercase().contains("search page"), "snippet was {:?}", first.snippet);
 
     // Case-insensitive by default, case-sensitive when asked.
-    let insensitive = pdfcore::render::search_document(&input, None, "SEARCH PAGE", false, 50, &cancel, &|_, _| {}).unwrap();
+    let insensitive =
+        pdfcore::render::search_document(&input, None, "SEARCH PAGE", false, 50, &cancel, &|_, _| {}).unwrap();
     assert_eq!(insensitive.total_matches, 4);
-    let sensitive = pdfcore::render::search_document(&input, None, "SEARCH PAGE", true, 50, &cancel, &|_, _| {}).unwrap();
+    let sensitive =
+        pdfcore::render::search_document(&input, None, "SEARCH PAGE", true, 50, &cancel, &|_, _| {}).unwrap();
     assert_eq!(sensitive.total_matches, 0);
 
     // No matches for text that is not present.
-    let missing = pdfcore::render::search_document(&input, None, "zzzz-not-there", false, 50, &cancel, &|_, _| {}).unwrap();
+    let missing =
+        pdfcore::render::search_document(&input, None, "zzzz-not-there", false, 50, &cancel, &|_, _| {}).unwrap();
     assert_eq!(missing.total_matches, 0);
     assert_eq!(missing.pages_with_matches, 0);
 
@@ -438,16 +392,8 @@ fn annotations_are_flattened_into_pages() {
             y2: None,
         },
     ];
-    annotate_pdf(
-        &input,
-        &out,
-        &annotations,
-        OverwritePolicy::Replace,
-        None,
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .unwrap();
+    annotate_pdf(&input, &out, &annotations, OverwritePolicy::Replace, None, &no_progress, &CancelToken::new())
+        .unwrap();
     let render_options = RenderOptions { dpi: 72.0, max_width: Some(800), max_height: Some(800) };
     let src = pdfcore::render::render_page(&input, None, 1, &render_options).unwrap();
     let annotated = pdfcore::render::render_page(&out, None, 1, &render_options).unwrap();

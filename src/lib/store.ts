@@ -44,9 +44,7 @@ export const useSettings = create<SettingsState>((set, get) => ({
       const settings: Settings = { ...DEFAULT_SETTINGS, ...stored };
       set({ settings, engine, languages, loaded: true });
       applyTheme(settings.theme);
-      void import("./api").then(({ logFrontend }) =>
-        logFrontend("info", `engines: ${JSON.stringify(engine)}`),
-      );
+      void import("./api").then(({ logFrontend }) => logFrontend("info", `engines: ${JSON.stringify(engine)}`));
     } catch {
       set({ loaded: true });
     }
@@ -123,7 +121,7 @@ export const useJobs = create<JobsState>((set, get) => ({
 
 /** Progress of a single job (reading mode search). */
 export function useJobProgress(jobId: string): ProgressPayload | null {
-  return useJobs((state) => (jobId ? state.progress[jobId] ?? null : null));
+  return useJobs((state) => (jobId ? (state.progress[jobId] ?? null) : null));
 }
 
 // ---------------------------------------------------------------------------
@@ -178,7 +176,13 @@ interface DevState {
   files: string[] | null;
   autoRun: boolean;
   tab: string | null;
-  set: (context: { startScreen: string | null; newTab?: string | null; files: string[] | null; autoRun: boolean; tab?: string | null }) => void;
+  set: (context: {
+    startScreen: string | null;
+    newTab?: string | null;
+    files: string[] | null;
+    autoRun: boolean;
+    tab?: string | null;
+  }) => void;
 }
 
 export const useDev = create<DevState>((set) => ({
@@ -249,7 +253,10 @@ export const useOverwritePrompt = create<OverwriteState>((set, get) => ({
  * show an error inline (per-file results, launch failures) should use this
  * instead of reaching into `String(error)` themselves.
  */
-export function errorMessage(error: unknown, t: (key: string, params?: Record<string, string | number>) => string): string {
+export function errorMessage(
+  error: unknown,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string {
   const appError: AppError = toAppError(error);
   const key = `errors.${appError.code}`;
   const localized = t(key);

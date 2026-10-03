@@ -153,7 +153,9 @@ export function compatibilitySummary(report: CompatibilityReport | null | undefi
 
 export function YesNo({ value }: { value: boolean }) {
   const t = useT();
-  return <span style={{ color: value ? "var(--ok)" : "var(--muted)" }}>{value ? t("compat.yes") : t("compat.no")}</span>;
+  return (
+    <span style={{ color: value ? "var(--ok)" : "var(--muted)" }}>{value ? t("compat.yes") : t("compat.no")}</span>
+  );
 }
 
 export function CompatibilityReportView({ report }: { report: CompatibilityReport | null }) {
@@ -349,9 +351,7 @@ export function CompatibilityCenterDialog({
           </select>
         </label>
         {loading ? <p className="muted">{t("compat.loading")}</p> : null}
-        {error ? (
-          <p style={{ color: "var(--danger)" }}>{error}</p>
-        ) : null}
+        {error ? <p style={{ color: "var(--danger)" }}>{error}</p> : null}
         <CompatibilityReportView report={report} />
         <div className="row" style={{ justifyContent: "flex-end" }}>
           <button type="button" className="btn btn-soft" onClick={onClose}>
