@@ -1,8 +1,9 @@
 # cargo-deny configuration.
 #
-# One place for the dependency-advisory policy: the CI "Dependency audit" job
-# runs `cargo deny check advisories`, so an unreviewed advisory fails the build
-# instead of scrolling past in a log.
+# One place for the dependency policy: the CI "Dependency audit" job runs
+# `cargo deny check` (advisories, licenses, bans and sources), so an
+# unreviewed advisory or a new license fails the build instead of scrolling
+# past in a log.
 #
 # Every entry in the ignore list below carries an explicit owner and a review
 # date (see the comments). Reviewing an exception means rereading the advisory,
@@ -27,13 +28,41 @@ ignore = [
   # reviewed 2026-10-01; review by 2027-01-01 (or when rsa ships a fix, or the
   #   signing path moves to another implementation).
   "RUSTSEC-2023-0071",
-
-  # RUSTSEC-2024-0429 - glib 0.18.5 unsound VariantStrIter.
-  # reachability: only via the Linux/macOS GTK stack Tauri pulls in; the Windows
-  #   and Android builds this repository ships do not include it. Fixed in glib
-  #   0.20, which the current Tauri/wry chain does not allow.
-  # owner: @ozanstn1-stack
-  # reviewed 2026-10-01; review by 2027-01-01 (or when the Tauri/wry chain
-  #   allows glib 0.20).
-  "RUSTSEC-2024-0429",
 ]
+
+# Licenses the shipped dependency tree may use: permissive only. A new copyleft
+# dependency fails the build and has to be reviewed (and either replaced or the
+# allow list extended deliberately, which makes the resulting obligation
+# explicit).
+[licenses]
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-3.0",
+  "Zlib",
+  "MPL-2.0",
+  "CC0-1.0",
+  "Unlicense",
+  "BSL-1.0",
+  "OpenSSL",
+  "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+# Duplicate major versions are common in the Tauri/GTK stack and are visible
+# in the build output; keep them as a warning, but refuse wildcard version
+# requirements outright. Internal workspace crates are path-only by design, so
+# path wildcards stay allowed.
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

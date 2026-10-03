@@ -10,9 +10,35 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.5.3** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.5.4** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.5.4
+
+Quality infrastructure: real-app E2E, fuzzing and benchmark trends.
+
+- **Desktop E2E through tauri-driver.** `npm run e2e:smoke` launches the real
+  binary (embedded frontend, debug profile) through WebDriver and asserts the
+  home tool grid plus Settings navigation, saving a screenshot; the Windows
+  variant `npm run e2e:smoke:pdf` also opens a PDF in the Reader and waits for
+  the rendered page. CI runs the engine-free smoke on Linux (Xvfb +
+  WebKitWebDriver) on every pull request and uploads the screenshots.
+- **Fuzzing.** A `fuzz/` crate with three libFuzzer targets: the hardened ZIP
+  reader, the depth-limited XML parser, and the DOCX/XLSX/PPTX/ODT/RTF readers
+  behind a container magic dispatcher. The seeded corpus ships with the
+  samples; a nightly CI job on master runs each target for 30-60 s. (Fuzzing
+  links libFuzzer, which is Linux/macOS only - Windows can build the targets
+  with `cargo +nightly check` but not run them.)
+- **Benchmark trends.** Criterion benchmarks for DOCX/XLSX/PPTX import and the
+  lossless PDF compression path (`cargo bench -p officecore --bench parse -p
+  pdfcore --bench pdf_ops`); the master CI job uploads the criterion report
+  as an artifact, which is the comparison point for the next run.
+- **Dependency policy.** `cargo deny` now checks licenses (permissive
+  allow-list), duplicate versions and wildcard requirements, and registry
+  sources in addition to advisories; the app crate is marked `publish =
+  false` (the path dependencies are internal), and the glib advisory
+  exception is retired because the Tauri update moved past it.
 
 ## What's new in 3.5.3
 
@@ -651,6 +677,14 @@ cargo test --workspace
 npm test
 npx tsc --noEmit
 ```
+
+Beyond the unit/integration suites: `npm run e2e:smoke` drives the real
+binary through tauri-driver (add `-- --pdf samples/sample-1.pdf` for the
+Reader step; on Windows point `TAURI_NATIVE_DRIVER` at the msedgedriver that
+matches your WebView2 runtime), `cargo +nightly fuzz run <target>` from
+`fuzz/` runs the libFuzzer targets (Linux/macOS), and
+`cargo bench -p officecore --bench parse -p pdfcore --bench pdf_ops`
+produces the criterion report.
 
 **533 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **673
 frontend tests** pass, plus the 1 heavy case gated by `OSAK_PERF_HEAVY=1`,

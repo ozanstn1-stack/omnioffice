@@ -30,3 +30,12 @@ sha2 = "0.10"
 tempfile = "3.27.0"
 thiserror = "2.0.20"
 uuid = { version = "1.26.1", features = ["v4"] }
+
+[dev-dependencies]
+criterion = { version = "0.8", features = ["html_reports"] }
+
+# Trend benchmarks for the importers; run by the master CI job and compared
+# through the uploaded criterion report (see .github/workflows/desktop.yml).
+[[bench]]
+name = "parse"
+harness = false

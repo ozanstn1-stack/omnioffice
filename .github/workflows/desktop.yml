@@ -250,6 +250,95 @@ jobs:
           done
           npm run selftest:browser
 
+  # Real end-to-end smoke: the debug binary is launched by tauri-driver and
+  # driven over WebDriver. Engine-free on the Linux runner (the tool grid and
+  # Settings navigation); the Windows variant can add `e2e:smoke:pdf`.
+  e2e:
+    name: Desktop E2E (tauri-driver)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Linux window dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev \
+            patchelf webkit2gtk-driver xvfb dbus-x11
+      - run: npm ci
+      # The Tauri build script embeds ../dist, so it has to exist.
+      - name: Frontend for the embedded protocol
+        run: npm run build
+      - name: Stub the engine resources
+        run: |
+          mkdir -p src-tauri/resources/engines
+          echo "Engine binaries are fetched by scripts/fetch-engines.ps1." > src-tauri/resources/engines/README.txt
+      - name: Build the app (debug)
+        run: cargo build -p pdf-swiss-army-knife
+      - name: Install tauri-driver
+        run: cargo install tauri-driver --locked
+      - name: Smoke test (Xvfb)
+        run: xvfb-run -a npm run e2e:smoke
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-screenshots
+          path: e2e/artifacts/
+          if-no-files-found: ignore
+
+  # Short nightly fuzzing on master keeps the hardened ZIP/XML/reader layers
+  # exercised without making every pull request wait for it.
+  fuzz:
+    name: Fuzz (nightly, short)
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: "fuzz -> target"
+      - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2
+        with:
+          tool: cargo-fuzz
+      - name: ZIP reader
+        working-directory: fuzz
+        run: cargo +nightly fuzz run zip_archive -- -max_total_time=45
+      - name: XML parser
+        working-directory: fuzz
+        run: cargo +nightly fuzz run xml_parse -- -max_total_time=30
+      - name: Office readers
+        working-directory: fuzz
+        run: cargo +nightly fuzz run office_readers -- -max_total_time=60
+
+  # Criterion trend benchmarks; the uploaded report is the comparison point
+  # for the next run (download the previous artifact and diff with
+  # `critcmp` or open target/criterion/report/index.html).
+  bench:
+    name: Benchmarks (criterion)
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Run benchmarks
+        run: cargo bench -p officecore --bench parse -p pdfcore --bench pdf_ops
+      - name: Upload criterion report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: criterion-report
+          path: target/criterion/
+          if-no-files-found: error
+
   # Blocking on purpose: a known-vulnerable dependency is a release blocker,
   # not a note in the log. Fix or override an advisory explicitly.
   audit:
@@ -271,13 +360,15 @@ jobs:
           # compiling these tools on every push.
           tool: cargo-audit,cargo-deny
       # cargo audit is the quick gate; deny.toml is the reviewed policy with an
-      # owner and a review date for every ignored advisory.
+      # owner and a review date for every ignored advisory, plus the license,
+      # ban and source rules.
       - name: cargo audit
         run: |
           cargo audit \
-            --ignore RUSTSEC-2023-0071 \
-            --ignore RUSTSEC-2024-0429
-      # `deny.toml` owns the advisory policy (owned, time-boxed exceptions).
-      # A new advisory, or an exception whose review date has passed, fails here.
-      - name: cargo deny (advisories)
-        run: cargo deny check advisories
+            --ignore RUSTSEC-2023-0071
+      # `deny.toml` owns the advisory policy (owned, time-boxed exceptions) and
+      # the license/ban/source policy. A new advisory, an exception whose
+      # review date has passed, or a dependency outside the allow lists fails
+      # here.
+      - name: cargo deny (advisories, licenses, bans, sources)
+        run: cargo deny check

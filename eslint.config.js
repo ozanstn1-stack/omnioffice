@@ -116,7 +116,7 @@ export default [
     },
   },
   {
-    files: ["scripts/**/*.mjs", "*.config.{js,ts}", "vite.config.ts"],
+    files: ["scripts/**/*.mjs", "e2e/**/*.mjs", "*.config.{js,ts}", "vite.config.ts"],
     languageOptions: { globals: { ...globals.node } },
   },
   {

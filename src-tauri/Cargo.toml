@@ -10,6 +10,10 @@ repository.workspace = true
 authors.workspace = true
 description = "PDF Swiss Army Knife - local-first desktop PDF toolkit"
 rust-version.workspace = true
+# Never published: the path dependencies on the workspace crates are internal
+# and cargo-deny's wildcard policy treats a publishable crate as one that must
+# use registry versions.
+publish = false
 
 [lib]
 name = "pdf_sak_lib"

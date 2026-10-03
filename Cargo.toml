@@ -1,9 +1,12 @@
 [workspace]
 members = ["crates/aicore", "crates/officecore", "crates/pdfcore", "crates/synccore", "src-tauri"]
+# The fuzz crate needs nightly + libfuzzer; it is built by its own CI job and
+# must not be pulled into `cargo test --workspace`.
+exclude = ["fuzz"]
 resolver = "2"
 
 [workspace.package]
-version = "3.5.3"
+version = "3.5.4"
 edition = "2021"
 # Declared MSRV, in one place for every crate.
 #
