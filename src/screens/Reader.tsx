@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   ChevronLeft,
@@ -17,7 +17,7 @@ import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
 import { pagePreview, pageText, searchDocument, toAppError } from "../lib/api";
-import { clamp, fileBaseName, uid } from "../lib/format";
+import { clamp, fileBaseName, previewRasterWidth, uid } from "../lib/format";
 import { reportError, useJobProgress, useToasts } from "../lib/store";
 import type { PageGeometry, SearchResponse, TextMatch } from "../lib/types";
 
@@ -83,7 +83,43 @@ async function copyText(value: string): Promise<boolean> {
   }
 }
 
-function ReaderPage({
+export interface CachedPreview {
+  /** Raster width the bitmap was rendered at (physical pixels). */
+  width: number;
+  src: string;
+}
+
+/** Preview cache cap per document; one entry per page, LRU-evicted. */
+export const MAX_PREVIEW_CACHE_ENTRIES = 24;
+
+/** Stores a preview and evicts the least recently used pages beyond the cap. */
+export function rememberPreview(
+  cache: Map<number, CachedPreview>,
+  page: number,
+  entry: CachedPreview,
+  limit: number = MAX_PREVIEW_CACHE_ENTRIES,
+): void {
+  // Re-insert so Map iteration order tracks recency.
+  cache.delete(page);
+  cache.set(page, entry);
+  while (cache.size > limit) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+}
+
+/**
+ * The cached preview for a page when it is at least as sharp as `width`.
+ * Reusing a sharper bitmap when zooming out keeps the gesture instant and
+ * avoids re-rendering a page the reader already has.
+ */
+export function reusablePreview(cache: Map<number, CachedPreview>, page: number, width: number): CachedPreview | null {
+  const entry = cache.get(page);
+  return entry && entry.width >= width ? entry : null;
+}
+
+const ReaderPage = memo(function ReaderPage({
   path,
   page,
   geometry,
@@ -96,57 +132,72 @@ function ReaderPage({
   path: string;
   page: number;
   geometry: PageGeometry;
+  /** CSS width the page is laid out at; the raster is requested in physical px. */
   width: number;
   password?: string;
-  cache: Map<string, string>;
+  cache: Map<number, CachedPreview>;
   register: (page: number, element: HTMLDivElement | null) => void;
   highlight?: string;
 }) {
-  const key = `${path}@${page}@${width}`;
-  const [src, setSrc] = useState<string | null>(() => cache.get(key) ?? null);
+  // Render at the display's pixel density: requesting CSS pixels made zoomed
+  // pages visibly blurry on Android (the bitmap was upscaled by the browser).
+  const requestedWidth = previewRasterWidth(width);
+  // What this page instance fetched; the cache holds bitmaps rendered by any
+  // instance, so both are candidates for display.
+  const [fetched, setFetched] = useState<CachedPreview | null>(null);
   const [failed, setFailed] = useState(false);
   const elementRef = useRef<HTMLDivElement | null>(null);
   const requested = useRef(false);
-  // A new page key means a different preview: reset the src/failed and the
-  // once-only guard together with the key (derived during render).
-  const [lastKey, setLastKey] = useState(key);
-  if (lastKey !== key) {
-    setLastKey(key);
-    setSrc(cache.get(key) ?? null);
-    setFailed(false);
-  }
+
+  // Derive the bitmap during render instead of syncing it from an effect: the
+  // sharpest known bitmap wins (an oversized one is downscaled by CSS), so a
+  // reused cache entry appears without another state update.
+  const cached = cache.get(page) ?? null;
+  const shown: CachedPreview | null = fetched && (!cached || fetched.width >= cached.width) ? fetched : cached;
+  const covered = (shown?.width ?? 0) >= requestedWidth;
 
   useEffect(() => {
+    // A bitmap that already covers this zoom needs no render.
+    if (covered) return;
     const element = elementRef.current;
     if (!element) return;
-    // A new key means a new thumbnail: reset the once-only guard in an effect
-    // (effects may touch refs; render may not).
     requested.current = false;
+    let cancelled = false;
     // Lazy rendering: pages are only rasterized when they come near the
-    // viewport, which keeps memory flat for very large documents.
+    // viewport. A high-resolution raster is expensive (a 4000 px page is
+    // several megabytes), so the prefetch margin shrinks once the reader is
+    // zoomed past the low-resolution range.
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return;
         if (requested.current) return;
         requested.current = true;
-        void pagePreview(path, page, width, password, "jpeg", 86)
+        void pagePreview(path, page, requestedWidth, password, "jpeg", 90)
           .then((preview) => {
-            cache.set(key, preview.dataUrl);
-            setSrc(preview.dataUrl);
+            if (cancelled) return;
+            rememberPreview(cache, page, { width: requestedWidth, src: preview.dataUrl });
+            setFetched({ width: requestedWidth, src: preview.dataUrl });
+            setFailed(false);
           })
-          .catch(() => setFailed(true));
+          .catch(() => {
+            // The existing bitmap (if any) stays on screen; only report a
+            // failure when the page has nothing to show at all.
+            if (!cancelled) setFailed(true);
+          });
       },
-      { rootMargin: "900px 0px" },
+      { rootMargin: requestedWidth > 1600 ? "200px 0px" : "900px 0px" },
     );
     observer.observe(element);
     return () => {
+      cancelled = true;
       observer.disconnect();
       requested.current = false;
     };
-  }, [cache, key, page, password, path, width]);
+  }, [cache, covered, page, password, path, requestedWidth]);
 
   const ratio = geometry.display_height_pt / Math.max(1, geometry.display_width_pt);
   const height = Math.round(width * ratio);
+  const src = shown?.src ?? null;
 
   return (
     <div
@@ -176,7 +227,7 @@ function ReaderPage({
       ) : null}
     </div>
   );
-}
+});
 
 export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dragging: boolean }) {
   const t = useT();
@@ -187,9 +238,11 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   // A plain memo value (not a ref) so rendering and effects share the persistent
   // cache map without reading a ref during render.
-  const [imageCacheMap] = useState(() => new Map<string, string>());
+  const [imageCacheMap] = useState(() => new Map<number, CachedPreview>());
   const currentPageRef = useRef(1);
   const framePending = useRef(false);
+  const zoomFrameRef = useRef<number | null>(null);
+  const pendingZoomRef = useRef<number | null>(null);
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
   const panRef = useRef<{ pointerId: number; startX: number; startY: number; scrollLeft: number } | null>(null);
   const pinchRef = useRef<ReaderPinch | null>(null);
@@ -267,6 +320,9 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
     setQuery("");
     setCurrentPage(1);
     setZoom("fit");
+    // Drop the previous document's bitmaps before the new pages render, so a
+    // page number cannot be served a stale image from another file.
+    imageCacheMap.clear();
   }
 
   // Scroll the reading area back to the top once per document (effects may
@@ -274,9 +330,7 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
   useEffect(() => {
     const container = scrollRef.current;
     if (container) container.scrollTop = 0;
-    imageCacheMap.clear();
     currentPageRef.current = 1;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docKey]);
 
   const register = useCallback((page: number, element: HTMLDivElement | null) => {
@@ -294,6 +348,23 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
   }, []);
 
   const applyZoom = (next: number | "fit") => setZoom(next);
+  // Coalesce pinch updates to one state change per frame: pointermove can fire
+  // faster than the display refreshes and every setZoom re-renders the reader.
+  const queueZoom = useCallback((value: number) => {
+    pendingZoomRef.current = value;
+    if (zoomFrameRef.current !== null) return;
+    zoomFrameRef.current = requestAnimationFrame(() => {
+      zoomFrameRef.current = null;
+      const pending = pendingZoomRef.current;
+      pendingZoomRef.current = null;
+      if (pending !== null) setZoom(pending);
+    });
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (zoomFrameRef.current !== null) cancelAnimationFrame(zoomFrameRef.current);
+    };
+  }, []);
   const zoomBy = (factor: number) => {
     const current = typeof zoom === "number" ? zoom : 1;
     applyZoom(clampReaderZoom(current * factor));
@@ -350,7 +421,7 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
       const midX = (a.x + b.x) / 2;
       const midY = (a.y + b.y) / 2;
       trackPinchFocal(midX, midY);
-      setZoom(pinchZoomValue(pinch.zoom, pinch.distance, Math.hypot(a.x - b.x, a.y - b.y)));
+      queueZoom(pinchZoomValue(pinch.zoom, pinch.distance, Math.hypot(a.x - b.x, a.y - b.y)));
       return;
     }
     const pan = panRef.current;
@@ -628,7 +699,7 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
             ) : null}
             {geometries.map((geometry) => (
               <ReaderPage
-                key={`${geometry.page}-${renderWidth}`}
+                key={`${docKey}-${geometry.page}`}
                 path={session.primary!.path}
                 page={geometry.page}
                 geometry={geometry}

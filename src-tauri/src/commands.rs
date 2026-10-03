@@ -172,7 +172,12 @@ pub async fn page_preview(
     let path = crate::paths::input_file(&path)?.into_path_buf();
     run_blocking(move || {
         let max_width = max_width.unwrap_or(1100).clamp(200, 4000);
-        let options = pdfcore::render::RenderOptions { dpi: 96.0, max_width: Some(max_width), max_height: None };
+        // Render at a high dpi and let `max_width` cap the result: pdfium's
+        // target width is the min of the two, so the bitmap actually reaches
+        // the requested raster width. The old fixed 96 dpi could only ever
+        // downscale, so a reader zoom returned the same small bitmap and the
+        // webview upscaled it (the blurry zoom on Android).
+        let options = pdfcore::render::RenderOptions { dpi: 600.0, max_width: Some(max_width), max_height: None };
         let rendered = pdfcore::render::render_page(&path, password.as_deref(), page, &options)?;
         // Reading mode requests JPEG (much smaller for large pages); the
         // thumbnail/preview default stays lossless PNG.

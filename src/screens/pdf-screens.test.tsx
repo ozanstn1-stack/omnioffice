@@ -145,7 +145,8 @@ import inspectionFixture from "../../crates/pdfcore/tests/fixtures/inspection-sa
 import { Inspect } from "./Inspect";
 import { Compare } from "./Compare";
 import { Redact } from "./Redact";
-import { Reader, clampReaderZoom, doubleTapZoom, pinchZoomValue } from "./Reader";
+import { Reader, clampReaderZoom, doubleTapZoom, pinchZoomValue, rememberPreview, reusablePreview, MAX_PREVIEW_CACHE_ENTRIES } from "./Reader";
+import { previewRasterWidth } from "../lib/format";
 import { PdfStudio, displayDeltaToPage, displayRectToPageRect, pageRectToDisplayRect } from "./PdfStudio";
 
 // jsdom has no PointerEvent; MouseEvent carries button/clientX/pointerId, which
@@ -297,7 +298,6 @@ describe("reader touch zoom", () => {
     expect(clampReaderZoom(0.1)).toBe(0.25);
     expect(clampReaderZoom(1.5)).toBe(1.5);
   });
-
   it("scales the starting zoom by the pinch distance ratio", () => {
     expect(pinchZoomValue(1, 100, 200)).toBe(2);
     expect(pinchZoomValue(2, 100, 50)).toBe(1);
@@ -335,5 +335,32 @@ describe("reader touch zoom", () => {
     } finally {
       nowSpy.mockRestore();
     }
+  });
+});
+
+describe("reader preview sizing and cache", () => {
+  it("requests rasters at physical pixels and clamps to the backend bounds", () => {
+    // A phone at 2.5x needs 2000 physical pixels for an 800 CSS px page.
+    expect(previewRasterWidth(800, 2.5)).toBe(2000);
+    expect(previewRasterWidth(800, 1)).toBe(800);
+    // Never above the reader ceiling (3000) or below the backend minimum (200).
+    expect(previewRasterWidth(3200, 2.5)).toBe(3000);
+    expect(previewRasterWidth(10, 1)).toBe(200);
+  });
+
+  it("reuses a sharper bitmap when zooming out and caps the cache", () => {
+    const cache = new Map<number, { width: number; src: string }>();
+    rememberPreview(cache, 1, { width: 2000, src: "big" });
+    expect(reusablePreview(cache, 1, 1500)?.src).toBe("big");
+    // A sharper-than-cached request must render instead of reusing.
+    expect(reusablePreview(cache, 1, 2500)).toBeNull();
+
+    for (let page = 1; page <= MAX_PREVIEW_CACHE_ENTRIES + 5; page += 1) {
+      rememberPreview(cache, page, { width: 800, src: `p${page}` });
+    }
+    expect(cache.size).toBe(MAX_PREVIEW_CACHE_ENTRIES);
+    // The least recently used page was evicted first.
+    expect(cache.has(1)).toBe(false);
+    expect(cache.has(MAX_PREVIEW_CACHE_ENTRIES + 5)).toBe(true);
   });
 });
