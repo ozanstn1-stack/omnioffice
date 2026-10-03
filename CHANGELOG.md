@@ -4,6 +4,64 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.5] - Data-integrity fixes, PDF repair and hard quality gates
+
+### Fixed
+
+- **XLSX cross-sheet comments no longer contaminate each other (audit C11).**
+  The exporter wrote one `comments1.xml` part for the whole workbook, so every
+  sheet resolved the same part on import and read every other sheet's notes:
+  two sheets with a comment on the same address shared one comment after a
+  save. Comments and their VML shape sets are now one part per sheet, wired
+  through that sheet's own relationships and content-type overrides. The
+  regression test writes two sheets with a comment on A1 and re-reads the
+  produced file.
+- **Writer tracked changes keep the runs they are not editing (audit M12).**
+  Suggest-mode synchronisation flattened the paragraph to text and rebuilt it
+  from the first run's format, so every keystroke restyled the surrounding
+  text, dropped footnote/field anchors and re-issued revision ids. The diff now
+  works on runs: unchanged runs keep their formatting, links and anchors, an
+  existing insertion keeps its revision id, deleting text the same suggestion
+  inserted cancels the insertion, and a pending deletion survives a sync even
+  while revisions are hidden (it used to be silently accepted).
+
+### Added
+
+- **PDF Studio repair and Fast Web View.** The bundled qpdf engine is wired
+  into the app: "Repair" rewrites a damaged PDF (broken xref or trailer,
+  dangling objects) into a working file next to the original, and "Fast Web
+  View" writes the linearized layout. Both re-open the produced file, report
+  its real page count and surface qpdf's diagnostics, and both are retryable
+  from the Jobs screen like every other long-running tool.
+- **Benchmark regression gate.** `scripts/check-bench-regression.mjs` compares
+  the criterion means against the previous master run (cached baseline) and
+  fails the bench job on a >15 % mean regression (warning at 7.5 %); the
+  baseline advances only when the check passed.
+- **Deeper desktop E2E.** `npm run e2e:flows` drives real flows through
+  tauri-driver: Writer type → Ctrl+S with the DOCX on disk proved changed, two
+  PDFs merged through the Merge screen's auto-run, and the Studio sanitizer
+  run through its real button. CI runs them engine-free on Linux next to the
+  smoke test, and a failure saves a screenshot.
+
+### Changed
+
+- **The formatting backlog is gone.** Prettier and rustfmt ran over the whole
+  repository in one no-behaviour commit and the CI gate now checks every
+  changed file plus the full tree, instead of only the files a change added.
+- The entry bundle is ~92 KB gzip instead of ~155 KB: `manualChunks` uses the
+  function form so the JSX runtime and the React scheduler land in the
+  React vendor chunk instead of the entry.
+- Rust crypto dependencies deduplicated: `cbc` 0.2.1 and `des` 0.9 replace the
+  0.1/0.8 pair (the same versions lopdf already uses) and the unused `aes`
+  dev-dependency is removed.
+- Deferred dependency majors are documented in `.github/dependabot.yml` with
+  the concrete blocker for each: eslint 10 (eslint-plugin-jsx-a11y peer
+  range), TypeScript 7 (typescript-eslint supports `<6.1.0`), vitest/vite
+  majors (the coverage instrumentation changes the measured percentages
+  completely, so the enforcement floors need a deliberate re-baseline; the
+  current vitest 3.2.7 also keeps the npm audit high gate green), der 0.8
+  (cms/x509-cert pin 0.7) and rand 0.10 (rsa 0.9 uses rand_core 0.6).
+
 ## [3.5.4] - Quality infrastructure: E2E, fuzzing, benchmark trends
 
 ### Added

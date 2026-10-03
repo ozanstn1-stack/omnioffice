@@ -10,7 +10,7 @@ Effort estimates assume a single developer.
 |---|---|---|
 | 0 | Docs consistency, `compat.rs` freshness contract, frontend coverage baseline, roadmap | Done in 3.4.0 |
 | 1 (v3.4) | Quick wins: command palette + keybindings, Settings completion, Home IA, a11y pass, dead ends | Done in 3.4.0 |
-| 2 (v3.5) | Quality infrastructure: coverage thresholds, screen tests, desktop E2E, fuzzing, benchmark trends, CI hardening | Partial: coverage gate + 24 screen tests in 3.5.0; E2E, fuzzing, benchmark trends remain |
+| 2 (v3.5) | Quality infrastructure: coverage thresholds, screen tests, desktop E2E, fuzzing, benchmark trends, CI hardening | Done in 3.5.0-3.5.5 (coverage gate + screen tests in 3.5.0; E2E, fuzzing, benchmark trends in 3.5.4; regression gate + deep flows + repo-wide format in 3.5.5) |
 | 3 (v3.6) | PDF depth: content-stream object editing, render cache, Reader, Studio UX, PDF/A subsetting, signature chain (RFC 3161/OCSP) | Planned |
 | 4 (v3.7) | Office depth: Writer fields/revisions, Calc data tools + chart UI, Impress timeline + media, format fidelity | Planned |
 | 5 (v4.x) | Platform: auto-update, macOS/Linux packaging, stores, Android foreground service + Keystore, sync OAuth, Vault 2.0, plugins, AI | Planned |
@@ -97,3 +97,25 @@ Effort estimates assume a single developer.
 - `cargo deny check` now enforces licenses, bans and sources as well.
 - Still open: C11, benchmark thresholds/regression alerts, deeper E2E flows,
   the red Dependabot majors, and the Phase 3/4/5 roadmap.
+
+## 3.5.5 — Data integrity and hard gates (delivered)
+
+- **C11 fixed**: XLSX comments are written per sheet (own part, VML set,
+  relationships and content-type overrides); two sheets on the same address no
+  longer share a comment.
+- **M12 fixed**: Writer tracked changes diff runs, keeping surrounding
+  formatting/links/anchors, existing insertion ids, insertion cancellation and
+  hidden pending deletions.
+- **qpdf wired in**: PDF Studio Repair and Fast Web View (desktop only), with
+  Jobs retry, real page counts and engine diagnostics.
+- **Benchmark regression gate**: cached master baseline, >15 % mean
+  regression fails the bench job, baseline advances only on success.
+- **Deep E2E flows** in CI: Writer type → save, Merge, Studio sanitizer, with
+  failure screenshots.
+- **Formatting backlog burned down** in one no-behaviour commit; the gate now
+  checks every changed file and the whole tree.
+- Rust deps deduped (`cbc` 0.2/`des` 0.9, unused `aes` removed); the blocked
+  majors are documented in `.github/dependabot.yml`.
+- Still open for v3.6: content-stream editing, Reader tiling, PDF/A font
+  subsetting, RFC 3161/OCSP, and the coverage re-baseline that the vitest 4/5
+  instrumentation change requires.
