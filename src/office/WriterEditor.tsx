@@ -47,15 +47,86 @@ import type { OfficeTab, TextDocument } from "../lib/office-store";
 import { useOfficeTabs } from "../lib/office-store";
 import { useToasts, reportError } from "../lib/store";
 import { useT } from "../lib/i18n";
-import { uid, wordCount, type Block, type DocComment, type FieldRef, type Footnote, type ImageData, type ParaProps, type Run, type SectionProps, type TableData, type TocEntry } from "../lib/office-types";
-import { defaultPageSetup, defaultParaProps, defaultSectionProps, documentSections, emptyMetadata, newFootnote, newParaBlock, newTextDocument, sectionForBlock } from "../lib/office-types";
-import { Dialog, Ribbon, RibbonGroup, ToolButton, ToolColor, ToolNumber, ToolSelect, useTablePicker } from "./office-ui";
+import {
+  uid,
+  wordCount,
+  type Block,
+  type DocComment,
+  type FieldRef,
+  type Footnote,
+  type ImageData,
+  type ParaProps,
+  type Run,
+  type SectionProps,
+  type TableData,
+  type TocEntry,
+} from "../lib/office-types";
+import {
+  defaultPageSetup,
+  defaultParaProps,
+  defaultSectionProps,
+  documentSections,
+  emptyMetadata,
+  newFootnote,
+  newParaBlock,
+  newTextDocument,
+  sectionForBlock,
+} from "../lib/office-types";
+import {
+  Dialog,
+  Ribbon,
+  RibbonGroup,
+  ToolButton,
+  ToolColor,
+  ToolNumber,
+  ToolSelect,
+  useTablePicker,
+} from "./office-ui";
 import { openIntoWorkspace, useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
-import { acceptAll, acceptRevision, nextRevision, rejectAll, rejectRevision, revisionList, trackRunChanges } from "./writer/revisions";
-import { emptyHistory, record as recordHistory, redo as redoHistory, undo as undoHistory, type HistoryState } from "./writer/history";
-import { joinRuns, nextListLevel, nextParagraphProps, replaceRange, runsText, splitRuns, wordRangeAt } from "./writer/runs";
-import { caretOffset, caretOnFirstLine, caretOnLastLine, offsetFromPoint, paragraphAtPoint, repaintParagraph, selectedRange, setCaretOffset, setSelectionRange } from "./writer/caret";
-import { domToRuns, fieldValuesFor, orderedListMarker, orderedListNumbers, runsToHtml, wrapCellRuns } from "./writer/writerDom";
+import {
+  acceptAll,
+  acceptRevision,
+  nextRevision,
+  rejectAll,
+  rejectRevision,
+  revisionList,
+  trackRunChanges,
+} from "./writer/revisions";
+import {
+  emptyHistory,
+  record as recordHistory,
+  redo as redoHistory,
+  undo as undoHistory,
+  type HistoryState,
+} from "./writer/history";
+import {
+  joinRuns,
+  nextListLevel,
+  nextParagraphProps,
+  replaceRange,
+  runsText,
+  splitRuns,
+  wordRangeAt,
+} from "./writer/runs";
+import {
+  caretOffset,
+  caretOnFirstLine,
+  caretOnLastLine,
+  offsetFromPoint,
+  paragraphAtPoint,
+  repaintParagraph,
+  selectedRange,
+  setCaretOffset,
+  setSelectionRange,
+} from "./writer/caret";
+import {
+  domToRuns,
+  fieldValuesFor,
+  orderedListMarker,
+  orderedListNumbers,
+  runsToHtml,
+  wrapCellRuns,
+} from "./writer/writerDom";
 import { emptyRun as emptyWriterRun } from "./writer/runs";
 import { measureBlocks } from "./writer/measure";
 import { paginate, pageOfBlock, type Fragment, type PageLayout } from "./writer/pagination";
@@ -116,7 +187,10 @@ function noteNumber(document: TextDocument, id: string): number {
   };
   for (const block of document.blocks) {
     if (block.type === "paragraph") collect(block.runs);
-    if (block.type === "table") for (const row of block.table.rows) for (const cell of row.cells) for (const inner of cell.blocks) if (inner.type === "paragraph") collect(inner.runs);
+    if (block.type === "table")
+      for (const row of block.table.rows)
+        for (const cell of row.cells)
+          for (const inner of cell.blocks) if (inner.type === "paragraph") collect(inner.runs);
   }
   return order.indexOf(id) + 1;
 }
@@ -142,7 +216,9 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   // probe column and computed by the pagination engine; "continuous" keeps the
   // pre-2.5 editing surface for users who prefer it.
   const [view, setView] = useState<"paginated" | "continuous">("paginated");
-  const [pages, setPages] = useState<PageLayout[]>([{ fragments: [], usedPx: 0, continuation: false, sectionIndex: 0, noteHeightPx: 0, sectionPage: 1 }]);
+  const [pages, setPages] = useState<PageLayout[]>([
+    { fragments: [], usedPx: 0, continuation: false, sectionIndex: 0, noteHeightPx: 0, sectionPage: 1 },
+  ]);
   const pageCount = view === "paginated" ? pages.length : measuredPageCount;
   const [navOpen, setNavOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -294,21 +370,27 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   const historyRef = useRef<HistoryState>(emptyHistory());
   const [historyDepth, setHistoryDepth] = useState({ undo: 0, redo: 0 });
 
-  const applyModel = useCallback((before: TextDocument, model: TextDocument) => {
-    historyRef.current = recordHistory(
-      historyRef.current,
-      before,
-      { label: "edit", operations: [{ kind: "replaceDocument", before, after: model }], after: model },
-    );
-    setHistoryDepth({ undo: historyRef.current.undo.length, redo: historyRef.current.redo.length });
-    edit(tab.id, () => model);
-  }, [edit, tab.id]);
+  const applyModel = useCallback(
+    (before: TextDocument, model: TextDocument) => {
+      historyRef.current = recordHistory(historyRef.current, before, {
+        label: "edit",
+        operations: [{ kind: "replaceDocument", before, after: model }],
+        after: model,
+      });
+      setHistoryDepth({ undo: historyRef.current.undo.length, redo: historyRef.current.redo.length });
+      edit(tab.id, () => model);
+    },
+    [edit, tab.id],
+  );
 
   // `update` reads the model the editor actually renders, so it never applies
   // an edit on top of a stale snapshot.
-  const update = useCallback((mutate: (document: TextDocument) => TextDocument) => {
-    applyModel(document, mutate(document));
-  }, [applyModel, document]);
+  const update = useCallback(
+    (mutate: (document: TextDocument) => TextDocument) => {
+      applyModel(document, mutate(document));
+    },
+    [applyModel, document],
+  );
 
   const undoEdit = useCallback(() => {
     const result = undoHistory(historyRef.current);
@@ -335,8 +417,10 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     redoRef.current = redoEdit;
   }, [undoEdit, redoEdit]);
 
-  const contentWidthPx = (document.page.widthPt - document.page.marginLeftPt - document.page.marginRightPt) * (96 / 72) * zoom;
-  const contentHeightPx = (document.page.heightPt - document.page.marginTopPt - document.page.marginBottomPt) * (96 / 72) * zoom;
+  const contentWidthPx =
+    (document.page.widthPt - document.page.marginLeftPt - document.page.marginRightPt) * (96 / 72) * zoom;
+  const contentHeightPx =
+    (document.page.heightPt - document.page.marginTopPt - document.page.marginBottomPt) * (96 / 72) * zoom;
 
   // Real pagination: the probe renders every block at the exact content width,
   // the engine measures its line and row boxes and splits them into pages.
@@ -372,7 +456,10 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
       return { ...metric, sectionIndex: breakCount, footnoteHeightPx: noteHeightPx, sectionStart: section.start };
     });
     const sectionHeights = sections.map((section) =>
-      Math.max(120, (section.page.heightPt - section.page.marginTopPt - section.page.marginBottomPt) * (96 / 72) * zoom),
+      Math.max(
+        120,
+        (section.page.heightPt - section.page.marginTopPt - section.page.marginBottomPt) * (96 / 72) * zoom,
+      ),
     );
     setPages(paginate(enriched, Math.max(120, contentHeightPx), { sectionHeights, noteAreaRatio: 0.45 }));
   }, [view, editingHeader, document, contentWidthPx, contentHeightPx, zoom, layoutVersion]);
@@ -401,10 +488,17 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   // Model helpers
   // -------------------------------------------------------------------------
 
-  const currentBlocks = () => (editingHeader ? (editingHeader === "header" ? document.header : document.footer) : document.blocks);
+  const currentBlocks = () =>
+    editingHeader ? (editingHeader === "header" ? document.header : document.footer) : document.blocks;
 
   const withBlocks = (blocks: Block[]) =>
-    update((doc) => (editingHeader === "header" ? { ...doc, header: blocks } : editingHeader === "footer" ? { ...doc, footer: blocks } : { ...doc, blocks }));
+    update((doc) =>
+      editingHeader === "header"
+        ? { ...doc, header: blocks }
+        : editingHeader === "footer"
+          ? { ...doc, footer: blocks }
+          : { ...doc, blocks },
+    );
 
   const updateBlock = (index: number, block: Block) => {
     const blocks = [...currentBlocks()];
@@ -489,8 +583,11 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
       // Suggest mode: text that changed since the last sync is recorded as a
       // tracked insertion/deletion instead of being applied silently.
       if (document.trackChanges && !editingHeader) {
-        const previous = block.runs.filter((run) => !run.revision || run.revision.kind === "insert");
-        runs = trackRunChanges(previous, runs, revisionAuthor);
+        // Every run is passed in, including pending deletions: `trackRunChanges`
+        // treats them as invisible to the diff and carries them through, so
+        // typing with "show revisions" off can no longer silently accept a
+        // pending deletion.
+        runs = trackRunChanges(block.runs, runs, revisionAuthor);
       }
       updateBlock(index, { ...block, runs: runs.length > 0 ? runs : [emptyRun()] });
     } else if (block.type === "table") {
@@ -498,7 +595,13 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     }
   };
 
-  const syncCell = (tableIndex: number, rowIndex: number, cellIndex: number, blockIndex: number, element: HTMLElement) => {
+  const syncCell = (
+    tableIndex: number,
+    rowIndex: number,
+    cellIndex: number,
+    blockIndex: number,
+    element: HTMLElement,
+  ) => {
     const block = currentBlocks()[tableIndex];
     if (!block || block.type !== "table") return;
     const table: TableData = {
@@ -567,7 +670,10 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     const block = currentBlocks()[index];
     if (block?.type !== "paragraph") return;
     const list = block.props.list;
-    const next = list && list.kind === kind ? null : { kind, level: list?.level ?? 0, start: 1, marker: kind === "number" ? "1." : "•" };
+    const next =
+      list && list.kind === kind
+        ? null
+        : { kind, level: list?.level ?? 0, start: 1, marker: kind === "number" ? "1." : "•" };
     updateBlock(index, { ...block, props: { ...block.props, list: next } });
   };
 
@@ -582,7 +688,18 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   };
 
   const toggleInline = (field: "bold" | "italic" | "underline" | "strike" | "superscript" | "subscript") => {
-    const command = field === "bold" ? "bold" : field === "italic" ? "italic" : field === "underline" ? "underline" : field === "strike" ? "strikeThrough" : field === "superscript" ? "superscript" : "subscript";
+    const command =
+      field === "bold"
+        ? "bold"
+        : field === "italic"
+          ? "italic"
+          : field === "underline"
+            ? "underline"
+            : field === "strike"
+              ? "strikeThrough"
+              : field === "superscript"
+                ? "superscript"
+                : "subscript";
     exec(command);
   };
 
@@ -647,7 +764,15 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     const width = document.page.widthPt - document.page.marginLeftPt - document.page.marginRightPt;
     const table: TableData = {
       rows: Array.from({ length: rows }, (_, rowIndex) => ({
-        cells: Array.from({ length: cols }, () => ({ blocks: [newParaBlock()], colspan: 1, rowspan: 1, background: null, align: "left", valign: "top", widthPt: null })),
+        cells: Array.from({ length: cols }, () => ({
+          blocks: [newParaBlock()],
+          colspan: 1,
+          rowspan: 1,
+          background: null,
+          align: "left",
+          valign: "top",
+          widthPt: null,
+        })),
         heightPt: null,
         header: rowIndex === 0,
       })),
@@ -731,7 +856,9 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
      * the edit. Repainting before the focus moves keeps blur honest.
      */
     const repaintAt = (index: number, runs: Run[]) => {
-      const element = window.document.querySelector<HTMLElement>(`[data-scope="${scope}"][data-block-index="${index}"]`);
+      const element = window.document.querySelector<HTMLElement>(
+        `[data-scope="${scope}"][data-block-index="${index}"]`,
+      );
       if (element) repaintParagraph(element, runs);
     };
 
@@ -747,7 +874,11 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         const tail = replaceRange(right, 0, Math.max(0, action.to - action.offset), "");
         const headText = runsText(left);
         blocks[action.index] = { ...paragraph, runs: left };
-        blocks.splice(action.index + 1, 0, { type: "paragraph", props: nextParagraphProps(paragraph.props, headText), runs: tail });
+        blocks.splice(action.index + 1, 0, {
+          type: "paragraph",
+          props: nextParagraphProps(paragraph.props, headText),
+          runs: tail,
+        });
         withBlocks(blocks);
         repaintAt(action.index, left);
         focusParagraph(action.index + 1, 0);
@@ -796,7 +927,9 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
       case "outdent": {
         if (!paragraph) return;
         const delta = action.kind === "indent" ? 1 : -1;
-        const next = paragraph.props.list ? nextListLevel(paragraph.props, delta) : { ...paragraph.props, indentLeftPt: Math.max(0, paragraph.props.indentLeftPt + delta * 24) };
+        const next = paragraph.props.list
+          ? nextListLevel(paragraph.props, delta)
+          : { ...paragraph.props, indentLeftPt: Math.max(0, paragraph.props.indentLeftPt + delta * 24) };
         blocks[action.index] = { ...paragraph, props: next };
         withBlocks(blocks);
         return;
@@ -810,7 +943,14 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         while (target >= 0 && target < blocks.length && blocks[target].type !== "paragraph") target += direction;
         const nextParagraph = blocks[target];
         if (!nextParagraph || nextParagraph.type !== "paragraph") return;
-        const at = direction < 0 ? (action.atLine === "start" ? 0 : runsText(nextParagraph.runs).length) : action.atLine === "end" ? runsText(nextParagraph.runs).length : 0;
+        const at =
+          direction < 0
+            ? action.atLine === "start"
+              ? 0
+              : runsText(nextParagraph.runs).length
+            : action.atLine === "end"
+              ? runsText(nextParagraph.runs).length
+              : 0;
         focusParagraph(target, at, action.atLine);
         return;
       }
@@ -824,9 +964,15 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   const runFind = (forward: boolean) => {
     if (!findText) return;
     try {
-      (window as unknown as { find: (text: string, matchCase: boolean, backwards: boolean, wrap: boolean, wholeWord: boolean) => boolean }).find(findText, matchCase, !forward, true, wholeWord);
+      (
+        window as unknown as {
+          find: (text: string, matchCase: boolean, backwards: boolean, wrap: boolean, wholeWord: boolean) => boolean;
+        }
+      ).find(findText, matchCase, !forward, true, wholeWord);
     } catch {
-      useToasts.getState().push({ kind: "info", title: t("writer.findUnsupported"), detail: t("writer.findUnsupportedHint") });
+      useToasts
+        .getState()
+        .push({ kind: "info", title: t("writer.findUnsupported"), detail: t("writer.findUnsupportedHint") });
     }
   };
 
@@ -853,13 +999,21 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
             ...block,
             table: {
               ...block.table,
-              rows: block.table.rows.map((row) => ({ ...row, cells: row.cells.map((cell) => ({ ...cell, blocks: mapBlocks(cell.blocks) })) })),
+              rows: block.table.rows.map((row) => ({
+                ...row,
+                cells: row.cells.map((cell) => ({ ...cell, blocks: mapBlocks(cell.blocks) })),
+              })),
             },
           };
         return block;
       });
     update((doc) => {
-      const next = { ...doc, blocks: mapBlocks(doc.blocks), header: mapBlocks(doc.header), footer: mapBlocks(doc.footer) };
+      const next = {
+        ...doc,
+        blocks: mapBlocks(doc.blocks),
+        header: mapBlocks(doc.header),
+        footer: mapBlocks(doc.footer),
+      };
       return next;
     });
     useToasts.getState().push({ kind: "success", title: t("writer.replaceDone"), detail: `${count}` });
@@ -911,9 +1065,13 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     const reference: Run = endnote ? { ...emptyRun(""), endnote: note.id } : { ...emptyRun(""), footnote: note.id };
     update((doc) => ({
       ...doc,
-      footnotes: endnote ? doc.footnotes ?? [] : [...(doc.footnotes ?? []), note],
-      endnotes: endnote ? [...(doc.endnotes ?? []), note] : doc.endnotes ?? [],
-      blocks: doc.blocks.map((candidate, index) => (index === caret.index && candidate.type === "paragraph" ? { ...candidate, runs: [...left, reference, ...right] } : candidate)),
+      footnotes: endnote ? (doc.footnotes ?? []) : [...(doc.footnotes ?? []), note],
+      endnotes: endnote ? [...(doc.endnotes ?? []), note] : (doc.endnotes ?? []),
+      blocks: doc.blocks.map((candidate, index) =>
+        index === caret.index && candidate.type === "paragraph"
+          ? { ...candidate, runs: [...left, reference, ...right] }
+          : candidate,
+      ),
     }));
     setLayoutVersion((version) => version + 1);
   };
@@ -935,7 +1093,12 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
       if (!target) return doc;
       if (sectionIndex === updatedSections.length - 1) {
         // The final section lives in the document-level fields.
-        return { ...doc, page: patch.page ?? doc.page, header: patch.header ?? doc.header, footer: patch.footer ?? doc.footer };
+        return {
+          ...doc,
+          page: patch.page ?? doc.page,
+          header: patch.header ?? doc.header,
+          footer: patch.footer ?? doc.footer,
+        };
       }
       let breakCount = 0;
       return {
@@ -971,7 +1134,10 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
       useToasts.getState().push({ kind: "error", title: t("writer.bookmarkExists") });
       return;
     }
-    update((doc) => ({ ...doc, bookmarks: [...(doc.bookmarks ?? []), { id: uid(), name, block: caret.index, offset: caret.offset }] }));
+    update((doc) => ({
+      ...doc,
+      bookmarks: [...(doc.bookmarks ?? []), { id: uid(), name, block: caret.index, offset: caret.offset }],
+    }));
     setBookmarkName("");
   };
 
@@ -980,7 +1146,20 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     if (!caret) return;
     const block = currentBlocks()[caret.index];
     if (block?.type !== "paragraph") return;
-    const cached = kind === "page" ? "1" : kind === "pages" ? "1" : kind === "date" ? new Date().toISOString().slice(0, 10) : kind === "time" ? new Date().toISOString().slice(11, 19) : kind === "title" ? document.title : kind === "author" ? document.metadata.author : target || "?";
+    const cached =
+      kind === "page"
+        ? "1"
+        : kind === "pages"
+          ? "1"
+          : kind === "date"
+            ? new Date().toISOString().slice(0, 10)
+            : kind === "time"
+              ? new Date().toISOString().slice(11, 19)
+              : kind === "title"
+                ? document.title
+                : kind === "author"
+                  ? document.metadata.author
+                  : target || "?";
     const [left, right] = splitRuns(block.runs, caret.offset);
     const fieldRun: Run = { ...emptyRun(""), field: { kind, target, cached } };
     updateBlock(caret.index, { ...block, runs: [...left, fieldRun, ...right] });
@@ -998,7 +1177,8 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   // Page setup
   // -------------------------------------------------------------------------
 
-  const setPageSize = (size: string) => update((doc) => ({ ...doc, page: { ...doc.page, ...sizeDimensions(size, doc.page.orientation), size } }));
+  const setPageSize = (size: string) =>
+    update((doc) => ({ ...doc, page: { ...doc.page, ...sizeDimensions(size, doc.page.orientation), size } }));
   const setOrientation = (orientation: string) =>
     update((doc) => {
       const landscape = orientation === "landscape";
@@ -1016,7 +1196,13 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     const values = preset === "narrow" ? 36 : preset === "wide" ? 108 : 72;
     update((doc) => ({
       ...doc,
-      page: { ...doc.page, marginTopPt: values, marginBottomPt: values, marginLeftPt: values === 36 ? 36 : values, marginRightPt: values === 36 ? 36 : values },
+      page: {
+        ...doc.page,
+        marginTopPt: values,
+        marginBottomPt: values,
+        marginLeftPt: values === 36 ? 36 : values,
+        marginRightPt: values === 36 ? 36 : values,
+      },
     }));
   };
   const setColumns = (columns: number) => update((doc) => ({ ...doc, page: { ...doc.page, columns } }));
@@ -1107,7 +1293,10 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
 
   const updateToc = () => {
     const entries = headingOutline();
-    update((doc) => ({ ...doc, blocks: doc.blocks.map((block) => (block.type === "toc" ? { ...block, entries } : block)) }));
+    update((doc) => ({
+      ...doc,
+      blocks: doc.blocks.map((block) => (block.type === "toc" ? { ...block, entries } : block)),
+    }));
     setLayoutVersion((version) => version + 1);
     useToasts.getState().push({ kind: "success", title: t("writer.tocUpdated") });
   };
@@ -1119,7 +1308,9 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
       return;
     }
     const page = pageOfBlock(pages, index);
-    window.document.querySelector<HTMLElement>(`[data-page-index="${page - 1}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    window.document
+      .querySelector<HTMLElement>(`[data-page-index="${page - 1}"]`)
+      ?.scrollIntoView({ block: "start", behavior: "smooth" });
   };
 
   /**
@@ -1137,7 +1328,9 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
       return;
     }
     window.setTimeout(() => {
-      window.document.querySelector<HTMLElement>(`[data-scope="body"][data-block-index="${index}"]`)?.scrollIntoView({ block: "center" });
+      window.document
+        .querySelector<HTMLElement>(`[data-scope="body"][data-block-index="${index}"]`)
+        ?.scrollIntoView({ block: "center" });
     }, 0);
   };
 
@@ -1155,7 +1348,8 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   /** Fragments of a block in document order (page order, then fragment order). */
   const fragmentListOf = (blockIndex: number): Fragment[] => {
     const fragments: Fragment[] = [];
-    for (const page of pages) for (const fragment of page.fragments) if (fragment.index === blockIndex) fragments.push(fragment);
+    for (const page of pages)
+      for (const fragment of page.fragments) if (fragment.index === blockIndex) fragments.push(fragment);
     return fragments;
   };
 
@@ -1193,7 +1387,9 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     pendingPageFocus.current = { block: blockIndex, offset };
     pageCaret.current = { block: blockIndex, offset, from: fragment.from };
     flushSync(() => setPageEdit({ block: blockIndex, from: fragment.from, offset, edge: "start" }));
-    const editable = container.querySelector<HTMLElement>(`[data-scope="page"][data-block-index="${blockIndex}"][contenteditable="true"]`);
+    const editable = container.querySelector<HTMLElement>(
+      `[data-scope="page"][data-block-index="${blockIndex}"][contenteditable="true"]`,
+    );
     if (editable) {
       editable.focus();
       setCaretOffset(editable, offset);
@@ -1215,7 +1411,9 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
    * range, which keeps one selection owner per block.
    */
   const extendPageSelection = (blockIndex: number, anchor: number, x: number, y: number) => {
-    const editable = window.document.querySelector<HTMLElement>(`[data-scope="page"][data-block-index="${blockIndex}"][contenteditable="true"]`);
+    const editable = window.document.querySelector<HTMLElement>(
+      `[data-scope="page"][data-block-index="${blockIndex}"][contenteditable="true"]`,
+    );
     if (!editable) return;
     const hit = paragraphAtPoint(window.document, x, y);
     if (!hit || hit.block !== blockIndex) return;
@@ -1241,7 +1439,11 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     return true;
   };
 
-  const renderBlocks = (blocks: Block[], scope: "body" | "header" | "footer" | "cell", tablePath?: [number, number, number, number]) => {
+  const renderBlocks = (
+    blocks: Block[],
+    scope: "body" | "header" | "footer" | "cell",
+    tablePath?: [number, number, number, number],
+  ) => {
     const numbers = scope === "body" ? listNumbers : orderedListNumbers(blocks);
     const fields = scope === "cell" ? undefined : documentFields;
     return (
@@ -1261,7 +1463,8 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
             onSelectImage={setSelectedImage}
             onFocusParagraph={handleParagraphFocus}
             onSync={(element) => {
-              if (scope === "cell" && tablePath) syncCell(tablePath[0], tablePath[1], tablePath[2], tablePath[3], element);
+              if (scope === "cell" && tablePath)
+                syncCell(tablePath[0], tablePath[1], tablePath[2], tablePath[3], element);
               else if (scope === "body" || scope === "header" || scope === "footer") syncParagraph(index, element);
             }}
             onUpdate={(next) => updateBlock(index, next)}
@@ -1290,35 +1493,123 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         {ribbon === "home" ? (
           <>
             <RibbonGroup label={t("writer.clipboard")}>
-              <ToolButton icon={<Undo2 size={16} />} label={t("common.undo")} onClick={undoEdit} disabled={session.busy || historyDepth.undo === 0} />
-              <ToolButton icon={<Redo2 size={16} />} label={t("common.redo")} onClick={redoEdit} disabled={session.busy || historyDepth.redo === 0} />
+              <ToolButton
+                icon={<Undo2 size={16} />}
+                label={t("common.undo")}
+                onClick={undoEdit}
+                disabled={session.busy || historyDepth.undo === 0}
+              />
+              <ToolButton
+                icon={<Redo2 size={16} />}
+                label={t("common.redo")}
+                onClick={redoEdit}
+                disabled={session.busy || historyDepth.redo === 0}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("writer.font")}>
-              <ToolSelect value={activeStyle} onChange={setParagraphStyle} options={styleOptions} title={t("writer.style")} width={132} />
               <ToolSelect
-                value={String(activeRun?.sizePt ?? document.styles.find((style) => style.id === activeStyle)?.sizePt ?? 11)}
+                value={activeStyle}
+                onChange={setParagraphStyle}
+                options={styleOptions}
+                title={t("writer.style")}
+                width={132}
+              />
+              <ToolSelect
+                value={String(
+                  activeRun?.sizePt ?? document.styles.find((style) => style.id === activeStyle)?.sizePt ?? 11,
+                )}
                 onChange={(value) => applyRunChange({ sizePt: Number(value) })}
-                options={[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48].map((size) => ({ value: String(size), label: `${size}` }))}
+                options={[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48].map((size) => ({
+                  value: String(size),
+                  label: `${size}`,
+                }))}
                 title={t("writer.fontSize")}
                 width={64}
               />
-              <ToolButton icon={<Bold size={16} />} onClick={() => toggleInline("bold")} active={activeRun?.bold} title={t("writer.bold")} />
-              <ToolButton icon={<Italic size={16} />} onClick={() => toggleInline("italic")} active={activeRun?.italic} title={t("writer.italic")} />
-              <ToolButton icon={<Underline size={16} />} onClick={() => toggleInline("underline")} active={activeRun?.underline} title={t("writer.underline")} />
-              <ToolButton icon={<Strikethrough size={16} />} onClick={() => toggleInline("strike")} active={activeRun?.strike} title={t("writer.strike")} />
-              <ToolColor value={activeRun?.color ?? "#1f2328"} onChange={(color) => applyRunColor(color, false)} title={t("writer.textColor")} />
-              <ToolButton icon={<Highlighter size={16} />} onClick={() => applyRunColor(activeRun?.highlight ?? HIGHLIGHT_COLORS[0], true)} active={Boolean(activeRun?.highlight)} title={t("writer.highlight")} />
+              <ToolButton
+                icon={<Bold size={16} />}
+                onClick={() => toggleInline("bold")}
+                active={activeRun?.bold}
+                title={t("writer.bold")}
+              />
+              <ToolButton
+                icon={<Italic size={16} />}
+                onClick={() => toggleInline("italic")}
+                active={activeRun?.italic}
+                title={t("writer.italic")}
+              />
+              <ToolButton
+                icon={<Underline size={16} />}
+                onClick={() => toggleInline("underline")}
+                active={activeRun?.underline}
+                title={t("writer.underline")}
+              />
+              <ToolButton
+                icon={<Strikethrough size={16} />}
+                onClick={() => toggleInline("strike")}
+                active={activeRun?.strike}
+                title={t("writer.strike")}
+              />
+              <ToolColor
+                value={activeRun?.color ?? "#1f2328"}
+                onChange={(color) => applyRunColor(color, false)}
+                title={t("writer.textColor")}
+              />
+              <ToolButton
+                icon={<Highlighter size={16} />}
+                onClick={() => applyRunColor(activeRun?.highlight ?? HIGHLIGHT_COLORS[0], true)}
+                active={Boolean(activeRun?.highlight)}
+                title={t("writer.highlight")}
+              />
               <ToolButton icon={<Eraser size={16} />} onClick={clearFormatting} title={t("writer.clearFormatting")} />
             </RibbonGroup>
             <RibbonGroup label={t("writer.paragraph")}>
-              <ToolButton icon={<AlignLeft size={16} />} onClick={() => setAlign("left")} active={selection?.paragraph.align === "left"} title={t("writer.alignLeft")} />
-              <ToolButton icon={<AlignCenter size={16} />} onClick={() => setAlign("center")} active={selection?.paragraph.align === "center"} title={t("writer.alignCenter")} />
-              <ToolButton icon={<AlignRight size={16} />} onClick={() => setAlign("right")} active={selection?.paragraph.align === "right"} title={t("writer.alignRight")} />
-              <ToolButton icon={<AlignJustify size={16} />} onClick={() => setAlign("justify")} active={selection?.paragraph.align === "justify"} title={t("writer.alignJustify")} />
-              <ToolButton icon={<List size={16} />} onClick={() => toggleList("bullet")} active={selection?.paragraph.list?.kind === "bullet"} title={t("writer.bullets")} />
-              <ToolButton icon={<ListOrdered size={16} />} onClick={() => toggleList("number")} active={selection?.paragraph.list?.kind === "number"} title={t("writer.numbering")} />
-              <ToolButton icon={<Indent size={16} />} onClick={() => (selection?.paragraph.list ? changeListLevel(1) : setIndent(24))} title={t("writer.increaseIndent")} />
-              <ToolButton icon={<Outdent size={16} />} onClick={() => (selection?.paragraph.list ? changeListLevel(-1) : setIndent(-24))} title={t("writer.decreaseIndent")} />
+              <ToolButton
+                icon={<AlignLeft size={16} />}
+                onClick={() => setAlign("left")}
+                active={selection?.paragraph.align === "left"}
+                title={t("writer.alignLeft")}
+              />
+              <ToolButton
+                icon={<AlignCenter size={16} />}
+                onClick={() => setAlign("center")}
+                active={selection?.paragraph.align === "center"}
+                title={t("writer.alignCenter")}
+              />
+              <ToolButton
+                icon={<AlignRight size={16} />}
+                onClick={() => setAlign("right")}
+                active={selection?.paragraph.align === "right"}
+                title={t("writer.alignRight")}
+              />
+              <ToolButton
+                icon={<AlignJustify size={16} />}
+                onClick={() => setAlign("justify")}
+                active={selection?.paragraph.align === "justify"}
+                title={t("writer.alignJustify")}
+              />
+              <ToolButton
+                icon={<List size={16} />}
+                onClick={() => toggleList("bullet")}
+                active={selection?.paragraph.list?.kind === "bullet"}
+                title={t("writer.bullets")}
+              />
+              <ToolButton
+                icon={<ListOrdered size={16} />}
+                onClick={() => toggleList("number")}
+                active={selection?.paragraph.list?.kind === "number"}
+                title={t("writer.numbering")}
+              />
+              <ToolButton
+                icon={<Indent size={16} />}
+                onClick={() => (selection?.paragraph.list ? changeListLevel(1) : setIndent(24))}
+                title={t("writer.increaseIndent")}
+              />
+              <ToolButton
+                icon={<Outdent size={16} />}
+                onClick={() => (selection?.paragraph.list ? changeListLevel(-1) : setIndent(-24))}
+                title={t("writer.decreaseIndent")}
+              />
               <ToolSelect
                 value={String(selection?.paragraph.lineSpacing ?? 1.15)}
                 onChange={(value) => setLineSpacing(Number(value))}
@@ -1337,14 +1628,30 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
           <>
             <RibbonGroup label={t("writer.insert")}>
               <ToolButton icon={<ImageIcon size={16} />} label={t("writer.image")} onClick={insertImageBlock} />
-              <ToolButton icon={<TableIcon size={16} />} label={t("writer.table")} onClick={() => setInsertTable(true)} />
+              <ToolButton
+                icon={<TableIcon size={16} />}
+                label={t("writer.table")}
+                onClick={() => setInsertTable(true)}
+              />
               <ToolButton icon={<Link2 size={16} />} label={t("writer.link")} onClick={insertLink} />
             </RibbonGroup>
             <RibbonGroup label={t("writer.pages")}>
-              <ToolButton icon={<SeparatorHorizontal size={16} />} label={t("writer.pageBreak")} onClick={insertPageBreak} />
+              <ToolButton
+                icon={<SeparatorHorizontal size={16} />}
+                label={t("writer.pageBreak")}
+                onClick={insertPageBreak}
+              />
               <ToolButton icon={<Minus size={16} />} label={t("writer.horizontalRule")} onClick={insertRule} />
-              <ToolButton label={t("writer.sectionBreak")} onClick={() => insertSectionBreak("newPage")} title={t("writer.sectionBreak")} />
-              <ToolButton label={t("writer.sectionContinuous")} onClick={() => insertSectionBreak("continuous")} title={t("writer.sectionContinuous")} />
+              <ToolButton
+                label={t("writer.sectionBreak")}
+                onClick={() => insertSectionBreak("newPage")}
+                title={t("writer.sectionBreak")}
+              />
+              <ToolButton
+                label={t("writer.sectionContinuous")}
+                onClick={() => insertSectionBreak("continuous")}
+                title={t("writer.sectionContinuous")}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("writer.notes")}>
               <ToolButton label={t("writer.insertFootnote")} onClick={() => insertFootnote(false)} />
@@ -1361,11 +1668,32 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
               <ToolButton icon={<RefreshCw size={16} />} label={t("writer.updateToc")} onClick={updateToc} />
             </RibbonGroup>
             <RibbonGroup label={t("writer.headerFooter")}>
-              <ToolButton icon={<FileText size={16} />} label={t("writer.header")} onClick={() => setEditingHeader(editingHeader === "header" ? null : "header")} active={editingHeader === "header"} />
-              <ToolButton icon={<FileText size={16} />} label={t("writer.footer")} onClick={() => setEditingHeader(editingHeader === "footer" ? null : "footer")} active={editingHeader === "footer"} />
+              <ToolButton
+                icon={<FileText size={16} />}
+                label={t("writer.header")}
+                onClick={() => setEditingHeader(editingHeader === "header" ? null : "header")}
+                active={editingHeader === "header"}
+              />
+              <ToolButton
+                icon={<FileText size={16} />}
+                label={t("writer.footer")}
+                onClick={() => setEditingHeader(editingHeader === "footer" ? null : "footer")}
+                active={editingHeader === "footer"}
+              />
               <ToolButton
                 label={t("writer.pageNumbers")}
-                onClick={() => update((doc) => ({ ...doc, footer: [{ type: "paragraph", props: { ...defaultParaProps(), align: "center", spaceAfterPt: 0 }, runs: [{ ...emptyRun("Page {{page}} / {{pages}}") }] }] }))}
+                onClick={() =>
+                  update((doc) => ({
+                    ...doc,
+                    footer: [
+                      {
+                        type: "paragraph",
+                        props: { ...defaultParaProps(), align: "center", spaceAfterPt: 0 },
+                        runs: [{ ...emptyRun("Page {{page}} / {{pages}}") }],
+                      },
+                    ],
+                  }))
+                }
               />
             </RibbonGroup>
             <RibbonGroup label={t("writer.comments")}>
@@ -1402,7 +1730,9 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
               />
               <ToolSelect
                 value=""
-                onChange={(value) => { if (value) applyMarginPreset(value as "normal" | "narrow" | "wide"); }}
+                onChange={(value) => {
+                  if (value) applyMarginPreset(value as "normal" | "narrow" | "wide");
+                }}
                 options={[
                   { value: "", label: t("writer.margins") },
                   { value: "normal", label: t("writer.marginNormal") },
@@ -1412,18 +1742,63 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                 title={t("writer.margins")}
                 width={110}
               />
-              <ToolButton icon={<Columns2 size={16} />} onClick={() => setColumns(document.page.columns > 1 ? 1 : 2)} active={document.page.columns > 1} title={t("writer.columns")} />
-              <ToolButton label={t("writer.sections")} onClick={() => setSectionsOpen(true)} title={t("writer.sections")} />
+              <ToolButton
+                icon={<Columns2 size={16} />}
+                onClick={() => setColumns(document.page.columns > 1 ? 1 : 2)}
+                active={document.page.columns > 1}
+                title={t("writer.columns")}
+              />
+              <ToolButton
+                label={t("writer.sections")}
+                onClick={() => setSectionsOpen(true)}
+                title={t("writer.sections")}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("writer.spacing")}>
-              <ToolNumber value={selection?.paragraph.spaceBeforePt ?? 0} onChange={(value) => setSpace(value, selection?.paragraph.spaceAfterPt ?? 0)} min={0} max={144} title={t("writer.spaceBefore")} />
-              <ToolNumber value={selection?.paragraph.spaceAfterPt ?? 0} onChange={(value) => setSpace(selection?.paragraph.spaceBeforePt ?? 0, value)} min={0} max={144} title={t("writer.spaceAfter")} />
+              <ToolNumber
+                value={selection?.paragraph.spaceBeforePt ?? 0}
+                onChange={(value) => setSpace(value, selection?.paragraph.spaceAfterPt ?? 0)}
+                min={0}
+                max={144}
+                title={t("writer.spaceBefore")}
+              />
+              <ToolNumber
+                value={selection?.paragraph.spaceAfterPt ?? 0}
+                onChange={(value) => setSpace(selection?.paragraph.spaceBeforePt ?? 0, value)}
+                min={0}
+                max={144}
+                title={t("writer.spaceAfter")}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("writer.margins")}>
-              <ToolNumber value={document.page.marginTopPt} onChange={(value) => setMargin("marginTopPt", value)} min={0} max={288} title={t("writer.marginTop")} />
-              <ToolNumber value={document.page.marginBottomPt} onChange={(value) => setMargin("marginBottomPt", value)} min={0} max={288} title={t("writer.marginBottom")} />
-              <ToolNumber value={document.page.marginLeftPt} onChange={(value) => setMargin("marginLeftPt", value)} min={0} max={288} title={t("writer.marginLeft")} />
-              <ToolNumber value={document.page.marginRightPt} onChange={(value) => setMargin("marginRightPt", value)} min={0} max={288} title={t("writer.marginRight")} />
+              <ToolNumber
+                value={document.page.marginTopPt}
+                onChange={(value) => setMargin("marginTopPt", value)}
+                min={0}
+                max={288}
+                title={t("writer.marginTop")}
+              />
+              <ToolNumber
+                value={document.page.marginBottomPt}
+                onChange={(value) => setMargin("marginBottomPt", value)}
+                min={0}
+                max={288}
+                title={t("writer.marginBottom")}
+              />
+              <ToolNumber
+                value={document.page.marginLeftPt}
+                onChange={(value) => setMargin("marginLeftPt", value)}
+                min={0}
+                max={288}
+                title={t("writer.marginLeft")}
+              />
+              <ToolNumber
+                value={document.page.marginRightPt}
+                onChange={(value) => setMargin("marginRightPt", value)}
+                min={0}
+                max={288}
+                title={t("writer.marginRight")}
+              />
             </RibbonGroup>
           </>
         ) : null}
@@ -1431,22 +1806,58 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         {ribbon === "review" ? (
           <>
             <RibbonGroup label={t("writer.trackChanges")}>
-              <ToolButton label={t("writer.suggesting")} onClick={toggleTrackChanges} active={document.trackChanges === true} title={t("writer.suggestingHint")} />
-              <ToolButton label={t("writer.showRevisions")} onClick={toggleShowRevisions} active={document.showRevisions !== false} />
-              <ToolButton label={t("writer.reviewPane")} onClick={() => setReviewOpen((open) => !open)} active={reviewOpen} />
+              <ToolButton
+                label={t("writer.suggesting")}
+                onClick={toggleTrackChanges}
+                active={document.trackChanges === true}
+                title={t("writer.suggestingHint")}
+              />
+              <ToolButton
+                label={t("writer.showRevisions")}
+                onClick={toggleShowRevisions}
+                active={document.showRevisions !== false}
+              />
+              <ToolButton
+                label={t("writer.reviewPane")}
+                onClick={() => setReviewOpen((open) => !open)}
+                active={reviewOpen}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("writer.revisions")}>
               <ToolButton label={t("writer.previousChange")} onClick={() => jumpToRevision(false)} />
               <ToolButton label={t("writer.nextChange")} onClick={() => jumpToRevision(true)} />
-              <ToolButton label={t("writer.acceptAll")} onClick={() => { update((doc) => acceptAll(doc)); setActiveRevision(null); setLayoutVersion((version) => version + 1); }} />
-              <ToolButton label={t("writer.rejectAll")} onClick={() => { update((doc) => rejectAll(doc)); setActiveRevision(null); setLayoutVersion((version) => version + 1); }} />
+              <ToolButton
+                label={t("writer.acceptAll")}
+                onClick={() => {
+                  update((doc) => acceptAll(doc));
+                  setActiveRevision(null);
+                  setLayoutVersion((version) => version + 1);
+                }}
+              />
+              <ToolButton
+                label={t("writer.rejectAll")}
+                onClick={() => {
+                  update((doc) => rejectAll(doc));
+                  setActiveRevision(null);
+                  setLayoutVersion((version) => version + 1);
+                }}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("writer.comments")}>
               <ToolButton icon={<MessageSquare size={16} />} label={t("writer.addComment")} onClick={addComment} />
-              <ToolButton icon={<MessageSquare size={16} />} label={t("writer.comments")} onClick={() => setCommentsOpen(!commentsOpen)} active={commentsOpen} />
+              <ToolButton
+                icon={<MessageSquare size={16} />}
+                label={t("writer.comments")}
+                onClick={() => setCommentsOpen(!commentsOpen)}
+                active={commentsOpen}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("writer.find")}>
-              <ToolButton icon={<Search size={16} />} label={t("writer.findReplace")} onClick={() => setFindOpen(true)} />
+              <ToolButton
+                icon={<Search size={16} />}
+                label={t("writer.findReplace")}
+                onClick={() => setFindOpen(true)}
+              />
             </RibbonGroup>
           </>
         ) : null}
@@ -1454,9 +1865,23 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         {ribbon === "view" ? (
           <>
             <RibbonGroup label={t("writer.view")}>
-              <ToolButton icon={<LayoutList size={16} />} label={t("writer.paginated")} onClick={() => setView("paginated")} active={view === "paginated"} />
-              <ToolButton label={t("writer.continuous")} onClick={() => setView("continuous")} active={view === "continuous"} />
-              <ToolButton icon={<ListTree size={16} />} label={t("writer.navigation")} onClick={() => setNavOpen((open) => !open)} active={navOpen} />
+              <ToolButton
+                icon={<LayoutList size={16} />}
+                label={t("writer.paginated")}
+                onClick={() => setView("paginated")}
+                active={view === "paginated"}
+              />
+              <ToolButton
+                label={t("writer.continuous")}
+                onClick={() => setView("continuous")}
+                active={view === "continuous"}
+              />
+              <ToolButton
+                icon={<ListTree size={16} />}
+                label={t("writer.navigation")}
+                onClick={() => setNavOpen((open) => !open)}
+                active={navOpen}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("writer.zoom")}>
               <ToolButton label="75%" onClick={() => setZoom(0.75)} active={zoom === 0.75} />
@@ -1473,8 +1898,17 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
 
         <div className="ribbon-spacer" />
         <RibbonGroup>
-          <ToolButton icon={<FolderOpen size={16} />} label={t("common.open")} onClick={() => void openIntoWorkspace()} />
-          <ToolButton icon={<Save size={16} />} label={t("common.save")} onClick={() => void session.save()} disabled={session.busy} />
+          <ToolButton
+            icon={<FolderOpen size={16} />}
+            label={t("common.open")}
+            onClick={() => void openIntoWorkspace()}
+          />
+          <ToolButton
+            icon={<Save size={16} />}
+            label={t("common.save")}
+            onClick={() => void session.save()}
+            disabled={session.busy}
+          />
           <ToolButton label={t("common.saveAs")} onClick={() => void session.saveAs()} disabled={session.busy} />
           <ToolButton icon={<FileDown size={16} />} label={t("writer.exportPdf")} onClick={handleExportPdf} />
         </RibbonGroup>
@@ -1498,7 +1932,12 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
           <div className="writer-nav-pane">
             <div className="comments-head">
               <strong>{t("writer.navigation")}</strong>
-              <button type="button" className="icon-btn" onClick={() => setNavOpen(false)} aria-label={t("common.close")}>
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => setNavOpen(false)}
+                aria-label={t("common.close")}
+              >
                 <X size={14} />
               </button>
             </div>
@@ -1527,11 +1966,24 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                 const sheetHeight = setup.heightPt * (96 / 72) * zoom;
                 const marginX = setup.marginLeftPt * (96 / 72) * zoom;
                 const marginTop = setup.marginTopPt * (96 / 72) * zoom;
-                const sheetContentHeight = Math.max(120, (setup.heightPt - setup.marginTopPt - setup.marginBottomPt) * (96 / 72) * zoom);
+                const sheetContentHeight = Math.max(
+                  120,
+                  (setup.heightPt - setup.marginTopPt - setup.marginBottomPt) * (96 / 72) * zoom,
+                );
                 const isFirstPage = page.sectionPage === 1;
                 const isEvenPage = page.sectionPage % 2 === 0;
-                const headerBlocks = section.differentFirstPage && isFirstPage ? section.firstHeader : section.differentOddEven && isEvenPage ? section.evenHeader : section.header;
-                const footerBlocks = section.differentFirstPage && isFirstPage ? section.firstFooter : section.differentOddEven && isEvenPage ? section.evenFooter : section.footer;
+                const headerBlocks =
+                  section.differentFirstPage && isFirstPage
+                    ? section.firstHeader
+                    : section.differentOddEven && isEvenPage
+                      ? section.evenHeader
+                      : section.header;
+                const footerBlocks =
+                  section.differentFirstPage && isFirstPage
+                    ? section.firstFooter
+                    : section.differentOddEven && isEvenPage
+                      ? section.evenFooter
+                      : section.footer;
                 const noteIds: string[] = [];
                 for (const fragment of page.fragments) {
                   const fragmentBlock = document.blocks[fragment.index];
@@ -1551,10 +2003,21 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                   >
                     {headerBlocks.length > 0 ? (
                       <div className="writer-header-zone muted">
-                        <StaticBlocks blocks={headerBlocks} scope="header" page={pageIndex + 1} pages={pages.length} zoom={zoom} noteNumbers={noteNumbers} onOpen={(index) => editHeaderFooter("header", index)} />
+                        <StaticBlocks
+                          blocks={headerBlocks}
+                          scope="header"
+                          page={pageIndex + 1}
+                          pages={pages.length}
+                          zoom={zoom}
+                          noteNumbers={noteNumbers}
+                          onOpen={(index) => editHeaderFooter("header", index)}
+                        />
                       </div>
                     ) : null}
-                    <div className="writer-body" style={{ height: sheetContentHeight - page.noteHeightPx, overflow: "hidden" }}>
+                    <div
+                      className="writer-body"
+                      style={{ height: sheetContentHeight - page.noteHeightPx, overflow: "hidden" }}
+                    >
                       {page.fragments.map((fragment, fragmentIndex) => (
                         <PageFragmentView
                           key={`${fragment.index}-${fragment.from}-${fragmentIndex}`}
@@ -1568,7 +2031,9 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                           listNumbers={listNumbers}
                           noteNumbers={noteNumbers}
                           showRevisions={document.showRevisions !== false}
-                          active={pageEdit?.block === fragment.index && activeFragmentFrom(fragment.index) === fragment.from}
+                          active={
+                            pageEdit?.block === fragment.index && activeFragmentFrom(fragment.index) === fragment.from
+                          }
                           onActivate={activatePageEdit}
                           onExtendSelection={extendPageSelection}
                           onSync={(element) => syncParagraph(fragment.index, element)}
@@ -1587,7 +2052,9 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                       <div className="writer-notes" style={{ height: page.noteHeightPx }}>
                         <div className="writer-notes-separator" />
                         {noteIds.map((id) => {
-                          const note = document.footnotes?.find((candidate) => candidate.id === id) ?? document.endnotes?.find((candidate) => candidate.id === id);
+                          const note =
+                            document.footnotes?.find((candidate) => candidate.id === id) ??
+                            document.endnotes?.find((candidate) => candidate.id === id);
                           if (!note) return null;
                           return (
                             <div key={id} className="writer-note">
@@ -1599,7 +2066,15 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                     ) : null}
                     {footerBlocks.length > 0 ? (
                       <div className="writer-footer-zone muted">
-                        <StaticBlocks blocks={footerBlocks} scope="footer" page={pageIndex + 1} pages={pages.length} zoom={zoom} noteNumbers={noteNumbers} onOpen={(index) => editHeaderFooter("footer", index)} />
+                        <StaticBlocks
+                          blocks={footerBlocks}
+                          scope="footer"
+                          page={pageIndex + 1}
+                          pages={pages.length}
+                          zoom={zoom}
+                          noteNumbers={noteNumbers}
+                          onOpen={(index) => editHeaderFooter("footer", index)}
+                        />
                       </div>
                     ) : null}
                   </div>
@@ -1607,14 +2082,27 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
               })}
             </div>
           ) : (
-            <div className="writer-page" ref={bodyRef} data-scope={editingHeader ?? "body"} role="presentation" onMouseDown={handlePageMouseDown} style={{ width: pageWidth, minHeight: pageHeight, padding: `${marginTop}px ${marginX}px` }}>
+            <div
+              className="writer-page"
+              ref={bodyRef}
+              data-scope={editingHeader ?? "body"}
+              role="presentation"
+              onMouseDown={handlePageMouseDown}
+              style={{ width: pageWidth, minHeight: pageHeight, padding: `${marginTop}px ${marginX}px` }}
+            >
               {editingHeader ? (
-                <div className="writer-header-zone">{renderBlocks(editingHeader === "header" ? document.header : document.footer, editingHeader)}</div>
+                <div className="writer-header-zone">
+                  {renderBlocks(editingHeader === "header" ? document.header : document.footer, editingHeader)}
+                </div>
               ) : (
                 <>
-                  {document.header.length > 0 ? <div className="writer-header-zone muted">{renderBlocks(document.header, "header")}</div> : null}
+                  {document.header.length > 0 ? (
+                    <div className="writer-header-zone muted">{renderBlocks(document.header, "header")}</div>
+                  ) : null}
                   <div className="writer-body">{renderBlocks(document.blocks, "body")}</div>
-                  {document.footer.length > 0 ? <div className="writer-footer-zone muted">{renderBlocks(document.footer, "footer")}</div> : null}
+                  {document.footer.length > 0 ? (
+                    <div className="writer-footer-zone muted">{renderBlocks(document.footer, "footer")}</div>
+                  ) : null}
                 </>
               )}
             </div>
@@ -1624,7 +2112,16 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
 
       {/* Hidden probe: the pagination engine measures this column. */}
       <div className="writer-probe" aria-hidden="true" ref={probeRef} style={{ width: contentWidthPx }}>
-        <StaticBlocks blocks={document.blocks} scope="probe" page={1} pages={1} zoom={zoom} listNumbers={listNumbers} fieldValues={documentFields} onOpen={() => undefined} />
+        <StaticBlocks
+          blocks={document.blocks}
+          scope="probe"
+          page={1}
+          pages={1}
+          zoom={zoom}
+          listNumbers={listNumbers}
+          fieldValues={documentFields}
+          onOpen={() => undefined}
+        />
       </div>
 
       <div className="editor-status">
@@ -1655,10 +2152,12 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
             </label>
             <div className="row">
               <label className="check">
-                <input type="checkbox" checked={matchCase} onChange={(event) => setMatchCase(event.target.checked)} /> {t("writer.matchCase")}
+                <input type="checkbox" checked={matchCase} onChange={(event) => setMatchCase(event.target.checked)} />{" "}
+                {t("writer.matchCase")}
               </label>
               <label className="check">
-                <input type="checkbox" checked={wholeWord} onChange={(event) => setWholeWord(event.target.checked)} /> {t("writer.wholeWord")}
+                <input type="checkbox" checked={wholeWord} onChange={(event) => setWholeWord(event.target.checked)} />{" "}
+                {t("writer.wholeWord")}
               </label>
             </div>
             <div className="row">
@@ -1690,7 +2189,8 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
               update((doc) => {
                 const blocks = [...doc.blocks];
                 const block = blocks[selectedImage];
-                if (block?.type === "image") blocks[selectedImage] = { ...block, widthPt: width, heightPt: height, align, caption };
+                if (block?.type === "image")
+                  blocks[selectedImage] = { ...block, widthPt: width, heightPt: height, align, caption };
                 return { ...doc, blocks };
               })
             }
@@ -1702,7 +2202,12 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         <div className="comments-sidebar">
           <div className="comments-head">
             <strong>{t("writer.comments")}</strong>
-            <button type="button" className="icon-btn" onClick={() => setCommentsOpen(false)} aria-label={t("common.close")}>
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={() => setCommentsOpen(false)}
+              aria-label={t("common.close")}
+            >
               <X size={14} />
             </button>
           </div>
@@ -1716,7 +2221,14 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                   type="button"
                   className="icon-btn"
                   title={t("writer.resolveComment")}
-                  onClick={() => update((doc) => ({ ...doc, comments: doc.comments.map((entry) => (entry.id === comment.id ? { ...entry, resolved: !entry.resolved } : entry)) }))}
+                  onClick={() =>
+                    update((doc) => ({
+                      ...doc,
+                      comments: doc.comments.map((entry) =>
+                        entry.id === comment.id ? { ...entry, resolved: !entry.resolved } : entry,
+                      ),
+                    }))
+                  }
                 >
                   ✓
                 </button>
@@ -1729,7 +2241,14 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                       ...doc,
                       comments: doc.comments.filter((entry) => entry.id !== comment.id),
                       blocks: doc.blocks.map((block) =>
-                        block.type === "paragraph" ? { ...block, runs: block.runs.map((run) => (run.comment === comment.id ? { ...run, comment: null } : run)) } : block,
+                        block.type === "paragraph"
+                          ? {
+                              ...block,
+                              runs: block.runs.map((run) =>
+                                run.comment === comment.id ? { ...run, comment: null } : run,
+                              ),
+                            }
+                          : block,
                       ),
                     }))
                   }
@@ -1749,7 +2268,15 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                   update((doc) => ({
                     ...doc,
                     comments: doc.comments.map((entry) =>
-                      entry.id === comment.id ? { ...entry, replies: [...(entry.replies ?? []), { author: revisionAuthor, text, created: new Date().toISOString() }] } : entry,
+                      entry.id === comment.id
+                        ? {
+                            ...entry,
+                            replies: [
+                              ...(entry.replies ?? []),
+                              { author: revisionAuthor, text, created: new Date().toISOString() },
+                            ],
+                          }
+                        : entry,
                     ),
                   }))
                 }
@@ -1765,7 +2292,12 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
             <strong>{t("writer.reviewPane")}</strong>
             <span className="spacer" />
             <span className="muted">{revisionList(document).length}</span>
-            <button type="button" className="icon-btn" onClick={() => setReviewOpen(false)} aria-label={t("common.close")}>
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={() => setReviewOpen(false)}
+              aria-label={t("common.close")}
+            >
               <X size={14} />
             </button>
           </div>
@@ -1790,7 +2322,17 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                 <span className="spacer" />
                 <span className="muted">{revision.author}</span>
               </div>
-              <p className={revision.kind === "delete" ? "writer-rev-delete" : revision.kind === "insert" ? "writer-rev-insert" : ""}>{revision.text || "…"}</p>
+              <p
+                className={
+                  revision.kind === "delete"
+                    ? "writer-rev-delete"
+                    : revision.kind === "insert"
+                      ? "writer-rev-insert"
+                      : ""
+                }
+              >
+                {revision.text || "…"}
+              </p>
               <div className="row">
                 <button
                   type="button"
@@ -1856,7 +2398,11 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
               >
                 {t("writer.insertField")}
               </button>
-              <input placeholder={t("writer.bookmarkName")} value={bookmarkName} onChange={(event) => setBookmarkName(event.target.value)} />
+              <input
+                placeholder={t("writer.bookmarkName")}
+                value={bookmarkName}
+                onChange={(event) => setBookmarkName(event.target.value)}
+              />
               <button type="button" className="btn btn-soft" onClick={addBookmark}>
                 {t("writer.addBookmark")}
               </button>
@@ -1877,7 +2423,12 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                   </strong>
                   <span className="spacer" />
                   {sectionIndex > 0 ? (
-                    <button type="button" className="icon-btn" title={t("common.delete")} onClick={() => removeSectionBreak(sectionIndex)}>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      title={t("common.delete")}
+                      onClick={() => removeSectionBreak(sectionIndex)}
+                    >
                       <Trash2 size={13} />
                     </button>
                   ) : null}
@@ -1885,7 +2436,15 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                 <div className="row">
                   <select
                     value={section.page.size}
-                    onChange={(event) => updateSection(sectionIndex, { page: { ...section.page, ...sizeDimensions(event.target.value, section.page.orientation), size: event.target.value } })}
+                    onChange={(event) =>
+                      updateSection(sectionIndex, {
+                        page: {
+                          ...section.page,
+                          ...sizeDimensions(event.target.value, section.page.orientation),
+                          size: event.target.value,
+                        },
+                      })
+                    }
                   >
                     {["a4", "a5", "letter", "legal", "a3"].map((size) => (
                       <option key={size} value={size}>
@@ -1910,7 +2469,14 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                     <option value="portrait">{t("writer.portrait")}</option>
                     <option value="landscape">{t("writer.landscape")}</option>
                   </select>
-                  <select value={section.start} onChange={(event) => (sectionIndex === sections.length - 1 ? undefined : updateSection(sectionIndex, { start: event.target.value }))}>
+                  <select
+                    value={section.start}
+                    onChange={(event) =>
+                      sectionIndex === sections.length - 1
+                        ? undefined
+                        : updateSection(sectionIndex, { start: event.target.value })
+                    }
+                  >
                     <option value="newPage">{t("writer.startNewPage")}</option>
                     <option value="continuous">{t("writer.startContinuous")}</option>
                     <option value="oddPage">{t("writer.startOdd")}</option>
@@ -2023,7 +2589,13 @@ function StaticParagraph({
           textIndent: props.firstLinePt,
           fontSize: `${(effectiveFontSize(block) ?? 11) * zoom}pt`,
         }}
-        dangerouslySetInnerHTML={{ __html: runsToHtml(substituteTokens(block.runs, page, pages), { noteNumbers, showRevisions, fieldValues: fields }) }}
+        dangerouslySetInnerHTML={{
+          __html: runsToHtml(substituteTokens(block.runs, page, pages), {
+            noteNumbers,
+            showRevisions,
+            fieldValues: fields,
+          }),
+        }}
       />
     </div>
   );
@@ -2033,30 +2605,43 @@ function StaticTable({ table, zoom, from = 0, to }: { table: TableData; zoom: nu
   const end = to ?? table.rows.length;
   const bodyRows = table.rows.slice(from, end);
   const header = from > 0 && table.rows[0]?.header ? table.rows[0] : null;
-  const renderCellBlocks = (blocks: Block[]) => <StaticBlocks blocks={blocks} scope="cell" page={0} pages={0} zoom={zoom} onOpen={() => undefined} />;
+  const renderCellBlocks = (blocks: Block[]) => (
+    <StaticBlocks blocks={blocks} scope="cell" page={0} pages={0} zoom={zoom} onOpen={() => undefined} />
+  );
   return (
     <div className="writer-table-wrap">
-      <table className={`writer-table${table.borders ? "" : " no-borders"}`} style={{ width: `${(table.columnWidthsPt.reduce((sum, value) => sum + value, 0) || 400) * (96 / 72) * zoom}px` }}>
+      <table
+        className={`writer-table${table.borders ? "" : " no-borders"}`}
+        style={{
+          width: `${(table.columnWidthsPt.reduce((sum, value) => sum + value, 0) || 400) * (96 / 72) * zoom}px`,
+        }}
+      >
         <colgroup>
           {table.columnWidthsPt.map((width, columnIndex) => (
             <col key={columnIndex} style={{ width: `${width * (96 / 72) * zoom}px` }} />
           ))}
         </colgroup>
         <tbody>
-          {[header, ...bodyRows].filter((row): row is NonNullable<typeof row> => Boolean(row)).map((row, rowIndex) => (
-            <tr key={rowIndex} className={row.header ? "is-header" : ""}>
-              {row.cells.map((cell, cellIndex) => (
-                <td
-                  key={cellIndex}
-                  colSpan={cell.colspan}
-                  rowSpan={cell.rowspan}
-                  style={{ background: cell.background ?? undefined, textAlign: (cell.align || "left") as "left" | "center" | "right", verticalAlign: (cell.valign || "top") as "top" | "middle" | "bottom" }}
-                >
-                  {renderCellBlocks(cell.blocks)}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {[header, ...bodyRows]
+            .filter((row): row is NonNullable<typeof row> => Boolean(row))
+            .map((row, rowIndex) => (
+              <tr key={rowIndex} className={row.header ? "is-header" : ""}>
+                {row.cells.map((cell, cellIndex) => (
+                  <td
+                    key={cellIndex}
+                    colSpan={cell.colspan}
+                    rowSpan={cell.rowspan}
+                    style={{
+                      background: cell.background ?? undefined,
+                      textAlign: (cell.align || "left") as "left" | "center" | "right",
+                      verticalAlign: (cell.valign || "top") as "top" | "middle" | "bottom",
+                    }}
+                  >
+                    {renderCellBlocks(cell.blocks)}
+                  </td>
+                ))}
+              </tr>
+            ))}
         </tbody>
       </table>
     </div>
@@ -2070,7 +2655,13 @@ function TocView({ entries, onOpen }: { entries: TocEntry[]; onOpen: (anchor: nu
       <div className="writer-toc-title">{t("writer.tableOfContents")}</div>
       {entries.length === 0 ? <p className="muted">{t("writer.noHeadings")}</p> : null}
       {entries.map((entry) => (
-        <button key={`${entry.anchor}-${entry.level}`} type="button" className="writer-toc-item" style={{ paddingLeft: (entry.level - 1) * 16 }} onClick={() => onOpen(entry.anchor)}>
+        <button
+          key={`${entry.anchor}-${entry.level}`}
+          type="button"
+          className="writer-toc-item"
+          style={{ paddingLeft: (entry.level - 1) * 16 }}
+          onClick={() => onOpen(entry.anchor)}
+        >
           <span>{entry.text}</span>
           <span className="writer-toc-fill" />
           <span>{entry.page > 0 ? entry.page : ""}</span>
@@ -2130,7 +2721,11 @@ function StaticBlocks({
             {block.type === "table" ? <StaticTable table={block.table} zoom={zoom} /> : null}
             {block.type === "image" ? (
               <figure className="writer-image" style={{ textAlign: block.align as "left" | "center" | "right" }}>
-                <img src={`data:${block.image.mime};base64,${block.image.dataBase64}`} alt={block.image.alt} style={{ width: block.widthPt * (96 / 72) * zoom }} />
+                <img
+                  src={`data:${block.image.mime};base64,${block.image.dataBase64}`}
+                  alt={block.image.alt}
+                  style={{ width: block.widthPt * (96 / 72) * zoom }}
+                />
                 <figcaption>{block.caption || block.image.name}</figcaption>
               </figure>
             ) : null}
@@ -2310,7 +2905,16 @@ function PageFragmentView({
         }
       }}
     >
-      <StaticBlocks blocks={[block]} scope="page" page={0} pages={0} zoom={zoom} noteNumbers={noteNumbers} showRevisions={showRevisions} onOpen={() => onOpen(fragment.index, 0)} />
+      <StaticBlocks
+        blocks={[block]}
+        scope="page"
+        page={0}
+        pages={0}
+        zoom={zoom}
+        noteNumbers={noteNumbers}
+        showRevisions={showRevisions}
+        onOpen={() => onOpen(fragment.index, 0)}
+      />
     </div>
   );
 }
@@ -2425,7 +3029,13 @@ function PageEditableParagraph({
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const element = ref.current;
     if (!element) return;
-    if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+    if (
+      (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.shiftKey
+    ) {
       const direction = event.key === "ArrowDown" ? 1 : -1;
       // Only claim the key at the fragment edge and only when the block really
       // continues in that direction; otherwise the shared handler's
@@ -2554,13 +3164,24 @@ function BlockView({
           onClick={() => onSelectImage(index)}
           style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}
         >
-          <img src={`data:${block.image.mime};base64,${block.image.dataBase64}`} alt={block.image.alt} style={{ width: block.widthPt * (96 / 72) * zoom }} />
+          <img
+            src={`data:${block.image.mime};base64,${block.image.dataBase64}`}
+            alt={block.image.alt}
+            style={{ width: block.widthPt * (96 / 72) * zoom }}
+          />
         </button>
         <figcaption>
           <button
             type="button"
             onClick={() => onSelectImage(index)}
-            style={{ background: "none", border: "none", padding: 0, font: "inherit", color: "inherit", cursor: "pointer" }}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 0,
+              font: "inherit",
+              color: "inherit",
+              cursor: "pointer",
+            }}
           >
             {block.caption || block.image.name}
           </button>
@@ -2770,7 +3391,7 @@ function ParagraphView({
   }, [block.runs, fieldValues, focused, noteNumbers, showRevisions]);
 
   const heading = props.style.startsWith("Heading");
-  const Tag = (heading ? (`h${Math.min(6, Number(props.style.replace("Heading", "")) || 1)}`) : "div") as "div";
+  const Tag = (heading ? `h${Math.min(6, Number(props.style.replace("Heading", "")) || 1)}` : "div") as "div";
   const listMarker = props.list ? orderedListMarker(props, listNumber) : null;
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -2779,7 +3400,11 @@ function ParagraphView({
 
   return (
     <div className="para-row" style={{ marginLeft: props.list ? props.list.level * 24 : 0 }}>
-      {listMarker ? <span className="list-marker" contentEditable={false}>{listMarker}</span> : null}
+      {listMarker ? (
+        <span className="list-marker" contentEditable={false}>
+          {listMarker}
+        </span>
+      ) : null}
       <Tag
         ref={ref as never}
         className={`para para-${props.style.toLowerCase()}${props.pageBreakBefore ? " page-break-before" : ""}`}
@@ -2833,7 +3458,12 @@ function TableView({
 
   return (
     <div className="writer-table-wrap">
-      <table className={`writer-table${table.borders ? "" : " no-borders"}`} style={{ width: `${(table.columnWidthsPt.reduce((sum, value) => sum + value, 0) || 400) * (96 / 72) * zoom}px` }}>
+      <table
+        className={`writer-table${table.borders ? "" : " no-borders"}`}
+        style={{
+          width: `${(table.columnWidthsPt.reduce((sum, value) => sum + value, 0) || 400) * (96 / 72) * zoom}px`,
+        }}
+      >
         <colgroup>
           {table.columnWidthsPt.map((width, columnIndex) => (
             <col key={columnIndex} style={{ width: `${width * (96 / 72) * zoom}px` }} />
@@ -2847,7 +3477,11 @@ function TableView({
                   key={cellIndex}
                   colSpan={cell.colspan}
                   rowSpan={cell.rowspan}
-                  style={{ background: cell.background ?? undefined, textAlign: (cell.align || "left") as "left" | "center" | "right", verticalAlign: (cell.valign || "top") as "top" | "middle" | "bottom" }}
+                  style={{
+                    background: cell.background ?? undefined,
+                    textAlign: (cell.align || "left") as "left" | "center" | "right",
+                    verticalAlign: (cell.valign || "top") as "top" | "middle" | "bottom",
+                  }}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     setMenuCell({ row: rowIndex, cell: cellIndex });
@@ -2872,22 +3506,104 @@ function TableView({
       {menuCell ? (
         <Dialog title={`Row ${menuCell.row + 1} · Cell ${menuCell.cell + 1}`} onClose={() => setMenuCell(null)}>
           <div className="row">
-            <button type="button" className="btn btn-soft" onClick={() => { updateTable((current) => ({ ...current, rows: [...current.rows.slice(0, menuCell.row + 1), { ...current.rows[menuCell.row], header: false }, ...current.rows.slice(menuCell.row + 1)] })); setMenuCell(null); }}>
+            <button
+              type="button"
+              className="btn btn-soft"
+              onClick={() => {
+                updateTable((current) => ({
+                  ...current,
+                  rows: [
+                    ...current.rows.slice(0, menuCell.row + 1),
+                    { ...current.rows[menuCell.row], header: false },
+                    ...current.rows.slice(menuCell.row + 1),
+                  ],
+                }));
+                setMenuCell(null);
+              }}
+            >
               Add row below
             </button>
-            <button type="button" className="btn btn-soft" onClick={() => { updateTable((current) => (current.rows.length > 1 ? { ...current, rows: current.rows.filter((_, position) => position !== menuCell.row) } : current)); setMenuCell(null); }}>
+            <button
+              type="button"
+              className="btn btn-soft"
+              onClick={() => {
+                updateTable((current) =>
+                  current.rows.length > 1
+                    ? { ...current, rows: current.rows.filter((_, position) => position !== menuCell.row) }
+                    : current,
+                );
+                setMenuCell(null);
+              }}
+            >
               Delete row
             </button>
-            <button type="button" className="btn btn-soft" onClick={() => { updateTable((current) => ({ ...current, rows: current.rows.map((row) => ({ ...row, cells: [...row.cells.slice(0, menuCell.cell + 1), { ...row.cells[menuCell.cell] }, ...row.cells.slice(menuCell.cell + 1)] })) })); setMenuCell(null); }}>
+            <button
+              type="button"
+              className="btn btn-soft"
+              onClick={() => {
+                updateTable((current) => ({
+                  ...current,
+                  rows: current.rows.map((row) => ({
+                    ...row,
+                    cells: [
+                      ...row.cells.slice(0, menuCell.cell + 1),
+                      { ...row.cells[menuCell.cell] },
+                      ...row.cells.slice(menuCell.cell + 1),
+                    ],
+                  })),
+                }));
+                setMenuCell(null);
+              }}
+            >
               Add column
             </button>
-            <button type="button" className="btn btn-soft" onClick={() => { updateTable((current) => ({ ...current, rows: current.rows.map((row) => (row.cells.length > 1 ? { ...row, cells: row.cells.filter((_, position) => position !== menuCell.cell) } : row)) })); setMenuCell(null); }}>
+            <button
+              type="button"
+              className="btn btn-soft"
+              onClick={() => {
+                updateTable((current) => ({
+                  ...current,
+                  rows: current.rows.map((row) =>
+                    row.cells.length > 1
+                      ? { ...row, cells: row.cells.filter((_, position) => position !== menuCell.cell) }
+                      : row,
+                  ),
+                }));
+                setMenuCell(null);
+              }}
+            >
               Delete column
             </button>
-            <button type="button" className="btn btn-soft" onClick={() => { updateTable((current) => ({ ...current, rows: current.rows.map((row, r) => (r !== menuCell.row ? row : { ...row, cells: row.cells.map((cell, c) => (c !== menuCell.cell ? cell : { ...cell, background: cell.background ? null : "#EEF2FF" })) })) })); setMenuCell(null); }}>
+            <button
+              type="button"
+              className="btn btn-soft"
+              onClick={() => {
+                updateTable((current) => ({
+                  ...current,
+                  rows: current.rows.map((row, r) =>
+                    r !== menuCell.row
+                      ? row
+                      : {
+                          ...row,
+                          cells: row.cells.map((cell, c) =>
+                            c !== menuCell.cell ? cell : { ...cell, background: cell.background ? null : "#EEF2FF" },
+                          ),
+                        },
+                  ),
+                }));
+                setMenuCell(null);
+              }}
+            >
               Toggle cell shade
             </button>
-            <button type="button" className="btn btn-soft" onClick={() => { updateTable((current) => ({ ...current, borders: !current.borders })); setMenuCell(null); }}>
+            <button
+              type="button"
+              className="btn btn-soft"
+              onClick={() => {
+                updateTable((current) => ({ ...current, borders: !current.borders }));
+                setMenuCell(null);
+              }}
+            >
               Toggle borders
             </button>
           </div>
@@ -2897,7 +3613,15 @@ function TableView({
   );
 }
 
-function CellParagraph({ block, tablePath, onSyncCell }: { block: Extract<Block, { type: "paragraph" }>; tablePath: [number, number, number, number]; onSyncCell: (path: [number, number, number, number], element: HTMLElement) => void }) {
+function CellParagraph({
+  block,
+  tablePath,
+  onSyncCell,
+}: {
+  block: Extract<Block, { type: "paragraph" }>;
+  tablePath: [number, number, number, number];
+  onSyncCell: (path: [number, number, number, number], element: HTMLElement) => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [focused, setFocused] = useState(false);
   useEffect(() => {
@@ -2944,11 +3668,17 @@ function ImageOptions({
       </label>
       <label className="field">
         <span>Caption</span>
-        <input value={block.caption} onChange={(event) => onChange(block.widthPt, block.heightPt, block.align, event.target.value)} />
+        <input
+          value={block.caption}
+          onChange={(event) => onChange(block.widthPt, block.heightPt, block.align, event.target.value)}
+        />
       </label>
       <label className="field">
         <span>Alignment</span>
-        <select value={block.align} onChange={(event) => onChange(block.widthPt, block.heightPt, event.target.value, block.caption)}>
+        <select
+          value={block.align}
+          onChange={(event) => onChange(block.widthPt, block.heightPt, event.target.value, block.caption)}
+        >
           <option value="left">Left</option>
           <option value="center">Center</option>
           <option value="right">Right</option>
@@ -2971,7 +3701,6 @@ function effectiveFontSize(block: Extract<Block, { type: "paragraph" }>): number
 function applyVisualStyle(element: HTMLElement, property: string, value: string) {
   element.style.setProperty(property, value);
 }
-
 
 function mimeFromName(name: string): string {
   const extension = name.split(".").pop()?.toLowerCase() ?? "";
