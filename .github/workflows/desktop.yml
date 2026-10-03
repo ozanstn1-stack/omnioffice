@@ -308,15 +308,20 @@ jobs:
       - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2
         with:
           tool: cargo-fuzz
+      # `--target` is explicit on purpose: the prebuilt cargo-fuzz binary from
+      # install-action is linked against musl, and its "current platform"
+      # default makes cargo build for x86_64-unknown-linux-musl, where the
+      # address sanitizer cannot link (static libc). Pin the runner's real
+      # target instead.
       - name: ZIP reader
         working-directory: fuzz
-        run: cargo +nightly fuzz run zip_archive -- -max_total_time=45
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu zip_archive -- -max_total_time=45
       - name: XML parser
         working-directory: fuzz
-        run: cargo +nightly fuzz run xml_parse -- -max_total_time=30
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu xml_parse -- -max_total_time=30
       - name: Office readers
         working-directory: fuzz
-        run: cargo +nightly fuzz run office_readers -- -max_total_time=60
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu office_readers -- -max_total_time=60
 
   # Criterion trend benchmarks; the uploaded report is the comparison point
   # for the next run (download the previous artifact and diff with
