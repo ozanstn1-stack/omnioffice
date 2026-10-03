@@ -67,3 +67,10 @@ Effort estimates assume a single developer.
 - Pinch updates coalesce per frame and pages are memoized.
 - Extreme zoom on very high-density screens still upscales until tiled
   rendering (Phase 3) lands.
+
+## 3.5.2 — Live pinch (delivered)
+
+- Two-finger gestures scale the page container with a CSS transform that
+  follows the fingers 1:1 (including the two-finger pan) and commit the zoom
+  to the layout on release.
+- No inertial/momentum zoom; tiled rendering for extreme zoom is still open.

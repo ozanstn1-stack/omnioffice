@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.2] - Pinch-to-zoom follows the fingers
+
+### Changed
+
+- **Reader pinch is live.** Page width (and therefore the visible zoom) only
+  changed after the 180 ms debounce finished, so a pinch gave no feedback
+  while the fingers were moving. Two-finger gestures now scale the page
+  container with a CSS transform that follows the fingers 1:1, including a
+  two-finger pan; the transform keeps the pinch midpoint anchored and is
+  committed to the real layout on release, where the sharp bitmap is
+  requested. A pure two-finger pan (no scale change) is folded into the
+  scroll offset instead of a zoom commit.
+
+### Added
+
+- Reader test proving the CSS transform tracks the gesture (`scale(2)` and the
+  50 px pan for a 100→200 px pinch) and that release commits the 200 % zoom.
+
 ## [3.5.1] - Sharp, light reader zoom
 
 ### Fixed
