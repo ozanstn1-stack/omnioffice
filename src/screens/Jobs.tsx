@@ -7,7 +7,7 @@
  */
 import { useEffect } from "react";
 import { Ban, CheckCircle2, ListChecks, RefreshCw, XCircle } from "lucide-react";
-import { resumeJobs, useJobs as useBackgroundJobs } from "../lib/jobs";
+import { hasJobRetryHandler, resumeJobs, useJobs as useBackgroundJobs } from "../lib/jobs";
 import { useT } from "../lib/i18n";
 import { useToasts } from "../lib/store";
 import { Badge, Card, EmptyState } from "../components/ui";
@@ -96,9 +96,13 @@ export function JobsScreen() {
                   </button>
                 ) : null}
                 {job.status === "failed" || job.status === "cancelled" || job.status === "interrupted" ? (
-                  <button type="button" className="btn btn-soft" onClick={() => onRetry(job.id)}>
-                    <RefreshCw size={13} /> {t("jobs.retry")}
-                  </button>
+                  hasJobRetryHandler(job.kind) ? (
+                    <button type="button" className="btn btn-soft" onClick={() => onRetry(job.id)}>
+                      <RefreshCw size={13} /> {t("jobs.retry")}
+                    </button>
+                  ) : (
+                    <span className="muted small">{t("jobs.retryManual")}</span>
+                  )
                 ) : null}
                 {job.status === "succeeded" ? (
                   <span className="muted small">

@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.3] - Cleanup: retryable jobs, vault clear, writer fields, TOCTOU
+
+### Added
+
+- **Retryable background jobs** (`src/lib/job-retries.ts`): every long
+  operation persists a stable kind plus the exact invoke arguments, and one
+  handler per kind re-invokes the same command after a restart. Credential
+  fields are blanked before the payload is written to `jobs.json`. The Jobs
+  screen only offers Retry for kinds with a handler and explains the rest.
+- **Vault Clear** in the Document Vault settings, with a confirmation dialog;
+  on Android the dialog can also delete the app-private imported copies
+  (`vault_clear` gained an optional `delete_imports` flag).
+- Writer tests for ordered-list numbering and live field values; screen tests
+  for Organize, Annotate, Batch, Page Tools and Plugins; `job-retries` tests
+  for tracking, sanitizing and re-running.
+
+### Fixed
+
+- **Jobs "Retry" was unreachable** (audit L6): no screen registered a handler
+  and most producers never persisted a payload, so every press ended in an
+  "unavailable" toast.
+- **Writer ordered lists always showed "1"** and PAGE/NUMPAGES/DATE/TIME/
+  TITLE/AUTHOR fields kept their insertion-time cache (audit M16). Numbering
+  and field values are now computed at render time.
+- **`resolve_output_path` had a TOCTOU window** for `UniqueName` (audit M7):
+  the candidate is now reserved atomically with `create_new`, so concurrent
+  runs cannot pick the same name and overwrite one result.
+
+### Changed
+
+- Coverage floors raised from 58/68/46/58 to 62/69/46/62 (measured 64.5 %
+  statements); frontend suite 673 tests, Rust suite 533 tests.
+- Dependabot updates merged: base64 0.23.1, the Rust/frontend/actions groups
+  and the Chrome extension TypeScript bump.
+
 ## [3.5.2] - Pinch-to-zoom follows the fingers
 
 ### Changed

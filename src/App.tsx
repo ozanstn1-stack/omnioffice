@@ -94,6 +94,7 @@ const PlannerScreen = React.lazy(() => import("./office/ToolsScreens").then((mod
 const TemplatesScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.TemplatesScreen })));
 import { matchKeybinding, registerCommand, runCommand, setCommandTranslator, unregisterCommand } from "./lib/commands";
 import { resumeJobs, useJobs as useBackgroundJobs } from "./lib/jobs";
+import { installJobRetryHandlers } from "./lib/job-retries";
 import { CommandPalette, GlobalSearch } from "./components/command-palette";
 import { OverwriteDialog, PasswordDialog, Toasts } from "./components/files";
 import { DataLossDialogHost } from "./components/data-loss-dialog";
@@ -367,6 +368,11 @@ export default function App() {
       openPickedFiles((Array.isArray(picked) ? picked : [picked]).map(String));
     });
   }, [openPickedFiles]);
+
+  // Retry routing for background jobs: one handler per tracked kind, so a
+  // failed or interrupted job can be re-run from its persisted payload even
+  // when the originating screen is not mounted.
+  useEffect(() => installJobRetryHandlers(), []);
 
   // Command platform: every screen is a command, alongside the global file,
   // palette and search actions. The keybindings registered here are the single

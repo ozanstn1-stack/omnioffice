@@ -440,7 +440,16 @@ pub fn vault_status_at(root: &Path) -> VaultStatus {
 }
 
 /// Deletes the index and the extraction cache (the folder selection stays).
-pub fn clear_vault_at(root: &Path) -> Result<(), PdfError> {
+/// `delete_imports` additionally removes the app-private copies of documents
+/// the user imported on Android; imported copies are otherwise kept and
+/// re-indexed by the next scan.
+pub fn clear_vault_at(root: &Path, delete_imports: bool) -> Result<(), PdfError> {
+    if delete_imports {
+        let imported = imported_dir(root);
+        if imported.exists() {
+            std::fs::remove_dir_all(&imported).map_err(PdfError::from_io)?;
+        }
+    }
     let index = index_path(root);
     if index.exists() {
         std::fs::remove_file(&index).map_err(PdfError::from_io)?;
@@ -2044,10 +2053,11 @@ pub async fn vault_document_text(app: AppHandle, id: String) -> Result<String, P
 }
 
 /// Forgets the index and the extraction cache; the folder selection stays.
+/// `delete_imports` also removes the app-private copies imported on Android.
 #[tauri::command]
-pub fn vault_clear(app: AppHandle) -> Result<VaultStatus, PdfError> {
+pub fn vault_clear(app: AppHandle, delete_imports: Option<bool>) -> Result<VaultStatus, PdfError> {
     let root = config_dir(&app)?;
-    clear_vault_at(&root)?;
+    clear_vault_at(&root, delete_imports.unwrap_or(false))?;
     Ok(vault_status_at(&root))
 }
 
@@ -2554,10 +2564,25 @@ mod tests {
         save_config(&root, &config).expect("save config");
         scan_folders(&root, &config, &scan_request(), &CancelToken::new());
         assert!(index_path(&root).exists());
-        clear_vault_at(&root).expect("clear");
+        clear_vault_at(&root, false).expect("clear");
         assert!(!index_path(&root).exists());
         assert!(!docs_dir(&root).exists());
         assert_eq!(load_config(&root).folders.len(), 1, "folder selection is kept");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn clear_can_delete_imported_copies_when_asked() {
+        let base = temp_root("clear-imports");
+        let root = base.join("root");
+        std::fs::create_dir_all(&root).expect("root");
+        let imported = imported_dir(&root);
+        std::fs::create_dir_all(&imported).expect("imported dir");
+        std::fs::write(imported.join("copy.pdf"), b"%PDF-1.4").expect("copy");
+        clear_vault_at(&root, false).expect("clear without imports");
+        assert!(imported.exists(), "a plain clear keeps imported copies");
+        clear_vault_at(&root, true).expect("clear with imports");
+        assert!(!imported.exists(), "imported copies are deleted when asked");
         let _ = std::fs::remove_dir_all(&base);
     }
 

@@ -11,14 +11,15 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  Trash2,
   Upload,
   X,
 } from "lucide-react";
-import { Badge, Button, Card, Checkbox, EmptyState, Field, IconButton, NumberInput, Spinner, TextInput, Toggle } from "../components/ui";
+import { Badge, Button, Card, Checkbox, EmptyState, Field, IconButton, Modal, NumberInput, Spinner, TextInput, Toggle } from "../components/ui";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { errorMessage, useToasts } from "../lib/store";
-import { cancelJob, onProgress, toAppError } from "../lib/api";
+import { cancelJob, onProgress, toAppError, vaultScan } from "../lib/api";
 import { formatBytes, formatDate } from "../lib/format";
 import { isAndroid, openAnyFile, pickOfficeFiles } from "../lib/mobile";
 import type { ProgressPayload } from "../lib/types";
@@ -182,6 +183,9 @@ export function Vault() {
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState<ProgressPayload | null>(null);
   const [importing, setImporting] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [deleteImports, setDeleteImports] = useState(false);
 
   const [query, setQuery] = useState("");
   const [exact, setExact] = useState(false);
@@ -272,7 +276,7 @@ export function Vault() {
     setProgress(null);
     try {
       const request: VaultScanRequest = { folders: config.folders, rescan: false, maxFiles: 20000 };
-      const next = await invoke<VaultStatus>("vault_scan", { request });
+      const next = await vaultScan<VaultStatus>(request);
       setStatus(next);
       setStatusError(null);
     } catch (err) {
@@ -288,6 +292,25 @@ export function Vault() {
 
   const cancelScan = () => {
     void cancelJob("vault-scan").catch(() => undefined);
+  };
+
+  /** Forgets the index/cache; optionally deletes the imported copies too. */
+  const clearVault = async () => {
+    setClearing(true);
+    try {
+      const next = await invoke<VaultStatus>("vault_clear", { deleteImports });
+      setStatus(next);
+      setStatusError(null);
+      setResult(null);
+      setHit(null);
+      setPreview("");
+      setClearOpen(false);
+      pushToast({ kind: "success", title: t("vault.clearDone") });
+    } catch (err) {
+      pushToast({ kind: "error", title: t("errors.title"), detail: errorMessage(err, t) });
+    } finally {
+      setClearing(false);
+    }
   };
 
   /**
@@ -496,6 +519,23 @@ export function Vault() {
                 <p className="text-xs" style={{ color: "var(--danger)" }}>
                   {configError}
                 </p>
+              ) : null}
+              {status ? (
+                <div className="flex items-start justify-between gap-3 border-t pt-3" style={{ borderColor: "var(--border)" }}>
+                  <div>
+                    <p className="text-[13px] font-medium">{t("vault.clearTitle")}</p>
+                    <p className="text-xs muted">{t("vault.clearHint")}</p>
+                  </div>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    icon={<Trash2 size={14} />}
+                    onClick={() => setClearOpen(true)}
+                    disabled={busy || clearing}
+                  >
+                    {t("vault.clearAction")}
+                  </Button>
+                </div>
               ) : null}
             </OptionCard>
 
@@ -728,6 +768,31 @@ export function Vault() {
           </>
         }
       />
+
+      {clearOpen ? (
+        <Modal
+          title={t("vault.clearConfirmTitle")}
+          onClose={() => (!clearing ? setClearOpen(false) : undefined)}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setClearOpen(false)} disabled={clearing}>
+                {t("common.cancel")}
+              </Button>
+              <Button variant="danger" icon={clearing ? <Spinner size={14} /> : <Trash2 size={14} />} onClick={() => void clearVault()} disabled={clearing}>
+                {t("vault.clearAction")}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-[13px] muted">{t("vault.clearConfirmBody")}</p>
+          {android ? (
+            <label className="checkbox mt-3">
+              <input type="checkbox" checked={deleteImports} onChange={(event) => setDeleteImports(event.target.checked)} />
+              <span>{t("vault.deleteImports")}</span>
+            </label>
+          ) : null}
+        </Modal>
+      ) : null}
     </Screen>
   );
 }

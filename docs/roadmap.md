@@ -74,3 +74,14 @@ Effort estimates assume a single developer.
   follows the fingers 1:1 (including the two-finger pan) and commit the zoom
   to the layout on release.
 - No inertial/momentum zoom; tiled rendering for extreme zoom is still open.
+
+## 3.5.3 — Cleanup (delivered)
+
+- Background jobs are retryable from their persisted payload (one handler per
+  kind; credentials blanked; Jobs UI hides Retry when no handler exists).
+- Vault Clear UI (optionally deletes the imported copies on Android).
+- Writer field values and ordered-list numbering computed at render time.
+- TOCTOU-safe `UniqueName` output reservation.
+- Coverage floors 62/69/46/62; 38 frontend test files, 673 tests.
+- Still open: C11 (XLSX cross-sheet comments), desktop E2E, fuzzing,
+  benchmark trends, the red Dependabot majors.

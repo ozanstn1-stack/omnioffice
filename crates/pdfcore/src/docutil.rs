@@ -206,8 +206,14 @@ pub enum OverwritePolicy {
 /// Resolves the final output path according to the overwrite policy and
 /// verifies that an existing target can actually be replaced (locked files
 /// produce `FileLocked` instead of a confusing write error later).
+///
+/// `UniqueName` reserves the chosen candidate atomically with `create_new`, so
+/// two concurrent operations can never pick the same "unique" name and one
+/// result silently replacing the other (audit M7). The reservation is a
+/// zero-byte placeholder that the caller's atomic temp+rename write replaces;
+/// a caller that fails after resolving leaves that placeholder behind.
 pub fn resolve_output_path(output: &Path, policy: OverwritePolicy) -> PdfResult<PathBuf> {
-    if !output.exists() {
+    if policy != OverwritePolicy::UniqueName && !output.exists() {
         return Ok(output.to_path_buf());
     }
     match policy {
@@ -218,17 +224,36 @@ pub fn resolve_output_path(output: &Path, policy: OverwritePolicy) -> PdfResult<
         }
         OverwritePolicy::UniqueName => {
             let parent = output.parent().unwrap_or_else(|| Path::new("."));
+            if !parent.as_os_str().is_empty() && !parent.exists() {
+                fs::create_dir_all(parent).map_err(PdfError::from_io)?;
+            }
+            if reserve_candidate(output)? {
+                return Ok(output.to_path_buf());
+            }
             let stem =
                 output.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "output".to_string());
             let ext = output.extension().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "pdf".to_string());
             for i in 1..10_000 {
                 let candidate = parent.join(format!("{stem} ({i}).{ext}"));
-                if !candidate.exists() {
+                if reserve_candidate(&candidate)? {
                     return Ok(candidate);
                 }
             }
             Err(PdfError::OutputExists(output.display().to_string()))
         }
+    }
+}
+
+/// Atomically reserves a path by creating it with `create_new`. Returns false
+/// when the name is already taken by any other file or process.
+fn reserve_candidate(path: &Path) -> PdfResult<bool> {
+    match fs::OpenOptions::new().write(true).create_new(true).open(path) {
+        Ok(file) => {
+            drop(file);
+            Ok(true)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+        Err(error) => Err(PdfError::from_io(error)),
     }
 }
 
@@ -943,6 +968,46 @@ mod tests {
                 assert!((area - rect[2] * rect[3]).abs() < 1.0, "area changed for rot {rotation}");
             }
         }
+    }
+
+    #[test]
+    fn unique_name_reserves_the_candidate() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let output = dir.path().join("out.pdf");
+        std::fs::write(&output, b"existing").expect("seed");
+        let first = resolve_output_path(&output, OverwritePolicy::UniqueName).expect("first");
+        assert!(first.exists(), "the candidate is reserved as a placeholder");
+        assert_eq!(first.file_name().unwrap(), "out (1).pdf");
+        // A second resolution must not hand out the same name, even though the
+        // placeholder exists but has no content yet.
+        let second = resolve_output_path(&output, OverwritePolicy::UniqueName).expect("second");
+        assert_ne!(first, second);
+        assert_eq!(second.file_name().unwrap(), "out (2).pdf");
+    }
+
+    #[test]
+    fn unique_name_reserves_a_fresh_target_too() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let output = dir.path().join("fresh.pdf");
+        let reserved = resolve_output_path(&output, OverwritePolicy::UniqueName).expect("reserve");
+        assert_eq!(reserved, output, "a free base name is taken as-is");
+        assert!(output.exists(), "the base name is atomically reserved");
+        let next = resolve_output_path(&output, OverwritePolicy::UniqueName).expect("next");
+        assert_eq!(next.file_name().unwrap(), "fresh (1).pdf");
+    }
+
+    #[test]
+    fn error_and_replace_policies_keep_their_contract() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let output = dir.path().join("exists.pdf");
+        std::fs::write(&output, b"x").expect("seed");
+        assert!(matches!(
+            resolve_output_path(&output, OverwritePolicy::Error),
+            Err(PdfError::OutputExists(_))
+        ));
+        assert_eq!(resolve_output_path(&output, OverwritePolicy::Replace).unwrap(), output);
+        let missing = dir.path().join("missing.pdf");
+        assert_eq!(resolve_output_path(&missing, OverwritePolicy::Error).unwrap(), missing);
     }
 
     #[test]

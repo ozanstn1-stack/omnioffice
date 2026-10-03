@@ -10,9 +10,41 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.5.2** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.5.3** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.5.3
+
+Cleanup release: the Jobs "Retry" button finally works, the vault can be
+cleared from the UI, and two long-standing audit bugs are fixed.
+
+- **Background jobs are retryable.** Every long operation (merge, split,
+  compress, OCR, protect/unlock, watermark, annotate, redact, page tools,
+  metadata, conversions, PDF Studio sanitize/flatten/PDF-A, AI actions and the
+  vault scan) now persists a stable kind plus the exact invoke arguments with
+  the job, and the app registers one retry handler per kind. A failed or
+  interrupted job can be re-run after a restart even though its screen is not
+  mounted. Credential-looking fields (passwords, tokens, keys) are blanked
+  before the payload reaches `jobs.json`, so retrying an encrypted document
+  asks for the password again instead of leaking it. Jobs from older builds
+  without a handler show an honest "no automatic retry" note instead of a
+  button that only produced a toast.
+- **Vault clear in the UI**: the Document Vault settings gain a Clear action
+  with a confirmation dialog; on Android it can also delete the imported
+  document copies from app storage (previously only unreachable from Rust).
+- **Writer fields and lists refresh** (audit M16): PAGE/NUMPAGES/DATE/TIME/
+  TITLE/AUTHOR are rendered from the pagination result and metadata instead of
+  the value cached at insertion time, and ordered lists are numbered across
+  the document instead of repeating "1".
+- **Unique-name outputs reserve their path atomically** (audit M7):
+  `create_new` replaces the exists-then-write check, so two concurrent
+  operations can no longer pick the same "unique" name and silently overwrite
+  one result.
+- **Tests and gates**: Organize, Annotate, Batch, Page Tools and Plugins now
+  have render/interaction tests (38 files, 673 tests), the coverage floors rose
+  from 58/68/46/58 to 62/69/46/62, and the Dependabot updates (base64 0.23,
+  Rust/frontend/actions groups, extension TypeScript) are merged.
 
 ## What's new in 3.5.2
 
@@ -620,7 +652,7 @@ npm test
 npx tsc --noEmit
 ```
 
-**528 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **650
+**533 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **673
 frontend tests** pass, plus the 1 heavy case gated by `OSAK_PERF_HEAVY=1`,
 with a strict TypeScript type check on top. Frontend coverage floors are
 enforced by `npm run test:coverage` (see `vite.config.ts`). The per-crate split

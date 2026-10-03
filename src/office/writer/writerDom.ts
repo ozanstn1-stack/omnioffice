@@ -95,6 +95,68 @@ export interface RunRenderOptions {
   showRevisions?: boolean;
 }
 
+/** Context for field values the renderer derives instead of reading the run. */
+export interface DocumentFieldContext {
+  page?: number;
+  pages?: number;
+  title?: string;
+  author?: string;
+  /** Injectable clock so tests are deterministic. */
+  now?: Date;
+}
+
+/**
+ * Builds the `kind:target` -> value map `runsToHtml` expects. Page numbers come
+ * from the pagination result; title/author from the document metadata; date and
+ * time from the clock, so those fields refresh instead of showing the value
+ * cached at insertion time (audit M16).
+ */
+export function fieldValuesFor(context: DocumentFieldContext = {}): Record<string, string> {
+  const now = context.now ?? new Date();
+  const values: Record<string, string> = {
+    "date:": now.toLocaleDateString(),
+    "time:": now.toLocaleTimeString(),
+  };
+  if (context.page && context.page > 0) values["page:"] = String(context.page);
+  if (context.pages && context.pages > 0) values["pages:"] = String(context.pages);
+  if (context.title) values["title:"] = context.title;
+  if (context.author) values["author:"] = context.author;
+  return values;
+}
+
+/**
+ * Numbers ordered-list paragraphs the way a word processor does: consecutive
+ * numbered paragraphs at the same level increment, a deeper level starts its
+ * own counter at the paragraph's `start`, and returning to a shallower level
+ * continues that level's counter. Any non-numbered block ends the series, so a
+ * numbered list separated by body text restarts at its `start` (audit M16:
+ * ordered lists used to render every item as "1").
+ */
+export function orderedListNumbers(blocks: Block[]): Map<number, number> {
+  const numbers = new Map<number, number>();
+  const counters: number[] = [];
+  blocks.forEach((block, index) => {
+    if (block.type !== "paragraph" || !block.props.list || block.props.list.kind !== "number") {
+      counters.length = 0;
+      return;
+    }
+    const level = Math.max(0, Math.min(8, block.props.list.level));
+    counters.length = level + 1;
+    const start = Math.max(1, Math.round(block.props.list.start) || 1);
+    const next = counters[level] === undefined ? start : counters[level] + 1;
+    counters[level] = next;
+    numbers.set(index, next);
+  });
+  return numbers;
+}
+
+/** The marker an ordered-list item shows, given its computed position. */
+export function orderedListMarker(props: ParaProps, listNumber: number | undefined): string {
+  if (!props.list) return "";
+  if (props.list.kind === "number") return `${listNumber ?? props.list.start}.`;
+  return ["•", "◦", "▪"][props.list.level % 3];
+}
+
 function revisionAttributes(run: Run): string {
   const revision = run.revision;
   if (!revision) return "";

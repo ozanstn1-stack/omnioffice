@@ -182,7 +182,7 @@ import { JobsScreen } from "./Jobs";
 import { CompatibilityScreen } from "./Compatibility";
 import { Ocr } from "./Ocr";
 import { Convert } from "./Convert";
-import { useJobs } from "../lib/jobs";
+import { registerJobRetryHandler, useJobs } from "../lib/jobs";
 
 describe("library and index screens", () => {
   beforeEach(() => {
@@ -201,17 +201,24 @@ describe("library and index screens", () => {
   });
 
   it("restores persisted jobs and offers the matching actions", async () => {
-    const user = userEvent.setup();
-    render(<JobsScreen />);
-    expect(await screen.findByText("Vault scan")).toBeInTheDocument();
-    expect(screen.getByText("Running")).toBeInTheDocument();
-    expect(screen.getAllByText(/Failed/).length).toBeGreaterThan(0);
+    // The app registers one handler per tracked kind at startup; the Retry
+    // button only renders when a handler exists.
+    const unregister = registerJobRetryHandler("ocr", () => undefined);
+    try {
+      const user = userEvent.setup();
+      render(<JobsScreen />);
+      expect(await screen.findByText("Vault scan")).toBeInTheDocument();
+      expect(screen.getByText("Running")).toBeInTheDocument();
+      expect(screen.getAllByText(/Failed/).length).toBeGreaterThan(0);
 
-    await user.click(screen.getByRole("button", { name: /retry/i }));
-    await waitFor(() => expect(invoke.mock.calls.some(([name]) => name === "jobs_retry")).toBe(true));
+      await user.click(screen.getByRole("button", { name: /retry/i }));
+      await waitFor(() => expect(invoke.mock.calls.some(([name]) => name === "jobs_retry")).toBe(true));
 
-    await user.click(screen.getByRole("button", { name: /cancel/i }));
-    await waitFor(() => expect(invoke.mock.calls.some(([name]) => name === "cancel_job")).toBe(true));
+      await user.click(screen.getByRole("button", { name: /cancel/i }));
+      await waitFor(() => expect(invoke.mock.calls.some(([name]) => name === "cancel_job")).toBe(true));
+    } finally {
+      unregister();
+    }
   });
 
   it("shows the capability matrix per format", async () => {
