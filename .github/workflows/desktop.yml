@@ -271,15 +271,14 @@ jobs:
             libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev \
             patchelf webkit2gtk-driver xvfb dbus-x11
       - run: npm ci
-      # The Tauri build script embeds ../dist, so it has to exist.
-      - name: Frontend for the embedded protocol
-        run: npm run build
       - name: Stub the engine resources
         run: |
           mkdir -p src-tauri/resources/engines
           echo "Engine binaries are fetched by scripts/fetch-engines.ps1." > src-tauri/resources/engines/README.txt
-      - name: Build the app (debug)
-        run: cargo build -p pdf-swiss-army-knife
+      # The frontend has to be embedded (a plain `cargo build` produces a dev
+      # binary that points at the Vite dev server and cannot load in CI).
+      - name: Build the app (debug, embedded frontend)
+        run: npm run tauri -- build --debug --no-bundle
       - name: Install tauri-driver
         run: cargo install tauri-driver --locked
       - name: Smoke test (Xvfb)
