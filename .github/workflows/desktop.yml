@@ -42,20 +42,18 @@ jobs:
       # Dependabot bump of only one side shipped exactly that once.
       - name: Tauri plugin version sync
         run: node scripts/check-tauri-plugin-versions.mjs
-      - name: Formatting gate (files added by this change)
+      - name: Formatting gate (files changed by this change)
         env:
           FORMAT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
-          npm run format:gate
-          npm run format:gate:rust
-      # Neither rustfmt nor Prettier has been run over the whole code base yet;
-      # the counts below are the backlog. Once `npm run format` and
-      # `npm run fmt:rust` have been committed, add `--all-changed` to the
-      # gate above (or replace it with a plain repository-wide check).
-      - name: Formatting backlog (informational)
+          npm run format:gate -- --all-changed
+          npm run format:gate:rust -- --all-changed
+      # The one-off backlog is burned down (v3.5.5); this keeps the whole tree
+      # formatted, not just the files a change touches.
+      - name: Formatting (repository-wide)
         run: |
-          npm run format:gate -- --repo
-          npm run format:gate:rust -- --repo
+          npm run format:check
+          npm run fmt:rust:check
       # Every engine download must be covered by a pinned SHA-256. The fetch
       # scripts themselves are the source of truth (they hard-fail on an
       # unpinned download), so this only proves the lock has no gaps before a
@@ -283,6 +281,10 @@ jobs:
         run: cargo install tauri-driver --locked
       - name: Smoke test (Xvfb)
         run: xvfb-run -a npm run e2e:smoke
+      # Engine-free real flows: Writer type -> save, PDF merge and Studio
+      # sanitize all run through the same WebDriver session harness.
+      - name: Deep flows (Xvfb)
+        run: xvfb-run -a npm run e2e:flows
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -323,9 +325,10 @@ jobs:
         working-directory: fuzz
         run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu office_readers -- -max_total_time=60
 
-  # Criterion trend benchmarks; the uploaded report is the comparison point
-  # for the next run (download the previous artifact and diff with
-  # `critcmp` or open target/criterion/report/index.html).
+  # Criterion trend benchmarks with a regression gate. The previous master
+  # run's means are cached; a >15 % mean regression fails the job, a >7.5 %
+  # one warns, and the updated baseline is saved only when the check passed.
+  # The uploaded report stays the detailed comparison point.
   bench:
     name: Benchmarks (criterion)
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -333,9 +336,29 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Restore benchmark baseline
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .bench-baseline.json
+          key: criterion-baseline-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            criterion-baseline-${{ github.ref_name }}-
       - name: Run benchmarks
         run: cargo bench -p officecore --bench parse -p pdfcore --bench pdf_ops
+      - name: Check benchmark regression
+        run: node scripts/check-bench-regression.mjs
+      # Only a green check may advance the baseline; a failed comparison keeps
+      # the older (good) numbers so the regression stays visible next run.
+      - name: Save benchmark baseline
+        if: success()
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .bench-baseline.json
+          key: criterion-baseline-${{ github.ref_name }}-${{ github.run_id }}
       - name: Upload criterion report
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

@@ -41,6 +41,8 @@ tests/artifacts/
 crates/pdfcore/tests/artifacts/
 coverage/
 e2e/artifacts/
+# criterion baseline for the local/CI regression check (scripts/check-bench-regression.mjs)
+.bench-baseline.json
 
 # Exported release folders: the release scripts write these next to the
 # project, but a copy can end up inside the worktree; never commit artifacts.
