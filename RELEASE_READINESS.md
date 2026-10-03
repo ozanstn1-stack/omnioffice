@@ -1,4 +1,4 @@
-# Release Readiness — Office Swiss Army Knife 3.5.3
+# Release Readiness — Office Swiss Army Knife 3.5.4
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -7,72 +7,69 @@ by CI.
 
 ## Implemented (this cycle)
 
-- **Retryable jobs** (`src/lib/job-retries.ts`, `src/lib/api.ts`): tracked
-  wrappers persist `kind` + the exact invoke args (credentials blanked) and one
-  handler per kind re-invokes the command. Covers merge, split, organize,
-  extract/delete/rotate, compress, OCR, protect/unlock, PDF↔images, resize,
-  crop, metadata, page numbers, watermark, annotate, redact, compare, PDF
-  Studio sanitize/flatten/PDF-A, the five AI actions and the vault scan.
-- **Vault Clear UI** (`src/screens/Vault.tsx`, `src-tauri/src/vault.rs`):
-  confirmation dialog, optional deletion of the app-private imported copies
-  (`vault_clear(delete_imports)`).
-- **Writer fields + list numbering** (`src/office/writer/writerDom.ts`,
-  `WriterEditor.tsx`): PAGE/NUMPAGES/DATE/TIME/TITLE/AUTHOR from the live
-  pagination/metadata, ordered lists numbered across the document.
-- **TOCTOU-safe unique names** (`crates/pdfcore/src/docutil.rs`): candidates
-  are reserved with `create_new`.
-- **Dependency updates**: base64 0.23.1, Rust/frontend/actions Dependabot
-  groups, Chrome extension TypeScript.
+- **Desktop E2E** (`e2e/smoke.mjs`, CI job `Desktop E2E (tauri-driver)`):
+  WebDriver against the real binary; home grid + Settings navigation on every
+  PR, screenshots uploaded.
+- **Fuzzing** (`fuzz/`): `zip_archive`, `xml_parse`, `office_readers`
+  targets with a seeded corpus; nightly CI job on master (45/30/60 s).
+- **Benchmark trends**: `crates/officecore/benches/parse.rs` and
+  `crates/pdfcore/benches/pdf_ops.rs`; master CI job uploads the criterion
+  report.
+- **Dependency policy**: `deny.toml` gained `[licenses]` (permissive
+  allow-list), `[bans]` (duplicate majors warn, wildcards deny, path
+  wildcards allowed) and `[sources]`; `src-tauri` is `publish = false`, and
+  the RUSTSEC-2024-0429 exception was retired.
 
 ## Tested in this environment
 
 | Gate | Command | Result |
 |---|---|---|
-| Frontend unit/integration | `npm test` | 38 files, 673 passed, 1 skipped |
-| Frontend coverage | `npm run test:coverage` | 64.49 % statements, 71.29 % branches, 48.50 % functions (floors 62/69/46/62 pass) |
-| TypeScript | `npx tsc --noEmit` | clean |
-| ESLint | `npm run lint` | 0 errors, 0 warnings |
-| Rust workspace | `cargo test --workspace` | 533 passed, 3 ignored |
-| Rust (new) | `cargo test -p pdf-swiss-army-knife vault::tests::clear` | passed |
-| Rust (new) | `cargo test -p pdfcore --lib docutil` | passed (reservation + policy contract) |
+| E2E smoke (no engines) | `npm run e2e:smoke` (Windows, msedgedriver 154) | passed: 38 tool cards, Settings navigation |
+| E2E Reader | `npm run e2e:smoke:pdf` | passed: reader rendered 1 page (screenshot in `e2e/artifacts/`) |
+| Fuzz targets | `cargo +nightly check --manifest-path fuzz/Cargo.toml --bins` | compiles (libFuzzer linking is Linux/macOS-only, so runs are CI-only) |
+| Benchmarks | `cargo bench -p officecore --bench parse -p pdfcore --bench pdf_ops` | docx 1.04 ms, xlsx 2.59 ms, pptx 1.53 ms, pdf lossless ~13.1 ms on this machine |
+| Dependency policy | `cargo deny check` | advisories ok, bans ok, licenses ok, sources ok |
+| Rust clippy | `cargo clippy -p officecore -p pdfcore --all-targets -- -D warnings` | clean |
+| Frontend unit/integration | `npm test` | 38 files, 673 passed, 1 skipped (unchanged) |
+| Rust workspace | `cargo test --workspace` | 533 passed, 3 ignored (unchanged) |
 
-New tests: 5 job-retry tests (tracking, sanitizing, re-running, unavailable
-after uninstall), 5 screen tests (Organize, Annotate, Batch, Page Tools,
-Plugins), Writer list/field tests, writerDom unit tests, vault clear (desktop
-+ Android) and the `UniqueName` reservation tests.
+New CI jobs: `e2e` (PRs + master), `fuzz` (master/dispatch), `bench`
+(master/dispatch). The audit job now runs `cargo deny check` (all four
+sections) instead of advisories only.
 
 ## Benchmarked
 
-- Existing cargo/frontend perf guards run in CI; no new benchmark was added in
-  this pass.
+- Five criterion benchmarks: DOCX/XLSX/PPTX import and lossless PDF
+  compression. No thresholds are enforced yet; the uploaded report is the
+  trend baseline (compare with the previous artifact).
 
 ## Not done in this pass (honest)
 
-- **XLSX cross-sheet comments (audit C11)** stay on the follow-up list: the
-  writer still merges every sheet's comments into one part.
-- Desktop E2E (tauri-driver) and fuzzing/benchmark trends (Phase 2 leftovers)
-  are still not started.
-- A retried job for an encrypted document needs the password re-entered (the
-  payload intentionally does not store it) and a retry whose output now exists
-  fails with `output_exists`; there is no overwrite prompt in the Jobs screen.
-- `UniqueName` reservations are zero-byte placeholders; an operation that fails
-  after resolving leaves one behind.
+- **Fuzzing does not run on Windows** (libFuzzer links on Linux/macOS only);
+  only the Linux CI job exercises it. Local runs here verified compilation,
+  not the fuzzing itself.
+- **No benchmark thresholds or automatic regression alerts** - trend review is
+  manual against the previous artifact.
+- **E2E coverage is a smoke test**: home grid, Settings navigation and (on
+  Windows) one Reader render. Dialogs, editors and the save round trip are
+  not driven yet.
+- **C11 (XLSX cross-sheet comments)** and the red Dependabot majors are still
+  open, as is the Phase 3/4 roadmap.
 
 ## Platform support and artifacts
 
 - **Windows**: source builds and tests locally; installer/portable ZIP via
   `npm run release:local` or CI, with SBOMs, checksums and provenance.
 - **Android**: built by CI and by `npm run release:local`; artifacts are named
-  `PDF-Swiss-Army-Knife-Android-3.5.3-<abi>.apk`.
-- **Linux/macOS desktop**: built and tested by CI.
-- **Chrome extension**: dependency bump only; CI runs its self test.
+  `PDF-Swiss-Army-Knife-Android-3.5.4-<abi>.apk`.
+- **Linux/macOS desktop**: built and tested by CI; the E2E job runs on Linux.
+- **Chrome extension**: unchanged.
 
 ## Security status
 
-Unchanged from 3.5.2, plus: job retry payloads are sanitized (password/token/
-key fields blanked) before they are written to `jobs.json`; the vault clear
-dialog keeps the folder selection and only deletes imported copies when the
-user ticks the Android checkbox.
+Unchanged from 3.5.3, plus: the dependency policy is now enforced on licenses,
+duplicate versions, wildcards and registry sources; the fuzz targets add
+continuous adversarial testing of the hardened ZIP/XML/reader layers.
 
 ## Known limitations
 

@@ -61,3 +61,10 @@ rand = "0.8"
 rcgen = "0.13"
 sha1 = "0.10"
 sha2 = "0.10"
+criterion = { version = "0.8", features = ["html_reports"] }
+
+# Trend benchmark for the engine-free compression path (pdfium-backed raster
+# compression is not benchable on the Linux CI runner).
+[[bench]]
+name = "pdf_ops"
+harness = false

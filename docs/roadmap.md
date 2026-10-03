@@ -85,3 +85,15 @@ Effort estimates assume a single developer.
 - Coverage floors 62/69/46/62; 38 frontend test files, 673 tests.
 - Still open: C11 (XLSX cross-sheet comments), desktop E2E, fuzzing,
   benchmark trends, the red Dependabot majors.
+
+## 3.5.4 — Quality infrastructure (delivered)
+
+- Desktop E2E through tauri-driver on every PR (engine-free smoke on Linux;
+  the Windows run also opens a PDF in the Reader).
+- Fuzzing: ZIP reader, XML parser and the office reader dispatcher, seeded
+  corpus, nightly job on master.
+- Criterion benchmarks for office import and lossless PDF compression with a
+  report artifact per master run.
+- `cargo deny check` now enforces licenses, bans and sources as well.
+- Still open: C11, benchmark thresholds/regression alerts, deeper E2E flows,
+  the red Dependabot majors, and the Phase 3/4/5 roadmap.

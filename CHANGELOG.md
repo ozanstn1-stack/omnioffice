@@ -4,6 +4,32 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.4] - Quality infrastructure: E2E, fuzzing, benchmark trends
+
+### Added
+
+- **Desktop E2E** (`e2e/smoke.mjs`): tauri-driver + WebDriver against the real
+  binary. The script waits for the home tool grid, navigates to Settings
+  (sidebar or drawer), optionally opens a PDF in the Reader via the dev launch
+  context, and saves screenshots. CI runs it on every pull request (Xvfb +
+  WebKitWebDriver, engine-free) and uploads `e2e-screenshots`.
+- **Fuzzing** (`fuzz/`): three libFuzzer targets - the hardened ZIP reader,
+  the depth-limited XML parser, and the DOCX/XLSX/PPTX/ODT/RTF readers with a
+  container-magic dispatcher - plus a seeded corpus and a nightly CI job that
+  runs each target for 30-60 s on master.
+- **Benchmark trends**: criterion benchmarks for DOCX/XLSX/PPTX import and the
+  lossless PDF compression path, run by a master CI job that uploads the
+  criterion report as an artifact.
+
+### Changed
+
+- `cargo deny check` now covers licenses (permissive allow-list), bans
+  (duplicate majors warned, wildcards denied, internal path deps allowed) and
+  sources, not just advisories; `src-tauri` is marked `publish = false` and
+  the retired glib advisory exception is removed.
+- The fuzz crate is excluded from the main workspace so `cargo test
+  --workspace` stays nightly-free.
+
 ## [3.5.3] - Cleanup: retryable jobs, vault clear, writer fields, TOCTOU
 
 ### Added
