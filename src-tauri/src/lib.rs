@@ -226,6 +226,8 @@ pub fn run() {
             office::office_supported_extensions,
             office::office_compatibility,
             pdf_v3::sanitize_pdf,
+            pdf_v3::pdf_repair,
+            pdf_v3::pdf_linearize,
             pdf_v3::flatten_pdf,
             pdf_v3::pdfa_validate,
             pdf_v3::pdfa_convert,

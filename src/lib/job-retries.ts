@@ -39,6 +39,8 @@ export const TRACKED_JOB_COMMANDS: Record<string, { kind: string; command: strin
   compare_pdfs: { kind: "compare", command: "compare_pdfs" },
   sanitize_pdf: { kind: "sanitize", command: "sanitize_pdf" },
   flatten_pdf: { kind: "flatten", command: "flatten_pdf" },
+  pdf_repair: { kind: "repair", command: "pdf_repair" },
+  pdf_linearize: { kind: "linearize", command: "pdf_linearize" },
   pdfa_convert: { kind: "pdfa", command: "pdfa_convert" },
   ai_summarize: { kind: "ai-summarize", command: "ai_summarize" },
   ai_translate: { kind: "ai-translate", command: "ai_translate" },

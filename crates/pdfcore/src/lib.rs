@@ -22,6 +22,7 @@
 //! * `ocr`       - Tesseract-based OCR pipeline
 //! * `engines`   - engine discovery (pdfium.dll, qpdf.exe, tesseract.exe)
 //! * `sanitize`  - full-object removal of scripts, actions, attachments
+//! * `repair`    - qpdf-backed recovery and linearization (desktop only)
 //! * `pdfa`      - PDF/A validation and best-effort conversion
 //! * `flatten`   - annotation and form flattening
 //! * `forms`     - AcroForm fields (list/fill/validate) and page object editing
@@ -38,9 +39,9 @@ pub mod fontembed;
 pub mod forms;
 pub mod images;
 pub mod incremental;
-pub mod ltv;
 pub mod info;
 pub mod inspect;
+pub mod ltv;
 pub mod merge;
 pub mod metadata;
 pub mod numbering;
@@ -52,6 +53,7 @@ pub mod pdfa;
 pub mod progress;
 pub mod redact;
 pub mod render;
+pub mod repair;
 pub mod sanitize;
 pub mod security;
 pub mod sign;

@@ -51,6 +51,51 @@ pub async fn sanitize_pdf(
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RepairRequest {
+    pub input: String,
+    pub output: Option<OutputSpec>,
+    #[serde(default)]
+    pub job_id: Option<String>,
+}
+
+/// Repairs a damaged PDF through the bundled qpdf engine.
+#[tauri::command]
+pub async fn pdf_repair(
+    app: AppHandle,
+    registry: State<'_, JobRegistry>,
+    request: RepairRequest,
+) -> Result<pdfcore::repair::RepairReport, PdfError> {
+    operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
+        let input = crate::paths::input_file(&request.input)?;
+        let output = match &request.output {
+            Some(spec) => spec.resolve()?.0,
+            None => pdfcore::docutil::default_output_for(input.as_path(), "-repaired"),
+        };
+        pdfcore::repair::repair_pdf(input.as_path(), &output, progress, cancel)
+    })
+    .await
+}
+
+/// Rewrites a PDF in qpdf's linearized (Fast Web View) layout.
+#[tauri::command]
+pub async fn pdf_linearize(
+    app: AppHandle,
+    registry: State<'_, JobRegistry>,
+    request: RepairRequest,
+) -> Result<pdfcore::repair::RepairReport, PdfError> {
+    operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
+        let input = crate::paths::input_file(&request.input)?;
+        let output = match &request.output {
+            Some(spec) => spec.resolve()?.0,
+            None => pdfcore::docutil::default_output_for(input.as_path(), "-linearized"),
+        };
+        pdfcore::repair::linearize_pdf(input.as_path(), &output, progress, cancel)
+    })
+    .await
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FlattenRequest {
     pub input: String,
     pub output: Option<OutputSpec>,
