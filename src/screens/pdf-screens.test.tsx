@@ -336,6 +336,34 @@ describe("reader touch zoom", () => {
       nowSpy.mockRestore();
     }
   });
+
+  it("scales the pages with the fingers while pinching and commits the zoom on release", async () => {
+    // jsdom's PointerEvent (aliased to MouseEvent above) drops `pointerId`, so
+    // build events that carry one; the reader tracks each finger by it.
+    const touch = (type: string, pointerId: number, clientX: number, clientY: number) => {
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX, clientY });
+      Object.defineProperty(event, "pointerId", { value: pointerId });
+      Object.defineProperty(event, "pointerType", { value: "touch" });
+      return event;
+    };
+    render(<Reader initialFiles={["C:/a.pdf"]} dragging={false} />);
+    await waitFor(() => expect(document.querySelector(".reader-scroll")).not.toBeNull());
+    const scroller = document.querySelector<HTMLElement>(".reader-scroll")!;
+
+    fireEvent(scroller, touch("pointerdown", 1, 100, 100));
+    fireEvent(scroller, touch("pointerdown", 2, 200, 100));
+    // Fingers move from 100 px apart to 200 px apart and pan 50 px right.
+    fireEvent(scroller, touch("pointermove", 2, 300, 100));
+
+    const content = scroller.querySelector<HTMLElement>(".w-max")!;
+    // The page follows the fingers immediately through a CSS transform…
+    expect(content.style.transform).toContain("scale(2)");
+    expect(content.style.transform).toContain("translate(50px, 0px)");
+
+    // …and releasing commits the gesture to the real layout.
+    fireEvent(scroller, touch("pointerup", 2, 300, 100));
+    expect(screen.getByRole("button", { name: "200%" })).toBeInTheDocument();
+  });
 });
 
 describe("reader preview sizing and cache", () => {

@@ -10,9 +10,21 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.5.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.5.2** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.5.2
+
+Pinch-to-zoom follows the fingers.
+
+- **Live pinch scaling.** The reader previously only applied the zoom after the
+  180 ms debounce, so nothing moved while the fingers were moving. While two
+  fingers are down the pages now scale through a CSS transform that mirrors
+  the gesture exactly (including the two-finger pan), and the final zoom is
+  committed on release, when the debounced page width and the sharp render
+  catch up. The transform keeps the pinch midpoint anchored; a pure two-finger
+  pan is folded into the scroll offset.
 
 ## What's new in 3.5.1
 

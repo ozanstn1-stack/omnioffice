@@ -45,9 +45,24 @@ export function doubleTapZoom(current: number | "fit"): number | "fit" {
   return current === 2 ? "fit" : 2;
 }
 
-interface ReaderPinch {
-  distance: number;
-  zoom: number;
+/**
+ * A live pinch gesture. The layout is not re-rendered while the fingers move:
+ * a CSS transform mirrors the gesture 1:1 and the final zoom is committed on
+ * release, when the debounced page width catches up.
+ */
+interface ReaderPinchPreview {
+  startZoom: number;
+  startDistance: number;
+  startMidX: number;
+  startMidY: number;
+  /** Pinch midpoint in content coordinates; the transform origin. */
+  originX: number;
+  originY: number;
+  /** Layout width the origin was measured against. */
+  width: number;
+  midX: number;
+  midY: number;
+  finalZoom: number;
 }
 
 /** Where a pinch midpoint sat in content coordinates, kept so the layout
@@ -241,11 +256,9 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
   const [imageCacheMap] = useState(() => new Map<number, CachedPreview>());
   const currentPageRef = useRef(1);
   const framePending = useRef(false);
-  const zoomFrameRef = useRef<number | null>(null);
-  const pendingZoomRef = useRef<number | null>(null);
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
   const panRef = useRef<{ pointerId: number; startX: number; startY: number; scrollLeft: number } | null>(null);
-  const pinchRef = useRef<ReaderPinch | null>(null);
+  const pinchPreviewRef = useRef<ReaderPinchPreview | null>(null);
   const pinchFocalRef = useRef<ReaderFocal | null>(null);
   const lastTapRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const [containerWidth, setContainerWidth] = useState(900);
@@ -348,23 +361,6 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
   }, []);
 
   const applyZoom = (next: number | "fit") => setZoom(next);
-  // Coalesce pinch updates to one state change per frame: pointermove can fire
-  // faster than the display refreshes and every setZoom re-renders the reader.
-  const queueZoom = useCallback((value: number) => {
-    pendingZoomRef.current = value;
-    if (zoomFrameRef.current !== null) return;
-    zoomFrameRef.current = requestAnimationFrame(() => {
-      zoomFrameRef.current = null;
-      const pending = pendingZoomRef.current;
-      pendingZoomRef.current = null;
-      if (pending !== null) setZoom(pending);
-    });
-  }, []);
-  useEffect(() => {
-    return () => {
-      if (zoomFrameRef.current !== null) cancelAnimationFrame(zoomFrameRef.current);
-    };
-  }, []);
   const zoomBy = (factor: number) => {
     const current = typeof zoom === "number" ? zoom : 1;
     applyZoom(clampReaderZoom(current * factor));
@@ -373,23 +369,10 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
   // -------------------------------------------------------------------------
   // Touch pan / pinch / double-tap (the mouse keeps the stock experience)
   //
-  // The scroller keeps `touch-action: pan-y`, so vertical swipes stay native
-  // while horizontal drags are ours: the page is wider than the viewport only
-  // when zoomed, and overflow-x stays hidden so desktop never sees a bar.
+  // While two fingers are down the pages scale through a CSS transform, so the
+  // zoom follows the fingers exactly; the React layout (and the debounced page
+  // width) only changes once the gesture is committed on release.
   // -------------------------------------------------------------------------
-
-  const trackPinchFocal = (clientX: number, clientY: number) => {
-    const content = contentRef.current;
-    if (!content) return;
-    const bounds = content.getBoundingClientRect();
-    pinchFocalRef.current = {
-      contentX: clientX - bounds.left,
-      contentY: clientY - bounds.top,
-      screenX: clientX,
-      screenY: clientY,
-      width: renderWidth,
-    };
-  };
 
   const handleReaderPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "mouse") return;
@@ -404,8 +387,30 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
     if (pointersRef.current.size >= 2) {
       panRef.current = null;
       const [a, b] = [...pointersRef.current.values()];
-      pinchRef.current = { distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), zoom: typeof zoom === "number" ? zoom : 1 };
-      trackPinchFocal((a.x + b.x) / 2, (a.y + b.y) / 2);
+      const midX = (a.x + b.x) / 2;
+      const midY = (a.y + b.y) / 2;
+      const content = contentRef.current;
+      // Measure the origin on the un-transformed layout (a previous gesture
+      // may still be waiting for its debounced commit).
+      if (content?.style.transform) {
+        content.style.transform = "";
+        content.style.transformOrigin = "";
+        content.style.willChange = "";
+      }
+      const bounds = content?.getBoundingClientRect();
+      const startZoom = typeof zoom === "number" ? zoom : 1;
+      pinchPreviewRef.current = {
+        startZoom,
+        startDistance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+        startMidX: midX,
+        startMidY: midY,
+        originX: bounds ? midX - bounds.left : 0,
+        originY: bounds ? midY - bounds.top : 0,
+        width: renderWidth,
+        midX,
+        midY,
+        finalZoom: startZoom,
+      };
       return;
     }
     panRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, scrollLeft: container.scrollLeft };
@@ -415,13 +420,21 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
     const points = pointersRef.current;
     if (!points.has(event.pointerId)) return;
     points.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    const pinch = pinchRef.current;
-    if (pinch && points.size >= 2) {
+    const preview = pinchPreviewRef.current;
+    if (preview && points.size >= 2) {
       const [a, b] = [...points.values()];
       const midX = (a.x + b.x) / 2;
       const midY = (a.y + b.y) / 2;
-      trackPinchFocal(midX, midY);
-      queueZoom(pinchZoomValue(pinch.zoom, pinch.distance, Math.hypot(a.x - b.x, a.y - b.y)));
+      preview.midX = midX;
+      preview.midY = midY;
+      preview.finalZoom = pinchZoomValue(preview.startZoom, preview.startDistance, Math.hypot(a.x - b.x, a.y - b.y));
+      const content = contentRef.current;
+      if (content) {
+        // Scale about the pinch midpoint and mirror any two-finger pan.
+        content.style.willChange = "transform";
+        content.style.transformOrigin = `${preview.originX}px ${preview.originY}px`;
+        content.style.transform = `translate(${midX - preview.startMidX}px, ${midY - preview.startMidY}px) scale(${preview.finalZoom / preview.startZoom})`;
+      }
       return;
     }
     const pan = panRef.current;
@@ -440,8 +453,37 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
     } catch {
       // Not captured.
     }
-    if (pinchRef.current) {
-      if (points.size < 2) pinchRef.current = null;
+    const preview = pinchPreviewRef.current;
+    if (preview) {
+      // Keep pinch active while two fingers are still down.
+      if (points.size >= 2) return;
+      pinchPreviewRef.current = null;
+      const container = scrollRef.current;
+      const content = contentRef.current;
+      const scaleChanged = Math.abs(preview.finalZoom - preview.startZoom) > 0.001;
+      if (scaleChanged) {
+        // The transform stays until the debounced layout catches up; the
+        // layout effect clears it and re-anchors the pinch midpoint.
+        pinchFocalRef.current = {
+          contentX: preview.originX,
+          contentY: preview.originY,
+          screenX: preview.midX,
+          screenY: preview.midY,
+          width: preview.width,
+        };
+        setZoom(clampReaderZoom(preview.finalZoom));
+      } else {
+        // A pure two-finger pan is folded into the scroll offset.
+        if (content) {
+          content.style.transform = "";
+          content.style.transformOrigin = "";
+          content.style.willChange = "";
+        }
+        if (container) {
+          container.scrollLeft = Math.max(0, container.scrollLeft - (preview.midX - preview.startMidX));
+          container.scrollTop -= preview.midY - preview.startMidY;
+        }
+      }
       return;
     }
     const pan = panRef.current;
@@ -458,15 +500,21 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
     }
   };
 
-  // Once the debounced page width has settled, put the content point that was
-  // under the pinch midpoint back under the finger; measuring the real rect
-  // keeps the centring of narrow pages out of the equation.
+  // Once the debounced page width has settled, drop the gesture transform and
+  // put the content point that was under the pinch midpoint back under the
+  // finger; measuring the real rect keeps the centring of narrow pages out of
+  // the equation.
   useLayoutEffect(() => {
+    const content = contentRef.current;
+    if (content && pinchPreviewRef.current === null) {
+      content.style.transform = "";
+      content.style.transformOrigin = "";
+      content.style.willChange = "";
+    }
     const focal = pinchFocalRef.current;
     if (!focal) return;
     pinchFocalRef.current = null;
     const container = scrollRef.current;
-    const content = contentRef.current;
     if (!container || !content) return;
     const bounds = content.getBoundingClientRect();
     const factor = renderWidth / Math.max(1, focal.width);
