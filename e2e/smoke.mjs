@@ -38,7 +38,7 @@ const valueOf = (flag) => {
 const pdf = valueOf("--pdf");
 const basePort = Number(process.env.TAURI_DRIVER_PORT ?? 4444);
 
-const exeName = process.platform === "win32" ? "pdf-swiss-army-knife.exe" : "pdf-swiss-army-knife";
+const exeName = process.platform === "win32" ? "OmniOffice.exe" : "OmniOffice";
 const exe = valueOf("--exe") ?? join(root, "target", "debug", exeName);
 if (!existsSync(exe)) {
   console.error(`app binary not found: ${exe}\nrun: npm run tauri -- build --debug --no-bundle`);
