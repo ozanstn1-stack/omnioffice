@@ -73,6 +73,12 @@ try {
         'sbom-npm.cyclonedx.json',
         'build-info.json'
     )
+    # The Chrome extension has its own version line; include the newest package
+    # whenever one has been built so the release carries it too.
+    $extension = Get-ChildItem $releaseDir -Filter '*Chrome-Extension-*.zip' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+    if ($extension) { $assets += $extension.Name }
     $lines = @()
     foreach ($name in $assets) {
         $path = Join-Path $releaseDir $name
@@ -89,7 +95,7 @@ try {
     Write-Host "==> Exporting artifacts to $export"
     New-Item -ItemType Directory -Force -Path $export | Out-Null
     Get-ChildItem $releaseDir -File | Where-Object {
-        $_.Name -like "*$version*" -or $_.Name -like 'sbom-*' -or $_.Name -like 'SHA256SUMS*' -or $_.Name -eq 'build-info.json'
+        $_.Name -like "*$version*" -or $_.Name -like 'sbom-*' -or $_.Name -like 'SHA256SUMS*' -or $_.Name -eq 'build-info.json' -or $_.Name -like '*Chrome-Extension-*'
     } | ForEach-Object {
         Copy-Item $_.FullName (Join-Path $export $_.Name) -Force
     }
@@ -124,7 +130,7 @@ try {
                 if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
             }
             Get-ChildItem $releaseDir -File | Where-Object {
-                $_.Name -like "*$version*" -or $_.Name -like 'sbom-*' -or $_.Name -like 'SHA256SUMS*' -or $_.Name -eq 'build-info.json'
+                $_.Name -like "*$version*" -or $_.Name -like 'sbom-*' -or $_.Name -like 'SHA256SUMS*' -or $_.Name -eq 'build-info.json' -or $_.Name -like '*Chrome-Extension-*'
             } | ForEach-Object {
                 & gh release upload $tag $_.FullName --clobber
                 if ($LASTEXITCODE -ne 0) { throw "gh release upload failed for $($_.Name)" }
