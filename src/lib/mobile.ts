@@ -77,7 +77,9 @@ export function mimeForName(name: string): string {
 function mimeFilters(accept: "pdf" | "image" | "any"): string[] {
   if (accept === "pdf") return ["application/pdf"];
   if (accept === "image") return ["image/*"];
-  return ["application/pdf", "image/*"];
+  // `any` is the Home picker: it accepts office documents too, so the Android
+  // picker offers the same list the open-with intent filter accepts.
+  return [...OFFICE_MIME_TYPES, "image/*"];
 }
 
 /**
