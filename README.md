@@ -10,9 +10,29 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.5.7** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.6.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.6.0
+
+PDF depth: content-stream text editing, reader bookmarks and RFC 3161
+timestamps.
+
+- **PDF Studio → Text.** Every text run of a page's content stream is listed
+  (text, font, size, approximate position) and can be edited in place: only
+  the string operand changes, so the font and layout stay put and the result
+  is saved as an incremental revision - signatures over the original bytes
+  remain valid. Replacement text is encoded with the run's font and verified
+  by a round trip; text the font cannot represent is refused instead of
+  garbled, and multi-string `TJ`/composite-font runs are marked read-only with
+  the reason.
+- **Reader bookmarks.** The document outline is parsed (bounded) and shown in
+  the Reader's side panel with indentation and click-to-page navigation.
+- **RFC 3161 timestamp signatures.** Sign with an optional TSA URL: the
+  signature value is timestamped over HTTPS and the token is embedded; the
+  verification report shows the token's `genTime`. A requested timestamp is
+  mandatory, so a TSA failure fails the signing rather than being dropped.
 
 ## What's new in 3.5.7
 
@@ -533,7 +553,11 @@ later revision; the Studio screens carry a "keep existing signatures" switch
 for it), **Validation
 data archiving** (the certificate chains a signature needs are written into the
 document DSS as an incremental update - the offline half of PAdES B-LT, nothing
-is downloaded), and **Forms & objects** (list/fill/validate AcroForm
+is downloaded), **RFC 3161 timestamps** (an optional TSA URL; the token is
+embedded as an unsigned attribute and the verification report shows its
+`genTime`), **Text editing** (list a page's text runs and replace their text
+in place as a new revision - fonts, layout and existing signatures stay
+intact), and **Forms & objects** (list/fill/validate AcroForm
 fields, move/resize/rotate/delete annotations, widgets and drawn images).
 
 **OCR**: preprocessing runs on the rendered page — orientation detection via
@@ -672,7 +696,8 @@ crates/pdfcore      The PDF engine (render, merge, split, compress, OCR with
                     preprocessing, security, watermark, annotations, metadata,
                     page layout, sanitizer, PDF/A validation + font embedding +
                     ICC output intent, flattening, redaction with verification,
-                    qpdf-backed repair/linearization (desktop),
+                    qpdf-backed repair/linearization (desktop), content-stream
+                    text runs, RFC 3161 timestamps,
                     forms fill/validate, CMS/PKCS#7 signatures)
 crates/aicore       Optional assistant client with a provider abstraction;
                     the only component that talks to the network for AI, and
@@ -775,7 +800,7 @@ produces the criterion report, and `npm run bench:check` compares it against
 the stored baseline (the CI bench job does this with a cached baseline and
 fails on a >15 % mean regression).
 
-**552 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **688
+**564 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **690
 frontend tests** pass, plus the 1 heavy case gated by `OSAK_PERF_HEAVY=1`,
 with a strict TypeScript type check on top. Frontend coverage floors are
 enforced by `npm run test:coverage` (see `vite.config.ts`). The per-crate split
@@ -921,10 +946,15 @@ These are real and honest:
 - **Signatures**: trust is reported `unknown` (no network revocation/OCSP,
   no system trust store); encrypted PDFs must be decrypted first; RC2/RC4
   PFX files are rejected with a clear error; ECDSA is P-256 only; the
-  `/Contents` placeholder holds up to 8 KB of DER.
+  `/Contents` placeholder holds up to 8 KB of DER. An RFC 3161 timestamp's
+  `genTime` is read and reported, but the TSA certificate chain and its
+  revocation status are not validated offline.
 - **PDF object editing** covers annotations, form widgets and drawn images.
-  Text and vector objects inside content streams are not listed or editable
-  (safe graphics-state rewriting is out of scope for this release).
+  **Text runs** inside content streams can be listed and their text replaced
+  in place (the font and position stay fixed, so the replacement must fit the
+  same encoding - composite fonts are refused); vector graphics are still
+  read-only, and listed positions/widths are approximations without glyph
+  metrics.
 - **Forms**: JavaScript field formatting/validation is never executed; such
   fields are flagged but not evaluated. Non-WinAnsi characters fall back to
   `?` in generated Base14 appearances (the real `/V` keeps the string).

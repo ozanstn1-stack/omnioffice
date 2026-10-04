@@ -4,6 +4,33 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.0] - PDF depth: text-run editing, bookmarks and RFC 3161 timestamps
+
+### Added
+
+- **PDF Studio "Text" tab (content-stream text editing).** The new
+  `pdfcore::content` module walks a page's decoded content stream with
+  graphics/text state (q/Q, Tf, Tm, Td/TD, T*, TL, Tc/Tw/Tz/Ts/Tr) and lists
+  every text-showing run with its text, font, size and approximate position.
+  A run's text can be replaced in place: only the string operand changes, the
+  font and every other byte stay untouched, and the result is written as an
+  **incremental revision** - the original bytes (and any signature over them)
+  remain valid. The replacement is encoded with the run's font and verified by
+  a round trip; text the font cannot represent is refused with a clear message
+  instead of being garbled. Multi-string `TJ` runs and composite-font runs
+  whose encoding cannot round-trip are reported read-only with the reason.
+- **Reader bookmarks.** `pdf_info` now carries the document outline (bounded
+  walk of `/Outlines`, `/Dest` destinations resolved to page numbers), and the
+  Reader's side panel lists it with indentation and click-to-page navigation.
+- **RFC 3161 timestamp signing.** The signing dialog accepts an optional TSA
+  URL: the signature value is timestamped over HTTPS (plain HTTP only for a
+  loopback TSA) and the token is embedded as the `id-aa-timeStampToken`
+  unsigned attribute; verification reads it back and reports the token's
+  `genTime`. A requested timestamp is mandatory - a TSA failure fails the
+  signing instead of silently producing an untimestamped file. `pdfcore`
+  builds and parses the `TimeStampReq`/`TimeStampResp` itself and never
+  performs network requests.
+
 ## [3.5.7] - Legacy .doc/.ppt import and OAuth cloud sync
 
 ### Added

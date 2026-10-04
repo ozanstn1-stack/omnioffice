@@ -11,7 +11,7 @@ Effort estimates assume a single developer.
 | 0 | Docs consistency, `compat.rs` freshness contract, frontend coverage baseline, roadmap | Done in 3.4.0 |
 | 1 (v3.4) | Quick wins: command palette + keybindings, Settings completion, Home IA, a11y pass, dead ends | Done in 3.4.0 |
 | 2 (v3.5) | Quality infrastructure: coverage thresholds, screen tests, desktop E2E, fuzzing, benchmark trends, CI hardening | Done in 3.5.0-3.5.5 (coverage gate + screen tests in 3.5.0; E2E, fuzzing, benchmark trends in 3.5.4; regression gate + deep flows + repo-wide format in 3.5.5) |
-| 3 (v3.6) | PDF depth: content-stream object editing, render cache, Reader, Studio UX, PDF/A subsetting, signature chain (RFC 3161/OCSP) | Planned |
+| 3 (v3.6) | PDF depth: content-stream object editing, render cache, Reader, Studio UX, PDF/A subsetting, signature chain (RFC 3161/OCSP) | Partial in 3.6.0: content-stream **text** editing, Reader bookmarks, RFC 3161 timestamps. Font subsetting, tiled rendering and OCSP/CRL remain |
 | 4 (v3.7) | Office depth: Writer fields/revisions, Calc data tools + chart UI, Impress timeline + media, format fidelity | Planned |
 | 5 (v4.x) | Platform: auto-update, macOS/Linux packaging, stores, Android foreground service + Keystore, sync OAuth, Vault 2.0, plugins, AI | Planned |
 
@@ -135,8 +135,19 @@ Effort estimates assume a single developer.
   OS credential-vault token storage and the same conflict contract as WebDAV;
   Sync screen gains the client/connect panel.
 - Universal converter handles PDF → JPG/PNG/TXT/DOCX and image → PDF.
-- Still open for v3.6: content-stream editing, Reader tiling, PDF/A font
-  subsetting, RFC 3161/OCSP, background sync/auto-merge for the OAuth
-  providers, and the coverage re-baseline that the vitest 4/5 instrumentation
-  change requires. PDF → Word/Excel layout reconstruction is
+## 3.6.0 — PDF depth, first half (delivered)
+
+- **Content-stream text editing**: `pdfcore::content` lists a page's text runs
+  with graphics/text-state tracking and replaces a run's text in place as an
+  incremental revision; the font must be able to represent the replacement
+  (round-trip checked) and multi-string `TJ`/composite runs are read-only.
+  Studio gains the "Text" tab.
+- **Reader bookmarks**: the outline is parsed into `pdf_info` and shown in the
+  Reader side panel.
+- **RFC 3161 timestamps**: optional TSA URL in the signing dialog; the token
+  is embedded as an unsigned attribute and its `genTime` is reported. HTTPS
+  only (loopback HTTP allowed for a local TSA); a TSA failure fails signing.
+- Still open from Phase 3: PDF/A font subsetting (Type0/CID), tiled rendering
+  for extreme zoom, OCSP/CRL revocation, vector-object editing, and the
+  coverage re-baseline that the vitest 4/5 instrumentation change requires. PDF → Word/Excel layout reconstruction is
   not planned for v3.6.
