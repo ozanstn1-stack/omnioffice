@@ -19,7 +19,9 @@ path = "src/lib.rs"
 # Blocking client: every network call runs inside a Tauri spawn_blocking worker,
 # so the UI thread is never blocked. rustls keeps the crate free of OpenSSL /
 # native TLS dependencies, which is what makes Windows + Android both work.
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "charset"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "charset", "json"] }
+# OAuth PKCE: the S256 challenge is a base64url-encoded SHA-256 digest.
+base64 = "0.23"
 quick-xml = "0.42.0"
 percent-encoding = "2"
 serde = { version = "1", features = ["derive"] }

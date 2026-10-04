@@ -643,6 +643,23 @@ export const syncResolve = (localPath: string, resolution: SyncResolutionId) =>
 export const syncForget = (localPath: string) => invoke<void>("sync_forget", { localPath });
 export const syncCapabilities = () => invoke<SyncCapabilities>("sync_capabilities");
 
+export interface OAuthProviderStatus {
+  provider: string;
+  configured: boolean;
+  connected: boolean;
+  account: string;
+  clientId: string;
+  tenant: string;
+  /** `keychain` (OS vault) or `file` (app secret store fallback). */
+  store: string;
+}
+
+export const oauthStatus = () => invoke<OAuthProviderStatus[]>("oauth_status");
+export const oauthSaveClient = (provider: string, clientId: string, clientSecret: string, tenant: string) =>
+  invoke<OAuthProviderStatus[]>("oauth_save_client", { provider, clientId, clientSecret, tenant });
+export const oauthConnect = (provider: string) => invoke<OAuthProviderStatus[]>("oauth_connect", { provider });
+export const oauthDisconnect = (provider: string) => invoke<OAuthProviderStatus[]>("oauth_disconnect", { provider });
+
 // ---------------------------------------------------------------------------
 // AcroForm fields and PDF Studio page objects (V3.1)
 //

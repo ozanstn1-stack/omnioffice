@@ -20,8 +20,10 @@
 //! call in its blocking worker pool, and a blocking trait is object safe
 //! (`dyn SyncProvider`) without pulling in an async runtime.
 
+pub mod cloud;
 pub mod merge;
 pub mod metadata;
+pub mod oauth;
 pub mod webdav;
 
 use serde::{Deserialize, Serialize};

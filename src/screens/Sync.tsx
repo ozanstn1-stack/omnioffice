@@ -34,6 +34,10 @@ import { useT } from "../lib/i18n";
 import { useRecent, useToasts } from "../lib/store";
 import { toAppError } from "../lib/api";
 import {
+  oauthConnect,
+  oauthDisconnect,
+  oauthSaveClient,
+  oauthStatus,
   syncCapabilities,
   syncDownload,
   syncForget,
@@ -44,6 +48,7 @@ import {
   syncStatus,
   syncTestConnection,
   syncUpload,
+  type OAuthProviderStatus,
   type SyncCapabilities,
   type SyncConfigView,
   type SyncListEntry,
@@ -125,6 +130,27 @@ export function Sync() {
   const [remoteError, setRemoteError] = useState<string | null>(null);
   const [loadingRemote, setLoadingRemote] = useState(false);
 
+  const [oauth, setOauth] = useState<OAuthProviderStatus[]>([]);
+  const [oauthClientId, setOauthClientId] = useState("");
+  const [oauthClientSecret, setOauthClientSecret] = useState("");
+  const [oauthTenant, setOauthTenant] = useState("common");
+  const [oauthBusy, setOauthBusy] = useState<"save" | "connect" | "disconnect" | null>(null);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+
+  const oauthEntry = useMemo(
+    () => oauth.find((entry) => entry.provider === draft?.provider) ?? null,
+    [oauth, draft?.provider],
+  );
+
+  const applyOauth = useCallback((statuses: OAuthProviderStatus[], provider: SyncProviderId | undefined) => {
+    setOauth(statuses);
+    const entry = statuses.find((item) => item.provider === provider);
+    if (entry) {
+      setOauthClientId(entry.clientId);
+      setOauthTenant(entry.tenant || "common");
+    }
+  }, []);
+
   useEffect(() => {
     void refreshRecent();
     void syncGetConfig()
@@ -136,6 +162,9 @@ export function Sync() {
     void syncCapabilities()
       .then(setCapabilities)
       .catch(() => setCapabilities(null));
+    void oauthStatus()
+      .then((statuses) => setOauth(statuses))
+      .catch(() => setOauth([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -365,6 +394,55 @@ export function Sync() {
   }, [t]);
 
   const oauthSelected = draft?.provider === "onedrive" || draft?.provider === "google-drive";
+  const oauthProviderLabel =
+    draft?.provider === "google-drive" ? t("sync.provider.google") : t("sync.provider.onedrive");
+
+  const saveOAuthClient = useCallback(async () => {
+    if (!draft) return;
+    setOauthBusy("save");
+    setOauthError(null);
+    try {
+      const statuses = await oauthSaveClient(draft.provider, oauthClientId, oauthClientSecret, oauthTenant);
+      setOauthClientSecret("");
+      applyOauth(statuses, draft.provider);
+      pushToast({ kind: "success", title: t("sync.oauth.saved"), detail: oauthProviderLabel });
+    } catch (error) {
+      setOauthError(syncMessage(error, t("sync.errorTitle")));
+    } finally {
+      setOauthBusy(null);
+    }
+  }, [applyOauth, draft, oauthClientId, oauthClientSecret, oauthProviderLabel, oauthTenant, pushToast, t]);
+
+  const connectOAuth = useCallback(async () => {
+    if (!draft) return;
+    setOauthBusy("connect");
+    setOauthError(null);
+    try {
+      const statuses = await oauthConnect(draft.provider);
+      applyOauth(statuses, draft.provider);
+      const entry = statuses.find((item) => item.provider === draft.provider);
+      pushToast({ kind: "success", title: t("sync.oauth.connected", { account: entry?.account || "" }) });
+    } catch (error) {
+      setOauthError(syncMessage(error, t("sync.errorTitle")));
+    } finally {
+      setOauthBusy(null);
+    }
+  }, [applyOauth, draft, pushToast, t]);
+
+  const disconnectOAuth = useCallback(async () => {
+    if (!draft) return;
+    setOauthBusy("disconnect");
+    setOauthError(null);
+    try {
+      const statuses = await oauthDisconnect(draft.provider);
+      applyOauth(statuses, draft.provider);
+      pushToast({ kind: "info", title: t("sync.oauth.disconnected") });
+    } catch (error) {
+      setOauthError(syncMessage(error, t("sync.errorTitle")));
+    } finally {
+      setOauthBusy(null);
+    }
+  }, [applyOauth, draft, pushToast, t]);
 
   return (
     <Screen
@@ -406,90 +484,171 @@ export function Sync() {
 
             <Card>
               <Field label={t("sync.provider")}>
-                {/* Native select so the OAuth providers can be rendered as
-                    disabled options instead of being silently selectable. */}
                 <select
                   className="select"
                   value={draft?.provider ?? "webdav"}
                   onChange={(event) => {
                     const provider = event.target.value as SyncProviderId;
                     setDraft((current) => (current ? { ...current, provider } : current));
+                    applyOauth(oauth, provider);
                   }}
                 >
                   <option value="webdav">{t("sync.provider.webdav")}</option>
-                  <option value="onedrive" disabled>
-                    {t("sync.provider.onedrive")}
-                  </option>
-                  <option value="google-drive" disabled>
-                    {t("sync.provider.google")}
-                  </option>
+                  <option value="onedrive">{t("sync.provider.onedrive")}</option>
+                  <option value="google-drive">{t("sync.provider.google")}</option>
                 </select>
               </Field>
-              {oauthSelected ? (
-                <p className="text-xs flex items-start gap-2" style={{ color: "var(--warn, #b45309)" }}>
-                  <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-                  {t("sync.providerUnavailable")}
-                </p>
-              ) : null}
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label={t("sync.url")}>
-                  <TextInput
-                    value={draft?.url ?? ""}
-                    placeholder={t("sync.urlPlaceholder")}
-                    spellCheck={false}
-                    onChange={(event) =>
-                      setDraft((current) => (current ? { ...current, url: event.target.value } : current))
+              {oauthSelected ? (
+                <div className="flex flex-col gap-3">
+                  <p className="text-xs flex items-start gap-2 muted">
+                    <ShieldCheck size={13} className="mt-0.5 shrink-0" />
+                    {t("sync.oauth.hint")}
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label={t("sync.oauth.clientId")} hint={t("sync.oauth.clientIdHint")}>
+                      <TextInput
+                        value={oauthClientId}
+                        spellCheck={false}
+                        onChange={(event) => setOauthClientId(event.target.value)}
+                      />
+                    </Field>
+                    <Field
+                      label={t("sync.oauth.clientSecret")}
+                      hint={oauthEntry?.configured ? t("sync.oauth.secretStored") : t("sync.oauth.clientSecretHint")}
+                    >
+                      <TextInput
+                        type="password"
+                        value={oauthClientSecret}
+                        autoComplete="new-password"
+                        placeholder={oauthEntry?.configured ? "••••••••" : ""}
+                        onChange={(event) => setOauthClientSecret(event.target.value)}
+                      />
+                    </Field>
+                    {draft?.provider === "onedrive" ? (
+                      <Field label={t("sync.oauth.tenant")} hint={t("sync.oauth.tenantHint")}>
+                        <TextInput
+                          value={oauthTenant}
+                          spellCheck={false}
+                          onChange={(event) => setOauthTenant(event.target.value)}
+                        />
+                      </Field>
+                    ) : null}
+                    <Field label={t("sync.remoteDir")} hint={t("sync.remoteDirHint")}>
+                      <TextInput
+                        value={draft?.remoteDir ?? "/"}
+                        spellCheck={false}
+                        onChange={(event) =>
+                          setDraft((current) => (current ? { ...current, remoteDir: event.target.value } : current))
+                        }
+                      />
+                    </Field>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => void saveOAuthClient()}
+                      disabled={oauthBusy !== null || oauthClientId.trim().length === 0}
+                    >
+                      {t("sync.oauth.saveClient")}
+                    </Button>
+                    {oauthEntry?.connected ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void disconnectOAuth()}
+                        disabled={oauthBusy !== null}
+                        icon={oauthBusy === "disconnect" ? <Spinner size={14} /> : undefined}
+                      >
+                        {t("sync.oauth.disconnect")}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => void connectOAuth()}
+                        disabled={oauthBusy !== null || !oauthEntry?.configured}
+                        icon={oauthBusy === "connect" ? <Spinner size={14} /> : undefined}
+                      >
+                        {oauthBusy === "connect" ? t("sync.oauth.connecting") : t("sync.oauth.connect")}
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs muted">
+                    {oauthEntry?.connected
+                      ? `${t("sync.oauth.connected", { account: oauthEntry.account || oauthProviderLabel })} · ${
+                          oauthEntry.store === "keychain" ? t("sync.oauth.storeKeychain") : t("sync.oauth.storeFile")
+                        }`
+                      : t("sync.oauth.notConnected")}
+                  </p>
+                  {oauthError ? (
+                    <p className="text-xs" style={{ color: "var(--danger, #b91c1c)" }}>
+                      {oauthError}
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label={t("sync.url")}>
+                      <TextInput
+                        value={draft?.url ?? ""}
+                        placeholder={t("sync.urlPlaceholder")}
+                        spellCheck={false}
+                        onChange={(event) =>
+                          setDraft((current) => (current ? { ...current, url: event.target.value } : current))
+                        }
+                      />
+                    </Field>
+                    <Field label={t("sync.remoteDir")} hint={t("sync.remoteDirHint")}>
+                      <TextInput
+                        value={draft?.remoteDir ?? "/"}
+                        spellCheck={false}
+                        onChange={(event) =>
+                          setDraft((current) => (current ? { ...current, remoteDir: event.target.value } : current))
+                        }
+                      />
+                    </Field>
+                    <Field label={t("sync.username")}>
+                      <TextInput
+                        value={draft?.username ?? ""}
+                        autoComplete="off"
+                        spellCheck={false}
+                        onChange={(event) =>
+                          setDraft((current) => (current ? { ...current, username: event.target.value } : current))
+                        }
+                      />
+                    </Field>
+                    <Field
+                      label={t("sync.password")}
+                      hint={
+                        config?.hasPassword
+                          ? t("sync.passwordStored", { storage: config.passwordStorage })
+                          : t("sync.passwordMissing")
+                      }
+                    >
+                      <TextInput
+                        type="password"
+                        value={draft?.password ?? ""}
+                        autoComplete="new-password"
+                        placeholder={config?.hasPassword ? "••••••••" : ""}
+                        onChange={(event) =>
+                          setDraft((current) => (current ? { ...current, password: event.target.value } : current))
+                        }
+                      />
+                    </Field>
+                  </div>
+                  <Checkbox
+                    checked={draft?.allowInsecureHttp ?? false}
+                    onChange={(value) =>
+                      setDraft((current) => (current ? { ...current, allowInsecureHttp: value } : current))
                     }
+                    label={t("sync.allowInsecureHttp")}
                   />
-                </Field>
-                <Field label={t("sync.remoteDir")} hint={t("sync.remoteDirHint")}>
-                  <TextInput
-                    value={draft?.remoteDir ?? "/"}
-                    spellCheck={false}
-                    onChange={(event) =>
-                      setDraft((current) => (current ? { ...current, remoteDir: event.target.value } : current))
-                    }
-                  />
-                </Field>
-                <Field label={t("sync.username")}>
-                  <TextInput
-                    value={draft?.username ?? ""}
-                    autoComplete="off"
-                    spellCheck={false}
-                    onChange={(event) =>
-                      setDraft((current) => (current ? { ...current, username: event.target.value } : current))
-                    }
-                  />
-                </Field>
-                <Field
-                  label={t("sync.password")}
-                  hint={
-                    config?.hasPassword
-                      ? t("sync.passwordStored", { storage: config.passwordStorage })
-                      : t("sync.passwordMissing")
-                  }
-                >
-                  <TextInput
-                    type="password"
-                    value={draft?.password ?? ""}
-                    autoComplete="new-password"
-                    placeholder={config?.hasPassword ? "••••••••" : ""}
-                    onChange={(event) =>
-                      setDraft((current) => (current ? { ...current, password: event.target.value } : current))
-                    }
-                  />
-                </Field>
-              </div>
-              <Checkbox
-                checked={draft?.allowInsecureHttp ?? false}
-                onChange={(value) =>
-                  setDraft((current) => (current ? { ...current, allowInsecureHttp: value } : current))
-                }
-                label={t("sync.allowInsecureHttp")}
-              />
-              <p className="text-xs muted -mt-1">{t("sync.allowInsecureHttpHint")}</p>
-              <p className="text-xs muted">{t("sync.passwordHint")}</p>
+                  <p className="text-xs muted -mt-1">{t("sync.allowInsecureHttpHint")}</p>
+                  <p className="text-xs muted">{t("sync.passwordHint")}</p>
+                </>
+              )}
 
               {settingsError ? (
                 <p className="text-xs" style={{ color: "var(--danger, #b91c1c)" }}>

@@ -14,15 +14,20 @@
 //!   store the AI key uses (DPAPI on Windows, plain fallback elsewhere - the
 //!   existing secret.rs behaviour is reused unchanged). The password is never
 //!   written to `sync.json`, never returned to the frontend and never logged.
-//! * **OneDrive / Google Drive are declared but unavailable.** They return
-//!   [`PdfError::Unsupported`] with an honest "requires OAuth" message; the
-//!   app never pretends they work.
+//! * **OneDrive / Google Drive use OAuth 2.0 PKCE.** A sign-in opens the
+//!   system browser and a loopback listener receives the authorization code;
+//!   tokens live in the OS credential vault (see `crate::oauth`). The
+//!   conflict rules are the same as WebDAV: conditional writes, hash-checked
+//!   downloads, explicit conflict resolution.
 
+use crate::oauth::{access_token, AppTokenSource};
 use crate::secret;
 use pdfcore::error::{ErrorCode, PdfError};
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
+use synccore::cloud::{CloudProviderExt, GoogleDriveProvider, MicrosoftGraphProvider};
 use synccore::merge::{self, MergeAction, Resolution};
 use synccore::metadata::{self, unknown_cloud_hash, BaseState, SyncMeta, SyncState};
 use synccore::webdav::{normalize_remote_dir, normalize_remote_name, promote_staged_download, WebDavProvider};
@@ -253,28 +258,117 @@ fn provider_kind(value: &str) -> ProviderKind {
     }
 }
 
-struct WebDavContext {
-    config: SyncConfigFile,
-    provider: WebDavProvider,
+/// One provider instance behind a single surface, so every sync command uses
+/// the same code regardless of the backend.
+enum SyncClient {
+    WebDav(Box<WebDavProvider>),
+    GoogleDrive(Box<GoogleDriveProvider>),
+    Microsoft(Box<MicrosoftGraphProvider>),
 }
 
-/// Builds the provider for the saved config, enforcing the off switch and the
-/// honest OAuth refusals. This is the single gate every network command goes
-/// through, so a disabled config can never reach the network by accident.
-fn webdav_context(app: &AppHandle) -> Result<WebDavContext, PdfError> {
+impl SyncClient {
+    fn test(&self) -> Result<String, SyncError> {
+        match self {
+            SyncClient::WebDav(provider) => provider.test(),
+            SyncClient::GoogleDrive(provider) => provider.test(),
+            SyncClient::Microsoft(provider) => provider.test(),
+        }
+    }
+
+    fn list(&self, remote_dir: &str) -> Result<Vec<RemoteEntry>, SyncError> {
+        match self {
+            SyncClient::WebDav(provider) => provider.list(remote_dir),
+            SyncClient::GoogleDrive(provider) => provider.list(remote_dir),
+            SyncClient::Microsoft(provider) => provider.list(remote_dir),
+        }
+    }
+
+    fn get(&self, path: &str) -> Result<(Vec<u8>, Option<String>), SyncError> {
+        match self {
+            SyncClient::WebDav(provider) => provider.get(path),
+            SyncClient::GoogleDrive(provider) => provider.get(path),
+            SyncClient::Microsoft(provider) => provider.get(path),
+        }
+    }
+
+    fn get_to_writer(&self, path: &str, writer: &mut dyn Write) -> Result<(String, u64, Option<String>), SyncError> {
+        match self {
+            SyncClient::WebDav(provider) => provider.get_to_writer(path, writer),
+            SyncClient::GoogleDrive(provider) => provider.get_to_writer(path, writer),
+            SyncClient::Microsoft(provider) => provider.get_to_writer(path, writer),
+        }
+    }
+
+    fn ensure_dir(&self, remote_dir: &str) -> Result<(), SyncError> {
+        match self {
+            SyncClient::WebDav(provider) => provider.ensure_dir(remote_dir),
+            SyncClient::GoogleDrive(provider) => provider.ensure_dir(remote_dir),
+            SyncClient::Microsoft(provider) => provider.ensure_dir(remote_dir),
+        }
+    }
+
+    fn stage_download(&self, path: &str, local: &Path) -> Result<(PathBuf, String, u64, Option<String>), SyncError> {
+        match self {
+            SyncClient::WebDav(provider) => provider.stage_download(path, local),
+            SyncClient::GoogleDrive(provider) => provider.stage_download(path, local),
+            SyncClient::Microsoft(provider) => provider.stage_download(path, local),
+        }
+    }
+
+    fn put_file(
+        &self,
+        path: &str,
+        local: &Path,
+        if_match: Option<&str>,
+    ) -> Result<(String, u64, Option<String>), SyncError> {
+        match self {
+            SyncClient::WebDav(provider) => provider.put_file(path, local, if_match),
+            SyncClient::GoogleDrive(provider) => provider.put_file(path, local, if_match),
+            SyncClient::Microsoft(provider) => provider.put_file(path, local, if_match),
+        }
+    }
+}
+
+struct SyncContext {
+    config: SyncConfigFile,
+    provider: SyncClient,
+}
+
+/// Builds the provider for the saved config, enforcing the off switch. This is
+/// the single gate every network command goes through, so a disabled config
+/// can never reach the network by accident.
+fn sync_context(app: &AppHandle) -> Result<SyncContext, PdfError> {
     let config = load_config(app);
     if !config.enabled {
         return Err(sync_error(SyncError::Disabled));
     }
-    match provider_kind(&config.provider) {
-        ProviderKind::OneDrive => Err(PdfError::Unsupported(
-            "OneDrive sync requires OAuth sign-in, which is not available in this build. Choose WebDAV instead."
-                .to_string(),
-        )),
-        ProviderKind::GoogleDrive => Err(PdfError::Unsupported(
-            "Google Drive sync requires OAuth sign-in, which is not available in this build. Choose WebDAV instead."
-                .to_string(),
-        )),
+    let provider = match provider_kind(&config.provider) {
+        ProviderKind::OneDrive => {
+            // A valid access token is required before the provider is built;
+            // this also refreshes an expired one and persists the new value.
+            access_token(app, "onedrive")?;
+            let remote =
+                if config.remote_dir.trim().is_empty() { "Office Swiss Army Knife" } else { &config.remote_dir };
+            SyncClient::Microsoft(Box::new(
+                MicrosoftGraphProvider::new(
+                    Box::new(AppTokenSource { app: app.clone(), provider: "onedrive".into() }),
+                    remote,
+                )
+                .map_err(sync_error)?,
+            ))
+        }
+        ProviderKind::GoogleDrive => {
+            access_token(app, "google-drive")?;
+            let remote =
+                if config.remote_dir.trim().is_empty() { "Office Swiss Army Knife" } else { &config.remote_dir };
+            SyncClient::GoogleDrive(Box::new(
+                GoogleDriveProvider::new(
+                    Box::new(AppTokenSource { app: app.clone(), provider: "google-drive".into() }),
+                    remote,
+                )
+                .map_err(sync_error)?,
+            ))
+        }
         ProviderKind::WebDav => {
             if config.url.trim().is_empty() {
                 return Err(PdfError::coded(ErrorCode::InvalidInput, "Add the WebDAV server URL before using sync."));
@@ -284,9 +378,10 @@ fn webdav_context(app: &AppHandle) -> Result<WebDavContext, PdfError> {
             let provider =
                 WebDavProvider::new_with_options(&config.url, &config.username, &password, config.allow_insecure_http)
                     .map_err(sync_error)?;
-            Ok(WebDavContext { config, provider })
+            SyncClient::WebDav(Box::new(provider))
         }
-    }
+    };
+    Ok(SyncContext { config, provider })
 }
 
 // ---------------------------------------------------------------------------
@@ -362,7 +457,7 @@ impl Evaluated {
 /// * local unchanged and the etag moved -> cloud changed, no download needed;
 /// * otherwise -> download once and hash (never written anywhere).
 fn evaluate(app: &AppHandle, local_path: &Path) -> Result<Evaluated, PdfError> {
-    let context = webdav_context(app)?;
+    let context = sync_context(app)?;
     let file_name = validate_local_file(local_path)?;
     let (local_sha256, local_size) = metadata::hash_file(local_path).map_err(sync_error)?;
     let meta = metadata::load_meta(&config_dir(app)?, local_path);
@@ -515,7 +610,7 @@ fn base_revision(previous: Option<&SyncMeta>) -> u64 {
 /// `keep_local` resolution: without it, CloudAhead/Conflict states are
 /// refused so a plain "upload" button can never clobber a newer cloud copy.
 fn upload_core(app: &AppHandle, local_path: &Path, allow_diverged: bool) -> Result<SyncStatusView, PdfError> {
-    let context = webdav_context(app)?;
+    let context = sync_context(app)?;
     let evaluated = evaluate(app, local_path)?;
     let state = evaluated.state();
 
@@ -567,7 +662,7 @@ fn download_core(
     local_path: &Path,
     force: bool,
 ) -> Result<SyncStatusView, PdfError> {
-    let context = webdav_context(app)?;
+    let context = sync_context(app)?;
     let file_name = validate_remote_document_name(remote_name)?;
     let remote_path = remote_path_for(&context.config.remote_dir, &file_name);
 
@@ -719,7 +814,7 @@ pub struct SyncTestResult {
 #[tauri::command]
 pub async fn sync_test_connection(app: AppHandle) -> Result<SyncTestResult, PdfError> {
     run_blocking(move || {
-        let context = webdav_context(&app)?;
+        let context = sync_context(&app)?;
         let server = context.provider.test().map_err(sync_error)?;
         // A missing remote folder is not a failure: it is created on the
         // first upload. Probing it never writes anything.
@@ -809,7 +904,7 @@ pub struct SyncListEntry {
 #[tauri::command]
 pub async fn sync_list(app: AppHandle) -> Result<Vec<SyncListEntry>, PdfError> {
     run_blocking(move || {
-        let context = webdav_context(&app)?;
+        let context = sync_context(&app)?;
         let entries = context.provider.list(&context.config.remote_dir).map_err(sync_error)?;
         let mut files: Vec<SyncListEntry> = entries
             .into_iter()
@@ -850,7 +945,7 @@ pub async fn sync_resolve(app: AppHandle, local_path: String, resolution: String
             MergeAction::UploadLocal => upload_core(&app, &path, true),
             MergeAction::DownloadCloud => download_core(&app, &evaluated.file_name, &path, true),
             MergeAction::DownloadCloudCopy => {
-                let context = webdav_context(&app)?;
+                let context = sync_context(&app)?;
                 let (bytes, _etag) = context
                     .provider
                     .get(&evaluated.remote_path)
@@ -914,13 +1009,14 @@ pub fn sync_capabilities() -> SyncCapabilities {
             },
             SyncProviderInfo {
                 id: "onedrive".to_string(),
-                available: false,
-                note: "Requires OAuth sign-in; not available in this build.".to_string(),
+                available: true,
+                note: "OAuth 2.0 PKCE sign-in; needs a Microsoft app client ID in the OAuth panel below.".to_string(),
             },
             SyncProviderInfo {
                 id: "google-drive".to_string(),
-                available: false,
-                note: "Requires OAuth sign-in; not available in this build.".to_string(),
+                available: true,
+                note: "OAuth 2.0 PKCE sign-in; needs a Google OAuth client ID (desktop app) in the OAuth panel below."
+                    .to_string(),
             },
         ],
     }
