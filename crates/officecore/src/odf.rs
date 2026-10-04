@@ -103,7 +103,9 @@ impl AutoStyles {
             out.push_str(&format!("<style:style style:name=\"{name}\" style:family=\"text\">{xml}</style:style>"));
         }
         for (name, xml) in &self.cells {
-            out.push_str(&format!("<style:style style:name=\"{name}\" style:family=\"table-cell\">{xml}</style:style>"));
+            out.push_str(&format!(
+                "<style:style style:name=\"{name}\" style:family=\"table-cell\">{xml}</style:style>"
+            ));
         }
         out.push_str("</office:automatic-styles>");
         out
@@ -269,7 +271,18 @@ fn write_runs(writer: &mut XmlWriter, runs: &[Run], styles: &mut AutoStyles, not
         let text = run.text.replace('\n', " ");
         if !text.is_empty() {
             let content = crate::xml::escape_text(&text);
-            if run.link.is_some() || run.bold || run.italic || run.underline || run.strike || run.color.is_some() || run.highlight.is_some() || run.font.is_some() || run.size_pt.is_some() || run.superscript || run.subscript {
+            if run.link.is_some()
+                || run.bold
+                || run.italic
+                || run.underline
+                || run.strike
+                || run.color.is_some()
+                || run.highlight.is_some()
+                || run.font.is_some()
+                || run.size_pt.is_some()
+                || run.superscript
+                || run.subscript
+            {
                 let name = styles.text(run_style_xml(run));
                 writer.raw(&format!("<text:span text:style-name=\"{name}\">{content}</text:span>"));
             } else {
@@ -296,7 +309,14 @@ fn write_runs(writer: &mut XmlWriter, runs: &[Run], styles: &mut AutoStyles, not
     }
 }
 
-fn write_blocks(writer: &mut XmlWriter, blocks: &[Block], styles: &mut AutoStyles, media: &mut Media, notes: &NoteContext, list_depth: u32) {
+fn write_blocks(
+    writer: &mut XmlWriter,
+    blocks: &[Block],
+    styles: &mut AutoStyles,
+    media: &mut Media,
+    notes: &NoteContext,
+    list_depth: u32,
+) {
     let mut index = 0usize;
     while index < blocks.len() {
         let block = &blocks[index];
@@ -304,11 +324,13 @@ fn write_blocks(writer: &mut XmlWriter, blocks: &[Block], styles: &mut AutoStyle
             Block::Paragraph { props, runs } => {
                 if let Some(list) = &props.list {
                     // Collect the consecutive list items at this level.
-                    writer.raw(&format!("<text:list text:style-name=\"{}\">", if list.kind == "number" { "LN" } else { "LB" }));
+                    writer.raw(&format!(
+                        "<text:list text:style-name=\"{}\">",
+                        if list.kind == "number" { "LN" } else { "LB" }
+                    ));
                     while index < blocks.len() {
                         match &blocks[index] {
                             Block::Paragraph { props: inner, runs: inner_runs } if inner.list.is_some() => {
-                                
                                 let name = styles.paragraph(paragraph_style_xml(inner, false));
                                 writer.raw(&format!("<text:list-item><text:p text:style-name=\"{name}\">"));
                                 write_runs(writer, inner_runs, styles, notes);
@@ -359,11 +381,8 @@ fn write_blocks(writer: &mut XmlWriter, blocks: &[Block], styles: &mut AutoStyle
             }
             Block::Toc { entries } => {
                 for entry in entries {
-                    let text = if entry.page > 0 {
-                        format!("{} .... {}", entry.text, entry.page)
-                    } else {
-                        entry.text.clone()
-                    };
+                    let text =
+                        if entry.page > 0 { format!("{} .... {}", entry.text, entry.page) } else { entry.text.clone() };
                     writer.raw(&format!("<text:p>{}</text:p>", crate::xml::escape_text(&text)));
                 }
             }
@@ -378,19 +397,33 @@ fn write_blocks(writer: &mut XmlWriter, blocks: &[Block], styles: &mut AutoStyle
     let _ = list_depth;
 }
 
-fn write_table(writer: &mut XmlWriter, table: &TableData, styles: &mut AutoStyles, media: &mut Media, notes: &NoteContext) {
+fn write_table(
+    writer: &mut XmlWriter,
+    table: &TableData,
+    styles: &mut AutoStyles,
+    media: &mut Media,
+    notes: &NoteContext,
+) {
     let columns = table.rows.iter().map(|row| row.cells.len()).max().unwrap_or(1).max(1);
     writer.raw("<table:table>");
     for index in 0..columns {
         let width = table.column_widths_pt.get(index).copied().unwrap_or(90.0);
-        writer.raw(&format!("<table:table-column table:style-name=\"co{}\" style:column-width=\"{}\"/>", index, cm(width)));
+        writer.raw(&format!(
+            "<table:table-column table:style-name=\"co{}\" style:column-width=\"{}\"/>",
+            index,
+            cm(width)
+        ));
     }
     for row in &table.rows {
         writer.raw("<table:table-row>");
         for cell in &row.cells {
             writer.raw(&format!(
                 "<table:table-cell office:value-type=\"string\"{}>",
-                if cell.colspan > 1 { format!(" table:number-columns-spanned=\"{}\"", cell.colspan) } else { String::new() }
+                if cell.colspan > 1 {
+                    format!(" table:number-columns-spanned=\"{}\"", cell.colspan)
+                } else {
+                    String::new()
+                }
             ));
             if cell.blocks.is_empty() {
                 writer.raw("<text:p/>");
@@ -442,7 +475,10 @@ fn named_styles_xml(document: &TextDocument) -> String {
                 paragraph.push_str(" fo:keep-with-next=\"always\"");
             }
         }
-        let outline = style.outline_level.map(|level| format!(" style:default-outline-level=\"{}\"", level + 1)).unwrap_or_default();
+        let outline = style
+            .outline_level
+            .map(|level| format!(" style:default-outline-level=\"{}\"", level + 1))
+            .unwrap_or_default();
         out.push_str(&format!(
             "<style:style style:name=\"{}\" style:family=\"paragraph\"{outline}>{}{}<style:text-properties{properties}/></style:style>",
             escape(&style.name),
@@ -645,7 +681,8 @@ fn read_note(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState) {
     let citation = citation.trim().to_string();
     // Keep an explicit marker only when it is not the automatic number; that
     // way our own exports (whose citation *is* the number) stay automatic.
-    let marker = if citation.is_empty() || citation.parse::<usize>().ok() == Some(number) { String::new() } else { citation };
+    let marker =
+        if citation.is_empty() || citation.parse::<usize>().ok() == Some(number) { String::new() } else { citation };
     let mut body_runs = Vec::new();
     if let Some(body) = node.child("note-body") {
         let mut first_paragraph = true;
@@ -745,7 +782,13 @@ fn paragraph_props(node: &XmlNode, style_map: &HashMap<String, ParaProps>) -> Pa
     props
 }
 
-fn read_blocks(node: &XmlNode, style_map: &HashMap<String, ParaProps>, reader: &ZipReader, warnings: &mut Vec<String>, notes: &mut NoteReadState) -> Vec<Block> {
+fn read_blocks(
+    node: &XmlNode,
+    style_map: &HashMap<String, ParaProps>,
+    reader: &ZipReader,
+    warnings: &mut Vec<String>,
+    notes: &mut NoteReadState,
+) -> Vec<Block> {
     let mut blocks = Vec::new();
     for child in &node.children {
         match child.local_name() {
@@ -759,7 +802,8 @@ fn read_blocks(node: &XmlNode, style_map: &HashMap<String, ParaProps>, reader: &
                 }
                 let mut props = paragraph_props(child, style_map);
                 if child.local_name() == "h" {
-                    let level = child.attr_any_ns("outline-level").and_then(|value| value.parse::<u32>().ok()).unwrap_or(1);
+                    let level =
+                        child.attr_any_ns("outline-level").and_then(|value| value.parse::<u32>().ok()).unwrap_or(1);
                     props.style = format!("Heading{level}");
                 }
                 blocks.push(Block::Paragraph { props, runs });
@@ -776,8 +820,10 @@ fn read_blocks(node: &XmlNode, style_map: &HashMap<String, ParaProps>, reader: &
                                 node_text_runs(part, &mut runs, notes);
                             }
                             let mut props = paragraph_props(inner, style_map);
-                            let level = inner.attr_any_ns("level").and_then(|value| value.parse::<u32>().ok()).unwrap_or(0);
-                            props.list = Some(ListInfo { kind: "bullet".into(), level, start: 1, marker: "•".into() });
+                            let level =
+                                inner.attr_any_ns("level").and_then(|value| value.parse::<u32>().ok()).unwrap_or(0);
+                            props.list =
+                                Some(ListInfo { kind: "bullet".into(), level, start: 1, marker: "•".into() });
                             blocks.push(Block::Paragraph { props, runs });
                         }
                     }
@@ -791,7 +837,9 @@ fn read_blocks(node: &XmlNode, style_map: &HashMap<String, ParaProps>, reader: &
                     let mut row = TableRow::default();
                     for cell_node in row_node.children_named("table-cell") {
                         let mut cell = TableCell::default();
-                        if let Some(span) = cell_node.attr_any_ns("number-columns-spanned").and_then(|value| value.parse::<u32>().ok()) {
+                        if let Some(span) =
+                            cell_node.attr_any_ns("number-columns-spanned").and_then(|value| value.parse::<u32>().ok())
+                        {
                             cell.colspan = span.max(1);
                         }
                         let mut nested_warnings = Vec::new();
@@ -809,7 +857,15 @@ fn read_blocks(node: &XmlNode, style_map: &HashMap<String, ParaProps>, reader: &
                     }
                     rows.push(row);
                 }
-                blocks.push(Block::Table { table: TableData { rows, column_widths_pt: widths, borders: true, border_color: "#94A3B8".into(), align: "left".into() } });
+                blocks.push(Block::Table {
+                    table: TableData {
+                        rows,
+                        column_widths_pt: widths,
+                        borders: true,
+                        border_color: "#94A3B8".into(),
+                        align: "left".into(),
+                    },
+                });
             }
             "section" => {
                 blocks.extend(read_blocks(child, style_map, reader, warnings, notes));
@@ -961,7 +1017,11 @@ pub fn read_odt(bytes: &[u8]) -> OfficeResult<TextRead> {
                 if let Some(value) = properties.attr_any_ns("margin-right").and_then(parse_cm) {
                     document.page.margin_right_pt = value;
                 }
-                document.page.orientation = if document.page.width_pt > document.page.height_pt { "landscape".into() } else { "portrait".into() };
+                document.page.orientation = if document.page.width_pt > document.page.height_pt {
+                    "landscape".into()
+                } else {
+                    "portrait".into()
+                };
                 document.page.size = "custom".into();
             }
             // Header / footer content.
@@ -1134,7 +1194,11 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
         }
         for column in 0..=max_col.min(200) {
             let width = sheet.col_widths.get(&column).copied().unwrap_or(90.0);
-            body.push_str(&format!("<table:table-column table:style-name=\"co{}\" style:column-width=\"{}\"/>", column, cm(width * 0.75)));
+            body.push_str(&format!(
+                "<table:table-column table:style-name=\"co{}\" style:column-width=\"{}\"/>",
+                column,
+                cm(width * 0.75)
+            ));
         }
         let mut row = 0u32;
         while row <= max_row {
@@ -1150,14 +1214,17 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
                     continue;
                 }
                 if empty_run > 0 {
-                    row_output.push_str(&format!("<table:table-cell table:number-columns-repeated=\"{}\"/>", empty_run));
+                    row_output
+                        .push_str(&format!("<table:table-cell table:number-columns-repeated=\"{}\"/>", empty_run));
                     empty_run = 0;
                 }
                 let cell = cell.unwrap();
                 let style_name = styles.cell(cell_style_xml(&cell.style));
                 let mut attributes = format!(" table:style-name=\"{style_name}\"");
                 if let Some(merge) = sheet.merges.iter().find(|merge| merge.start == address) {
-                    if let (Some((start_row, start_col)), Some((_, end_col))) = (crate::address::parse(&merge.start), crate::address::parse(&merge.end)) {
+                    if let (Some((start_row, start_col)), Some((_, end_col))) =
+                        (crate::address::parse(&merge.start), crate::address::parse(&merge.end))
+                    {
                         let _ = start_row;
                         attributes.push_str(&format!(" table:number-columns-spanned=\"{}\"", end_col - start_col + 1));
                     }
@@ -1174,10 +1241,16 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
                     CellValue::Bool(_) => "boolean",
                     _ => "string",
                 };
-                let formula = cell.formula.as_deref().map(|formula| format!(" table:formula=\"{}\"", escape(&our_formula_to_odf(formula)))).unwrap_or_default();
+                let formula = cell
+                    .formula
+                    .as_deref()
+                    .map(|formula| format!(" table:formula=\"{}\"", escape(&our_formula_to_odf(formula))))
+                    .unwrap_or_default();
                 let value_attr = match &cell.value {
                     CellValue::Number(number) => format!(" office:value=\"{number}\""),
-                    CellValue::Bool(value) => format!(" office:boolean-value=\"{}\"", if *value { "true" } else { "false" }),
+                    CellValue::Bool(value) => {
+                        format!(" office:boolean-value=\"{}\"", if *value { "true" } else { "false" })
+                    }
                     CellValue::Text(text) => format!(" office:string-value=\"{}\"", escape(text)),
                     _ => String::new(),
                 };
@@ -1201,7 +1274,10 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
     zip.add_text("mimetype", "application/vnd.oasis.opendocument.spreadsheet");
     zip.add_text("META-INF/manifest.xml", &manifest_for("application/vnd.oasis.opendocument.spreadsheet"));
     zip.add_text("content.xml", &content);
-    zip.add_text("styles.xml", &format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles {NS} office:version=\"1.2\"/>"));
+    zip.add_text(
+        "styles.xml",
+        &format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles {NS} office:version=\"1.2\"/>"),
+    );
     zip.add_text("meta.xml", &meta_xml(&workbook.title, "Office Swiss Army Knife"));
     Ok(zip.finish())
 }
@@ -1227,10 +1303,18 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
         let mut sheet = Sheet::new(&name);
         let mut row = 0u32;
         for row_node in table.children_named("table-row") {
-            let repeat_rows = row_node.attr_any_ns("number-rows-repeated").and_then(|value| value.parse::<u32>().ok()).unwrap_or(1).min(2048);
+            let repeat_rows = row_node
+                .attr_any_ns("number-rows-repeated")
+                .and_then(|value| value.parse::<u32>().ok())
+                .unwrap_or(1)
+                .min(2048);
             let mut column = 0u32;
             for cell in row_node.children_named("table-cell") {
-                let repeat = cell.attr_any_ns("number-columns-repeated").and_then(|value| value.parse::<u32>().ok()).unwrap_or(1).min(1024);
+                let repeat = cell
+                    .attr_any_ns("number-columns-repeated")
+                    .and_then(|value| value.parse::<u32>().ok())
+                    .unwrap_or(1)
+                    .min(1024);
                 let value_type = cell.attr_any_ns("value-type").unwrap_or("string").to_string();
                 let formula = cell.attr_any_ns("formula").map(odf_formula_to_ours);
                 let value = match value_type.as_str() {
@@ -1243,7 +1327,10 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
                         .attr_any_ns("boolean-value")
                         .map(|value| CellValue::Bool(value == "true"))
                         .unwrap_or(CellValue::Empty),
-                    "date" => cell.attr_any_ns("date-value").map(|value| CellValue::Text(value.to_string())).unwrap_or(CellValue::Empty),
+                    "date" => cell
+                        .attr_any_ns("date-value")
+                        .map(|value| CellValue::Text(value.to_string()))
+                        .unwrap_or(CellValue::Empty),
                     _ => {
                         let text = {
                             let mut paragraphs = Vec::new();
@@ -1262,7 +1349,10 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
                 if !matches!(value, CellValue::Empty) || formula.is_some() {
                     for offset in 0..repeat.min(64) {
                         let address = crate::address::format(row, column + offset);
-                        sheet.set(&address, Cell { value: value.clone(), formula: formula.clone(), ..Default::default() });
+                        sheet.set(
+                            &address,
+                            Cell { value: value.clone(), formula: formula.clone(), ..Default::default() },
+                        );
                     }
                 }
                 column += repeat;
@@ -1314,7 +1404,13 @@ fn slide_object_xml(object: &SlideObject) -> String {
         }
         "line" | "arrow" => {
             let line = object.line.clone().unwrap_or_default();
-            inner.push_str(&format!("<draw:line svg:x1=\"{}\" svg:y1=\"{}\" svg:x2=\"{}\" svg:y2=\"{}\" draw:style-name=\"gr1\"/>", cm(object.x), cm(object.y), cm(object.x + line.x2), cm(object.y + line.y2)));
+            inner.push_str(&format!(
+                "<draw:line svg:x1=\"{}\" svg:y1=\"{}\" svg:x2=\"{}\" svg:y2=\"{}\" draw:style-name=\"gr1\"/>",
+                cm(object.x),
+                cm(object.y),
+                cm(object.x + line.x2),
+                cm(object.y + line.y2)
+            ));
         }
         "table" => {
             if let Some(table) = &object.table {
@@ -1327,7 +1423,8 @@ fn slide_object_xml(object: &SlideObject) -> String {
         }
         "chart" => {
             if let Some(chart) = &object.chart {
-                let title = if chart.title.trim().is_empty() { format!("{} chart", chart.kind) } else { chart.title.clone() };
+                let title =
+                    if chart.title.trim().is_empty() { format!("{} chart", chart.kind) } else { chart.title.clone() };
                 inner.push_str(&format!(
                     "<draw:text-box><text:p text:style-name=\"Standard\">{}</text:p></draw:text-box>",
                     crate::xml::escape_text(&title)
@@ -1340,7 +1437,10 @@ fn slide_object_xml(object: &SlideObject) -> String {
                 writer.raw("<draw:text-box>");
                 for paragraph in &text.paragraphs {
                     let level = paragraph.level;
-                    writer.raw(&format!("<text:p text:style-name=\"Standard\">{}</text:p>", crate::xml::escape_text(&paragraph.text)));
+                    writer.raw(&format!(
+                        "<text:p text:style-name=\"Standard\">{}</text:p>",
+                        crate::xml::escape_text(&paragraph.text)
+                    ));
                     let _ = level;
                 }
                 if text.paragraphs.is_empty() {
@@ -1353,7 +1453,13 @@ fn slide_object_xml(object: &SlideObject) -> String {
     }
     let shape = match object.kind.as_str() {
         "ellipse" => "draw:ellipse",
-        "line" | "arrow" => return format!("<draw:frame draw:name=\"{}\" text:anchor-type=\"page\" draw:z-index=\"{}\">{inner}</draw:frame>", escape(&object.name), object.z),
+        "line" | "arrow" => {
+            return format!(
+                "<draw:frame draw:name=\"{}\" text:anchor-type=\"page\" draw:z-index=\"{}\">{inner}</draw:frame>",
+                escape(&object.name),
+                object.z
+            )
+        }
         _ => "draw:frame",
     };
     if shape == "draw:frame" {
@@ -1395,10 +1501,7 @@ pub struct DeckWrite {
 }
 
 fn count_groups(objects: &[SlideObject]) -> usize {
-    objects
-        .iter()
-        .map(|object| if object.kind == "group" { 1 + count_groups(&object.children) } else { 0 })
-        .sum()
+    objects.iter().map(|object| if object.kind == "group" { 1 + count_groups(&object.children) } else { 0 }).sum()
 }
 
 fn flatten_groups(objects: &[SlideObject], out: &mut Vec<SlideObject>) {
@@ -1418,7 +1521,8 @@ pub fn write_odp_package(deck: &Deck) -> OfficeResult<DeckWrite> {
     if groups > 0 {
         warnings.push("Groups are exported as individual shapes.".into());
     }
-    let charts: usize = deck.slides.iter().map(|slide| slide.objects.iter().filter(|object| object.chart.is_some()).count()).sum();
+    let charts: usize =
+        deck.slides.iter().map(|slide| slide.objects.iter().filter(|object| object.chart.is_some()).count()).sum();
     if charts > 0 {
         warnings.push("Chart data is kept in the native .oswk file; ODP gets drawn placeholder shapes.".into());
     }
@@ -1628,7 +1732,10 @@ mod tests {
                 ],
             },
             Block::Paragraph {
-                props: ParaProps { list: Some(ListInfo { kind: "bullet".into(), level: 0, start: 1, marker: "•".into() }), ..Default::default() },
+                props: ParaProps {
+                    list: Some(ListInfo { kind: "bullet".into(), level: 0, start: 1, marker: "•".into() }),
+                    ..Default::default()
+                },
                 runs: vec![Run { text: "madde".into(), ..Default::default() }],
             },
             Block::Table { table: TableData::simple(2, 2, 400.0) },
@@ -1659,10 +1766,22 @@ mod tests {
     fn odt_notes_roundtrip() {
         let mut document = TextDocument::new_blank("Notes");
         document.footnotes = vec![
-            Footnote { id: "fn-a".into(), runs: vec![Run { text: "Birinci not".into(), bold: true, ..Default::default() }], marker: String::new() },
-            Footnote { id: "fn-b".into(), runs: vec![Run { text: "Tablo notu".into(), ..Default::default() }], marker: String::new() },
+            Footnote {
+                id: "fn-a".into(),
+                runs: vec![Run { text: "Birinci not".into(), bold: true, ..Default::default() }],
+                marker: String::new(),
+            },
+            Footnote {
+                id: "fn-b".into(),
+                runs: vec![Run { text: "Tablo notu".into(), ..Default::default() }],
+                marker: String::new(),
+            },
         ];
-        document.endnotes = vec![Footnote { id: "en-a".into(), runs: vec![Run { text: "Son not".into(), ..Default::default() }], marker: String::new() }];
+        document.endnotes = vec![Footnote {
+            id: "en-a".into(),
+            runs: vec![Run { text: "Son not".into(), ..Default::default() }],
+            marker: String::new(),
+        }];
         let mut table = TableData::simple(1, 1, 300.0);
         table.rows[0].cells[0].blocks = vec![Block::Paragraph {
             props: ParaProps::default(),
@@ -1772,7 +1891,10 @@ mod tests {
         let sheet = &mut workbook.sheets[0];
         sheet.set("A1", Cell { value: CellValue::Number(10.0), ..Default::default() });
         sheet.set("A2", Cell { value: CellValue::Number(20.0), ..Default::default() });
-        sheet.set("A3", Cell { value: CellValue::Number(30.0), formula: Some("=SUM(A1:A2)".into()), ..Default::default() });
+        sheet.set(
+            "A3",
+            Cell { value: CellValue::Number(30.0), formula: Some("=SUM(A1:A2)".into()), ..Default::default() },
+        );
         sheet.set("B1", Cell { value: CellValue::Text("metin".into()), ..Default::default() });
         let bytes = write_ods(&workbook).unwrap();
         let read = read_ods(&bytes).unwrap();
@@ -1796,7 +1918,10 @@ mod tests {
         let mut deck = Deck::new_blank("ODP");
         let mut slide = Slide::default();
         let mut text = SlideObject::new("text", 60.0, 60.0, 400.0, 120.0);
-        text.text = Some(TextFrame { paragraphs: vec![TextParagraph { text: "Slayt metni".into(), ..Default::default() }], ..Default::default() });
+        text.text = Some(TextFrame {
+            paragraphs: vec![TextParagraph { text: "Slayt metni".into(), ..Default::default() }],
+            ..Default::default()
+        });
         let mut rect = SlideObject::new("rect", 40.0, 240.0, 200.0, 80.0);
         rect.style = Some(ShapeStyle { fill: Some("#1D4ED8".into()), ..Default::default() });
         slide.objects = vec![text, rect];

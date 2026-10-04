@@ -5,13 +5,7 @@ import type { SyncStateId } from "./api";
  * this file only maps states to badge tones and labels.
  */
 
-export const SYNC_STATE_ORDER: SyncStateId[] = [
-  "conflict",
-  "cloud_ahead",
-  "local_ahead",
-  "local_only",
-  "synced",
-];
+export const SYNC_STATE_ORDER: SyncStateId[] = ["conflict", "cloud_ahead", "local_ahead", "local_only", "synced"];
 
 export type SyncBadgeTone = "default" | "ok" | "warn" | "danger" | "accent";
 

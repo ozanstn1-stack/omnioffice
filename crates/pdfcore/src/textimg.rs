@@ -58,10 +58,7 @@ fn wrap_text(font: &FontRef<'_>, size: f32, text: &str, wrap_width: Option<f32>)
         let mut current = String::new();
         let mut current_w = 0.0f32;
         for word in raw_line.split_whitespace() {
-            let word_w: f32 = word
-                .chars()
-                .map(|c| scaled.h_advance(font.glyph_id(c)))
-                .sum::<f32>()
+            let word_w: f32 = word.chars().map(|c| scaled.h_advance(font.glyph_id(c))).sum::<f32>()
                 + scaled.h_advance(font.glyph_id(' '));
             if current_w > 0.0 && current_w + word_w > max_w {
                 lines.push(current.trim_end().to_string());
@@ -103,10 +100,7 @@ pub fn render_text(request: &TextRenderRequest) -> PdfResult<RawImage> {
     let scaled = font.as_scaled(PxScale::from(size));
     let lines = wrap_text(&font, size, &request.text, request.wrap_width_px);
     let line_height = (scaled.ascent() - scaled.descent() + scaled.line_gap()) * request.line_spacing;
-    let text_width = lines
-        .iter()
-        .map(|l| measure_line(&font, size, l))
-        .fold(0.0f32, f32::max);
+    let text_width = lines.iter().map(|l| measure_line(&font, size, l)).fold(0.0f32, f32::max);
     let pad = request.padding_px as f32;
     let width = (text_width.ceil() + pad * 2.0).max(1.0) as u32;
     let ascender = scaled.ascent();
@@ -142,11 +136,7 @@ pub fn render_text(request: &TextRenderRequest) -> PdfResult<RawImage> {
         }
     }
 
-    Ok(RawImage {
-        width,
-        height,
-        rgba: buffer,
-    })
+    Ok(RawImage { width, height, rgba: buffer })
 }
 
 fn blend_pixel(dst: &mut [u8], color: [u8; 4], coverage: f32) {
@@ -176,10 +166,7 @@ pub fn measure(request: &TextRenderRequest) -> PdfResult<(u32, u32)> {
     let scaled = font.as_scaled(PxScale::from(size));
     let lines = wrap_text(&font, size, &request.text, request.wrap_width_px);
     let line_height = (scaled.ascent() - scaled.descent() + scaled.line_gap()) * request.line_spacing;
-    let text_width = lines
-        .iter()
-        .map(|l| measure_line(&font, size, l))
-        .fold(0.0f32, f32::max);
+    let text_width = lines.iter().map(|l| measure_line(&font, size, l)).fold(0.0f32, f32::max);
     let pad = request.padding_px as f32;
     Ok((
         (text_width.ceil() + pad * 2.0).max(1.0) as u32,

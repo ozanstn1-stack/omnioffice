@@ -1,15 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Copy,
-  Layers,
-  RotateCcw,
-  RotateCw,
-  Redo2,
-  Save,
-  Scissors,
-  Trash2,
-  Undo2,
-} from "lucide-react";
+import { Copy, Layers, RotateCcw, RotateCw, Redo2, Save, Scissors, Trash2, Undo2 } from "lucide-react";
 import { Badge, Button, Card, IconButton, Modal } from "../components/ui";
 import { DropZone, InfoStrip, OutputBar, ResultCard } from "../components/files";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
@@ -43,7 +33,13 @@ export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; 
     if (!session.primary || !pageCount) {
       setPages([]);
     } else {
-      setPages(Array.from({ length: pageCount }, (_, index) => ({ id: `${docKey}#${index + 1}`, sourcePage: index + 1, rotationDelta: 0 })));
+      setPages(
+        Array.from({ length: pageCount }, (_, index) => ({
+          id: `${docKey}#${index + 1}`,
+          sourcePage: index + 1,
+          rotationDelta: 0,
+        })),
+      );
       setRefreshedAt((value) => value + 1);
     }
     setSelected(new Set());
@@ -52,7 +48,10 @@ export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; 
   }
 
   const changed = useMemo(() => {
-    return pages.some((page, index) => page.sourcePage !== index + 1 || page.rotationDelta !== 0) || pages.length !== pageCount;
+    return (
+      pages.some((page, index) => page.sourcePage !== index + 1 || page.rotationDelta !== 0) ||
+      pages.length !== pageCount
+    );
   }, [pageCount, pages]);
 
   const commit = useCallback(
@@ -90,7 +89,7 @@ export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; 
   const rotateSelection = (delta: number) => {
     if (!selected.size) return;
     const next = pages.map((page, index) =>
-      selected.has(index) ? { ...page, rotationDelta: ((page.rotationDelta + delta) % 360 + 360) % 360 } : page,
+      selected.has(index) ? { ...page, rotationDelta: (((page.rotationDelta + delta) % 360) + 360) % 360 } : page,
     );
     commit(next);
   };
@@ -131,7 +130,13 @@ export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; 
   session.registerAutoRun(() => void save());
   const save = () =>
     session.run(async (jobId, overwrite) => {
-      return applyPagePlan(session.primary?.path ?? "", plan, session.outputSpec(overwrite), jobId, session.password || undefined);
+      return applyPagePlan(
+        session.primary?.path ?? "",
+        plan,
+        session.outputSpec(overwrite),
+        jobId,
+        session.password || undefined,
+      );
     });
 
   const extractSelection = () =>
@@ -140,7 +145,13 @@ export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; 
       if (!subset.length) throw { code: "invalid_input", message: t("errors.invalid_input") };
       const subsetPlan = subset.map((page) => ({ source_page: page.sourcePage, rotation_delta: page.rotationDelta }));
       const target = session.outputPath.replace(/_organized(\.pdf)?$/i, "_extracted.pdf");
-      return applyPagePlan(session.primary?.path ?? "", subsetPlan, session.outputSpec(overwrite, target), jobId, session.password || undefined);
+      return applyPagePlan(
+        session.primary?.path ?? "",
+        subsetPlan,
+        session.outputSpec(overwrite, target),
+        jobId,
+        session.password || undefined,
+      );
     });
 
   // Keyboard shortcuts for the organizer.
@@ -152,7 +163,10 @@ export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; 
       if (event.ctrlKey && event.key.toLowerCase() === "z") {
         event.preventDefault();
         undo();
-      } else if (event.ctrlKey && (event.key.toLowerCase() === "y" || (event.shiftKey && event.key.toLowerCase() === "z"))) {
+      } else if (
+        event.ctrlKey &&
+        (event.key.toLowerCase() === "y" || (event.shiftKey && event.key.toLowerCase() === "z"))
+      ) {
         event.preventDefault();
         redo();
       } else if (event.ctrlKey && event.key.toLowerCase() === "a") {
@@ -207,8 +221,14 @@ export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; 
               <Card className="p-4 flex flex-wrap items-center gap-3">
                 <InfoStrip info={session.info} error={session.infoError} />
                 <div className="ml-auto flex items-center gap-2">
-                  <Badge tone={selected.size ? "accent" : "default"}>{t("organize.selectedCount", { count: selected.size })}</Badge>
-                  <Button size="sm" variant="ghost" onClick={() => setSelected(new Set(pages.map((_, index) => index)))}>
+                  <Badge tone={selected.size ? "accent" : "default"}>
+                    {t("organize.selectedCount", { count: selected.size })}
+                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setSelected(new Set(pages.map((_, index) => index)))}
+                  >
                     {t("common.selectAll")}
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
@@ -257,22 +277,43 @@ export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; 
                 <div className="flex flex-col gap-2 text-[13px]">
                   <p className="muted">{t("merge.dragHint")}</p>
                   <div className="flex flex-wrap gap-2">
-                    <Button size="sm" icon={<RotateCcw size={14} />} onClick={() => rotateSelection(-90)} disabled={!selected.size}>
+                    <Button
+                      size="sm"
+                      icon={<RotateCcw size={14} />}
+                      onClick={() => rotateSelection(-90)}
+                      disabled={!selected.size}
+                    >
                       90°
                     </Button>
                     <Button size="sm" onClick={() => rotateSelection(180)} disabled={!selected.size}>
                       180°
                     </Button>
-                    <Button size="sm" icon={<RotateCw size={14} />} onClick={() => rotateSelection(90)} disabled={!selected.size}>
+                    <Button
+                      size="sm"
+                      icon={<RotateCw size={14} />}
+                      onClick={() => rotateSelection(90)}
+                      disabled={!selected.size}
+                    >
                       90°
                     </Button>
                     <Button size="sm" icon={<Copy size={14} />} onClick={duplicateSelection} disabled={!selected.size}>
                       {t("common.duplicate")}
                     </Button>
-                    <Button size="sm" variant="danger" icon={<Trash2 size={14} />} onClick={() => setConfirmDelete(true)} disabled={!selected.size}>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      icon={<Trash2 size={14} />}
+                      onClick={() => setConfirmDelete(true)}
+                      disabled={!selected.size}
+                    >
                       {t("common.delete")}
                     </Button>
-                    <Button size="sm" icon={<Scissors size={14} />} onClick={() => void extractSelection()} disabled={!selected.size}>
+                    <Button
+                      size="sm"
+                      icon={<Scissors size={14} />}
+                      onClick={() => void extractSelection()}
+                      disabled={!selected.size}
+                    >
                       {t("common.extract")}
                     </Button>
                   </div>

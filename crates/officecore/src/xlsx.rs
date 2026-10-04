@@ -220,10 +220,7 @@ impl StyleTable {
     fn xml(&self) -> String {
         let mut writer = XmlWriter::new();
         writer.declaration();
-        writer.open(
-            "styleSheet",
-            &[("xmlns", "http://schemas.openxmlformats.org/spreadsheetml/2006/main")],
-        );
+        writer.open("styleSheet", &[("xmlns", "http://schemas.openxmlformats.org/spreadsheetml/2006/main")]);
         if !self.num_formats.is_empty() {
             writer.raw(&format!("<numFmts count=\"{}\">", self.num_formats.len()));
             for (id, format) in &self.num_formats {
@@ -246,7 +243,9 @@ impl StyleTable {
             writer.raw(border);
         }
         writer.raw("</borders>");
-        writer.raw("<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>");
+        writer.raw(
+            "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>",
+        );
         writer.raw(&format!("<cellXfs count=\"{}\">", self.xfs.len()));
         for xf in &self.xfs {
             writer.raw(xf);
@@ -340,9 +339,30 @@ fn cell_xml(
     Some(format!("<c r=\"{address}\"{style_attr}{type_attr}>{formula_xml}{value_xml}</c>"))
 }
 
+/// The non-empty comment texts of one sheet, in cell order.
+///
+/// Collected before `sheet_xml` so the caller can assign each commented sheet
+/// its own part number and keep the workbook-wide numbering stable.
+fn sheet_comments(sheet: &Sheet) -> Vec<(String, String)> {
+    let mut comments = Vec::new();
+    for (address, cell) in &sheet.cells {
+        if cell.is_empty() {
+            continue;
+        }
+        if let (Some(text), Some((row, column))) = (cell.comment.as_ref(), crate::address::parse(address)) {
+            if !text.trim().is_empty() {
+                comments.push((crate::address::format(row, column), text.clone()));
+            }
+        }
+    }
+    comments
+}
+
 fn sheet_xml(
     sheet: &Sheet,
     drawing_number: Option<usize>,
+    comment_number: Option<usize>,
+    comments: Vec<(String, String)>,
     pivot_cells: &[(String, CellValue)],
     table_numbers: &[usize],
     styles: &mut StyleTable,
@@ -371,10 +391,7 @@ fn sheet_xml(
             max_col = max_col.max(column);
         }
     }
-    writer.raw(&format!(
-        "<dimension ref=\"A1:{}\"/>",
-        crate::address::format(max_row, max_col)
-    ));
+    writer.raw(&format!("<dimension ref=\"A1:{}\"/>", crate::address::format(max_row, max_col)));
 
     writer.raw("<sheetViews><sheetView workbookViewId=\"0\"");
     if !sheet.show_gridlines {
@@ -410,18 +427,12 @@ fn sheet_xml(
     writer.raw("<sheetData>");
     let mut rows: BTreeMap<u32, Vec<(u32, &Cell)>> = BTreeMap::new();
     let mut hyperlinks: Vec<(String, String)> = Vec::new();
-    let mut comments: Vec<(String, String)> = Vec::new();
     for (address, cell) in &sheet.cells {
         if cell.is_empty() {
             continue;
         }
         if let (Some(target), Some((row, column))) = (cell.link.as_ref(), crate::address::parse(address)) {
             hyperlinks.push((crate::address::format(row, column), target.clone()));
-        }
-        if let (Some(text), Some((row, column))) = (cell.comment.as_ref(), crate::address::parse(address)) {
-            if !text.trim().is_empty() {
-                comments.push((crate::address::format(row, column), text.clone()));
-            }
         }
         if let Some((row, column)) = crate::address::parse(address) {
             rows.entry(row).or_default().push((column, cell));
@@ -483,7 +494,9 @@ fn sheet_xml(
                     shared,
                     shared_index,
                 ),
-                RowCell::Pivot(value) => cell_xml(&address, value, None, &CellStyle::default(), false, false, styles, shared, shared_index),
+                RowCell::Pivot(value) => {
+                    cell_xml(&address, value, None, &CellStyle::default(), false, false, styles, shared, shared_index)
+                }
             };
             if let Some(xml) = xml {
                 writer.raw(&xml);
@@ -593,16 +606,19 @@ fn sheet_xml(
         writer.raw("<drawing r:id=\"rIdDrawing\"/>");
     }
 
-    if !comments.is_empty() {
+    // Comments are written as one part per sheet. A workbook-wide part made
+    // every sheet read every other sheet's notes on the next import (audit
+    // C11), because the comment list carries no sheet reference.
+    if let Some(number) = comment_number {
         rels.push((
             "rIdComments".into(),
             "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments".into(),
-            "../comments1.xml".into(),
+            format!("../comments{number}.xml"),
         ));
         rels.push((
             "rIdVml".into(),
             "http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing".into(),
-            "../drawings/vmlDrawing1.vml".into(),
+            format!("../drawings/vmlDrawing{number}.vml"),
         ));
         writer.raw("<legacyDrawing r:id=\"rIdVml\"/>");
     }
@@ -625,11 +641,7 @@ fn sheet_xml(
     }
 
     writer.raw("</worksheet>");
-    SheetPart {
-        xml: writer.finish(),
-        rels,
-        comments,
-    }
+    SheetPart { xml: writer.finish(), rels, comments }
 }
 
 /// Builds a `<conditionalFormatting>` block plus the dxf index it points at.
@@ -693,11 +705,7 @@ fn conditional_formatting_xml(rule: &CondRule, index: usize) -> Option<String> {
         }
         _ => return None,
     };
-    let formulas = if formula.is_empty() {
-        String::new()
-    } else {
-        format!("<formula>{formula}</formula>")
-    };
+    let formulas = if formula.is_empty() { String::new() } else { format!("<formula>{formula}</formula>") };
     Some(format!(
         "<conditionalFormatting sqref=\"{range}\"><cfRule {attributes}>{formulas}</cfRule></conditionalFormatting>"
     ))
@@ -752,7 +760,8 @@ fn chart_kind_supported(kind: &str) -> bool {
 
 /// Quotes a sheet name when a formula reference needs it (`'My Sheet'!`).
 fn sheet_ref(name: &str) -> String {
-    let simple = !name.is_empty() && name.chars().all(|character| character.is_ascii_alphanumeric() || character == '_');
+    let simple =
+        !name.is_empty() && name.chars().all(|character| character.is_ascii_alphanumeric() || character == '_');
     if simple {
         name.to_string()
     } else {
@@ -796,7 +805,9 @@ fn print_titles_ref(range: &str, sheet: &str, rows: bool) -> Option<String> {
         let end_row = end.parse::<u32>().ok()?;
         Some(format!("{}!${}:${}", sheet_ref(sheet), start_row, end_row))
     } else {
-        if !start.chars().all(|character| character.is_ascii_alphabetic()) || !end.chars().all(|character| character.is_ascii_alphabetic()) {
+        if !start.chars().all(|character| character.is_ascii_alphabetic())
+            || !end.chars().all(|character| character.is_ascii_alphabetic())
+        {
             return None;
         }
         Some(format!("{}!${}:${}", sheet_ref(sheet), start.to_ascii_uppercase(), end.to_ascii_uppercase()))
@@ -871,7 +882,8 @@ fn chart_xml(placement: &ChartPlacement, sheet_name: &str) -> Result<String, Str
     if !chart_kind_supported(kind) {
         return Err(format!("the chart type \"{kind}\" is not exportable"));
     }
-    let categories = absolute_ref(&chart.categories, sheet_name).ok_or_else(|| "the category range could not be read".to_string())?;
+    let categories = absolute_ref(&chart.categories, sheet_name)
+        .ok_or_else(|| "the category range could not be read".to_string())?;
     if chart.series.is_empty() {
         return Err("the chart has no data series".into());
     }
@@ -895,11 +907,8 @@ fn chart_xml(placement: &ChartPlacement, sheet_name: &str) -> Result<String, Str
         // so a chart whose source range lives outside the package still renders
         // and a second import sees the same model.
         let category_cache = if index == 0 { chart_str_cache_xml(&chart.categories_cache) } else { String::new() };
-        let value_cache = chart
-            .series_values_cache
-            .get(index)
-            .map(|values| chart_num_cache_xml(values))
-            .unwrap_or_default();
+        let value_cache =
+            chart.series_values_cache.get(index).map(|values| chart_num_cache_xml(values)).unwrap_or_default();
         series_xml.push_str(&format!(
             "<c:cat><c:strRef><c:f>{}</c:f>{category_cache}</c:strRef></c:cat><c:val><c:numRef><c:f>{}</c:f>{value_cache}</c:numRef></c:val></c:ser>",
             // A sheet name can contain `&` or `<`; the reference has to be
@@ -955,11 +964,7 @@ fn chart_xml(placement: &ChartPlacement, sheet_name: &str) -> Result<String, Str
     }
 
     let title = if chart.title.is_empty() { String::new() } else { chart_title_xml(&chart.title) };
-    let legend = if chart.legend {
-        "<c:legend><c:legendPos val=\"b\"/><c:overlay val=\"0\"/></c:legend>"
-    } else {
-        ""
-    };
+    let legend = if chart.legend { "<c:legend><c:legendPos val=\"b\"/><c:overlay val=\"0\"/></c:legend>" } else { "" };
     Ok(format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><c:roundedCorners val=\"0\"/><c:chart>{title}<c:plotArea><c:layout/>{plot}{axes}</c:plotArea>{legend}<c:plotVisOnly val=\"1\"/><c:dispBlanksAs val=\"gap\"/></c:chart><c:printSettings><c:headerFooter/><c:pageMargins b=\"0.75\" l=\"0.7\" r=\"0.7\" t=\"0.75\" header=\"0.3\" footer=\"0.3\"/><c:pageSetup/></c:printSettings></c:chartSpace>"
     ))
@@ -1055,12 +1060,8 @@ fn sheet_protection_xml(sheet: &Sheet) -> Option<String> {
     if protection.spin_count > 0 {
         xml.push_str(&format!(" spinCount=\"{}\"", protection.spin_count));
     }
-    let mut options: Vec<&str> = protection
-        .options
-        .iter()
-        .map(String::as_str)
-        .filter(|name| SHEET_PROTECTION_OPTIONS.contains(name))
-        .collect();
+    let mut options: Vec<&str> =
+        protection.options.iter().map(String::as_str).filter(|name| SHEET_PROTECTION_OPTIONS.contains(name)).collect();
     options.sort_unstable();
     options.dedup();
     for name in options {
@@ -1166,13 +1167,10 @@ fn print_settings_xml(sheet: &Sheet) -> String {
 /// table part carries its own filter and Excel treats two filters over the same
 /// range as a corrupt file.
 fn filter_owned_by_table(sheet: &Sheet, range: &str) -> bool {
-    sheet.tables.iter().any(|table| {
-        table
-            .filter
-            .as_ref()
-            .map(|filter| filter.range.eq_ignore_ascii_case(range))
-            .unwrap_or(false)
-    })
+    sheet
+        .tables
+        .iter()
+        .any(|table| table.filter.as_ref().map(|filter| filter.range.eq_ignore_ascii_case(range)).unwrap_or(false))
 }
 
 /// The range Excel filters for a table: the full range minus the totals row.
@@ -1182,26 +1180,30 @@ fn table_filter_range(table: &SpreadsheetTable) -> Option<String> {
     if last_row < start_row || end_col < start_col {
         return None;
     }
-    Some(format!(
-        "{}:{}",
-        crate::address::format(start_row, start_col),
-        crate::address::format(last_row, end_col)
-    ))
+    Some(format!("{}:{}", crate::address::format(start_row, start_col), crate::address::format(last_row, end_col)))
 }
 
 /// A valid workbook-unique table name; OOXML names allow only a restricted set
 /// of characters and may not look like a cell reference.
 fn table_part_name(table: &SpreadsheetTable, number: usize) -> String {
-    let mut name: String = table
-        .name
-        .trim()
-        .chars()
-        .map(|character| if character.is_ascii_alphanumeric() || character == '_' || character == '.' { character } else { '_' })
-        .collect();
+    let mut name: String =
+        table
+            .name
+            .trim()
+            .chars()
+            .map(|character| {
+                if character.is_ascii_alphanumeric() || character == '_' || character == '.' {
+                    character
+                } else {
+                    '_'
+                }
+            })
+            .collect();
     if name.is_empty() {
         name = format!("Table{number}");
     }
-    let starts_well = name.chars().next().map(|character| character.is_ascii_alphabetic() || character == '_').unwrap_or(false);
+    let starts_well =
+        name.chars().next().map(|character| character.is_ascii_alphabetic() || character == '_').unwrap_or(false);
     if !starts_well || crate::address::parse(&name).is_some() {
         name.insert(0, '_');
     }
@@ -1335,10 +1337,8 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
                         height_px: placement.height_px.max(64.0),
                     });
                 }
-                Err(reason) => warnings.push(format!(
-                    "Chart \"{}\" was kept in the .oswk file only: {reason}.",
-                    placement.chart.title
-                )),
+                Err(reason) => warnings
+                    .push(format!("Chart \"{}\" was kept in the .oswk file only: {reason}.", placement.chart.title)),
             }
         }
         sheet_charts.push(planned);
@@ -1353,19 +1353,13 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
         let mut planned = Vec::new();
         for image in &sheet.images {
             if image.image.is_empty() {
-                warnings.push(format!(
-                    "Image \"{}\" has no data and was kept in the .oswk file only.",
-                    image.image.name
-                ));
+                warnings
+                    .push(format!("Image \"{}\" has no data and was kept in the .oswk file only.", image.image.name));
                 continue;
             }
             media_number += 1;
             let part_name = format!("image{media_number}.{}", image.image.extension());
-            planned.push(PlannedImage {
-                part_name,
-                bytes: image.image.bytes(),
-                image: image.clone(),
-            });
+            planned.push(PlannedImage { part_name, bytes: image.image.bytes(), image: image.clone() });
         }
         sheet_images.push(planned);
     }
@@ -1403,6 +1397,7 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
     let mut sheet_parts: Vec<SheetPart> = Vec::new();
     let mut sheet_drawings: Vec<Option<usize>> = Vec::new();
     let mut drawing_number = 0usize;
+    let mut comment_number = 0usize;
     let mut pivots_materialized = 0usize;
     for (index, sheet) in workbook.sheets.iter().enumerate() {
         let drawing = if sheet_charts[index].is_empty() && sheet_images[index].is_empty() {
@@ -1412,6 +1407,13 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
             Some(drawing_number)
         };
         sheet_drawings.push(drawing);
+        let comments = sheet_comments(sheet);
+        let comment = if comments.is_empty() {
+            None
+        } else {
+            comment_number += 1;
+            Some(comment_number)
+        };
         let pivot_cells = crate::pivot::materialize(workbook, sheet);
         if !pivot_cells.is_empty() {
             pivots_materialized += 1;
@@ -1419,6 +1421,8 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
         sheet_parts.push(sheet_xml(
             sheet,
             drawing,
+            comment,
+            comments,
             &pivot_cells,
             &sheet_table_numbers[index],
             &mut styles,
@@ -1437,11 +1441,7 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
     if !workbook.sheets.is_empty() {
         for (pivot_index, pivot) in preserved_pivots.iter().enumerate() {
             let number = pivot_index + 1;
-            let sheet_index = workbook
-                .sheets
-                .iter()
-                .position(|sheet| sheet.name == pivot.sheet)
-                .unwrap_or(0);
+            let sheet_index = workbook.sheets.iter().position(|sheet| sheet.name == pivot.sheet).unwrap_or(0);
             sheet_parts[sheet_index].rels.push((
                 format!("rIdPivot{number}"),
                 "http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotTable".into(),
@@ -1454,7 +1454,9 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
     let mut content_types = String::from(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">",
     );
-    content_types.push_str("<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>");
+    content_types.push_str(
+        "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>",
+    );
     content_types.push_str("<Default Extension=\"xml\" ContentType=\"application/xml\"/>");
     content_types.push_str("<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>");
     for index in 0..sheet_parts.len() {
@@ -1587,10 +1589,8 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
         workbook_xml.push_str("<pivotCaches>");
         for (index, pivot) in preserved_pivots.iter().enumerate() {
             let cache_id = if pivot.cache_id > 0 { pivot.cache_id } else { index as u32 + 1 };
-            workbook_xml.push_str(&format!(
-                "<pivotCache cacheId=\"{cache_id}\" r:id=\"rId{}\"/>",
-                pivot_rid_base + index
-            ));
+            workbook_xml
+                .push_str(&format!("<pivotCache cacheId=\"{cache_id}\" r:id=\"rId{}\"/>", pivot_rid_base + index));
         }
         workbook_xml.push_str("</pivotCaches>");
     }
@@ -1605,7 +1605,8 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
             index + 1,
             index + 1
         ));
-    }    let styles_rid = sheet_parts.len() + 1;
+    }
+    let styles_rid = sheet_parts.len() + 1;
     let shared_rid = sheet_parts.len() + 2;
     workbook_rels.push_str(&format!(
         "<Relationship Id=\"rId{styles_rid}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>"
@@ -1640,8 +1641,19 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
 
     let with_comments = sheet_parts.iter().any(|part| !part.comments.is_empty());
     if with_comments {
-        content_types.push_str("<Override PartName=\"/xl/comments1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml\"/>");
-        content_types.push_str("<Default Extension=\"vml\" ContentType=\"application/vnd.openxmlformats-officedocument.vmlDrawing\"/>");
+        let mut comment_number = 0usize;
+        for part in &sheet_parts {
+            if part.comments.is_empty() {
+                continue;
+            }
+            comment_number += 1;
+            content_types.push_str(&format!(
+                "<Override PartName=\"/xl/comments{comment_number}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml\"/>"
+            ));
+        }
+        content_types.push_str(
+            "<Default Extension=\"vml\" ContentType=\"application/vnd.openxmlformats-officedocument.vmlDrawing\"/>",
+        );
     }
 
     for (index, charts) in sheet_charts.iter().enumerate() {
@@ -1785,26 +1797,17 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
     }
 
     if with_comments {
-        // One comments part covering every sheet's notes, which is what Excel
-        // produces for a workbook this size and keeps the package simple.
-        let mut authors = String::from("Office Swiss Army Knife");
-        let mut comments_xml = String::from(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<comments xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><authors>",
-        );
-        comments_xml.push_str(&format!("<author>{}</author>", escape_text(&authors)));
-        authors.clear();
-        comments_xml.push_str("</authors><commentList>");
+        // One comments part plus one VML shape set per commented sheet, all
+        // pointed at by that sheet's own relationships (audit C11).
+        let mut comment_number = 0usize;
         for part in &sheet_parts {
-            for (address, text) in &part.comments {
-                comments_xml.push_str(&format!(
-                    "<comment ref=\"{address}\" authorId=\"0\"><text><r><rPr><sz val=\"9\"/></rPr><t xml:space=\"preserve\">{text}</t></r></text></comment>",
-                    text = escape_text(text)
-                ));
+            if part.comments.is_empty() {
+                continue;
             }
+            comment_number += 1;
+            zip.add_text(&format!("xl/comments{comment_number}.xml"), &comments_xml(part));
+            zip.add_text(&format!("xl/drawings/vmlDrawing{comment_number}.vml"), &comments_vml(part));
         }
-        comments_xml.push_str("</commentList></comments>");
-        zip.add_text("xl/comments1.xml", &comments_xml);
-        zip.add_text("xl/drawings/vmlDrawing1.vml", &comments_vml(&sheet_parts));
     }
     Ok(SheetWrite { bytes: zip.finish(), warnings })
 }
@@ -1836,20 +1839,30 @@ fn defined_name_xml(entry: &NamedRange, local_sheet_id: Option<usize>) -> Option
     if !definition.starts_with('=') {
         definition = format!("={definition}");
     }
-    Some(format!(
-        "<definedName name=\"{}\"{}>{}</definedName>",
-        escape_attr(name),
-        scope,
-        escape_text(&definition)
-    ))
+    Some(format!("<definedName name=\"{}\"{}>{}</definedName>", escape_attr(name), scope, escape_text(&definition)))
+}
+
+/// The `<comments>` part for one sheet, carrying only that sheet's notes.
+fn comments_xml(part: &SheetPart) -> String {
+    let mut comments_xml = String::from(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<comments xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><authors><author>Office Swiss Army Knife</author></authors><commentList>",
+    );
+    for (address, text) in &part.comments {
+        comments_xml.push_str(&format!(
+            "<comment ref=\"{address}\" authorId=\"0\"><text><r><rPr><sz val=\"9\"/></rPr><t xml:space=\"preserve\">{text}</t></r></text></comment>",
+            text = escape_text(text)
+        ));
+    }
+    comments_xml.push_str("</commentList></comments>");
+    comments_xml
 }
 
 /// The VML drawing Excel needs in order to show a comment marker on a cell.
 ///
-/// OOXML stores comment *text* in `comments1.xml` but the little red triangle
+/// OOXML stores comment *text* in the comments part but the little red triangle
 /// and the hover box are legacy VML shapes, so a comments part without this
-/// file opens with invisible notes.
-fn comments_vml(parts: &[SheetPart]) -> String {
+/// file opens with invisible notes. One drawing per commented sheet.
+fn comments_vml(part: &SheetPart) -> String {
     let mut vml = String::from(
         "<xml xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:x=\"urn:schemas-microsoft-com:office:excel\">",
     );
@@ -1857,16 +1870,12 @@ fn comments_vml(parts: &[SheetPart]) -> String {
     vml.push_str(
         "<v:shapetype id=\"_x0000_t202\" coordsize=\"21600,21600\" o:spt=\"202\" path=\"m,l,21600r21600,l21600,xe\"><v:stroke joinstyle=\"miter\"/><v:path gradientshapeok=\"t\" o:connecttype=\"rect\"/></v:shapetype>",
     );
-    let mut shape_id = 1025u32;
-    for part in parts {
-        for (address, _) in &part.comments {
-            // Column and row are zero based in the ClientData block.
-            let (row, column) = crate::address::parse(address).unwrap_or((0, 0));
-            vml.push_str(&format!(
-                "<v:shape id=\"_x0000_s{shape_id}\" type=\"#_x0000_t202\" style=\"position:absolute;margin-left:59.25pt;margin-top:1.5pt;width:108pt;height:59.25pt;z-index:1;visibility:hidden\" fillcolor=\"#ffffe1\" o:insetmode=\"auto\"><v:fill color2=\"#ffffe1\"/><v:shadow on=\"t\" color=\"black\" obscured=\"t\"/><v:path o:connecttype=\"none\"/><v:textbox style=\"mso-direction-alt:auto\"><div style=\"text-align:left\"/></v:textbox><x:ClientData ObjectType=\"Note\"><x:MoveWithCells/><x:SizeWithCells/><x:AutoFill>False</x:AutoFill><x:Row>{row}</x:Row><x:Column>{column}</x:Column></x:ClientData></v:shape>"
-            ));
-            shape_id += 1;
-        }
+    for (shape_id, (address, _)) in (1025u32..).zip(part.comments.iter()) {
+        // Column and row are zero based in the ClientData block.
+        let (row, column) = crate::address::parse(address).unwrap_or((0, 0));
+        vml.push_str(&format!(
+            "<v:shape id=\"_x0000_s{shape_id}\" type=\"#_x0000_t202\" style=\"position:absolute;margin-left:59.25pt;margin-top:1.5pt;width:108pt;height:59.25pt;z-index:1;visibility:hidden\" fillcolor=\"#ffffe1\" o:insetmode=\"auto\"><v:fill color2=\"#ffffe1\"/><v:shadow on=\"t\" color=\"black\" obscured=\"t\"/><v:path o:connecttype=\"none\"/><v:textbox style=\"mso-direction-alt:auto\"><div style=\"text-align:left\"/></v:textbox><x:ClientData ObjectType=\"Note\"><x:MoveWithCells/><x:SizeWithCells/><x:AutoFill>False</x:AutoFill><x:Row>{row}</x:Row><x:Column>{column}</x:Column></x:ClientData></v:shape>"
+        ));
     }
     vml.push_str("</xml>");
     vml
@@ -1956,7 +1965,8 @@ pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
             .worksheet_range(name)
             .map_err(|error| OfficeError::corrupt(format!("Could not read sheet {name}: {error}")))?;
         let formulas = sheets.worksheet_formula(name).ok();
-        let (start_row, start_col) = (range.start().map(|(row, _)| row).unwrap_or(0), range.start().map(|(_, column)| column).unwrap_or(0));
+        let (start_row, start_col) =
+            (range.start().map(|(row, _)| row).unwrap_or(0), range.start().map(|(_, column)| column).unwrap_or(0));
         let mut max_row = 0u32;
         let mut max_col = 0u32;
         for (row_index, row) in range.rows().enumerate() {
@@ -2030,14 +2040,21 @@ pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
     // importer itself when they need a caveat.
     let imported_charts: usize = workbook.sheets.iter().map(|sheet| sheet.charts.len()).sum();
     if imported_charts == 0 && contains_part(bytes, "xl/charts") {
-        warnings.push("Charts are present in the package but no sheet drawing could be linked, so they were not imported.".into());
+        warnings.push(
+            "Charts are present in the package but no sheet drawing could be linked, so they were not imported.".into(),
+        );
     }
     let imported_images: usize = workbook.sheets.iter().map(|sheet| sheet.images.len()).sum();
     if imported_images == 0 && contains_part(bytes, "xl/media/") {
-        warnings.push("Images are present in the package but no sheet drawing could be linked, so they were not imported.".into());
+        warnings.push(
+            "Images are present in the package but no sheet drawing could be linked, so they were not imported.".into(),
+        );
     }
     if contains_part(bytes, "xl/charts/colors") {
-        warnings.push("Chart colour overrides (xl/charts/colorsN.xml) are not imported; series colours come from the chart part.".into());
+        warnings.push(
+            "Chart colour overrides (xl/charts/colorsN.xml) are not imported; series colours come from the chart part."
+                .into(),
+        );
     }
     if contains_part(bytes, "Object ") {
         warnings.push("Embedded OLE objects are not imported; they stay in the original file only.".into());
@@ -2133,17 +2150,28 @@ fn import_ooxml_layout(bytes: &[u8], workbook: &mut Workbook, warnings: &mut Vec
             return true;
         }
     };
-    let WorkbookSheetInfo { sheets: sheet_refs, names, filters: filter_databases, print_areas, print_titles_rows, print_titles_cols } = info;
+    let WorkbookSheetInfo {
+        sheets: sheet_refs,
+        names,
+        filters: filter_databases,
+        print_areas,
+        print_titles_rows,
+        print_titles_cols,
+    } = info;
     let styles = match zip.read_text("xl/styles.xml") {
         Ok(xml) => match parse_styles(&xml) {
             Ok(styles) => styles,
             Err(error) => {
-                warnings.push(format!("The styles of the workbook could not be read ({error}); cell formatting was not imported."));
+                warnings.push(format!(
+                    "The styles of the workbook could not be read ({error}); cell formatting was not imported."
+                ));
                 ImportedStyles::default()
             }
         },
         Err(error) => {
-            warnings.push(format!("The styles of the workbook could not be read ({error}); cell formatting was not imported."));
+            warnings.push(format!(
+                "The styles of the workbook could not be read ({error}); cell formatting was not imported."
+            ));
             ImportedStyles::default()
         }
     };
@@ -2159,7 +2187,9 @@ fn import_ooxml_layout(bytes: &[u8], workbook: &mut Workbook, warnings: &mut Vec
             .map(|(_, part)| part.clone())
             .or_else(|| sheet_refs.get(index).map(|(_, part)| part.clone()));
         let Some(part) = part else { continue };
-        if let Err(error) = apply_worksheet_part(&zip, &part, sheet, &styles, &mut table_number, &mut preserved_pivots, warnings) {
+        if let Err(error) =
+            apply_worksheet_part(&zip, &part, sheet, &styles, &mut table_number, &mut preserved_pivots, warnings)
+        {
             warnings.push(format!("The layout of sheet \"{}\" could not be imported ({error}).", sheet.name));
         }
     }
@@ -2478,11 +2508,8 @@ fn header_format_text(header: &XmlNode, tag: &str) -> String {
 /// `<sheetProtection>`: the verifier is preserved exactly, never cracked.
 fn apply_sheet_protection(root: &XmlNode, sheet: &mut Sheet) {
     let Some(node) = root.child("sheetProtection") else { return };
-    let mut options: Vec<String> = SHEET_PROTECTION_OPTIONS
-        .iter()
-        .filter(|name| attr_on(node, name))
-        .map(|name| (*name).to_string())
-        .collect();
+    let mut options: Vec<String> =
+        SHEET_PROTECTION_OPTIONS.iter().filter(|name| attr_on(node, name)).map(|name| (*name).to_string()).collect();
     options.sort();
     let password = node.attr("password").map(str::trim).filter(|value| !value.is_empty()).map(str::to_string);
     let enabled = attr_on(node, "sheet")
@@ -2563,7 +2590,9 @@ fn apply_merges(root: &XmlNode, sheet: &mut Sheet) {
     let Some(merges) = root.child("mergeCells") else { return };
     for merge in merges.children_of("mergeCell") {
         let Some(reference) = merge.attr("ref") else { continue };
-        let Some(((start_row, start_col), (end_row, end_col))) = crate::address::parse_range(reference) else { continue };
+        let Some(((start_row, start_col), (end_row, end_col))) = crate::address::parse_range(reference) else {
+            continue;
+        };
         if start_row > MAX_IMPORT_ROWS || start_col > MAX_IMPORT_COLS {
             continue;
         }
@@ -2575,7 +2604,9 @@ fn apply_merges(root: &XmlNode, sheet: &mut Sheet) {
 }
 
 fn apply_freeze_panes(root: &XmlNode, sheet: &mut Sheet) {
-    let Some(pane) = root.child("sheetViews").and_then(|views| views.child("sheetView")).and_then(|view| view.child("pane")) else {
+    let Some(pane) =
+        root.child("sheetViews").and_then(|views| views.child("sheetView")).and_then(|view| view.child("pane"))
+    else {
         return;
     };
     if !matches!(pane.attr("state").map(str::trim), Some("frozen") | Some("frozenSplit")) {
@@ -2728,7 +2759,8 @@ fn apply_conditional(root: &XmlNode, sheet: &mut Sheet, styles: &ImportedStyles,
             let mut fill = dxf.and_then(|index| styles.dxf_fills.get(index).cloned()).flatten();
             let color = dxf.and_then(|index| styles.dxf_colors.get(index).cloned()).flatten();
             let formulas = rule.children_of("formula");
-            let formula = |index: usize| formulas.get(index).map(|node| node.deep_text().trim().to_string()).unwrap_or_default();
+            let formula =
+                |index: usize| formulas.get(index).map(|node| node.deep_text().trim().to_string()).unwrap_or_default();
             let (model_kind, values, top_n) = match kind {
                 "cellIs" => match rule.attr("operator").unwrap_or("") {
                     "greaterThan" => ("greater", vec![strip_operator(&formula(0))], None),
@@ -2751,7 +2783,8 @@ fn apply_conditional(root: &XmlNode, sheet: &mut Sheet, styles: &ImportedStyles,
                     }
                 },
                 "containsText" => {
-                    let text = rule.attr("text").map(str::to_string).unwrap_or_else(|| contains_text_value(&formula(0)));
+                    let text =
+                        rule.attr("text").map(str::to_string).unwrap_or_else(|| contains_text_value(&formula(0)));
                     ("textContains", vec![text], None)
                 }
                 "duplicateValues" => ("duplicate", Vec::new(), None),
@@ -2764,7 +2797,8 @@ fn apply_conditional(root: &XmlNode, sheet: &mut Sheet, styles: &ImportedStyles,
                     }
                 }
                 "dataBar" => {
-                    if let Some(bar_color) = rule.child("dataBar").and_then(|bar| bar.child("color")).and_then(color_of) {
+                    if let Some(bar_color) = rule.child("dataBar").and_then(|bar| bar.child("color")).and_then(color_of)
+                    {
                         fill = Some(bar_color);
                     }
                     ("dataBar", Vec::new(), None)
@@ -2890,17 +2924,20 @@ fn apply_tables(
         *table_number += 1;
         match parse_table_part(zip, &target, *table_number, sheet) {
             Ok(table) => sheet.tables.push(table),
-            Err(error) => warnings.push(format!("A structured table in sheet \"{}\" could not be imported ({error}).", sheet.name)),
+            Err(error) => warnings
+                .push(format!("A structured table in sheet \"{}\" could not be imported ({error}).", sheet.name)),
         }
     }
 }
 
-fn parse_table_part(zip: &crate::zip::ZipReader, target: &str, number: usize, sheet: &Sheet) -> OfficeResult<SpreadsheetTable> {
+fn parse_table_part(
+    zip: &crate::zip::ZipReader,
+    target: &str,
+    number: usize,
+    sheet: &Sheet,
+) -> OfficeResult<SpreadsheetTable> {
     let root = parse_xml(&zip.read_text(target)?)?;
-    let mut table = SpreadsheetTable {
-        id: format!("table{number}"),
-        ..Default::default()
-    };
+    let mut table = SpreadsheetTable { id: format!("table{number}"), ..Default::default() };
     table.name = root.attr("displayName").or_else(|| root.attr("name")).unwrap_or("").trim().to_string();
     if table.name.is_empty() {
         table.name = format!("Table{number}");
@@ -2924,8 +2961,10 @@ fn parse_table_part(zip: &crate::zip::ZipReader, target: &str, number: usize, sh
     }
     if let Some(style) = root.child("tableStyleInfo") {
         table.style_name = style.attr("name").unwrap_or("").to_string();
-        table.banded_rows = style.attr("showRowStripes").map(|value| matches!(value.trim(), "1" | "true")).unwrap_or(true);
-        table.banded_columns = style.attr("showColumnStripes").map(|value| matches!(value.trim(), "1" | "true")).unwrap_or(false);
+        table.banded_rows =
+            style.attr("showRowStripes").map(|value| matches!(value.trim(), "1" | "true")).unwrap_or(true);
+        table.banded_columns =
+            style.attr("showColumnStripes").map(|value| matches!(value.trim(), "1" | "true")).unwrap_or(false);
     }
     if let Some(filter) = root.child("autoFilter") {
         table.filter = parse_filter_state(filter, &table.range);
@@ -2964,7 +3003,10 @@ fn chart_text_block(node: &XmlNode) -> String {
         if let Some(value) = reference.child("v") {
             return value.deep_text();
         }
-        if let Some(value) = descendant(reference, "strCache").and_then(|cache| cache.children_of("pt").first().and_then(|point| point.child("v"))).map(XmlNode::deep_text) {
+        if let Some(value) = descendant(reference, "strCache")
+            .and_then(|cache| cache.children_of("pt").first().and_then(|point| point.child("v")))
+            .map(XmlNode::deep_text)
+        {
             if !value.is_empty() {
                 return value;
             }
@@ -3091,14 +3133,18 @@ fn read_xlsx_chart(xml: &str, warnings: &mut Vec<String>) -> Option<ChartData> {
             .map(|value| format!("#{}", value.trim_start_matches('#').to_ascii_uppercase()));
         if categories.is_empty() {
             if let Some(cat) = ser.child("cat") {
-                categories = descendant(cat, "f").map(XmlNode::deep_text).map(|value| relative_ref(&value)).unwrap_or_default();
+                categories =
+                    descendant(cat, "f").map(XmlNode::deep_text).map(|value| relative_ref(&value)).unwrap_or_default();
                 categories_cache = cache_text_values(cat);
             }
         }
         series_values_cache.push(ser.child("val").map(cache_number_values).unwrap_or_default());
         series.push(ChartSeries { name, range, color });
     }
-    let stacked = descendant(plot_child, "grouping").and_then(|node| node.attr("val")).map(|value| value == "stacked").unwrap_or(false);
+    let stacked = descendant(plot_child, "grouping")
+        .and_then(|node| node.attr("val"))
+        .map(|value| value == "stacked")
+        .unwrap_or(false);
     // Empty caches are dropped so an export/import cycle of cache-free charts
     // stays byte-identical; a chart with at least one cache keeps the aligned
     // per-series vectors the model documents.
@@ -3110,8 +3156,10 @@ fn read_xlsx_chart(xml: &str, warnings: &mut Vec<String>) -> Option<ChartData> {
         .and_then(|node| node.attr("val"))
         .map(|value| value == "1")
         .unwrap_or(false);
-    let x_title = descendant(plot, "catAx").and_then(|axis| axis.child("title")).map(chart_text_block).unwrap_or_default();
-    let y_title = descendant(plot, "valAx").and_then(|axis| axis.child("title")).map(chart_text_block).unwrap_or_default();
+    let x_title =
+        descendant(plot, "catAx").and_then(|axis| axis.child("title")).map(chart_text_block).unwrap_or_default();
+    let y_title =
+        descendant(plot, "valAx").and_then(|axis| axis.child("title")).map(chart_text_block).unwrap_or_default();
     Some(ChartData {
         kind,
         title,
@@ -3145,9 +3193,7 @@ const EMU_PER_PX: f64 = 9525.0;
 fn parse_drawing_anchor(anchor: &XmlNode) -> Option<DrawingAnchor> {
     let from = anchor.child("from")?;
     let child_number = |node: &XmlNode, name: &str| -> Option<u32> {
-        node.child(name)
-            .map(XmlNode::deep_text)
-            .and_then(|value| value.trim().parse::<u32>().ok())
+        node.child(name).map(XmlNode::deep_text).and_then(|value| value.trim().parse::<u32>().ok())
     };
     let column = child_number(from, "col")?;
     let row = child_number(from, "row")?;
@@ -3203,13 +3249,18 @@ fn parse_drawing_anchor(anchor: &XmlNode) -> Option<DrawingAnchor> {
 ///
 /// A drawing is optional: a sheet without one simply keeps no floating
 /// objects. Every failure is a warning; the calamine values are never touched.
-fn apply_drawings(zip: &crate::zip::ZipReader, part: &str, root: &XmlNode, sheet: &mut Sheet, warnings: &mut Vec<String>) {
+fn apply_drawings(
+    zip: &crate::zip::ZipReader,
+    part: &str,
+    root: &XmlNode,
+    sheet: &mut Sheet,
+    warnings: &mut Vec<String>,
+) {
     let Some(drawing) = root.child("drawing") else { return };
     let Some(relationship_id) = drawing.attr_any_ns("id") else { return };
     let relationships = read_relationships(zip, part);
-    let Some(relationship) = relationships
-        .get(relationship_id)
-        .filter(|relationship| relationship.kind.ends_with("/drawing"))
+    let Some(relationship) =
+        relationships.get(relationship_id).filter(|relationship| relationship.kind.ends_with("/drawing"))
     else {
         return;
     };
@@ -3222,18 +3273,25 @@ fn apply_drawings(zip: &crate::zip::ZipReader, part: &str, root: &XmlNode, sheet
         }
     };
     if text.len() > MAX_DETAIL_PART_BYTES {
-        warnings.push(format!("The drawing of sheet \"{}\" is too large to inspect; charts and images were skipped.", sheet.name));
+        warnings.push(format!(
+            "The drawing of sheet \"{}\" is too large to inspect; charts and images were skipped.",
+            sheet.name
+        ));
         return;
     }
     let parsed = match parse_xml(&text) {
         Ok(parsed) => parsed,
         Err(_) => {
-            warnings.push(format!("The drawing of sheet \"{}\" could not be parsed; charts and images were skipped.", sheet.name));
+            warnings.push(format!(
+                "The drawing of sheet \"{}\" could not be parsed; charts and images were skipped.",
+                sheet.name
+            ));
             return;
         }
     };
     let drawing_relationships = read_relationships(zip, &target);
-    for anchor in parsed.children.iter().filter(|child| matches!(child.local_name(), "oneCellAnchor" | "twoCellAnchor")) {
+    for anchor in parsed.children.iter().filter(|child| matches!(child.local_name(), "oneCellAnchor" | "twoCellAnchor"))
+    {
         let Some(geometry) = parse_drawing_anchor(anchor) else { continue };
         // Charts: `xdr:graphicFrame` wrapping a `c:chart` relationship.
         if let Some(frame) = anchor.child("graphicFrame") {
@@ -3248,8 +3306,13 @@ fn apply_drawings(zip: &crate::zip::ZipReader, part: &str, root: &XmlNode, sheet
                 warnings.push(format!("A chart on sheet \"{}\" has no relationship and was skipped.", sheet.name));
                 continue;
             };
-            let Some(relationship) = drawing_relationships.get(embed).filter(|relationship| relationship.kind.ends_with("/chart")) else {
-                warnings.push(format!("A chart relationship on sheet \"{}\" could not be resolved and was skipped.", sheet.name));
+            let Some(relationship) =
+                drawing_relationships.get(embed).filter(|relationship| relationship.kind.ends_with("/chart"))
+            else {
+                warnings.push(format!(
+                    "A chart relationship on sheet \"{}\" could not be resolved and was skipped.",
+                    sheet.name
+                ));
                 continue;
             };
             let chart_part = resolve_part(&target, &relationship.target);
@@ -3282,8 +3345,13 @@ fn apply_drawings(zip: &crate::zip::ZipReader, part: &str, root: &XmlNode, sheet
             warnings.push(format!("An image on sheet \"{}\" has no relationship and was skipped.", sheet.name));
             continue;
         };
-        let Some(relationship) = drawing_relationships.get(embed).filter(|relationship| relationship.kind.ends_with("/image")) else {
-            warnings.push(format!("An image relationship on sheet \"{}\" could not be resolved and was skipped.", sheet.name));
+        let Some(relationship) =
+            drawing_relationships.get(embed).filter(|relationship| relationship.kind.ends_with("/image"))
+        else {
+            warnings.push(format!(
+                "An image relationship on sheet \"{}\" could not be resolved and was skipped.",
+                sheet.name
+            ));
             continue;
         };
         let media_part = resolve_part(&target, &relationship.target);
@@ -3332,11 +3400,7 @@ fn apply_drawings(zip: &crate::zip::ZipReader, part: &str, root: &XmlNode, sheet
             sheet.name
         ));
     }
-    let shapes = parsed
-        .children
-        .iter()
-        .filter(|child| matches!(child.local_name(), "sp" | "grpSp"))
-        .count();
+    let shapes = parsed.children.iter().filter(|child| matches!(child.local_name(), "sp" | "grpSp")).count();
     if shapes > 0 {
         warnings.push(format!(
             "{shapes} shape(s) in the drawing of sheet \"{}\" were not imported; the sheet model has no floating shapes.",
@@ -3374,7 +3438,12 @@ fn apply_pivot_tables(
     }
 }
 
-fn parse_pivot_table(zip: &crate::zip::ZipReader, target: &str, sheet_name: &str, warnings: &mut Vec<String>) -> Option<PreservedPivot> {
+fn parse_pivot_table(
+    zip: &crate::zip::ZipReader,
+    target: &str,
+    sheet_name: &str,
+    warnings: &mut Vec<String>,
+) -> Option<PreservedPivot> {
     let table_xml = match zip.read_text(target) {
         Ok(text) => text,
         Err(error) => {
@@ -3399,20 +3468,27 @@ fn parse_pivot_table(zip: &crate::zip::ZipReader, target: &str, sheet_name: &str
     }
     let cache_id = parse_u32_attr(&root, "cacheId").unwrap_or(0);
     let relationships = read_relationships(zip, target);
-    let Some(definition_relationship) = relationships.values().find(|relationship| relationship.kind.ends_with("/pivotCacheDefinition")) else {
-        warnings.push(format!("Pivot table \"{name}\" has no cache definition and was kept in the original file only."));
+    let Some(definition_relationship) =
+        relationships.values().find(|relationship| relationship.kind.ends_with("/pivotCacheDefinition"))
+    else {
+        warnings
+            .push(format!("Pivot table \"{name}\" has no cache definition and was kept in the original file only."));
         return None;
     };
     let definition_part = resolve_part(target, &definition_relationship.target);
     let definition_xml = match zip.read_text(&definition_part) {
         Ok(text) if text.len() <= MAX_DETAIL_PART_BYTES => text,
         _ => {
-            warnings.push(format!("The pivot cache definition for \"{name}\" could not be read and was kept in the original file only."));
+            warnings.push(format!(
+                "The pivot cache definition for \"{name}\" could not be read and was kept in the original file only."
+            ));
             return None;
         }
     };
     let Ok(definition_root) = parse_xml(&definition_xml) else {
-        warnings.push(format!("The pivot cache definition for \"{name}\" could not be parsed and was kept in the original file only."));
+        warnings.push(format!(
+            "The pivot cache definition for \"{name}\" could not be parsed and was kept in the original file only."
+        ));
         return None;
     };
     let source = definition_root
@@ -3767,12 +3843,26 @@ mod tests {
         let mut workbook = Workbook::new_blank("Budget");
         let sheet = &mut workbook.sheets[0];
         sheet.name = "Budget".into();
-        sheet.set("A1", Cell { value: CellValue::Text("Item".into()), style: CellStyle { bold: true, ..Default::default() }, ..Default::default() });
+        sheet.set(
+            "A1",
+            Cell {
+                value: CellValue::Text("Item".into()),
+                style: CellStyle { bold: true, ..Default::default() },
+                ..Default::default()
+            },
+        );
         sheet.set("B1", Cell { value: CellValue::Text("Qty".into()), ..Default::default() });
         sheet.set("C1", Cell { value: CellValue::Text("Price".into()), ..Default::default() });
         sheet.set("A2", Cell { value: CellValue::Text("Pen".into()), ..Default::default() });
         sheet.set("B2", Cell { value: CellValue::Number(10.0), ..Default::default() });
-        sheet.set("C2", Cell { value: CellValue::Number(5.5), style: CellStyle { number_format: "0.00".into(), ..Default::default() }, ..Default::default() });
+        sheet.set(
+            "C2",
+            Cell {
+                value: CellValue::Number(5.5),
+                style: CellStyle { number_format: "0.00".into(), ..Default::default() },
+                ..Default::default()
+            },
+        );
         sheet.set("D2", Cell { value: CellValue::Number(55.0), formula: Some("=B2*C2".into()), ..Default::default() });
         sheet.set("A3", Cell { value: CellValue::Bool(true), ..Default::default() });
         sheet.merges.push(MergeRange { start: "A4".into(), end: "C4".into() });
@@ -3930,6 +4020,44 @@ mod tests {
     }
 
     #[test]
+    fn comments_stay_on_their_own_sheet_across_a_round_trip() {
+        let mut workbook = sample_workbook();
+        workbook.sheets[0].set(
+            "A1",
+            Cell { value: CellValue::Text("first".into()), comment: Some("budget note".into()), ..Default::default() },
+        );
+        workbook.sheets[1].set(
+            "A1",
+            Cell {
+                value: CellValue::Text("second".into()),
+                comment: Some("second sheet note".into()),
+                ..Default::default()
+            },
+        );
+        let bytes = write_xlsx(&workbook).unwrap();
+        let reader = crate::zip::ZipReader::open(bytes.clone()).unwrap();
+        assert!(reader.contains("xl/comments1.xml"));
+        assert!(reader.contains("xl/comments2.xml"));
+        assert!(reader.contains("xl/drawings/vmlDrawing1.vml"));
+        assert!(reader.contains("xl/drawings/vmlDrawing2.vml"));
+        let content_types = reader.read_text("[Content_Types].xml").unwrap();
+        assert_eq!(content_types.matches("spreadsheetml.comments+xml").count(), 2, "{content_types}");
+        let first_rels = reader.read_text("xl/worksheets/_rels/sheet1.xml.rels").unwrap();
+        assert!(first_rels.contains("../comments1.xml"), "{first_rels}");
+        let second_rels = reader.read_text("xl/worksheets/_rels/sheet2.xml.rels").unwrap();
+        assert!(second_rels.contains("../comments2.xml"), "{second_rels}");
+        let first_comments = reader.read_text("xl/comments1.xml").unwrap();
+        assert!(first_comments.contains("budget note"));
+        assert!(!first_comments.contains("second sheet note"));
+        let read = read_workbook_bytes(&bytes).unwrap();
+        assert_eq!(read.workbook.sheets[0].get("A1").and_then(|cell| cell.comment.clone()), Some("budget note".into()));
+        assert_eq!(
+            read.workbook.sheets[1].get("A1").and_then(|cell| cell.comment.clone()),
+            Some("second sheet note".into())
+        );
+    }
+
+    #[test]
     fn pie_charts_skip_axes_and_use_a_single_vary_colors_series() {
         let mut workbook = sample_workbook();
         workbook.sheets[0].charts.push(chart_placement("pie"));
@@ -4008,19 +4136,25 @@ mod tests {
     fn reads_own_file_with_styles() {
         let mut workbook = Workbook::new_blank("Styles");
         let sheet = &mut workbook.sheets[0];
-        sheet.set("A1", Cell {
-            value: CellValue::Text("styled".into()),
-            style: CellStyle {
-                bold: true,
-                italic: true,
-                fill: Some("#FFF2CC".into()),
-                color: Some("#7F6000".into()),
-                number_format: String::new(),
-                borders: CellBorders { top: Some(BorderStyle { style: "thin".into(), color: "#000000".into() }), ..Default::default() },
+        sheet.set(
+            "A1",
+            Cell {
+                value: CellValue::Text("styled".into()),
+                style: CellStyle {
+                    bold: true,
+                    italic: true,
+                    fill: Some("#FFF2CC".into()),
+                    color: Some("#7F6000".into()),
+                    number_format: String::new(),
+                    borders: CellBorders {
+                        top: Some(BorderStyle { style: "thin".into(), color: "#000000".into() }),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
                 ..Default::default()
             },
-            ..Default::default()
-        });
+        );
         let bytes = write_xlsx(&workbook).unwrap();
         let reader = crate::zip::ZipReader::open(bytes.clone()).unwrap();
         let styles = reader.read_text("xl/styles.xml").unwrap();

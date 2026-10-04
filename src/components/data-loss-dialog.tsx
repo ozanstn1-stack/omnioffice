@@ -13,13 +13,7 @@
  */
 import { create } from "zustand";
 import { Badge, Button, Modal } from "./ui";
-import {
-  compatibilitySummary,
-  countLosses,
-  lossRowFlags,
-  YesNo,
-  type CompatibilityReport,
-} from "./compatibility";
+import { compatibilitySummary, countLosses, lossRowFlags, YesNo, type CompatibilityReport } from "./compatibility";
 import { useT } from "../lib/i18n";
 
 export type DataLossChoice = "continue" | "cancel" | "oswk";
@@ -74,7 +68,11 @@ export function DataLossDialog({
             {report.items.map((item, index) => {
               const flags = lossRowFlags(item);
               return (
-                <tr key={`${item.feature}-${index}`} className="border-t align-top" style={{ borderColor: "var(--border)" }}>
+                <tr
+                  key={`${item.feature}-${index}`}
+                  className="border-t align-top"
+                  style={{ borderColor: "var(--border)" }}
+                >
                   <td className="py-1.5 pr-3">
                     <p className="text-[13px]" style={{ color: "var(--text-1)" }}>
                       {item.feature}

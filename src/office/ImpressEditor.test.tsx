@@ -26,7 +26,17 @@ import {
   ungroupSelection,
 } from "./ImpressEditor";
 import { useOfficeTabs, type OfficeTab } from "../lib/office-store";
-import { newAnimation, newDeck, newSlide, newSlideMaster, newSlideObject, newTextFrame, type ChartData, type Deck, type SlideObject } from "../lib/office-types";
+import {
+  newAnimation,
+  newDeck,
+  newSlide,
+  newSlideMaster,
+  newSlideObject,
+  newTextFrame,
+  type ChartData,
+  type Deck,
+  type SlideObject,
+} from "../lib/office-types";
 
 // jsdom has no PointerEvent, so testing-library would fall back to a plain
 // Event and drop button/clientX/pointerId. MouseEvent carries those fields and
@@ -73,7 +83,11 @@ describe("group and ungroup transforms", () => {
   });
 
   it("translates every nested child by the same delta", () => {
-    const group = groupSelection([rect("a", 100, 100, 100, 50, 1), rect("b", 220, 140, 80, 80, 2)], ["a", "b"], "g1")[0];
+    const group = groupSelection(
+      [rect("a", 100, 100, 100, 50, 1), rect("b", 220, 140, 80, 80, 2)],
+      ["a", "b"],
+      "g1",
+    )[0];
     const moved = translateObject(group, 10, -5);
 
     expect({ x: moved.x, y: moved.y }).toEqual({ x: 110, y: 95 });
@@ -84,7 +98,11 @@ describe("group and ungroup transforms", () => {
   });
 
   it("scales children about the group origin when the group resizes", () => {
-    const group = groupSelection([rect("a", 100, 100, 100, 50, 1), rect("b", 220, 140, 80, 80, 2)], ["a", "b"], "g1")[0];
+    const group = groupSelection(
+      [rect("a", 100, 100, 100, 50, 1), rect("b", 220, 140, 80, 80, 2)],
+      ["a", "b"],
+      "g1",
+    )[0];
     const scaled = scaleObject(group, 2, 2, group.x, group.y);
 
     expect({ w: scaled.w, h: scaled.h }).toEqual({ w: 400, h: 240 });
@@ -92,8 +110,14 @@ describe("group and ungroup transforms", () => {
   });
 
   it("recomputes the group box after a child moved", () => {
-    const group = groupSelection([rect("a", 100, 100, 100, 50, 1), rect("b", 220, 140, 80, 80, 2)], ["a", "b"], "g1")[0];
-    const nudged = refreshGroupBounds([{ ...group, children: [{ ...group.children![0], x: 0, y: 0 }, group.children![1]] }]);
+    const group = groupSelection(
+      [rect("a", 100, 100, 100, 50, 1), rect("b", 220, 140, 80, 80, 2)],
+      ["a", "b"],
+      "g1",
+    )[0];
+    const nudged = refreshGroupBounds([
+      { ...group, children: [{ ...group.children![0], x: 0, y: 0 }, group.children![1]] },
+    ]);
 
     expect({ x: nudged[0].x, y: nudged[0].y, w: nudged[0].w, h: nudged[0].h }).toEqual({ x: 0, y: 0, w: 300, h: 220 });
   });
@@ -118,8 +142,18 @@ describe("group and ungroup transforms", () => {
 describe("animation ordering", () => {
   it("merges withPrevious into the running step and anchors afterPrevious to its end", () => {
     const onClick = { ...newAnimation("o1", "entrance", "fade", "onClick", 1), id: "a1", durationMs: 400, delayMs: 0 };
-    const withPrevious = { ...newAnimation("o2", "entrance", "zoom", "withPrevious", 2), id: "a2", durationMs: 900, delayMs: 100 };
-    const afterPrevious = { ...newAnimation("o3", "exit", "fadeOut", "afterPrevious", 3), id: "a3", durationMs: 300, delayMs: 50 };
+    const withPrevious = {
+      ...newAnimation("o2", "entrance", "zoom", "withPrevious", 2),
+      id: "a2",
+      durationMs: 900,
+      delayMs: 100,
+    };
+    const afterPrevious = {
+      ...newAnimation("o3", "exit", "fadeOut", "afterPrevious", 3),
+      id: "a3",
+      durationMs: 300,
+      delayMs: 50,
+    };
 
     // Deliberately unsorted input: the timeline orders by `order`.
     const steps = animationTimeline([afterPrevious, withPrevious, onClick]);
@@ -178,7 +212,12 @@ describe("master and layout inheritance", () => {
     const layout = master.layouts[1];
     layout.objects = [{ ...rect("l1", 10, 10, 100, 50, 1), placeholder: "content" }];
     deck.masters = [master];
-    const slide = { ...newSlide("titleContent"), masterId: master.id, layoutId: layout.id, objects: [{ ...rect("s1", 5, 5, 10, 10, 1), placeholder: "content" }] };
+    const slide = {
+      ...newSlide("titleContent"),
+      masterId: master.id,
+      layoutId: layout.id,
+      objects: [{ ...rect("s1", 5, 5, 10, 10, 1), placeholder: "content" }],
+    };
 
     expect(inheritedObjects(deck, slide).map((object) => object.id)).toEqual(["master:m1"]);
   });
@@ -253,7 +292,9 @@ describe("pointer gestures on the slide canvas", () => {
 
   it("enters text editing when a text object is double-tapped on touch", () => {
     const deck = newDeck("Touch");
-    deck.slides[0].objects = [{ ...newSlideObject("rect", 100, 100, 200, 100), id: "r1", z: 1, text: newTextFrame("Hello", 20) }];
+    deck.slides[0].objects = [
+      { ...newSlideObject("rect", 100, 100, 200, 100), id: "r1", z: 1, text: newTextFrame("Hello", 20) },
+    ];
     const id = useOfficeTabs.getState().create("impress", "Touch", deck);
     render(<Harness id={id} />);
 

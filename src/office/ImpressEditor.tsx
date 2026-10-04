@@ -79,13 +79,76 @@ export const ANIMATION_EFFECTS: Record<string, string[]> = {
   exit: ["disappear", "fadeOut", "flyOut"],
 };
 
-const THEMES: Array<{ id: string; name: string; background: string; title: string; body: string; accent: string; titleColor: string; bodyColor: string }> = [
-  { id: "minimal", name: "Minimal", background: "#FFFFFF", title: "Segoe UI", body: "Segoe UI", accent: "#2563EB", titleColor: "#111827", bodyColor: "#334155" },
-  { id: "business", name: "Business", background: "#F8FAFC", title: "Segoe UI", body: "Segoe UI", accent: "#1D4ED8", titleColor: "#0F172A", bodyColor: "#334155" },
-  { id: "dark", name: "Dark", background: "#0F172A", title: "Segoe UI", body: "Segoe UI", accent: "#60A5FA", titleColor: "#F8FAFC", bodyColor: "#CBD5E1" },
-  { id: "modern", name: "Modern", background: "#FFFFFF", title: "Segoe UI", body: "Segoe UI", accent: "#14B8A6", titleColor: "#0B1220", bodyColor: "#334155" },
-  { id: "education", name: "Education", background: "#FFFDF5", title: "Georgia", body: "Georgia", accent: "#B45309", titleColor: "#1E293B", bodyColor: "#44403C" },
-  { id: "simple", name: "Simple", background: "#FFFFFF", title: "Arial", body: "Arial", accent: "#444444", titleColor: "#111111", bodyColor: "#444444" },
+const THEMES: Array<{
+  id: string;
+  name: string;
+  background: string;
+  title: string;
+  body: string;
+  accent: string;
+  titleColor: string;
+  bodyColor: string;
+}> = [
+  {
+    id: "minimal",
+    name: "Minimal",
+    background: "#FFFFFF",
+    title: "Segoe UI",
+    body: "Segoe UI",
+    accent: "#2563EB",
+    titleColor: "#111827",
+    bodyColor: "#334155",
+  },
+  {
+    id: "business",
+    name: "Business",
+    background: "#F8FAFC",
+    title: "Segoe UI",
+    body: "Segoe UI",
+    accent: "#1D4ED8",
+    titleColor: "#0F172A",
+    bodyColor: "#334155",
+  },
+  {
+    id: "dark",
+    name: "Dark",
+    background: "#0F172A",
+    title: "Segoe UI",
+    body: "Segoe UI",
+    accent: "#60A5FA",
+    titleColor: "#F8FAFC",
+    bodyColor: "#CBD5E1",
+  },
+  {
+    id: "modern",
+    name: "Modern",
+    background: "#FFFFFF",
+    title: "Segoe UI",
+    body: "Segoe UI",
+    accent: "#14B8A6",
+    titleColor: "#0B1220",
+    bodyColor: "#334155",
+  },
+  {
+    id: "education",
+    name: "Education",
+    background: "#FFFDF5",
+    title: "Georgia",
+    body: "Georgia",
+    accent: "#B45309",
+    titleColor: "#1E293B",
+    bodyColor: "#44403C",
+  },
+  {
+    id: "simple",
+    name: "Simple",
+    background: "#FFFFFF",
+    title: "Arial",
+    body: "Arial",
+    accent: "#444444",
+    titleColor: "#111111",
+    bodyColor: "#444444",
+  },
 ];
 
 const LAYOUTS: Array<{ id: string; name: string; build: (deck: Deck) => SlideObject[] }> = [
@@ -97,17 +160,28 @@ const LAYOUTS: Array<{ id: string; name: string; build: (deck: Deck) => SlideObj
   {
     id: "titleContent",
     name: "Title + content",
-    build: () => [textObject("Click to add a title", 80, 60, 800, 80, 32, "left"), bulletObject("Click to add text", 80, 180, 800, 280)],
+    build: () => [
+      textObject("Click to add a title", 80, 60, 800, 80, 32, "left"),
+      bulletObject("Click to add text", 80, 180, 800, 280),
+    ],
   },
   {
     id: "twoColumns",
     name: "Two columns",
-    build: () => [textObject("Title", 80, 50, 800, 70, 30, "left"), bulletObject("Left column", 80, 160, 380, 300), bulletObject("Right column", 500, 160, 380, 300)],
+    build: () => [
+      textObject("Title", 80, 50, 800, 70, 30, "left"),
+      bulletObject("Left column", 80, 160, 380, 300),
+      bulletObject("Right column", 500, 160, 380, 300),
+    ],
   },
   {
     id: "imageText",
     name: "Image + text",
-    build: () => [textObject("Title", 80, 50, 800, 70, 30, "left"), { ...textObject("Add an image", 80, 160, 400, 300, 16, "center") }, bulletObject("Describe the image", 510, 170, 370, 280)],
+    build: () => [
+      textObject("Title", 80, 50, 800, 70, 30, "left"),
+      { ...textObject("Add an image", 80, 160, 400, 300, 16, "center") },
+      bulletObject("Describe the image", 510, 170, 370, 280),
+    ],
   },
   {
     id: "section",
@@ -115,15 +189,32 @@ const LAYOUTS: Array<{ id: string; name: string; build: (deck: Deck) => SlideObj
     build: () => [textObject("Section title", 80, 220, 800, 100, 36, "center")],
   },
   { id: "blank", name: "Blank", build: () => [] },
-  { id: "quote", name: "Quote", build: () => [textObject("“An important quote goes here.”", 140, 180, 680, 180, 28, "center")] },
+  {
+    id: "quote",
+    name: "Quote",
+    build: () => [textObject("“An important quote goes here.”", 140, 180, 680, 180, 28, "center")],
+  },
   {
     id: "comparison",
     name: "Comparison",
-    build: () => [textObject("Option A", 80, 80, 380, 60, 24, "left"), textObject("Option B", 500, 80, 380, 60, 24, "left"), bulletObject("Details", 80, 170, 380, 280), bulletObject("Details", 500, 170, 380, 280)],
+    build: () => [
+      textObject("Option A", 80, 80, 380, 60, 24, "left"),
+      textObject("Option B", 500, 80, 380, 60, 24, "left"),
+      bulletObject("Details", 80, 170, 380, 280),
+      bulletObject("Details", 500, 170, 380, 280),
+    ],
   },
 ];
 
-function textObject(text: string, x: number, y: number, w: number, h: number, size: number, align: string): SlideObject {
+function textObject(
+  text: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  size: number,
+  align: string,
+): SlideObject {
   return {
     id: uid(),
     kind: "text",
@@ -133,7 +224,27 @@ function textObject(text: string, x: number, y: number, w: number, h: number, si
     h,
     rotation: 0,
     z: 1,
-    text: { paragraphs: [{ text, level: 0, bold: size >= 30, italic: false, underline: false, sizePt: size, color: null, align, bullet: false, runs: [] }], valign: "top", font: null, sizePt: size, color: null, align },
+    text: {
+      paragraphs: [
+        {
+          text,
+          level: 0,
+          bold: size >= 30,
+          italic: false,
+          underline: false,
+          sizePt: size,
+          color: null,
+          align,
+          bullet: false,
+          runs: [],
+        },
+      ],
+      valign: "top",
+      font: null,
+      sizePt: size,
+      color: null,
+      align,
+    },
     image: null,
     style: null,
     line: null,
@@ -152,7 +263,19 @@ function bulletObject(text: string, x: number, y: number, w: number, h: number):
 }
 
 function emptyChart(): ChartData {
-  return { kind: "column", title: "Chart", categories: "", series: [], legend: true, xTitle: "", yTitle: "", stacked: false, showLabels: false, categoriesCache: [], seriesValuesCache: [] };
+  return {
+    kind: "column",
+    title: "Chart",
+    categories: "",
+    series: [],
+    legend: true,
+    xTitle: "",
+    yTitle: "",
+    stacked: false,
+    showLabels: false,
+    categoriesCache: [],
+    seriesValuesCache: [],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -211,7 +334,9 @@ export function chartWorkbookRange(columnIndex: number, rowCount: number): strin
 
 /** True when any chart cache carries data; false for range-only charts. */
 export function chartHasCachedData(chart: ChartData): boolean {
-  return (chart.categoriesCache ?? []).length > 0 || (chart.seriesValuesCache ?? []).some((values) => values.length > 0);
+  return (
+    (chart.categoriesCache ?? []).length > 0 || (chart.seriesValuesCache ?? []).some((values) => values.length > 0)
+  );
 }
 
 /** Display rows: enough for every cache plus at least one empty row. */
@@ -348,19 +473,28 @@ export function objectAtPath(objects: SlideObject[], path: SelectionPath): Slide
   return found;
 }
 
-export function replaceObjectAtPath(objects: SlideObject[], path: SelectionPath, patch: Partial<SlideObject>): SlideObject[] {
+export function replaceObjectAtPath(
+  objects: SlideObject[],
+  path: SelectionPath,
+  patch: Partial<SlideObject>,
+): SlideObject[] {
   const [head, ...rest] = path;
   return objects.map((object) => {
     if (object.id !== head) return object;
     if (rest.length === 0) return { ...object, ...patch };
-    return { ...object, children: object.children ? replaceObjectAtPath(object.children, rest, patch) : object.children };
+    return {
+      ...object,
+      children: object.children ? replaceObjectAtPath(object.children, rest, patch) : object.children,
+    };
   });
 }
 
 function removeAtPath(objects: SlideObject[], path: SelectionPath): SlideObject[] {
   const [head, ...rest] = path;
   if (rest.length === 0) return objects.filter((object) => object.id !== head);
-  return objects.map((object) => (object.id === head && object.children ? { ...object, children: removeAtPath(object.children, rest) } : object));
+  return objects.map((object) =>
+    object.id === head && object.children ? { ...object, children: removeAtPath(object.children, rest) } : object,
+  );
 }
 
 /** Translate an object and every group child by the same delta. */
@@ -374,7 +508,13 @@ export function translateObject(object: SlideObject, dx: number, dy: number): Sl
 }
 
 /** Scale an object and every group child about an origin (absolute child coords). */
-export function scaleObject(object: SlideObject, sx: number, sy: number, originX: number, originY: number): SlideObject {
+export function scaleObject(
+  object: SlideObject,
+  sx: number,
+  sy: number,
+  originX: number,
+  originY: number,
+): SlideObject {
   return {
     ...object,
     x: originX + (object.x - originX) * sx,
@@ -404,7 +544,9 @@ export function groupSelection(objects: SlideObject[], ids: string[], groupId = 
   if (members.length < 2) return objects;
   const bounds = objectBounds(members);
   const before = objects.findIndex((object) => selected.has(object.id));
-  const insertAt = objects.slice(0, before < 0 ? objects.length : before).filter((object) => !selected.has(object.id)).length;
+  const insertAt = objects
+    .slice(0, before < 0 ? objects.length : before)
+    .filter((object) => !selected.has(object.id)).length;
   const group: SlideObject = {
     id: groupId,
     kind: "group",
@@ -421,7 +563,10 @@ export function groupSelection(objects: SlideObject[], ids: string[], groupId = 
     table: null,
     chart: null,
     groupId: null,
-    children: members.map((member, index) => ({ ...(JSON.parse(JSON.stringify(member)) as SlideObject), z: index + 1 })),
+    children: members.map((member, index) => ({
+      ...(JSON.parse(JSON.stringify(member)) as SlideObject),
+      z: index + 1,
+    })),
     placeholder: null,
     name: "Group",
   };
@@ -463,8 +608,13 @@ export function inheritedObjects(deck: Deck, slide: Slide): SlideObject[] {
   const masters = deck.masters ?? [];
   if (masters.length === 0) return [];
   const master = masters.find((candidate) => candidate.id === slide.masterId) ?? masters[0];
-  const layout = master.layouts.find((candidate) => candidate.id === slide.layoutId) ?? master.layouts.find((candidate) => candidate.kind === slide.layout) ?? null;
-  const filled = new Set(slide.objects.map((object) => object.placeholder).filter((role): role is string => Boolean(role)));
+  const layout =
+    master.layouts.find((candidate) => candidate.id === slide.layoutId) ??
+    master.layouts.find((candidate) => candidate.kind === slide.layout) ??
+    null;
+  const filled = new Set(
+    slide.objects.map((object) => object.placeholder).filter((role): role is string => Boolean(role)),
+  );
   const inherit = (objects: SlideObject[], prefix: string): SlideObject[] =>
     objects
       .filter((object) => !object.placeholder || !filled.has(object.placeholder))
@@ -494,7 +644,12 @@ export function animationTimeline(animations: Animation[]): AnimationStep[] {
     steps.push({
       animations: [animation],
       waitForClick: animation.trigger === "onClick",
-      relativeTo: animation.trigger === "afterPrevious" ? "previousEnd" : animation.trigger === "withPrevious" ? "previousStart" : "start",
+      relativeTo:
+        animation.trigger === "afterPrevious"
+          ? "previousEnd"
+          : animation.trigger === "withPrevious"
+            ? "previousStart"
+            : "start",
       durationMs: own,
     });
   }
@@ -541,7 +696,10 @@ export function animationObjectStyle(
     const state = running[active.id];
     if (state) {
       const ms = active.kind === "emphasis" ? Math.max(0, active.durationMs / 2) : Math.max(0, active.durationMs);
-      return { ...animationEffectStyle(active.kind, active.effect, state.phase), transition: `opacity ${ms}ms ease, transform ${ms}ms ease` };
+      return {
+        ...animationEffectStyle(active.kind, active.effect, state.phase),
+        transition: `opacity ${ms}ms ease, transform ${ms}ms ease`,
+      };
     }
   }
   const entrance = mine.find((animation) => animation.kind === "entrance");
@@ -560,9 +718,16 @@ export function formatClock(ms: number): string {
 }
 
 /** Top-level objects whose boxes intersect a marquee rectangle (slide units). */
-export function objectsInRect(objects: SlideObject[], rect: { x: number; y: number; w: number; h: number }): SlideObject[] {
+export function objectsInRect(
+  objects: SlideObject[],
+  rect: { x: number; y: number; w: number; h: number },
+): SlideObject[] {
   return objects.filter(
-    (object) => object.x < rect.x + rect.w && object.x + object.w > rect.x && object.y < rect.y + rect.h && object.y + object.h > rect.y,
+    (object) =>
+      object.x < rect.x + rect.w &&
+      object.x + object.w > rect.x &&
+      object.y < rect.y + rect.h &&
+      object.y + object.h > rect.y,
   );
 }
 
@@ -588,7 +753,13 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   const [redoStack, setRedoStack] = useState<Deck[]>([]);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(0);
-  const dragState = useRef<{ path: SelectionPath; mode: "move" | "resize" | "rotate"; startX: number; startY: number; object: SlideObject } | null>(null);
+  const dragState = useRef<{
+    path: SelectionPath;
+    mode: "move" | "resize" | "rotate";
+    startX: number;
+    startY: number;
+    object: SlideObject;
+  } | null>(null);
   const lastTapRef = useRef<{ key: string; time: number } | null>(null);
   const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const showTimersRef = useRef<number[]>([]);
@@ -615,7 +786,10 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   useEditorShortcuts(session);
   const theme = useMemo(() => THEMES.find((candidate) => candidate.id === deck.theme) ?? THEMES[0], [deck.theme]);
   const masters = useMemo(() => deck.masters ?? [], [deck.masters]);
-  const selectedMaster = useMemo(() => masters.find((candidate) => candidate.id === slide.masterId) ?? masters[0] ?? null, [masters, slide.masterId]);
+  const selectedMaster = useMemo(
+    () => masters.find((candidate) => candidate.id === slide.masterId) ?? masters[0] ?? null,
+    [masters, slide.masterId],
+  );
   const inherited = useMemo(() => inheritedObjects(deck, slide), [deck, slide]);
   useEffect(() => {
     const element = canvasRef.current;
@@ -624,7 +798,10 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const scale = useMemo(() => Math.min(1.4, Math.max(0.2, (canvasWidth - 48) / deck.size.widthPt)), [canvasWidth, deck.size.widthPt]);
+  const scale = useMemo(
+    () => Math.min(1.4, Math.max(0.2, (canvasWidth - 48) / deck.size.widthPt)),
+    [canvasWidth, deck.size.widthPt],
+  );
 
   const update = useCallback(
     (mutate: (deck: Deck) => Deck, recordUndo = true) => {
@@ -639,7 +816,13 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
 
   const updateSlide = useCallback(
     (mutate: (slide: Slide) => Slide, recordUndo = true) =>
-      update((current) => ({ ...current, slides: current.slides.map((candidate, index) => (index === slideIndex ? mutate(candidate) : candidate)) }), recordUndo),
+      update(
+        (current) => ({
+          ...current,
+          slides: current.slides.map((candidate, index) => (index === slideIndex ? mutate(candidate) : candidate)),
+        }),
+        recordUndo,
+      ),
     [slideIndex, update],
   );
 
@@ -658,19 +841,28 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
 
   const selectedKeys = useMemo(() => new Set(selected.map((path) => pathKey(path))), [selected]);
   const selectedObjects = useMemo(
-    () => selected.map((path) => objectAtPath(slide.objects, path)).filter((object): object is SlideObject => Boolean(object)),
+    () =>
+      selected
+        .map((path) => objectAtPath(slide.objects, path))
+        .filter((object): object is SlideObject => Boolean(object)),
     [selected, slide.objects],
   );
   const primary = selectedObjects[0];
   const primaryPath = selected[0];
-  const hasGroupSelection = selected.some((path) => path.length === 1 && objectAtPath(slide.objects, path)?.kind === "group");
+  const hasGroupSelection = selected.some(
+    (path) => path.length === 1 && objectAtPath(slide.objects, path)?.kind === "group",
+  );
 
   const selectFromPointer = (event: React.PointerEvent, path: SelectionPath) => {
     if (isInheritedId(path[0])) return;
     const target: SelectionPath = event.altKey ? path : [path[0]];
     const key = pathKey(target);
     if (event.shiftKey) {
-      setSelected((current) => (current.some((item) => pathKey(item) === key) ? current.filter((item) => pathKey(item) !== key) : [...current, target]));
+      setSelected((current) =>
+        current.some((item) => pathKey(item) === key)
+          ? current.filter((item) => pathKey(item) !== key)
+          : [...current, target],
+      );
     } else {
       setSelected([target]);
     }
@@ -720,13 +912,31 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
         const nextY = Math.round(state.object.y + dy);
         const moveDx = nextX - state.object.x;
         const moveDy = nextY - state.object.y;
-        updatePath(state.path, { x: nextX, y: nextY, children: children ? children.map((child) => translateObject(child, moveDx, moveDy)) : undefined }, false);
+        updatePath(
+          state.path,
+          {
+            x: nextX,
+            y: nextY,
+            children: children ? children.map((child) => translateObject(child, moveDx, moveDy)) : undefined,
+          },
+          false,
+        );
       } else if (state.mode === "resize") {
         const w = Math.max(24, Math.round(state.object.w + dx));
         const h = Math.max(24, Math.round(state.object.h + dy));
         const sx = state.object.w > 0 ? w / state.object.w : 1;
         const sy = state.object.h > 0 ? h / state.object.h : 1;
-        updatePath(state.path, { w, h, children: children ? children.map((child) => scaleObject(child, sx, sy, state.object.x, state.object.y)) : undefined }, false);
+        updatePath(
+          state.path,
+          {
+            w,
+            h,
+            children: children
+              ? children.map((child) => scaleObject(child, sx, sy, state.object.x, state.object.y))
+              : undefined,
+          },
+          false,
+        );
       } else {
         const centerX = state.object.x + state.object.w / 2;
         const centerY = state.object.y + state.object.h / 2;
@@ -747,7 +957,11 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
       dragState.current = null;
       // Touch never produces a native dblclick once the object owns the
       // gesture, so a double-tap opens the text editor by hand.
-      if (mode === "move" && up.pointerType !== "mouse" && Math.abs(up.clientX - startX) + Math.abs(up.clientY - startY) < 6) {
+      if (
+        mode === "move" &&
+        up.pointerType !== "mouse" &&
+        Math.abs(up.clientX - startX) + Math.abs(up.clientY - startY) < 6
+      ) {
         const now = Date.now();
         const key = pathKey(path);
         const previous = lastTapRef.current;
@@ -856,7 +1070,10 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
       animations: [],
       notes: "",
     };
-    update((current) => ({ ...current, slides: [...current.slides.slice(0, slideIndex + 1), created, ...current.slides.slice(slideIndex + 1)] }));
+    update((current) => ({
+      ...current,
+      slides: [...current.slides.slice(0, slideIndex + 1), created, ...current.slides.slice(slideIndex + 1)],
+    }));
     setSlideIndex(slideIndex + 1);
   };
 
@@ -865,8 +1082,15 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
     const copy: Slide = JSON.parse(JSON.stringify(slide));
     copy.id = uid();
     copy.objects = objects;
-    copy.animations = (slide.animations ?? []).map((animation) => ({ ...animation, id: uid(), objectId: idMap.get(animation.objectId) ?? animation.objectId }));
-    update((current) => ({ ...current, slides: [...current.slides.slice(0, slideIndex + 1), copy, ...current.slides.slice(slideIndex + 1)] }));
+    copy.animations = (slide.animations ?? []).map((animation) => ({
+      ...animation,
+      id: uid(),
+      objectId: idMap.get(animation.objectId) ?? animation.objectId,
+    }));
+    update((current) => ({
+      ...current,
+      slides: [...current.slides.slice(0, slideIndex + 1), copy, ...current.slides.slice(slideIndex + 1)],
+    }));
     setSlideIndex(slideIndex + 1);
   };
 
@@ -890,7 +1114,11 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   const applyLayout = (layoutId: string) => {
     const layout = LAYOUTS.find((candidate) => candidate.id === layoutId);
     if (!layout) return;
-    updateSlide((current) => ({ ...current, layout: layoutId, objects: layout.build(deck).map((object, index) => ({ ...object, z: index + 1 })) }));
+    updateSlide((current) => ({
+      ...current,
+      layout: layoutId,
+      objects: layout.build(deck).map((object, index) => ({ ...object, z: index + 1 })),
+    }));
   };
 
   const selectMaster = (masterId: string) => {
@@ -922,13 +1150,63 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
     else if (kind === "image") {
       object = { ...textObject("Add an image", base.x, base.y, 320, 200, 16, "center"), kind: "image" };
     } else if (kind === "line" || kind === "arrow") {
-      object = { ...textObject("", base.x, base.y, 200, 40, 16, "left"), kind, line: { x2: 200, y2: 40, beginArrow: false, endArrow: kind === "arrow", dash: "solid" }, style: { fill: null, stroke: theme.accent, strokeWidthPt: 2, opacity: 1, cornerRadiusPt: 0, shadow: false } };
+      object = {
+        ...textObject("", base.x, base.y, 200, 40, 16, "left"),
+        kind,
+        line: { x2: 200, y2: 40, beginArrow: false, endArrow: kind === "arrow", dash: "solid" },
+        style: { fill: null, stroke: theme.accent, strokeWidthPt: 2, opacity: 1, cornerRadiusPt: 0, shadow: false },
+      };
     } else if (kind === "table") {
       object = {
         ...textObject("", base.x, base.y, 460, 200, 14, "left"),
         kind: "table",
         table: {
-          rows: Array.from({ length: 3 }, (): import("../lib/office-types").TableRow => ({ cells: Array.from({ length: 3 }, (): import("../lib/office-types").TableCell => ({ blocks: [{ type: "paragraph" as const, props: { style: "Normal", align: "left", lineSpacing: 1.15, spaceBeforePt: 0, spaceAfterPt: 0, indentLeftPt: 0, indentRightPt: 0, firstLinePt: 0, list: null, pageBreakBefore: false }, runs: [{ text: "", bold: false, italic: false, underline: false, strike: false, color: null, highlight: null, font: null, sizePt: null, link: null, comment: null, superscript: false, subscript: false }] }], colspan: 1, rowspan: 1, background: null, align: "left", valign: "top", widthPt: null })), heightPt: null, header: false })),
+          rows: Array.from({ length: 3 }, (): import("../lib/office-types").TableRow => ({
+            cells: Array.from({ length: 3 }, (): import("../lib/office-types").TableCell => ({
+              blocks: [
+                {
+                  type: "paragraph" as const,
+                  props: {
+                    style: "Normal",
+                    align: "left",
+                    lineSpacing: 1.15,
+                    spaceBeforePt: 0,
+                    spaceAfterPt: 0,
+                    indentLeftPt: 0,
+                    indentRightPt: 0,
+                    firstLinePt: 0,
+                    list: null,
+                    pageBreakBefore: false,
+                  },
+                  runs: [
+                    {
+                      text: "",
+                      bold: false,
+                      italic: false,
+                      underline: false,
+                      strike: false,
+                      color: null,
+                      highlight: null,
+                      font: null,
+                      sizePt: null,
+                      link: null,
+                      comment: null,
+                      superscript: false,
+                      subscript: false,
+                    },
+                  ],
+                },
+              ],
+              colspan: 1,
+              rowspan: 1,
+              background: null,
+              align: "left",
+              valign: "top",
+              widthPt: null,
+            })),
+            heightPt: null,
+            header: false,
+          })),
           columnWidthsPt: [153, 153, 153],
           borders: true,
           borderColor: "#94A3B8",
@@ -938,7 +1216,18 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
     } else if (kind === "chart") {
       object = { ...textObject("", base.x, base.y, 420, 260, 14, "left"), kind: "chart", chart: emptyChart() };
     } else {
-      object = { ...textObject("", base.x, base.y, base.w, base.h, 16, "left"), kind, style: { fill: theme.accent, stroke: null, strokeWidthPt: 1.5, opacity: 1, cornerRadiusPt: kind === "roundRect" ? 12 : 0, shadow: false } };
+      object = {
+        ...textObject("", base.x, base.y, base.w, base.h, 16, "left"),
+        kind,
+        style: {
+          fill: theme.accent,
+          stroke: null,
+          strokeWidthPt: 1.5,
+          opacity: 1,
+          cornerRadiusPt: kind === "roundRect" ? 12 : 0,
+          shadow: false,
+        },
+      };
     }
     object.z = slide.objects.length + 1;
     updateSlide((current) => ({ ...current, objects: [...current.objects, object] }));
@@ -958,7 +1247,10 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
       .filter((object): object is SlideObject => Boolean(object));
     if (members.length === 0) return;
     const copies = members.map((object) => ({ ...cloneObject(object), x: object.x + 16, y: object.y + 16 }));
-    updateSlide((current) => ({ ...current, objects: [...current.objects, ...copies].map((object, index) => ({ ...object, z: index + 1 })) }));
+    updateSlide((current) => ({
+      ...current,
+      objects: [...current.objects, ...copies].map((object, index) => ({ ...object, z: index + 1 })),
+    }));
     setSelected(copies.map((object) => [object.id]));
   };
 
@@ -1034,7 +1326,9 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
     if (!delta) return;
     const patch: Partial<SlideObject> = axis === "x" ? { x: value } : { y: value };
     if (primary.children && primary.children.length > 0) {
-      patch.children = primary.children.map((child) => translateObject(child, axis === "x" ? delta : 0, axis === "y" ? delta : 0));
+      patch.children = primary.children.map((child) =>
+        translateObject(child, axis === "x" ? delta : 0, axis === "y" ? delta : 0),
+      );
     }
     updatePath(primaryPath, patch);
   };
@@ -1092,7 +1386,9 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
       const list = current.animations ?? [];
       return {
         ...current,
-        animations: list.some((candidate) => candidate.id === animation.id) ? list.map((candidate) => (candidate.id === animation.id ? animation : candidate)) : [...list, animation],
+        animations: list.some((candidate) => candidate.id === animation.id)
+          ? list.map((candidate) => (candidate.id === animation.id ? animation : candidate))
+          : [...list, animation],
       };
     });
     setAnimationEditing(null);
@@ -1121,9 +1417,14 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
         const running: RunningAnimation = { effect: animation, phase: "to" };
         setAnimRunning((current) => ({ ...current, [animation.id]: running }));
         if (animation.kind === "emphasis" && lasting > 0) {
-          const backTimer = window.setTimeout(() => {
-            setAnimRunning((current) => (current[animation.id] ? { ...current, [animation.id]: { effect: animation, phase: "back" } } : current));
-          }, Math.round(lasting / 2));
+          const backTimer = window.setTimeout(
+            () => {
+              setAnimRunning((current) =>
+                current[animation.id] ? { ...current, [animation.id]: { effect: animation, phase: "back" } } : current,
+              );
+            },
+            Math.round(lasting / 2),
+          );
           showTimersRef.current.push(backTimer);
         }
         const endTimer = window.setTimeout(() => {
@@ -1182,7 +1483,12 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
     const step = stepList[stepIndex];
     if (step.waitForClick) return;
     const now = Date.now();
-    const base = step.relativeTo === "previousStart" ? showStartRef.current ?? now : step.relativeTo === "previousEnd" ? showEndRef.current ?? now : now;
+    const base =
+      step.relativeTo === "previousStart"
+        ? (showStartRef.current ?? now)
+        : step.relativeTo === "previousEnd"
+          ? (showEndRef.current ?? now)
+          : now;
     const timer = window.setTimeout(() => runStep(step), Math.max(0, base - now));
     showTimersRef.current.push(timer);
     return () => window.clearTimeout(timer);
@@ -1242,46 +1548,73 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
         background: showSlide.background ?? theme.background,
       }}
     >
-      <SlidePreview deck={deck} slide={showSlide} theme={theme} width={0} full slideWidth={deck.size.widthPt} slideHeight={deck.size.heightPt} objectStyle={showObjectStyle} />
+      <SlidePreview
+        deck={deck}
+        slide={showSlide}
+        theme={theme}
+        width={0}
+        full
+        slideWidth={deck.size.widthPt}
+        slideHeight={deck.size.heightPt}
+        objectStyle={showObjectStyle}
+      />
     </div>
   ) : null;
 
-  const presenterPanel = presenterView && showSlide ? (
-    <aside
-      className="presenter-panel"
-      style={{ width: 320, minWidth: 320, maxHeight: "100%", overflow: "auto", display: "flex", flexDirection: "column", gap: 10, padding: 12, borderRadius: 10, background: "rgba(15, 23, 42, 0.94)", color: "#E2E8F0" }}
-    >
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <strong>{t("impress.presenterView")}</strong>
-        <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatClock(elapsedMs)}</span>
-      </div>
-      <div>
-        <h4>{t("impress.currentSlide")}</h4>
-        <SlidePreview deck={deck} slide={showSlide} theme={theme} width={280} objectStyle={showObjectStyle} />
-      </div>
-      {nextSlide ? (
-        <div>
-          <h4>{t("impress.nextSlide")}</h4>
-          <SlidePreview deck={deck} slide={nextSlide} theme={theme} width={280} />
+  const presenterPanel =
+    presenterView && showSlide ? (
+      <aside
+        className="presenter-panel"
+        style={{
+          width: 320,
+          minWidth: 320,
+          maxHeight: "100%",
+          overflow: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          padding: 12,
+          borderRadius: 10,
+          background: "rgba(15, 23, 42, 0.94)",
+          color: "#E2E8F0",
+        }}
+      >
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+          <strong>{t("impress.presenterView")}</strong>
+          <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatClock(elapsedMs)}</span>
         </div>
-      ) : null}
-      <div>
-        <h4>{t("impress.notes")}</h4>
-        <div style={{ whiteSpace: "pre-wrap", fontSize: 12, opacity: 0.9 }}>{showSlide.notes || "—"}</div>
-      </div>
-      <div className="row">
-        <button type="button" className="btn btn-soft" onClick={() => goToSlide(Math.max(0, (slideshow ?? 0) - 1))}>
-          ‹ {t("impress.previous")}
-        </button>
-        <button type="button" className="btn btn-soft" onClick={advanceShow}>
-          {t("impress.next")} ›
-        </button>
-      </div>
-    </aside>
-  ) : null;
+        <div>
+          <h4>{t("impress.currentSlide")}</h4>
+          <SlidePreview deck={deck} slide={showSlide} theme={theme} width={280} objectStyle={showObjectStyle} />
+        </div>
+        {nextSlide ? (
+          <div>
+            <h4>{t("impress.nextSlide")}</h4>
+            <SlidePreview deck={deck} slide={nextSlide} theme={theme} width={280} />
+          </div>
+        ) : null}
+        <div>
+          <h4>{t("impress.notes")}</h4>
+          <div style={{ whiteSpace: "pre-wrap", fontSize: 12, opacity: 0.9 }}>{showSlide.notes || "—"}</div>
+        </div>
+        <div className="row">
+          <button type="button" className="btn btn-soft" onClick={() => goToSlide(Math.max(0, (slideshow ?? 0) - 1))}>
+            ‹ {t("impress.previous")}
+          </button>
+          <button type="button" className="btn btn-soft" onClick={advanceShow}>
+            {t("impress.next")} ›
+          </button>
+        </div>
+      </aside>
+    ) : null;
 
   const slideshowNav = (
-    <div className="slideshow-nav" role="presentation" onClick={(event) => event.stopPropagation()} style={presenterView ? { position: "static" } : undefined}>
+    <div
+      className="slideshow-nav"
+      role="presentation"
+      onClick={(event) => event.stopPropagation()}
+      style={presenterView ? { position: "static" } : undefined}
+    >
       <button type="button" className="btn btn-soft" onClick={() => goToSlide(Math.max(0, (slideshow ?? 0) - 1))}>
         ‹
       </button>
@@ -1324,33 +1657,88 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
         {ribbon === "home" ? (
           <>
             <RibbonGroup label={t("writer.clipboard")}>
-              <ToolButton icon={<Undo2 size={16} />} onClick={undo} disabled={undoStack.length === 0} title={t("common.undo")} />
-              <ToolButton icon={<Redo2 size={16} />} onClick={redo} disabled={redoStack.length === 0} title={t("common.redo")} />
-              <ToolButton icon={<Copy size={16} />} label={t("impress.duplicate")} onClick={duplicateSelected} disabled={selected.length === 0} />
-              <ToolButton icon={<Trash2 size={16} />} label={t("common.delete")} onClick={deleteSelected} disabled={selected.length === 0} />
+              <ToolButton
+                icon={<Undo2 size={16} />}
+                onClick={undo}
+                disabled={undoStack.length === 0}
+                title={t("common.undo")}
+              />
+              <ToolButton
+                icon={<Redo2 size={16} />}
+                onClick={redo}
+                disabled={redoStack.length === 0}
+                title={t("common.redo")}
+              />
+              <ToolButton
+                icon={<Copy size={16} />}
+                label={t("impress.duplicate")}
+                onClick={duplicateSelected}
+                disabled={selected.length === 0}
+              />
+              <ToolButton
+                icon={<Trash2 size={16} />}
+                label={t("common.delete")}
+                onClick={deleteSelected}
+                disabled={selected.length === 0}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("impress.objects")}>
               <ToolButton icon={<Type size={16} />} label={t("impress.text")} onClick={() => addObject("text")} />
               <ToolButton icon={<Square size={16} />} label={t("impress.rect")} onClick={() => addObject("rect")} />
-              <ToolButton icon={<Circle size={16} />} label={t("impress.ellipse")} onClick={() => addObject("ellipse")} />
+              <ToolButton
+                icon={<Circle size={16} />}
+                label={t("impress.ellipse")}
+                onClick={() => addObject("ellipse")}
+              />
               <ToolButton icon={<Minus size={16} />} label={t("impress.line")} onClick={() => addObject("line")} />
-              <ToolButton icon={<ArrowRight size={16} />} label={t("impress.arrow")} onClick={() => addObject("arrow")} />
+              <ToolButton
+                icon={<ArrowRight size={16} />}
+                label={t("impress.arrow")}
+                onClick={() => addObject("arrow")}
+              />
               <ToolButton icon={<ImageIcon size={16} />} label={t("writer.image")} onClick={() => addObject("image")} />
               <ToolButton icon={<TableIcon size={16} />} label={t("writer.table")} onClick={() => addObject("table")} />
               <ToolButton icon={<LineChart size={16} />} label={t("calc.chart")} onClick={() => addObject("chart")} />
             </RibbonGroup>
             <RibbonGroup label={t("impress.arrange")}>
-              <ToolButton icon={<AlignStartHorizontal size={16} />} onClick={() => alignSelected("left")} title={t("impress.alignLeft")} />
-              <ToolButton icon={<AlignCenterHorizontal size={16} />} onClick={() => alignSelected("center")} title={t("impress.alignCenter")} />
-              <ToolButton icon={<AlignEndHorizontal size={16} />} onClick={() => alignSelected("right")} title={t("impress.alignRight")} />
+              <ToolButton
+                icon={<AlignStartHorizontal size={16} />}
+                onClick={() => alignSelected("left")}
+                title={t("impress.alignLeft")}
+              />
+              <ToolButton
+                icon={<AlignCenterHorizontal size={16} />}
+                onClick={() => alignSelected("center")}
+                title={t("impress.alignCenter")}
+              />
+              <ToolButton
+                icon={<AlignEndHorizontal size={16} />}
+                onClick={() => alignSelected("right")}
+                title={t("impress.alignRight")}
+              />
               <ToolButton icon={<Move size={16} />} onClick={() => bringForward(1)} title={t("impress.bringForward")} />
-              <ToolButton icon={<Group size={16} />} label={t("impress.group")} onClick={groupSelected} disabled={selected.filter((path) => path.length === 1).length < 2} />
-              <ToolButton icon={<Ungroup size={16} />} label={t("impress.ungroup")} onClick={ungroupSelected} disabled={!hasGroupSelection} />
+              <ToolButton
+                icon={<Group size={16} />}
+                label={t("impress.group")}
+                onClick={groupSelected}
+                disabled={selected.filter((path) => path.length === 1).length < 2}
+              />
+              <ToolButton
+                icon={<Ungroup size={16} />}
+                label={t("impress.ungroup")}
+                onClick={ungroupSelected}
+                disabled={!hasGroupSelection}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("impress.slides")}>
               <ToolButton icon={<Plus size={16} />} label={t("impress.newSlide")} onClick={addSlide} />
               <ToolButton icon={<Copy size={16} />} label={t("impress.duplicateSlide")} onClick={duplicateSlide} />
-              <ToolButton icon={<Trash2 size={16} />} label={t("impress.deleteSlide")} onClick={deleteSlide} disabled={deck.slides.length <= 1} />
+              <ToolButton
+                icon={<Trash2 size={16} />}
+                label={t("impress.deleteSlide")}
+                onClick={deleteSlide}
+                disabled={deck.slides.length <= 1}
+              />
             </RibbonGroup>
           </>
         ) : null}
@@ -1365,7 +1753,11 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
               <ToolButton icon={<ImageIcon size={16} />} label={t("writer.image")} onClick={() => addObject("image")} />
               <ToolButton icon={<TableIcon size={16} />} label={t("writer.table")} onClick={() => addObject("table")} />
               <ToolButton icon={<LineChart size={16} />} label={t("calc.chart")} onClick={() => addObject("chart")} />
-              <ToolButton icon={<Braces size={16} />} label={t("impress.rect")} onClick={() => addObject("roundRect")} />
+              <ToolButton
+                icon={<Braces size={16} />}
+                label={t("impress.rect")}
+                onClick={() => addObject("roundRect")}
+              />
             </RibbonGroup>
           </>
         ) : null}
@@ -1373,17 +1765,34 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
         {ribbon === "design" ? (
           <>
             <RibbonGroup label={t("impress.theme")}>
-              <ToolSelect value={deck.theme} onChange={(themeId) => update((current) => ({ ...current, theme: themeId }))} options={THEMES.map((candidate) => ({ value: candidate.id, label: candidate.name }))} width={130} />
+              <ToolSelect
+                value={deck.theme}
+                onChange={(themeId) => update((current) => ({ ...current, theme: themeId }))}
+                options={THEMES.map((candidate) => ({ value: candidate.id, label: candidate.name }))}
+                width={130}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("impress.layout")}>
-              <ToolSelect value={slide.layout} onChange={applyLayout} options={LAYOUTS.map((layout) => ({ value: layout.id, label: layout.name }))} width={150} />
+              <ToolSelect
+                value={slide.layout}
+                onChange={applyLayout}
+                options={LAYOUTS.map((layout) => ({ value: layout.id, label: layout.name }))}
+                width={150}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("impress.master")}>
               <ToolButton icon={<LayoutTemplate size={16} />} label={t("impress.masters")} onClick={openMasterDialog} />
             </RibbonGroup>
             <RibbonGroup label={t("impress.background")}>
-              <ToolColor value={slide.background ?? theme.background} onChange={(background) => updateSlide((current) => ({ ...current, background }))} title={t("impress.background")} />
-              <ToolButton label={t("impress.clearBackground")} onClick={() => updateSlide((current) => ({ ...current, background: null }))} />
+              <ToolColor
+                value={slide.background ?? theme.background}
+                onChange={(background) => updateSlide((current) => ({ ...current, background }))}
+                title={t("impress.background")}
+              />
+              <ToolButton
+                label={t("impress.clearBackground")}
+                onClick={() => updateSlide((current) => ({ ...current, background: null }))}
+              />
             </RibbonGroup>
           </>
         ) : null}
@@ -1392,7 +1801,9 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
           <RibbonGroup label={t("impress.transition")}>
             <ToolSelect
               value={slide.transition ?? "none"}
-              onChange={(transition) => updateSlide((current) => ({ ...current, transition: transition === "none" ? null : transition }))}
+              onChange={(transition) =>
+                updateSlide((current) => ({ ...current, transition: transition === "none" ? null : transition }))
+              }
               options={[
                 { value: "none", label: t("impress.transitionNone") },
                 { value: "fade", label: "Fade" },
@@ -1402,14 +1813,39 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
               ]}
               width={130}
             />
-            <ToolNumber value={slide.transitionMs} onChange={(transitionMs) => updateSlide((current) => ({ ...current, transitionMs }))} min={100} max={3000} step={100} title="ms" width={80} />
-            <ToolButton label={t("impress.applyToAll")} onClick={() => update((current) => ({ ...current, slides: current.slides.map((candidate) => ({ ...candidate, transition: slide.transition, transitionMs: slide.transitionMs })) }))} />
+            <ToolNumber
+              value={slide.transitionMs}
+              onChange={(transitionMs) => updateSlide((current) => ({ ...current, transitionMs }))}
+              min={100}
+              max={3000}
+              step={100}
+              title="ms"
+              width={80}
+            />
+            <ToolButton
+              label={t("impress.applyToAll")}
+              onClick={() =>
+                update((current) => ({
+                  ...current,
+                  slides: current.slides.map((candidate) => ({
+                    ...candidate,
+                    transition: slide.transition,
+                    transitionMs: slide.transitionMs,
+                  })),
+                }))
+              }
+            />
           </RibbonGroup>
         ) : null}
 
         {ribbon === "animations" ? (
           <RibbonGroup label={t("impress.animations")}>
-            <ToolButton icon={<Sparkles size={16} />} label={t("impress.addAnimation")} onClick={addAnimation} disabled={slide.objects.length === 0} />
+            <ToolButton
+              icon={<Sparkles size={16} />}
+              label={t("impress.addAnimation")}
+              onClick={addAnimation}
+              disabled={slide.objects.length === 0}
+            />
           </RibbonGroup>
         ) : null}
 
@@ -1436,10 +1872,23 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
 
         <div className="ribbon-spacer" />
         <RibbonGroup>
-          <ToolButton icon={<FolderOpen size={16} />} label={t("common.open")} onClick={() => void openIntoWorkspace()} />
-          <ToolButton icon={<Save size={16} />} label={t("common.save")} onClick={() => void session.save()} disabled={session.busy} />
+          <ToolButton
+            icon={<FolderOpen size={16} />}
+            label={t("common.open")}
+            onClick={() => void openIntoWorkspace()}
+          />
+          <ToolButton
+            icon={<Save size={16} />}
+            label={t("common.save")}
+            onClick={() => void session.save()}
+            disabled={session.busy}
+          />
           <ToolButton label={t("common.saveAs")} onClick={() => void session.saveAs()} disabled={session.busy} />
-          <ToolButton icon={<FileDown size={16} />} label={t("writer.exportPdf")} onClick={() => void session.exportPdf()} />
+          <ToolButton
+            icon={<FileDown size={16} />}
+            label={t("writer.exportPdf")}
+            onClick={() => void session.exportPdf()}
+          />
           <ToolButton icon={<Printer size={16} />} label={t("common.print")} onClick={() => window.print()} />
         </RibbonGroup>
       </Ribbon>
@@ -1453,7 +1902,10 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
               role="button"
               tabIndex={0}
               aria-label={`${t("impress.slide")} ${index + 1}`}
-              onClick={() => { setSlideIndex(index); setSelected([]); }}
+              onClick={() => {
+                setSlideIndex(index);
+                setSelected([]);
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
@@ -1465,10 +1917,26 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
               <span className="slide-number">{index + 1}</span>
               <SlidePreview deck={deck} slide={candidate} theme={theme} width={148} />
               <div className="slide-thumb-actions">
-                <button type="button" className="icon-btn" onClick={(event) => { event.stopPropagation(); moveSlide(index, index - 1); }} title={t("common.moveUp")}>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    moveSlide(index, index - 1);
+                  }}
+                  title={t("common.moveUp")}
+                >
                   ↑
                 </button>
-                <button type="button" className="icon-btn" onClick={(event) => { event.stopPropagation(); moveSlide(index, index + 1); }} title={t("common.moveDown")}>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    moveSlide(index, index + 1);
+                  }}
+                  title={t("common.moveDown")}
+                >
                   ↓
                 </button>
               </div>
@@ -1479,7 +1947,14 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
           </button>
         </div>
 
-        <div className="slide-stage" ref={canvasRef} role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setSelected([]); }}>
+        <div
+          className="slide-stage"
+          ref={canvasRef}
+          role="presentation"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) setSelected([]);
+          }}
+        >
           <div
             className="slide-canvas"
             role="presentation"
@@ -1494,55 +1969,81 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
             {marquee ? (
               <div
                 className="slide-marquee"
-                style={{ left: marquee.x * scale, top: marquee.y * scale, width: marquee.w * scale, height: marquee.h * scale }}
+                style={{
+                  left: marquee.x * scale,
+                  top: marquee.y * scale,
+                  width: marquee.w * scale,
+                  height: marquee.h * scale,
+                }}
               />
             ) : null}
             {inherited.map((object) => (
               <div
                 key={object.id}
                 className="slide-object is-inherited"
-                style={{ left: object.x * scale, top: object.y * scale, width: object.w * scale, height: object.h * scale, transform: `rotate(${object.rotation}deg)`, zIndex: 0, pointerEvents: "none" }}
+                style={{
+                  left: object.x * scale,
+                  top: object.y * scale,
+                  width: object.w * scale,
+                  height: object.h * scale,
+                  transform: `rotate(${object.rotation}deg)`,
+                  zIndex: 0,
+                  pointerEvents: "none",
+                }}
               >
-                <ObjectTree object={object} path={[object.id]} depth={0} theme={theme} scale={scale} selectedKeys={INHERITED_KEYS} editingKey={null} interactive={false} />
+                <ObjectTree
+                  object={object}
+                  path={[object.id]}
+                  depth={0}
+                  theme={theme}
+                  scale={scale}
+                  selectedKeys={INHERITED_KEYS}
+                  editingKey={null}
+                  interactive={false}
+                />
               </div>
             ))}
-            {[...slide.objects].sort((a, b) => a.z - b.z).map((object) => {
-              const path: SelectionPath = [object.id];
-              const isSelected = selectedKeys.has(pathKey(path));
-              return (
-                <div
-                  key={object.id}
-                  className={`slide-object${isSelected ? " is-selected" : ""}`}
-                  style={{
-                    left: object.x * scale,
-                    top: object.y * scale,
-                    width: object.w * scale,
-                    height: object.h * scale,
-                    transform: `rotate(${object.rotation}deg)`,
-                    zIndex: object.z,
-                  }}
-                  onPointerDown={(event) => handleObjectPointerDown(event, path)}
-                  onDoubleClick={(event) => handleObjectDoubleClick(event, path)}
-                >
-                  <ObjectTree
-                    object={object}
-                    path={path}
-                    depth={0}
-                    theme={theme}
-                    scale={scale}
-                    selectedKeys={selectedKeys}
-                    editingKey={editingText}
-                    interactive
-                    onObjectPointerDown={handleObjectPointerDown}
-                    onObjectDoubleClick={handleObjectDoubleClick}
-                    onHandlePointerDown={beginDrag}
-                    onTextChange={handleTextChange}
-                    onTextDone={() => setEditingText(null)}
-                  />
-                  {isSelected ? <SelectionHandles onHandlePointerDown={(event, mode) => beginDrag(event, path, mode)} /> : null}
-                </div>
-              );
-            })}
+            {[...slide.objects]
+              .sort((a, b) => a.z - b.z)
+              .map((object) => {
+                const path: SelectionPath = [object.id];
+                const isSelected = selectedKeys.has(pathKey(path));
+                return (
+                  <div
+                    key={object.id}
+                    className={`slide-object${isSelected ? " is-selected" : ""}`}
+                    style={{
+                      left: object.x * scale,
+                      top: object.y * scale,
+                      width: object.w * scale,
+                      height: object.h * scale,
+                      transform: `rotate(${object.rotation}deg)`,
+                      zIndex: object.z,
+                    }}
+                    onPointerDown={(event) => handleObjectPointerDown(event, path)}
+                    onDoubleClick={(event) => handleObjectDoubleClick(event, path)}
+                  >
+                    <ObjectTree
+                      object={object}
+                      path={path}
+                      depth={0}
+                      theme={theme}
+                      scale={scale}
+                      selectedKeys={selectedKeys}
+                      editingKey={editingText}
+                      interactive
+                      onObjectPointerDown={handleObjectPointerDown}
+                      onObjectDoubleClick={handleObjectDoubleClick}
+                      onHandlePointerDown={beginDrag}
+                      onTextChange={handleTextChange}
+                      onTextDone={() => setEditingText(null)}
+                    />
+                    {isSelected ? (
+                      <SelectionHandles onHandlePointerDown={(event, mode) => beginDrag(event, path, mode)} />
+                    ) : null}
+                  </div>
+                );
+              })}
           </div>
         </div>
 
@@ -1551,7 +2052,10 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
           <div className="stack">
             <label className="field">
               <span>{t("impress.master")}</span>
-              <select value={slide.masterId ?? masters[0]?.id ?? ""} onChange={(event) => selectMaster(event.target.value)}>
+              <select
+                value={slide.masterId ?? masters[0]?.id ?? ""}
+                onChange={(event) => selectMaster(event.target.value)}
+              >
                 {masters.length === 0 ? <option value="">{t("impress.noMaster")}</option> : null}
                 {masters.map((master) => (
                   <option key={master.id} value={master.id}>
@@ -1575,16 +2079,50 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
           {primary && primaryPath ? (
             <div className="stack">
               <div className="row">
-                <ToolNumber value={Math.round(primary.x)} onChange={(x) => setPrimaryPosition("x", x)} title="X" width={64} />
-                <ToolNumber value={Math.round(primary.y)} onChange={(y) => setPrimaryPosition("y", y)} title="Y" width={64} />
+                <ToolNumber
+                  value={Math.round(primary.x)}
+                  onChange={(x) => setPrimaryPosition("x", x)}
+                  title="X"
+                  width={64}
+                />
+                <ToolNumber
+                  value={Math.round(primary.y)}
+                  onChange={(y) => setPrimaryPosition("y", y)}
+                  title="Y"
+                  width={64}
+                />
               </div>
               <div className="row">
-                <ToolNumber value={Math.round(primary.w)} onChange={(w) => setPrimarySize("w", w)} title="W" width={64} />
-                <ToolNumber value={Math.round(primary.h)} onChange={(h) => setPrimarySize("h", h)} title="H" width={64} />
+                <ToolNumber
+                  value={Math.round(primary.w)}
+                  onChange={(w) => setPrimarySize("w", w)}
+                  title="W"
+                  width={64}
+                />
+                <ToolNumber
+                  value={Math.round(primary.h)}
+                  onChange={(h) => setPrimarySize("h", h)}
+                  title="H"
+                  width={64}
+                />
               </div>
               <div className="row">
-                <ToolNumber value={Math.round(primary.rotation)} onChange={(rotation) => updatePath(primaryPath, { rotation })} min={-180} max={180} title={t("impress.rotation")} width={64} />
-                <ToolNumber value={primary.z} onChange={(z) => updatePath(primaryPath, { z })} min={1} max={99} title="Z" width={64} />
+                <ToolNumber
+                  value={Math.round(primary.rotation)}
+                  onChange={(rotation) => updatePath(primaryPath, { rotation })}
+                  min={-180}
+                  max={180}
+                  title={t("impress.rotation")}
+                  width={64}
+                />
+                <ToolNumber
+                  value={primary.z}
+                  onChange={(z) => updatePath(primaryPath, { z })}
+                  min={1}
+                  max={99}
+                  title="Z"
+                  width={64}
+                />
               </div>
               {primary.kind === "rect" || primary.kind === "ellipse" || primary.kind === "roundRect" ? (
                 <>
@@ -1593,7 +2131,11 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
                     <input
                       type="color"
                       value={primary.style?.fill ?? "#2563eb"}
-                      onChange={(event) => updatePath(primaryPath, { style: { ...(primary.style ?? defaultShapeStyle()), fill: event.target.value } })}
+                      onChange={(event) =>
+                        updatePath(primaryPath, {
+                          style: { ...(primary.style ?? defaultShapeStyle()), fill: event.target.value },
+                        })
+                      }
                     />
                   </label>
                   <label className="field">
@@ -1601,7 +2143,14 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
                     <input
                       type="number"
                       value={primary.style?.cornerRadiusPt ?? 0}
-                      onChange={(event) => updatePath(primaryPath, { style: { ...(primary.style ?? defaultShapeStyle()), cornerRadiusPt: Number(event.target.value) } })}
+                      onChange={(event) =>
+                        updatePath(primaryPath, {
+                          style: {
+                            ...(primary.style ?? defaultShapeStyle()),
+                            cornerRadiusPt: Number(event.target.value),
+                          },
+                        })
+                      }
                     />
                   </label>
                 </>
@@ -1614,7 +2163,10 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
                     value={primary.text.paragraphs[0]?.sizePt ?? primary.text.sizePt ?? 18}
                     onChange={(event) =>
                       updatePath(primaryPath, {
-                        text: { ...primary.text!, paragraphs: [{ ...primary.text!.paragraphs[0], sizePt: Number(event.target.value) }] },
+                        text: {
+                          ...primary.text!,
+                          paragraphs: [{ ...primary.text!.paragraphs[0], sizePt: Number(event.target.value) }],
+                        },
                       })
                     }
                   />
@@ -1622,20 +2174,72 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
               ) : null}
               <label className="field">
                 <span>{t("writer.paragraph")}</span>
-                <select value={primary.text?.paragraphs[0]?.align ?? "left"} onChange={(event) => updatePath(primaryPath, { text: primary.text ? { ...primary.text, paragraphs: [{ ...primary.text.paragraphs[0], align: event.target.value }] } : null })}>
+                <select
+                  value={primary.text?.paragraphs[0]?.align ?? "left"}
+                  onChange={(event) =>
+                    updatePath(primaryPath, {
+                      text: primary.text
+                        ? {
+                            ...primary.text,
+                            paragraphs: [{ ...primary.text.paragraphs[0], align: event.target.value }],
+                          }
+                        : null,
+                    })
+                  }
+                >
                   <option value="left">{t("writer.alignLeft")}</option>
                   <option value="center">{t("writer.alignCenter")}</option>
                   <option value="right">{t("writer.alignRight")}</option>
                 </select>
               </label>
-              {primary.kind === "chart" ? <ToolButton icon={<LineChart size={14} />} label={t("impress.chartData")} onClick={() => setChartPath(primaryPath)} /> : null}
-              <ToolButton label={t("impress.editText")} onClick={() => (primary.text ? setEditingText(pathKey(primaryPath)) : updatePath(primaryPath, { text: { paragraphs: [{ text: "New text", level: 0, bold: false, italic: false, underline: false, sizePt: 20, color: null, align: "left", bullet: false, runs: [] }], valign: "top", font: null, sizePt: 20, color: null, align: "left" } }))} />
+              {primary.kind === "chart" ? (
+                <ToolButton
+                  icon={<LineChart size={14} />}
+                  label={t("impress.chartData")}
+                  onClick={() => setChartPath(primaryPath)}
+                />
+              ) : null}
+              <ToolButton
+                label={t("impress.editText")}
+                onClick={() =>
+                  primary.text
+                    ? setEditingText(pathKey(primaryPath))
+                    : updatePath(primaryPath, {
+                        text: {
+                          paragraphs: [
+                            {
+                              text: "New text",
+                              level: 0,
+                              bold: false,
+                              italic: false,
+                              underline: false,
+                              sizePt: 20,
+                              color: null,
+                              align: "left",
+                              bullet: false,
+                              runs: [],
+                            },
+                          ],
+                          valign: "top",
+                          font: null,
+                          sizePt: 20,
+                          color: null,
+                          align: "left",
+                        },
+                      })
+                }
+              />
             </div>
           ) : (
             <p className="muted">{t("impress.noSelection")}</p>
           )}
           <h4>{t("impress.notes")}</h4>
-          <textarea className="notes-input" value={slide.notes} onChange={(event) => updateSlide((current) => ({ ...current, notes: event.target.value }))} placeholder={t("impress.notesHint")} />
+          <textarea
+            className="notes-input"
+            value={slide.notes}
+            onChange={(event) => updateSlide((current) => ({ ...current, notes: event.target.value }))}
+            placeholder={t("impress.notesHint")}
+          />
           <h4>{t("impress.animations")}</h4>
           <div className="stack">
             {[...(slide.animations ?? [])]
@@ -1644,22 +2248,48 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
                 const target = slide.objects.find((object) => object.id === animation.objectId);
                 return (
                   <div key={animation.id} className="row" style={{ alignItems: "center", gap: 4 }}>
-                    <span className="muted" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {target?.name ?? t("impress.animationMissingObject")} · {animation.kind} · {animation.effect} · {animation.trigger}
+                    <span
+                      className="muted"
+                      style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    >
+                      {target?.name ?? t("impress.animationMissingObject")} · {animation.kind} · {animation.effect} ·{" "}
+                      {animation.trigger}
                     </span>
-                    <button type="button" className="icon-btn" onClick={() => reorderAnimation(animation.id, -1)} disabled={index === 0} title={t("impress.moveUp")}>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => reorderAnimation(animation.id, -1)}
+                      disabled={index === 0}
+                      title={t("impress.moveUp")}
+                    >
                       ↑
                     </button>
-                    <button type="button" className="icon-btn" onClick={() => reorderAnimation(animation.id, 1)} disabled={index === list.length - 1} title={t("impress.moveDown")}>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => reorderAnimation(animation.id, 1)}
+                      disabled={index === list.length - 1}
+                      title={t("impress.moveDown")}
+                    >
                       ↓
                     </button>
-                    <button type="button" className="icon-btn" onClick={() => setAnimationEditing(animation)} title={t("common.edit")}>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => setAnimationEditing(animation)}
+                      title={t("common.edit")}
+                    >
                       ✎
                     </button>
                     <button
                       type="button"
                       className="icon-btn"
-                      onClick={() => updateSlide((current) => ({ ...current, animations: (current.animations ?? []).filter((candidate) => candidate.id !== animation.id) }))}
+                      onClick={() =>
+                        updateSlide((current) => ({
+                          ...current,
+                          animations: (current.animations ?? []).filter((candidate) => candidate.id !== animation.id),
+                        }))
+                      }
                       title={t("common.delete")}
                     >
                       ×
@@ -1667,7 +2297,12 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
                   </div>
                 );
               })}
-            <ToolButton icon={<Sparkles size={14} />} label={t("impress.addAnimation")} onClick={addAnimation} disabled={slide.objects.length === 0} />
+            <ToolButton
+              icon={<Sparkles size={14} />}
+              label={t("impress.addAnimation")}
+              onClick={addAnimation}
+              disabled={slide.objects.length === 0}
+            />
           </div>
         </div>
       </div>
@@ -1692,10 +2327,31 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
             if (event.target instanceof Element && event.target.closest(".presenter-panel")) return;
             advanceShow();
           }}
-          style={presenterView ? { display: "flex", flexDirection: "column", alignItems: "stretch", justifyContent: "flex-start", padding: 12, gap: 8 } : undefined}
+          style={
+            presenterView
+              ? {
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "stretch",
+                  justifyContent: "flex-start",
+                  padding: 12,
+                  gap: 8,
+                }
+              : undefined
+          }
         >
           {presenterView ? (
-            <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0, alignItems: "stretch", justifyContent: "center", width: "100%" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                flex: 1,
+                minHeight: 0,
+                alignItems: "stretch",
+                justifyContent: "center",
+                width: "100%",
+              }}
+            >
               {slideshowSlideArea}
               {presenterPanel}
             </div>
@@ -1732,7 +2388,13 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
       ) : null}
 
       {animationEditing ? (
-        <AnimationDialog key={animationEditing.id} animation={animationEditing} objects={slide.objects} onClose={() => setAnimationEditing(null)} onSave={saveAnimation} />
+        <AnimationDialog
+          key={animationEditing.id}
+          animation={animationEditing}
+          objects={slide.objects}
+          onClose={() => setAnimationEditing(null)}
+          onSave={saveAnimation}
+        />
       ) : null}
     </div>
   );
@@ -1741,11 +2403,15 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const { readFile } = await import("@tauri-apps/plugin-fs");
-      const filePath = await open({ multiple: false, filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"] }] });
+      const filePath = await open({
+        multiple: false,
+        filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"] }],
+      });
       if (typeof filePath !== "string") return;
       const bytes = await readFile(filePath);
       let base64 = "";
-      for (let index = 0; index < bytes.length; index += 0x8000) base64 += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+      for (let index = 0; index < bytes.length; index += 0x8000)
+        base64 += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
       const name = filePath.split(/[\\/]/).pop() ?? "image.png";
       const mime = name.endsWith(".jpg") || name.endsWith(".jpeg") ? "image/jpeg" : "image/png";
       updatePath(path, { image: { name, mime, dataBase64: btoa(base64), alt: "" }, kind: "image" });
@@ -1774,7 +2440,9 @@ function MasterDialog({
 }) {
   const t = useT();
   const masters = deck.masters ?? [];
-  const [activeId, setActiveId] = useState(slide.masterId && masters.some((master) => master.id === slide.masterId) ? slide.masterId : masters[0]?.id ?? "");
+  const [activeId, setActiveId] = useState(
+    slide.masterId && masters.some((master) => master.id === slide.masterId) ? slide.masterId : (masters[0]?.id ?? ""),
+  );
   const active = masters.find((master) => master.id === activeId) ?? masters[0];
 
   const addMaster = () => {
@@ -1783,28 +2451,63 @@ function MasterDialog({
     update((current) => ({ ...current, masters: [...(current.masters ?? []), master] }));
   };
   const renameMaster = (masterId: string, name: string) =>
-    update((current) => ({ ...current, masters: (current.masters ?? []).map((master) => (master.id === masterId ? { ...master, name } : master)) }), false);
+    update(
+      (current) => ({
+        ...current,
+        masters: (current.masters ?? []).map((master) => (master.id === masterId ? { ...master, name } : master)),
+      }),
+      false,
+    );
   const addLayout = (masterId: string) => {
-    const layout: SlideLayout = { id: uid(), name: `Layout ${(masters.find((master) => master.id === masterId)?.layouts.length ?? 0) + 1}`, kind: "blank", objects: [] };
-    update((current) => ({ ...current, masters: (current.masters ?? []).map((master) => (master.id === masterId ? { ...master, layouts: [...master.layouts, layout] } : master)) }));
+    const layout: SlideLayout = {
+      id: uid(),
+      name: `Layout ${(masters.find((master) => master.id === masterId)?.layouts.length ?? 0) + 1}`,
+      kind: "blank",
+      objects: [],
+    };
+    update((current) => ({
+      ...current,
+      masters: (current.masters ?? []).map((master) =>
+        master.id === masterId ? { ...master, layouts: [...master.layouts, layout] } : master,
+      ),
+    }));
   };
   const renameLayout = (masterId: string, layoutId: string, name: string) =>
     update(
       (current) => ({
         ...current,
-        masters: (current.masters ?? []).map((master) => (master.id === masterId ? { ...master, layouts: master.layouts.map((layout) => (layout.id === layoutId ? { ...layout, name } : layout)) } : master)),
+        masters: (current.masters ?? []).map((master) =>
+          master.id === masterId
+            ? {
+                ...master,
+                layouts: master.layouts.map((layout) => (layout.id === layoutId ? { ...layout, name } : layout)),
+              }
+            : master,
+        ),
       }),
       false,
     );
   const removeLayout = (masterId: string, layoutId: string) =>
-    update((current) => ({ ...current, masters: (current.masters ?? []).map((master) => (master.id === masterId ? { ...master, layouts: master.layouts.filter((layout) => layout.id !== layoutId) } : master)) }));
+    update((current) => ({
+      ...current,
+      masters: (current.masters ?? []).map((master) =>
+        master.id === masterId
+          ? { ...master, layouts: master.layouts.filter((layout) => layout.id !== layoutId) }
+          : master,
+      ),
+    }));
 
   return (
     <Dialog title={t("impress.masters")} onClose={onClose} wide>
       <div className="row" style={{ alignItems: "flex-start", gap: 12 }}>
         <div className="stack" style={{ minWidth: 170 }}>
           {masters.map((master) => (
-            <button key={master.id} type="button" className={`btn ${master.id === (active?.id ?? "") ? "btn-primary" : "btn-soft"}`} onClick={() => setActiveId(master.id)}>
+            <button
+              key={master.id}
+              type="button"
+              className={`btn ${master.id === (active?.id ?? "") ? "btn-primary" : "btn-soft"}`}
+              onClick={() => setActiveId(master.id)}
+            >
               {master.name}
             </button>
           ))}
@@ -1821,7 +2524,10 @@ function MasterDialog({
             <h4>{t("impress.layouts")}</h4>
             {active.layouts.map((layout) => (
               <div key={layout.id} className="row" style={{ gap: 4, alignItems: "center" }}>
-                <input value={layout.name} onChange={(event) => renameLayout(active.id, layout.id, event.target.value)} />
+                <input
+                  value={layout.name}
+                  onChange={(event) => renameLayout(active.id, layout.id, event.target.value)}
+                />
                 <button
                   type="button"
                   className={`btn ${slide.masterId === active.id && slide.layoutId === layout.id ? "btn-primary" : "btn-soft"}`}
@@ -1829,7 +2535,12 @@ function MasterDialog({
                 >
                   {t("impress.useLayout")}
                 </button>
-                <button type="button" className="icon-btn" onClick={() => removeLayout(active.id, layout.id)} title={t("common.delete")}>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => removeLayout(active.id, layout.id)}
+                  title={t("common.delete")}
+                >
                   ×
                 </button>
               </div>
@@ -1845,7 +2556,17 @@ function MasterDialog({
   );
 }
 
-function ChartDialog({ chart, theme, onClose, onSave }: { chart: ChartData; theme: Theme; onClose: () => void; onSave: (chart: ChartData) => void }) {
+function ChartDialog({
+  chart,
+  theme,
+  onClose,
+  onSave,
+}: {
+  chart: ChartData;
+  theme: Theme;
+  onClose: () => void;
+  onSave: (chart: ChartData) => void;
+}) {
   const t = useT();
   const [draft, setDraft] = useState<ChartData>(() => normalizeChartDraft(chart));
   const [tab, setTab] = useState<"data" | "chart">("data");
@@ -1868,7 +2589,10 @@ function ChartDialog({ chart, theme, onClose, onSave }: { chart: ChartData; them
   const cellKey = (row: number, column: number) => `${row}:${column}`;
 
   const updateSeries = (index: number, change: Partial<ChartData["series"][number]>) => {
-    setDraft((current) => ({ ...current, series: current.series.map((entry, position) => (position === index ? { ...entry, ...change } : entry)) }));
+    setDraft((current) => ({
+      ...current,
+      series: current.series.map((entry, position) => (position === index ? { ...entry, ...change } : entry)),
+    }));
   };
 
   const addSeries = () => {
@@ -1876,7 +2600,10 @@ function ChartDialog({ chart, theme, onClose, onSave }: { chart: ChartData; them
       const values = current.seriesValuesCache ?? current.series.map(() => []);
       return {
         ...current,
-        series: [...current.series, { name: `${t("impress.chartSeries")} ${current.series.length + 1}`, range: "", color: null }],
+        series: [
+          ...current.series,
+          { name: `${t("impress.chartSeries")} ${current.series.length + 1}`, range: "", color: null },
+        ],
         seriesValuesCache: [...values, []],
       };
     });
@@ -1905,7 +2632,9 @@ function ChartDialog({ chart, theme, onClose, onSave }: { chart: ChartData; them
     setDraft((current) => ({
       ...current,
       categoriesCache: (current.categoriesCache ?? []).filter((_, row) => row < target),
-      seriesValuesCache: current.series.map((_, index) => (current.seriesValuesCache?.[index] ?? []).filter((_, row) => row < target)),
+      seriesValuesCache: current.series.map((_, index) =>
+        (current.seriesValuesCache?.[index] ?? []).filter((_, row) => row < target),
+      ),
     }));
     setCellTexts((current) => {
       const kept: Record<string, string> = {};
@@ -2023,21 +2752,61 @@ function ChartDialog({ chart, theme, onClose, onSave }: { chart: ChartData; them
     focusCell(next.row, next.column);
   };
 
-  const gridInputStyle: CSSProperties = { width: "100%", minWidth: 84, boxSizing: "border-box", border: "none", background: "transparent", padding: "6px 8px", font: "inherit", color: "inherit" };
-  const gridCellStyle: CSSProperties = { padding: 0, borderBottom: "1px solid var(--border)", borderRight: "1px solid var(--border)" };
-  const gridHeadStyle: CSSProperties = { position: "sticky", top: 0, zIndex: 1, background: "var(--surface)", borderBottom: "1px solid var(--border)", borderRight: "1px solid var(--border)", padding: 2, textAlign: "left", minWidth: 110 };
+  const gridInputStyle: CSSProperties = {
+    width: "100%",
+    minWidth: 84,
+    boxSizing: "border-box",
+    border: "none",
+    background: "transparent",
+    padding: "6px 8px",
+    font: "inherit",
+    color: "inherit",
+  };
+  const gridCellStyle: CSSProperties = {
+    padding: 0,
+    borderBottom: "1px solid var(--border)",
+    borderRight: "1px solid var(--border)",
+  };
+  const gridHeadStyle: CSSProperties = {
+    position: "sticky",
+    top: 0,
+    zIndex: 1,
+    background: "var(--surface)",
+    borderBottom: "1px solid var(--border)",
+    borderRight: "1px solid var(--border)",
+    padding: 2,
+    textAlign: "left",
+    minWidth: 110,
+  };
 
   return (
     <Dialog title={t("impress.chartData")} onClose={onClose} wide>
       <div className="stack">
-        <div style={{ height: 190, flex: "0 0 auto", border: "1px solid var(--border)", borderRadius: 6, overflow: "hidden", background: theme.background }}>
+        <div
+          style={{
+            height: 190,
+            flex: "0 0 auto",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            overflow: "hidden",
+            background: theme.background,
+          }}
+        >
           <ChartPreview chart={draft} theme={theme} scale={1} />
         </div>
         <div className="row" style={{ gap: 4 }}>
-          <button type="button" className={`btn ${tab === "data" ? "btn-primary" : "btn-soft"}`} onClick={() => setTab("data")}>
+          <button
+            type="button"
+            className={`btn ${tab === "data" ? "btn-primary" : "btn-soft"}`}
+            onClick={() => setTab("data")}
+          >
             {t("impress.chartTabData")}
           </button>
-          <button type="button" className={`btn ${tab === "chart" ? "btn-primary" : "btn-soft"}`} onClick={() => setTab("chart")}>
+          <button
+            type="button"
+            className={`btn ${tab === "chart" ? "btn-primary" : "btn-soft"}`}
+            onClick={() => setTab("chart")}
+          >
             {t("impress.chartTabChart")}
           </button>
         </div>
@@ -2067,7 +2836,17 @@ function ChartDialog({ chart, theme, onClose, onSave }: { chart: ChartData; them
                 />
               </label>
             </div>
-            <div ref={gridRef} onPaste={handlePaste} style={{ overflowX: "auto", overflowY: "auto", maxHeight: 280, border: "1px solid var(--border)", borderRadius: 6 }}>
+            <div
+              ref={gridRef}
+              onPaste={handlePaste}
+              style={{
+                overflowX: "auto",
+                overflowY: "auto",
+                maxHeight: 280,
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+              }}
+            >
               <table style={{ borderCollapse: "collapse", width: "100%" }}>
                 <thead>
                   <tr>
@@ -2083,14 +2862,24 @@ function ChartDialog({ chart, theme, onClose, onSave }: { chart: ChartData; them
                             style={gridInputStyle}
                             onChange={(event) => updateSeries(index, { name: event.target.value })}
                           />
-                          <button type="button" className="icon-btn" onClick={() => removeSeries(index)} title={t("common.delete")}>
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            onClick={() => removeSeries(index)}
+                            title={t("common.delete")}
+                          >
                             ×
                           </button>
                         </div>
                       </th>
                     ))}
                     <th style={{ ...gridHeadStyle, minWidth: 40 }}>
-                      <button type="button" className="icon-btn" onClick={addSeries} title={t("impress.chartAddSeries")}>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        onClick={addSeries}
+                        title={t("impress.chartAddSeries")}
+                      >
                         +
                       </button>
                     </th>
@@ -2158,14 +2947,35 @@ function ChartDialog({ chart, theme, onClose, onSave }: { chart: ChartData; them
               </select>
             </label>
             <TextField label={t("impress.chartTitle")} value={draft.title} onChange={(title) => patch({ title })} />
-            <TextField label={t("impress.chartCategories")} value={draft.categories} onChange={(categories) => patch({ categories })} />
+            <TextField
+              label={t("impress.chartCategories")}
+              value={draft.categories}
+              onChange={(categories) => patch({ categories })}
+            />
             <h4>{t("impress.chartSeries")}</h4>
             {draft.series.map((entry, index) => (
               <div key={index} className="row" style={{ gap: 4, alignItems: "center" }}>
-                <input value={entry.name} placeholder={t("impress.chartSeriesName")} onChange={(event) => updateSeries(index, { name: event.target.value })} />
-                <input value={entry.range} placeholder={t("impress.chartRange")} onChange={(event) => updateSeries(index, { range: event.target.value })} />
-                <input type="color" value={entry.color ?? CHART_PALETTE[index % CHART_PALETTE.length]} onChange={(event) => updateSeries(index, { color: event.target.value })} />
-                <button type="button" className="icon-btn" onClick={() => removeSeries(index)} title={t("common.delete")}>
+                <input
+                  value={entry.name}
+                  placeholder={t("impress.chartSeriesName")}
+                  onChange={(event) => updateSeries(index, { name: event.target.value })}
+                />
+                <input
+                  value={entry.range}
+                  placeholder={t("impress.chartRange")}
+                  onChange={(event) => updateSeries(index, { range: event.target.value })}
+                />
+                <input
+                  type="color"
+                  value={entry.color ?? CHART_PALETTE[index % CHART_PALETTE.length]}
+                  onChange={(event) => updateSeries(index, { color: event.target.value })}
+                />
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => removeSeries(index)}
+                  title={t("common.delete")}
+                >
                   ×
                 </button>
               </div>
@@ -2175,15 +2985,27 @@ function ChartDialog({ chart, theme, onClose, onSave }: { chart: ChartData; them
             </button>
             <div className="row">
               <label className="check">
-                <input type="checkbox" checked={draft.legend} onChange={(event) => patch({ legend: event.target.checked })} />
+                <input
+                  type="checkbox"
+                  checked={draft.legend}
+                  onChange={(event) => patch({ legend: event.target.checked })}
+                />
                 {t("impress.chartLegend")}
               </label>
               <label className="check">
-                <input type="checkbox" checked={draft.stacked} onChange={(event) => patch({ stacked: event.target.checked })} />
+                <input
+                  type="checkbox"
+                  checked={draft.stacked}
+                  onChange={(event) => patch({ stacked: event.target.checked })}
+                />
                 {t("impress.chartStacked")}
               </label>
               <label className="check">
-                <input type="checkbox" checked={draft.showLabels} onChange={(event) => patch({ showLabels: event.target.checked })} />
+                <input
+                  type="checkbox"
+                  checked={draft.showLabels}
+                  onChange={(event) => patch({ showLabels: event.target.checked })}
+                />
                 {t("impress.chartShowLabels")}
               </label>
             </div>
@@ -2209,7 +3031,17 @@ function ChartDialog({ chart, theme, onClose, onSave }: { chart: ChartData; them
   );
 }
 
-function AnimationDialog({ animation, objects, onClose, onSave }: { animation: Animation; objects: SlideObject[]; onClose: () => void; onSave: (animation: Animation) => void }) {
+function AnimationDialog({
+  animation,
+  objects,
+  onClose,
+  onSave,
+}: {
+  animation: Animation;
+  objects: SlideObject[];
+  onClose: () => void;
+  onSave: (animation: Animation) => void;
+}) {
   const t = useT();
   const [draft, setDraft] = useState<Animation>({ ...animation });
   const effects = ANIMATION_EFFECTS[draft.kind] ?? ANIMATION_EFFECTS.entrance;
@@ -2237,7 +3069,7 @@ function AnimationDialog({ animation, objects, onClose, onSave }: { animation: A
             onChange={(event) => {
               const kind = event.target.value;
               const list = ANIMATION_EFFECTS[kind] ?? [];
-              setDraft({ ...draft, kind, effect: list.includes(draft.effect) ? draft.effect : list[0] ?? "fade" });
+              setDraft({ ...draft, kind, effect: list.includes(draft.effect) ? draft.effect : (list[0] ?? "fade") });
             }}
           >
             {["entrance", "emphasis", "exit"].map((kind) => (
@@ -2266,8 +3098,24 @@ function AnimationDialog({ animation, objects, onClose, onSave }: { animation: A
           </select>
         </label>
         <div className="row">
-          <ToolNumber value={draft.durationMs} onChange={(durationMs) => setDraft({ ...draft, durationMs })} min={0} max={10000} step={50} title={t("impress.animationDuration")} width={80} />
-          <ToolNumber value={draft.delayMs} onChange={(delayMs) => setDraft({ ...draft, delayMs })} min={0} max={10000} step={50} title={t("impress.animationDelay")} width={80} />
+          <ToolNumber
+            value={draft.durationMs}
+            onChange={(durationMs) => setDraft({ ...draft, durationMs })}
+            min={0}
+            max={10000}
+            step={50}
+            title={t("impress.animationDuration")}
+            width={80}
+          />
+          <ToolNumber
+            value={draft.delayMs}
+            onChange={(delayMs) => setDraft({ ...draft, delayMs })}
+            min={0}
+            max={10000}
+            step={50}
+            title={t("impress.animationDelay")}
+            width={80}
+          />
         </div>
         <div className="row">
           <button type="button" className="btn btn-soft" onClick={onClose}>
@@ -2298,7 +3146,11 @@ interface ObjectTreeProps {
   onTextDone?: () => void;
 }
 
-function SelectionHandles({ onHandlePointerDown }: { onHandlePointerDown: (event: React.PointerEvent, mode: "resize" | "rotate") => void }) {
+function SelectionHandles({
+  onHandlePointerDown,
+}: {
+  onHandlePointerDown: (event: React.PointerEvent, mode: "resize" | "rotate") => void;
+}) {
   return (
     <>
       <span
@@ -2348,7 +3200,11 @@ function ObjectTree(props: ObjectTreeProps) {
               onDoubleClick={interactive ? (event) => props.onObjectDoubleClick?.(event, childPath) : undefined}
             >
               <ObjectTree {...props} object={child} path={childPath} depth={depth + 1} />
-              {interactive && isSelected ? <SelectionHandles onHandlePointerDown={(event, mode) => props.onHandlePointerDown?.(event, childPath, mode)} /> : null}
+              {interactive && isSelected ? (
+                <SelectionHandles
+                  onHandlePointerDown={(event, mode) => props.onHandlePointerDown?.(event, childPath, mode)}
+                />
+              ) : null}
             </div>
           );
         })}
@@ -2399,11 +3255,36 @@ function ChartPreview({ chart, theme, scale }: { chart: ChartData | null; theme:
         });
         plot = (
           <div style={{ display: "flex", alignItems: "center", gap: 8 * scale, width: "100%", height: "100%" }}>
-            <div style={{ height: "90%", aspectRatio: "1 / 1", borderRadius: "50%", background: `conic-gradient(${slices.join(", ")})`, border: `1px solid ${theme.accent}` }} />
+            <div
+              style={{
+                height: "90%",
+                aspectRatio: "1 / 1",
+                borderRadius: "50%",
+                background: `conic-gradient(${slices.join(", ")})`,
+                border: `1px solid ${theme.accent}`,
+              }}
+            />
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 * scale, overflow: "hidden" }}>
               {pieValues.map((value, row) => (
-                <span key={row} style={{ display: "flex", alignItems: "center", gap: 4 * scale, whiteSpace: "nowrap", overflow: "hidden" }}>
-                  <i style={{ width: 8 * scale, height: 8 * scale, background: CHART_PALETTE[row % CHART_PALETTE.length], borderRadius: 2, flex: "0 0 auto" }} />
+                <span
+                  key={row}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4 * scale,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                  }}
+                >
+                  <i
+                    style={{
+                      width: 8 * scale,
+                      height: 8 * scale,
+                      background: CHART_PALETTE[row % CHART_PALETTE.length],
+                      borderRadius: 2,
+                      flex: "0 0 auto",
+                    }}
+                  />
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{labelOf(row)}</span>
                   <span style={{ opacity: 0.7, marginLeft: "auto" }}>{formatChartCellValue(value)}</span>
                 </span>
@@ -2416,14 +3297,37 @@ function ChartPreview({ chart, theme, scale }: { chart: ChartData | null; theme:
       const pointX = (row: number) => (rowCount <= 1 ? 50 : (row / (rowCount - 1)) * 100);
       const pointY = (value: number) => 50 - (value / maxValue) * 45;
       plot = (
-        <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ display: "block", width: "100%", height: "100%" }}>
-          <line x1="0" y1="50" x2="100" y2="50" stroke={theme.accent} strokeWidth="1" opacity="0.5" vectorEffect="non-scaling-stroke" />
+        <svg
+          width="100%"
+          height="100%"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          style={{ display: "block", width: "100%", height: "100%" }}
+        >
+          <line
+            x1="0"
+            y1="50"
+            x2="100"
+            y2="50"
+            stroke={theme.accent}
+            strokeWidth="1"
+            opacity="0.5"
+            vectorEffect="non-scaling-stroke"
+          />
           {series.map((entry, seriesIndex) => {
             const points = values[seriesIndex].map((value, row) => `${pointX(row)},${pointY(value)}`).join(" ");
             return (
               <g key={seriesIndex}>
-                {chart.kind === "area" ? <polygon points={`0,50 ${points} 100,50`} fill={colorOf(seriesIndex)} opacity="0.35" /> : null}
-                <polyline points={points} fill="none" stroke={colorOf(seriesIndex)} strokeWidth="1.6" vectorEffect="non-scaling-stroke">
+                {chart.kind === "area" ? (
+                  <polygon points={`0,50 ${points} 100,50`} fill={colorOf(seriesIndex)} opacity="0.35" />
+                ) : null}
+                <polyline
+                  points={points}
+                  fill="none"
+                  stroke={colorOf(seriesIndex)}
+                  strokeWidth="1.6"
+                  vectorEffect="non-scaling-stroke"
+                >
                   <title>{entry.name}</title>
                 </polyline>
               </g>
@@ -2433,17 +3337,50 @@ function ChartPreview({ chart, theme, scale }: { chart: ChartData | null; theme:
       );
     } else if (chart.kind === "bar") {
       plot = (
-        <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 3 * scale, width: "100%", height: "100%" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            gap: 3 * scale,
+            width: "100%",
+            height: "100%",
+          }}
+        >
           {Array.from({ length: rowCount }, (_, row) => (
             <div key={row} style={{ display: "flex", alignItems: "center", gap: 4 * scale }}>
-              <span style={{ width: 56 * scale, flex: "0 0 auto", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: 0.8 }}>{labelOf(row)}</span>
+              <span
+                style={{
+                  width: 56 * scale,
+                  flex: "0 0 auto",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  opacity: 0.8,
+                }}
+              >
+                {labelOf(row)}
+              </span>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 1 }}>
                 {series.map((entry, seriesIndex) => {
                   const value = values[seriesIndex]?.[row] ?? 0;
                   return (
-                    <div key={seriesIndex} title={`${entry.name}: ${formatChartCellValue(value)}`} style={{ display: "flex", alignItems: "center", gap: 3 * scale }}>
-                      <div style={{ width: `${(Math.max(0, value) / maxValue) * 100}%`, height: Math.max(4, 7 * scale), background: colorOf(seriesIndex), borderRadius: 2 }} />
-                      {chart.showLabels ? <span style={{ fontSize: smallFont, opacity: 0.75 }}>{formatChartCellValue(value)}</span> : null}
+                    <div
+                      key={seriesIndex}
+                      title={`${entry.name}: ${formatChartCellValue(value)}`}
+                      style={{ display: "flex", alignItems: "center", gap: 3 * scale }}
+                    >
+                      <div
+                        style={{
+                          width: `${(Math.max(0, value) / maxValue) * 100}%`,
+                          height: Math.max(4, 7 * scale),
+                          background: colorOf(seriesIndex),
+                          borderRadius: 2,
+                        }}
+                      />
+                      {chart.showLabels ? (
+                        <span style={{ fontSize: smallFont, opacity: 0.75 }}>{formatChartCellValue(value)}</span>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -2454,13 +3391,48 @@ function ChartPreview({ chart, theme, scale }: { chart: ChartData | null; theme:
       );
     } else {
       plot = (
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-around", gap: 2 * scale, width: "100%", height: "100%" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "space-around",
+            gap: 2 * scale,
+            width: "100%",
+            height: "100%",
+          }}
+        >
           {Array.from({ length: rowCount }, (_, row) => {
             const total = series.reduce((sum, _, seriesIndex) => sum + Math.max(0, values[seriesIndex]?.[row] ?? 0), 0);
             return (
-              <div key={row} style={{ flex: 1, maxWidth: 64 * scale, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", gap: 1 }}>
-                {chart.showLabels && (chart.stacked || series.length === 1) ? <span style={{ fontSize: smallFont, opacity: 0.75 }}>{formatChartCellValue(chart.stacked ? total : values[0]?.[row] ?? 0)}</span> : null}
-                <div style={{ width: "100%", height: `${(total / maxValue) * 100}%`, display: "flex", flexDirection: chart.stacked ? "column-reverse" : "row", alignItems: "flex-end", justifyContent: "center", gap: 1 }}>
+              <div
+                key={row}
+                style={{
+                  flex: 1,
+                  maxWidth: 64 * scale,
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "flex-end",
+                  alignItems: "center",
+                  gap: 1,
+                }}
+              >
+                {chart.showLabels && (chart.stacked || series.length === 1) ? (
+                  <span style={{ fontSize: smallFont, opacity: 0.75 }}>
+                    {formatChartCellValue(chart.stacked ? total : (values[0]?.[row] ?? 0))}
+                  </span>
+                ) : null}
+                <div
+                  style={{
+                    width: "100%",
+                    height: `${(total / maxValue) * 100}%`,
+                    display: "flex",
+                    flexDirection: chart.stacked ? "column-reverse" : "row",
+                    alignItems: "flex-end",
+                    justifyContent: "center",
+                    gap: 1,
+                  }}
+                >
                   {series.map((entry, seriesIndex) => {
                     const raw = values[seriesIndex]?.[row] ?? 0;
                     const value = Math.max(0, raw);
@@ -2488,14 +3460,41 @@ function ChartPreview({ chart, theme, scale }: { chart: ChartData | null; theme:
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", padding: 6 * scale, gap: 3 * scale, fontSize: Math.max(8, 10 * scale), color: theme.bodyColor, overflow: "hidden", boxSizing: "border-box" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        width: "100%",
+        height: "100%",
+        padding: 6 * scale,
+        gap: 3 * scale,
+        fontSize: Math.max(8, 10 * scale),
+        color: theme.bodyColor,
+        overflow: "hidden",
+        boxSizing: "border-box",
+      }}
+    >
       <div style={{ display: "flex", alignItems: "baseline", gap: 6 * scale, flexWrap: "wrap" }}>
         {chart.title ? <strong style={{ fontSize: Math.max(9, 12 * scale) }}>{chart.title}</strong> : null}
         <span style={{ opacity: 0.7 }}>{t(`calc.chart_${chart.kind}`)}</span>
         {chart.stacked ? <span style={{ opacity: 0.7 }}>· {t("impress.chartStacked")}</span> : null}
         {chart.showLabels ? <span style={{ opacity: 0.7 }}>· {t("impress.chartShowLabels")}</span> : null}
       </div>
-      <div style={{ position: "relative", flex: 1, minHeight: 40 * scale, border: `1px dashed ${theme.accent}`, borderRadius: 4, display: "flex", alignItems: "flex-end", justifyContent: "center", gap: 4 * scale, padding: 4 * scale, overflow: "hidden" }}>
+      <div
+        style={{
+          position: "relative",
+          flex: 1,
+          minHeight: 40 * scale,
+          border: `1px dashed ${theme.accent}`,
+          borderRadius: 4,
+          display: "flex",
+          alignItems: "flex-end",
+          justifyContent: "center",
+          gap: 4 * scale,
+          padding: 4 * scale,
+          overflow: "hidden",
+        }}
+      >
         {series.length === 0 ? (
           <span style={{ opacity: 0.6, textAlign: "center" }}>{t("impress.chartNoSeries")}</span>
         ) : plot ? (
@@ -2503,7 +3502,11 @@ function ChartPreview({ chart, theme, scale }: { chart: ChartData | null; theme:
         ) : chart.kind === "pie" ? (
           <div style={{ display: "flex", width: "100%", height: "100%" }}>
             {series.map((entry, index) => (
-              <div key={index} title={`${entry.name}${entry.range ? ` · ${entry.range}` : ""}`} style={{ flex: 1, background: colorOf(index), opacity: 0.85 }} />
+              <div
+                key={index}
+                title={`${entry.name}${entry.range ? ` · ${entry.range}` : ""}`}
+                style={{ flex: 1, background: colorOf(index), opacity: 0.85 }}
+              />
             ))}
           </div>
         ) : (
@@ -2511,15 +3514,34 @@ function ChartPreview({ chart, theme, scale }: { chart: ChartData | null; theme:
             <div
               key={index}
               title={`${entry.name}${entry.range ? ` · ${entry.range}` : ""}`}
-              style={{ flex: 1, maxWidth: 48 * scale, height: `${heights[index]}%`, background: colorOf(index), opacity: 0.85, borderRadius: 2 }}
+              style={{
+                flex: 1,
+                maxWidth: 48 * scale,
+                height: `${heights[index]}%`,
+                background: colorOf(index),
+                opacity: 0.85,
+                borderRadius: 2,
+              }}
             />
           ))
         )}
       </div>
       {hasValues && chart.kind !== "pie" && chart.kind !== "bar" ? (
-        <div style={{ display: "flex", justifyContent: "space-around", gap: 2 * scale, opacity: 0.8, overflow: "hidden" }}>
+        <div
+          style={{ display: "flex", justifyContent: "space-around", gap: 2 * scale, opacity: 0.8, overflow: "hidden" }}
+        >
           {Array.from({ length: rowCount }, (_, row) => (
-            <span key={row} style={{ flex: 1, maxWidth: 64 * scale, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span
+              key={row}
+              style={{
+                flex: 1,
+                maxWidth: 64 * scale,
+                textAlign: "center",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
               {labelOf(row)}
             </span>
           ))}
@@ -2527,30 +3549,64 @@ function ChartPreview({ chart, theme, scale }: { chart: ChartData | null; theme:
       ) : null}
       <div style={{ display: "flex", justifyContent: "space-between", opacity: 0.75, gap: 6 * scale }}>
         <span>{chart.yTitle || ""}</span>
-        <span style={{ textAlign: "center", flex: 1 }}>{hasValues ? t("impress.chartCachedData") : chart.categories || t("impress.chartNoCategories")}</span>
+        <span style={{ textAlign: "center", flex: 1 }}>
+          {hasValues ? t("impress.chartCachedData") : chart.categories || t("impress.chartNoCategories")}
+        </span>
         <span>{chart.xTitle || ""}</span>
       </div>
       {chart.legend && series.length > 0 ? (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4 * scale, opacity: 0.9 }}>
           {series.map((entry, index) => (
             <span key={index} style={{ display: "inline-flex", alignItems: "center", gap: 3 * scale }}>
-              <i style={{ width: 8 * scale, height: 8 * scale, background: colorOf(index), display: "inline-block", borderRadius: 2 }} />
+              <i
+                style={{
+                  width: 8 * scale,
+                  height: 8 * scale,
+                  background: colorOf(index),
+                  display: "inline-block",
+                  borderRadius: 2,
+                }}
+              />
               {entry.name || `${t("impress.chartSeries")} ${index + 1}`}
               {!hasValues && entry.range ? ` · ${entry.range}` : ""}
             </span>
           ))}
         </div>
       ) : null}
-      {hasValues ? null : <div style={{ opacity: 0.55, fontSize: Math.max(7, 8 * scale) }}>{t("impress.chartSchematicNote")}</div>}
+      {hasValues ? null : (
+        <div style={{ opacity: 0.55, fontSize: Math.max(7, 8 * scale) }}>{t("impress.chartSchematicNote")}</div>
+      )}
     </div>
   );
 }
 
-function SlideObjectView({ object, theme, scale, editing, onTextChange, onTextDone }: { object: SlideObject; theme: Theme; scale: number; editing: boolean; onTextChange: (text: string) => void; onTextDone: () => void }) {
+function SlideObjectView({
+  object,
+  theme,
+  scale,
+  editing,
+  onTextChange,
+  onTextDone,
+}: {
+  object: SlideObject;
+  theme: Theme;
+  scale: number;
+  editing: boolean;
+  onTextChange: (text: string) => void;
+  onTextDone: () => void;
+}) {
   if (object.kind === "group") return null;
   if (object.kind === "image") {
-    if (!object.image || object.image.dataBase64 === "") return <div className="slide-image-placeholder">{object.placeholder ?? "Double-click to add an image"}</div>;
-    return <img className="slide-image" src={`data:${object.image.mime};base64,${object.image.dataBase64}`} alt={object.image.alt} draggable={false} />;
+    if (!object.image || object.image.dataBase64 === "")
+      return <div className="slide-image-placeholder">{object.placeholder ?? "Double-click to add an image"}</div>;
+    return (
+      <img
+        className="slide-image"
+        src={`data:${object.image.mime};base64,${object.image.dataBase64}`}
+        alt={object.image.alt}
+        draggable={false}
+      />
+    );
   }
   if (object.kind === "line" || object.kind === "arrow") {
     const line = object.line ?? { x2: object.w, y2: 0, beginArrow: false, endArrow: false, dash: "solid" };
@@ -2646,12 +3702,28 @@ function SlideObjectView({ object, theme, scale, editing, onTextChange, onTextDo
             onKeyDown={(event) => {
               if (event.key === "Escape") onTextDone();
             }}
-            style={{ fontSize: (object.text.paragraphs[0]?.sizePt ?? object.text.sizePt ?? 18) * scale, color: object.text.paragraphs[0]?.color ?? theme.bodyColor }}
+            style={{
+              fontSize: (object.text.paragraphs[0]?.sizePt ?? object.text.sizePt ?? 18) * scale,
+              color: object.text.paragraphs[0]?.color ?? theme.bodyColor,
+            }}
           />
         ) : (
-          <div className="slide-text" style={{ fontSize: (object.text.paragraphs[0]?.sizePt ?? object.text.sizePt ?? 18) * scale, color: object.text.paragraphs[0]?.color ?? theme.bodyColor, textAlign: (object.text.paragraphs[0]?.align ?? "left") as "left" | "center" | "right" }}>
+          <div
+            className="slide-text"
+            style={{
+              fontSize: (object.text.paragraphs[0]?.sizePt ?? object.text.sizePt ?? 18) * scale,
+              color: object.text.paragraphs[0]?.color ?? theme.bodyColor,
+              textAlign: (object.text.paragraphs[0]?.align ?? "left") as "left" | "center" | "right",
+            }}
+          >
             {object.text.paragraphs.map((paragraph, index) => (
-              <p key={index} style={{ fontWeight: paragraph.bold ? 700 : undefined, fontStyle: paragraph.italic ? "italic" : undefined }}>
+              <p
+                key={index}
+                style={{
+                  fontWeight: paragraph.bold ? 700 : undefined,
+                  fontStyle: paragraph.italic ? "italic" : undefined,
+                }}
+              >
                 {paragraph.bullet ? "• " : ""}
                 {paragraph.text}
               </p>
@@ -2686,12 +3758,21 @@ export function SlidePreview({
   slideHeight?: number;
   objectStyle?: (object: SlideObject) => CSSProperties | undefined;
 }) {
-  const actualWidth = full ? slideWidth ?? deck.size.widthPt : width;
+  const actualWidth = full ? (slideWidth ?? deck.size.widthPt) : width;
   const scale = actualWidth / deck.size.widthPt;
-  const height = full ? slideHeight ?? deck.size.heightPt : (deck.size.heightPt * width) / deck.size.widthPt;
+  const height = full ? (slideHeight ?? deck.size.heightPt) : (deck.size.heightPt * width) / deck.size.widthPt;
   const inherited = inheritedObjects(deck, slide);
   return (
-    <div className="slide-preview" style={{ width: full ? "100%" : width, height: full ? "100%" : height, background: slide.background ?? theme.background, position: "relative", overflow: "hidden" }}>
+    <div
+      className="slide-preview"
+      style={{
+        width: full ? "100%" : width,
+        height: full ? "100%" : height,
+        background: slide.background ?? theme.background,
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
       {inherited.map((object) => (
         <div
           key={object.id}
@@ -2706,25 +3787,45 @@ export function SlidePreview({
             pointerEvents: "none",
           }}
         >
-          <ObjectTree object={object} path={[object.id]} depth={0} theme={theme} scale={full ? scale * 1.2 : scale} selectedKeys={INHERITED_KEYS} editingKey={null} interactive={false} />
+          <ObjectTree
+            object={object}
+            path={[object.id]}
+            depth={0}
+            theme={theme}
+            scale={full ? scale * 1.2 : scale}
+            selectedKeys={INHERITED_KEYS}
+            editingKey={null}
+            interactive={false}
+          />
         </div>
       ))}
-      {[...slide.objects].sort((a, b) => a.z - b.z).map((object) => (
-        <div
-          key={object.id}
-          style={{
-            position: "absolute",
-            left: object.x * scale,
-            top: object.y * scale,
-            width: object.w * scale,
-            height: object.h * scale,
-            transform: `rotate(${object.rotation}deg)`,
-            ...(objectStyle?.(object) ?? {}),
-          }}
-        >
-          <ObjectTree object={object} path={[object.id]} depth={0} theme={theme} scale={full ? scale * 1.2 : scale} selectedKeys={INHERITED_KEYS} editingKey={null} interactive={false} />
-        </div>
-      ))}
+      {[...slide.objects]
+        .sort((a, b) => a.z - b.z)
+        .map((object) => (
+          <div
+            key={object.id}
+            style={{
+              position: "absolute",
+              left: object.x * scale,
+              top: object.y * scale,
+              width: object.w * scale,
+              height: object.h * scale,
+              transform: `rotate(${object.rotation}deg)`,
+              ...(objectStyle?.(object) ?? {}),
+            }}
+          >
+            <ObjectTree
+              object={object}
+              path={[object.id]}
+              depth={0}
+              theme={theme}
+              scale={full ? scale * 1.2 : scale}
+              selectedKeys={INHERITED_KEYS}
+              editingKey={null}
+              interactive={false}
+            />
+          </div>
+        ))}
     </div>
   );
 }

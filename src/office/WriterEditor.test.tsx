@@ -150,7 +150,9 @@ describe("Writer structural editing stays in sync with the model", () => {
       { type: "pageBreak" as const },
       { type: "paragraph" as const, props: { ...first.props }, runs: [{ ...first.runs[0], text: "Page three" }] },
     ];
-    useOfficeTabs.setState((state) => ({ tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, blocks } } : entry)) }));
+    useOfficeTabs.setState((state) => ({
+      tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, blocks } } : entry)),
+    }));
     render(<Harness id={id} />);
 
     const sheets = document.querySelectorAll(".writer-page-sheet");
@@ -175,11 +177,21 @@ describe("Writer structural editing stays in sync with the model", () => {
     const model = tab.model as TextDocument;
     const first = model.blocks.find((block) => block.type === "paragraph") as Extract<Block, { type: "paragraph" }>;
     const blocks = [
-      { type: "paragraph" as const, props: { ...first.props, style: "Heading1" }, runs: [{ ...first.runs[0], text: "Introduction" }] },
-      { type: "paragraph" as const, props: { ...first.props, style: "Heading2" }, runs: [{ ...first.runs[0], text: "Background" }] },
+      {
+        type: "paragraph" as const,
+        props: { ...first.props, style: "Heading1" },
+        runs: [{ ...first.runs[0], text: "Introduction" }],
+      },
+      {
+        type: "paragraph" as const,
+        props: { ...first.props, style: "Heading2" },
+        runs: [{ ...first.runs[0], text: "Background" }],
+      },
       { type: "paragraph" as const, props: { ...first.props }, runs: [{ ...first.runs[0], text: "Body" }] },
     ];
-    useOfficeTabs.setState((state) => ({ tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, blocks } } : entry)) }));
+    useOfficeTabs.setState((state) => ({
+      tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, blocks } } : entry)),
+    }));
     render(<Harness id={id} />);
 
     await user.click(screen.getByRole("button", { name: "Insert" }));
@@ -201,10 +213,16 @@ describe("Writer structural editing stays in sync with the model", () => {
     const model = tab.model as TextDocument;
     const first = model.blocks.find((block) => block.type === "paragraph") as Extract<Block, { type: "paragraph" }>;
     const blocks = [
-      { type: "paragraph" as const, props: { ...first.props, style: "Heading1" }, runs: [{ ...first.runs[0], text: "Chapter one" }] },
+      {
+        type: "paragraph" as const,
+        props: { ...first.props, style: "Heading1" },
+        runs: [{ ...first.runs[0], text: "Chapter one" }],
+      },
       { type: "paragraph" as const, props: { ...first.props }, runs: [{ ...first.runs[0], text: "Text" }] },
     ];
-    useOfficeTabs.setState((state) => ({ tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, blocks } } : entry)) }));
+    useOfficeTabs.setState((state) => ({
+      tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, blocks } } : entry)),
+    }));
     render(<Harness id={id} />);
 
     await user.click(screen.getByRole("button", { name: "View" }));
@@ -251,8 +269,12 @@ describe("Writer paginated in-place editing", () => {
     const tab = useOfficeTabs.getState().tabs[0];
     const model = tab.model as TextDocument;
     const first = model.blocks.find((block) => block.type === "paragraph") as Extract<Block, { type: "paragraph" }>;
-    const blocks = [{ type: "paragraph" as const, props: { ...first.props }, runs: [{ ...first.runs[0], text: "Hello World" }] }];
-    useOfficeTabs.setState((state) => ({ tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, blocks } } : entry)) }));
+    const blocks = [
+      { type: "paragraph" as const, props: { ...first.props }, runs: [{ ...first.runs[0], text: "Hello World" }] },
+    ];
+    useOfficeTabs.setState((state) => ({
+      tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, blocks } } : entry)),
+    }));
     render(<Harness id={id} />);
 
     const fragment = pageFragments()[0];
@@ -333,7 +355,9 @@ describe("Writer paginated in-place editing", () => {
       { type: "pageBreak" as const },
       { type: "paragraph" as const, props: { ...first.props }, runs: [{ ...first.runs[0], text: "Second" }] },
     ];
-    useOfficeTabs.setState((state) => ({ tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, blocks } } : entry)) }));
+    useOfficeTabs.setState((state) => ({
+      tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, blocks } } : entry)),
+    }));
     render(<Harness id={id} />);
 
     const editable = await openPageEditor(user);
@@ -354,8 +378,12 @@ describe("Writer paginated in-place editing", () => {
     const tab = useOfficeTabs.getState().tabs[0];
     const model = tab.model as TextDocument;
     const first = model.blocks.find((block) => block.type === "paragraph") as Extract<Block, { type: "paragraph" }>;
-    const header = [{ type: "paragraph" as const, props: { ...first.props }, runs: [{ ...first.runs[0], text: "Header text" }] }];
-    useOfficeTabs.setState((state) => ({ tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, header } } : entry)) }));
+    const header = [
+      { type: "paragraph" as const, props: { ...first.props }, runs: [{ ...first.runs[0], text: "Header text" }] },
+    ];
+    useOfficeTabs.setState((state) => ({
+      tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, header } } : entry)),
+    }));
     render(<Harness id={id} />);
 
     const preview = document.querySelector<HTMLElement>(".writer-page-sheet .writer-header-zone .para");
@@ -370,7 +398,9 @@ describe("Writer paginated in-place editing", () => {
     await user.keyboard("{End}!");
     const saved = useOfficeTabs.getState().tabs[0].model as TextDocument;
     const savedHeader = saved.header[0];
-    expect(savedHeader.type === "paragraph" ? savedHeader.runs.map((run) => run.text).join("") : "").toBe("Header text!");
+    expect(savedHeader.type === "paragraph" ? savedHeader.runs.map((run) => run.text).join("") : "").toBe(
+      "Header text!",
+    );
   });
 
   it("keeps the caret offset and focus when typing causes a reflow", async () => {
@@ -405,10 +435,16 @@ describe("Writer paginated in-place editing", () => {
     const blocks = [
       numbered("First", 1),
       numbered("Second"),
-      { type: "paragraph" as const, props: { ...first.props, list: null }, runs: [{ ...first.runs[0], text: "Break" }] },
+      {
+        type: "paragraph" as const,
+        props: { ...first.props, list: null },
+        runs: [{ ...first.runs[0], text: "Break" }],
+      },
       numbered("Restart", 5),
     ];
-    useOfficeTabs.setState((state) => ({ tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, blocks } } : entry)) }));
+    useOfficeTabs.setState((state) => ({
+      tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, blocks } } : entry)),
+    }));
     render(<Harness id={id} />);
 
     const markers = Array.from(document.querySelectorAll<HTMLElement>(".writer-page-sheet .list-marker")).map(
@@ -433,12 +469,20 @@ describe("Writer paginated in-place editing", () => {
       {
         type: "paragraph" as const,
         props: { ...first.props },
-        runs: [field("page", "99"), { ...first.runs[0], text: " of " }, field("pages", "99"), { ...first.runs[0], text: " — " }, field("title", "stale")],
+        runs: [
+          field("page", "99"),
+          { ...first.runs[0], text: " of " },
+          field("pages", "99"),
+          { ...first.runs[0], text: " — " },
+          field("title", "stale"),
+        ],
       },
     ];
     useOfficeTabs.setState((state) => ({
       tabs: state.tabs.map((entry) =>
-        (entry.id === id ? { ...entry, model: { ...model, metadata: { ...model.metadata, title: "Report Title" }, blocks } } : entry),
+        entry.id === id
+          ? { ...entry, model: { ...model, metadata: { ...model.metadata, title: "Report Title" }, blocks } }
+          : entry,
       ),
     }));
     render(<Harness id={id} />);
@@ -451,5 +495,3 @@ describe("Writer paginated in-place editing", () => {
     expect(fields).toEqual(["1", "1", "Report Title"]);
   });
 });
-
-

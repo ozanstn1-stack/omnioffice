@@ -28,12 +28,7 @@ pub fn drain_pending_open(cache_dir: &Path) -> Vec<String> {
     // Best effort: a failed truncate must not hide the already copied files,
     // they are re-imported at most once more.
     let _ = std::fs::write(&queue, "");
-    content
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(str::to_string)
-        .collect()
+    content.lines().map(str::trim).filter(|line| !line.is_empty()).map(str::to_string).collect()
 }
 
 /// Returns the paths of documents opened through an Android intent and clears

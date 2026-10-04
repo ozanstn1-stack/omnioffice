@@ -84,10 +84,7 @@ pub fn parse_openai_models(body: &str) -> Vec<ModelInfo> {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
         return Vec::new();
     };
-    let entries = value
-        .get("data")
-        .and_then(|data| data.as_array())
-        .or_else(|| value.as_array());
+    let entries = value.get("data").and_then(|data| data.as_array()).or_else(|| value.as_array());
     let Some(entries) = entries else {
         return Vec::new();
     };
@@ -108,13 +105,7 @@ pub fn parse_openai_models(body: &str) -> Vec<ModelInfo> {
                 .or_else(|| entry.get("context_window"))
                 .and_then(|value| value.as_u64())
                 .and_then(|value| u32::try_from(value).ok());
-            Some(ModelInfo {
-                id: id.to_string(),
-                label,
-                context_tokens,
-                max_output_tokens: None,
-                local: false,
-            })
+            Some(ModelInfo { id: id.to_string(), label, context_tokens, max_output_tokens: None, local: false })
         })
         .collect();
     models.sort_by(|a, b| a.id.cmp(&b.id));
@@ -134,11 +125,7 @@ pub fn parse_ollama_models(body: &str) -> Vec<ModelInfo> {
     let mut models: Vec<ModelInfo> = entries
         .iter()
         .filter_map(|entry| {
-            let id = entry
-                .get("name")
-                .or_else(|| entry.get("model"))
-                .and_then(|name| name.as_str())?
-                .trim();
+            let id = entry.get("name").or_else(|| entry.get("model")).and_then(|name| name.as_str())?.trim();
             if id.is_empty() {
                 return None;
             }
@@ -223,41 +210,21 @@ pub struct ProviderCapabilities {
 impl ProviderCapabilities {
     pub fn for_kind(kind: ProviderKind) -> Self {
         match kind {
-            ProviderKind::DeepSeek => Self {
-                chat: true,
-                embeddings: false,
-                vision: true,
-                structured_output: true,
-                streaming: true,
-            },
-            ProviderKind::OpenAiCompatible => Self {
-                chat: true,
-                embeddings: true,
-                vision: true,
-                structured_output: true,
-                streaming: true,
-            },
-            ProviderKind::Ollama => Self {
-                chat: true,
-                embeddings: true,
-                vision: true,
-                structured_output: true,
-                streaming: true,
-            },
-            ProviderKind::Gemini => Self {
-                chat: true,
-                embeddings: true,
-                vision: true,
-                structured_output: true,
-                streaming: true,
-            },
-            ProviderKind::Custom => Self {
-                chat: true,
-                embeddings: false,
-                vision: false,
-                structured_output: false,
-                streaming: true,
-            },
+            ProviderKind::DeepSeek => {
+                Self { chat: true, embeddings: false, vision: true, structured_output: true, streaming: true }
+            }
+            ProviderKind::OpenAiCompatible => {
+                Self { chat: true, embeddings: true, vision: true, structured_output: true, streaming: true }
+            }
+            ProviderKind::Ollama => {
+                Self { chat: true, embeddings: true, vision: true, structured_output: true, streaming: true }
+            }
+            ProviderKind::Gemini => {
+                Self { chat: true, embeddings: true, vision: true, structured_output: true, streaming: true }
+            }
+            ProviderKind::Custom => {
+                Self { chat: true, embeddings: false, vision: false, structured_output: false, streaming: true }
+            }
         }
     }
 }
@@ -274,9 +241,7 @@ pub fn provider_notes(kind: ProviderKind) -> &'static str {
         ProviderKind::Ollama => {
             "Local models. Ollama runs on your computer and the document text never leaves the computer."
         }
-        ProviderKind::Gemini => {
-            "Cloud API. The document text is sent to Google Gemini together with your API key."
-        }
+        ProviderKind::Gemini => "Cloud API. The document text is sent to Google Gemini together with your API key.",
         ProviderKind::Custom => {
             "Custom endpoint. The document text is sent wherever that endpoint points; check its privacy policy."
         }
@@ -293,10 +258,7 @@ pub fn is_loopback_host(host: &str) -> bool {
     if trimmed.eq_ignore_ascii_case("localhost") {
         return true;
     }
-    trimmed
-        .parse::<std::net::IpAddr>()
-        .map(|address| address.is_loopback())
-        .unwrap_or(false)
+    trimmed.parse::<std::net::IpAddr>().map(|address| address.is_loopback()).unwrap_or(false)
 }
 
 /// Validates and normalizes a provider base URL, trimming trailing slashes.
@@ -329,9 +291,7 @@ pub fn normalize_base_url(url: &str) -> AiResult<String> {
             }
         }
         other => {
-            return Err(AiError::InvalidBaseUrl(format!(
-                "the provider URL must start with https:// (got {other}://)"
-            )))
+            return Err(AiError::InvalidBaseUrl(format!("the provider URL must start with https:// (got {other}://)")))
         }
     }
     if parsed.query().is_some() || parsed.fragment().is_some() {
@@ -463,16 +423,10 @@ pub struct ChatMessage {
 
 impl ChatMessage {
     pub fn system(content: impl Into<String>) -> Self {
-        Self {
-            role: "system".into(),
-            content: content.into(),
-        }
+        Self { role: "system".into(), content: content.into() }
     }
     pub fn user(content: impl Into<String>) -> Self {
-        Self {
-            role: "user".into(),
-            content: content.into(),
-        }
+        Self { role: "user".into(), content: content.into() }
     }
 }
 
@@ -568,9 +522,7 @@ impl<'a> ChatRequestBody<'a> {
             max_tokens: clamp_output_tokens(options.max_tokens.unwrap_or(config.max_tokens)),
             stream,
             thinking: if enable_thinking {
-                Some(ThinkingSetting {
-                    kind: if config.thinking { "enabled" } else { "disabled" }.to_string(),
-                })
+                Some(ThinkingSetting { kind: if config.thinking { "enabled" } else { "disabled" }.to_string() })
             } else {
                 None
             },
@@ -721,10 +673,7 @@ impl DeepSeekClient {
             return Err(AiError::MissingApiKey);
         }
         config.base_url = normalize_base_url(&config.base_url)?;
-        let allow_loopback_http = config
-            .base_url
-            .to_ascii_lowercase()
-            .starts_with("http://");
+        let allow_loopback_http = config.base_url.to_ascii_lowercase().starts_with("http://");
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(180))
             .connect_timeout(Duration::from_secs(20))
@@ -837,11 +786,7 @@ impl DeepSeekClient {
     }
 
     fn unreachable(&self, error: reqwest::Error) -> AiError {
-        let reason = if error.is_timeout() {
-            "the request timed out"
-        } else {
-            "could not reach the server"
-        };
+        let reason = if error.is_timeout() { "the request timed out" } else { "could not reach the server" };
         let hint = match self.provider() {
             ProviderKind::Ollama => " (is Ollama running? try `ollama serve`)",
             _ => "",
@@ -864,19 +809,15 @@ impl DeepSeekClient {
 
     async fn chat_openai_compatible(&self, messages: &[ChatMessage], options: &ChatOptions) -> AiResult<String> {
         let body = ChatRequestBody::new(&self.config, messages, options, false);
-        let response = self
-            .request()
-            .json(&body)
-            .send()
-            .await
-            .map_err(|error| self.unreachable(error))?;
+        let response = self.request().json(&body).send().await.map_err(|error| self.unreachable(error))?;
 
         let status = response.status();
         let text = self.response_text(response).await?;
         if !status.is_success() {
             return Err(map_http_error(status.as_u16(), &text, &self.provider_name()));
         }
-        let parsed: ChatResponseBody = serde_json::from_str(&text).map_err(|_| AiError::InvalidResponse(self.provider_name()))?;
+        let parsed: ChatResponseBody =
+            serde_json::from_str(&text).map_err(|_| AiError::InvalidResponse(self.provider_name()))?;
         parsed
             .choices
             .into_iter()
@@ -887,19 +828,15 @@ impl DeepSeekClient {
 
     async fn chat_ollama(&self, messages: &[ChatMessage], options: &ChatOptions) -> AiResult<String> {
         let body = OllamaChatRequestBody::new(&self.config, messages, options, false);
-        let response = self
-            .request()
-            .json(&body)
-            .send()
-            .await
-            .map_err(|error| self.unreachable(error))?;
+        let response = self.request().json(&body).send().await.map_err(|error| self.unreachable(error))?;
 
         let status = response.status();
         let text = self.response_text(response).await?;
         if !status.is_success() {
             return Err(map_http_error(status.as_u16(), &text, &self.provider_name()));
         }
-        let parsed: OllamaChatResponse = serde_json::from_str(&text).map_err(|_| AiError::InvalidResponse(self.provider_name()))?;
+        let parsed: OllamaChatResponse =
+            serde_json::from_str(&text).map_err(|_| AiError::InvalidResponse(self.provider_name()))?;
         if !parsed.error.trim().is_empty() {
             return Err(AiError::Server(self.provider_name(), parsed.error));
         }
@@ -924,8 +861,7 @@ impl DeepSeekClient {
             let _ = on_reasoning;
             self.chat_stream_ollama(messages, options, cancel, on_delta).await
         } else {
-            self.chat_stream_openai_compatible(messages, options, cancel, on_delta, on_reasoning)
-                .await
+            self.chat_stream_openai_compatible(messages, options, cancel, on_delta, on_reasoning).await
         }
     }
 
@@ -938,12 +874,7 @@ impl DeepSeekClient {
         on_reasoning: &mut (dyn FnMut(&str) + Send),
     ) -> AiResult<String> {
         let body = ChatRequestBody::new(&self.config, messages, &options, true);
-        let response = self
-            .request()
-            .json(&body)
-            .send()
-            .await
-            .map_err(|error| self.unreachable(error))?;
+        let response = self.request().json(&body).send().await.map_err(|error| self.unreachable(error))?;
         let status = response.status();
         if !status.is_success() {
             let text = self.response_text(response).await.unwrap_or_default();
@@ -960,10 +891,7 @@ impl DeepSeekClient {
             if full.len() + reasoning_text.len() + buffer.len() + bytes.len() > MAX_RESPONSE_BYTES {
                 return Err(AiError::Server(
                     self.provider_name(),
-                    format!(
-                        "the provider stream exceeded the {} MB safety limit",
-                        MAX_RESPONSE_BYTES / (1024 * 1024)
-                    ),
+                    format!("the provider stream exceeded the {} MB safety limit", MAX_RESPONSE_BYTES / (1024 * 1024)),
                 ));
             }
             buffer.push_str(&String::from_utf8_lossy(&bytes));
@@ -1016,12 +944,7 @@ impl DeepSeekClient {
         on_delta: &mut (dyn FnMut(&str) + Send),
     ) -> AiResult<String> {
         let body = OllamaChatRequestBody::new(&self.config, messages, &options, true);
-        let response = self
-            .request()
-            .json(&body)
-            .send()
-            .await
-            .map_err(|error| self.unreachable(error))?;
+        let response = self.request().json(&body).send().await.map_err(|error| self.unreachable(error))?;
         let status = response.status();
         if !status.is_success() {
             let text = self.response_text(response).await.unwrap_or_default();
@@ -1040,10 +963,7 @@ impl DeepSeekClient {
             if full.len() + buffer.len() + bytes.len() > MAX_RESPONSE_BYTES {
                 return Err(AiError::Server(
                     self.provider_name(),
-                    format!(
-                        "the provider stream exceeded the {} MB safety limit",
-                        MAX_RESPONSE_BYTES / (1024 * 1024)
-                    ),
+                    format!("the provider stream exceeded the {} MB safety limit", MAX_RESPONSE_BYTES / (1024 * 1024)),
                 ));
             }
             buffer.push_str(&String::from_utf8_lossy(&bytes));
@@ -1094,56 +1014,32 @@ impl DeepSeekClient {
     /// Cheap connectivity/credentials check for the settings screen.
     pub async fn test_connection(&self) -> AiResult<String> {
         let messages = vec![ChatMessage::user("Reply with the single word: ready")];
-        let reply = self
-            .chat(
-                &messages,
-                ChatOptions {
-                    temperature: Some(0.0),
-                    max_tokens: Some(16),
-                },
-            )
-            .await?;
+        let reply = self.chat(&messages, ChatOptions { temperature: Some(0.0), max_tokens: Some(16) }).await?;
         Ok(reply.trim().to_string())
     }
 }
 
 fn map_http_error(status: u16, body: &str, provider: &str) -> AiError {
-    let detail = serde_json::from_str::<ApiErrorBody>(body)
-        .ok()
-        .map(|parsed| parsed.error)
-        .or_else(|| {
-            // Ollama reports errors as {"error": "text"}.
-            let value: serde_json::Value = serde_json::from_str(body).ok()?;
-            value
-                .get("error")
-                .and_then(|error| error.as_str())
-                .map(|message| ApiErrorDetail {
-                    message: message.to_string(),
-                    code: String::new(),
-                    kind: String::new(),
-                })
-        });
-    let code = detail
-        .as_ref()
-        .map(|error| format!("{} {}", error.code, error.kind).to_lowercase())
-        .unwrap_or_default();
-    let message: String = detail
-        .map(|error| error.message)
-        .unwrap_or_default()
-        .chars()
-        .take(MAX_ERROR_MESSAGE_CHARS)
-        .collect();
+    let detail = serde_json::from_str::<ApiErrorBody>(body).ok().map(|parsed| parsed.error).or_else(|| {
+        // Ollama reports errors as {"error": "text"}.
+        let value: serde_json::Value = serde_json::from_str(body).ok()?;
+        value.get("error").and_then(|error| error.as_str()).map(|message| ApiErrorDetail {
+            message: message.to_string(),
+            code: String::new(),
+            kind: String::new(),
+        })
+    });
+    let code = detail.as_ref().map(|error| format!("{} {}", error.code, error.kind).to_lowercase()).unwrap_or_default();
+    let message: String =
+        detail.map(|error| error.message).unwrap_or_default().chars().take(MAX_ERROR_MESSAGE_CHARS).collect();
     match status {
         401 | 403 => AiError::InvalidApiKey(provider.to_string()),
         402 => AiError::InsufficientBalance(provider.to_string()),
         429 => AiError::RateLimited(provider.to_string()),
         400 if code.contains("context") || message.to_lowercase().contains("context") => AiError::TooLarge,
         _ => {
-            let summary = if message.is_empty() {
-                format!("HTTP {status}")
-            } else {
-                format!("HTTP {status}: {message}")
-            };
+            let summary =
+                if message.is_empty() { format!("HTTP {status}") } else { format!("HTTP {status}: {message}") };
             AiError::Server(provider.to_string(), summary)
         }
     }
@@ -1163,9 +1059,7 @@ pub async fn run_plan(
     match plan {
         Plan::Single { messages } => {
             on_progress("request", 0, 1);
-            let text = client
-                .chat_stream(messages, ChatOptions::default(), cancel, on_delta, on_reasoning)
-                .await?;
+            let text = client.chat_stream(messages, ChatOptions::default(), cancel, on_delta, on_reasoning).await?;
             on_progress("request", 1, 1);
             Ok(text)
         }
@@ -1175,19 +1069,9 @@ pub async fn run_plan(
             for (index, chunk) in chunks.iter().enumerate() {
                 cancel.check()?;
                 on_progress("chunk", index, total);
-                let messages = vec![
-                    ChatMessage::system(prompts::MAP_SYSTEM),
-                    ChatMessage::user(chunk.clone()),
-                ];
-                let partial = client
-                    .chat(
-                        &messages,
-                        ChatOptions {
-                            temperature: Some(0.1),
-                            max_tokens: Some(1024),
-                        },
-                    )
-                    .await?;
+                let messages = vec![ChatMessage::system(prompts::MAP_SYSTEM), ChatMessage::user(chunk.clone())];
+                let partial =
+                    client.chat(&messages, ChatOptions { temperature: Some(0.1), max_tokens: Some(1024) }).await?;
                 partials.push(partial);
             }
             on_progress("reduce", chunks.len(), total);
@@ -1196,9 +1080,8 @@ pub async fn run_plan(
                 ChatMessage::system(prompts::REDUCE_SYSTEM),
                 ChatMessage::user(format!("{}\n\n{}", reduce, combined)),
             ];
-            let final_text = client
-                .chat_stream(&messages, ChatOptions::default(), cancel, on_delta, on_reasoning)
-                .await?;
+            let final_text =
+                client.chat_stream(&messages, ChatOptions::default(), cancel, on_delta, on_reasoning).await?;
             on_progress("reduce", total, total);
             Ok(final_text)
         }
@@ -1212,24 +1095,12 @@ mod tests {
     #[test]
     fn provider_url_requires_https_for_remote_hosts() {
         assert_eq!(normalize_base_url(" https://api.deepseek.com/ ").unwrap(), "https://api.deepseek.com");
-        assert_eq!(
-            normalize_base_url("https://api.openai.com/v1/").unwrap(),
-            "https://api.openai.com/v1"
-        );
+        assert_eq!(normalize_base_url("https://api.openai.com/v1/").unwrap(), "https://api.openai.com/v1");
         // A remote plain-HTTP endpoint would leak the API key: refused.
-        assert!(matches!(
-            normalize_base_url("http://api.example.com/v1"),
-            Err(AiError::InvalidBaseUrl(_))
-        ));
-        assert!(matches!(
-            normalize_base_url("http://192.168.1.10:8000/v1"),
-            Err(AiError::InvalidBaseUrl(_))
-        ));
+        assert!(matches!(normalize_base_url("http://api.example.com/v1"), Err(AiError::InvalidBaseUrl(_))));
+        assert!(matches!(normalize_base_url("http://192.168.1.10:8000/v1"), Err(AiError::InvalidBaseUrl(_))));
         // Loopback HTTP stays available for local servers (Ollama).
-        assert_eq!(
-            normalize_base_url("http://localhost:11434").unwrap(),
-            "http://localhost:11434"
-        );
+        assert_eq!(normalize_base_url("http://localhost:11434").unwrap(), "http://localhost:11434");
         assert_eq!(normalize_base_url("http://127.0.0.1:11434").unwrap(), "http://127.0.0.1:11434");
         assert_eq!(normalize_base_url("http://[::1]:11434").unwrap(), "http://[::1]:11434");
         // Other schemes, credentials, queries and fragments are rejected.

@@ -3,8 +3,8 @@
 //! write -> read cycle, plus the ODP degradation warnings.
 
 use officecore::model::*;
-use officecore::{odf, pptx};
 use officecore::zip::ZipReader;
+use officecore::{odf, pptx};
 
 fn placeholder_shape(role: &str, text: &str, x: f64, y: f64, w: f64, h: f64) -> SlideObject {
     let mut object = SlideObject::new("text", x, y, w, h);
@@ -45,7 +45,10 @@ fn sample_deck() -> Deck {
         theme: "business".into(),
         background: Some("#F8FAFC".into()),
         objects: vec![placeholder_shape("footer", "Confidential", 300.0, 496.0, 360.0, 28.0)],
-        layouts: vec![layout("layout-a-title", "Title Slide", "title"), layout("layout-a-content", "Content", "titleContent")],
+        layouts: vec![
+            layout("layout-a-title", "Title Slide", "title"),
+            layout("layout-a-content", "Content", "titleContent"),
+        ],
     };
     let master_b = SlideMaster {
         id: "master-b".into(),
@@ -208,11 +211,8 @@ fn pptx_package_contains_the_v3_parts() {
     assert!(content_types.contains("/ppt/slideMasters/slideMaster2.xml"));
     assert!(content_types.contains("/ppt/slideLayouts/slideLayout3.xml"));
 
-    let parts: Vec<String> = reader
-        .names()
-        .filter(|name| name.ends_with(".xml") || name.ends_with(".rels"))
-        .map(str::to_string)
-        .collect();
+    let parts: Vec<String> =
+        reader.names().filter(|name| name.ends_with(".xml") || name.ends_with(".rels")).map(str::to_string).collect();
     for part in parts {
         let text = reader.read_text(&part).unwrap();
         officecore::xml::parse_xml(&text).unwrap_or_else(|error| panic!("{part} is not well-formed XML: {error}"));
@@ -244,11 +244,7 @@ fn masters_layouts_groups_charts_and_animations_roundtrip() {
     assert!(read.deck.masters[0].objects.iter().any(|object| object.placeholder.as_deref() == Some("slideNumber")));
     assert_eq!(read.deck.masters[0].layouts[1].kind, "titleContent");
 
-    let group = read.deck.slides[0]
-        .objects
-        .iter()
-        .find(|object| object.kind == "group")
-        .expect("outer group");
+    let group = read.deck.slides[0].objects.iter().find(|object| object.kind == "group").expect("outer group");
     assert_eq!(group.children.len(), 3);
     assert!(close(group.x, 100.0) && close(group.y, 120.0) && close(group.w, 400.0) && close(group.h, 300.0));
 
@@ -259,15 +255,18 @@ fn masters_layouts_groups_charts_and_animations_roundtrip() {
     let ellipse = nested.children.iter().find(|object| object.kind == "ellipse").expect("nested ellipse");
     assert!(close(ellipse.x, 300.0) && close(ellipse.y, 180.0) && close(ellipse.w, 60.0) && close(ellipse.h, 60.0));
     let leaf_rect = nested.children.iter().find(|object| object.kind == "roundRect").expect("nested rect");
-    assert!(close(leaf_rect.x, 340.0) && close(leaf_rect.y, 200.0) && close(leaf_rect.w, 80.0) && close(leaf_rect.h, 70.0));
+    assert!(
+        close(leaf_rect.x, 340.0) && close(leaf_rect.y, 200.0) && close(leaf_rect.w, 80.0) && close(leaf_rect.h, 70.0)
+    );
     let first_leaf = group.children.iter().find(|object| object.kind == "rect").expect("group rect");
-    assert!(close(first_leaf.x, 120.0) && close(first_leaf.y, 140.0) && close(first_leaf.w, 100.0) && close(first_leaf.h, 80.0));
+    assert!(
+        close(first_leaf.x, 120.0)
+            && close(first_leaf.y, 140.0)
+            && close(first_leaf.w, 100.0)
+            && close(first_leaf.h, 80.0)
+    );
 
-    let chart = read.deck.slides[0]
-        .objects
-        .iter()
-        .find_map(|object| object.chart.as_ref())
-        .expect("chart");
+    let chart = read.deck.slides[0].objects.iter().find_map(|object| object.chart.as_ref()).expect("chart");
     assert_eq!(chart.kind, "column");
     assert_eq!(chart.title, "Sales");
     assert_eq!(chart.categories, "A2:A4");
@@ -323,7 +322,8 @@ fn a_second_write_read_cycle_stays_stable() {
     assert_eq!(first.slides[0].layout_id, second.slides[0].layout_id);
     assert_eq!(first.slides[1].layout_id, second.slides[1].layout_id);
     assert_eq!(first.masters[0].layouts.len(), second.masters[0].layouts.len());
-    let mut roles: Vec<String> = second.masters[0].objects.iter().filter_map(|object| object.placeholder.clone()).collect();
+    let mut roles: Vec<String> =
+        second.masters[0].objects.iter().filter_map(|object| object.placeholder.clone()).collect();
     let total = roles.len();
     roles.sort();
     roles.dedup();
@@ -481,4 +481,3 @@ fn odp_degrades_groups_charts_and_animations_with_warnings() {
     assert!(content.contains("Sales"), "the chart placeholder must not be dropped silently");
     assert!(content.contains("Badge"));
 }
-

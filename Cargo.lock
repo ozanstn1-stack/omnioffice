@@ -57,7 +57,7 @@ dependencies = [
 
 [[package]]
 name = "aicore"
-version = "3.5.4"
+version = "3.5.5"
 dependencies = [
  "futures-util",
  "reqwest 0.12.28",
@@ -1200,6 +1200,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ffdd80ce8ce993de27e9f063a444a4d53ce8e8db4c1f00cc03af5ad5a9867a1e"
 dependencies = [
  "cipher 0.4.4",
+]
+
+[[package]]
+name = "des"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "916a94e407b54f9034d71dd748234cd1e516ced6284009906ae246f177eafe5a"
+dependencies = [
+ "cipher 0.5.2",
 ]
 
 [[package]]
@@ -3244,7 +3253,7 @@ dependencies = [
 
 [[package]]
 name = "officecore"
-version = "3.5.4"
+version = "3.5.5"
 dependencies = [
  "ab_glyph",
  "base64 0.23.1",
@@ -3415,7 +3424,7 @@ dependencies = [
 
 [[package]]
 name = "pdf-swiss-army-knife"
-version = "3.5.4"
+version = "3.5.5"
 dependencies = [
  "aicore",
  "base64 0.23.1",
@@ -3442,16 +3451,15 @@ dependencies = [
 
 [[package]]
 name = "pdfcore"
-version = "3.5.4"
+version = "3.5.5"
 dependencies = [
  "ab_glyph",
- "aes 0.8.4",
- "cbc 0.1.2",
+ "cbc 0.2.1",
  "cms",
  "const-oid 0.9.6",
  "criterion",
  "der",
- "des",
+ "des 0.9.0",
  "getrandom 0.2.17",
  "hmac",
  "image",
@@ -3637,7 +3645,7 @@ dependencies = [
  "aes 0.8.4",
  "cbc 0.1.2",
  "der",
- "des",
+ "des 0.8.1",
  "pbkdf2",
  "scrypt",
  "sha1",
@@ -4938,7 +4946,7 @@ dependencies = [
 
 [[package]]
 name = "synccore"
-version = "3.5.4"
+version = "3.5.5"
 dependencies = [
  "percent-encoding",
  "quick-xml 0.42.0",

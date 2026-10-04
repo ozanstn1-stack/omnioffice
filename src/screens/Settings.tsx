@@ -116,7 +116,11 @@ export function Settings() {
             <label className="label">{t("settings.defaultImageDpi")}</label>
             <div className="seg">
               {[72, 150, 300].map((dpi) => (
-                <button key={dpi} data-active={settings.defaultImageDpi === dpi} onClick={() => void update({ defaultImageDpi: dpi })}>
+                <button
+                  key={dpi}
+                  data-active={settings.defaultImageDpi === dpi}
+                  onClick={() => void update({ defaultImageDpi: dpi })}
+                >
                   {dpi}
                 </button>
               ))}
@@ -273,7 +277,7 @@ export function Settings() {
             <li className="flex items-center justify-between">
               <span>{t("settings.engineTesseract")}</span>
               <Badge tone={engine?.tesseract ? "ok" : "danger"}>
-                {engine?.tesseract ? engine.tesseract_version ?? t("info.yes") : t("info.no")}
+                {engine?.tesseract ? (engine.tesseract_version ?? t("info.yes")) : t("info.no")}
               </Badge>
             </li>
           </ul>

@@ -34,9 +34,11 @@ fn docx_open_edit_save_reopen() {
     assert!(first.document.plain_text().contains("Second page"));
     assert_eq!(first.document.header.len(), 1);
     assert_eq!(first.document.footer.len(), 1);
-    let tables = first.document.blocks.iter().filter(|block| matches!(block, officecore::model::Block::Table { .. })).count();
+    let tables =
+        first.document.blocks.iter().filter(|block| matches!(block, officecore::model::Block::Table { .. })).count();
     assert_eq!(tables, 1, "the sample document must contain one table");
-    let images = first.document.blocks.iter().filter(|block| matches!(block, officecore::model::Block::Image { .. })).count();
+    let images =
+        first.document.blocks.iter().filter(|block| matches!(block, officecore::model::Block::Image { .. })).count();
     assert_eq!(images, 1, "the sample document must contain one image");
 
     // Edit: append a paragraph, then save and reopen.
@@ -57,7 +59,15 @@ fn docx_package_can_be_read_by_other_office_suites() {
     let source = require(&samples_dir().join("test-document.docx"));
     let bytes = std::fs::read(&source).unwrap();
     let reader = officecore::zip::ZipReader::open(bytes).unwrap();
-    for part in ["[Content_Types].xml", "_rels/.rels", "word/document.xml", "word/styles.xml", "word/numbering.xml", "word/header1.xml", "word/footer1.xml"] {
+    for part in [
+        "[Content_Types].xml",
+        "_rels/.rels",
+        "word/document.xml",
+        "word/styles.xml",
+        "word/numbering.xml",
+        "word/header1.xml",
+        "word/footer1.xml",
+    ] {
         assert!(reader.contains(part), "missing package part {part}");
     }
     let document = reader.read_text("word/document.xml").unwrap();
@@ -73,10 +83,17 @@ fn odt_and_rtf_roundtrip() {
     assert!(odt.document.plain_text().contains("Test document"));
     // Extend: footnotes now survive an ODT write -> read cycle.
     let mut edited = odt.document;
-    edited.footnotes = vec![Footnote { id: "fn-rt".into(), runs: vec![Run { text: "Round trip note".into(), ..Default::default() }], marker: String::new() }];
+    edited.footnotes = vec![Footnote {
+        id: "fn-rt".into(),
+        runs: vec![Run { text: "Round trip note".into(), ..Default::default() }],
+        marker: String::new(),
+    }];
     edited.blocks.push(Block::Paragraph {
         props: Default::default(),
-        runs: vec![Run { text: "note ref".into(), ..Default::default() }, Run { footnote: Some("fn-rt".into()), ..Default::default() }],
+        runs: vec![
+            Run { text: "note ref".into(), ..Default::default() },
+            Run { footnote: Some("fn-rt".into()), ..Default::default() },
+        ],
     });
     let odt_target = temp("roundtrip-document.odt");
     std::fs::write(&odt_target, odf::write_odt(&edited).unwrap()).unwrap();
@@ -85,20 +102,33 @@ fn odt_and_rtf_roundtrip() {
     assert_eq!(odt_again.document.footnotes.len(), 1);
     assert!(odt_again.document.footnotes[0].runs.iter().any(|run| run.text.contains("Round trip note")));
     assert_eq!(odt_again.document.footnote_order().len(), 1);
-    assert!(!odt_again.document.plain_text().contains("Round trip note"), "the note body must not leak into the paragraph text");
+    assert!(
+        !odt_again.document.plain_text().contains("Round trip note"),
+        "the note body must not leak into the paragraph text"
+    );
 
     let rtf_source = require(&samples_dir().join("test-document.rtf"));
     let rtf_read = rtf::read_rtf_file(&rtf_source).unwrap();
     assert!(rtf_read.document.plain_text().contains("Test document"));
     // Extend: RTF keeps notes and tracked insertions.
     let mut edited = rtf_read.document;
-    edited.footnotes = vec![Footnote { id: "fn-rtf".into(), runs: vec![Run { text: "RTF note".into(), ..Default::default() }], marker: String::new() }];
+    edited.footnotes = vec![Footnote {
+        id: "fn-rtf".into(),
+        runs: vec![Run { text: "RTF note".into(), ..Default::default() }],
+        marker: String::new(),
+    }];
     edited.blocks.push(Block::Paragraph {
         props: Default::default(),
         runs: vec![
             Run {
                 text: "tracked".into(),
-                revision: Some(RevisionMark { id: "r1".into(), kind: "insert".into(), author: "RoundTrip".into(), date: "2026-01-01T00:00:00Z".into(), original: None }),
+                revision: Some(RevisionMark {
+                    id: "r1".into(),
+                    kind: "insert".into(),
+                    author: "RoundTrip".into(),
+                    date: "2026-01-01T00:00:00Z".into(),
+                    original: None,
+                }),
                 ..Default::default()
             },
             Run { footnote: Some("fn-rtf".into()), ..Default::default() },
@@ -111,10 +141,15 @@ fn odt_and_rtf_roundtrip() {
     assert!(rtf_again.document.footnotes[0].runs.iter().any(|run| run.text.contains("RTF note")));
     assert_eq!(rtf_again.document.footnote_order().len(), 1);
     let revision = rtf_again.document.blocks.iter().find_map(|block| match block {
-        Block::Paragraph { runs, .. } => runs.iter().find_map(|run| run.revision.as_ref().filter(|revision| revision.kind == "insert").cloned()),
+        Block::Paragraph { runs, .. } => {
+            runs.iter().find_map(|run| run.revision.as_ref().filter(|revision| revision.kind == "insert").cloned())
+        }
         _ => None,
     });
-    assert_eq!(revision.map(|revision| (revision.author, revision.date)), Some(("RoundTrip".into(), "2026-01-01T00:00:00Z".into())));
+    assert_eq!(
+        revision.map(|revision| (revision.author, revision.date)),
+        Some(("RoundTrip".into(), "2026-01-01T00:00:00Z".into()))
+    );
 }
 
 #[test]
@@ -124,15 +159,21 @@ fn xlsx_open_edit_save_reopen() {
     assert_eq!(first.workbook.sheets.len(), 2);
     let data = &first.workbook.sheets[0];
     assert!(data.cells.len() > 300, "the sample workbook should contain 100 data rows");
-    assert_eq!(data.get("A2").map(|cell| cell.value.clone()), Some(officecore::model::CellValue::Text("Item 1".into())));
+    assert_eq!(
+        data.get("A2").map(|cell| cell.value.clone()),
+        Some(officecore::model::CellValue::Text("Item 1".into()))
+    );
     let formula = data.get("D2").and_then(|cell| cell.formula.clone());
     assert_eq!(formula.as_deref(), Some("=B2*C2"));
 
     let mut edited = first.workbook;
-    edited.sheets[0].set("A1", officecore::model::Cell {
-        value: officecore::model::CellValue::Text("Edited header".into()),
-        ..Default::default()
-    });
+    edited.sheets[0].set(
+        "A1",
+        officecore::model::Cell {
+            value: officecore::model::CellValue::Text("Edited header".into()),
+            ..Default::default()
+        },
+    );
     let target = temp("roundtrip-spreadsheet.xlsx");
     xlsx::write_xlsx_file(&target, &edited).unwrap();
     let second = xlsx::read_workbook_file(&target).unwrap();
@@ -166,7 +207,9 @@ trait SheetProbe {
 
 impl SheetProbe for officecore::model::Sheet {
     fn plain_text_probe(&self) -> bool {
-        self.cells.values().any(|cell| matches!(&cell.value, officecore::model::CellValue::Text(text) if text == "Item 1"))
+        self.cells
+            .values()
+            .any(|cell| matches!(&cell.value, officecore::model::CellValue::Text(text) if text == "Item 1"))
     }
 }
 
@@ -175,10 +218,20 @@ fn pptx_open_edit_save_reopen() {
     let source = require(&samples_dir().join("test-presentation.pptx"));
     let first = pptx::read_pptx_file(&source).unwrap();
     assert_eq!(first.deck.slides.len(), 5, "the sample deck must have five slides");
-    let texts: Vec<String> = first.deck.slides.iter().flat_map(|slide| slide.objects.iter()).filter_map(|object| object.text.as_ref().map(|frame| frame.plain())).collect();
+    let texts: Vec<String> = first
+        .deck
+        .slides
+        .iter()
+        .flat_map(|slide| slide.objects.iter())
+        .filter_map(|object| object.text.as_ref().map(|frame| frame.plain()))
+        .collect();
     assert!(texts.iter().any(|text| text.contains("Slide 1 title")));
     assert!(first.deck.slides.iter().any(|slide| slide.objects.iter().any(|object| object.image.is_some())));
-    assert!(first.deck.slides.iter().any(|slide| slide.objects.iter().any(|object| object.kind == "rect" || object.kind == "ellipse")));
+    assert!(first
+        .deck
+        .slides
+        .iter()
+        .any(|slide| slide.objects.iter().any(|object| object.kind == "rect" || object.kind == "ellipse")));
 
     let mut edited = first.deck;
     edited.slides[0].notes = "Edited notes".into();
@@ -213,10 +266,7 @@ fn pptx_open_edit_save_reopen() {
     let reader = officecore::zip::ZipReader::open(bytes).unwrap();
     let workbook_bytes = reader.read("ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx").unwrap();
     let workbook = xlsx::read_workbook_bytes(&workbook_bytes).unwrap();
-    assert_eq!(
-        workbook.workbook.sheets[0].get("B2").map(|cell| cell.value.clone()),
-        Some(CellValue::Number(1.5))
-    );
+    assert_eq!(workbook.workbook.sheets[0].get("B2").map(|cell| cell.value.clone()), Some(CellValue::Number(1.5)));
 }
 
 #[test]

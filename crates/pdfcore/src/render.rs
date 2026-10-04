@@ -57,11 +57,7 @@ pub struct RenderOptions {
 
 impl Default for RenderOptions {
     fn default() -> Self {
-        Self {
-            dpi: 150.0,
-            max_width: None,
-            max_height: None,
-        }
+        Self { dpi: 150.0, max_width: None, max_height: None }
     }
 }
 
@@ -109,18 +105,13 @@ fn render_config(options: &RenderOptions, page_w: f32, page_h: f32) -> PdfRender
             target_w = (target_w * scale).round().max(1.0);
         }
     }
-    PdfRenderConfig::new()
-        .set_target_width(target_w as i32)
-        .set_target_height(target_h as i32)
-        .render_form_data(true)
+    PdfRenderConfig::new().set_target_width(target_w as i32).set_target_height(target_h as i32).render_form_data(true)
 }
 
 /// Reads page geometry (sizes in points, rotation) for every page.
 pub fn page_geometries(path: &Path, password: Option<&str>) -> PdfResult<Vec<PageGeometry>> {
     let pdfium = pdfium()?;
-    let doc = pdfium
-        .load_pdf_from_file(path, password)
-        .map_err(|e| PdfError::InvalidPdf(format!("{e}")))?;
+    let doc = pdfium.load_pdf_from_file(path, password).map_err(|e| PdfError::InvalidPdf(format!("{e}")))?;
     let mut out = Vec::with_capacity(doc.pages().len() as usize);
     for (index, page) in doc.pages().iter().enumerate() {
         let (w, h) = (page.width().value as f64, page.height().value as f64);
@@ -153,33 +144,19 @@ pub fn render_page(
     options: &RenderOptions,
 ) -> PdfResult<RenderedPage> {
     let pdfium = pdfium()?;
-    let doc = pdfium
-        .load_pdf_from_file(path, password)
-        .map_err(|e| PdfError::InvalidPdf(format!("{e}")))?;
-    let index = page_number
-        .checked_sub(1)
-        .ok_or(PdfError::RangeOutOfBounds)? as PdfPageIndex;
+    let doc = pdfium.load_pdf_from_file(path, password).map_err(|e| PdfError::InvalidPdf(format!("{e}")))?;
+    let index = page_number.checked_sub(1).ok_or(PdfError::RangeOutOfBounds)? as PdfPageIndex;
     if index as usize >= doc.pages().len() as usize {
         return Err(PdfError::RangeOutOfBounds);
     }
-    let page = doc
-        .pages()
-        .get(index)
-        .map_err(|e| PdfError::ProcessingFailed(format!("{e}")))?;
+    let page = doc.pages().get(index).map_err(|e| PdfError::ProcessingFailed(format!("{e}")))?;
     let config = render_config(options, page.width().value, page.height().value);
-    let bitmap = page
-        .render_with_config(&config)
-        .map_err(|e| PdfError::ConversionFailed(format!("render failed: {e}")))?;
+    let bitmap =
+        page.render_with_config(&config).map_err(|e| PdfError::ConversionFailed(format!("render failed: {e}")))?;
     let width = bitmap.width() as u32;
     let height = bitmap.height() as u32;
-    let image = bitmap
-        .as_image()
-        .map_err(|e| PdfError::ConversionFailed(format!("bitmap conversion failed: {e}")))?;
-    Ok(RenderedPage {
-        width,
-        height,
-        rgba: image.to_rgba8().into_raw(),
-    })
+    let image = bitmap.as_image().map_err(|e| PdfError::ConversionFailed(format!("bitmap conversion failed: {e}")))?;
+    Ok(RenderedPage { width, height, rgba: image.to_rgba8().into_raw() })
 }
 
 /// Renders a page straight to PNG or JPEG bytes.
@@ -200,20 +177,10 @@ pub fn render_page_bytes(
 /// scanned image without OCR).
 pub fn extract_page_text(path: &Path, password: Option<&str>, page_number: u32) -> PdfResult<String> {
     let pdfium = pdfium()?;
-    let doc = pdfium
-        .load_pdf_from_file(path, password)
-        .map_err(|e| PdfError::InvalidPdf(format!("{e}")))?;
-    let index = page_number
-        .checked_sub(1)
-        .ok_or(PdfError::RangeOutOfBounds)? as PdfPageIndex;
-    let page = doc
-        .pages()
-        .get(index)
-        .map_err(|_| PdfError::RangeOutOfBounds)?;
-    let text = page
-        .text()
-        .map_err(|e| PdfError::ProcessingFailed(format!("{e}")))?
-        .all();
+    let doc = pdfium.load_pdf_from_file(path, password).map_err(|e| PdfError::InvalidPdf(format!("{e}")))?;
+    let index = page_number.checked_sub(1).ok_or(PdfError::RangeOutOfBounds)? as PdfPageIndex;
+    let page = doc.pages().get(index).map_err(|_| PdfError::RangeOutOfBounds)?;
+    let text = page.text().map_err(|e| PdfError::ProcessingFailed(format!("{e}")))?.all();
     Ok(text)
 }
 
@@ -221,9 +188,7 @@ pub fn extract_page_text(path: &Path, password: Option<&str>, page_number: u32) 
 /// Samples up to `sample` pages spread through the document.
 pub fn document_has_text(path: &Path, password: Option<&str>, sample: u32) -> PdfResult<bool> {
     let pdfium = pdfium()?;
-    let doc = pdfium
-        .load_pdf_from_file(path, password)
-        .map_err(|e| PdfError::InvalidPdf(format!("{e}")))?;
+    let doc = pdfium.load_pdf_from_file(path, password).map_err(|e| PdfError::InvalidPdf(format!("{e}")))?;
     let total = doc.pages().len().max(0) as u32;
     if total == 0 {
         return Ok(false);
@@ -308,9 +273,7 @@ pub fn search_document(
         return Err(PdfError::InvalidInput("search text is empty".into()));
     }
     let pdfium = pdfium()?;
-    let doc = pdfium
-        .load_pdf_from_file(path, password)
-        .map_err(|e| PdfError::InvalidPdf(format!("{e}")))?;
+    let doc = pdfium.load_pdf_from_file(path, password).map_err(|e| PdfError::InvalidPdf(format!("{e}")))?;
     let total = doc.pages().len().max(0) as u32;
     let mut matches: Vec<TextMatch> = Vec::new();
     let mut pages_with_matches = 0u32;
@@ -371,11 +334,7 @@ pub fn search_document(
         if page_matches == 0 {
             // pdfium matched but the collapsed-text scan did not (for example
             // when a match spans a line break): still report the page.
-            matches.push(TextMatch {
-                page: index + 1,
-                snippet: String::new(),
-                index_on_page: 1,
-            });
+            matches.push(TextMatch { page: index + 1, snippet: String::new(), index_on_page: 1 });
         }
         pages_with_matches += 1;
         if truncated {
@@ -385,10 +344,5 @@ pub fn search_document(
     if truncated {
         matches.truncate(limit as usize);
     }
-    Ok(SearchResult {
-        total_matches: matches.len() as u32,
-        matches,
-        pages_with_matches,
-        truncated,
-    })
+    Ok(SearchResult { total_matches: matches.len() as u32, matches, pages_with_matches, truncated })
 }

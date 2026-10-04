@@ -20,8 +20,8 @@
 //! call in its blocking worker pool, and a blocking trait is object safe
 //! (`dyn SyncProvider`) without pulling in an async runtime.
 
-pub mod metadata;
 pub mod merge;
+pub mod metadata;
 pub mod webdav;
 
 use serde::{Deserialize, Serialize};
@@ -108,12 +108,7 @@ pub trait SyncProvider: Send + Sync {
     /// Uploads a file. When `if_match_etag` is `Some`, the request carries an
     /// `If-Match` header and the server refuses the write (412 -> conflict)
     /// if the remote version no longer matches. Returns the new etag.
-    fn put(
-        &self,
-        path: &str,
-        bytes: &[u8],
-        if_match_etag: Option<&str>,
-    ) -> Result<Option<String>, SyncError>;
+    fn put(&self, path: &str, bytes: &[u8], if_match_etag: Option<&str>) -> Result<Option<String>, SyncError>;
 
     /// Deletes a remote file.
     fn delete(&self, path: &str) -> Result<(), SyncError>;
@@ -126,8 +121,6 @@ mod tests {
     #[test]
     fn error_display_is_stable() {
         assert_eq!(SyncError::Disabled.to_string(), "cloud sync is disabled");
-        assert!(SyncError::Conflict("etag mismatch".into())
-            .to_string()
-            .contains("etag mismatch"));
+        assert!(SyncError::Conflict("etag mismatch".into()).to_string().contains("etag mismatch"));
     }
 }

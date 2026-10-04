@@ -168,10 +168,7 @@ export function ThumbGrid({
     setOverIndex(null);
   };
 
-  const columns = useMemo(
-    () => `repeat(auto-fill, minmax(${thumbWidth}px, 1fr))`,
-    [thumbWidth],
-  );
+  const columns = useMemo(() => `repeat(auto-fill, minmax(${thumbWidth}px, 1fr))`, [thumbWidth]);
 
   return (
     <div
@@ -204,7 +201,13 @@ export function ThumbGrid({
             }}
             title={page.rotationDelta ? `${t("common.rotation")}: ${page.rotationDelta}°` : undefined}
           >
-            <Thumb path={path} page={page.sourcePage} size={thumbWidth * 2} password={password} refreshedAt={refreshedAt} />
+            <Thumb
+              path={path}
+              page={page.sourcePage}
+              size={thumbWidth * 2}
+              password={password}
+              refreshedAt={refreshedAt}
+            />
             {overlayFor ? <div className="absolute inset-0 pointer-events-none">{overlayFor(index)}</div> : null}
             <div className="absolute top-1.5 left-1.5 flex items-center gap-1">
               <span

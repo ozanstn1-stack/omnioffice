@@ -13,7 +13,15 @@ import type { ImageToPdfOptions } from "../lib/types";
 
 type Tab = "pdfToImages" | "imagesToPdf";
 
-export function Convert({ tab: initialTab, initialFiles, dragging }: { tab: Tab; initialFiles?: string[]; dragging: boolean }) {
+export function Convert({
+  tab: initialTab,
+  initialFiles,
+  dragging,
+}: {
+  tab: Tab;
+  initialFiles?: string[];
+  dragging: boolean;
+}) {
   const t = useT();
   const [tab, setTab] = useState<Tab>(initialTab);
 
@@ -55,7 +63,9 @@ function PdfToImages({ initialFiles, dragging }: { initialFiles?: string[]; drag
   const [quality, setQuality] = useState(90);
   const [grayscale, setGrayscale] = useState(false);
   const [prefix, setPrefix] = useState("page");
-  const [files, setFiles] = useState<{ path: string; page: number; bytes: number; width: number; height: number }[] | null>(null);
+  const [files, setFiles] = useState<
+    { path: string; page: number; bytes: number; width: number; height: number }[] | null
+  >(null);
 
   const run = () =>
     session.run(async (jobId, overwrite) => {
@@ -90,7 +100,12 @@ function PdfToImages({ initialFiles, dragging }: { initialFiles?: string[]; drag
         ) : (
           <>
             <OptionCard>
-              <FileList files={session.files} onRemove={session.removeFile} onAdd={session.pickFiles} addLabel={t("common.addPdf")} />
+              <FileList
+                files={session.files}
+                onRemove={session.removeFile}
+                onAdd={session.pickFiles}
+                addLabel={t("common.addPdf")}
+              />
             </OptionCard>
             {session.info ? (
               <Card className="p-4">
@@ -113,8 +128,13 @@ function PdfToImages({ initialFiles, dragging }: { initialFiles?: string[]; drag
                 </div>
                 <div className="flex flex-col gap-1 max-h-[240px] overflow-y-auto text-[13px]">
                   {files.slice(0, 50).map((file) => (
-                    <div key={file.path} className="flex items-center justify-between px-2 py-1 rounded hover:bg-[var(--surface-2)]">
-                      <span className="truncate" title={file.path}>{file.path.split(/[\\/]/).pop()}</span>
+                    <div
+                      key={file.path}
+                      className="flex items-center justify-between px-2 py-1 rounded hover:bg-[var(--surface-2)]"
+                    >
+                      <span className="truncate" title={file.path}>
+                        {file.path.split(/[\\/]/).pop()}
+                      </span>
                       <span className="muted shrink-0 ml-3">
                         {file.width}×{file.height} · {formatBytes(file.bytes)}
                       </span>
@@ -129,7 +149,14 @@ function PdfToImages({ initialFiles, dragging }: { initialFiles?: string[]; drag
       }
       side={
         <>
-          <OutputBar session={session} runLabel={t("convert.run")} outputKind="folder" showOverwrite onRun={() => void run()} disabled={!session.primary} />
+          <OutputBar
+            session={session}
+            runLabel={t("convert.run")}
+            outputKind="folder"
+            showOverwrite
+            onRun={() => void run()}
+            disabled={!session.primary}
+          />
           <OptionCard title={t("convert.pdfToImagesTitle")}>
             <Field label={t("convert.format")}>
               <Segmented<"jpeg" | "png">
@@ -160,7 +187,11 @@ function PdfToImages({ initialFiles, dragging }: { initialFiles?: string[]; drag
               </Field>
             ) : null}
             <Field label={t("convert.namePrefix")}>
-              <input className="input" value={prefix} onChange={(event) => setPrefix(event.target.value.replace(/[\\/:*?"<>|]/g, ""))} />
+              <input
+                className="input"
+                value={prefix}
+                onChange={(event) => setPrefix(event.target.value.replace(/[\\/:*?"<>|]/g, ""))}
+              />
             </Field>
             <Toggle checked={grayscale} onChange={setGrayscale} label={t("compress.grayscale")} />
             <p className="text-xs muted">
@@ -225,7 +256,10 @@ function ImagesToPdf({ initialFiles, dragging }: { initialFiles?: string[]; drag
               <div className="flex flex-col gap-2">
                 {session.files.map((file, index) => (
                   <div key={file.path} className="card-soft flex items-center gap-3 px-3 py-2">
-                    <span className="w-6 h-6 rounded-md flex items-center justify-center text-xs font-semibold" style={{ background: "var(--accent-weak)", color: "var(--accent)" }}>
+                    <span
+                      className="w-6 h-6 rounded-md flex items-center justify-center text-xs font-semibold"
+                      style={{ background: "var(--accent-weak)", color: "var(--accent)" }}
+                    >
                       {index + 1}
                     </span>
                     <div className="min-w-0 flex-1">
@@ -238,7 +272,12 @@ function ImagesToPdf({ initialFiles, dragging }: { initialFiles?: string[]; drag
                     <Button size="sm" variant="ghost" icon={<RotateCw size={14} />} onClick={() => rotate(file.path)}>
                       90°
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => session.moveFile(index, Math.max(0, index - 1))} disabled={index === 0}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => session.moveFile(index, Math.max(0, index - 1))}
+                      disabled={index === 0}
+                    >
                       ↑
                     </Button>
                     <Button
@@ -265,7 +304,12 @@ function ImagesToPdf({ initialFiles, dragging }: { initialFiles?: string[]; drag
       }
       side={
         <>
-          <OutputBar session={session} runLabel={t("convert.run")} onRun={() => void run()} disabled={!session.files.length} />
+          <OutputBar
+            session={session}
+            runLabel={t("convert.run")}
+            onRun={() => void run()}
+            disabled={!session.files.length}
+          />
           <OptionCard title={t("convert.imagesToPdfTitle")}>
             <Field label={t("convert.pageSize")}>
               <Select<string>

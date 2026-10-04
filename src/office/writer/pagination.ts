@@ -91,7 +91,11 @@ function fits(lines: number[], from: number, remaining: number): number {
  * paragraphs split at line boundaries and tables at row boundaries, honouring
  * the widow/orphan minimums and repeating a table's header row.
  */
-export function paginate(blocks: BlockMetrics[], contentHeightPx: number, options: PaginationOptions = {}): PageLayout[] {
+export function paginate(
+  blocks: BlockMetrics[],
+  contentHeightPx: number,
+  options: PaginationOptions = {},
+): PageLayout[] {
   const orphans = Math.max(1, options.orphans ?? 2);
   const widows = Math.max(1, options.widows ?? 2);
   const noteAreaRatio = options.noteAreaRatio ?? 0.5;
@@ -112,7 +116,13 @@ export function paginate(blocks: BlockMetrics[], contentHeightPx: number, option
   };
   let contentHeight = heightFor(section);
   let page: PageLayout = pageOf(section);
-  const queue: WorkItem[] = blocks.map((metrics) => ({ metrics, fromLine: 0, fromRow: 0, continuation: false, deferred: false }));
+  const queue: WorkItem[] = blocks.map((metrics) => ({
+    metrics,
+    fromLine: 0,
+    fromRow: 0,
+    continuation: false,
+    deferred: false,
+  }));
 
   const pushPage = (continuation: boolean) => {
     // Capture the outgoing page before replacing it: `pageOf` starts at 1, so
@@ -156,12 +166,20 @@ export function paginate(blocks: BlockMetrics[], contentHeightPx: number, option
     const remaining = contentHeight - page.usedPx - noteReserve;
     // A continuation fragment of a table pays for the repeated header.
     const overhead = item.fromRow > 0 ? metrics.headerHeightPx : 0;
-    const heightLeft = metrics.heightPx - (item.fromRow > 0 ? metrics.rows[item.fromRow - 1] ?? 0 : 0) - (item.fromLine > 0 ? metrics.lines[item.fromLine - 1] ?? 0 : 0);
+    const heightLeft =
+      metrics.heightPx -
+      (item.fromRow > 0 ? (metrics.rows[item.fromRow - 1] ?? 0) : 0) -
+      (item.fromLine > 0 ? (metrics.lines[item.fromLine - 1] ?? 0) : 0);
 
     // keepTogether and keepWithNext can only be honoured when the page is not
     // empty and the block fits a page of its own at all.
     const nextItem = queue[0];
-    const keepTogetherBreak = metrics.keepTogether && !item.continuation && !item.deferred && page.fragments.length > 0 && heightLeft + overhead <= contentHeight;
+    const keepTogetherBreak =
+      metrics.keepTogether &&
+      !item.continuation &&
+      !item.deferred &&
+      page.fragments.length > 0 &&
+      heightLeft + overhead <= contentHeight;
     // keep-with-next: when the follower cannot share the rest of this page,
     // the pair moves together - but only once, otherwise an empty fresh page
     // would defer for ever.
@@ -182,11 +200,24 @@ export function paginate(blocks: BlockMetrics[], contentHeightPx: number, option
 
     if (heightLeft + overhead <= remaining) {
       const from = metrics.kind === "table" ? item.fromRow : item.fromLine;
-      const to = metrics.kind === "paragraph" ? metrics.lines.length : metrics.kind === "table" ? metrics.rows.length : 0;
-      const consumed = metrics.kind === "table" ? (item.fromRow > 0 ? metrics.rows[item.fromRow - 1] ?? 0 : 0) : item.fromLine > 0 ? metrics.lines[item.fromLine - 1] ?? 0 : 0;
+      const to =
+        metrics.kind === "paragraph" ? metrics.lines.length : metrics.kind === "table" ? metrics.rows.length : 0;
+      const consumed =
+        metrics.kind === "table"
+          ? item.fromRow > 0
+            ? (metrics.rows[item.fromRow - 1] ?? 0)
+            : 0
+          : item.fromLine > 0
+            ? (metrics.lines[item.fromLine - 1] ?? 0)
+            : 0;
       page.fragments.push({
         index: metrics.index,
-        mode: metrics.kind === "paragraph" && item.fromLine > 0 ? "lines" : metrics.kind === "table" && item.fromRow > 0 ? "rows" : "whole",
+        mode:
+          metrics.kind === "paragraph" && item.fromLine > 0
+            ? "lines"
+            : metrics.kind === "table" && item.fromRow > 0
+              ? "rows"
+              : "whole",
         from,
         to,
         heightPx: heightLeft + overhead,
@@ -230,7 +261,8 @@ export function paginate(blocks: BlockMetrics[], contentHeightPx: number, option
       const available = remaining - (item.fromRow > 0 ? metrics.headerHeightPx : 0);
       const offset = item.fromRow > 0 ? metrics.rows[item.fromRow - 1] : 0;
       let count = 0;
-      while (item.fromRow + count < metrics.rows.length && metrics.rows[item.fromRow + count] - offset <= available) count += 1;
+      while (item.fromRow + count < metrics.rows.length && metrics.rows[item.fromRow + count] - offset <= available)
+        count += 1;
       if (count > 0) {
         const bottom = metrics.rows[item.fromRow + count - 1];
         page.fragments.push({
@@ -274,7 +306,8 @@ export function paginate(blocks: BlockMetrics[], contentHeightPx: number, option
       });
       page.usedPx = contentHeight;
       pushPage(true);
-      if (item.fromLine + raw < metrics.lines.length) queue.unshift({ ...item, fromLine: item.fromLine + raw, continuation: true, deferred: false });
+      if (item.fromLine + raw < metrics.lines.length)
+        queue.unshift({ ...item, fromLine: item.fromLine + raw, continuation: true, deferred: false });
       continue;
     }
     if (metrics.kind === "table" && metrics.rows.length > item.fromRow) {
@@ -291,7 +324,8 @@ export function paginate(blocks: BlockMetrics[], contentHeightPx: number, option
       });
       page.usedPx = contentHeight;
       pushPage(true);
-      if (nextRow < metrics.rows.length) queue.unshift({ ...item, fromRow: nextRow, continuation: true, deferred: false });
+      if (nextRow < metrics.rows.length)
+        queue.unshift({ ...item, fromRow: nextRow, continuation: true, deferred: false });
       continue;
     }
     page.fragments.push({

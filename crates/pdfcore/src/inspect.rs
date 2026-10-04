@@ -190,11 +190,8 @@ pub fn inspect_document(path: &Path, password: Option<&str>) -> PdfResult<Docume
     out.marked = catalog.get(b"MarkInfo").is_ok();
     out.language = text_of(&catalog, b"Lang").unwrap_or_default();
     if let Some(Object::Dictionary(preferences)) = deref(&doc, catalog.get(b"ViewerPreferences").ok()) {
-        out.viewer_preferences = preferences
-            .iter()
-            .map(|(key, _)| String::from_utf8_lossy(key).to_string())
-            .collect::<Vec<_>>()
-            .join(", ");
+        out.viewer_preferences =
+            preferences.iter().map(|(key, _)| String::from_utf8_lossy(key).to_string()).collect::<Vec<_>>().join(", ");
     }
     out.has_open_action = catalog.get(b"OpenAction").is_ok();
     out.has_javascript = catalog.get(b"JavaScript").is_ok() || catalog.get(b"AA").is_ok();
@@ -324,11 +321,7 @@ fn read_outline(doc: &Document, catalog: &Dictionary) -> PdfResult<Vec<OutlineEn
         };
         out.push(OutlineEntry {
             title: text_of(entry, b"Title").unwrap_or_default(),
-            page: entry
-                .get(b"Dest")
-                .ok()
-                .and_then(|value| destination_page(doc, value))
-                .unwrap_or(0),
+            page: entry.get(b"Dest").ok().and_then(|value| destination_page(doc, value)).unwrap_or(0),
             depth,
         });
         node = match entry.get(b"Next") {
@@ -348,11 +341,7 @@ fn read_outline(doc: &Document, catalog: &Dictionary) -> PdfResult<Vec<OutlineEn
                 };
                 out.push(OutlineEntry {
                     title: text_of(child_entry, b"Title").unwrap_or_default(),
-                    page: child_entry
-                        .get(b"Dest")
-                        .ok()
-                        .and_then(|value| destination_page(doc, value))
-                        .unwrap_or(0),
+                    page: child_entry.get(b"Dest").ok().and_then(|value| destination_page(doc, value)).unwrap_or(0),
                     depth: child_depth,
                 });
                 child = match child_entry.get(b"Next") {
@@ -386,11 +375,8 @@ fn destination_page(doc: &Document, value: &Object) -> Option<u32> {
 
 /// The font-program keys a reader needs in order to render without
 /// substituting, and the format each one implies.
-const FONT_PROGRAMS: [(&[u8], &str); 3] = [
-    (b"FontFile", "TrueType"),
-    (b"FontFile2", "TrueType"),
-    (b"FontFile3", "OpenType"),
-];
+const FONT_PROGRAMS: [(&[u8], &str); 3] =
+    [(b"FontFile", "TrueType"), (b"FontFile2", "TrueType"), (b"FontFile3", "OpenType")];
 
 /// Collects every distinct font name in the document, with its dictionary.
 fn collect_fonts(doc: &Document, page_id: ObjectId, out: &mut BTreeMap<Vec<u8>, Dictionary>) {
@@ -446,12 +432,7 @@ fn collect_annotations(doc: &Document, page_id: ObjectId, page: u32, out: &mut V
     }
 }
 
-fn collect_images(
-    doc: &Document,
-    page_id: ObjectId,
-    images: &mut Vec<ImageInfo>,
-    spaces: &mut Vec<ColorSpaceInfo>,
-) {
+fn collect_images(doc: &Document, page_id: ObjectId, images: &mut Vec<ImageInfo>, spaces: &mut Vec<ColorSpaceInfo>) {
     for id in docutil::page_xobjects(doc, page_id) {
         let stream = match doc.get_object(id) {
             Ok(Object::Stream(stream)) => stream,
@@ -465,12 +446,20 @@ fn collect_images(
         let filter = stream
             .dict
             .get(b"Filter")
-            .ok().and_then(|value| value.as_name().ok())
+            .ok()
+            .and_then(|value| value.as_name().ok())
             .map(|value| String::from_utf8_lossy(value).to_string())
             .unwrap_or_else(|| "none".into());
         let space = describe_color_space(stream.dict.get(b"ColorSpace").ok());
         let bits = stream.dict.get(b"BitsPerComponent").ok().and_then(|value| value.as_i64().ok()).unwrap_or(8) as u8;
-        let entry = ImageInfo { width, height, color_space: space.name.clone(), bits_per_component: bits, filter, occurrences: 1 };
+        let entry = ImageInfo {
+            width,
+            height,
+            color_space: space.name.clone(),
+            bits_per_component: bits,
+            filter,
+            occurrences: 1,
+        };
         match images.iter_mut().find(|candidate| {
             candidate.width == entry.width
                 && candidate.height == entry.height
@@ -586,7 +575,8 @@ fn read_form_fields(doc: &Document, catalog: &Dictionary) -> Vec<FormFieldInfo> 
             missing_label: text_of(&dictionary, b"TU").unwrap_or_default().is_empty(),
             kind: dictionary
                 .get(b"S")
-                .ok().and_then(|value| value.as_name().ok())
+                .ok()
+                .and_then(|value| value.as_name().ok())
                 .map(|value| String::from_utf8_lossy(value).to_string())
                 .unwrap_or_default(),
             field_type,
@@ -613,10 +603,20 @@ pub fn evaluate_findings(inspection: &mut DocumentInspection) {
 
     let title = inspection.title();
     if title.trim().is_empty() {
-        add(Severity::Error, "a11y.missing-title", "No document title", "Set a title in the document properties so a screen reader announces it.");
+        add(
+            Severity::Error,
+            "a11y.missing-title",
+            "No document title",
+            "Set a title in the document properties so a screen reader announces it.",
+        );
     }
     if inspection.language.trim().is_empty() {
-        add(Severity::Error, "a11y.missing-language", "No document language", "Set the document language so a screen reader picks the right voice.");
+        add(
+            Severity::Error,
+            "a11y.missing-language",
+            "No document language",
+            "Set the document language so a screen reader picks the right voice.",
+        );
     }
     if !inspection.struct_tree {
         add(
@@ -627,7 +627,12 @@ pub fn evaluate_findings(inspection: &mut DocumentInspection) {
         );
     }
     if !inspection.marked && inspection.struct_tree {
-        add(Severity::Warning, "a11y.not-marked", "Not marked as a figure document", "The structure tree exists but /MarkInfo is missing.");
+        add(
+            Severity::Warning,
+            "a11y.not-marked",
+            "Not marked as a figure document",
+            "The structure tree exists but /MarkInfo is missing.",
+        );
     }
     if !inspection.outline.is_empty() {
         let mut previous: i32 = -1;
@@ -641,7 +646,12 @@ pub fn evaluate_findings(inspection: &mut DocumentInspection) {
             previous = level;
         }
         if skipped {
-            add(Severity::Warning, "a11y.heading-skip", "A bookmark level is skipped", "The outline jumps a level, which breaks keyboard navigation.");
+            add(
+                Severity::Warning,
+                "a11y.heading-skip",
+                "A bookmark level is skipped",
+                "The outline jumps a level, which breaks keyboard navigation.",
+            );
         }
     }
     for field in &inspection.form_fields {
@@ -667,7 +677,10 @@ pub fn evaluate_findings(inspection: &mut DocumentInspection) {
             Severity::Info,
             "security.attachments",
             "The document carries attachments",
-            &format!("{} embedded file(s) travel with the PDF and are not visible on the page.", inspection.embedded_files.len()),
+            &format!(
+                "{} embedded file(s) travel with the PDF and are not visible on the page.",
+                inspection.embedded_files.len()
+            ),
         );
     }
     let unembedded: Vec<&FontInfo> = inspection.fonts.iter().filter(|font| !font.embedded).collect();
@@ -709,10 +722,7 @@ impl DocumentInspection {
     /// The `/Info` title, falling back to the file name.
     pub fn title(&self) -> String {
         if self.title_override.is_empty() {
-            Path::new(&self.path)
-                .file_stem()
-                .map(|stem| stem.to_string_lossy().to_string())
-                .unwrap_or_default()
+            Path::new(&self.path).file_stem().map(|stem| stem.to_string_lossy().to_string()).unwrap_or_default()
         } else {
             self.title_override.clone()
         }

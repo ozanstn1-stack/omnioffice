@@ -2,10 +2,9 @@
 
 mod common;
 
-
 use common::*;
-use pdfcore::compare::{compare_pdfs, CompareOptions};
 use lopdf::dictionary;
+use pdfcore::compare::{compare_pdfs, CompareOptions};
 use pdfcore::inspect::{inspect_document, Severity};
 use pdfcore::progress::CancelToken;
 
@@ -53,10 +52,7 @@ fn inspection_finds_embedded_files_and_javascript() {
     let dir = TestDir::new();
     let mut doc = build_text_doc(1, "With extras", "Extras");
     let file_spec = lopdf::Dictionary::new();
-    let embedded = doc.add_object(lopdf::Object::Stream(lopdf::Stream::new(
-        file_spec,
-        b"attachment body".to_vec(),
-    )));
+    let embedded = doc.add_object(lopdf::Object::Stream(lopdf::Stream::new(file_spec, b"attachment body".to_vec())));
     let files = doc.add_object(lopdf::Object::Dictionary(lopdf::dictionary! {
         "Names" => vec![lopdf::Object::String(b"notes.txt".to_vec(), lopdf::StringFormat::Literal), lopdf::Object::Reference(embedded)],
     }));
@@ -88,11 +84,8 @@ fn an_untagged_document_fails_accessibility_with_an_explanation() {
     let inspection = inspect_document(&path, None).expect("inspect");
     assert!(!inspection.struct_tree);
     assert_eq!(inspection.accessibility_conformance, "fails");
-    let finding = inspection
-        .findings
-        .iter()
-        .find(|entry| entry.code == "a11y.untagged")
-        .expect("untagged must be reported");
+    let finding =
+        inspection.findings.iter().find(|entry| entry.code == "a11y.untagged").expect("untagged must be reported");
     assert_eq!(finding.severity, Severity::Error);
     assert!(!finding.detail.is_empty(), "a finding must say what to do");
 }

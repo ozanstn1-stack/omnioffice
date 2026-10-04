@@ -117,7 +117,11 @@ export function AiLibrary({ onOpenAi }: { onOpenAi: () => void }) {
       const path = await aiLibraryExport(entry.id, String(picked));
       pushToast({ kind: "success", title: t("library.exported"), detail: path });
     } catch (error) {
-      pushToast({ kind: "error", title: t("errors.title"), detail: String((error as { message?: string })?.message ?? error) });
+      pushToast({
+        kind: "error",
+        title: t("errors.title"),
+        detail: String((error as { message?: string })?.message ?? error),
+      });
     }
   };
 
@@ -143,7 +147,13 @@ export function AiLibrary({ onOpenAi }: { onOpenAi: () => void }) {
       actions={
         <div className="flex items-center gap-2">
           {!isAndroid() ? (
-            <Button size="sm" variant="ghost" icon={<FolderOpen size={14} />} onClick={() => void openAnyFile(directory).catch(() => undefined)} disabled={!directory}>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<FolderOpen size={14} />}
+              onClick={() => void openAnyFile(directory).catch(() => undefined)}
+              disabled={!directory}
+            >
               {t("common.openFolder")}
             </Button>
           ) : null}
@@ -197,7 +207,12 @@ export function AiLibrary({ onOpenAi }: { onOpenAi: () => void }) {
 
       <div className="flex flex-wrap gap-1.5">
         {kinds.map((kind) => (
-          <Button key={kind} size="sm" variant={filter === kind ? "primary" : "default"} onClick={() => setFilter(kind)}>
+          <Button
+            key={kind}
+            size="sm"
+            variant={filter === kind ? "primary" : "default"}
+            onClick={() => setFilter(kind)}
+          >
             {kind === "all" ? t("common.all") : t(`library.kind.${kind}`)}
             {kind !== "all" ? ` (${(entries ?? []).filter((entry) => entry.kind === kind).length})` : ""}
           </Button>
@@ -242,7 +257,15 @@ export function AiLibrary({ onOpenAi }: { onOpenAi: () => void }) {
                 <span className="text-[13.5px] font-medium truncate" title={entry.sourcePath}>
                   {entry.sourceName}
                 </span>
-                <span className="text-xs muted line-clamp-2" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                <span
+                  className="text-xs muted line-clamp-2"
+                  style={{
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                  }}
+                >
                   {entry.preview}
                 </span>
                 <span className="text-[11px] muted">
@@ -266,10 +289,16 @@ export function AiLibrary({ onOpenAi }: { onOpenAi: () => void }) {
                   <Button size="sm" icon={<Download size={14} />} onClick={() => void exportEntry(selected)}>
                     {t("library.exportAs")}
                   </Button>
-                  <IconButton label={t("common.openFile")} onClick={() => void openAnyFile(selected.filePath).catch(() => undefined)}>
+                  <IconButton
+                    label={t("common.openFile")}
+                    onClick={() => void openAnyFile(selected.filePath).catch(() => undefined)}
+                  >
                     <BookOpenCheck size={15} />
                   </IconButton>
-                  <IconButton label={isAndroid() ? t("common.share") : t("common.openFolder")} onClick={() => void revealAnyFile(selected.filePath).catch(() => undefined)}>
+                  <IconButton
+                    label={isAndroid() ? t("common.share") : t("common.openFolder")}
+                    onClick={() => void revealAnyFile(selected.filePath).catch(() => undefined)}
+                  >
                     <FolderOpen size={15} />
                   </IconButton>
                   <IconButton label={t("common.delete")} onClick={() => void removeEntry(selected)}>

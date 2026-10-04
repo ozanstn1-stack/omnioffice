@@ -1,7 +1,7 @@
 {
   "name": "pdf-swiss-army-knife",
   "private": true,
-  "version": "3.5.4",
+  "version": "3.5.5",
   "type": "module",
   "description": "Office Swiss Army Knife - local-first desktop office and PDF suite (Writer, Calc, Impress, PDF tools)",
   "scripts": {
@@ -20,8 +20,10 @@
     "test:coverage": "vitest run --coverage",
     "e2e:smoke": "node e2e/smoke.mjs",
     "e2e:smoke:pdf": "node e2e/smoke.mjs --pdf samples/sample-1.pdf",
+    "e2e:flows": "node e2e/smoke.mjs --all",
     "test:watch": "vitest",
     "test:rust": "cargo test --workspace",
+    "bench:check": "node scripts/check-bench-regression.mjs",
     "test:all": "npm run test && npm run test:rust",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

@@ -101,11 +101,22 @@ export function measureBlocks(probe: HTMLElement, blocks: Block[]): BlockMetrics
   // The probe renders body blocks with scope "probe"; nested cell paragraphs
   // also carry data-block-index, so only the outermost probe scope counts.
   return blocks.map((block, index) => {
-    const element = probe.querySelector<HTMLElement>(`:scope > [data-block-index="${index}"][data-scope="probe"]`) ?? byIndex.get(index);
+    const element =
+      probe.querySelector<HTMLElement>(`:scope > [data-block-index="${index}"][data-scope="probe"]`) ??
+      byIndex.get(index);
     if (!element) {
       return {
         index,
-        kind: block.type === "pageBreak" ? "pageBreak" : block.type === "table" ? "table" : block.type === "image" ? "image" : block.type === "toc" ? "toc" : "paragraph",
+        kind:
+          block.type === "pageBreak"
+            ? "pageBreak"
+            : block.type === "table"
+              ? "table"
+              : block.type === "image"
+                ? "image"
+                : block.type === "toc"
+                  ? "toc"
+                  : "paragraph",
         heightPx: block.type === "pageBreak" ? 0 : 16,
         lines: [16],
         rows: [],

@@ -81,7 +81,8 @@ export const convertFile = (input: string, output: string, options?: Record<stri
 
 export const conversionTargets = (extension: string) => invoke<string[]>("office_conversion_targets", { extension });
 
-export const cleanDocument = (path: string, options: CleanOptions) => invoke<CleanResult>("office_clean", { path, options });
+export const cleanDocument = (path: string, options: CleanOptions) =>
+  invoke<CleanResult>("office_clean", { path, options });
 
 export const imageFootprint = (path: string) => invoke<number>("office_image_footprint", { path });
 
@@ -106,7 +107,8 @@ export const historyPush = (documentId: string, kind: string, title: string, mod
 
 export const historyList = (documentId: string) => invoke<HistoryEntry[]>("history_list", { documentId });
 
-export const historyLoad = (documentId: string, version: number) => invoke<unknown>("history_load", { documentId, version });
+export const historyLoad = (documentId: string, version: number) =>
+  invoke<unknown>("history_load", { documentId, version });
 
 export const historyClear = (documentId: string) => invoke<void>("history_clear", { documentId });
 

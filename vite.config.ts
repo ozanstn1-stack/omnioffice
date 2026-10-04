@@ -21,9 +21,10 @@ export default defineConfig({
     // scripts/check-bundle-budget.mjs in CI.
     rollupOptions: {
       output: {
-        manualChunks: {
-          react: ["react", "react-dom"],
-          state: ["zustand"],
+        manualChunks(id) {
+          if (/node_modules[\\/]react(?:-dom)?[\\/]/.test(id)) return "react";
+          if (/node_modules[\\/]zustand[\\/]/.test(id)) return "state";
+          return undefined;
         },
       },
     },

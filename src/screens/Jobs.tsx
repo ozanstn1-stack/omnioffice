@@ -85,9 +85,7 @@ export function JobsScreen() {
                   </p>
                 </>
               ) : null}
-              {job.status === "interrupted" ? (
-                <p className="muted small">{t("jobs.interruptedHint")}</p>
-              ) : null}
+              {job.status === "interrupted" ? <p className="muted small">{t("jobs.interruptedHint")}</p> : null}
               {job.error ? <p className="muted small">{job.error}</p> : null}
               <div className="row" style={{ marginTop: 8 }}>
                 {job.status === "running" ? (

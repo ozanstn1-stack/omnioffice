@@ -285,10 +285,7 @@ pub fn read_page_chars(page: &PdfPage<'_>, page_number: u32) -> PageChars {
             },
             Err(_) => CharBox { left: 0.0, bottom: 0.0, right: 0.0, top: 0.0 },
         };
-        let invisible = entry
-            .render_mode()
-            .map(|mode| mode == PdfPageTextRenderMode::Invisible)
-            .unwrap_or(false);
+        let invisible = entry.render_mode().map(|mode| mode == PdfPageTextRenderMode::Invisible).unwrap_or(false);
         let generated = entry.is_generated().unwrap_or(false);
         let hyphen = entry.is_hyphen().unwrap_or(false);
         out.chars.push(TextChar {

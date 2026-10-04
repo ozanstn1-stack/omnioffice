@@ -10,9 +10,43 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.5.4** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.5.5** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.5.5
+
+Data-integrity fixes, qpdf repair and hard quality gates.
+
+- **XLSX cross-sheet comments no longer contaminate each other (audit C11).**
+  The exporter wrote one comments part for the whole workbook, so two sheets
+  with a comment on the same address ended up sharing one comment after a
+  save. Comments are now written as one part (and VML shape set) per sheet,
+  wired through that sheet's own relationships; the regression test re-reads a
+  two-sheet workbook and asserts each note stayed on its cell.
+- **Writer tracked changes preserve the runs they are not editing (audit
+  M12).** Suggest mode diffed flattened text and rebuilt the paragraph from
+  the first run's format, restyling surrounding text, dropping footnote/field
+  anchors and re-issuing revision ids on every keystroke. The diff now works
+  on runs: formatting, links and anchors survive, an existing insertion keeps
+  its id, deleting freshly suggested text cancels the insertion, and a pending
+  deletion is no longer silently accepted while revisions are hidden.
+- **PDF Studio Repair and Fast Web View.** The bundled qpdf engine is used at
+  last: Repair rewrites a damaged PDF (broken xref/trailer, dangling objects)
+  next to the original and Fast Web View writes the linearized layout. Both
+  re-open the result, report its real page count and surface qpdf's
+  diagnostics, with Jobs-screen retry like every other tool.
+- **Benchmark regression gate.** The master bench job compares criterion means
+  against the previous run's cached baseline and fails on a >15 % regression
+  (warning at 7.5 %); the baseline only advances on a passing check.
+- **Deeper desktop E2E.** `npm run e2e:flows` drives a real Writer type →
+  Ctrl+S round trip (the DOCX on disk must change), a Merge auto-run and the
+  Studio sanitizer through its real button; CI runs them engine-free on Linux.
+- **The formatting backlog is cleared.** Prettier and rustfmt ran over the
+  whole tree once, and CI now enforces formatting on every changed file plus
+  the full repository instead of only newly added files.
+- Rust dependencies: `cbc` 0.2.1 + `des` 0.9 replace the 0.1/0.8 pair (the
+  versions lopdf already uses) and the unused `aes` dev-dependency is gone.
 
 ## What's new in 3.5.4
 
@@ -438,8 +472,11 @@ Reader with search, Merge, Split, Organize, Compress, OCR (Tesseract), Protect
 JPG/PNG → PDF, Batch, Info, Redact, Compare, Inspect and the optional offline
 AI assistant — all unchanged.
 
-**PDF Studio (V3.1)**: Sanitize (JavaScript/attachments/actions/unsafe
-annotations/metadata with a removal report), Flatten, PDF/A-1b/2b/3b
+**PDF Studio (V3.1, repair in V3.5.5)**: **Repair and Fast Web View** (the
+bundled qpdf rewrites a damaged file or writes the linearized layout, then the
+result is re-opened and its page count reported), Sanitize
+(JavaScript/attachments/actions/unsafe annotations/metadata with a removal
+report), Flatten, PDF/A-1b/2b/3b
 validation and conversion with **real font embedding and an ICC output
 intent**, **Signatures** (list/validate/sign with Windows store or PKCS#12,
 visible appearance, counter-signing: a second signature is appended as an
@@ -589,6 +626,7 @@ crates/pdfcore      The PDF engine (render, merge, split, compress, OCR with
                     preprocessing, security, watermark, annotations, metadata,
                     page layout, sanitizer, PDF/A validation + font embedding +
                     ICC output intent, flattening, redaction with verification,
+                    qpdf-backed repair/linearization (desktop),
                     forms fill/validate, CMS/PKCS#7 signatures)
 crates/aicore       Optional assistant client with a provider abstraction;
                     the only component that talks to the network for AI, and
@@ -596,8 +634,8 @@ crates/aicore       Optional assistant client with a provider abstraction;
 crates/synccore     Local-first sync foundation: WebDAV client, per-file
                     metadata, three-way conflict detection, manual resolution
 src-tauri           Tauri shell: PDF commands, office commands, PDF Studio
-                    (sanitize/flatten/PDF-A/signatures/forms), vault, jobs
-                    store, plugins, sync, Windows certificate store,
+                    (sanitize/repair/flatten/PDF-A/signatures/forms), vault,
+                    jobs store, plugins, sync, Windows certificate store,
                     Android intent handling, JSON stores, recovery
 src/                React 19 + TypeScript + Tailwind 4 frontend
   src/office        Writer (paginated direct editing), Calc (formula engine,
@@ -680,13 +718,16 @@ npx tsc --noEmit
 
 Beyond the unit/integration suites: `npm run e2e:smoke` drives the real
 binary through tauri-driver (add `-- --pdf samples/sample-1.pdf` for the
-Reader step; on Windows point `TAURI_NATIVE_DRIVER` at the msedgedriver that
-matches your WebView2 runtime), `cargo +nightly fuzz run <target>` from
-`fuzz/` runs the libFuzzer targets (Linux/macOS), and
+Reader step; `npm run e2e:flows` adds the Writer save round trip, Merge and
+Studio sanitizer flows; on Windows point `TAURI_NATIVE_DRIVER` at the
+msedgedriver that matches your WebView2 runtime), `cargo +nightly fuzz run
+<target>` from `fuzz/` runs the libFuzzer targets (Linux/macOS),
 `cargo bench -p officecore --bench parse -p pdfcore --bench pdf_ops`
-produces the criterion report.
+produces the criterion report, and `npm run bench:check` compares it against
+the stored baseline (the CI bench job does this with a cached baseline and
+fails on a >15 % mean regression).
 
-**533 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **673
+**536 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **679
 frontend tests** pass, plus the 1 heavy case gated by `OSAK_PERF_HEAVY=1`,
 with a strict TypeScript type check on top. Frontend coverage floors are
 enforced by `npm run test:coverage` (see `vite.config.ts`). The per-crate split
@@ -836,6 +877,10 @@ These are real and honest:
 - **XLSX**: pivot caches are preserved and re-exported, not recomputed;
   unsupported chart kinds, secondary/combo axes and some conditional formats
   degrade with warnings; SVG export of sheets is not offered.
+- **PDF repair / Fast Web View** run the bundled qpdf, which is a desktop
+  engine: Android and engine-less builds report the tool as unavailable.
+  Repair rewrites the file as qpdf reads it (encrypted documents need the
+  password first); a file too damaged for qpdf is reported, not guessed at.
 - **PPTX**: programmatic animations are simplified to what the model
   represents; ODP loses animations, groups and charts on export (declared in
   the compatibility matrix and gated by Data Loss Protection).
@@ -892,6 +937,11 @@ Quality gates in 3.2.0: zero-warning lint with every React Compiler and
 accessibility rule as an error, WebDAV end-to-end tests against an in-process
 DAV server, on-device Android intent tests on an emulator, and owned,
 time-boxed RustSec advisory exceptions in `deny.toml`.
+
+Data integrity and gates in 3.5.5: per-sheet XLSX comments (C11),
+run-preserving Writer tracked changes (M12), qpdf-backed repair and Fast Web
+View, a benchmark regression gate with a cached baseline, deep desktop E2E
+flows in CI, and a repository-wide formatting gate after the one-off burn-down.
 
 Next (architecture prepared, not implemented):
 

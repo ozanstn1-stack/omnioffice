@@ -10,7 +10,15 @@ import { useToasts } from "../lib/store";
 
 type Tab = "protect" | "unlock";
 
-export function Security({ tab: initialTab, initialFiles, dragging }: { tab: Tab; initialFiles?: string[]; dragging: boolean }) {
+export function Security({
+  tab: initialTab,
+  initialFiles,
+  dragging,
+}: {
+  tab: Tab;
+  initialFiles?: string[];
+  dragging: boolean;
+}) {
   const t = useT();
   const [tab, setTab] = useState<Tab>(initialTab);
   return (
@@ -28,7 +36,11 @@ export function Security({ tab: initialTab, initialFiles, dragging }: { tab: Tab
         />
       }
     >
-      {tab === "protect" ? <Protect initialFiles={initialFiles} dragging={dragging} /> : <Unlock initialFiles={initialFiles} dragging={dragging} />}
+      {tab === "protect" ? (
+        <Protect initialFiles={initialFiles} dragging={dragging} />
+      ) : (
+        <Unlock initialFiles={initialFiles} dragging={dragging} />
+      )}
     </Screen>
   );
 }
@@ -123,7 +135,12 @@ function Protect({ initialFiles, dragging }: { initialFiles?: string[]; dragging
         ) : (
           <>
             <OptionCard>
-              <FileList files={session.files} onRemove={session.removeFile} onAdd={session.pickFiles} addLabel={t("common.addPdf")} />
+              <FileList
+                files={session.files}
+                onRemove={session.removeFile}
+                onAdd={session.pickFiles}
+                addLabel={t("common.addPdf")}
+              />
             </OptionCard>
             {session.info ? (
               <Card className="p-4">
@@ -152,7 +169,11 @@ function Protect({ initialFiles, dragging }: { initialFiles?: string[]; dragging
               <PasswordField value={userPassword} onChange={setUserPassword} placeholder="••••••••" />
             </Field>
             <Field label={t("security.ownerPassword")} hint={t("common.optional")}>
-              <PasswordField value={ownerPassword} onChange={setOwnerPassword} placeholder={t("security.ownerPassword")} />
+              <PasswordField
+                value={ownerPassword}
+                onChange={setOwnerPassword}
+                placeholder={t("security.ownerPassword")}
+              />
             </Field>
             <Field label={t("security.confirmPassword")}>
               <PasswordField value={confirm} onChange={setConfirm} placeholder={t("security.confirmPassword")} />
@@ -197,7 +218,12 @@ function Unlock({ initialFiles, dragging }: { initialFiles?: string[]; dragging:
         ) : (
           <>
             <OptionCard>
-              <FileList files={session.files} onRemove={session.removeFile} onAdd={session.pickFiles} addLabel={t("common.addPdf")} />
+              <FileList
+                files={session.files}
+                onRemove={session.removeFile}
+                onAdd={session.pickFiles}
+                addLabel={t("common.addPdf")}
+              />
             </OptionCard>
             {session.info ? (
               <Card className="p-4">
@@ -213,7 +239,12 @@ function Unlock({ initialFiles, dragging }: { initialFiles?: string[]; dragging:
       }
       side={
         <>
-          <OutputBar session={session} runLabel={t("security.unlockRun")} onRun={run} disabled={!session.primary || !password} />
+          <OutputBar
+            session={session}
+            runLabel={t("security.unlockRun")}
+            onRun={run}
+            disabled={!session.primary || !password}
+          />
           <OptionCard title={t("nav.unlock")}>
             <Field label={t("security.unlockPassword")}>
               {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the unlock password is the only field in this panel; focusing it is expected */}

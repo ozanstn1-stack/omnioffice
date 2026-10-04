@@ -1001,10 +1001,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         let output = dir.path().join("exists.pdf");
         std::fs::write(&output, b"x").expect("seed");
-        assert!(matches!(
-            resolve_output_path(&output, OverwritePolicy::Error),
-            Err(PdfError::OutputExists(_))
-        ));
+        assert!(matches!(resolve_output_path(&output, OverwritePolicy::Error), Err(PdfError::OutputExists(_))));
         assert_eq!(resolve_output_path(&output, OverwritePolicy::Replace).unwrap(), output);
         let missing = dir.path().join("missing.pdf");
         assert_eq!(resolve_output_path(&missing, OverwritePolicy::Error).unwrap(), missing);

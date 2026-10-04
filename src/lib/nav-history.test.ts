@@ -54,7 +54,9 @@ describe("recordScreenVisit", () => {
   it("pushes the first visit and replaces same-screen refreshes", () => {
     const history = fakeHistory();
     expect(recordScreenVisit(history, null, { screen: "reader", files: [] })).toBe("push");
-    expect(recordScreenVisit(history, { screen: "reader", files: [] }, { screen: "reader", files: ["/a.pdf"] })).toBe("replace");
+    expect(recordScreenVisit(history, { screen: "reader", files: [] }, { screen: "reader", files: ["/a.pdf"] })).toBe(
+      "replace",
+    );
     expect(history.pushState).toHaveBeenCalledTimes(1);
     expect(history.replaceState).toHaveBeenCalledTimes(1);
     expect(history.replaceState.mock.calls[0][0]).toMatchObject({ screen: "reader", files: ["/a.pdf"] });

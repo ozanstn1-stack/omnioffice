@@ -2,15 +2,14 @@
 //! build/chunk/retrieval checks. No real network access is used.
 
 use aicore::prompts::{
-    ask_prompt, calc_action_prompt, chunk_text, doc_action_prompt, doc_chat_focus, doc_chat_messages,
-    metadata_prompt, parse_formula_reply, parse_metadata_reply, select_relevant_pages,
-    summarize_prompt, summarize_prompt_with_budget, summarize_selection_prompt,
-    translate_page_prompt, writer_action_prompt, DocChatMessage, Plan, SummaryLength,
+    ask_prompt, calc_action_prompt, chunk_text, doc_action_prompt, doc_chat_focus, doc_chat_messages, metadata_prompt,
+    parse_formula_reply, parse_metadata_reply, select_relevant_pages, summarize_prompt, summarize_prompt_with_budget,
+    summarize_selection_prompt, translate_page_prompt, writer_action_prompt, DocChatMessage, Plan, SummaryLength,
     SummaryOptions, SummaryStyle, TranslateOptions,
 };
 use aicore::{
-    provider_notes, AiConfig, AiError, CancelToken, ChatMessage, ChatOptions, DeepSeekClient,
-    ProviderCapabilities, ProviderKind,
+    provider_notes, AiConfig, AiError, CancelToken, ChatMessage, ChatOptions, DeepSeekClient, ProviderCapabilities,
+    ProviderKind,
 };
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -85,10 +84,8 @@ fn read_request_with_body(stream: &mut TcpStream) -> String {
             Ok(0) => break,
             Ok(read) => {
                 request.extend_from_slice(&buffer[..read]);
-                let header_end = request
-                    .windows(4)
-                    .position(|window| window == b"\r\n\r\n")
-                    .map(|position| position + 4);
+                let header_end =
+                    request.windows(4).position(|window| window == b"\r\n\r\n").map(|position| position + 4);
                 if let Some(header_end) = header_end {
                     let headers = String::from_utf8_lossy(&request[..header_end]).to_lowercase();
                     let length = headers
@@ -148,12 +145,7 @@ fn mock_server_capturing(
 }
 
 fn client_for(base_url: String) -> DeepSeekClient {
-    DeepSeekClient::new(AiConfig {
-        api_key: "test-key".into(),
-        base_url,
-        ..Default::default()
-    })
-    .expect("client")
+    DeepSeekClient::new(AiConfig { api_key: "test-key".into(), base_url, ..Default::default() }).expect("client")
 }
 
 fn provider_client(base_url: String, provider: ProviderKind, api_key: &str) -> DeepSeekClient {
@@ -175,10 +167,7 @@ async fn chat_reads_a_normal_completion() {
     let body = r#"{"choices":[{"message":{"role":"assistant","content":"  1200 EUR  "}}]}"#.to_string();
     let (url, handle) = mock_server(200, "application/json", body, false);
     let client = client_for(url);
-    let reply = client
-        .chat(&[ChatMessage::user("total?")], ChatOptions::default())
-        .await
-        .expect("completion");
+    let reply = client.chat(&[ChatMessage::user("total?")], ChatOptions::default()).await.expect("completion");
     assert_eq!(reply.trim(), "1200 EUR");
     handle.join().unwrap();
 }
@@ -212,18 +201,11 @@ async fn chat_stream_assembles_server_sent_events() {
 
 #[tokio::test]
 async fn http_errors_map_to_friendly_codes() {
-    for (status, expected) in [
-        (401, "invalid_api_key"),
-        (402, "insufficient_balance"),
-        (429, "rate_limited"),
-    ] {
+    for (status, expected) in [(401, "invalid_api_key"), (402, "insufficient_balance"), (429, "rate_limited")] {
         let body = format!(r#"{{"error":{{"message":"nope","code":"{status}"}}}}"#);
         let (url, handle) = mock_server(status, "application/json", body, false);
         let client = client_for(url);
-        let error = client
-            .chat(&[ChatMessage::user("x")], ChatOptions::default())
-            .await
-            .expect_err("should fail");
+        let error = client.chat(&[ChatMessage::user("x")], ChatOptions::default()).await.expect_err("should fail");
         let code = match error {
             AiError::InvalidApiKey(_) => "invalid_api_key",
             AiError::InsufficientBalance(_) => "insufficient_balance",
@@ -237,14 +219,8 @@ async fn http_errors_map_to_friendly_codes() {
 
 #[tokio::test]
 async fn missing_api_key_is_rejected_before_any_request() {
-    let config = AiConfig {
-        api_key: String::new(),
-        ..Default::default()
-    };
-    assert!(matches!(
-        DeepSeekClient::new(config),
-        Err(AiError::MissingApiKey)
-    ));
+    let config = AiConfig { api_key: String::new(), ..Default::default() };
+    assert!(matches!(DeepSeekClient::new(config), Err(AiError::MissingApiKey)));
 }
 
 #[tokio::test]
@@ -256,9 +232,8 @@ async fn cancellation_stops_the_stream() {
     let client = client_for(url);
     let cancel = CancelToken::new();
     cancel.cancel();
-    let result = client
-        .chat_stream(&[ChatMessage::user("hi")], ChatOptions::default(), &cancel, &mut |_| {}, &mut |_| {})
-        .await;
+    let result =
+        client.chat_stream(&[ChatMessage::user("hi")], ChatOptions::default(), &cancel, &mut |_| {}, &mut |_| {}).await;
     assert!(matches!(result, Err(AiError::Cancelled)));
     handle.join().unwrap();
 }
@@ -329,11 +304,7 @@ fn thinking_parameters_only_apply_to_v4_models() {
     assert!(aicore::supports_thinking("deepseek-v4-pro"));
     assert!(!aicore::supports_thinking("deepseek-chat"));
     assert!(!aicore::supports_thinking("llama3.1:8b"));
-    let config = AiConfig {
-        api_key: "k".into(),
-        model: "deepseek-v4-flash".into(),
-        ..Default::default()
-    };
+    let config = AiConfig { api_key: "k".into(), model: "deepseek-v4-flash".into(), ..Default::default() };
     assert!(config.thinking);
     assert_eq!(config.reasoning_effort, "high");
 }
@@ -415,10 +386,7 @@ async fn thinking_fields_are_sent_to_v4_models_and_omitted_otherwise() {
 #[test]
 fn chunking_splits_on_paragraphs_and_keeps_order() {
     let paragraph = "Sentence about invoices and payments. ".repeat(60); // ~2.3k chars
-    let text = (0..30)
-        .map(|index| format!("{paragraph} [para {index}]"))
-        .collect::<Vec<_>>()
-        .join("\n\n");
+    let text = (0..30).map(|index| format!("{paragraph} [para {index}]")).collect::<Vec<_>>().join("\n\n");
     let chunks = chunk_text(&text, 8_000);
     assert!(chunks.len() > 1, "expected chunking, got {}", chunks.len());
     assert!(chunks.iter().all(|chunk| chunk.len() <= 8_000));
@@ -453,11 +421,7 @@ fn context_budget_scales_the_request_size() {
     assert_eq!(max_budget, 2_000_000);
     assert_eq!(aicore::chunk_chars_for_context(9_999_999), 2_000_000, "clamped to the 1M context");
 
-    let config = AiConfig {
-        api_key: "k".into(),
-        context_tokens: 1_000_000,
-        ..Default::default()
-    };
+    let config = AiConfig { api_key: "k".into(), context_tokens: 1_000_000, ..Default::default() };
     assert_eq!(config.chunk_chars(), 2_000_000);
 
     // A 1.2M-character document fits into a single request at 1M tokens...
@@ -508,10 +472,7 @@ fn translation_prompt_keeps_markers_and_optional_bilingual_output() {
     let messages = translate_page_prompt(
         "Page 3",
         "Hello world",
-        &TranslateOptions {
-            target_language: "tr".into(),
-            bilingual: true,
-        },
+        &TranslateOptions { target_language: "tr".into(), bilingual: true },
     );
     assert_eq!(messages[0].role, "system");
     let user = &messages[1].content;
@@ -586,10 +547,7 @@ fn provider_kinds_parse_round_trip_and_default_to_deepseek() {
     assert_eq!(config.embedding_model, None);
 
     assert_eq!(ProviderKind::Ollama.default_base_url(), "http://localhost:11434");
-    assert_eq!(
-        ProviderKind::Gemini.default_base_url(),
-        "https://generativelanguage.googleapis.com/v1beta"
-    );
+    assert_eq!(ProviderKind::Gemini.default_base_url(), "https://generativelanguage.googleapis.com/v1beta");
 }
 
 #[test]
@@ -619,19 +577,11 @@ fn provider_capability_table_matches_each_provider() {
 
 #[test]
 fn ollama_is_configured_without_an_api_key() {
-    let config = AiConfig {
-        api_key: String::new(),
-        provider: ProviderKind::Ollama,
-        ..Default::default()
-    };
+    let config = AiConfig { api_key: String::new(), provider: ProviderKind::Ollama, ..Default::default() };
     assert!(config.is_configured());
     assert!(DeepSeekClient::new(config).is_ok());
 
-    let cloud = AiConfig {
-        api_key: String::new(),
-        provider: ProviderKind::Gemini,
-        ..Default::default()
-    };
+    let cloud = AiConfig { api_key: String::new(), provider: ProviderKind::Gemini, ..Default::default() };
     assert!(!cloud.is_configured());
     assert!(matches!(DeepSeekClient::new(cloud), Err(AiError::MissingApiKey)));
 }
@@ -641,12 +591,7 @@ fn provider_notes_state_where_the_text_goes() {
     let note = provider_notes(ProviderKind::Ollama).to_lowercase();
     assert!(note.contains("never leaves"), "{note}");
     assert!(note.contains("computer"), "{note}");
-    for kind in [
-        ProviderKind::DeepSeek,
-        ProviderKind::OpenAiCompatible,
-        ProviderKind::Gemini,
-        ProviderKind::Custom,
-    ] {
+    for kind in [ProviderKind::DeepSeek, ProviderKind::OpenAiCompatible, ProviderKind::Gemini, ProviderKind::Custom] {
         assert!(!provider_notes(kind).is_empty());
     }
 }
@@ -664,16 +609,10 @@ async fn each_provider_posts_to_its_own_endpoint() {
         let body = r#"{"choices":[{"message":{"content":"ok"}}]}"#.to_string();
         let (url, captured, handle) = mock_server_capturing(body, "application/json", false);
         let client = provider_client(format!("{url}{base_suffix}"), provider, "k");
-        client
-            .chat(&[ChatMessage::user("x")], ChatOptions::default())
-            .await
-            .expect("chat");
+        client.chat(&[ChatMessage::user("x")], ChatOptions::default()).await.expect("chat");
         handle.join().unwrap();
         let request = captured.lock().unwrap().clone();
-        assert!(
-            request.starts_with(&format!("POST {expected} ")),
-            "{provider:?} sent {request}"
-        );
+        assert!(request.starts_with(&format!("POST {expected} ")), "{provider:?} sent {request}");
     }
 
     // Gemini: {base}/openai/chat/completions
@@ -704,10 +643,7 @@ async fn ollama_chat_reads_the_message_field() {
     let body = r#"{"model":"llama3.2","message":{"role":"assistant","content":"  Merhaba  "},"done":true}"#.to_string();
     let (url, captured, handle) = mock_server_capturing(body, "application/json", false);
     let client = provider_client(url, ProviderKind::Ollama, "");
-    let reply = client
-        .chat(&[ChatMessage::user("selam")], ChatOptions::default())
-        .await
-        .expect("ollama chat");
+    let reply = client.chat(&[ChatMessage::user("selam")], ChatOptions::default()).await.expect("ollama chat");
     assert_eq!(reply.trim(), "Merhaba");
     handle.join().unwrap();
     let request = captured.lock().unwrap().clone();
@@ -750,17 +686,11 @@ async fn ollama_requests_never_include_the_api_key() {
     let body = r#"{"message":{"content":"ok"},"done":true}"#.to_string();
     let (url, captured, handle) = mock_server_capturing(body, "application/json", false);
     let client = provider_client(url, ProviderKind::Ollama, "sk-local-secret");
-    client
-        .chat(&[ChatMessage::user("gizli metin")], ChatOptions::default())
-        .await
-        .expect("ollama chat");
+    client.chat(&[ChatMessage::user("gizli metin")], ChatOptions::default()).await.expect("ollama chat");
     handle.join().unwrap();
     let request = captured.lock().unwrap().clone();
     assert!(!request.contains("sk-local-secret"), "request leaked the key: {request}");
-    assert!(
-        !request.to_lowercase().contains("authorization"),
-        "request carried an auth header: {request}"
-    );
+    assert!(!request.to_lowercase().contains("authorization"), "request carried an auth header: {request}");
     assert!(request.contains("gizli metin"), "body was not captured: {request}");
 }
 
@@ -777,10 +707,7 @@ async fn unreachable_provider_reports_a_friendly_error() {
         ..Default::default()
     };
     let client = DeepSeekClient::new(config).expect("client");
-    let error = client
-        .chat(&[ChatMessage::user("hi")], ChatOptions::default())
-        .await
-        .expect_err("must fail");
+    let error = client.chat(&[ChatMessage::user("hi")], ChatOptions::default()).await.expect_err("must fail");
     match error {
         AiError::ProviderUnreachable(message) => {
             assert!(message.contains("could not reach"), "{message}");
@@ -796,22 +723,15 @@ async fn unreachable_provider_reports_a_friendly_error() {
 
 #[test]
 fn doc_chat_messages_carry_context_history_and_the_fallback_sentence() {
-    let context = vec![
-        (1, "Invoice total: 1200 EUR".to_string()),
-        (4, "Payment due in 30 days".to_string()),
-    ];
-    let history = vec![
-        DocChatMessage::user("What is the total?"),
-        DocChatMessage::assistant("It is 1200 EUR [page 1]."),
-    ];
+    let context = vec![(1, "Invoice total: 1200 EUR".to_string()), (4, "Payment due in 30 days".to_string())];
+    let history =
+        vec![DocChatMessage::user("What is the total?"), DocChatMessage::assistant("It is 1200 EUR [page 1].")];
     let messages = doc_chat_messages("When is payment due?", &context, &history);
     assert_eq!(messages[0].role, "system");
     assert!(messages[0].content.contains("I could not find this in the document."));
     assert!(messages.iter().any(|message| message.content.contains("[page 1]")));
     assert!(messages.iter().any(|message| message.content.contains("[page 4]")));
-    assert!(messages
-        .iter()
-        .any(|message| message.role == "assistant" && message.content.contains("1200 EUR")));
+    assert!(messages.iter().any(|message| message.role == "assistant" && message.content.contains("1200 EUR")));
     assert_eq!(messages.last().unwrap().content, "When is payment due?");
 }
 
@@ -830,30 +750,15 @@ fn doc_chat_focus_selects_matching_pages_and_falls_back() {
     assert!(selected.iter().all(|(_, text)| !text.starts_with("Appendix")));
 
     let fallback = doc_chat_focus("zzzzz qqqqq", &pages, 2);
-    assert_eq!(
-        fallback.iter().map(|(page, _)| *page).collect::<Vec<_>>(),
-        vec![1, 2]
-    );
+    assert_eq!(fallback.iter().map(|(page, _)| *page).collect::<Vec<_>>(), vec![1, 2]);
 }
 
 #[test]
 fn formula_replies_are_extracted_from_fences() {
-    assert_eq!(
-        parse_formula_reply("```formula\n=SUM(A1:A5)\n```").as_deref(),
-        Some("=SUM(A1:A5)")
-    );
-    assert_eq!(
-        parse_formula_reply("```\n=AVERAGE(B1:B9)\n```").as_deref(),
-        Some("=AVERAGE(B1:B9)")
-    );
-    assert_eq!(
-        parse_formula_reply("Use this:\n=IF(A1>0,\"ok\",\"no\")").as_deref(),
-        Some("=IF(A1>0,\"ok\",\"no\")")
-    );
-    assert_eq!(
-        parse_formula_reply("```formula\n  =ROUND(A1;2)  \n```").as_deref(),
-        Some("=ROUND(A1;2)")
-    );
+    assert_eq!(parse_formula_reply("```formula\n=SUM(A1:A5)\n```").as_deref(), Some("=SUM(A1:A5)"));
+    assert_eq!(parse_formula_reply("```\n=AVERAGE(B1:B9)\n```").as_deref(), Some("=AVERAGE(B1:B9)"));
+    assert_eq!(parse_formula_reply("Use this:\n=IF(A1>0,\"ok\",\"no\")").as_deref(), Some("=IF(A1>0,\"ok\",\"no\")"));
+    assert_eq!(parse_formula_reply("```formula\n  =ROUND(A1;2)  \n```").as_deref(), Some("=ROUND(A1;2)"));
     assert_eq!(parse_formula_reply("no formula here"), None);
     assert_eq!(parse_formula_reply("```formula\n\n```"), None);
 }
@@ -864,17 +769,9 @@ fn unknown_writer_action_is_rejected() {
         Err(AiError::Unsupported(message)) => assert!(message.contains("summarize the moon")),
         other => panic!("unexpected result: {other:?}"),
     }
-    for action in [
-        "rewrite",
-        "formalize",
-        "simplify",
-        "shorten",
-        "expand",
-        "grammar",
-        "translate",
-        "translate:de",
-        "continue",
-    ] {
+    for action in
+        ["rewrite", "formalize", "simplify", "shorten", "expand", "grammar", "translate", "translate:de", "continue"]
+    {
         assert!(writer_action_prompt(action, "text").is_ok(), "{action}");
     }
     let translated = writer_action_prompt("translate:de", "Merhaba").expect("translate");
@@ -890,10 +787,7 @@ fn formula_actions_require_a_fenced_formula_block() {
     }
     let explain = calc_action_prompt("explain_formula", "what does this do?", "=SUM(A1:A5)").expect("action");
     assert!(explain[1].content.contains("=SUM(A1:A5)"));
-    assert!(matches!(
-        calc_action_prompt("nope", "q", ""),
-        Err(AiError::Unsupported(_))
-    ));
+    assert!(matches!(calc_action_prompt("nope", "q", ""), Err(AiError::Unsupported(_))));
 }
 
 #[test]
@@ -906,10 +800,7 @@ fn document_actions_request_the_right_output_format() {
     assert!(names[1].content.contains("JSON array"));
     let items = doc_action_prompt("action_items", "send the invoice").expect("items");
     assert!(items[1].content.contains("JSON array"));
-    assert!(matches!(
-        doc_action_prompt("dance", "x"),
-        Err(AiError::Unsupported(_))
-    ));
+    assert!(matches!(doc_action_prompt("dance", "x"), Err(AiError::Unsupported(_))));
 }
 
 #[test]

@@ -151,13 +151,7 @@ export interface OcrOptions {
 }
 
 export type WatermarkPosition =
-  | "top_left"
-  | "top_center"
-  | "top_right"
-  | "center"
-  | "bottom_left"
-  | "bottom_center"
-  | "bottom_right";
+  "top_left" | "top_center" | "top_right" | "center" | "bottom_left" | "bottom_center" | "bottom_right";
 
 export interface WatermarkOptions {
   kind: "text" | "image";

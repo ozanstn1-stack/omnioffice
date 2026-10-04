@@ -34,21 +34,10 @@ fn main() {
         ..Default::default()
     };
     let progress = |event: pdfcore::progress::ProgressEvent| {
-        println!(
-            "  progress: {} {}/{}",
-            event.stage, event.current, event.total
-        );
+        println!("  progress: {} {}/{}", event.stage, event.current, event.total);
     };
     let cancel = CancelToken::new();
-    match ocr_pdf(
-        Path::new(input),
-        Path::new(output),
-        &options,
-        OverwritePolicy::Replace,
-        None,
-        &progress,
-        &cancel,
-    ) {
+    match ocr_pdf(Path::new(input), Path::new(output), &options, OverwritePolicy::Replace, None, &progress, &cancel) {
         Ok(result) => {
             println!(
                 "ok: {} pages processed, {} skipped, {} chars, {} ms -> {}",

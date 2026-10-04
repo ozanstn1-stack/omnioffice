@@ -27,7 +27,10 @@ function severityIcon(severity: Severity) {
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 py-1 border-b last:border-0" style={{ borderColor: "var(--border)" }}>
+    <div
+      className="flex items-baseline justify-between gap-3 py-1 border-b last:border-0"
+      style={{ borderColor: "var(--border)" }}
+    >
       <span className="text-xs muted">{label}</span>
       <span className="text-xs text-right break-words" style={{ color: "var(--text-1)" }}>
         {value}
@@ -101,10 +104,7 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
     };
   }, [report]);
 
-  const embedded = useMemo(
-    () => (report?.fonts ?? []).filter((font) => font.embedded).length,
-    [report],
-  );
+  const embedded = useMemo(() => (report?.fonts ?? []).filter((font) => font.embedded).length, [report]);
   const unembedded = (report?.fonts.length ?? 0) - embedded;
 
   return (
@@ -120,7 +120,12 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
               {!session.primary ? (
                 <DropZone onPaths={(paths) => void session.addPaths(paths)} dragging={dragging} accept="pdf" />
               ) : (
-                <FileList files={session.files} onRemove={session.removeFile} onAdd={session.pickFiles} addLabel={t("common.addPdf")} />
+                <FileList
+                  files={session.files}
+                  onRemove={session.removeFile}
+                  onAdd={session.pickFiles}
+                  addLabel={t("common.addPdf")}
+                />
               )}
             </OptionCard>
 
@@ -150,9 +155,21 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                       </span>
                     </Badge>
                   )}
-                  {counts.error ? <Badge tone="danger">{counts.error} {t("inspect.severity.error")}</Badge> : null}
-                  {counts.warning ? <Badge tone="warn">{counts.warning} {t("inspect.severity.warning")}</Badge> : null}
-                  {counts.info ? <Badge>{counts.info} {t("inspect.severity.info")}</Badge> : null}
+                  {counts.error ? (
+                    <Badge tone="danger">
+                      {counts.error} {t("inspect.severity.error")}
+                    </Badge>
+                  ) : null}
+                  {counts.warning ? (
+                    <Badge tone="warn">
+                      {counts.warning} {t("inspect.severity.warning")}
+                    </Badge>
+                  ) : null}
+                  {counts.info ? (
+                    <Badge>
+                      {counts.info} {t("inspect.severity.info")}
+                    </Badge>
+                  ) : null}
                 </div>
 
                 <div className="flex flex-wrap gap-1.5">
@@ -179,7 +196,10 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                       label={t("inspect.encryption")}
                       value={report.encrypted ? t("inspect.yes") : t("inspect.no")}
                     />
-                    <Row label={t("inspect.linearized")} value={report.linearized ? t("inspect.yes") : t("inspect.no")} />
+                    <Row
+                      label={t("inspect.linearized")}
+                      value={report.linearized ? t("inspect.yes") : t("inspect.no")}
+                    />
                     <Row
                       label={t("inspect.javascript")}
                       value={
@@ -193,12 +213,13 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                     <Row
                       label={t("inspect.acroForm")}
                       value={
-                        report.hasAcroForm
-                          ? `${report.formFields.length} ${t("inspect.formFields")}`
-                          : t("inspect.no")
+                        report.hasAcroForm ? `${report.formFields.length} ${t("inspect.formFields")}` : t("inspect.no")
                       }
                     />
-                    <Row label={t("inspect.structTree")} value={report.hasStructTree ? t("inspect.yes") : t("inspect.no")} />
+                    <Row
+                      label={t("inspect.structTree")}
+                      value={report.hasStructTree ? t("inspect.yes") : t("inspect.no")}
+                    />
                     <Row
                       label={t("inspect.structTreeParsed")}
                       value={report.structTree ? t("inspect.yes") : t("inspect.no")}
@@ -210,7 +231,10 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                     <Row label={t("inspect.producer")} value={report.producer || t("inspect.none")} />
                     <Row label={t("inspect.creator")} value={report.creator || t("inspect.none")} />
                     <Row label={t("inspect.subject")} value={report.subjectOverride || t("inspect.none")} />
-                    <Row label={t("inspect.openAction")} value={report.hasOpenAction ? t("inspect.yes") : t("inspect.no")} />
+                    <Row
+                      label={t("inspect.openAction")}
+                      value={report.hasOpenAction ? t("inspect.yes") : t("inspect.no")}
+                    />
                     <Row label={t("inspect.attachments")} value={report.attachmentCount} />
                     <Row
                       label={t("inspect.embeddedFiles")}
@@ -227,7 +251,11 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                         <Badge tone="ok">
                           {embedded} {t("inspect.embedded")}
                         </Badge>
-                        {unembedded ? <Badge tone="warn">{unembedded} {t("inspect.notEmbedded")}</Badge> : null}
+                        {unembedded ? (
+                          <Badge tone="warn">
+                            {unembedded} {t("inspect.notEmbedded")}
+                          </Badge>
+                        ) : null}
                       </div>
                       <div className="flex flex-col max-h-[520px] overflow-auto">
                         {report.fonts.map((font, index) => (
@@ -268,7 +296,8 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                           style={{ borderColor: "var(--border)" }}
                         >
                           <span className="text-xs" style={{ color: "var(--text-1)" }}>
-                            {image.width} × {image.height} · {image.colorSpace} · {image.bitsPerComponent} bit · {image.filter}
+                            {image.width} × {image.height} · {image.colorSpace} · {image.bitsPerComponent} bit ·{" "}
+                            {image.filter}
                           </span>
                           {image.occurrences > 1 ? <span className="text-xs muted">×{image.occurrences}</span> : null}
                         </div>
@@ -343,7 +372,10 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                       {report.annotations.length ? (
                         <div className="flex flex-col max-h-40 overflow-auto">
                           {report.annotations.map((annotation, index) => (
-                            <div key={`${annotation.subtype}-${index}`} className="text-xs py-1 flex items-baseline justify-between gap-2">
+                            <div
+                              key={`${annotation.subtype}-${index}`}
+                              className="text-xs py-1 flex items-baseline justify-between gap-2"
+                            >
                               <span className="truncate" style={{ color: "var(--text-1)" }}>
                                 {annotation.contents || annotation.subtype}
                               </span>

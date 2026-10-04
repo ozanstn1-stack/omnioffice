@@ -5,7 +5,15 @@ import { useSettings } from "../lib/store";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { clamp } from "../lib/format";
 import { useT } from "../lib/i18n";
-import { aiClearKey, aiGetSettings, aiLibraryDefaultDir, aiModels, aiSaveSettings, aiTestConnection, toAppError } from "../lib/api";
+import {
+  aiClearKey,
+  aiGetSettings,
+  aiLibraryDefaultDir,
+  aiModels,
+  aiSaveSettings,
+  aiTestConnection,
+  toAppError,
+} from "../lib/api";
 import type { AiModelOption, AiSettingsView, AiTestResult, ReasoningEffort } from "../lib/types";
 
 /**
@@ -230,7 +238,9 @@ export function AiSettings() {
     <Card className="p-5 flex flex-col gap-4">
       <h3 className="font-semibold flex items-center gap-2">
         <Bot size={16} style={{ color: "var(--accent)" }} /> {t("settings.aiTitle")}
-        <Badge tone={view?.configured ? "ok" : "warn"}>{view?.configured ? t("common.ready") : t("ai.notConfigured")}</Badge>
+        <Badge tone={view?.configured ? "ok" : "warn"}>
+          {view?.configured ? t("common.ready") : t("ai.notConfigured")}
+        </Badge>
       </h3>
 
       <div className="card-soft p-3 flex items-start gap-2 text-xs">
@@ -239,7 +249,10 @@ export function AiSettings() {
       </div>
 
       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
-        <Field label={label("ai.provider", "Provider")} hint={label("ai.providerHint", "Where the extracted text is sent")}>
+        <Field
+          label={label("ai.provider", "Provider")}
+          hint={label("ai.providerHint", "Where the extracted text is sent")}
+        >
           <select
             className="select"
             value={provider}
@@ -306,7 +319,12 @@ export function AiSettings() {
               autoComplete="off"
               spellCheck={false}
             />
-            <Button variant="ghost" icon={<KeyRound size={15} />} onClick={() => void clear()} disabled={!view?.configured}>
+            <Button
+              variant="ghost"
+              icon={<KeyRound size={15} />}
+              onClick={() => void clear()}
+              disabled={!view?.configured}
+            >
               {t("settings.aiClear")}
             </Button>
           </div>
@@ -347,7 +365,14 @@ export function AiSettings() {
 
       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
         <Field label={t("settings.aiTemperature")}>
-          <Slider value={temperature} min={0} max={1.5} step={0.05} onChange={setTemperature} format={(value) => value.toFixed(2)} />
+          <Slider
+            value={temperature}
+            min={0}
+            max={1.5}
+            step={0.05}
+            onChange={setTemperature}
+            format={(value) => value.toFixed(2)}
+          />
         </Field>
         <Field label={t("settings.aiMaxTokens")} hint={t("settings.aiMaxTokensHint")}>
           <div className="flex flex-col gap-2">
@@ -405,11 +430,7 @@ export function AiSettings() {
       </Field>
 
       <div className="flex flex-col gap-2">
-        <Checkbox
-          checked={thinking}
-          onChange={setThinking}
-          label={t("settings.aiThinking")}
-        />
+        <Checkbox checked={thinking} onChange={setThinking} label={t("settings.aiThinking")} />
         <p className="text-xs muted -mt-1">{t("settings.aiThinkingHint")}</p>
         {thinking ? (
           <Field label={t("settings.aiReasoningEffort")} hint={t("settings.aiReasoningEffortHint")}>
@@ -424,7 +445,11 @@ export function AiSettings() {
             />
           </Field>
         ) : null}
-        {!isV4Model ? <p className="text-xs" style={{ color: "var(--warn)" }}>{t("settings.aiThinkingModelWarning")}</p> : null}
+        {!isV4Model ? (
+          <p className="text-xs" style={{ color: "var(--warn)" }}>
+            {t("settings.aiThinkingModelWarning")}
+          </p>
+        ) : null}
       </div>
 
       {saveError ? (
@@ -434,7 +459,12 @@ export function AiSettings() {
       ) : null}
 
       <div className="flex items-center gap-2">
-        <Button variant="primary" icon={saving ? <Spinner size={14} /> : <Bot size={15} />} onClick={() => void save()} disabled={saving}>
+        <Button
+          variant="primary"
+          icon={saving ? <Spinner size={14} /> : <Bot size={15} />}
+          onClick={() => void save()}
+          disabled={saving}
+        >
           {t("common.save")}
         </Button>
         <Button
@@ -454,14 +484,8 @@ export function AiSettings() {
 
       {testResult ? (
         <div className="flex items-center gap-2 text-[13px]">
-          {testResult.ok ? (
-            <CheckCircle2 size={15} style={{ color: "var(--ok)" }} />
-          ) : (
-            <Badge tone="danger">!</Badge>
-          )}
-          <span>
-            {testResult.ok ? t("settings.aiTestOk", { model: testResult.model }) : testResult.message}
-          </span>
+          {testResult.ok ? <CheckCircle2 size={15} style={{ color: "var(--ok)" }} /> : <Badge tone="danger">!</Badge>}
+          <span>{testResult.ok ? t("settings.aiTestOk", { model: testResult.model }) : testResult.message}</span>
         </div>
       ) : null}
 

@@ -13,20 +13,12 @@ use pdfcore::progress::CancelToken;
 use pdfcore::sanitize::{sanitize_pdf, SanitizeOptions};
 
 fn catalog_id(doc: &Document) -> lopdf::ObjectId {
-    doc.trailer
-        .get(b"Root")
-        .expect("catalog")
-        .as_reference()
-        .expect("catalog reference")
+    doc.trailer.get(b"Root").expect("catalog").as_reference().expect("catalog reference")
 }
 
 fn add_names_entry(doc: &mut Document, key: &str, value: Object) {
     let catalog_id = catalog_id(doc);
-    let existing = doc
-        .get_dictionary(catalog_id)
-        .ok()
-        .and_then(|catalog| catalog.get(b"Names").ok())
-        .cloned();
+    let existing = doc.get_dictionary(catalog_id).ok().and_then(|catalog| catalog.get(b"Names").ok()).cloned();
     let mut names = match existing {
         Some(Object::Reference(id)) => doc.get_dictionary(id).cloned().unwrap_or_default(),
         Some(Object::Dictionary(dict)) => dict,
@@ -34,11 +26,7 @@ fn add_names_entry(doc: &mut Document, key: &str, value: Object) {
     };
     names.set(key, value);
     let names_id = doc.add_object(Object::Dictionary(names));
-    doc.get_object_mut(catalog_id)
-        .unwrap()
-        .as_dict_mut()
-        .unwrap()
-        .set("Names", Object::Reference(names_id));
+    doc.get_object_mut(catalog_id).unwrap().as_dict_mut().unwrap().set("Names", Object::Reference(names_id));
 }
 
 fn page_id(doc: &Document, number: u32) -> lopdf::ObjectId {
@@ -64,11 +52,7 @@ fn poisoned_doc() -> Document {
     add_names_entry(&mut doc, "JavaScript", Object::Reference(js_tree));
 
     let catalog_id = catalog_id(&doc);
-    doc.get_object_mut(catalog_id)
-        .unwrap()
-        .as_dict_mut()
-        .unwrap()
-        .set("OpenAction", Object::Reference(js_action));
+    doc.get_object_mut(catalog_id).unwrap().as_dict_mut().unwrap().set("OpenAction", Object::Reference(js_action));
 
     let payload = doc.add_object(Object::Stream(Stream::new(Dictionary::new(), b"payload".to_vec())));
     let filespec = doc.add_object(Object::Dictionary(dictionary! {
@@ -119,21 +103,13 @@ fn poisoned_doc() -> Document {
     let additional_actions = doc.add_object(Object::Dictionary(dictionary! {
         "O" => Object::Reference(js_action),
     }));
-    doc.get_object_mut(second_page)
-        .unwrap()
-        .as_dict_mut()
-        .unwrap()
-        .set("AA", Object::Reference(additional_actions));
+    doc.get_object_mut(second_page).unwrap().as_dict_mut().unwrap().set("AA", Object::Reference(additional_actions));
 
     let xmp = doc.add_object(Object::Stream(Stream::new(
         dictionary! { "Type" => "Metadata", "Subtype" => "XML" },
         b"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"/>".to_vec(),
     )));
-    doc.get_object_mut(catalog_id)
-        .unwrap()
-        .as_dict_mut()
-        .unwrap()
-        .set("Metadata", Object::Reference(xmp));
+    doc.get_object_mut(catalog_id).unwrap().as_dict_mut().unwrap().set("Metadata", Object::Reference(xmp));
 
     doc
 }
@@ -194,14 +170,8 @@ fn sanitize_removes_every_hazard_from_every_object() {
     let source = dir.path("poisoned.pdf");
     write_doc(&mut poisoned_doc(), &source);
     let output = dir.path("clean.pdf");
-    let report = sanitize_pdf(
-        &source,
-        &output,
-        &SanitizeOptions::default(),
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .expect("sanitize");
+    let report = sanitize_pdf(&source, &output, &SanitizeOptions::default(), &no_progress, &CancelToken::new())
+        .expect("sanitize");
 
     assert!(report.findings_before.javascript_entries > 0, "fixture must carry JS");
     assert!(report.findings_before.embedded_files > 0, "fixture must carry an attachment");
@@ -219,10 +189,7 @@ fn sanitize_removes_every_hazard_from_every_object() {
     let clean = Document::load(&output).expect("reopen sanitized file");
     let (keys, names) = collect(&clean);
     for banned in ["JS", "JavaScript", "OpenAction", "AA", "EmbeddedFiles", "Metadata"] {
-        assert!(
-            !keys.iter().any(|key| key == banned),
-            "the key /{banned} survived in some object: {keys:?}"
-        );
+        assert!(!keys.iter().any(|key| key == banned), "the key /{banned} survived in some object: {keys:?}");
     }
     assert!(
         !names.iter().any(|name| name == "JavaScript" || name == "Filespec"),
@@ -255,11 +222,7 @@ fn selective_options_keep_what_was_not_selected() {
     let source = dir.path("poisoned.pdf");
     write_doc(&mut poisoned_doc(), &source);
     let output = dir.path("clean.pdf");
-    let options = SanitizeOptions {
-        remove_javascript: false,
-        remove_metadata: false,
-        ..Default::default()
-    };
+    let options = SanitizeOptions { remove_javascript: false, remove_metadata: false, ..Default::default() };
     sanitize_pdf(&source, &output, &options, &no_progress, &CancelToken::new()).expect("sanitize");
     let clean = Document::load(&output).expect("reopen");
     let (keys, _) = collect(&clean);

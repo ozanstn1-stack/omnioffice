@@ -53,7 +53,15 @@ export function IconButton({
 // Layout primitives
 // ---------------------------------------------------------------------------
 
-export function Card({ children, className = "", soft = false }: { children: ReactNode; className?: string; soft?: boolean }) {
+export function Card({
+  children,
+  className = "",
+  soft = false,
+}: {
+  children: ReactNode;
+  className?: string;
+  soft?: boolean;
+}) {
   return <div className={`${soft ? "card-soft" : "card"} ${className}`}>{children}</div>;
 }
 
@@ -66,7 +74,17 @@ export function SectionTitle({ children, hint }: { children: ReactNode; hint?: R
   );
 }
 
-export function Field({ label, hint, children, className = "" }: { label?: ReactNode; hint?: ReactNode; children: ReactNode; className?: string }) {
+export function Field({
+  label,
+  hint,
+  children,
+  className = "",
+}: {
+  label?: ReactNode;
+  hint?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <div className={className}>
       {label ? <label className="label">{label}</label> : null}
@@ -76,9 +94,23 @@ export function Field({ label, hint, children, className = "" }: { label?: React
   );
 }
 
-export function Badge({ children, tone = "default" }: { children: ReactNode; tone?: "default" | "ok" | "warn" | "danger" | "accent" }) {
+export function Badge({
+  children,
+  tone = "default",
+}: {
+  children: ReactNode;
+  tone?: "default" | "ok" | "warn" | "danger" | "accent";
+}) {
   const toneClass =
-    tone === "ok" ? "badge-ok" : tone === "warn" ? "badge-warn" : tone === "danger" ? "badge-danger" : tone === "accent" ? "badge-accent" : "";
+    tone === "ok"
+      ? "badge-ok"
+      : tone === "warn"
+        ? "badge-warn"
+        : tone === "danger"
+          ? "badge-danger"
+          : tone === "accent"
+            ? "badge-accent"
+            : "";
   return <span className={`badge ${toneClass}`}>{children}</span>;
 }
 
@@ -86,10 +118,27 @@ export function Spinner({ size = 16 }: { size?: number }) {
   return <Loader2 size={size} className="spin" aria-hidden />;
 }
 
-export function EmptyState({ icon, title, hint, action }: { icon?: ReactNode; title: string; hint?: string; action?: ReactNode }) {
+export function EmptyState({
+  icon,
+  title,
+  hint,
+  action,
+}: {
+  icon?: ReactNode;
+  title: string;
+  hint?: string;
+  action?: ReactNode;
+}) {
   return (
     <div className="flex flex-col items-center justify-center text-center gap-3 py-14 px-6">
-      {icon ? <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: "var(--surface-2)", color: "var(--muted)" }}>{icon}</div> : null}
+      {icon ? (
+        <div
+          className="w-14 h-14 rounded-2xl flex items-center justify-center"
+          style={{ background: "var(--surface-2)", color: "var(--muted)" }}
+        >
+          {icon}
+        </div>
+      ) : null}
       <div>
         <p className="font-semibold">{title}</p>
         {hint ? <p className="text-sm muted mt-1 max-w-md">{hint}</p> : null}
@@ -162,7 +211,11 @@ export function Select<T extends string>({
 }) {
   return (
     <div className={`relative ${className}`}>
-      <select className="select appearance-none pr-9" value={value} onChange={(event) => onChange(event.target.value as T)}>
+      <select
+        className="select appearance-none pr-9"
+        value={value}
+        onChange={(event) => onChange(event.target.value as T)}
+      >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
@@ -421,7 +474,10 @@ export function Modal({
         </div>
         <div className="px-5 py-4">{children}</div>
         {footer ? (
-          <div className="px-5 py-4 border-t flex justify-end gap-2" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
+          <div
+            className="px-5 py-4 border-t flex justify-end gap-2"
+            style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+          >
             {footer}
           </div>
         ) : null}

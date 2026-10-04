@@ -23,11 +23,7 @@ use pdfcore::render::{is_available, render_page, RenderOptions};
 use std::time::{Duration, Instant};
 
 fn report(label: &str, elapsed: Duration, bound: Duration) {
-    eprintln!(
-        "perf: {label} took {:.3}s (bound {:.1}s)",
-        elapsed.as_secs_f64(),
-        bound.as_secs_f64()
-    );
+    eprintln!("perf: {label} took {:.3}s (bound {:.1}s)", elapsed.as_secs_f64(), bound.as_secs_f64());
 }
 
 /// Merging is the single most used PDF tool; 200 one-page files is the
@@ -129,10 +125,7 @@ fn perf_scanned_five_hundred_pages_render_and_compare_heavy() {
     // Building the synthetic scans dominates the test (raster compose +
     // deflate per page); the bound is ~3x the development-machine measurement
     // so a pathological regression is caught without CI flakiness.
-    assert!(
-        build_elapsed < Duration::from_secs(1500),
-        "building 500 scanned pages took {build_elapsed:?}"
-    );
+    assert!(build_elapsed < Duration::from_secs(1500), "building 500 scanned pages took {build_elapsed:?}");
 
     // Comparing the document with itself must render every page and report no
     // differences; the point is the throughput, not the diff.
@@ -146,8 +139,9 @@ fn perf_scanned_five_hundred_pages_render_and_compare_heavy() {
     };
     let bound = Duration::from_secs(600);
     let started = Instant::now();
-    let report_result = pdfcore::compare::compare_pdfs(&path, &path, None, None, &options, &no_progress, &CancelToken::new())
-        .expect("compare succeeds");
+    let report_result =
+        pdfcore::compare::compare_pdfs(&path, &path, None, None, &options, &no_progress, &CancelToken::new())
+            .expect("compare succeeds");
     let elapsed = started.elapsed();
     eprintln!(
         "perf: scanned build (500 pages) took {:.3}s; compare/render took {:.3}s (bound {:.1}s)",
@@ -160,8 +154,5 @@ fn perf_scanned_five_hundred_pages_render_and_compare_heavy() {
     assert_eq!(report_result.right_pages, 500);
     assert!(report_result.identical, "a document must compare identical with itself");
     assert!(!report_result.visual_truncated, "all 500 pages must be rendered");
-    assert!(
-        elapsed < bound,
-        "500-page scanned render/compare took {elapsed:?}, bound {bound:?}"
-    );
+    assert!(elapsed < bound, "500-page scanned render/compare took {elapsed:?}, bound {bound:?}");
 }

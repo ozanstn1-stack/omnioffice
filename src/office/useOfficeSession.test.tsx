@@ -131,7 +131,9 @@ describe("Data Loss Protection before lossy office saves", () => {
   it("saves a lossless target without showing the warning", async () => {
     compatibilityByTarget.docx = {
       target: "docx",
-      items: [{ feature: "sections", status: "unchanged", message: "Section breaks are written as real sectPr parts." }],
+      items: [
+        { feature: "sections", status: "unchanged", message: "Section breaks are written as real sectPr parts." },
+      ],
     } satisfies CompatibilityReport;
     const session = renderSession();
     let saved: string | null = null;
@@ -180,7 +182,9 @@ describe("Data Loss Protection before lossy office saves", () => {
     const user = userEvent.setup();
     compatibilityByTarget.rtf = {
       target: "rtf",
-      items: [{ feature: "comments", status: "lost", message: "Comments are not written to RTF; keep the .oswk copy." }],
+      items: [
+        { feature: "comments", status: "lost", message: "Comments are not written to RTF; keep the .oswk copy." },
+      ],
     } satisfies CompatibilityReport;
     const session = renderSession();
     const pending = startSave(session, "C:/docs/report.rtf");
@@ -203,7 +207,9 @@ describe("Data Loss Protection before lossy office saves", () => {
     const user = userEvent.setup();
     compatibilityByTarget.rtf = {
       target: "rtf",
-      items: [{ feature: "comments", status: "lost", message: "Comments are not written to RTF; keep the .oswk copy." }],
+      items: [
+        { feature: "comments", status: "lost", message: "Comments are not written to RTF; keep the .oswk copy." },
+      ],
     } satisfies CompatibilityReport;
     // A real destination choice: the .oswk flow opens its own save dialog.
     saveDialogMock.mockResolvedValueOnce("C:/docs/report.oswk");
@@ -298,7 +304,9 @@ describe("the derived loss matrix uses the real report rows", () => {
   it("maps a lost row to dropped and unsupported", () => {
     const report: CompatibilityReport = {
       target: "odt",
-      items: [{ feature: "comments", status: "lost", message: "Comments are not written to ODT; keep the .oswk copy." }],
+      items: [
+        { feature: "comments", status: "lost", message: "Comments are not written to ODT; keep the .oswk copy." },
+      ],
     };
     expect(lossRowFlags(report.items[0])).toMatchObject({
       supported: false,
@@ -309,4 +317,3 @@ describe("the derived loss matrix uses the real report rows", () => {
     });
   });
 });
-

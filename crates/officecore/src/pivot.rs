@@ -64,7 +64,10 @@ fn distinct_keys(keys: &[Vec<String>]) -> Vec<Vec<String>> {
     }
     seen.sort_by(|left, right| {
         for index in 0..left.len().max(right.len()) {
-            let comparison = compare_keys(left.get(index).map(String::as_str).unwrap_or(""), right.get(index).map(String::as_str).unwrap_or(""));
+            let comparison = compare_keys(
+                left.get(index).map(String::as_str).unwrap_or(""),
+                right.get(index).map(String::as_str).unwrap_or(""),
+            );
             if comparison != std::cmp::Ordering::Equal {
                 return comparison;
             }
@@ -76,7 +79,10 @@ fn distinct_keys(keys: &[Vec<String>]) -> Vec<Vec<String>> {
 
 fn aggregate(records: &[&Record], index: usize, aggregation: &str) -> CellValue {
     if aggregation == "count" {
-        return CellValue::Number(records.iter().filter(|record| !matches!(record.values.get(index), None | Some(CellValue::Empty))).count() as f64);
+        return CellValue::Number(
+            records.iter().filter(|record| !matches!(record.values.get(index), None | Some(CellValue::Empty))).count()
+                as f64,
+        );
     }
     let numbers: Vec<f64> = records.iter().filter_map(|record| record.values.get(index).and_then(numeric)).collect();
     if numbers.is_empty() {
@@ -106,13 +112,21 @@ pub fn compute(workbook: &Workbook, pivot: &PivotTable) -> Option<Vec<Vec<CellVa
     };
     let field_text = |row: u32, column: u32| -> String {
         let text = cell_text(&value_at(row, column)).trim().to_string();
-        if text.is_empty() { "(blank)".to_string() } else { text }
+        if text.is_empty() {
+            "(blank)".to_string()
+        } else {
+            text
+        }
     };
 
     let fields: Vec<String> = (start_col..=end_col)
         .map(|column| {
             let text = cell_text(&value_at(start_row, column)).trim().to_string();
-            if text.is_empty() { format!("Column {}", column + 1) } else { text }
+            if text.is_empty() {
+                format!("Column {}", column + 1)
+            } else {
+                text
+            }
         })
         .collect();
     let index_of = |field: &str| fields.iter().position(|candidate| candidate.eq_ignore_ascii_case(field));
@@ -194,12 +208,14 @@ pub fn compute(workbook: &Workbook, pivot: &PivotTable) -> Option<Vec<Vec<CellVa
     for row_key in &row_keys {
         let mut line: Vec<CellValue> = row_key.iter().cloned().map(CellValue::Text).collect();
         for column_key in &column_keys {
-            let matching: Vec<&Record> = records
-                .iter()
-                .filter(|record| &record.row == row_key && &record.column == column_key)
-                .collect();
+            let matching: Vec<&Record> =
+                records.iter().filter(|record| &record.row == row_key && &record.column == column_key).collect();
             for (value_index, entry) in pivot.values.iter().enumerate() {
-                line.push(if matching.is_empty() { CellValue::Empty } else { aggregate(&matching, value_index, &entry.aggregation) });
+                line.push(if matching.is_empty() {
+                    CellValue::Empty
+                } else {
+                    aggregate(&matching, value_index, &entry.aggregation)
+                });
             }
         }
         grid.push(line);
@@ -251,7 +267,11 @@ mod tests {
                 sheet.set(
                     &format(row as u32, column as u32),
                     Cell {
-                        value: if numeric { CellValue::Number(value.parse().unwrap()) } else { CellValue::Text((*value).into()) },
+                        value: if numeric {
+                            CellValue::Number(value.parse().unwrap())
+                        } else {
+                            CellValue::Text((*value).into())
+                        },
                         ..Default::default()
                     },
                 );
@@ -286,41 +306,35 @@ mod tests {
         let grid = compute(&workbook, &pivot(|_| {})).unwrap();
         assert_eq!(
             text_grid(&grid),
-            vec![
-                vec!["Department", "2025", "2026"],
-                vec!["Hardware", "250", "50"],
-                vec!["Software", "200", "300"],
-            ]
+            vec![vec!["Department", "2025", "2026"], vec!["Hardware", "250", "50"], vec!["Software", "200", "300"],]
         );
     }
 
     #[test]
     fn applies_filters_and_aggregations() {
         let workbook = data_workbook();
-        let filtered = compute(&workbook, &pivot(|pivot| {
-            pivot.filters = vec![PivotFilter { field: "Region".into(), values: vec!["North".into()] }];
-        }))
+        let filtered = compute(
+            &workbook,
+            &pivot(|pivot| {
+                pivot.filters = vec![PivotFilter { field: "Region".into(), values: vec!["North".into()] }];
+            }),
+        )
         .unwrap();
         assert_eq!(
             text_grid(&filtered),
-            vec![
-                vec!["Department", "2025", "2026"],
-                vec!["Hardware", "100", "50"],
-                vec!["Software", "200", ""],
-            ]
+            vec![vec!["Department", "2025", "2026"], vec!["Hardware", "100", "50"], vec!["Software", "200", ""],]
         );
-        let counted = compute(&workbook, &pivot(|pivot| {
-            pivot.columns = vec![];
-            pivot.values = vec![PivotValueField { field: "Sales".into(), aggregation: "count".into() }];
-        }))
+        let counted = compute(
+            &workbook,
+            &pivot(|pivot| {
+                pivot.columns = vec![];
+                pivot.values = vec![PivotValueField { field: "Sales".into(), aggregation: "count".into() }];
+            }),
+        )
         .unwrap();
         assert_eq!(
             text_grid(&counted),
-            vec![
-                vec!["Department", "Sales (count)"],
-                vec!["Hardware", "3"],
-                vec!["Software", "2"],
-            ]
+            vec![vec!["Department", "Sales (count)"], vec!["Hardware", "3"], vec!["Software", "2"],]
         );
     }
 
@@ -340,7 +354,14 @@ mod tests {
     fn rejects_unreadable_definitions() {
         let workbook = data_workbook();
         assert!(compute(&workbook, &pivot(|pivot| pivot.values.clear())).is_none());
-        assert!(compute(&workbook, &pivot(|pivot| { pivot.rows.clear(); pivot.columns.clear(); })).is_none());
+        assert!(compute(
+            &workbook,
+            &pivot(|pivot| {
+                pivot.rows.clear();
+                pivot.columns.clear();
+            })
+        )
+        .is_none());
         assert!(compute(&workbook, &pivot(|pivot| pivot.source = "nonsense".into())).is_none());
     }
 }

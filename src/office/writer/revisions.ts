@@ -6,6 +6,7 @@
  * accepted or rejected, insertions are underlined, deletions struck through.
  */
 import type { Block, DocComment, RevisionMark, Run, RunFormat, TextDocument } from "../../lib/office-types";
+import { normalizeParagraphRuns } from "./runs";
 
 export interface RevisionSummary {
   id: string;
@@ -48,7 +49,8 @@ export function revisionList(document: TextDocument): RevisionSummary[] {
   const visit = (block: Block, index: number) => {
     if (block.type === "paragraph") visitRuns(block.runs, index);
     if (block.type === "table") {
-      for (const row of block.table.rows) for (const cell of row.cells) cell.blocks.forEach((inner) => visit(inner, index));
+      for (const row of block.table.rows)
+        for (const cell of row.cells) cell.blocks.forEach((inner) => visit(inner, index));
     }
   };
   document.blocks.forEach(visit);
@@ -66,15 +68,69 @@ export function revisionCount(document: TextDocument): number {
  *
  * The diff is position-based (longest common prefix/suffix), which is what
  * typing and backspacing actually produce; it never invents revision marks for
- * unrelated text.
+ * unrelated text. It works on runs rather than on flattened text, so unchanged
+ * runs keep their own formatting, links, fields and note anchors, an existing
+ * insertion keeps its revision id, and deleting text the same suggestion
+ * inserted cancels the insertion instead of producing a delete mark that
+ * "reject all" would resurrect.
  */
-export function trackRunChanges(previous: Run[], next: Run[], author: string): Run[] {
-  const previousText = previous.map((run) => run.text).join("");
-  const nextText = next.map((run) => run.text).join("");
-  if (previousText === nextText && previous.length === next.length) return next;
 
+/** Runs that carry no visible text (pending deletions, note/field anchors).
+ *
+ * They are invisible to the text diff but must survive the synchronisation, so
+ * they are carried across separately by key rather than by character offset. */
+function isTransparent(run: Run): boolean {
+  return run.text.length === 0 || run.revision?.kind === "delete";
+}
+
+function anchorKey(run: Run): string | null {
+  if (run.revision?.kind === "delete") return `delete:${run.revision.id}`;
+  if (run.footnote) return `footnote:${run.footnote}`;
+  if (run.endnote) return `endnote:${run.endnote}`;
+  if (run.field) return `field:${run.field.kind}:${run.field.target}`;
+  return null;
+}
+
+/** Visible runs only: anchors and deletions are handled out of band. */
+function visibleRuns(runs: Run[]): Run[] {
+  return runs.filter((run) => !isTransparent(run));
+}
+
+/** Clones the visible runs overlapping `[from, to)` in plain-text offsets. */
+function sliceVisibleRuns(runs: Run[], from: number, to: number): Run[] {
+  const out: Run[] = [];
+  if (to <= from) return out;
+  let cursor = 0;
+  for (const run of runs) {
+    if (isTransparent(run)) continue;
+    const start = cursor;
+    const end = cursor + run.text.length;
+    cursor = end;
+    if (end <= from) continue;
+    if (start >= to) break;
+    const sliceStart = Math.max(from, start) - start;
+    const sliceEnd = Math.min(to, end) - start;
+    if (sliceEnd > sliceStart) {
+      out.push({ ...run, text: run.text.slice(sliceStart, sliceEnd), revision: run.revision ?? null });
+    }
+  }
+  return out;
+}
+
+/** Number of visible characters before `target` in `runs`. */
+function visibleOffset(runs: Run[], target: Run): number {
+  let offset = 0;
+  for (const run of runs) {
+    if (run === target) return offset;
+    if (!isTransparent(run)) offset += run.text.length;
+  }
+  return offset;
+}
+
+function commonEdges(previousText: string, nextText: string): { prefix: number; suffix: number } {
   let prefix = 0;
-  while (prefix < previousText.length && prefix < nextText.length && previousText[prefix] === nextText[prefix]) prefix += 1;
+  while (prefix < previousText.length && prefix < nextText.length && previousText[prefix] === nextText[prefix])
+    prefix += 1;
   let suffix = 0;
   while (
     suffix < previousText.length - prefix &&
@@ -83,24 +139,137 @@ export function trackRunChanges(previous: Run[], next: Run[], author: string): R
   ) {
     suffix += 1;
   }
-  const removed = previousText.slice(prefix, previousText.length - suffix);
-  const added = nextText.slice(prefix, nextText.length - suffix);
+  return { prefix, suffix };
+}
 
-  const style = next[0] ?? previous[0] ?? { text: "" };
-  const base = { ...(style as Run) };
-  delete (base as Partial<Run>).revision;
+/** Inserts a zero-width (or deletion) run at a visible-text offset. */
+function insertAnchorAt(runs: Run[], offset: number, anchor: Run): Run[] {
+  const out: Run[] = [];
+  let cursor = 0;
+  let inserted = false;
+  for (const run of runs) {
+    if (!inserted && offset <= cursor) {
+      out.push({ ...anchor });
+      inserted = true;
+    }
+    if (isTransparent(run)) {
+      out.push({ ...run });
+      continue;
+    }
+    const end = cursor + run.text.length;
+    if (!inserted && offset < end) {
+      const cut = offset - cursor;
+      if (cut > 0) out.push({ ...run, text: run.text.slice(0, cut) });
+      out.push({ ...anchor });
+      if (cut < run.text.length) out.push({ ...run, text: run.text.slice(cut) });
+      inserted = true;
+    } else {
+      out.push({ ...run });
+    }
+    cursor = end;
+  }
+  if (!inserted) out.push({ ...anchor });
+  return out;
+}
 
-  const result: Run[] = [];
-  if (prefix > 0) result.push({ ...base, text: nextText.slice(0, prefix) });
-  if (removed.length > 0) {
-    result.push({ ...base, text: removed, revision: newRevision("delete", author) });
+/**
+ * Merges the pre-assembled visible runs with the anchors of `previous` and
+ * `next`.
+ *
+ * Anchors that existed before are taken from `previous` (preserving their
+ * revision marks); anchors that only the DOM has are new and placed inside the
+ * added region.
+ */
+function assembleWithAnchors(visible: Run[], previous: Run[], next: Run[]): Run[] {
+  const previousText = visibleRuns(previous)
+    .map((run) => run.text)
+    .join("");
+  const nextText = visibleRuns(next)
+    .map((run) => run.text)
+    .join("");
+  const { prefix, suffix } = commonEdges(previousText, nextText);
+  const removedLength = previousText.length - prefix - suffix;
+  const addedLength = nextText.length - prefix - suffix;
+
+  const remaining = new Map<string, number>();
+  for (const anchor of previous) {
+    if (!isTransparent(anchor)) continue;
+    const key = anchorKey(anchor);
+    if (key) remaining.set(key, (remaining.get(key) ?? 0) + 1);
   }
-  if (added.length > 0) {
-    result.push({ ...base, text: added, revision: newRevision("insert", author) });
+
+  const placements: { offset: number; order: number; run: Run }[] = [];
+  let order = 0;
+  for (const anchor of previous) {
+    if (!isTransparent(anchor)) continue;
+    const position = visibleOffset(previous, anchor);
+    const offset =
+      position <= prefix
+        ? position
+        : position <= prefix + removedLength
+          ? prefix
+          : prefix + removedLength + addedLength + (position - prefix - removedLength);
+    placements.push({ offset, order: order++, run: { ...anchor } });
   }
-  if (suffix > 0) result.push({ ...base, text: nextText.slice(nextText.length - suffix) });
-  if (result.length === 0) result.push({ ...base, text: "" });
+  for (const anchor of next) {
+    if (!isTransparent(anchor)) continue;
+    const key = anchorKey(anchor);
+    if (key) {
+      const count = remaining.get(key) ?? 0;
+      if (count > 0) {
+        remaining.set(key, count - 1);
+        continue;
+      }
+    }
+    const position = visibleOffset(next, anchor);
+    const offset =
+      position <= prefix
+        ? position
+        : position <= prefix + addedLength
+          ? prefix + removedLength + (position - prefix)
+          : prefix + removedLength + addedLength + (position - prefix - addedLength);
+    placements.push({ offset, order: order++, run: { ...anchor } });
+  }
+
+  placements.sort((a, b) => a.offset - b.offset || a.order - b.order);
+  let result = visible;
+  for (const placement of placements) {
+    result = insertAnchorAt(result, placement.offset, placement.run);
+  }
   return result;
+}
+
+export function trackRunChanges(previous: Run[], next: Run[], author: string): Run[] {
+  const previousText = visibleRuns(previous)
+    .map((run) => run.text)
+    .join("");
+  const nextText = visibleRuns(next)
+    .map((run) => run.text)
+    .join("");
+
+  if (previousText === nextText) {
+    return normalizeParagraphRuns(
+      assembleWithAnchors(sliceVisibleRuns(previous, 0, previousText.length), previous, next),
+    );
+  }
+
+  const { prefix, suffix } = commonEdges(previousText, nextText);
+  const insertMark = newRevision("insert", author);
+  const deleteMark = newRevision("delete", author);
+
+  const result: Run[] = sliceVisibleRuns(previous, 0, prefix);
+  for (const run of sliceVisibleRuns(previous, prefix, previousText.length - suffix)) {
+    // Deleting text the same suggestion inserted cancels the insertion; a fresh
+    // delete mark would make "reject all" resurrect the typed text.
+    if (run.revision?.kind === "insert") continue;
+    result.push({ ...run, revision: deleteMark });
+  }
+  for (const run of sliceVisibleRuns(next, prefix, nextText.length - suffix)) {
+    result.push({ ...run, revision: run.revision?.kind === "insert" ? run.revision : insertMark });
+  }
+  result.push(...sliceVisibleRuns(previous, previousText.length - suffix, previousText.length));
+
+  return normalizeParagraphRuns(assembleWithAnchors(result, previous, next));
 }
 
 /** Removes one revision: accept keeps the change, reject rolls it back. */
@@ -176,7 +345,8 @@ export function nextRevision(document: TextDocument, after: string | null, forwa
   const list = revisionList(document);
   if (list.length === 0) return null;
   const position = after ? list.findIndex((summary) => summary.id === after) : -1;
-  const index = position < 0 ? (forward ? 0 : list.length - 1) : (position + (forward ? 1 : list.length - 1)) % list.length;
+  const index =
+    position < 0 ? (forward ? 0 : list.length - 1) : (position + (forward ? 1 : list.length - 1)) % list.length;
   return list[index].id;
 }
 

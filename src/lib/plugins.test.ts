@@ -183,10 +183,14 @@ describe("host permission enforcement", () => {
     });
     await expect(host.handle("files.read", { name: "notes.txt" })).rejects.toThrow(/Permission denied/);
     await expect(host.handle("files.write", { name: "notes.txt", text: "x" })).rejects.toThrow(/Permission denied/);
-    await expect(host.handle("net.request", { request: { url: "https://example.com" } })).rejects.toThrow(/Permission denied/);
+    await expect(host.handle("net.request", { request: { url: "https://example.com" } })).rejects.toThrow(
+      /Permission denied/,
+    );
     await expect(host.handle("clipboard.read", {})).rejects.toThrow(/Permission denied/);
     await expect(host.handle("clipboard.write", { text: "x" })).rejects.toThrow(/Permission denied/);
-    await expect(host.handle("doc.applyEdits", { edits: [{ find: "a", replace: "b" }] })).rejects.toThrow(/Permission denied/);
+    await expect(host.handle("doc.applyEdits", { edits: [{ find: "a", replace: "b" }] })).rejects.toThrow(
+      /Permission denied/,
+    );
     expect(transport.readFile).not.toHaveBeenCalled();
     expect(transport.writeFile).not.toHaveBeenCalled();
     expect(transport.httpRequest).not.toHaveBeenCalled();
@@ -205,7 +209,9 @@ describe("host permission enforcement", () => {
   it("allows edits only with modify_document and reports the applied count", async () => {
     const applyTextEdits = vi.fn(() => 2);
     const host = makeHost({ readDocument: documentSnapshot, applyTextEdits }, { permissions: ["modify_document"] });
-    await expect(host.handle("doc.applyEdits", { edits: [{ find: "a", replace: "b" }] })).resolves.toEqual({ applied: 2 });
+    await expect(host.handle("doc.applyEdits", { edits: [{ find: "a", replace: "b" }] })).resolves.toEqual({
+      applied: 2,
+    });
     expect(applyTextEdits).toHaveBeenCalledWith([{ find: "a", replace: "b" }]);
     await expect(host.handle("doc.applyEdits", { edits: [] })).rejects.toThrow(/1\.\.200/);
   });
@@ -239,7 +245,21 @@ describe("file sandbox", () => {
     expect(safePluginFileName("notes.txt")).toBe("notes.txt");
     expect(safePluginFileName("A-1_2.csv")).toBe("A-1_2.csv");
     expect(safePluginFileName("two words.md")).toBe("two words.md");
-    for (const bad of ["..", "../x", "a/../b", "sub/dir", "sub\\dir", "/etc/passwd", "C:\\x", ".hidden", "name.", "name ", "a..b", "", "x".repeat(129)]) {
+    for (const bad of [
+      "..",
+      "../x",
+      "a/../b",
+      "sub/dir",
+      "sub\\dir",
+      "/etc/passwd",
+      "C:\\x",
+      ".hidden",
+      "name.",
+      "name ",
+      "a..b",
+      "",
+      "x".repeat(129),
+    ]) {
       expect(safePluginFileName(bad), String(bad)).toBeNull();
     }
     expect(safePluginFileName(42)).toBeNull();
@@ -250,7 +270,9 @@ describe("file sandbox", () => {
     const host = new PluginHost(parsedManifest({ permissions: ["read_files", "write_files"] }), { transport });
     await expect(host.handle("files.read", { name: "../secret.json" })).rejects.toThrow(/Invalid file name/);
     await expect(host.handle("files.read", { name: "C:\\Users\\me\\secret.txt" })).rejects.toThrow(/Invalid file name/);
-    await expect(host.handle("files.write", { name: "../../escape.txt", text: "x" })).rejects.toThrow(/Invalid file name/);
+    await expect(host.handle("files.write", { name: "../../escape.txt", text: "x" })).rejects.toThrow(
+      /Invalid file name/,
+    );
     expect(transport.readFile).not.toHaveBeenCalled();
     expect(transport.writeFile).not.toHaveBeenCalled();
 
@@ -261,7 +283,9 @@ describe("file sandbox", () => {
   it("bounds file writes", async () => {
     const transport = fakeTransport();
     const host = new PluginHost(parsedManifest({ permissions: ["write_files"] }), { transport });
-    await expect(host.handle("files.write", { name: "big.txt", text: "x".repeat(MAX_PLUGIN_FILE_BYTES + 1) })).rejects.toThrow(/too large/);
+    await expect(
+      host.handle("files.write", { name: "big.txt", text: "x".repeat(MAX_PLUGIN_FILE_BYTES + 1) }),
+    ).rejects.toThrow(/too large/);
     await expect(host.handle("files.write", { name: "ok.txt", text: "small" })).resolves.toBeNull();
     expect(transport.writeFile).toHaveBeenCalledWith("test.tool", "ok.txt", "small");
   });
@@ -273,7 +297,9 @@ describe("network proxy", () => {
     const host = new PluginHost(parsedManifest({ permissions: ["network"] }), { transport });
     await expect(host.handle("net.request", { request: { url: "http://example.com" } })).rejects.toThrow(/https/);
     await expect(host.handle("net.request", { request: { url: "ftp://example.com" } })).rejects.toThrow(/https/);
-    await expect(host.handle("net.request", { request: { url: "https://example.com", method: "DELETE" } })).rejects.toThrow(/GET and POST/);
+    await expect(
+      host.handle("net.request", { request: { url: "https://example.com", method: "DELETE" } }),
+    ).rejects.toThrow(/GET and POST/);
 
     const response = await host.handle("net.request", { request: { url: "https://example.com/api" } });
     expect(response).toEqual({ status: 200, body: "hello", truncated: false });
@@ -290,7 +316,9 @@ describe("network proxy", () => {
     const transport = fakeTransport();
     transport.httpRequest = vi.fn(async () => ({ status: 200, body: "y".repeat(2_000_000), truncated: true }));
     const host = new PluginHost(parsedManifest({ permissions: ["network"] }), { transport });
-    const response = (await host.handle("net.request", { request: { url: "https://example.com" } })) as { body: string };
+    const response = (await host.handle("net.request", { request: { url: "https://example.com" } })) as {
+      body: string;
+    };
     expect(response.body.length).toBe(1024 * 1024);
   });
 });
@@ -317,7 +345,11 @@ class FakeWorker implements PluginWorkerLike {
 
 function makeRuntime(
   worker: FakeWorker,
-  options: { manifestPatch?: Record<string, unknown>; onStatus?: (status: PluginStatus, error: string | null) => void; log?: (message: string) => void } = {},
+  options: {
+    manifestPatch?: Record<string, unknown>;
+    onStatus?: (status: PluginStatus, error: string | null) => void;
+    log?: (message: string) => void;
+  } = {},
 ) {
   const manifest = parsedManifest(options.manifestPatch ?? {});
   const host = new PluginHost(manifest, { transport: fakeTransport(), log: options.log, notify: vi.fn() });
@@ -357,11 +389,15 @@ describe("worker runtime", () => {
     const runtime = makeRuntime(worker, { log });
     runtime.start();
     worker.onmessage?.({ data: { id: 7, kind: "call", method: "log", params: { message: "hello" } } });
-    await vi.waitFor(() => expect(worker.sent.some((message) => message.id === 7 && message.kind === "result")).toBe(true));
+    await vi.waitFor(() =>
+      expect(worker.sent.some((message) => message.id === 7 && message.kind === "result")).toBe(true),
+    );
     expect(log).toHaveBeenCalledWith("hello");
 
     worker.onmessage?.({ data: { id: 8, kind: "call", method: "files.read", params: { name: "notes.txt" } } });
-    await vi.waitFor(() => expect(worker.sent.some((message) => message.id === 8 && message.kind === "error")).toBe(true));
+    await vi.waitFor(() =>
+      expect(worker.sent.some((message) => message.id === 8 && message.kind === "error")).toBe(true),
+    );
     const denial = worker.sent.find((message) => message.id === 8);
     expect(String(denial?.error)).toContain("Permission denied");
   });
@@ -459,14 +495,22 @@ describe("plugin command registration", () => {
 
   it("does not require a document for plugins without document permissions", () => {
     const manifest = parsedManifest({ permissions: ["clipboard"] });
-    registerPluginCommands(manifest, async () => undefined, () => true);
+    registerPluginCommands(
+      manifest,
+      async () => undefined,
+      () => true,
+    );
     expect(getCommand(pluginCommandId(manifest.id, "run"))?.enabled()).toBe(true);
     unregisterPluginCommands(manifest);
   });
 
   it("is disabled while the runtime is not running", () => {
     const manifest = parsedManifest();
-    registerPluginCommands(manifest, async () => undefined, () => false);
+    registerPluginCommands(
+      manifest,
+      async () => undefined,
+      () => false,
+    );
     expect(getCommand(pluginCommandId(manifest.id, "run"))?.enabled()).toBe(false);
     unregisterPluginCommands(manifest);
   });

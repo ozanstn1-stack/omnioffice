@@ -104,15 +104,30 @@ export function numbers(args: Scalar[][][]): number[] {
   for (const value of flatten(args)) {
     if (isError(value)) continue;
     if (typeof value === "number") out.push(value);
-    else if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) out.push(Number(value));
+    else if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value)))
+      out.push(Number(value));
   }
   return out;
 }
 
 /** Excel-like ordering: numbers before text, text case-insensitive. */
 export function compareScalars(a: Scalar, b: Scalar): number {
-  const numberA = typeof a === "string" && a.trim() !== "" && Number.isFinite(Number(a)) ? Number(a) : typeof a === "boolean" ? (a ? 1 : 0) : a;
-  const numberB = typeof b === "string" && b.trim() !== "" && Number.isFinite(Number(b)) ? Number(b) : typeof b === "boolean" ? (b ? 1 : 0) : b;
+  const numberA =
+    typeof a === "string" && a.trim() !== "" && Number.isFinite(Number(a))
+      ? Number(a)
+      : typeof a === "boolean"
+        ? a
+          ? 1
+          : 0
+        : a;
+  const numberB =
+    typeof b === "string" && b.trim() !== "" && Number.isFinite(Number(b))
+      ? Number(b)
+      : typeof b === "boolean"
+        ? b
+          ? 1
+          : 0
+        : b;
   if (typeof numberA === "number" && typeof numberB === "number") return numberA - numberB;
   const textA = String(numberA).toUpperCase();
   const textB = String(numberB).toUpperCase();
@@ -140,7 +155,8 @@ export function criteriaMatcher(criteria: Scalar): (value: Scalar) => boolean {
   const wildcard = hasWildcard ? wildcardRegex(operand) : null;
   return (value: Scalar) => {
     if (isError(value)) return false;
-    const valueNumber = typeof value === "number" ? value : typeof value === "boolean" ? (value ? 1 : 0) : Number(String(value));
+    const valueNumber =
+      typeof value === "number" ? value : typeof value === "boolean" ? (value ? 1 : 0) : Number(String(value));
     const numeric = isNumeric && Number.isFinite(valueNumber);
     if (wildcard && (operator === "=" || operator === "<>")) {
       const isMatch = wildcard.test(String(value));
@@ -195,7 +211,9 @@ function escapeRegex(value: string): string {
 export function padMatrix(args: Scalar[][][]): Scalar[][][] {
   const matrices = args.map((arg) => (arg.length > 0 ? arg : [["" as Scalar]]));
   const width = Math.max(1, ...matrices.map((matrix) => matrix[0]?.length ?? 1));
-  return matrices.map((matrix) => matrix.map((row) => (row.length >= width ? row : [...row, ...(Array(width - row.length).fill("") as Scalar[])])));
+  return matrices.map((matrix) =>
+    matrix.map((row) => (row.length >= width ? row : [...row, ...(Array(width - row.length).fill("") as Scalar[])])),
+  );
 }
 
 /** A rectangular, error-free numeric view of a matrix. */

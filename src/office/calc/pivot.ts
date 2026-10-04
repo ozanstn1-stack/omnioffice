@@ -54,7 +54,11 @@ function distinctKeys(keys: string[][]): string[][] {
   });
 }
 
-function aggregate(records: PivotRecord[], valueIndex: number, aggregation: PivotTable["values"][number]["aggregation"]): Scalar {
+function aggregate(
+  records: PivotRecord[],
+  valueIndex: number,
+  aggregation: PivotTable["values"][number]["aggregation"],
+): Scalar {
   const raw = records.map((record) => record.values[valueIndex] ?? "");
   if (aggregation === "count") return raw.filter((value) => !isError(value) && toText(value) !== "").length;
   const numbers: number[] = [];
@@ -112,22 +116,29 @@ export function computePivot(workbook: Workbook, pivot: PivotTable): PivotGrid |
     };
     // A completely blank source row is skipped; a blank row key becomes
     // "(blank)" so it still shows up in the grid like Excel's default.
-    if (record.row.every((value) => value === "") && record.column.every((value) => value === "") && record.values.every((value) => toText(value) === "")) {
+    if (
+      record.row.every((value) => value === "") &&
+      record.column.every((value) => value === "") &&
+      record.values.every((value) => toText(value) === "")
+    ) {
       continue;
     }
     const keep = pivot.filters.every((filter) => {
       const index = indexOf(filter.field);
       if (index < 0) return true;
       if (filter.values.length === 0) return true;
-      return filter.values.some((value) => value.toUpperCase() === fieldText(row, parts.start.col + index).toUpperCase());
+      return filter.values.some(
+        (value) => value.toUpperCase() === fieldText(row, parts.start.col + index).toUpperCase(),
+      );
     });
     if (keep) records.push(record);
   }
 
-  const rowKeys = distinctKeys(records.map((record) => record.row.map((value) => value === "" ? "(blank)" : value)));
-  const columnKeys = pivot.columns.length > 0
-    ? distinctKeys(records.map((record) => record.column.map((value) => value === "" ? "(blank)" : value)))
-    : [[]];
+  const rowKeys = distinctKeys(records.map((record) => record.row.map((value) => (value === "" ? "(blank)" : value))));
+  const columnKeys =
+    pivot.columns.length > 0
+      ? distinctKeys(records.map((record) => record.column.map((value) => (value === "" ? "(blank)" : value))))
+      : [[]];
 
   const valueCount = pivot.values.length;
   const header: Scalar[][] = [];
@@ -135,7 +146,10 @@ export function computePivot(workbook: Workbook, pivot: PivotTable): PivotGrid |
   if (pivot.columns.length > 0) {
     header.push([corner, ...columnKeys.flatMap((key) => Array.from({ length: valueCount }, () => key.join(" / ")))]);
     if (valueCount > 1) {
-      header.push(["", ...columnKeys.flatMap(() => pivot.values.map((entry) => `${entry.field} (${entry.aggregation})`))]);
+      header.push([
+        "",
+        ...columnKeys.flatMap(() => pivot.values.map((entry) => `${entry.field} (${entry.aggregation})`)),
+      ]);
     }
   } else {
     header.push([corner, ...pivot.values.map((entry) => `${entry.field} (${entry.aggregation})`)]);
@@ -147,8 +161,8 @@ export function computePivot(workbook: Workbook, pivot: PivotTable): PivotGrid |
     for (const columnKey of columnKeys) {
       const matching = records.filter(
         (record) =>
-          record.row.map((value) => value === "" ? "(blank)" : value).join("\u0000") === rowKey.join("\u0000") &&
-          record.column.map((value) => value === "" ? "(blank)" : value).join("\u0000") === columnKey.join("\u0000"),
+          record.row.map((value) => (value === "" ? "(blank)" : value)).join("\u0000") === rowKey.join("\u0000") &&
+          record.column.map((value) => (value === "" ? "(blank)" : value)).join("\u0000") === columnKey.join("\u0000"),
       );
       for (let valueIndex = 0; valueIndex < valueCount; valueIndex += 1) {
         line.push(matching.length === 0 ? "" : aggregate(matching, valueIndex, pivot.values[valueIndex].aggregation));
@@ -166,7 +180,12 @@ export function pivotValues(workbook: Workbook, pivot: PivotTable): Scalar[][] {
 }
 
 /** A sane default definition over a source range. */
-export function defaultPivot(workbook: Workbook, sourceSheet: string, source: string, anchor: string): PivotTable | null {
+export function defaultPivot(
+  workbook: Workbook,
+  sourceSheet: string,
+  source: string,
+  anchor: string,
+): PivotTable | null {
   const fields = pivotFields(workbook, sourceSheet, source);
   if (fields.length < 2) return null;
   const parts = parseRange(source);

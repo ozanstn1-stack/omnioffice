@@ -10,12 +10,19 @@ function scalarOf(args: Scalar[][][], index: number): Scalar {
 }
 
 function unary(name: string, fn: (value: number) => number, guard?: (value: number) => boolean) {
-  registerFunction(name, (args) => {
-    const value = toNumber(scalarOf(args, 0));
-    if (isError(value)) return value;
-    if (guard && !guard(value)) return ERR.num();
-    return fn(value);
-  }, 1, 1, false, { signature: `${name}(number)`, category: "Math" });
+  registerFunction(
+    name,
+    (args) => {
+      const value = toNumber(scalarOf(args, 0));
+      if (isError(value)) return value;
+      if (guard && !guard(value)) return ERR.num();
+      return fn(value);
+    },
+    1,
+    1,
+    false,
+    { signature: `${name}(number)`, category: "Math" },
+  );
 }
 
 unary("ABS", Math.abs);
@@ -34,100 +41,186 @@ unary("ATAN", Math.atan);
 unary("DEGREES", (value) => (value * 180) / Math.PI);
 unary("RADIANS", (value) => (value * Math.PI) / 180);
 
-registerFunction("POWER", (args) => {
-  const base = toNumber(scalarOf(args, 0));
-  if (isError(base)) return base;
-  const exponent = toNumber(scalarOf(args, 1));
-  if (isError(exponent)) return exponent;
-  const result = base ** exponent;
-  return Number.isFinite(result) ? result : ERR.num();
-}, 2, 2, false, { signature: "POWER(number, power)", category: "Math" });
-registerFunction("MOD", (args) => {
-  const value = toNumber(scalarOf(args, 0));
-  if (isError(value)) return value;
-  const divisor = toNumber(scalarOf(args, 1));
-  if (isError(divisor)) return divisor;
-  if (divisor === 0) return ERR.div();
-  // Excel's MOD keeps the sign of the divisor, unlike JavaScript's `%`.
-  return value - divisor * Math.floor(value / divisor);
-}, 2, 2, false, { signature: "MOD(number, divisor)", category: "Math" });
-registerFunction("QUOTIENT", (args) => {
-  const value = toNumber(scalarOf(args, 0));
-  if (isError(value)) return value;
-  const divisor = toNumber(scalarOf(args, 1));
-  if (isError(divisor)) return divisor;
-  if (divisor === 0) return ERR.div();
-  return Math.trunc(value / divisor);
-}, 2, 2, false, { signature: "QUOTIENT(number, divisor)", category: "Math" });
-registerFunction("CEILING", (args) => {
-  const value = toNumber(scalarOf(args, 0));
-  if (isError(value)) return value;
-  const significance = args[1] === undefined ? 1 : toNumber(scalarOf(args, 1));
-  if (isError(significance)) return significance;
-  if (significance === 0) return 0;
-  return Math.ceil(value / significance) * significance;
-}, 1, 2, false, { signature: "CEILING(number, [significance])", category: "Math" });
-registerFunction("FLOOR", (args) => {
-  const value = toNumber(scalarOf(args, 0));
-  if (isError(value)) return value;
-  const significance = args[1] === undefined ? 1 : toNumber(scalarOf(args, 1));
-  if (isError(significance)) return significance;
-  if (significance === 0) return ERR.div();
-  return Math.floor(value / significance) * significance;
-}, 1, 2, false, { signature: "FLOOR(number, [significance])", category: "Math" });
-registerFunction("ROUND", (args) => {
-  const value = toNumber(scalarOf(args, 0));
-  if (isError(value)) return value;
-  const digits = toNumber(scalarOf(args, 1));
-  if (isError(digits)) return digits;
-  const factor = 10 ** Math.trunc(digits);
-  // Nudge by an epsilon first so 2.675 rounds to 2.68 rather than 2.67.
-  return Math.round((value + Number.EPSILON * Math.sign(value || 1)) * factor) / factor;
-}, 1, 2, false, { signature: "ROUND(number, digits)", category: "Math" });
-registerFunction("ROUNDUP", (args) => {
-  const value = toNumber(scalarOf(args, 0));
-  if (isError(value)) return value;
-  const digits = toNumber(scalarOf(args, 1));
-  if (isError(digits)) return digits;
-  const factor = 10 ** Math.trunc(digits);
-  return (value < 0 ? -1 : 1) * Math.ceil(Math.abs(value) * factor) / factor;
-}, 1, 2, false, { signature: "ROUNDUP(number, digits)", category: "Math" });
-registerFunction("ROUNDDOWN", (args) => {
-  const value = toNumber(scalarOf(args, 0));
-  if (isError(value)) return value;
-  const digits = toNumber(scalarOf(args, 1));
-  if (isError(digits)) return digits;
-  const factor = 10 ** Math.trunc(digits);
-  return (value < 0 ? -1 : 1) * Math.floor(Math.abs(value) * factor) / factor;
-}, 1, 2, false, { signature: "ROUNDDOWN(number, digits)", category: "Math" });
-registerFunction("TRUNC", (args) => {
-  const value = toNumber(scalarOf(args, 0));
-  if (isError(value)) return value;
-  const digits = args[1] === undefined ? 0 : toNumber(scalarOf(args, 1));
-  if (isError(digits)) return digits;
-  const factor = 10 ** Math.trunc(digits);
-  return Math.trunc(value * factor) / factor;
-}, 1, 2, false, { signature: "TRUNC(number, [digits])", category: "Math" });
-registerFunction("GCD", (args) => {
-  const values = numbers(args);
-  if (values.length === 0) return 0;
-  const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b));
-  return values.map((value) => Math.abs(Math.trunc(value))).reduce(gcd);
-}, 1, 64, false, { signature: "GCD(number1, ...)", category: "Math" });
-registerFunction("LCM", (args) => {
-  const values = numbers(args);
-  if (values.length === 0) return 0;
-  const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b));
-  return values.map((value) => Math.abs(Math.trunc(value))).reduce((a, b) => (a === 0 || b === 0 ? 0 : Math.abs(a * b) / gcd(a, b)));
-}, 1, 64, false, { signature: "LCM(number1, ...)", category: "Math" });
-registerFunction("LOG", (args) => {
-  const value = toNumber(scalarOf(args, 0));
-  if (isError(value)) return value;
-  const base = args[1] === undefined ? 10 : toNumber(scalarOf(args, 1));
-  if (isError(base)) return base;
-  if (value <= 0 || base <= 0 || base === 1) return ERR.num();
-  return Math.log(value) / Math.log(base);
-}, 1, 2, false, { signature: "LOG(number, [base])", category: "Math" });
+registerFunction(
+  "POWER",
+  (args) => {
+    const base = toNumber(scalarOf(args, 0));
+    if (isError(base)) return base;
+    const exponent = toNumber(scalarOf(args, 1));
+    if (isError(exponent)) return exponent;
+    const result = base ** exponent;
+    return Number.isFinite(result) ? result : ERR.num();
+  },
+  2,
+  2,
+  false,
+  { signature: "POWER(number, power)", category: "Math" },
+);
+registerFunction(
+  "MOD",
+  (args) => {
+    const value = toNumber(scalarOf(args, 0));
+    if (isError(value)) return value;
+    const divisor = toNumber(scalarOf(args, 1));
+    if (isError(divisor)) return divisor;
+    if (divisor === 0) return ERR.div();
+    // Excel's MOD keeps the sign of the divisor, unlike JavaScript's `%`.
+    return value - divisor * Math.floor(value / divisor);
+  },
+  2,
+  2,
+  false,
+  { signature: "MOD(number, divisor)", category: "Math" },
+);
+registerFunction(
+  "QUOTIENT",
+  (args) => {
+    const value = toNumber(scalarOf(args, 0));
+    if (isError(value)) return value;
+    const divisor = toNumber(scalarOf(args, 1));
+    if (isError(divisor)) return divisor;
+    if (divisor === 0) return ERR.div();
+    return Math.trunc(value / divisor);
+  },
+  2,
+  2,
+  false,
+  { signature: "QUOTIENT(number, divisor)", category: "Math" },
+);
+registerFunction(
+  "CEILING",
+  (args) => {
+    const value = toNumber(scalarOf(args, 0));
+    if (isError(value)) return value;
+    const significance = args[1] === undefined ? 1 : toNumber(scalarOf(args, 1));
+    if (isError(significance)) return significance;
+    if (significance === 0) return 0;
+    return Math.ceil(value / significance) * significance;
+  },
+  1,
+  2,
+  false,
+  { signature: "CEILING(number, [significance])", category: "Math" },
+);
+registerFunction(
+  "FLOOR",
+  (args) => {
+    const value = toNumber(scalarOf(args, 0));
+    if (isError(value)) return value;
+    const significance = args[1] === undefined ? 1 : toNumber(scalarOf(args, 1));
+    if (isError(significance)) return significance;
+    if (significance === 0) return ERR.div();
+    return Math.floor(value / significance) * significance;
+  },
+  1,
+  2,
+  false,
+  { signature: "FLOOR(number, [significance])", category: "Math" },
+);
+registerFunction(
+  "ROUND",
+  (args) => {
+    const value = toNumber(scalarOf(args, 0));
+    if (isError(value)) return value;
+    const digits = toNumber(scalarOf(args, 1));
+    if (isError(digits)) return digits;
+    const factor = 10 ** Math.trunc(digits);
+    // Nudge by an epsilon first so 2.675 rounds to 2.68 rather than 2.67.
+    return Math.round((value + Number.EPSILON * Math.sign(value || 1)) * factor) / factor;
+  },
+  1,
+  2,
+  false,
+  { signature: "ROUND(number, digits)", category: "Math" },
+);
+registerFunction(
+  "ROUNDUP",
+  (args) => {
+    const value = toNumber(scalarOf(args, 0));
+    if (isError(value)) return value;
+    const digits = toNumber(scalarOf(args, 1));
+    if (isError(digits)) return digits;
+    const factor = 10 ** Math.trunc(digits);
+    return ((value < 0 ? -1 : 1) * Math.ceil(Math.abs(value) * factor)) / factor;
+  },
+  1,
+  2,
+  false,
+  { signature: "ROUNDUP(number, digits)", category: "Math" },
+);
+registerFunction(
+  "ROUNDDOWN",
+  (args) => {
+    const value = toNumber(scalarOf(args, 0));
+    if (isError(value)) return value;
+    const digits = toNumber(scalarOf(args, 1));
+    if (isError(digits)) return digits;
+    const factor = 10 ** Math.trunc(digits);
+    return ((value < 0 ? -1 : 1) * Math.floor(Math.abs(value) * factor)) / factor;
+  },
+  1,
+  2,
+  false,
+  { signature: "ROUNDDOWN(number, digits)", category: "Math" },
+);
+registerFunction(
+  "TRUNC",
+  (args) => {
+    const value = toNumber(scalarOf(args, 0));
+    if (isError(value)) return value;
+    const digits = args[1] === undefined ? 0 : toNumber(scalarOf(args, 1));
+    if (isError(digits)) return digits;
+    const factor = 10 ** Math.trunc(digits);
+    return Math.trunc(value * factor) / factor;
+  },
+  1,
+  2,
+  false,
+  { signature: "TRUNC(number, [digits])", category: "Math" },
+);
+registerFunction(
+  "GCD",
+  (args) => {
+    const values = numbers(args);
+    if (values.length === 0) return 0;
+    const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b));
+    return values.map((value) => Math.abs(Math.trunc(value))).reduce(gcd);
+  },
+  1,
+  64,
+  false,
+  { signature: "GCD(number1, ...)", category: "Math" },
+);
+registerFunction(
+  "LCM",
+  (args) => {
+    const values = numbers(args);
+    if (values.length === 0) return 0;
+    const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b));
+    return values
+      .map((value) => Math.abs(Math.trunc(value)))
+      .reduce((a, b) => (a === 0 || b === 0 ? 0 : Math.abs(a * b) / gcd(a, b)));
+  },
+  1,
+  64,
+  false,
+  { signature: "LCM(number1, ...)", category: "Math" },
+);
+registerFunction(
+  "LOG",
+  (args) => {
+    const value = toNumber(scalarOf(args, 0));
+    if (isError(value)) return value;
+    const base = args[1] === undefined ? 10 : toNumber(scalarOf(args, 1));
+    if (isError(base)) return base;
+    if (value <= 0 || base <= 0 || base === 1) return ERR.num();
+    return Math.log(value) / Math.log(base);
+  },
+  1,
+  2,
+  false,
+  { signature: "LOG(number, [base])", category: "Math" },
+);
 registerFunction("SUMX2MY2", (args) => pairAggregate(args, (a, b) => a * a - b * b), 1, 2, false, {
   signature: "SUMX2MY2(array_x, array_y)",
   category: "Math",

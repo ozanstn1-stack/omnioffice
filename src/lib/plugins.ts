@@ -17,7 +17,17 @@ import packageJson from "../../package.json";
 import { registerCommand, unregisterCommand } from "./commands";
 import { makeTranslate } from "./i18n";
 import { useOfficeTabs, type OfficeModel } from "./office-store";
-import { isDeletedRun, type Block, type CellValue, type Deck, type OfficeKind, type Run, type SlideObject, type TextDocument, type Workbook } from "./office-types";
+import {
+  isDeletedRun,
+  type Block,
+  type CellValue,
+  type Deck,
+  type OfficeKind,
+  type Run,
+  type SlideObject,
+  type TextDocument,
+  type Workbook,
+} from "./office-types";
 import { useSettings, useToasts } from "./store";
 
 export const PLUGIN_API_VERSION = 1;
@@ -191,7 +201,16 @@ export function validateManifest(value: unknown): ManifestResult {
   }
   return {
     ok: true,
-    manifest: { id, name, version, apiVersion, compatibility: { app: compatibility.app }, permissions: granted, capabilities: declared, commands: parsedCommands },
+    manifest: {
+      id,
+      name,
+      version,
+      apiVersion,
+      compatibility: { app: compatibility.app },
+      permissions: granted,
+      capabilities: declared,
+      commands: parsedCommands,
+    },
   };
 }
 
@@ -302,7 +321,10 @@ export function officeModelText(model: OfficeModel): string {
 
 function pushBlockText(lines: string[], block: Block): void {
   if (block.type === "paragraph") {
-    const text = block.runs.filter((run) => !isDeletedRun(run)).map((run) => run.text).join("");
+    const text = block.runs
+      .filter((run) => !isDeletedRun(run))
+      .map((run) => run.text)
+      .join("");
     if (text) lines.push(text);
     return;
   }
@@ -440,7 +462,8 @@ function applyWorkbookEdits(workbook: Workbook, edits: PluginTextEdit[]): number
       for (const edit of edits) {
         const index = cell.value.value.indexOf(edit.find);
         if (index < 0) continue;
-        cell.value.value = cell.value.value.slice(0, index) + edit.replace + cell.value.value.slice(index + edit.find.length);
+        cell.value.value =
+          cell.value.value.slice(0, index) + edit.replace + cell.value.value.slice(index + edit.find.length);
         count += 1;
       }
     }
@@ -457,7 +480,8 @@ function applyDeckEdits(deck: Deck, edits: PluginTextEdit[]): number {
           for (const edit of edits) {
             const index = paragraph.text.indexOf(edit.find);
             if (index < 0) continue;
-            paragraph.text = paragraph.text.slice(0, index) + edit.replace + paragraph.text.slice(index + edit.find.length);
+            paragraph.text =
+              paragraph.text.slice(0, index) + edit.replace + paragraph.text.slice(index + edit.find.length);
             count += 1;
           }
         }
@@ -673,7 +697,12 @@ export class PluginHost {
     if (body !== undefined && (typeof body !== "string" || body.length > MAX_PLUGIN_FILE_BYTES)) {
       throw new Error("The request body is invalid.");
     }
-    return { url: url.toString(), method, ...(Object.keys(headers).length ? { headers } : {}), ...(typeof body === "string" ? { body } : {}) };
+    return {
+      url: url.toString(),
+      method,
+      ...(Object.keys(headers).length ? { headers } : {}),
+      ...(typeof body === "string" ? { body } : {}),
+    };
   }
 }
 
@@ -1019,7 +1048,10 @@ function appendLog(id: string, message: string): void {
 
 const runtimes = new Map<string, PluginRuntime>();
 
-export function createDefaultPluginHost(manifest: PluginManifest, transport: PluginTransport = activeTransport): PluginHost {
+export function createDefaultPluginHost(
+  manifest: PluginManifest,
+  transport: PluginTransport = activeTransport,
+): PluginHost {
   const clipboard =
     typeof navigator !== "undefined" && navigator.clipboard
       ? {
@@ -1067,7 +1099,16 @@ export const usePluginStore = create<PluginStoreState>((set, get) => ({
         const result = validateManifest(record.manifest);
         if (!result.ok) continue;
         const existing = get().plugins.find((plugin) => plugin.manifest.id === result.manifest.id);
-        plugins.push(existing ?? { manifest: result.manifest, status: "disabled", error: null, lastError: null, logs: [], lastResult: null });
+        plugins.push(
+          existing ?? {
+            manifest: result.manifest,
+            status: "disabled",
+            error: null,
+            lastError: null,
+            logs: [],
+            lastResult: null,
+          },
+        );
       }
       for (const id of [...runtimes.keys()]) {
         if (!plugins.some((plugin) => plugin.manifest.id === id)) {
@@ -1117,7 +1158,11 @@ export const usePluginStore = create<PluginStoreState>((set, get) => ({
     try {
       source = await activeTransport.readSource(id);
     } catch (error) {
-      set({ plugins: get().plugins.map((plugin) => (plugin.manifest.id === id ? { ...plugin, error: errorText(error) } : plugin)) });
+      set({
+        plugins: get().plugins.map((plugin) =>
+          plugin.manifest.id === id ? { ...plugin, error: errorText(error) } : plugin,
+        ),
+      });
       useToasts.getState().push({ kind: "error", title: info.manifest.name, detail: errorText(error) });
       return;
     }
@@ -1126,9 +1171,13 @@ export const usePluginStore = create<PluginStoreState>((set, get) => ({
       source,
       host: createDefaultPluginHost(info.manifest),
       onStatus: (status, error) => {
-        set({ plugins: get().plugins.map((plugin) => (plugin.manifest.id === id ? { ...plugin, status, error } : plugin)) });
+        set({
+          plugins: get().plugins.map((plugin) => (plugin.manifest.id === id ? { ...plugin, status, error } : plugin)),
+        });
         if (status === "crashed") {
-          useToasts.getState().push({ kind: "error", title: info.manifest.name, detail: error ?? "The plugin crashed." });
+          useToasts
+            .getState()
+            .push({ kind: "error", title: info.manifest.name, detail: error ?? "The plugin crashed." });
         }
       },
     });

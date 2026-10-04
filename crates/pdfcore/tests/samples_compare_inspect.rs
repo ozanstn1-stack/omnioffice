@@ -12,16 +12,8 @@ use pdfcore::progress::CancelToken;
 fn comparing_two_real_samples_reports_the_differences() {
     let left = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/sample-1.pdf");
     let right = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/sample-2.pdf");
-    let report = compare_pdfs(
-        &left,
-        &right,
-        None,
-        None,
-        &CompareOptions::default(),
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .expect("compare the real samples");
+    let report = compare_pdfs(&left, &right, None, None, &CompareOptions::default(), &no_progress, &CancelToken::new())
+        .expect("compare the real samples");
     // sample-1 has five pages, sample-2 three.
     assert_eq!(report.left_pages, 5);
     assert_eq!(report.right_pages, 3);
@@ -32,10 +24,7 @@ fn comparing_two_real_samples_reports_the_differences() {
     assert!(report.text_differences.iter().any(|entry| entry.kind == "changed"), "{report:?}");
     for entry in &report.text_differences {
         assert!(entry.page <= 3, "a page that only exists on the left is not a text change: {entry:?}");
-        assert!(
-            entry.left != entry.right,
-            "a 'changed' entry with identical text is a false positive: {entry:?}"
-        );
+        assert!(entry.left != entry.right, "a 'changed' entry with identical text is a false positive: {entry:?}");
     }
 }
 

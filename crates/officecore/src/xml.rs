@@ -119,7 +119,10 @@ pub fn parse_xml(xml: &str) -> OfficeResult<XmlNode> {
                 }
                 nodes += 1;
                 if nodes > budget {
-                    return Err(OfficeError::new(ErrorCode::TooLarge, "The XML part has more elements than can be parsed safely."));
+                    return Err(OfficeError::new(
+                        ErrorCode::TooLarge,
+                        "The XML part has more elements than can be parsed safely.",
+                    ));
                 }
                 stack.push(node_from_start(&start)?);
             }
@@ -130,7 +133,10 @@ pub fn parse_xml(xml: &str) -> OfficeResult<XmlNode> {
                 }
                 nodes += 1;
                 if nodes > budget {
-                    return Err(OfficeError::new(ErrorCode::TooLarge, "The XML part has more elements than can be parsed safely."));
+                    return Err(OfficeError::new(
+                        ErrorCode::TooLarge,
+                        "The XML part has more elements than can be parsed safely.",
+                    ));
                 }
                 let node = node_from_start(&start)?;
                 stack.last_mut().unwrap().children.push(node);
@@ -145,7 +151,9 @@ pub fn parse_xml(xml: &str) -> OfficeResult<XmlNode> {
             }
             Ok(Event::Text(text)) => {
                 let raw = text.into_inner();
-                let value = quick_xml::escape::unescape(&raw).map(|value| value.into_owned()).unwrap_or_else(|_| raw.into_owned());
+                let value = quick_xml::escape::unescape(&raw)
+                    .map(|value| value.into_owned())
+                    .unwrap_or_else(|_| raw.into_owned());
                 stack.last_mut().unwrap().text.push_str(&value);
             }
             Ok(Event::CData(data)) => {

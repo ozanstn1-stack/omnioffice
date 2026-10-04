@@ -165,6 +165,7 @@ export function invalidReferences(workbook: Workbook): InvalidReference[] {
   }
 
   return issues.sort(
-    (a, b) => a.sheet.localeCompare(b.sheet) || a.address.localeCompare(b.address) || a.reference.localeCompare(b.reference),
+    (a, b) =>
+      a.sheet.localeCompare(b.sheet) || a.address.localeCompare(b.address) || a.reference.localeCompare(b.reference),
   );
 }

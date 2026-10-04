@@ -86,12 +86,19 @@ export function DropZone({
     >
       <div
         className="rounded-2xl flex items-center justify-center"
-        style={{ width: compact ? 40 : 56, height: compact ? 40 : 56, background: "var(--accent-weak)", color: "var(--accent)" }}
+        style={{
+          width: compact ? 40 : 56,
+          height: compact ? 40 : 56,
+          background: "var(--accent-weak)",
+          color: "var(--accent)",
+        }}
       >
         <FolderOpen size={compact ? 20 : 26} />
       </div>
       <div>
-        <p className="font-semibold text-[15px]">{title ?? (isAndroid() ? t("common.selectFiles") : t("common.dropHere"))}</p>
+        <p className="font-semibold text-[15px]">
+          {title ?? (isAndroid() ? t("common.selectFiles") : t("common.dropHere"))}
+        </p>
         <p className="text-sm muted mt-1">{hint ?? (isAndroid() ? t("common.tapHint") : t("common.dropHint"))}</p>
       </div>
       <Button
@@ -144,7 +151,8 @@ export function FileList({
   const handlePointerMove = (event: React.PointerEvent) => {
     if (dragIndex.current === null) return;
     const elements = document.elementsFromPoint(event.clientX, event.clientY);
-    const target = elements.find((el) => el instanceof HTMLElement && el.dataset.fileIndex !== undefined) as HTMLElement | undefined;
+    const target = elements.find((el) => el instanceof HTMLElement && el.dataset.fileIndex !== undefined) as
+      HTMLElement | undefined;
     if (target) {
       const index = Number(target.dataset.fileIndex);
       setOverIndex(index);
@@ -173,7 +181,10 @@ export function FileList({
           className="card-soft flex items-center gap-3 px-3 py-2.5"
           style={{
             cursor: reorder ? "grab" : "default",
-            outline: overIndex === index && dragFromIndex !== null && dragFromIndex !== index ? "2px solid var(--accent)" : "none",
+            outline:
+              overIndex === index && dragFromIndex !== null && dragFromIndex !== index
+                ? "2px solid var(--accent)"
+                : "none",
           }}
         >
           {reorder ? (
@@ -194,7 +205,10 @@ export function FileList({
               </IconButton>
             </div>
           ) : (
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--accent-weak)", color: "var(--accent)" }}>
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+              style={{ background: "var(--accent-weak)", color: "var(--accent)" }}
+            >
               {file.name.toLowerCase().endsWith(".pdf") ? <FileText size={16} /> : <FileImage size={16} />}
             </div>
           )}
@@ -254,9 +268,7 @@ export function InfoStrip({ info, error }: { info: PdfInfo | null; error?: strin
       <span className="muted">
         {t("info.fileSize")}: <strong className="text-[var(--text)]">{formatBytes(info.fileSizeBytes)}</strong>
       </span>
-      <span className="muted">
-        PDF {info.pdfVersion === "unknown" ? "—" : info.pdfVersion}
-      </span>
+      <span className="muted">PDF {info.pdfVersion === "unknown" ? "—" : info.pdfVersion}</span>
       <Badge tone={info.encrypted ? "warn" : "ok"}>
         {info.encrypted ? <Lock size={11} /> : <CheckCircle2 size={11} />}
         {info.encrypted ? t("info.encrypted") : t("info.no")}
@@ -268,13 +280,20 @@ export function InfoStrip({ info, error }: { info: PdfInfo | null; error?: strin
       ) : null}
       {info.pageGeometries.length ? (
         <span className="muted">
-          {[...sizes.entries()].slice(0, 2).map(([key, count]) => {
-            const [w, h] = key.split("x").map(Number);
-            return `${count}× ${formatPoints(w)}${count > 1 ? ` / ${formatPoints(h)}` : ""}`;
-          }).join(" · ")}
+          {[...sizes.entries()]
+            .slice(0, 2)
+            .map(([key, count]) => {
+              const [w, h] = key.split("x").map(Number);
+              return `${count}× ${formatPoints(w)}${count > 1 ? ` / ${formatPoints(h)}` : ""}`;
+            })
+            .join(" · ")}
         </span>
       ) : null}
-      {info.imageCount > 0 ? <span className="muted">{t("info.imageCount")}: {info.imageCount}</span> : null}
+      {info.imageCount > 0 ? (
+        <span className="muted">
+          {t("info.imageCount")}: {info.imageCount}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -368,7 +387,11 @@ export function OutputBar({
         <div className="flex items-end gap-2">
           <div className="flex-1">
             <label className="label">{t("common.output")}</label>
-            <TextInput value={session.outputPath} onChange={(event) => session.setOutputPath(event.target.value)} spellCheck={false} />
+            <TextInput
+              value={session.outputPath}
+              onChange={(event) => session.setOutputPath(event.target.value)}
+              spellCheck={false}
+            />
           </div>
           <Button variant="ghost" size="md" icon={<FolderOpen size={15} />} onClick={() => void chooseFile()}>
             {isAndroid() ? t("common.saveAs") : t("common.browse")}
@@ -378,7 +401,11 @@ export function OutputBar({
         <div className="flex items-end gap-2">
           <div className="flex-1">
             <label className="label">{t("common.outputFolder")}</label>
-            <TextInput value={session.outputDir} onChange={(event) => session.setOutputDir(event.target.value)} spellCheck={false} />
+            <TextInput
+              value={session.outputDir}
+              onChange={(event) => session.setOutputDir(event.target.value)}
+              spellCheck={false}
+            />
           </div>
           <Button variant="ghost" size="md" icon={<FolderOpen size={15} />} onClick={() => void chooseFolder()}>
             {isAndroid() ? t("common.saveAs") : t("common.browse")}
@@ -423,7 +450,8 @@ export function OutputBar({
           <div className="flex items-center justify-between text-xs muted">
             <span className="flex items-center gap-1.5">
               <Spinner size={13} />
-              {t(`progress.${session.progress.stage.split(".")[0]}`) === `progress.${session.progress.stage.split(".")[0]}`
+              {t(`progress.${session.progress.stage.split(".")[0]}`) ===
+              `progress.${session.progress.stage.split(".")[0]}`
                 ? t("progress.processing")
                 : t(`progress.${session.progress.stage.split(".")[0]}`)}
               {session.progress.message ? ` · ${session.progress.message}` : ""}
@@ -440,7 +468,13 @@ export function OutputBar({
       ) : null}
 
       <div className="flex items-center gap-2">
-        <Button variant="primary" size="lg" onClick={onRun} disabled={disabled || session.running} icon={session.running ? <Loader2 size={16} className="spin" /> : undefined}>
+        <Button
+          variant="primary"
+          size="lg"
+          onClick={onRun}
+          disabled={disabled || session.running}
+          icon={session.running ? <Loader2 size={16} className="spin" /> : undefined}
+        >
           {session.running ? t("common.processing") : runLabel}
         </Button>
         {session.running ? (
@@ -474,7 +508,9 @@ export function ResultCard({ result, onReset }: { result: OpResult; onReset?: ()
           {result.reduction !== undefined && result.reduction !== null
             ? ` · ${t("common.reduction")}: ${Math.round(result.reduction * 100)}%`
             : ""}
-          {result.pageCount !== undefined && result.pageCount !== null ? ` · ${result.pageCount} ${t("common.pages")}` : ""}
+          {result.pageCount !== undefined && result.pageCount !== null
+            ? ` · ${result.pageCount} ${t("common.pages")}`
+            : ""}
           {result.message ? ` · ${result.message}` : ""}
         </p>
       </div>
@@ -567,7 +603,12 @@ function PasswordDialogBody() {
           <Button variant="ghost" onClick={() => answer(null)}>
             {t("common.cancel")}
           </Button>
-          <Button variant="primary" onClick={() => void submit()} disabled={!value || checking} icon={checking ? <Spinner size={14} /> : <Lock size={14} />}>
+          <Button
+            variant="primary"
+            onClick={() => void submit()}
+            disabled={!value || checking}
+            icon={checking ? <Spinner size={14} /> : <Lock size={14} />}
+          >
             {t("passwordModal.unlock")}
           </Button>
         </>
@@ -588,7 +629,11 @@ function PasswordDialogBody() {
           if (event.key === "Enter") void submit();
         }}
       />
-      {incorrect ? <p className="text-xs mt-2" style={{ color: "var(--danger)" }}>{t("passwordModal.incorrect")}</p> : null}
+      {incorrect ? (
+        <p className="text-xs mt-2" style={{ color: "var(--danger)" }}>
+          {t("passwordModal.incorrect")}
+        </p>
+      ) : null}
       <p className="text-xs muted mt-3 flex items-center gap-1.5">
         <Lock size={12} /> Passwords are never stored or written to logs.
       </p>
@@ -610,7 +655,8 @@ export function Toasts() {
           key={toast.id}
           className="toast fade-in"
           style={{
-            borderLeftColor: toast.kind === "error" ? "var(--danger)" : toast.kind === "success" ? "var(--ok)" : "var(--accent)",
+            borderLeftColor:
+              toast.kind === "error" ? "var(--danger)" : toast.kind === "success" ? "var(--ok)" : "var(--accent)",
           }}
           role="status"
         >

@@ -25,7 +25,12 @@ export function Ribbon({
     <div className="ribbon">
       <div className="ribbon-tabs">
         {tabs.map((tab) => (
-          <button key={tab.id} type="button" className={`ribbon-tab${active === tab.id ? " is-active" : ""}`} onClick={() => onSelect(tab.id)}>
+          <button
+            key={tab.id}
+            type="button"
+            className={`ribbon-tab${active === tab.id ? " is-active" : ""}`}
+            onClick={() => onSelect(tab.id)}
+          >
             {tab.label}
           </button>
         ))}
@@ -91,7 +96,13 @@ export function ToolSelect({
   width?: number;
 }) {
   return (
-    <select className="tool-select" value={value} title={title} style={width ? { width } : undefined} onChange={(event) => onChange(event.target.value)}>
+    <select
+      className="tool-select"
+      value={value}
+      title={title}
+      style={width ? { width } : undefined}
+      onChange={(event) => onChange(event.target.value)}
+    >
       {options.map((option) => (
         <option key={option.value} value={option.value}>
           {option.label}
@@ -133,13 +144,45 @@ export function ToolNumber({
   );
 }
 
-export function ToolColor({ value, onChange, title }: { value: string; onChange: (value: string) => void; title: string }) {
-  return <input type="color" className="tool-color" value={value} title={title} onChange={(event) => onChange(event.target.value)} />;
+export function ToolColor({
+  value,
+  onChange,
+  title,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  title: string;
+}) {
+  return (
+    <input
+      type="color"
+      className="tool-color"
+      value={value}
+      title={title}
+      onChange={(event) => onChange(event.target.value)}
+    />
+  );
 }
 
-export function Dialog({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+export function Dialog({
+  title,
+  onClose,
+  children,
+  wide,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  wide?: boolean;
+}) {
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
       <div className={`modal${wide ? " modal-wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-head">
           <h3>{title}</h3>
@@ -199,7 +242,9 @@ export function useTablePicker(): {
                 className={`table-picker-cell${rowIndex < hover.rows && colIndex < hover.cols ? " is-on" : ""}`}
                 onMouseEnter={() => setHover({ rows: rowIndex + 1, cols: colIndex + 1 })}
                 onClick={() => {
-                  window.dispatchEvent(new CustomEvent("oswk-insert-table", { detail: { rows: rowIndex + 1, cols: colIndex + 1 } }));
+                  window.dispatchEvent(
+                    new CustomEvent("oswk-insert-table", { detail: { rows: rowIndex + 1, cols: colIndex + 1 } }),
+                  );
                   setOpen(false);
                 }}
                 aria-label={`${rowIndex + 1} by ${colIndex + 1}`}

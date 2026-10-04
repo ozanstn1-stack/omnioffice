@@ -9,10 +9,45 @@
  * Public surface is re-exported from the modules it used to live in, so callers
  * (`cells.ts`, the grid, the tests) keep importing from `./formula`.
  */
-import { MAX_COLS, MAX_ROWS, addressesInRange, columnLabel, columnIndex, formatAddress, parseAddress, parseRange, rangeSize, type CellAddress, type RangeParts } from "./addresses";
+import {
+  MAX_COLS,
+  MAX_ROWS,
+  addressesInRange,
+  columnLabel,
+  columnIndex,
+  formatAddress,
+  parseAddress,
+  parseRange,
+  rangeSize,
+  type CellAddress,
+  type RangeParts,
+} from "./addresses";
 import { formatNumber, formatPlainNumber, dateToSerial, serialToDate } from "./numberFormat";
-import { lookupFunction, registerFunction, functionCount, functionNames, functionCatalogue, type FunctionArgs, type FunctionResult } from "./registry";
-import { ERR, FormulaError, compareScalars, criteriaMatcher, flatten, isError, numericGrid, padMatrix, scalarOf, toBool, toNumber, toText, type CellMatrix, type Scalar } from "./scalars";
+import {
+  lookupFunction,
+  registerFunction,
+  functionCount,
+  functionNames,
+  functionCatalogue,
+  type FunctionArgs,
+  type FunctionResult,
+} from "./registry";
+import {
+  ERR,
+  FormulaError,
+  compareScalars,
+  criteriaMatcher,
+  flatten,
+  isError,
+  numericGrid,
+  padMatrix,
+  scalarOf,
+  toBool,
+  toNumber,
+  toText,
+  type CellMatrix,
+  type Scalar,
+} from "./scalars";
 import { registerBuiltinFunctions } from "./functions";
 import { resolveStructuredReference, tableByName } from "./structured";
 import type { SpreadsheetTable } from "../../lib/office-types";
@@ -60,7 +95,22 @@ export { MAX_COLS, MAX_ROWS };
 const OPERATORS = ["<>", "<=", ">=", "=", "<", ">", "+", "-", "*", "/", "^", "&", "%"];
 
 interface Token {
-  type: "number" | "string" | "ref" | "range" | "ident" | "name" | "op" | "lparen" | "rparen" | "lbrace" | "rbrace" | "comma" | "semicolon" | "bool" | "error";
+  type:
+    | "number"
+    | "string"
+    | "ref"
+    | "range"
+    | "ident"
+    | "name"
+    | "op"
+    | "lparen"
+    | "rparen"
+    | "lbrace"
+    | "rbrace"
+    | "comma"
+    | "semicolon"
+    | "bool"
+    | "error";
   value: string;
   sheet?: string | null;
 }
@@ -159,9 +209,7 @@ function tokenize(input: string): Token[] {
     // token can. They used to fall into the unknown-character branch and turn
     // the whole formula into `#VALUE!`, so IFERROR(#N/A, ...) never worked.
     if (ch === "#") {
-      const literal = /^#(REF!|VALUE!|NAME\?|DIV\/0!|N\/A|NUM!|CIRC!|SPILL!)/.exec(
-        input.slice(index).toUpperCase(),
-      );
+      const literal = /^#(REF!|VALUE!|NAME\?|DIV\/0!|N\/A|NUM!|CIRC!|SPILL!)/.exec(input.slice(index).toUpperCase());
       if (literal) {
         tokens.push({ type: "error", value: literal[0] });
         index += literal[0].length;
@@ -765,8 +813,7 @@ function applyBinary(op: string, left: Scalar, right: Scalar): Scalar {
 function broadcastBinary(op: string, left: CellMatrix, right: CellMatrix): CellMatrix {
   const height = Math.max(left.length, right.length);
   const width = Math.max(1, ...left.map((row) => row.length), ...right.map((row) => row.length));
-  const isSingle = (matrix: CellMatrix) =>
-    matrix.length === 1 && Math.max(1, ...matrix.map((row) => row.length)) === 1;
+  const isSingle = (matrix: CellMatrix) => matrix.length === 1 && Math.max(1, ...matrix.map((row) => row.length)) === 1;
   const leftScalar = isSingle(left);
   const rightScalar = isSingle(right);
   const out: CellMatrix = [];
@@ -786,7 +833,11 @@ function evaluateBinary(node: Extract<Node, { type: "binary" }>, state: EvalStat
   const left = evaluateNode(node.left, state);
   const right = evaluateNode(node.right, state);
   if (Array.isArray(left) || Array.isArray(right)) {
-    return broadcastBinary(node.op, Array.isArray(left) ? left : [[asScalar(left)]], Array.isArray(right) ? right : [[asScalar(right)]]);
+    return broadcastBinary(
+      node.op,
+      Array.isArray(left) ? left : [[asScalar(left)]],
+      Array.isArray(right) ? right : [[asScalar(right)]],
+    );
   }
   const scalarLeft = asScalar(left);
   const scalarRight = asScalar(right);

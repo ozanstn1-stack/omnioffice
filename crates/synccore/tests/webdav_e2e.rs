@@ -129,9 +129,7 @@ fn handle_connection(mut stream: TcpStream, state: Arc<Mutex<ServerState>>) {
 
     let mut guard = state.lock().unwrap();
     let if_match_logged = headers.get("if-match").cloned().unwrap_or_default();
-    guard
-        .requests
-        .push(format!("{method} {path} depth={depth} if-match={if_match_logged}"));
+    guard.requests.push(format!("{method} {path} depth={depth} if-match={if_match_logged}"));
     let key = normalize_key(path);
 
     let response: Vec<u8> = match method {

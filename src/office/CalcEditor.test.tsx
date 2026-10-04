@@ -195,9 +195,11 @@ describe("Calc keyboard entry is reliable without clicking between cells", () =>
       ["Hardware", "2025", "150"],
     ];
     let model = useOfficeTabs.getState().tabs[0].model as Workbook;
-    table.forEach((row, rowIndex) => row.forEach((value, colIndex) => {
-      model = applyCellEdit(model, 0, rowIndex, colIndex, value);
-    }));
+    table.forEach((row, rowIndex) =>
+      row.forEach((value, colIndex) => {
+        model = applyCellEdit(model, 0, rowIndex, colIndex, value);
+      }),
+    );
     useOfficeTabs.setState((state) => ({ tabs: state.tabs.map((tab) => (tab.id === id ? { ...tab, model } : tab)) }));
     render(<Harness id={id} />);
 
@@ -262,7 +264,11 @@ describe("Calc pointer gestures", () => {
     fireEvent.pointerUp(window, { pointerId: 1, pointerType: "mouse" });
 
     expect(document.querySelector<HTMLInputElement>(".name-box")?.value).toBe("C1:A1");
-    expect(cells().slice(0, 3).every((cell) => cell.classList.contains("is-selected"))).toBe(true);
+    expect(
+      cells()
+        .slice(0, 3)
+        .every((cell) => cell.classList.contains("is-selected")),
+    ).toBe(true);
     expect(cells()[3].classList.contains("is-selected")).toBe(false);
   });
 

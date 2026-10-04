@@ -34,7 +34,15 @@ function table(rows: string[][]): Block {
   const width = 460;
   const data: TableData = {
     rows: rows.map((cells, rowIndex) => ({
-      cells: cells.map((text) => ({ blocks: [paragraph(text)], colspan: 1, rowspan: 1, background: rowIndex === 0 ? "#EEF2FF" : null, align: "left", valign: "top", widthPt: null })),
+      cells: cells.map((text) => ({
+        blocks: [paragraph(text)],
+        colspan: 1,
+        rowspan: 1,
+        background: rowIndex === 0 ? "#EEF2FF" : null,
+        align: "left",
+        valign: "top",
+        widthPt: null,
+      })),
       heightPt: null,
       header: rowIndex === 0,
     })),
@@ -54,7 +62,12 @@ export interface OfficeTemplate {
   build: () => TextDocument | Workbook | Deck;
 }
 
-const writer = (id: string, name: string, description: string, build: (document: TextDocument) => void): OfficeTemplate => ({
+const writer = (
+  id: string,
+  name: string,
+  description: string,
+  build: (document: TextDocument) => void,
+): OfficeTemplate => ({
   id,
   kind: "writer",
   name,
@@ -92,14 +105,45 @@ const impress = (id: string, name: string, description: string, build: (deck: De
 
 function slideTitle(text: string) {
   const object = newSlideObject("text", 60, 50, 840, 90);
-  object.text = { paragraphs: [{ text, level: 0, bold: true, italic: false, underline: false, sizePt: 32, color: null, align: "left", bullet: false, runs: [] }], valign: "top", font: null, sizePt: 32, color: null, align: "left" };
+  object.text = {
+    paragraphs: [
+      {
+        text,
+        level: 0,
+        bold: true,
+        italic: false,
+        underline: false,
+        sizePt: 32,
+        color: null,
+        align: "left",
+        bullet: false,
+        runs: [],
+      },
+    ],
+    valign: "top",
+    font: null,
+    sizePt: 32,
+    color: null,
+    align: "left",
+  };
   return object;
 }
 
 function slideBullets(items: string[]) {
   const object = newSlideObject("text", 70, 170, 820, 300);
   object.text = {
-    paragraphs: items.map((text) => ({ text, level: 0, bold: false, italic: false, underline: false, sizePt: 20, color: null, align: "left", bullet: true, runs: [] })),
+    paragraphs: items.map((text) => ({
+      text,
+      level: 0,
+      bold: false,
+      italic: false,
+      underline: false,
+      sizePt: 20,
+      color: null,
+      align: "left",
+      bullet: true,
+      runs: [],
+    })),
     valign: "top",
     font: null,
     sizePt: 20,
@@ -124,7 +168,12 @@ export const TEMPLATES: OfficeTemplate[] = [
       paragraph("Education", "Heading2"),
       paragraph("2015 – 2019 · University · Degree"),
       paragraph("Skills", "Heading2"),
-      table([["Skill", "Level"], ["Skill one", "Advanced"], ["Skill two", "Intermediate"], ["Skill three", "Basic"]]),
+      table([
+        ["Skill", "Level"],
+        ["Skill one", "Advanced"],
+        ["Skill two", "Intermediate"],
+        ["Skill three", "Basic"],
+      ]),
     ];
   }),
   writer("resume", "Resume", "One-page resume with highlights and achievements.", (document) => {
@@ -137,7 +186,11 @@ export const TEMPLATES: OfficeTemplate[] = [
       paragraph("• Achievement two with a measurable result."),
       paragraph("• Achievement three with a measurable result."),
       paragraph("Languages", "Heading2"),
-      table([["Language", "Level"], ["Language one", "Fluent"], ["Language two", "Intermediate"]]),
+      table([
+        ["Language", "Level"],
+        ["Language one", "Fluent"],
+        ["Language two", "Intermediate"],
+      ]),
     ];
   }),
   writer("invoice", "Invoice", "Simple invoice with a totals table.", (document) => {
@@ -176,7 +229,11 @@ export const TEMPLATES: OfficeTemplate[] = [
       paragraph("Summarise the purpose, the findings and the recommendation in a few sentences."),
       paragraph("2. Findings", "Heading1"),
       paragraph("Present the data and observations. Use tables for figures."),
-      table([["Metric", "Value"], ["Metric one", "0"], ["Metric two", "0"]]),
+      table([
+        ["Metric", "Value"],
+        ["Metric one", "0"],
+        ["Metric two", "0"],
+      ]),
       paragraph("3. Recommendation", "Heading1"),
       paragraph("State the recommended action and the expected outcome."),
     ];
@@ -192,7 +249,11 @@ export const TEMPLATES: OfficeTemplate[] = [
       paragraph("Decisions", "Heading3"),
       paragraph("Record what was agreed."),
       paragraph("Actions", "Heading3"),
-      table([["Action", "Owner", "Due"], ["Follow up with the team", "", ""], ["Prepare the next draft", "", ""]]),
+      table([
+        ["Action", "Owner", "Due"],
+        ["Follow up with the team", "", ""],
+        ["Prepare the next draft", "", ""],
+      ]),
     ];
   }),
   writer("contract", "Simple contract", "Basic service agreement with signature lines.", (document) => {
@@ -206,7 +267,12 @@ export const TEMPLATES: OfficeTemplate[] = [
       paragraph("3. Term and termination", "Heading3"),
       paragraph("Describe the duration and the conditions for ending the agreement."),
       paragraph("Signatures", "Heading3"),
-      table([["Party A", "Party B"], ["Name:", "Name:"], ["Signature:", "Signature:"], ["Date:", "Date:"]]),
+      table([
+        ["Party A", "Party B"],
+        ["Name:", "Name:"],
+        ["Signature:", "Signature:"],
+        ["Date:", "Date:"],
+      ]),
     ];
   }),
   writer("todo", "To-do list", "Checklist with priorities and due dates.", (document) => {
@@ -216,7 +282,12 @@ export const TEMPLATES: OfficeTemplate[] = [
       paragraph("• Task one", "Normal", { list: { kind: "bullet", level: 0, start: 1, marker: "•" } }),
       paragraph("• Task two", "Normal", { list: { kind: "bullet", level: 0, start: 1, marker: "•" } }),
       paragraph("This week", "Heading3"),
-      table([["Task", "Priority", "Due"], ["", "", ""], ["", "", ""], ["", "", ""]]),
+      table([
+        ["Task", "Priority", "Due"],
+        ["", "", ""],
+        ["", "", ""],
+        ["", "", ""],
+      ]),
     ];
   }),
 
@@ -238,9 +309,28 @@ export const TEMPLATES: OfficeTemplate[] = [
         const address = `${String.fromCharCode(65 + colIndex)}${rowIndex + 1}`;
         const numeric = Number(value);
         sheet.cells[address] = {
-          value: value.startsWith("=") ? { kind: "number", value: 0 } : Number.isFinite(numeric) && value !== "" ? { kind: "number", value: numeric } : { kind: "text", value },
+          value: value.startsWith("=")
+            ? { kind: "number", value: 0 }
+            : Number.isFinite(numeric) && value !== ""
+              ? { kind: "number", value: numeric }
+              : { kind: "text", value },
           formula: value.startsWith("=") ? value : null,
-          style: { font: null, sizePt: 11, bold: rowIndex === 0 || row[0] === "Total", italic: false, underline: false, strike: false, color: null, fill: rowIndex === 0 ? "#EEF2FF" : null, align: colIndex === 0 ? "left" : "right", valign: "bottom", wrap: false, rotation: 0, borders: { top: null, right: null, bottom: null, left: null }, numberFormat: colIndex === 0 ? "General" : "#,##0.00" },
+          style: {
+            font: null,
+            sizePt: 11,
+            bold: rowIndex === 0 || row[0] === "Total",
+            italic: false,
+            underline: false,
+            strike: false,
+            color: null,
+            fill: rowIndex === 0 ? "#EEF2FF" : null,
+            align: colIndex === 0 ? "left" : "right",
+            valign: "bottom",
+            wrap: false,
+            rotation: 0,
+            borders: { top: null, right: null, bottom: null, left: null },
+            numberFormat: colIndex === 0 ? "General" : "#,##0.00",
+          },
           comment: null,
         };
       });
@@ -252,12 +342,112 @@ export const TEMPLATES: OfficeTemplate[] = [
     sheet.name = "Expenses";
     ["Date", "Description", "Category", "Amount"].forEach((header, index) => {
       const address = `${String.fromCharCode(65 + index)}1`;
-      sheet.cells[address] = { value: { kind: "text", value: header }, formula: null, style: { font: null, sizePt: 11, bold: true, italic: false, underline: false, strike: false, color: null, fill: "#EEF2FF", align: "left", valign: "bottom", wrap: false, rotation: 0, borders: { top: null, right: null, bottom: null, left: null }, numberFormat: "General" }, comment: null };
+      sheet.cells[address] = {
+        value: { kind: "text", value: header },
+        formula: null,
+        style: {
+          font: null,
+          sizePt: 11,
+          bold: true,
+          italic: false,
+          underline: false,
+          strike: false,
+          color: null,
+          fill: "#EEF2FF",
+          align: "left",
+          valign: "bottom",
+          wrap: false,
+          rotation: 0,
+          borders: { top: null, right: null, bottom: null, left: null },
+          numberFormat: "General",
+        },
+        comment: null,
+      };
     });
-    sheet.cells.A2 = { value: { kind: "text", value: "01.01.2026" }, formula: null, style: { font: null, sizePt: 11, bold: false, italic: false, underline: false, strike: false, color: null, fill: null, align: "left", valign: "bottom", wrap: false, rotation: 0, borders: { top: null, right: null, bottom: null, left: null }, numberFormat: "General" }, comment: null };
-    sheet.cells.D2 = { value: { kind: "number", value: 0 }, formula: null, style: { font: null, sizePt: 11, bold: false, italic: false, underline: false, strike: false, color: null, fill: null, align: "right", valign: "bottom", wrap: false, rotation: 0, borders: { top: null, right: null, bottom: null, left: null }, numberFormat: "#,##0.00" }, comment: null };
-    sheet.cells.A12 = { value: { kind: "text", value: "Total" }, formula: null, style: { font: null, sizePt: 11, bold: true, italic: false, underline: false, strike: false, color: null, fill: null, align: "left", valign: "bottom", wrap: false, rotation: 0, borders: { top: null, right: null, bottom: null, left: null }, numberFormat: "General" }, comment: null };
-    sheet.cells.D12 = { value: { kind: "number", value: 0 }, formula: "=SUM(D2:D11)", style: { font: null, sizePt: 11, bold: true, italic: false, underline: false, strike: false, color: null, fill: null, align: "right", valign: "bottom", wrap: false, rotation: 0, borders: { top: null, right: null, bottom: null, left: null }, numberFormat: "#,##0.00" }, comment: null };
+    sheet.cells.A2 = {
+      value: { kind: "text", value: "01.01.2026" },
+      formula: null,
+      style: {
+        font: null,
+        sizePt: 11,
+        bold: false,
+        italic: false,
+        underline: false,
+        strike: false,
+        color: null,
+        fill: null,
+        align: "left",
+        valign: "bottom",
+        wrap: false,
+        rotation: 0,
+        borders: { top: null, right: null, bottom: null, left: null },
+        numberFormat: "General",
+      },
+      comment: null,
+    };
+    sheet.cells.D2 = {
+      value: { kind: "number", value: 0 },
+      formula: null,
+      style: {
+        font: null,
+        sizePt: 11,
+        bold: false,
+        italic: false,
+        underline: false,
+        strike: false,
+        color: null,
+        fill: null,
+        align: "right",
+        valign: "bottom",
+        wrap: false,
+        rotation: 0,
+        borders: { top: null, right: null, bottom: null, left: null },
+        numberFormat: "#,##0.00",
+      },
+      comment: null,
+    };
+    sheet.cells.A12 = {
+      value: { kind: "text", value: "Total" },
+      formula: null,
+      style: {
+        font: null,
+        sizePt: 11,
+        bold: true,
+        italic: false,
+        underline: false,
+        strike: false,
+        color: null,
+        fill: null,
+        align: "left",
+        valign: "bottom",
+        wrap: false,
+        rotation: 0,
+        borders: { top: null, right: null, bottom: null, left: null },
+        numberFormat: "General",
+      },
+      comment: null,
+    };
+    sheet.cells.D12 = {
+      value: { kind: "number", value: 0 },
+      formula: "=SUM(D2:D11)",
+      style: {
+        font: null,
+        sizePt: 11,
+        bold: true,
+        italic: false,
+        underline: false,
+        strike: false,
+        color: null,
+        fill: null,
+        align: "right",
+        valign: "bottom",
+        wrap: false,
+        rotation: 0,
+        borders: { top: null, right: null, bottom: null, left: null },
+        numberFormat: "#,##0.00",
+      },
+      comment: null,
+    };
     sheet.colWidths = { "0": 110, "1": 220, "2": 130, "3": 110 };
   }),
   calc("calcInvoice", "Invoice", "Invoice with quantities, prices and totals.", (workbook) => {
@@ -266,12 +456,72 @@ export const TEMPLATES: OfficeTemplate[] = [
     const headers = ["Item", "Qty", "Unit price", "Total"];
     headers.forEach((header, index) => {
       const address = `${String.fromCharCode(65 + index)}4`;
-      sheet.cells[address] = { value: { kind: "text", value: header }, formula: null, style: { font: null, sizePt: 11, bold: true, italic: false, underline: false, strike: false, color: null, fill: "#EEF2FF", align: "left", valign: "bottom", wrap: false, rotation: 0, borders: { top: null, right: null, bottom: null, left: null }, numberFormat: "General" }, comment: null };
+      sheet.cells[address] = {
+        value: { kind: "text", value: header },
+        formula: null,
+        style: {
+          font: null,
+          sizePt: 11,
+          bold: true,
+          italic: false,
+          underline: false,
+          strike: false,
+          color: null,
+          fill: "#EEF2FF",
+          align: "left",
+          valign: "bottom",
+          wrap: false,
+          rotation: 0,
+          borders: { top: null, right: null, bottom: null, left: null },
+          numberFormat: "General",
+        },
+        comment: null,
+      };
     });
     for (let row = 5; row <= 9; row += 1) {
-      sheet.cells[`D${row}`] = { value: { kind: "number", value: 0 }, formula: `=B${row}*C${row}`, style: { font: null, sizePt: 11, bold: false, italic: false, underline: false, strike: false, color: null, fill: null, align: "right", valign: "bottom", wrap: false, rotation: 0, borders: { top: null, right: null, bottom: null, left: null }, numberFormat: "#,##0.00" }, comment: null };
+      sheet.cells[`D${row}`] = {
+        value: { kind: "number", value: 0 },
+        formula: `=B${row}*C${row}`,
+        style: {
+          font: null,
+          sizePt: 11,
+          bold: false,
+          italic: false,
+          underline: false,
+          strike: false,
+          color: null,
+          fill: null,
+          align: "right",
+          valign: "bottom",
+          wrap: false,
+          rotation: 0,
+          borders: { top: null, right: null, bottom: null, left: null },
+          numberFormat: "#,##0.00",
+        },
+        comment: null,
+      };
     }
-    sheet.cells.D11 = { value: { kind: "number", value: 0 }, formula: "=SUM(D5:D9)", style: { font: null, sizePt: 12, bold: true, italic: false, underline: false, strike: false, color: null, fill: "#F1F5F9", align: "right", valign: "bottom", wrap: false, rotation: 0, borders: { top: null, right: null, bottom: null, left: null }, numberFormat: "#,##0.00" }, comment: null };
+    sheet.cells.D11 = {
+      value: { kind: "number", value: 0 },
+      formula: "=SUM(D5:D9)",
+      style: {
+        font: null,
+        sizePt: 12,
+        bold: true,
+        italic: false,
+        underline: false,
+        strike: false,
+        color: null,
+        fill: "#F1F5F9",
+        align: "right",
+        valign: "bottom",
+        wrap: false,
+        rotation: 0,
+        borders: { top: null, right: null, bottom: null, left: null },
+        numberFormat: "#,##0.00",
+      },
+      comment: null,
+    };
     sheet.colWidths = { "0": 240, "1": 70, "2": 110, "3": 120 };
   }),
   calc("inventory", "Inventory", "Stock levels with reorder thresholds.", (workbook) => {
@@ -279,10 +529,50 @@ export const TEMPLATES: OfficeTemplate[] = [
     sheet.name = "Inventory";
     const headers = ["SKU", "Item", "Quantity", "Reorder at", "Status"];
     headers.forEach((header, index) => {
-      sheet.cells[`${String.fromCharCode(65 + index)}1`] = { value: { kind: "text", value: header }, formula: null, style: { font: null, sizePt: 11, bold: true, italic: false, underline: false, strike: false, color: null, fill: "#EEF2FF", align: "left", valign: "bottom", wrap: false, rotation: 0, borders: { top: null, right: null, bottom: null, left: null }, numberFormat: "General" }, comment: null };
+      sheet.cells[`${String.fromCharCode(65 + index)}1`] = {
+        value: { kind: "text", value: header },
+        formula: null,
+        style: {
+          font: null,
+          sizePt: 11,
+          bold: true,
+          italic: false,
+          underline: false,
+          strike: false,
+          color: null,
+          fill: "#EEF2FF",
+          align: "left",
+          valign: "bottom",
+          wrap: false,
+          rotation: 0,
+          borders: { top: null, right: null, bottom: null, left: null },
+          numberFormat: "General",
+        },
+        comment: null,
+      };
     });
     for (let row = 2; row <= 11; row += 1) {
-      sheet.cells[`E${row}`] = { value: { kind: "text", value: "" }, formula: `=IF(C${row}<D${row},"Reorder","OK")`, style: { font: null, sizePt: 11, bold: false, italic: false, underline: false, strike: false, color: null, fill: null, align: "left", valign: "bottom", wrap: false, rotation: 0, borders: { top: null, right: null, bottom: null, left: null }, numberFormat: "General" }, comment: null };
+      sheet.cells[`E${row}`] = {
+        value: { kind: "text", value: "" },
+        formula: `=IF(C${row}<D${row},"Reorder","OK")`,
+        style: {
+          font: null,
+          sizePt: 11,
+          bold: false,
+          italic: false,
+          underline: false,
+          strike: false,
+          color: null,
+          fill: null,
+          align: "left",
+          valign: "bottom",
+          wrap: false,
+          rotation: 0,
+          borders: { top: null, right: null, bottom: null, left: null },
+          numberFormat: "General",
+        },
+        comment: null,
+      };
     }
     sheet.colWidths = { "0": 100, "1": 220, "2": 90, "3": 90, "4": 100 };
   }),
@@ -291,25 +581,129 @@ export const TEMPLATES: OfficeTemplate[] = [
     sheet.name = "Projects";
     const headers = ["Task", "Owner", "Status", "Progress"];
     headers.forEach((header, index) => {
-      sheet.cells[`${String.fromCharCode(65 + index)}1`] = { value: { kind: "text", value: header }, formula: null, style: { font: null, sizePt: 11, bold: true, italic: false, underline: false, strike: false, color: null, fill: "#EEF2FF", align: "left", valign: "bottom", wrap: false, rotation: 0, borders: { top: null, right: null, bottom: null, left: null }, numberFormat: "General" }, comment: null };
+      sheet.cells[`${String.fromCharCode(65 + index)}1`] = {
+        value: { kind: "text", value: header },
+        formula: null,
+        style: {
+          font: null,
+          sizePt: 11,
+          bold: true,
+          italic: false,
+          underline: false,
+          strike: false,
+          color: null,
+          fill: "#EEF2FF",
+          align: "left",
+          valign: "bottom",
+          wrap: false,
+          rotation: 0,
+          borders: { top: null, right: null, bottom: null, left: null },
+          numberFormat: "General",
+        },
+        comment: null,
+      };
     });
     for (let row = 2; row <= 12; row += 1) {
-      sheet.cells[`D${row}`] = { value: { kind: "number", value: 0 }, formula: null, style: { font: null, sizePt: 11, bold: false, italic: false, underline: false, strike: false, color: null, fill: null, align: "right", valign: "bottom", wrap: false, rotation: 0, borders: { top: null, right: null, bottom: null, left: null }, numberFormat: "0%" }, comment: null };
+      sheet.cells[`D${row}`] = {
+        value: { kind: "number", value: 0 },
+        formula: null,
+        style: {
+          font: null,
+          sizePt: 11,
+          bold: false,
+          italic: false,
+          underline: false,
+          strike: false,
+          color: null,
+          fill: null,
+          align: "right",
+          valign: "bottom",
+          wrap: false,
+          rotation: 0,
+          borders: { top: null, right: null, bottom: null, left: null },
+          numberFormat: "0%",
+        },
+        comment: null,
+      };
     }
-    sheet.validations.push({ id: uid(), range: "C2:C12", kind: "list", values: ["Not started", "In progress", "Blocked", "Done"], min: null, max: null, message: "", allowBlank: true });
+    sheet.validations.push({
+      id: uid(),
+      range: "C2:C12",
+      kind: "list",
+      values: ["Not started", "In progress", "Blocked", "Done"],
+      min: null,
+      max: null,
+      message: "",
+      allowBlank: true,
+    });
     sheet.colWidths = { "0": 260, "1": 130, "2": 130, "3": 90 };
   }),
   calc("calendar", "Calendar", "Yearly calendar template with month blocks.", (workbook) => {
     const sheet = workbook.sheets[0];
     sheet.name = "Calendar";
-    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const months = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ];
     months.forEach((month, index) => {
       const column = index % 4;
       const row = Math.floor(index / 4) * 8;
       const col = String.fromCharCode(65 + column * 2);
-      sheet.cells[`${col}${row + 1}`] = { value: { kind: "text", value: month }, formula: null, style: { font: null, sizePt: 12, bold: true, italic: false, underline: false, strike: false, color: null, fill: "#EEF2FF", align: "left", valign: "bottom", wrap: false, rotation: 0, borders: { top: null, right: null, bottom: null, left: null }, numberFormat: "General" }, comment: null };
+      sheet.cells[`${col}${row + 1}`] = {
+        value: { kind: "text", value: month },
+        formula: null,
+        style: {
+          font: null,
+          sizePt: 12,
+          bold: true,
+          italic: false,
+          underline: false,
+          strike: false,
+          color: null,
+          fill: "#EEF2FF",
+          align: "left",
+          valign: "bottom",
+          wrap: false,
+          rotation: 0,
+          borders: { top: null, right: null, bottom: null, left: null },
+          numberFormat: "General",
+        },
+        comment: null,
+      };
       ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].forEach((day, dayIndex) => {
-        sheet.cells[`${String.fromCharCode(65 + column * 2 + (dayIndex >= 4 ? 1 : 0))}${row + 2 + (dayIndex >= 4 ? 0 : 0)}`] = { value: { kind: "text", value: day }, formula: null, style: { font: null, sizePt: 10, bold: true, italic: false, underline: false, strike: false, color: "#64748B", fill: null, align: "center", valign: "bottom", wrap: false, rotation: 0, borders: { top: null, right: null, bottom: null, left: null }, numberFormat: "General" }, comment: null };
+        sheet.cells[
+          `${String.fromCharCode(65 + column * 2 + (dayIndex >= 4 ? 1 : 0))}${row + 2 + (dayIndex >= 4 ? 0 : 0)}`
+        ] = {
+          value: { kind: "text", value: day },
+          formula: null,
+          style: {
+            font: null,
+            sizePt: 10,
+            bold: true,
+            italic: false,
+            underline: false,
+            strike: false,
+            color: "#64748B",
+            fill: null,
+            align: "center",
+            valign: "bottom",
+            wrap: false,
+            rotation: 0,
+            borders: { top: null, right: null, bottom: null, left: null },
+            numberFormat: "General",
+          },
+          comment: null,
+        };
       });
     });
     sheet.colWidths = { "0": 44, "1": 44, "2": 44, "3": 44, "4": 44, "5": 44, "6": 44, "7": 44 };
@@ -329,9 +723,28 @@ export const TEMPLATES: OfficeTemplate[] = [
         const address = `${String.fromCharCode(65 + colIndex)}${rowIndex + 1}`;
         const numeric = Number(value);
         sheet.cells[address] = {
-          value: value.startsWith("=") ? { kind: "number", value: 0 } : Number.isFinite(numeric) && value !== "" ? { kind: "number", value: numeric } : { kind: "text", value },
+          value: value.startsWith("=")
+            ? { kind: "number", value: 0 }
+            : Number.isFinite(numeric) && value !== ""
+              ? { kind: "number", value: numeric }
+              : { kind: "text", value },
           formula: value.startsWith("=") ? value : null,
-          style: { font: null, sizePt: 11, bold: rowIndex === 0 || row[0] === "Total", italic: false, underline: false, strike: false, color: null, fill: rowIndex === 0 ? "#EEF2FF" : null, align: colIndex === 0 ? "left" : "right", valign: "bottom", wrap: false, rotation: 0, borders: { top: null, right: null, bottom: null, left: null }, numberFormat: colIndex === 0 ? "General" : "#,##0.00" },
+          style: {
+            font: null,
+            sizePt: 11,
+            bold: rowIndex === 0 || row[0] === "Total",
+            italic: false,
+            underline: false,
+            strike: false,
+            color: null,
+            fill: rowIndex === 0 ? "#EEF2FF" : null,
+            align: colIndex === 0 ? "left" : "right",
+            valign: "bottom",
+            wrap: false,
+            rotation: 0,
+            borders: { top: null, right: null, bottom: null, left: null },
+            numberFormat: colIndex === 0 ? "General" : "#,##0.00",
+          },
           comment: null,
         };
       });
@@ -355,7 +768,10 @@ export const TEMPLATES: OfficeTemplate[] = [
   impress("pitch", "Simple pitch deck", "Investor pitch with problem, solution and ask.", (deck) => {
     deck.theme = "modern";
     deck.slides = [
-      { ...newSlide("title"), objects: [slideTitle("Product name"), slideBullets(["One line that explains the product"])] },
+      {
+        ...newSlide("title"),
+        objects: [slideTitle("Product name"), slideBullets(["One line that explains the product"])],
+      },
       { ...newSlide(), objects: [slideTitle("Problem"), slideBullets(["Who has the problem", "Why it matters now"])] },
       { ...newSlide(), objects: [slideTitle("Solution"), slideBullets(["What we built", "How it works"])] },
       { ...newSlide(), objects: [slideTitle("Traction"), slideBullets(["Users", "Revenue", "Growth"])] },
@@ -366,7 +782,13 @@ export const TEMPLATES: OfficeTemplate[] = [
     deck.theme = "education";
     deck.slides = [
       { ...newSlide("title"), objects: [slideTitle("Lesson title"), slideBullets(["Course · Date · Teacher"])] },
-      { ...newSlide(), objects: [slideTitle("Learning objectives"), slideBullets(["Objective one", "Objective two", "Objective three"])] },
+      {
+        ...newSlide(),
+        objects: [
+          slideTitle("Learning objectives"),
+          slideBullets(["Objective one", "Objective two", "Objective three"]),
+        ],
+      },
       { ...newSlide(), objects: [slideTitle("Key concepts"), slideBullets(["Concept one", "Concept two"])] },
       { ...newSlide(), objects: [slideTitle("Exercises"), slideBullets(["Exercise one", "Exercise two"])] },
     ];
@@ -376,7 +798,14 @@ export const TEMPLATES: OfficeTemplate[] = [
     deck.slides = ["Cover photo", "Location", "Details", "Closing frame"].map((title) => {
       const slide = newSlide("titleContent");
       const placeholder = newSlideObject("rect", 500, 150, 380, 280);
-      placeholder.style = { fill: "#E2E8F0", stroke: "#94A3B8", strokeWidthPt: 1, opacity: 1, cornerRadiusPt: 6, shadow: false };
+      placeholder.style = {
+        fill: "#E2E8F0",
+        stroke: "#94A3B8",
+        strokeWidthPt: 1,
+        opacity: 1,
+        cornerRadiusPt: 6,
+        shadow: false,
+      };
       placeholder.name = "Photo frame";
       slide.objects = [slideTitle(title), placeholder];
       return slide;
@@ -385,9 +814,21 @@ export const TEMPLATES: OfficeTemplate[] = [
   impress("project", "Project presentation", "Status deck with milestones and risks.", (deck) => {
     deck.theme = "business";
     deck.slides = [
-      { ...newSlide("title"), objects: [slideTitle("Project status"), slideBullets(["Reporting period", "Project manager"])] },
-      { ...newSlide(), objects: [slideTitle("Milestones"), slideBullets(["Milestone one — done", "Milestone two — in progress", "Milestone three — planned"])] },
-      { ...newSlide(), objects: [slideTitle("Risks"), slideBullets(["Risk one and mitigation", "Risk two and mitigation"])] },
+      {
+        ...newSlide("title"),
+        objects: [slideTitle("Project status"), slideBullets(["Reporting period", "Project manager"])],
+      },
+      {
+        ...newSlide(),
+        objects: [
+          slideTitle("Milestones"),
+          slideBullets(["Milestone one — done", "Milestone two — in progress", "Milestone three — planned"]),
+        ],
+      },
+      {
+        ...newSlide(),
+        objects: [slideTitle("Risks"), slideBullets(["Risk one and mitigation", "Risk two and mitigation"])],
+      },
       { ...newSlide(), objects: [slideTitle("Next steps"), slideBullets(["Action one", "Action two"])] },
     ];
   }),

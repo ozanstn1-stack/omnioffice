@@ -16,11 +16,7 @@ fn finish(mut doc: Document, page_ids: Vec<lopdf::ObjectId>, title: &str) -> Doc
         "Count" => page_ids.len() as i64,
     }));
     for page_id in &page_ids {
-        doc.get_object_mut(*page_id)
-            .unwrap()
-            .as_dict_mut()
-            .unwrap()
-            .set("Parent", Object::Reference(pages_id));
+        doc.get_object_mut(*page_id).unwrap().as_dict_mut().unwrap().set("Parent", Object::Reference(pages_id));
     }
     let catalog_id = doc.add_object(Object::Dictionary(dictionary! {
         "Type" => "Catalog",
@@ -61,11 +57,7 @@ fn text_document(pages: u32, label: &str, title: &str) -> Document {
             "0.94 0.94 0.97 rg\n40 40 515 760 re f\n0.35 0.4 0.85 RG\n3 w\n80 560 300 140 re\nS\n0.1 0.1 0.12 rg\nBT\n/F1 26 Tf\n72 700 Td\n({label} - page {page}) Tj\nET\nBT\n/F1 12 Tf\n72 640 Td\n(Sample document generated for testing.) Tj\nET\n",
         );
         let content_id = doc.add_object(Object::Stream(Stream::new(Dictionary::new(), content.into_bytes())));
-        doc.get_object_mut(page_id)
-            .unwrap()
-            .as_dict_mut()
-            .unwrap()
-            .set("Contents", Object::Reference(content_id));
+        doc.get_object_mut(page_id).unwrap().as_dict_mut().unwrap().set("Contents", Object::Reference(content_id));
         page_ids.push(page_id);
     }
     finish(doc, page_ids, title)
@@ -100,11 +92,7 @@ fn image_document(pages: u32, title: &str) -> Document {
         add_resource_entry(&mut doc, page_id, b"XObject", "Im0", Object::Reference(image_id)).unwrap();
         let content = "q\n595.28 0 0 841.89 0 0 cm\n/Im0 Do\nQ\n";
         let content_id = doc.add_object(Object::Stream(Stream::new(Dictionary::new(), content.as_bytes().to_vec())));
-        doc.get_object_mut(page_id)
-            .unwrap()
-            .as_dict_mut()
-            .unwrap()
-            .set("Contents", Object::Reference(content_id));
+        doc.get_object_mut(page_id).unwrap().as_dict_mut().unwrap().set("Contents", Object::Reference(content_id));
         page_ids.push(page_id);
     }
     finish(doc, page_ids, title)
@@ -142,20 +130,13 @@ fn scanned_document(pages: u32, title: &str) -> Document {
                 let dst = ((sy as u32 * w + sx as u32) * 4) as usize;
                 let alpha = art.rgba[src + 3] as f32 / 255.0;
                 for c in 0..3 {
-                    rgba[dst + c] = (art.rgba[src + c] as f32 * alpha + rgba[dst + c] as f32 * (1.0 - alpha)).round() as u8;
+                    rgba[dst + c] =
+                        (art.rgba[src + c] as f32 * alpha + rgba[dst + c] as f32 * (1.0 - alpha)).round() as u8;
                 }
                 rgba[dst + 3] = 255;
             }
         }
-        let image_id = add_rgba_image_xobject(
-            &mut doc,
-            &RawImage {
-                width: w,
-                height: h,
-                rgba,
-            },
-        )
-        .unwrap();
+        let image_id = add_rgba_image_xobject(&mut doc, &RawImage { width: w, height: h, rgba }).unwrap();
         let page_id = doc.add_object(Object::Dictionary(dictionary! {
             "Type" => "Page",
             "MediaBox" => vec![
@@ -168,11 +149,7 @@ fn scanned_document(pages: u32, title: &str) -> Document {
         add_resource_entry(&mut doc, page_id, b"XObject", "Im0", Object::Reference(image_id)).unwrap();
         let content = "q\n595.28 0 0 841.89 0 0 cm\n/Im0 Do\nQ\n";
         let content_id = doc.add_object(Object::Stream(Stream::new(Dictionary::new(), content.as_bytes().to_vec())));
-        doc.get_object_mut(page_id)
-            .unwrap()
-            .as_dict_mut()
-            .unwrap()
-            .set("Contents", Object::Reference(content_id));
+        doc.get_object_mut(page_id).unwrap().as_dict_mut().unwrap().set("Contents", Object::Reference(content_id));
         page_ids.push(page_id);
     }
     finish(doc, page_ids, title)
@@ -224,7 +201,8 @@ fn scanned_jpeg_document(pages: u32, title: &str) -> Document {
                 let dst = ((sy as u32 * w + sx as u32) * 4) as usize;
                 let alpha = art.rgba[src + 3] as f32 / 255.0;
                 for c in 0..3 {
-                    rgba[dst + c] = (art.rgba[src + c] as f32 * alpha + rgba[dst + c] as f32 * (1.0 - alpha)).round() as u8;
+                    rgba[dst + c] =
+                        (art.rgba[src + c] as f32 * alpha + rgba[dst + c] as f32 * (1.0 - alpha)).round() as u8;
                 }
             }
         }
@@ -254,21 +232,14 @@ fn scanned_jpeg_document(pages: u32, title: &str) -> Document {
         add_resource_entry(&mut doc, page_id, b"XObject", "Im0", Object::Reference(image_id)).unwrap();
         let content = "q\n595.28 0 0 841.89 0 0 cm\n/Im0 Do\nQ\n";
         let content_id = doc.add_object(Object::Stream(Stream::new(Dictionary::new(), content.as_bytes().to_vec())));
-        doc.get_object_mut(page_id)
-            .unwrap()
-            .as_dict_mut()
-            .unwrap()
-            .set("Contents", Object::Reference(content_id));
+        doc.get_object_mut(page_id).unwrap().as_dict_mut().unwrap().set("Contents", Object::Reference(content_id));
         page_ids.push(page_id);
     }
     finish(doc, page_ids, title)
 }
 
 fn main() {
-    let out_dir = std::env::args()
-        .nth(1)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("samples"));
+    let out_dir = std::env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("samples"));
     std::fs::create_dir_all(&out_dir).expect("create output dir");
 
     let write = |name: &str, doc: &mut Document, dir: &Path| {
@@ -277,35 +248,11 @@ fn main() {
         println!("wrote {}", path.display());
     };
 
-    write(
-        "sample-1.pdf",
-        &mut text_document(5, "Sample report A", "Sample Report A"),
-        &out_dir,
-    );
-    write(
-        "sample-2.pdf",
-        &mut text_document(3, "Sample report B", "Sample Report B"),
-        &out_dir,
-    );
-    write(
-        "sample-images.pdf",
-        &mut image_document(2, "Image-heavy sample"),
-        &out_dir,
-    );
-    write(
-        "sample-ocr.pdf",
-        &mut scanned_document(2, "Scanned sample (no text layer)"),
-        &out_dir,
-    );
-    write(
-        "sample-scan-large.pdf",
-        &mut scanned_jpeg_document(2, "Large 300 DPI scan"),
-        &out_dir,
-    );
-    write(
-        "sample-100-pages.pdf",
-        &mut text_document(100, "Bulk sample", "Bulk Sample"),
-        &out_dir,
-    );
+    write("sample-1.pdf", &mut text_document(5, "Sample report A", "Sample Report A"), &out_dir);
+    write("sample-2.pdf", &mut text_document(3, "Sample report B", "Sample Report B"), &out_dir);
+    write("sample-images.pdf", &mut image_document(2, "Image-heavy sample"), &out_dir);
+    write("sample-ocr.pdf", &mut scanned_document(2, "Scanned sample (no text layer)"), &out_dir);
+    write("sample-scan-large.pdf", &mut scanned_jpeg_document(2, "Large 300 DPI scan"), &out_dir);
+    write("sample-100-pages.pdf", &mut text_document(100, "Bulk sample", "Bulk Sample"), &out_dir);
     println!("done");
 }

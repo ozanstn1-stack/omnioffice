@@ -7,7 +7,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { fileBaseName, uid } from "../lib/format";
-import { isAndroid, pickAndroidSaveTarget, pickOfficeFiles, publishOutputs, updatePublishedOutput, type AndroidTarget } from "../lib/mobile";
+import {
+  isAndroid,
+  pickAndroidSaveTarget,
+  pickOfficeFiles,
+  publishOutputs,
+  updatePublishedOutput,
+  type AndroidTarget,
+} from "../lib/mobile";
 import type { OfficeKind } from "../lib/office-types";
 import { openOfficePath, useOfficeTabs, type OfficeTab } from "../lib/office-store";
 import { useSettings, useToasts, reportError } from "../lib/store";
@@ -92,7 +99,11 @@ const DEFAULT_EXTENSION: Record<OfficeKind, string> = { writer: "docx", calc: "x
 function defaultExtensionFor(kind: OfficeKind): string {
   const settings = useSettings.getState().settings;
   const configured =
-    kind === "writer" ? settings.defaultWriterFormat : kind === "calc" ? settings.defaultCalcFormat : settings.defaultImpressFormat;
+    kind === "writer"
+      ? settings.defaultWriterFormat
+      : kind === "calc"
+        ? settings.defaultCalcFormat
+        : settings.defaultImpressFormat;
   return configured || DEFAULT_EXTENSION[kind];
 }
 
@@ -144,29 +155,32 @@ export function useOfficeSession(tab: OfficeTab) {
   );
 
   /** Copies the saved document to its Android destination, or explains why not. */
-  const publishAndroidResult = useCallback(async (sourcePath: string, target: AndroidTarget | null, name: string): Promise<void> => {
-    if (target) {
-      const failures = await publishOutputs([sourcePath], { file: target });
+  const publishAndroidResult = useCallback(
+    async (sourcePath: string, target: AndroidTarget | null, name: string): Promise<void> => {
+      if (target) {
+        const failures = await publishOutputs([sourcePath], { file: target });
+        if (failures.length) {
+          useToasts.getState().push({ kind: "error", title: t("errors.title"), detail: failures[0].error });
+        } else {
+          notify(t("office.saved"), name);
+        }
+        return;
+      }
+      // Later saves reuse the destination picked the first time; if this install
+      // no longer remembers it (fresh process), fall back to a new export.
+      if (await updatePublishedOutput(sourcePath)) {
+        notify(t("office.saved"), fileBaseName(sourcePath));
+        return;
+      }
+      const failures = await publishOutputs([sourcePath]);
       if (failures.length) {
         useToasts.getState().push({ kind: "error", title: t("errors.title"), detail: failures[0].error });
       } else {
-        notify(t("office.saved"), name);
+        notify(t("office.saved"), fileBaseName(sourcePath));
       }
-      return;
-    }
-    // Later saves reuse the destination picked the first time; if this install
-    // no longer remembers it (fresh process), fall back to a new export.
-    if (await updatePublishedOutput(sourcePath)) {
-      notify(t("office.saved"), fileBaseName(sourcePath));
-      return;
-    }
-    const failures = await publishOutputs([sourcePath]);
-    if (failures.length) {
-      useToasts.getState().push({ kind: "error", title: t("errors.title"), detail: failures[0].error });
-    } else {
-      notify(t("office.saved"), fileBaseName(sourcePath));
-    }
-  }, [notify, t]);
+    },
+    [notify, t],
+  );
 
   const save = useCallback(
     async function saveImpl(
@@ -187,11 +201,13 @@ export function useOfficeSession(tab: OfficeTab) {
           if (!androidTarget) return null;
           path = await scratchPath(extension);
         } else {
-          path = (await saveDialog({
-            title: `Save ${tab.title}`,
-            defaultPath: options?.defaultPath ?? suggestedName(tab, options?.extension ?? defaultExtensionFor(tab.kind)),
-            filters: FILTERS[tab.kind],
-          })) ?? undefined;
+          path =
+            (await saveDialog({
+              title: `Save ${tab.title}`,
+              defaultPath:
+                options?.defaultPath ?? suggestedName(tab, options?.extension ?? defaultExtensionFor(tab.kind)),
+              filters: FILTERS[tab.kind],
+            })) ?? undefined;
           if (!path) return null;
         }
       }
@@ -261,10 +277,14 @@ export function useOfficeSession(tab: OfficeTab) {
         if (isAndroid()) {
           await publishAndroidResult(result.path, androidTarget, androidTarget?.name ?? fileBaseName(path));
           if (result.warnings.length > 0) {
-            useToasts.getState().push({ kind: "info", title: t("office.savedWithNotes"), detail: result.warnings.join(" ") });
+            useToasts
+              .getState()
+              .push({ kind: "info", title: t("office.savedWithNotes"), detail: result.warnings.join(" ") });
           }
         } else if (result.warnings.length > 0) {
-          useToasts.getState().push({ kind: "info", title: t("office.savedWithNotes"), detail: result.warnings.join(" ") });
+          useToasts
+            .getState()
+            .push({ kind: "info", title: t("office.savedWithNotes"), detail: result.warnings.join(" ") });
         } else {
           notify(t("office.saved"), result.path);
         }
@@ -274,7 +294,9 @@ export function useOfficeSession(tab: OfficeTab) {
         if (!lossless && result.warnings.length > 0) {
           // A lossy export may have dropped something the user cares about, so
           // the recovery snapshot stays on disk until the next clean save.
-          useToasts.getState().push({ kind: "info", title: t("office.recoveryKept"), detail: t("office.recoveryKeptHint") });
+          useToasts
+            .getState()
+            .push({ kind: "info", title: t("office.recoveryKept"), detail: t("office.recoveryKeptHint") });
           return result.path;
         }
         void api.recoveryDiscard(tab.id).catch(() => undefined);
@@ -313,11 +335,12 @@ export function useOfficeSession(tab: OfficeTab) {
       if (!androidTarget) return null;
       path = await scratchPath("pdf");
     } else {
-      path = ((await saveDialog({
-        title: `Export ${tab.title} as PDF`,
-        defaultPath: `${tab.title}.pdf`,
-        filters: [{ name: "PDF", extensions: ["pdf"] }],
-      })) as string | null) ?? undefined;
+      path =
+        ((await saveDialog({
+          title: `Export ${tab.title} as PDF`,
+          defaultPath: `${tab.title}.pdf`,
+          filters: [{ name: "PDF", extensions: ["pdf"] }],
+        })) as string | null) ?? undefined;
       if (!path) return null;
     }
     setBusy(true);
@@ -345,7 +368,11 @@ export function useOfficeSession(tab: OfficeTab) {
         if (failures.length) {
           useToasts.getState().push({ kind: "error", title: t("errors.title"), detail: failures[0].error });
         } else {
-          useToasts.getState().push({ kind: "success", title: t("office.pdfExported"), detail: androidTarget?.name ?? fileBaseName(result.path) });
+          useToasts.getState().push({
+            kind: "success",
+            title: t("office.pdfExported"),
+            detail: androidTarget?.name ?? fileBaseName(result.path),
+          });
         }
       } else {
         useToasts.getState().push({ kind: "success", title: t("office.pdfExported"), detail: result.path });
@@ -468,7 +495,10 @@ export async function openIntoWorkspace(): Promise<string | null> {
     const picked = await openDialog({
       multiple: false,
       filters: [
-        { name: "Documents", extensions: ["docx", "odt", "rtf", "txt", "md", "html", "xlsx", "ods", "csv", "pptx", "odp", "oswk"] },
+        {
+          name: "Documents",
+          extensions: ["docx", "odt", "rtf", "txt", "md", "html", "xlsx", "ods", "csv", "pptx", "odp", "oswk"],
+        },
         { name: "All files", extensions: ["*"] },
       ],
     });

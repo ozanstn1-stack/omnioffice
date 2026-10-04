@@ -324,7 +324,7 @@ export const useJobs = create<JobsState>((set, get) => ({
     set((state) => ({
       jobs: state.jobs.map((job) =>
         job.id === id
-          ? { ...job, status, finishedAt: Date.now(), error: status === "failed" ? error ?? job.error : undefined }
+          ? { ...job, status, finishedAt: Date.now(), error: status === "failed" ? (error ?? job.error) : undefined }
           : job,
       ),
     }));

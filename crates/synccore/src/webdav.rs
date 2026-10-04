@@ -54,11 +54,7 @@ const PROPFIND_BODY: &str = r#"<?xml version="1.0" encoding="utf-8"?>
 /// Percent-encode set for one path segment: everything except unreserved
 /// characters (`A-Z a-z 0-9 - . _ ~`). This keeps spaces, `#`, `?`, `%` and
 /// non-ASCII characters safe inside the request URL.
-const SEGMENT_ENCODE: &AsciiSet = &NON_ALPHANUMERIC
-    .remove(b'-')
-    .remove(b'.')
-    .remove(b'_')
-    .remove(b'~');
+const SEGMENT_ENCODE: &AsciiSet = &NON_ALPHANUMERIC.remove(b'-').remove(b'.').remove(b'_').remove(b'~');
 
 /// Blocking WebDAV client. Construction validates the URL; network calls map
 /// every HTTP/auth/parse failure to [`SyncError`].
@@ -121,12 +117,7 @@ impl WebDavProvider {
             .redirect(redirect)
             .build()
             .map_err(|error| SyncError::Internal(format!("HTTP client could not be created: {error}")))?;
-        Ok(Self {
-            base_url,
-            username: username.to_string(),
-            password: password.to_string(),
-            client,
-        })
+        Ok(Self { base_url, username: username.to_string(), password: password.to_string(), client })
     }
 
     /// Ensures a remote directory chain exists (`MKCOL` each level). A 405
@@ -149,11 +140,7 @@ impl WebDavProvider {
                         "the server refused to create the remote folder (permission denied)".to_string(),
                     ))
                 }
-                409 => {
-                    return Err(SyncError::Protocol(
-                        "the parent collection is missing on the server".to_string(),
-                    ))
-                }
+                409 => return Err(SyncError::Protocol("the parent collection is missing on the server".to_string())),
                 other => return Err(http_status_error(other, &format!("MKCOL {remote_dir}"))),
             }
         }
@@ -171,10 +158,7 @@ impl WebDavProvider {
             Some(index) => &without_scheme[index..],
             None => "",
         };
-        path.split('/')
-            .filter(|segment| !segment.is_empty())
-            .map(decode_percent)
-            .collect()
+        path.split('/').filter(|segment| !segment.is_empty()).map(decode_percent).collect()
     }
 
     fn url_for(&self, segments: &[String]) -> String {
@@ -231,10 +215,7 @@ impl WebDavProvider {
         let url = self.url_for(&segments);
         let file = File::open(local)?;
         let hasher = Arc::new(Mutex::new(Sha256::new()));
-        let body = HashingReader {
-            inner: file,
-            hasher: hasher.clone(),
-        };
+        let body = HashingReader { inner: file, hasher: hasher.clone() };
         let mut request = self
             .request(reqwest::Method::PUT, &url, &[])
             .header("Content-Type", "application/octet-stream")
@@ -309,10 +290,8 @@ impl WebDavProvider {
             .parent()
             .filter(|parent| !parent.as_os_str().is_empty())
             .ok_or_else(|| SyncError::InvalidInput("the download destination has no folder".to_string()))?;
-        let name = local
-            .file_name()
-            .map(|name| name.to_string_lossy().to_string())
-            .unwrap_or_else(|| "download".to_string());
+        let name =
+            local.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_else(|| "download".to_string());
         let temp = parent.join(format!(".{name}.{}.part", uuid::Uuid::new_v4()));
         let mut file = File::create(&temp)?;
         let streamed = self.get_to_writer(path, &mut file);
@@ -432,12 +411,7 @@ impl SyncProvider for WebDavProvider {
         Ok((bytes, etag))
     }
 
-    fn put(
-        &self,
-        path: &str,
-        bytes: &[u8],
-        if_match_etag: Option<&str>,
-    ) -> Result<Option<String>, SyncError> {
+    fn put(&self, path: &str, bytes: &[u8], if_match_etag: Option<&str>) -> Result<Option<String>, SyncError> {
         if bytes.len() as u64 > MAX_TRANSFER_BYTES {
             return Err(SyncError::TooLarge(bytes.len() as u64));
         }
@@ -463,10 +437,7 @@ impl SyncProvider for WebDavProvider {
     fn delete(&self, path: &str) -> Result<(), SyncError> {
         let segments = normalize_remote_path(path)?;
         let url = self.url_for(&segments);
-        let response = self
-            .request(reqwest::Method::DELETE, &url, &[])
-            .send()
-            .map_err(network_error)?;
+        let response = self.request(reqwest::Method::DELETE, &url, &[]).send().map_err(network_error)?;
         match response.status().as_u16() {
             200 | 202 | 204 => Ok(()),
             401 | 403 | 407 => Err(SyncError::Auth("the server refused the delete".to_string())),
@@ -483,30 +454,17 @@ impl SyncProvider for WebDavProvider {
 
 /// Maps a completed PUT response. 412 is the important one: the precondition
 /// (`If-Match`) failed, which means somebody else stored a newer version.
-pub fn map_put_status(
-    status: u16,
-    path: &str,
-    etag: Option<String>,
-) -> Result<Option<String>, SyncError> {
+pub fn map_put_status(status: u16, path: &str, etag: Option<String>) -> Result<Option<String>, SyncError> {
     match status {
         200 | 201 | 204 => Ok(etag),
         412 => Err(SyncError::Conflict(format!(
             "the cloud copy of {path} changed since it was last synced (HTTP 412); resolve the conflict and try again"
         ))),
-        409 => Err(SyncError::Conflict(format!(
-            "the server reported a state conflict for {path} (HTTP 409)"
-        ))),
-        423 => Err(SyncError::Conflict(format!(
-            "the cloud copy of {path} is locked by another client (HTTP 423)"
-        ))),
-        401 | 403 | 407 => Err(SyncError::Auth(format!(
-            "the server rejected the upload of {path} (HTTP {status})"
-        ))),
+        409 => Err(SyncError::Conflict(format!("the server reported a state conflict for {path} (HTTP 409)"))),
+        423 => Err(SyncError::Conflict(format!("the cloud copy of {path} is locked by another client (HTTP 423)"))),
+        401 | 403 | 407 => Err(SyncError::Auth(format!("the server rejected the upload of {path} (HTTP {status})"))),
         404 => Err(SyncError::NotFound(path.to_string())),
-        507 => Err(SyncError::Http {
-            status,
-            message: "the WebDAV account has no free space".to_string(),
-        }),
+        507 => Err(SyncError::Http { status, message: "the WebDAV account has no free space".to_string() }),
         other => Err(http_status_error(other, &format!("PUT {path}"))),
     }
 }
@@ -516,10 +474,7 @@ fn http_status_error(status: u16, context: &str) -> SyncError {
         401 | 403 | 407 => SyncError::Auth(format!("authentication/permission failure on {context}")),
         404 => SyncError::NotFound(context.to_string()),
         423 => SyncError::Conflict(format!("{context} is locked by another client")),
-        _ => SyncError::Http {
-            status,
-            message: context.to_string(),
-        },
+        _ => SyncError::Http { status, message: context.to_string() },
     }
 }
 
@@ -536,11 +491,7 @@ fn network_error(error: reqwest::Error) -> SyncError {
 }
 
 fn header_etag(response: &reqwest::blocking::Response) -> Option<String> {
-    response
-        .headers()
-        .get(reqwest::header::ETAG)
-        .and_then(|value| value.to_str().ok())
-        .and_then(normalize_etag)
+    response.headers().get(reqwest::header::ETAG).and_then(|value| value.to_str().ok()).and_then(normalize_etag)
 }
 
 // ---------------------------------------------------------------------------
@@ -559,10 +510,7 @@ pub fn is_loopback_host(host: &str) -> bool {
     }
     // IP literals arrive without the authority brackets once the URL parser
     // has split them out; strip defensively in case a caller passes a raw host.
-    trimmed
-        .parse::<std::net::IpAddr>()
-        .map(|address| address.is_loopback())
-        .unwrap_or(false)
+    trimmed.parse::<std::net::IpAddr>().map(|address| address.is_loopback()).unwrap_or(false)
 }
 
 /// A redirect is only followed over HTTPS, or over plain HTTP when the target
@@ -601,9 +549,8 @@ pub fn normalize_base_url_with_options(url: &str, allow_insecure_http: bool) -> 
     if trimmed.chars().any(|ch| ch.is_whitespace() || ch.is_control()) {
         return Err(SyncError::InvalidInput("the WebDAV URL contains whitespace".to_string()));
     }
-    let parsed = reqwest::Url::parse(trimmed).map_err(|_| {
-        SyncError::InvalidInput("the WebDAV URL is not a valid absolute http(s) URL".to_string())
-    })?;
+    let parsed = reqwest::Url::parse(trimmed)
+        .map_err(|_| SyncError::InvalidInput("the WebDAV URL is not a valid absolute http(s) URL".to_string()))?;
     match parsed.scheme() {
         "https" => {}
         "http" => {
@@ -622,15 +569,11 @@ pub fn normalize_base_url_with_options(url: &str, allow_insecure_http: bool) -> 
             }
         }
         other => {
-            return Err(SyncError::InvalidInput(format!(
-                "the WebDAV URL must start with https:// (got {other}://)"
-            )))
+            return Err(SyncError::InvalidInput(format!("the WebDAV URL must start with https:// (got {other}://)")))
         }
     }
     if parsed.query().is_some() || parsed.fragment().is_some() {
-        return Err(SyncError::InvalidInput(
-            "the WebDAV URL must not contain a query string or fragment".to_string(),
-        ));
+        return Err(SyncError::InvalidInput("the WebDAV URL must not contain a query string or fragment".to_string()));
     }
     // Refuse credentials embedded in the URL: they would leak into error
     // strings, and the password belongs to the secret store.
@@ -677,9 +620,7 @@ pub fn normalize_remote_path(path: &str) -> Result<Vec<String>, SyncError> {
 pub fn normalize_remote_name(name: &str) -> Result<String, SyncError> {
     let trimmed = name.trim();
     if trimmed.contains('/') {
-        return Err(SyncError::InvalidInput(
-            "a remote file name must not contain path separators".to_string(),
-        ));
+        return Err(SyncError::InvalidInput("a remote file name must not contain path separators".to_string()));
     }
     validate_segment(trimmed)
 }
@@ -689,24 +630,16 @@ fn validate_segment(segment: &str) -> Result<String, SyncError> {
         return Err(SyncError::InvalidInput("empty path segment".to_string()));
     }
     if segment == "." || segment == ".." {
-        return Err(SyncError::InvalidInput(
-            "relative path segments are not allowed".to_string(),
-        ));
+        return Err(SyncError::InvalidInput("relative path segments are not allowed".to_string()));
     }
     if segment.contains('\\') {
-        return Err(SyncError::InvalidInput(
-            "backslashes are not allowed in remote paths".to_string(),
-        ));
+        return Err(SyncError::InvalidInput("backslashes are not allowed in remote paths".to_string()));
     }
     if segment.chars().any(|ch| ch.is_control()) {
-        return Err(SyncError::InvalidInput(
-            "control characters are not allowed in remote paths".to_string(),
-        ));
+        return Err(SyncError::InvalidInput("control characters are not allowed in remote paths".to_string()));
     }
     if segment.len() > MAX_SEGMENT_LEN {
-        return Err(SyncError::InvalidInput(
-            "a remote path segment is longer than 255 bytes".to_string(),
-        ));
+        return Err(SyncError::InvalidInput("a remote path segment is longer than 255 bytes".to_string()));
     }
     Ok(segment.to_string())
 }
@@ -776,9 +709,7 @@ impl XmlNode {
     }
 
     fn child(&self, name: &str) -> Option<&XmlNode> {
-        self.children
-            .iter()
-            .find(|child| child.name == name || child.local_name() == name)
+        self.children.iter().find(|child| child.name == name || child.local_name() == name)
     }
 
     fn deep_text(&self) -> String {
@@ -827,11 +758,8 @@ pub fn parse_multistatus(xml: &str, request_segments: &[String]) -> Result<Vec<R
         if path.is_empty() {
             continue;
         }
-        let decoded_segments: Vec<String> = path
-            .split('/')
-            .filter(|segment| !segment.is_empty())
-            .map(decode_percent)
-            .collect();
+        let decoded_segments: Vec<String> =
+            path.split('/').filter(|segment| !segment.is_empty()).map(decode_percent).collect();
         let Some(name) = entry_name_for(&decoded_segments, request_segments) else {
             continue;
         };
@@ -843,10 +771,8 @@ pub fn parse_multistatus(xml: &str, request_segments: &[String]) -> Result<Vec<R
             if propstat.local_name() != "propstat" {
                 continue;
             }
-            let status_ok = propstat
-                .child("status")
-                .map(|status| propstat_is_success(&status.deep_text()))
-                .unwrap_or(true);
+            let status_ok =
+                propstat.child("status").map(|status| propstat_is_success(&status.deep_text())).unwrap_or(true);
             if !status_ok {
                 continue;
             }
@@ -854,32 +780,20 @@ pub fn parse_multistatus(xml: &str, request_segments: &[String]) -> Result<Vec<R
                 props.push(prop);
             }
         }
-        let prop = |name: &str| -> Option<&XmlNode> {
-            props.iter().find_map(|prop| prop.child(name))
-        };
+        let prop = |name: &str| -> Option<&XmlNode> { props.iter().find_map(|prop| prop.child(name)) };
 
         let size = prop("getcontentlength")
             .map(|node| node.deep_text())
             .and_then(|text| text.trim().parse::<u64>().ok())
             .unwrap_or(0);
-        let etag = prop("getetag")
-            .map(|node| node.deep_text())
-            .and_then(|text| normalize_etag(&text));
+        let etag = prop("getetag").map(|node| node.deep_text()).and_then(|text| normalize_etag(&text));
         let modified = prop("getlastmodified")
             .map(|node| node.deep_text())
             .map(|text| text.trim().to_string())
             .filter(|text| !text.is_empty());
-        let is_dir = prop("resourcetype")
-            .map(|node| node.has_descendant("collection"))
-            .unwrap_or(false);
+        let is_dir = prop("resourcetype").map(|node| node.has_descendant("collection")).unwrap_or(false);
 
-        entries.push(RemoteEntry {
-            name,
-            size,
-            etag,
-            modified,
-            is_dir,
-        });
+        entries.push(RemoteEntry { name, size, etag, modified, is_dir });
     }
     Ok(entries)
 }
@@ -917,8 +831,8 @@ fn href_path(href: &str) -> String {
 fn entry_name_for(href_segments: &[String], request_segments: &[String]) -> Option<String> {
     // The href path equals or is a prefix of the request path (the collection
     // itself, or one of its ancestors): never an entry.
-    let prefix_matches = href_segments.len() <= request_segments.len()
-        && href_segments == &request_segments[..href_segments.len()];
+    let prefix_matches =
+        href_segments.len() <= request_segments.len() && href_segments == &request_segments[..href_segments.len()];
     if prefix_matches {
         return None;
     }
@@ -933,9 +847,7 @@ fn entry_name_for(href_segments: &[String], request_segments: &[String]) -> Opti
 
 fn propstat_is_success(status: &str) -> bool {
     // e.g. "HTTP/1.1 200 OK" (Apache) or "HTTP/1.1 404 Not Found".
-    let code = status
-        .split_whitespace()
-        .find_map(|token| token.parse::<u16>().ok());
+    let code = status.split_whitespace().find_map(|token| token.parse::<u16>().ok());
     matches!(code, Some(code) if (200..300).contains(&code))
 }
 
@@ -1019,9 +931,7 @@ fn parse_xml_bounded(xml: &str) -> Result<XmlNode, SyncError> {
     if stack.len() > 1 {
         // A truncated document (unclosed elements) must not be silently
         // accepted: it could hide part of a directory listing.
-        return Err(SyncError::Protocol(
-            "malformed DAV XML: the document ends with unclosed elements".to_string(),
-        ));
+        return Err(SyncError::Protocol("malformed DAV XML: the document ends with unclosed elements".to_string()));
     }
     let mut root = stack.pop().expect("root exists");
     if root.children.len() == 1 {
@@ -1033,11 +943,7 @@ fn parse_xml_bounded(xml: &str) -> Result<XmlNode, SyncError> {
 fn node_from_start(start: &BytesStart<'_>) -> Result<XmlNode, SyncError> {
     // Attributes are not needed by the DAV response logic; entity-laden
     // attribute values are therefore never even decoded.
-    Ok(XmlNode {
-        name: start.name().as_ref().to_string(),
-        text: String::new(),
-        children: Vec::new(),
-    })
+    Ok(XmlNode { name: start.name().as_ref().to_string(), text: String::new(), children: Vec::new() })
 }
 
 /// Reads a response body with a hard cap, using `std::io::Read` on the
@@ -1066,10 +972,7 @@ mod tests {
 
     #[test]
     fn base_url_validation() {
-        assert_eq!(
-            normalize_base_url("https://cloud.example.com/dav/").unwrap(),
-            "https://cloud.example.com/dav"
-        );
+        assert_eq!(normalize_base_url("https://cloud.example.com/dav/").unwrap(), "https://cloud.example.com/dav");
         assert_eq!(
             normalize_base_url_with_options("http://localhost:8080/dav", true).unwrap(),
             "http://localhost:8080/dav"
@@ -1147,10 +1050,9 @@ mod tests {
         let error = provider.test().unwrap_err();
         server.join().unwrap();
         match error {
-            SyncError::Network(message) => assert!(
-                message.contains("redirect"),
-                "the failure must be the refused redirect, got: {message}"
-            ),
+            SyncError::Network(message) => {
+                assert!(message.contains("redirect"), "the failure must be the refused redirect, got: {message}")
+            }
             other => panic!("expected Network error for the refused redirect, got {other:?}"),
         }
     }
@@ -1208,12 +1110,13 @@ mod tests {
                     let _ = stream.write_all(response.as_bytes());
                     let _ = stream.write_all(&stored);
                 } else {
-                    let _ = stream.write_all(b"HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                    let _ = stream.write_all(
+                        b"HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                    );
                 }
             }
         });
-        let provider =
-            WebDavProvider::new_with_options(&format!("http://127.0.0.1:{port}/dav"), "", "", true).unwrap();
+        let provider = WebDavProvider::new_with_options(&format!("http://127.0.0.1:{port}/dav"), "", "", true).unwrap();
         let dir = std::env::temp_dir().join(format!("pdfsak-stream-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let source = dir.join("source.oswk");
@@ -1255,10 +1158,7 @@ mod tests {
         assert_eq!(normalize_remote_name("report.oswk").unwrap(), "report.oswk");
         assert!(normalize_remote_name("a/b").is_err());
         assert!(normalize_remote_name("..").is_err());
-        assert_eq!(
-            normalize_remote_path("PDFSAK/report.oswk").unwrap(),
-            vec!["PDFSAK", "report.oswk"]
-        );
+        assert_eq!(normalize_remote_path("PDFSAK/report.oswk").unwrap(), vec!["PDFSAK", "report.oswk"]);
         assert!(normalize_remote_path("PDFSAK/").is_err());
         assert!(normalize_remote_path("").is_err());
     }
@@ -1267,10 +1167,7 @@ mod tests {
     fn url_segments_are_percent_encoded() {
         let provider = WebDavProvider::new("https://host/dav", "", "").unwrap();
         let url = provider.url_for(&["My Docs".to_string(), "Report (final) #1.oswk".to_string()]);
-        assert_eq!(
-            url,
-            "https://host/dav/My%20Docs/Report%20%28final%29%20%231.oswk"
-        );
+        assert_eq!(url, "https://host/dav/My%20Docs/Report%20%28final%29%20%231.oswk");
     }
 
     #[test]
@@ -1359,11 +1256,7 @@ mod tests {
 
     #[test]
     fn parses_apache_multistatus() {
-        let entries = parse_multistatus(
-            APACHE_MULTISTATUS,
-            &[segment("dav"), segment("PDFSAK")],
-        )
-        .unwrap();
+        let entries = parse_multistatus(APACHE_MULTISTATUS, &[segment("dav"), segment("PDFSAK")]).unwrap();
         // The collection itself is skipped; the sub-collection is returned as
         // a directory entry (callers decide whether to care).
         assert_eq!(entries.len(), 3);
@@ -1501,9 +1394,7 @@ mod tests {
             assert_eq!(put, got);
         }
         // A conditional write against a stale etag must be refused.
-        let conflict = provider
-            .put(path, b"overwrite attempt", Some("definitely-not-the-current-etag"))
-            .unwrap_err();
+        let conflict = provider.put(path, b"overwrite attempt", Some("definitely-not-the-current-etag")).unwrap_err();
         assert!(matches!(conflict, SyncError::Conflict(_)), "expected 412 conflict");
         // The original bytes must still be there.
         let (bytes, _) = provider.get(path).unwrap();

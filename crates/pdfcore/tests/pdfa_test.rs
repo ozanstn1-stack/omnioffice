@@ -31,21 +31,14 @@ fn check_message(report: &PdfaReport, id: &str) -> String {
 /// the descriptor carries a font program.
 fn embed_font_program(doc: &mut Document) {
     let font_id = find_font_id(doc);
-    let program = doc.add_object(Object::Stream(Stream::new(
-        dictionary! { "Length1" => 64i64 },
-        vec![0u8; 64],
-    )));
+    let program = doc.add_object(Object::Stream(Stream::new(dictionary! { "Length1" => 64i64 }, vec![0u8; 64])));
     let descriptor = doc.add_object(Object::Dictionary(dictionary! {
         "Type" => "FontDescriptor",
         "FontName" => "Helvetica",
         "Flags" => 32i64,
         "FontFile2" => Object::Reference(program),
     }));
-    doc.get_object_mut(font_id)
-        .unwrap()
-        .as_dict_mut()
-        .unwrap()
-        .set("FontDescriptor", Object::Reference(descriptor));
+    doc.get_object_mut(font_id).unwrap().as_dict_mut().unwrap().set("FontDescriptor", Object::Reference(descriptor));
 }
 
 /// The fixture's only font object (the synthetic documents give each page one
@@ -77,11 +70,7 @@ fn find_font_by_base(doc: &Document, base_prefix: &str) -> (ObjectId, Dictionary
 }
 
 fn font_descriptor(doc: &Document, font: &Dictionary) -> Dictionary {
-    let id = font
-        .get(b"FontDescriptor")
-        .expect("font descriptor")
-        .as_reference()
-        .expect("indirect descriptor");
+    let id = font.get(b"FontDescriptor").expect("font descriptor").as_reference().expect("indirect descriptor");
     doc.get_dictionary(id).expect("descriptor dictionary").clone()
 }
 
@@ -100,10 +89,7 @@ fn set_explicit_widths(doc: &mut Document, widths: &[i64]) {
     let font = doc.get_dictionary_mut(font_id).expect("font dict");
     font.set("FirstChar", 32i64);
     font.set("LastChar", (32 + widths.len() - 1) as i64);
-    font.set(
-        "Widths",
-        widths.iter().map(|value| Object::Integer(*value)).collect::<Vec<_>>(),
-    );
+    font.set("Widths", widths.iter().map(|value| Object::Integer(*value)).collect::<Vec<_>>());
 }
 
 fn set_xmp(doc: &mut Document, level: PdfaLevel) {
@@ -128,19 +114,15 @@ fn set_xmp(doc: &mut Document, level: PdfaLevel) {
 /// A complete output intent, including the `/DestOutputProfile` ICC stream the
 /// upgraded validator requires.
 fn add_output_intent(doc: &mut Document) {
-    let profile = doc.add_object(Object::Stream(Stream::new(
-        dictionary! { "N" => 3i64 },
-        pdfcore::pdfa::srgb_v4_icc_profile(),
-    )));
+    let profile =
+        doc.add_object(Object::Stream(Stream::new(dictionary! { "N" => 3i64 }, pdfcore::pdfa::srgb_v4_icc_profile())));
     let id = doc.add_object(Object::Dictionary(dictionary! {
         "Type" => "OutputIntent",
         "S" => "GTS_PDFA1",
         "OutputConditionIdentifier" => Object::String(b"sRGB".to_vec(), StringFormat::Literal),
         "DestOutputProfile" => Object::Reference(profile),
     }));
-    doc.catalog_mut()
-        .unwrap()
-        .set("OutputIntents", Object::Array(vec![Object::Reference(id)]));
+    doc.catalog_mut().unwrap().set("OutputIntents", Object::Array(vec![Object::Reference(id)]));
 }
 
 fn add_trailer_id(doc: &mut Document) {
@@ -265,14 +247,7 @@ fn pdfa_conversion_embeds_missing_fonts_and_writes_xmp() {
     let source = dir.path("plain.pdf");
     write_doc(&mut build_text_doc(1, "Plain", "Plain document"), &source);
     let output = dir.path("converted.pdf");
-    let report = convert_pdfa(
-        &source,
-        &output,
-        PdfaLevel::A2b,
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .expect("convert");
+    let report = convert_pdfa(&source, &output, PdfaLevel::A2b, &no_progress, &CancelToken::new()).expect("convert");
 
     assert!(report.converted, "the report must say it came from a conversion");
     assert!(
@@ -312,11 +287,7 @@ fn pdfa_conversion_embeds_missing_fonts_and_writes_xmp() {
     );
     assert_eq!(font.get(b"Encoding").unwrap().as_name().unwrap(), b"WinAnsiEncoding");
     let descriptor = font_descriptor(&converted, &font);
-    let program_id = descriptor
-        .get(b"FontFile2")
-        .expect("FontFile2")
-        .as_reference()
-        .expect("indirect program");
+    let program_id = descriptor.get(b"FontFile2").expect("FontFile2").as_reference().expect("indirect program");
     let stream = converted.get_object(program_id).unwrap().as_stream().unwrap();
     let bytes = stream.decompressed_content().unwrap();
     assert!(bytes.len() > 100_000, "the full Liberation face was embedded ({} bytes)", bytes.len());
@@ -327,13 +298,7 @@ fn pdfa_conversion_embeds_missing_fonts_and_writes_xmp() {
     );
 
     // XMP and metadata survive, as they did before font embedding landed.
-    let metadata_id = converted
-        .catalog()
-        .unwrap()
-        .get(b"Metadata")
-        .expect("metadata")
-        .as_reference()
-        .unwrap();
+    let metadata_id = converted.catalog().unwrap().get(b"Metadata").expect("metadata").as_reference().unwrap();
     let stream = converted.get_object(metadata_id).unwrap().as_stream().unwrap();
     let xmp = String::from_utf8_lossy(&stream.decompressed_content().unwrap()).to_string();
     assert!(xmp.contains("<pdfaid:part>2</pdfaid:part>"), "xmp was: {xmp}");
@@ -384,9 +349,7 @@ fn pdfa_times_falls_back_to_pt_sans_with_a_warning() {
     let mut doc = build_text_doc(1, "Times", "Times sample");
     {
         let font_id = find_font_id(&doc);
-        doc.get_dictionary_mut(font_id)
-            .unwrap()
-            .set("BaseFont", "Times-Roman");
+        doc.get_dictionary_mut(font_id).unwrap().set("BaseFont", "Times-Roman");
     }
     let mut source = Vec::new();
     doc.save_to(&mut source).expect("save source bytes");
@@ -396,10 +359,7 @@ fn pdfa_times_falls_back_to_pt_sans_with_a_warning() {
     assert_eq!(entry.substitute.as_deref(), Some("PTSans-Regular"));
     assert_eq!(entry.metric_compatible, Some(false), "PT Sans is not metric-compatible");
     let warning = entry.warning.as_deref().unwrap_or_default();
-    assert!(
-        warning.contains("not metric-compatible"),
-        "the report must warn about the metric mismatch: {warning}"
-    );
+    assert!(warning.contains("not metric-compatible"), "the report must warn about the metric mismatch: {warning}");
 }
 
 #[test]
@@ -425,14 +385,7 @@ fn pdfa_type0_font_is_skipped_and_validation_stays_honest() {
     let source = dir.path("cid.pdf");
     write_doc(&mut doc, &source);
     let output = dir.path("cid-converted.pdf");
-    let report = convert_pdfa(
-        &source,
-        &output,
-        PdfaLevel::A2b,
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .expect("convert");
+    let report = convert_pdfa(&source, &output, PdfaLevel::A2b, &no_progress, &CancelToken::new()).expect("convert");
 
     assert!(!report.valid, "an unembeddable CID font must keep the conversion honest");
     assert_eq!(check_status(&report, "pdfa.fonts-embedded"), "fail");
@@ -491,25 +444,15 @@ fn pdfa_converted_output_intent_carries_an_n3_icc_profile() {
     let source = dir.path("icc.pdf");
     write_doc(&mut build_text_doc(1, "ICC", "ICC sample"), &source);
     let output = dir.path("icc-converted.pdf");
-    convert_pdfa(&source, &output, PdfaLevel::A2b, &no_progress, &CancelToken::new())
-        .expect("convert");
+    convert_pdfa(&source, &output, PdfaLevel::A2b, &no_progress, &CancelToken::new()).expect("convert");
 
     let converted = Document::load(&output).expect("reopen converted file");
-    let intents = converted
-        .catalog()
-        .unwrap()
-        .get(b"OutputIntents")
-        .expect("output intents")
-        .as_array()
-        .unwrap()
-        .clone();
+    let intents =
+        converted.catalog().unwrap().get(b"OutputIntents").expect("output intents").as_array().unwrap().clone();
     let intent = decoded_dict(&converted, intents.first().expect("one intent"));
     assert_eq!(intent.get(b"S").unwrap().as_name().unwrap(), b"GTS_PDFA1");
-    let profile_id = intent
-        .get(b"DestOutputProfile")
-        .expect("DestOutputProfile")
-        .as_reference()
-        .expect("indirect ICC stream");
+    let profile_id =
+        intent.get(b"DestOutputProfile").expect("DestOutputProfile").as_reference().expect("indirect ICC stream");
     let stream = converted.get_object(profile_id).unwrap().as_stream().unwrap();
     assert_eq!(stream.dict.get(b"N").unwrap().as_i64().unwrap(), 3, "/N must be 3 for RGB");
     let bytes = stream.decompressed_content().unwrap();
@@ -569,9 +512,7 @@ fn pdfa_output_intent_without_a_profile_is_reported_exactly() {
         "S" => "GTS_PDFA1",
         "OutputConditionIdentifier" => Object::String(b"sRGB".to_vec(), StringFormat::Literal),
     }));
-    doc.catalog_mut()
-        .unwrap()
-        .set("OutputIntents", Object::Array(vec![Object::Reference(id)]));
+    doc.catalog_mut().unwrap().set("OutputIntents", Object::Array(vec![Object::Reference(id)]));
     let path = dir.path("no-profile.pdf");
     write_doc(&mut doc, &path);
 

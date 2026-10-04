@@ -209,10 +209,7 @@ export interface AndroidTarget {
 }
 
 /** Picks a destination file (SAF "save as") for a single output. */
-export async function pickAndroidSaveTarget(
-  defaultName: string,
-  mimeType?: string,
-): Promise<AndroidTarget | null> {
+export async function pickAndroidSaveTarget(defaultName: string, mimeType?: string): Promise<AndroidTarget | null> {
   const uri = await AndroidFs.showSaveFilePicker(defaultName, mimeType ?? mimeForName(defaultName));
   if (!uri) return null;
   const name = await AndroidFs.getName(uri).catch(() => defaultName);

@@ -21,6 +21,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Trash2,
+  Wrench,
 } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { errorMessage, useToasts } from "../lib/store";
@@ -55,7 +56,7 @@ import {
 import type { PdfInfo } from "../lib/types";
 import { isAndroid, pickAndroidSaveTarget, publishOutputs, type AndroidTarget } from "../lib/mobile";
 
-type StudioTab = "sanitize" | "flatten" | "pdfa" | "signatures" | "objects";
+type StudioTab = "sanitize" | "repair" | "flatten" | "pdfa" | "signatures" | "objects";
 
 /**
  * The page geometry the PDF Studio overlay needs. Mirroring `render::PageGeometry`
@@ -212,6 +213,13 @@ interface FlattenReport {
   warnings: string[];
 }
 
+/** Result of the qpdf-backed repair/linearize commands (`RepairReport` in Rust). */
+interface RepairReport {
+  output: string;
+  pages: number;
+  warnings: string[];
+}
+
 interface PdfaCheck {
   id: string;
   level: string;
@@ -246,6 +254,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
   const [running, setRunning] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressEvent | null>(null);
   const [sanitizeReport, setSanitizeReport] = useState<SanitizeReport | null>(null);
+  const [repairReport, setRepairReport] = useState<RepairReport | null>(null);
   const [flattenReport, setFlattenReport] = useState<FlattenReport | null>(null);
   const [pdfaReport, setPdfaReport] = useState<PdfaReport | null>(null);
 
@@ -339,6 +348,24 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
       toast("success", t("studio.sanitizeDone"));
     }, "studio-sanitize");
 
+  const runRepair = () =>
+    run(async () => {
+      const report = await invokeTracked<RepairReport>("pdf_repair", {
+        request: { input, jobId: "studio-repair" },
+      });
+      setRepairReport(report);
+      toast("success", t("studio.repairDone"));
+    }, "studio-repair");
+
+  const runLinearize = () =>
+    run(async () => {
+      const report = await invokeTracked<RepairReport>("pdf_linearize", {
+        request: { input, jobId: "studio-linearize" },
+      });
+      setRepairReport(report);
+      toast("success", t("studio.linearizeDone"));
+    }, "studio-linearize");
+
   const runFlatten = () =>
     run(async () => {
       const report = await invokeTracked<FlattenReport>("flatten_pdf", {
@@ -356,7 +383,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
 
   const runConvert = () =>
     run(async () => {
-      const report = await invokeTracked<PdfaReport>("pdfa_convert", { request: { input, level, jobId: "studio-pdfa" } });
+      const report = await invokeTracked<PdfaReport>("pdfa_convert", {
+        request: { input, level, jobId: "studio-pdfa" },
+      });
       setPdfaReport(report);
       toast(report.valid ? "success" : "error", report.valid ? t("studio.pdfaValid") : t("studio.pdfaStillFailing"));
     }, "studio-pdfa");
@@ -832,6 +861,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
 
   const tabs: { id: StudioTab; label: string; icon: React.ReactElement }[] = [
     { id: "sanitize", label: t("studio.sanitize"), icon: <ShieldAlert size={14} /> },
+    { id: "repair", label: t("studio.repair"), icon: <Wrench size={14} /> },
     { id: "flatten", label: t("studio.flatten"), icon: <Layers size={14} /> },
     { id: "pdfa", label: t("studio.pdfa"), icon: <FileCheck2 size={14} /> },
     { id: "signatures", label: t("studio.signatures"), icon: <PenLine size={14} /> },
@@ -997,6 +1027,46 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                 </p>
               ))}
               <p className="muted small">{t("studio.sanitizeVerify")}</p>
+            </div>
+          ) : null}
+        </Card>
+      ) : null}
+
+      {tab === "repair" ? (
+        <Card>
+          <strong>{t("studio.repair")}</strong>
+          <p className="muted small">{t("studio.repairHint")}</p>
+          <div className="row">
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!input || running !== null}
+              onClick={() => void runRepair()}
+            >
+              {t("studio.repairRun")}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={!input || running !== null}
+              onClick={() => void runLinearize()}
+            >
+              {t("studio.linearizeRun")}
+            </button>
+          </div>
+          {repairReport ? (
+            <div className="stack" style={{ marginTop: 10 }}>
+              <div className="row">
+                <Badge tone="ok">
+                  {t("studio.repairPages")}: {repairReport.pages}
+                </Badge>
+                <code className="break-all">{repairReport.output}</code>
+              </div>
+              {repairReport.warnings.map((warning, index) => (
+                <p key={index} className="muted small">
+                  {warning}
+                </p>
+              ))}
             </div>
           ) : null}
         </Card>

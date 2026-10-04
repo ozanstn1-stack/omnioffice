@@ -192,13 +192,8 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
     );
   };
 
-
   return (
-    <Screen
-      title={t("nav.redact")}
-      subtitle={t("redact.subtitle")}
-      actions={<Eraser size={18} className="muted" />}
-    >
+    <Screen title={t("nav.redact")} subtitle={t("redact.subtitle")} actions={<Eraser size={18} className="muted" />}>
       <TwoColumn
         main={
           !session.primary ? (
@@ -206,7 +201,12 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
           ) : (
             <>
               <OptionCard>
-                <FileList files={session.files} onRemove={session.removeFile} onAdd={session.pickFiles} addLabel={t("common.addPdf")} />
+                <FileList
+                  files={session.files}
+                  onRemove={session.removeFile}
+                  onAdd={session.pickFiles}
+                  addLabel={t("common.addPdf")}
+                />
               </OptionCard>
               {session.info ? (
                 <Card className="p-4">
@@ -266,7 +266,11 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
                     </button>
                   }
                 >
-                  {scanError ? <p className="text-xs" style={{ color: "var(--danger)" }}>{scanError}</p> : null}
+                  {scanError ? (
+                    <p className="text-xs" style={{ color: "var(--danger)" }}>
+                      {scanError}
+                    </p>
+                  ) : null}
                   {matches.length === 0 ? (
                     <p className="text-xs muted">{detected ? t("redact.noneFound") : t("redact.scanHint")}</p>
                   ) : (
@@ -279,11 +283,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
                             className="flex items-center gap-2 text-xs"
                             style={{ cursor: "pointer" }}
                           >
-                            <input
-                              type="checkbox"
-                              checked={included}
-                              onChange={() => toggleMatch(match, index)}
-                            />
+                            <input type="checkbox" checked={included} onChange={() => toggleMatch(match, index)} />
                             <Badge>{kindLabel(t, match.kind)}</Badge>
                             <span className="truncate" style={{ color: "var(--text-1)" }}>
                               {match.text}
@@ -311,7 +311,12 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
                 <ShieldCheck size={14} />
                 {t("redact.removesText")}
               </div>
-              <button className="btn btn-sm self-start" type="button" onClick={() => void scan()} disabled={!session.primary || detecting}>
+              <button
+                className="btn btn-sm self-start"
+                type="button"
+                onClick={() => void scan()}
+                disabled={!session.primary || detecting}
+              >
                 {detecting ? <Spinner size={13} /> : <Eye size={13} />} {t("redact.scan")}
               </button>
               <Toggle checked={autoAdd} onChange={setAutoAdd} label={t("redact.autoAdd")} />
@@ -321,7 +326,13 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
                     type="color"
                     value={options.fill}
                     onChange={(event) => patch({ fill: event.target.value })}
-                    style={{ width: 34, height: 28, border: "1px solid var(--border)", borderRadius: 6, background: "none" }}
+                    style={{
+                      width: 34,
+                      height: 28,
+                      border: "1px solid var(--border)",
+                      borderRadius: 6,
+                      background: "none",
+                    }}
                   />
                   <span className="text-xs muted">{options.fill}</span>
                 </div>
@@ -336,11 +347,23 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
                   ]}
                 />
               </Field>
-              <p className="text-xs muted">{options.images === "obscure" ? t("redact.imageObscureHint") : t("redact.imageRemoveHint")}</p>
+              <p className="text-xs muted">
+                {options.images === "obscure" ? t("redact.imageObscureHint") : t("redact.imageRemoveHint")}
+              </p>
               <Field label={t("redact.padding")}>
-                <Slider value={options.paddingPt} min={0} max={6} step={0.5} onChange={(value) => patch({ paddingPt: value })} />
+                <Slider
+                  value={options.paddingPt}
+                  min={0}
+                  max={6}
+                  step={0.5}
+                  onChange={(value) => patch({ paddingPt: value })}
+                />
               </Field>
-              <Toggle checked={options.removeMetadata} onChange={(value) => patch({ removeMetadata: value })} label={t("redact.stripMetadata")} />
+              <Toggle
+                checked={options.removeMetadata}
+                onChange={(value) => patch({ removeMetadata: value })}
+                label={t("redact.stripMetadata")}
+              />
               {boxes.length ? (
                 <div className="flex items-center justify-between text-xs">
                   <span className="muted">

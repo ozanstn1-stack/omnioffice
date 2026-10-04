@@ -71,6 +71,11 @@ const invoke = vi.fn(async (command: string) => {
       return { filled: 1, skipped: [], warnings: [] };
     case "pdf_edit_objects":
       return { edited: 1, deleted: 0, warnings: [] };
+    // qpdf-backed repair/linearize (camelCase RepairReport).
+    case "pdf_repair":
+      return { output: "C:/a-repaired.pdf", pages: 1, warnings: [] };
+    case "pdf_linearize":
+      return { output: "C:/a-linearized.pdf", pages: 1, warnings: [] };
     default:
       return null;
   }
@@ -145,7 +150,15 @@ import inspectionFixture from "../../crates/pdfcore/tests/fixtures/inspection-sa
 import { Inspect } from "./Inspect";
 import { Compare } from "./Compare";
 import { Redact } from "./Redact";
-import { Reader, clampReaderZoom, doubleTapZoom, pinchZoomValue, rememberPreview, reusablePreview, MAX_PREVIEW_CACHE_ENTRIES } from "./Reader";
+import {
+  Reader,
+  clampReaderZoom,
+  doubleTapZoom,
+  pinchZoomValue,
+  rememberPreview,
+  reusablePreview,
+  MAX_PREVIEW_CACHE_ENTRIES,
+} from "./Reader";
 import { previewRasterWidth } from "../lib/format";
 import { PdfStudio, displayDeltaToPage, displayRectToPageRect, pageRectToDisplayRect } from "./PdfStudio";
 
@@ -263,6 +276,35 @@ describe("PDF Studio Forms & objects", () => {
       expect(invoke.mock.calls.some(([name]) => name === "pdf_validate_form")).toBe(true);
     });
     expect(await screen.findByText(/maximum length/i)).toBeInTheDocument();
+  });
+});
+
+describe("PDF Studio repair tab", () => {
+  beforeEach(() => {
+    invoke.mockClear();
+  });
+
+  it("sends repair and linearize requests with their studio job ids", async () => {
+    const user = userEvent.setup();
+    render(<PdfStudio {...props} />);
+    await user.click(screen.getByRole("button", { name: /^repair$/i }));
+    await user.click(screen.getByRole("button", { name: /repair file/i }));
+    await waitFor(() => {
+      const calls = invoke.mock.calls.filter(([name]) => name === "pdf_repair") as unknown as [
+        string,
+        { request: { input: string; jobId: string } },
+      ][];
+      expect(calls.length).toBeGreaterThan(0);
+      expect(calls[0][1].request).toMatchObject({ input: "C:/a.pdf", jobId: "studio-repair" });
+    });
+    // The report from the backend is rendered, which proves the wire fields
+    // (output/pages/warnings) are read.
+    expect(await screen.findByText("C:/a-repaired.pdf")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /fast web view/i }));
+    await waitFor(() => {
+      expect(invoke.mock.calls.some(([name]) => name === "pdf_linearize")).toBe(true);
+    });
+    expect(await screen.findByText("C:/a-linearized.pdf")).toBeInTheDocument();
   });
 });
 

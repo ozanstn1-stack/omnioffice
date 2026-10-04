@@ -15,7 +15,20 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { Badge, Button, Card, Checkbox, EmptyState, Field, IconButton, Modal, NumberInput, Spinner, TextInput, Toggle } from "../components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  EmptyState,
+  Field,
+  IconButton,
+  Modal,
+  NumberInput,
+  Spinner,
+  TextInput,
+  Toggle,
+} from "../components/ui";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { errorMessage, useToasts } from "../lib/store";
@@ -113,7 +126,10 @@ const DEFAULT_CONFIG: VaultConfig = {
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 py-1 border-b last:border-0" style={{ borderColor: "var(--border)" }}>
+    <div
+      className="flex items-baseline justify-between gap-3 py-1 border-b last:border-0"
+      style={{ borderColor: "var(--border)" }}
+    >
       <span className="text-xs muted">{label}</span>
       <span className="text-xs text-right break-words" style={{ color: "var(--text-1)" }}>
         {value}
@@ -129,7 +145,10 @@ function Snippet({ text }: { text: string }) {
     <span className="block text-[13px] leading-snug" style={{ color: "var(--text-1)" }}>
       {parts.map((part, index) =>
         part.startsWith("<<") && part.endsWith(">>") ? (
-          <mark key={index} style={{ background: "var(--accent-weak)", color: "var(--accent)", borderRadius: 3, padding: "0 2px" }}>
+          <mark
+            key={index}
+            style={{ background: "var(--accent-weak)", color: "var(--accent)", borderRadius: 3, padding: "0 2px" }}
+          >
             {part.slice(2, -2)}
           </mark>
         ) : (
@@ -140,7 +159,15 @@ function Snippet({ text }: { text: string }) {
   );
 }
 
-function HitRow({ hit, active, onSelect }: { hit: VaultSearchHit; active: boolean; onSelect: (hit: VaultSearchHit) => void }) {
+function HitRow({
+  hit,
+  active,
+  onSelect,
+}: {
+  hit: VaultSearchHit;
+  active: boolean;
+  onSelect: (hit: VaultSearchHit) => void;
+}) {
   const t = useT();
   return (
     <button
@@ -207,7 +234,8 @@ export function Vault() {
   const previewId = useRef("");
 
   const busy = scanning || Boolean(status?.scanning);
-  const percent = progress && progress.total > 0 ? Math.min(100, Math.round((progress.current / progress.total) * 100)) : null;
+  const percent =
+    progress && progress.total > 0 ? Math.min(100, Math.round((progress.current / progress.total) * 100)) : null;
   // The import flow is Android's replacement for folder selection; the
   // backend confirms both capabilities, the local probe keeps an older
   // backend usable.
@@ -259,7 +287,9 @@ export function Vault() {
     // Android has no browsable folder picker; the button is hidden there, and
     // this guard keeps the handler honest if it is ever wired elsewhere.
     if (!canScanFolders) return;
-    const picked = await openDialog({ directory: true, multiple: false, title: t("vault.addFolder") }).catch(() => null);
+    const picked = await openDialog({ directory: true, multiple: false, title: t("vault.addFolder") }).catch(
+      () => null,
+    );
     if (!picked) return;
     const path = String(Array.isArray(picked) ? picked[0] : picked);
     if (!path || config.folders.some((folder) => folder.toLowerCase() === path.toLowerCase())) return;
@@ -363,7 +393,10 @@ export function Vault() {
         exact,
         fuzzy,
         phrase,
-        extensions: extensions.split(/[\s,;]+/).map((value) => value.trim()).filter(Boolean),
+        extensions: extensions
+          .split(/[\s,;]+/)
+          .map((value) => value.trim())
+          .filter(Boolean),
         modifiedAfter: modifiedAfter || null,
         modifiedBefore: modifiedBefore || null,
         folder: folderFilter.trim() || null,
@@ -521,7 +554,10 @@ export function Vault() {
                 </p>
               ) : null}
               {status ? (
-                <div className="flex items-start justify-between gap-3 border-t pt-3" style={{ borderColor: "var(--border)" }}>
+                <div
+                  className="flex items-start justify-between gap-3 border-t pt-3"
+                  style={{ borderColor: "var(--border)" }}
+                >
                   <div>
                     <p className="text-[13px] font-medium">{t("vault.clearTitle")}</p>
                     <p className="text-xs muted">{t("vault.clearHint")}</p>
@@ -582,10 +618,18 @@ export function Vault() {
                     />
                   </Field>
                   <Field label={t("vault.modifiedAfter")}>
-                    <TextInput type="date" value={modifiedAfter} onChange={(event) => setModifiedAfter(event.target.value)} />
+                    <TextInput
+                      type="date"
+                      value={modifiedAfter}
+                      onChange={(event) => setModifiedAfter(event.target.value)}
+                    />
                   </Field>
                   <Field label={t("vault.modifiedBefore")}>
-                    <TextInput type="date" value={modifiedBefore} onChange={(event) => setModifiedBefore(event.target.value)} />
+                    <TextInput
+                      type="date"
+                      value={modifiedBefore}
+                      onChange={(event) => setModifiedBefore(event.target.value)}
+                    />
                   </Field>
                   <Field label={t("vault.folderFilter")}>
                     <TextInput
@@ -634,7 +678,12 @@ export function Vault() {
                   </div>
                   <div className="flex flex-col gap-2">
                     {result.hits.map((entry) => (
-                      <HitRow key={entry.documentId} hit={entry} active={hit?.documentId === entry.documentId} onSelect={(next) => void selectHit(next)} />
+                      <HitRow
+                        key={entry.documentId}
+                        hit={entry}
+                        active={hit?.documentId === entry.documentId}
+                        onSelect={(next) => void selectHit(next)}
+                      />
                     ))}
                   </div>
                 </Card>
@@ -642,7 +691,11 @@ export function Vault() {
                 <EmptyState icon={<Search size={22} />} title={t("vault.noResults")} />
               )
             ) : !searchError ? (
-              <EmptyState icon={<Search size={22} />} title={t("vault.searchEmpty")} hint={t("vault.searchEmptyHint")} />
+              <EmptyState
+                icon={<Search size={22} />}
+                title={t("vault.searchEmpty")}
+                hint={t("vault.searchEmptyHint")}
+              />
             ) : null}
 
             {hit ? (
@@ -778,7 +831,12 @@ export function Vault() {
               <Button variant="ghost" onClick={() => setClearOpen(false)} disabled={clearing}>
                 {t("common.cancel")}
               </Button>
-              <Button variant="danger" icon={clearing ? <Spinner size={14} /> : <Trash2 size={14} />} onClick={() => void clearVault()} disabled={clearing}>
+              <Button
+                variant="danger"
+                icon={clearing ? <Spinner size={14} /> : <Trash2 size={14} />}
+                onClick={() => void clearVault()}
+                disabled={clearing}
+              >
                 {t("vault.clearAction")}
               </Button>
             </>
@@ -787,7 +845,11 @@ export function Vault() {
           <p className="text-[13px] muted">{t("vault.clearConfirmBody")}</p>
           {android ? (
             <label className="checkbox mt-3">
-              <input type="checkbox" checked={deleteImports} onChange={(event) => setDeleteImports(event.target.checked)} />
+              <input
+                type="checkbox"
+                checked={deleteImports}
+                onChange={(event) => setDeleteImports(event.target.checked)}
+              />
               <span>{t("vault.deleteImports")}</span>
             </label>
           ) : null}

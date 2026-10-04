@@ -133,7 +133,20 @@ export interface RevisionMark {
 
 /** A resolved document field (page number, cross reference, date, ...). */
 export interface FieldRef {
-  kind: "page" | "pages" | "date" | "time" | "title" | "author" | "ref" | "refPage" | "footnote" | "bookmark" | "figure" | "table" | string;
+  kind:
+    | "page"
+    | "pages"
+    | "date"
+    | "time"
+    | "title"
+    | "author"
+    | "ref"
+    | "refPage"
+    | "footnote"
+    | "bookmark"
+    | "figure"
+    | "table"
+    | string;
   target: string;
   cached: string;
 }
@@ -771,7 +784,16 @@ export function uid(): string {
 }
 
 export function emptyMetadata(): DocMetadata {
-  return { title: "", author: "", subject: "", keywords: "", creator: "", lastModifiedBy: "", created: "", modified: "" };
+  return {
+    title: "",
+    author: "",
+    subject: "",
+    keywords: "",
+    creator: "",
+    lastModifiedBy: "",
+    created: "",
+    modified: "",
+  };
 }
 
 export const PLATFORM_FONT = "'Segoe UI', 'PT Sans', Calibri, sans-serif";
@@ -804,12 +826,74 @@ export function defaultStyles(): ParaStyle[] {
   });
   return [
     style({ id: "Normal", name: "Normal", lineSpacing: 1.15, spaceAfterPt: 8 }),
-    style({ id: "Title", name: "Title", font: "Calibri Light", sizePt: 28, bold: true, color: "#0f172a", spaceAfterPt: 6, next: "Subtitle" }),
-    style({ id: "Subtitle", name: "Subtitle", sizePt: 15, italic: true, color: "#475569", spaceAfterPt: 14, next: "Normal" }),
-    style({ id: "Heading1", name: "Heading 1", font: "Calibri Light", sizePt: 20, bold: true, color: "#1d4ed8", spaceBeforePt: 16, spaceAfterPt: 4, outlineLevel: 0, keepWithNext: true, next: "Normal" }),
-    style({ id: "Heading2", name: "Heading 2", font: "Calibri Light", sizePt: 16, bold: true, color: "#334155", spaceBeforePt: 12, spaceAfterPt: 4, outlineLevel: 1, keepWithNext: true, next: "Normal" }),
-    style({ id: "Heading3", name: "Heading 3", font: "Calibri Light", sizePt: 13, bold: true, color: "#334155", spaceBeforePt: 12, spaceAfterPt: 4, outlineLevel: 2, keepWithNext: true, next: "Normal" }),
-    style({ id: "Quote", name: "Quote", italic: true, color: "#334155", indentLeftPt: 24, indentRightPt: 24, spaceBeforePt: 8, spaceAfterPt: 8 }),
+    style({
+      id: "Title",
+      name: "Title",
+      font: "Calibri Light",
+      sizePt: 28,
+      bold: true,
+      color: "#0f172a",
+      spaceAfterPt: 6,
+      next: "Subtitle",
+    }),
+    style({
+      id: "Subtitle",
+      name: "Subtitle",
+      sizePt: 15,
+      italic: true,
+      color: "#475569",
+      spaceAfterPt: 14,
+      next: "Normal",
+    }),
+    style({
+      id: "Heading1",
+      name: "Heading 1",
+      font: "Calibri Light",
+      sizePt: 20,
+      bold: true,
+      color: "#1d4ed8",
+      spaceBeforePt: 16,
+      spaceAfterPt: 4,
+      outlineLevel: 0,
+      keepWithNext: true,
+      next: "Normal",
+    }),
+    style({
+      id: "Heading2",
+      name: "Heading 2",
+      font: "Calibri Light",
+      sizePt: 16,
+      bold: true,
+      color: "#334155",
+      spaceBeforePt: 12,
+      spaceAfterPt: 4,
+      outlineLevel: 1,
+      keepWithNext: true,
+      next: "Normal",
+    }),
+    style({
+      id: "Heading3",
+      name: "Heading 3",
+      font: "Calibri Light",
+      sizePt: 13,
+      bold: true,
+      color: "#334155",
+      spaceBeforePt: 12,
+      spaceAfterPt: 4,
+      outlineLevel: 2,
+      keepWithNext: true,
+      next: "Normal",
+    }),
+    style({
+      id: "Quote",
+      name: "Quote",
+      italic: true,
+      color: "#334155",
+      indentLeftPt: 24,
+      indentRightPt: 24,
+      spaceBeforePt: 8,
+      spaceAfterPt: 8,
+    }),
     style({ id: "Caption", name: "Caption", sizePt: 9.5, italic: true, align: "center", color: "#64748b" }),
     style({ id: "Code", name: "Code", font: "Consolas", sizePt: 10, spaceAfterPt: 0 }),
   ];
@@ -1011,7 +1095,20 @@ export function newWorkbook(title = "Untitled spreadsheet"): Workbook {
 
 export function newTextFrame(text: string, sizePt = 18): TextFrame {
   return {
-    paragraphs: [{ text, level: 0, bold: false, italic: false, underline: false, sizePt, color: null, align: "left", bullet: false, runs: [] }],
+    paragraphs: [
+      {
+        text,
+        level: 0,
+        bold: false,
+        italic: false,
+        underline: false,
+        sizePt,
+        color: null,
+        align: "left",
+        bullet: false,
+        runs: [],
+      },
+    ],
     valign: "top",
     font: null,
     sizePt,
@@ -1032,7 +1129,14 @@ export function newSlideObject(kind: string, x: number, y: number, w: number, h:
     z: 1,
     text: null,
     image: null,
-    style: { fill: kind === "rect" || kind === "ellipse" ? "#2563eb" : null, stroke: null, strokeWidthPt: 1.5, opacity: 1, cornerRadiusPt: 0, shadow: false },
+    style: {
+      fill: kind === "rect" || kind === "ellipse" ? "#2563eb" : null,
+      stroke: null,
+      strokeWidthPt: 1.5,
+      opacity: 1,
+      cornerRadiusPt: 0,
+      shadow: false,
+    },
     line: null,
     table: null,
     chart: null,
@@ -1043,7 +1147,13 @@ export function newSlideObject(kind: string, x: number, y: number, w: number, h:
   };
 }
 
-export function newAnimation(objectId: string, kind = "entrance", effect = "fade", trigger = "onClick", order = 1): Animation {
+export function newAnimation(
+  objectId: string,
+  kind = "entrance",
+  effect = "fade",
+  trigger = "onClick",
+  order = 1,
+): Animation {
   return { id: uid(), objectId, kind, effect, trigger, durationMs: 500, delayMs: 0, order };
 }
 
@@ -1190,7 +1300,28 @@ export interface ParaStyleLike {
 }
 
 /** Resolves a style chain plus paragraph overrides to concrete values. */
-export function effectiveStyle(document: TextDocument, props: ParaProps): Required<Pick<ParaStyleLike, "font" | "sizePt" | "bold" | "italic" | "underline" | "strike" | "color" | "align" | "lineSpacing" | "spaceBeforePt" | "spaceAfterPt" | "indentLeftPt" | "indentRightPt" | "firstLinePt">> & { highlight: string | null } {
+export function effectiveStyle(
+  document: TextDocument,
+  props: ParaProps,
+): Required<
+  Pick<
+    ParaStyleLike,
+    | "font"
+    | "sizePt"
+    | "bold"
+    | "italic"
+    | "underline"
+    | "strike"
+    | "color"
+    | "align"
+    | "lineSpacing"
+    | "spaceBeforePt"
+    | "spaceAfterPt"
+    | "indentLeftPt"
+    | "indentRightPt"
+    | "firstLinePt"
+  >
+> & { highlight: string | null } {
   const chain: ParaStyle[] = [];
   let current: string | null = props.style;
   for (let depth = 0; depth < 8 && current; depth += 1) {

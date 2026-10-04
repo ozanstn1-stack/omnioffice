@@ -53,12 +53,10 @@ impl Default for ResizeOptions {
 
 fn resolve_target_size(options: &ResizeOptions, current_w: f64, current_h: f64) -> PdfResult<(f64, f64)> {
     let (mut w, mut h) = match options.page_size.to_lowercase().as_str() {
-        "custom" => (
-            options.custom_width_pt.max(1.0),
-            options.custom_height_pt.max(1.0),
-        ),
-        other => page_size_points(other)
-            .ok_or_else(|| PdfError::InvalidInput(format!("unknown page size '{other}'")))?,
+        "custom" => (options.custom_width_pt.max(1.0), options.custom_height_pt.max(1.0)),
+        other => {
+            page_size_points(other).ok_or_else(|| PdfError::InvalidInput(format!("unknown page size '{other}'")))?
+        }
     };
     let current_landscape = current_w > current_h;
     match options.orientation.to_lowercase().as_str() {
@@ -112,18 +110,12 @@ pub fn resize_pages(
     for (index, page_number) in target.iter().enumerate() {
         cancel.check()?;
         progress(ProgressEvent::new("resize.page", index as u64, target.len() as u64));
-        let page_id = doc
-            .get_pages()
-            .get(page_number)
-            .copied()
-            .ok_or(PdfError::RangeOutOfBounds)?;
+        let page_id = doc.get_pages().get(page_number).copied().ok_or(PdfError::RangeOutOfBounds)?;
         let media = page_mediabox(&doc, page_id)?;
         let (x0, y0, x1, y1) = (media[0], media[1], media[2], media[3]);
         let (cur_w, cur_h) = ((x1 - x0).abs(), (y1 - y0).abs());
         if cur_w < 1.0 || cur_h < 1.0 {
-            return Err(PdfError::CorruptPdf(format!(
-                "page {page_number} has an empty MediaBox"
-            )));
+            return Err(PdfError::CorruptPdf(format!("page {page_number} has an empty MediaBox")));
         }
         let (target_w, target_h) = resolve_target_size(options, cur_w, cur_h)?;
         let (scale_x, scale_y) = if options.mode.eq_ignore_ascii_case("stretch") {
@@ -137,19 +129,13 @@ pub fn resize_pages(
         let offset_x = (target_w - draw_w) / 2.0;
         let offset_y = (target_h - draw_h) / 2.0;
         // Move the old origin to (0,0), scale, then center on the new page.
-        let matrix = Matrix::translate(offset_x, offset_y)
-            .mul(Matrix::scale(scale_x, scale_y))
-            .mul(Matrix::translate(-x0, -y0));
+        let matrix =
+            Matrix::translate(offset_x, offset_y).mul(Matrix::scale(scale_x, scale_y)).mul(Matrix::translate(-x0, -y0));
         wrap_page_content_transform(&mut doc, page_id, matrix)?;
         let page = doc.get_object_mut(page_id)?.as_dict_mut()?;
         page.set(
             "MediaBox",
-            vec![
-                Object::Real(0.0),
-                Object::Real(0.0),
-                Object::Real(target_w as f32),
-                Object::Real(target_h as f32),
-            ],
+            vec![Object::Real(0.0), Object::Real(0.0), Object::Real(target_w as f32), Object::Real(target_h as f32)],
         );
         page.remove(b"CropBox");
         page.remove(b"BleedBox");
@@ -201,12 +187,8 @@ pub fn crop_pages(
         let (page_w, page_h) = (media[2] - media[0], media[3] - media[1]);
         let (display_w, display_h) = Matrix::displayed_size(rotation, page_w, page_h);
         // UI top-left -> display bottom-left
-        let display_rect = [
-            crop.x.max(0.0),
-            (display_h - crop.y - crop.h).max(0.0),
-            crop.w.min(display_w),
-            crop.h.min(display_h),
-        ];
+        let display_rect =
+            [crop.x.max(0.0), (display_h - crop.y - crop.h).max(0.0), crop.w.min(display_w), crop.h.min(display_h)];
         let page_rect = display_rect_to_page_rect(rotation, page_w, page_h, display_rect);
         let page = doc.get_object_mut(page_id)?.as_dict_mut()?;
         page.set(
@@ -227,11 +209,7 @@ pub fn crop_pages(
 /// Utility for tests: reads the MediaBox/rotation of a page.
 pub fn read_page_box(path: &Path, page_number: u32) -> PdfResult<(f64, f64, i32)> {
     let doc = Document::load(path).map_err(|e| PdfError::from_lopdf(e, Some(path)))?;
-    let page_id = doc
-        .get_pages()
-        .get(&page_number)
-        .copied()
-        .ok_or(PdfError::RangeOutOfBounds)?;
+    let page_id = doc.get_pages().get(&page_number).copied().ok_or(PdfError::RangeOutOfBounds)?;
     let media = page_mediabox(&doc, page_id)?;
     let rotation = page_rotation(&doc, page_id)?;
     Ok((media[2] - media[0], media[3] - media[1], rotation))

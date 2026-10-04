@@ -129,10 +129,21 @@ fn iso_to_dttm(date: &str) -> Option<u32> {
     let day: u32 = date.get(8..10)?.parse().ok()?;
     let hour: u32 = date.get(11..13)?.parse().ok()?;
     let minute: u32 = date.get(14..16)?.parse().ok()?;
-    if !(1900..=2140).contains(&year) || !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || minute > 59 {
+    if !(1900..=2140).contains(&year)
+        || !(1..=12).contains(&month)
+        || !(1..=31).contains(&day)
+        || hour > 23
+        || minute > 59
+    {
         return None;
     }
-    Some((minute & 0x3F) | ((hour & 0x1F) << 6) | ((day & 0x1F) << 11) | ((month & 0x0F) << 16) | (((year - 1900) & 0x1FF) << 20))
+    Some(
+        (minute & 0x3F)
+            | ((hour & 0x1F) << 6)
+            | ((day & 0x1F) << 11)
+            | ((month & 0x0F) << 16)
+            | (((year - 1900) & 0x1FF) << 20),
+    )
 }
 
 fn dttm_to_iso(value: u32) -> String {
@@ -271,7 +282,14 @@ fn write_run(out: &mut String, run: &Run, tables: &mut RtfTables, notes: &RtfNot
     out.push('}');
 }
 
-fn write_block(out: &mut String, block: &Block, tables: &mut RtfTables, document: &TextDocument, notes: &RtfNotes, depth: usize) {
+fn write_block(
+    out: &mut String,
+    block: &Block,
+    tables: &mut RtfTables,
+    document: &TextDocument,
+    notes: &RtfNotes,
+    depth: usize,
+) {
     match block {
         Block::Paragraph { props, runs } => {
             out.push_str("\\pard");
@@ -296,11 +314,8 @@ fn write_block(out: &mut String, block: &Block, tables: &mut RtfTables, document
             let mut indent_left = props.indent_left_pt;
             if let Some(list) = &props.list {
                 indent_left += 18.0 * (list.level as f64 + 1.0);
-                let marker = if list.kind == "number" {
-                    format!("{}.\\tab ", list.start)
-                } else {
-                    "\\u8226?\\tab ".to_string()
-                };
+                let marker =
+                    if list.kind == "number" { format!("{}.\\tab ", list.start) } else { "\\u8226?\\tab ".to_string() };
                 out.push_str(&format!("\\li{} \\fi-360 ", (indent_left * 20.0).round() as i64));
                 out.push('{');
                 out.push_str(&marker);
@@ -354,10 +369,15 @@ fn write_block(out: &mut String, block: &Block, tables: &mut RtfTables, document
             if bytes.is_empty() {
                 return;
             }
-            let control = if image.mime.contains("jpeg") || image.mime.contains("jpg") { "\\jpegblip" } else { "\\pngblip" };
+            let control =
+                if image.mime.contains("jpeg") || image.mime.contains("jpg") { "\\jpegblip" } else { "\\pngblip" };
             let pixel_width = (width_pt * 15.0).round().max(1.0) as i64;
             let pixel_height = (height_pt * 15.0).round().max(1.0) as i64;
-            out.push_str(&format!("{{\\pict{control}\\picw{pixel_width}\\pich{pixel_height}\\picwgoal{}\\pichgoal{} ", (width_pt * 20.0) as i64, (height_pt * 20.0) as i64));
+            out.push_str(&format!(
+                "{{\\pict{control}\\picw{pixel_width}\\pich{pixel_height}\\picwgoal{}\\pichgoal{} ",
+                (width_pt * 20.0) as i64,
+                (height_pt * 20.0) as i64
+            ));
             let mut hex = String::with_capacity(bytes.len() * 2);
             for byte in bytes {
                 hex.push_str(&format!("{byte:02x}"));
@@ -375,11 +395,8 @@ fn write_block(out: &mut String, block: &Block, tables: &mut RtfTables, document
         Block::Rule => out.push_str("\\pard\\brdrb\\brdrs\\brdrw6 \\par\n"),
         Block::Toc { entries } => {
             for entry in entries {
-                let text = if entry.page > 0 {
-                    format!("{} .... {}", entry.text, entry.page)
-                } else {
-                    entry.text.clone()
-                };
+                let text =
+                    if entry.page > 0 { format!("{} .... {}", entry.text, entry.page) } else { entry.text.clone() };
                 let indent = (entry.level.saturating_sub(1) as i64) * 240;
                 out.push_str(&format!("\\pard\\li{indent} {}\\par\n", escape_rtf(&text)));
             }
@@ -715,8 +732,15 @@ impl Reader {
     fn start_revision(&mut self, kind: &str) {
         if self.revision.is_none() {
             self.revision_seq += 1;
-            let author = self.revauth.take().and_then(|index| self.revision_authors.get(index)).cloned().unwrap_or_default();
-            self.revision = Some(RevisionMark { id: format!("rev{}", self.revision_seq), kind: kind.to_string(), author, date: String::new(), original: None });
+            let author =
+                self.revauth.take().and_then(|index| self.revision_authors.get(index)).cloned().unwrap_or_default();
+            self.revision = Some(RevisionMark {
+                id: format!("rev{}", self.revision_seq),
+                kind: kind.to_string(),
+                author,
+                date: String::new(),
+                original: None,
+            });
         } else if let Some(mark) = self.revision.as_mut() {
             mark.kind = kind.to_string();
         }
@@ -838,10 +862,9 @@ fn parse_revtbl(reader: &mut Reader, raw: &str) {
                     }
                 }
             }
-            _ if depth >= 1
-                && ch != ';' => {
-                    name.push(ch);
-                }
+            _ if depth >= 1 && ch != ';' => {
+                name.push(ch);
+            }
             _ => {}
         }
     }
@@ -944,7 +967,9 @@ fn apply_control(reader: &mut Reader, word: &str, param: Option<i32>) {
                     false
                 };
                 if !appended {
-                    reader.target_blocks().push(Block::Table { table: TableData { rows: vec![row], ..Default::default() } });
+                    reader
+                        .target_blocks()
+                        .push(Block::Table { table: TableData { rows: vec![row], ..Default::default() } });
                 }
             }
         }
@@ -1133,7 +1158,8 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
                         probe += 1;
                     }
                     let end = skip_group(&chars, i + 1);
-                    let content: String = if end > i + 1 { chars[(i + 1)..(end - 1)].iter().collect() } else { String::new() };
+                    let content: String =
+                        if end > i + 1 { chars[(i + 1)..(end - 1)].iter().collect() } else { String::new() };
                     if name == "revtbl" {
                         parse_revtbl(&mut reader, &content);
                     } else if name == "oswkendnote" && reader.note_depth.is_some() {
@@ -1172,7 +1198,8 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
                 if IGNORABLE_GROUPS.contains(&word.as_str()) {
                     let start = i;
                     let end = skip_group(&chars, i);
-                    let content: String = if end > start { chars[start..end - 1].iter().collect() } else { String::new() };
+                    let content: String =
+                        if end > start { chars[start..end - 1].iter().collect() } else { String::new() };
                     match word.as_str() {
                         "colortbl" => parse_color_table(&mut reader, &content),
                         "fonttbl" => collect_font_names(&mut reader, &content),
@@ -1268,7 +1295,9 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
     if !reader.header_blocks.is_empty() || !reader.footer_blocks.is_empty() {
         warnings.push("RTF headers/footers were imported as document headers/footers.".into());
     }
-    warnings.push("RTF import keeps text, basic formatting, tables and images; complex RTF features are simplified.".into());
+    warnings.push(
+        "RTF import keeps text, basic formatting, tables and images; complex RTF features are simplified.".into(),
+    );
     warnings.sort();
     warnings.dedup();
     let mut document = TextDocument::new_blank("Imported RTF");
@@ -1351,7 +1380,12 @@ mod tests {
                 props: ParaProps::default(),
                 runs: vec![
                     Run { text: "Title ".into(), bold: true, ..Default::default() },
-                    Run { text: "Türkçe karakterler: ğüşiöç ".into(), italic: true, color: Some("#FF0000".into()), ..Default::default() },
+                    Run {
+                        text: "Türkçe karakterler: ğüşiöç ".into(),
+                        italic: true,
+                        color: Some("#FF0000".into()),
+                        ..Default::default()
+                    },
                 ],
             },
             Block::Paragraph {
@@ -1359,7 +1393,10 @@ mod tests {
                 runs: vec![Run { text: "Centered".into(), ..Default::default() }],
             },
             Block::Paragraph {
-                props: ParaProps { list: Some(ListInfo { kind: "bullet".into(), level: 0, start: 1, marker: "•".into() }), ..Default::default() },
+                props: ParaProps {
+                    list: Some(ListInfo { kind: "bullet".into(), level: 0, start: 1, marker: "•".into() }),
+                    ..Default::default()
+                },
                 runs: vec![Run { text: "item".into(), ..Default::default() }],
             },
         ];
@@ -1379,7 +1416,9 @@ mod tests {
         });
         assert!(bold.map(|run| run.bold).unwrap_or(false));
         let centered = read.document.blocks.iter().find_map(|block| match block {
-            Block::Paragraph { props, runs } if runs.iter().any(|run| run.text.contains("Centered")) => Some(props.align.clone()),
+            Block::Paragraph { props, runs } if runs.iter().any(|run| run.text.contains("Centered")) => {
+                Some(props.align.clone())
+            }
             _ => None,
         });
         assert_eq!(centered.as_deref(), Some("center"));
@@ -1420,7 +1459,8 @@ mod tests {
 
     #[test]
     fn skips_ignorable_destinations() {
-        let rtf = br"{\rtf1\ansi{\*\generator Riched20 10.0}{\fonttbl{\f0\fnil Calibri;}}\f0\fs24 Hello \b bold\b0 .\par}";
+        let rtf =
+            br"{\rtf1\ansi{\*\generator Riched20 10.0}{\fonttbl{\f0\fnil Calibri;}}\f0\fs24 Hello \b bold\b0 .\par}";
         let read = read_rtf(rtf).unwrap();
         let text = read.document.plain_text();
         assert!(text.contains("Hello"), "text was {text}");
@@ -1430,21 +1470,41 @@ mod tests {
     #[test]
     fn roundtrip_notes_and_revisions() {
         let mut document = TextDocument::new_blank("Notes and revisions");
-        document.footnotes = vec![Footnote { id: "fn-a".into(), runs: vec![Run { text: "First note".into(), ..Default::default() }], marker: String::new() }];
-        document.endnotes = vec![Footnote { id: "en-a".into(), runs: vec![Run { text: "End note".into(), ..Default::default() }], marker: String::new() }];
+        document.footnotes = vec![Footnote {
+            id: "fn-a".into(),
+            runs: vec![Run { text: "First note".into(), ..Default::default() }],
+            marker: String::new(),
+        }];
+        document.endnotes = vec![Footnote {
+            id: "en-a".into(),
+            runs: vec![Run { text: "End note".into(), ..Default::default() }],
+            marker: String::new(),
+        }];
         document.blocks = vec![Block::Paragraph {
             props: ParaProps::default(),
             runs: vec![
                 Run { text: "Body ".into(), ..Default::default() },
                 Run {
                     text: "inserted text".into(),
-                    revision: Some(RevisionMark { id: "r1".into(), kind: "insert".into(), author: "Alice".into(), date: "2026-01-01T00:00:00Z".into(), original: None }),
+                    revision: Some(RevisionMark {
+                        id: "r1".into(),
+                        kind: "insert".into(),
+                        author: "Alice".into(),
+                        date: "2026-01-01T00:00:00Z".into(),
+                        original: None,
+                    }),
                     ..Default::default()
                 },
                 Run { footnote: Some("fn-a".into()), ..Default::default() },
                 Run {
                     text: "removed text".into(),
-                    revision: Some(RevisionMark { id: "r2".into(), kind: "delete".into(), author: "Bob".into(), date: "2026-02-03T04:05:00Z".into(), original: None }),
+                    revision: Some(RevisionMark {
+                        id: "r2".into(),
+                        kind: "delete".into(),
+                        author: "Bob".into(),
+                        date: "2026-02-03T04:05:00Z".into(),
+                        original: None,
+                    }),
                     ..Default::default()
                 },
                 Run { endnote: Some("en-a".into()), ..Default::default() },
@@ -1481,17 +1541,25 @@ mod tests {
             .flat_map(|block| match block {
                 Block::Paragraph { runs, .. } => runs
                     .iter()
-                    .filter_map(|run| run.revision.as_ref().map(|revision| (revision.kind.clone(), revision.author.clone(), revision.date.clone())))
+                    .filter_map(|run| {
+                        run.revision
+                            .as_ref()
+                            .map(|revision| (revision.kind.clone(), revision.author.clone(), revision.date.clone()))
+                    })
                     .collect::<Vec<_>>(),
                 _ => Vec::new(),
             })
             .collect();
         assert!(
-            revisions.iter().any(|(kind, author, date)| kind == "insert" && author == "Alice" && date == "2026-01-01T00:00:00Z"),
+            revisions
+                .iter()
+                .any(|(kind, author, date)| kind == "insert" && author == "Alice" && date == "2026-01-01T00:00:00Z"),
             "revisions: {revisions:?}"
         );
         assert!(
-            revisions.iter().any(|(kind, author, date)| kind == "delete" && author == "Bob" && date == "2026-02-03T04:05:00Z"),
+            revisions
+                .iter()
+                .any(|(kind, author, date)| kind == "delete" && author == "Bob" && date == "2026-02-03T04:05:00Z"),
             "revisions: {revisions:?}"
         );
     }
@@ -1499,7 +1567,11 @@ mod tests {
     #[test]
     fn endnote_only_documents_request_endnote_placement() {
         let mut document = TextDocument::new_blank("Endnotes");
-        document.endnotes = vec![Footnote { id: "en-a".into(), runs: vec![Run { text: "Only note".into(), ..Default::default() }], marker: String::new() }];
+        document.endnotes = vec![Footnote {
+            id: "en-a".into(),
+            runs: vec![Run { text: "Only note".into(), ..Default::default() }],
+            marker: String::new(),
+        }];
         document.blocks = vec![Block::Paragraph {
             props: ParaProps::default(),
             runs: vec![
@@ -1528,9 +1600,9 @@ mod tests {
             .blocks
             .iter()
             .find_map(|block| match block {
-                Block::Paragraph { runs, .. } => runs
-                    .iter()
-                    .find_map(|run| run.revision.clone().map(|revision| (revision, run.text.clone()))),
+                Block::Paragraph { runs, .. } => {
+                    runs.iter().find_map(|run| run.revision.clone().map(|revision| (revision, run.text.clone())))
+                }
                 _ => None,
             })
             .expect("a deleted run should carry a delete revision");
@@ -1539,4 +1611,3 @@ mod tests {
         assert!(text.contains("removed by Alice"), "text: {text}");
     }
 }
-

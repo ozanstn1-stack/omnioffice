@@ -47,7 +47,11 @@ export function Compress({ initialFiles, dragging }: { initialFiles?: string[]; 
       setEstimate(result);
       setEstimatedFor(`${session.primary.path}`);
     } catch (error) {
-      pushToast({ kind: "error", title: t("errors.title"), detail: String((error as { message?: string })?.message ?? error) });
+      pushToast({
+        kind: "error",
+        title: t("errors.title"),
+        detail: String((error as { message?: string })?.message ?? error),
+      });
     } finally {
       setAnalysing(false);
     }
@@ -72,7 +76,13 @@ export function Compress({ initialFiles, dragging }: { initialFiles?: string[]; 
       subtitle={t("compress.subtitle")}
       actions={
         session.primary ? (
-          <Button variant="ghost" size="sm" icon={<Activity size={14} />} onClick={() => void analyse()} disabled={analysing}>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Activity size={14} />}
+            onClick={() => void analyse()}
+            disabled={analysing}
+          >
             {t("compress.analyze")}
           </Button>
         ) : null
@@ -86,7 +96,12 @@ export function Compress({ initialFiles, dragging }: { initialFiles?: string[]; 
             ) : (
               <>
                 <OptionCard>
-                  <FileList files={session.files} onRemove={session.removeFile} onAdd={session.pickFiles} addLabel={t("common.addPdf")} />
+                  <FileList
+                    files={session.files}
+                    onRemove={session.removeFile}
+                    onAdd={session.pickFiles}
+                    addLabel={t("common.addPdf")}
+                  />
                 </OptionCard>
                 {session.info ? (
                   <Card className="p-4">
@@ -124,7 +139,14 @@ export function Compress({ initialFiles, dragging }: { initialFiles?: string[]; 
                       {options.preset === "custom" ? (
                         <>
                           <Field label={t("compress.dpi")}>
-                            <Slider value={options.dpi} min={72} max={400} step={2} onChange={(value) => patch({ dpi: value })} format={(v) => `${v}`} />
+                            <Slider
+                              value={options.dpi}
+                              min={72}
+                              max={400}
+                              step={2}
+                              onChange={(value) => patch({ dpi: value })}
+                              format={(v) => `${v}`}
+                            />
                           </Field>
                           <Field label={t("compress.quality")}>
                             <Slider
@@ -137,7 +159,11 @@ export function Compress({ initialFiles, dragging }: { initialFiles?: string[]; 
                           </Field>
                         </>
                       ) : null}
-                      <Toggle checked={options.grayscale} onChange={(value) => patch({ grayscale: value })} label={t("compress.grayscale")} />
+                      <Toggle
+                        checked={options.grayscale}
+                        onChange={(value) => patch({ grayscale: value })}
+                        label={t("compress.grayscale")}
+                      />
                     </>
                   ) : null}
 
@@ -159,11 +185,15 @@ export function Compress({ initialFiles, dragging }: { initialFiles?: string[]; 
                       <div className="grid grid-cols-3 gap-3 text-center">
                         <div className="card-soft p-3">
                           <p className="text-xs muted">{t("common.original")}</p>
-                          <p className="font-bold text-[15px] tabular-nums">{formatBytes(shownEstimate.original_bytes)}</p>
+                          <p className="font-bold text-[15px] tabular-nums">
+                            {formatBytes(shownEstimate.original_bytes)}
+                          </p>
                         </div>
                         <div className="card-soft p-3">
                           <p className="text-xs muted">{t("common.estimated")}</p>
-                          <p className="font-bold text-[15px] tabular-nums">{formatBytes(shownEstimate.estimated_bytes)}</p>
+                          <p className="font-bold text-[15px] tabular-nums">
+                            {formatBytes(shownEstimate.estimated_bytes)}
+                          </p>
                         </div>
                         <div className="card-soft p-3">
                           <p className="text-xs muted">{t("common.reduction")}</p>
@@ -177,7 +207,11 @@ export function Compress({ initialFiles, dragging }: { initialFiles?: string[]; 
                       </div>
                       <p className="text-xs muted">
                         {shownEstimate.method} · {shownEstimate.sample_pages} {t("common.pages")} ·{" "}
-                        {shownEstimate.accurate ? (defaults.language === "tr" ? "tam" : "exact") : t("common.estimated")}
+                        {shownEstimate.accurate
+                          ? defaults.language === "tr"
+                            ? "tam"
+                            : "exact"
+                          : t("common.estimated")}
                       </p>
                       <p className="text-xs muted">{t("compress.estimateNote")}</p>
                     </div>
@@ -190,7 +224,14 @@ export function Compress({ initialFiles, dragging }: { initialFiles?: string[]; 
             {session.result ? <ResultCard result={session.result} onReset={session.resetResult} /> : null}
           </>
         }
-        side={<OutputBar session={session} runLabel={t("compress.run")} onRun={() => void run()} disabled={!session.primary} />}
+        side={
+          <OutputBar
+            session={session}
+            runLabel={t("compress.run")}
+            onRun={() => void run()}
+            disabled={!session.primary}
+          />
+        }
       />
     </Screen>
   );

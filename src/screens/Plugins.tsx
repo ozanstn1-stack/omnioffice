@@ -134,7 +134,8 @@ function PluginCard({
         <span className="muted small">{t("plugins.version", { version: manifest.version })}</span>
       </div>
       <p className="muted small">
-        {t("plugins.apiVersion", { version: manifest.apiVersion })} · {t("plugins.requiresApp", { range: manifest.compatibility.app })}
+        {t("plugins.apiVersion", { version: manifest.apiVersion })} ·{" "}
+        {t("plugins.requiresApp", { range: manifest.compatibility.app })}
       </p>
       <div className="row" style={{ flexWrap: "wrap" }}>
         <span className="muted small">{t("plugins.permissions")}:</span>

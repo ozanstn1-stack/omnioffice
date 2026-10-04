@@ -28,7 +28,12 @@ function paragraph(index: number, lineHeights: number[], overrides: Partial<Bloc
   };
 }
 
-function table(index: number, rowHeights: number[], headerHeightPx: number, overrides: Partial<BlockMetrics> = {}): BlockMetrics {
+function table(
+  index: number,
+  rowHeights: number[],
+  headerHeightPx: number,
+  overrides: Partial<BlockMetrics> = {},
+): BlockMetrics {
   const rows: number[] = [];
   let total = headerHeightPx;
   for (const height of rowHeights) {
@@ -64,7 +69,17 @@ function image(index: number, height: number): BlockMetrics {
 }
 
 function breakBlock(index: number): BlockMetrics {
-  return { index, kind: "pageBreak", heightPx: 0, lines: [], rows: [], headerHeightPx: 0, keepWithNext: false, keepTogether: false, pageBreakBefore: false };
+  return {
+    index,
+    kind: "pageBreak",
+    heightPx: 0,
+    lines: [],
+    rows: [],
+    headerHeightPx: 0,
+    keepWithNext: false,
+    keepTogether: false,
+    pageBreakBefore: false,
+  };
 }
 
 describe("pagination", () => {
@@ -78,8 +93,22 @@ describe("pagination", () => {
   it("splits a paragraph at a line boundary", () => {
     const pages = paginate([paragraph(0, [100, 100, 100, 100])], 250);
     expect(pages).toHaveLength(2);
-    expect(pages[0].fragments[0]).toMatchObject({ index: 0, mode: "lines", from: 0, to: 2, heightPx: 200, offsetPx: 0 });
-    expect(pages[1].fragments[0]).toMatchObject({ index: 0, mode: "lines", from: 2, to: 4, heightPx: 200, offsetPx: 200 });
+    expect(pages[0].fragments[0]).toMatchObject({
+      index: 0,
+      mode: "lines",
+      from: 0,
+      to: 2,
+      heightPx: 200,
+      offsetPx: 0,
+    });
+    expect(pages[1].fragments[0]).toMatchObject({
+      index: 0,
+      mode: "lines",
+      from: 2,
+      to: 4,
+      heightPx: 200,
+      offsetPx: 200,
+    });
   });
 
   it("keeps widows and orphans together", () => {

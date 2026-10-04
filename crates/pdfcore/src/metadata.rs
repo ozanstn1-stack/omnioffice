@@ -6,9 +6,8 @@ use lopdf::{dictionary, Dictionary, Document, Object};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-pub const INFO_KEYS: [&str; 8] = [
-    "Title", "Author", "Subject", "Keywords", "Creator", "Producer", "CreationDate", "ModDate",
-];
+pub const INFO_KEYS: [&str; 8] =
+    ["Title", "Author", "Subject", "Keywords", "Creator", "Producer", "CreationDate", "ModDate"];
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PdfMetadata {
@@ -37,21 +36,12 @@ impl PdfMetadata {
 
 pub fn read_metadata(doc: &Document) -> PdfMetadata {
     let mut meta = PdfMetadata::default();
-    let info = doc
-        .trailer
-        .get(b"Info")
-        .ok()
-        .and_then(|o| o.as_reference().ok())
-        .and_then(|id| doc.get_dictionary(id).ok());
+    let info =
+        doc.trailer.get(b"Info").ok().and_then(|o| o.as_reference().ok()).and_then(|id| doc.get_dictionary(id).ok());
     let Some(info) = info else {
         return meta;
     };
-    let get = |key: &str| -> String {
-        info.get(key.as_bytes())
-            .ok()
-            .and_then(pdf_text_value)
-            .unwrap_or_default()
-    };
+    let get = |key: &str| -> String { info.get(key.as_bytes()).ok().and_then(pdf_text_value).unwrap_or_default() };
     meta.title = get("Title");
     meta.author = get("Author");
     meta.subject = get("Subject");
@@ -102,10 +92,7 @@ pub fn write_metadata(doc: &mut Document, meta: &PdfMetadata) -> PdfResult<()> {
 pub fn remove_metadata(doc: &mut Document) -> PdfResult<()> {
     doc.trailer.remove(b"Info");
     if let Ok(catalog_id) = doc.catalog().and_then(|c| {
-        c.get(b"Metadata")
-            .ok()
-            .and_then(|o| o.as_reference().ok())
-            .ok_or(lopdf::Error::ObjectNotFound((0, 0)))
+        c.get(b"Metadata").ok().and_then(|o| o.as_reference().ok()).ok_or(lopdf::Error::ObjectNotFound((0, 0)))
     }) {
         let _ = doc.objects.remove(&catalog_id);
     }
@@ -152,9 +139,7 @@ pub fn edit_metadata_incremental(input: &[u8], meta: &PdfMetadata) -> PdfResult<
 /// Convenience used by other operations that want a fresh Producer stamp.
 pub fn stamp_producer(doc: &mut Document, producer: &str) {
     let existing_id = doc.trailer.get(b"Info").ok().and_then(|o| o.as_reference().ok());
-    let mut info = existing_id
-        .and_then(|id| doc.get_dictionary(id).ok().cloned())
-        .unwrap_or_else(|| dictionary! {});
+    let mut info = existing_id.and_then(|id| doc.get_dictionary(id).ok().cloned()).unwrap_or_else(|| dictionary! {});
     info.set("Producer", pdf_text_object(producer));
     let info_id = doc.add_object(Object::Dictionary(info));
     doc.trailer.set("Info", Object::Reference(info_id));

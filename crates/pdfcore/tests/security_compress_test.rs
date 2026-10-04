@@ -101,21 +101,10 @@ fn unlock_with_wrong_password_fails() {
 fn lossless_compression_keeps_pages_and_text() {
     let (dir, input) = setup("lossless", 3);
     let out = dir.path("lossless-out.pdf");
-    let options = CompressOptions {
-        strategy: "lossless".into(),
-        remove_metadata: true,
-        ..Default::default()
-    };
-    let result = compress_pdf(
-        &input,
-        &out,
-        &options,
-        OverwritePolicy::Replace,
-        None,
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .unwrap();
+    let options = CompressOptions { strategy: "lossless".into(), remove_metadata: true, ..Default::default() };
+    let result =
+        compress_pdf(&input, &out, &options, OverwritePolicy::Replace, None, &no_progress, &CancelToken::new())
+            .unwrap();
     assert!(result.output_bytes > 0);
     assert_eq!(page_count(std::path::Path::new(&result.path)), 3);
     assert!(page_text(std::path::Path::new(&result.path), 1).contains("lossless page 1"));
@@ -145,22 +134,11 @@ fn raster_compression_reduces_sizes() {
     assert!(estimate.estimated_bytes > 0);
     // The synthetic bitmap is flate-compressed in the source, so raster JPEG
     // must be smaller.
-    assert!(
-        estimate.reduction > 0.2,
-        "expected a meaningful reduction, got {}",
-        estimate.reduction
-    );
+    assert!(estimate.reduction > 0.2, "expected a meaningful reduction, got {}", estimate.reduction);
 
-    let result = compress_pdf(
-        &input,
-        &out,
-        &options,
-        OverwritePolicy::Replace,
-        None,
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .unwrap();
+    let result =
+        compress_pdf(&input, &out, &options, OverwritePolicy::Replace, None, &no_progress, &CancelToken::new())
+            .unwrap();
     assert!(result.output_bytes < result.original_bytes);
     assert_eq!(page_count(std::path::Path::new(&result.path)), 2);
     // Page geometry must be preserved (A4).
@@ -183,16 +161,7 @@ fn grayscale_preset_produces_gray_images() {
         grayscale: true,
         remove_metadata: true,
     };
-    compress_pdf(
-        &input,
-        &out,
-        &options,
-        OverwritePolicy::Replace,
-        None,
-        &no_progress,
-        &CancelToken::new(),
-    )
-    .unwrap();
+    compress_pdf(&input, &out, &options, OverwritePolicy::Replace, None, &no_progress, &CancelToken::new()).unwrap();
     assert_eq!(page_count(&out), 1);
 }
 
