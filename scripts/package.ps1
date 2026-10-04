@@ -100,4 +100,10 @@ foreach ($file in @($installerPath, $contractInstallerPath, $portableZip)) {
 }
 Set-Content (Join-Path $releaseDir 'SHA256SUMS.txt') -Value ($lines -join "`n")
 Write-Host "checksums: $(Join-Path $releaseDir 'SHA256SUMS.txt')"
+
+# Per-platform checksum file for the Windows assets (the Android build script
+# writes the matching SHA256SUMS-android.txt; both must be refreshed on every
+# release so a stale file from an older version is never published).
+Set-Content (Join-Path $releaseDir 'SHA256SUMS-windows.txt') -Value ($lines -join "`n")
+Write-Host "checksums: $(Join-Path $releaseDir 'SHA256SUMS-windows.txt')"
 Get-ChildItem $releaseDir | Select-Object Name, @{ n = 'MB'; e = { [math]::Round($_.Length / 1MB, 1) } }
