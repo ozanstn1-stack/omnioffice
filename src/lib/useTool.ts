@@ -414,8 +414,10 @@ export function useTool(options: ToolOptions): ToolSession {
           }
         } catch (err) {
           const appError = toAppError(err);
-          if (appError.code === "output_exists" && !isMultiOutput) {
-            const choice = await useOverwritePrompt.getState().ask(fileBaseName(outputPath));
+          if (appError.code === "output_exists") {
+            const match = /already exists:\s*(.*)$/i.exec(appError.message);
+            const targetName = match?.[1] ? fileBaseName(match[1].trim()) : fileBaseName(outputPath) || "output";
+            const choice = await useOverwritePrompt.getState().ask(targetName);
             if (choice && choice !== "error") {
               setOverwrite(choice);
               return execute(choice);
@@ -431,7 +433,7 @@ export function useTool(options: ToolOptions): ToolSession {
 
       await execute(overwrite);
     },
-    [addRecentEntry, isMultiOutput, jobId, outputPath, overwrite, publish, suffix, t],
+    [addRecentEntry, jobId, outputPath, overwrite, publish, suffix, t],
   );
 
   const cancel = useCallback(() => {
@@ -441,9 +443,9 @@ export function useTool(options: ToolOptions): ToolSession {
   const outputSpec = useCallback(
     (mode?: OverwriteMode, path?: string): OutputSpec => ({
       path: path ?? outputPath,
-      overwrite: mode ?? (isMultiOutput ? overwrite : overwrite),
+      overwrite: mode ?? overwrite,
     }),
-    [isMultiOutput, outputPath, overwrite],
+    [outputPath, overwrite],
   );
 
   const resetResult = useCallback(() => setResult(null), []);

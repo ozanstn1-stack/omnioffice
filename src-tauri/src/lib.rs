@@ -9,6 +9,7 @@ mod commands;
 mod concurrency;
 mod jobs;
 mod library;
+mod oauth;
 mod office;
 mod office_tools;
 mod paths;
@@ -257,6 +258,10 @@ pub fn run() {
             sync::sync_resolve,
             sync::sync_forget,
             sync::sync_capabilities,
+            oauth::oauth_status,
+            oauth::oauth_save_client,
+            oauth::oauth_connect,
+            oauth::oauth_disconnect,
             plugin::plugin_list,
             plugin::plugin_read_source,
             plugin::plugin_install,

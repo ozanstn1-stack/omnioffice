@@ -10,9 +10,32 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.5.6** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.5.7** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.5.7
+
+Legacy Word/PowerPoint import and real OAuth cloud sync.
+
+- **Word 97-2003 (.doc) and PowerPoint 97-2003 (.ppt) open now.** The new
+  `officecore::legacy` importer reads the OLE2 container directly (Word's FIB
+  piece table, PowerPoint's record-tree text atoms) so the documents open in
+  Writer/Impress without a native Office dependency; when a local LibreOffice
+  is installed it is used first for a full-fidelity conversion. A legacy tab
+  has no save path: the first Ctrl+S asks for `.docx`/`.pptx`/`.oswk` and the
+  original binary file is never edited in place.
+- **Google Drive and OneDrive sync with OAuth 2.0 PKCE.** Sign-in opens the
+  provider's own page in your browser and returns to a loopback listener on
+  this machine; tokens live in the OS credential vault (Windows Credential
+  Manager / macOS Keychain / Secret Service), and the Sync screen gains an
+  OAuth panel with client ID, Connect/Disconnect and the connected account.
+  The conflict rules are the same as WebDAV: conditional writes (Graph
+  `If-Match`, Drive `sha256Checksum` comparison), hash-checked downloads and
+  manual conflict resolution.
+- **The converter completes its list**: PDF → JPG/PNG/TXT/DOCX and image → PDF
+  are handled directly by the universal converter (a PDF input now offers JPG,
+  PNG, TXT and DOCX).
 
 ## What's new in 3.5.6
 
@@ -540,8 +563,10 @@ toolbar.
 - Autosave with crash recovery, local version history (25 snapshots)
 - **Plugins (V3.1)**: sandboxed Web Worker runtime, manifest permissions,
   install/list/remove, sample plugin; crash-isolated
-- **Cloud sync foundation (V3.1)**: WebDAV with conflict detection and manual
-  resolution; off by default
+- **Cloud sync (V3.1, OAuth in V3.5.7)**: WebDAV plus Google Drive and
+  OneDrive through OAuth 2.0 PKCE (loopback sign-in, tokens in the OS
+  credential vault), all with conflict detection and manual resolution; off by
+  default
 
 ### AI assistant (opt-in)
 - Providers: DeepSeek, OpenAI-compatible endpoints, Ollama (local), Gemini,
@@ -564,7 +589,7 @@ Only combinations that actually work are marked. “–” means not supported.
 |---|---|---|---|---|
 | DOCX | ✓ | ✓ | ✓ | ✓ |
 | DOCM / DOTX / XLSM / PPTM | ✓ | ✓ | ✓ | ✓ (macros are detected, never executed and dropped on save) |
-| DOC | – | – | – | – |
+| DOC / DOT | ✓ (text import; save as .docx/.oswk) | ✓ (in memory) | – | ✓ (via Writer) |
 | ODT | ✓ | ✓ | ✓ | ✓ |
 | RTF | ✓ | ✓ | ✓ (basic formatting, tables, images, notes) | ✓ |
 | TXT / Markdown / HTML | ✓ | ✓ | ✓ | ✓ (via Writer) |
@@ -573,7 +598,7 @@ Only combinations that actually work are marked. “–” means not supported.
 | ODS | ✓ | ✓ | ✓ | ✓ |
 | CSV / TSV | ✓ | ✓ | ✓ | – |
 | PPTX | ✓ | ✓ | ✓ | ✓ |
-| PPT | – | – | – | – |
+| PPT | ✓ (slide text import; save as .pptx/.oswk) | ✓ (in memory) | – | ✓ (via Impress) |
 | ODP | ✓ | ✓ | ✓ | ✓ |
 | PDF | ✓ | ✓ (tools + Studio + forms + signatures) | ✓ | – |
 | JPG / PNG / BMP / GIF / WebP | ✓ | ✓ (as images) | ✓ | ✓ (images → PDF) |
@@ -652,8 +677,10 @@ crates/pdfcore      The PDF engine (render, merge, split, compress, OCR with
 crates/aicore       Optional assistant client with a provider abstraction;
                     the only component that talks to the network for AI, and
                     only after the user opts in
-crates/synccore     Local-first sync foundation: WebDAV client, per-file
-                    metadata, three-way conflict detection, manual resolution
+crates/synccore     Local-first sync foundation: WebDAV client, Google Drive
+                    v3 and Microsoft Graph providers, OAuth 2.0 PKCE
+                    (loopback listener, refresh), per-file metadata,
+                    three-way conflict detection, manual resolution
 src-tauri           Tauri shell: PDF commands, office commands, PDF Studio
                     (sanitize/repair/flatten/PDF-A/signatures/forms), vault,
                     jobs store, plugins, sync, Windows certificate store,
@@ -748,7 +775,7 @@ produces the criterion report, and `npm run bench:check` compares it against
 the stored baseline (the CI bench job does this with a cached baseline and
 fails on a >15 % mean regression).
 
-**536 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **687
+**552 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **688
 frontend tests** pass, plus the 1 heavy case gated by `OSAK_PERF_HEAVY=1`,
 with a strict TypeScript type check on top. Frontend coverage floors are
 enforced by `npm run test:coverage` (see `vite.config.ts`). The per-crate split
@@ -868,6 +895,12 @@ trusting a visual check.
 
 These are real and honest:
 
+- **Legacy `.doc`/`.ppt` import is text-level.** The built-in importer keeps
+  text and paragraph/slide boundaries only (character formatting, tables,
+  headers, footnotes, images, animations and themes are not reconstructed);
+  a locally installed LibreOffice gives full fidelity when available. Legacy
+  documents are never saved back as `.doc`/`.ppt`: the first save asks for
+  `.docx`/`.pptx`/`.oswk`.
 - **Track changes** tracks run-level insertions, deletions and formatting
   changes plus paragraph-level split/merge as text edits; paragraph *move*
   revisions and table/list structural revision objects are not modelled and
@@ -911,9 +944,11 @@ These are real and honest:
 - **Vault on Android** imports documents; it cannot watch SAF folders
   because the scanner uses real filesystem paths. Imported copies consume
   storage and are not deleted by `vault_clear`.
-- **Cloud sync**: WebDAV only; OneDrive/Google Drive require OAuth and are
-  unavailable; there is no background polling, no auto-merge and no delete
-  propagation. Conflict resolution is manual by design.
+- **Cloud sync**: Google Drive and OneDrive need an OAuth client ID you create
+  in the provider's developer console (installed/desktop app type); a live
+  sign-in needs a browser and internet. There is no background polling, no
+  auto-merge and no delete propagation. Conflict resolution is manual by
+  design.
 - **Plugins**: a Web Worker is not an OS/WASM sandbox - it protects documents
   and user data through the capability boundary, not against a WebView
   engine escape. Installation is folder-based (no zip), and `doc.applyEdits`

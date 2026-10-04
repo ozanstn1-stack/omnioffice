@@ -20,6 +20,7 @@ pub mod encoding;
 pub mod error;
 pub mod io;
 pub mod layout;
+pub mod legacy;
 pub mod model;
 pub mod odf;
 pub mod pdfcanvas;

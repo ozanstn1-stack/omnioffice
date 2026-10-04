@@ -510,6 +510,8 @@ export const OFFICE_EXTENSIONS = [
   "docx",
   "docm",
   "dotx",
+  "doc",
+  "dot",
   "odt",
   "rtf",
   "txt",
@@ -525,6 +527,7 @@ export const OFFICE_EXTENSIONS = [
   "tsv",
   "pptx",
   "pptm",
+  "ppt",
   "odp",
   "oswk",
 ];
@@ -555,17 +558,23 @@ export async function openOfficePath(path: string): Promise<OpenPathResult> {
     const id = useOfficeTabs.getState().open({
       kind: result.kind,
       title: result.title || path.split(/[\\/]/).pop() || "Document",
-      path: result.path,
+      // A legacy binary document is imported, never edited in place: an empty
+      // path makes the first Ctrl+S ask for a modern (DOCX/PPTX/OSWK) target.
+      path: result.legacy ? "" : result.path,
       model: result.model as OfficeModel,
       warnings: result.warnings,
     });
     // Capture the file's hash now so a later save can tell whether another
     // program changed it (a missing fingerprint simply skips the check).
-    try {
-      const fingerprint = await api.fileFingerprint(result.path);
-      useOfficeTabs.getState().setFingerprint(id, fingerprint.exists ? fingerprint.sha256 : null);
-    } catch {
+    if (result.legacy) {
       useOfficeTabs.getState().setFingerprint(id, null);
+    } else {
+      try {
+        const fingerprint = await api.fileFingerprint(result.path);
+        useOfficeTabs.getState().setFingerprint(id, fingerprint.exists ? fingerprint.sha256 : null);
+      } catch {
+        useOfficeTabs.getState().setFingerprint(id, null);
+      }
     }
     if (result.warnings.length > 0 && useSettings.getState().settings.showImportWarnings) {
       const t = makeTranslate(useSettings.getState().settings.language);

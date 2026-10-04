@@ -59,6 +59,11 @@ pub struct OpenDocument {
     pub path: String,
     pub model: Value,
     pub warnings: Vec<String>,
+    /// True when the file was a legacy binary format (`.doc`/`.ppt`). The
+    /// frontend must not save back to it: the tab keeps an empty path so the
+    /// first save asks for a modern destination.
+    #[serde(default)]
+    pub legacy: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -130,10 +135,54 @@ fn deck_from_value(model: Value) -> Result<Deck, OfficeErrorPayload> {
 pub fn open_path(path: &Path) -> Result<OpenDocument, OfficeErrorPayload> {
     let extension = extension(path);
     let path_text = path.to_string_lossy().to_string();
+    let mut legacy = false;
     let (kind, title, model, warnings): (String, String, Value, Vec<String>) = match extension.as_str() {
         "docx" | "docm" | "dotx" => {
             let read = docx::read_docx_file(path).map_err(payload)?;
             ("writer".to_string(), read.document.title.clone(), to_value(read.document)?, read.warnings)
+        }
+        // Word 97-2003: prefer a locally installed LibreOffice for fidelity,
+        // fall back to the built-in CFB text importer. Never edited in place.
+        "doc" | "dot" => {
+            legacy = true;
+            if let Some(converted) = try_libreoffice(path, "docx") {
+                let read = docx::read_docx_file(&converted.path).map_err(payload)?;
+                let mut warnings = vec![
+                    "Converted with the installed LibreOffice. The original .doc file is unchanged; save as .docx or .oswk to keep your edits."
+                        .to_string(),
+                ];
+                warnings.extend(read.warnings);
+                let title = if read.document.title.trim().is_empty() {
+                    officecore::io::file_stem(path)
+                } else {
+                    read.document.title.clone()
+                };
+                ("writer".to_string(), title, to_value(read.document)?, warnings)
+            } else {
+                let read = officecore::legacy::read_doc_file(path).map_err(payload)?;
+                ("writer".to_string(), officecore::io::file_stem(path), to_value(read.document)?, read.warnings)
+            }
+        }
+        // PowerPoint 97-2003: same strategy as Word.
+        "ppt" => {
+            legacy = true;
+            if let Some(converted) = try_libreoffice(path, "pptx") {
+                let read = pptx::read_pptx_file(&converted.path).map_err(payload)?;
+                let mut warnings = vec![
+                    "Converted with the installed LibreOffice. The original .ppt file is unchanged; save as .pptx or .oswk to keep your edits."
+                        .to_string(),
+                ];
+                warnings.extend(read.warnings);
+                let title = if read.deck.title.trim().is_empty() {
+                    officecore::io::file_stem(path)
+                } else {
+                    read.deck.title.clone()
+                };
+                ("impress".to_string(), title, to_value(read.deck)?, warnings)
+            } else {
+                let read = officecore::legacy::read_ppt_file(path).map_err(payload)?;
+                ("impress".to_string(), officecore::io::file_stem(path), to_value(read.document)?, read.warnings)
+            }
         }
         "odt" => {
             let read = odf::read_odt_file(path).map_err(payload)?;
@@ -225,7 +274,110 @@ pub fn open_path(path: &Path) -> Result<OpenDocument, OfficeErrorPayload> {
             return Err(payload(OfficeError::unsupported(format!("Opening .{other} files is not supported yet."))));
         }
     };
-    Ok(OpenDocument { kind, title, path: path_text, model, warnings })
+    Ok(OpenDocument { kind, title, path: path_text, model, warnings, legacy })
+}
+
+// ---------------------------------------------------------------------------
+// Legacy binary formats and the optional LibreOffice bridge
+// ---------------------------------------------------------------------------
+
+/// A LibreOffice conversion result that removes its temporary directory when
+/// dropped.
+struct LibreOfficeConversion {
+    path: PathBuf,
+    dir: PathBuf,
+}
+
+impl Drop for LibreOfficeConversion {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+/// Finds the LibreOffice CLI: the `PDFSAK_SOFFICE` override, `soffice` on
+/// PATH, or the standard install locations.
+fn soffice_path() -> Option<PathBuf> {
+    if let Some(explicit) = std::env::var_os("PDFSAK_SOFFICE") {
+        let candidate = PathBuf::from(explicit);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    if let Some(path_var) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            for name in ["soffice.exe", "soffice"] {
+                let candidate = dir.join(name);
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+    #[cfg(windows)]
+    {
+        for base in [
+            r"C:\Program Files\LibreOffice\program\soffice.exe",
+            r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+        ] {
+            let candidate = PathBuf::from(base);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// Converts a legacy binary document with LibreOffice, when one is installed.
+/// Hardened invocation: fixed arguments, no shell, no stdin, a 120 s timeout
+/// and a private temporary directory that is removed afterwards.
+fn try_libreoffice(path: &Path, target: &str) -> Option<LibreOfficeConversion> {
+    let exe = soffice_path()?;
+    let dir = std::env::temp_dir().join(format!("osak-legacy-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).ok()?;
+    let mut command = std::process::Command::new(exe);
+    command
+        .arg("--headless")
+        .arg("--norestore")
+        .arg("--convert-to")
+        .arg(target)
+        .arg("--outdir")
+        .arg(&dir)
+        .arg(path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let mut child = command.spawn().ok()?;
+    let started = std::time::Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                if started.elapsed() > std::time::Duration::from_secs(120) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = std::fs::remove_dir_all(&dir);
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            Err(_) => {
+                let _ = std::fs::remove_dir_all(&dir);
+                return None;
+            }
+        }
+    };
+    let produced = dir.join(format!("{}.{}", officecore::io::file_stem(path), target));
+    if !status.success() || !produced.is_file() {
+        let _ = std::fs::remove_dir_all(&dir);
+        return None;
+    }
+    Some(LibreOfficeConversion { path: produced, dir })
 }
 
 #[tauri::command]
@@ -558,18 +710,109 @@ pub fn convert(input: &Path, output: &Path, _options: &ConvertOptions) -> Result
     let output_extension = extension(output);
     let mut warnings = Vec::new();
 
-    // Image -> PDF and PDF -> image are handled by the PDF engine tools.
+    // 1. PDF input conversions (images, text, Word document)
+    if input_extension == "pdf" {
+        if matches!(output_extension.as_str(), "jpg" | "jpeg" | "png") {
+            let format = match output_extension.as_str() {
+                "png" => pdfcore::images::ImageFormat::Png,
+                _ => pdfcore::images::ImageFormat::Jpeg,
+            };
+            let out_dir = output.parent().unwrap_or_else(|| Path::new("."));
+            let prefix = officecore::io::file_stem(output);
+            let silent = |_| ();
+            let cancel = pdfcore::CancelToken::new();
+            let result = pdfcore::convert::pdf_to_images(
+                input,
+                out_dir,
+                format,
+                150,
+                85,
+                false,
+                &prefix,
+                &[],
+                pdfcore::docutil::OverwritePolicy::Replace,
+                None,
+                &silent,
+                &cancel,
+            )
+            .map_err(|e| payload(OfficeError::internal(e.to_string())))?;
+            return Ok(ConversionInfo {
+                input: input.to_string_lossy().to_string(),
+                output: result
+                    .files
+                    .first()
+                    .map(|f| f.path.clone())
+                    .unwrap_or_else(|| output.to_string_lossy().to_string()),
+                converted: true,
+                warnings: vec![format!("Extracted {} page(s) to images.", result.files.len())],
+            });
+        } else if output_extension == "txt" {
+            let pages = pdfcore::render::page_geometries(input, None)
+                .map_err(|e| payload(OfficeError::internal(e.to_string())))?;
+            let mut text = String::new();
+            for page in &pages {
+                let content = pdfcore::render::extract_page_text(input, None, page.page)
+                    .map_err(|e| payload(OfficeError::internal(e.to_string())))?;
+                text.push_str(&content);
+                text.push_str("\n\n");
+            }
+            officecore::io::write_atomic(output, text.as_bytes()).map_err(payload)?;
+            return Ok(ConversionInfo {
+                input: input.to_string_lossy().to_string(),
+                output: output.to_string_lossy().to_string(),
+                converted: true,
+                warnings: vec![],
+            });
+        } else if output_extension == "docx" {
+            let pages = pdfcore::render::page_geometries(input, None)
+                .map_err(|e| payload(OfficeError::internal(e.to_string())))?;
+            let mut document =
+                officecore::model::TextDocument { title: officecore::io::file_stem(input), ..Default::default() };
+            for page in &pages {
+                let content = pdfcore::render::extract_page_text(input, None, page.page)
+                    .map_err(|e| payload(OfficeError::internal(e.to_string())))?;
+                for line in content.lines() {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                        document.blocks.push(officecore::model::Block::paragraph(trimmed));
+                    }
+                }
+            }
+            if document.blocks.is_empty() {
+                document.blocks.push(officecore::model::Block::paragraph(""));
+            }
+            officecore::docx::write_docx_file(output, &document).map_err(payload)?;
+            return Ok(ConversionInfo {
+                input: input.to_string_lossy().to_string(),
+                output: output.to_string_lossy().to_string(),
+                converted: true,
+                warnings: vec!["Text content extracted from PDF into Word DOCX document.".into()],
+            });
+        }
+    }
+
+    // 2. Image -> PDF conversion
     if matches!(input_extension.as_str(), "jpg" | "jpeg" | "png" | "bmp" | "gif" | "webp" | "tiff" | "tif")
         && output_extension == "pdf"
     {
-        return Err(payload(OfficeError::unsupported(
-            "Converting images to PDF is handled by the PDF module's JPG to PDF tool.",
-        )));
-    }
-    if input_extension == "pdf" && matches!(output_extension.as_str(), "jpg" | "jpeg" | "png") {
-        return Err(payload(OfficeError::unsupported(
-            "Converting PDF to images is handled by the PDF module's PDF to JPG tool.",
-        )));
+        let items = vec![pdfcore::images::ImageItem { path: input.to_string_lossy().to_string(), rotation_delta: 0 }];
+        let silent = |_| ();
+        let cancel = pdfcore::CancelToken::new();
+        pdfcore::images::images_to_pdf(
+            &items,
+            &Default::default(),
+            output,
+            pdfcore::docutil::OverwritePolicy::Replace,
+            &silent,
+            &cancel,
+        )
+        .map_err(|e| payload(OfficeError::internal(e.to_string())))?;
+        return Ok(ConversionInfo {
+            input: input.to_string_lossy().to_string(),
+            output: output.to_string_lossy().to_string(),
+            converted: true,
+            warnings: vec![],
+        });
     }
 
     let kind = kind_for_extension(&input_extension).ok_or_else(|| {
@@ -623,7 +866,10 @@ pub async fn office_convert(
 #[tauri::command]
 pub fn office_conversion_targets(extension: String) -> Vec<String> {
     match extension.trim_start_matches('.').to_ascii_lowercase().as_str() {
-        "docx" | "odt" | "rtf" | "txt" | "md" => {
+        "docx" | "docm" | "dotx" | "doc" | "dot" => {
+            vec!["pdf".into(), "docx".into(), "odt".into(), "rtf".into(), "txt".into(), "html".into(), "oswk".into()]
+        }
+        "odt" | "rtf" | "txt" | "md" => {
             vec!["pdf".into(), "docx".into(), "odt".into(), "rtf".into(), "txt".into(), "html".into(), "oswk".into()]
         }
         "xlsx" | "ods" | "csv" | "tsv" | "xls" => {
@@ -633,7 +879,7 @@ pub fn office_conversion_targets(extension: String) -> Vec<String> {
         "oswk" => {
             vec!["pdf".into(), "docx".into(), "xlsx".into(), "pptx".into(), "odt".into(), "ods".into(), "odp".into()]
         }
-        "pdf" => vec!["jpg".into(), "png".into()],
+        "pdf" => vec!["jpg".into(), "png".into(), "txt".into(), "docx".into()],
         "jpg" | "jpeg" | "png" | "bmp" | "webp" => vec!["pdf".into()],
         _ => Vec::new(),
     }
@@ -925,9 +1171,23 @@ mod tests {
     #[test]
     fn extension_detection() {
         assert_eq!(kind_for_extension("docx"), Some("writer"));
+        assert_eq!(kind_for_extension("doc"), None);
         assert_eq!(kind_for_extension("xlsx"), Some("calc"));
         assert_eq!(kind_for_extension("pptx"), Some("impress"));
         assert_eq!(kind_for_extension("pdf"), None);
+    }
+
+    #[test]
+    fn conversion_targets_include_new_formats() {
+        let pdf_targets = office_conversion_targets("pdf".into());
+        assert!(pdf_targets.contains(&"jpg".into()));
+        assert!(pdf_targets.contains(&"png".into()));
+        assert!(pdf_targets.contains(&"txt".into()));
+        assert!(pdf_targets.contains(&"docx".into()));
+
+        let doc_targets = office_conversion_targets("doc".into());
+        assert!(doc_targets.contains(&"pdf".into()));
+        assert!(doc_targets.contains(&"docx".into()));
     }
 
     #[test]
