@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { appDataDir } from "@tauri-apps/api/path";
 import { open } from "@tauri-apps/plugin-dialog";
 import { cancelJob, fileSizes, logOperation, pdfInfo, suggestOutput, toAppError } from "./api";
-import { dirName, fileBaseName, isImage, isPdf, joinPath, uid } from "./format";
+import { dirName, fileBaseName, fileStem, isImage, isPdf, joinPath, uid } from "./format";
 import { isAndroid, pickAndroidFiles, publishOutputs, type PublishTarget } from "./mobile";
 import {
   reportError,
@@ -105,7 +106,10 @@ export function useTool(options: ToolOptions): ToolSession {
   const [needsPassword, setNeedsPassword] = useState(false);
   const [outputPath, setOutputPath] = useState("");
   const [outputDir, setOutputDir] = useState("");
-  const [overwrite, setOverwrite] = useState<OverwriteMode>("error");
+  // Multi-output tools show the overwrite choice up front; "create new" is the
+  // displayed default, so the state must match it (the old "error" default made
+  // a second export fail with "a file with this name already exists").
+  const [overwrite, setOverwrite] = useState<OverwriteMode>(multiOutput ? "unique_name" : "error");
   const [jobId] = useState(() => uid("job"));
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<OpResult | null>(null);
@@ -279,6 +283,10 @@ export function useTool(options: ToolOptions): ToolSession {
           const appData = await appDataDir().catch(() => "");
           base = appData ? joinPath(appData, "Outputs") : dirName(primary.path);
         }
+        // The native commands require the output folder to exist (centralized
+        // path policy); a fresh install has no staging folder yet, so create
+        // it here instead of failing the merge/export with "folder missing".
+        await invoke("ensure_dir", { path: base }).catch(() => undefined);
         if (cancelled) return;
         setOutputPath(joinPath(base, fileBaseName(suggestedName)));
         setOutputDir(base);
@@ -286,6 +294,16 @@ export function useTool(options: ToolOptions): ToolSession {
       return () => {
         cancelled = true;
       };
+    }
+    // Multi-output tools (PDF -> images, split) write into a folder named after
+    // the document: exporting several PDFs from the same directory can no
+    // longer collide on the first page_001 file.
+    if (isMultiOutput) {
+      const folder = joinPath(dirName(primary.path), `${fileStem(primary.path)}${suffix}`);
+      void invoke("ensure_dir", { path: folder }).catch(() => undefined);
+      setOutputPath(joinPath(folder, fileBaseName(suggestedName)));
+      setOutputDir(folder);
+      return;
     }
     const target = settings.defaultOutputDir
       ? joinPath(settings.defaultOutputDir, fileBaseName(suggestedName))
@@ -309,7 +327,7 @@ export function useTool(options: ToolOptions): ToolSession {
     // The suggestion is derived from the active file/output settings; the async
     // callbacks own the state they set.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [primary?.path, suffix, settings.defaultOutputDir]);
+  }, [primary?.path, suffix, settings.defaultOutputDir, isMultiOutput]);
 
   // Files handed over from another screen.
   const initialised = useRef(false);
