@@ -126,7 +126,17 @@ Effort estimates assume a single developer.
 - Android: the app-private staging folder is created before native tool runs
   (fixes PDF merge and other exports), and the converter/cleaner use the SAF
   picker and publish their results.
+## 3.5.7 — Legacy formats and OAuth sync (delivered)
+
+- Word 97-2003 (`.doc`) and PowerPoint 97-2003 (`.ppt`) import: built-in CFB
+  text extraction plus an optional LibreOffice conversion bridge; legacy tabs
+  always save to a modern format.
+- OAuth 2.0 PKCE Google Drive and OneDrive providers with loopback redirect,
+  OS credential-vault token storage and the same conflict contract as WebDAV;
+  Sync screen gains the client/connect panel.
+- Universal converter handles PDF → JPG/PNG/TXT/DOCX and image → PDF.
 - Still open for v3.6: content-stream editing, Reader tiling, PDF/A font
-  subsetting, RFC 3161/OCSP, and the coverage re-baseline that the vitest 4/5
-  instrumentation change requires. PDF → Word/Excel layout reconstruction is
+  subsetting, RFC 3161/OCSP, background sync/auto-merge for the OAuth
+  providers, and the coverage re-baseline that the vitest 4/5 instrumentation
+  change requires. PDF → Word/Excel layout reconstruction is
   not planned for v3.6.

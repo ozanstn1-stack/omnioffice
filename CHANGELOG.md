@@ -4,6 +4,45 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.7] - Legacy .doc/.ppt import and OAuth cloud sync
+
+### Added
+
+- **Word 97-2003 (.doc) and PowerPoint 97-2003 (.ppt) import.** Both are OLE2
+  Compound File Binary containers; the new `officecore::legacy` module reads
+  them without a native Office dependency: the Word FIB piece table (compressed
+  and UTF-16 pieces, paragraph/cell marks) and the PowerPoint record tree's
+  text atoms per `Slide` container. Documents open in Writer/Impress; a legacy
+  tab has no save path, so the first Ctrl+S asks for `.docx`/`.pptx`/`.oswk`
+  and the original binary file is never edited in place. When a local
+  LibreOffice is installed (`PDFSAK_SOFFICE` or `soffice` on PATH) it is used
+  first for a full-fidelity conversion into a private temporary directory
+  (fixed arguments, no shell, 120 s timeout, cleaned up afterwards). The
+  capability matrix and the README table now report the honest flags
+  (open ✓ text import, edit ✓ in memory, save –, PDF export ✓).
+- **OAuth 2.0 PKCE cloud sync (Google Drive + OneDrive).** `synccore::oauth`
+  implements the Authorization Code flow with S256 (RFC 7636 test vector), a
+  loopback listener on `127.0.0.1:<random port>` with state verification,
+  token exchange and refresh. `synccore::cloud` adds Google Drive v3 and
+  Microsoft Graph providers for the full sync surface (listing, streaming
+  upload/download, staged downloads, folder creation) under the existing
+  conflict contract: Graph writes are conditional on `If-Match`; Drive
+  compares the stored `sha256Checksum` before replacing content. The Sync
+  screen's OneDrive/Google Drive options are enabled with an OAuth panel
+  (client ID/secret/tenant, Connect/Disconnect, account and storage note), and
+  tokens live in the OS credential vault (Windows Credential Manager, macOS
+  Keychain, Secret Service) with the app's secret-store fallback reported in
+  the UI.
+- **The universal converter completes its format list.** `office_convert`
+  handles PDF → JPG/PNG/TXT/DOCX and image → PDF directly, and the conversion
+  targets list reflects it (a PDF input offers JPG, PNG, TXT and DOCX).
+
+### Changed
+
+- Android picks `.doc`/`.dot`/`.ppt` through the SAF office picker alongside
+  the modern formats, and the legacy extensions route to the workspace like
+  the rest of the office family.
+
 ## [3.5.6] - Home opens what you pick, Android converters actually work
 
 ### Fixed

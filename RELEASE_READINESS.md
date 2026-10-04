@@ -1,4 +1,4 @@
-# Release Readiness — Office Swiss Army Knife 3.5.6
+# Release Readiness — Office Swiss Army Knife 3.5.7
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -6,6 +6,52 @@ built or verified unless it was reproduced in this environment or is produced
 by CI.
 
 ## Implemented (this cycle)
+
+- **Legacy `.doc`/`.ppt` import** (`officecore::legacy`): the Word FIB piece
+  table (compressed + UTF-16 pieces) and the PowerPoint record-tree text atoms
+  per `Slide` container are read from the OLE2 container; a locally installed
+  LibreOffice is used first for full-fidelity conversion (`PDFSAK_SOFFICE` or
+  `soffice` on PATH, fixed args, 120 s timeout, private temp dir). Legacy tabs
+  have no save path: the first Ctrl+S asks for `.docx`/`.pptx`/`.oswk`.
+  Compatibility matrix and README table updated to the honest flags.
+- **OAuth 2.0 PKCE cloud sync** (`synccore::oauth`, `synccore::cloud`,
+  `src-tauri::oauth`): S256 PKCE (RFC 7636 vector test), loopback listener with
+  state verification, token exchange/refresh, Google Drive v3 and Microsoft
+  Graph providers with streaming transfers and the existing conflict contract
+  (Graph `If-Match`; Drive `sha256Checksum` comparison). Tokens are stored in
+  the OS credential vault on desktop; the fallback store is reported in the UI.
+- **Converter completion**: PDF → JPG/PNG/TXT/DOCX and image → PDF inside
+  `office_convert`, with the targets list updated accordingly.
+
+## Tested in this environment
+
+| Gate | Command | Result |
+|---|---|---|
+| Rust workspace | `cargo test --workspace` | 552 passed, 3 ignored (incl. the legacy and OAuth suites) |
+| Rust clippy | `cargo clippy -p synccore -p officecore -p pdf-swiss-army-knife --all-targets -- -D warnings` | clean |
+| Frontend unit/integration | `npm test` | 42 files, 688 passed, 1 skipped |
+| Frontend coverage | `npm run test:coverage` | 65.4 / 71.3 / 48.9 / 65.4, floors 62 / 69 / 46 / 62 pass |
+| Legacy importer | `cargo test -p officecore --lib legacy` | 4 passed (piece table, PPT slides, corrupt input) |
+| OAuth core | `cargo test -p synccore` | PKCE RFC vector, auth URLs, token parsing, loopback accept/reject, mock-server round trips for Graph and Drive, both conflict cases |
+| Sync screen | `npx vitest run src/screens/sync-oauth.test.tsx` | connect flow + keychain note |
+
+## Not tested here (honest)
+
+- **No live OAuth sign-in was performed.** It needs real Google/Microsoft app
+  client IDs and a browser account; the tests cover the protocol, loopback
+  handling, token parsing and the provider HTTP surfaces against a mock
+  server. A live run is the first thing to do with real client IDs.
+- **LibreOffice conversion was not exercised** (no LibreOffice in this
+  environment); the built-in CFB importer is the tested path. The bridge is
+  opt-in and falls back cleanly.
+- **Legacy import fidelity is text-level**: character formatting, tables,
+  headers/footers, footnotes, images, animations and themes are not
+  reconstructed; the import warns about this and saving goes to a modern
+  format.
+- Android builds pick `.doc/.dot/.ppt` through SAF, but no device/emulator was
+  available here; Android compilation is covered by the release workflow.
+
+## Implemented in 3.5.6 and 3.5.5 (unchanged)
 
 - **Home opens a single picked/dropped file** through the same routing as
   open-with (office → workspace, PDF → reader, image → image-to-PDF); the
