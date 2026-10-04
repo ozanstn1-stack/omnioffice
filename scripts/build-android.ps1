@@ -299,4 +299,25 @@ foreach ($archAbi in $Abi) {
     }
 }
 
+# Per-platform checksum file for the Android assets just built. The release
+# workflow writes the same file; local releases need it too, otherwise a stale
+# SHA256SUMS-android.txt from an older version could be published.
+function Get-Sha256([string]$Path) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $stream = [System.IO.File]::OpenRead($Path)
+        try { $bytes = $sha.ComputeHash($stream) } finally { $stream.Dispose() }
+    } finally {
+        $sha.Dispose()
+    }
+    return ([System.BitConverter]::ToString($bytes) -replace '-', '').ToLowerInvariant()
+}
+$outDir = Join-Path $root 'release-artifacts'
+$androidFiles = Get-ChildItem $outDir -Filter "OmniOffice-Android-$versionName-*" -File | Sort-Object Name
+if ($androidFiles) {
+    $lines = foreach ($file in $androidFiles) { "$(Get-Sha256 $file.FullName)  $($file.Name)" }
+    Set-Content (Join-Path $outDir 'SHA256SUMS-android.txt') -Value ($lines -join "`n") -Encoding ASCII
+    Write-Host "==> Android checksums: $(Join-Path $outDir 'SHA256SUMS-android.txt')"
+}
+
 Write-Host 'Done.'
