@@ -24,6 +24,9 @@ pub struct PdfInfo {
     pub title: String,
     pub author: String,
     pub producer: String,
+    /// Document outline (bookmarks), bounded and read-only. Entries whose
+    /// destination cannot be resolved carry page 0.
+    pub outline: Vec<crate::inspect::OutlineEntry>,
 }
 
 /// Unique page sizes with counts, as a human-friendly summary.
@@ -75,10 +78,17 @@ pub fn pdf_info(path: &Path, password: Option<&str>) -> PdfResult<PdfInfo> {
 
     // Structural info via lopdf (needs a password when encrypted).
     let doc = load_document(path, password);
-    let (pdf_version, metadata, page_count, image_count) = match doc {
-        Ok(ref doc) => (doc.version.clone(), read_metadata(doc), doc.get_pages().len() as u32, count_images(doc, 50)),
+    let (pdf_version, metadata, page_count, image_count, outline) = match doc {
+        Ok(ref doc) => {
+            let outline = doc
+                .catalog()
+                .ok()
+                .and_then(|catalog| crate::inspect::read_outline(doc, catalog).ok())
+                .unwrap_or_default();
+            (doc.version.clone(), read_metadata(doc), doc.get_pages().len() as u32, count_images(doc, 50), outline)
+        }
         Err(PdfError::PasswordRequired) | Err(PdfError::WrongPassword) => {
-            (String::from("unknown"), PdfMetadata::default(), 0, 0)
+            (String::from("unknown"), PdfMetadata::default(), 0, 0, Vec::new())
         }
         Err(err) => return Err(err),
     };
@@ -107,5 +117,6 @@ pub fn pdf_info(path: &Path, password: Option<&str>) -> PdfResult<PdfInfo> {
         metadata,
         page_geometries,
         image_count,
+        outline,
     })
 }

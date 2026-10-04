@@ -480,6 +480,8 @@ export interface SignatureInfo {
   selfSignedChain: boolean;
   signer: SignatureCertificateInfo;
   signingTime: string | null;
+  /** RFC 3161 timestamp token `genTime`, when the signature carries one. */
+  timestamp?: string | null;
   algorithm: string;
   trust: string;
   notes: string[];
@@ -549,6 +551,8 @@ export const pdfSign = (payload: {
   pfxPassword?: string | null;
   certIndex?: number | null;
   options: SignOptionsInput;
+  /** Optional RFC 3161 timestamp authority URL; a failure fails the signing. */
+  tsaUrl?: string | null;
 }) => invoke<SignResult>("pdf_sign", payload);
 
 export const pdfListSigningCertificates = () => invoke<SigningCertificateSummary[]>("pdf_list_signing_certificates");
@@ -777,3 +781,40 @@ export const pdfEditObjects = (request: {
   edits: ObjectEdit[];
   password?: string | null;
 }) => invoke<EditReport>("pdf_edit_objects", { request });
+
+/** One text-showing operation on a page (V3.6 content editing). */
+export interface TextRunInfo {
+  page: number;
+  index: number;
+  text: string;
+  font: string | null;
+  fontSizePt: number;
+  x: number;
+  y: number;
+  widthPt: number;
+  renderMode: number;
+  editable: boolean;
+  note: string | null;
+}
+
+export interface TextRunEdit {
+  page: number;
+  index: number;
+  text: string;
+}
+
+export interface TextEditReport {
+  edited: number;
+  warnings: string[];
+}
+
+export const pdfListTextRuns = (path: string, password?: string) =>
+  invoke<TextRunInfo[]>("pdf_list_text_runs", { path, password: password || null });
+
+/** Replaces run text; the output keeps the original bytes as a new revision. */
+export const pdfEditTextRuns = (request: {
+  input: string;
+  output: OutputSpec;
+  edits: TextRunEdit[];
+  password?: string | null;
+}) => invoke<TextEditReport>("pdf_edit_text_runs", { request });

@@ -237,6 +237,8 @@ pub fn run() {
             pdf_v3::pdf_validate_form,
             pdf_v3::pdf_list_objects,
             pdf_v3::pdf_edit_objects,
+            pdf_v3::pdf_list_text_runs,
+            pdf_v3::pdf_edit_text_runs,
             sign::pdf_archive_validation_data,
             sign::pdf_sign,
             sign::pdf_verify_signatures,

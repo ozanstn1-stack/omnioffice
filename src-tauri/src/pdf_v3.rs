@@ -280,3 +280,57 @@ pub async fn pdf_edit_objects(request: EditObjectsRequest) -> Result<pdfcore::fo
     .await
     .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
 }
+
+// ---------------------------------------------------------------------------
+// V3.6: content-stream text runs
+// ---------------------------------------------------------------------------
+
+/// Lists the text runs of every page (stream order, approximate positions).
+#[tauri::command]
+pub async fn pdf_list_text_runs(
+    path: String,
+    password: Option<String>,
+) -> Result<Vec<pdfcore::content::TextRunInfo>, PdfError> {
+    let _permit = crate::concurrency::acquire().await;
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = crate::paths::input_file(&path)?;
+        pdfcore::content::list_text_runs_in_file(path.as_path(), password.as_deref())
+    })
+    .await
+    .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditTextRunsRequest {
+    pub input: String,
+    pub output: OutputSpec,
+    #[serde(default)]
+    pub edits: Vec<pdfcore::content::TextRunEdit>,
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
+/// Replaces the text of existing runs and appends the result as a new
+/// revision: the original bytes (and any signature over them) stay intact.
+#[tauri::command]
+pub async fn pdf_edit_text_runs(request: EditTextRunsRequest) -> Result<pdfcore::content::TextEditReport, PdfError> {
+    let _permit = crate::concurrency::acquire().await;
+    tauri::async_runtime::spawn_blocking(move || {
+        let input = crate::paths::input_file(&request.input)?;
+        let (output, policy) = request.output.resolve()?;
+        let target = pdfcore::docutil::resolve_output_path(&output, policy)?;
+        let original = std::fs::read(input.as_path()).map_err(PdfError::from_io)?;
+        // Encrypted inputs are refused by the content editor; the password
+        // would have to be applied before the bytes are re-encoded.
+        if pdfcore::docutil::looks_encrypted(input.as_path()) {
+            return Err(PdfError::PasswordRequired);
+        }
+        let _ = request.password;
+        let (edited, report) = pdfcore::content::edit_text_runs(&original, &request.edits)?;
+        pdfcore::docutil::write_bytes_atomic(&target, &edited)?;
+        Ok(report)
+    })
+    .await
+    .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
+}

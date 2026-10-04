@@ -50,6 +50,7 @@ fn pdf_info_is_camel_case() {
         title: "T".into(),
         author: "A".into(),
         producer: "P".into(),
+        outline: vec![],
     };
     let json = serde_json::to_value(&info).unwrap();
     assert_keys(
