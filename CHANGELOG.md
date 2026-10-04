@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.1] - Writer wrapping and office input for the AI assistant
+
+### Added
+
+- **Office text extraction in the AI assistant.** Summaries, translation,
+  document Q&A, text cleanup and metadata suggestions now accept the formats
+  the suite already opens: DOCX/DOCM/DOTX, ODT, RTF, legacy DOC/DOT,
+  TXT/MD/Markdown/HTML, XLSX/XLSM/XLS/ODS, CSV/TSV, PPTX/PPTM, ODP, legacy PPT
+  and the native `.oswk` unit. Writer files become ~4000-character chunks,
+  spreadsheets one unit per sheet (cell addresses and formulas included) and
+  presentations one unit per slide (notes included), so the page selector
+  still works; unsupported extensions fail with a clear message. The format
+  picker, drag-and-drop and Android SAF import all accept documents now, and
+  the metadata "Apply" action - which writes PDF files - is hidden for office
+  inputs while the suggestion stays visible.
+
+### Fixed
+
+- **Writer paragraphs wrap at the page edge again.** A flexbox `min-width:
+  auto` let a paragraph (or an unbroken word/URL) grow past the A4 text
+  column, so typing ran off the right side of the page instead of wrapping.
+  Paragraphs now shrink within the column and long words break when needed.
+
 ## [3.6.0] - PDF depth: text-run editing, bookmarks and RFC 3161 timestamps
 
 ### Added

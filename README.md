@@ -10,9 +10,22 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.6.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.6.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.6.1
+
+Writer wrapping fix and office input for the AI assistant.
+
+- **AI assistant reads office documents.** Summaries, translation, Q&A, text
+  cleanup and metadata suggestions accept DOCX/DOTX, ODT, RTF, DOC/DOT,
+  TXT/MD/HTML, XLSX/XLS/ODS, CSV/TSV, PPTX/PPT, ODP and `.oswk` in addition to
+  PDF: writer text becomes content chunks, spreadsheets one unit per sheet and
+  presentations one unit per slide, so the page selector still works. The
+  metadata "Apply" action stays PDF-only and is hidden for office inputs.
+- **Writer wrapping fix.** Paragraphs now shrink to the A4 text column and
+  long words break, instead of typing running off the right edge of the page.
 
 ## What's new in 3.6.0
 
