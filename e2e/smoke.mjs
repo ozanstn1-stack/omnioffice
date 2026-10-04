@@ -142,6 +142,11 @@ async function withSession(name, env, steps) {
     } catch (error) {
       // A failure screenshot is the fastest way to see what the app showed.
       await screenshot(session, `${name}-failure`).catch(() => undefined);
+      const diagnostic = await execute(
+        session,
+        "return JSON.stringify({h1:(document.querySelector('h1')?.textContent||'').trim(), buttons:document.querySelectorAll('button').length})",
+      ).catch(() => "<no diagnostic>");
+      error.message = `${error.message}; screen: ${diagnostic}`;
       throw error;
     }
   } finally {
@@ -296,25 +301,54 @@ async function sanitizeFlow(session) {
   const output = join(work, "sample-1-clean.pdf");
   rmSync(output, { force: true });
 
-  await waitForScript(
+  // The dev launch screen opens the Studio with the file already selected;
+  // clicking a navigation item would clear that selection, so the route is
+  // preferred. If it did not arrive, fall back to the sidebar (and say so).
+  let onStudio = false;
+  try {
+    await waitForScript(
+      session,
+      "return /PDF St/i.test(document.querySelector('h1')?.textContent || '')",
+      15000,
+      "PDF Studio screen",
+    );
+    onStudio = true;
+  } catch {
+    onStudio = false;
+  }
+  if (!onStudio) {
+    await execute(
+      session,
+      "const menu=document.querySelector('header button[aria-label]'); if(menu && !document.querySelector('.nav-item')) menu.click(); return true;",
+    );
+    await sleep(500);
+    const navigated = await execute(
+      session,
+      "const item=[...document.querySelectorAll('.nav-item')].find((el)=>/PDF St/i.test(el.textContent||'')); if(item){item.click(); return true;} return false;",
+    );
+    if (!navigated) throw new Error("the dev launch screen missed PDF Studio and the navigation item was not found");
+    await waitForScript(
+      session,
+      "return /PDF St/i.test(document.querySelector('h1')?.textContent || '')",
+      20000,
+      "PDF Studio screen after navigation",
+    );
+  }
+
+  // The run button is the last enabled primary button on the screen (the file
+  // picker is the first). Requiring two enabled primary buttons means the
+  // sanitize card is really rendered with a file selected, so a race with the
+  // lazy screen never clicks the picker and opens a native dialog.
+  const clicked = await waitForScript(
     session,
-    "const buttons=[...document.querySelectorAll('button.btn.btn-primary')]; return buttons.some((button)=>!button.disabled);",
+    "const buttons=[...document.querySelectorAll('button.btn.btn-primary')].filter((button)=>!button.disabled); if(buttons.length>=2){buttons[buttons.length-1].click(); return true;} return false;",
     30000,
-    "sanitize run button",
-  );
-  // The screen renders its file-picker ("Dosya seç"/"Choose file") as the
-  // first primary button; the run button is the last one because the tool card
-  // comes after the file card. A script click avoids msedgedriver's
-  // "not interactable" behind the studio's scroll container, and clicking the
-  // picker would open a native dialog the driver cannot dismiss.
-  const clicked = await execute(
-    session,
-    "const buttons=[...document.querySelectorAll('button.btn.btn-primary')].filter((button)=>!button.disabled); const button=buttons[buttons.length-1]; if(button){button.click(); return true;} return false;",
+    `sanitize run button (${onStudio ? "dev route" : "nav fallback, file was cleared"})`,
   );
   if (!clicked) throw new Error("the sanitize run button could not be clicked");
   const size = await waitForFile(output, 60000, "sanitized output");
   await screenshot(session, "sanitize");
-  console.log(`PASS: sanitizer wrote ${output} (${size} bytes)`);
+  console.log(`PASS: sanitizer wrote ${output} (${size} bytes${onStudio ? "" : ", nav fallback"})`);
 }
 
 async function main() {

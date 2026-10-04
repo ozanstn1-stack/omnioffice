@@ -285,6 +285,12 @@ jobs:
       # sanitize all run through the same WebDriver session harness.
       - name: Deep flows (Xvfb)
         run: xvfb-run -a npm run e2e:flows
+      # When a flow fails, the app's own log records the dev-context line and
+      # any frontend error; without it a WebDriver failure is hard to explain.
+      - name: App log on E2E failure
+        if: failure()
+        run: |
+          find "$HOME/.local/share" -name frontend.log -print -exec cat {} \; 2>/dev/null || true
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
