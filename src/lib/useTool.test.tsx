@@ -26,10 +26,18 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(async () => null) }));
 
 import { useTool } from "./useTool";
 
-function Harness({ multiOutput, initialPaths }: { multiOutput: boolean; initialPaths: string[] }) {
+function Harness({
+  multiOutput,
+  initialPaths,
+  accept = "pdf",
+}: {
+  multiOutput: boolean;
+  initialPaths: string[];
+  accept?: "pdf" | "document";
+}) {
   const session = useTool({
     suffix: multiOutput ? "_images" : "_merged",
-    accept: "pdf",
+    accept,
     multiOutput,
     loadInfo: false,
     initialPaths,
@@ -39,6 +47,7 @@ function Harness({ multiOutput, initialPaths }: { multiOutput: boolean; initialP
       <span data-testid="dir">{session.outputDir}</span>
       <span data-testid="overwrite">{session.overwrite}</span>
       <span data-testid="path">{session.outputPath}</span>
+      <span data-testid="count">{session.files.length}</span>
     </div>
   );
 }
@@ -67,6 +76,14 @@ describe("useTool output suggestions", () => {
     render(<Harness multiOutput={false} initialPaths={["C:/docs/sample-1.pdf"]} />);
     await waitFor(() => expect(screen.getByTestId("dir").textContent).toBe("C:/docs"));
     expect(screen.getByTestId("overwrite").textContent).toBe("error");
+  });
+
+  it("accepts office documents for the AI assistant and rejects unknown types", async () => {
+    render(<Harness multiOutput={false} accept="document" initialPaths={["C:/docs/report.docx"]} />);
+    await waitFor(() => expect(screen.getByTestId("count").textContent).toBe("1"));
+
+    render(<Harness multiOutput={false} accept="document" initialPaths={["C:/docs/archive.zip"]} />);
+    await waitFor(() => expect(screen.getAllByTestId("count")[1].textContent).toBe("0"));
   });
 
   it("stages Android output in the app folder and creates it", async () => {

@@ -74,11 +74,11 @@ export function mimeForName(name: string): string {
   return "application/octet-stream";
 }
 
-function mimeFilters(accept: "pdf" | "image" | "any"): string[] {
+function mimeFilters(accept: "pdf" | "image" | "any" | "document"): string[] {
   if (accept === "pdf") return ["application/pdf"];
   if (accept === "image") return ["image/*"];
-  // `any` is the Home picker: it accepts office documents too, so the Android
-  // picker offers the same list the open-with intent filter accepts.
+  // `any` is the Home picker and `document` the AI assistant: both accept the
+  // office formats the open-with intent filter accepts.
   return [...OFFICE_MIME_TYPES, "image/*"];
 }
 
@@ -165,7 +165,7 @@ async function importPickedUris(picked: AndroidFs.FsUri[], fallbackName: string)
 /** Picks documents through the system picker and imports them as local paths. */
 export async function pickAndroidFiles(options: {
   multiple: boolean;
-  accept: "pdf" | "image" | "any";
+  accept: "pdf" | "image" | "any" | "document";
 }): Promise<string[]> {
   const picked = await AndroidFs.showOpenFilePicker({
     multiple: options.multiple,

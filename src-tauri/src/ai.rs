@@ -14,6 +14,8 @@ use crate::jobs::JobRegistry;
 use crate::secret;
 use aicore::prompts::{self, SummaryOptions, TranslateOptions};
 use aicore::{AiConfig, AiError, CancelToken, ChatMessage, ChatOptions, DeepSeekClient};
+use officecore::model::{Deck, TextDocument, Workbook};
+use officecore::{csvio, docx, legacy, odf, pptx, rtf, textio, xlsx};
 use pdfcore::error::{ErrorCode, PdfError};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -358,6 +360,212 @@ fn emit_reasoning(app: &AppHandle, job_id: &str, delta: &str) {
     let _ = app.emit("ai:chunk", serde_json::json!({ "jobId": job_id, "delta": delta, "kind": "reasoning" }));
 }
 
+/// Maps an office engine error to the app error type without losing the
+/// engine's own user-facing message.
+fn office_error(error: officecore::OfficeError) -> PdfError {
+    let code = match error.code.as_str() {
+        "unsupported_format" | "unsupported_feature" => ErrorCode::Unsupported,
+        "not_found" => ErrorCode::NotFound,
+        "permission_denied" => ErrorCode::PermissionDenied,
+        "too_large" => ErrorCode::AiTooLarge,
+        "cancelled" => ErrorCode::Cancelled,
+        "corrupt_document" | "zip_bomb" | "encoding_error" => ErrorCode::CorruptPdf,
+        "invalid_argument" | "invalid_path" => ErrorCode::InvalidInput,
+        _ => ErrorCode::Internal,
+    };
+    PdfError::coded(code, error.message)
+}
+
+/// Content units of a Writer document: chunks of at most 4,000 characters so
+/// one long document does not become a single prompt page.
+fn units_from_document(document: &TextDocument) -> Vec<(u32, String)> {
+    let mut units: Vec<(u32, String)> = Vec::new();
+    let mut current = String::new();
+    for block in &document.blocks {
+        let text = block.plain_text();
+        if text.trim().is_empty() {
+            continue;
+        }
+        if current.len() + text.len() > 4_000 && !current.is_empty() {
+            units.push((units.len() as u32 + 1, std::mem::take(&mut current)));
+        }
+        if !current.is_empty() {
+            current.push('\n');
+        }
+        current.push_str(&text);
+    }
+    if !current.trim().is_empty() {
+        units.push((units.len() as u32 + 1, current));
+    }
+    units
+}
+
+/// One unit per sheet, with cell addresses so the assistant can talk about
+/// specific cells.
+fn units_from_workbook(workbook: &Workbook) -> Vec<(u32, String)> {
+    let mut units = Vec::new();
+    for (index, sheet) in workbook.sheets.iter().enumerate() {
+        let mut text = format!("Sheet: {}\n", sheet.name);
+        for (address, cell) in &sheet.cells {
+            let value = match &cell.value {
+                officecore::model::CellValue::Text(value) => value.clone(),
+                officecore::model::CellValue::Number(value) => value.to_string(),
+                officecore::model::CellValue::Bool(value) => value.to_string(),
+                officecore::model::CellValue::Error(value) => value.clone(),
+                officecore::model::CellValue::Empty => {
+                    if cell.formula.is_none() {
+                        continue;
+                    }
+                    String::new()
+                }
+            };
+            match &cell.formula {
+                Some(formula) => text.push_str(&format!("{address}: {formula} = {value}\n")),
+                None => text.push_str(&format!("{address}: {value}\n")),
+            }
+        }
+        if text.lines().count() > 1 {
+            units.push((index as u32 + 1, text));
+        }
+    }
+    units
+}
+
+/// One unit per slide (shape text, group children and speaker notes).
+fn units_from_deck(deck: &Deck) -> Vec<(u32, String)> {
+    fn object_text(object: &officecore::model::SlideObject, out: &mut String) {
+        if let Some(frame) = &object.text {
+            let plain = frame.plain();
+            if !plain.trim().is_empty() {
+                out.push_str(&plain);
+                out.push('\n');
+            }
+        }
+        for child in &object.children {
+            object_text(child, out);
+        }
+    }
+    let mut units = Vec::new();
+    for (index, slide) in deck.slides.iter().enumerate() {
+        let mut text = String::new();
+        for object in &slide.objects {
+            object_text(object, &mut text);
+        }
+        if !slide.notes.trim().is_empty() {
+            text.push_str("\nNotes: ");
+            text.push_str(&slide.notes);
+            text.push('\n');
+        }
+        if !text.trim().is_empty() {
+            units.push((index as u32 + 1, text));
+        }
+    }
+    units
+}
+
+/// Text extraction for every non-PDF format the suite opens: office documents
+/// (including legacy `.doc`/`.ppt` and the native `.oswk` unit), spreadsheets
+/// and presentations. The returned "page" numbers are logical units - content
+/// chunks, sheets or slides - so the existing page selector still works.
+fn extract_office_pages(
+    path: &Path,
+    pages: Option<&[u32]>,
+    cancel: &CancelToken,
+) -> Result<Vec<(u32, String)>, PdfError> {
+    let extension = path.extension().map(|value| value.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    let units: Vec<(u32, String)> = match extension.as_str() {
+        "docx" | "docm" | "dotx" => units_from_document(&docx::read_docx_file(path).map_err(office_error)?.document),
+        "odt" => units_from_document(&odf::read_odt_file(path).map_err(office_error)?.document),
+        "rtf" => units_from_document(&rtf::read_rtf_file(path).map_err(office_error)?.document),
+        "doc" | "dot" => units_from_document(&legacy::read_doc_file(path).map_err(office_error)?.document),
+        "txt" | "md" | "markdown" | "html" | "htm" => {
+            let bytes = std::fs::read(path).map_err(PdfError::from_io)?;
+            let text = officecore::zip::decode_utf8(&bytes, "text").map_err(office_error)?;
+            units_from_document(&textio::text_to_document(&text, &officecore::io::file_stem(path)))
+        }
+        "xlsx" | "xlsm" | "xls" | "ods" => {
+            units_from_workbook(&xlsx::read_workbook_file(path).map_err(office_error)?.workbook)
+        }
+        "csv" | "tsv" => {
+            let bytes = std::fs::read(path).map_err(PdfError::from_io)?;
+            let mut options = csvio::CsvOptions::default();
+            if extension == "tsv" {
+                options.delimiter = "tab".into();
+            }
+            units_from_workbook(&csvio::parse_csv(&bytes, &options).map_err(office_error)?.workbook)
+        }
+        "pptx" | "pptm" => units_from_deck(&pptx::read_pptx_file(path).map_err(office_error)?.deck),
+        "odp" => units_from_deck(&odf::read_odp_file(path).map_err(office_error)?.deck),
+        "ppt" => units_from_deck(&legacy::read_ppt_file(path).map_err(office_error)?.document),
+        "oswk" => {
+            let bytes = std::fs::read(path).map_err(PdfError::from_io)?;
+            let mut raw: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
+                PdfError::coded(ErrorCode::CorruptPdf, format!("The unit file is not valid: {error}"))
+            })?;
+            officecore::unit::verify_checksum(&raw).map_err(office_error)?;
+            officecore::schema::migrate_unit(&mut raw).map_err(office_error)?;
+            let kind = raw.get("kind").and_then(|value| value.as_str()).unwrap_or_default().to_string();
+            let model = raw.get("model").cloned().unwrap_or(serde_json::Value::Null);
+            let json_error = |error: serde_json::Error| {
+                PdfError::coded(ErrorCode::CorruptPdf, format!("The unit model could not be read: {error}"))
+            };
+            match kind.as_str() {
+                "writer" => units_from_document(&serde_json::from_value(model).map_err(json_error)?),
+                "calc" => units_from_workbook(&serde_json::from_value(model).map_err(json_error)?),
+                "impress" => units_from_deck(&serde_json::from_value(model).map_err(json_error)?),
+                other => {
+                    return Err(PdfError::coded(
+                        ErrorCode::Unsupported,
+                        format!("The AI assistant cannot read .oswk units of kind {other}."),
+                    ));
+                }
+            }
+        }
+        other => {
+            return Err(PdfError::coded(
+                ErrorCode::Unsupported,
+                format!("The AI assistant does not support .{other} files."),
+            ));
+        }
+    };
+
+    let cleaned: Vec<(u32, String)> = units
+        .into_iter()
+        .filter_map(|(number, text)| {
+            let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+            if text.is_empty() {
+                None
+            } else {
+                Some((number, text))
+            }
+        })
+        .collect();
+    if cleaned.is_empty() {
+        return Err(ai_error(AiError::NoText));
+    }
+    let selected: Vec<(u32, String)> = match pages {
+        Some(list) if !list.is_empty() => {
+            let mut out = Vec::with_capacity(list.len());
+            for page in list {
+                match cleaned.iter().find(|(number, _)| number == page) {
+                    Some(entry) => out.push(entry.clone()),
+                    None => return Err(PdfError::RangeOutOfBounds),
+                }
+            }
+            out
+        }
+        _ => cleaned.into_iter().take(MAX_PAGES_FOR_CONTEXT as usize).collect(),
+    };
+    if cancel.is_cancelled() {
+        return Err(ai_error(AiError::Cancelled));
+    }
+    let characters: usize = selected.iter().map(|(_, text)| text.len()).sum();
+    if characters < MIN_TEXT_CHARS {
+        return Err(ai_error(AiError::NoText));
+    }
+    Ok(selected)
+}
+
 /// Extracts the page texts of a PDF (and reports progress/cancellation).
 fn extract_pages(
     app: &AppHandle,
@@ -367,6 +575,10 @@ fn extract_pages(
     pages: Option<&[u32]>,
     cancel: &CancelToken,
 ) -> Result<Vec<(u32, String)>, PdfError> {
+    let extension = path.extension().map(|value| value.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    if extension != "pdf" {
+        return extract_office_pages(path, pages, cancel);
+    }
     let geometries = pdfcore::render::page_geometries(path, password)?;
     let total = geometries.len() as u32;
     if total == 0 {
@@ -951,5 +1163,63 @@ mod tests {
         let request = AiMetadataRequest { path: "C:/docs/a.pdf".into(), password: None, job_id: "job-6".into() };
         let formatted = format!("{request:?}");
         assert!(!formatted.contains("REDACTED"), "no marker when there is nothing to redact: {formatted}");
+    }
+
+    /// The AI assistant reads PDFs plus every office format the suite opens:
+    /// DOCX/ODT/RTF/legacy DOC as text chunks, XLSX/ODS/CSV as one unit per
+    /// sheet and PPTX/ODP/legacy PPT as one unit per slide.
+    #[test]
+    fn office_documents_are_extracted_for_the_assistant() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cancel = CancelToken::new();
+
+        let mut document = officecore::model::TextDocument::new_blank("AI test");
+        document.blocks = vec![officecore::model::Block::paragraph("Merhaba d�nya bu bir deneme metnidir.")];
+        let docx = dir.path().join("ai.docx");
+        officecore::docx::write_docx_file(&docx, &document).expect("write docx");
+        let units = extract_office_pages(&docx, None, &cancel).expect("docx units");
+        assert!(units.iter().any(|(_, text)| text.contains("Merhaba d�nya")), "{units:?}");
+
+        let mut workbook = officecore::model::Workbook::new_blank("AI test");
+        workbook.sheets[0].set(
+            "A1",
+            officecore::model::Cell { value: officecore::model::CellValue::Text("Gelir".into()), ..Default::default() },
+        );
+        workbook.sheets[0].set(
+            "B1",
+            officecore::model::Cell { value: officecore::model::CellValue::Number(42.0), ..Default::default() },
+        );
+        workbook.sheets[0].set(
+            "A2",
+            officecore::model::Cell {
+                value: officecore::model::CellValue::Text("Toplam".into()),
+                ..Default::default()
+            },
+        );
+        let xlsx = dir.path().join("ai.xlsx");
+        officecore::xlsx::write_xlsx_file(&xlsx, &workbook).expect("write xlsx");
+        let units = extract_office_pages(&xlsx, None, &cancel).expect("xlsx units");
+        assert!(units[0].1.contains("Gelir") && units[0].1.contains("42"), "{units:?}");
+
+        let mut deck = officecore::model::Deck::new_blank("AI test");
+        let mut slide = officecore::model::Slide::default();
+        let mut object = officecore::model::SlideObject::new("text", 10.0, 10.0, 200.0, 50.0);
+        object.text = Some(officecore::model::TextFrame {
+            paragraphs: vec![officecore::model::TextParagraph {
+                text: "Sunum metni bu bir deneme slaytıdır.".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+        slide.objects.push(object);
+        deck.slides = vec![slide];
+        let pptx = dir.path().join("ai.pptx");
+        officecore::pptx::write_pptx_file(&pptx, &deck).expect("write pptx");
+        let units = extract_office_pages(&pptx, None, &cancel).expect("pptx units");
+        assert!(units.iter().any(|(_, text)| text.contains("Sunum metni")), "{units:?}");
+
+        let unknown = dir.path().join("ai.zip");
+        std::fs::write(&unknown, b"not a document").expect("write zip");
+        assert!(extract_office_pages(&unknown, None, &cancel).is_err());
     }
 }

@@ -3,7 +3,17 @@ import { invoke } from "@tauri-apps/api/core";
 import { appDataDir } from "@tauri-apps/api/path";
 import { open } from "@tauri-apps/plugin-dialog";
 import { cancelJob, fileSizes, logOperation, pdfInfo, suggestOutput, toAppError } from "./api";
-import { dirName, fileBaseName, fileStem, isImage, isPdf, joinPath, uid } from "./format";
+import {
+  dirName,
+  fileBaseName,
+  fileStem,
+  isImage,
+  isOfficeDocument,
+  isPdf,
+  joinPath,
+  OFFICE_DOCUMENT_EXTENSIONS,
+  uid,
+} from "./format";
 import { isAndroid, pickAndroidFiles, publishOutputs, type PublishTarget } from "./mobile";
 import {
   reportError,
@@ -21,7 +31,8 @@ import type { OpResult, OutputSpec, OverwriteMode, PdfInfo, ProgressPayload, Sel
 export interface ToolOptions {
   /** Suffix for the default output file name, e.g. "_merged". */
   suffix: string;
-  accept?: "pdf" | "image" | "any";
+  /** `document` accepts PDFs, images and every office format (AI assistant). */
+  accept?: "pdf" | "image" | "any" | "document";
   multiple?: boolean;
   /** Load pdf info (pages, metadata) for the primary file. */
   loadInfo?: boolean;
@@ -137,6 +148,7 @@ export function useTool(options: ToolOptions): ToolSession {
     (path: string) => {
       if (accept === "pdf") return isPdf(path);
       if (accept === "image") return isImage(path);
+      if (accept === "document") return isPdf(path) || isImage(path) || isOfficeDocument(path);
       return isPdf(path) || isImage(path);
     },
     [accept],
@@ -176,7 +188,26 @@ export function useTool(options: ToolOptions): ToolSession {
         ? [{ name: "PDF", extensions: ["pdf"] }]
         : accept === "image"
           ? [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"] }]
-          : [{ name: "Documents & images", extensions: ["pdf", "jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"] }];
+          : accept === "document"
+            ? [
+                {
+                  name: "Documents & images",
+                  extensions: [
+                    ...new Set([
+                      ...OFFICE_DOCUMENT_EXTENSIONS,
+                      "pdf",
+                      "jpg",
+                      "jpeg",
+                      "png",
+                      "webp",
+                      "bmp",
+                      "tif",
+                      "tiff",
+                    ]),
+                  ],
+                },
+              ]
+            : [{ name: "Documents & images", extensions: ["pdf", "jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"] }];
     const picked = await open({ multiple, filters, title: t("common.selectFiles") });
     if (!picked) return;
     const paths = Array.isArray(picked) ? picked : [picked];
