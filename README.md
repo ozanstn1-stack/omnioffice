@@ -10,9 +10,30 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.5.5** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.5.6** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.5.6
+
+Home opens what you pick and the Android converters work.
+
+- **Picking a file on Home opens it.** A single picked or dropped document
+  routes through the same logic as open-with: office documents in the
+  workspace, PDFs in the reader, images in image-to-PDF. The Home picker also
+  offers every format the suite opens, not just PDF and images.
+- **PDF → images no longer fails on an existing file.** Multi-output exports
+  default to unique names (matching the UI) and write into a per-document
+  folder (`<document>_images/`), so a second export never collides.
+- **Android tools get a staging folder.** The app-private `Outputs` folder is
+  created before the first run; the native commands reject a missing output
+  folder, which is why merge worked on Windows but not on Android.
+- **The converter and cleaner use the Android picker.** Both used the desktop
+  dialog plugin, which cannot open SAF: they now pick through the SAF bridge
+  and publish finished files to the chosen folder or Downloads. A PDF input
+  offers JPG/PNG; PDF → Word/Excel is not implemented.
+- **Home reads as an office suite**: tagline, group order (Office first) and
+  card descriptions lead with Writer, Calc and Impress.
 
 ## What's new in 3.5.5
 
@@ -727,7 +748,7 @@ produces the criterion report, and `npm run bench:check` compares it against
 the stored baseline (the CI bench job does this with a cached baseline and
 fails on a >15 % mean regression).
 
-**536 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **679
+**536 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **687
 frontend tests** pass, plus the 1 heavy case gated by `OSAK_PERF_HEAVY=1`,
 with a strict TypeScript type check on top. Frontend coverage floors are
 enforced by `npm run test:coverage` (see `vite.config.ts`). The per-crate split

@@ -3,6 +3,8 @@
  * Universal Converter, Document Cleaner and PDF Forms.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { appCacheDir, join } from "@tauri-apps/api/path";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { readFile, writeFile } from "@tauri-apps/plugin-fs";
 import {
@@ -28,6 +30,7 @@ import {
 } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { errorMessage, reportError, useToasts } from "../lib/store";
+import { isAndroid, pickAndroidFolder, pickOfficeFiles, publishOutputs, type AndroidTarget } from "../lib/mobile";
 import { uid } from "../lib/office-types";
 import { useDataSheets, useDraw, useNotes, useOfficeTabs, usePlanner, type DrawDocument } from "../lib/office-store";
 import * as api from "../lib/office-api";
@@ -1066,12 +1069,48 @@ export function ConverterScreen() {
     "oswk",
   ]);
   const [outputDir, setOutputDir] = useState("");
+  const [androidDir, setAndroidDir] = useState<AndroidTarget | null>(null);
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<Array<{ input: string; output: string; ok: boolean; detail: string }>>([]);
 
   const pickFiles = async () => {
-    const selection = await openDialog({ multiple: true });
-    const list = Array.isArray(selection) ? selection : typeof selection === "string" ? [selection] : [];
+    let list: string[] = [];
+    if (isAndroid()) {
+      // The desktop dialog plugin cannot open the Android picker; the SAF
+      // bridge copies the chosen documents into the app cache as real paths.
+      list = await pickOfficeFiles(true).catch(() => []);
+    } else {
+      const selection = await openDialog({
+        multiple: true,
+        filters: [
+          {
+            name: "Documents",
+            extensions: [
+              "docx",
+              "docm",
+              "dotx",
+              "odt",
+              "rtf",
+              "txt",
+              "md",
+              "html",
+              "xlsx",
+              "xlsm",
+              "xls",
+              "ods",
+              "csv",
+              "tsv",
+              "pptx",
+              "pptm",
+              "odp",
+              "oswk",
+              "pdf",
+            ],
+          },
+        ],
+      });
+      list = Array.isArray(selection) ? selection : typeof selection === "string" ? [selection] : [];
+    }
     setFiles(list);
     if (list[0]) {
       const extension = list[0].split(".").pop() ?? "";
@@ -1084,6 +1123,11 @@ export function ConverterScreen() {
   };
 
   const pickOutputDir = async () => {
+    if (isAndroid()) {
+      const target = await pickAndroidFolder().catch(() => null);
+      if (target) setAndroidDir(target);
+      return;
+    }
     const selection = await openDialog({ directory: true });
     if (typeof selection === "string") setOutputDir(selection);
   };
@@ -1119,16 +1163,36 @@ export function ConverterScreen() {
       }
     }
     const converted: typeof results = [];
+    // Android cannot write next to the picked document (SAF paths), so the
+    // converter stages its output in the app cache and copies each finished
+    // file to the chosen folder or to Downloads afterwards.
+    let stageDir = "";
+    if (isAndroid()) {
+      const cache = await appCacheDir().catch(() => "");
+      if (cache) {
+        stageDir = await join(cache, "converts", uid());
+        await invoke("ensure_dir", { path: stageDir }).catch(() => undefined);
+      }
+    }
     for (const input of files) {
       const base = input.replace(/\.[^.\\/]+$/, "");
-      const directory = outputDir || input.replace(/[\\/][^\\/]+$/, "");
+      const directory = isAndroid() ? stageDir : outputDir || input.replace(/[\\/][^\\/]+$/, "");
       const output = `${base}.${effectiveTarget === "html" ? "html" : effectiveTarget}`.replace(
         /^.*[\\/]/,
         `${directory}/`,
       );
       try {
         const info = await api.convertFile(input, output);
-        converted.push({ input, output: info.output, ok: true, detail: info.warnings.join(" ") });
+        if (isAndroid()) {
+          const failures = await publishOutputs([info.output], androidDir ? { dir: androidDir } : undefined);
+          if (failures.length > 0) {
+            converted.push({ input, output: info.output, ok: false, detail: failures[0].error });
+          } else {
+            converted.push({ input, output: info.output, ok: true, detail: info.warnings.join(" ") });
+          }
+        } else {
+          converted.push({ input, output: info.output, ok: true, detail: info.warnings.join(" ") });
+        }
       } catch (error) {
         converted.push({ input, output: directory, ok: false, detail: errorMessage(error, t) });
       }
@@ -1169,11 +1233,22 @@ export function ConverterScreen() {
           </label>
           <label className="field grow">
             <span>{t("converter.outputFolder")}</span>
-            <input
-              value={outputDir}
-              placeholder={t("converter.sameFolder")}
-              onChange={(event) => setOutputDir(event.target.value)}
-            />
+            {isAndroid() ? (
+              <input
+                readOnly
+                value={
+                  androidDir
+                    ? t("common.androidChosenDestination", { name: androidDir.name })
+                    : t("common.androidDefaultDestination")
+                }
+              />
+            ) : (
+              <input
+                value={outputDir}
+                placeholder={t("converter.sameFolder")}
+                onChange={(event) => setOutputDir(event.target.value)}
+              />
+            )}
           </label>
         </div>
         <ul className="file-pick-list">
@@ -1221,11 +1296,18 @@ export function CleanerScreen() {
   void setShowCleaner;
 
   const pick = async () => {
-    const selection = await openDialog({
-      multiple: false,
-      filters: [{ name: "Office documents", extensions: ["docx", "xlsx", "pptx", "odt", "ods", "odp"] }],
-    });
-    if (typeof selection === "string") {
+    let selection: string | null = null;
+    if (isAndroid()) {
+      const [picked] = await pickOfficeFiles(false).catch(() => []);
+      selection = picked ?? null;
+    } else {
+      const chosen = await openDialog({
+        multiple: false,
+        filters: [{ name: "Office documents", extensions: ["docx", "xlsx", "pptx", "odt", "ods", "odp"] }],
+      });
+      selection = typeof chosen === "string" ? chosen : null;
+    }
+    if (selection) {
       setPath(selection);
       setFootprint(await api.imageFootprint(selection).catch(() => null));
     }
@@ -1238,6 +1320,9 @@ export function CleanerScreen() {
       const cleaned = await api.cleanDocument(path, options);
       setResult(cleaned);
       setFootprint(await api.imageFootprint(path).catch(() => null));
+      // Android: the cleaned document lives in the app cache; copy it to a
+      // visible location so the user can open or share it.
+      if (isAndroid()) await publishOutputs([path]);
     } catch (error) {
       reportError(error, t);
     } finally {

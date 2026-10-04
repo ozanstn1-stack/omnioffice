@@ -4,6 +4,39 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.6] - Home opens what you pick, Android converters actually work
+
+### Fixed
+
+- **Picking a file on Home left it unopened.** A single picked or dropped
+  document now routes through the same logic as open-with: office documents
+  open in the workspace, PDFs in the reader, images in image-to-PDF (unknown
+  types go to the system viewer). Several files still stay on the board as a
+  quick-action suggestion. The Home picker also offered only PDF and images;
+  it now lists every format the suite opens.
+- **PDF → images failed with "a file with this name already exists".** The
+  multi-output overwrite state defaulted to `error` while the UI showed
+  "create new", so any folder that already contained `page_001.jpg` (a second
+  export, another PDF in the same folder) failed. Multi-output tools now
+  default to unique names and write into a per-document folder
+  (`<document>_images/`).
+- **PDF merge (and every tool) failed on Android** because the app-private
+  staging folder (`.../Outputs`) was never created and the native commands
+  reject a missing output folder. The tool session creates it before the first
+  run.
+- **The universal converter and the cleaner were dead on Android**: both used
+  the desktop dialog plugin, which cannot open the Android picker. They now
+  pick through the SAF bridge, stage results in the app cache and publish
+  finished files to the chosen folder or to Downloads. Conversion targets stay
+  honest: a PDF input offers JPG/PNG; PDF → Word/Excel layout reconstruction
+  is not implemented.
+
+### Changed
+
+- **Home reads as an office suite.** The tagline, group order (Office first)
+  and card descriptions now lead with Writer, Calc and Impress instead of
+  presenting the app as PDF-only.
+
 ## [3.5.5] - Data-integrity fixes, PDF repair and hard quality gates
 
 ### Fixed

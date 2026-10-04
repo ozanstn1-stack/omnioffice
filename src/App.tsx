@@ -126,6 +126,7 @@ import {
 } from "./lib/nav-history";
 import { openIntoWorkspace } from "./office/useOfficeSession";
 import { isOfficePath, openOfficePath, useOfficeTabs } from "./lib/office-store";
+import { routeForPath } from "./lib/open-route";
 import * as officeApi from "./lib/office-api";
 
 type PageToolTab = "extract" | "delete" | "rotate" | "resize" | "crop" | "numbering";
@@ -315,6 +316,24 @@ export default function App() {
     document.documentElement.lang = settings.language;
   }, [settings.language]);
 
+  // Opens one document on the screen that can actually edit/view it: office
+  // documents in the workspace, PDFs in the reader and images in the
+  // image-to-PDF tool. Unknown types go to the system viewer.
+  const openSinglePath = useCallback((path: string) => {
+    const route = routeForPath(path);
+    if (!route) {
+      void openAnyFile(path).catch(() => undefined);
+      return;
+    }
+    if (route.office) {
+      setScreen("office");
+      void openOfficePath(path);
+      return;
+    }
+    setFiles(route.files ?? []);
+    setScreen(route.screen);
+  }, []);
+
   // OS drag & drop from Explorer
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -327,11 +346,17 @@ export default function App() {
           const paths = event.payload.paths ?? [];
           if (!paths.length) return;
           if (screen === "home") {
+            // Dropping a single document opens it; several files stay on the
+            // board as a quick-action suggestion.
+            if (paths.length === 1) {
+              openSinglePath(paths[0]);
+              return;
+            }
             setFiles(paths);
             pushToast({
               kind: "info",
               title: t("home.quickActions"),
-              detail: paths.length === 1 ? paths[0] : `${paths.length} files`,
+              detail: `${paths.length} files`,
             });
             return;
           }
@@ -345,7 +370,7 @@ export default function App() {
         unlisten = fn;
       });
     return () => unlisten?.();
-  }, [pushToast, screen, t]);
+  }, [openSinglePath, pushToast, screen, t]);
 
   // Command platform: route palette titles through the active language and
   // register the real navigation commands (palette and global search).
@@ -622,10 +647,16 @@ export default function App() {
 
   const homeDrop = useCallback(
     (paths: string[]) => {
+      // A single picked document opens directly on the right screen; several
+      // files stay on Home as a quick-action suggestion (merge, batch, ...).
+      if (paths.length === 1) {
+        openSinglePath(paths[0]);
+        return;
+      }
       setFiles(paths);
       setDropHandler(null);
     },
-    [setDropHandler],
+    [openSinglePath, setDropHandler],
   );
 
   // Global search opens any real file: office documents go to the workspace,

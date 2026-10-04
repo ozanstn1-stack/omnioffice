@@ -60,8 +60,8 @@ export interface ToolCardSpec {
 }
 
 const GROUPS: { key: ToolGroup; labelKey: string }[] = [
-  { key: "pdf", labelKey: "home.groupPdf" },
   { key: "office", labelKey: "home.groupOffice" },
+  { key: "pdf", labelKey: "home.groupPdf" },
   { key: "tools", labelKey: "home.groupTools" },
   { key: "ai", labelKey: "home.groupAi" },
 ];
@@ -148,10 +148,38 @@ const CARDS: ToolCardSpec[] = [
   { id: "pdfStudio", titleKey: "nav.pdfStudio", icon: <ShieldCheck size={20} />, group: "pdf" },
   { id: "pdfForms", titleKey: "nav.pdfForms", icon: <ClipboardList size={20} />, group: "pdf" },
   { id: "batch", titleKey: "nav.batch", descKey: "batch.subtitle", icon: <Archive size={20} />, group: "pdf" },
-  { id: "office", titleKey: "nav.office", icon: <LayoutGrid size={20} />, group: "office", accent: true },
-  { id: "documents", titleKey: "nav.documents", icon: <FileText size={20} />, group: "office" },
-  { id: "spreadsheets", titleKey: "nav.spreadsheets", icon: <FileSpreadsheet size={20} />, group: "office" },
-  { id: "presentations", titleKey: "nav.presentations", icon: <Presentation size={20} />, group: "office" },
+  {
+    id: "office",
+    titleKey: "nav.office",
+    descKey: "office.subtitle",
+    icon: <LayoutGrid size={20} />,
+    group: "office",
+    accent: true,
+  },
+  {
+    id: "documents",
+    titleKey: "nav.documents",
+    descKey: "office.documentsSubtitle",
+    icon: <FileText size={20} />,
+    group: "office",
+    accent: true,
+  },
+  {
+    id: "spreadsheets",
+    titleKey: "nav.spreadsheets",
+    descKey: "office.spreadsheetsSubtitle",
+    icon: <FileSpreadsheet size={20} />,
+    group: "office",
+    accent: true,
+  },
+  {
+    id: "presentations",
+    titleKey: "nav.presentations",
+    descKey: "office.presentationsSubtitle",
+    icon: <Presentation size={20} />,
+    group: "office",
+    accent: true,
+  },
   {
     id: "templates",
     titleKey: "nav.templates",

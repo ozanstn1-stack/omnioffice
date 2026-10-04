@@ -116,6 +116,17 @@ Effort estimates assume a single developer.
   checks every changed file and the whole tree.
 - Rust deps deduped (`cbc` 0.2/`des` 0.9, unused `aes` removed); the blocked
   majors are documented in `.github/dependabot.yml`.
+## 3.5.6 — Home opens what you pick, Android converters (delivered)
+
+- Home opens a single picked/dropped file on the right screen (office
+  workspace, reader, image-to-PDF); the picker accepts every supported format
+  and the Home page leads with the office suite.
+- PDF → images: unique-name default plus a per-document output folder; verified
+  on Windows including a rerun over existing files.
+- Android: the app-private staging folder is created before native tool runs
+  (fixes PDF merge and other exports), and the converter/cleaner use the SAF
+  picker and publish their results.
 - Still open for v3.6: content-stream editing, Reader tiling, PDF/A font
   subsetting, RFC 3161/OCSP, and the coverage re-baseline that the vitest 4/5
-  instrumentation change requires.
+  instrumentation change requires. PDF → Word/Excel layout reconstruction is
+  not planned for v3.6.

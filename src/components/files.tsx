@@ -58,7 +58,40 @@ export function DropZone({
       ? [{ name: "PDF", extensions: ["pdf"] }]
       : accept === "image"
         ? [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"] }]
-        : [{ name: "PDF & Images", extensions: ["pdf", "jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"] }];
+        : [
+            {
+              name: "Documents & images",
+              extensions: [
+                "pdf",
+                "docx",
+                "docm",
+                "dotx",
+                "odt",
+                "rtf",
+                "txt",
+                "md",
+                "html",
+                "xlsx",
+                "xlsm",
+                "xls",
+                "ods",
+                "csv",
+                "tsv",
+                "pptx",
+                "pptm",
+                "odp",
+                "oswk",
+                "jpg",
+                "jpeg",
+                "png",
+                "webp",
+                "bmp",
+                "tif",
+                "tiff",
+                "gif",
+              ],
+            },
+          ];
 
   const handleBrowse = async () => {
     if (isAndroid()) {

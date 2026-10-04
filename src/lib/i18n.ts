@@ -5,7 +5,11 @@ type Dict = Record<string, string>;
 
 const en: Dict = {
   "app.name": "Office Swiss Army Knife",
-  "app.tagline": "All your PDF tools in one place.",
+  "app.tagline": "Local-first office suite: Writer, Calc, Impress and a complete PDF toolkit.",
+  "office.subtitle": "Writer, Calc and Impress in one workspace.",
+  "office.documentsSubtitle": "Create and edit documents (DOCX, ODT, RTF, TXT, Markdown).",
+  "office.spreadsheetsSubtitle": "Create and edit spreadsheets (XLSX, ODS, CSV).",
+  "office.presentationsSubtitle": "Create and edit presentations (PPTX, ODP).",
 
   "nav.home": "Home",
   "nav.reader": "Read",
@@ -1675,7 +1679,11 @@ const tr: Dict = {
     "{sheet} sayfası için geçerlidir. Bu ayarlar XLSX pageSetup bölümüne yazılır ve PDF dışa aktarımında kullanılır.",
 
   "app.name": "Office Swiss Army Knife",
-  "app.tagline": "Tüm PDF araçlarınız tek bir yerde.",
+  "app.tagline": "Yerel çalışan ofis paketi: Writer, Calc, Impress ve eksiksiz PDF araç seti.",
+  "office.subtitle": "Writer, Calc ve Impress tek çalışma alanında.",
+  "office.documentsSubtitle": "Belge oluşturun ve düzenleyin (DOCX, ODT, RTF, TXT, Markdown).",
+  "office.spreadsheetsSubtitle": "Elektronik tablo oluşturun ve düzenleyin (XLSX, ODS, CSV).",
+  "office.presentationsSubtitle": "Sunum oluşturun ve düzenleyin (PPTX, ODP).",
   "nav.home": "Ana sayfa",
   "nav.reader": "Oku",
   "nav.pdfTools": "PDF araçları",

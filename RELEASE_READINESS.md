@@ -1,4 +1,4 @@
-# Release Readiness — Office Swiss Army Knife 3.5.5
+# Release Readiness — Office Swiss Army Knife 3.5.6
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -6,6 +6,23 @@ built or verified unless it was reproduced in this environment or is produced
 by CI.
 
 ## Implemented (this cycle)
+
+- **Home opens a single picked/dropped file** through the same routing as
+  open-with (office → workspace, PDF → reader, image → image-to-PDF); the
+  picker accepts every format the suite opens and the Home presentation leads
+  with the office suite. `src/lib/open-route.ts` is the pure, tested routing.
+- **Multi-output exports are reliable**: the overwrite default matches the UI
+  ("create new") and PDF → images writes into `<document>_images/`, so a
+  second export cannot collide (verified live on Windows: 5 pages written,
+  then a rerun produced `page_001 (1).jpg` names without error).
+- **Android staging folder is created** before the first native tool run; this
+  is what made merge work on Windows but fail on Android.
+- **Converter and cleaner use the SAF bridge on Android** (the desktop dialog
+  plugin cannot open the Android picker), stage in the app cache and publish
+  results to the chosen folder or Downloads. PDF input offers JPG/PNG; PDF →
+  Word/Excel layout reconstruction is not implemented.
+
+## Implemented in 3.5.5 (unchanged)
 
 - **XLSX comments are per sheet (audit C11).** `officecore` writes one
   comments part and one VML shape set per commented sheet, wired through the
@@ -42,7 +59,7 @@ by CI.
 | Rust workspace | `cargo test --workspace` | 536 passed, 3 ignored (the heavy perf cases) |
 | Rust clippy | `cargo clippy --workspace --all-targets -- -D warnings` | clean |
 | Rust formatting | `cargo fmt --all -- --check` | clean |
-| Frontend unit/integration | `npm test` | 38 files, 679 passed, 1 skipped |
+| Frontend unit/integration | `npm test` | 41 files, 687 passed, 1 skipped |
 | Frontend coverage | `npm run test:coverage` | 64.4 / 71.6 / 48.8 / 64.4, floors 62 / 69 / 46 / 62 pass |
 | Typecheck / lint / i18n | `npx tsc --noEmit`, `npm run lint`, `npm run i18n:audit` | clean, en=tr=1552 |
 | Frontend formatting | `npm run format:check` | clean |
