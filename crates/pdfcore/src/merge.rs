@@ -94,13 +94,13 @@ pub fn merge_documents(sources: Vec<(String, Document)>, options: &MergeOptions)
     let catalog_id = out.add_object(Object::Dictionary(catalog));
     out.trailer.set("Root", Object::Reference(catalog_id));
     if let Some(mut info) = first_info {
-        info.set("Producer", pdf_text_object("PDF Swiss Army Knife"));
+        info.set("Producer", pdf_text_object("OmniOffice"));
         info.set("ModDate", pdf_text_object(&lopdf_date_now()));
         let info_id = out.add_object(Object::Dictionary(info));
         out.trailer.set("Info", Object::Reference(info_id));
     } else {
         let info_id = out.add_object(Object::Dictionary(dictionary! {
-            "Producer" => pdf_text_object("PDF Swiss Army Knife"),
+            "Producer" => pdf_text_object("OmniOffice"),
             "ModDate" => pdf_text_object(&lopdf_date_now()),
         }));
         out.trailer.set("Info", Object::Reference(info_id));

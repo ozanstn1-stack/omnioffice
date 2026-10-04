@@ -46,7 +46,7 @@ export function HomeScreen({ onNavigate }: { onNavigate: (screen: ScreenId, file
   const isPdf = session.primary ? isPdfName(session.primary.name) : false;
 
   return (
-    <Screen title="PDF Swiss Army Knife" subtitle="All your PDF tools in one place — offline, in your browser.">
+    <Screen title="OmniOffice" subtitle="All your PDF tools in one place — offline, in your browser.">
       <div
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {

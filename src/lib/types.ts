@@ -267,7 +267,7 @@ export interface Settings {
   defaultExportFormat: "jpg" | "png";
   /** Automatically store every AI result in the library. */
   aiAutoSave: boolean;
-  /** AI library folder; empty means Documents/PDF Swiss Army Knife AI. */
+  /** AI library folder; empty means Documents/OmniOffice AI. */
   aiLibraryDir: string;
   /** Keep an operation log (paths and sizes only). */
   keepOperationLog: boolean;

@@ -1,5 +1,5 @@
 // Packages the built extension for distribution:
-//   release-artifacts/PDF-Swiss-Army-Knife-Chrome-Extension-<version>.zip
+//   release-artifacts/OmniOffice-Chrome-Extension-<version>.zip
 // plus a SHA-256 checksum file. Run `npm run build` first.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, existsSync } from "node:fs";
@@ -12,7 +12,7 @@ const root = join(here, "..");
 const dist = join(root, "dist");
 const releaseDir = join(root, "..", "release-artifacts");
 const version = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
-const zipPath = join(releaseDir, `PDF-Swiss-Army-Knife-Chrome-Extension-${version}.zip`);
+const zipPath = join(releaseDir, `OmniOffice-Chrome-Extension-${version}.zip`);
 
 if (!existsSync(join(dist, "manifest.json"))) {
   console.error("dist/manifest.json not found — run `npm run build` first.");

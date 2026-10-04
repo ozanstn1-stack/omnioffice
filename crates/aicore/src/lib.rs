@@ -1,4 +1,4 @@
-//! aicore — DeepSeek API client and prompt pipeline for PDF Swiss Army Knife.
+//! aicore — DeepSeek API client and prompt pipeline for OmniOffice.
 //!
 //! This is the **only** component in the project that talks to the network.
 //! It is opt-in: nothing is sent unless the user explicitly runs an AI action

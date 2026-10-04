@@ -46,6 +46,8 @@ e2e/artifacts/
 
 # Exported release folders: the release scripts write these next to the
 # project, but a copy can end up inside the worktree; never commit artifacts.
+# The old name is kept so pre-rename export folders stay ignored too.
+OmniOffice-*/
 Office-Swiss-Army-Knife-*/
 
 # sample documents produced by running the tools on samples/

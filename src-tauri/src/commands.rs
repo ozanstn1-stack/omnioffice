@@ -112,7 +112,7 @@ pub fn app_info() -> AppInfo {
         app_version: env!("CARGO_PKG_VERSION").to_string(),
         core_version: pdfcore::VERSION.to_string(),
         platform: std::env::consts::OS.to_string(),
-        name: "PDF Swiss Army Knife".to_string(),
+        name: "OmniOffice".to_string(),
     }
 }
 
@@ -1615,7 +1615,9 @@ fn operations_log(app: &AppHandle) -> Result<PathBuf, PdfError> {
     Ok(config_dir(app)?.join("operations.json"))
 }
 
-/// Default AI library folder: `Documents/PDF Swiss Army Knife AI` on desktop.
+/// Default AI library folder: `Documents/OmniOffice AI` on desktop. A library
+/// created under the old product name (`Documents/PDF Swiss Army Knife AI`) is
+/// reused until the new folder exists, so the rename does not orphan entries.
 /// Android keeps the files inside the app data directory instead: the
 /// Documents resolver there points at app-private external storage, and the
 /// SAF publishing flow copies results out to a location the user picks.
@@ -1624,10 +1626,17 @@ fn default_library_dir(app: &AppHandle) -> PathBuf {
     if let Ok(dir) = app.path().app_data_dir() {
         return dir.join("ai-library");
     }
-    app.path()
-        .document_dir()
-        .map(|dir| dir.join("PDF Swiss Army Knife AI"))
-        .unwrap_or_else(|_| std::env::temp_dir().join("pdfsak-ai-library"))
+    if let Ok(documents) = app.path().document_dir() {
+        let current = documents.join("OmniOffice AI");
+        if !current.exists() {
+            let legacy = documents.join("PDF Swiss Army Knife AI");
+            if legacy.is_dir() {
+                return legacy;
+            }
+        }
+        return current;
+    }
+    std::env::temp_dir().join("pdfsak-ai-library")
 }
 
 #[derive(Debug, Clone, Deserialize)]

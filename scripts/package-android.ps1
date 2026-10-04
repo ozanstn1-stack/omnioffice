@@ -15,7 +15,7 @@ $copied = @()
 foreach ($abi in @('arm64-v8a', 'armeabi-v7a')) {
     $apk = Join-Path $outRoot "$($flavorByAbi[$abi])\release\app-$($flavorByAbi[$abi])-release.apk"
     if (-not (Test-Path $apk)) { throw "missing $apk - run npm run android:build:all first" }
-    $target = Join-Path $releaseDir "PDF-Swiss-Army-Knife-Android-$version-$abi.apk"
+    $target = Join-Path $releaseDir "OmniOffice-Android-$version-$abi.apk"
     Copy-Item $apk $target -Force
     $copied += $target
     Write-Host "$abi -> $target ($([math]::Round((Get-Item $target).Length / 1MB, 1)) MB)"

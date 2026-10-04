@@ -1,4 +1,4 @@
-# PDF Swiss Army Knife - Android engine fetcher
+# OmniOffice - Android engine fetcher
 # Downloads the native engines used by the Android build into
 #   src-tauri/resources/engines-android/<abi>/   (packaged as jniLibs)
 #   src-tauri/resources/android-assets/tessdata/ (packaged as APK assets)

@@ -18,13 +18,13 @@ chrome.action.onClicked.addListener(async () => {
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "pdfsak-open",
-    title: "Open with PDF Swiss Army Knife",
+    title: "Open with OmniOffice",
     contexts: ["link", "page"],
     targetUrlPatterns: ["*://*/*.pdf", "*://*/*.PDF"],
   });
   chrome.contextMenus.create({
     id: "pdfsak-open-any",
-    title: "Open PDF Swiss Army Knife",
+    title: "Open OmniOffice",
     contexts: ["action"],
   });
 });

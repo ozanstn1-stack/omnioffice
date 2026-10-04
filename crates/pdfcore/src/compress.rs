@@ -264,7 +264,7 @@ pub fn compress_pdf(
         }
     } else {
         let info_id = doc.add_object(Object::Dictionary(dictionary! {
-            "Producer" => pdf_text_object("PDF Swiss Army Knife"),
+            "Producer" => pdf_text_object("OmniOffice"),
         }));
         doc.trailer.set("Info", Object::Reference(info_id));
     }

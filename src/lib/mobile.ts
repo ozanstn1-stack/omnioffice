@@ -244,7 +244,7 @@ async function createPublicDownload(name: string, mimeType: string): Promise<And
     try {
       return await AndroidFs.createNewPublicFile(
         AndroidFs.PublicGeneralPurposeDir.Download,
-        `PDF Swiss Army Knife/${candidate}`,
+        `OmniOffice/${candidate}`,
         mimeType,
         { isPending: true },
       );
@@ -291,7 +291,7 @@ function describeError(error: unknown): string {
  * Copies finished documents to a user-visible location and remembers the
  * resulting content URIs so they can be opened or shared afterwards.
  * Without an explicit target the documents land in
- * `Downloads/PDF Swiss Army Knife`.
+ * `Downloads/OmniOffice`.
  *
  * On Android 9 and older the app cannot write into public directories itself
  * (the storage permission bridge lives on the native side and is not compiled

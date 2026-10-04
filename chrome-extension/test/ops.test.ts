@@ -154,7 +154,7 @@ test("metadata can be edited and cleared", async () => {
     subject: "Konu",
     keywords: "pdf, test",
     creator: "Unit test",
-    producer: "PDF Swiss Army Knife",
+    producer: "OmniOffice",
   });
   const info = await readInfo("edited.pdf", edited);
   assert.equal(info.title, "Rapor: şğüöç 2026");

@@ -229,7 +229,7 @@ export async function runSelfTest(): Promise<void> {
   const output = document.createElement("pre");
   output.id = "selftest";
   output.style.cssText = "padding:16px;font:12px/1.6 Cascadia Mono,Consolas,monospace;color:#e6e6e6;background:#111;white-space:pre-wrap";
-  output.textContent = "PDF Swiss Army Knife — browser self test\n\n";
+  output.textContent = "OmniOffice — browser self test\n\n";
   document.body.innerHTML = "";
   document.body.appendChild(output);
 

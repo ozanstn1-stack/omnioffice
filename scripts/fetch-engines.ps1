@@ -1,4 +1,4 @@
-# PDF Swiss Army Knife - engine fetcher
+# OmniOffice - engine fetcher
 # Downloads the native engines used by the app into src-tauri/resources/engines.
 # All engines are open source and licensed permissively (see README "Third-party licenses").
 #

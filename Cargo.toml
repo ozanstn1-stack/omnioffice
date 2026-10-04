@@ -6,7 +6,7 @@ exclude = ["fuzz"]
 resolver = "2"
 
 [workspace.package]
-version = "3.6.1"
+version = "3.7.0"
 edition = "2021"
 # Declared MSRV, in one place for every crate.
 #
@@ -20,8 +20,8 @@ edition = "2021"
 # and fails when this line and the pin disagree.
 rust-version = "1.89"
 license = "MIT"
-repository = "https://github.com/ozanstn1-stack/pdf-swiss-army-knife"
-authors = ["PDF Swiss Army Knife contributors"]
+repository = "https://github.com/ozanstn1-stack/omnioffice"
+authors = ["OmniOffice contributors"]
 
 # Lint policy for every crate (each member opts in with `[lints] workspace = true`).
 #

@@ -4,7 +4,7 @@ import { useSettings } from "./store";
 type Dict = Record<string, string>;
 
 const en: Dict = {
-  "app.name": "Office Swiss Army Knife",
+  "app.name": "OmniOffice",
   "app.tagline": "Local-first office suite: Writer, Calc, Impress and a complete PDF toolkit.",
   "office.subtitle": "Writer, Calc and Impress in one workspace.",
   "office.documentsSubtitle": "Create and edit documents (DOCX, ODT, RTF, TXT, Markdown).",
@@ -49,7 +49,7 @@ const en: Dict = {
   "common.browse": "Browse…",
   "common.saveAs": "Save as…",
   "common.share": "Share",
-  "common.androidDefaultDestination": "Results are copied to Downloads/PDF Swiss Army Knife",
+  "common.androidDefaultDestination": "Results are copied to Downloads/OmniOffice",
   "common.androidChosenDestination": "Results are copied to “{name}”",
   "common.remove": "Remove",
   "common.clear": "Clear",
@@ -498,7 +498,7 @@ const en: Dict = {
   "settings.version": "Version",
   "settings.privacyTitle": "Privacy",
   "settings.privacyBody":
-    "PDF Swiss Army Knife never uploads your documents. Everything is processed on this machine with bundled open-source engines. No telemetry, no analytics, no cloud. The only exception is the optional AI assistant, which is disabled until you add your own DeepSeek API key and confirm the data notice each time.",
+    "OmniOffice never uploads your documents. Everything is processed on this machine with bundled open-source engines. No telemetry, no analytics, no cloud. The only exception is the optional AI assistant, which is disabled until you add your own DeepSeek API key and confirm the data notice each time.",
   "settings.aiTitle": "AI assistant (DeepSeek)",
   "settings.aiKey": "DeepSeek API key",
   "settings.aiKeyHint": "Stored encrypted with Windows DPAPI · never logged",
@@ -1720,7 +1720,7 @@ const tr: Dict = {
   "calc.printSheetNote":
     "{sheet} sayfası için geçerlidir. Bu ayarlar XLSX pageSetup bölümüne yazılır ve PDF dışa aktarımında kullanılır.",
 
-  "app.name": "Office Swiss Army Knife",
+  "app.name": "OmniOffice",
   "app.tagline": "Yerel çalışan ofis paketi: Writer, Calc, Impress ve eksiksiz PDF araç seti.",
   "office.subtitle": "Writer, Calc ve Impress tek çalışma alanında.",
   "office.documentsSubtitle": "Belge oluşturun ve düzenleyin (DOCX, ODT, RTF, TXT, Markdown).",
@@ -1763,7 +1763,7 @@ const tr: Dict = {
   "common.browse": "Gözat…",
   "common.saveAs": "Farklı kaydet…",
   "common.share": "Paylaş",
-  "common.androidDefaultDestination": "Sonuçlar Downloads/PDF Swiss Army Knife klasörüne kopyalanır",
+  "common.androidDefaultDestination": "Sonuçlar Downloads/OmniOffice klasörüne kopyalanır",
   "common.androidChosenDestination": 'Sonuçlar "{name}" klasörüne kopyalanır',
   "common.remove": "Kaldır",
   "common.clear": "Temizle",
@@ -2202,7 +2202,7 @@ const tr: Dict = {
   "settings.version": "Sürüm",
   "settings.privacyTitle": "Gizlilik",
   "settings.privacyBody":
-    "PDF Swiss Army Knife belgelerinizi hiçbir zaman yüklemez. Her şey bu makinede, uygulamayla gelen açık kaynak motorlarla işlenir. Telemetri yok, analitik yok, bulut yok. Tek istisna isteğe bağlı AI asistanıdır; kendi DeepSeek API anahtarınızı ekleyene ve her seferinde veri bildirimini onaylayana kadar devre dışıdır.",
+    "OmniOffice belgelerinizi hiçbir zaman yüklemez. Her şey bu makinede, uygulamayla gelen açık kaynak motorlarla işlenir. Telemetri yok, analitik yok, bulut yok. Tek istisna isteğe bağlı AI asistanıdır; kendi DeepSeek API anahtarınızı ekleyene ve her seferinde veri bildirimini onaylayana kadar devre dışıdır.",
   "settings.aiTitle": "AI asistanı (DeepSeek)",
   "settings.aiKey": "DeepSeek API anahtarı",
   "settings.aiKeyHint": "Windows DPAPI ile şifrelenerek saklanır · asla günlüğe yazılmaz",

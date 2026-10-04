@@ -598,7 +598,7 @@ pub fn write_odt(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     zip.add_text("META-INF/manifest.xml", &manifest());
     zip.add_text("content.xml", &content);
     zip.add_text("styles.xml", &styles_xml);
-    zip.add_text("meta.xml", &meta_xml(&document.title, "Office Swiss Army Knife"));
+    zip.add_text("meta.xml", &meta_xml(&document.title, "OmniOffice"));
     zip.add_text("settings.xml", &settings_xml());
     for (name, data) in &media.items {
         zip.add(&format!("Pictures/{name}"), data);
@@ -1278,7 +1278,7 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
         "styles.xml",
         &format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles {NS} office:version=\"1.2\"/>"),
     );
-    zip.add_text("meta.xml", &meta_xml(&workbook.title, "Office Swiss Army Knife"));
+    zip.add_text("meta.xml", &meta_xml(&workbook.title, "OmniOffice"));
     Ok(zip.finish())
 }
 
@@ -1581,7 +1581,7 @@ fn write_odp_bytes(deck: &Deck) -> OfficeResult<Vec<u8>> {
     zip.add_text("META-INF/manifest.xml", &manifest_for("application/vnd.oasis.opendocument.presentation"));
     zip.add_text("content.xml", &content);
     zip.add_text("styles.xml", &styles);
-    zip.add_text("meta.xml", &meta_xml(&deck.title, "Office Swiss Army Knife"));
+    zip.add_text("meta.xml", &meta_xml(&deck.title, "OmniOffice"));
     for (name, data) in &pictures {
         zip.add(&format!("Pictures/{name}"), data);
     }

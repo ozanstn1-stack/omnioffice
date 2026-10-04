@@ -19,7 +19,7 @@ const invoke = vi.fn(async (command: string, _payload?: unknown) => {
         hasPassword: false,
         passwordStorage: "none",
         allowInsecureHttp: false,
-        remoteDir: "Office Swiss Army Knife",
+        remoteDir: "OmniOffice",
       };
     case "sync_capabilities":
       return { maxTransferBytes: 1024, backgroundSync: false, autoMerge: false, providers: [] };

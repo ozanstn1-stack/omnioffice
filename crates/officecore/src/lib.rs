@@ -1,4 +1,4 @@
-//! officecore - local-first document engine for Office Swiss Army Knife.
+//! officecore - local-first document engine for OmniOffice.
 //!
 //! Handles the document model and the file formats behind the Writer, Calc,
 //! Impress and Tools modules. Everything runs offline on the user's machine;

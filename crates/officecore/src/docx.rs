@@ -246,7 +246,7 @@ fn app_properties(document: &TextDocument) -> String {
             ("xmlns:vt", "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"),
         ],
     );
-    writer.open("Application", &[]).text("Office Swiss Army Knife").close("Application");
+    writer.open("Application", &[]).text("OmniOffice").close("Application");
     writer.open("AppVersion", &[]).text("2.0000").close("AppVersion");
     writer.open("Words", &[]).text(&words.to_string()).close("Words");
     writer.open("Paragraphs", &[]).text(&document.blocks.len().to_string()).close("Paragraphs");

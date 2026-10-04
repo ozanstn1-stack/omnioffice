@@ -277,7 +277,7 @@ export function Sync() {
       const picked = await openDialog({
         multiple: true,
         title: t("sync.addFile"),
-        filters: [{ name: "Office Swiss Army Knife", extensions: ["oswk"] }],
+        filters: [{ name: "OmniOffice", extensions: ["oswk"] }],
       });
       const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
       const documents = paths.filter((path): path is string => typeof path === "string" && isOswkPath(path));

@@ -1,8 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Office Swiss Army Knife",
-  "version": "3.6.1",
+  "productName": "OmniOffice",
+  "version": "3.7.0",
   "identifier": "io.github.ozanstn1.pdfswissarmyknife",
+  "mainBinaryName": "OmniOffice",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +13,7 @@
   "app": {
     "windows": [
       {
-        "title": "Office Swiss Army Knife",
+        "title": "OmniOffice",
         "label": "main",
         "width": 1360,
         "height": 860,
@@ -33,7 +34,7 @@
     "targets": ["nsis"],
     "category": "Utility",
     "shortDescription": "Office suite and PDF toolkit that runs entirely on your machine",
-    "longDescription": "Office Swiss Army Knife is a local-first desktop suite: the Writer word processor, the Calc spreadsheet, the Impress presentation editor, a document vault and the complete PDF toolkit (merge, split, compress, OCR, watermark, protect, redact, sign, forms, PDF/A). Documents are never uploaded, there is no telemetry, and everything works offline.",
+    "longDescription": "OmniOffice is a local-first desktop suite: the Writer word processor, the Calc spreadsheet, the Impress presentation editor, a document vault and the complete PDF toolkit (merge, split, compress, OCR, watermark, protect, redact, sign, forms, PDF/A). Documents are never uploaded, there is no telemetry, and everything works offline.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -41,15 +42,15 @@
       "icons/icon.ico"
     ],
     "fileAssociations": [
-      { "ext": ["docx"], "name": "Office Swiss Army Knife Word document", "role": "Editor" },
-      { "ext": ["odt"], "name": "Office Swiss Army Knife OpenDocument text", "role": "Editor" },
-      { "ext": ["rtf"], "name": "Office Swiss Army Knife Rich text document", "role": "Editor" },
-      { "ext": ["xlsx"], "name": "Office Swiss Army Knife Excel workbook", "role": "Editor" },
-      { "ext": ["ods"], "name": "Office Swiss Army Knife OpenDocument spreadsheet", "role": "Editor" },
-      { "ext": ["pptx"], "name": "Office Swiss Army Knife PowerPoint presentation", "role": "Editor" },
-      { "ext": ["odp"], "name": "Office Swiss Army Knife OpenDocument presentation", "role": "Editor" },
-      { "ext": ["pdf"], "name": "Office Swiss Army Knife PDF document", "role": "Viewer" },
-      { "ext": ["oswk"], "name": "Office Swiss Army Knife document", "role": "Editor" }
+      { "ext": ["docx"], "name": "OmniOffice Word document", "role": "Editor" },
+      { "ext": ["odt"], "name": "OmniOffice OpenDocument text", "role": "Editor" },
+      { "ext": ["rtf"], "name": "OmniOffice Rich text document", "role": "Editor" },
+      { "ext": ["xlsx"], "name": "OmniOffice Excel workbook", "role": "Editor" },
+      { "ext": ["ods"], "name": "OmniOffice OpenDocument spreadsheet", "role": "Editor" },
+      { "ext": ["pptx"], "name": "OmniOffice PowerPoint presentation", "role": "Editor" },
+      { "ext": ["odp"], "name": "OmniOffice OpenDocument presentation", "role": "Editor" },
+      { "ext": ["pdf"], "name": "OmniOffice PDF document", "role": "Viewer" },
+      { "ext": ["oswk"], "name": "OmniOffice document", "role": "Editor" }
     ],
     "resources": [
       "resources/engines/**/*"

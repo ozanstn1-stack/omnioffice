@@ -6,7 +6,7 @@
 # -Publish, creates/updates the GitHub release for the current version.
 #
 # The finished artifacts are also copied to a discoverable folder next to the
-# project (default: <projects>\Office-Swiss-Army-Knife-<version>) so the
+# project (default: <projects>\OmniOffice-<version>) so the
 # installer and APKs are easy to find without digging through release-artifacts.
 #
 # Usage:
@@ -62,13 +62,13 @@ try {
 
     Write-Host "==> Checksums"
     $assets = @(
-        "Office-Swiss-Army-Knife-Setup-$version.exe",
-        "Office Swiss Army Knife_${version}_x64-setup.exe",
-        "Office-Swiss-Army-Knife-Portable-$version.zip",
-        "PDF-Swiss-Army-Knife-Android-$version-arm64-v8a.apk",
-        "PDF-Swiss-Army-Knife-Android-$version-armeabi-v7a.apk",
-        "PDF-Swiss-Army-Knife-Android-$version-arm64-v8a.aab",
-        "PDF-Swiss-Army-Knife-Android-$version-armeabi-v7a.aab",
+        "OmniOffice-Setup-$version.exe",
+        "OmniOffice_${version}_x64-setup.exe",
+        "OmniOffice-Portable-$version.zip",
+        "OmniOffice-Android-$version-arm64-v8a.apk",
+        "OmniOffice-Android-$version-armeabi-v7a.apk",
+        "OmniOffice-Android-$version-arm64-v8a.aab",
+        "OmniOffice-Android-$version-armeabi-v7a.aab",
         'sbom-rust.cyclonedx.json',
         'sbom-npm.cyclonedx.json',
         'build-info.json'
@@ -85,7 +85,7 @@ try {
     # Copy the finished artifacts somewhere obvious. `release-artifacts` is
     # inside the repo and gets mixed with older versions; this folder is named
     # after the release so the installer/APKs are easy to find.
-    $export = if ($ExportDir) { $ExportDir } else { Join-Path (Split-Path -Parent $root) "Office-Swiss-Army-Knife-$version" }
+    $export = if ($ExportDir) { $ExportDir } else { Join-Path (Split-Path -Parent $root) "OmniOffice-$version" }
     Write-Host "==> Exporting artifacts to $export"
     New-Item -ItemType Directory -Force -Path $export | Out-Null
     Get-ChildItem $releaseDir -File | Where-Object {
@@ -120,7 +120,7 @@ try {
                 & git push origin $tag
                 if ($LASTEXITCODE -ne 0) { throw "git push origin $tag failed ($LASTEXITCODE)" }
                 $draftFlag = if ($Draft) { '--draft' } else { '--latest' }
-                & gh release create $tag --title "Office Swiss Army Knife $tag" --generate-notes $draftFlag
+                & gh release create $tag --title "OmniOffice $tag" --generate-notes $draftFlag
                 if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
             }
             Get-ChildItem $releaseDir -File | Where-Object {

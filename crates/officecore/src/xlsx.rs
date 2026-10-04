@@ -1637,7 +1637,7 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
         escape_text(&workbook.title),
         escape_text(&workbook.metadata.author)
     );
-    let app = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\"><Application>Office Swiss Army Knife</Application></Properties>";
+    let app = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\"><Application>OmniOffice</Application></Properties>";
 
     let with_comments = sheet_parts.iter().any(|part| !part.comments.is_empty());
     if with_comments {
@@ -1845,7 +1845,7 @@ fn defined_name_xml(entry: &NamedRange, local_sheet_id: Option<usize>) -> Option
 /// The `<comments>` part for one sheet, carrying only that sheet's notes.
 fn comments_xml(part: &SheetPart) -> String {
     let mut comments_xml = String::from(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<comments xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><authors><author>Office Swiss Army Knife</author></authors><commentList>",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<comments xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><authors><author>OmniOffice</author></authors><commentList>",
     );
     for (address, text) in &part.comments {
         comments_xml.push_str(&format!(

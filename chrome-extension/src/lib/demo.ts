@@ -22,7 +22,7 @@ export async function makeDemoPdf(pages = 5, label = "Demo document"): Promise<F
     }
   }
   doc.setTitle("Demo document");
-  doc.setAuthor("PDF Swiss Army Knife (extension demo)");
+  doc.setAuthor("OmniOffice (extension demo)");
   const bytes = await doc.save({ useObjectStreams: false });
   return new File([bytes as BlobPart], "demo-document.pdf", { type: "application/pdf" });
 }

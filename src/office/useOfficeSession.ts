@@ -62,20 +62,20 @@ const FILTERS: Record<OfficeKind, { name: string; extensions: string[] }[]> = {
     { name: "Markdown", extensions: ["md"] },
     { name: "Web page", extensions: ["html"] },
     { name: "PDF", extensions: ["pdf"] },
-    { name: "Office Swiss Army Knife document", extensions: ["oswk"] },
+    { name: "OmniOffice document", extensions: ["oswk"] },
   ],
   calc: [
     { name: "Excel workbook", extensions: ["xlsx"] },
     { name: "OpenDocument spreadsheet", extensions: ["ods"] },
     { name: "CSV", extensions: ["csv"] },
     { name: "PDF", extensions: ["pdf"] },
-    { name: "Office Swiss Army Knife spreadsheet", extensions: ["oswk"] },
+    { name: "OmniOffice spreadsheet", extensions: ["oswk"] },
   ],
   impress: [
     { name: "PowerPoint presentation", extensions: ["pptx"] },
     { name: "OpenDocument presentation", extensions: ["odp"] },
     { name: "PDF", extensions: ["pdf"] },
-    { name: "Office Swiss Army Knife presentation", extensions: ["oswk"] },
+    { name: "OmniOffice presentation", extensions: ["oswk"] },
   ],
 };
 
