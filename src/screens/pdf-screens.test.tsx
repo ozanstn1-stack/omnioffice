@@ -52,6 +52,7 @@ const invoke = vi.fn(async (command: string) => {
         title: "",
         author: "",
         producer: "",
+        outline: [{ title: "Intro", page: 1, depth: 0 }],
       };
     case "inspect_document":
       return inspectionFixture;
@@ -76,6 +77,25 @@ const invoke = vi.fn(async (command: string) => {
       return { output: "C:/a-repaired.pdf", pages: 1, warnings: [] };
     case "pdf_linearize":
       return { output: "C:/a-linearized.pdf", pages: 1, warnings: [] };
+    // V3.6 content-stream text runs.
+    case "pdf_list_text_runs":
+      return [
+        {
+          page: 1,
+          index: 0,
+          text: "Hello world",
+          font: "F1",
+          fontSizePt: 12,
+          x: 72,
+          y: 700,
+          widthPt: 60,
+          renderMode: 0,
+          editable: true,
+          note: null,
+        },
+      ];
+    case "pdf_edit_text_runs":
+      return { edited: 1, warnings: [] };
     default:
       return null;
   }
@@ -432,5 +452,46 @@ describe("reader preview sizing and cache", () => {
     // The least recently used page was evicted first.
     expect(cache.has(1)).toBe(false);
     expect(cache.has(MAX_PREVIEW_CACHE_ENTRIES + 5)).toBe(true);
+  });
+});
+
+describe("PDF Studio text runs", () => {
+  beforeEach(() => {
+    invoke.mockClear();
+  });
+
+  it("lists content text runs and applies an in-place edit", async () => {
+    const user = userEvent.setup();
+    render(<PdfStudio {...props} />);
+    await user.click(screen.getByRole("button", { name: /^text$/i }));
+    expect(await screen.findByText("Hello world")).toBeInTheDocument();
+
+    await user.click(screen.getByText("Hello world"));
+    const editor = screen.getByDisplayValue("Hello world");
+    await user.clear(editor);
+    await user.type(editor, "Hello there");
+    await user.click(screen.getByRole("button", { name: /apply text/i }));
+
+    await waitFor(() => {
+      const calls = invoke.mock.calls.filter(([name]) => name === "pdf_edit_text_runs") as unknown as [
+        string,
+        { request: { output: { path: string }; edits: { page: number; index: number; text: string }[] } },
+      ][];
+      expect(calls.length).toBeGreaterThan(0);
+      expect(calls[0][1].request.output.path).toBe("C:/filled.pdf");
+      expect(calls[0][1].request.edits).toEqual([{ page: 1, index: 0, text: "Hello there" }]);
+    });
+  });
+});
+
+describe("Reader bookmarks", () => {
+  beforeEach(() => {
+    invoke.mockClear();
+  });
+
+  it("lists the document outline from pdf_info", async () => {
+    render(<Reader {...props} />);
+    expect(await screen.findByText("Bookmarks")).toBeInTheDocument();
+    expect(await screen.findByText(/Intro/)).toBeInTheDocument();
   });
 });

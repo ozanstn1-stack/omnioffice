@@ -30,6 +30,7 @@
 pub mod annotate;
 pub mod compare;
 pub mod compress;
+pub mod content;
 pub mod convert;
 pub mod docutil;
 pub mod engines;
@@ -59,6 +60,7 @@ pub mod security;
 pub mod sign;
 pub mod textbox;
 pub mod textimg;
+pub mod timestamp;
 pub mod watermark;
 
 pub use error::{ErrorCode, PdfError, PdfResult};

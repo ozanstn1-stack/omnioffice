@@ -678,3 +678,107 @@ fn signing_an_already_signed_pdf_keeps_the_first_signature() {
         "only the last signature covers the whole file"
     );
 }
+
+// ---------------------------------------------------------------------------
+// RFC 3161 timestamps
+// ---------------------------------------------------------------------------
+
+/// Minimal DER writer for the test token (the production writer is private to
+/// pdfcore::sign; the integration test builds the TSA response by hand).
+fn tsa_tlv(tag: u8, content: &[u8]) -> Vec<u8> {
+    let mut out = vec![tag];
+    let length = content.len();
+    if length < 0x80 {
+        out.push(length as u8);
+    } else {
+        let mut bytes = Vec::new();
+        let mut value = length;
+        while value > 0 {
+            bytes.push((value & 0xFF) as u8);
+            value >>= 8;
+        }
+        bytes.reverse();
+        out.push(0x80 | bytes.len() as u8);
+        out.extend_from_slice(&bytes);
+    }
+    out.extend_from_slice(content);
+    out
+}
+
+fn tsa_sequence(parts: &[Vec<u8>]) -> Vec<u8> {
+    tsa_tlv(0x30, &parts.concat())
+}
+
+fn tsa_oid(dotted: &str) -> Vec<u8> {
+    let arcs: Vec<u64> = dotted.split('.').map(|arc| arc.parse().expect("oid arc")).collect();
+    let mut body = vec![(arcs[0] * 40 + arcs[1]) as u8];
+    for arc in &arcs[2..] {
+        let mut encoded = vec![(arc & 0x7F) as u8];
+        let mut value = arc >> 7;
+        while value > 0 {
+            encoded.push(0x80 | (value & 0x7F) as u8);
+            value >>= 7;
+        }
+        encoded.reverse();
+        body.extend_from_slice(&encoded);
+    }
+    tsa_tlv(0x06, &body)
+}
+
+fn test_timestamp_token(gen_time: &str) -> Vec<u8> {
+    let tst_info = tsa_sequence(&[
+        tsa_tlv(0x02, &[1]),
+        tsa_oid("1.2.3.4.5"),
+        tsa_sequence(&[
+            tsa_sequence(&[tsa_oid("2.16.840.1.101.3.4.2.1"), tsa_tlv(0x05, &[])]),
+            tsa_tlv(0x04, &[0u8; 32]),
+        ]),
+        tsa_tlv(0x02, &[42]),
+        tsa_tlv(0x18, gen_time.as_bytes()),
+    ]);
+    let encap = tsa_sequence(&[tsa_oid("1.2.840.113549.1.9.16.1.4"), tsa_tlv(0xA0, &tsa_tlv(0x04, &tst_info))]);
+    let signed_data = tsa_sequence(&[tsa_tlv(0x02, &[1]), tsa_sequence(&[]), encap]);
+    tsa_sequence(&[tsa_oid("1.2.840.113549.1.7.2"), tsa_tlv(0xA0, &signed_data)])
+}
+
+#[test]
+fn signing_with_a_timestamp_embeds_the_token() {
+    let pdf = build_test_pdf();
+    let identity = ecdsa_identity();
+    let token = test_timestamp_token("20260102120000Z");
+    let provider = move |_signature: &[u8]| Ok::<Vec<u8>, pdfcore::error::PdfError>(token.clone());
+    let signed = sign::sign_pdf_with_timestamp(
+        &pdf,
+        &identity.cert_der,
+        &identity.key_pkcs8_der,
+        &[],
+        &sign_options(),
+        Some(&provider),
+    )
+    .expect("sign with timestamp");
+    assert!(signed.starts_with(&pdf));
+
+    let report = sign::verify_signatures(&signed);
+    let info = report.signatures.first().expect("one signature");
+    assert!(info.signature_valid, "{info:?}");
+    assert!(info.digest_matches);
+    assert!(info.covers_whole_document);
+    assert_eq!(info.timestamp.as_deref(), Some("20260102120000Z"));
+}
+
+#[test]
+fn a_failing_timestamp_provider_fails_the_signing() {
+    let pdf = build_test_pdf();
+    let identity = ecdsa_identity();
+    let provider = |_: &[u8]| Err(pdfcore::error::PdfError::ProcessingFailed("the TSA is down".into()));
+    let error = sign::sign_pdf_with_timestamp(
+        &pdf,
+        &identity.cert_der,
+        &identity.key_pkcs8_der,
+        &[],
+        &sign_options(),
+        Some(&provider),
+    )
+    .expect_err("a requested timestamp must not be dropped");
+    assert!(format!("{error}").contains("TSA is down"), "{error}");
+}

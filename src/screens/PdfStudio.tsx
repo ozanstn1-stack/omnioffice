@@ -21,6 +21,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Trash2,
+  Type as TypeIcon,
   Wrench,
 } from "lucide-react";
 import { useT } from "../lib/i18n";
@@ -32,11 +33,13 @@ import { PageCanvas } from "../components/pages";
 import {
   pdfArchiveValidationData,
   pdfEditObjects,
+  pdfEditTextRuns,
   pdfFillForm,
   pdfInfo,
   pdfListFormFields,
   pdfListObjects,
   pdfListSigningCertificates,
+  pdfListTextRuns,
   pdfSign,
   pdfValidateForm,
   pdfVerifySignatures,
@@ -52,11 +55,12 @@ import {
   type SignatureReport,
   type SigningCertificateSummary,
   type SignResult,
+  type TextRunInfo,
 } from "../lib/api";
 import type { PdfInfo } from "../lib/types";
 import { isAndroid, pickAndroidSaveTarget, publishOutputs, type AndroidTarget } from "../lib/mobile";
 
-type StudioTab = "sanitize" | "repair" | "flatten" | "pdfa" | "signatures" | "objects";
+type StudioTab = "sanitize" | "repair" | "flatten" | "pdfa" | "signatures" | "objects" | "textruns";
 
 /**
  * The page geometry the PDF Studio overlay needs. Mirroring `render::PageGeometry`
@@ -272,6 +276,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
   const [reason, setReason] = useState("");
   const [location, setLocation] = useState("");
   const [signerName, setSignerName] = useState("");
+  const [tsaUrl, setTsaUrl] = useState("");
   const [appearance, setAppearance] = useState(true);
   const [signing, setSigning] = useState(false);
   const [lastResult, setLastResult] = useState<SignResult | null>(null);
@@ -292,6 +297,12 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
   const [dataLoading, setDataLoading] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
+
+  // V3.6 content-stream text runs.
+  const [textRuns, setTextRuns] = useState<TextRunInfo[] | null>(null);
+  const [textRunError, setTextRunError] = useState<string | null>(null);
+  const [textRunSelection, setTextRunSelection] = useState<{ page: number; index: number } | null>(null);
+  const [textRunDraft, setTextRunDraft] = useState("");
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{
     key: string;
@@ -466,6 +477,42 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
     [objects, shownPage, removedObjects],
   );
 
+  // V3.6: load the page content text runs when the tab is open. The list is
+  // refreshed after every applied edit (dataVersion) because run indices are
+  // positions in the stream.
+  useEffect(() => {
+    if (tab !== "textruns" || !input) return;
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the async load owns loading/error
+    setDataLoading(true);
+    void (async () => {
+      try {
+        const runs = await pdfListTextRuns(input);
+        if (cancelled) return;
+        setTextRuns(runs ?? []);
+        setTextRunError(null);
+        setTextRunSelection(null);
+        setTextRunDraft("");
+      } catch (error) {
+        if (cancelled) return;
+        setTextRuns([]);
+        setTextRunError(toAppError(error).message);
+      } finally {
+        if (!cancelled) setDataLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, input, dataVersion]);
+
+  const selectedTextRun = useMemo(() => {
+    if (!textRunSelection || !textRuns) return null;
+    return textRuns.find((run) => run.page === textRunSelection.page && run.index === textRunSelection.index) ?? null;
+  }, [textRunSelection, textRuns]);
+
+  const runsOnPage = useMemo(() => (textRuns ?? []).filter((run) => run.page === shownPage), [textRuns, shownPage]);
+
   const currentRectOf = useCallback(
     (object: PageObjectInfo): [number, number, number, number] => rectOverrides[objectKey(object)] ?? object.rect,
     [rectOverrides],
@@ -581,6 +628,29 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
       toast("success", t("studio.editsApplied"), `${report.edited} / ${report.deleted}`);
       if (report.warnings.length) toast("success", t("studio.warnings"), report.warnings.join("\n"));
       setPendingEdits([]);
+      setDataVersion((value) => value + 1);
+    } catch (error) {
+      toast("error", t("errors.title"), toAppError(error).message);
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const applyTextRunEdit = async () => {
+    if (!input || !selectedTextRun || !textRunSelection) return;
+    const target = await pickStudioOutput("-edited.pdf", fileBaseName(input).replace(/\.pdf$/i, "-edited.pdf"));
+    if (!target) return;
+    setBusyAction("textruns");
+    try {
+      const report = await pdfEditTextRuns({
+        input,
+        output: { path: target.output, overwrite: "replace" },
+        edits: [{ page: textRunSelection.page, index: textRunSelection.index, text: textRunDraft }],
+        password: null,
+      });
+      if (target.androidTarget) await publishOutputs([target.output], { file: target.androidTarget });
+      toast("success", t("studio.textEdited"), `${report.edited}`);
+      if (report.warnings.length) toast("success", t("studio.warnings"), report.warnings.join("\n"));
       setDataVersion((value) => value + 1);
     } catch (error) {
       toast("error", t("errors.title"), toAppError(error).message);
@@ -843,6 +913,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
           appearance,
           signerName: signerName.trim() || null,
         },
+        tsaUrl: tsaUrl.trim() || null,
       });
       // Never keep the PFX password in component state after signing.
       setPfxPassword("");
@@ -866,6 +937,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
     { id: "pdfa", label: t("studio.pdfa"), icon: <FileCheck2 size={14} /> },
     { id: "signatures", label: t("studio.signatures"), icon: <PenLine size={14} /> },
     { id: "objects", label: t("studio.objects"), icon: <Move size={14} /> },
+    { id: "textruns", label: t("studio.textRuns"), icon: <TypeIcon size={14} /> },
   ];
 
   // Rectangles drawn over the rendered page. The overlay lives inside
@@ -1344,6 +1416,15 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                 </Field>
               </div>
               <Toggle checked={appearance} onChange={setAppearance} label={t("studio.visibleAppearance")} />
+              <Field label={t("studio.tsaUrl")} hint={t("studio.tsaUrlHint")}>
+                <input
+                  className="input"
+                  value={tsaUrl}
+                  spellCheck={false}
+                  placeholder="https://tsa.example.com/"
+                  onChange={(event) => setTsaUrl(event.target.value)}
+                />
+              </Field>
 
               <button
                 type="button"
@@ -1361,11 +1442,128 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                     {lastResult.signature.signatureValid ? t("studio.signatureValid") : t("studio.signatureInvalid")}
                   </Badge>
                   <p className="muted small">{lastResult.output}</p>
+                  <p className="muted small">
+                    {lastResult.signature.timestamp
+                      ? t("studio.timestampPresent", { time: lastResult.signature.timestamp })
+                      : t("studio.timestampNone")}
+                  </p>
                 </div>
               ) : null}
             </div>
           </Card>
         </>
+      ) : null}
+
+      {tab === "textruns" ? (
+        <Card>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <div>
+              <strong>{t("studio.textRuns")}</strong>
+              <p className="muted small">{t("studio.textRunsHint")}</p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-soft"
+              disabled={!input || dataLoading}
+              onClick={() => setDataVersion((value) => value + 1)}
+            >
+              <RefreshCw size={13} /> {t("studio.refreshData")}
+            </button>
+          </div>
+          {textRunError ? (
+            <p className="muted small" style={{ color: "var(--danger, #b91c1c)" }}>
+              {textRunError}
+            </p>
+          ) : null}
+          {textRuns ? (
+            <>
+              <div className="row" style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-soft"
+                  disabled={shownPage <= 1}
+                  onClick={() => setPage(Math.max(1, shownPage - 1))}
+                >
+                  ‹
+                </button>
+                <Badge tone="default">
+                  {shownPage} / {pageCount || 1}
+                </Badge>
+                <button
+                  type="button"
+                  className="btn btn-soft"
+                  disabled={pageCount === 0 || shownPage >= pageCount}
+                  onClick={() => setPage(Math.min(pageCount, shownPage + 1))}
+                >
+                  ›
+                </button>
+                <span className="muted small">
+                  {runsOnPage.length} {t("studio.textRunCount")}
+                </span>
+              </div>
+              {!dataLoading && runsOnPage.length === 0 ? <p className="muted small">{t("studio.noTextRuns")}</p> : null}
+              <div className="stack" style={{ marginTop: 8, maxHeight: 240, overflowY: "auto" }}>
+                {runsOnPage.map((run) => {
+                  const selected = textRunSelection?.page === run.page && textRunSelection?.index === run.index;
+                  return (
+                    <button
+                      key={`${run.page}:${run.index}`}
+                      type="button"
+                      className="card-soft"
+                      style={{
+                        textAlign: "left",
+                        padding: "8px 10px",
+                        border: selected ? "1px solid var(--accent)" : "1px solid var(--border)",
+                      }}
+                      onClick={() => {
+                        setTextRunSelection({ page: run.page, index: run.index });
+                        setTextRunDraft(run.text);
+                      }}
+                    >
+                      <span className="block truncate text-[13px]" title={run.text}>
+                        {run.text || "—"}
+                      </span>
+                      <span className="muted text-xs">
+                        {run.font ?? "?"} · {run.fontSizePt.toFixed(1)} pt
+                        {run.editable ? "" : ` · ${run.note ?? t("studio.textReadOnly")}`}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedTextRun ? (
+                <div className="stack" style={{ marginTop: 10 }}>
+                  <Field label={t("studio.textReplace")} hint={t("studio.textReplaceHint")}>
+                    <input
+                      className="input"
+                      value={textRunDraft}
+                      spellCheck={false}
+                      onChange={(event) => setTextRunDraft(event.target.value)}
+                    />
+                  </Field>
+                  <div className="row">
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={
+                        !selectedTextRun.editable ||
+                        textRunDraft === selectedTextRun.text ||
+                        busyAction !== null ||
+                        textRunDraft.length === 0
+                      }
+                      onClick={() => void applyTextRunEdit()}
+                    >
+                      {t("studio.textApply")}
+                    </button>
+                    <span className="muted small">
+                      {selectedTextRun.editable ? t("studio.textKeepPosition") : selectedTextRun.note}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </Card>
       ) : null}
 
       {tab === "objects" ? (

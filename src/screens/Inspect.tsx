@@ -77,6 +77,20 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
     setReport(null);
     try {
       const result = await inspectDocument(session.primary.path, session.password || undefined);
+      if (result) {
+        result.fonts = result.fonts ?? [];
+        result.images = result.images ?? [];
+        result.outline = result.outline ?? [];
+        result.formFields = result.formFields ?? [];
+        result.annotations = result.annotations ?? [];
+        result.findings = result.findings ?? [];
+        result.javascriptEntries = result.javascriptEntries ?? [];
+        result.embeddedFiles = result.embeddedFiles ?? [];
+        result.colorSpaces = result.colorSpaces ?? [];
+        for (const font of result.fonts) {
+          font.embeddedFormats = font.embeddedFormats ?? [];
+        }
+      }
       setReport(result);
     } catch (err) {
       setReport(null);
@@ -105,7 +119,7 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
   }, [report]);
 
   const embedded = useMemo(() => (report?.fonts ?? []).filter((font) => font.embedded).length, [report]);
-  const unembedded = (report?.fonts.length ?? 0) - embedded;
+  const unembedded = (report?.fonts ?? []).length - embedded;
 
   return (
     <Screen
@@ -204,8 +218,8 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                       label={t("inspect.javascript")}
                       value={
                         report.hasJavascript
-                          ? report.javascriptEntries.length
-                            ? report.javascriptEntries.join(", ")
+                          ? (report.javascriptEntries ?? []).length
+                            ? (report.javascriptEntries ?? []).join(", ")
                             : t("inspect.yes")
                           : t("inspect.no")
                       }
@@ -213,7 +227,9 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                     <Row
                       label={t("inspect.acroForm")}
                       value={
-                        report.hasAcroForm ? `${report.formFields.length} ${t("inspect.formFields")}` : t("inspect.no")
+                        report.hasAcroForm
+                          ? `${(report.formFields ?? []).length} ${t("inspect.formFields")}`
+                          : t("inspect.no")
                       }
                     />
                     <Row
@@ -238,14 +254,18 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                     <Row label={t("inspect.attachments")} value={report.attachmentCount} />
                     <Row
                       label={t("inspect.embeddedFiles")}
-                      value={report.embeddedFiles.length ? report.embeddedFiles.join(", ") : t("inspect.none")}
+                      value={
+                        (report.embeddedFiles ?? []).length
+                          ? (report.embeddedFiles ?? []).join(", ")
+                          : t("inspect.none")
+                      }
                     />
                     <Row label={t("inspect.imagePixels")} value={report.totalImagePixels.toLocaleString()} />
                   </div>
                 ) : null}
 
                 {tab === "fonts" ? (
-                  report.fonts.length ? (
+                  (report.fonts ?? []).length ? (
                     <div className="flex flex-col">
                       <div className="flex items-center gap-2 pb-2">
                         <Badge tone="ok">
@@ -258,7 +278,7 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                         ) : null}
                       </div>
                       <div className="flex flex-col max-h-[520px] overflow-auto">
-                        {report.fonts.map((font, index) => (
+                        {(report.fonts ?? []).map((font, index) => (
                           <div
                             key={`${font.name}-${index}`}
                             className="flex items-center justify-between gap-2 py-1.5 border-b last:border-0"
@@ -273,8 +293,8 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                                 {font.embedded ? t("inspect.embedded") : t("inspect.notEmbedded")}
                               </Badge>
                               {font.composite ? <Badge tone="accent">Type0</Badge> : null}
-                              {font.embeddedFormats.length ? (
-                                <span className="text-xs muted">{font.embeddedFormats.join(", ")}</span>
+                              {(font.embeddedFormats ?? []).length ? (
+                                <span className="text-xs muted">{(font.embeddedFormats ?? []).join(", ")}</span>
                               ) : null}
                             </span>
                           </div>
@@ -287,9 +307,9 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                 ) : null}
 
                 {tab === "images" ? (
-                  report.images.length ? (
+                  (report.images ?? []).length ? (
                     <div className="flex flex-col max-h-[520px] overflow-auto">
-                      {report.images.map((image, index) => (
+                      {(report.images ?? []).map((image, index) => (
                         <div
                           key={`${image.width}x${image.height}-${index}`}
                           className="flex items-center justify-between gap-2 py-1.5 border-b last:border-0"
@@ -305,7 +325,7 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                       <div className="pt-2">
                         <p className="text-xs muted">{t("inspect.colorSpaces")}</p>
                         <div className="flex flex-wrap gap-1.5 mt-1">
-                          {report.colorSpaces.map((space) => (
+                          {(report.colorSpaces ?? []).map((space) => (
                             <Badge key={space.name} tone={space.deviceDependent ? "warn" : "default"}>
                               {space.name}
                               {space.components ? ` (${space.components})` : ""}
@@ -324,9 +344,9 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                   <div className="flex flex-col gap-4">
                     <div>
                       <p className="text-xs muted mb-1">{t("inspect.outline")}</p>
-                      {report.outline.length ? (
+                      {(report.outline ?? []).length ? (
                         <div className="flex flex-col max-h-52 overflow-auto">
-                          {report.outline.map((entry, index) => (
+                          {(report.outline ?? []).map((entry, index) => (
                             <div
                               key={`${entry.title}-${index}`}
                               className="text-xs py-1 flex items-baseline justify-between gap-2"
@@ -345,9 +365,9 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                     </div>
                     <div>
                       <p className="text-xs muted mb-1">{t("inspect.formFields")}</p>
-                      {report.formFields.length ? (
+                      {(report.formFields ?? []).length ? (
                         <div className="flex flex-col max-h-52 overflow-auto">
-                          {report.formFields.map((field, index) => (
+                          {(report.formFields ?? []).map((field, index) => (
                             <div
                               key={`${field.name}-${index}`}
                               className="text-xs py-1 flex items-baseline justify-between gap-2"
@@ -369,9 +389,9 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                     </div>
                     <div>
                       <p className="text-xs muted mb-1">{t("inspect.annotations")}</p>
-                      {report.annotations.length ? (
+                      {(report.annotations ?? []).length ? (
                         <div className="flex flex-col max-h-40 overflow-auto">
-                          {report.annotations.map((annotation, index) => (
+                          {(report.annotations ?? []).map((annotation, index) => (
                             <div
                               key={`${annotation.subtype}-${index}`}
                               className="text-xs py-1 flex items-baseline justify-between gap-2"
@@ -392,9 +412,9 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                     </div>
                     <div>
                       <p className="text-xs muted mb-1">{t("inspect.embeddedFiles")}</p>
-                      {report.embeddedFiles.length ? (
+                      {(report.embeddedFiles ?? []).length ? (
                         <div className="flex flex-col max-h-32 overflow-auto">
-                          {report.embeddedFiles.map((name) => (
+                          {(report.embeddedFiles ?? []).map((name) => (
                             <span key={name} className="text-xs truncate" style={{ color: "var(--text-1)" }}>
                               {name}
                             </span>
@@ -408,9 +428,9 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                 ) : null}
 
                 {tab === "findings" ? (
-                  report.findings.length ? (
+                  (report.findings ?? []).length ? (
                     <div className="flex flex-col max-h-[520px] overflow-auto">
-                      {report.findings.map((finding, index) => (
+                      {(report.findings ?? []).map((finding, index) => (
                         <Finding key={`${finding.code}-${index}`} finding={finding} />
                       ))}
                     </div>

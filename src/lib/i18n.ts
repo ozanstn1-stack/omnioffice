@@ -236,6 +236,9 @@ const en: Dict = {
   "reader.copied": "Page {page} text copied",
   "reader.openExternal": "Open in default app",
   "reader.jumpTo": "Go to page",
+  "reader.bookmarks": "Bookmarks",
+  "reader.noBookmarks": "This document has no bookmarks.",
+  "reader.untitledBookmark": "Untitled",
   "reader.shortcutHint":
     "Ctrl+F search · Ctrl +/− zoom · Ctrl+0 fit width · PgUp/PgDn scroll · Home/End first/last page",
   "home.recentEmpty": "No documents yet",
@@ -1576,6 +1579,11 @@ const en: Dict = {
   "studio.signerName": "Signer name",
   "studio.visibleAppearance": "Visible signature",
   "studio.signSave": "Sign and save as…",
+  "studio.tsaUrl": "Timestamp server (RFC 3161, optional)",
+  "studio.tsaUrlHint":
+    "The signature value is timestamped by the TSA over HTTPS and the token is embedded; a TSA failure fails the signing instead of silently skipping the timestamp.",
+  "studio.timestampPresent": "RFC 3161 timestamp: {time}",
+  "studio.timestampNone": "No RFC 3161 timestamp on this signature.",
   "studio.signDone": "Document signed",
   "studio.needCertificate": "Choose a certificate first.",
 
@@ -1584,6 +1592,18 @@ const en: Dict = {
     "Real AcroForm fields and page objects. Fill writes /V and rebuilds widget appearances; object edits rewrite the annotation rectangle or the image placement matrix. Text and vector graphics inside content streams cannot be located safely and are not listed.",
   "studio.refreshData": "Reload",
   "studio.noFields": "No form fields found in this document.",
+  "studio.textRuns": "Text",
+  "studio.textRunsHint":
+    "Edit the text of existing runs in place: the font and position stay the same and the result is saved as a new revision, so signatures over the original stay valid. Positions are approximate.",
+  "studio.textRunCount": "runs on this page",
+  "studio.noTextRuns": "No text runs on this page. Scanned pages have no text layer - run OCR first.",
+  "studio.textReadOnly": "read-only",
+  "studio.textReplace": "Replacement text",
+  "studio.textReplaceHint":
+    "Only text the run's font can represent is accepted; a run whose font cannot encode the text is refused, never garbled.",
+  "studio.textApply": "Apply text",
+  "studio.textEdited": "Text updated",
+  "studio.textKeepPosition": "Font, position and every other run stay unchanged.",
   "studio.noObjects": "No annotations or images on this page.",
   "studio.required": "required",
   "studio.readOnly": "read-only",
@@ -1929,6 +1949,9 @@ const tr: Dict = {
   "reader.copied": "{page}. sayfa metni kopyalandı",
   "reader.openExternal": "Varsayılan uygulamada aç",
   "reader.jumpTo": "Sayfaya git",
+  "reader.bookmarks": "Yer imleri",
+  "reader.noBookmarks": "Bu belgede yer imi yok.",
+  "reader.untitledBookmark": "Başlıksız",
   "reader.shortcutHint":
     "Ctrl+F ara · Ctrl +/− yakınlaştır · Ctrl+0 genişliğe sığdır · PgUp/PgDn kaydır · Home/End ilk/son sayfa",
   "home.recentEmpty": "Henüz belge yok",
@@ -3221,6 +3244,11 @@ const tr: Dict = {
   "studio.signerName": "İmzalayan adı",
   "studio.visibleAppearance": "Görünür imza",
   "studio.signSave": "İmzala ve farklı kaydet…",
+  "studio.tsaUrl": "Zaman damgası sunucusu (RFC 3161, isteğe bağlı)",
+  "studio.tsaUrlHint":
+    "İmza değeri TSA tarafından HTTPS üzerinden zaman damgalanır ve jeton gömülür; TSA hatası zaman damgasını sessizce atlamak yerine imzalamayı durdurur.",
+  "studio.timestampPresent": "RFC 3161 zaman damgası: {time}",
+  "studio.timestampNone": "Bu imzada RFC 3161 zaman damgası yok.",
   "studio.signDone": "Belge imzalandı",
   "studio.needCertificate": "Önce bir sertifika seçin.",
 
@@ -3229,6 +3257,18 @@ const tr: Dict = {
     "Gerçek AcroForm alanları ve sayfa nesneleri. Doldurma /V değerini yazar ve widget görünümlerini yeniden üretir; nesne düzenlemeleri açıklama dikdörtgenini veya görüntü yerleşim matrisini değiştirir. İçerik akışlarındaki metin ve vektör grafikler güvenle bulunamadığı için listelenmez.",
   "studio.refreshData": "Yenile",
   "studio.noFields": "Bu belgede form alanı bulunamadı.",
+  "studio.textRuns": "Metin",
+  "studio.textRunsHint":
+    "Var olan metin parçalarını yerinde düzenleyin: yazı tipi ve konum aynı kalır, sonuç yeni bir revizyon olarak kaydedilir; özgün belge üzerindeki imzalar geçerli kalır. Konumlar yaklaşıktır.",
+  "studio.textRunCount": "bu sayfadaki parça",
+  "studio.noTextRuns": "Bu sayfada metin parçası yok. Taranmış sayfalarda metin katmanı olmaz - önce OCR çalıştırın.",
+  "studio.textReadOnly": "salt okunur",
+  "studio.textReplace": "Yeni metin",
+  "studio.textReplaceHint":
+    "Yalnızca parçanın yazı tipinin gösterebildiği metin kabul edilir; kodlanamayan metin bozulmadan reddedilir.",
+  "studio.textApply": "Metni uygula",
+  "studio.textEdited": "Metin güncellendi",
+  "studio.textKeepPosition": "Yazı tipi, konum ve diğer tüm parçalar değişmez.",
   "studio.noObjects": "Bu sayfada açıklama veya görüntü yok.",
   "studio.required": "zorunlu",
   "studio.readOnly": "salt okunur",

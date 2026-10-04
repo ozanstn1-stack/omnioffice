@@ -59,6 +59,8 @@ export interface PdfInfo {
   title: string;
   author: string;
   producer: string;
+  /** Document bookmarks; entries whose destination could not be resolved have page 0. */
+  outline: OutlineEntry[];
 }
 
 export interface Thumbnail {

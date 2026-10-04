@@ -820,6 +820,30 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
           <span className="text-xs muted shrink-0">/ {pageCount}</span>
         </div>
 
+        <p className="text-[12px] font-bold uppercase tracking-wider muted mt-2">{t("reader.bookmarks")}</p>
+        {session.info?.outline?.length ? (
+          <div className="flex flex-col gap-0.5 max-h-[260px] overflow-y-auto">
+            {session.info.outline.map((entry, index) => (
+              <button
+                key={`${entry.title}-${index}`}
+                type="button"
+                className="text-left text-[12.5px] truncate px-2 py-1 rounded hover:bg-[var(--surface-2)] disabled:opacity-50"
+                style={{ paddingLeft: 8 + Math.min(entry.depth, 8) * 12 }}
+                disabled={entry.page < 1}
+                title={entry.title}
+                onClick={() => {
+                  if (entry.page > 0) scrollToPage(entry.page);
+                }}
+              >
+                {entry.title || t("reader.untitledBookmark")}
+                {entry.page > 0 ? <span className="muted text-xs"> · {entry.page}</span> : null}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs muted">{t("reader.noBookmarks")}</p>
+        )}
+
         <p className="text-[12px] font-bold uppercase tracking-wider muted mt-2">{t("reader.search")}</p>
         {searchResult ? (
           searchResult.matches.length ? (

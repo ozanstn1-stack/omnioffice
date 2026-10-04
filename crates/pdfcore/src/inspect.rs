@@ -298,7 +298,7 @@ fn collect_name_tree(doc: &Document, names: &Dictionary, key: &[u8], out: &mut V
 }
 
 /// Reads the document outline (bookmarks) with a bounded depth.
-fn read_outline(doc: &Document, catalog: &Dictionary) -> PdfResult<Vec<OutlineEntry>> {
+pub(crate) fn read_outline(doc: &Document, catalog: &Dictionary) -> PdfResult<Vec<OutlineEntry>> {
     let root = match deref(doc, catalog.get(b"Outlines").ok()).cloned() {
         Some(Object::Dictionary(root)) => root,
         _ => return Ok(Vec::new()),

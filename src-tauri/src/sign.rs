@@ -12,6 +12,61 @@ use pdfcore::error::{PdfError, PdfResult};
 use pdfcore::sign::{self, SignOptions, SignatureInfo, SignatureReport};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::time::Duration;
+
+/// Maximum accepted RFC 3161 response body (a token is a few KB).
+const MAX_TSA_RESPONSE_BYTES: usize = 1024 * 1024;
+
+/// Exchanges a signature value for an RFC 3161 timestamp token over HTTPS
+/// (plain HTTP only for a loopback TSA, mirroring the WebDAV transport rule).
+fn request_timestamp(url: &str, signature: &[u8]) -> PdfResult<Vec<u8>> {
+    let trimmed = url.trim();
+    let parsed =
+        reqwest::Url::parse(trimmed).map_err(|error| PdfError::InvalidInput(format!("invalid TSA URL: {error}")))?;
+    let loopback = matches!(parsed.host_str(), Some("localhost") | Some("127.0.0.1") | Some("::1"));
+    match parsed.scheme() {
+        "https" => {}
+        "http" if loopback => {}
+        other => {
+            return Err(PdfError::InvalidInput(format!(
+                "the TSA URL must use https:// (plain http:// is allowed only for localhost): {other}"
+            )));
+        }
+    }
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(20))
+        .timeout(Duration::from_secs(60))
+        .user_agent("OfficeSwissArmyKnife/3.6 (rfc3161)")
+        .build()
+        .map_err(|error| PdfError::Internal(format!("could not build the TSA client: {error}")))?;
+    let request_body = pdfcore::timestamp::build_request(signature);
+    let response = client
+        .post(parsed)
+        .header("Content-Type", "application/timestamp-query")
+        .header("Accept", "application/timestamp-reply")
+        .body(request_body)
+        .send()
+        .map_err(|error| {
+            PdfError::ProcessingFailed(format!("the timestamp authority could not be reached: {error}"))
+        })?;
+    if !response.status().is_success() {
+        return Err(PdfError::ProcessingFailed(format!("the timestamp authority returned HTTP {}", response.status())));
+    }
+    if let Some(length) = response.content_length() {
+        if length as usize > MAX_TSA_RESPONSE_BYTES {
+            return Err(PdfError::ProcessingFailed("the timestamp response is unreasonably large".into()));
+        }
+    }
+    let body = response
+        .bytes()
+        .map_err(|error| PdfError::ProcessingFailed(format!("the timestamp response could not be read: {error}")))?;
+    if body.len() > MAX_TSA_RESPONSE_BYTES {
+        return Err(PdfError::ProcessingFailed("the timestamp response is unreasonably large".into()));
+    }
+    let token = pdfcore::timestamp::parse_response(&body)?
+        .ok_or_else(|| PdfError::ProcessingFailed("the timestamp authority refused the request".into()))?;
+    Ok(token.token)
+}
 
 /// UI facing signing options (camelCase on the wire, matching the frontend).
 #[derive(Debug, Clone, Deserialize)]
@@ -97,6 +152,7 @@ pub async fn pdf_sign(
     pfx_password: Option<String>,
     cert_index: Option<usize>,
     options: SignOptionsDto,
+    tsa_url: Option<String>,
 ) -> Result<SignResultDto, PdfError> {
     let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || {
@@ -125,7 +181,23 @@ pub async fn pdf_sign(
             return Err(PdfError::InvalidInput("choose a certificate (a PFX file, or a Windows store entry)".into()));
         };
 
-        let signed = sign::sign_pdf(&pdf, &cert_der, &key_der, &chain, &options.into_options())?;
+        let tsa = tsa_url.unwrap_or_default().trim().to_string();
+        let signed = if tsa.is_empty() {
+            sign::sign_pdf(&pdf, &cert_der, &key_der, &chain, &options.into_options())?
+        } else {
+            // A requested timestamp is mandatory: a TSA failure fails the
+            // signing instead of silently producing an untimestamped file.
+            let provider = move |signature: &[u8]| request_timestamp(&tsa, signature);
+            let provider_ref: &sign::TimestampProvider<'_> = &provider;
+            sign::sign_pdf_with_timestamp(
+                &pdf,
+                &cert_der,
+                &key_der,
+                &chain,
+                &options.into_options(),
+                Some(provider_ref),
+            )?
+        };
         let target = crate::paths::output_file(&output)?;
         write_atomic(target.as_path(), &signed)?;
 

@@ -1,4 +1,4 @@
-# Release Readiness — Office Swiss Army Knife 3.5.7
+# Release Readiness — Office Swiss Army Knife 3.6.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -6,6 +6,50 @@ built or verified unless it was reproduced in this environment or is produced
 by CI.
 
 ## Implemented (this cycle)
+
+- **Content-stream text editing** (`pdfcore::content`): a page's decoded
+  content is walked with graphics/text state (q/Q, Tf, Tm, Td/TD, T*, TL,
+  Tc/Tw/Tz/Ts/Tr); runs are listed with font, size and approximate position;
+  a run's text is replaced in place as an **incremental revision** (the
+  original bytes and any signature stay intact). Replacements are encoded with
+  the run's font and accepted only when the byte round trip reproduces the
+  text; multi-string `TJ` and non-representable runs are reported read-only.
+  PDF Studio gains the "Text" tab.
+- **Reader bookmarks**: `pdf_info` carries the bounded outline (with `/Dest`
+  page resolution); the Reader side panel lists it and jumps to pages.
+- **RFC 3161 timestamps** (`pdfcore::timestamp` + the signing dialog): an
+  optional TSA URL timestamps the signature value over HTTPS (loopback HTTP
+  allowed for a local TSA) and embeds the token as `id-aa-timeStampToken`;
+  verification reports the token's `genTime`. A requested timestamp is
+  mandatory - a TSA failure fails signing.
+
+## Tested in this environment
+
+| Gate | Command | Result |
+|---|---|---|
+| Content editor | `cargo test -p pdfcore --lib content` | 6 passed (list, replace, incremental prefix, `TJ` refusal, font-encoding refusal, unknown page) |
+| RFC 3161 core | `cargo test -p pdfcore --lib timestamp` | 4 passed (request shape, granted/refused responses, garbage) |
+| Signature + timestamp | `cargo test -p pdfcore --test signature_test` | 17 passed (incl. embedded token verified and provider-failure path) |
+| Frontend | `npm test` | 42 files, 690 passed, 1 skipped |
+| Typecheck / lint / i18n | `npx tsc --noEmit`, `npm run lint`, `npm run i18n:audit` | clean, en=tr=1591 |
+| Rust clippy | `cargo clippy -p pdfcore -p pdf-swiss-army-knife --all-targets -- -D warnings` | clean |
+| Rust workspace | `cargo test --workspace` | 564 passed, 3 ignored (the new suites included) |
+
+## Not done in this pass (honest)
+
+- **PDF/A font subsetting** (Type0/CID remapping) is not implemented; the
+  existing PDF/A conversion still reports unembeddable fonts instead of
+  guessing.
+- **Tiled rendering** for extreme zoom remains open; the reader still upscales
+  beyond the cached bitmap on very high-density screens.
+- **OCSP/CRL revocation** is not fetched; signature trust stays `unknown`
+  offline, and a timestamp's TSA chain is not validated.
+- **Vector-object editing** inside content streams is read-only; only text
+  runs can be edited.
+- Text-run positions/widths are approximations (no glyph metrics); the UI and
+  docs say so.
+
+## Implemented in 3.5.7, 3.5.6 and 3.5.5 (unchanged)
 
 - **Legacy `.doc`/`.ppt` import** (`officecore::legacy`): the Word FIB piece
   table (compressed + UTF-16 pieces) and the PowerPoint record-tree text atoms

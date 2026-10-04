@@ -215,6 +215,11 @@ pub struct SignatureInfo {
     pub signer: CertificateInfo,
     /// Signing time from the CMS `signingTime` attribute (RFC 3339, UTC).
     pub signing_time: Option<String>,
+    /// RFC 3161 timestamp token time (`genTime`), when the signature carries
+    /// one as an unsigned attribute. Present does not mean trusted: the TSA
+    /// certificate chain and revocation status are not checked offline.
+    #[serde(default)]
+    pub timestamp: Option<String>,
     pub algorithm: String,
     /// Always `"unknown"` in this offline build: no system trust store and no
     /// revocation checking are available.
@@ -252,7 +257,7 @@ pub struct Pkcs12Identity {
 // our control. Verification uses the independent RustCrypto `cms` parser.
 // ---------------------------------------------------------------------------
 
-fn der_length(out: &mut Vec<u8>, length: usize) {
+pub(crate) fn der_length(out: &mut Vec<u8>, length: usize) {
     if length < 0x80 {
         out.push(length as u8);
     } else {
@@ -269,7 +274,7 @@ fn der_length(out: &mut Vec<u8>, length: usize) {
 }
 
 /// One DER TLV: tag, definite length, content.
-fn der_tlv(tag: u8, content: &[u8]) -> Vec<u8> {
+pub(crate) fn der_tlv(tag: u8, content: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(content.len() + 6);
     out.push(tag);
     der_length(&mut out, content.len());
@@ -277,27 +282,27 @@ fn der_tlv(tag: u8, content: &[u8]) -> Vec<u8> {
     out
 }
 
-fn der_sequence(parts: &[Vec<u8>]) -> Vec<u8> {
+pub(crate) fn der_sequence(parts: &[Vec<u8>]) -> Vec<u8> {
     let content: Vec<u8> = parts.concat();
     der_tlv(0x30, &content)
 }
 
 /// A `SET OF` value must be DER sorted (ascending by encoded bytes).
-fn der_set_of(mut parts: Vec<Vec<u8>>) -> Vec<u8> {
+pub(crate) fn der_set_of(mut parts: Vec<Vec<u8>>) -> Vec<u8> {
     parts.sort();
     let content: Vec<u8> = parts.concat();
     der_tlv(0x31, &content)
 }
 
-fn der_oid(oid: ObjectIdentifier) -> Vec<u8> {
+pub(crate) fn der_oid(oid: ObjectIdentifier) -> Vec<u8> {
     der_tlv(0x06, oid.as_bytes())
 }
 
-fn der_octet_string(bytes: &[u8]) -> Vec<u8> {
+pub(crate) fn der_octet_string(bytes: &[u8]) -> Vec<u8> {
     der_tlv(0x04, bytes)
 }
 
-fn der_integer_u64(value: u64) -> Vec<u8> {
+pub(crate) fn der_integer_u64(value: u64) -> Vec<u8> {
     let mut bytes = Vec::new();
     let mut value = value;
     if value == 0 {
@@ -314,14 +319,14 @@ fn der_integer_u64(value: u64) -> Vec<u8> {
     der_tlv(0x02, &bytes)
 }
 
-fn der_null() -> Vec<u8> {
+pub(crate) fn der_null() -> Vec<u8> {
     vec![0x05, 0x00]
 }
 
 /// Wraps `inner` (a complete TLV) in a context-specific constructed tag, which
 /// covers both `[n] EXPLICIT` and `[n] IMPLICIT SET OF` (the content layout is
 /// identical for constructed types).
-fn der_context(tag_number: u8, inner: &[u8]) -> Vec<u8> {
+pub(crate) fn der_context(tag_number: u8, inner: &[u8]) -> Vec<u8> {
     der_tlv(0xA0 | tag_number, inner)
 }
 
@@ -762,6 +767,7 @@ fn build_detached_cms(
     signer_cert: &Certificate,
     chain_der: &[Vec<u8>],
     key: &KeyMaterial,
+    timestamp: Option<&TimestampProvider<'_>>,
 ) -> PdfResult<Vec<u8>> {
     let digest_algorithm = der_sequence(&[der_oid(OID_SHA256)]);
 
@@ -784,14 +790,31 @@ fn build_detached_cms(
     let serial_der = der_tlv(0x02, signer_cert.tbs_certificate.serial_number.as_bytes());
     let sid = der_sequence(&[issuer_der, serial_der]);
 
-    let signer_info = der_sequence(&[
+    // An RFC 3161 timestamp signs the signature value and travels as an
+    // unsigned attribute ([1] IMPLICIT SET OF Attribute) after the signature.
+    let unsigned_attrs = match timestamp {
+        Some(provider) => {
+            let token = provider(&signature)?;
+            // The attribute value is the DER ContentInfo of the token.
+            let attribute =
+                der_sequence(&[der_oid(crate::timestamp::OID_ATTR_TIMESTAMP_TOKEN), der_set_of(vec![token])]);
+            Some(der_context(1, &attribute))
+        }
+        None => None,
+    };
+
+    let mut signer_info_parts = vec![
         der_integer_u64(1),
         sid,
         digest_algorithm.clone(),
         der_context(0, &signed_attrs_content),
         key.algorithm_identifier(),
         der_octet_string(&signature),
-    ]);
+    ];
+    if let Some(unsigned) = unsigned_attrs {
+        signer_info_parts.push(unsigned);
+    }
+    let signer_info = der_sequence(&signer_info_parts);
 
     // Certificates: SET OF CertificateChoices; the DER ordering applies.
     let mut certificates: Vec<Vec<u8>> = Vec::with_capacity(chain_der.len() + 1);
@@ -1267,12 +1290,35 @@ fn existing_field_names(doc: &Document) -> HashSet<String> {
 /// bytes are preserved, the signature covers the whole revision, and the CMS
 /// DER is written into the fixed size `/Contents` placeholder with zero
 /// padding after the DER (which the byte range excludes entirely).
+///
+/// This is the no-timestamp entry point; [`sign_pdf_with_timestamp`] adds an
+/// RFC 3161 token through a caller-provided exchange.
 pub fn sign_pdf(
     input: &[u8],
     cert_der: &[u8],
     key_pkcs8_der: &[u8],
     chain_der: &[Vec<u8>],
     options: &SignOptions,
+) -> PdfResult<Vec<u8>> {
+    sign_pdf_with_timestamp(input, cert_der, key_pkcs8_der, chain_der, options, None)
+}
+
+/// Callback that exchanges a signature value for an RFC 3161 timestamp token
+/// (the DER `ContentInfo` of the `TimeStampResp`). The application layer owns
+/// the HTTP exchange over HTTPS; `pdfcore` never performs network requests.
+pub type TimestampProvider<'a> = dyn Fn(&[u8]) -> PdfResult<Vec<u8>> + 'a;
+
+/// [`sign_pdf`] with an optional RFC 3161 timestamp provider. The provider is
+/// called with the signature value; the returned token is embedded as the
+/// `id-aa-timeStampToken` unsigned attribute. A provider failure fails the
+/// signing - a requested timestamp is never silently dropped.
+pub fn sign_pdf_with_timestamp(
+    input: &[u8],
+    cert_der: &[u8],
+    key_pkcs8_der: &[u8],
+    chain_der: &[Vec<u8>],
+    options: &SignOptions,
+    timestamp: Option<&TimestampProvider<'_>>,
 ) -> PdfResult<Vec<u8>> {
     // 1. Identity and key.
     let signer_cert = Certificate::from_der(cert_der)
@@ -1458,7 +1504,7 @@ pub fn sign_pdf(
     hasher.update(&output[contents_end..]);
     let digest = hasher.finalize();
 
-    let cms = build_detached_cms(&digest, &moment, cert_der, &signer_cert, chain_der, &key)?;
+    let cms = build_detached_cms(&digest, &moment, cert_der, &signer_cert, chain_der, &key, timestamp)?;
     // The CMS must be a single well formed DER object; the parser here is the
     // same independent one used by verification.
     let cms_slice = der_exact_slice(&cms)
@@ -1629,6 +1675,7 @@ fn inspect_signature(pdf: &[u8], dict: &Dictionary, field_name: String) -> Signa
     let mut self_signed_chain = false;
     let mut signature_valid = false;
     let mut signing_time: Option<String> = None;
+    let mut timestamp: Option<String> = None;
     let mut algorithm = String::from("unknown");
 
     match cms_slice.and_then(|slice| cms::content_info::ContentInfo::from_der(slice).ok()) {
@@ -1701,6 +1748,20 @@ fn inspect_signature(pdf: &[u8], dict: &Dictionary, field_name: String) -> Signa
                                         _ => None,
                                     }
                                 })
+                            })
+                        });
+                        // RFC 3161 timestamp token as an unsigned attribute.
+                        timestamp = info.unsigned_attrs.as_ref().and_then(|attrs| {
+                            attrs.iter().find_map(|attribute| {
+                                if attribute.oid != crate::timestamp::OID_ATTR_TIMESTAMP_TOKEN {
+                                    return None;
+                                }
+                                attribute
+                                    .values
+                                    .iter()
+                                    .next()
+                                    .and_then(|value| value.to_der().ok())
+                                    .and_then(|der| crate::timestamp::parse_token_time(&der))
                             })
                         });
 
@@ -1786,6 +1847,7 @@ fn inspect_signature(pdf: &[u8], dict: &Dictionary, field_name: String) -> Signa
         self_signed_chain,
         signer,
         signing_time,
+        timestamp,
         algorithm,
         trust: "unknown".to_string(),
         notes,
