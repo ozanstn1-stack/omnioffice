@@ -19,6 +19,9 @@ path = "src/lib.rs"
 ab_glyph = "0.2.32"
 base64 = "0.23"
 calamine = "0.36.1"
+# Word 97-2003 / PowerPoint 97-2003 are OLE2 Compound File Binary containers;
+# `legacy.rs` reads their streams without a native Office dependency.
+cfb = "0.15"
 crc32fast = "1"
 flate2 = "1"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "bmp", "tiff", "gif"] }

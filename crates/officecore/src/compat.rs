@@ -169,6 +169,17 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
             ],
         ),
         "xls" => (true, false, false, false, vec![]),
+        "doc" | "dot" => (
+            true,
+            true,
+            false,
+            true,
+            vec![feature(
+                "textOnly",
+                SupportLevel::Partial,
+                "Text and paragraph breaks are imported (a local LibreOffice is used when installed); character formatting, tables, headers, footnotes and images are not preserved. Save as .docx or .oswk to keep edits.",
+            )],
+        ),
         "ods" => (
             true,
             true,
@@ -195,7 +206,17 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
                 feature("macros", SupportLevel::Unsupported, "Macros are detected and never executed; saving writes the macro-free presentation, so the VBA project is dropped."),
             ],
         ),
-        "ppt" => (false, false, false, false, vec![]),
+        "ppt" => (
+            true,
+            true,
+            false,
+            true,
+            vec![feature(
+                "textOnly",
+                SupportLevel::Partial,
+                "Slide text is imported (a local LibreOffice is used when installed); shapes, images, animations, themes and formatting are not preserved. Save as .pptx or .oswk to keep edits.",
+            )],
+        ),
         "odp" => (
             true,
             true,

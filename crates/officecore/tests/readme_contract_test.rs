@@ -14,7 +14,8 @@ use std::path::PathBuf;
 
 /// Formats the matrix has an arm for that this build deliberately cannot open.
 /// They are listed here so that a table cell claiming otherwise still fails.
-const KNOWN_UNSUPPORTED: &[&str] = &["doc", "ppt"];
+/// (`.doc`/`.ppt` moved out of this list in v3.5.7: they are imported now.)
+const KNOWN_UNSUPPORTED: &[&str] = &[];
 
 struct Row {
     label: String,
