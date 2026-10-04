@@ -1363,7 +1363,7 @@ pub fn write_pptx_package(deck: &Deck) -> OfficeResult<DeckWrite> {
     zip.add_text("[Content_Types].xml", &content_types);
     zip.add_text("_rels/.rels", &root_rels);
     zip.add_text("docProps/core.xml", &core_properties(deck));
-    zip.add_text("docProps/app.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\"><Application>Office Swiss Army Knife</Application></Properties>");
+    zip.add_text("docProps/app.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\"><Application>OmniOffice</Application></Properties>");
     zip.add_text("ppt/presentation.xml", &presentation_xml(deck, &master_rids, &slide_rids));
     zip.add_text("ppt/_rels/presentation.xml.rels", &presentation_rels);
     zip.add_text("ppt/presProps.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<p:presentationPr xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\"/>");

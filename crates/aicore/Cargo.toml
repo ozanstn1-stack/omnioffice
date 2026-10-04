@@ -9,7 +9,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "DeepSeek API client and prompt pipeline for PDF Swiss Army Knife"
+description = "DeepSeek API client and prompt pipeline for OmniOffice"
 
 [lib]
 name = "aicore"

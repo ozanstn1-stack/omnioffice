@@ -22,7 +22,7 @@ function pickReply(body) {
   const messages = body?.messages ?? [];
   const lastUser = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
   if (/JSON object/i.test(messages[0]?.content ?? "")) {
-    return '{"title":"Sample report A","author":"PDF Swiss Army Knife samples","subject":"Synthetic test document","keywords":["sample","report","testing","pdf"]}';
+    return '{"title":"Sample report A","author":"OmniOffice samples","subject":"Synthetic test document","keywords":["sample","report","testing","pdf"]}';
   }
   if (/single word: ready/i.test(lastUser)) return "ready";
   if (/Translate/i.test(lastUser)) {

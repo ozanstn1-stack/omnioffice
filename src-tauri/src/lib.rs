@@ -1,4 +1,4 @@
-//! PDF Swiss Army Knife - Tauri application shell.
+//! OmniOffice - Tauri application shell.
 //!
 //! The heavy lifting lives in the `pdfcore` crate; this layer only wires
 //! commands, progress events, cancellation and engine discovery.
@@ -275,5 +275,5 @@ pub fn run() {
             plugin::plugin_http_request,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Office Swiss Army Knife");
+        .expect("error while running OmniOffice");
 }

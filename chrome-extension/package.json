@@ -1,9 +1,9 @@
 {
   "name": "pdf-swiss-army-knife-extension",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
-  "description": "Chrome extension build of PDF Swiss Army Knife (offline, local-first)",
+  "description": "Chrome extension build of OmniOffice (offline, local-first)",
   "scripts": {
     "assets": "node scripts/prepare-assets.mjs",
     "dev": "npm run assets && vite",

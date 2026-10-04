@@ -9,7 +9,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Local-first PDF processing core for PDF Swiss Army Knife"
+description = "Local-first PDF processing core for OmniOffice"
 
 [lib]
 name = "pdfcore"

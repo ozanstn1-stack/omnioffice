@@ -49,13 +49,13 @@ fn empty_core_properties(kind: &str) -> String {
 fn empty_app_properties() -> String {
     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n\
      <Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\">\
-     <Application>Office Swiss Army Knife</Application></Properties>"
+     <Application>OmniOffice</Application></Properties>"
         .to_string()
 }
 
 fn stripped_odf_meta(title: &str) -> String {
     format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-meta xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" xmlns:meta=\"urn:oasis:names:tc:opendocument:xmlns:meta:1.0\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" office:version=\"1.2\"><office:meta><meta:generator>Office Swiss Army Knife</meta:generator><dc:title>{}</dc:title></office:meta></office:document-meta>",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-meta xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" xmlns:meta=\"urn:oasis:names:tc:opendocument:xmlns:meta:1.0\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" office:version=\"1.2\"><office:meta><meta:generator>OmniOffice</meta:generator><dc:title>{}</dc:title></office:meta></office:document-meta>",
         escape_text(title)
     )
 }

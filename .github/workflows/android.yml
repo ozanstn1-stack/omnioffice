@@ -109,7 +109,7 @@ jobs:
           version=$(node -p "require('./src-tauri/tauri.conf.json').version")
           apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' -printf '%T@ %p\n' | sort -rn | head -n1 | cut -d' ' -f2)
           cp "$apk" \
-             "release-artifacts/PDF-Swiss-Army-Knife-Android-$version-arm64-v8a.apk"
+             "release-artifacts/OmniOffice-Android-$version-arm64-v8a.apk"
 
       - name: Build armv7 APK
         run: |
@@ -118,7 +118,7 @@ jobs:
           version=$(node -p "require('./src-tauri/tauri.conf.json').version")
           apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' -printf '%T@ %p\n' | sort -rn | head -n1 | cut -d' ' -f2)
           cp "$apk" \
-             "release-artifacts/PDF-Swiss-Army-Knife-Android-$version-armeabi-v7a.apk"
+             "release-artifacts/OmniOffice-Android-$version-armeabi-v7a.apk"
 
       - name: Build arm64 AAB
         run: |
@@ -127,7 +127,7 @@ jobs:
           version=$(node -p "require('./src-tauri/tauri.conf.json').version")
           aab=$(find src-tauri/gen/android/app/build/outputs/bundle -name '*.aab' -printf '%T@ %p\n' | sort -rn | head -n1 | cut -d' ' -f2)
           cp "$aab" \
-             "release-artifacts/PDF-Swiss-Army-Knife-Android-$version-arm64-v8a.aab"
+             "release-artifacts/OmniOffice-Android-$version-arm64-v8a.aab"
 
       - name: Build armv7 AAB
         run: |
@@ -136,7 +136,7 @@ jobs:
           version=$(node -p "require('./src-tauri/tauri.conf.json').version")
           aab=$(find src-tauri/gen/android/app/build/outputs/bundle -name '*.aab' -printf '%T@ %p\n' | sort -rn | head -n1 | cut -d' ' -f2)
           cp "$aab" \
-             "release-artifacts/PDF-Swiss-Army-Knife-Android-$version-armeabi-v7a.aab"
+             "release-artifacts/OmniOffice-Android-$version-armeabi-v7a.aab"
           (cd release-artifacts && sha256sum *.apk *.aab > SHA256SUMS-android.txt)
           ls -lh release-artifacts
 
@@ -197,7 +197,7 @@ jobs:
             echo "waiting for release $tag ($i/30)"; sleep 20
           done
           if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" --title "Office Swiss Army Knife $tag" --notes-file CHANGELOG.md
+            gh release create "$tag" --title "OmniOffice $tag" --notes-file CHANGELOG.md
           fi
           gh release upload "$tag" \
             release-artifacts/*.apk release-artifacts/*.aab \

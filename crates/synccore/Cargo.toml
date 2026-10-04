@@ -9,7 +9,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Local-first cloud sync foundation (WebDAV) for PDF Swiss Army Knife"
+description = "Local-first cloud sync foundation (WebDAV) for OmniOffice"
 
 [lib]
 name = "synccore"

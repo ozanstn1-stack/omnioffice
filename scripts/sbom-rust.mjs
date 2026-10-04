@@ -61,7 +61,7 @@ const bom = {
   version: 1,
   metadata: {
     timestamp: new Date().toISOString(),
-    tools: [{ vendor: "Office Swiss Army Knife", name: "sbom-rust.mjs", version: pkg.version }],
+    tools: [{ vendor: "OmniOffice", name: "sbom-rust.mjs", version: pkg.version }],
     component: {
       type: "application",
       name: "pdf-swiss-army-knife",

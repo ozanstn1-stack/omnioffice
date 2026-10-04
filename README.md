@@ -1,4 +1,4 @@
-# Office Swiss Army Knife
+# OmniOffice
 
 A local-first productivity suite: a word processor (Writer), a spreadsheet
 (Calc), a presentation editor (Impress), local productivity tools (Notes,
@@ -10,9 +10,28 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.6.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.7.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.7.0
+
+The suite is now called **OmniOffice** (formerly Office Swiss Army Knife).
+
+- **New name, same local-first suite.** Windows installs to
+  `%LOCALAPPDATA%\Programs\OmniOffice` (the old per-user install and its
+  shortcuts are removed automatically on update), the exe is
+  `OmniOffice.exe`, and release files are `OmniOffice-*`. The Android package
+  id and the `.oswk` file format are unchanged, so updates and existing
+  documents keep working; the Chrome extension ships as
+  `OmniOffice-Chrome-Extension-1.0.2.zip`.
+- **Existing data keeps working.** The AI library falls back to the old
+  `Documents/PDF Swiss Army Knife AI` folder until a new `Documents/OmniOffice
+  AI` one exists; Android results go to `Downloads/OmniOffice` (older files
+  stay where they are).
+- **Per-machine installs** under `C:\Program Files\Office Swiss Army Knife`
+  are not touched by the per-user updater; uninstall them from Windows
+  Settings (administrator) after updating.
 
 ## What's new in 3.6.1
 
@@ -680,7 +699,8 @@ your LAN) because it uses its own TLS stack.
 **Limitations.** No foreground service: a job keeps running only while the
 process lives (state survives death and is marked interrupted). Android
 cannot index arbitrary SAF folders; imports are the supported path. The
-launcher label remains "PDF Swiss Army Knife" for upgrade continuity.
+launcher label is "OmniOffice"; the package id is unchanged for upgrade
+continuity.
 
 ## Sample documents
 
@@ -757,8 +777,8 @@ npm run app:build          # Tauri release build (first run downloads NSIS)
 npm run package            # installer + portable ZIP into release-artifacts/
 ```
 
-The installer is written as both `Office-Swiss-Army-Knife-Setup-<version>.exe`
-and `Office Swiss Army Knife_<version>_x64-setup.exe`; `SHA256SUMS.txt` covers
+The installer is written as both `OmniOffice-Setup-<version>.exe`
+and `OmniOffice_<version>_x64-setup.exe`; `SHA256SUMS.txt` covers
 both plus the portable ZIP.
 
 `npm run release:local` runs the whole update loop in one command: Windows +
@@ -775,7 +795,7 @@ unverified binary. When an upstream release is updated on purpose, verify it and
 re-run the fetch script with `-UpdateLock` to re-pin. Releases also publish
 CycloneDX SBOMs (Rust and npm) next to the installer and carry a signed build
 provenance attestation, verifiable with
-`gh attestation verify <file> --repo ozanstn1-stack/pdf-swiss-army-knife`.
+`gh attestation verify <file> --repo ozanstn1-stack/omnioffice`.
 
 ### Android
 
@@ -1003,7 +1023,7 @@ These are real and honest:
   real Android I/O on an emulator), both run by the Android release workflow;
   the picker UI itself (`ACTION_OPEN_DOCUMENT`) is still not automated,
   `osed/ospr/osdt` are accepted by the intent filter but the engine does not
-  understand them yet, and the launcher label is still "PDF Swiss Army Knife".
+  understand them yet, and the launcher label is "OmniOffice".
 - **Reader zoom**: page previews are rasterized up to 3000 px wide (backend
   cap 4000) and cached per page (24 entries); zooming past what the bitmap
   covers on very high-density screens still upscales until tiled rendering is

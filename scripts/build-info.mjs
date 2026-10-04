@@ -37,7 +37,7 @@ const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const tauriConf = JSON.parse(readFileSync(join(root, "src-tauri", "tauri.conf.json"), "utf8"));
 
 const info = {
-  product: "Office Swiss Army Knife",
+  product: "OmniOffice",
   version: pkg.version,
   tauriVersion: tauriConf.version ?? null,
   gitSha: tryCommand("git rev-parse HEAD"),

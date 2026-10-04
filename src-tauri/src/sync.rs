@@ -347,8 +347,7 @@ fn sync_context(app: &AppHandle) -> Result<SyncContext, PdfError> {
             // A valid access token is required before the provider is built;
             // this also refreshes an expired one and persists the new value.
             access_token(app, "onedrive")?;
-            let remote =
-                if config.remote_dir.trim().is_empty() { "Office Swiss Army Knife" } else { &config.remote_dir };
+            let remote = if config.remote_dir.trim().is_empty() { "OmniOffice" } else { &config.remote_dir };
             SyncClient::Microsoft(Box::new(
                 MicrosoftGraphProvider::new(
                     Box::new(AppTokenSource { app: app.clone(), provider: "onedrive".into() }),
@@ -359,8 +358,7 @@ fn sync_context(app: &AppHandle) -> Result<SyncContext, PdfError> {
         }
         ProviderKind::GoogleDrive => {
             access_token(app, "google-drive")?;
-            let remote =
-                if config.remote_dir.trim().is_empty() { "Office Swiss Army Knife" } else { &config.remote_dir };
+            let remote = if config.remote_dir.trim().is_empty() { "OmniOffice" } else { &config.remote_dir };
             SyncClient::GoogleDrive(Box::new(
                 GoogleDriveProvider::new(
                     Box::new(AppTokenSource { app: app.clone(), provider: "google-drive".into() }),
@@ -397,10 +395,7 @@ fn validate_local_file(path: &Path) -> Result<String, PdfError> {
     }
     let extension = path.extension().map(|value| value.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
     if extension != "oswk" {
-        return Err(PdfError::coded(
-            ErrorCode::InvalidInput,
-            "Cloud sync tracks Office Swiss Army Knife (.oswk) documents only.",
-        ));
+        return Err(PdfError::coded(ErrorCode::InvalidInput, "Cloud sync tracks OmniOffice (.oswk) documents only."));
     }
     metadata::file_name_of(path).map_err(sync_error)
 }

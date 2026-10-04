@@ -9,7 +9,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Local-first document engine for Office Swiss Army Knife (Writer, Calc, Impress)"
+description = "Local-first document engine for OmniOffice (Writer, Calc, Impress)"
 
 [lib]
 name = "officecore"

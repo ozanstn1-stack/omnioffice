@@ -1,5 +1,5 @@
 # Downloads the release assets of a version from GitHub into a discoverable
-# folder next to the project (default: <projects>\Office-Swiss-Army-Knife-<v>).
+# folder next to the project (default: <projects>\OmniOffice-<v>).
 #
 # Use this when the artifacts were produced by CI (tag push) and this machine
 # only needs to receive them; `release-local.ps1` does the same copy step after
@@ -24,7 +24,7 @@ $tag = "v$Version"
 
 if (-not $Dest) {
     $projects = Split-Path -Parent $root
-    $Dest = Join-Path $projects "Office-Swiss-Army-Knife-$Version"
+    $Dest = Join-Path $projects "OmniOffice-$Version"
 }
 New-Item -ItemType Directory -Force -Path $Dest | Out-Null
 

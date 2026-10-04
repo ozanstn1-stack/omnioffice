@@ -144,8 +144,8 @@ export async function applyPagePlan(
   output.setAuthor(source.getAuthor() ?? "");
   output.setSubject(source.getSubject() ?? "");
   output.setKeywords(source.getKeywords() ? source.getKeywords()!.split(/[;,]\s*/).filter(Boolean) : []);
-  output.setCreator(source.getCreator() ?? "PDF Swiss Army Knife (extension)");
-  output.setProducer("PDF Swiss Army Knife (extension)");
+  output.setCreator(source.getCreator() ?? "OmniOffice (extension)");
+  output.setProducer("OmniOffice (extension)");
 
   for (const item of plan) {
     if (item.source < 1 || item.source > total) {
@@ -176,7 +176,7 @@ export async function mergePdfs(inputs: { name: string; bytes: Uint8Array }[]): 
       first = false;
     }
   }
-  output.setProducer("PDF Swiss Army Knife (extension)");
+  output.setProducer("OmniOffice (extension)");
   output.setModificationDate(new Date());
   return save(output);
 }
@@ -518,8 +518,8 @@ export interface ImageItem {
 export async function imagesToPdf(items: ImageItem[], options: ImageToPdfOptions): Promise<Uint8Array> {
   if (!items.length) throw new PdfOpError("invalid_input", "Add at least one image.");
   const doc = await PDFDocument.create();
-  doc.setProducer("PDF Swiss Army Knife (extension)");
-  doc.setCreator("PDF Swiss Army Knife (extension)");
+  doc.setProducer("OmniOffice (extension)");
+  doc.setCreator("OmniOffice (extension)");
 
   for (const item of items) {
     let image: PDFImage;
@@ -596,7 +596,7 @@ export async function imagesToPdf(items: ImageItem[], options: ImageToPdfOptions
 
 export async function compressLossless(bytes: Uint8Array): Promise<Uint8Array> {
   const doc = await loadPdf(bytes);
-  doc.setProducer("PDF Swiss Army Knife (extension)");
+  doc.setProducer("OmniOffice (extension)");
   return doc.save({ useObjectStreams: true, addDefaultPage: false, objectsPerTick: 200 });
 }
 
@@ -608,8 +608,8 @@ export async function compressWithRenderer(
   const source = await loadPdf(bytes);
   const total = source.getPageCount();
   const output = await PDFDocument.create();
-  output.setProducer("PDF Swiss Army Knife (extension)");
-  output.setCreator("PDF Swiss Army Knife (extension)");
+  output.setProducer("OmniOffice (extension)");
+  output.setCreator("OmniOffice (extension)");
   for (let index = 0; index < total; index += 1) {
     const { width, height } = source.getPage(index).getSize();
     const jpeg = await render(bytes, index + 1, options.dpi);

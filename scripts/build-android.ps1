@@ -1,4 +1,4 @@
-# PDF Swiss Army Knife - Android builder
+# OmniOffice - Android builder
 #
 # Builds an APK with the same layout as `tauri android build`: the frontend is
 # embedded in the Rust library (tauri/custom-protocol), the OCR engine and
@@ -275,8 +275,8 @@ foreach ($archAbi in $Abi) {
     $outDir = Join-Path $root 'release-artifacts'
     New-Item -ItemType Directory -Force -Path $outDir | Out-Null
     foreach ($apk in $apks) {
-        # Release-asset name contract: PDF-Swiss-Army-Knife-Android-<version>-<abi>.apk
-        $target = Join-Path $outDir ("PDF-Swiss-Army-Knife-Android-{0}-{1}.apk" -f $versionName, $archAbi)
+        # Release-asset name contract: OmniOffice-Android-<version>-<abi>.apk
+        $target = Join-Path $outDir ("OmniOffice-Android-{0}-{1}.apk" -f $versionName, $archAbi)
         Copy-Item $apk.FullName $target -Force
         Write-Host ("    -> {0} ({1:N1} MB)" -f $target, ((Get-Item $target).Length / 1MB))
     }
@@ -292,7 +292,7 @@ foreach ($archAbi in $Abi) {
         $aabs = Get-ChildItem $aabDir -Filter '*.aab' -ErrorAction SilentlyContinue
         if (-not $aabs) { throw "no AAB produced in $aabDir" }
         foreach ($aab in $aabs) {
-            $target = Join-Path $outDir ("PDF-Swiss-Army-Knife-Android-{0}-{1}.aab" -f $versionName, $archAbi)
+            $target = Join-Path $outDir ("OmniOffice-Android-{0}-{1}.aab" -f $versionName, $archAbi)
             Copy-Item $aab.FullName $target -Force
             Write-Host ("    -> {0} ({1:N1} MB)" -f $target, ((Get-Item $target).Length / 1MB))
         }

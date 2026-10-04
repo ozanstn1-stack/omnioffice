@@ -8,7 +8,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "PDF Swiss Army Knife - local-first desktop PDF toolkit"
+description = "OmniOffice - local-first desktop office and PDF toolkit"
 rust-version.workspace = true
 # Never published: the path dependencies on the workspace crates are internal
 # and cargo-deny's wildcard policy treats a publishable crate as one that must

@@ -165,7 +165,7 @@ export default function App() {
             <Puzzle size={18} />
           </div>
           <div className="min-w-0">
-            <p className="font-bold text-[13.5px] leading-tight truncate">PDF Swiss Army Knife</p>
+            <p className="font-bold text-[13.5px] leading-tight truncate">OmniOffice</p>
             <p className="text-[11px] muted truncate">v{version} · browser</p>
           </div>
         </div>

@@ -286,8 +286,8 @@ pub fn images_to_pdf(
     }));
     doc.trailer.set("Root", Object::Reference(catalog_id));
     let info_id = doc.add_object(Object::Dictionary(dictionary! {
-        "Producer" => pdf_text_object("PDF Swiss Army Knife"),
-        "Creator" => pdf_text_object("PDF Swiss Army Knife"),
+        "Producer" => pdf_text_object("OmniOffice"),
+        "Creator" => pdf_text_object("OmniOffice"),
     }));
     doc.trailer.set("Info", Object::Reference(info_id));
     doc.trailer.set("Size", Object::Integer((doc.max_id + 1) as i64));

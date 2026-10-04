@@ -1,6 +1,6 @@
 # Packages the release artifacts:
-#   release-artifacts/Office-Swiss-Army-Knife-Setup-<version>.exe     (NSIS installer)
-#   release-artifacts/Office-Swiss-Army-Knife-Portable-<version>.zip  (portable build)
+#   release-artifacts/OmniOffice-Setup-<version>.exe     (NSIS installer)
+#   release-artifacts/OmniOffice-Portable-<version>.zip  (portable build)
 #   release-artifacts/SHA256SUMS.txt
 #
 # Run `npm run tauri build` first (or pass -Build to do it here).
@@ -42,30 +42,33 @@ if (-not $nsis) { throw 'NSIS installer not found. Run npm run tauri build first
 if ($nsis.Name -notlike "*$version*") {
     throw "Installer $($nsis.Name) does not match version $version. Re-run npm run tauri build."
 }
-$installerName = "Office-Swiss-Army-Knife-Setup-$version.exe"
+$installerName = "OmniOffice-Setup-$version.exe"
 $installerPath = Join-Path $releaseDir $installerName
 Copy-Item $nsis.FullName $installerPath -Force
 Write-Host "installer: $installerPath ($([math]::Round((Get-Item $installerPath).Length / 1MB, 1)) MB from $($nsis.Name))"
 
 # The V3.1 release contract names the Windows installer
-# `Office Swiss Army Knife_<version>_x64-setup.exe` (Tauri's own bundle naming).
+# `OmniOffice_<version>_x64-setup.exe` (Tauri's own bundle naming).
 # Ship the identical file under that name as well so release consumers can use
 # either; both are listed in SHA256SUMS.txt.
-$contractInstallerName = "Office Swiss Army Knife_${version}_x64-setup.exe"
+$contractInstallerName = "OmniOffice_${version}_x64-setup.exe"
 $contractInstallerPath = Join-Path $releaseDir $contractInstallerName
 Copy-Item $installerPath $contractInstallerPath -Force
 Write-Host "installer (release name): $contractInstallerPath"
 
 # ---------------------------------------------------------------- portable
-$portableStage = Join-Path $env:TEMP "osak-portable-$version"
+$portableStage = Join-Path $env:TEMP "omnioffice-portable-$version"
 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $portableStage
 New-Item -ItemType Directory -Force -Path $portableStage | Out-Null
-$exeName = 'pdf-swiss-army-knife.exe'
-Copy-Item (Join-Path $targetRelease $exeName) (Join-Path $portableStage 'PDF-Swiss-Army-Knife.exe') -Force
+$exeName = 'OmniOffice.exe'
+if (-not (Test-Path (Join-Path $targetRelease $exeName))) {
+    $exeName = 'pdf-swiss-army-knife.exe'
+}
+Copy-Item (Join-Path $targetRelease $exeName) (Join-Path $portableStage 'OmniOffice.exe') -Force
 Copy-Item (Join-Path $targetRelease 'resources') (Join-Path $portableStage 'resources') -Recurse -Force
 Copy-Item (Join-Path $root 'README.md') $portableStage -Force
 Copy-Item (Join-Path $root 'LICENSE') $portableStage -Force
-$portableZip = Join-Path $releaseDir "Office-Swiss-Army-Knife-Portable-$version.zip"
+$portableZip = Join-Path $releaseDir "OmniOffice-Portable-$version.zip"
 Remove-Item $portableZip -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $portableStage '*') -DestinationPath $portableZip -CompressionLevel Optimal
 Remove-Item -Recurse -Force $portableStage

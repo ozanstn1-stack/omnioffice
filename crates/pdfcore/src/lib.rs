@@ -1,4 +1,4 @@
-//! pdfcore - local-first PDF processing engine for PDF Swiss Army Knife.
+//! pdfcore - local-first PDF processing engine for OmniOffice.
 //!
 //! All operations run on the user's machine. Nothing is uploaded anywhere;
 //! passwords are never logged or persisted.
