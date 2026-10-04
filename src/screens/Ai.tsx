@@ -40,7 +40,7 @@ import { useT } from "../lib/i18n";
 import { logFrontend } from "../lib/api";
 import { useTool } from "../lib/useTool";
 import { useDev, useSettings, useToasts } from "../lib/store";
-import { clamp, fileBaseName, formatBytes, uid } from "../lib/format";
+import { clamp, fileBaseName, formatBytes, isPdf, uid } from "../lib/format";
 import type {
   AiExamplePrompts,
   AiLibraryEntry,
@@ -89,7 +89,7 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
     },
     [t],
   );
-  const session = useTool({ suffix: "_ai", accept: "pdf", initialPaths: initialFiles });
+  const session = useTool({ suffix: "_ai", accept: "document", initialPaths: initialFiles });
   const settingsLoaded = useSettings((s) => s.loaded);
   const settings = useSettings((s) => s.settings);
   const pushToast = useToasts((s) => s.push);
@@ -535,7 +535,7 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
   const saveOutput = async () => {
     if (!output.trim()) return;
     const extension = tab === "summary" || tab === "ask" || tab === "metadata" ? "md" : "md";
-    const base = session.primary ? session.primary.path.replace(/\.pdf$/i, "") : "ai-output";
+    const base = session.primary ? session.primary.path.replace(/\.[^.\\/]+$/, "") : "ai-output";
     const defaultName = `${base}${tab === "translate" ? "_translated" : tab === "cleanup" ? "_clean" : "_ai"}.${extension}`;
     if (isAndroid()) {
       try {
@@ -632,7 +632,7 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
             ) : null}
 
             {!session.primary ? (
-              <DropZone onPaths={(paths) => void session.addPaths(paths)} dragging={dragging} accept="pdf" />
+              <DropZone onPaths={(paths) => void session.addPaths(paths)} dragging={dragging} accept="any" />
             ) : (
               <>
                 <OptionCard>
@@ -919,9 +919,13 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                               <Badge key={keyword}>{keyword}</Badge>
                             ))}
                           </div>
-                          <Button size="sm" icon={<Save size={14} />} onClick={() => void applyMetadata()}>
-                            {t("ai.metadataApply")}
-                          </Button>
+                          {session.primary && isPdf(session.primary.path) ? (
+                            <Button size="sm" icon={<Save size={14} />} onClick={() => void applyMetadata()}>
+                              {t("ai.metadataApply")}
+                            </Button>
+                          ) : (
+                            <p className="text-xs muted">{t("ai.metadataPdfOnly")}</p>
+                          )}
                         </div>
                       ) : (
                         <p className="text-xs muted">{t("ai.metadataHint")}</p>

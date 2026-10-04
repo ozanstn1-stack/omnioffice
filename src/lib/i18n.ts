@@ -126,7 +126,8 @@ const en: Dict = {
   "nav.ai": "AI Assistant",
   "nav.aiLibrary": "AI Library",
   "ai.title": "AI Assistant (DeepSeek)",
-  "ai.subtitle": "Summaries, translation, document Q&A and text cleanup — using your own DeepSeek API key.",
+  "ai.subtitle":
+    "Summaries, translation, document Q&A and text cleanup for PDF and office documents — using your own API key.",
   "ai.notConfigured": "AI is not set up",
   "ai.notConfiguredBody":
     "Add your DeepSeek API key in Settings to use summaries, translation, Q&A and metadata suggestions.",
@@ -164,6 +165,7 @@ const en: Dict = {
   "ai.metadataIntro": "Suggests a title, author, subject and keywords based on the document text.",
   "ai.metadataHint": "Press Run to get suggestions, then apply them to a new PDF.",
   "ai.metadataApply": "Apply to a new PDF…",
+  "ai.metadataPdfOnly": "Applying metadata writes to PDF files; the suggestion above is still shown for this document.",
   "ai.output": "AI output",
   "ai.copy": "Copy",
   "ai.save": "Save as file…",
@@ -1836,7 +1838,8 @@ const tr: Dict = {
   "nav.ai": "AI asistanı",
   "nav.aiLibrary": "AI kitaplığı",
   "ai.title": "AI asistanı (DeepSeek)",
-  "ai.subtitle": "Özetleme, çeviri, belge soru-cevap ve metin temizleme — kendi DeepSeek API anahtarınızla.",
+  "ai.subtitle":
+    "PDF ve ofis belgeleri için özetleme, çeviri, belge soru-cevap ve metin temizleme — kendi API anahtarınızla.",
   "ai.notConfigured": "AI yapılandırılmadı",
   "ai.notConfiguredBody":
     "Özetleme, çeviri, soru-cevap ve metaveri önerilerini kullanmak için Ayarlar bölümüne DeepSeek API anahtarınızı ekleyin.",
@@ -1875,6 +1878,7 @@ const tr: Dict = {
   "ai.metadataIntro": "Belge metnine dayanarak başlık, yazar, konu ve anahtar kelime önerir.",
   "ai.metadataHint": "Öneri almak için Çalıştır'a basın, ardından bunları yeni bir PDF'e uygulayın.",
   "ai.metadataApply": "Yeni bir PDF'e uygula…",
+  "ai.metadataPdfOnly": "Üst veri uygulaması PDF dosyalarına yazar; yukarıdaki öneri bu belge için yine de gösterilir.",
   "ai.output": "AI çıktısı",
   "ai.copy": "Kopyala",
   "ai.save": "Dosyayı kaydet…",

@@ -58,6 +58,44 @@ export function isPdf(path: string): boolean {
   return path.toLowerCase().endsWith(".pdf");
 }
 
+/**
+ * The office formats the workspace, the AI assistant and the global open flow
+ * accept. Kept in one place so the pickers, the routing and the AI text
+ * extraction never drift apart.
+ */
+export const OFFICE_DOCUMENT_EXTENSIONS: readonly string[] = [
+  "docx",
+  "docm",
+  "dotx",
+  "doc",
+  "dot",
+  "odt",
+  "rtf",
+  "txt",
+  "md",
+  "markdown",
+  "html",
+  "htm",
+  "xlsx",
+  "xlsm",
+  "xls",
+  "ods",
+  "csv",
+  "tsv",
+  "pptx",
+  "pptm",
+  "ppt",
+  "odp",
+  "osed",
+  "ospr",
+  "osdt",
+  "oswk",
+];
+
+export function isOfficeDocument(path: string): boolean {
+  return OFFICE_DOCUMENT_EXTENSIONS.includes((path.split(".").pop() ?? "").toLowerCase());
+}
+
 export const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif"];
 
 export function isImage(path: string): boolean {

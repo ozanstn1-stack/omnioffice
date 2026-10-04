@@ -11,6 +11,7 @@ export type { Deck, Slide, SlideObject, TextDocument, Workbook } from "./office-
 import * as api from "./office-api";
 import { toAppError } from "./api";
 import { makeTranslate } from "./i18n";
+import { OFFICE_DOCUMENT_EXTENSIONS, isOfficeDocument } from "./format";
 import { useSettings, useToasts } from "./store";
 
 export type OfficeModel = TextDocument | Workbook | Deck;
@@ -506,35 +507,10 @@ export const useDraw = create<DrawState>((set, get) => ({
 // drag & drop, file associations and the command line)
 // ---------------------------------------------------------------------------
 
-export const OFFICE_EXTENSIONS = [
-  "docx",
-  "docm",
-  "dotx",
-  "doc",
-  "dot",
-  "odt",
-  "rtf",
-  "txt",
-  "md",
-  "markdown",
-  "html",
-  "htm",
-  "xlsx",
-  "xlsm",
-  "xls",
-  "ods",
-  "csv",
-  "tsv",
-  "pptx",
-  "pptm",
-  "ppt",
-  "odp",
-  "oswk",
-];
+export const OFFICE_EXTENSIONS = OFFICE_DOCUMENT_EXTENSIONS;
 
 export function isOfficePath(path: string): boolean {
-  const extension = (path.split(".").pop() ?? "").toLowerCase();
-  return OFFICE_EXTENSIONS.includes(extension);
+  return isOfficeDocument(path);
 }
 
 export function isSpreadsheetPath(path: string): boolean {

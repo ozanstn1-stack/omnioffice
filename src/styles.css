@@ -905,6 +905,12 @@ body {
   outline: none;
   min-height: 1.2em;
   font-family: "Segoe UI", Calibri, sans-serif;
+  /* A flex item defaults to min-width:auto, so one long word (or URL) widened
+     the paragraph past the page and the text never wrapped back. Allow the
+     item to shrink to the row and break over-long tokens at the page edge. */
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 .para:focus {
   background: rgba(37, 99, 235, 0.045);
@@ -913,6 +919,10 @@ body {
   display: flex;
   align-items: baseline;
   gap: 6px;
+  min-width: 0;
+}
+.para-row > .para {
+  flex: 1 1 auto;
 }
 .list-marker {
   color: #1f2328;

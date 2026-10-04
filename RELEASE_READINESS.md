@@ -1,4 +1,4 @@
-# Release Readiness — Office Swiss Army Knife 3.6.0
+# Release Readiness — Office Swiss Army Knife 3.6.1
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -6,6 +6,21 @@ built or verified unless it was reproduced in this environment or is produced
 by CI.
 
 ## Implemented (this cycle)
+
+- **Writer wrapping fix** (`src/styles.css`): `.para`/`.para-row` no longer
+  keep a flexbox `min-width: auto`, so a paragraph (or an unbroken word/URL)
+  shrinks to the A4 text column and wraps instead of running past the page
+  edge.
+- **AI assistant office input** (`src-tauri/src/ai.rs` plus the format
+  plumbing): DOCX/DOCM/DOTX, ODT, RTF, legacy DOC/DOT, TXT/MD/Markdown/HTML,
+  XLSX/XLSM/XLS/ODS, CSV/TSV, PPTX/PPTM, ODP, legacy PPT and native `.oswk`
+  are extracted as text units (writer chunks, one unit per sheet, one unit per
+  slide with notes) and accepted by the picker, drop zone and Android SAF
+  import. Unsupported extensions fail with a clear message, and the PDF-only
+  metadata "Apply" action is hidden for office inputs while the suggestion
+  still shows.
+
+## Implemented in 3.6.0
 
 - **Content-stream text editing** (`pdfcore::content`): a page's decoded
   content is walked with graphics/text state (q/Q, Tf, Tm, Td/TD, T*, TL,
@@ -30,10 +45,11 @@ by CI.
 | Content editor | `cargo test -p pdfcore --lib content` | 6 passed (list, replace, incremental prefix, `TJ` refusal, font-encoding refusal, unknown page) |
 | RFC 3161 core | `cargo test -p pdfcore --lib timestamp` | 4 passed (request shape, granted/refused responses, garbage) |
 | Signature + timestamp | `cargo test -p pdfcore --test signature_test` | 17 passed (incl. embedded token verified and provider-failure path) |
-| Frontend | `npm test` | 42 files, 690 passed, 1 skipped |
-| Typecheck / lint / i18n | `npx tsc --noEmit`, `npm run lint`, `npm run i18n:audit` | clean, en=tr=1591 |
+| AI office extraction | `cargo test -p pdf-swiss-army-knife --lib ai` | 9 passed (DOCX/XLSX/PPTX units, unknown extension refused, password redaction) |
+| Frontend | `npm test` | 42 files, 691 passed, 1 skipped |
+| Typecheck / lint / i18n | `npx tsc --noEmit`, `npm run lint`, `npm run i18n:audit` | clean, en=tr=1592 |
 | Rust clippy | `cargo clippy -p pdfcore -p pdf-swiss-army-knife --all-targets -- -D warnings` | clean |
-| Rust workspace | `cargo test --workspace` | 564 passed, 3 ignored (the new suites included) |
+| Rust workspace | `cargo test --workspace` | 565 passed, 3 ignored (the new suites included) |
 
 ## Not done in this pass (honest)
 
