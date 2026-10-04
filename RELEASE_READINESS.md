@@ -1,4 +1,4 @@
-# Release Readiness — Office Swiss Army Knife 3.6.1
+# Release Readiness — OmniOffice 3.7.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -6,6 +6,23 @@ built or verified unless it was reproduced in this environment or is produced
 by CI.
 
 ## Implemented (this cycle)
+
+- **Renamed to OmniOffice** across the Windows product name, window title,
+  executable (`OmniOffice.exe`), installer/portable names, Android artifacts
+  and app label, Chrome extension (`OmniOffice-Chrome-Extension-1.0.2.zip`),
+  per-user install path (`%LOCALAPPDATA%\Programs\OmniOffice`), shortcuts,
+  About dialog, docs and the generator/creator metadata written into produced
+  PDF/DOCX/XLSX/PPTX/ODF files.
+- **Upgrade safety**: the package identifier, `.oswk` format tag and OAuth
+  keyring service name are unchanged; the AI library falls back to the legacy
+  `Documents/PDF Swiss Army Knife AI` folder while `Documents/OmniOffice AI`
+  does not exist; Android results go to `Downloads/OmniOffice`; new sync
+  setups default to the "OmniOffice" remote folder.
+- **Updater cleanup**: `install-local.ps1` removes the old per-user install
+  folder and shortcuts after a successful update; per-machine installs need
+  the elevated uninstaller (documented).
+
+## Implemented in 3.6.1
 
 - **Writer wrapping fix** (`src/styles.css`): `.para`/`.para-row` no longer
   keep a flexbox `min-width: auto`, so a paragraph (or an unbroken word/URL)

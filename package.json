@@ -1,9 +1,9 @@
 {
   "name": "pdf-swiss-army-knife",
   "private": true,
-  "version": "3.6.1",
+  "version": "3.7.0",
   "type": "module",
-  "description": "Office Swiss Army Knife - local-first desktop office and PDF suite (Writer, Calc, Impress, PDF tools)",
+  "description": "OmniOffice - local-first desktop office and PDF suite (Writer, Calc, Impress, PDF tools)",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

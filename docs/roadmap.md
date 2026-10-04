@@ -135,6 +135,15 @@ Effort estimates assume a single developer.
   OS credential-vault token storage and the same conflict contract as WebDAV;
   Sync screen gains the client/connect panel.
 - Universal converter handles PDF → JPG/PNG/TXT/DOCX and image → PDF.
+## 3.7.0 — Renamed to OmniOffice (delivered)
+
+- Product, installer, portable ZIP, Android artifacts, Chrome extension,
+  per-user install path, shortcuts, About dialog and generated file metadata
+  use the new name; the package identifier, `.oswk` format tag and OAuth
+  keyring service stay stable so updates, documents and cloud tokens keep
+  working.
+- The updater removes the old per-user install folder and shortcuts; the AI
+  library falls back to the legacy folder until a new one exists.
 ## 3.6.0 — PDF depth, first half (delivered)
 
 - **Content-stream text editing**: `pdfcore::content` lists a page's text runs

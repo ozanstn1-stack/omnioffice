@@ -34,7 +34,7 @@ npm run android:build:all    # release APKs for arm64-v8a + armeabi-v7a
 ```
 
 The APKs land in `release-artifacts/` as
-`PDF-Swiss-Army-Knife-Android-<version>-<abi>.apk`. Pass `-Bundle` to also
+`OmniOffice-Android-<version>-<abi>.apk`. Pass `-Bundle` to also
 produce signed AABs:
 
 ```powershell
@@ -50,14 +50,14 @@ powershell -File scripts/build-android.ps1 -AndroidHome D:\Sdk -NdkHome D:\Sdk\n
 ```
 
 The app version comes from `src-tauri/tauri.conf.json`; the build script
-writes `app/tauri.properties` (`versionName=3.5.4`,
-`versionCode=3005004` — `major*1e6 + minor*1e3 + patch`, monotonically
+writes `app/tauri.properties` (`versionName=3.7.0`,
+`versionCode=3007000` — `major*1e6 + minor*1e3 + patch`, monotonically
 increasing).
 
 Install on a device or emulator:
 
 ```powershell
-adb install -r release-artifacts\PDF-Swiss-Army-Knife-Android-3.5.4-arm64-v8a.apk
+adb install -r release-artifacts\OmniOffice-Android-3.7.0-arm64-v8a.apk
 ```
 
 > **Why not `tauri android build`?** The Tauri CLI prepares `jniLibs` with
@@ -92,7 +92,7 @@ this without changing any tool:
 | --- | --- |
 | `dialog.open()` returns a path | Storage Access Framework picker → the file is copied into the app cache and the tools receive a normal path |
 | "Browse" chooses the output path | "Save as…" picks a destination (SAF); the finished file is copied there |
-| Output is written next to the input | Output is written to the app Documents folder and then copied to `Downloads/PDF Swiss Army Knife/` (or the picked destination) |
+| Output is written next to the input | Output is written to the app Documents folder and then copied to `Downloads/OmniOffice/` (or the picked destination) |
 | "Open folder" | "Share" opens the system share sheet for the result |
 
 Nothing is uploaded anywhere: the copies live in the app's private storage and

@@ -4,6 +4,32 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] - Renamed to OmniOffice
+
+### Changed
+
+- **The product is now OmniOffice.** The Windows product name, window title,
+  executable (`OmniOffice.exe`), installer (`OmniOffice-Setup-<version>.exe`
+  plus the Tauri-named `OmniOffice_<version>_x64-setup.exe`), portable ZIP
+  (`OmniOffice-Portable-<version>.zip`), Android artifacts
+  (`OmniOffice-Android-<version>-<abi>.apk/.aab`), Chrome extension
+  (`OmniOffice-Chrome-Extension-1.0.2.zip`), per-user install path
+  (`%LOCALAPPDATA%\Programs\OmniOffice`), shortcuts, About dialog, Android app
+  label and the generator/creator strings written into produced PDF, DOCX,
+  XLSX, PPTX and ODF files all use the new name.
+- **Upgrade safety.** The package identifier
+  (`io.github.ozanstn1.pdfswissarmyknife`), the `.oswk` format tag
+  (`office-swiss-army-knife`) and the OAuth keyring service name are unchanged,
+  so Android in-place updates, existing documents and stored cloud tokens keep
+  working. After installing, the updater removes the old per-user install
+  folder and shortcuts; per-machine installs under
+  `C:\Program Files\Office Swiss Army Knife` need the elevated uninstaller.
+- **Data paths.** The AI library uses `Documents/OmniOffice AI` and falls back
+  to the legacy `Documents/PDF Swiss Army Knife AI` folder while the new one
+  does not exist; Android results go to `Downloads/OmniOffice`; new cloud-sync
+  setups default to the "OmniOffice" remote folder (saved configurations keep
+  their folder).
+
 ## [3.6.1] - Writer wrapping and office input for the AI assistant
 
 ### Added
