@@ -8,6 +8,9 @@ export interface OpenDocumentResult {
   path: string;
   model: unknown;
   warnings: string[];
+  /** Legacy binary (.doc/.ppt): the tab has no save path, so the first save
+   *  asks for a modern destination. */
+  legacy?: boolean;
 }
 
 export interface SaveDocumentResult {
