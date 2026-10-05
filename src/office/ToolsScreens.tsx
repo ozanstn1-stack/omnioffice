@@ -1003,7 +1003,7 @@ function escapeXml(value: string): string {
 // Templates
 // ---------------------------------------------------------------------------
 
-export function TemplatesScreen() {
+export function TemplatesScreen({ onOpen }: { onOpen?: () => void } = {}) {
   const t = useT();
   const create = useOfficeTabs((state) => state.create);
   const [filter, setFilter] = useState<"all" | "writer" | "calc" | "impress">("all");
@@ -1028,7 +1028,10 @@ export function TemplatesScreen() {
             key={template.id}
             type="button"
             className="card template-card"
-            onClick={() => create(template.kind, template.name, template.build() as never)}
+            onClick={() => {
+              create(template.kind, template.name, template.build() as never);
+              onOpen?.();
+            }}
           >
             <span className={`template-icon kind-${template.kind}`}>
               {template.kind === "writer" ? (

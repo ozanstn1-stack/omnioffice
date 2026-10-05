@@ -10,9 +10,17 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.8.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.8.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.8.1
+
+Templates open the editor again.
+
+- Picking a template (Writer, Calc or Impress) now switches to the Office
+  workspace with the new document in the active tab; before, the tab was
+  created silently and the click looked like it did nothing.
 
 ## What's new in 3.8.0
 

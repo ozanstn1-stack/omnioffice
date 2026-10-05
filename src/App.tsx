@@ -703,7 +703,7 @@ export default function App() {
       spreadsheets: <OfficeLauncher kind="calc" onOpen={() => navigate("office")} />,
       presentations: <OfficeLauncher kind="impress" onOpen={() => navigate("office")} />,
       notes: <NotesScreen />,
-      templates: <TemplatesScreen />,
+      templates: <TemplatesScreen onOpen={() => navigate("office")} />,
       converter: <ConverterScreen />,
       cleaner: <CleanerScreen />,
       draw: <DrawScreen />,

@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.1] - Templates open the editor again
+
+### Fixed
+
+- **Clicking a template did nothing visible.** The template cards created a
+  document tab in the office store but never switched to the Office
+  workspace, so the click looked dead. Picking a template now opens the
+  workspace with the new document (Writer, Calc or Impress) in the active
+  tab; covered by a test that asserts the navigation callback fires.
+
 ## [3.8.0] - New brand mark and modern UI
 
 ### Changed
