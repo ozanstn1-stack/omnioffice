@@ -104,7 +104,8 @@ describe("local productivity tools render and act on their stores", () => {
 
   it("lists templates and creates a tab from one", async () => {
     const user = userEvent.setup();
-    render(<TemplatesScreen />);
+    const onOpen = vi.fn();
+    render(<TemplatesScreen onOpen={onOpen} />);
     expect(await screen.findByRole("heading", { name: "Templates" })).toBeInTheDocument();
     // Every built-in template is offered.
     const cards = screen.getAllByRole("button").filter((button) => button.className.includes("template-card"));
@@ -116,6 +117,8 @@ describe("local productivity tools render and act on their stores", () => {
 
     await user.click(writerCards[0]);
     await waitFor(() => expect(useOfficeTabs.getState().tabs.length).toBe(1));
+    // The workspace must be opened too: without it the click looked dead.
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
   it("renders the converter, cleaner and PDF forms screens", async () => {
