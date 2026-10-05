@@ -116,6 +116,7 @@ import { OverwriteDialog, PasswordDialog, Toasts } from "./components/files";
 import { DataLossDialogHost } from "./components/data-loss-dialog";
 import { FileConflictDialogHost } from "./components/file-conflict-dialog";
 import { Badge, IconButton, Spinner } from "./components/ui";
+import { BrandMark } from "./components/brand";
 import { isAndroid, openAnyFile, pickAndroidFiles } from "./lib/mobile";
 import { isImage } from "./lib/format";
 import {
@@ -870,12 +871,7 @@ export default function App() {
           >
             <aside className="drawer">
               <div className="flex items-center gap-2.5 px-3.5 py-4">
-                <div
-                  className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-                  style={{ background: "var(--accent)", color: "var(--accent-text)" }}
-                >
-                  <Puzzle size={18} />
-                </div>
+                <BrandMark size={36} className="shrink-0" />
                 <div className="min-w-0">
                   <p className="font-bold text-[13.5px] leading-tight truncate">{t("app.name")}</p>
                   <p className="text-[11px] muted truncate">v{packageJson.version} · local</p>
@@ -927,21 +923,15 @@ export default function App() {
     <div className="flex h-full" style={{ background: "var(--bg)" }}>
       {/* Sidebar */}
       <aside
-        className="flex flex-col shrink-0 border-r"
+        className="sidebar flex flex-col shrink-0 border-r"
         style={{
           width: sidebarCompact ? 64 : 232,
           borderColor: "var(--border)",
-          background: "var(--bg-soft)",
           transition: "width 0.15s ease",
         }}
       >
         <div className="flex items-center gap-2.5 px-3.5 py-4">
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-            style={{ background: "var(--accent)", color: "var(--accent-text)" }}
-          >
-            <Puzzle size={18} />
-          </div>
+          <BrandMark size={36} className="shrink-0" />
           {!sidebarCompact ? (
             <div className="min-w-0">
               <p className="font-bold text-[13.5px] leading-tight truncate">{t("app.name")}</p>

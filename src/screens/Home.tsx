@@ -41,6 +41,7 @@ import {
 import { Button, Card, EmptyState, IconButton } from "../components/ui";
 import { DropZone } from "../components/files";
 import { Screen } from "../components/layout";
+import { BrandMark } from "../components/brand";
 import { useT } from "../lib/i18n";
 import { useRecent, useSettings } from "../lib/store";
 import { fileBaseName, formatDate, isPdf } from "../lib/format";
@@ -290,7 +291,15 @@ export function Home({
     : "";
 
   return (
-    <Screen title={t("app.name")} subtitle={t("app.tagline")}>
+    <Screen
+      title={
+        <span className="flex items-center gap-2.5">
+          <BrandMark size={30} className="shrink-0" />
+          <span className="brand-gradient">{t("app.name")}</span>
+        </span>
+      }
+      subtitle={t("app.tagline")}
+    >
       <DropZone
         onPaths={(paths) => {
           onDropFiles(paths);

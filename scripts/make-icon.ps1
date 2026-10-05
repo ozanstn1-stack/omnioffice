@@ -1,5 +1,6 @@
 # Generates the application icon (PNG) used by `tauri icon`.
-# Design: rounded dark tile, white PDF page with folded corner, accent wrench.
+# Design: rounded squircle with an indigo -> violet gradient, a white "O"
+# ring and a small sparkle. No text; stays readable down to 16 px.
 Add-Type -AssemblyName System.Drawing
 
 $size = 1024
@@ -7,77 +8,107 @@ $bmp = New-Object System.Drawing.Bitmap($size, $size)
 $g = [System.Drawing.Graphics]::FromImage($bmp)
 $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
 $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+$g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
 $g.Clear([System.Drawing.Color]::Transparent)
 
-# rounded tile with vertical gradient
-$rect = New-Object System.Drawing.Rectangle(32, 32, 960, 960)
-$path = New-Object System.Drawing.Drawing2D.GraphicsPath
-$radius = 210
-$path.AddArc($rect.X, $rect.Y, $radius, $radius, 180, 90)
-$path.AddArc($rect.Right - $radius, $rect.Y, $radius, $radius, 270, 90)
-$path.AddArc($rect.Right - $radius, $rect.Bottom - $radius, $radius, $radius, 0, 90)
-$path.AddArc($rect.X, $rect.Bottom - $radius, $radius, $radius, 90, 90)
-$path.CloseFigure()
+# ---------------------------------------------------------------- squircle tile
+$inset = 44
+$rect = New-Object System.Drawing.Rectangle($inset, $inset, ($size - 2 * $inset), ($size - 2 * $inset))
+$radius = 228
+$tile = New-Object System.Drawing.Drawing2D.GraphicsPath
+$tile.AddArc($rect.X, $rect.Y, $radius, $radius, 180, 90)
+$tile.AddArc($rect.Right - $radius, $rect.Y, $radius, $radius, 270, 90)
+$tile.AddArc($rect.Right - $radius, $rect.Bottom - $radius, $radius, $radius, 0, 90)
+$tile.AddArc($rect.X, $rect.Bottom - $radius, $radius, $radius, 90, 90)
+$tile.CloseFigure()
 
-$gradient = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+$tileGradient = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
     $rect,
-    [System.Drawing.Color]::FromArgb(255, 30, 41, 59),
-    [System.Drawing.Color]::FromArgb(255, 15, 23, 42),
+    [System.Drawing.Color]::FromArgb(255, 79, 70, 229),
+    [System.Drawing.Color]::FromArgb(255, 124, 58, 237),
+    52.0)
+$blend = New-Object System.Drawing.Drawing2D.ColorBlend
+$blend.Colors = @(
+    [System.Drawing.Color]::FromArgb(255, 79, 70, 229),
+    [System.Drawing.Color]::FromArgb(255, 99, 102, 241),
+    [System.Drawing.Color]::FromArgb(255, 124, 58, 237),
+    [System.Drawing.Color]::FromArgb(255, 147, 51, 234)
+)
+$blend.Positions = @(0.0, 0.42, 0.78, 1.0)
+$tileGradient.InterpolationColors = $blend
+$g.FillPath($tileGradient, $tile)
+
+# top-left glass highlight: radial white glow fading out
+$glowPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+$glowPath.AddEllipse(120, 60, 820, 820)
+$glow = New-Object System.Drawing.Drawing2D.PathGradientBrush($glowPath)
+$glow.CenterColor = [System.Drawing.Color]::FromArgb(46, 255, 255, 255)
+$glow.SurroundColors = @([System.Drawing.Color]::FromArgb(0, 255, 255, 255))
+$glow.CenterPoint = New-Object System.Drawing.PointF(400, 330)
+$g.FillPath($glow, $glowPath)
+
+# inner edge light for a glassy border
+$edgePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(56, 255, 255, 255), 6)
+$edgePen.Alignment = [System.Drawing.Drawing2D.PenAlignment]::Inset
+$g.DrawPath($edgePen, $tile)
+
+# ---------------------------------------------------------------- white "O" ring
+$cx = 512.0
+$cy = 506.0
+$outer = 268.0
+$inner = 170.0
+
+function New-RingPath([double]$cx, [double]$cy, [double]$outer, [double]$inner) {
+    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $path.FillMode = [System.Drawing.Drawing2D.FillMode]::Alternate
+    $path.AddEllipse([float]($cx - $outer), [float]($cy - $outer), [float](2 * $outer), [float](2 * $outer))
+    $path.AddEllipse([float]($cx - $inner), [float]($cy - $inner), [float](2 * $inner), [float](2 * $inner))
+    return $path
+}
+
+# soft drop shadow under the ring
+$shadowPath = New-RingPath $cx ($cy + 16) ($outer + 4) ($inner - 4)
+$shadow = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(38, 30, 27, 75))
+$g.FillPath($shadow, $shadowPath)
+
+# ring body: subtle top-to-bottom white -> periwinkle
+$ringPath = New-RingPath $cx $cy $outer $inner
+$ringRect = New-Object System.Drawing.RectangleF([float]($cx - $outer), [float]($cy - $outer), [float](2 * $outer), [float](2 * $outer))
+$ringGradient = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+    $ringRect,
+    [System.Drawing.Color]::FromArgb(255, 255, 255, 255),
+    [System.Drawing.Color]::FromArgb(255, 224, 231, 255),
     90.0)
-$g.FillPath($gradient, $path)
+$g.FillPath($ringGradient, $ringPath)
 
-# accent glow
-$accentBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(38, 99, 102, 241))
-$g.FillEllipse($accentBrush, 210, 120, 700, 700)
+# inner shading to give the ring volume
+$innerShadowPath = New-RingPath $cx $cy ($inner + 26) $inner
+$innerShadow = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(22, 79, 70, 229))
+$g.FillPath($innerShadow, $innerShadowPath)
 
-# PDF page
-$page = New-Object System.Drawing.Drawing2D.GraphicsPath
-$px = 280; $py = 210; $pw = 360; $ph = 470; $fold = 96
-$page.AddLine($px, $py, $px + $pw - $fold, $py)
-$page.AddLine($px + $pw - $fold, $py, $px + $pw, $py + $fold)
-$page.AddLine($px + $pw, $py + $fold, $px + $pw, $py + $ph)
-$page.AddLine($px + $pw, $py + $ph, $px, $py + $ph)
-$page.CloseFigure()
+# ---------------------------------------------------------------- sparkle
+function New-SparklePath([double]$x, [double]$y, [double]$long, [double]$short) {
+    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $path.FillMode = [System.Drawing.Drawing2D.FillMode]::Winding
+    $path.AddPolygon(@(
+        (New-Object System.Drawing.PointF([float]($x), [float]($y - $long))),
+        (New-Object System.Drawing.PointF([float]($x + $short), [float]$y)),
+        (New-Object System.Drawing.PointF([float]$x, [float]($y + $long))),
+        (New-Object System.Drawing.PointF([float]($x - $short), [float]$y))
+    ))
+    $path.AddPolygon(@(
+        (New-Object System.Drawing.PointF([float]($x - $long), [float]$y)),
+        (New-Object System.Drawing.PointF([float]$x, [float]($y - $short))),
+        (New-Object System.Drawing.PointF([float]($x + $long), [float]$y)),
+        (New-Object System.Drawing.PointF([float]$x, [float]($y + $short)))
+    ))
+    return $path
+}
 
-$pageBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 248, 250, 252))
-$g.FillPath($pageBrush, $page)
-
-# folded corner
-$foldPath = New-Object System.Drawing.Drawing2D.GraphicsPath
-$foldPath.AddLine($px + $pw - $fold, $py, $px + $pw - $fold, $py + $fold)
-$foldPath.AddLine($px + $pw - $fold, $py + $fold, $px + $pw, $py + $fold)
-$foldPath.CloseFigure()
-$foldBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 199, 210, 254))
-$g.FillPath($foldBrush, $foldPath)
-
-# "PDF" text
-$font = New-Object System.Drawing.Font('Segoe UI', 96, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
-$textBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 15, 23, 42))
-$format = New-Object System.Drawing.StringFormat
-$format.Alignment = [System.Drawing.StringAlignment]::Center
-$g.DrawString('PDF', $font, $textBrush, (New-Object System.Drawing.RectangleF(($px), ($py + 150), $pw, 140)), $format)
-
-# text lines
-$linePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(170, 100, 116, 139), 18)
-$linePen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-$linePen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-$g.DrawLine($linePen, $px + 60, $py + 320, $px + $pw - 60, $py + 320)
-$g.DrawLine($linePen, $px + 60, $py + 380, $px + $pw - 60, $py + 380)
-
-# wrench (accent) overlaid bottom-right
-$wrench = New-Object System.Drawing.Drawing2D.GraphicsPath
-$wx = 600; $wy = 560
-$wrench.AddEllipse($wx, $wy, 190, 190)
-$holeBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 30, 41, 59))
-$g.FillPath($holeBrush, $wrench)
-$accent = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 129, 140, 248))
-$g.FillEllipse($accent, $wx + 26, $wy + 26, 138, 138)
-$innerBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 30, 41, 59))
-$g.FillEllipse($innerBrush, $wx + 62, $wy + 62, 66, 66)
-$handlePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 129, 140, 248), 74)
-$handlePen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-$handlePen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-$g.DrawLine($handlePen, $wx + 95, $wy + 95, 400, 890)
+$sparkBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 255, 255, 255))
+$g.FillPath($sparkBrush, (New-SparklePath 782 248 60 18))
+$dotBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(190, 255, 255, 255))
+$g.FillEllipse($dotBrush, 856, 158, 28, 28)
 
 $g.Dispose()
 $out = Join-Path $PSScriptRoot '..\assets\icon-source.png'

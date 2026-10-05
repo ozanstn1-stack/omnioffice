@@ -135,6 +135,13 @@ Effort estimates assume a single developer.
   OS credential-vault token storage and the same conflict contract as WebDAV;
   Sync screen gains the client/connect panel.
 - Universal converter handles PDF → JPG/PNG/TXT/DOCX and image → PDF.
+## 3.8.0 — New brand mark and modern UI (delivered)
+
+- Gradient "O" brand mark replacing the old "PDF" page-and-wrench icon; one
+  source regenerates Windows/macOS, Android adaptive, extension and favicon
+  assets, and an in-app `BrandMark` mirrors it.
+- Modernized shell: refined palettes, gradient buttons, branded nav/segment/
+  badge/card/dropzone styling, slimmer scrollbars. No workflow changes.
 ## 3.7.0 — Renamed to OmniOffice (delivered)
 
 - Product, installer, portable ZIP, Android artifacts, Chrome extension,

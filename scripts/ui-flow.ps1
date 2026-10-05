@@ -7,7 +7,7 @@ param(
     [double]$Scale = 0,
     [switch]$AutoRun,
     [switch]$Maximize,
-    [string]$Exe = "D:\AI\projects\pdf-swiss-army-knife\target\release\pdf-swiss-army-knife.exe",
+    [string]$Exe = "D:\AI\projects\pdf-swiss-army-knife\target\release\OmniOffice.exe",
     [string]$NewTab = ""
 )
 # Drives a UI flow for validation/screenshots: launches the app with the dev
@@ -29,7 +29,7 @@ public class UiFlow {
 }
 "@
 
-Get-Process pdf-swiss-army-knife -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name 'OmniOffice', 'pdf-swiss-army-knife' -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 700
 
 $env:PDFSAK_START_SCREEN = $Screen

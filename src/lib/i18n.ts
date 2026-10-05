@@ -36,7 +36,7 @@ const en: Dict = {
   "nav.history": "History",
   "nav.settings": "Settings",
   "nav.info": "Document Info",
-  "nav.privacy": "100% local processing",
+  "nav.privacy": "100% local",
 
   "common.selectFiles": "Select files",
   "common.selectFile": "Select a file",
@@ -1751,7 +1751,7 @@ const tr: Dict = {
   "nav.history": "Geçmiş",
   "nav.settings": "Ayarlar",
   "nav.info": "Belge bilgisi",
-  "nav.privacy": "%100 yerel işlem",
+  "nav.privacy": "%100 yerel",
   "common.selectFiles": "Dosya seç",
   "common.selectFile": "Bir dosya seç",
   "common.addFiles": "Dosya ekle",
