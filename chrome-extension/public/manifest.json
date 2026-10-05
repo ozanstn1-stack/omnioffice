@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OmniOffice",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Offline PDF toolkit: merge, split, organize, compress, watermark, convert and more. Nothing leaves your browser.",
   "minimum_chrome_version": "114",
   "action": {

@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.0] - New brand mark and modern UI
+
+### Changed
+
+- **New logo.** The OS icon is now a rounded indigo -> violet gradient tile
+  with a white "O" ring and a sparkle - no text, readable down to 16 px. The
+  same mark is used in the sidebar, the drawer, the Home hero and as the
+  favicon, and regenerates the Windows/macOS, Android adaptive-icon and
+  Chrome-extension icons from one source (`scripts/make-icon.ps1` +
+  `tauri icon`).
+- **Modernized shell.** Refined dark and light palettes with deeper surfaces,
+  softer shadows and 16 px radii; gradient primary buttons with a soft glow;
+  nav items with a gradient active pill and indicator; branded segmented
+  controls, badges, tool cards, drop zones, progress bars and scrollbars;
+  gradient app title on Home. No layout or workflow changes.
+
 ## [3.7.0] - Renamed to OmniOffice
 
 ### Changed
