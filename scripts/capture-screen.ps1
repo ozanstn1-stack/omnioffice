@@ -22,14 +22,14 @@ public class WinCap {
 }
 "@
 
-Get-Process pdf-swiss-army-knife -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name 'OmniOffice', 'pdf-swiss-army-knife' -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 600
 
 $env:PDFSAK_START_SCREEN = $Screen
 if ($Files) { $env:PDFSAK_DEV_FILES = $Files } else { Remove-Item Env:\PDFSAK_DEV_FILES -ErrorAction SilentlyContinue }
 $env:PDFSAK_ALWAYS_ON_TOP = '1'
 
-$exe = "D:\AI\projects\pdf-swiss-army-knife\target\release\pdf-swiss-army-knife.exe"
+$exe = "D:\AI\projects\pdf-swiss-army-knife\target\release\OmniOffice.exe"
 $proc = Start-Process -FilePath $exe -WorkingDirectory "D:\AI\projects\pdf-swiss-army-knife\target\release" -PassThru
 
 # Wait for the window to appear

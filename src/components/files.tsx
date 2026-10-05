@@ -122,7 +122,7 @@ export function DropZone({
         style={{
           width: compact ? 40 : 56,
           height: compact ? 40 : 56,
-          background: "var(--accent-weak)",
+          background: "var(--accent-grad-soft)",
           color: "var(--accent)",
         }}
       >

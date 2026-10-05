@@ -19,7 +19,7 @@ public class Win32b {
 }
 "@
 
-$proc = Get-Process -Name 'pdf-swiss-army-knife' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+$proc = Get-Process -Name 'OmniOffice', 'pdf-swiss-army-knife' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
 if (-not $proc) { Write-Error 'app not running'; exit 1 }
 $handle = $proc.MainWindowHandle
 [Win32b]::ShowWindow($handle, 9) | Out-Null
