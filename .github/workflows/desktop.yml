@@ -358,9 +358,35 @@ jobs:
           "@echo off`r`n`"$driver`" %* --verbose --log-path=`"$log`"" | Set-Content -Path $wrapper -Encoding ascii
           "TAURI_NATIVE_DRIVER=$wrapper" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "MSEDGEDRIVER_LOG=$log" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      # While the smoke test runs, record the WebView2 browser process command
+      # lines and every DevToolsActivePort file: msedgedriver reports only
+      # "DevToolsActivePort file doesn't exist", and Chromium deletes the file
+      # when the driver kills the app, so it cannot be inspected afterwards.
       - name: Smoke test
         timeout-minutes: 10
-        run: npm run e2e:smoke
+        shell: pwsh
+        run: |
+          $probeLog = Join-Path $env:RUNNER_TEMP 'webview2-probe.log'
+          $probe = Start-Job -ArgumentList $probeLog -ScriptBlock {
+            param($out)
+            $deadline = (Get-Date).AddMinutes(4)
+            while ((Get-Date) -lt $deadline) {
+              Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe' OR Name='OmniOffice.exe'" |
+                Where-Object { $_.CommandLine -notmatch '--type=' } |
+                ForEach-Object { "PROC $($_.Name) $($_.CommandLine)" } | Add-Content $out
+              Get-ChildItem -Path $env:TEMP, $env:LOCALAPPDATA -Recurse -Filter DevToolsActivePort -ErrorAction SilentlyContinue |
+                ForEach-Object { "PORTFILE $($_.FullName)" } | Add-Content $out
+              Start-Sleep -Seconds 3
+            }
+          }
+          npm run e2e:smoke
+          $code = $LASTEXITCODE
+          Stop-Job $probe -ErrorAction SilentlyContinue
+          if ($code -ne 0 -and (Test-Path $probeLog)) {
+            Write-Host "== WebView2 probe (unique lines)"
+            Get-Content $probeLog | Sort-Object -Unique | Write-Host
+          }
+          exit $code
       - name: Reader renders a real PDF (pdfium)
         timeout-minutes: 10
         run: npm run e2e:smoke:pdf
