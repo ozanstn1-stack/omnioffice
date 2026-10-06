@@ -9,6 +9,7 @@ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialo
 import { fileBaseName, uid } from "../lib/format";
 import {
   isAndroid,
+  openAnyFile,
   pickAndroidSaveTarget,
   pickOfficeFiles,
   publishOutputs,
@@ -386,6 +387,28 @@ export function useOfficeSession(tab: OfficeTab) {
     }
   }, [loadCompatibility, save, t, tab]);
 
+  /**
+   * Print. Desktop WebViews implement window.print(); the Android WebView
+   * ignores it, so there the document is rendered to a PDF in the cache and
+   * opened in the system viewer, whose menu prints (or shares) it.
+   */
+  const print = useCallback(async (): Promise<void> => {
+    if (!isAndroid()) {
+      window.print();
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await api.exportPdf(tab.kind, tab.model, await scratchPath("pdf"));
+      await openAnyFile(result.path);
+      useToasts.getState().push({ kind: "info", title: t("office.printAndroid") });
+    } catch (error) {
+      reportError(error, t);
+    } finally {
+      setBusy(false);
+    }
+  }, [t, tab]);
+
   const openRecentVersion = useCallback(
     async (version: number) => {
       try {
@@ -432,7 +455,7 @@ export function useOfficeSession(tab: OfficeTab) {
 
   const autosaveInterval = useSettings((state) => state.settings).autosaveSeconds ?? 30;
 
-  return { save, saveAs, exportPdf, busy, openRecentVersion, choosePath, openFile, autosaveInterval };
+  return { save, saveAs, exportPdf, print, busy, openRecentVersion, choosePath, openFile, autosaveInterval };
 }
 
 /**

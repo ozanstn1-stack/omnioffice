@@ -2324,7 +2324,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
             disabled={session.busy}
           />
           <ToolButton label={t("common.saveAs")} onClick={() => void session.saveAs()} disabled={session.busy} />
-          <ToolButton icon={<Printer size={16} />} label={t("common.print")} onClick={() => window.print()} />
+          <ToolButton icon={<Printer size={16} />} label={t("common.print")} onClick={() => void session.print()} />
         </RibbonGroup>
       </Ribbon>
 
