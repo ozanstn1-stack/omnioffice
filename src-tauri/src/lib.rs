@@ -18,6 +18,7 @@ mod plugin;
 mod secret;
 mod sign;
 mod sync;
+mod update;
 mod vault;
 
 use jobs::{JobRegistry, JobStore};
@@ -118,6 +119,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            update::update_check,
+            update::update_open,
             commands::engine_status,
             commands::ocr_languages,
             commands::cancel_job,

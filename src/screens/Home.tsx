@@ -42,6 +42,7 @@ import { Button, Card, EmptyState, IconButton } from "../components/ui";
 import { DropZone } from "../components/files";
 import { Screen } from "../components/layout";
 import { BrandMark } from "../components/brand";
+import { UpdateBanner } from "../components/update-banner";
 import { useT } from "../lib/i18n";
 import { useRecent, useSettings } from "../lib/store";
 import { fileBaseName, formatDate, isPdf } from "../lib/format";
@@ -300,6 +301,7 @@ export function Home({
       }
       subtitle={t("app.tagline")}
     >
+      <UpdateBanner />
       <DropZone
         onPaths={(paths) => {
           onDropFiles(paths);

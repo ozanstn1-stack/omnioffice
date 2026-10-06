@@ -18,6 +18,17 @@ export interface OcrLanguage {
   name: string;
 }
 
+/** Answer of the GitHub release check (`update_check`). */
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  newer: boolean;
+  releaseUrl: string;
+  downloadUrl: string | null;
+  downloadName: string | null;
+  notes: string;
+}
+
 export interface AppInfo {
   appVersion: string;
   coreVersion: string;
@@ -283,6 +294,12 @@ export interface Settings {
   defaultImpressFormat: "pptx" | "odp";
   /** Show the unsupported-feature warnings after opening a document. */
   showImportWarnings: boolean;
+  /** Look for a newer release on GitHub about once a week. */
+  updateCheck: boolean;
+  /** Epoch milliseconds of the last automatic update check (0 = never). */
+  lastUpdateCheck: number;
+  /** Version whose "update available" banner the user closed. */
+  dismissedUpdate: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -304,6 +321,9 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultCalcFormat: "xlsx",
   defaultImpressFormat: "pptx",
   showImportWarnings: true,
+  updateCheck: true,
+  lastUpdateCheck: 0,
+  dismissedUpdate: "",
 };
 
 export interface TextMatch {
