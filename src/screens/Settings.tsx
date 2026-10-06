@@ -12,10 +12,11 @@ import {
 import { Badge, Button, Card, Kbd } from "../components/ui";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
-import { reportError, useSettings } from "../lib/store";
+import { reportError, useSettings, useToasts } from "../lib/store";
 import { useUpdate } from "../lib/update";
 import { AiSettings } from "../components/ai-settings";
-import { appInfo, updateOpen } from "../lib/api";
+import { appInfo, diagnosticsReport, updateOpen } from "../lib/api";
+import { saveFileBytes } from "../lib/mobile";
 
 function VersionLine() {
   const t = useT();
@@ -92,6 +93,38 @@ function UpdateControls() {
         </span>
       </div>
       <p className="text-xs muted">{t("update.hint")}</p>
+    </div>
+  );
+}
+
+/** Writes a redacted plain-text report the user can attach to an issue. */
+function DiagnosticsExport() {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  const exportReport = async () => {
+    setBusy(true);
+    try {
+      const report = await diagnosticsReport();
+      const stamp = new Date().toISOString().slice(0, 10);
+      const saved = await saveFileBytes(new TextEncoder().encode(report), `omnioffice-diagnostics-${stamp}.txt`, {
+        name: "Text",
+        extensions: ["txt"],
+      });
+      if (saved) useToasts.getState().push({ kind: "success", title: t("settings.diagnosticsSaved"), detail: saved });
+    } catch (error) {
+      reportError(error, t);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <div>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void exportReport()}>
+          {t("settings.diagnosticsExport")}
+        </Button>
+      </div>
+      <p className="text-xs muted">{t("settings.diagnosticsHint")}</p>
     </div>
   );
 }
@@ -382,6 +415,7 @@ export function Settings() {
           <p className="text-[13px] muted leading-relaxed">{t("settings.privacyBody")}</p>
           <VersionLine />
           <UpdateControls />
+          <DiagnosticsExport />
         </Card>
       </div>
     </Screen>

@@ -497,6 +497,10 @@ const en: Dict = {
   "settings.engines": "Engines",
   "settings.version": "Version",
   "settings.ocrInstalled": "{count} OCR languages installed",
+  "settings.diagnosticsExport": "Export diagnostics",
+  "settings.diagnosticsHint":
+    "Saves a text report (version, engines, recent errors, app log) to attach to a GitHub issue. Folder and file names are replaced with <path>; read it before you share it. Nothing is sent automatically.",
+  "settings.diagnosticsSaved": "Diagnostics report saved",
   "office.printAndroid": "Opened as PDF - print it from the viewer's menu.",
   "update.available": "OmniOffice {version} is available.",
   "update.current": "You have {version}.",
@@ -2214,6 +2218,10 @@ const tr: Dict = {
   "settings.engines": "Motorlar",
   "settings.version": "Sürüm",
   "settings.ocrInstalled": "{count} OCR dili yüklü",
+  "settings.diagnosticsExport": "Tanılama raporunu dışa aktar",
+  "settings.diagnosticsHint":
+    "GitHub'da sorun bildirirken eklemek için bir metin raporu kaydeder (sürüm, motorlar, son hatalar, uygulama günlüğü). Klasör ve dosya adları <path> ile değiştirilir; paylaşmadan önce okuyun. Hiçbir şey otomatik gönderilmez.",
+  "settings.diagnosticsSaved": "Tanılama raporu kaydedildi",
   "office.printAndroid": "PDF olarak açıldı - görüntüleyicinin menüsünden yazdırın.",
   "update.available": "OmniOffice {version} yayınlandı.",
   "update.current": "Sizdeki sürüm: {version}.",

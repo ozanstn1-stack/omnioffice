@@ -82,6 +82,7 @@ export function toAppError(error: unknown): { code: string; message: string } {
 export const appInfo = () => invoke<AppInfo>("app_info");
 export const updateCheck = () => invoke<UpdateInfo>("update_check");
 export const updateOpen = (url: string) => invoke<void>("update_open", { url });
+export const diagnosticsReport = () => invoke<string>("diagnostics_report");
 export const engineStatus = () => invoke<EngineStatus>("engine_status");
 export const ocrLanguages = () => invoke<OcrLanguage[]>("ocr_languages");
 export const cancelJob = (jobId: string) => invoke<void>("cancel_job", { jobId });
