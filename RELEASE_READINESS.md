@@ -15,13 +15,20 @@ by CI.
   trees: the real October drift passes (+10.9 % relative warning), a single
   +33.7 % regression fails, and a +40 % regression hidden in a +70 % runner
   shift still fails.
-- `e2e/smoke.mjs`: 90 s bound per WebDriver call; step time limits in CI.
-- `e2e-windows` job: engines fetched, debug build, msedgedriver matched to
-  the WebView2 runtime, smoke + Reader (pdfium) + deep flows.
-- `AppLaunchSmokeTest` (instrumented): Home tool grid renders on the emulator.
-
-Not verified locally: the Windows job and the emulator test need their CI
-runners; both are validated on the pull request / a dispatched Android run.
+- `e2e/smoke.mjs`: the post-pass hang (driver pipes held by a surviving
+  WebKit helper) is fixed by closing the pipes and exiting explicitly -
+  reproduced locally with a fake driver (old: still running at 20 s, new:
+  exits in 1 s); 90 s bound per WebDriver call; step time limits in CI.
+- `e2e-windows` job: engines fetched, debug build with a test-only
+  `--config` adding `--remote-debugging-port=0` to wry's WebView2 arguments
+  (found with a process probe: the runtime ignored msedgedriver's
+  environment arguments), msedgedriver matched to the WebView2 runtime;
+  smoke + Reader (pdfium) + deep flows pass on the PR.
+- `scripts/android-launch-smoke.sh`: the debug APK is started on the CI
+  emulator and must log the engine status from the frontend. An
+  instrumentation version was dropped: logcat showed the app starting fine
+  and then Tauri's exit() on activity destruction (plus the emulator's EGL
+  teardown abort) killing the shared test process.
 
 ## Implemented in 3.8.2
 

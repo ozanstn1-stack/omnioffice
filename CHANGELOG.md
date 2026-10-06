@@ -18,10 +18,16 @@ GitHub on its own and keeps CI trustworthy.
   release without a manual `git push --tags`. An existing tag is left alone.
 - **Windows desktop E2E** (`e2e-windows` in `desktop.yml`): the WebView2 build
   driven by msedgedriver runs the smoke test, a real pdfium Reader render and
-  the Writer/Merge/Sanitize deep flows on every pull request.
-- **Android launch smoke test** (`AppLaunchSmokeTest`): the emulator suite
-  boots the real app and waits for the Home tool grid, catching native-library
-  load failures, start-up crashes and a blank WebView.
+  the Writer/Merge/Sanitize deep flows on every pull request. wry always passes
+  its own WebView2 browser arguments, and the runtime then ignores the
+  `--remote-debugging-port` msedgedriver requests through
+  `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`; the test build therefore adds the
+  port through a build-time `--config` (the shipped app is unchanged).
+- **Android launch smoke test** (`scripts/android-launch-smoke.sh`): on the CI
+  emulator the debug APK is installed and started like a user would, and the
+  test passes once the frontend has run and called into Rust. It runs outside
+  instrumentation on purpose: Tauri ends the process when its activity is
+  destroyed, which took an instrumentation-based test runner down with it.
 
 ### Fixed
 
@@ -30,9 +36,12 @@ GitHub on its own and keeps CI trustworthy.
   and the gate stayed red. The median current/baseline ratio is now factored
   out, so only a benchmark that regressed against the others fails; a uniform
   shift is still reported as a warning.
-- **E2E could hang for half an hour.** Each WebDriver call is bounded (90 s)
-  and the E2E steps have time limits, so a stalled native driver fails fast
-  with a screenshot instead of blocking the pull request.
+- **E2E could hang for half an hour after passing.** Helper processes started
+  under tauri-driver (WebKit's network process on Linux) inherit its output
+  pipes and outlive it, so the harness waited for EOF forever after every
+  scenario had passed. The pipes are now closed when a session ends and the
+  harness exits explicitly; each WebDriver call is also bounded (90 s) and the
+  E2E steps have time limits.
 
 ## [3.8.2] - Android file pickers and save fixes
 
