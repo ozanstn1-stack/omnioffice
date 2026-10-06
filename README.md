@@ -10,9 +10,23 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.8.3** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.9.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.9.0
+
+- **Update notice:** about once a week the app checks GitHub for a newer
+  release and offers the Windows installer or the Android APK for your device
+  (Settings can turn it off or check right away).
+- **Android printing:** Print in Writer, Calc and Impress opens the document
+  as a PDF in the system viewer, which prints it.
+- **Export diagnostics** (Settings): a privacy-safe text report to attach to
+  a GitHub issue; it is only saved where you choose.
+- **Recent files** now include Word, Excel and PowerPoint documents, and new
+  installs get a short welcome card on Home.
+- **Phones:** Calc scrolls with one finger and has selection grips; the
+  editor ribbons fold behind a "More" button.
 
 ## What's new in 3.8.3
 

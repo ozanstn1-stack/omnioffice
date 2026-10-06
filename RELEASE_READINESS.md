@@ -1,11 +1,36 @@
-# Release Readiness — OmniOffice 3.8.3
+# Release Readiness — OmniOffice 3.9.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
 
-## Implemented (this cycle, 3.8.3) - release and CI infrastructure
+## Implemented (this cycle, 3.9.0) - user experience (plan phase 1)
+
+- `src-tauri/src/update.rs`: `update_check` reads
+  `api.github.com/repos/ozanstn1-stack/omnioffice/releases/latest` and picks
+  the asset for the running OS/arch (`OmniOffice-Setup-*.exe`, or the arm64 /
+  armv7 APK); `update_open` only opens URLs under this repository's releases.
+  Weekly by default (`updateCheck`, `lastUpdateCheck`), dismissible per
+  version (`releases/latest` already skips drafts and prereleases). Unit
+  tests: version parsing and comparison, asset choice per platform, foreign
+  download links dropped, bad tags rejected, the URL allow-list; frontend
+  tests for the schedule and the banner rules.
+- Android printing (`useOfficeSession.print`): `office_export_pdf` into the
+  cache, then the system viewer. A native `PrintManager` bridge was not added;
+  the viewer's own print menu covers it. Tested with a mocked backend.
+- `src-tauri/src/diagnostics.rs`: report with version, platform, engines,
+  the last 20 jobs (no titles/payloads) and the last 150 frontend log lines;
+  quoted and unquoted paths are masked. It is a `.txt`, not a `.zip` as the
+  plan said: one readable file is easier to check before attaching it.
+- Recent files for office documents (`rememberOfficePath`), Home routing to
+  the editor, welcome card (`onboardingDone`, skipped for upgrades).
+- Calc touch: tap selects, one-finger drag pans, corner grips extend the
+  selection; ribbon folding below 760 px (`firstRowHeight`). Unit tests cover
+  both; checked visually at 390 x 844 in Chromium with a mocked backend.
+  Not yet tried on a physical phone.
+
+## Implemented in 3.8.3 - release and CI infrastructure
 
 - `auto-tag.yml`: version change on master -> tag + `workflow_dispatch` of
   `release.yml`/`android.yml` on the tag (GITHUB_TOKEN tags do not fire
