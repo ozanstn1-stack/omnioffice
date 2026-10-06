@@ -351,7 +351,13 @@ jobs:
             $driver = Join-Path $env:EDGEWEBDRIVER 'msedgedriver.exe'
           }
           & $driver --version
-          "TAURI_NATIVE_DRIVER=$driver" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          # tauri-driver passes only --port to the native driver; a wrapper
+          # adds a verbose log so a session failure can be explained.
+          $log = Join-Path $dir 'msedgedriver.log'
+          $wrapper = Join-Path $dir 'msedgedriver-logged.cmd'
+          "@echo off`r`n`"$driver`" %* --verbose --log-path=`"$log`"" | Set-Content -Path $wrapper -Encoding ascii
+          "TAURI_NATIVE_DRIVER=$wrapper" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "MSEDGEDRIVER_LOG=$log" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Smoke test
         timeout-minutes: 10
         run: npm run e2e:smoke
@@ -367,6 +373,17 @@ jobs:
         run: |
           Get-ChildItem -Path $env:APPDATA, $env:LOCALAPPDATA -Recurse -Filter frontend.log -ErrorAction SilentlyContinue |
             ForEach-Object { Write-Host "== $($_.FullName)"; Get-Content $_.FullName -Tail 200 }
+          Write-Host "== DevToolsActivePort files"
+          Get-ChildItem -Path $env:LOCALAPPDATA, $env:TEMP, $env:RUNNER_TEMP -Recurse -Filter DevToolsActivePort -ErrorAction SilentlyContinue |
+            ForEach-Object { Write-Host $_.FullName }
+          Write-Host "== WebView2 / Edge policies"
+          foreach ($key in 'HKLM:\SOFTWARE\Policies\Microsoft\Edge', 'HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2') {
+            Get-ItemProperty -Path $key -ErrorAction SilentlyContinue | Format-List | Out-String | Write-Host
+          }
+          if ($env:MSEDGEDRIVER_LOG -and (Test-Path $env:MSEDGEDRIVER_LOG)) {
+            Write-Host "== msedgedriver log (tail)"
+            Get-Content $env:MSEDGEDRIVER_LOG -Tail 150
+          }
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
