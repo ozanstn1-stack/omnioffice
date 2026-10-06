@@ -43,8 +43,10 @@ import { DropZone } from "../components/files";
 import { Screen } from "../components/layout";
 import { BrandMark } from "../components/brand";
 import { UpdateBanner } from "../components/update-banner";
+import { WelcomeCard } from "../components/welcome-card";
 import { useT } from "../lib/i18n";
-import { useRecent, useSettings } from "../lib/store";
+import { useRecent, useSettings, useToasts } from "../lib/store";
+import { isOfficePath, isPresentationPath, isSpreadsheetPath, openOfficePath } from "../lib/office-store";
 import { fileBaseName, formatDate, isPdf } from "../lib/format";
 import { isAndroid, openAnyFile, revealAnyFile } from "../lib/mobile";
 import type { Navigate, ScreenId } from "../lib/nav";
@@ -259,6 +261,7 @@ export function Home({
   const recent = useRecent((s) => s.entries);
   const refreshRecent = useRecent((s) => s.refresh);
   const settings = useSettings((s) => s.settings);
+  const pushToast = useToasts((s) => s.push);
   const [suggestion, setSuggestion] = useState<string[] | null>(null);
   const [query, setQuery] = useState("");
 
@@ -285,6 +288,23 @@ export function Home({
     [matches],
   );
 
+  // PDFs open in the reader and office documents in their editor; anything
+  // else (images, archives, outputs of other tools) goes to the system viewer.
+  const openRecent = async (path: string) => {
+    if (isPdf(path)) {
+      onFileList([path]);
+      onNavigate("reader");
+      return;
+    }
+    if (isOfficePath(path)) {
+      onNavigate("office");
+      const result = await openOfficePath(path);
+      if (!result.ok) pushToast({ kind: "error", title: t("errors.title"), detail: result.error });
+      return;
+    }
+    await openAnyFile(path).catch(() => undefined);
+  };
+
   const suggestionLabel = suggestion
     ? suggestion.length === 1
       ? fileBaseName(suggestion[0])
@@ -302,6 +322,7 @@ export function Home({
       subtitle={t("app.tagline")}
     >
       <UpdateBanner />
+      <WelcomeCard onNavigate={onNavigate} />
       <DropZone
         onPaths={(paths) => {
           onDropFiles(paths);
@@ -412,7 +433,7 @@ export function Home({
                       className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                       style={{ background: "var(--accent-weak)", color: "var(--accent)" }}
                     >
-                      <FileImage size={15} />
+                      <RecentIcon path={entry.path} />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[13.5px] font-medium">{entry.fileName || fileStem(entry.path)}</p>
@@ -420,18 +441,7 @@ export function Home({
                     </div>
                     <span className="text-xs muted shrink-0">{formatDate(entry.timestamp)}</span>
                     <div className="flex gap-1 shrink-0">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          if (isPdf(entry.path)) {
-                            onFileList([entry.path]);
-                            onNavigate("reader");
-                          } else {
-                            void openAnyFile(entry.path).catch(() => undefined);
-                          }
-                        }}
-                      >
+                      <Button size="sm" variant="ghost" onClick={() => void openRecent(entry.path)}>
                         {t("common.open")}
                       </Button>
                       <IconButton
@@ -460,6 +470,13 @@ export function Home({
       </Card>
     </Screen>
   );
+}
+
+function RecentIcon({ path }: { path: string }) {
+  if (isSpreadsheetPath(path)) return <FileSpreadsheet size={15} />;
+  if (isPresentationPath(path)) return <Presentation size={15} />;
+  if (isOfficePath(path) || isPdf(path)) return <FileText size={15} />;
+  return <FileImage size={15} />;
 }
 
 function ToolCard({ card, onOpen, t }: { card: ToolCardSpec; onOpen: () => void; t: (key: string) => string }) {

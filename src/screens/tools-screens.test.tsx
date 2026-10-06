@@ -24,9 +24,19 @@ const invoke = vi.fn(async (command: string, _payload?: unknown) => {
       return [
         { path: "C:/docs/report.pdf", fileName: "report.pdf", tool: "_merged", timestamp: 1_700_000_000 },
         { path: "C:/docs/notes.txt", fileName: "notes.txt", tool: "_info", timestamp: 1_700_000_100 },
+        { path: "C:/docs/budget.xlsx", fileName: "budget.xlsx", tool: "_office", timestamp: 1_700_000_200 },
       ];
     case "clear_recent":
       return null;
+    case "office_open_document":
+      return {
+        kind: "calc",
+        title: "budget",
+        path: "C:/docs/budget.xlsx",
+        model: { sheets: [], activeSheet: 0 },
+        warnings: [],
+        legacy: false,
+      };
     case "load_operations":
       return [
         {
@@ -170,6 +180,7 @@ import { History } from "./History";
 import { Home } from "./Home";
 import { Settings } from "./Settings";
 import { useToasts } from "../lib/store";
+import { useOfficeTabs } from "../lib/office-store";
 
 const props = { dragging: false, initialFiles: ["C:/docs/a.pdf"] };
 
@@ -316,6 +327,25 @@ describe("History, Home and Settings act on the local stores", () => {
     await user.click(openButtons[0]);
     expect(onFileList).toHaveBeenCalledWith(["C:/docs/report.pdf"]);
     expect(onNavigate).toHaveBeenCalledWith("reader");
+  });
+
+  it("opens a recent office document in its editor and keeps it in the recent list", async () => {
+    const user = userEvent.setup();
+    const onNavigate = vi.fn();
+    render(<Home onNavigate={onNavigate} onDropFiles={vi.fn()} dragging={false} onFileList={vi.fn()} />);
+    expect(await screen.findByText("budget.xlsx")).toBeInTheDocument();
+    const openButtons = await screen.findAllByRole("button", { name: "Open" });
+    await user.click(openButtons[2]);
+    expect(onNavigate).toHaveBeenCalledWith("office");
+    expect(requestOf("office_open_document")).toEqual({ path: "C:/docs/budget.xlsx" });
+    await waitFor(() =>
+      expect(requestOf("add_recent")).toEqual({
+        entry: expect.objectContaining({ path: "C:/docs/budget.xlsx", fileName: "budget.xlsx", tool: "_office" }),
+      }),
+    );
+    await waitFor(() =>
+      expect(useOfficeTabs.getState().tabs.some((tab) => tab.path === "C:/docs/budget.xlsx")).toBe(true),
+    );
   });
 
   it("persists theme and office default choices through save_settings", async () => {

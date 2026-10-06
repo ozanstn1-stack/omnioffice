@@ -47,7 +47,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { useT } from "./lib/i18n";
-import { errorMessage, useDev, useDrop, useJobs, useRecent, useSettings, useToasts } from "./lib/store";
+import { useDev, useDrop, useJobs, useRecent, useSettings, useToasts } from "./lib/store";
 import packageJson from "../package.json";
 import { devLaunchContext, startupFiles } from "./lib/api";
 import type { Navigate, ScreenId } from "./lib/nav";
@@ -128,7 +128,6 @@ import {
 import { openIntoWorkspace } from "./office/useOfficeSession";
 import { isOfficePath, openOfficePath, useOfficeTabs } from "./lib/office-store";
 import { routeForPath } from "./lib/open-route";
-import * as officeApi from "./lib/office-api";
 
 type PageToolTab = "extract" | "delete" | "rotate" | "resize" | "crop" | "numbering";
 
@@ -1035,18 +1034,13 @@ function OfficeLauncher({ kind, onOpen }: OfficeLauncherProps) {
   }, [refreshRecent]);
 
   const openPath = async (path: string) => {
-    try {
-      const result = await officeApi.openDocument(path);
-      useOfficeTabs.getState().open({
-        kind: result.kind,
-        title: result.title,
-        path: result.path,
-        model: result.model as never,
-        warnings: result.warnings,
-      });
+    // The shared opener also handles legacy imports, the conflict fingerprint
+    // and the recent list, which a direct openDocument call skipped.
+    const result = await openOfficePath(path);
+    if (result.ok) {
       onOpen();
-    } catch (error) {
-      useToasts.getState().push({ kind: "error", title: t("errors.title"), detail: errorMessage(error, t) });
+    } else {
+      useToasts.getState().push({ kind: "error", title: t("errors.title"), detail: result.error });
     }
   };
 

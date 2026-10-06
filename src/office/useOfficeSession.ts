@@ -17,7 +17,7 @@ import {
   type AndroidTarget,
 } from "../lib/mobile";
 import type { OfficeKind } from "../lib/office-types";
-import { openOfficePath, useOfficeTabs, type OfficeTab } from "../lib/office-store";
+import { openOfficePath, rememberOfficePath, useOfficeTabs, type OfficeTab } from "../lib/office-store";
 import { useSettings, useToasts, reportError } from "../lib/store";
 import { useT } from "../lib/i18n";
 import * as api from "../lib/office-api";
@@ -275,6 +275,7 @@ export function useOfficeSession(tab: OfficeTab) {
           savedFingerprint = null;
         }
         markSaved(tab.id, result.path, savedFingerprint);
+        rememberOfficePath(result.path);
         if (isAndroid()) {
           await publishAndroidResult(result.path, androidTarget, androidTarget?.name ?? fileBaseName(path));
           if (result.warnings.length > 0) {

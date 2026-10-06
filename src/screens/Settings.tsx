@@ -352,6 +352,14 @@ export function Settings() {
           <label className="checkbox">
             <input
               type="checkbox"
+              checked={!settings.onboardingDone}
+              onChange={(event) => void update({ onboardingDone: !event.target.checked })}
+            />
+            <span>{t("settings.showWelcome")}</span>
+          </label>
+          <label className="checkbox">
+            <input
+              type="checkbox"
               checked={settings.autoCleanupTemp}
               onChange={(event) => void update({ autoCleanupTemp: event.target.checked })}
             />

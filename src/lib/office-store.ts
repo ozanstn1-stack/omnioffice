@@ -11,8 +11,8 @@ export type { Deck, Slide, SlideObject, TextDocument, Workbook } from "./office-
 import * as api from "./office-api";
 import { toAppError } from "./api";
 import { makeTranslate } from "./i18n";
-import { OFFICE_DOCUMENT_EXTENSIONS, isOfficeDocument } from "./format";
-import { useSettings, useToasts } from "./store";
+import { OFFICE_DOCUMENT_EXTENSIONS, fileBaseName, isOfficeDocument } from "./format";
+import { useRecent, useSettings, useToasts } from "./store";
 
 export type OfficeModel = TextDocument | Workbook | Deck;
 
@@ -527,10 +527,28 @@ export interface OpenPathResult {
   error?: string;
 }
 
+/** Recent-files tag for documents opened or saved in the office editors. */
+export const OFFICE_RECENT_TOOL = "_office";
+
+/**
+ * Lists an office document under Home's "Recent" (and the launchers' recent
+ * lists). Only the path, file name and time are stored, like PDF results.
+ */
+export function rememberOfficePath(path: string): void {
+  if (!path) return;
+  void useRecent.getState().add({
+    path,
+    fileName: fileBaseName(path),
+    tool: OFFICE_RECENT_TOOL,
+    timestamp: Math.floor(Date.now() / 1000),
+  });
+}
+
 /** Opens a document file and adds it as an editor tab. */
 export async function openOfficePath(path: string): Promise<OpenPathResult> {
   try {
     const result = await api.openDocument(path);
+    rememberOfficePath(path);
     const id = useOfficeTabs.getState().open({
       kind: result.kind,
       title: result.title || path.split(/[\\/]/).pop() || "Document",

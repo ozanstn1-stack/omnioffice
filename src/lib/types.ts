@@ -300,6 +300,8 @@ export interface Settings {
   lastUpdateCheck: number;
   /** Version whose "update available" banner the user closed. */
   dismissedUpdate: string;
+  /** The first-run welcome card on Home was closed. */
+  onboardingDone: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -324,6 +326,7 @@ export const DEFAULT_SETTINGS: Settings = {
   updateCheck: true,
   lastUpdateCheck: 0,
   dismissedUpdate: "",
+  onboardingDone: false,
 };
 
 export interface TextMatch {
