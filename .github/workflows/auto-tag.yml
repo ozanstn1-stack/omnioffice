@@ -1,0 +1,56 @@
+name: Auto release tag
+
+# Publishing a release used to need a manual `git push origin vX.Y.Z`. This
+# workflow does it when a merge to master changes the version: it tags the
+# merge commit and starts the release builds, which attach the Windows
+# installer/portable ZIP and the Android APK/AAB to the GitHub release.
+#
+# A tag created with GITHUB_TOKEN does not trigger `push: tags` workflows
+# (GitHub's recursion guard), so Release and Android are dispatched explicitly
+# on the new tag. Their tag-only steps (release keystore requirement,
+# provenance attestation, release upload) still run because github.ref is
+# refs/tags/vX.Y.Z. A tag that already exists (pushed by hand) is left alone.
+
+on:
+  push:
+    branches: [master]
+    paths: [package.json]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: auto-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag the version and start the release builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Tag and dispatch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          tauri=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          cargo=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
+          if [ "$version" != "$tauri" ] || [ "$version" != "$cargo" ]; then
+            echo "::error::version mismatch: package.json=$version tauri.conf.json=$tauri Cargo.toml=$cargo"
+            exit 1
+          fi
+          tag="v$version"
+          if gh api "repos/$REPO/git/ref/tags/$tag" > /dev/null 2>&1; then
+            echo "$tag already exists; nothing to do."
+            exit 0
+          fi
+          gh api "repos/$REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" > /dev/null
+          echo "created $tag at $GITHUB_SHA"
+          gh workflow run release.yml --repo "$REPO" --ref "$tag"
+          gh workflow run android.yml --repo "$REPO" --ref "$tag"
+          echo "dispatched release.yml and android.yml on $tag"

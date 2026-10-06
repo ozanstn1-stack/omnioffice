@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.3] - Automatic releases and reliable CI
+
+No change to the app itself; this release makes every following update reach
+GitHub on its own and keeps CI trustworthy.
+
+### Added
+
+- **Automatic release tag** (`.github/workflows/auto-tag.yml`). When a merge
+  to master changes the version, the merge commit is tagged `vX.Y.Z` and the
+  Release and Android workflows are started on that tag, so the Windows
+  installer/portable ZIP and the Android APK/AAB are attached to the GitHub
+  release without a manual `git push --tags`. An existing tag is left alone.
+- **Windows desktop E2E** (`e2e-windows` in `desktop.yml`): the WebView2 build
+  driven by msedgedriver runs the smoke test, a real pdfium Reader render and
+  the Writer/Merge/Sanitize deep flows on every pull request.
+- **Android launch smoke test** (`AppLaunchSmokeTest`): the emulator suite
+  boots the real app and waits for the Home tool grid, catching native-library
+  load failures, start-up crashes and a blank WebView.
+
+### Fixed
+
+- **Benchmark gate failed on a slower runner.** Every benchmark moved by
+  +25..+88 % at once in October 2026 - a runner change, not a code change -
+  and the gate stayed red. The median current/baseline ratio is now factored
+  out, so only a benchmark that regressed against the others fails; a uniform
+  shift is still reported as a warning.
+- **E2E could hang for half an hour.** Each WebDriver call is bounded (90 s)
+  and the E2E steps have time limits, so a stalled native driver fails fast
+  with a screenshot instead of blocking the pull request.
+
 ## [3.8.2] - Android file pickers and save fixes
 
 ### Fixed
