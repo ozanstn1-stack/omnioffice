@@ -1,11 +1,42 @@
-# Release Readiness — OmniOffice 3.8.1
+# Release Readiness — OmniOffice 3.8.2
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
 
-## Implemented (this cycle)
+## Implemented (this cycle, 3.8.2)
+
+A feature-by-feature audit of the Android and Windows code paths found
+screens that still used the desktop dialog plugin on Android and two desktop
+save paths that could not succeed. Fixed:
+
+- `pickFileBytes` / `saveFileBytes` (`src/lib/mobile.ts`): one read/write path
+  for a user-chosen file - desktop dialog + plugin-fs, or the Android SAF
+  picker + `content://` read/write. Used by Writer "Insert image", the Impress
+  image placeholder, Data import/export and Draw SVG/PNG/PDF export.
+- PDF Forms, the PDF Studio picker and Sync "Add file" pick through SAF on
+  Android; PDF Forms output is staged in the cache and published to the chosen
+  file. The AI library folder chooser is hidden on Android.
+- Draw -> PDF is built in memory (`src/lib/image-pdf.ts`, JPEG page), so the
+  desktop no longer writes a temporary PNG outside the fs scope.
+- PDF Forms save and AI "Apply metadata" use the `replace` policy after the
+  save dialog confirmed the overwrite (was `error`, which refused it).
+- `mimeForName` returns real office/CSV/JSON/SVG types for published files.
+- CSV import follows RFC 4180; JSON import accepts more shapes.
+
+| Gate | Command | Result |
+|---|---|---|
+| Frontend | `npm test` | 44 files, 698 passed, 1 skipped (new: file bridge, CSV/JSON parsers, JPEG->PDF) |
+| Typecheck / lint / i18n / format | `npx tsc --noEmit`, `npm run lint`, `npm run i18n:audit -- --check`, `npm run format:check` | clean, en=tr=1592 |
+| Frontend build | `npm run build` | passes |
+| Rust workspace (Linux) | `cargo test --workspace` | 564 passed, 3 ignored, with a Linux pdfium on `LD_LIBRARY_PATH` |
+
+Not verified here: no Android device/emulator and no Windows machine were
+available; the Android SAF calls are covered by unit tests with the plugin
+mocked, and the APK/EXE are built by the tag workflows.
+
+## Implemented in 3.8.1
 
 - **Template click fix**: `TemplatesScreen` now receives an `onOpen` callback
   and the shell passes `navigate("office")`, so picking a template creates the

@@ -8,8 +8,7 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { readFile } from "@tauri-apps/plugin-fs";
+import { pickFileBytes } from "../lib/mobile";
 import {
   AlignCenter,
   AlignJustify,
@@ -738,13 +737,15 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
 
   const insertImageBlock = async () => {
     try {
-      const selectionPaths = await openDialog({
-        multiple: false,
-        filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg"] }],
+      // pickFileBytes uses the Android system picker there; the desktop dialog
+      // plugin cannot open it.
+      const picked = await pickFileBytes({
+        name: "Images",
+        extensions: ["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg"],
+        mimeTypes: ["image/*"],
       });
-      if (typeof selectionPaths !== "string") return;
-      const bytes = await readFile(selectionPaths);
-      const name = selectionPaths.split(/[\\/]/).pop() ?? "image.png";
+      if (!picked) return;
+      const { bytes, name } = picked;
       const mime = mimeFromName(name);
       let base64 = "";
       const chunk = 0x8000;

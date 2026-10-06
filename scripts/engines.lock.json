@@ -31,8 +31,8 @@
     "https://github.com/tesseract-ocr/tesseract/archive/refs/tags/4.1.0.tar.gz": {
       "sha256": "5c5ed5f1a76888dc57a83704f24ae02f8319849f5c4cf19d254296978a1a1961"
     },
-    "https://www.7-zip.org/a/7zr.exe": {
-      "sha256": "ad4c82fadcbdf93c03b4fc440f300509c7d60c5c2f4d183e35d9d70d6957037d"
+    "https://github.com/ip7z/7zip/releases/download/23.01/7zr.exe": {
+      "sha256": "72c98287b2e8f85ea7bb87834b6ce1ce7ce7f41a8c97a81b307d4d4bf900922b"
     },
     "https://www.7-zip.org/a/7z2301-x64.exe": {
       "sha256": "26cb6e9f56333682122fafe79dbcdfd51e9f47cc7217dccd29ac6fc33b5598cd"

@@ -4,6 +4,38 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.2] - Android file pickers and save fixes
+
+### Fixed
+
+- **Android: several tools opened no picker or could not save.** The Writer
+  "Insert image", the Impress image placeholder, Data import/export (CSV,
+  JSON), Draw export (SVG, PNG, PDF), PDF Forms (open and save), the PDF
+  Studio file picker and Sync "Add file" still called the desktop dialog
+  plugin, which cannot open the Android picker. They now use the Storage
+  Access Framework: files are read from and written to the picked
+  `content://` document, and PDF Forms output is staged in the app cache and
+  published to the chosen destination. The AI library "Choose folder" button
+  (a desktop path picker) is hidden on Android.
+- **Android: exported office files opened as "unknown file".** Published
+  DOCX/XLSX/PPTX/ODF/CSV/JSON/SVG files carried a generic MIME type, so the
+  "open with" chooser offered no office app. They now carry their real type.
+- **Windows: Draw -> PDF always failed.** The export wrote a temporary PNG next
+  to the chosen PDF, outside the file-system scope the save dialog grants, so
+  the write was refused. The PDF is now built in memory (the drawing as one
+  JPEG page at its own size) and written in one step.
+- **Windows: overwriting a file from PDF Forms and AI "Apply metadata"
+  failed.** The save dialog had already confirmed the replacement, but the
+  command was sent with the "error if exists" policy and refused it.
+- **Data import split quoted cells.** CSV import cut `"Doe, Jane"` into two
+  cells and ignored escaped quotes and quoted line breaks; it now follows
+  RFC 4180, detects `;`-separated files and strips a BOM. JSON import accepts
+  objects with differing keys, a single object or an array of arrays.
+- **Impress images.** GIF, WebP and BMP pictures were labelled `image/png`;
+  they keep their real type now.
+- **Tests:** the Windows-only file-lock test is compiled on Windows only, so
+  `cargo test --workspace` builds on Linux again.
+
 ## [3.8.1] - Templates open the editor again
 
 ### Fixed

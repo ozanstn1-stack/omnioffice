@@ -58,7 +58,7 @@ import {
   type TextRunInfo,
 } from "../lib/api";
 import type { PdfInfo } from "../lib/types";
-import { isAndroid, pickAndroidSaveTarget, publishOutputs, type AndroidTarget } from "../lib/mobile";
+import { isAndroid, pickAndroidFiles, pickAndroidSaveTarget, publishOutputs, type AndroidTarget } from "../lib/mobile";
 
 type StudioTab = "sanitize" | "repair" | "flatten" | "pdfa" | "signatures" | "objects" | "textruns";
 
@@ -1047,7 +1047,10 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
           files={files.map((path) => ({ path, name: path.split(/[\\/]/).pop() ?? path, sizeBytes: 0 }))}
           onRemove={(index) => setFiles((current) => current.filter((_, position) => position !== index))}
           onAdd={async () => {
-            const picked = await open({ multiple: false, filters: [{ name: "PDF", extensions: ["pdf"] }] });
+            // Android: the SAF picker (the desktop dialog cannot open it).
+            const picked = isAndroid()
+              ? (await pickAndroidFiles({ multiple: false, accept: "pdf" }).catch(() => []))[0]
+              : await open({ multiple: false, filters: [{ name: "PDF", extensions: ["pdf"] }] });
             if (!picked) return;
             setFiles([String(Array.isArray(picked) ? picked[0] : picked)]);
           }}

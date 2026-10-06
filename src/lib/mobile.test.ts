@@ -36,9 +36,12 @@ describe("mobile helpers", () => {
     expect(mimeForName("doc.pdf")).toBe("application/pdf");
     expect(mimeForName("photo.jpeg")).toBe("image/jpeg");
     expect(mimeForName("scan.tiff")).toBe("image/tiff");
-    // Office formats keep the generic fallback: the SAF pickers infer the
-    // precise type from the extension and the manifest declares it for intents.
-    expect(mimeForName("report.docx")).toBe("application/octet-stream");
+    // Office formats carry their real type so a published export is offered
+    // to office apps by the "open with" chooser; the native format stays
+    // generic.
+    expect(mimeForName("report.docx")).toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    expect(mimeForName("sheet.XLSX")).toBe("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    expect(mimeForName("drawing.svg")).toBe("image/svg+xml");
     expect(mimeForName("unit.oswk")).toBe("application/octet-stream");
   });
 

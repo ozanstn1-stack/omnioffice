@@ -44,6 +44,7 @@ import { useOfficeTabs } from "../lib/office-store";
 import type { Animation, ChartData, Deck, Slide, SlideLayout, SlideObject } from "../lib/office-types";
 import { newAnimation, newSlideMaster, uid, type ShapeStyle } from "../lib/office-types";
 import { useT } from "../lib/i18n";
+import { mimeForName, pickFileBytes } from "../lib/mobile";
 import { reportError } from "../lib/store";
 import { Dialog, Ribbon, RibbonGroup, TextField, ToolButton, ToolColor, ToolNumber, ToolSelect } from "./office-ui";
 import { openIntoWorkspace, useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
@@ -2401,19 +2402,20 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
 
   async function replaceImage(path: SelectionPath) {
     try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const { readFile } = await import("@tauri-apps/plugin-fs");
-      const filePath = await open({
-        multiple: false,
-        filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"] }],
+      // The Android system picker replaces the desktop dialog there.
+      const picked = await pickFileBytes({
+        name: "Images",
+        extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"],
+        mimeTypes: ["image/*"],
       });
-      if (typeof filePath !== "string") return;
-      const bytes = await readFile(filePath);
+      if (!picked) return;
+      const { bytes, name } = picked;
       let base64 = "";
       for (let index = 0; index < bytes.length; index += 0x8000)
         base64 += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-      const name = filePath.split(/[\\/]/).pop() ?? "image.png";
-      const mime = name.endsWith(".jpg") || name.endsWith(".jpeg") ? "image/jpeg" : "image/png";
+      // GIF/WebP/BMP used to be labelled image/png, which mislabels the part
+      // in the exported presentation.
+      const mime = mimeForName(name).startsWith("image/") ? mimeForName(name) : "image/png";
       updatePath(path, { image: { name, mime, dataBase64: btoa(base64), alt: "" }, kind: "image" });
     } catch (error) {
       reportError(error, t);

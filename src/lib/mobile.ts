@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { appCacheDir, join } from "@tauri-apps/api/path";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { readFile, writeFile } from "@tauri-apps/plugin-fs";
 import * as AndroidFs from "tauri-plugin-android-fs-api";
 import { fileBaseName, uid } from "./format";
 
@@ -69,8 +71,25 @@ export function mimeForName(name: string): string {
   if (lower.endsWith(".bmp")) return "image/bmp";
   if (lower.endsWith(".tif") || lower.endsWith(".tiff")) return "image/tiff";
   if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".svg")) return "image/svg+xml";
   if (lower.endsWith(".txt")) return "text/plain";
   if (lower.endsWith(".md")) return "text/markdown";
+  if (lower.endsWith(".html") || lower.endsWith(".htm")) return "text/html";
+  if (lower.endsWith(".csv")) return "text/csv";
+  if (lower.endsWith(".tsv")) return "text/tab-separated-values";
+  if (lower.endsWith(".json")) return "application/json";
+  if (lower.endsWith(".rtf")) return "application/rtf";
+  // Office documents: a generic type would hide Word/Excel/PowerPoint and
+  // other office apps from the "open with" chooser after an export.
+  if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  if (lower.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  if (lower.endsWith(".odt")) return "application/vnd.oasis.opendocument.text";
+  if (lower.endsWith(".ods")) return "application/vnd.oasis.opendocument.spreadsheet";
+  if (lower.endsWith(".odp")) return "application/vnd.oasis.opendocument.presentation";
+  if (lower.endsWith(".doc")) return "application/msword";
+  if (lower.endsWith(".xls")) return "application/vnd.ms-excel";
+  if (lower.endsWith(".ppt")) return "application/vnd.ms-powerpoint";
   return "application/octet-stream";
 }
 
@@ -350,6 +369,64 @@ export async function saveTextOnAndroid(text: string, defaultName: string): Prom
   await AndroidFs.writeTextFile(target.uri, text);
   publishedUris.set(defaultName, target.uri);
   return true;
+}
+
+/**
+ * Android replacement for the desktop "save" dialog: asks for a destination
+ * and writes raw bytes straight into it. Returns the chosen name or null.
+ */
+export async function saveBytesOnAndroid(bytes: Uint8Array, defaultName: string): Promise<string | null> {
+  const target = await pickAndroidSaveTarget(defaultName, mimeForName(defaultName));
+  if (!target) return null;
+  await AndroidFs.writeFile(target.uri, bytes);
+  return target.name;
+}
+
+/**
+ * Android replacement for "open a file and read it": picks one document
+ * through the system picker and returns its name and bytes, or null when the
+ * user cancels. The bytes are read from the picked content:// URI directly,
+ * so nothing is staged on disk.
+ */
+export async function pickAndroidFileBytes(mimeTypes: string[]): Promise<{ name: string; bytes: Uint8Array } | null> {
+  const picked = await AndroidFs.showOpenFilePicker({ multiple: false, mimeTypes, localOnly: true });
+  const uri = picked[0];
+  if (!uri) return null;
+  const name = sanitizeName(await AndroidFs.getName(uri).catch(() => "document"));
+  const bytes = await AndroidFs.readFile(uri);
+  return { name, bytes };
+}
+
+/**
+ * Picks one file and returns its name and bytes on every platform: the
+ * desktop file dialog (the picked path is added to the fs scope) or the
+ * Android system picker. Returns null when the user cancels.
+ */
+export async function pickFileBytes(filter: {
+  name: string;
+  extensions: string[];
+  mimeTypes: string[];
+}): Promise<{ name: string; bytes: Uint8Array } | null> {
+  if (isAndroid()) return pickAndroidFileBytes(filter.mimeTypes);
+  const picked = await openDialog({ multiple: false, filters: [{ name: filter.name, extensions: filter.extensions }] });
+  if (typeof picked !== "string") return null;
+  return { name: fileBaseName(picked), bytes: await readFile(picked) };
+}
+
+/**
+ * Asks for a destination and writes bytes into it on every platform. Returns
+ * the chosen path (desktop) or display name (Android), or null on cancel.
+ */
+export async function saveFileBytes(
+  bytes: Uint8Array,
+  defaultName: string,
+  filter: { name: string; extensions: string[] },
+): Promise<string | null> {
+  if (isAndroid()) return saveBytesOnAndroid(bytes, defaultName);
+  const path = await saveDialog({ defaultPath: defaultName, filters: [filter] });
+  if (!path) return null;
+  await writeFile(path, bytes);
+  return path;
 }
 
 /**

@@ -3,6 +3,7 @@ import { Bot, CheckCircle2, KeyRound, ShieldAlert, ShieldCheck, Trash2, Zap } fr
 import { Badge, Button, Card, Checkbox, Field, Segmented, Slider, Spinner, TextInput } from "./ui";
 import { useSettings } from "../lib/store";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { isAndroid } from "../lib/mobile";
 import { clamp } from "../lib/format";
 import { useT } from "../lib/i18n";
 import {
@@ -503,17 +504,20 @@ export function AiSettings() {
             placeholder={libraryDefault}
             onChange={(event) => void updateSettings({ aiLibraryDir: event.target.value })}
           />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              void openDialog({ directory: true, multiple: false, title: t("ai.libraryFolder") }).then((picked) => {
-                if (picked) void updateSettings({ aiLibraryDir: String(picked) });
-              });
-            }}
-          >
-            {t("common.chooseFolder")}
-          </Button>
+          {/* Android has no folder path picker (SAF returns content:// trees). */}
+          {!isAndroid() ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                void openDialog({ directory: true, multiple: false, title: t("ai.libraryFolder") }).then((picked) => {
+                  if (picked) void updateSettings({ aiLibraryDir: String(picked) });
+                });
+              }}
+            >
+              {t("common.chooseFolder")}
+            </Button>
+          ) : null}
         </div>
         <Checkbox
           checked={settings.keepOperationLog}

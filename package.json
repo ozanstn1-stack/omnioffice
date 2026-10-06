@@ -1,7 +1,7 @@
 {
   "name": "pdf-swiss-army-knife",
   "private": true,
-  "version": "3.8.1",
+  "version": "3.8.2",
   "type": "module",
   "description": "OmniOffice - local-first desktop office and PDF suite (Writer, Calc, Impress, PDF tools)",
   "scripts": {
@@ -84,5 +84,9 @@
     "typescript-eslint": "^8.71.0",
     "vite": "^6.3.0",
     "vitest": "^3.2.7"
+  },
+  "overrides": {
+    "tinypool": "^2.1.2",
+    "source-map-js": "^1.2.2"
   }
 }
