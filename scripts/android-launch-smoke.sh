@@ -23,8 +23,11 @@ adb install -r "$APK" > /dev/null
 adb logcat -c
 adb shell am start -W -n "$PKG/.MainActivity"
 
+# adb joins its arguments into one remote command line, so keep this to a
+# plain command (a quoted `sh -c '...'` loses its quotes on the way). The app
+# log directory is <data dir>/logs on Android.
 frontend_log() {
-  adb shell run-as "$PKG" sh -c 'find . -name frontend.log -exec cat {} \; 2>/dev/null' 2> /dev/null || true
+  adb shell run-as "$PKG" cat logs/frontend.log 2> /dev/null || true
 }
 
 attempt=0
