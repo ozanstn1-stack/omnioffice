@@ -322,8 +322,25 @@ jobs:
       - run: npm ci
       - name: Fetch engines (pdfium, qpdf, tesseract, fonts)
         run: npm run engines:fetch
+      # msedgedriver asks WebView2 for a DevTools port through the
+      # WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS environment variable, but wry
+      # always passes its own AdditionalBrowserArguments and the runtime then
+      # ignores the variable (the browser process started with wry's
+      # --disable-features list and no --remote-debugging-port, so the session
+      # failed with "DevToolsActivePort file doesn't exist"). The test build
+      # therefore carries the port switch itself, next to wry's defaults. The
+      # override is a build-time --config file used only here; the shipped
+      # app is unchanged. The user data folder still comes from msedgedriver.
+      - name: E2E build config (WebView2 DevTools port)
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'tauri.e2e.conf.json'
+          node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json','utf8'));const args='--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --remote-debugging-port=0';fs.writeFileSync(process.argv[1],JSON.stringify({app:{windows:c.app.windows.map((w)=>({...w,additionalBrowserArgs:args}))}},null,2));" $out
+          Get-Content $out
+          "TAURI_E2E_CONFIG=$out" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Build the app (debug, embedded frontend)
-        run: npm run tauri -- build --debug --no-bundle
+        shell: pwsh
+        run: npm run tauri -- build --debug --no-bundle --config "$env:TAURI_E2E_CONFIG"
       - name: Install tauri-driver
         run: cargo install tauri-driver --locked
       # msedgedriver must match the WebView2 runtime's major version, not
