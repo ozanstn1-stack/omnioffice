@@ -901,6 +901,29 @@ body {
   color: var(--muted);
   margin-top: 2px;
 }
+/* Phone width: the groups wrap and only the first row shows until "More"
+   is tapped (the max-height comes from the Ribbon component). */
+.ribbon.is-narrow .ribbon-tabs {
+  overflow-x: auto;
+}
+.ribbon.is-narrow .ribbon-tab {
+  flex: 0 0 auto;
+}
+.ribbon.is-narrow .ribbon-body {
+  flex-wrap: wrap;
+  /* Wider than the bottom padding, so no sliver of the second row shows
+     under the folded first row. */
+  row-gap: 8px;
+  overflow: hidden;
+  min-height: 0;
+}
+.ribbon-more {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+}
 .ribbon-spacer,
 .spacer {
   flex: 1;
@@ -1132,6 +1155,32 @@ body {
     width: 16px;
     height: 16px;
   }
+}
+/* Touch selection grips, centred on the selection's top-left and bottom-right
+   corners. The fill handle moves out diagonally so the two do not overlap. */
+.calc-select-handle {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  display: none;
+  touch-action: none;
+  z-index: 3;
+}
+@media (any-pointer: coarse) {
+  .calc-select-handle {
+    display: block;
+  }
+  .calc-fill-handle {
+    transform: translate(18px, 18px);
+  }
+}
+.calc-editor.is-android .calc-select-handle {
+  display: block;
 }
 .calc-bar-action {
   min-width: 40px;

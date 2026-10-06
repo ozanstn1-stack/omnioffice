@@ -30,10 +30,19 @@ import { CalcEditor, clampGridZoom, pinchGridZoom, shiftFormulaColumns } from ".
 import { isAndroid } from "../lib/mobile";
 
 // jsdom has no PointerEvent, so testing-library would fall back to a plain
-// Event and drop button/clientX/pointerId. MouseEvent carries those fields and
-// is the standard stand-in for pointer event tests.
+// Event and drop button/clientX/pointerId. A MouseEvent subclass carries those
+// fields plus pointerId/pointerType, which the touch gestures branch on.
 if (typeof window.PointerEvent === "undefined") {
-  window.PointerEvent = MouseEvent as unknown as typeof PointerEvent;
+  class TestPointerEvent extends MouseEvent {
+    readonly pointerId: number;
+    readonly pointerType: string;
+    constructor(type: string, init: PointerEventInit = {}) {
+      super(type, init);
+      this.pointerId = init.pointerId ?? 0;
+      this.pointerType = init.pointerType ?? "";
+    }
+  }
+  window.PointerEvent = TestPointerEvent as unknown as typeof PointerEvent;
 }
 import { applyCellEdit } from "./calc/cells";
 import { useOfficeTabs, type OfficeTab } from "../lib/office-store";
@@ -270,6 +279,44 @@ describe("Calc pointer gestures", () => {
         .every((cell) => cell.classList.contains("is-selected")),
     ).toBe(true);
     expect(cells()[3].classList.contains("is-selected")).toBe(false);
+  });
+
+  it("pans with one finger on a cell and selects the cell on a tap", () => {
+    const id = useOfficeTabs.getState().create("calc", "Untitled");
+    render(<Harness id={id} />);
+    const nameBox = () => document.querySelector<HTMLInputElement>(".name-box")?.value;
+
+    // A drag that starts on a cell scrolls the sheet and leaves the selection.
+    fireEvent.pointerDown(cellAt(1, 1), { pointerId: 3, pointerType: "touch", button: 0, clientX: 200, clientY: 200 });
+    fireEvent.pointerMove(cellAt(0, 0), { pointerId: 3, pointerType: "touch", clientX: 120, clientY: 150 });
+    fireEvent.pointerUp(window, { pointerId: 3, pointerType: "touch" });
+    expect(nameBox()).toBe("A1");
+
+    // A tap (no movement) selects the cell under the finger.
+    fireEvent.pointerDown(cellAt(1, 1), { pointerId: 4, pointerType: "touch", button: 0, clientX: 200, clientY: 200 });
+    fireEvent.pointerUp(window, { pointerId: 4, pointerType: "touch" });
+    expect(nameBox()).toBe("B2");
+  });
+
+  it("extends the selection with the touch selection handles", () => {
+    const id = useOfficeTabs.getState().create("calc", "Untitled");
+    render(<Harness id={id} />);
+    fireEvent.pointerDown(cellAt(1, 1), { pointerId: 5, pointerType: "touch", button: 0, clientX: 200, clientY: 200 });
+    fireEvent.pointerUp(window, { pointerId: 5, pointerType: "touch" });
+
+    const end = document.querySelector<HTMLElement>('[data-select-handle="end"]');
+    expect(end).not.toBeNull();
+    fireEvent.pointerDown(end!, { pointerId: 6, pointerType: "touch", button: 0, clientX: 260, clientY: 230 });
+    fireEvent.pointerMove(cellAt(3, 2), { pointerId: 6, pointerType: "touch", clientX: 300, clientY: 300 });
+    fireEvent.pointerUp(window, { pointerId: 6, pointerType: "touch" });
+    expect(document.querySelector<HTMLInputElement>(".name-box")?.value).toBe("C4:B2");
+
+    // The start handle moves the other corner; the bottom-right one stays put.
+    const start = document.querySelector<HTMLElement>('[data-select-handle="start"]');
+    fireEvent.pointerDown(start!, { pointerId: 8, pointerType: "touch", button: 0, clientX: 150, clientY: 180 });
+    fireEvent.pointerMove(cellAt(0, 0), { pointerId: 8, pointerType: "touch", clientX: 60, clientY: 30 });
+    fireEvent.pointerUp(window, { pointerId: 8, pointerType: "touch" });
+    expect(document.querySelector<HTMLInputElement>(".name-box")?.value).toBe("A1:C4");
   });
 
   it("fills formula cells down when the touch fill handle is dragged", async () => {

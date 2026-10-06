@@ -383,7 +383,24 @@ type GridGesture =
   | { kind: "cols"; pointerId: number; anchorCol: number }
   | { kind: "resize"; pointerId: number; col: number; startX: number; startWidth: number }
   | { kind: "fill"; pointerId: number; source: DragBounds; target: CellPosition }
-  | { kind: "pan"; pointerId: number; startX: number; startY: number; scrollLeft: number; scrollTop: number };
+  | { kind: "pan"; pointerId: number; startX: number; startY: number; scrollLeft: number; scrollTop: number }
+  // A finger on a cell: it pans the sheet once it moves and selects the cell
+  // when it lifts without moving (ranges come from the selection handles).
+  | {
+      kind: "tap";
+      pointerId: number;
+      cell: CellPosition;
+      startX: number;
+      startY: number;
+      scrollLeft: number;
+      scrollTop: number;
+      moved: boolean;
+    }
+  // A touch selection handle: the opposite corner stays, the dragged one follows.
+  | { kind: "extend"; pointerId: number; fixed: CellPosition };
+
+/** Movement (px) after which a finger on a cell pans instead of tapping. */
+const TAP_SLOP = 8;
 
 interface PinchGesture {
   startDistance: number;
@@ -878,7 +895,33 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       captureGridPointer(event);
       return;
     }
+    const selectHandle = target.closest?.<HTMLElement>("[data-select-handle]");
+    if (selectHandle) {
+      const bounds = selectionBounds;
+      gestureRef.current = {
+        kind: "extend",
+        pointerId: event.pointerId,
+        fixed: selectHandle.dataset.selectHandle === "start" ? { ...bounds.end } : { ...bounds.start },
+      };
+      captureGridPointer(event);
+      return;
+    }
     const cell = target.closest?.<HTMLElement>("[data-cell]");
+    if (cell && event.pointerType === "touch") {
+      const grid = gridRef.current;
+      gestureRef.current = {
+        kind: "tap",
+        pointerId: event.pointerId,
+        cell: { row: Number(cell.dataset.row), col: Number(cell.dataset.col) },
+        startX: event.clientX,
+        startY: event.clientY,
+        scrollLeft: grid?.scrollLeft ?? 0,
+        scrollTop: grid?.scrollTop ?? 0,
+        moved: false,
+      };
+      captureGridPointer(event);
+      return;
+    }
     if (cell) {
       const position = { row: Number(cell.dataset.row), col: Number(cell.dataset.col) };
       gestureRef.current = {
@@ -978,7 +1021,30 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       updateSheet((current) => ({ ...current, colWidths: { ...current.colWidths, [gesture.col]: width } }));
       return;
     }
+    if (gesture.kind === "tap") {
+      const dx = event.clientX - gesture.startX;
+      const dy = event.clientY - gesture.startY;
+      if (!gesture.moved && Math.abs(dx) + Math.abs(dy) > TAP_SLOP) gesture.moved = true;
+      const grid = gridRef.current;
+      if (gesture.moved && grid) {
+        grid.scrollLeft = Math.max(0, gesture.scrollLeft - dx);
+        grid.scrollTop = Math.max(0, gesture.scrollTop - dy);
+      }
+      return;
+    }
     autoScrollGrid(event.clientX, event.clientY);
+    if (gesture.kind === "extend") {
+      const cell = cellAtEvent(event);
+      if (!cell) return;
+      setSelection({
+        anchor: gesture.fixed,
+        focus: {
+          row: Math.min(Math.max(0, cell.row), sheet.rowCount - 1),
+          col: Math.min(Math.max(0, cell.col), sheet.colCount - 1),
+        },
+      });
+      return;
+    }
     if (gesture.kind === "cells") {
       const cell = cellAtEvent(event);
       if (!cell) return;
@@ -1048,22 +1114,24 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     endGridGesture(event.pointerId);
+    const tapped =
+      gesture.kind === "tap" && !gesture.moved
+        ? gesture.cell
+        : gesture.kind === "cells" && !gesture.moved && event.pointerType !== "mouse"
+          ? gesture.anchor
+          : null;
+    if (gesture.kind === "tap" && tapped) setSelection({ anchor: tapped, focus: tapped });
     // Double-tap on a cell opens the inline editor: touch never produces a
     // native dblclick once the grid claims the gesture.
-    if (gesture.kind === "cells" && !gesture.moved && event.pointerType !== "mouse") {
+    if (tapped) {
       const now = event.timeStamp;
       const previous = lastTapRef.current;
-      if (
-        previous &&
-        now - previous.time < 350 &&
-        previous.row === gesture.anchor.row &&
-        previous.col === gesture.anchor.col
-      ) {
+      if (previous && now - previous.time < 350 && previous.row === tapped.row && previous.col === tapped.col) {
         lastTapRef.current = null;
-        const cell = sheet.cells[formatAddress(gesture.anchor.row, gesture.anchor.col)];
-        setEditing({ row: gesture.anchor.row, col: gesture.anchor.col, value: cell?.formula ?? cellText(cell) });
+        const cell = sheet.cells[formatAddress(tapped.row, tapped.col)];
+        setEditing({ row: tapped.row, col: tapped.col, value: cell?.formula ?? cellText(cell) });
       } else {
-        lastTapRef.current = { row: gesture.anchor.row, col: gesture.anchor.col, time: now };
+        lastTapRef.current = { row: tapped.row, col: tapped.col, time: now };
       }
     }
   };
@@ -1916,6 +1984,12 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       selectionBounds.end.row * ROW_HEIGHT +
       (sheet.rowHeights[String(selectionBounds.end.row)] ?? ROW_HEIGHT),
   };
+  // Touch selection handles: round grips on the top-left and bottom-right
+  // corners (centred on the corner by CSS) that drag the selection's extent.
+  const selectHandleStart = {
+    x: columnX(selectionBounds.start.col),
+    y: ROW_HEIGHT + selectionBounds.start.row * ROW_HEIGHT,
+  };
 
   const selectionAddress = formatAddress(selection.focus.row, selection.focus.col);
   const selectedTable = (sheet.tables ?? []).find((table) => addressInRange(selectionAddress, table.range));
@@ -2589,6 +2663,18 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
               className="calc-fill-handle"
               data-fill-handle=""
               style={{ left: fillHandle.x - 5, top: fillHandle.y - 5 }}
+            />
+            <span
+              className="calc-select-handle"
+              data-select-handle="start"
+              aria-hidden
+              style={{ left: selectHandleStart.x, top: selectHandleStart.y }}
+            />
+            <span
+              className="calc-select-handle"
+              data-select-handle="end"
+              aria-hidden
+              style={{ left: fillHandle.x, top: fillHandle.y }}
             />
             {sheet.charts.map((chart) => {
               const position = parseAddress(chart.anchor) ?? { row: 0, col: 0 };
