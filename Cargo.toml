@@ -6,7 +6,7 @@ exclude = ["fuzz"]
 resolver = "2"
 
 [workspace.package]
-version = "3.8.1"
+version = "3.8.2"
 edition = "2021"
 # Declared MSRV, in one place for every crate.
 #

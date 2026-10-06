@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { readFile, writeFile } from "@tauri-apps/plugin-fs";
+import { readFile } from "@tauri-apps/plugin-fs";
 import {
   Archive,
   ArrowLeft,
@@ -30,7 +30,19 @@ import {
 } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { errorMessage, reportError, useToasts } from "../lib/store";
-import { isAndroid, pickAndroidFolder, pickOfficeFiles, publishOutputs, type AndroidTarget } from "../lib/mobile";
+import {
+  isAndroid,
+  pickAndroidFiles,
+  pickAndroidFolder,
+  pickAndroidSaveTarget,
+  pickFileBytes,
+  pickOfficeFiles,
+  publishOutputs,
+  saveFileBytes,
+  type AndroidTarget,
+} from "../lib/mobile";
+import { fileBaseName } from "../lib/format";
+import { jpegToPdf } from "../lib/image-pdf";
 import { uid } from "../lib/office-types";
 import { useDataSheets, useDraw, useNotes, useOfficeTabs, usePlanner, type DrawDocument } from "../lib/office-store";
 import * as api from "../lib/office-api";
@@ -394,6 +406,88 @@ export function PlannerScreen() {
 // Data sheets
 // ---------------------------------------------------------------------------
 
+/**
+ * Parses CSV text (RFC 4180 quoting: quoted delimiters, doubled quotes and
+ * line breaks inside quotes). The delimiter is `;` when the header line has
+ * more semicolons than commas outside quotes, `,` otherwise. Empty lines are
+ * skipped and short rows are padded to the header width.
+ */
+export function parseCsv(text: string): { columns: string[]; rows: string[][] } {
+  const source = text.replace(/^\uFEFF/, "");
+  const firstLine = source.split(/\r?\n/, 1)[0] ?? "";
+  const unquoted = firstLine.replace(/"[^"]*"/g, "");
+  const delimiter = (unquoted.match(/;/g)?.length ?? 0) > (unquoted.match(/,/g)?.length ?? 0) ? ";" : ",";
+  const records: string[][] = [];
+  let record: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (quoted) {
+      if (char === '"') {
+        if (source[index + 1] === '"') {
+          cell += '"';
+          index += 1;
+        } else {
+          quoted = false;
+        }
+      } else {
+        cell += char;
+      }
+    } else if (char === '"' && cell === "") {
+      quoted = true;
+    } else if (char === delimiter) {
+      record.push(cell);
+      cell = "";
+    } else if (char === "\n" || char === "\r") {
+      if (char === "\r" && source[index + 1] === "\n") index += 1;
+      record.push(cell);
+      records.push(record);
+      record = [];
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+  if (cell !== "" || record.length) {
+    record.push(cell);
+    records.push(record);
+  }
+  const nonEmpty = records.filter((row) => row.some((value) => value.trim() !== ""));
+  const columns = nonEmpty[0] ?? [];
+  const rows = nonEmpty
+    .slice(1)
+    .map((row) =>
+      row.length < columns.length ? [...row, ...Array<string>(columns.length - row.length).fill("")] : row,
+    );
+  return { columns, rows };
+}
+
+/**
+ * Turns JSON into a table: an array of objects (columns are the union of the
+ * keys, in first-seen order), a single object (one row) or an array of
+ * arrays (first row is the header). Anything else is rejected.
+ */
+export function parseJsonTable(text: string): { columns: string[]; rows: string[][] } {
+  const parsed: unknown = JSON.parse(text);
+  const cellText = (value: unknown): string =>
+    value === null || value === undefined ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
+  const items = Array.isArray(parsed) ? parsed : [parsed];
+  if (items.length && items.every((item) => Array.isArray(item))) {
+    const [header = [], ...body] = items as unknown[][];
+    return { columns: header.map(cellText), rows: body.map((row) => row.map(cellText)) };
+  }
+  if (!items.every((item) => item !== null && typeof item === "object" && !Array.isArray(item))) {
+    throw new Error("The JSON file must contain an object or a list of objects.");
+  }
+  const records = items as Record<string, unknown>[];
+  const columns: string[] = [];
+  for (const record of records) {
+    for (const key of Object.keys(record)) if (!columns.includes(key)) columns.push(key);
+  }
+  return { columns, rows: records.map((record) => columns.map((column) => cellText(record[column]))) };
+}
+
 export function DataScreen() {
   const t = useT();
   const { sheets, loaded, load, create, update, remove } = useDataSheets();
@@ -405,36 +499,18 @@ export function DataScreen() {
   }, [loaded, load]);
 
   const importFile = async () => {
-    const path = await openDialog({ multiple: false, filters: [{ name: "Data", extensions: ["csv", "json"] }] });
-    if (typeof path !== "string") return;
     try {
-      const bytes = await readFile(path);
-      const text = new TextDecoder().decode(bytes);
-      if (path.toLowerCase().endsWith(".json")) {
-        const parsed = JSON.parse(text) as Array<Record<string, string>>;
-        const columns = Object.keys(parsed[0] ?? {});
-        const sheet = create(
-          path
-            .split(/[\\/]/)
-            .pop()
-            ?.replace(/\.json$/i, "") ?? "Imported",
-        );
-        update(sheet.id, { columns, rows: parsed.map((row) => columns.map((column) => String(row[column] ?? ""))) });
-        setActiveId(sheet.id);
-      } else {
-        const lines = text.split(/\r?\n/).filter((line) => line.trim() !== "");
-        const cells = lines.map((line) =>
-          line.split(line.includes(";") ? ";" : ",").map((cell) => cell.replace(/^"|"$/g, "")),
-        );
-        const sheet = create(
-          path
-            .split(/[\\/]/)
-            .pop()
-            ?.replace(/\.csv$/i, "") ?? "Imported",
-        );
-        update(sheet.id, { columns: cells[0] ?? [], rows: cells.slice(1) });
-        setActiveId(sheet.id);
-      }
+      const picked = await pickFileBytes({
+        name: "Data",
+        extensions: ["csv", "json"],
+        mimeTypes: ["text/csv", "text/comma-separated-values", "application/json", "text/plain", "*/*"],
+      });
+      if (!picked) return;
+      const text = new TextDecoder().decode(picked.bytes);
+      const { columns, rows } = picked.name.toLowerCase().endsWith(".json") ? parseJsonTable(text) : parseCsv(text);
+      const sheet = create(picked.name.replace(/\.(csv|json)$/i, "") || "Imported");
+      update(sheet.id, { columns, rows });
+      setActiveId(sheet.id);
       useToasts.getState().push({ kind: "success", title: t("data.imported") });
     } catch (error) {
       reportError(error, t);
@@ -444,16 +520,11 @@ export function DataScreen() {
   const exportFile = async (format: "csv" | "json") => {
     if (!active) return;
     try {
-      const path = await saveDialog({
-        defaultPath: `${active.name}.${format}`,
-        filters: [{ name: format.toUpperCase(), extensions: [format] }],
-      });
-      if (!path) return;
       const content =
         format === "csv"
           ? [active.columns, ...active.rows]
               .map((row) =>
-                row.map((cell) => (/[",;\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell)).join(","),
+                row.map((cell) => (/[",;\r\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell)).join(","),
               )
               .join("\r\n")
           : JSON.stringify(
@@ -463,8 +534,12 @@ export function DataScreen() {
               null,
               2,
             );
-      await writeFile(path, new TextEncoder().encode(content));
-      useToasts.getState().push({ kind: "success", title: t("data.exported"), detail: path });
+      const saved = await saveFileBytes(new TextEncoder().encode(content), `${active.name}.${format}`, {
+        name: format.toUpperCase(),
+        extensions: [format],
+      });
+      if (!saved) return;
+      useToasts.getState().push({ kind: "success", title: t("data.exported"), detail: saved });
     } catch (error) {
       reportError(error, t);
     }
@@ -720,28 +795,15 @@ export function DrawScreen() {
     setDrawing(null);
   };
 
-  const exportSvg = async () => {
-    if (!active) return;
-    const path = await saveDialog({
-      defaultPath: `${active.name}.svg`,
-      filters: [{ name: "SVG", extensions: ["svg"] }],
-    });
-    if (!path) return;
-    await writeFile(path, new TextEncoder().encode(buildSvg(active)));
-    useToasts.getState().push({ kind: "success", title: t("draw.exported"), detail: path });
-  };
-
-  const exportPng = async () => {
-    if (!active) return;
-    const path = await saveDialog({
-      defaultPath: `${active.name}.png`,
-      filters: [{ name: "PNG", extensions: ["png"] }],
-    });
-    if (!path) return;
+  // Every export goes through saveFileBytes: the desktop save dialog or the
+  // Android SAF picker, one write to the chosen destination. (The old PDF
+  // export staged a temporary PNG next to the target, which the fs scope
+  // refuses on the desktop and which cannot exist on Android.)
+  const rasterize = async (mime: "image/png" | "image/jpeg"): Promise<Uint8Array> => {
+    if (!active) return new Uint8Array();
+    const blob = new Blob([buildSvg(active)], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
     try {
-      const svg = buildSvg(active);
-      const blob = new Blob([svg], { type: "image/svg+xml" });
-      const url = URL.createObjectURL(blob);
       const image = new Image();
       await new Promise<void>((resolve, reject) => {
         image.onload = () => resolve();
@@ -755,66 +817,44 @@ export function DrawScreen() {
       context.fillStyle = "#ffffff";
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const base64 = canvas.toDataURL(mime, 0.92).split(",")[1] ?? "";
+      return Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+    } finally {
       URL.revokeObjectURL(url);
-      const dataUrl = canvas.toDataURL("image/png");
-      const base64 = dataUrl.split(",")[1];
-      const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-      await writeFile(path, bytes);
-      useToasts.getState().push({ kind: "success", title: t("draw.exported"), detail: path });
-    } catch (error) {
-      reportError(error, t);
     }
   };
 
-  const exportPdf = async () => {
+  const exportAs = async (format: "svg" | "png" | "pdf") => {
     if (!active) return;
-    const path = await saveDialog({
-      defaultPath: `${active.name}.pdf`,
-      filters: [{ name: "PDF", extensions: ["pdf"] }],
-    });
-    if (!path) return;
     try {
-      // Render the canvas to a temporary PNG, then wrap it into a PDF page.
-      const tempPng = path.replace(/\.pdf$/i, ".tmp.png");
-      await exportPngTo(tempPng);
-      await api.imagesToPdf({ images: [tempPng], output: path, pageSize: "a4", fit: "fit", overwrite: "replace" });
-      try {
-        const { remove } = await import("@tauri-apps/plugin-fs");
-        await remove(tempPng);
-      } catch {
-        // Temporary file cleanup is best effort.
+      let bytes: Uint8Array;
+      if (format === "svg") {
+        bytes = new TextEncoder().encode(buildSvg(active));
+      } else if (format === "png") {
+        bytes = await rasterize("image/png");
+      } else {
+        // One page the size of the drawing (1 px = 1 pt), rendered at 2x.
+        bytes = jpegToPdf(
+          await rasterize("image/jpeg"),
+          active.width * 2,
+          active.height * 2,
+          active.width,
+          active.height,
+        );
       }
-      useToasts.getState().push({ kind: "success", title: t("draw.exported"), detail: path });
+      const saved = await saveFileBytes(bytes, `${active.name}.${format}`, {
+        name: format.toUpperCase(),
+        extensions: [format],
+      });
+      if (!saved) return;
+      useToasts.getState().push({ kind: "success", title: t("draw.exported"), detail: saved });
     } catch (error) {
       reportError(error, t);
     }
   };
-
-  const exportPngTo = async (target: string) => {
-    if (!active) return;
-    const svg = buildSvg(active);
-    const blob = new Blob([svg], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
-    const image = new Image();
-    await new Promise<void>((resolve, reject) => {
-      image.onload = () => resolve();
-      image.onerror = () => reject(new Error("Could not rasterise the drawing."));
-      image.src = url;
-    });
-    const canvas = document.createElement("canvas");
-    canvas.width = active.width * 2;
-    canvas.height = active.height * 2;
-    const context = canvas.getContext("2d")!;
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    URL.revokeObjectURL(url);
-    const base64 = canvas.toDataURL("image/png").split(",")[1];
-    await writeFile(
-      target,
-      Uint8Array.from(atob(base64), (char) => char.charCodeAt(0)),
-    );
-  };
+  const exportSvg = () => void exportAs("svg");
+  const exportPng = () => void exportAs("png");
+  const exportPdf = () => void exportAs("pdf");
 
   return (
     <Screen
@@ -1438,10 +1478,17 @@ export function PdfFormsScreen() {
   const [busy, setBusy] = useState(false);
 
   const pick = async () => {
-    const selection = await openDialog({ multiple: false, filters: [{ name: "PDF", extensions: ["pdf"] }] });
-    if (typeof selection === "string") {
-      setPath(selection);
-      setFields(await api.pdfListForm(selection).catch(() => []));
+    try {
+      // Android: the SAF picker copies the PDF into the app cache.
+      const selection = isAndroid()
+        ? (await pickAndroidFiles({ multiple: false, accept: "pdf" }))[0]
+        : await openDialog({ multiple: false, filters: [{ name: "PDF", extensions: ["pdf"] }] });
+      if (typeof selection === "string") {
+        setPath(selection);
+        setFields(await api.pdfListForm(selection).catch(() => []));
+      }
+    } catch (error) {
+      reportError(error, t);
     }
   };
 
@@ -1466,15 +1513,33 @@ export function PdfFormsScreen() {
 
   const save = async () => {
     if (!path) return;
-    const output = await saveDialog({
-      defaultPath: path.replace(/\.pdf$/i, "-form.pdf"),
-      filters: [{ name: "PDF", extensions: ["pdf"] }],
-    });
+    const defaultPath = path.replace(/\.pdf$/i, "-form.pdf");
+    let output: string | null;
+    let androidTarget: AndroidTarget | null = null;
+    if (isAndroid()) {
+      androidTarget = await pickAndroidSaveTarget(fileBaseName(defaultPath), "application/pdf").catch(() => null);
+      if (!androidTarget) return;
+      const stageDir = await join(await appCacheDir(), "forms", `form-${uid()}`);
+      await invoke("ensure_dir", { path: stageDir });
+      output = await join(stageDir, fileBaseName(defaultPath));
+    } else {
+      output = await saveDialog({ defaultPath, filters: [{ name: "PDF", extensions: ["pdf"] }] });
+    }
     if (!output) return;
     setBusy(true);
     try {
-      await api.pdfAddForm({ input: path, output, fields, overwrite: "error" });
-      useToasts.getState().push({ kind: "success", title: t("forms.saved"), detail: output });
+      // The save dialog already confirmed replacing an existing file, so the
+      // backend must not refuse it again ("error" made every overwrite fail).
+      const written = await api.pdfAddForm({ input: path, output, fields, overwrite: "replace" });
+      if (androidTarget) {
+        const failures = await publishOutputs([written || output], { file: androidTarget });
+        if (failures.length) throw new Error(failures[0].error);
+      }
+      useToasts.getState().push({
+        kind: "success",
+        title: t("forms.saved"),
+        detail: androidTarget ? androidTarget.name : output,
+      });
     } catch (error) {
       reportError(error, t);
     } finally {

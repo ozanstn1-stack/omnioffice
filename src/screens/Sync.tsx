@@ -59,7 +59,7 @@ import {
 } from "../lib/api";
 import { isOswkPath, needsResolution, shortHash, syncStateTone } from "../lib/sync";
 import { formatBytes, formatDate } from "../lib/format";
-import { isAndroid, saveFileOnAndroid } from "../lib/mobile";
+import { isAndroid, pickAndroidFilesWithMime, saveFileOnAndroid } from "../lib/mobile";
 
 /**
  * Cloud sync screen.
@@ -274,11 +274,15 @@ export function Sync() {
 
   const addDocuments = useCallback(async () => {
     try {
-      const picked = await openDialog({
-        multiple: true,
-        title: t("sync.addFile"),
-        filters: [{ name: "OmniOffice", extensions: ["oswk"] }],
-      });
+      // Android: the SAF picker copies the documents into the app cache (the
+      // desktop dialog cannot open it); `.oswk` has no registered MIME type.
+      const picked = isAndroid()
+        ? await pickAndroidFilesWithMime(["application/octet-stream", "*/*"], true)
+        : await openDialog({
+            multiple: true,
+            title: t("sync.addFile"),
+            filters: [{ name: "OmniOffice", extensions: ["oswk"] }],
+          });
       const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
       const documents = paths.filter((path): path is string => typeof path === "string" && isOswkPath(path));
       if (!documents.length) return;

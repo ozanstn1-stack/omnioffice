@@ -141,6 +141,8 @@ fn cancelled_operations_stop_early() {
     assert!(matches!(compress, Err(pdfcore::PdfError::Cancelled)));
 }
 
+// Exclusive share-mode locks only exist on Windows.
+#[cfg(windows)]
 #[test]
 fn locked_output_is_reported_as_file_locked() {
     let dir = TestDir::new();

@@ -10,9 +10,23 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.8.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.8.2** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.8.2
+
+Android pickers and save fixes.
+
+- **Android:** Writer "Insert image", Impress pictures, Data import/export,
+  Draw export, PDF Forms, the PDF Studio picker and Sync "Add file" now use the
+  Android system picker / save dialog instead of failing silently. Exported
+  office files carry their real type, so "open with" offers office apps.
+- **Windows:** Draw -> PDF works again (no temporary file outside the allowed
+  folder), and overwriting a file from PDF Forms or AI "Apply metadata" no
+  longer fails after the save dialog confirmed it.
+- **Data import** handles quoted CSV cells (`"Doe, Jane"`), `;` separators and
+  more JSON shapes.
 
 ## What's new in 3.8.1
 

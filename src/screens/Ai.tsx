@@ -501,7 +501,8 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
     try {
       const result = await editMetadata(
         session.primary.path,
-        { path: targetPath, overwrite: isAndroid() ? "replace" : "error" },
+        // The save dialog already confirmed replacing an existing file.
+        { path: targetPath, overwrite: "replace" },
         {
           title: metadataSuggestion.title,
           author: metadataSuggestion.author,
