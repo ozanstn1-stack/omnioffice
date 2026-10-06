@@ -250,7 +250,8 @@ jobs:
 
   # Real end-to-end smoke: the debug binary is launched by tauri-driver and
   # driven over WebDriver. Engine-free on the Linux runner (the tool grid and
-  # Settings navigation); the Windows variant can add `e2e:smoke:pdf`.
+  # Settings navigation plus the deep flows); `e2e-windows` below adds the
+  # pdfium-backed Reader step on the shipped platform.
   e2e:
     name: Desktop E2E (tauri-driver)
     runs-on: ubuntu-latest
@@ -279,11 +280,15 @@ jobs:
         run: npm run tauri -- build --debug --no-bundle
       - name: Install tauri-driver
         run: cargo install tauri-driver --locked
+      # Step limits are a backstop for a stalled native driver (each WebDriver
+      # call is also bounded in e2e/smoke.mjs); a green run takes 1-2 minutes.
       - name: Smoke test (Xvfb)
+        timeout-minutes: 10
         run: xvfb-run -a npm run e2e:smoke
       # Engine-free real flows: Writer type -> save, PDF merge and Studio
       # sanitize all run through the same WebDriver session harness.
       - name: Deep flows (Xvfb)
+        timeout-minutes: 15
         run: xvfb-run -a npm run e2e:flows
       # When a flow fails, the app's own log records the dev-context line and
       # any frontend error; without it a WebDriver failure is hard to explain.
@@ -296,6 +301,137 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: e2e-screenshots
+          path: e2e/artifacts/
+          if-no-files-found: ignore
+
+  # The same harness on the platform that is actually shipped: WebView2 driven
+  # by msedgedriver, with the native engines fetched so the Reader step can
+  # render a real page through pdfium. The debug binary finds the engines
+  # through the source-tree fallback (src-tauri/resources/engines).
+  e2e-windows:
+    name: Desktop E2E (Windows, WebView2)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - run: npm ci
+      - name: Fetch engines (pdfium, qpdf, tesseract, fonts)
+        run: npm run engines:fetch
+      # msedgedriver asks WebView2 for a DevTools port through the
+      # WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS environment variable, but wry
+      # always passes its own AdditionalBrowserArguments and the runtime then
+      # ignores the variable (the browser process started with wry's
+      # --disable-features list and no --remote-debugging-port, so the session
+      # failed with "DevToolsActivePort file doesn't exist"). The test build
+      # therefore carries the port switch itself, next to wry's defaults. The
+      # override is a build-time --config file used only here; the shipped
+      # app is unchanged. The user data folder still comes from msedgedriver.
+      - name: E2E build config (WebView2 DevTools port)
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'tauri.e2e.conf.json'
+          node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json','utf8'));const args='--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --remote-debugging-port=0';fs.writeFileSync(process.argv[1],JSON.stringify({app:{windows:c.app.windows.map((w)=>({...w,additionalBrowserArgs:args}))}},null,2));" $out
+          Get-Content $out
+          "TAURI_E2E_CONFIG=$out" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Build the app (debug, embedded frontend)
+        shell: pwsh
+        run: npm run tauri -- build --debug --no-bundle --config "$env:TAURI_E2E_CONFIG"
+      - name: Install tauri-driver
+        run: cargo install tauri-driver --locked
+      # msedgedriver must match the WebView2 runtime's major version, not
+      # necessarily the runner's Edge browser. Test tooling only: nothing from
+      # this download ends up in a release artifact.
+      - name: msedgedriver matching WebView2
+        shell: pwsh
+        run: |
+          $key = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $version = (Get-ItemProperty -Path $key -ErrorAction SilentlyContinue).pv
+          if (-not $version) {
+            $version = (Get-Item 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe').VersionInfo.ProductVersion
+          }
+          Write-Host "WebView2 runtime: $version"
+          $dir = Join-Path $env:RUNNER_TEMP 'msedgedriver'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $zip = Join-Path $dir 'edgedriver.zip'
+          $driver = $null
+          try {
+            Invoke-WebRequest -Uri "https://msedgedriver.microsoft.com/$version/edgedriver_win64.zip" -OutFile $zip
+            Expand-Archive -Path $zip -DestinationPath $dir -Force
+            $driver = Join-Path $dir 'msedgedriver.exe'
+          } catch {
+            Write-Warning "download failed ($($_.Exception.Message)); using the runner's EdgeWebDriver"
+            $driver = Join-Path $env:EDGEWEBDRIVER 'msedgedriver.exe'
+          }
+          & $driver --version
+          # tauri-driver passes only --port to the native driver; a wrapper
+          # adds a verbose log so a session failure can be explained.
+          $log = Join-Path $dir 'msedgedriver.log'
+          $wrapper = Join-Path $dir 'msedgedriver-logged.cmd'
+          "@echo off`r`n`"$driver`" %* --verbose --log-path=`"$log`"" | Set-Content -Path $wrapper -Encoding ascii
+          "TAURI_NATIVE_DRIVER=$wrapper" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "MSEDGEDRIVER_LOG=$log" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      # While the smoke test runs, record the WebView2 browser process command
+      # lines and every DevToolsActivePort file: msedgedriver reports only
+      # "DevToolsActivePort file doesn't exist", and Chromium deletes the file
+      # when the driver kills the app, so it cannot be inspected afterwards.
+      - name: Smoke test
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          $probeLog = Join-Path $env:RUNNER_TEMP 'webview2-probe.log'
+          $probe = Start-Job -ArgumentList $probeLog -ScriptBlock {
+            param($out)
+            $deadline = (Get-Date).AddMinutes(4)
+            while ((Get-Date) -lt $deadline) {
+              Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe' OR Name='OmniOffice.exe'" |
+                Where-Object { $_.CommandLine -notmatch '--type=' } |
+                ForEach-Object { "PROC $($_.Name) $($_.CommandLine)" } | Add-Content $out
+              Get-ChildItem -Path $env:TEMP, $env:LOCALAPPDATA -Recurse -Filter DevToolsActivePort -ErrorAction SilentlyContinue |
+                ForEach-Object { "PORTFILE $($_.FullName)" } | Add-Content $out
+              Start-Sleep -Seconds 3
+            }
+          }
+          npm run e2e:smoke
+          $code = $LASTEXITCODE
+          Stop-Job $probe -ErrorAction SilentlyContinue
+          if ($code -ne 0 -and (Test-Path $probeLog)) {
+            Write-Host "== WebView2 probe (unique lines)"
+            Get-Content $probeLog | Sort-Object -Unique | Write-Host
+          }
+          exit $code
+      - name: Reader renders a real PDF (pdfium)
+        timeout-minutes: 10
+        run: npm run e2e:smoke:pdf
+      - name: Deep flows
+        timeout-minutes: 15
+        run: npm run e2e:flows
+      - name: App log on E2E failure
+        if: failure()
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path $env:APPDATA, $env:LOCALAPPDATA -Recurse -Filter frontend.log -ErrorAction SilentlyContinue |
+            ForEach-Object { Write-Host "== $($_.FullName)"; Get-Content $_.FullName -Tail 200 }
+          Write-Host "== DevToolsActivePort files"
+          Get-ChildItem -Path $env:LOCALAPPDATA, $env:TEMP, $env:RUNNER_TEMP -Recurse -Filter DevToolsActivePort -ErrorAction SilentlyContinue |
+            ForEach-Object { Write-Host $_.FullName }
+          Write-Host "== WebView2 / Edge policies"
+          foreach ($key in 'HKLM:\SOFTWARE\Policies\Microsoft\Edge', 'HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2') {
+            Get-ItemProperty -Path $key -ErrorAction SilentlyContinue | Format-List | Out-String | Write-Host
+          }
+          if ($env:MSEDGEDRIVER_LOG -and (Test-Path $env:MSEDGEDRIVER_LOG)) {
+            Write-Host "== msedgedriver log (tail)"
+            Get-Content $env:MSEDGEDRIVER_LOG -Tail 150
+          }
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-screenshots-windows
           path: e2e/artifacts/
           if-no-files-found: ignore
 
@@ -332,8 +468,9 @@ jobs:
         run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu office_readers -- -max_total_time=60
 
   # Criterion trend benchmarks with a regression gate. The previous master
-  # run's means are cached; a >15 % mean regression fails the job, a >7.5 %
-  # one warns, and the updated baseline is saved only when the check passed.
+  # run's means are cached; a benchmark >15 % slower than the others moved
+  # (the median ratio factors out a faster/slower runner) fails the job, >7.5 %
+  # warns, and the updated baseline is saved only when the check passed.
   # The uploaded report stays the detailed comparison point.
   bench:
     name: Benchmarks (criterion)

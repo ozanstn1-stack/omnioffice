@@ -10,9 +10,19 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.8.2** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 3.8.3** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 3.8.3
+
+Automatic releases and reliable CI (no change to the app itself).
+
+- A version bump merged to master now tags the release and builds the Windows
+  installer and Android APKs on its own; they appear on the GitHub release
+  page without any manual step.
+- Windows end-to-end tests and an Android start-up test run in CI, and the
+  benchmark gate no longer fails just because the CI machine was slower.
 
 ## What's new in 3.8.2
 

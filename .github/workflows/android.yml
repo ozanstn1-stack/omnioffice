@@ -165,14 +165,30 @@ jobs:
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Instrumented tests (open-with pipeline)
+      - name: Instrumented tests (open-with pipeline) and launch smoke test
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 34
           arch: x86_64
           profile: pixel_5
           disable-animations: true
-          script: cd src-tauri/gen/android && ./gradlew :app:connectedUniversalDebugAndroidTest --no-daemon
+          # The runner executes each script line in its own shell, so the test
+          # and the logcat capture share one line. On failure the crash lines
+          # are printed and the full logcat is kept for the artifact below.
+          # The last line is the launch smoke test (scripts/android-launch-smoke.sh):
+          # the app is started in its own process and must reach the Rust side.
+          script: |
+            adb logcat -c
+            cd src-tauri/gen/android && ./gradlew :app:connectedUniversalDebugAndroidTest --no-daemon || { adb logcat -d -v threadtime > ../../../android-logcat.txt; grep -E "AndroidRuntime|FATAL|F DEBUG|backtrace|panicked|RustStdoutStderr|Tauri|libc  " ../../../android-logcat.txt | tail -n 250; exit 1; }
+            sh scripts/android-launch-smoke.sh
+
+      - name: Upload logcat on test failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-logcat
+          path: android-logcat.txt
+          if-no-files-found: ignore
 
       - name: Upload APKs and AAB
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

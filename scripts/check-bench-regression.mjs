@@ -15,6 +15,14 @@
 // regression, not a 5 % wobble. Use the criterion report artifact for the
 // detailed trend.
 //
+// Runner drift is factored out: with three or more comparable benchmarks the
+// median current/baseline ratio is taken as the machine factor and every
+// benchmark is judged relative to it. A runner that is uniformly 70 % slower
+// (seen in October 2026: every benchmark +25..+88 %) therefore passes, while
+// one benchmark that regressed against the others still fails. A machine
+// factor above the threshold is reported as a warning so a uniform slowdown
+// stays visible in the log.
+//
 // The criterion directory layout is `<group>/<benchmark>/new/estimates.json`
 // (the group level is optional), so the tree is walked and each file ID is its
 // path relative to target/criterion.
@@ -24,22 +32,25 @@ import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const criterionDir = join(root, "target", "criterion");
 const defaultBaseline = join(root, ".bench-baseline.json");
 
 function usage() {
   console.error(
-    "usage: node scripts/check-bench-regression.mjs [--baseline <file>] [--threshold <percent>]",
+    "usage: node scripts/check-bench-regression.mjs [--baseline <file>] [--threshold <percent>] [--criterion <dir>]",
   );
   process.exit(2);
 }
 
 const args = process.argv.slice(2);
 let baselinePath = defaultBaseline;
+let criterionDir = join(root, "target", "criterion");
 let failPercent = 15;
 for (let index = 0; index < args.length; index += 1) {
   if (args[index] === "--baseline" && args[index + 1]) {
     baselinePath = args[index + 1];
+    index += 1;
+  } else if (args[index] === "--criterion" && args[index + 1]) {
+    criterionDir = args[index + 1];
     index += 1;
   } else if (args[index] === "--threshold" && args[index + 1]) {
     failPercent = Number(args[index + 1]);
@@ -103,14 +114,41 @@ const failures = [];
 const warnings = [];
 const notes = [];
 
+const comparable = [];
 for (const [id, mean] of current) {
   const previous = baseline[id];
   if (typeof previous !== "number" || previous <= 0) {
     notes.push(`new benchmark ${id}`);
     continue;
   }
-  const change = ((mean - previous) / previous) * 100;
-  const label = `${id} ${previous.toFixed(0)} ns -> ${mean.toFixed(0)} ns (${change >= 0 ? "+" : ""}${change.toFixed(1)} %)`;
+  comparable.push({ id, mean, previous, ratio: mean / previous });
+}
+
+// Machine factor: the median ratio once there are enough benchmarks to tell a
+// runner change from a single regression; 1 (no correction) otherwise.
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+const machineFactor = comparable.length >= 3 ? median(comparable.map((entry) => entry.ratio)) : 1;
+const machineChange = (machineFactor - 1) * 100;
+const signed = (value) => `${value >= 0 ? "+" : ""}${value.toFixed(1)} %`;
+if (comparable.length >= 3) {
+  console.log(
+    `benchmark machine factor: ${machineFactor.toFixed(3)} (median of ${comparable.length} ratios; each benchmark is judged relative to it)`,
+  );
+  if (machineChange > failPercent) {
+    warnings.push(
+      `every benchmark moved together by ${signed(machineChange)}: a runner change, or a regression shared by all benchmarks - compare the criterion report`,
+    );
+  }
+}
+
+for (const { id, mean, previous, ratio } of comparable) {
+  const raw = (ratio - 1) * 100;
+  const change = (ratio / machineFactor - 1) * 100;
+  const label = `${id} ${previous.toFixed(0)} ns -> ${mean.toFixed(0)} ns (${signed(raw)} raw, ${signed(change)} relative to the machine factor)`;
   if (change > failPercent) failures.push(label);
   else if (change > warnPercent) warnings.push(label);
 }
@@ -124,7 +162,7 @@ for (const note of notes) console.log(`benchmark note: ${note}`);
 if (failures.length > 0) {
   for (const failure of failures) console.error(`benchmark regression: ${failure}`);
   console.error(
-    `A mean over ${failPercent} % slower than the stored baseline failed the gate. ` +
+    `A mean over ${failPercent} % slower than the stored baseline (after the machine factor) failed the gate. ` +
       "Fix the regression or, when the slowdown is understood and accepted, delete the " +
       "baseline cache entry to re-baseline deliberately.",
   );

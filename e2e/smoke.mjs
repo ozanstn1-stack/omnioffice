@@ -47,11 +47,18 @@ if (!existsSync(exe)) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Every WebDriver call is bounded: a stalled native driver used to leave the
+// CI step waiting with no output until the job-level limit (one deep-flows
+// run sat for 36 minutes). Session creation launches the app, so the bound is
+// generous; a timeout surfaces as a normal failure with a screenshot.
+const WEBDRIVER_TIMEOUT_MS = 90_000;
+
 function webdriver(port, path, method = "GET", body) {
   return fetch(`http://127.0.0.1:${port}${path}`, {
     method,
     headers: { "content-type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(WEBDRIVER_TIMEOUT_MS),
   }).then(async (response) => {
     const json = await response.json().catch(() => ({}));
     if (json.value && json.value.error) throw new Error(`${json.value.error}: ${json.value.message}`);
@@ -152,6 +159,9 @@ async function withSession(name, env, steps) {
   } finally {
     if (session) await webdriver(session.port, `/session/${session.id}`, "DELETE").catch(() => undefined);
     driver.kill();
+    // Do not wait for EOF on pipes that a surviving grandchild may hold.
+    driver.stdout.destroy();
+    driver.stderr.destroy();
     const tail = driverLog.trim().split("\n").slice(-3).join("\n");
     if (tail) console.log(`[${name}] driver: ${tail}`);
   }
@@ -389,7 +399,14 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(`E2E FAILED: ${error.message}`);
-  process.exit(1);
-});
+// Exit explicitly: helper processes started under tauri-driver (e.g. WebKit's
+// network process on Linux) can inherit its stdout/stderr pipes and outlive
+// it, which kept Node's event loop - and the CI step - alive long after every
+// scenario had passed.
+main().then(
+  () => process.exit(0),
+  (error) => {
+    console.error(`E2E FAILED: ${error.message}`);
+    process.exit(1);
+  },
+);

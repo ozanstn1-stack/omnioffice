@@ -1,11 +1,36 @@
-# Release Readiness — OmniOffice 3.8.2
+# Release Readiness — OmniOffice 3.8.3
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
 
-## Implemented (this cycle, 3.8.2)
+## Implemented (this cycle, 3.8.3) - release and CI infrastructure
+
+- `auto-tag.yml`: version change on master -> tag + `workflow_dispatch` of
+  `release.yml`/`android.yml` on the tag (GITHUB_TOKEN tags do not fire
+  `push: tags`). The same mechanism published v3.8.2 by hand.
+- `check-bench-regression.mjs`: median-ratio machine factor (>= 3 comparable
+  benchmarks); `--criterion <dir>` for local checks. Verified with synthetic
+  trees: the real October drift passes (+10.9 % relative warning), a single
+  +33.7 % regression fails, and a +40 % regression hidden in a +70 % runner
+  shift still fails.
+- `e2e/smoke.mjs`: the post-pass hang (driver pipes held by a surviving
+  WebKit helper) is fixed by closing the pipes and exiting explicitly -
+  reproduced locally with a fake driver (old: still running at 20 s, new:
+  exits in 1 s); 90 s bound per WebDriver call; step time limits in CI.
+- `e2e-windows` job: engines fetched, debug build with a test-only
+  `--config` adding `--remote-debugging-port=0` to wry's WebView2 arguments
+  (found with a process probe: the runtime ignored msedgedriver's
+  environment arguments), msedgedriver matched to the WebView2 runtime;
+  smoke + Reader (pdfium) + deep flows pass on the PR.
+- `scripts/android-launch-smoke.sh`: the debug APK is started on the CI
+  emulator and must log the engine status from the frontend. An
+  instrumentation version was dropped: logcat showed the app starting fine
+  and then Tauri's exit() on activity destruction (plus the emulator's EGL
+  teardown abort) killing the shared test process.
+
+## Implemented in 3.8.2
 
 A feature-by-feature audit of the Android and Windows code paths found
 screens that still used the desktop dialog plugin on Android and two desktop

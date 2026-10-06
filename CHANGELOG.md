@@ -4,6 +4,45 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.3] - Automatic releases and reliable CI
+
+No change to the app itself; this release makes every following update reach
+GitHub on its own and keeps CI trustworthy.
+
+### Added
+
+- **Automatic release tag** (`.github/workflows/auto-tag.yml`). When a merge
+  to master changes the version, the merge commit is tagged `vX.Y.Z` and the
+  Release and Android workflows are started on that tag, so the Windows
+  installer/portable ZIP and the Android APK/AAB are attached to the GitHub
+  release without a manual `git push --tags`. An existing tag is left alone.
+- **Windows desktop E2E** (`e2e-windows` in `desktop.yml`): the WebView2 build
+  driven by msedgedriver runs the smoke test, a real pdfium Reader render and
+  the Writer/Merge/Sanitize deep flows on every pull request. wry always passes
+  its own WebView2 browser arguments, and the runtime then ignores the
+  `--remote-debugging-port` msedgedriver requests through
+  `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`; the test build therefore adds the
+  port through a build-time `--config` (the shipped app is unchanged).
+- **Android launch smoke test** (`scripts/android-launch-smoke.sh`): on the CI
+  emulator the debug APK is installed and started like a user would, and the
+  test passes once the frontend has run and called into Rust. It runs outside
+  instrumentation on purpose: Tauri ends the process when its activity is
+  destroyed, which took an instrumentation-based test runner down with it.
+
+### Fixed
+
+- **Benchmark gate failed on a slower runner.** Every benchmark moved by
+  +25..+88 % at once in October 2026 - a runner change, not a code change -
+  and the gate stayed red. The median current/baseline ratio is now factored
+  out, so only a benchmark that regressed against the others fails; a uniform
+  shift is still reported as a warning.
+- **E2E could hang for half an hour after passing.** Helper processes started
+  under tauri-driver (WebKit's network process on Linux) inherit its output
+  pipes and outlive it, so the harness waited for EOF forever after every
+  scenario had passed. The pipes are now closed when a session ends and the
+  harness exits explicitly; each WebDriver call is also bounded (90 s) and the
+  E2E steps have time limits.
+
 ## [3.8.2] - Android file pickers and save fixes
 
 ### Fixed
