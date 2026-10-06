@@ -159,6 +159,9 @@ async function withSession(name, env, steps) {
   } finally {
     if (session) await webdriver(session.port, `/session/${session.id}`, "DELETE").catch(() => undefined);
     driver.kill();
+    // Do not wait for EOF on pipes that a surviving grandchild may hold.
+    driver.stdout.destroy();
+    driver.stderr.destroy();
     const tail = driverLog.trim().split("\n").slice(-3).join("\n");
     if (tail) console.log(`[${name}] driver: ${tail}`);
   }
@@ -396,7 +399,14 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(`E2E FAILED: ${error.message}`);
-  process.exit(1);
-});
+// Exit explicitly: helper processes started under tauri-driver (e.g. WebKit's
+// network process on Linux) can inherit its stdout/stderr pipes and outlive
+// it, which kept Node's event loop - and the CI step - alive long after every
+// scenario had passed.
+main().then(
+  () => process.exit(0),
+  (error) => {
+    console.error(`E2E FAILED: ${error.message}`);
+    process.exit(1);
+  },
+);
