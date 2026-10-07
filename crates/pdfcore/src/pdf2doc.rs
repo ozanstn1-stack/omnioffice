@@ -411,7 +411,7 @@ fn media_box(doc: &Document, page_id: ObjectId) -> Option<[f64; 4]> {
 
 /// Rebuilds headings, paragraphs and list items from positioned text.
 pub fn recover_pages(pages: &[PageText]) -> Vec<LayoutPage> {
-    let mut lines: Vec<Vec<Line>> = pages.iter().map(|page| build_lines(&page.fragments)).collect();
+    let mut lines: Vec<Vec<Line>> = pages.iter().map(|page| build_lines(&on_page(page))).collect();
     drop_running_lines(pages, &mut lines);
     let document_body = body_size(lines.iter().flatten());
     let drafts: Vec<Vec<Draft>> = lines
@@ -443,6 +443,34 @@ pub fn recover_pages(pages: &[PageText]) -> Vec<LayoutPage> {
             height: page.height,
             blocks: finish_blocks(drafts, &sizes),
         })
+        .collect()
+}
+
+/// How far past the page box a fragment may start and still be kept.
+const PAGE_MARGIN: f64 = 72.0;
+
+/// The widest text range the gutter search scans, in page units.
+const MAX_GUTTER_RANGE: f64 = 10_000.0;
+
+/// The fragments of a page that sit on it (with a margin), without those with
+/// coordinates that are not finite. Text placed far outside the page is
+/// invisible and would only stretch the layout.
+fn on_page(page: &PageText) -> Vec<TextFragment> {
+    let sane = |value: f64, fallback: f64| if value.is_finite() && value > 0.0 { value } else { fallback };
+    let (width, height) = (sane(page.width, 612.0), sane(page.height, 792.0));
+    page.fragments
+        .iter()
+        .filter(|fragment| {
+            fragment.x.is_finite()
+                && fragment.y.is_finite()
+                && fragment.width.is_finite()
+                && fragment.size.is_finite()
+                && fragment.x >= -PAGE_MARGIN
+                && fragment.x <= width + PAGE_MARGIN
+                && fragment.y >= -PAGE_MARGIN
+                && fragment.y <= height + PAGE_MARGIN
+        })
+        .cloned()
         .collect()
 }
 
@@ -765,7 +793,8 @@ fn find_gutter(lines: &[Line]) -> Option<(f64, f64)> {
     let left = lines.iter().map(|line| line.x0).fold(f64::INFINITY, f64::min);
     let right = lines.iter().map(|line| line.x1).fold(f64::NEG_INFINITY, f64::max);
     let width = right - left;
-    if width.is_nan() || width <= 120.0 {
+    // A range that is not finite, or absurdly wide, is not a page of text.
+    if !width.is_finite() || width <= 120.0 || width > MAX_GUTTER_RANGE {
         return None;
     }
     let bins = width.ceil() as usize + 1;
