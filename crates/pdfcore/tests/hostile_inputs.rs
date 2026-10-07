@@ -98,3 +98,88 @@ fn a_gutter_search_over_a_huge_text_range_gives_up() {
     assert!(started.elapsed() < Duration::from_secs(5));
     assert_eq!(pages.len(), 1);
 }
+
+// ---------------------------------------------------------------------------
+// content: a ToUnicode map that inflates far beyond its size
+// ---------------------------------------------------------------------------
+
+/// A Type0 Identity-H font whose `/ToUnicode` stream is a valid CMap followed
+/// by `padding` bytes of blanks, Flate-compressed, shown `strings` times.
+fn save_type0_page(path: &Path, padding: usize, strings: usize) {
+    let mut cmap = b"/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n\
+        /CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n\
+        /CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n\
+        1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n\
+        1 beginbfrange\n<0041> <0041> <0058>\nendbfrange\n\
+        endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n"
+        .to_vec();
+    cmap.resize(cmap.len() + padding, b' ');
+    let mut doc = Document::with_version("1.7");
+    let mut stream = Stream::new(dictionary! {}, cmap);
+    stream.compress().expect("compress");
+    assert!(stream.content.len() < 100_000, "the bomb must stay small on disk");
+    let cmap_id = doc.add_object(Object::Stream(stream));
+    let descendant = doc.add_object(dictionary! {
+        "Type" => "Font", "Subtype" => "CIDFontType2", "BaseFont" => "Test",
+        "CIDSystemInfo" => dictionary! {
+            "Registry" => Object::string_literal("Adobe"),
+            "Ordering" => Object::string_literal("Identity"),
+            "Supplement" => 0,
+        },
+    });
+    let font = doc.add_object(dictionary! {
+        "Type" => "Font", "Subtype" => "Type0", "BaseFont" => "Test", "Encoding" => "Identity-H",
+        "DescendantFonts" => vec![Object::Reference(descendant)], "ToUnicode" => cmap_id,
+    });
+    let mut content = String::from("BT /F1 12 Tf 72 780 Td 12 TL\n");
+    for _ in 0..strings {
+        content.push_str("[<0041> -300 <0041>] TJ T*\n");
+    }
+    content.push_str("ET\n");
+    let content_id = doc.add_object(Object::Stream(Stream::new(dictionary! {}, content.into_bytes())));
+    let pages_id = doc.new_object_id();
+    let page_id = doc.add_object(dictionary! {
+        "Type" => "Page", "Parent" => pages_id,
+        "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
+        "Resources" => dictionary! { "Font" => dictionary! { "F1" => font } },
+        "Contents" => content_id,
+    });
+    doc.objects.insert(
+        pages_id,
+        Object::Dictionary(dictionary! { "Type" => "Pages", "Kids" => vec![Object::Reference(page_id)], "Count" => 1 }),
+    );
+    let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+    doc.trailer.set("Root", Object::Reference(catalog));
+    doc.save(path).expect("save pdf");
+}
+
+#[test]
+fn an_inflating_to_unicode_map_is_bounded_and_decoded_once() {
+    let dir = TestDir::new();
+    let path = dir.path("cmap-bomb.pdf");
+    save_type0_page(&path, 20 * 1024 * 1024, 40);
+
+    let started = Instant::now();
+    let runs = pdfcore::content::list_text_runs_in_file(&path, None).expect("list runs");
+    let listed = started.elapsed();
+    assert_eq!(runs.len(), 40);
+    // The oversized map is skipped, so the codes are read as raw bytes.
+    assert_eq!(runs[0].text, "\0A \0A");
+
+    let started = Instant::now();
+    let pages = pdfcore::pdf2doc::content_stream_pages(&path, None).expect("pages");
+    let converted = started.elapsed();
+    assert_eq!(pages.len(), 1);
+    assert!(listed < Duration::from_secs(2), "listing took {listed:?}");
+    assert!(converted < Duration::from_secs(2), "conversion took {converted:?}");
+}
+
+#[test]
+fn a_reasonable_to_unicode_map_still_decodes() {
+    let dir = TestDir::new();
+    let path = dir.path("cmap-ok.pdf");
+    save_type0_page(&path, 1024 * 1024, 40);
+    let runs = pdfcore::content::list_text_runs_in_file(&path, None).expect("list runs");
+    assert_eq!(runs.len(), 40);
+    assert_eq!(runs[0].text, "X X");
+}

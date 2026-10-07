@@ -14,9 +14,80 @@
 
 use crate::error::{PdfError, PdfResult};
 use lopdf::content::{Content, Operation};
-use lopdf::{Document, Object, ObjectId, StringFormat};
+use lopdf::Encoding;
+use lopdf::{Dictionary, Document, Object, ObjectId, StringFormat};
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
+
+/// The largest a font's `/ToUnicode` CMap may inflate to. A bigger one is
+/// treated as hostile (a decompression bomb) and the font is decoded without
+/// it.
+const MAX_CMAP_BYTES: usize = 8 * 1024 * 1024;
+
+#[cfg(test)]
+thread_local! {
+    /// How many font encodings were built on this thread, for the tests.
+    static ENCODINGS_BUILT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// The text encodings of the fonts of a document, each built once.
+///
+/// Building an encoding for a Type0 font inflates and parses its whole
+/// `/ToUnicode` stream, which is far too slow to repeat for every string. The
+/// cache is keyed by the font dictionary, so a font shared by many pages is
+/// parsed once for all of them.
+pub(crate) struct FontCache<'a> {
+    doc: &'a Document,
+    /// Font resources of the page being read, by resource name.
+    page_fonts: BTreeMap<Vec<u8>, &'a Dictionary>,
+    /// Built encodings by font dictionary address; `None` when unusable.
+    encodings: HashMap<usize, Option<Encoding<'a>>>,
+    warnings: Vec<String>,
+}
+
+impl<'a> FontCache<'a> {
+    pub(crate) fn new(doc: &'a Document) -> Self {
+        Self { doc, page_fonts: BTreeMap::new(), encodings: HashMap::new(), warnings: Vec::new() }
+    }
+
+    /// Makes the fonts of `page_id` the ones strings are decoded with.
+    fn select_page(&mut self, page_id: ObjectId) {
+        self.page_fonts = self.doc.get_page_fonts(page_id).unwrap_or_default();
+    }
+
+    /// The encoding of the font resource `name` of the selected page.
+    fn encoding(&mut self, name: Option<&[u8]>) -> Option<&Encoding<'a>> {
+        let name = name?;
+        let dictionary: &'a Dictionary = self.page_fonts.get(name).copied()?;
+        let key = dictionary as *const Dictionary as usize;
+        let (doc, warnings) = (self.doc, &mut self.warnings);
+        self.encodings
+            .entry(key)
+            .or_insert_with(|| {
+                #[cfg(test)]
+                ENCODINGS_BUILT.with(|count| count.set(count.get() + 1));
+                match dictionary.get_font_encoding_with_limit(doc, MAX_CMAP_BYTES) {
+                    Ok(encoding) => Some(encoding),
+                    Err(lopdf::Error::Decompress(lopdf::DecompressError::MemoryLimitExceeded { .. })) => {
+                        warnings.push(format!(
+                            "The ToUnicode map of font {} is larger than {} MB and was ignored.",
+                            String::from_utf8_lossy(name),
+                            MAX_CMAP_BYTES / (1024 * 1024)
+                        ));
+                        None
+                    }
+                    Err(_) => None,
+                }
+            })
+            .as_ref()
+    }
+
+    /// Takes the warnings collected so far.
+    fn take_warnings(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.warnings)
+    }
+}
 
 /// One text-showing operation on a page, with what the editor can do with it.
 #[derive(Debug, Clone, Serialize)]
@@ -123,15 +194,11 @@ fn estimate_width(text: &str, state: &TextState) -> f64 {
 
 /// Decodes a PDF text string the way the reader does: the font encoding when
 /// it works, a UTF-16 BOM second, raw bytes last.
-fn decode_string(doc: &Document, page_id: ObjectId, font: Option<&[u8]>, raw: &[u8]) -> String {
-    if let Some(name) = font {
-        if let Some(dictionary) = doc.get_page_fonts(page_id).ok().and_then(|mut fonts| fonts.remove(name)) {
-            if let Ok(encoding) = dictionary.get_font_encoding(doc) {
-                if let Ok(text) = encoding.bytes_to_string(raw) {
-                    if !text.contains('\u{fffd}') {
-                        return text;
-                    }
-                }
+fn decode_string(fonts: &mut FontCache, font: Option<&[u8]>, raw: &[u8]) -> String {
+    if let Some(encoding) = fonts.encoding(font) {
+        if let Ok(text) = encoding.bytes_to_string(raw) {
+            if !text.contains('\u{fffd}') {
+                return text;
             }
         }
     }
@@ -145,20 +212,15 @@ fn decode_string(doc: &Document, page_id: ObjectId, font: Option<&[u8]>, raw: &[
 /// Encodes new text with the run's font, or returns `None` when the encoding
 /// cannot represent it exactly. The round trip is checked, so a lossy encoder
 /// (replacement characters, wrong CIDs) never reaches the file.
-fn encode_string(doc: &Document, page_id: ObjectId, font: Option<&[u8]>, text: &str) -> Option<Vec<u8>> {
-    if let Some(name) = font {
-        if let Some(dictionary) = doc.get_page_fonts(page_id).ok().and_then(|mut fonts| fonts.remove(name)) {
-            if let Ok(encoding) = dictionary.get_font_encoding(doc) {
-                let bytes = encoding.string_to_bytes(text);
-                if decode_string(doc, page_id, font, &bytes) == text {
-                    return Some(bytes);
-                }
-            }
+fn encode_string(fonts: &mut FontCache, font: Option<&[u8]>, text: &str) -> Option<Vec<u8>> {
+    if let Some(bytes) = fonts.encoding(font).map(|encoding| encoding.string_to_bytes(text)) {
+        if decode_string(fonts, font, &bytes) == text {
+            return Some(bytes);
         }
     }
     if text.chars().all(|character| (character as u32) < 0x80) {
         let bytes = text.as_bytes().to_vec();
-        if decode_string(doc, page_id, font, &bytes) == text {
+        if decode_string(fonts, font, &bytes) == text {
             return Some(bytes);
         }
     }
@@ -167,7 +229,13 @@ fn encode_string(doc: &Document, page_id: ObjectId, font: Option<&[u8]>, text: &
 
 /// Walks one page's decoded content, tracking the graphics/text state, and
 /// returns the content plus every text run with its edit location.
-fn analyze_page(doc: &Document, page: u32, page_id: ObjectId) -> PdfResult<(Content<Vec<Operation>>, Vec<RunSite>)> {
+fn analyze_page(
+    doc: &Document,
+    fonts: &mut FontCache,
+    page: u32,
+    page_id: ObjectId,
+) -> PdfResult<(Content<Vec<Operation>>, Vec<RunSite>)> {
+    fonts.select_page(page_id);
     let content = doc
         .get_and_decode_page_content(page_id)
         .map_err(|error| PdfError::ProcessingFailed(format!("content stream: {error}")))?;
@@ -262,7 +330,7 @@ fn analyze_page(doc: &Document, page: u32, page_id: ObjectId) -> PdfResult<(Cont
                     continue;
                 };
                 let Object::String(raw, _) = object else { continue };
-                let text = decode_string(doc, page_id, state.font.as_deref(), raw);
+                let text = decode_string(fonts, state.font.as_deref(), raw);
                 let width = estimate_width(&text, &state);
                 sites.push(RunSite {
                     operation: operation_index,
@@ -302,7 +370,7 @@ fn analyze_page(doc: &Document, page: u32, page_id: ObjectId) -> PdfResult<(Cont
                 for item in items {
                     match item {
                         Object::String(raw, _) => {
-                            let piece = decode_string(doc, page_id, state.font.as_deref(), raw);
+                            let piece = decode_string(fonts, state.font.as_deref(), raw);
                             if gap && !text.is_empty() && !text.ends_with(' ') && !piece.starts_with(' ') {
                                 text.push(' ');
                             }
@@ -339,7 +407,7 @@ fn analyze_page(doc: &Document, page: u32, page_id: ObjectId) -> PdfResult<(Cont
                 for item in items {
                     match item {
                         Object::String(raw, _) => {
-                            let piece = decode_string(doc, page_id, state.font.as_deref(), raw);
+                            let piece = decode_string(fonts, state.font.as_deref(), raw);
                             x += estimate_width(&piece, &state);
                         }
                         _ => {
@@ -357,8 +425,13 @@ fn analyze_page(doc: &Document, page: u32, page_id: ObjectId) -> PdfResult<(Cont
 }
 
 /// The text runs of one page of an already loaded document.
-pub(crate) fn page_text_runs(doc: &Document, page: u32, page_id: ObjectId) -> PdfResult<Vec<TextRunInfo>> {
-    let (_, sites) = analyze_page(doc, page, page_id)?;
+pub(crate) fn page_text_runs(
+    doc: &Document,
+    fonts: &mut FontCache,
+    page: u32,
+    page_id: ObjectId,
+) -> PdfResult<Vec<TextRunInfo>> {
+    let (_, sites) = analyze_page(doc, fonts, page, page_id)?;
     Ok(sites.into_iter().map(|site| site.info).collect())
 }
 
@@ -366,8 +439,9 @@ pub(crate) fn page_text_runs(doc: &Document, page: u32, page_id: ObjectId) -> Pd
 pub fn list_text_runs_in_file(path: &Path, password: Option<&str>) -> PdfResult<Vec<TextRunInfo>> {
     let doc = crate::docutil::load_document(path, password)?;
     let mut runs = Vec::new();
+    let mut fonts = FontCache::new(&doc);
     for (page, page_id) in doc.get_pages() {
-        let (_, sites) = analyze_page(&doc, page, page_id)?;
+        let (_, sites) = analyze_page(&doc, &mut fonts, page, page_id)?;
         runs.extend(sites.into_iter().map(|site| site.info));
     }
     Ok(runs)
@@ -399,7 +473,8 @@ pub fn edit_text_runs(pdf: &[u8], edits: &[TextRunEdit]) -> PdfResult<(Vec<u8>, 
             report.warnings.push(format!("Page {page} does not exist."));
             continue;
         };
-        let (mut content, sites) = analyze_page(&doc, page, page_id)?;
+        let mut fonts = FontCache::new(&doc);
+        let (mut content, sites) = analyze_page(&doc, &mut fonts, page, page_id)?;
         let mut changed = false;
         for edit in page_edits {
             let Some(site) = sites.iter().find(|site| site.info.index == edit.index) else {
@@ -423,7 +498,7 @@ pub fn edit_text_runs(pdf: &[u8], edits: &[TextRunEdit]) -> PdfResult<(Vec<u8>, 
                     .push(format!("Text run {} on page {page} is longer than the 2000-character limit.", edit.index));
                 continue;
             }
-            let Some(bytes) = encode_string(&doc, page_id, site.info.font.as_deref().map(str::as_bytes), &edit.text)
+            let Some(bytes) = encode_string(&mut fonts, site.info.font.as_deref().map(str::as_bytes), &edit.text)
             else {
                 report.warnings.push(format!(
                     "The font of text run {} on page {page} cannot represent the replacement text; the run was left unchanged.",
@@ -464,6 +539,7 @@ pub fn edit_text_runs(pdf: &[u8], edits: &[TextRunEdit]) -> PdfResult<(Vec<u8>, 
             changed = true;
             report.edited += 1;
         }
+        report.warnings.extend(fonts.take_warnings());
         if changed {
             let encoded =
                 content.encode().map_err(|error| PdfError::ProcessingFailed(format!("encode content: {error}")))?;
@@ -616,5 +692,90 @@ mod tests {
         let error =
             edit_text_runs(&bytes, &[TextRunEdit { page: 9, index: 0, text: "Bye".into() }]).expect_err("must fail");
         assert!(format!("{error}").contains("No text was changed"));
+    }
+
+    /// A one-page PDF whose only font is a Type0 Identity-H font with the
+    /// given `/ToUnicode` CMap, showing `strings` two-byte strings.
+    fn type0_sample(cmap: Vec<u8>, strings: usize) -> Vec<u8> {
+        let mut doc = Document::with_version("1.7");
+        let cmap_id = doc.add_object(lopdf::Stream::new(Dictionary::new(), cmap));
+        let descendant = doc.add_object(dictionary! {
+            "Type" => "Font", "Subtype" => "CIDFontType2", "BaseFont" => "Test",
+            "CIDSystemInfo" => dictionary! { "Registry" => Object::string_literal("Adobe"),
+                "Ordering" => Object::string_literal("Identity"), "Supplement" => 0 },
+        });
+        let font_id = doc.add_object(dictionary! {
+            "Type" => "Font", "Subtype" => "Type0", "BaseFont" => "Test", "Encoding" => "Identity-H",
+            "DescendantFonts" => vec![Object::Reference(descendant)], "ToUnicode" => cmap_id,
+        });
+        let mut content = String::from("BT /F1 12 Tf 72 700 Td\n");
+        for _ in 0..strings {
+            content.push_str("<0041> Tj [<0041> -300 <0041>] TJ 0 -14 Td\n");
+        }
+        content.push_str("ET\n");
+        let stream_id = doc.add_object(lopdf::Stream::new(Dictionary::new(), content.into_bytes()));
+        let pages_id = doc.new_object_id();
+        let page_id = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages_id,
+            "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
+            "Resources" => dictionary! { "Font" => dictionary! { "F1" => font_id } },
+            "Contents" => stream_id,
+        });
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages", "Kids" => vec![Object::Reference(page_id)], "Count" => 1,
+            }),
+        );
+        let catalog_id = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => Object::Reference(pages_id) });
+        doc.trailer.set("Root", Object::Reference(catalog_id));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        bytes
+    }
+
+    const SMALL_CMAP: &str = "/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n\
+        /CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n\
+        /CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n\
+        1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n\
+        1 beginbfrange\n<0041> <0041> <0058>\nendbfrange\n\
+        endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n";
+
+    #[test]
+    fn a_type0_to_unicode_map_is_parsed_once_per_font_not_per_string() {
+        let bytes = type0_sample(SMALL_CMAP.as_bytes().to_vec(), 40);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("type0.pdf");
+        std::fs::write(&path, &bytes).unwrap();
+        ENCODINGS_BUILT.with(|count| count.set(0));
+        let runs = list_text_runs_in_file(&path, None).expect("list");
+        assert_eq!(runs.len(), 80);
+        assert_eq!(runs[0].text, "X");
+        assert_eq!(runs[1].text, "X X");
+        assert_eq!(ENCODINGS_BUILT.with(std::cell::Cell::get), 1);
+    }
+
+    #[test]
+    fn an_oversized_to_unicode_map_is_skipped_with_a_warning() {
+        let mut cmap = SMALL_CMAP.as_bytes().to_vec();
+        cmap.extend(std::iter::repeat_n(b' ', MAX_CMAP_BYTES + 1));
+        let mut doc = Document::load_mem(&type0_sample(Vec::new(), 2)).unwrap();
+        let cmap_id = doc
+            .objects
+            .iter()
+            .find_map(|(id, object)| {
+                matches!(object, Object::Stream(stream) if stream.content.is_empty()).then_some(*id)
+            })
+            .expect("cmap stream");
+        let mut stream = lopdf::Stream::new(Dictionary::new(), cmap);
+        stream.compress().unwrap();
+        doc.objects.insert(cmap_id, Object::Stream(stream));
+        let (_, page_id) = doc.get_pages().into_iter().next().unwrap();
+        let mut fonts = FontCache::new(&doc);
+        let runs = page_text_runs(&doc, &mut fonts, 1, page_id).expect("runs");
+        // Without the CMap the string is read as raw bytes.
+        assert_eq!(runs.len(), 4);
+        assert_eq!(runs[0].text, "\0A");
+        assert_eq!(fonts.take_warnings().len(), 1);
     }
 }

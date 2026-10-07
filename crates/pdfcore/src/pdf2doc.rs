@@ -265,11 +265,12 @@ pub fn font_style(name: &str) -> (bool, bool) {
 pub fn content_stream_pages(path: &Path, password: Option<&str>) -> PdfResult<Vec<PageText>> {
     let doc = crate::docutil::load_document(path, password)?;
     let mut out = Vec::new();
+    let mut fonts = crate::content::FontCache::new(&doc);
     for (number, page_id) in doc.get_pages() {
         let [left, bottom, right, top] = media_box(&doc, page_id).unwrap_or([0.0, 0.0, 612.0, 792.0]);
         // A page whose content cannot be decoded contributes no text rather
         // than failing the whole conversion.
-        let runs = crate::content::page_text_runs(&doc, number, page_id).unwrap_or_default();
+        let runs = crate::content::page_text_runs(&doc, &mut fonts, number, page_id).unwrap_or_default();
         let fragments = run_fragments(&runs, &font_table(&doc, page_id), left, bottom);
         out.push(PageText { page: number, width: right - left, height: top - bottom, fragments });
     }
