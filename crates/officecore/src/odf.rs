@@ -1179,18 +1179,350 @@ fn cell_style_xml(style: &CellStyle) -> String {
     format!("<style:table-cell-properties{cell}/><style:text-properties{text}/>")
 }
 
+// ---------------------------------------------------------------------------
+// ODS charts (embedded chart objects) and pivot output
+// ---------------------------------------------------------------------------
+
+/// Namespaces a chart sub-document needs on top of [`NS`]. `loext` carries the
+/// literal series names; ODF 1.2 can only name a series through a cell.
+const CHART_NS: &str = concat!(
+    "xmlns:chart=\"urn:oasis:names:tc:opendocument:xmlns:chart:1.0\" ",
+    "xmlns:loext=\"urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0\""
+);
+
+/// LibreOffice's default column width (2.258cm) and row height (0.452cm) in
+/// points. Only used to find an anchor cell for a chart that sits on the sheet
+/// (`table:shapes`) instead of inside a cell.
+const ODS_DEFAULT_COLUMN_PT: f64 = 64.0;
+const ODS_DEFAULT_ROW_PT: f64 = 12.8;
+
+/// Upper bound on the rows read from a chart's local table.
+const ODS_MAX_CHART_ROWS: usize = 100_000;
+
+/// A chart written as the `Object N/` sub-document of an ODS package.
+struct OdsChartObject {
+    name: String,
+    content: String,
+}
+
+/// Why a sheet chart cannot be written to ODS, if it cannot. The writer skips
+/// such a chart; the compatibility report names it before the save.
+pub(crate) fn ods_chart_problem(chart: &ChartData) -> Option<String> {
+    if !matches!(chart.kind.as_str(), "column" | "bar" | "line" | "pie" | "area") {
+        return Some(format!("the chart type \"{}\" is not exportable", chart.kind));
+    }
+    if chart.series.is_empty() {
+        return Some("the chart has no data series".into());
+    }
+    if !chart.categories.trim().is_empty() && crate::address::parse_range(&chart.categories).is_none() {
+        return Some("the category range could not be read".into());
+    }
+    chart
+        .series
+        .iter()
+        .find(|series| crate::address::parse_range(&series.range).is_none())
+        .map(|series| format!("the range for series \"{}\" could not be read", series.name))
+}
+
+/// A sheet name as it appears in an ODF cell address; names that are not plain
+/// words are quoted with `'` doubled inside.
+fn ods_sheet_ref(name: &str) -> String {
+    if !name.is_empty() && name.chars().all(|ch| ch.is_alphanumeric() || ch == '_') {
+        name.to_string()
+    } else {
+        format!("'{}'", name.replace('\'', "''"))
+    }
+}
+
+/// `A2:A5` on `sheet` as an absolute ODF cell range address
+/// (`Sheet1.$A$2:Sheet1.$A$5`); a single cell stays a single address.
+fn ods_range_address(sheet: &str, range: &str) -> Option<String> {
+    let range = range.trim();
+    if range.is_empty() {
+        return None;
+    }
+    let ((start_row, start_col), (end_row, end_col)) = crate::address::parse_range(range)?;
+    let sheet = ods_sheet_ref(sheet);
+    let start = format!("{sheet}.${}${}", crate::address::column_name(start_col), start_row + 1);
+    if (start_row, start_col) == (end_row, end_col) {
+        return Some(start);
+    }
+    Some(format!("{start}:{sheet}.${}${}", crate::address::column_name(end_col), end_row + 1))
+}
+
+/// The first range of an ODF cell range address as a sheet-local `A2:A5`
+/// (sheet names and `$` dropped, like the XLSX importer does).
+fn ods_range_to_ours(address: &str) -> String {
+    let mut parts = vec![String::new()];
+    let mut quoted = false;
+    for ch in address.trim().chars() {
+        match ch {
+            '\'' => {
+                quoted = !quoted;
+                parts.last_mut().unwrap().push(ch);
+            }
+            ':' if !quoted => parts.push(String::new()),
+            ch if ch.is_whitespace() && !quoted => break,
+            ch => parts.last_mut().unwrap().push(ch),
+        }
+    }
+    parts
+        .iter()
+        .map(|part| part.rsplit('.').next().unwrap_or(part).replace('$', ""))
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(":")
+}
+
+/// A model colour as the `#rrggbb` ODF requires, or `None`.
+fn ods_color(color: &str) -> Option<String> {
+    let hex = color.trim().strip_prefix('#')?;
+    (hex.len() == 6 && hex.chars().all(|ch| ch.is_ascii_hexdigit())).then(|| format!("#{hex}"))
+}
+
+fn ods_cell_label(value: &CellValue) -> String {
+    match value {
+        CellValue::Empty => String::new(),
+        CellValue::Number(number) => format!("{number}"),
+        CellValue::Bool(flag) => if *flag { "TRUE" } else { "FALSE" }.into(),
+        CellValue::Text(text) | CellValue::Error(text) => text.clone(),
+    }
+}
+
+fn ods_cell_number(value: &CellValue) -> Option<f64> {
+    match value {
+        CellValue::Number(number) => Some(*number),
+        CellValue::Bool(flag) => Some(if *flag { 1.0 } else { 0.0 }),
+        CellValue::Text(text) => text.trim().parse::<f64>().ok(),
+        _ => None,
+    }
+    .filter(|number| number.is_finite())
+}
+
+/// The `table:table` LibreOffice keeps inside every chart object: a header row
+/// with the series names, then one row per category with the cached values.
+/// The model caches are written when present; otherwise the values come from
+/// the sheet cells so the object renders on its own.
+fn ods_chart_local_table(chart: &ChartData, cells: &std::collections::BTreeMap<String, Cell>) -> String {
+    let cell_values = |range: &str| -> Vec<CellValue> {
+        crate::address::expand_range(range, ODS_MAX_CHART_ROWS)
+            .iter()
+            .map(|address| cells.get(address).map(|cell| cell.value.clone()).unwrap_or_default())
+            .collect()
+    };
+    let categories: Vec<String> = if chart.categories_cache.is_empty() {
+        cell_values(&chart.categories).iter().map(ods_cell_label).collect()
+    } else {
+        chart.categories_cache.clone()
+    };
+    let series: Vec<Vec<Option<f64>>> = chart
+        .series
+        .iter()
+        .enumerate()
+        .map(|(index, series)| match chart.series_values_cache.get(index).filter(|values| !values.is_empty()) {
+            Some(values) => values.iter().map(|value| Some(*value).filter(|value| value.is_finite())).collect(),
+            None => cell_values(&series.range).iter().map(ods_cell_number).collect(),
+        })
+        .collect();
+    let rows = series.iter().map(Vec::len).chain(std::iter::once(categories.len())).max().unwrap_or(0);
+    let mut out = format!(
+        "<table:table table:name=\"local-table\"><table:table-header-columns><table:table-column/></table:table-header-columns><table:table-columns><table:table-column table:number-columns-repeated=\"{}\"/></table:table-columns><table:table-header-rows><table:table-row><table:table-cell><text:p/></table:table-cell>",
+        chart.series.len().max(1)
+    );
+    for entry in &chart.series {
+        out.push_str(&format!(
+            "<table:table-cell office:value-type=\"string\"><text:p>{}</text:p></table:table-cell>",
+            crate::xml::escape_text(&entry.name)
+        ));
+    }
+    out.push_str("</table:table-row></table:table-header-rows><table:table-rows>");
+    for row in 0..rows {
+        let label = categories.get(row).map(String::as_str).unwrap_or("");
+        out.push_str(&format!(
+            "<table:table-row><table:table-cell office:value-type=\"string\"><text:p>{}</text:p></table:table-cell>",
+            crate::xml::escape_text(label)
+        ));
+        for values in &series {
+            match values.get(row).copied().flatten() {
+                Some(value) => out.push_str(&format!(
+                    "<table:table-cell office:value-type=\"float\" office:value=\"{value}\"><text:p>{value}</text:p></table:table-cell>"
+                )),
+                None => out.push_str("<table:table-cell><text:p/></table:table-cell>"),
+            }
+        }
+        out.push_str("</table:table-row>");
+    }
+    out.push_str("</table:table-rows></table:table>");
+    out
+}
+
+/// `Object N/content.xml` for one sheet chart, following LibreOffice's layout:
+/// `chart:chart` with title, legend and plot area (axes, series pointing at the
+/// sheet ranges) plus the local table with the cached values. A column chart
+/// is `chart:bar`; a bar chart is the same class with `chart:vertical`.
+fn ods_chart_content(
+    placement: &ChartPlacement,
+    sheet_name: &str,
+    cells: &std::collections::BTreeMap<String, Cell>,
+) -> String {
+    let chart = &placement.chart;
+    let kind = chart.kind.as_str();
+    let pie = kind == "pie";
+    let class = match kind {
+        "line" => "chart:line",
+        "pie" => "chart:circle",
+        "area" => "chart:area",
+        _ => "chart:bar",
+    };
+    let mut plot_properties = String::new();
+    if matches!(kind, "column" | "bar") {
+        plot_properties.push_str(&format!(" chart:vertical=\"{}\"", kind == "bar"));
+    }
+    if chart.stacked && !pie {
+        plot_properties.push_str(" chart:stacked=\"true\"");
+    }
+    let mut styles = format!(
+        "<style:style style:name=\"chPlot\" style:family=\"chart\"><style:chart-properties{plot_properties}/></style:style>"
+    );
+    let mut series_xml = String::new();
+    for (index, series) in chart.series.iter().enumerate() {
+        let style_name = format!("chS{}", index + 1);
+        let labels = if chart.show_labels { " chart:data-label-number=\"value\"" } else { "" };
+        let graphic = series
+            .color
+            .as_deref()
+            .and_then(ods_color)
+            .map(|color| {
+                format!(
+                    "<style:graphic-properties draw:fill=\"solid\" draw:fill-color=\"{color}\" svg:stroke-color=\"{color}\"/>"
+                )
+            })
+            .unwrap_or_default();
+        styles.push_str(&format!(
+            "<style:style style:name=\"{style_name}\" style:family=\"chart\"><style:chart-properties{labels}/>{graphic}</style:style>"
+        ));
+        // LibreOffice stores a literal series name as a quoted string literal.
+        series_xml.push_str(&format!(
+            "<chart:series chart:style-name=\"{style_name}\" chart:class=\"{class}\" chart:values-cell-range-address=\"{}\" loext:label-string=\"{}\"/>",
+            escape(&ods_range_address(sheet_name, &series.range).unwrap_or_default()),
+            escape(&format!("\"{}\"", series.name.replace('"', "\"\"")))
+        ));
+    }
+    let categories = ods_range_address(sheet_name, &chart.categories);
+    let categories_xml = categories
+        .as_deref()
+        .map(|range| format!("<chart:categories table:cell-range-address=\"{}\"/>", escape(range)))
+        .unwrap_or_default();
+    // Like the XLSX export, a pie chart has no axes worth a title.
+    let axis_title = |text: &str| {
+        if text.is_empty() || pie {
+            String::new()
+        } else {
+            format!("<chart:title><text:p>{}</text:p></chart:title>", crate::xml::escape_text(text))
+        }
+    };
+    let grid = if pie { "" } else { "<chart:grid chart:class=\"major\"/>" };
+    // LibreOffice hides the tick labels of an axis that has no style.
+    let axis_style = if pie {
+        ""
+    } else {
+        styles.push_str(
+            "<style:style style:name=\"chAxis\" style:family=\"chart\"><style:chart-properties chart:display-label=\"true\"/></style:style>",
+        );
+        " chart:style-name=\"chAxis\""
+    };
+    let axes = format!(
+        "<chart:axis chart:dimension=\"x\" chart:name=\"primary-x\"{axis_style}>{}{categories_xml}</chart:axis><chart:axis chart:dimension=\"y\" chart:name=\"primary-y\"{axis_style}>{}{grid}</chart:axis>",
+        axis_title(&chart.x_title),
+        axis_title(&chart.y_title)
+    );
+    let ranges: Vec<String> = categories
+        .into_iter()
+        .chain(chart.series.iter().filter_map(|series| ods_range_address(sheet_name, &series.range)))
+        .collect();
+    let title = if chart.title.is_empty() {
+        String::new()
+    } else {
+        format!("<chart:title><text:p>{}</text:p></chart:title>", crate::xml::escape_text(&chart.title))
+    };
+    let legend = if chart.legend { "<chart:legend chart:legend-position=\"bottom\"/>" } else { "" };
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content {NS} {CHART_NS} office:version=\"1.2\"><office:automatic-styles>{styles}</office:automatic-styles><office:body><office:chart><chart:chart svg:width=\"{}\" svg:height=\"{}\" chart:class=\"{class}\">{title}{legend}<chart:plot-area chart:style-name=\"chPlot\" table:cell-range-address=\"{}\">{axes}{series_xml}<chart:wall/><chart:floor/></chart:plot-area>{}</chart:chart></office:chart></office:body></office:document-content>",
+        cm(placement.width_px.max(64.0) * 0.75),
+        cm(placement.height_px.max(64.0) * 0.75),
+        escape(&ranges.join(" ")),
+        ods_chart_local_table(chart, cells)
+    )
+}
+
+/// The chart frames of one sheet keyed by their anchor cell (zero-based row,
+/// column). Each frame is anchored to its cell, so its position is the offset
+/// inside that cell; the chart itself goes to `objects` as `Object N`.
+fn ods_chart_frames(
+    sheet: &Sheet,
+    cells: &std::collections::BTreeMap<String, Cell>,
+    objects: &mut Vec<OdsChartObject>,
+) -> HashMap<(u32, u32), String> {
+    let mut frames: HashMap<(u32, u32), String> = HashMap::new();
+    for (index, placement) in sheet.charts.iter().enumerate() {
+        if ods_chart_problem(&placement.chart).is_some() {
+            continue;
+        }
+        let name = format!("Object {}", objects.len() + 1);
+        let ranges: Vec<String> = std::iter::once(&placement.chart.categories)
+            .chain(placement.chart.series.iter().map(|series| &series.range))
+            .filter_map(|range| ods_range_address(&sheet.name, range))
+            .collect();
+        let anchor = crate::address::parse(&placement.anchor).unwrap_or((0, 0));
+        frames.entry(anchor).or_default().push_str(&format!(
+            "<draw:frame draw:z-index=\"{index}\" draw:name=\"{}\" svg:width=\"{}\" svg:height=\"{}\" svg:x=\"0cm\" svg:y=\"0cm\"><draw:object draw:notify-on-update-of-ranges=\"{}\" xlink:href=\"./{name}\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/></draw:frame>",
+            escape(if placement.id.is_empty() { &name } else { &placement.id }),
+            cm(placement.width_px.max(64.0) * 0.75),
+            cm(placement.height_px.max(64.0) * 0.75),
+            escape(&ranges.join(" "))
+        ));
+        objects.push(OdsChartObject { content: ods_chart_content(placement, &sheet.name, cells), name });
+    }
+    frames
+}
+
+/// The sheet cells plus the computed output of the sheet's editor pivot
+/// tables, which ODS (like the XLSX export) gets as plain values. A cell that
+/// already holds a value or formula wins over the pivot output.
+fn ods_cells_with_pivots<'a>(
+    workbook: &Workbook,
+    sheet: &'a Sheet,
+) -> std::borrow::Cow<'a, std::collections::BTreeMap<String, Cell>> {
+    let mut cells = std::borrow::Cow::Borrowed(&sheet.cells);
+    for (address, value) in crate::pivot::materialize(workbook, sheet) {
+        let taken =
+            sheet.get(&address).map(|cell| cell.formula.is_some() || cell.value != CellValue::Empty).unwrap_or(false);
+        if !taken {
+            cells.to_mut().entry(address).or_default().value = value;
+        }
+    }
+    cells
+}
+
 pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
     let mut styles = AutoStyles::default();
     let mut body = String::new();
+    let mut chart_objects: Vec<OdsChartObject> = Vec::new();
     for sheet in &workbook.sheets {
         body.push_str(&format!("<table:table table:name=\"{}\">", escape(&sheet.name)));
+        let cells = ods_cells_with_pivots(workbook, sheet);
+        let frames = ods_chart_frames(sheet, &cells, &mut chart_objects);
         let mut max_row = 0u32;
         let mut max_col = 0u32;
-        for address in sheet.cells.keys() {
+        for address in cells.keys() {
             if let Some((row, column)) = crate::address::parse(address) {
                 max_row = max_row.max(row);
                 max_col = max_col.max(column);
             }
+        }
+        for (row, column) in frames.keys() {
+            max_row = max_row.max(*row);
+            max_col = max_col.max(*column);
         }
         for column in 0..=max_col.min(200) {
             let width = sheet.col_widths.get(&column).copied().unwrap_or(90.0);
@@ -1207,8 +1539,9 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
             let mut empty_run = 0u32;
             while column <= max_col {
                 let address = crate::address::format(row, column);
-                let cell = sheet.cells.get(&address);
-                if cell.filter(|cell| !cell.is_empty()).is_none() {
+                let cell = cells.get(&address).filter(|cell| !cell.is_empty());
+                let frame = frames.get(&(row, column)).map(String::as_str);
+                if cell.is_none() && frame.is_none() {
                     empty_run += 1;
                     column += 1;
                     continue;
@@ -1218,7 +1551,13 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
                         .push_str(&format!("<table:table-cell table:number-columns-repeated=\"{}\"/>", empty_run));
                     empty_run = 0;
                 }
-                let cell = cell.unwrap();
+                // Cell-anchored charts sit inside their anchor cell, before its text.
+                let frame = frame.unwrap_or("");
+                let Some(cell) = cell else {
+                    row_output.push_str(&format!("<table:table-cell>{frame}</table:table-cell>"));
+                    column += 1;
+                    continue;
+                };
                 let style_name = styles.cell(cell_style_xml(&cell.style));
                 let mut attributes = format!(" table:style-name=\"{style_name}\"");
                 if let Some(merge) = sheet.merges.iter().find(|merge| merge.start == address) {
@@ -1254,7 +1593,7 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
                     CellValue::Text(text) => format!(" office:string-value=\"{}\"", escape(text)),
                     _ => String::new(),
                 };
-                row_output.push_str(&format!("<table:table-cell office:value-type=\"{value_type}\"{value_attr}{attributes}{formula}>{value_xml}</table:table-cell>"));
+                row_output.push_str(&format!("<table:table-cell office:value-type=\"{value_type}\"{value_attr}{attributes}{formula}>{frame}{value_xml}</table:table-cell>"));
                 column += 1;
             }
             if empty_run > 0 {
@@ -1270,20 +1609,281 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
         styles.xml(),
         "<office:styles/>"
     );
+    // Every chart object is a sub-document with its own manifest entries.
+    let mut object_entries = String::new();
+    for object in &chart_objects {
+        let name = escape(&object.name);
+        object_entries.push_str(&format!(
+            "<manifest:file-entry manifest:full-path=\"{name}/\" manifest:version=\"1.2\" manifest:media-type=\"application/vnd.oasis.opendocument.chart\"/><manifest:file-entry manifest:full-path=\"{name}/content.xml\" manifest:media-type=\"text/xml\"/><manifest:file-entry manifest:full-path=\"{name}/styles.xml\" manifest:media-type=\"text/xml\"/>"
+        ));
+    }
+    let manifest = manifest_for("application/vnd.oasis.opendocument.spreadsheet")
+        .replace("</manifest:manifest>", &format!("{object_entries}</manifest:manifest>"));
     let mut zip = ZipWriter::new();
     zip.add_text("mimetype", "application/vnd.oasis.opendocument.spreadsheet");
-    zip.add_text("META-INF/manifest.xml", &manifest_for("application/vnd.oasis.opendocument.spreadsheet"));
+    zip.add_text("META-INF/manifest.xml", &manifest);
     zip.add_text("content.xml", &content);
     zip.add_text(
         "styles.xml",
         &format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles {NS} office:version=\"1.2\"/>"),
     );
     zip.add_text("meta.xml", &meta_xml(&workbook.title, "OmniOffice"));
+    for object in &chart_objects {
+        zip.add_text(&format!("{}/content.xml", object.name), &object.content);
+        zip.add_text(
+            &format!("{}/styles.xml", object.name),
+            &format!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles {NS} {CHART_NS} office:version=\"1.2\"><office:styles/></office:document-styles>"
+            ),
+        );
+    }
     Ok(zip.finish())
 }
 
 pub fn write_ods_file(path: &Path, workbook: &Workbook) -> OfficeResult<()> {
     crate::io::write_atomic(path, &write_ods(workbook)?)
+}
+
+/// A chart's local table: the series names from the header row and, per body
+/// row, the category label followed by one value per series.
+struct OdsLocalTable {
+    header: Vec<String>,
+    rows: Vec<Vec<(String, Option<f64>)>>,
+}
+
+fn read_ods_table_row(row: &XmlNode) -> Vec<(String, Option<f64>)> {
+    let mut cells = Vec::new();
+    for cell in row.children.iter().filter(|cell| matches!(cell.local_name(), "table-cell" | "covered-table-cell")) {
+        let repeat = cell
+            .attr_any_ns("number-columns-repeated")
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(1)
+            .clamp(1, 256);
+        let mut paragraphs = Vec::new();
+        cell.find_all("p", &mut paragraphs);
+        let text = paragraphs.iter().map(|node| node.deep_text()).collect::<Vec<_>>().join("\n");
+        let number = cell
+            .attr_any_ns("value")
+            .and_then(|value| value.trim().parse::<f64>().ok())
+            .or_else(|| text.trim().parse::<f64>().ok())
+            .filter(|value| value.is_finite());
+        for _ in 0..repeat {
+            cells.push((text.clone(), number));
+        }
+        if cells.len() > 1_024 {
+            break;
+        }
+    }
+    cells
+}
+
+fn read_ods_local_table(table: &XmlNode) -> OdsLocalTable {
+    let mut header = Vec::new();
+    let mut rows = Vec::new();
+    for child in &table.children {
+        match child.local_name() {
+            "table-header-rows" => {
+                if let Some(row) = child.child("table-row") {
+                    header = read_ods_table_row(row).into_iter().map(|(text, _)| text).collect();
+                }
+            }
+            "table-rows" => rows.extend(child.children_named("table-row").map(read_ods_table_row)),
+            "table-row" => rows.push(read_ods_table_row(child)),
+            _ => {}
+        }
+    }
+    rows.truncate(ODS_MAX_CHART_ROWS);
+    OdsLocalTable { header, rows }
+}
+
+/// The `style:<properties>` child of the automatic style `name`.
+fn ods_style_child<'a>(
+    styles: &HashMap<&str, &'a XmlNode>,
+    name: Option<&str>,
+    properties: &str,
+) -> Option<&'a XmlNode> {
+    styles.get(name?).copied()?.child(properties)
+}
+
+fn odf_paragraph_text(node: &XmlNode) -> String {
+    let mut paragraphs = Vec::new();
+    node.find_all("p", &mut paragraphs);
+    paragraphs.iter().map(|paragraph| paragraph.deep_text()).collect::<Vec<_>>().join("\n")
+}
+
+/// Reads the chart object a sheet `draw:frame` embeds (`Object N/content.xml`)
+/// back into a placement. Frames holding anything else are skipped; caches
+/// come from the object's local table, the inverse of the export.
+fn read_ods_chart(
+    reader: &ZipReader,
+    frame: &XmlNode,
+    anchor: String,
+    sheet: &Sheet,
+    warnings: &mut Vec<String>,
+) -> Option<ChartPlacement> {
+    let object = frame.child("object")?;
+    let href = object.attr_any_ns("href")?.trim().trim_start_matches("./").trim_end_matches('/').to_string();
+    if href.is_empty() {
+        return None;
+    }
+    let Some(root) = reader.read_text(&format!("{href}/content.xml")).ok().and_then(|text| parse_xml(&text).ok())
+    else {
+        warnings.push(format!("The embedded object \"{href}\" could not be read and was skipped."));
+        return None;
+    };
+    let mut nodes = Vec::new();
+    root.find_all("chart", &mut nodes);
+    let Some(chart) = nodes.into_iter().find(|node| node.attr_any_ns("class").is_some()) else {
+        warnings.push(format!("The embedded object \"{href}\" is not a chart and was skipped."));
+        return None;
+    };
+    let mut style_nodes = Vec::new();
+    root.find_all("style", &mut style_nodes);
+    let styles: HashMap<&str, &XmlNode> =
+        style_nodes.into_iter().filter_map(|node| node.attr("style:name").map(|name| (name, node))).collect();
+    let plot = chart.child("plot-area");
+    let plot_properties =
+        ods_style_child(&styles, plot.and_then(|plot| plot.attr_any_ns("style-name")), "chart-properties");
+    let plot_flag = |name: &str| plot_properties.and_then(|node| node.attr_any_ns(name)) == Some("true");
+    let class = chart.attr_any_ns("class").unwrap_or("").rsplit(':').next().unwrap_or("");
+    let kind = match class {
+        "bar" if plot_flag("vertical") => "bar",
+        "bar" => "column",
+        "line" => "line",
+        "circle" => "pie",
+        "area" => "area",
+        other => {
+            let mapped = match other {
+                "ring" => "pie",
+                "filled-radar" => "area",
+                "scatter" | "bubble" | "stock" | "radar" => "line",
+                _ => "column",
+            };
+            warnings.push(format!("A \"{other}\" chart was imported as a {mapped} chart."));
+            mapped
+        }
+    };
+    let mut x_title = String::new();
+    let mut y_title = String::new();
+    let mut categories = String::new();
+    for axis in plot.map(|plot| plot.children_of("axis")).unwrap_or_default() {
+        let title = axis.child("title").map(odf_paragraph_text).unwrap_or_default();
+        match axis.attr_any_ns("dimension") {
+            Some("x") => {
+                x_title = title;
+                if let Some(range) = axis.child("categories").and_then(|node| node.attr_any_ns("cell-range-address")) {
+                    categories = ods_range_to_ours(range);
+                }
+            }
+            Some("y") => y_title = title,
+            _ => {}
+        }
+    }
+    let local = chart.child("table").map(read_ods_local_table);
+    let labels_on = |node: Option<&XmlNode>| {
+        node.and_then(|node| node.attr_any_ns("data-label-number")).map(|value| value != "none").unwrap_or(false)
+    };
+    let mut show_labels = labels_on(plot_properties);
+    let mut series = Vec::new();
+    let mut series_values_cache = Vec::new();
+    for (index, node) in plot.map(|plot| plot.children_of("series")).unwrap_or_default().into_iter().enumerate() {
+        let style_name = node.attr_any_ns("style-name");
+        show_labels |= labels_on(ods_style_child(&styles, style_name, "chart-properties"));
+        let graphic = ods_style_child(&styles, style_name, "graphic-properties");
+        let color = graphic
+            .and_then(|graphic| {
+                let stroke = graphic.attr_any_ns("stroke-color");
+                let fill = graphic.attr_any_ns("fill-color");
+                if kind == "line" {
+                    stroke.or(fill)
+                } else {
+                    fill.or(stroke)
+                }
+            })
+            .and_then(ods_color)
+            .map(|color| color.to_ascii_uppercase());
+        let name = node
+            .attr_any_ns("label-string")
+            .map(|literal| {
+                let literal = literal.trim();
+                match literal.strip_prefix('"').and_then(|inner| inner.strip_suffix('"')) {
+                    Some(inner) => inner.replace("\"\"", "\""),
+                    None => literal.to_string(),
+                }
+            })
+            .or_else(|| {
+                local.as_ref().and_then(|table| table.header.get(index + 1)).filter(|name| !name.is_empty()).cloned()
+            })
+            .or_else(|| {
+                let address = ods_range_to_ours(node.attr_any_ns("label-cell-address")?);
+                sheet.get(address.split(':').next()?).map(|cell| ods_cell_label(&cell.value))
+            })
+            .unwrap_or_else(|| format!("Series {}", index + 1));
+        let range = node.attr_any_ns("values-cell-range-address").map(ods_range_to_ours).unwrap_or_default();
+        let values: Vec<f64> = local
+            .as_ref()
+            .filter(|table| table.rows.iter().any(|row| row.len() > index + 1))
+            .map(|table| {
+                table.rows.iter().map(|row| row.get(index + 1).and_then(|cell| cell.1).unwrap_or(0.0)).collect()
+            })
+            .unwrap_or_default();
+        series_values_cache.push(values);
+        series.push(ChartSeries { name, range, color });
+    }
+    // Empty caches are dropped, as the XLSX importer does, so a chart that only
+    // carries ranges stays range-only.
+    if series_values_cache.iter().all(Vec::is_empty) {
+        series_values_cache.clear();
+    }
+    let mut categories_cache: Vec<String> = local
+        .as_ref()
+        .map(|table| table.rows.iter().map(|row| row.first().map(|cell| cell.0.clone()).unwrap_or_default()).collect())
+        .unwrap_or_default();
+    if categories_cache.iter().all(String::is_empty) {
+        categories_cache.clear();
+    }
+    let size = |attribute: &str, fallback: f64| {
+        frame
+            .attr_any_ns(attribute)
+            .or_else(|| chart.attr_any_ns(attribute))
+            .and_then(parse_cm)
+            .map(|pt| pt / 0.75)
+            .unwrap_or(fallback)
+    };
+    Some(ChartPlacement {
+        id: frame
+            .attr("draw:name")
+            .filter(|name| !name.trim().is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+        chart: ChartData {
+            kind: kind.to_string(),
+            title: chart.child("title").map(odf_paragraph_text).unwrap_or_default(),
+            categories,
+            series,
+            legend: chart.child("legend").is_some(),
+            x_title,
+            y_title,
+            stacked: plot_flag("stacked") || plot_flag("percentage"),
+            show_labels,
+            categories_cache,
+            series_values_cache,
+        },
+        anchor,
+        width_px: size("width", 480.0),
+        height_px: size("height", 288.0),
+    })
+}
+
+/// Anchor cell for a chart placed on the sheet (`table:shapes`) rather than in
+/// a cell, estimated from its position with LibreOffice's default cell size.
+fn ods_shape_anchor(frame: &XmlNode) -> String {
+    let x = frame.attr_any_ns("x").and_then(parse_cm).unwrap_or(0.0).max(0.0);
+    let y = frame.attr_any_ns("y").and_then(parse_cm).unwrap_or(0.0).max(0.0);
+    crate::address::format(
+        ((y / ODS_DEFAULT_ROW_PT).floor() as u32).min(1_048_575),
+        ((x / ODS_DEFAULT_COLUMN_PT).floor() as u32).min(16_383),
+    )
 }
 
 pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
@@ -1301,6 +1901,9 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
     for table in tables {
         let name = table.attr("name").unwrap_or("Sheet").to_string();
         let mut sheet = Sheet::new(&name);
+        // Frames anchored to a cell, with that cell; charts are read once the
+        // cells are in so a series label cell can be resolved.
+        let mut frames: Vec<(String, &XmlNode)> = Vec::new();
         let mut row = 0u32;
         for row_node in table.children_named("table-row") {
             let repeat_rows = row_node
@@ -1355,6 +1958,9 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
                         );
                     }
                 }
+                for frame in cell.children_named("frame") {
+                    frames.push((crate::address::format(row, column), frame));
+                }
                 column += repeat;
                 if column > 1_000 {
                     break;
@@ -1363,6 +1969,14 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
             row += repeat_rows;
             if row > 100_000 {
                 break;
+            }
+        }
+        for shapes in table.children_named("shapes") {
+            frames.extend(shapes.children_named("frame").map(|frame| (ods_shape_anchor(frame), frame)));
+        }
+        for (anchor, frame) in frames {
+            if let Some(placement) = read_ods_chart(&reader, frame, anchor, &sheet, &mut warnings) {
+                sheet.charts.push(placement);
             }
         }
         sheet.row_count = (row + 51).max(200);
@@ -1393,7 +2007,290 @@ pub struct DeckRead {
     pub warnings: Vec<String>,
 }
 
-fn slide_object_xml(object: &SlideObject) -> String {
+/// Namespaces the slide timing (ODF 1.2 SMIL animations) needs on top of [`NS`].
+const ANIM_NS: &str = concat!(
+    "xmlns:anim=\"urn:oasis:names:tc:opendocument:xmlns:animation:1.0\" ",
+    "xmlns:smil=\"urn:oasis:names:tc:opendocument:xmlns:smil-compatible:1.0\""
+);
+
+/// True when `value` is usable as an `xml:id` (an NCName).
+fn is_ncname(value: &str) -> bool {
+    let mut chars = value.chars();
+    matches!(chars.next(), Some(first) if first.is_alphabetic() || first == '_')
+        && chars.all(|ch| ch.is_alphanumeric() || matches!(ch, '.' | '-' | '_'))
+}
+
+/// `xml:id`/`draw:id` allocation for ODP shapes, which animations target.
+/// Ids must be unique in the whole content.xml: a model id that is an NCName
+/// and still free is kept, so a re-import restores it; anything else (a UUID
+/// starting with a digit, an id repeated on another slide) gets `idN`.
+#[derive(Default)]
+struct OdpShapeIds {
+    used: std::collections::HashSet<String>,
+    /// Model object id -> written id, for the slide being written.
+    slide: HashMap<String, String>,
+    next: usize,
+}
+
+impl OdpShapeIds {
+    fn assign(&mut self, object: &SlideObject) -> String {
+        let id = if is_ncname(&object.id) && !self.used.contains(&object.id) {
+            object.id.clone()
+        } else {
+            loop {
+                self.next += 1;
+                let candidate = format!("id{}", self.next);
+                if !self.used.contains(&candidate) {
+                    break candidate;
+                }
+            }
+        };
+        self.used.insert(id.clone());
+        if !object.id.is_empty() {
+            self.slide.insert(object.id.clone(), id.clone());
+        }
+        id
+    }
+}
+
+/// The editor's animation effects and the LibreOffice presets they are written
+/// as (LibreOffice's `simpress/effects.xml`): kind, effect, preset id and
+/// preset sub-type. Grow and shrink share a preset and differ by scale.
+const ODP_PRESETS: [(&str, &str, &str, &str); 11] = [
+    ("entrance", "appear", "ooo-entrance-appear", ""),
+    ("entrance", "fade", "ooo-entrance-fade-in", ""),
+    ("entrance", "flyIn", "ooo-entrance-fly-in", "from-bottom"),
+    ("entrance", "zoom", "ooo-entrance-zoom", "in"),
+    ("emphasis", "pulse", "ooo-emphasis-flash-bulb", ""),
+    ("emphasis", "spin", "ooo-emphasis-spin", ""),
+    ("emphasis", "grow", "ooo-emphasis-grow-and-shrink", ""),
+    ("emphasis", "shrink", "ooo-emphasis-grow-and-shrink", ""),
+    ("exit", "disappear", "ooo-exit-disappear", ""),
+    ("exit", "fadeOut", "ooo-exit-fade-out", ""),
+    ("exit", "flyOut", "ooo-exit-fly-out", "to-top"),
+];
+
+/// The editor effect closest to a foreign effect or preset name (a PPTX filter
+/// such as `wipe(down)`, or a LibreOffice preset without an editor twin).
+fn closest_odp_effect(kind: &str, name: &str) -> &'static str {
+    let name = name.to_ascii_lowercase();
+    let has = |words: &[&str]| words.iter().any(|word| name.contains(word));
+    let flies = has(&["fly", "peek", "rise", "ascend", "descend", "float", "glide", "sling", "credits", "sink"]);
+    match kind {
+        "entrance" if flies => "flyIn",
+        "entrance" if has(&["zoom", "magnify", "expand", "grow", "stretch", "compress", "unfold"]) => "zoom",
+        "entrance" if name.is_empty() || has(&["appear", "flash"]) => "appear",
+        "entrance" => "fade",
+        "exit" if flies => "flyOut",
+        "exit" if has(&["disappear", "flash"]) => "disappear",
+        "exit" => "fadeOut",
+        _ if has(&["shrink", "compress"]) => "shrink",
+        _ if has(&["grow", "magnify", "zoom", "scale", "size", "expand"]) => "grow",
+        _ if has(&["spin", "rotate", "teeter", "swivel", "wave"]) => "spin",
+        _ => "pulse",
+    }
+}
+
+/// The editor effect an animation is written as, and whether that is exact.
+fn odp_export_effect(kind: &str, effect: &str) -> (&'static str, bool) {
+    let exact = match (kind, effect) {
+        ("entrance", "fadeIn") => Some("fade"),
+        // PPTX imports name the exit fade `fade`.
+        ("exit", "fade") => Some("fadeOut"),
+        _ => ODP_PRESETS.iter().find(|preset| preset.0 == kind && preset.1 == effect).map(|preset| preset.1),
+    };
+    match exact {
+        Some(effect) => (effect, true),
+        None => (closest_odp_effect(kind, effect), false),
+    }
+}
+
+/// A SMIL clock value in seconds (`0.5s`).
+fn smil_time(ms: u64) -> String {
+    format!("{}s", ms as f64 / 1000.0)
+}
+
+/// Seconds from a SMIL clock value (`0.5s`, `500ms`, `2`, `00:00:01.5`);
+/// `None` for event values such as `next` or `indefinite`.
+fn parse_smil_seconds(value: &str) -> Option<f64> {
+    let value = value.trim();
+    let seconds = if let Some(ms) = value.strip_suffix("ms") {
+        ms.trim().parse::<f64>().ok()? / 1000.0
+    } else if let Some(minutes) = value.strip_suffix("min") {
+        minutes.trim().parse::<f64>().ok()? * 60.0
+    } else if let Some(hours) = value.strip_suffix('h') {
+        hours.trim().parse::<f64>().ok()? * 3600.0
+    } else if let Some(seconds) = value.strip_suffix('s') {
+        seconds.trim().parse::<f64>().ok()?
+    } else if value.contains(':') {
+        let mut total = 0.0;
+        for part in value.split(':') {
+            total = total * 60.0 + part.trim().parse::<f64>().ok()?;
+        }
+        total
+    } else {
+        value.parse::<f64>().ok()?
+    };
+    seconds.is_finite().then_some(seconds.max(0.0))
+}
+
+fn seconds_to_ms(seconds: f64) -> u32 {
+    (seconds * 1000.0).round().clamp(0.0, u32::MAX as f64) as u32
+}
+
+/// The animation nodes of one effect, following the LibreOffice preset of the
+/// same name with its durations scaled to `duration_ms`.
+fn odp_effect_nodes(effect: &str, target: &str, duration_ms: u64) -> String {
+    let target = escape(target);
+    let dur = smil_time(duration_ms);
+    let visibility = |visible: bool, begin_ms: u64, dur: &str| {
+        format!(
+            "<anim:set smil:begin=\"{}\" smil:dur=\"{dur}\" smil:fill=\"hold\" smil:targetElement=\"{target}\" smil:attributeName=\"visibility\" smil:to=\"{}\"/>",
+            smil_time(begin_ms),
+            if visible { "visible" } else { "hidden" }
+        )
+    };
+    let show = visibility(true, 0, "0.001s");
+    let hide_at_end = visibility(false, duration_ms.saturating_sub(1), "0.001s");
+    let animate = |attribute: &str, values: &str| {
+        format!(
+            "<anim:animate smil:dur=\"{dur}\" smil:fill=\"hold\" smil:targetElement=\"{target}\" smil:attributeName=\"{attribute}\" smil:values=\"{values}\" smil:keyTimes=\"0;1\"/>"
+        )
+    };
+    let fade = |mode: &str| {
+        format!(
+            "<anim:transitionFilter smil:dur=\"{dur}\" smil:targetElement=\"{target}\" smil:type=\"fade\" smil:subtype=\"crossfade\"{mode}/>"
+        )
+    };
+    let transform = |kind: &str, by: &str| {
+        format!(
+            "<anim:animateTransform smil:dur=\"{dur}\" smil:fill=\"hold\" smil:targetElement=\"{target}\" smil:by=\"{by}\" svg:type=\"{kind}\"/>"
+        )
+    };
+    match effect {
+        "fade" => format!("{show}{}", fade("")),
+        "flyIn" => format!("{show}{}{}", animate("x", "x;x"), animate("y", "1+height/2;y")),
+        "zoom" => format!("{show}{}{}", animate("width", "0;width"), animate("height", "0;height")),
+        "disappear" => visibility(false, 0, &dur),
+        "fadeOut" => format!("{}{hide_at_end}", fade(" smil:mode=\"out\"")),
+        "flyOut" => format!("{}{}{hide_at_end}", animate("x", "x;x"), animate("y", "y;0-height/2")),
+        "spin" => transform("rotate", "360"),
+        "grow" => transform("scale", "1.5,1.5"),
+        "shrink" => transform("scale", "0.5,0.5"),
+        "pulse" => format!(
+            "<anim:transitionFilter smil:dur=\"{dur}\" smil:targetElement=\"{target}\" smil:keySplines=\"0,0;0.2,0.5;0.8,0.5;1,0\" smil:type=\"fade\" smil:subtype=\"crossfade\" smil:mode=\"out\"/><anim:animateTransform smil:dur=\"{}\" smil:fill=\"hold\" smil:autoReverse=\"true\" smil:targetElement=\"{target}\" smil:by=\"1.05,1.05\" svg:type=\"scale\"/>",
+            smil_time(duration_ms / 2)
+        ),
+        // "appear": visible for the whole effect so its duration survives.
+        _ => visibility(true, 0, &dur),
+    }
+}
+
+/// One "after previous" step of a click group in the main sequence.
+struct OdpTimingStep {
+    begin_ms: u64,
+    end_ms: u64,
+    effects: String,
+}
+
+/// The slide's main sequence as ODF SMIL timing, the structure LibreOffice
+/// writes: timing root -> main sequence -> one `anim:par` per click -> one per
+/// "after previous" step -> one per effect. The effect `anim:par` carries the
+/// trigger (`presentation:node-type`), class, preset and delay; its children
+/// carry the duration and the target shape.
+fn odp_timing_xml(slide: &Slide, ids: &HashMap<String, String>, warnings: &mut Vec<String>) -> String {
+    let mut animations: Vec<&Animation> = slide.animations.iter().collect();
+    animations.sort_by_key(|animation| animation.order);
+    let mut clicks: Vec<(&str, Vec<OdpTimingStep>)> = Vec::new();
+    for animation in animations {
+        let Some(target) = ids.get(&animation.object_id) else {
+            warnings.push(format!(
+                "An animation targeting \"{}\" was not written because the object is not on the exported slide.",
+                animation.object_id
+            ));
+            continue;
+        };
+        if !matches!(animation.kind.as_str(), "entrance" | "exit" | "emphasis") {
+            warnings.push(format!(
+                "An animation of kind \"{}\" was kept in the native .oswk file and not written to the ODP timing.",
+                animation.kind
+            ));
+            continue;
+        }
+        let (effect, exact) = odp_export_effect(&animation.kind, &animation.effect);
+        let Some(&(_, _, preset_id, sub_type)) =
+            ODP_PRESETS.iter().find(|preset| preset.0 == animation.kind && preset.1 == effect)
+        else {
+            continue;
+        };
+        if !exact {
+            warnings.push(format!(
+                "The {} effect \"{}\" has no LibreOffice preset and was written as \"{preset_id}\".",
+                animation.kind, animation.effect
+            ));
+        }
+        let node_type = match animation.trigger.as_str() {
+            "withPrevious" => "with-previous",
+            "afterPrevious" => "after-previous",
+            _ => "on-click",
+        };
+        let first_step = || vec![OdpTimingStep { begin_ms: 0, end_ms: 0, effects: String::new() }];
+        match (node_type, clicks.last_mut()) {
+            ("on-click", _) => clicks.push(("indefinite", first_step())),
+            // Effects before the first click start with the slide.
+            (_, None) => clicks.push(("0s", first_step())),
+            ("after-previous", Some((_, steps))) => {
+                let begin_ms = steps.last().map(|step| step.end_ms).unwrap_or(0);
+                steps.push(OdpTimingStep { begin_ms, end_ms: begin_ms, effects: String::new() });
+            }
+            _ => {}
+        }
+        let Some(step) = clicks.last_mut().and_then(|(_, steps)| steps.last_mut()) else { continue };
+        let duration = u64::from(animation.duration_ms);
+        let delay = u64::from(animation.delay_ms);
+        let sub_type =
+            if sub_type.is_empty() { String::new() } else { format!(" presentation:preset-sub-type=\"{sub_type}\"") };
+        step.effects.push_str(&format!(
+            "<anim:par smil:begin=\"{}\" smil:fill=\"hold\" presentation:node-type=\"{node_type}\" presentation:preset-class=\"{}\" presentation:preset-id=\"{preset_id}\"{sub_type}>{}</anim:par>",
+            smil_time(delay),
+            animation.kind,
+            odp_effect_nodes(effect, target, duration)
+        ));
+        step.end_ms = step.end_ms.max(step.begin_ms + delay + duration);
+    }
+    if clicks.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from(
+        "<anim:par presentation:node-type=\"timing-root\"><anim:seq presentation:node-type=\"main-sequence\">",
+    );
+    for (begin, steps) in clicks {
+        out.push_str(&format!("<anim:par smil:begin=\"{begin}\">"));
+        for step in steps {
+            out.push_str(&format!("<anim:par smil:begin=\"{}\">{}</anim:par>", smil_time(step.begin_ms), step.effects));
+        }
+        out.push_str("</anim:par>");
+    }
+    out.push_str("</anim:seq></anim:par>");
+    out
+}
+
+fn slide_object_xml(object: &SlideObject, ids: &mut OdpShapeIds) -> String {
+    let id = ids.assign(object);
+    let id_attrs = format!(" draw:id=\"{0}\" xml:id=\"{0}\"", escape(&id));
+    if object.kind == "group" {
+        // Children keep their absolute page coordinates; draw:g has no box of
+        // its own, which matches the editor's group = bounding box of children.
+        let mut children: Vec<&SlideObject> = object.children.iter().collect();
+        children.sort_by_key(|child| child.z);
+        let inner: String = children.into_iter().map(|child| slide_object_xml(child, ids)).collect();
+        return format!(
+            "<draw:g draw:name=\"{}\"{id_attrs} draw:z-index=\"{}\">{inner}</draw:g>",
+            escape(&object.name),
+            object.z
+        );
+    }
+    let frame_start = format!("<draw:frame draw:name=\"{}\"{id_attrs} text:anchor-type=\"page\"", escape(&object.name));
     let style = object.style.clone().unwrap_or_default();
     let mut inner = String::new();
     match object.kind.as_str() {
@@ -1453,13 +2350,7 @@ fn slide_object_xml(object: &SlideObject) -> String {
     }
     let shape = match object.kind.as_str() {
         "ellipse" => "draw:ellipse",
-        "line" | "arrow" => {
-            return format!(
-                "<draw:frame draw:name=\"{}\" text:anchor-type=\"page\" draw:z-index=\"{}\">{inner}</draw:frame>",
-                escape(&object.name),
-                object.z
-            )
-        }
+        "line" | "arrow" => return format!("{frame_start} draw:z-index=\"{}\">{inner}</draw:frame>", object.z),
         _ => "draw:frame",
     };
     if shape == "draw:frame" {
@@ -1469,8 +2360,7 @@ fn slide_object_xml(object: &SlideObject) -> String {
             .map(|fill| format!(" draw:fill=\"solid\" draw:fill-color=\"{}\"", escape(fill)))
             .unwrap_or_else(|| " draw:fill=\"none\"".into());
         format!(
-            "<draw:frame draw:name=\"{}\" text:anchor-type=\"page\" svg:x=\"{}\" svg:y=\"{}\" svg:width=\"{}\" svg:height=\"{}\" draw:z-index=\"{}\"{}>{}<draw:glue-points/><draw:enhanced-geometry/></draw:frame>",
-            escape(&object.name),
+            "{frame_start} svg:x=\"{}\" svg:y=\"{}\" svg:width=\"{}\" svg:height=\"{}\" draw:z-index=\"{}\"{}>{}<draw:glue-points/><draw:enhanced-geometry/></draw:frame>",
             cm(object.x),
             cm(object.y),
             cm(object.w.max(4.0)),
@@ -1482,8 +2372,7 @@ fn slide_object_xml(object: &SlideObject) -> String {
         .replace("<draw:glue-points/><draw:enhanced-geometry/>", "")
     } else {
         format!(
-            "<draw:frame draw:name=\"{}\" text:anchor-type=\"page\" svg:x=\"{}\" svg:y=\"{}\" svg:width=\"{}\" svg:height=\"{}\" draw:z-index=\"{}\">{}</draw:frame>",
-            escape(&object.name),
+            "{frame_start} svg:x=\"{}\" svg:y=\"{}\" svg:width=\"{}\" svg:height=\"{}\" draw:z-index=\"{}\">{}</draw:frame>",
             cm(object.x),
             cm(object.y),
             cm(object.w.max(4.0)),
@@ -1500,36 +2389,31 @@ pub struct DeckWrite {
     pub warnings: Vec<String>,
 }
 
-fn count_groups(objects: &[SlideObject]) -> usize {
-    objects.iter().map(|object| if object.kind == "group" { 1 + count_groups(&object.children) } else { 0 }).sum()
+/// Charts anywhere on the slide, including inside groups.
+fn count_odp_charts(objects: &[SlideObject]) -> usize {
+    objects.iter().map(|object| usize::from(object.chart.is_some()) + count_odp_charts(&object.children)).sum()
 }
 
-fn flatten_groups(objects: &[SlideObject], out: &mut Vec<SlideObject>) {
+fn collect_odp_pictures(objects: &[SlideObject], pictures: &mut Vec<(String, Vec<u8>)>) {
     for object in objects {
-        if object.kind == "group" {
-            flatten_groups(&object.children, out);
-        } else {
-            out.push(object.clone());
+        if let Some(image) = &object.image {
+            if !image.is_empty() && !pictures.iter().any(|(name, _)| name == &image.name) {
+                pictures.push((image.name.clone(), image.bytes()));
+            }
         }
+        collect_odp_pictures(&object.children, pictures);
     }
 }
 
 pub fn write_odp_package(deck: &Deck) -> OfficeResult<DeckWrite> {
-    let bytes = write_odp_bytes(deck)?;
     let mut warnings = Vec::new();
-    let groups: usize = deck.slides.iter().map(|slide| count_groups(&slide.objects)).sum();
-    if groups > 0 {
-        warnings.push("Groups are exported as individual shapes.".into());
-    }
-    let charts: usize =
-        deck.slides.iter().map(|slide| slide.objects.iter().filter(|object| object.chart.is_some()).count()).sum();
+    let bytes = write_odp_bytes(deck, &mut warnings)?;
+    let charts: usize = deck.slides.iter().map(|slide| count_odp_charts(&slide.objects)).sum();
     if charts > 0 {
         warnings.push("Chart data is kept in the native .oswk file; ODP gets drawn placeholder shapes.".into());
     }
-    let animations: usize = deck.slides.iter().map(|slide| slide.animations.len()).sum();
-    if animations > 0 {
-        warnings.push("Animations are kept in the native .oswk file and are not written to ODP.".into());
-    }
+    let mut seen = std::collections::HashSet::new();
+    warnings.retain(|warning| seen.insert(warning.clone()));
     Ok(DeckWrite { bytes, warnings })
 }
 
@@ -1537,22 +2421,21 @@ pub fn write_odp(deck: &Deck) -> OfficeResult<Vec<u8>> {
     Ok(write_odp_package(deck)?.bytes)
 }
 
-fn write_odp_bytes(deck: &Deck) -> OfficeResult<Vec<u8>> {
+fn write_odp_bytes(deck: &Deck, warnings: &mut Vec<String>) -> OfficeResult<Vec<u8>> {
     let mut body = String::new();
     let mut pictures: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut ids = OdpShapeIds::default();
     for (index, slide) in deck.slides.iter().enumerate() {
         body.push_str(&format!("<draw:page draw:name=\"Slide{}\" draw:master-page-name=\"Default\">", index + 1));
-        let mut objects: Vec<SlideObject> = Vec::new();
-        flatten_groups(&slide.objects, &mut objects);
+        ids.slide.clear();
+        collect_odp_pictures(&slide.objects, &mut pictures);
+        let mut objects: Vec<&SlideObject> = slide.objects.iter().collect();
         objects.sort_by_key(|object| object.z);
-        for object in &objects {
-            if let Some(image) = &object.image {
-                if !image.is_empty() && !pictures.iter().any(|(name, _)| name == &image.name) {
-                    pictures.push((image.name.clone(), image.bytes()));
-                }
-            }
-            body.push_str(&slide_object_xml(object));
+        for object in objects {
+            body.push_str(&slide_object_xml(object, &mut ids));
         }
+        // draw:page content order: shapes, then the timing root, then notes.
+        body.push_str(&odp_timing_xml(slide, &ids.slide, warnings));
         if !slide.notes.is_empty() {
             body.push_str(&format!("<presentation:notes><draw:frame presentation:class=\"notes\"><draw:text-box><text:p>{}</text:p></draw:text-box></draw:frame></presentation:notes>", crate::xml::escape_text(&slide.notes)));
         }
@@ -1564,7 +2447,7 @@ fn write_odp_bytes(deck: &Deck) -> OfficeResult<Vec<u8>> {
         cm(deck.size.height_pt)
     );
     let content = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content {NS} office:version=\"1.2\"><office:automatic-styles>{page_layout}</office:automatic-styles><office:body><office:presentation>{body}</office:presentation></office:body></office:document-content>"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content {NS} {ANIM_NS} office:version=\"1.2\"><office:automatic-styles>{page_layout}</office:automatic-styles><office:body><office:presentation>{body}</office:presentation></office:body></office:document-content>"
     );
     let background = match deck.theme.as_str() {
         "dark" => "#0F172A",
@@ -1590,6 +2473,241 @@ fn write_odp_bytes(deck: &Deck) -> OfficeResult<Vec<u8>> {
 
 pub fn write_odp_file(path: &Path, deck: &Deck) -> OfficeResult<()> {
     crate::io::write_atomic(path, &write_odp(deck)?)
+}
+
+/// One `draw:frame` of a slide or group: picture, text box, table, or a plain
+/// shape kept as a rectangle. Frames without a size (lines) are skipped.
+fn read_odp_frame(frame: &XmlNode, reader: &ZipReader, warnings: &mut Vec<String>) -> Option<SlideObject> {
+    let x = frame.attr_any_ns("x").and_then(parse_cm).unwrap_or(40.0);
+    let y = frame.attr_any_ns("y").and_then(parse_cm).unwrap_or(40.0);
+    let w = frame.attr_any_ns("width").and_then(parse_cm).unwrap_or(320.0);
+    let h = frame.attr_any_ns("height").and_then(parse_cm).unwrap_or(180.0);
+    let mut images = Vec::new();
+    frame.find_all("image", &mut images);
+    if let Some(image_node) = images.first() {
+        if let Some(href) = image_node.attr_any_ns("href") {
+            let path = href.trim_start_matches("./");
+            if let Ok(data) = reader.read(path) {
+                let name = path.rsplit('/').next().unwrap_or("image.png").to_string();
+                let mut object = SlideObject::new("image", x, y, w, h);
+                object.image = Some(ImageData::from_bytes(&name, &data));
+                return Some(object);
+            }
+        }
+    }
+    let mut text_boxes = Vec::new();
+    frame.find_all("text-box", &mut text_boxes);
+    if let Some(text_box) = text_boxes.first() {
+        let mut paragraphs = Vec::new();
+        let mut paragraph_nodes = Vec::new();
+        text_box.find_all("p", &mut paragraph_nodes);
+        for paragraph in &paragraph_nodes {
+            paragraphs.push(TextParagraph { text: paragraph.deep_text(), ..Default::default() });
+        }
+        if paragraph_nodes.is_empty() {
+            paragraphs.push(TextParagraph::default());
+        }
+        let mut object = SlideObject::new("text", x, y, w, h);
+        object.text = Some(TextFrame { paragraphs, ..Default::default() });
+        return Some(object);
+    }
+    let mut tables = Vec::new();
+    frame.find_all("table", &mut tables);
+    if let Some(table) = tables.first() {
+        let mut rows = Vec::new();
+        for row_node in table.children_named("table-row") {
+            let mut cells = Vec::new();
+            for cell in row_node.children_named("table-cell") {
+                let mut inner = Vec::new();
+                cell.find_all("p", &mut inner);
+                let cell_text = inner.iter().map(|node| node.deep_text()).collect::<Vec<_>>().join("\n");
+                cells.push(TableCell { blocks: vec![Block::paragraph(&cell_text)], ..Default::default() });
+            }
+            rows.push(TableRow { cells, ..Default::default() });
+        }
+        let mut object = SlideObject::new("table", x, y, w, h);
+        object.table = Some(TableData { rows, ..Default::default() });
+        return Some(object);
+    }
+    // Shapes we cannot map precisely are preserved as rectangles.
+    if frame.attr_any_ns("width").is_some() {
+        let fill = match frame.attr_any_ns("fill") {
+            Some("none") => None,
+            _ => Some(frame.attr_any_ns("fill-color").unwrap_or("#E2E8F0").to_string()),
+        };
+        let mut object = SlideObject::new("rect", x, y, w, h);
+        object.style = Some(ShapeStyle { fill, ..Default::default() });
+        warnings.push("Some shapes were imported as simple rectangles.".into());
+        return Some(object);
+    }
+    None
+}
+
+/// The shapes directly below `parent` (a `draw:page` or a `draw:g`) in
+/// document order. A `draw:g` becomes a `group` object whose box is the
+/// bounding box of its children, as the editor sizes groups; children keep
+/// their absolute coordinates. Shape ids come from `xml:id`/`draw:id` so the
+/// slide timing can find its targets.
+fn read_odp_shapes(parent: &XmlNode, reader: &ZipReader, warnings: &mut Vec<String>) -> Vec<SlideObject> {
+    let mut objects = Vec::new();
+    for node in &parent.children {
+        let object = match node.local_name() {
+            "frame" => read_odp_frame(node, reader, warnings),
+            "g" => {
+                let children = read_odp_shapes(node, reader, warnings);
+                if children.is_empty() {
+                    warnings.push("A group without importable shapes was skipped.".into());
+                    None
+                } else {
+                    let left = children.iter().map(|child| child.x).fold(f64::INFINITY, f64::min);
+                    let top = children.iter().map(|child| child.y).fold(f64::INFINITY, f64::min);
+                    let right =
+                        children.iter().map(|child| child.x + child.w.max(0.0)).fold(f64::NEG_INFINITY, f64::max);
+                    let bottom =
+                        children.iter().map(|child| child.y + child.h.max(0.0)).fold(f64::NEG_INFINITY, f64::max);
+                    let mut group =
+                        SlideObject::new("group", left, top, (right - left).max(1.0), (bottom - top).max(1.0));
+                    group.children = children;
+                    Some(group)
+                }
+            }
+            _ => None,
+        };
+        let Some(mut object) = object else { continue };
+        object.z = objects.len() as i32 + 1;
+        if let Some(id) = node.attr("xml:id").or_else(|| node.attr("draw:id")).filter(|id| !id.trim().is_empty()) {
+            object.id = id.to_string();
+        }
+        object.name = node.attr("draw:name").unwrap_or_default().to_string();
+        objects.push(object);
+    }
+    objects
+}
+
+fn collect_odp_ids<'a>(objects: &'a [SlideObject], out: &mut std::collections::HashSet<&'a str>) {
+    for object in objects {
+        out.insert(object.id.as_str());
+        collect_odp_ids(&object.children, out);
+    }
+}
+
+/// The effect `anim:par` nodes below a sequence, in document order. Effects are
+/// the nodes that carry a trigger or a preset class; the click and "after
+/// previous" containers around them are walked through.
+fn collect_odp_effects<'a>(node: &'a XmlNode, out: &mut Vec<&'a XmlNode>) {
+    for child in &node.children {
+        if !matches!(child.local_name(), "par" | "seq" | "iterate") {
+            continue;
+        }
+        let trigger = matches!(child.attr_any_ns("node-type"), Some("on-click" | "with-previous" | "after-previous"));
+        if trigger || child.attr_any_ns("preset-class").is_some() {
+            out.push(child);
+        } else {
+            collect_odp_effects(child, out);
+        }
+    }
+}
+
+/// Reads the slide's main sequence back into animations: trigger from the
+/// effect's node type, class and preset to kind and editor effect (a preset
+/// without an editor twin maps to the closest effect with a warning), delay
+/// from its begin and duration from its longest child.
+fn read_odp_timing(page: &XmlNode, objects: &[SlideObject], warnings: &mut Vec<String>) -> Vec<Animation> {
+    let Some(root) = page.children.iter().find(|child| child.local_name() == "par") else { return Vec::new() };
+    let mut effects = Vec::new();
+    for sequence in root.children_named("seq") {
+        match sequence.attr_any_ns("node-type") {
+            Some("main-sequence") => collect_odp_effects(sequence, &mut effects),
+            Some("interactive-sequence") => {
+                warnings.push("Animations triggered by clicking a shape were not imported.".into());
+            }
+            _ => {}
+        }
+    }
+    let mut ids = std::collections::HashSet::new();
+    collect_odp_ids(objects, &mut ids);
+    let mut animations = Vec::new();
+    for effect in effects {
+        let mut nodes = Vec::new();
+        effect.walk(&mut nodes);
+        let nodes = &nodes[1..];
+        let preset = effect.attr_any_ns("preset-id").unwrap_or("");
+        let kind = match effect.attr_any_ns("preset-class") {
+            Some(kind @ ("entrance" | "exit" | "emphasis")) => kind,
+            Some(other) => {
+                warnings.push(format!("A \"{other}\" animation has no editor equivalent and was skipped."));
+                continue;
+            }
+            None if preset.starts_with("ooo-entrance-") => "entrance",
+            None if preset.starts_with("ooo-exit-") => "exit",
+            None => "emphasis",
+        };
+        let Some(target) = nodes.iter().find_map(|node| node.attr_any_ns("targetElement")) else {
+            warnings.push("An animation without a target object was skipped.".into());
+            continue;
+        };
+        if !ids.contains(target) {
+            warnings.push("An animation whose target shape was not imported was skipped.".into());
+            continue;
+        }
+        let scale = nodes
+            .iter()
+            .find(|node| node.local_name() == "animateTransform" && node.attr_any_ns("type") == Some("scale"))
+            .and_then(|node| node.attr_any_ns("by").or_else(|| node.attr_any_ns("to")))
+            .and_then(|value| value.split(',').next()?.trim().parse::<f64>().ok());
+        let exact = ODP_PRESETS.iter().find(|entry| {
+            entry.0 == kind
+                && entry.2 == preset
+                && match entry.1 {
+                    "grow" => scale.map(|scale| scale >= 1.0).unwrap_or(true),
+                    "shrink" => scale.map(|scale| scale < 1.0).unwrap_or(false),
+                    _ => true,
+                }
+        });
+        let effect_name = match exact {
+            Some(entry) => entry.1,
+            None => {
+                // A custom effect has no preset; its transition type is the best hint.
+                let hint = if preset.is_empty() {
+                    nodes
+                        .iter()
+                        .find_map(|node| node.attr_any_ns("type").filter(|_| node.local_name() == "transitionFilter"))
+                        .unwrap_or("")
+                } else {
+                    preset
+                };
+                let closest = closest_odp_effect(kind, hint.trim_start_matches(&format!("ooo-{kind}-")));
+                let label = if preset.is_empty() { "without a preset" } else { preset };
+                warnings.push(format!(
+                    "The {kind} effect \"{label}\" was imported as the closest editor effect \"{closest}\"."
+                ));
+                closest
+            }
+        };
+        let trigger = match effect.attr_any_ns("node-type") {
+            Some("with-previous") => "withPrevious",
+            Some("after-previous") => "afterPrevious",
+            _ => "onClick",
+        };
+        let duration = nodes
+            .iter()
+            .filter_map(|node| {
+                let duration = node.attr_any_ns("dur").and_then(parse_smil_seconds)?;
+                Some(node.attr_any_ns("begin").and_then(parse_smil_seconds).unwrap_or(0.0) + duration)
+            })
+            .fold(0.0, f64::max);
+        animations.push(Animation {
+            id: uuid::Uuid::new_v4().to_string(),
+            object_id: target.to_string(),
+            kind: kind.to_string(),
+            effect: effect_name.to_string(),
+            trigger: trigger.to_string(),
+            duration_ms: seconds_to_ms(duration),
+            delay_ms: effect.attr_any_ns("begin").and_then(parse_smil_seconds).map(seconds_to_ms).unwrap_or(0),
+            order: animations.len() as u32,
+        });
+    }
+    animations
 }
 
 pub fn read_odp(bytes: &[u8]) -> OfficeResult<DeckRead> {
@@ -1620,80 +2738,9 @@ pub fn read_odp(bytes: &[u8]) -> OfficeResult<DeckRead> {
     let mut pages = Vec::new();
     root.find_all("page", &mut pages);
     for page in pages {
-        let mut slide = Slide::default();
-        slide.objects.clear();
-        let mut z = 1i32;
-        for frame in page.children_named("frame") {
-            let x = frame.attr("x").and_then(parse_cm).unwrap_or(40.0);
-            let y = frame.attr("y").and_then(parse_cm).unwrap_or(40.0);
-            let w = frame.attr("width").and_then(parse_cm).unwrap_or(320.0);
-            let h = frame.attr("height").and_then(parse_cm).unwrap_or(180.0);
-            let mut images = Vec::new();
-            frame.find_all("image", &mut images);
-            if let Some(image_node) = images.first() {
-                if let Some(href) = image_node.attr("href") {
-                    let path = href.trim_start_matches("./");
-                    if let Ok(data) = reader.read(path) {
-                        let name = path.rsplit('/').next().unwrap_or("image.png").to_string();
-                        let mut object = SlideObject::new("image", x, y, w, h);
-                        object.z = z;
-                        object.image = Some(ImageData::from_bytes(&name, &data));
-                        slide.objects.push(object);
-                        z += 1;
-                        continue;
-                    }
-                }
-            }
-            let mut text_boxes = Vec::new();
-            frame.find_all("text-box", &mut text_boxes);
-            if let Some(text_box) = text_boxes.first() {
-                let mut paragraphs = Vec::new();
-                let mut paragraph_nodes = Vec::new();
-                text_box.find_all("p", &mut paragraph_nodes);
-                for paragraph in &paragraph_nodes {
-                    paragraphs.push(TextParagraph { text: paragraph.deep_text(), ..Default::default() });
-                }
-                if paragraph_nodes.is_empty() {
-                    paragraphs.push(TextParagraph::default());
-                }
-                let mut object = SlideObject::new("text", x, y, w, h);
-                object.z = z;
-                object.text = Some(TextFrame { paragraphs, ..Default::default() });
-                slide.objects.push(object);
-                z += 1;
-                continue;
-            }
-            let mut tables = Vec::new();
-            frame.find_all("table", &mut tables);
-            if let Some(table) = tables.first() {
-                let mut rows = Vec::new();
-                for row_node in table.children_named("table-row") {
-                    let mut cells = Vec::new();
-                    for cell in row_node.children_named("table-cell") {
-                        let mut inner = Vec::new();
-                        cell.find_all("p", &mut inner);
-                        let cell_text = inner.iter().map(|node| node.deep_text()).collect::<Vec<_>>().join("\n");
-                        cells.push(TableCell { blocks: vec![Block::paragraph(&cell_text)], ..Default::default() });
-                    }
-                    rows.push(TableRow { cells, ..Default::default() });
-                }
-                let mut object = SlideObject::new("table", x, y, w, h);
-                object.z = z;
-                object.table = Some(TableData { rows, ..Default::default() });
-                slide.objects.push(object);
-                z += 1;
-                continue;
-            }
-            // Shapes we cannot map precisely are preserved as rectangles.
-            if frame.attr("width").is_some() {
-                let mut object = SlideObject::new("rect", x, y, w, h);
-                object.z = z;
-                object.style = Some(ShapeStyle { fill: Some("#E2E8F0".into()), ..Default::default() });
-                slide.objects.push(object);
-                z += 1;
-                warnings.push("Some shapes were imported as simple rectangles.".into());
-            }
-        }
+        let objects = read_odp_shapes(page, &reader, &mut warnings);
+        let animations = read_odp_timing(page, &objects, &mut warnings);
+        let mut slide = Slide { objects, animations, ..Default::default() };
         let mut notes = Vec::new();
         page.find_all("notes", &mut notes);
         if let Some(notes) = notes.first() {
