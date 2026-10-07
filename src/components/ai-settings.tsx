@@ -530,9 +530,11 @@ export function AiSettings() {
         {t("settings.aiStorage")}:{" "}
         {view?.keyStorage === "dpapi"
           ? t("ai.keySecure")
-          : view?.keyStorage === "plain"
-            ? t("ai.keyPlain")
-            : t("ai.keyMissing")}
+          : view?.keyStorage === "keystore"
+            ? t("ai.keyKeystore")
+            : view?.keyStorage === "plain"
+              ? t("ai.keyPlain")
+              : t("ai.keyMissing")}
       </p>
     </Card>
   );

@@ -207,15 +207,8 @@ fn mask_key(key: &str) -> String {
 fn view(app: &AppHandle) -> AiSettingsView {
     let settings = load_settings_file(app);
     let key = key_path(app).ok().and_then(|path| secret::load_api_key(&path).ok()).unwrap_or_default();
-    let storage = key_path(app)
-        .ok()
-        .filter(|path| path.exists())
-        .map(|path| {
-            std::fs::read_to_string(&path)
-                .map(|content| if content.starts_with("dpapi:") { "dpapi".to_string() } else { "plain".to_string() })
-                .unwrap_or_else(|_| "plain".to_string())
-        })
-        .unwrap_or_else(|| "none".to_string());
+    let storage =
+        key_path(app).map(|path| secret::storage_kind(&path).to_string()).unwrap_or_else(|_| "none".to_string());
     let provider = provider_kind(&settings.provider);
     AiSettingsView {
         // A local Ollama server needs no API key, so it counts as configured.
@@ -244,7 +237,12 @@ fn provider_kind(value: &str) -> aicore::ProviderKind {
 
 fn build_config(app: &AppHandle) -> Result<AiConfig, PdfError> {
     let settings = load_settings_file(app);
-    let key = key_path(app).ok().and_then(|path| secret::load_api_key(&path).ok()).unwrap_or_default();
+    // A stored key that cannot be decrypted (lost Keystore key) is reported as
+    // such instead of as a missing key, so the user knows to enter it again.
+    let (key, key_error) = match key_path(app).and_then(|path| secret::load_api_key(&path)) {
+        Ok(key) => (key, None),
+        Err(error) => (String::new(), Some(error)),
+    };
     let config = AiConfig {
         api_key: key,
         base_url: settings.base_url,
@@ -258,7 +256,7 @@ fn build_config(app: &AppHandle) -> Result<AiConfig, PdfError> {
         embedding_model: settings.embedding_model.clone(),
     };
     if !config.is_configured() {
-        return Err(ai_error(AiError::MissingApiKey));
+        return Err(key_error.unwrap_or_else(|| ai_error(AiError::MissingApiKey)));
     }
     Ok(config)
 }

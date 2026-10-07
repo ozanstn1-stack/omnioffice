@@ -630,7 +630,7 @@ export interface SyncConfigView {
   allowInsecureHttp: boolean;
   remoteDir: string;
   hasPassword: boolean;
-  passwordStorage: "dpapi" | "plain" | "none";
+  passwordStorage: "dpapi" | "keystore" | "plain" | "none";
 }
 
 export interface SyncSaveInput {
