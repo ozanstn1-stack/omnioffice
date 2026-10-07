@@ -1131,6 +1131,17 @@ pub struct ChartData {
     /// empty inner vector means that series only carries a range.
     #[serde(default)]
     pub series_values_cache: Vec<Vec<f64>>,
+    /// Doughnut hole as a percentage of the radius (`c:holeSize`, 10..90). `None`
+    /// is Excel's default of 50, so a plain doughnut stays untouched on a round
+    /// trip. Unset keys are not serialized, which keeps older `.oswk` files and
+    /// the files older builds read free of keys they do not know.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hole_size: Option<u32>,
+    /// Scatter flavour, spelled like `c:scatterStyle`: `lineMarker`, `line`,
+    /// `smoothMarker` or `smooth`. `None` is markers only. A scatter chart reads
+    /// its X values from `categories`; the series ranges are the Y values.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scatter_style: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

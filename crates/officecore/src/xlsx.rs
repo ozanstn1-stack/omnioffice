@@ -761,7 +761,7 @@ struct PlannedImage {
 
 /// The chart kinds the exporter writes as real ChartML parts.
 fn chart_kind_supported(kind: &str) -> bool {
-    matches!(kind, "column" | "bar" | "line" | "pie" | "area")
+    matches!(kind, "column" | "bar" | "line" | "pie" | "area" | "scatter" | "doughnut")
 }
 
 /// Quotes a sheet name when a formula reference needs it (`'My Sheet'!`).
@@ -830,6 +830,8 @@ fn chart_title_xml(text: &str) -> String {
 
 const CHART_CATEGORY_AXIS: u64 = 111_111_111;
 const CHART_VALUE_AXIS: u64 = 222_222_222;
+/// Excel's default doughnut hole, the value `ChartData::hole_size == None` means.
+const DOUGHNUT_DEFAULT_HOLE: u32 = 50;
 
 /// One cached value the way Excel writes `c:v`: plain decimal where possible.
 fn chart_cache_number(value: f64) -> String {
@@ -880,6 +882,77 @@ fn chart_axes_xml(chart: &ChartData) -> String {
     )
 }
 
+/// The two value axes of a scatter chart: X along the bottom, Y on the left.
+fn scatter_axes_xml(chart: &ChartData) -> String {
+    let x_title = if chart.x_title.is_empty() { String::new() } else { chart_title_xml(&chart.x_title) };
+    let y_title = if chart.y_title.is_empty() { String::new() } else { chart_title_xml(&chart.y_title) };
+    format!(
+        "<c:valAx><c:axId val=\"{x}\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling><c:delete val=\"0\"/><c:axPos val=\"b\"/>{x_title}<c:numFmt formatCode=\"General\" sourceLinked=\"1\"/><c:crossAx val=\"{y}\"/><c:crossBetween val=\"midCat\"/></c:valAx><c:valAx><c:axId val=\"{y}\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling><c:delete val=\"0\"/><c:axPos val=\"l\"/>{y_title}<c:numFmt formatCode=\"General\" sourceLinked=\"1\"/><c:crossAx val=\"{x}\"/><c:crossBetween val=\"midCat\"/></c:valAx>",
+        x = CHART_CATEGORY_AXIS,
+        y = CHART_VALUE_AXIS,
+    )
+}
+
+/// What a scatter style draws: (lines, markers, smoothed lines). `None` and the
+/// unknown spellings are markers only, which is Excel's plain "Scatter".
+pub(crate) fn scatter_flavour(style: Option<&str>) -> (bool, bool, bool) {
+    match style {
+        Some("lineMarker") => (true, true, false),
+        Some("line") => (true, false, false),
+        Some("smoothMarker") => (true, true, true),
+        Some("smooth") => (true, false, true),
+        _ => (false, true, false),
+    }
+}
+
+/// The `c:xVal` of a scatter series. X values that are all numbers are written
+/// as a number reference with their cache; anything else stays a string
+/// reference, which Excel plots as 1, 2, 3, ...
+fn scatter_x_values_xml(reference: &str, cache: &[String]) -> String {
+    let numbers: Vec<f64> = cache.iter().filter_map(|label| label.trim().parse::<f64>().ok()).collect();
+    if cache.is_empty() || numbers.len() == cache.len() {
+        format!(
+            "<c:xVal><c:numRef><c:f>{}</c:f>{}</c:numRef></c:xVal>",
+            escape_text(reference),
+            chart_num_cache_xml(&numbers)
+        )
+    } else {
+        format!(
+            "<c:xVal><c:strRef><c:f>{}</c:f>{}</c:strRef></c:xVal>",
+            escape_text(reference),
+            chart_str_cache_xml(cache)
+        )
+    }
+}
+
+/// The marker and line look of one scatter series, before its data.
+fn scatter_series_look_xml(color: Option<&str>, lines: bool, markers: bool) -> String {
+    let rgb = color.map(|color| argb_of(color).get(2..).unwrap_or("000000").to_string());
+    let line = match (&rgb, lines) {
+        (_, false) => "<a:ln w=\"19050\"><a:noFill/></a:ln>".to_string(),
+        (Some(rgb), true) => {
+            format!(
+                "<a:ln w=\"28575\" cap=\"rnd\"><a:solidFill><a:srgbClr val=\"{rgb}\"/></a:solidFill><a:round/></a:ln>"
+            )
+        }
+        (None, true) => String::new(),
+    };
+    let shape = if line.is_empty() { String::new() } else { format!("<c:spPr>{line}</c:spPr>") };
+    let marker = if !markers {
+        "<c:marker><c:symbol val=\"none\"/></c:marker>".to_string()
+    } else {
+        let fill = rgb
+            .map(|rgb| {
+                format!(
+                    "<c:spPr><a:solidFill><a:srgbClr val=\"{rgb}\"/></a:solidFill><a:ln w=\"9525\"><a:solidFill><a:srgbClr val=\"{rgb}\"/></a:solidFill></a:ln></c:spPr>"
+                )
+            })
+            .unwrap_or_default();
+        format!("<c:marker><c:symbol val=\"circle\"/><c:size val=\"7\"/>{fill}</c:marker>")
+    };
+    format!("{shape}{marker}")
+}
+
 /// Builds one `xl/charts/chartN.xml`. `Err` carries the user-facing reason the
 /// chart cannot be represented; the caller keeps it in `.oswk` and warns.
 fn chart_xml(placement: &ChartPlacement, sheet_name: &str) -> Result<String, String> {
@@ -888,11 +961,18 @@ fn chart_xml(placement: &ChartPlacement, sheet_name: &str) -> Result<String, Str
     if !chart_kind_supported(kind) {
         return Err(format!("the chart type \"{kind}\" is not exportable"));
     }
-    let categories = absolute_ref(&chart.categories, sheet_name)
-        .ok_or_else(|| "the category range could not be read".to_string())?;
+    let scatter = kind == "scatter";
+    // A scatter chart may leave the X range empty (Excel then plots 1, 2, 3, ...);
+    // every other kind needs its category range.
+    let categories = absolute_ref(&chart.categories, sheet_name);
+    if categories.is_none() && !(scatter && chart.categories.trim().is_empty()) {
+        return Err("the category range could not be read".to_string());
+    }
+    let categories = categories.unwrap_or_default();
     if chart.series.is_empty() {
         return Err("the chart has no data series".into());
     }
+    let (scatter_lines, scatter_markers, scatter_smooth) = scatter_flavour(chart.scatter_style.as_deref());
 
     let mut series_xml = String::new();
     for (index, series) in chart.series.iter().enumerate() {
@@ -902,6 +982,23 @@ fn chart_xml(placement: &ChartPlacement, sheet_name: &str) -> Result<String, Str
             "<c:ser><c:idx val=\"{index}\"/><c:order val=\"{index}\"/><c:tx><c:v>{}</c:v></c:tx>",
             escape_text(&series.name)
         ));
+        // Cached labels/values from an imported ChartML part are written back
+        // so a chart whose source range lives outside the package still renders
+        // and a second import sees the same model.
+        let value_cache =
+            chart.series_values_cache.get(index).map(|values| chart_num_cache_xml(values)).unwrap_or_default();
+        if scatter {
+            series_xml.push_str(&scatter_series_look_xml(series.color.as_deref(), scatter_lines, scatter_markers));
+            if !categories.is_empty() {
+                series_xml.push_str(&scatter_x_values_xml(&categories, &chart.categories_cache));
+            }
+            series_xml.push_str(&format!(
+                "<c:yVal><c:numRef><c:f>{}</c:f>{value_cache}</c:numRef></c:yVal><c:smooth val=\"{}\"/></c:ser>",
+                escape_text(&values),
+                u8::from(scatter_smooth)
+            ));
+            continue;
+        }
         if let Some(color) = series.color.as_deref() {
             let argb = argb_of(color);
             series_xml.push_str(&format!(
@@ -909,12 +1006,7 @@ fn chart_xml(placement: &ChartPlacement, sheet_name: &str) -> Result<String, Str
                 argb.get(2..).unwrap_or("000000")
             ));
         }
-        // Cached labels/values from an imported ChartML part are written back
-        // so a chart whose source range lives outside the package still renders
-        // and a second import sees the same model.
         let category_cache = if index == 0 { chart_str_cache_xml(&chart.categories_cache) } else { String::new() };
-        let value_cache =
-            chart.series_values_cache.get(index).map(|values| chart_num_cache_xml(values)).unwrap_or_default();
         series_xml.push_str(&format!(
             "<c:cat><c:strRef><c:f>{}</c:f>{category_cache}</c:strRef></c:cat><c:val><c:numRef><c:f>{}</c:f>{value_cache}</c:numRef></c:val></c:ser>",
             // A sheet name can contain `&` or `<`; the reference has to be
@@ -965,6 +1057,23 @@ fn chart_xml(placement: &ChartPlacement, sheet_name: &str) -> Result<String, Str
             plot.push_str(&format!(
                 "<c:pieChart><c:varyColors val=\"1\"/>{series_xml}{labels}<c:firstSliceAng val=\"0\"/></c:pieChart>"
             ));
+        }
+        "doughnut" => {
+            let hole = chart.hole_size.unwrap_or(DOUGHNUT_DEFAULT_HOLE).clamp(10, 90);
+            plot.push_str(&format!(
+                "<c:doughnutChart><c:varyColors val=\"1\"/>{series_xml}{labels}<c:firstSliceAng val=\"0\"/><c:holeSize val=\"{hole}\"/></c:doughnutChart>"
+            ));
+        }
+        "scatter" => {
+            // Excel spells every drawn flavour `lineMarker` (or `smoothMarker`);
+            // whether lines and markers show is decided per series above.
+            let style = if scatter_smooth { "smoothMarker" } else { "lineMarker" };
+            plot.push_str(&format!(
+                "<c:scatterChart><c:scatterStyle val=\"{style}\"/><c:varyColors val=\"0\"/>{series_xml}{labels}<c:axId val=\"{cat}\"/><c:axId val=\"{val}\"/></c:scatterChart>",
+                cat = CHART_CATEGORY_AXIS,
+                val = CHART_VALUE_AXIS,
+            ));
+            axes = scatter_axes_xml(chart);
         }
         _ => return Err(format!("the chart type \"{kind}\" is not exportable")),
     }
@@ -3135,6 +3244,8 @@ fn read_xlsx_chart(xml: &str, warnings: &mut Vec<String>) -> Option<ChartData> {
         "lineChart" => "line".to_string(),
         "pieChart" => "pie".to_string(),
         "areaChart" => "area".to_string(),
+        "scatterChart" => "scatter".to_string(),
+        "doughnutChart" => "doughnut".to_string(),
         other => {
             let raw = other.trim_end_matches("Chart").to_ascii_lowercase();
             if !raw.is_empty() {
@@ -3160,30 +3271,50 @@ fn read_xlsx_chart(xml: &str, warnings: &mut Vec<String>) -> Option<ChartData> {
             "An imported chart has its legend at \"{position}\"; the editor renders charts with a bottom legend."
         ));
     }
+    let scatter = kind == "scatter";
     let mut series = Vec::new();
     let mut categories = String::new();
     let mut categories_cache = Vec::new();
     let mut series_values_cache = Vec::new();
     for ser in plot_child.children_named("ser") {
         let name = ser.child("tx").map(chart_text_block).unwrap_or_default();
-        let range = ser
-            .child("val")
+        // A scatter series carries its X values in `xVal` and its Y values in
+        // `yVal`; every other kind uses `cat` and `val`.
+        let (value_node, category_node) =
+            if scatter { (ser.child("yVal"), ser.child("xVal")) } else { (ser.child("val"), ser.child("cat")) };
+        let range = value_node
             .and_then(|val| descendant(val, "f"))
             .map(XmlNode::deep_text)
             .map(|value| relative_ref(&value))
             .unwrap_or_default();
-        let color = descendant(ser, "spPr")
-            .and_then(|props| descendant(props, "srgbClr"))
-            .and_then(|color| color.attr("val"))
-            .map(|value| format!("#{}", value.trim_start_matches('#').to_ascii_uppercase()));
-        if categories.is_empty() {
-            if let Some(cat) = ser.child("cat") {
-                categories =
-                    descendant(cat, "f").map(XmlNode::deep_text).map(|value| relative_ref(&value)).unwrap_or_default();
+        // A markers-only scatter series puts its colour on the marker, not on
+        // the (hidden) line.
+        let colored = |props: Option<&XmlNode>| {
+            props
+                .and_then(|props| descendant(props, "srgbClr"))
+                .and_then(|color| color.attr("val"))
+                .map(|value| format!("#{}", value.trim_start_matches('#').to_ascii_uppercase()))
+        };
+        let color = if scatter {
+            colored(ser.child("spPr")).or_else(|| colored(ser.child("marker").and_then(|marker| marker.child("spPr"))))
+        } else {
+            colored(descendant(ser, "spPr"))
+        };
+        if let Some(cat) = category_node {
+            let reference =
+                descendant(cat, "f").map(XmlNode::deep_text).map(|value| relative_ref(&value)).unwrap_or_default();
+            if categories.is_empty() {
+                categories = reference;
                 categories_cache = cache_text_values(cat);
+            } else if scatter && !reference.is_empty() && reference != categories {
+                // The model has one X range per chart; a series with its own X
+                // values keeps the first range and reports the difference.
+                warnings.push(format!(
+                    "Scatter series \"{name}\" has its own X values ({reference}); the chart uses {categories} for every series."
+                ));
             }
         }
-        series_values_cache.push(ser.child("val").map(cache_number_values).unwrap_or_default());
+        series_values_cache.push(value_node.map(cache_number_values).unwrap_or_default());
         series.push(ChartSeries { name, range, color });
     }
     let stacked = descendant(plot_child, "grouping")
@@ -3201,10 +3332,29 @@ fn read_xlsx_chart(xml: &str, warnings: &mut Vec<String>) -> Option<ChartData> {
         .and_then(|node| node.attr("val"))
         .map(|value| value == "1")
         .unwrap_or(false);
-    let x_title =
-        descendant(plot, "catAx").and_then(|axis| axis.child("title")).map(chart_text_block).unwrap_or_default();
-    let y_title =
-        descendant(plot, "valAx").and_then(|axis| axis.child("title")).map(chart_text_block).unwrap_or_default();
+    let axis_title =
+        |axis: Option<&XmlNode>| axis.and_then(|axis| axis.child("title")).map(chart_text_block).unwrap_or_default();
+    // A scatter chart has two value axes: the one along the bottom (or top) is
+    // X, the other is Y.
+    let (x_title, y_title) = if scatter {
+        let axes = plot.children_of("valAx");
+        let horizontal =
+            |axis: &XmlNode| matches!(axis.child("axPos").and_then(|node| node.attr("val")), Some("b") | Some("t"));
+        let x_index = axes.iter().position(|axis| horizontal(axis)).unwrap_or(0);
+        let y_index = usize::from(x_index == 0);
+        (axis_title(axes.get(x_index).copied()), axis_title(axes.get(y_index).copied()))
+    } else {
+        (axis_title(descendant(plot, "catAx")), axis_title(descendant(plot, "valAx")))
+    };
+    let hole_size = if kind == "doughnut" {
+        descendant(plot_child, "holeSize")
+            .and_then(|node| parse_u32_attr(node, "val"))
+            .map(|hole| hole.clamp(10, 90))
+            .filter(|hole| *hole != DOUGHNUT_DEFAULT_HOLE)
+    } else {
+        None
+    };
+    let scatter_style = if scatter { read_scatter_style(plot_child) } else { None };
     Some(ChartData {
         kind,
         title,
@@ -3217,7 +3367,44 @@ fn read_xlsx_chart(xml: &str, warnings: &mut Vec<String>) -> Option<ChartData> {
         show_labels,
         categories_cache,
         series_values_cache,
+        hole_size,
+        scatter_style,
     })
+}
+
+/// The scatter flavour of a `c:scatterChart`, in the model's spelling. Excel
+/// writes `lineMarker` for plain scatter too, so the look comes from what the
+/// series draw: a hidden line (`a:ln/a:noFill`) or a `none` marker symbol.
+/// Markers only is the default and reads as `None`.
+fn read_scatter_style(plot_child: &XmlNode) -> Option<String> {
+    let declared = plot_child.child("scatterStyle").and_then(|node| node.attr("val")).unwrap_or("lineMarker");
+    let series = plot_child.children_named("ser").collect::<Vec<_>>();
+    let line_hidden = |ser: &XmlNode| {
+        ser.child("spPr")
+            .and_then(|props| props.child("ln"))
+            .map(|line| line.child("noFill").is_some())
+            .unwrap_or(false)
+    };
+    let marker_hidden = |ser: &XmlNode| {
+        ser.child("marker").and_then(|marker| marker.child("symbol")).and_then(|symbol| symbol.attr("val"))
+            == Some("none")
+    };
+    // `c:smooth` without a value means on (CT_Boolean defaults to true).
+    let smooth = declared.starts_with("smooth")
+        || series
+            .iter()
+            .filter_map(|ser| ser.child("smooth"))
+            .any(|node| node.attr("val").map(|value| matches!(value.trim(), "1" | "true")).unwrap_or(true));
+    let lines = !series.iter().all(|ser| line_hidden(ser)) && !matches!(declared, "marker" | "none");
+    let markers =
+        !(!series.is_empty() && series.iter().all(|ser| marker_hidden(ser))) && !matches!(declared, "line" | "smooth");
+    match (lines, markers, smooth) {
+        (false, ..) => None,
+        (true, true, false) => Some("lineMarker".into()),
+        (true, false, false) => Some("line".into()),
+        (true, true, true) => Some("smoothMarker".into()),
+        (true, false, true) => Some("smooth".into()),
+    }
 }
 
 /// The cell anchor of a `oneCellAnchor`/`twoCellAnchor`, in the model's terms.
@@ -3965,8 +4152,7 @@ mod tests {
                 y_title: "EUR".into(),
                 stacked: false,
                 show_labels: true,
-                categories_cache: Vec::new(),
-                series_values_cache: Vec::new(),
+                ..Default::default()
             },
             anchor: "D2".into(),
             width_px: 420.0,

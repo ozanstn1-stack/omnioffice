@@ -159,7 +159,7 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
             vec![
                 feature("tables", SupportLevel::Full, "Structured tables with headers, totals and filters round-trip."),
                 feature("pivotTables", SupportLevel::Partial, "Imported pivot caches and tables are preserved and re-exported from their raw parts; the grid is not recomputed, and editor pivots export as computed values."),
-                feature("charts", SupportLevel::Full, "Column, bar, line, pie and area charts round-trip, including titles, series colours, caches and cell anchors."),
+                feature("charts", SupportLevel::Full, "Column, bar, line, pie, area, scatter and doughnut charts round-trip, including titles, series colours, caches, doughnut hole size and cell anchors; scatter series share one X range."),
                 feature("images", SupportLevel::Full, "Pictures are imported and exported with their anchor, size and rotation."),
                 feature("printSettings", SupportLevel::Full, "Print area, repeating titles, margins, headers/footers and manual page breaks round-trip."),
                 feature("protection", SupportLevel::Full, "Password verifiers and locked-action flags are preserved exactly and never cracked."),
@@ -188,7 +188,7 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
             vec![
                 feature("tables", SupportLevel::Partial, "Tables export as plain cell ranges."),
                 feature("pivotTables", SupportLevel::Partial, "Editor pivot tables are written as their computed values; the live definition stays in .oswk."),
-                feature("charts", SupportLevel::Full, "Column, bar, line, pie and area charts are written as embedded chart objects with their ranges, titles, legend, series colours and cached values."),
+                feature("charts", SupportLevel::Full, "Column, bar, line, pie, area, scatter and doughnut charts are written as embedded chart objects with their ranges, titles, legend, series colours and cached values; ODF has no doughnut hole size, so a custom one stays in .oswk and XLSX."),
             ],
         ),
         "csv" | "tsv" => (true, true, true, false, vec![]),

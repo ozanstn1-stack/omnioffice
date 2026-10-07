@@ -1639,6 +1639,7 @@ fn read_chart_xml(xml: &str, warnings: &mut Vec<String>) -> Option<ChartData> {
         show_labels,
         categories_cache,
         series_values_cache,
+        ..Default::default()
     })
 }
 

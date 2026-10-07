@@ -374,6 +374,11 @@ export interface ChartSeries {
 }
 
 export interface ChartData {
+  /**
+   * `column`, `bar`, `line`, `pie`, `area`, plus `scatter` and `doughnut` in
+   * Calc. A scatter chart reads its X values from `categories` and the Y values
+   * from each series range.
+   */
   kind: string;
   title: string;
   categories: string;
@@ -391,6 +396,13 @@ export interface ChartData {
   categoriesCache?: string[];
   /** Cached values per series (ChartML `c:numCache`, V3.1), aligned with `series`. */
   seriesValuesCache?: number[][];
+  /** Doughnut hole as a percentage of the radius (10..90); absent or null is 50. */
+  holeSize?: number | null;
+  /**
+   * Scatter flavour, spelled like `c:scatterStyle`: `lineMarker`, `line`,
+   * `smoothMarker` or `smooth`. Absent or null is markers only.
+   */
+  scatterStyle?: string | null;
 }
 
 export interface ChartPlacement {

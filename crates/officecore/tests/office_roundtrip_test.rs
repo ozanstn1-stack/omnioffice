@@ -251,6 +251,7 @@ fn pptx_open_edit_save_reopen() {
         show_labels: false,
         categories_cache: vec!["Alpha".into(), "Beta".into()],
         series_values_cache: vec![vec![1.5, 2.5]],
+        ..Default::default()
     });
     edited.slides[0].objects.push(chart_object);
     let target = temp("roundtrip-presentation.pptx");

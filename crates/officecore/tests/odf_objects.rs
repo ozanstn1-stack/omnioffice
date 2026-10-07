@@ -410,6 +410,7 @@ fn chart_workbook() -> Workbook {
                 // chart's local table and not from the sheet.
                 categories_cache: vec!["Q1 cached".into(), "Q2 cached".into(), "Q3 cached".into()],
                 series_values_cache: vec![vec![11.0, 21.5, 32.0], vec![5.0, 7.0, 8.5]],
+                ..Default::default()
             },
             anchor: "E2".into(),
             width_px: 480.0,

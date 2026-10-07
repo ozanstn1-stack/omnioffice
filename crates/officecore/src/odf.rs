@@ -1561,7 +1561,7 @@ struct OdsChartObject {
 /// Why a sheet chart cannot be written to ODS, if it cannot. The writer skips
 /// such a chart; the compatibility report names it before the save.
 pub(crate) fn ods_chart_problem(chart: &ChartData) -> Option<String> {
-    if !matches!(chart.kind.as_str(), "column" | "bar" | "line" | "pie" | "area") {
+    if !matches!(chart.kind.as_str(), "column" | "bar" | "line" | "pie" | "area" | "scatter" | "doughnut") {
         return Some(format!("the chart type \"{}\" is not exportable", chart.kind));
     }
     if chart.series.is_empty() {
@@ -1691,10 +1691,17 @@ fn ods_chart_local_table(chart: &ChartData, cells: &std::collections::BTreeMap<S
     out.push_str("</table:table-row></table:table-header-rows><table:table-rows>");
     for row in 0..rows {
         let label = categories.get(row).map(String::as_str).unwrap_or("");
-        out.push_str(&format!(
-            "<table:table-row><table:table-cell office:value-type=\"string\"><text:p>{}</text:p></table:table-cell>",
-            crate::xml::escape_text(label)
-        ));
+        // The first column of a scatter chart holds X values, which are numbers.
+        match label.trim().parse::<f64>().ok().filter(|number| chart.kind == "scatter" && number.is_finite()) {
+            Some(number) => out.push_str(&format!(
+                "<table:table-row><table:table-cell office:value-type=\"float\" office:value=\"{number}\"><text:p>{}</text:p></table:table-cell>",
+                crate::xml::escape_text(label)
+            )),
+            None => out.push_str(&format!(
+                "<table:table-row><table:table-cell office:value-type=\"string\"><text:p>{}</text:p></table:table-cell>",
+                crate::xml::escape_text(label)
+            )),
+        }
         for values in &series {
             match values.get(row).copied().flatten() {
                 Some(value) => out.push_str(&format!(
@@ -1720,50 +1727,81 @@ fn ods_chart_content(
 ) -> String {
     let chart = &placement.chart;
     let kind = chart.kind.as_str();
-    let pie = kind == "pie";
+    let pie = matches!(kind, "pie" | "doughnut");
+    let scatter = kind == "scatter";
+    // LibreOffice's donut is the `chart:ring` class. ODF has no hole size, so a
+    // custom `hole_size` stays in the .oswk and XLSX files only.
     let class = match kind {
         "line" => "chart:line",
         "pie" => "chart:circle",
+        "doughnut" => "chart:ring",
         "area" => "chart:area",
+        "scatter" => "chart:scatter",
         _ => "chart:bar",
     };
+    let (scatter_lines, scatter_markers, scatter_smooth) = crate::xlsx::scatter_flavour(chart.scatter_style.as_deref());
     let mut plot_properties = String::new();
     if matches!(kind, "column" | "bar") {
         plot_properties.push_str(&format!(" chart:vertical=\"{}\"", kind == "bar"));
     }
-    if chart.stacked && !pie {
+    if chart.stacked && !pie && !scatter {
         plot_properties.push_str(" chart:stacked=\"true\"");
+    }
+    if scatter && scatter_smooth {
+        plot_properties.push_str(" chart:interpolation=\"cubic-spline\"");
     }
     let mut styles = format!(
         "<style:style style:name=\"chPlot\" style:family=\"chart\"><style:chart-properties{plot_properties}/></style:style>"
     );
+    // A scatter chart reads its X values from the first series' domain.
+    let domain = if scatter { ods_range_address(sheet_name, &chart.categories) } else { None };
     let mut series_xml = String::new();
     for (index, series) in chart.series.iter().enumerate() {
         let style_name = format!("chS{}", index + 1);
-        let labels = if chart.show_labels { " chart:data-label-number=\"value\"" } else { "" };
-        let graphic = series
-            .color
-            .as_deref()
-            .and_then(ods_color)
-            .map(|color| {
-                format!(
-                    "<style:graphic-properties draw:fill=\"solid\" draw:fill-color=\"{color}\" svg:stroke-color=\"{color}\"/>"
-                )
-            })
-            .unwrap_or_default();
+        let mut chart_properties = String::new();
+        if chart.show_labels {
+            chart_properties.push_str(" chart:data-label-number=\"value\"");
+        }
+        if scatter {
+            let symbol = if scatter_markers { "automatic" } else { "none" };
+            chart_properties.push_str(&format!(" chart:symbol-type=\"{symbol}\""));
+        }
+        let color = series.color.as_deref().and_then(ods_color);
+        let stroke = if scatter {
+            format!(" draw:stroke=\"{}\"", if scatter_lines { "solid" } else { "none" })
+        } else {
+            String::new()
+        };
+        let graphic = match color {
+            Some(color) => format!(
+                "<style:graphic-properties{stroke} draw:fill=\"solid\" draw:fill-color=\"{color}\" svg:stroke-color=\"{color}\"/>"
+            ),
+            None if scatter => format!("<style:graphic-properties{stroke}/>"),
+            None => String::new(),
+        };
         styles.push_str(&format!(
-            "<style:style style:name=\"{style_name}\" style:family=\"chart\"><style:chart-properties{labels}/>{graphic}</style:style>"
+            "<style:style style:name=\"{style_name}\" style:family=\"chart\"><style:chart-properties{chart_properties}/>{graphic}</style:style>"
         ));
         // LibreOffice stores a literal series name as a quoted string literal.
-        series_xml.push_str(&format!(
-            "<chart:series chart:style-name=\"{style_name}\" chart:class=\"{class}\" chart:values-cell-range-address=\"{}\" loext:label-string=\"{}\"/>",
+        let domain_xml = domain
+            .as_deref()
+            .map(|range| format!("<chart:domain table:cell-range-address=\"{}\"/>", escape(range)))
+            .unwrap_or_default();
+        let series_head = format!(
+            "<chart:series chart:style-name=\"{style_name}\" chart:class=\"{class}\" chart:values-cell-range-address=\"{}\" loext:label-string=\"{}\"",
             escape(&ods_range_address(sheet_name, &series.range).unwrap_or_default()),
             escape(&format!("\"{}\"", series.name.replace('"', "\"\"")))
-        ));
+        );
+        if domain_xml.is_empty() {
+            series_xml.push_str(&format!("{series_head}/>"));
+        } else {
+            series_xml.push_str(&format!("{series_head}>{domain_xml}</chart:series>"));
+        }
     }
     let categories = ods_range_address(sheet_name, &chart.categories);
     let categories_xml = categories
         .as_deref()
+        .filter(|_| !scatter)
         .map(|range| format!("<chart:categories table:cell-range-address=\"{}\"/>", escape(range)))
         .unwrap_or_default();
     // Like the XLSX export, a pie chart has no axes worth a title.
@@ -2122,12 +2160,13 @@ fn read_ods_chart(
         "bar" => "column",
         "line" => "line",
         "circle" => "pie",
+        "ring" => "doughnut",
         "area" => "area",
+        "scatter" => "scatter",
         other => {
             let mapped = match other {
-                "ring" => "pie",
                 "filled-radar" => "area",
-                "scatter" | "bubble" | "stock" | "radar" => "line",
+                "bubble" | "stock" | "radar" => "line",
                 _ => "column",
             };
             warnings.push(format!("A \"{other}\" chart was imported as a {mapped} chart."));
@@ -2170,10 +2209,26 @@ fn read_ods_chart(
     if !keep_caches {
         warnings.push("A chart's cached values were too large and were left out; its cell ranges are kept.".into());
     }
+    let mut lines_hidden = true;
+    let mut markers_hidden = true;
     for (index, node) in series_nodes.into_iter().enumerate() {
         let style_name = node.attr_any_ns("style-name");
         show_labels |= labels_on(ods_style_child(&styles, style_name, "chart-properties"));
         let graphic = ods_style_child(&styles, style_name, "graphic-properties");
+        if kind == "scatter" {
+            // A scatter series draws a line unless its stroke is `none` and
+            // shows markers unless its symbol type is `none`.
+            lines_hidden &= graphic.and_then(|graphic| graphic.attr_any_ns("stroke")) == Some("none");
+            markers_hidden &= ods_style_child(&styles, style_name, "chart-properties")
+                .and_then(|properties| properties.attr_any_ns("symbol-type"))
+                == Some("none");
+            // The X values are the series' domain; the first one is the chart's.
+            if categories.is_empty() {
+                if let Some(range) = node.child("domain").and_then(|domain| domain.attr_any_ns("cell-range-address")) {
+                    categories = ods_range_to_ours(range);
+                }
+            }
+        }
         let color = graphic
             .and_then(|graphic| {
                 let stroke = graphic.attr_any_ns("stroke-color");
@@ -2254,6 +2309,17 @@ fn read_ods_chart(
             show_labels,
             categories_cache,
             series_values_cache,
+            hole_size: None,
+            scatter_style: (kind == "scatter" && !lines_hidden).then(|| {
+                let smooth = plot_properties.and_then(|node| node.attr_any_ns("interpolation")) == Some("cubic-spline");
+                match (markers_hidden, smooth) {
+                    (false, false) => "lineMarker",
+                    (true, false) => "line",
+                    (false, true) => "smoothMarker",
+                    (true, true) => "smooth",
+                }
+                .to_string()
+            }),
         },
         anchor,
         width_px: size("width", 480.0),
