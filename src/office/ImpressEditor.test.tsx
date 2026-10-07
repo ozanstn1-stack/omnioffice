@@ -1,5 +1,5 @@
-import { fireEvent, render, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The editor module pulls in the session hook, which touches Tauri at import
 // time; stubs keep the pure helpers testable in jsdom.
@@ -26,6 +26,7 @@ import {
   ungroupSelection,
 } from "./ImpressEditor";
 import { useOfficeTabs, type OfficeTab } from "../lib/office-store";
+import { useSettings } from "../lib/store";
 import {
   defaultRun,
   newAnimation,
@@ -516,5 +517,32 @@ describe("Impress chart data editor", () => {
     const chart = savedChart(id);
     expect(chart.series).toHaveLength(2);
     expect(chart.seriesValuesCache).toEqual([[10, 20, 30], [9]]);
+  });
+});
+
+describe("transition names", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+  });
+  afterEach(() => {
+    useSettings.setState((state) => ({ settings: { ...state.settings, language: "en" } }));
+  });
+
+  /** The labels of the slide transition dropdown, in the given app language. */
+  function transitionLabels(language: "en" | "tr"): string[] {
+    useSettings.setState((state) => ({ settings: { ...state.settings, language } }));
+    const id = useOfficeTabs.getState().create("impress", "Transitions", newDeck("Transitions"));
+    render(<Harness id={id} />);
+    fireEvent.click(screen.getByRole("button", { name: language === "en" ? "Transitions" : "Geçişler" }));
+    const select = document.querySelector<HTMLSelectElement>("select.tool-select")!;
+    return [...select.options].map((option) => option.textContent ?? "");
+  }
+
+  it("lists the transitions in English", () => {
+    expect(transitionLabels("en")).toEqual(["None", "Fade", "Slide", "Push", "Wipe"]);
+  });
+
+  it("lists the transitions in Turkish instead of English words", () => {
+    expect(transitionLabels("tr")).toEqual(["Yok", "Solma", "Kaydırma", "İtme", "Silme"]);
   });
 });

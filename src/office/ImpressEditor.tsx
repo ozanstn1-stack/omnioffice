@@ -1871,10 +1871,10 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
               }
               options={[
                 { value: "none", label: t("impress.transitionNone") },
-                { value: "fade", label: "Fade" },
-                { value: "slide", label: "Slide" },
-                { value: "push", label: "Push" },
-                { value: "wipe", label: "Wipe" },
+                { value: "fade", label: t("impress.transitionFade") },
+                { value: "slide", label: t("impress.transitionSlide") },
+                { value: "push", label: t("impress.transitionPush") },
+                { value: "wipe", label: t("impress.transitionWipe") },
               ]}
               width={130}
             />
