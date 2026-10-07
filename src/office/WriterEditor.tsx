@@ -3702,6 +3702,7 @@ function TableView({
   onUpdate: (block: Block) => void;
   onSyncCell: (path: [number, number, number, number], element: HTMLElement) => void;
 }) {
+  const t = useT();
   const table = block.table;
   const [menuCell, setMenuCell] = useState<{ row: number; cell: number } | null>(null);
   const updateTable = (mutate: (table: TableData) => TableData) => onUpdate({ type: "table", table: mutate(table) });
@@ -3754,7 +3755,10 @@ function TableView({
         </tbody>
       </table>
       {menuCell ? (
-        <Dialog title={`Row ${menuCell.row + 1} · Cell ${menuCell.cell + 1}`} onClose={() => setMenuCell(null)}>
+        <Dialog
+          title={t("writer.tableCellMenu", { row: menuCell.row + 1, cell: menuCell.cell + 1 })}
+          onClose={() => setMenuCell(null)}
+        >
           <div className="row">
             <button
               type="button"
@@ -3771,7 +3775,7 @@ function TableView({
                 setMenuCell(null);
               }}
             >
-              Add row below
+              {t("writer.tableAddRowBelow")}
             </button>
             <button
               type="button"
@@ -3785,7 +3789,7 @@ function TableView({
                 setMenuCell(null);
               }}
             >
-              Delete row
+              {t("writer.tableDeleteRow")}
             </button>
             <button
               type="button"
@@ -3805,7 +3809,7 @@ function TableView({
                 setMenuCell(null);
               }}
             >
-              Add column
+              {t("writer.tableAddColumn")}
             </button>
             <button
               type="button"
@@ -3822,7 +3826,7 @@ function TableView({
                 setMenuCell(null);
               }}
             >
-              Delete column
+              {t("writer.tableDeleteColumn")}
             </button>
             <button
               type="button"
@@ -3844,7 +3848,7 @@ function TableView({
                 setMenuCell(null);
               }}
             >
-              Toggle cell shade
+              {t("writer.tableToggleShade")}
             </button>
             <button
               type="button"
@@ -3854,7 +3858,7 @@ function TableView({
                 setMenuCell(null);
               }}
             >
-              Toggle borders
+              {t("writer.tableToggleBorders")}
             </button>
           </div>
         </Dialog>
