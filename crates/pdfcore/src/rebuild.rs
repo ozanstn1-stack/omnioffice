@@ -873,7 +873,9 @@ fn object_stream_members(dict: &Dictionary, decoded: &[u8], budget: usize) -> Ve
         .take(budget.saturating_mul(2))
         .collect();
     let mut entries: Vec<(usize, u32, usize)> = numbers
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .enumerate()
         .filter_map(|(slot, pair)| {
             let number = u32::try_from(*pair.first()?).ok().filter(|&n| n > 0 && n <= MAX_OBJECT_NUMBER)?;
