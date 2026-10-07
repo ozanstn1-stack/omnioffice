@@ -124,7 +124,7 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
                 feature("sections", SupportLevel::Partial, "Section breaks are written as page breaks; per-section page setup is not exported to ODT."),
                 feature("footnotes", SupportLevel::Full, "Footnotes and endnotes round-trip as text:note elements with matching citation numbers."),
                 feature("trackChanges", SupportLevel::Unsupported, "Tracked changes are kept in .oswk only; a warning is reported when exporting to ODT."),
-                feature("comments", SupportLevel::Unsupported, "Comments are kept in .oswk only."),
+                feature("comments", SupportLevel::Partial, "Comments round-trip as office:annotation ranges with LibreOffice's resolved flag; ODF has no portable reply threading, so replies are stored as reply paragraphs."),
                 feature("fields", SupportLevel::Unsupported, "Fields export as their cached text."),
             ],
         ),
@@ -137,7 +137,7 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
                 feature("sections", SupportLevel::Partial, "Sections become page breaks."),
                 feature("footnotes", SupportLevel::Partial, "Footnotes are written as real \\footnote destinations; the endnote class survives through an ignorable \\* marker because RTF has no per-note endnote class."),
                 feature("trackChanges", SupportLevel::Partial, "Insertions and deletions are written as \\revised/\\deleted marks with a \\revtbl author table; formatting revisions are not representable."),
-                feature("comments", SupportLevel::Unsupported, "Comments are kept in .oswk only."),
+                feature("comments", SupportLevel::Partial, "Comments are written as Word annotations (\\atrfstart/\\atrfend ranges and \\annotation groups); replies are stored as reply paragraphs, timestamps keep minute precision and the resolved state survives only through an ignorable \\* marker."),
             ],
         ),
         "txt" | "md" | "markdown" | "html" | "htm" => (
@@ -317,8 +317,12 @@ pub fn document_feature_report(document: &TextDocument, format: &str) -> Compati
                     "Pending tracked changes are not written to ODT; keep the .oswk copy.",
                 ));
             }
-            if document.track_changes || !document.comments.is_empty() {
-                items.push(item("comments", "lost", "Comments are not written to ODT; keep the .oswk copy."));
+            if table_comment(document) {
+                items.push(item(
+                    "comments",
+                    "transformed",
+                    "Comments are written as office:annotation ranges; replies become extra reply paragraphs because ODF has no portable reply threading, and reply timestamps are not kept.",
+                ));
             }
         }
         "rtf" => {
@@ -329,7 +333,7 @@ pub fn document_feature_report(document: &TextDocument, format: &str) -> Compati
                 items.push(item("trackChanges", "transformed", "Insertions and deletions are written as \\revised/\\deleted marks with a \\revtbl author table and \\revdttm timestamps; formatting revisions are simplified."));
             }
             if !document.comments.is_empty() {
-                items.push(item("comments", "lost", "Comments are not written to RTF; keep the .oswk copy."));
+                items.push(item("comments", "transformed", "Comments are written as Word annotations with minute-precision \\atndate timestamps; replies become extra reply paragraphs and the resolved state is kept with an ignorable marker that Word ignores."));
             }
             if has_notes(document, false) || has_notes(document, true) {
                 items.push(item("footnotes", "transformed", "Notes are written as RTF \\footnote destinations; endnote classes are preserved with an ignorable marker that Word ignores."));
