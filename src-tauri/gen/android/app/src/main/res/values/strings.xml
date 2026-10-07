@@ -1,4 +1,8 @@
 <resources>
     <string name="app_name">"OmniOffice"</string>
     <string name="main_activity_title">"OmniOffice"</string>
+    <string name="background_work_channel_name">Background work</string>
+    <string name="background_work_channel_description">Keeps long tasks such as OCR, compression and conversions running while OmniOffice is in the background.</string>
+    <string name="background_work_title">OmniOffice is working</string>
+    <string name="background_work_text">Processing your documents on this device</string>
 </resources>

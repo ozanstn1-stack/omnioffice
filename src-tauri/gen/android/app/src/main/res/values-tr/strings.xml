@@ -1,0 +1,9 @@
+<resources>
+    <!-- A locale folder must translate every default string, or the release lint (MissingTranslation) fails. -->
+    <string name="app_name">"OmniOffice"</string>
+    <string name="main_activity_title">"OmniOffice"</string>
+    <string name="background_work_channel_name">Arka plan işleri</string>
+    <string name="background_work_channel_description">OCR, sıkıştırma ve dönüştürme gibi uzun görevleri OmniOffice arka plandayken de çalışır durumda tutar.</string>
+    <string name="background_work_title">OmniOffice çalışıyor</string>
+    <string name="background_work_text">Belgeleriniz bu cihazda işleniyor</string>
+</resources>

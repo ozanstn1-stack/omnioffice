@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./styles.css";
 
 const splash = document.getElementById("root");
@@ -28,6 +29,9 @@ report(
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    {/* Last resort: a crash in the shell itself must not leave a blank window. */}
+    <ErrorBoundary scope="app">
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>,
 );

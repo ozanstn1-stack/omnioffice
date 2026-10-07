@@ -60,14 +60,46 @@ export const useSettings = create<SettingsState>((set, get) => ({
   },
 }));
 
-export function applyTheme(theme: Settings["theme"]) {
+/** Detaches the OS colour-scheme listener of the "system" theme, if any. */
+let stopSystemThemeWatch: (() => void) | null = null;
+
+/** Whether the applied theme is dark, as state so React follows OS changes too. */
+const useAppliedDark = create<{ dark: boolean }>(() => ({ dark: true }));
+
+/** True while the applied theme is dark (the "system" theme resolves live). */
+export const useIsDarkTheme = () => useAppliedDark((state) => state.dark);
+
+function paintTheme(theme: Settings["theme"]) {
   const root = document.documentElement;
   const prefersDark =
     theme === "system"
       ? window.matchMedia("(prefers-color-scheme: dark)").matches
       : theme === "dark" || theme === "midnight";
+  useAppliedDark.setState({ dark: prefersDark });
   root.classList.toggle("dark", prefersDark);
   root.dataset.theme = theme === "system" ? (prefersDark ? "dark" : "light") : theme;
+}
+
+/**
+ * Applies the theme. While it is "system" the OS colour scheme is followed
+ * live (the listener is replaced on every call, so repeated calls never stack
+ * and an explicit theme detaches it).
+ */
+export function applyTheme(theme: Settings["theme"]) {
+  stopSystemThemeWatch?.();
+  stopSystemThemeWatch = null;
+  paintTheme(theme);
+  if (theme !== "system") return;
+  const query = window.matchMedia("(prefers-color-scheme: dark)");
+  const onChange = () => paintTheme("system");
+  if (typeof query.addEventListener === "function") {
+    query.addEventListener("change", onChange);
+    stopSystemThemeWatch = () => query.removeEventListener("change", onChange);
+  } else {
+    // Safari < 14 and old Android WebViews only know the legacy API.
+    query.addListener(onChange);
+    stopSystemThemeWatch = () => query.removeListener(onChange);
+  }
 }
 
 // ---------------------------------------------------------------------------

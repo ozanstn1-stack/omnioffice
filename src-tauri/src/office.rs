@@ -1456,11 +1456,5 @@ mod tests {
 /// Only existing file paths are returned; anything else is ignored.
 #[tauri::command]
 pub fn office_startup_files() -> Vec<String> {
-    std::env::args()
-        .skip(1)
-        .filter(|argument| !argument.starts_with('-'))
-        .map(std::path::PathBuf::from)
-        .filter(|path| path.is_file())
-        .map(|path| path.to_string_lossy().to_string())
-        .collect()
+    crate::launch::launch_files(std::env::args(), None)
 }

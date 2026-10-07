@@ -47,9 +47,10 @@ import {
   Wand2,
 } from "lucide-react";
 import { useT } from "./lib/i18n";
-import { useDev, useDrop, useJobs, useRecent, useSettings, useToasts } from "./lib/store";
+import { useDev, useDrop, useIsDarkTheme, useJobs, useRecent, useSettings, useToasts } from "./lib/store";
 import packageJson from "../package.json";
-import { devLaunchContext, startupFiles } from "./lib/api";
+import { devLaunchContext } from "./lib/api";
+import { watchLaunchFiles } from "./lib/launch-files";
 import type { Navigate, ScreenId } from "./lib/nav";
 // Route-level code splitting: every screen is loaded when it is first opened,
 // so the startup bundle only carries the shell, the navigation and the shared
@@ -117,6 +118,7 @@ import { DataLossDialogHost } from "./components/data-loss-dialog";
 import { FileConflictDialogHost } from "./components/file-conflict-dialog";
 import { Badge, IconButton, Spinner } from "./components/ui";
 import { BrandMark } from "./components/brand";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { isAndroid, openAnyFile, pickAndroidFiles } from "./lib/mobile";
 import { isImage } from "./lib/format";
 import {
@@ -140,6 +142,19 @@ function ScreenLoading() {
   );
 }
 
+/**
+ * One routed screen. A render crash stays inside this frame: the sidebar, the
+ * toasts and the other screens keep working (the wrapper is keyed per screen,
+ * so navigating away resets it).
+ */
+function ScreenFrame({ screen, children }: { screen: ScreenId; children: React.ReactNode }) {
+  return (
+    <ErrorBoundary scope={`screen:${screen}`}>
+      <React.Suspense fallback={<ScreenLoading />}>{children}</React.Suspense>
+    </ErrorBoundary>
+  );
+}
+
 /** Reads and clears the Android open-with queue filled by MainActivity.kt. */
 async function takePendingAndroidOpen(): Promise<string[]> {
   return invoke<string[]>("android_take_pending_open");
@@ -149,6 +164,7 @@ export default function App() {
   const t = useT();
   const init = useSettings((s) => s.init);
   const settings = useSettings((s) => s.settings);
+  const appliedDark = useIsDarkTheme();
   const update = useSettings((s) => s.update);
   const attachJobs = useJobs((s) => s.attach);
   const refreshRecent = useRecent((s) => s.refresh);
@@ -296,20 +312,15 @@ export default function App() {
     return () => unlisten?.();
   }, [attachJobs, init, navigate, refreshRecent]);
 
-  // Keep the native window chrome in sync with the selected theme.
+  // Keep the native window chrome in sync with the selected theme (the
+  // "system" theme follows the OS live, see applyTheme in lib/store).
   useEffect(() => {
     const resolved: "dark" | "light" =
-      settings.theme === "system"
-        ? document.documentElement.classList.contains("dark")
-          ? "dark"
-          : "light"
-        : settings.theme === "paper"
-          ? "light"
-          : "dark";
+      settings.theme === "system" ? (appliedDark ? "dark" : "light") : settings.theme === "paper" ? "light" : "dark";
     void import("@tauri-apps/api/window")
       .then(({ getCurrentWindow }) => getCurrentWindow().setTheme(resolved))
       .catch(() => undefined);
-  }, [settings.theme]);
+  }, [settings.theme, appliedDark]);
 
   // The document language drives spell check and assistive technology.
   useEffect(() => {
@@ -559,12 +570,12 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [screen]);
 
-  // Files handed to the process (Windows file association, "open with").
-  useEffect(() => {
-    let cancelled = false;
-    void startupFiles()
-      .then((paths) => {
-        if (cancelled || paths.length === 0) return;
+  // Files handed to the app: the command line of this launch (Windows file
+  // association, "open with") and the files later launches forward to this
+  // window, because the single-instance plugin keeps one app per user.
+  useEffect(
+    () =>
+      watchLaunchFiles((paths) => {
         const officePaths = paths.filter((path) => isOfficePath(path));
         if (officePaths.length > 0) {
           setScreen("office");
@@ -575,12 +586,9 @@ export default function App() {
           setFiles(pdfPaths);
           setScreen("reader");
         }
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      }),
+    [],
+  );
 
   // Routes documents that arrived through an Android open-with intent to the
   // tool that can handle them. Unknown leftovers are handed to the system
@@ -808,8 +816,7 @@ export default function App() {
     },
   ];
 
-  const isDark =
-    settings.theme === "dark" || (settings.theme === "system" && document.documentElement.classList.contains("dark"));
+  const isDark = settings.theme === "dark" || (settings.theme === "system" && appliedDark);
 
   const renderNav = (showLabels: boolean) => (
     <>
@@ -888,7 +895,7 @@ export default function App() {
 
         <main className="flex-1 min-w-0 relative overflow-hidden">
           <div key={`${screen}-${files.join("|")}`} className="h-full">
-            <React.Suspense fallback={<ScreenLoading />}>{screens[screen]}</React.Suspense>
+            <ScreenFrame screen={screen}>{screens[screen]}</ScreenFrame>
           </div>
         </main>
 
@@ -984,7 +991,7 @@ export default function App() {
           </div>
         ) : null}
         <div key={`${screen}-${files.join("|")}`} className="h-full">
-          <React.Suspense fallback={<ScreenLoading />}>{screens[screen]}</React.Suspense>
+          <ScreenFrame screen={screen}>{screens[screen]}</ScreenFrame>
         </div>
       </main>
 

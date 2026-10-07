@@ -3,7 +3,8 @@
 //! nothing is sent anywhere.
 //!
 //! Contents: app/core version and platform, engine availability, the last
-//! jobs (kind, status, time, error) and the tail of the frontend log. Job
+//! jobs (kind, status, time, error), the tail of the frontend log and the tail
+//! of the Rust panic log (`crash.log`, already masked when it is written). Job
 //! titles and payloads are left out, and every path-like token is reduced to
 //! `<path>` plus its extension, so document names and folders do not end up
 //! in a public issue.
@@ -15,6 +16,7 @@ use tauri::{AppHandle, Manager, State};
 
 const MAX_JOBS: usize = 20;
 const MAX_LOG_LINES: usize = 150;
+const MAX_CRASH_LINES: usize = 120;
 
 /// True for tokens that look like a filesystem path (absolute, home-relative
 /// or containing a separator). URLs are kept: they carry no local data.
@@ -101,6 +103,7 @@ pub fn build_report(
     engines: &serde_json::Value,
     jobs: &[JobRecord],
     log_tail: &str,
+    crash_tail: &str,
 ) -> String {
     let mut report = String::from("OmniOffice diagnostics\n======================\n");
     for (key, value) in header {
@@ -128,6 +131,16 @@ pub fn build_report(
     for line in &lines[skip..] {
         let _ = writeln!(report, "{}", redact_paths(line));
     }
+    let _ = writeln!(report, "\nCrash log (last {MAX_CRASH_LINES} lines)\n---------");
+    let crash_lines: Vec<&str> = crash_tail.lines().collect();
+    if crash_lines.is_empty() {
+        let _ = writeln!(report, "(none)");
+    }
+    // Written masked by crash_log.rs; running the path redaction over it again
+    // would also mangle the tidied source locations.
+    for line in &crash_lines[crash_lines.len().saturating_sub(MAX_CRASH_LINES)..] {
+        let _ = writeln!(report, "{line}");
+    }
     report
 }
 
@@ -147,7 +160,13 @@ pub fn diagnostics_report(app: AppHandle, store: State<'_, Arc<JobStore>>) -> St
         .ok()
         .and_then(|dir| std::fs::read_to_string(dir.join("frontend.log")).ok())
         .unwrap_or_default();
-    build_report(&header, &engines, &store.records(), &log)
+    let crash = app
+        .path()
+        .app_log_dir()
+        .ok()
+        .and_then(|dir| std::fs::read_to_string(dir.join(crate::crash_log::CRASH_LOG)).ok())
+        .unwrap_or_default();
+    build_report(&header, &engines, &store.records(), &log, &crash)
 }
 
 #[cfg(test)]
@@ -187,11 +206,34 @@ mod tests {
             &json!({ "pdfium": true, "pdfium_path": "/home/u/engines/pdfium.dll" }),
             &[job],
             "[1] [info] opened /home/u/Salary.pdf\n",
+            "",
         );
         assert!(report.contains("Version: 3.9.0"));
         assert!(report.contains("2 merge failed cannot read <path>.pdf"));
         assert!(report.contains("pdfium: true"));
         assert!(!report.contains("Salary"));
         assert!(!report.contains("/home/u"));
+    }
+
+    #[test]
+    fn report_includes_the_tail_of_the_crash_log() {
+        let crash: String = (1..=MAX_CRASH_LINES + 30).map(|n| format!("crash line {n}\n")).collect();
+        let report = build_report(&[], &json!({}), &[], "", &crash);
+        assert!(report.contains("Crash log (last 120 lines)"));
+        // Only the newest lines survive; the oldest are dropped.
+        assert!(report.contains(&format!("crash line {}", MAX_CRASH_LINES + 30)));
+        assert!(report.contains("crash line 31\n"));
+        assert!(!report.contains("crash line 30\n"));
+        // The crash log is masked when it is written, so its tidied source
+        // locations pass through untouched.
+        let located = build_report(&[], &json!({}), &[], "", "  at crates/pdfcore/src/merge.rs:88:14\n");
+        assert!(located.contains("  at crates/pdfcore/src/merge.rs:88:14"));
+    }
+
+    #[test]
+    fn report_says_so_when_there_is_no_crash_log() {
+        let report = build_report(&[], &json!({}), &[], "", "");
+        let section = report.split("Crash log").nth(1).expect("crash section");
+        assert!(section.contains("(none)"));
     }
 }
