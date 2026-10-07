@@ -724,6 +724,9 @@ const en: Dict = {
   "office.saved": "Saved",
   "office.savedWithNotes": "Saved with notes",
   "office.openedWithNotes": "Opened with notes",
+  "office.importLimitTitle": "Part of the sheet was not imported",
+  "office.importLimit":
+    'Sheet "{sheet}" has cells beyond row {rows} or column {cols}. They were not imported and will be missing if you save over the original file; save a copy instead.',
   "office.pdfExported": "PDF exported",
   "office.versionRestored": "Version restored",
   "office.recovered": "Document recovered",
@@ -2588,6 +2591,9 @@ const tr: Dict = {
   "office.saved": "Kaydedildi",
   "office.savedWithNotes": "Notlarla birlikte kaydedildi",
   "office.openedWithNotes": "Notlarla açıldı",
+  "office.importLimitTitle": "Sayfanın bir bölümü içe aktarılmadı",
+  "office.importLimit":
+    '"{sheet}" sayfasında {rows}. satırın veya {cols}. sütunun ötesinde hücreler var. Bunlar içe aktarılmadı ve özgün dosyanın üzerine kaydederseniz eksik kalır; bunun yerine bir kopya kaydedin.',
   "office.pdfExported": "PDF dışa aktarıldı",
   "office.versionRestored": "Sürüm geri yüklendi",
   "office.recovered": "Belge kurtarıldı",
