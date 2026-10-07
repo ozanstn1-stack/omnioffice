@@ -29,9 +29,13 @@ import {
   functionCount,
   functionNames,
   functionCatalogue,
+  type ContextArgument,
+  type ContextImplementation,
   type FunctionArgs,
+  type FunctionHost,
   type FunctionResult,
 } from "./registry";
+import { isCellReference, makeReference, type CellReference } from "./references";
 import {
   ERR,
   FormulaError,
@@ -579,6 +583,8 @@ export interface FormulaContext {
   tables?: SpreadsheetTable[];
   /** 1-based row of the formula's own cell, for `@` this-row references. */
   currentRow?: number;
+  /** A1 address of the formula's own cell, for `CELL("address")` without an argument. */
+  currentAddress?: string;
 }
 
 interface EvalState {
@@ -653,23 +659,131 @@ function resolveSheetName(sheet: string | null, context: FormulaContext): string
 }
 
 function evaluateRange(node: Node, state: EvalState): CellMatrix | Scalar {
-  const context = state.context;
   const node2 = node as Extract<Node, { type: "range" }>;
-  const sheet = resolveSheetName(node2.sheet ?? null, context);
+  const sheet = resolveSheetName(node2.sheet ?? null, state.context);
   if (sheet === undefined) return ERR.ref();
   const parts = parseRange(node2.range);
   if (!parts) return ERR.ref();
+  return readCells(makeReference(sheet, parts.start, parts.end), state);
+}
+
+/** The values a reference covers, or `#REF!` when it exceeds the range guard. */
+function readCells(reference: CellReference, state: EvalState): CellMatrix | FormulaError {
+  const context = state.context;
+  const { start, end } = reference;
   const limit = context.maxRangeCells ?? 200_000;
-  if ((parts.end.row - parts.start.row + 1) * (parts.end.col - parts.start.col + 1) > limit) return ERR.ref();
+  if ((end.row - start.row + 1) * (end.col - start.col + 1) > limit) return ERR.ref();
   const matrix: CellMatrix = [];
-  for (let row = parts.start.row; row <= parts.end.row; row += 1) {
+  for (let row = start.row; row <= end.row; row += 1) {
     const line: Scalar[] = [];
-    for (let col = parts.start.col; col <= parts.end.col; col += 1) {
-      line.push(context.getValue(sheet, formatAddress(row, col)));
+    for (let col = start.col; col <= end.col; col += 1) {
+      line.push(context.getValue(reference.sheet, formatAddress(row, col)));
     }
     matrix.push(line);
   }
   return matrix;
+}
+
+/**
+ * The location an expression denotes, for the functions that work on
+ * references: a cell, a range, a defined name or structured reference that
+ * resolves to one, or the result of OFFSET/INDIRECT. `null` means the
+ * expression is an ordinary value; an error means it names a reference that
+ * cannot be resolved (a sheet that does not exist).
+ */
+function referenceOf(node: Node, state: EvalState): CellReference | FormulaError | null {
+  switch (node.type) {
+    case "ref": {
+      const sheet = resolveSheetName(node.sheet ?? null, state.context);
+      if (sheet === undefined) return ERR.ref();
+      const address = parseAddress(node.address);
+      return address ? makeReference(sheet, address) : ERR.ref();
+    }
+    case "range": {
+      const sheet = resolveSheetName(node.sheet ?? null, state.context);
+      if (sheet === undefined) return ERR.ref();
+      const parts = parseRange(node.range);
+      return parts ? makeReference(sheet, parts.start, parts.end) : ERR.ref();
+    }
+    case "name": {
+      const key = node.name.toUpperCase();
+      if (state.bindings.has(key)) return null;
+      const entry = state.context.names?.[key];
+      if (entry === undefined) {
+        if (!node.name.includes("[")) return null;
+        const resolved = resolveStructuredReference(node.name, state.context.tables, state.context.currentRow);
+        const parts = resolved ? parseRange(resolved) : null;
+        return parts ? makeReference(null, parts.start, parts.end) : null;
+      }
+      // A defined name is a location only when its definition is one.
+      if (state.resolving.has(key)) return ERR.circular();
+      const definition = typeof entry === "string" ? entry : entry.definition;
+      if (!definition || definition.trim() === "") return null;
+      const tokens = tokenize(definition.startsWith("=") ? definition.slice(1) : definition);
+      if (tokens.length !== 1) return null;
+      const target = new Parser(tokens).parse();
+      if (target.type !== "ref" && target.type !== "range") return null;
+      state.resolving.add(key);
+      try {
+        return referenceOf(target, state);
+      } finally {
+        state.resolving.delete(key);
+      }
+    }
+    case "call": {
+      const spec = lookupFunction(node.name);
+      if (!spec?.contextFn) return null;
+      if (node.args.length < spec.min || node.args.length > spec.max) return null;
+      const result = callContextFunction(node, spec.contextFn, state);
+      if (isCellReference(result)) return result;
+      return isError(result) ? result : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/** Resolves INDIRECT's text: a single cell, range or defined name, nothing else. */
+function parseReferenceText(text: string, state: EvalState): CellReference | FormulaError {
+  const tokens = tokenize(text.trim());
+  if (tokens.length !== 1 || !["ref", "range", "name"].includes(tokens[0].type)) return ERR.ref();
+  const node = new Parser(tokens).parse();
+  return referenceOf(node, state) ?? ERR.ref();
+}
+
+function contextArguments(nodes: Node[], state: EvalState): ContextArgument[] {
+  return nodes.map((node) => {
+    let reference: CellReference | FormulaError | null | undefined;
+    let value: Scalar | CellMatrix | undefined;
+    return {
+      reference: () => (reference === undefined ? (reference = referenceOf(node, state)) : reference),
+      value: () => (value === undefined ? (value = evaluateNode(node, state)) : value),
+    };
+  });
+}
+
+function functionHost(state: EvalState): FunctionHost {
+  const context = state.context;
+  return {
+    currentSheet: context.currentSheet,
+    currentAddress: context.currentAddress ?? null,
+    sheetNames: context.sheetNames,
+    parseReference: (text) => parseReferenceText(text, state),
+    read: (reference) => readCells(reference, state),
+  };
+}
+
+/** Runs a context function; the result is a location, a value or an error. */
+function callContextFunction(
+  node: Extract<Node, { type: "call" }>,
+  contextFn: ContextImplementation,
+  state: EvalState,
+): Scalar | CellMatrix | CellReference {
+  try {
+    return contextFn(contextArguments(node.args, state), functionHost(state));
+  } catch {
+    return ERR.value();
+  }
 }
 
 /** Hard ceiling on an inline literal, so `{1,1,1,...}` cannot exhaust memory. */
@@ -869,6 +983,14 @@ function evaluateCall(node: Extract<Node, { type: "call" }>, state: EvalState): 
   const spec = lookupFunction(node.name);
   if (!spec) return ERR.name();
   if (node.args.length < spec.min || node.args.length > spec.max) return ERR.value();
+  if (spec.contextFn) {
+    const result = callContextFunction(node, spec.contextFn, state);
+    if (!isCellReference(result)) return result;
+    // A location is read where a value is needed: one cell is a scalar, a
+    // range a matrix, like the equivalent `A1` / `A1:B2` reference.
+    const values = readCells(result, state);
+    return Array.isArray(values) && values.length === 1 && values[0].length === 1 ? values[0][0] : values;
+  }
   const args: FunctionArgs = [];
   for (const argument of node.args) {
     const value = evaluateNode(argument, state);

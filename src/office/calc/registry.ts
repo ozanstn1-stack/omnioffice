@@ -6,6 +6,8 @@
  * them all in. `formula.ts` stays the parser/evaluator and does not know how
  * any individual function works.
  */
+import type { CellReference } from "./references";
+import { ERR, type FormulaError } from "./scalars";
 import type { CellMatrix, Scalar } from "./scalars";
 
 /** Arguments arrive already grouped per parameter, each a 2D matrix. */
@@ -14,8 +16,44 @@ export type FunctionArgs = Scalar[][][];
 export type FunctionResult = Scalar | CellMatrix;
 export type FunctionImplementation = (args: FunctionArgs) => FunctionResult;
 
+/**
+ * One argument of a context function. Where a plain function receives the
+ * evaluated matrix, these keep the argument unevaluated so a function can ask
+ * for the *reference* an expression denotes (`OFFSET(A1, ...)`) or for its
+ * value, and only pays for the one it uses.
+ */
+export interface ContextArgument {
+  /**
+   * The location the argument denotes. `null` when it is an ordinary value, an
+   * error when it names a reference that cannot be resolved (unknown sheet).
+   */
+  reference(): CellReference | FormulaError | null;
+  /** The argument evaluated to values: a scalar, or a matrix for a range. */
+  value(): Scalar | CellMatrix;
+}
+
+/** What the evaluator lends a context function besides its arguments. */
+export interface FunctionHost {
+  currentSheet: string;
+  /** A1 address of the cell holding the formula, when the caller knows it. */
+  currentAddress: string | null;
+  sheetNames: string[];
+  /** Resolves reference text as INDIRECT reads it: `B2`, `Data!A1:B3`, a name. */
+  parseReference(text: string): CellReference | FormulaError;
+  /** The values a reference covers: a matrix, bounded by the range guard. */
+  read(reference: CellReference): CellMatrix | FormulaError;
+}
+
+/** A context function may answer with a location; the evaluator reads it. */
+export type ContextImplementation = (args: ContextArgument[], host: FunctionHost) => FunctionResult | CellReference;
+
 export interface FunctionSpec {
   fn: FunctionImplementation;
+  /**
+   * Set for functions that need references or the evaluation context (OFFSET,
+   * INDIRECT, CELL, INFO). The evaluator calls this instead of `fn`.
+   */
+  contextFn?: ContextImplementation;
   min: number;
   max: number;
   /** Functions that inspect errors themselves (IFERROR, ISERROR, ...). */
@@ -48,6 +86,21 @@ export function registerFunction(
   meta: FunctionMeta = {},
 ): void {
   FUNCTIONS.set(name.toUpperCase(), { fn, min, max, acceptsErrors, ...meta });
+}
+
+/**
+ * Registers a function that works on references, not on the values they hold.
+ * `fn` stays callable for code that bypasses the evaluator and reports
+ * `#VALUE!`, so a spec is never half-formed.
+ */
+export function registerContextFunction(
+  name: string,
+  contextFn: ContextImplementation,
+  min = 0,
+  max = 32,
+  meta: FunctionMeta = {},
+): void {
+  FUNCTIONS.set(name.toUpperCase(), { fn: () => ERR.value(), contextFn, min, max, acceptsErrors: true, ...meta });
 }
 
 export function lookupFunction(name: string): FunctionSpec | undefined {
