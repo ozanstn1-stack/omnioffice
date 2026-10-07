@@ -433,7 +433,7 @@ impl SlideWriter {
         }
         for paragraph in &text.paragraphs {
             let size = paragraph.size_pt.unwrap_or(default_size);
-            let bullet = if paragraph.bullet { "<a:buChar char=\"Ã¢â‚¬Â¢\"/>" } else { "<a:buNone/>" };
+            let bullet = if paragraph.bullet { "<a:buChar char=\"\u{2022}\"/>" } else { "<a:buNone/>" };
             out.push_str(&format!(
                 "<a:p><a:pPr lvl=\"{}\" algn=\"{}\">{bullet}</a:pPr>",
                 paragraph.level.min(8),
@@ -2376,7 +2376,7 @@ mod tests {
         let mut title = SlideObject::new("text", 60.0, 60.0, 600.0, 100.0);
         title.text = Some(TextFrame {
             paragraphs: vec![TextParagraph {
-                text: "BaÃ…Å¸lÃ„Â±k slaytÃ„Â±".into(),
+                text: "Başlık slaytı".into(),
                 size_pt: Some(32.0),
                 bold: true,
                 ..Default::default()
@@ -2436,9 +2436,42 @@ mod tests {
             .iter()
             .filter_map(|object| object.text.as_ref().map(TextFrame::plain))
             .collect();
-        assert!(texts.iter().any(|text| text.contains("BaÃ…Å¸lÃ„Â±k slaytÃ„Â±")), "texts: {texts:?}");
+        assert!(texts.iter().any(|text| text.contains("Başlık slaytı")), "texts: {texts:?}");
         assert!(read.deck.slides[0].notes.contains("Notlar"));
         assert_eq!(read.deck.size.width_pt.round() as i64, 960);
+    }
+
+    fn bullet_deck() -> Deck {
+        let mut deck = Deck::new_blank("Bullets");
+        let mut slide = Slide::default();
+        let mut body = SlideObject::new("text", 60.0, 60.0, 600.0, 300.0);
+        body.text = Some(TextFrame {
+            paragraphs: vec![
+                TextParagraph { text: "Top".into(), bullet: true, ..Default::default() },
+                TextParagraph { text: "Nested".into(), bullet: true, level: 2, ..Default::default() },
+                TextParagraph { text: "Plain".into(), ..Default::default() },
+            ],
+            ..Default::default()
+        });
+        slide.objects = vec![body];
+        deck.slides = vec![slide];
+        deck
+    }
+
+    #[test]
+    fn pptx_bullet_is_a_real_bullet_and_level_roundtrips() {
+        let result = write_pptx_package(&bullet_deck()).unwrap();
+        let reader = ZipReader::open(result.bytes.clone()).unwrap();
+        let slide_xml = reader.read_text("ppt/slides/slide1.xml").unwrap();
+        assert!(slide_xml.contains("<a:buChar char=\"\u{2022}\"/>"), "bullet glyph: {slide_xml}");
+        assert!(!slide_xml.contains('\u{00C3}') && !slide_xml.contains('\u{00E2}'), "mojibake in slide xml");
+
+        let read = read_pptx(&result.bytes).unwrap();
+        let paragraphs = &read.deck.slides[0].objects[0].text.as_ref().unwrap().paragraphs;
+        assert_eq!(paragraphs.len(), 3);
+        assert!(paragraphs[0].bullet && paragraphs[0].level == 0);
+        assert!(paragraphs[1].bullet && paragraphs[1].level == 2);
+        assert!(!paragraphs[2].bullet);
     }
 
     #[test]
