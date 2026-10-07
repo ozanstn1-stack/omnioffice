@@ -150,7 +150,7 @@ export interface AiAssistDialogProps {
   /** Original text, shown next to the suggestion. */
   original?: string;
   renderResult?: (result: AiEditResult) => ReactNode;
-  acceptLabel: string;
+  acceptLabel: string | ((result: AiEditResult) => string);
   onAccept: (result: AiEditResult) => void;
   extraActions?: (result: AiEditResult) => ReactNode;
   onClose: () => void;
@@ -378,7 +378,8 @@ export function AiAssistDialog(props: AiAssistDialogProps) {
                 {t("ai.edit.tryAgain")}
               </button>
               <button type="button" className="btn btn-primary" onClick={() => props.onAccept(result)}>
-                <Check size={13} aria-hidden /> {props.acceptLabel}
+                <Check size={13} aria-hidden />{" "}
+                {typeof props.acceptLabel === "function" ? props.acceptLabel(result) : props.acceptLabel}
               </button>
             </>
           ) : null}

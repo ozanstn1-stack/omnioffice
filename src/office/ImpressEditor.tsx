@@ -45,7 +45,10 @@ import type { Animation, ChartData, Deck, Slide, SlideLayout, SlideObject } from
 import { newAnimation, newSlideMaster, uid, type ShapeStyle } from "../lib/office-types";
 import { useT } from "../lib/i18n";
 import { mimeForName, pickFileBytes } from "../lib/mobile";
-import { reportError } from "../lib/store";
+import { reportError, useToasts } from "../lib/store";
+import type { AiOutlineSlide } from "../lib/types";
+import { useAiStatus } from "./ai/editor-ai";
+import { ImpressAiDialog } from "./impress/ImpressAiDialog";
 import { Dialog, Ribbon, RibbonGroup, TextField, ToolButton, ToolColor, ToolNumber, ToolSelect } from "./office-ui";
 import { openIntoWorkspace, useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
 
@@ -254,6 +257,38 @@ function textObject(
     groupId: null,
     name: "Text",
   };
+}
+
+/**
+ * Title + bullet slides for a validated AI outline, built with the same
+ * "Title + content" layout as New slide. A model reply never becomes markup:
+ * titles and bullets are plain paragraph text.
+ */
+export function outlineSlides(
+  deck: Deck,
+  outline: AiOutlineSlide[],
+  inherit: { masterId?: string | null; layoutId?: string | null } = {},
+): Slide[] {
+  const layout = LAYOUTS.find((candidate) => candidate.id === "titleContent")!;
+  return outline.map((entry) => {
+    const objects = layout.build(deck).map((object, index) => ({ ...object, z: index + 1 }));
+    const [title, body] = objects;
+    title.text!.paragraphs[0].text = entry.title;
+    const bullet = body.text!.paragraphs[0];
+    body.text!.paragraphs = (entry.bullets.length > 0 ? entry.bullets : [""]).map((text) => ({ ...bullet, text }));
+    return {
+      id: uid(),
+      layout: "titleContent",
+      masterId: inherit.masterId ?? null,
+      layoutId: inherit.layoutId ?? null,
+      background: null,
+      transition: null,
+      transitionMs: 500,
+      objects,
+      animations: [],
+      notes: "",
+    };
+  });
 }
 
 function bulletObject(text: string, x: number, y: number, w: number, h: number): SlideObject {
@@ -750,6 +785,8 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   const [masterDialog, setMasterDialog] = useState(false);
   const [chartPath, setChartPath] = useState<SelectionPath | null>(null);
   const [animationEditing, setAnimationEditing] = useState<Animation | null>(null);
+  const aiStatus = useAiStatus();
+  const [outlineDialog, setOutlineDialog] = useState(false);
   const [undoStack, setUndoStack] = useState<Deck[]>([]);
   const [redoStack, setRedoStack] = useState<Deck[]>([]);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -1076,6 +1113,17 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
       slides: [...current.slides.slice(0, slideIndex + 1), created, ...current.slides.slice(slideIndex + 1)],
     }));
     setSlideIndex(slideIndex + 1);
+  };
+
+  /** Appends the AI outline as slides: one undo step. */
+  const addOutlineSlides = (outline: AiOutlineSlide[]) => {
+    setOutlineDialog(false);
+    const created = outlineSlides(deck, outline, { masterId: slide.masterId, layoutId: slide.layoutId });
+    const firstNew = deck.slides.length;
+    update((current) => ({ ...current, slides: [...current.slides, ...created] }));
+    setSlideIndex(firstNew);
+    setSelected([]);
+    useToasts.getState().push({ kind: "success", title: t("ai.edit.slidesAdded", { count: created.length }) });
   };
 
   const duplicateSlide = () => {
@@ -1749,6 +1797,19 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
             <RibbonGroup label={t("impress.slides")}>
               <ToolButton icon={<Plus size={16} />} label={t("impress.newSlide")} onClick={addSlide} />
             </RibbonGroup>
+            <RibbonGroup label={t("ai.edit.group")}>
+              <ToolButton
+                icon={<Sparkles size={16} />}
+                label={t("ai.edit.btn.outlineToSlides")}
+                onClick={() => setOutlineDialog(true)}
+                disabled={!aiStatus.configured}
+                title={
+                  aiStatus.configured
+                    ? undefined
+                    : `${t("ai.edit.btn.outlineToSlides")} - ${t("ai.edit.notConfigured")}`
+                }
+              />
+            </RibbonGroup>
             <RibbonGroup label={t("impress.objects")}>
               <ToolButton icon={<Type size={16} />} label={t("impress.text")} onClick={() => addObject("text")} />
               <ToolButton icon={<ImageIcon size={16} />} label={t("writer.image")} onClick={() => addObject("image")} />
@@ -2361,6 +2422,15 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
           )}
           {slideshowNav}
         </div>
+      ) : null}
+
+      {outlineDialog ? (
+        <ImpressAiDialog
+          docId={tab.id}
+          status={aiStatus}
+          onAccept={addOutlineSlides}
+          onClose={() => setOutlineDialog(false)}
+        />
       ) : null}
 
       {masterDialog ? (
