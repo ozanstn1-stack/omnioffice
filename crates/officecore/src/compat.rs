@@ -187,8 +187,8 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
             true,
             vec![
                 feature("tables", SupportLevel::Partial, "Tables export as plain cell ranges."),
-                feature("pivotTables", SupportLevel::Unsupported, "Kept in .oswk only."),
-                feature("charts", SupportLevel::Unsupported, "Kept in .oswk only."),
+                feature("pivotTables", SupportLevel::Partial, "Editor pivot tables are written as their computed values; the live definition stays in .oswk."),
+                feature("charts", SupportLevel::Full, "Column, bar, line, pie and area charts are written as embedded chart objects with their ranges, titles, legend, series colours and cached values."),
             ],
         ),
         "csv" | "tsv" => (true, true, true, false, vec![]),
@@ -224,9 +224,9 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
             true,
             vec![
                 feature("masters", SupportLevel::Partial, "A single default master page."),
-                feature("groups", SupportLevel::Partial, "Groups export as individual shapes."),
+                feature("groups", SupportLevel::Full, "Nested shape groups round-trip as draw:g elements."),
                 feature("charts", SupportLevel::Partial, "Charts export as drawn shapes."),
-                feature("animations", SupportLevel::Unsupported, "Kept in .oswk only."),
+                feature("animations", SupportLevel::Partial, "Entrance, emphasis and exit effects are written as SMIL timing with LibreOffice presets; LibreOffice effects without an editor equivalent import as the closest one."),
             ],
         ),
         "pdf" => (
@@ -389,10 +389,39 @@ pub fn workbook_feature_report(workbook: &Workbook, format: &str) -> Compatibili
                 items.push(item("tables", "transformed", "Structured tables export as plain cell ranges."));
             }
             if pivots > 0 {
-                items.push(item("pivotTables", "lost", "Pivot tables are kept in .oswk only."));
+                items.push(item(
+                    "pivotTables",
+                    "transformed",
+                    "Pivot tables are written as their computed values; the live pivot definition stays in the .oswk file.",
+                ));
             }
             if charts > 0 {
-                items.push(item("charts", "lost", "Charts are kept in .oswk only."));
+                let problems: Vec<String> = workbook
+                    .sheets
+                    .iter()
+                    .flat_map(|sheet| sheet.charts.iter())
+                    .filter_map(|placement| {
+                        crate::odf::ods_chart_problem(&placement.chart)
+                            .map(|reason| format!("\"{}\": {reason}", placement.chart.title))
+                    })
+                    .collect();
+                if problems.is_empty() {
+                    items.push(item(
+                        "charts",
+                        "unchanged",
+                        "Charts are written as embedded chart objects with their ranges, titles, legend, series colours and cached values.",
+                    ));
+                } else {
+                    items.push(item(
+                        "charts",
+                        "lost",
+                        &format!(
+                            "{} of {charts} chart(s) cannot be written to ODS and stay in .oswk only ({}); the others are written as embedded chart objects.",
+                            problems.len(),
+                            problems.join("; ")
+                        ),
+                    ));
+                }
             }
         }
         "csv" | "tsv" => {
@@ -411,14 +440,18 @@ pub fn workbook_feature_report(workbook: &Workbook, format: &str) -> Compatibili
     CompatibilityReport { target: format, items }
 }
 
+/// Charts on a slide, including those inside groups.
+fn count_charts(objects: &[crate::model::SlideObject]) -> usize {
+    objects.iter().map(|object| usize::from(object.chart.is_some()) + count_charts(&object.children)).sum()
+}
+
 /// What a deck loses when saved as `format`.
 pub fn deck_feature_report(deck: &Deck, format: &str) -> CompatibilityReport {
     let format = format.trim_start_matches('.').to_ascii_lowercase();
     let mut items = Vec::new();
     let groups: usize =
         deck.slides.iter().map(|slide| slide.objects.iter().filter(|object| object.kind == "group").count()).sum();
-    let charts: usize =
-        deck.slides.iter().map(|slide| slide.objects.iter().filter(|object| object.chart.is_some()).count()).sum();
+    let charts: usize = deck.slides.iter().map(|slide| count_charts(&slide.objects)).sum();
     let animations: usize = deck.slides.iter().map(|slide| slide.animations.len()).sum();
     match format.as_str() {
         "oswk" => {}
@@ -433,13 +466,21 @@ pub fn deck_feature_report(deck: &Deck, format: &str) -> CompatibilityReport {
         }
         "odp" => {
             if groups > 0 {
-                items.push(item("groups", "lost", "Groups are exported as individual shapes."));
+                items.push(item(
+                    "groups",
+                    "unchanged",
+                    "Groups are written as draw:g elements with their child shapes.",
+                ));
             }
             if charts > 0 {
                 items.push(item("charts", "transformed", "Charts are exported as drawn shapes."));
             }
             if animations > 0 {
-                items.push(item("animations", "lost", "Animations are kept in .oswk only."));
+                items.push(item(
+                    "animations",
+                    "partial",
+                    "Entrance, emphasis and exit effects are written as SMIL timing with LibreOffice presets and keep their trigger, duration and delay; effects without a LibreOffice preset are written as the closest one.",
+                ));
             }
         }
         "pdf" => {
@@ -534,7 +575,10 @@ pub fn model_capabilities(kind: &str) -> DocumentCapabilities {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Block, Footnote, RevisionMark, Run, SectionProps, SpreadsheetTable};
+    use crate::model::{
+        Block, ChartData, ChartPlacement, ChartSeries, Footnote, PivotTable, RevisionMark, Run, SectionProps,
+        SpreadsheetTable,
+    };
 
     #[test]
     fn capability_matrix_is_populated_for_real_formats() {
@@ -589,10 +633,26 @@ mod tests {
         assert!(!xlsx.lossy(), "xlsx should keep structured tables");
         let ods = workbook_feature_report(&workbook, "ods");
         assert!(ods.items.iter().any(|item| item.feature == "tables" && item.status == "transformed"));
+
+        workbook.sheets[0].pivot_tables.push(PivotTable { id: "p1".into(), ..Default::default() });
+        workbook.sheets[0].charts.push(ChartPlacement {
+            chart: ChartData {
+                kind: "column".into(),
+                series: vec![ChartSeries { name: "S".into(), range: "B2:B4".into(), color: None }],
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        let ods = workbook_feature_report(&workbook, "ods");
+        assert!(ods.items.iter().any(|item| item.feature == "pivotTables" && item.status == "transformed"));
+        assert!(ods.items.iter().any(|item| item.feature == "charts" && item.status == "unchanged"));
+        workbook.sheets[0].charts[0].chart.kind = "radar".into();
+        let ods = workbook_feature_report(&workbook, "ods");
+        assert!(ods.items.iter().any(|item| item.feature == "charts" && item.status == "lost"));
     }
 
     #[test]
-    fn impress_report_flags_groups_in_odp() {
+    fn impress_report_keeps_groups_and_simplifies_animations_in_odp() {
         let mut deck = Deck::new_blank("Report");
         let mut group = crate::model::SlideObject::new("group", 0.0, 0.0, 100.0, 100.0);
         group.children.push(crate::model::SlideObject::new("rect", 0.0, 0.0, 10.0, 10.0));
@@ -600,6 +660,11 @@ mod tests {
         let pptx = deck_feature_report(&deck, "pptx");
         assert!(!pptx.lossy());
         let odp = deck_feature_report(&deck, "odp");
-        assert!(odp.items.iter().any(|item| item.feature == "groups" && item.status == "lost"));
+        assert!(!odp.lossy(), "groups are written as draw:g");
+        assert!(odp.items.iter().any(|item| item.feature == "groups" && item.status == "unchanged"));
+        deck.slides[0].animations.push(crate::model::Animation { kind: "entrance".into(), ..Default::default() });
+        let odp = deck_feature_report(&deck, "odp");
+        assert!(odp.items.iter().any(|item| item.feature == "animations" && item.status == "partial"));
+        assert!(!odp.items.iter().any(|item| item.status == "lost"));
     }
 }
