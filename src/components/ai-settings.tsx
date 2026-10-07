@@ -6,6 +6,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { isAndroid } from "../lib/mobile";
 import { clamp } from "../lib/format";
 import { useT } from "../lib/i18n";
+import { PROVIDER_PRESETS, parseProviderId, type ProviderCapabilities } from "../lib/ai-providers";
 import {
   aiClearKey,
   aiGetSettings,
@@ -25,66 +26,6 @@ import type { AiModelOption, AiSettingsView, AiTestResult, ReasoningEffort } fro
  * shows a masked value afterwards.
  */
 
-interface ProviderCapabilities {
-  chat: boolean;
-  embeddings: boolean;
-  vision: boolean;
-  structured_output: boolean;
-  streaming: boolean;
-}
-
-interface ProviderPreset {
-  id: string;
-  label: string;
-  baseUrl: string;
-  model: string;
-  note: string;
-  capabilities: ProviderCapabilities;
-}
-
-const PROVIDER_PRESETS: ProviderPreset[] = [
-  {
-    id: "deepseek",
-    label: "DeepSeek",
-    baseUrl: "https://api.deepseek.com",
-    model: "deepseek-flash",
-    note: "Cloud API. The document text is sent to api.deepseek.com together with your API key.",
-    capabilities: { chat: true, embeddings: false, vision: true, structured_output: true, streaming: true },
-  },
-  {
-    id: "openai_compatible",
-    label: "OpenAI-compatible",
-    baseUrl: "",
-    model: "",
-    note: "Cloud API. The document text is sent to the OpenAI-compatible endpoint you configure.",
-    capabilities: { chat: true, embeddings: true, vision: true, structured_output: true, streaming: true },
-  },
-  {
-    id: "ollama",
-    label: "Ollama (local)",
-    baseUrl: "http://localhost:11434",
-    model: "llama3.2",
-    note: "Local models. Ollama runs on your computer and the document text never leaves the computer.",
-    capabilities: { chat: true, embeddings: true, vision: true, structured_output: true, streaming: true },
-  },
-  {
-    id: "gemini",
-    label: "Google Gemini",
-    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    model: "gemini-2.0-flash",
-    note: "Cloud API. The document text is sent to Google Gemini together with your API key.",
-    capabilities: { chat: true, embeddings: true, vision: true, structured_output: true, streaming: true },
-  },
-  {
-    id: "custom",
-    label: "Custom endpoint",
-    baseUrl: "",
-    model: "",
-    note: "Custom endpoint. The document text is sent wherever that endpoint points; check its privacy policy.",
-    capabilities: { chat: true, embeddings: false, vision: false, structured_output: false, streaming: true },
-  },
-];
-
 type AiSettingsViewExt = AiSettingsView & {
   provider?: string;
   providerLabel?: string;
@@ -100,16 +41,6 @@ const CAPABILITY_CHIPS: { key: keyof ProviderCapabilities; labelKey: string; fal
   { key: "structured_output", labelKey: "ai.capStructured", fallback: "Structured output" },
   { key: "streaming", labelKey: "ai.capStreaming", fallback: "Streaming" },
 ];
-
-function parseProviderId(value?: string): string {
-  const normalized = (value ?? "").trim().toLowerCase().replace(/[-\s]/g, "_");
-  if (normalized === "deepseek" || normalized === "deep_seek") return "deepseek";
-  if (["openai_compatible", "openai", "open_ai", "compatible"].includes(normalized)) return "openai_compatible";
-  if (normalized === "ollama" || normalized === "local") return "ollama";
-  if (["gemini", "google", "google_gemini"].includes(normalized)) return "gemini";
-  if (normalized === "custom" || normalized === "other") return "custom";
-  return "deepseek";
-}
 
 export function AiSettings() {
   const t = useT();
@@ -138,9 +69,6 @@ export function AiSettings() {
     void aiLibraryDefaultDir()
       .then(setLibraryDefault)
       .catch(() => undefined);
-    void aiModels()
-      .then(setModels)
-      .catch(() => undefined);
     void aiGetSettings()
       .then((settings: AiSettingsViewExt) => {
         setView(settings);
@@ -158,6 +86,18 @@ export function AiSettings() {
       .catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void aiModels(provider)
+      .then((list) => {
+        if (!cancelled) setModels(list);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [provider]);
+
   const label = (key: string, fallback: string) => {
     const value = t(key);
     return value === key ? fallback : value;
@@ -169,6 +109,8 @@ export function AiSettings() {
     view?.capabilities && savedProvider === provider ? view.capabilities : preset.capabilities;
   const providerNote = view?.providerNote && savedProvider === provider ? view.providerNote : preset.note;
   const needsApiKey = provider !== "ollama";
+  // Claude models reject sampling parameters and think adaptively, so only the effort applies.
+  const isAnthropic = provider === "anthropic";
 
   const changeProvider = (value: string) => {
     setProvider(value);
@@ -315,7 +257,7 @@ export function AiSettings() {
             <TextInput
               type="password"
               value={apiKey}
-              placeholder={view?.maskedKey || "sk-…"}
+              placeholder={view?.maskedKey || preset.keyPlaceholder}
               onChange={(event) => setApiKey(event.target.value)}
               autoComplete="off"
               spellCheck={false}
@@ -365,16 +307,18 @@ export function AiSettings() {
       </div>
 
       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
-        <Field label={t("settings.aiTemperature")}>
-          <Slider
-            value={temperature}
-            min={0}
-            max={1.5}
-            step={0.05}
-            onChange={setTemperature}
-            format={(value) => value.toFixed(2)}
-          />
-        </Field>
+        {!isAnthropic ? (
+          <Field label={t("settings.aiTemperature")}>
+            <Slider
+              value={temperature}
+              min={0}
+              max={1.5}
+              step={0.05}
+              onChange={setTemperature}
+              format={(value) => value.toFixed(2)}
+            />
+          </Field>
+        ) : null}
         <Field label={t("settings.aiMaxTokens")} hint={t("settings.aiMaxTokensHint")}>
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
@@ -431,9 +375,13 @@ export function AiSettings() {
       </Field>
 
       <div className="flex flex-col gap-2">
-        <Checkbox checked={thinking} onChange={setThinking} label={t("settings.aiThinking")} />
-        <p className="text-xs muted -mt-1">{t("settings.aiThinkingHint")}</p>
-        {thinking ? (
+        {!isAnthropic ? (
+          <>
+            <Checkbox checked={thinking} onChange={setThinking} label={t("settings.aiThinking")} />
+            <p className="text-xs muted -mt-1">{t("settings.aiThinkingHint")}</p>
+          </>
+        ) : null}
+        {thinking || isAnthropic ? (
           <Field label={t("settings.aiReasoningEffort")} hint={t("settings.aiReasoningEffortHint")}>
             <Segmented<ReasoningEffort>
               value={reasoningEffort}
@@ -446,7 +394,7 @@ export function AiSettings() {
             />
           </Field>
         ) : null}
-        {!isV4Model ? (
+        {!isV4Model && !isAnthropic ? (
           <p className="text-xs" style={{ color: "var(--warn)" }}>
             {t("settings.aiThinkingModelWarning")}
           </p>

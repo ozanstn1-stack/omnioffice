@@ -369,7 +369,8 @@ export interface TranslateOptions {
   bilingual: boolean;
 }
 
-export type ReasoningEffort = "low" | "high" | "max";
+/** "medium" and "xhigh" are accepted by the backend (Anthropic effort levels) but have no UI control yet. */
+export type ReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface AiSettingsView {
   configured: boolean;

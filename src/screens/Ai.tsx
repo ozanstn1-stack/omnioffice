@@ -37,6 +37,7 @@ import { Badge, Button, Card, Checkbox, Field, Segmented, Spinner, TextArea, Tex
 import { DropZone, InfoStrip, ResultCard } from "../components/files";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
+import { consentKeys, isLocalProvider, plainProviderName, providerDisplayName } from "../lib/ai-providers";
 import { logFrontend } from "../lib/api";
 import { useTool } from "../lib/useTool";
 import { useDev, useSettings, useToasts } from "../lib/store";
@@ -255,8 +256,11 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
   const configured = aiSettings?.configured ?? false;
   const canRun = configured && consent && Boolean(session.primary) && !running;
 
-  const providerLabel =
-    aiSettings?.providerLabel ?? (aiSettings?.provider === "ollama" ? "Ollama (local)" : "DeepSeek");
+  const providerLabel = providerDisplayName(aiSettings?.provider, aiSettings?.providerLabel);
+  const notice = consentKeys(aiSettings?.provider);
+  const noticeParams = {
+    provider: isLocalProvider(aiSettings?.provider) ? plainProviderName(providerLabel) : providerLabel,
+  };
   const networkActivityKey = "ai.networkActivity";
   const networkActivityText = t(networkActivityKey, { chars: preview?.characters ?? 0, provider: providerLabel });
   const networkActivity =
@@ -627,7 +631,7 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                 <p className="font-semibold text-[14px]">{t("ai.notConfigured")}</p>
                 <p className="text-[13px] muted">{t("ai.notConfiguredBody")}</p>
                 <div className="text-xs muted">
-                  {t("ai.privacyTitle")}: {t("ai.privacyBody")}
+                  {t("ai.privacyTitle")}: {t(notice.privacyBody, noticeParams)}
                 </div>
               </Card>
             ) : null}
@@ -666,8 +670,8 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                     </div>
                   ) : (
                     <>
-                      <p className="text-[13px] muted">{t("ai.privacyBody")}</p>
-                      <Checkbox checked={consent} onChange={setConsent} label={t("ai.consent")} />
+                      <p className="text-[13px] muted">{t(notice.privacyBody, noticeParams)}</p>
+                      <Checkbox checked={consent} onChange={setConsent} label={t(notice.consent, noticeParams)} />
                     </>
                   )}
                 </Card>

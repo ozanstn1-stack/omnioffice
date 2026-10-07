@@ -109,7 +109,7 @@ export const aiSuggestMetadata = (path: string, password: string | undefined, jo
 export const aiSaveOutput = (path: string, text: string, overwrite?: string) =>
   invoke<string>("ai_save_output", { path, text, overwrite: overwrite ?? null });
 export const aiExamplePrompts = () => invoke<AiExamplePrompts>("ai_example_prompts");
-export const aiModels = () => invoke<AiModelOption[]>("ai_models");
+export const aiModels = (provider?: string) => invoke<AiModelOption[]>("ai_models", { provider: provider ?? null });
 
 // ---------------------------------------------------------------------------
 // AI library (saved results) and the operation log
