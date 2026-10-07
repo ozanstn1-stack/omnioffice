@@ -956,6 +956,52 @@ body {
   background: var(--border);
   margin: 0 4px;
 }
+/* Writer quick style gallery: one compact row that scrolls on its own instead
+   of widening the ribbon, so the group stays small at phone width. */
+.style-gallery {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 340px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.style-gallery-item {
+  flex: 0 0 auto;
+  height: 30px;
+  min-width: 56px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.style-gallery-item:hover {
+  background: var(--surface-3);
+}
+.style-gallery-item.is-active {
+  background: var(--accent-weak);
+  border-color: var(--accent);
+  color: color-mix(in srgb, var(--accent) 82%, var(--text));
+}
+@media (max-width: 900px) {
+  .style-gallery {
+    max-width: 200px;
+  }
+}
+.find-count,
+.find-error {
+  margin: 0;
+  min-height: 1.4em;
+  font-size: 12px;
+}
+.find-error {
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
 
 .writer-page {
   background: #ffffff;
