@@ -55,6 +55,7 @@ pub mod progress;
 pub mod redact;
 pub mod render;
 pub mod repair;
+pub mod revocation;
 pub mod sanitize;
 pub mod security;
 pub mod sign;
