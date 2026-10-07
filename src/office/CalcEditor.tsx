@@ -3,7 +3,7 @@
  * formatting, multiple sheets, sorting, conditional formatting, validation
  * and SVG charts fed from cell ranges.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AlignCenter,
   AlignLeft,
@@ -13,7 +13,10 @@ import {
   BarChart3,
   Bold,
   Check,
+  ChevronDown,
+  Columns3,
   Copy,
+  CopyX,
   Eraser,
   Eye,
   Filter,
@@ -71,6 +74,7 @@ import {
   parseAddress,
   parseRange,
   suggestFunctions,
+  toText,
   type Scalar,
 } from "./calc/formula";
 import { addressInRange } from "./calc/addresses";
@@ -89,11 +93,20 @@ import {
   computeWorkbookValues,
   formatCellDisplay,
   isBlankCell,
+  parseInputValue,
   scalarToCellValue,
   shiftFormulaRows,
   uniqueSheetName,
   usedRange,
 } from "./calc/cells";
+import {
+  findDuplicateRows,
+  listValidationItems,
+  planTextToColumns,
+  type ColumnSplitPlan,
+  type DuplicateOptions,
+  type SplitDelimiter,
+} from "./calc/data-tools";
 import { Dialog, Ribbon, RibbonGroup, ToolButton, ToolColor, ToolSelect } from "./office-ui";
 import { openIntoWorkspace, useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
 
@@ -434,6 +447,13 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const [validationDialog, setValidationDialog] = useState(false);
   const [nameDialog, setNameDialog] = useState(false);
   const [printDialog, setPrintDialog] = useState(false);
+  const [textToColumnsDialog, setTextToColumnsDialog] = useState(false);
+  const [duplicatesDialog, setDuplicatesDialog] = useState(false);
+  // The open choice list of a list-validated active cell; `index` is the
+  // highlighted choice. It always belongs to the active cell (see below).
+  const [listDropdown, setListDropdown] = useState<{ index: number } | null>(null);
+  const listDropdownRef = useRef<HTMLDivElement>(null);
+  const listDropdownId = useId();
   const [filterOpen, setFilterOpen] = useState<{
     col: number;
     values: Array<{ value: string; checked: boolean }>;
@@ -1281,6 +1301,12 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     // whose `editing` is still non-null. That stale check was what made
     // consecutive typing unreliable.
     if (editingRef.current) return;
+    // Alt+Down opens the choices of a list-validated cell, as in Excel.
+    if (event.altKey && event.key === "ArrowDown" && activeListItems.length > 0) {
+      event.preventDefault();
+      openListDropdown();
+      return;
+    }
     switch (event.key) {
       case "ArrowUp":
         move(-1, 0, event.shiftKey);
@@ -1710,6 +1736,186 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   };
 
   // -------------------------------------------------------------------------
+  // Data tools: text to columns, remove duplicates, list dropdown
+  // -------------------------------------------------------------------------
+
+  /**
+   * The selection clipped to the last row that holds a cell in its columns,
+   * so a whole-column selection does not walk the empty rows below the data.
+   */
+  const dataBounds = () => {
+    const { start, end } = selectionBounds;
+    let lastDataRow = start.row;
+    for (const address of Object.keys(sheet.cells)) {
+      const position = parseAddress(address);
+      if (position && position.col >= start.col && position.col <= end.col && position.row <= end.row) {
+        lastDataRow = Math.max(lastDataRow, position.row);
+      }
+    }
+    return { start, end: { row: lastDataRow, col: end.col } };
+  };
+
+  const openTextToColumns = () => {
+    if (selectionBounds.start.col !== selectionBounds.end.col) {
+      useToasts.getState().push({ kind: "info", title: t("calc.textToColumnsOneColumn") });
+      return;
+    }
+    setTextToColumnsDialog(true);
+  };
+
+  /** The displayed values of the selected column, which is what gets split. */
+  const textToColumnsTexts = () => {
+    const { start, end } = dataBounds();
+    const texts: string[] = [];
+    for (let row = start.row; row <= end.row; row += 1) {
+      texts.push(toText(computed.get(formatAddress(row, start.col)) ?? ""));
+    }
+    return texts;
+  };
+
+  /** True when the cell at an offset from the selection start holds a value or formula. */
+  const holdsData = (rowOffset: number, colOffset: number) => {
+    const cell =
+      sheet.cells[formatAddress(selectionBounds.start.row + rowOffset, selectionBounds.start.col + colOffset)];
+    return cell !== undefined && (cell.formula !== null || cell.value.kind !== "empty");
+  };
+
+  /**
+   * Writes a split into the source column and the columns to its right as
+   * one undo step. Pieces go through the same parser as typed input, so
+   * "12" and "1,5" become numbers; the target cells keep their formatting.
+   */
+  const applyTextToColumns = (plan: ColumnSplitPlan) => {
+    const { start, end } = dataBounds();
+    updateSheet((current) => {
+      const cells = { ...current.cells };
+      plan.rows.forEach((pieces, rowOffset) => {
+        pieces?.forEach((piece, colOffset) => {
+          const address = formatAddress(start.row + rowOffset, start.col + colOffset);
+          const cell: Cell = {
+            ...(current.cells[address] ?? emptyCell()),
+            formula: null,
+            value: parseInputValue(piece),
+          };
+          if (isBlankCell(cell)) delete cells[address];
+          else cells[address] = cell;
+        });
+      });
+      return { ...current, cells, colCount: Math.max(current.colCount, start.col + plan.width) };
+    });
+    setSelection({ anchor: start, focus: { row: end.row, col: start.col + plan.width - 1 } });
+    setTextToColumnsDialog(false);
+  };
+
+  const openRemoveDuplicates = () => {
+    const { start, end } = dataBounds();
+    if (end.row <= start.row) {
+      useToasts.getState().push({ kind: "info", title: t("calc.removeDuplicatesNeedsRange") });
+      return;
+    }
+    setDuplicatesDialog(true);
+  };
+
+  /** Column letters and first-row values of the selection, for the dialog. */
+  const duplicateColumns = () => {
+    const { start, end } = selectionBounds;
+    const columns: Array<{ letter: string; header: string }> = [];
+    for (let col = start.col; col <= end.col; col += 1) {
+      columns.push({ letter: columnLabel(col), header: toText(computed.get(formatAddress(start.row, col)) ?? "") });
+    }
+    return columns;
+  };
+
+  /**
+   * Removes the rows of the selection that repeat an earlier row, moves the
+   * remaining rows up and clears the vacated rows at the bottom, all inside
+   * the selected columns and as one undo step. Relative row references of a
+   * moved formula follow it, the way a fill does.
+   */
+  const removeDuplicates = (options: DuplicateOptions) => {
+    setDuplicatesDialog(false);
+    const { start, end } = dataBounds();
+    const rows: Scalar[][] = [];
+    for (let row = start.row; row <= end.row; row += 1) {
+      const line: Scalar[] = [];
+      for (let col = start.col; col <= end.col; col += 1) line.push(computed.get(formatAddress(row, col)) ?? "");
+      rows.push(line);
+    }
+    const result = findDuplicateRows(rows, options);
+    if (result.removed.length === 0) {
+      useToasts.getState().push({ kind: "info", title: t("calc.duplicatesNone") });
+      return;
+    }
+    updateSheet((current) => {
+      const cells = { ...current.cells };
+      for (let row = start.row; row <= end.row; row += 1) {
+        for (let col = start.col; col <= end.col; col += 1) delete cells[formatAddress(row, col)];
+      }
+      result.keep.forEach((fromOffset, toOffset) => {
+        for (let col = start.col; col <= end.col; col += 1) {
+          const cell = current.cells[formatAddress(start.row + fromOffset, col)];
+          if (!cell) continue;
+          cells[formatAddress(start.row + toOffset, col)] = {
+            ...cell,
+            formula: shiftFormulaRows(cell.formula, toOffset - fromOffset),
+          };
+        }
+      });
+      return { ...current, cells };
+    });
+    // The header row is not a unique data row.
+    const kept = result.keep.length - (options.hasHeaders ? 1 : 0);
+    useToasts.getState().push({
+      kind: "success",
+      title: t("calc.duplicatesRemoved", { removed: result.removed.length, kept }),
+    });
+  };
+
+  const openListDropdown = () => {
+    // Start on the cell's current value when it is one of the choices.
+    const current = toText(computed.get(selectionAddress) ?? "")
+      .trim()
+      .toLowerCase();
+    const index = activeListItems.findIndex((item) => item.toLowerCase() === current);
+    setListDropdown({ index: Math.max(0, index) });
+  };
+
+  /** Closes the choice list and gives the keyboard back to the grid. */
+  const closeListDropdown = () => {
+    setListDropdown(null);
+    gridRef.current?.focus({ preventScroll: true });
+  };
+
+  /** Writes a chosen list value into the active cell, like typing it. */
+  const chooseListValue = (value: string) => {
+    const { row, col } = selection.focus;
+    closeListDropdown();
+    update((current) => applyCellEdit(current, sheetIndex, row, col, value));
+  };
+
+  const handleListDropdownKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!listDropdown) return;
+    const last = activeListItems.length - 1;
+    const index = Math.min(listDropdown.index, last);
+    const keys: Record<string, () => void> = {
+      ArrowDown: () => setListDropdown({ index: Math.min(last, index + 1) }),
+      ArrowUp: () => (event.altKey ? closeListDropdown() : setListDropdown({ index: Math.max(0, index - 1) })),
+      Home: () => setListDropdown({ index: 0 }),
+      End: () => setListDropdown({ index: last }),
+      Enter: () => chooseListValue(activeListItems[index]),
+      Escape: closeListDropdown,
+      Tab: closeListDropdown,
+    };
+    const action = keys[event.key];
+    if (!action) return;
+    // Handled keys stay out of the grid, which would otherwise move the
+    // selection or start typing into the cell.
+    event.preventDefault();
+    event.stopPropagation();
+    action();
+  };
+
+  // -------------------------------------------------------------------------
   // Structured tables (V3)
   // -------------------------------------------------------------------------
 
@@ -1968,6 +2174,25 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     return bars;
   }, [sheet, computed]);
 
+  // The choices of every list validation, resolved once per data change: the
+  // inline list as stored, or the values of a referenced range (`=A1:A5`).
+  const listItems = useMemo(() => {
+    const resolve = (sheetName: string | null, range: string): Scalar[] | null => {
+      const target =
+        sheetName === null
+          ? sheet
+          : workbook.sheets.find((candidate) => candidate.name.toLowerCase() === sheetName.toLowerCase());
+      if (!target) return null;
+      const values = target === sheet ? computed : computeSheetValues(workbook, target);
+      return addressesInRange(range, 1000).map((address) => values.get(address) ?? "");
+    };
+    const items = new Map<string, string[]>();
+    for (const rule of sheet.validations) {
+      if (rule.kind === "list") items.set(rule.id, listValidationItems(rule.values, resolve));
+    }
+    return items;
+  }, [sheet, workbook, computed]);
+
   /** Column offset inside the canvas; the browser scroll and the canvas zoom
    * already move it on screen. */
   const columnX = (col: number) => {
@@ -1996,6 +2221,55 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const nameBox = selectedTable
     ? selectedTable.name
     : `${selectionAddress}${selection.anchor.row !== selection.focus.row || selection.anchor.col !== selection.focus.col ? `:${formatAddress(selection.anchor.row, selection.anchor.col)}` : ""}`;
+
+  // The choices offered on the active cell: the first list validation whose
+  // range (one area, or several separated by spaces as XLSX writes them)
+  // covers it.
+  const activeListRule = sheet.validations.find(
+    (rule) => rule.kind === "list" && rule.range.split(/\s+/).some((area) => addressInRange(selectionAddress, area)),
+  );
+  const activeListItems = activeListRule ? (listItems.get(activeListRule.id) ?? []) : [];
+
+  // The choice list belongs to one cell: moving the selection, switching
+  // sheets or starting an edit closes it.
+  const listDropdownKey = `${sheetIndex}:${selectionAddress}:${editing ? "editing" : ""}`;
+  const [lastListDropdownKey, setLastListDropdownKey] = useState(listDropdownKey);
+  if (lastListDropdownKey !== listDropdownKey) {
+    setLastListDropdownKey(listDropdownKey);
+    setListDropdown(null);
+  }
+  const listDropdownOpen = listDropdown !== null && activeListItems.length > 0;
+  const listDropdownIndex = Math.min(listDropdown?.index ?? 0, Math.max(0, activeListItems.length - 1));
+
+  // The arrow sits inside the right edge of the active cell, in canvas
+  // coordinates like the fill handle. The list opens below the cell, or above
+  // it when the viewport has no room left underneath.
+  const listCellHeight = sheet.rowHeights[String(selection.focus.row)] ?? ROW_HEIGHT;
+  const listCell =
+    activeListItems.length > 0 && !editing && listCellHeight > 0
+      ? (() => {
+          const left = columnX(selection.focus.col);
+          const width = sheet.colWidths[String(selection.focus.col)] ?? DEFAULT_COL_WIDTH;
+          const top = ROW_HEIGHT + selection.focus.row * ROW_HEIGHT;
+          const popupHeight = Math.min(activeListItems.length, 8) * (android ? 40 : 26) + 8;
+          const viewTop = scroll.top / gridZoom + ROW_HEIGHT;
+          const viewBottom = (scroll.top + scroll.height) / gridZoom;
+          const above = top + listCellHeight + popupHeight > viewBottom && top - popupHeight >= viewTop;
+          return { left, width, top, height: listCellHeight, above };
+        })()
+      : null;
+
+  // Opening the list moves the keyboard into it; the highlighted choice stays
+  // in view while the arrow keys move it.
+  useLayoutEffect(() => {
+    if (listDropdownOpen) listDropdownRef.current?.focus({ preventScroll: true });
+  }, [listDropdownOpen]);
+  useLayoutEffect(() => {
+    if (!listDropdownOpen) return;
+    listDropdownRef.current
+      ?.querySelector<HTMLElement>('[aria-selected="true"]')
+      ?.scrollIntoView?.({ block: "nearest" });
+  }, [listDropdownOpen, listDropdownIndex]);
 
   // The last valid row/column, used for Ctrl+End, Space and the data extent.
   const lastRow = Math.max(0, sheet.rowCount - 1);
@@ -2329,6 +2603,14 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 onClick={() => openFilter(selection.focus.col)}
               />
             </RibbonGroup>
+            <RibbonGroup label={t("calc.dataTools")}>
+              <ToolButton icon={<Columns3 size={16} />} label={t("calc.textToColumns")} onClick={openTextToColumns} />
+              <ToolButton
+                icon={<CopyX size={16} />}
+                label={t("calc.removeDuplicates")}
+                onClick={openRemoveDuplicates}
+              />
+            </RibbonGroup>
             <RibbonGroup label={t("calc.structure")}>
               <ToolButton
                 icon={<Plus size={16} />}
@@ -2517,7 +2799,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   const validation = sheet.validations.find((rule) =>
                     addressesInRange(rule.range, 100).includes(address),
                   );
-                  const invalid = validation ? !isValid(validation, value) : false;
+                  const invalid = validation ? !isValid(validation, value, listItems.get(validation.id)) : false;
                   // The structured table (if any) that owns this cell decides
                   // header/banding/outline; the cell's own formatting still wins.
                   const tableEntry = sheetTables.find(
@@ -2714,6 +2996,69 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 />
               );
             })}
+            {listCell ? (
+              <button
+                type="button"
+                className="calc-list-arrow"
+                data-list-arrow=""
+                tabIndex={-1}
+                aria-label={t("calc.listShow")}
+                aria-haspopup="listbox"
+                aria-expanded={listDropdownOpen}
+                style={{ left: listCell.left + listCell.width, top: listCell.top, height: listCell.height }}
+                // The grid would start a selection or pan gesture and capture
+                // the pointer; the arrow only needs its click.
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => (listDropdownOpen ? closeListDropdown() : openListDropdown())}
+              >
+                <ChevronDown size={13} />
+              </button>
+            ) : null}
+            {listCell && listDropdownOpen ? (
+              <div
+                ref={listDropdownRef}
+                className="calc-list-popup"
+                role="listbox"
+                tabIndex={-1}
+                aria-label={t("calc.listValues")}
+                aria-activedescendant={`${listDropdownId}-${listDropdownIndex}`}
+                style={{
+                  left: listCell.left,
+                  top: listCell.above ? listCell.top : listCell.top + listCell.height,
+                  minWidth: listCell.width,
+                  transform: listCell.above ? "translateY(-100%)" : undefined,
+                }}
+                onPointerDown={(event) => event.stopPropagation()}
+                onKeyDown={handleListDropdownKey}
+                // One click handler for every option; a tap is a click too,
+                // while a touch scroll of the list never produces one.
+                onClick={(event) => {
+                  const option = (event.target as HTMLElement).closest<HTMLElement>("[data-list-index]");
+                  if (option) chooseListValue(activeListItems[Number(option.dataset.listIndex)]);
+                }}
+                onBlur={(event) => {
+                  // Focus moving to the arrow belongs to the arrow's own toggle.
+                  const next = event.relatedTarget as HTMLElement | null;
+                  if (next?.closest?.("[data-list-arrow]") || event.currentTarget.contains(next)) return;
+                  setListDropdown(null);
+                }}
+              >
+                {activeListItems.map((item, index) => (
+                  <div
+                    key={item}
+                    id={`${listDropdownId}-${index}`}
+                    role="option"
+                    tabIndex={-1}
+                    data-list-index={index}
+                    aria-selected={index === listDropdownIndex}
+                    className={`calc-list-option${index === listDropdownIndex ? " is-active" : ""}`}
+                    onMouseEnter={() => setListDropdown({ index })}
+                  >
+                    {item}
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -2804,6 +3149,24 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
 
       {validationDialog ? (
         <ValidationDialog onClose={() => setValidationDialog(false)} onApply={addValidation} />
+      ) : null}
+
+      {textToColumnsDialog ? (
+        <TextToColumnsDialog
+          texts={textToColumnsTexts()}
+          startColumn={selectionBounds.start.col}
+          holdsData={holdsData}
+          onClose={() => setTextToColumnsDialog(false)}
+          onApply={applyTextToColumns}
+        />
+      ) : null}
+
+      {duplicatesDialog ? (
+        <RemoveDuplicatesDialog
+          columns={duplicateColumns()}
+          onClose={() => setDuplicatesDialog(false)}
+          onApply={removeDuplicates}
+        />
       ) : null}
 
       {nameDialog ? (
@@ -3073,13 +3436,15 @@ function ruleFill(
   }
 }
 
+/** `items` are the resolved choices of a list rule (see `listValidationItems`). */
 function isValid(
   rule: { kind: string; values: string[]; min: number | null; max: number | null },
   value: Scalar,
+  items: readonly string[] = rule.values,
 ): boolean {
   if (value === "" || value === undefined) return true;
   if (rule.kind === "list")
-    return rule.values.map((entry) => entry.trim().toLowerCase()).includes(String(value).trim().toLowerCase());
+    return items.map((entry) => entry.trim().toLowerCase()).includes(String(value).trim().toLowerCase());
   const number = Number(value);
   if (!Number.isFinite(number)) return rule.kind !== "number";
   if (rule.kind === "number") {
@@ -3608,6 +3973,196 @@ function ValidationDialog({
           }
         >
           {t("common.apply")}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+/**
+ * Text to columns: splits the selected column on a delimiter into itself and
+ * the columns to its right. The preview shows the first rows; replacing data
+ * already in the target cells needs a second, explicit confirmation.
+ */
+function TextToColumnsDialog({
+  texts,
+  startColumn,
+  holdsData,
+  onClose,
+  onApply,
+}: {
+  texts: string[];
+  startColumn: number;
+  /** True when the target cell at this offset from the first source cell holds data. */
+  holdsData: (rowOffset: number, colOffset: number) => boolean;
+  onClose: () => void;
+  onApply: (plan: ColumnSplitPlan) => void;
+}) {
+  const t = useT();
+  const radioName = useId();
+  const [delimiter, setDelimiter] = useState<SplitDelimiter>("comma");
+  const [custom, setCustom] = useState("");
+  const [mergeConsecutive, setMergeConsecutive] = useState(false);
+  // How many target cells would be replaced; non-null while asking about it.
+  const [overwrites, setOverwrites] = useState<number | null>(null);
+  const plan = planTextToColumns(texts, { delimiter, custom, mergeConsecutive });
+  const splits = plan.rows.some((pieces) => pieces !== null);
+  const preview = plan.rows.slice(0, 5).map((pieces, index) => pieces ?? [texts[index]]);
+  const previewWidth = Math.max(1, ...preview.map((pieces) => pieces.length));
+
+  const split = () => {
+    if (overwrites === null) {
+      let count = 0;
+      plan.rows.forEach((pieces, rowOffset) => {
+        for (let colOffset = 1; colOffset < (pieces?.length ?? 0); colOffset += 1) {
+          if (holdsData(rowOffset, colOffset)) count += 1;
+        }
+      });
+      if (count > 0) {
+        setOverwrites(count);
+        return;
+      }
+    }
+    onApply(plan);
+  };
+
+  return (
+    <Dialog title={t("calc.textToColumns")} onClose={onClose} wide>
+      <div className="stack">
+        <fieldset className="calc-tool-fieldset">
+          <legend>{t("calc.delimiter")}</legend>
+          {(["comma", "semicolon", "tab", "space", "custom"] as const).map((id) => (
+            <label key={id} className="check">
+              <input
+                type="radio"
+                name={radioName}
+                checked={delimiter === id}
+                onChange={() => {
+                  setDelimiter(id);
+                  setOverwrites(null);
+                }}
+              />
+              {t(`calc.delimiter_${id}`)}
+            </label>
+          ))}
+          <input
+            className="input calc-split-custom"
+            aria-label={t("calc.delimiterCustomValue")}
+            value={custom}
+            maxLength={8}
+            onChange={(event) => {
+              setCustom(event.target.value);
+              setDelimiter("custom");
+              setOverwrites(null);
+            }}
+          />
+        </fieldset>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={mergeConsecutive}
+            onChange={(event) => {
+              setMergeConsecutive(event.target.checked);
+              setOverwrites(null);
+            }}
+          />
+          {t("calc.mergeDelimiters")}
+        </label>
+        <div className="calc-split-preview">
+          <table aria-label={t("calc.preview")}>
+            <thead>
+              <tr>
+                {Array.from({ length: previewWidth }, (_, index) => (
+                  <th key={index}>{columnLabel(startColumn + index)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {preview.map((pieces, row) => (
+                <tr key={row}>
+                  {Array.from({ length: previewWidth }, (_, col) => (
+                    <td key={col}>{pieces[col] ?? ""}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {splits ? null : <p className="muted small">{t("calc.splitNothing")}</p>}
+        {overwrites !== null ? (
+          <p className="calc-tool-warning" role="alert">
+            {t("calc.splitOverwrite", { count: overwrites })}
+          </p>
+        ) : null}
+      </div>
+      <div className="row" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+        <button
+          type="button"
+          className="btn btn-soft"
+          onClick={overwrites === null ? onClose : () => setOverwrites(null)}
+        >
+          {t("common.cancel")}
+        </button>
+        <button type="button" className="btn btn-primary" disabled={!splits} onClick={split}>
+          {overwrites === null ? t("calc.split") : t("calc.splitReplace")}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+/**
+ * Remove duplicates: picks the columns two rows must agree on. Text compares
+ * case-insensitively, and the header row, when there is one, always stays.
+ */
+function RemoveDuplicatesDialog({
+  columns,
+  onClose,
+  onApply,
+}: {
+  columns: Array<{ letter: string; header: string }>;
+  onClose: () => void;
+  onApply: (options: DuplicateOptions) => void;
+}) {
+  const t = useT();
+  const [hasHeaders, setHasHeaders] = useState(false);
+  const [checked, setChecked] = useState(() => columns.map(() => true));
+  const chosen = checked.flatMap((on, index) => (on ? [index] : []));
+  return (
+    <Dialog title={t("calc.removeDuplicates")} onClose={onClose}>
+      <div className="stack">
+        <label className="check">
+          <input type="checkbox" checked={hasHeaders} onChange={(event) => setHasHeaders(event.target.checked)} />
+          {t("calc.duplicatesHeaders")}
+        </label>
+        <fieldset className="calc-tool-fieldset is-list">
+          <legend>{t("calc.duplicatesColumns")}</legend>
+          {columns.map((column, index) => (
+            <label key={column.letter} className="check">
+              <input
+                type="checkbox"
+                checked={checked[index]}
+                onChange={(event) =>
+                  setChecked((current) => current.map((on, at) => (at === index ? event.target.checked : on)))
+                }
+              />
+              {hasHeaders && column.header ? column.header : t("calc.columnLabel", { column: column.letter })}
+            </label>
+          ))}
+        </fieldset>
+        <p className="muted small">{t("calc.duplicatesHint")}</p>
+      </div>
+      <div className="row" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+        <button type="button" className="btn btn-soft" onClick={onClose}>
+          {t("common.cancel")}
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={chosen.length === 0}
+          onClick={() => onApply({ columns: chosen, hasHeaders })}
+        >
+          {t("calc.removeDuplicates")}
         </button>
       </div>
     </Dialog>

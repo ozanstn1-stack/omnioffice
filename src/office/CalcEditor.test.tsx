@@ -46,7 +46,8 @@ if (typeof window.PointerEvent === "undefined") {
 }
 import { applyCellEdit } from "./calc/cells";
 import { useOfficeTabs, type OfficeTab } from "../lib/office-store";
-import { cellText, type Workbook } from "../lib/office-types";
+import { cellText, type Sheet, type Workbook } from "../lib/office-types";
+import { useToasts } from "../lib/store";
 
 function Harness({ id }: { id: string }) {
   const tab = useOfficeTabs((state) => state.tabs.find((candidate) => candidate.id === id));
@@ -407,5 +408,285 @@ describe("Calc touch maths", () => {
     // Function names and typed-in lower case survive untouched.
     expect(shiftFormulaColumns("=sum(a1:b1)", 1)).toBe("=sum(b1:c1)");
     expect(shiftFormulaColumns(null, 1)).toBeNull();
+  });
+});
+
+/** Creates a workbook tab with typed values (`{ A1: "x" }`) and an optional sheet patch. */
+function seedWorkbook(values: Record<string, string>, patch: (sheet: Sheet) => Sheet = (sheet) => sheet): string {
+  const id = useOfficeTabs.getState().create("calc", "Untitled");
+  let model = useOfficeTabs.getState().tabs[0].model as Workbook;
+  for (const [address, value] of Object.entries(values)) {
+    const col = address.charCodeAt(0) - 65;
+    const row = Number(address.slice(1)) - 1;
+    model = applyCellEdit(model, 0, row, col, value);
+  }
+  model = { ...model, sheets: model.sheets.map((sheet, index) => (index === 0 ? patch(sheet) : sheet)) };
+  useOfficeTabs.setState((state) => ({ tabs: state.tabs.map((tab) => (tab.id === id ? { ...tab, model } : tab)) }));
+  return id;
+}
+
+function selectRange(range: string) {
+  fireEvent.change(document.querySelector<HTMLInputElement>(".name-box")!, { target: { value: range } });
+}
+
+describe("Calc data tools", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+    useToasts.setState({ toasts: [] });
+    vi.mocked(isAndroid).mockReturnValue(false);
+  });
+
+  it("splits a column on commas into numbers and text as one undo step", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({ A1: "Ada,Lovelace,1815", A2: "Alan,Turing,1912", A3: "Grace" });
+    render(<Harness id={id} />);
+
+    selectRange("A1:A3");
+    await user.click(screen.getByRole("button", { name: "Data" }));
+    await user.click(screen.getByRole("button", { name: "Text to columns" }));
+    const dialog = screen.getByRole("dialog", { name: "Text to columns" });
+    expect(within(dialog).getByRole("radio", { name: "Comma" })).toBeChecked();
+    const preview = within(dialog).getByRole("table", { name: "Preview" });
+    expect(
+      within(preview)
+        .getAllByRole("columnheader")
+        .map((cell) => cell.textContent),
+    ).toEqual(["A", "B", "C"]);
+    expect(preview.textContent).toContain("Lovelace");
+    await user.click(within(dialog).getByRole("button", { name: "Split" }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    let sheet = workbookOf().sheets[0];
+    expect(sheet.cells.A1?.value).toEqual({ kind: "text", value: "Ada" });
+    expect(sheet.cells.B1?.value).toEqual({ kind: "text", value: "Lovelace" });
+    expect(sheet.cells.C1?.value).toEqual({ kind: "number", value: 1815 });
+    expect(sheet.cells.C2?.value).toEqual({ kind: "number", value: 1912 });
+    // A row without the delimiter is left alone.
+    expect(cellText(sheet.cells.A3)).toBe("Grace");
+    expect(sheet.cells.B3).toBeUndefined();
+
+    await user.click(screen.getByRole("button", { name: "Home" }));
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    sheet = workbookOf().sheets[0];
+    expect(cellText(sheet.cells.A1)).toBe("Ada,Lovelace,1815");
+    expect(sheet.cells.B1).toBeUndefined();
+    expect(sheet.cells.C2).toBeUndefined();
+  });
+
+  it("asks before a split replaces data to the right", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({ A1: "x;;y", B1: "old", C1: "keep" });
+    render(<Harness id={id} />);
+
+    selectRange("A1");
+    await user.click(screen.getByRole("button", { name: "Data" }));
+    await user.click(screen.getByRole("button", { name: "Text to columns" }));
+    const dialog = screen.getByRole("dialog", { name: "Text to columns" });
+    // The comma does not split this text at all.
+    expect(within(dialog).getByRole("button", { name: "Split" })).toBeDisabled();
+    await user.click(within(dialog).getByRole("radio", { name: "Semicolon" }));
+    await user.click(within(dialog).getByRole("checkbox", { name: "Treat consecutive delimiters as one" }));
+    await user.click(within(dialog).getByRole("button", { name: "Split" }));
+
+    // Nothing is written until the replacement is confirmed.
+    expect(within(dialog).getByRole("alert").textContent).toContain("(1)");
+    expect(cellText(workbookOf().sheets[0].cells.B1)).toBe("old");
+    await user.click(within(dialog).getByRole("button", { name: "Replace" }));
+
+    const sheet = workbookOf().sheets[0];
+    expect(cellText(sheet.cells.A1)).toBe("x");
+    expect(cellText(sheet.cells.B1)).toBe("y");
+    expect(cellText(sheet.cells.C1)).toBe("keep");
+  });
+
+  it("splits on a custom delimiter and refuses a multi-column selection", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({ A1: "2024|05|17" });
+    render(<Harness id={id} />);
+
+    selectRange("A1:B1");
+    await user.click(screen.getByRole("button", { name: "Data" }));
+    await user.click(screen.getByRole("button", { name: "Text to columns" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(useToasts.getState().toasts.at(-1)?.title).toBe("Select cells in a single column to split them.");
+
+    selectRange("A1");
+    await user.click(screen.getByRole("button", { name: "Text to columns" }));
+    const dialog = screen.getByRole("dialog", { name: "Text to columns" });
+    await user.type(within(dialog).getByRole("textbox", { name: "Custom delimiter" }), "|");
+    expect(within(dialog).getByRole("radio", { name: "Other" })).toBeChecked();
+    await user.click(within(dialog).getByRole("button", { name: "Split" }));
+
+    const sheet = workbookOf().sheets[0];
+    expect(sheet.cells.A1?.value).toEqual({ kind: "number", value: 2024 });
+    expect(sheet.cells.B1?.value).toEqual({ kind: "number", value: 5 });
+    expect(sheet.cells.C1?.value).toEqual({ kind: "number", value: 17 });
+  });
+
+  it("removes duplicate rows inside the selection and reports the counts", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({
+      A1: "Name",
+      B1: "City",
+      A2: "Ada",
+      B2: "London",
+      A3: "ada",
+      B3: "Paris",
+      A4: "Alan",
+      B4: "Paris",
+      A5: "Ada",
+      B5: "Rome",
+      C3: "outside",
+      A7: "below",
+    });
+    render(<Harness id={id} />);
+
+    selectRange("A1:B5");
+    await user.click(screen.getByRole("button", { name: "Data" }));
+    await user.click(screen.getByRole("button", { name: "Remove duplicates" }));
+    const dialog = screen.getByRole("dialog", { name: "Remove duplicates" });
+    expect(within(dialog).getByRole("checkbox", { name: "Column A" })).toBeChecked();
+    expect(within(dialog).getByRole("checkbox", { name: "Column B" })).toBeChecked();
+    await user.click(within(dialog).getByRole("checkbox", { name: "My data has headers" }));
+    // With headers the columns are listed by their header text.
+    await user.click(within(dialog).getByRole("checkbox", { name: "City" }));
+    await user.click(within(dialog).getByRole("button", { name: "Remove duplicates" }));
+
+    let sheet = workbookOf().sheets[0];
+    // "ada" and the second "Ada" repeat row 2 (case-insensitively); Alan moves up.
+    expect(["A1", "A2", "A3", "B3"].map((address) => cellText(sheet.cells[address]))).toEqual([
+      "Name",
+      "Ada",
+      "Alan",
+      "Paris",
+    ]);
+    expect(sheet.cells.A4).toBeUndefined();
+    expect(sheet.cells.B5).toBeUndefined();
+    // Cells outside the selected range are untouched.
+    expect(cellText(sheet.cells.C3)).toBe("outside");
+    expect(cellText(sheet.cells.A7)).toBe("below");
+    expect(useToasts.getState().toasts.at(-1)?.title).toBe("Duplicate rows removed: 2. Unique rows remaining: 2.");
+
+    await user.click(screen.getByRole("button", { name: "Home" }));
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    sheet = workbookOf().sheets[0];
+    expect(cellText(sheet.cells.A3)).toBe("ada");
+    expect(cellText(sheet.cells.B5)).toBe("Rome");
+  });
+
+  it("compares whole rows without headers and reports when nothing repeats", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({ A1: "x", B1: "1", A2: "X", B2: "1", A3: "x", B3: "2" });
+    render(<Harness id={id} />);
+
+    selectRange("A1:B3");
+    await user.click(screen.getByRole("button", { name: "Data" }));
+    await user.click(screen.getByRole("button", { name: "Remove duplicates" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Remove duplicates" }));
+
+    let sheet = workbookOf().sheets[0];
+    expect(["A1", "B1", "A2", "B2"].map((address) => cellText(sheet.cells[address]))).toEqual(["x", "1", "x", "2"]);
+    expect(sheet.cells.A3).toBeUndefined();
+
+    await user.click(screen.getByRole("button", { name: "Remove duplicates" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Remove duplicates" }));
+    expect(useToasts.getState().toasts.at(-1)?.title).toBe("No duplicate rows found.");
+    sheet = workbookOf().sheets[0];
+    expect(cellText(sheet.cells.A2)).toBe("x");
+  });
+});
+
+describe("Calc list validation dropdown", () => {
+  const withList = (values: string[]) => (sheet: Sheet) => ({
+    ...sheet,
+    validations: [
+      { id: "v1", range: "A1:A3", kind: "list", values, min: null, max: null, message: "", allowBlank: true },
+    ],
+  });
+
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+    vi.mocked(isAndroid).mockReturnValue(false);
+  });
+
+  it("offers the list values on the active cell and writes the chosen one", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({ A5: "elsewhere" }, withList(["Open", "In progress", "Done"]));
+    render(<Harness id={id} />);
+
+    const arrow = screen.getByRole("button", { name: "Show list values" });
+    expect(arrow).toHaveAttribute("aria-expanded", "false");
+    await user.click(arrow);
+    const list = screen.getByRole("listbox", { name: "List values" });
+    expect(
+      within(list)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Open", "In progress", "Done"]);
+    await user.click(within(list).getByRole("option", { name: "Done" }));
+
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(cellText(workbookOf().sheets[0].cells.A1)).toBe("Done");
+    // Cells without a list validation get no arrow.
+    await user.click(cellAt(4, 0));
+    expect(screen.queryByRole("button", { name: "Show list values" })).toBeNull();
+  });
+
+  it("opens with Alt+Down, moves with the arrows, chooses with Enter and closes with Escape", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({}, withList(["Open", "In progress", "Done"]));
+    render(<Harness id={id} />);
+
+    await user.click(cellAt(1, 0));
+    await user.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    const list = screen.getByRole("listbox");
+    expect(document.activeElement).toBe(list);
+    expect(within(list).getByRole("option", { name: "Open" })).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
+    expect(within(list).getByRole("option", { name: "Done" })).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{ArrowUp}{Enter}");
+
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(cellText(workbookOf().sheets[0].cells.A2)).toBe("In progress");
+    // Keyboard focus is back on the grid, which still navigates.
+    expect(document.activeElement).toBe(document.querySelector(".calc-grid"));
+
+    await user.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    // Reopening starts on the cell's current value.
+    expect(screen.getByRole("option", { name: "In progress" })).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{ArrowDown}{Escape}");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(cellText(workbookOf().sheets[0].cells.A2)).toBe("In progress");
+    expect(document.activeElement).toBe(document.querySelector(".calc-grid"));
+  });
+
+  it("works with taps on Android and reads a list from a cell range", () => {
+    vi.mocked(isAndroid).mockReturnValue(true);
+    const id = seedWorkbook({ D1: "Yes", D2: "No", A3: "Maybe" }, withList(["=$D$1:$D$2"]));
+    render(<Harness id={id} />);
+    expect(document.querySelector(".calc-editor")?.classList.contains("is-android")).toBe(true);
+    // A value outside the referenced list is flagged, like an inline list.
+    expect(cellAt(2, 0).classList.contains("is-invalid")).toBe(true);
+
+    fireEvent.pointerDown(cellAt(1, 0), { pointerId: 3, pointerType: "touch", button: 0, clientX: 80, clientY: 40 });
+    fireEvent.pointerUp(window, { pointerId: 3, pointerType: "touch" });
+    expect(document.querySelector<HTMLInputElement>(".name-box")?.value).toBe("A2");
+
+    const arrow = screen.getByRole("button", { name: "Show list values" });
+    fireEvent.pointerDown(arrow, { pointerId: 4, pointerType: "touch", button: 0 });
+    fireEvent.pointerUp(arrow, { pointerId: 4, pointerType: "touch" });
+    fireEvent.click(arrow);
+    // The tap on the arrow must not have started a grid gesture.
+    expect(document.querySelector<HTMLInputElement>(".name-box")?.value).toBe("A2");
+    const list = screen.getByRole("listbox");
+    expect(
+      within(list)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Yes", "No"]);
+    fireEvent.click(within(list).getByRole("option", { name: "No" }));
+
+    expect(cellText(workbookOf().sheets[0].cells.A2)).toBe("No");
+    expect(cellAt(1, 0).classList.contains("is-invalid")).toBe(false);
   });
 });
