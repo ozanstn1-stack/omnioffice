@@ -144,6 +144,19 @@ pub struct AiSettingsView {
     pub provider_note: String,
     pub capabilities: aicore::ProviderCapabilities,
     pub embedding_model: Option<String>,
+    /// Key state of every provider (keys are stored per provider), so the
+    /// settings can show the right one when another provider is selected.
+    pub provider_keys: std::collections::BTreeMap<String, AiKeyState>,
+}
+
+/// Whether a key is stored for one provider, never the key itself.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiKeyState {
+    pub configured: bool,
+    pub masked_key: String,
+    /// "dpapi" | "keystore" | "plain" | "none".
+    pub key_storage: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -178,8 +191,71 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, PdfError> {
     Ok(config_dir(app)?.join("ai.json"))
 }
 
-fn key_path(app: &AppHandle) -> Result<PathBuf, PdfError> {
-    Ok(config_dir(app)?.join("ai-key.bin"))
+/// Key file of the single-key versions; moved to the saved provider's file on
+/// first use.
+const LEGACY_KEY_FILE: &str = "ai-key.bin";
+
+const ALL_PROVIDERS: [aicore::ProviderKind; 6] = [
+    aicore::ProviderKind::DeepSeek,
+    aicore::ProviderKind::OpenAiCompatible,
+    aicore::ProviderKind::Ollama,
+    aicore::ProviderKind::Gemini,
+    aicore::ProviderKind::Anthropic,
+    aicore::ProviderKind::Custom,
+];
+
+/// Every provider has its own key file, so a key typed for one provider is
+/// never sent to another: `ai-key-<provider>.bin`.
+fn provider_key_path_in(dir: &Path, kind: aicore::ProviderKind) -> PathBuf {
+    dir.join(format!("ai-key-{}.bin", kind.as_str()))
+}
+
+/// Moves the legacy `ai-key.bin` to `saved`'s file (the provider the old key
+/// was used with). A rename keeps the stored blob byte for byte, so DPAPI /
+/// Keystore protection carries over and the key is never lost: an existing
+/// per-provider file is not overwritten (the legacy file stays).
+fn migrate_legacy_key_in(dir: &Path, saved: aicore::ProviderKind) -> Result<(), PdfError> {
+    let legacy = dir.join(LEGACY_KEY_FILE);
+    if !legacy.exists() {
+        return Ok(());
+    }
+    let target = provider_key_path_in(dir, saved);
+    if target.exists() {
+        return Ok(());
+    }
+    match std::fs::rename(&legacy, &target) {
+        Ok(()) => Ok(()),
+        // Another command migrated it first.
+        Err(_) if !legacy.exists() => Ok(()),
+        Err(error) => Err(PdfError::from_io(error)),
+    }
+}
+
+fn migrate_legacy_key(app: &AppHandle) -> Result<(), PdfError> {
+    migrate_legacy_key_in(&config_dir(app)?, provider_kind(&load_settings_file(app).provider))
+}
+
+/// Key file for a provider (after migrating the legacy single key).
+fn key_path(app: &AppHandle, kind: aicore::ProviderKind) -> Result<PathBuf, PdfError> {
+    migrate_legacy_key(app)?;
+    Ok(provider_key_path_in(&config_dir(app)?, kind))
+}
+
+fn key_state(path: &Path, kind: aicore::ProviderKind) -> AiKeyState {
+    let key = secret::load_api_key(path).unwrap_or_default();
+    AiKeyState {
+        // A local Ollama server needs no API key, so it counts as configured.
+        configured: !key.trim().is_empty() || kind == aicore::ProviderKind::Ollama,
+        masked_key: mask_key(&key),
+        key_storage: secret::storage_kind(path).to_string(),
+    }
+}
+
+/// The base URL to store: the entered one, or the selected provider's own
+/// default (never another provider's) when the field is empty.
+fn resolve_base_url(kind: aicore::ProviderKind, entered: &str) -> Result<String, AiError> {
+    let trimmed = entered.trim();
+    aicore::normalize_base_url(if trimmed.is_empty() { kind.default_base_url() } else { trimmed })
 }
 
 fn load_settings_file(app: &AppHandle) -> AiSettingsFile {
@@ -206,15 +282,31 @@ fn mask_key(key: &str) -> String {
 
 fn view(app: &AppHandle) -> AiSettingsView {
     let settings = load_settings_file(app);
-    let key = key_path(app).ok().and_then(|path| secret::load_api_key(&path).ok()).unwrap_or_default();
-    let storage =
-        key_path(app).map(|path| secret::storage_kind(&path).to_string()).unwrap_or_else(|_| "none".to_string());
     let provider = provider_kind(&settings.provider);
+    let provider_keys: std::collections::BTreeMap<String, AiKeyState> = ALL_PROVIDERS
+        .iter()
+        .map(|kind| {
+            let state = match key_path(app, *kind) {
+                Ok(path) => key_state(&path, *kind),
+                Err(_) => AiKeyState {
+                    configured: *kind == aicore::ProviderKind::Ollama,
+                    masked_key: String::new(),
+                    key_storage: "none".to_string(),
+                },
+            };
+            (kind.as_str().to_string(), state)
+        })
+        .collect();
+    let current = provider_keys.get(provider.as_str()).cloned().unwrap_or(AiKeyState {
+        configured: false,
+        masked_key: String::new(),
+        key_storage: "none".to_string(),
+    });
     AiSettingsView {
-        // A local Ollama server needs no API key, so it counts as configured.
-        configured: !key.trim().is_empty() || provider == aicore::ProviderKind::Ollama,
-        key_storage: storage,
-        masked_key: mask_key(&key),
+        configured: current.configured,
+        key_storage: current.key_storage,
+        masked_key: current.masked_key,
+        provider_keys,
         base_url: settings.base_url,
         model: settings.model,
         temperature: settings.temperature,
@@ -237,9 +329,10 @@ fn provider_kind(value: &str) -> aicore::ProviderKind {
 
 fn build_config(app: &AppHandle) -> Result<AiConfig, PdfError> {
     let settings = load_settings_file(app);
+    let kind = provider_kind(&settings.provider);
     // A stored key that cannot be decrypted (lost Keystore key) is reported as
     // such instead of as a missing key, so the user knows to enter it again.
-    let (key, key_error) = match key_path(app).and_then(|path| secret::load_api_key(&path)) {
+    let (key, key_error) = match key_path(app, kind).and_then(|path| secret::load_api_key(&path)) {
         Ok(key) => (key, None),
         Err(error) => (String::new(), Some(error)),
     };
@@ -252,7 +345,7 @@ fn build_config(app: &AppHandle) -> Result<AiConfig, PdfError> {
         thinking: settings.thinking,
         reasoning_effort: settings.reasoning_effort,
         context_tokens: settings.context_tokens.clamp(8_000, aicore::MAX_CONTEXT_TOKENS),
-        provider: provider_kind(&settings.provider),
+        provider: kind,
         embedding_model: settings.embedding_model.clone(),
     };
     if !config.is_configured() {
@@ -268,15 +361,14 @@ pub fn ai_get_settings(app: AppHandle) -> AiSettingsView {
 
 #[tauri::command]
 pub fn ai_save_settings(app: AppHandle, input: AiSettingsInput) -> Result<AiSettingsView, PdfError> {
+    // The legacy single key belongs to the provider saved so far, so it moves
+    // before the settings (and with them the provider) change.
+    migrate_legacy_key(&app)?;
+    let kind = input.provider.as_deref().map(provider_kind).unwrap_or_default();
     let file = AiSettingsFile {
-        base_url: aicore::normalize_base_url(if input.base_url.trim().is_empty() {
-            aicore::DEFAULT_BASE_URL
-        } else {
-            input.base_url.trim()
-        })
-        .map_err(ai_error)?,
+        base_url: resolve_base_url(kind, &input.base_url).map_err(ai_error)?,
         model: if input.model.trim().is_empty() {
-            aicore::DEFAULT_MODEL.to_string()
+            kind.default_model().unwrap_or(aicore::DEFAULT_MODEL).to_string()
         } else {
             input.model.trim().to_string()
         },
@@ -297,10 +389,7 @@ pub fn ai_save_settings(app: AppHandle, input: AiSettingsInput) -> Result<AiSett
             .context_tokens
             .unwrap_or_else(default_context_tokens)
             .clamp(8_000, aicore::MAX_CONTEXT_TOKENS),
-        provider: input
-            .provider
-            .map(|value| provider_kind(&value).as_str().to_string())
-            .unwrap_or_else(default_provider),
+        provider: kind.as_str().to_string(),
         embedding_model: input.embedding_model.filter(|value| !value.trim().is_empty()),
     };
     let text = serde_json::to_string_pretty(&file)
@@ -308,15 +397,21 @@ pub fn ai_save_settings(app: AppHandle, input: AiSettingsInput) -> Result<AiSett
     crate::commands::write_atomic(&settings_path(&app)?, text.as_bytes())?;
     if let Some(key) = input.api_key {
         if !key.trim().is_empty() {
-            secret::save_api_key(&key_path(&app)?, &key)?;
+            secret::save_api_key(&key_path(&app, kind)?, &key)?;
         }
     }
     Ok(view(&app))
 }
 
 #[tauri::command]
-pub fn ai_clear_key(app: AppHandle) -> Result<AiSettingsView, PdfError> {
-    secret::delete_api_key(&key_path(&app)?)?;
+pub fn ai_clear_key(app: AppHandle, provider: Option<String>) -> Result<AiSettingsView, PdfError> {
+    // Clears the key of the provider the settings screen shows (the saved one
+    // when none is named), never another provider's.
+    let kind = match provider {
+        Some(value) => provider_kind(&value),
+        None => provider_kind(&load_settings_file(&app).provider),
+    };
+    secret::delete_api_key(&key_path(&app, kind)?)?;
     Ok(view(&app))
 }
 
@@ -1228,5 +1323,82 @@ mod tests {
         let unknown = dir.path().join("ai.zip");
         std::fs::write(&unknown, b"not a document").expect("write zip");
         assert!(extract_office_pages(&unknown, None, &cancel).is_err());
+    }
+    #[test]
+    fn every_provider_has_its_own_key_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut names: Vec<String> = ALL_PROVIDERS
+            .iter()
+            .map(|kind| provider_key_path_in(dir.path(), *kind).file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        assert!(names.contains(&"ai-key-anthropic.bin".to_string()), "{names:?}");
+        assert!(names.contains(&"ai-key-deepseek.bin".to_string()), "{names:?}");
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), ALL_PROVIDERS.len());
+
+        let anthropic = provider_key_path_in(dir.path(), aicore::ProviderKind::Anthropic);
+        let deepseek = provider_key_path_in(dir.path(), aicore::ProviderKind::DeepSeek);
+        secret::save_api_key(&anthropic, "sk-ant-one").expect("save anthropic");
+        // Another provider never sees it.
+        assert_eq!(secret::load_api_key(&deepseek).unwrap_or_default(), "");
+        assert!(!key_state(&deepseek, aicore::ProviderKind::DeepSeek).configured);
+        assert!(key_state(&anthropic, aicore::ProviderKind::Anthropic).configured);
+        // Ollama needs no key.
+        let ollama = provider_key_path_in(dir.path(), aicore::ProviderKind::Ollama);
+        assert!(key_state(&ollama, aicore::ProviderKind::Ollama).configured);
+        secret::save_api_key(&deepseek, "sk-ds-two").expect("save deepseek");
+        assert_eq!(secret::load_api_key(&anthropic).unwrap(), "sk-ant-one");
+        assert_eq!(secret::load_api_key(&deepseek).unwrap(), "sk-ds-two");
+    }
+
+    #[test]
+    fn the_legacy_key_moves_to_the_saved_provider_without_loss() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let legacy = dir.path().join(LEGACY_KEY_FILE);
+        secret::save_api_key(&legacy, "sk-ant-legacy").expect("save legacy");
+        let raw = std::fs::read(&legacy).unwrap();
+
+        migrate_legacy_key_in(dir.path(), aicore::ProviderKind::Anthropic).expect("migrate");
+        assert!(!legacy.exists());
+        let anthropic = provider_key_path_in(dir.path(), aicore::ProviderKind::Anthropic);
+        // The stored blob is moved byte for byte (DPAPI / Keystore stay valid).
+        assert_eq!(std::fs::read(&anthropic).unwrap(), raw);
+        assert_eq!(secret::load_api_key(&anthropic).unwrap(), "sk-ant-legacy");
+        let deepseek = provider_key_path_in(dir.path(), aicore::ProviderKind::DeepSeek);
+        assert!(!deepseek.exists());
+
+        // Idempotent when nothing is left to migrate.
+        migrate_legacy_key_in(dir.path(), aicore::ProviderKind::DeepSeek).expect("noop");
+        assert!(!deepseek.exists());
+    }
+
+    #[test]
+    fn migration_never_overwrites_an_existing_provider_key() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let legacy = dir.path().join(LEGACY_KEY_FILE);
+        let target = provider_key_path_in(dir.path(), aicore::ProviderKind::DeepSeek);
+        secret::save_api_key(&legacy, "old").expect("save legacy");
+        secret::save_api_key(&target, "new").expect("save target");
+        migrate_legacy_key_in(dir.path(), aicore::ProviderKind::DeepSeek).expect("migrate");
+        assert_eq!(secret::load_api_key(&target).unwrap(), "new");
+        // The legacy value is kept rather than dropped.
+        assert_eq!(secret::load_api_key(&legacy).unwrap(), "old");
+    }
+
+    #[test]
+    fn an_empty_base_url_falls_back_to_the_selected_providers_own_default() {
+        use aicore::ProviderKind;
+        assert_eq!(resolve_base_url(ProviderKind::Anthropic, "  ").unwrap(), aicore::ANTHROPIC_BASE_URL);
+        assert_eq!(resolve_base_url(ProviderKind::DeepSeek, "").unwrap(), aicore::DEFAULT_BASE_URL);
+        assert_eq!(resolve_base_url(ProviderKind::OpenAiCompatible, "").unwrap(), "https://api.openai.com/v1");
+        assert_eq!(resolve_base_url(ProviderKind::Ollama, "").unwrap(), "http://localhost:11434");
+        assert!(resolve_base_url(ProviderKind::Gemini, "").unwrap().contains("generativelanguage"));
+        // A custom endpoint has no default: the empty value is an error, not DeepSeek.
+        assert!(resolve_base_url(ProviderKind::Custom, "").is_err());
+        assert_eq!(
+            resolve_base_url(ProviderKind::Custom, " https://llm.example/v1/ ").unwrap(),
+            "https://llm.example/v1"
+        );
     }
 }

@@ -16,7 +16,7 @@ import {
   aiTestConnection,
   toAppError,
 } from "../lib/api";
-import type { AiModelOption, AiSettingsView, AiTestResult, ReasoningEffort } from "../lib/types";
+import type { AiKeyState, AiModelOption, AiSettingsView, AiTestResult, ReasoningEffort } from "../lib/types";
 
 /**
  * Settings panel for the optional AI integration.
@@ -105,6 +105,13 @@ export function AiSettings() {
 
   const preset = PROVIDER_PRESETS.find((entry) => entry.id === provider) ?? PROVIDER_PRESETS[0];
   const savedProvider = parseProviderId(view?.provider);
+  // Keys are stored per provider: show the state of the provider selected
+  // here, which may differ from the saved one until Save.
+  const keyState: AiKeyState =
+    view?.providerKeys?.[provider] ??
+    (savedProvider === provider && view
+      ? { configured: view.configured, maskedKey: view.maskedKey, keyStorage: view.keyStorage }
+      : { configured: false, maskedKey: "", keyStorage: "none" });
   const capabilities: ProviderCapabilities =
     view?.capabilities && savedProvider === provider ? view.capabilities : preset.capabilities;
   const providerNote = view?.providerNote && savedProvider === provider ? view.providerNote : preset.note;
@@ -115,6 +122,9 @@ export function AiSettings() {
   const changeProvider = (value: string) => {
     setProvider(value);
     setTestResult(null);
+    // A key typed for the previous provider must never be saved for, or sent
+    // to, the newly selected one.
+    setApiKey("");
     const next = PROVIDER_PRESETS.find((entry) => entry.id === value);
     if (next) {
       if (next.baseUrl) setBaseUrl(next.baseUrl);
@@ -172,7 +182,7 @@ export function AiSettings() {
   };
 
   const clear = async () => {
-    const updated = await aiClearKey();
+    const updated = await aiClearKey(provider);
     setView(updated);
     setTestResult(null);
   };
@@ -257,7 +267,7 @@ export function AiSettings() {
             <TextInput
               type="password"
               value={apiKey}
-              placeholder={view?.maskedKey || preset.keyPlaceholder}
+              placeholder={keyState.maskedKey || preset.keyPlaceholder}
               onChange={(event) => setApiKey(event.target.value)}
               autoComplete="off"
               spellCheck={false}
@@ -266,7 +276,7 @@ export function AiSettings() {
               variant="ghost"
               icon={<KeyRound size={15} />}
               onClick={() => void clear()}
-              disabled={!view?.configured}
+              disabled={!keyState.configured}
             >
               {t("settings.aiClear")}
             </Button>
@@ -420,11 +430,11 @@ export function AiSettings() {
           variant="ghost"
           icon={testing ? <Spinner size={14} /> : <Zap size={15} />}
           onClick={() => void test()}
-          disabled={testing || (needsApiKey && !view?.configured && !apiKey.trim())}
+          disabled={testing || (needsApiKey && !keyState.configured && !apiKey.trim())}
         >
           {t("settings.aiTestConnection")}
         </Button>
-        {view?.configured ? (
+        {needsApiKey && keyState.configured ? (
           <Button variant="danger" icon={<Trash2 size={15} />} onClick={() => void clear()}>
             {t("settings.aiClearKey")}
           </Button>
@@ -476,11 +486,11 @@ export function AiSettings() {
 
       <p className="text-xs muted">
         {t("settings.aiStorage")}:{" "}
-        {view?.keyStorage === "dpapi"
+        {keyState.keyStorage === "dpapi"
           ? t("ai.keySecure")
-          : view?.keyStorage === "keystore"
+          : keyState.keyStorage === "keystore"
             ? t("ai.keyKeystore")
-            : view?.keyStorage === "plain"
+            : keyState.keyStorage === "plain"
               ? t("ai.keyPlain")
               : t("ai.keyMissing")}
       </p>

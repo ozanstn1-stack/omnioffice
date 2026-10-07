@@ -388,6 +388,15 @@ export interface AiSettingsView {
   /** Provider id ("deepseek" | "ollama") and its short display name. */
   provider?: string;
   providerLabel?: string;
+  /** Key state per provider id: keys are stored separately for each provider. */
+  providerKeys?: Record<string, AiKeyState>;
+}
+
+/** Whether a key is stored for one provider (never the key itself). */
+export interface AiKeyState {
+  configured: boolean;
+  maskedKey: string;
+  keyStorage: "none" | "dpapi" | "keystore" | "plain" | string;
 }
 
 export interface AiSettingsInput {

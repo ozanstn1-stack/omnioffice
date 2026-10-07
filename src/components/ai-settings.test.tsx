@@ -3,9 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const settingsView = {
-  configured: false,
-  keyStorage: "none",
-  maskedKey: "",
+  configured: true,
+  keyStorage: "dpapi",
+  maskedKey: "sk-d••••1234",
+  providerKeys: {
+    deepseek: { configured: true, maskedKey: "sk-d••••1234", keyStorage: "dpapi" },
+    anthropic: { configured: false, maskedKey: "", keyStorage: "none" },
+    ollama: { configured: true, maskedKey: "", keyStorage: "none" },
+  } as Record<string, { configured: boolean; maskedKey: string; keyStorage: string }>,
   baseUrl: "https://api.deepseek.com",
   model: "deepseek-flash",
   temperature: 0.2,
@@ -35,6 +40,8 @@ const invoke = vi.fn(async (command: string, payload?: unknown) => {
       return "C:/docs/AI";
     case "ai_save_settings":
       return { ...settingsView, ...(payload as { input: Record<string, unknown> }).input, configured: true };
+    case "ai_clear_key":
+      return settingsView;
     default:
       return null;
   }
@@ -97,5 +104,35 @@ describe("AI provider settings", () => {
         }),
       ),
     );
+  });
+  it("shows each provider's own key state and never carries a typed key to another provider", async () => {
+    const user = userEvent.setup();
+    render(<AiSettings />);
+    const select = (await screen.findByRole("combobox", { name: "Provider" })) as HTMLSelectElement;
+    // The saved DeepSeek key is shown for DeepSeek.
+    expect(await screen.findByPlaceholderText("sk-d••••1234")).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText("sk-d••••1234"), "typed-deepseek-key");
+
+    // Switching to Anthropic: no key there, Test is disabled, nothing typed carries over.
+    await user.selectOptions(select, "anthropic");
+    const field = screen.getByPlaceholderText("sk-ant-…") as HTMLInputElement;
+    expect(field.value).toBe("");
+    expect(screen.getByRole("button", { name: /Test connection/ })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Remove key" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("ai_save_settings", expect.anything()));
+    const saved = invoke.mock.calls.find(([command]) => command === "ai_save_settings")![1] as {
+      input: { apiKey?: string; provider: string };
+    };
+    expect(saved.input.provider).toBe("anthropic");
+    expect(saved.input.apiKey).toBeUndefined();
+
+    // Back to DeepSeek: its stored key is shown again, and removing a key
+    // names the provider it belongs to.
+    await user.selectOptions(select, "deepseek");
+    expect(screen.getByPlaceholderText("sk-d••••1234")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Remove key" }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("ai_clear_key", { provider: "deepseek" }));
   });
 });

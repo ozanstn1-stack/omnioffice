@@ -98,7 +98,8 @@ export const onProgress = (handler: (payload: ProgressPayload) => void): Promise
 
 export const aiGetSettings = () => invoke<AiSettingsView>("ai_get_settings");
 export const aiSaveSettings = (input: AiSettingsInput) => invoke<AiSettingsView>("ai_save_settings", { input });
-export const aiClearKey = () => invoke<AiSettingsView>("ai_clear_key");
+/** Removes the stored key of `provider` (the saved provider when omitted). */
+export const aiClearKey = (provider?: string) => invoke<AiSettingsView>("ai_clear_key", { provider: provider ?? null });
 export const aiTestConnection = () => invoke<AiTestResult>("ai_test_connection");
 export const aiDocumentPreview = (path: string, pages: number[] | undefined, password?: string) =>
   invoke<AiPreview>("ai_document_preview", { path, pages: pages ?? null, password: password || null });
