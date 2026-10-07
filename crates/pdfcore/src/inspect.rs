@@ -395,7 +395,17 @@ fn describe_font(doc: &Document, name: &[u8], font: &Dictionary) -> Option<FontI
         .map(|value| String::from_utf8_lossy(value).to_string())
         .unwrap_or_default();
     let mut embedded_formats: Vec<String> = Vec::new();
-    if let Some(Object::Dictionary(descriptor)) = deref(doc, font.get(b"FontDescriptor").ok()) {
+    // A Type0 font has no descriptor of its own; its program lives on the
+    // descendant CIDFont.
+    let descendant = match deref(doc, font.get(b"DescendantFonts").ok()) {
+        Some(Object::Array(items)) if subtype == "Type0" => match deref(doc, items.first()) {
+            Some(Object::Dictionary(descendant)) => Some(descendant),
+            _ => None,
+        },
+        _ => None,
+    };
+    let owner = descendant.unwrap_or(font);
+    if let Some(Object::Dictionary(descriptor)) = deref(doc, owner.get(b"FontDescriptor").ok()) {
         for (key, format) in FONT_PROGRAMS {
             if descriptor.get(key).is_ok() {
                 embedded_formats.push(format.to_string());

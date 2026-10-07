@@ -38,6 +38,7 @@ pub mod engines;
 pub mod error;
 pub mod flatten;
 pub mod fontembed;
+mod fontusage;
 pub mod forms;
 pub mod images;
 pub mod incremental;
@@ -63,6 +64,7 @@ pub mod sign;
 pub mod textbox;
 pub mod textimg;
 pub mod timestamp;
+pub mod ttfsubset;
 pub mod watermark;
 
 pub use error::{ErrorCode, PdfError, PdfResult};

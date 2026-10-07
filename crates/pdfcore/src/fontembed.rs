@@ -3,8 +3,10 @@
 //! PDF/A requires every font a document uses to carry its font program. Most
 //! real-world conversion failures come from the base-14 families (Helvetica,
 //! Arial, Times, Courier): the file only names them and relies on the reader's
-//! substitutes. This module finds those fonts in the page resources (and the
-//! AcroForm default resources) and embeds a bundled substitute program.
+//! substitutes. This module finds those fonts in the page resources, the
+//! resources of every form XObject, tiling pattern and annotation appearance
+//! the pages draw, and the AcroForm default resources, and embeds a bundled
+//! substitute program.
 //!
 //! Substitution table. "Metric compatible" is verified from the Liberation
 //! project's design goal: Liberation Sans was built as a metric-compatible
@@ -24,29 +26,47 @@
 //! content streams; the per-font report carries a warning that spacing may
 //! shift and that an italic source loses its slant.
 //!
+//! Type0 fonts whose descendant is a CIDFontType2 (or a CIDFontType0 without
+//! a program, relabelled like a /Type1 font is) are embedded when the text uses
+//! Identity-H/V and the font has a `/ToUnicode` CMap: each CID is mapped
+//! through its ToUnicode character to the substitute's glyph id and written
+//! as a `/CIDToGIDMap` stream, and `/W` is filled from the substitute when the
+//! font has none. A Type0 font is refused when any CID it shows has no
+//! ToUnicode character or no glyph in the substitute, because embedding would
+//! then draw `.notdef` boxes where a reader's own substitute draws text.
+//!
 //! Deliberately not implemented, reported instead of faked:
-//! * Type0/CID fonts: the text is addressed by CIDs, so a substitute program
-//!   would need a CID-to-GID map; re-mapping CID text is out of scope.
-//! * Symbol/ZapfDingbats and fonts whose descriptor is flagged symbolic: the
-//!   bundled Latin programs have no matching glyph mapping.
+//! * Type0 fonts without `/ToUnicode` or with a CMap other than Identity-H/V:
+//!   nothing ties their CIDs to characters a substitute could draw.
+//! * Symbol/ZapfDingbats and simple fonts whose descriptor is flagged
+//!   symbolic: the bundled Latin programs have no matching glyph mapping.
 //! * Custom `/Differences` encodings and encodings other than WinAnsi/MacRoman.
 //! * Fonts written as inline dictionaries (they cannot be replaced in place).
-//! * Fonts referenced from form XObjects or annotation appearance streams:
-//!   only page resources and the AcroForm `/DR` resources are walked.
 //!
-//! The full font program is embedded, no subsetting: roughly 140 KB per
-//! Liberation face and 450 KB per PT Sans face. Font metrics (`FontBBox`,
-//! `Ascent`, `Descent`, `CapHeight`, `ItalicAngle`, PostScript name) are read
-//! from the bundled TTF's own `head`/`hhea`/`OS/2`/`post`/`name` tables with
-//! ab_glyph plus a small bounds-checked sfnt reader. `StemV` has no TrueType
-//! equivalent (it is Type 1 AFM data): the conventional 80/120 values are used
-//! and marked as an estimate in the code.
+//! Programs are subset when the glyph-usage scan ([`crate::fontusage`]) knows
+//! every code the document shows with the font: the glyphs those codes reach,
+//! plus composite components and `.notdef`, keep their outlines at unchanged
+//! glyph ids and everything else is emptied ([`crate::ttfsubset`]). The names
+//! then carry a six-letter subset tag (`ABCDEF+LiberationSans`). A typical
+//! Liberation subset is 12-15 KB instead of roughly 140 KB per face (450 KB
+//! for PT Sans). When usage is not known reliably (AcroForm `/DR` fonts that
+//! form fields may use for any character, unparseable content, references
+//! the scan does not interpret) the full program is embedded and the report
+//! says why. Font metrics (`FontBBox`, `Ascent`, `Descent`, `CapHeight`,
+//! `ItalicAngle`, PostScript name) are read from the bundled TTF's own
+//! `head`/`hhea`/`OS/2`/`post`/`name` tables with ab_glyph plus a small
+//! bounds-checked sfnt reader. `StemV` has no TrueType equivalent (it is
+//! Type 1 AFM data): the conventional 80/120 values are used and marked as an
+//! estimate in the code.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
-use lopdf::{dictionary, Dictionary, Document, Object, ObjectId, Stream};
+use ab_glyph::{Font, FontRef, GlyphId, PxScale, ScaleFont};
+use lopdf::{dictionary, Dictionary, Document, Object, ObjectId, Stream, StringFormat};
 use serde::{Deserialize, Serialize};
+
+use crate::fontusage::{self, FontUsage};
+use crate::ttfsubset;
 
 // ---------------------------------------------------------------------------
 // Bundled substitute programs (SIL OFL 1.1, see assets/fonts/LICENSES.txt)
@@ -65,6 +85,8 @@ const PT_SANS_BOLD: &[u8] = include_bytes!("../assets/fonts/PT_Sans-Web-Bold.ttf
 const MAX_FONTS: usize = 1024;
 const MAX_REPORTS: usize = 2048;
 const MAX_PAGES: usize = 100_000;
+/// A ToUnicode CMap larger than this once decompressed is not read.
+const MAX_TO_UNICODE: usize = 4 * 1024 * 1024;
 
 /// One font's outcome. `embedded` means "this conversion embedded a program
 /// now"; a font that already carried one is reported as skipped, not embedded.
@@ -86,6 +108,10 @@ pub struct EmbeddedFontReport {
     pub skipped_reason: Option<String>,
     /// Non-fatal notes, e.g. "the substitute is not metric-compatible".
     pub warning: Option<String>,
+    /// True when only the glyphs the document uses were embedded; the font
+    /// names then carry a six-letter subset tag (`ABCDEF+Name`).
+    #[serde(default)]
+    pub subset: bool,
 }
 
 impl EmbeddedFontReport {
@@ -98,6 +124,7 @@ impl EmbeddedFontReport {
             metric_compatible: None,
             skipped_reason: Some(reason.into()),
             warning: None,
+            subset: false,
         }
     }
 
@@ -107,6 +134,7 @@ impl EmbeddedFontReport {
         substitute: &str,
         metric_compatible: bool,
         warning: Option<String>,
+        subset: bool,
     ) -> Self {
         Self {
             resource_name: resource_name.to_string(),
@@ -116,6 +144,7 @@ impl EmbeddedFontReport {
             metric_compatible: Some(metric_compatible),
             skipped_reason: None,
             warning,
+            subset,
         }
     }
 }
@@ -223,7 +252,8 @@ pub fn embed_missing_fonts(pdf_bytes: &[u8]) -> (Vec<u8>, Vec<EmbeddedFontReport
 }
 
 /// The in-place variant used by the converter, which already holds a parsed
-/// [`Document`]. Walks page resources and the AcroForm `/DR` resources.
+/// [`Document`]. Walks page resources, the resources of the forms, patterns
+/// and annotation appearances the pages draw, and the AcroForm `/DR` resources.
 pub fn embed_missing_fonts_in_document(doc: &mut Document) -> Vec<EmbeddedFontReport> {
     let mut reports: Vec<EmbeddedFontReport> = Vec::new();
     let mut sites: BTreeMap<ObjectId, String> = BTreeMap::new();
@@ -270,11 +300,28 @@ pub fn embed_missing_fonts_in_document(doc: &mut Document) -> Vec<EmbeddedFontRe
         }
     }
 
+    // Fonts that only form XObjects, tiling patterns or annotation appearances
+    // select have the same need, and the same scan tells which glyphs every
+    // font is asked to draw.
+    let scan = fontusage::scan_document(doc);
+    for resources in &scan.extra_resources {
+        if sites.len() >= MAX_FONTS || reports.len() >= MAX_REPORTS {
+            break;
+        }
+        collect_font_sites(doc, resources, &mut sites, &mut reports);
+    }
+    let font_ids: Vec<ObjectId> = sites.keys().copied().collect();
+    let usages = scan.usage(doc, &font_ids);
+
     for (font_id, resource_name) in sites {
         if reports.len() >= MAX_REPORTS {
             break;
         }
-        reports.push(process_font(doc, font_id, &resource_name));
+        let usage = usages
+            .get(&font_id)
+            .cloned()
+            .unwrap_or_else(|| FontUsage::Unknown("the glyph usage of the font could not be determined".to_string()));
+        reports.push(process_font(doc, font_id, &resource_name, &usage));
     }
     reports
 }
@@ -330,7 +377,7 @@ fn collect_font_sites(
 // Per-font processing
 // ---------------------------------------------------------------------------
 
-fn process_font(doc: &mut Document, font_id: ObjectId, resource_name: &str) -> EmbeddedFontReport {
+fn process_font(doc: &mut Document, font_id: ObjectId, resource_name: &str, usage: &FontUsage) -> EmbeddedFontReport {
     let font = match doc.get_dictionary(font_id) {
         Ok(dict) => dict.clone(),
         Err(error) => {
@@ -353,6 +400,11 @@ fn process_font(doc: &mut Document, font_id: ObjectId, resource_name: &str) -> E
         .and_then(|value| value.as_name().ok())
         .map(|name| String::from_utf8_lossy(name).to_string())
         .unwrap_or_default();
+
+    // Composite fonts keep their descriptor on the descendant CIDFont.
+    if subtype == "Type0" {
+        return process_type0(doc, font_id, resource_name, &base_font, &font, usage);
+    }
     let descriptor = resolve_descriptor(doc, &font);
 
     // 1. A font that already carries a program passes the validator; leave it.
@@ -362,16 +414,7 @@ fn process_font(doc: &mut Document, font_id: ObjectId, resource_name: &str) -> E
         }
     }
 
-    // 2. Only simple fonts are re-encodable here. Type0/CID text is addressed
-    // by CIDs; embedding a Latin program without a CID-to-GID map would render
-    // the wrong glyphs, so it is honestly refused.
-    if subtype == "Type0" {
-        return EmbeddedFontReport::skipped(
-            resource_name,
-            &base_font,
-            "CID/Type0 font: glyph addressing uses CIDs and a substitute needs a CID-to-GID map; re-mapping CID text is out of scope",
-        );
-    }
+    // 2. Only simple Type1/TrueType fonts are re-encodable here.
     if subtype != "Type1" && subtype != "TrueType" {
         return EmbeddedFontReport::skipped(
             resource_name,
@@ -450,10 +493,134 @@ fn process_font(doc: &mut Document, font_id: ObjectId, resource_name: &str) -> E
         );
     }
 
-    // 7. Flags: nonsymbolic, italic and forceBold follow the embedded program;
-    // the serif bit follows the replaced family policy (Times). Note that the
-    // PT Sans substitute used for Times is in fact a sans-serif design, so the
-    // bit records the source style, not the program's own design.
+    // 7. The program: only the glyphs the document shows when every code is
+    // known, otherwise the whole face.
+    let glyphs = match usage {
+        FontUsage::Codes(codes) => simple_font_glyphs(program, codes, &encoding),
+        FontUsage::Unknown(reason) => Err(reason.clone()),
+    };
+    let choice = choose_program(substitute, glyphs);
+    let embedded_name = choice.tagged_name(&postscript_name);
+
+    // 8. Descriptor and program stream.
+    let flags = descriptor_flags(&metrics, substitute, &normalized);
+    let descriptor_id = write_descriptor(
+        doc,
+        match font.get(b"FontDescriptor").ok() {
+            Some(Object::Reference(id)) => Some(*id),
+            _ => None,
+        },
+        descriptor,
+        &embedded_name,
+        &metrics,
+        substitute,
+        flags,
+        &choice,
+    );
+
+    // 9. The font dictionary. A TrueType program belongs to a /TrueType font,
+    // so a /Type1 font is relabelled: PDF 32000-1 Table 111 pairs /Type1 with
+    // a Type 1 program (FontFile) and /TrueType with FontFile2. BaseFont and
+    // the descriptor name become the substitute's real PostScript name (with a
+    // subset tag when subset) so the embedded program is authoritative.
+    if let Ok(font_mut) = doc.get_dictionary_mut(font_id) {
+        font_mut.set("Subtype", Object::Name(b"TrueType".to_vec()));
+        font_mut.set("BaseFont", Object::Name(embedded_name.as_bytes().to_vec()));
+        font_mut.set("FontDescriptor", Object::Reference(descriptor_id));
+        if encoding == EncodingKind::None {
+            font_mut.set("Encoding", Object::Name(b"WinAnsiEncoding".to_vec()));
+        }
+        if let Some(widths) = generated_widths {
+            font_mut.set("FirstChar", 32i64);
+            font_mut.set("LastChar", 255i64);
+            font_mut.set("Widths", Object::Array(widths.into_iter().map(Object::Integer).collect::<Vec<_>>()));
+        }
+    }
+
+    let warning = substitution_warning(substitute, &base_font, &normalized, &postscript_name, existing_widths, &choice);
+    EmbeddedFontReport::embedded(
+        resource_name,
+        &base_font,
+        &postscript_name,
+        substitute.metric_compatible(),
+        warning,
+        choice.subset,
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Program choice, descriptor and warning helpers shared by simple and Type0
+// ---------------------------------------------------------------------------
+
+/// The program that will be written, and what happened while choosing it.
+struct ProgramChoice {
+    bytes: Vec<u8>,
+    subset: bool,
+    /// Six-letter subset tag, present exactly when `subset` is true.
+    tag: Option<String>,
+    /// Why the full program was embedded instead of a subset.
+    full_reason: Option<String>,
+}
+
+impl ProgramChoice {
+    /// `ABCDEF+Name` for a subset, the plain name for a full program.
+    fn tagged_name(&self, name: &str) -> String {
+        match &self.tag {
+            Some(tag) => format!("{tag}+{name}"),
+            None => name.to_string(),
+        }
+    }
+}
+
+/// Subsets the substitute to `glyphs` (`Err` carries the reason the glyphs are
+/// not known) and falls back to the full program when the subset cannot be
+/// built or does not parse.
+fn choose_program(substitute: Substitute, glyphs: Result<BTreeSet<u16>, String>) -> ProgramChoice {
+    let full = |reason: String| ProgramChoice {
+        bytes: substitute.program().to_vec(),
+        subset: false,
+        tag: None,
+        full_reason: Some(reason),
+    };
+    let glyphs = match glyphs {
+        Ok(glyphs) => glyphs,
+        Err(reason) => return full(reason),
+    };
+    match ttfsubset::subset_truetype(substitute.program(), &glyphs) {
+        Ok(subset) if FontRef::try_from_slice(&subset.program).is_ok() => {
+            let tag = subset_tag(substitute.postscript_name(), &subset.glyphs);
+            ProgramChoice { bytes: subset.program, subset: true, tag: Some(tag), full_reason: None }
+        }
+        Ok(_) => full("the glyph subset did not parse as a font".to_string()),
+        Err(error) => full(format!("the glyph subset could not be built: {error}")),
+    }
+}
+
+/// A deterministic six-letter tag (A-Z) from the name and the kept glyphs, so
+/// the same subset always gets the same tag.
+fn subset_tag(name: &str, glyphs: &BTreeSet<u16>) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut feed = |byte: u8| {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    };
+    name.bytes().for_each(&mut feed);
+    for glyph in glyphs {
+        glyph.to_be_bytes().into_iter().for_each(&mut feed);
+    }
+    let mut tag = String::with_capacity(6);
+    for _ in 0..6 {
+        tag.push((b'A' + (hash % 26) as u8) as char);
+        hash /= 26;
+    }
+    tag
+}
+
+/// Nonsymbolic, italic and forceBold follow the embedded program; the serif
+/// bit follows the replaced family policy (Times). Note that the PT Sans
+/// substitute used for Times is in fact a sans-serif design, so the bit
+/// records the source style, not the program's own design.
+fn descriptor_flags(metrics: &FontMetrics, substitute: Substitute, normalized: &str) -> i64 {
     let mut flags = 32i64;
     if metrics.is_italic || substitute.italic() {
         flags |= 64;
@@ -464,14 +631,27 @@ fn process_font(doc: &mut Document, font_id: ObjectId, resource_name: &str) -> E
     if normalized.starts_with("times") {
         flags |= 2;
     }
+    flags
+}
 
-    // 8. Build the descriptor: keep an existing one, but always point it at
-    // the program and give it the substitute's real name, flags and bounding
-    // box (those describe the embedded program). Numeric metrics that describe
-    // the original face are filled in only when absent.
-    let mut descriptor_dict = descriptor.clone().unwrap_or_default();
+/// Builds the descriptor: keeps an existing one, but always points it at the
+/// program and gives it the substitute's real name, flags and bounding box
+/// (those describe the embedded program). Numeric metrics that describe the
+/// original face are filled in only when absent. A referenced descriptor is
+/// replaced in place; otherwise one is created. Returns its object id.
+fn write_descriptor(
+    doc: &mut Document,
+    existing_id: Option<ObjectId>,
+    existing: Option<Dictionary>,
+    embedded_name: &str,
+    metrics: &FontMetrics,
+    substitute: Substitute,
+    flags: i64,
+    choice: &ProgramChoice,
+) -> ObjectId {
+    let mut descriptor_dict = existing.unwrap_or_default();
     descriptor_dict.set("Type", "FontDescriptor");
-    descriptor_dict.set("FontName", Object::Name(postscript_name.as_bytes().to_vec()));
+    descriptor_dict.set("FontName", Object::Name(embedded_name.as_bytes().to_vec()));
     descriptor_dict.set("Flags", flags);
     descriptor_dict.set(
         "FontBBox",
@@ -494,58 +674,402 @@ fn process_font(doc: &mut Document, font_id: ObjectId, resource_name: &str) -> E
         Object::Integer(if metrics.is_bold || substitute.bold() { 120 } else { 80 }),
     );
 
-    // Replace a referenced descriptor in place, or create one when the font
-    // dict had none (or pointed at something that is not a dictionary).
-    let descriptor_id = match font.get(b"FontDescriptor").ok() {
-        Some(Object::Reference(id)) if doc.get_dictionary(*id).is_ok() => {
-            if let Ok(existing) = doc.get_dictionary_mut(*id) {
+    let descriptor_id = match existing_id {
+        Some(id) if doc.get_dictionary(id).is_ok() => {
+            if let Ok(existing) = doc.get_dictionary_mut(id) {
                 *existing = descriptor_dict;
             }
-            *id
+            id
         }
         _ => doc.add_object(Object::Dictionary(descriptor_dict)),
     };
 
-    // 9. The program stream. /Length1 is the length of the uncompressed
-    // TrueType program, as the spec requires for FontFile2.
-    let program_id = doc
-        .add_object(Object::Stream(Stream::new(dictionary! { "Length1" => program.len() as i64 }, program.to_vec())));
+    // The program stream. /Length1 is the length of the uncompressed TrueType
+    // program, as the spec requires for FontFile2.
+    let mut program_stream = Stream::new(dictionary! { "Length1" => choice.bytes.len() as i64 }, choice.bytes.clone());
+    if choice.subset {
+        // Subsets are small and compress well; full programs stay as they were.
+        let _ = program_stream.compress();
+    }
+    let program_id = doc.add_object(Object::Stream(program_stream));
     if let Ok(descriptor_mut) = doc.get_dictionary_mut(descriptor_id) {
         descriptor_mut.set("FontFile2", Object::Reference(program_id));
     }
+    descriptor_id
+}
 
-    // 10. The font dictionary. A TrueType program belongs to a /TrueType font,
-    // so a /Type1 font is relabelled: PDF 32000-1 Table 111 pairs /Type1 with
-    // a Type 1 program (FontFile) and /TrueType with FontFile2. BaseFont and
-    // the descriptor name become the substitute's real PostScript name so the
-    // embedded program is authoritative.
-    if let Ok(font_mut) = doc.get_dictionary_mut(font_id) {
-        font_mut.set("Subtype", Object::Name(b"TrueType".to_vec()));
-        font_mut.set("BaseFont", Object::Name(postscript_name.as_bytes().to_vec()));
-        font_mut.set("FontDescriptor", Object::Reference(descriptor_id));
-        if encoding == EncodingKind::None {
-            font_mut.set("Encoding", Object::Name(b"WinAnsiEncoding".to_vec()));
-        }
-        if let Some(widths) = generated_widths {
-            font_mut.set("FirstChar", 32i64);
-            font_mut.set("LastChar", 255i64);
-            font_mut.set("Widths", Object::Array(widths.into_iter().map(Object::Integer).collect::<Vec<_>>()));
-        }
-    }
-
-    let style_italic = normalized.contains("italic") || normalized.contains("oblique");
-    let warning = if substitute.metric_compatible() {
-        None
-    } else {
-        let mut note = format!(
-            "the substitute ({postscript_name}) is not metric-compatible with \"{base_font}\"; the original /Widths were kept, so spacing and line breaks may shift"
-        );
+/// The report warning: the metric note for non-compatible substitutes plus a
+/// note when the full program had to be embedded.
+fn substitution_warning(
+    substitute: Substitute,
+    base_font: &str,
+    normalized: &str,
+    postscript_name: &str,
+    widths_kept: bool,
+    choice: &ProgramChoice,
+) -> Option<String> {
+    let mut notes: Vec<String> = Vec::new();
+    if !substitute.metric_compatible() {
+        let style_italic = normalized.contains("italic") || normalized.contains("oblique");
+        let mut note = if widths_kept {
+            format!(
+                "the substitute ({postscript_name}) is not metric-compatible with \"{base_font}\"; the original widths were kept, so spacing and line breaks may shift"
+            )
+        } else {
+            format!(
+                "the substitute ({postscript_name}) is not metric-compatible with \"{base_font}\"; glyph advances come from the substitute, so text width may differ from the original"
+            )
+        };
         if style_italic && !substitute.italic() {
             note.push_str(", and the italic style is lost");
         }
-        Some(note)
+        notes.push(note);
+    }
+    if let Some(reason) = &choice.full_reason {
+        notes.push(format!("the full font program was embedded instead of a subset because {reason}"));
+    }
+    if notes.is_empty() {
+        None
+    } else {
+        Some(notes.join("; "))
+    }
+}
+
+/// The glyph ids a simple font needs for the byte codes the document shows.
+/// WinAnsi (and a missing /Encoding, which gets WinAnsi) is followed through
+/// [`winansi_char`]; the codes it leaves undefined are shown as a bullet by
+/// readers, and 160/173 also keep the space and hyphen they alias. MacRoman is
+/// only subset for pure ASCII text, where it agrees with Unicode.
+fn simple_font_glyphs(program: &[u8], codes: &BTreeSet<u16>, encoding: &EncodingKind) -> Result<BTreeSet<u16>, String> {
+    let font =
+        FontRef::try_from_slice(program).map_err(|_| "the substitute program could not be parsed".to_string())?;
+    let mut glyphs: BTreeSet<u16> = BTreeSet::new();
+    let mut add = |character: char| {
+        let glyph = font.glyph_id(character);
+        if glyph.0 != 0 {
+            glyphs.insert(glyph.0);
+        }
     };
-    EmbeddedFontReport::embedded(resource_name, &base_font, &postscript_name, substitute.metric_compatible(), warning)
+    for code in codes {
+        let code = *code as u8;
+        if *encoding == EncodingKind::MacRoman {
+            if code >= 128 {
+                return Err("the font uses MacRomanEncoding with non-ASCII codes, which are not mapped".to_string());
+            }
+            add(code as char);
+            continue;
+        }
+        match winansi_char(code) {
+            Some(character) => add(character),
+            None => add('\u{2022}'),
+        }
+        match code {
+            160 => add(' '),
+            173 => add('-'),
+            _ => {}
+        }
+    }
+    Ok(glyphs)
+}
+
+// ---------------------------------------------------------------------------
+// Type0 / CIDFontType2 fonts
+// ---------------------------------------------------------------------------
+
+/// Where the descendant CIDFont dictionary lives, so it can be written back.
+#[derive(Debug, Clone, Copy)]
+enum DescendantSite {
+    /// An indirect CIDFont object.
+    Object(ObjectId),
+    /// Inline in a `/DescendantFonts` array written inside the Type0 font.
+    InlineInFont,
+    /// Inline in an indirect `/DescendantFonts` array object.
+    InlineInArray(ObjectId),
+}
+
+fn find_descendant(doc: &Document, font: &Dictionary) -> Option<(DescendantSite, Dictionary)> {
+    let (items, inline_site): (&[Object], DescendantSite) = match font.get(b"DescendantFonts").ok()? {
+        Object::Array(items) => (items.as_slice(), DescendantSite::InlineInFont),
+        Object::Reference(array_id) => match doc.get_object(*array_id).ok()? {
+            Object::Array(items) => (items.as_slice(), DescendantSite::InlineInArray(*array_id)),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    match items.first()? {
+        Object::Reference(id) => Some((DescendantSite::Object(*id), doc.get_dictionary(*id).ok()?.clone())),
+        Object::Dictionary(dict) => Some((inline_site, dict.clone())),
+        _ => None,
+    }
+}
+
+fn store_descendant(doc: &mut Document, font_id: ObjectId, site: DescendantSite, dict: Dictionary) {
+    match site {
+        DescendantSite::Object(id) => {
+            if let Ok(existing) = doc.get_dictionary_mut(id) {
+                *existing = dict;
+            }
+        }
+        DescendantSite::InlineInFont => {
+            if let Ok(Object::Array(items)) =
+                doc.get_dictionary_mut(font_id).and_then(|font| font.get_mut(b"DescendantFonts"))
+            {
+                if let Some(first) = items.first_mut() {
+                    *first = Object::Dictionary(dict);
+                }
+            }
+        }
+        DescendantSite::InlineInArray(array_id) => {
+            if let Ok(Object::Array(items)) = doc.get_object_mut(array_id) {
+                if let Some(first) = items.first_mut() {
+                    *first = Object::Dictionary(dict);
+                }
+            }
+        }
+    }
+}
+
+/// Reads and parses the font's `/ToUnicode` stream.
+fn read_to_unicode(doc: &Document, font: &Dictionary) -> Option<BTreeMap<u16, Vec<u16>>> {
+    let id = font.get(b"ToUnicode").ok()?.as_reference().ok()?;
+    let stream = doc.get_object(id).ok()?.as_stream().ok()?;
+    let data = stream.decompressed_content_with_limit(MAX_TO_UNICODE).ok()?;
+    fontusage::parse_to_unicode(&data)
+}
+
+/// The substitute's glyph for a CID: its ToUnicode text must be exactly one
+/// character that the program has a glyph for.
+fn cid_glyph(font: &FontRef<'_>, to_unicode: &BTreeMap<u16, Vec<u16>>, cid: u16) -> Option<u16> {
+    let units = to_unicode.get(&cid)?;
+    let mut characters = char::decode_utf16(units.iter().copied());
+    let character = characters.next()?.ok()?;
+    if characters.next().is_some() {
+        return None;
+    }
+    match font.glyph_id(character).0 {
+        0 => None,
+        glyph => Some(glyph),
+    }
+}
+
+/// `/W` in the compact `c [w1 w2 ...]` form, one entry per run of consecutive
+/// CIDs, with widths in 1000-unit glyph space taken from the substitute.
+fn cid_widths(font: &FontRef<'_>, units_per_em: u16, cid_to_glyph: &BTreeMap<u16, u16>) -> Vec<Object> {
+    let upem = units_per_em.max(1) as f32;
+    let scaled = font.as_scaled(PxScale::from(upem));
+    let mut out: Vec<Object> = Vec::new();
+    let mut run: Vec<Object> = Vec::new();
+    let mut run_start = 0u16;
+    let mut previous: Option<u16> = None;
+    for (cid, glyph) in cid_to_glyph {
+        if previous.is_none_or(|last| last.checked_add(1) != Some(*cid)) {
+            if previous.is_some() {
+                out.push(Object::Integer(run_start as i64));
+                out.push(Object::Array(std::mem::take(&mut run)));
+            }
+            run_start = *cid;
+        }
+        let advance = scaled.h_advance(GlyphId(*glyph));
+        let width =
+            if advance.is_finite() && advance > 0.0 { (advance as f64 * 1000.0 / upem as f64).round() } else { 0.0 };
+        run.push(Object::Integer(width as i64));
+        previous = Some(*cid);
+    }
+    if previous.is_some() {
+        out.push(Object::Integer(run_start as i64));
+        out.push(Object::Array(run));
+    }
+    out
+}
+
+/// Embeds a substitute for a Type0 font whose CIDFont has no program, when the
+/// text is Identity-H/V and `/ToUnicode` ties each CID to a character.
+fn process_type0(
+    doc: &mut Document,
+    font_id: ObjectId,
+    resource_name: &str,
+    base_font: &str,
+    font: &Dictionary,
+    usage: &FontUsage,
+) -> EmbeddedFontReport {
+    let Some((site, mut descendant)) = find_descendant(doc, font) else {
+        return EmbeddedFontReport::skipped(
+            resource_name,
+            base_font,
+            "CID/Type0 font: the descendant CIDFont could not be found",
+        );
+    };
+    let descriptor = resolve_descriptor(doc, &descendant);
+    if descriptor.as_ref().is_some_and(has_font_program) {
+        return EmbeddedFontReport::skipped(resource_name, base_font, "the font program is already embedded");
+    }
+    let descendant_subtype = descendant
+        .get(b"Subtype")
+        .ok()
+        .and_then(|value| value.as_name().ok())
+        .map(|name| String::from_utf8_lossy(name).to_string())
+        .unwrap_or_default();
+    if descendant_subtype != "CIDFontType2" && descendant_subtype != "CIDFontType0" {
+        return EmbeddedFontReport::skipped(
+            resource_name,
+            base_font,
+            format!("CID/Type0 font: the descendant subtype /{descendant_subtype} is not a CIDFont"),
+        );
+    }
+    let identity =
+        matches!(font.get(b"Encoding"), Ok(Object::Name(name)) if name == b"Identity-H" || name == b"Identity-V");
+    if !identity {
+        return EmbeddedFontReport::skipped(
+            resource_name,
+            base_font,
+            "CID/Type0 font: only Identity-H/V text can be re-mapped to a substitute program",
+        );
+    }
+    let Some(to_unicode) = read_to_unicode(doc, font) else {
+        return EmbeddedFontReport::skipped(
+            resource_name,
+            base_font,
+            "CID/Type0 font without a usable /ToUnicode CMap: nothing ties its CIDs to characters, so a substitute needs a CID-to-GID map that cannot be built",
+        );
+    };
+
+    let base_font = if base_font.is_empty() {
+        descendant
+            .get(b"BaseFont")
+            .ok()
+            .and_then(|value| value.as_name().ok())
+            .map(|name| String::from_utf8_lossy(name).to_string())
+            .unwrap_or_default()
+    } else {
+        base_font.to_string()
+    };
+    let base_font = base_font.as_str();
+    let normalized = normalize_base_font(base_font);
+    let substitute = match substitute_for(&normalized) {
+        Ok(substitute) => substitute,
+        Err(reason) => return EmbeddedFontReport::skipped(resource_name, base_font, reason),
+    };
+    let program = substitute.program();
+    let Ok(substitute_font) = FontRef::try_from_slice(program) else {
+        return EmbeddedFontReport::skipped(resource_name, base_font, "the substitute program could not be parsed");
+    };
+    let metrics = parse_metrics(program).unwrap_or_else(|| fallback_metrics(substitute));
+    let postscript_name = if metrics.postscript_name.is_empty() {
+        substitute.postscript_name().to_string()
+    } else {
+        metrics.postscript_name.clone()
+    };
+
+    // CID -> glyph. With known usage every CID the text shows must resolve,
+    // or the substitute would draw .notdef where a reader's own fallback
+    // draws text; with unknown usage every resolvable CID is mapped and the
+    // whole face is embedded.
+    let mut cid_to_glyph: BTreeMap<u16, u16> = BTreeMap::new();
+    let glyphs: Result<BTreeSet<u16>, String> = match usage {
+        FontUsage::Codes(cids) => {
+            let mut unmapped: Vec<u16> = Vec::new();
+            for cid in cids {
+                match cid_glyph(&substitute_font, &to_unicode, *cid) {
+                    Some(glyph) => {
+                        cid_to_glyph.insert(*cid, glyph);
+                    }
+                    None => unmapped.push(*cid),
+                }
+            }
+            if let Some(first) = unmapped.first() {
+                return EmbeddedFontReport::skipped(
+                    resource_name,
+                    base_font,
+                    format!(
+                        "CID/Type0 font: {} CID(s) the text shows (first: {first}) have no single-character /ToUnicode entry or no glyph in the substitute",
+                        unmapped.len()
+                    ),
+                );
+            }
+            Ok(cid_to_glyph.values().copied().collect())
+        }
+        FontUsage::Unknown(reason) => {
+            for cid in to_unicode.keys() {
+                if let Some(glyph) = cid_glyph(&substitute_font, &to_unicode, *cid) {
+                    cid_to_glyph.insert(*cid, glyph);
+                }
+            }
+            Err(reason.clone())
+        }
+    };
+    if cid_to_glyph.is_empty() && matches!(usage, FontUsage::Unknown(_)) {
+        return EmbeddedFontReport::skipped(
+            resource_name,
+            base_font,
+            "CID/Type0 font: no /ToUnicode entry maps to a glyph in the substitute",
+        );
+    }
+    let choice = choose_program(substitute, glyphs);
+    let embedded_name = choice.tagged_name(&postscript_name);
+
+    // /CIDToGIDMap: two bytes per CID, unmapped CIDs -> glyph 0.
+    let map_len = cid_to_glyph.keys().next_back().map_or(1, |max| *max as usize + 1);
+    let mut map_bytes = vec![0u8; map_len * 2];
+    for (cid, glyph) in &cid_to_glyph {
+        if let Some(slot) = map_bytes.get_mut(*cid as usize * 2..*cid as usize * 2 + 2) {
+            slot.copy_from_slice(&glyph.to_be_bytes());
+        }
+    }
+    let mut map_stream = Stream::new(Dictionary::new(), map_bytes);
+    let _ = map_stream.compress();
+    let map_id = doc.add_object(Object::Stream(map_stream));
+
+    let flags = descriptor_flags(&metrics, substitute, &normalized);
+    let descriptor_id = write_descriptor(
+        doc,
+        match descendant.get(b"FontDescriptor").ok() {
+            Some(Object::Reference(id)) => Some(*id),
+            _ => None,
+        },
+        descriptor,
+        &embedded_name,
+        &metrics,
+        substitute,
+        flags,
+        &choice,
+    );
+
+    // The CIDFont: a TrueType program makes it a CIDFontType2 (a program-less
+    // CIDFontType0 is relabelled, as /Type1 is for simple fonts), so the CID
+    // system is the generic Identity one.
+    let widths_kept = descendant.get(b"W").is_ok();
+    if !widths_kept {
+        descendant.set("W", Object::Array(cid_widths(&substitute_font, metrics.units_per_em, &cid_to_glyph)));
+    }
+    if descendant_subtype != "CIDFontType2" || descendant.get(b"CIDSystemInfo").is_err() {
+        descendant.set(
+            "CIDSystemInfo",
+            Object::Dictionary(dictionary! {
+                "Registry" => Object::String(b"Adobe".to_vec(), StringFormat::Literal),
+                "Ordering" => Object::String(b"Identity".to_vec(), StringFormat::Literal),
+                "Supplement" => 0i64,
+            }),
+        );
+    }
+    descendant.set("Type", "Font");
+    descendant.set("Subtype", Object::Name(b"CIDFontType2".to_vec()));
+    descendant.set("BaseFont", Object::Name(embedded_name.as_bytes().to_vec()));
+    descendant.set("FontDescriptor", Object::Reference(descriptor_id));
+    descendant.set("CIDToGIDMap", Object::Reference(map_id));
+    store_descendant(doc, font_id, site, descendant);
+    if let Ok(font_mut) = doc.get_dictionary_mut(font_id) {
+        font_mut.set("BaseFont", Object::Name(embedded_name.as_bytes().to_vec()));
+    }
+
+    let warning = substitution_warning(substitute, base_font, &normalized, &postscript_name, widths_kept, &choice);
+    EmbeddedFontReport::embedded(
+        resource_name,
+        base_font,
+        &postscript_name,
+        substitute.metric_compatible(),
+        warning,
+        choice.subset,
+    )
 }
 
 /// Maps a normalized (lowercase, no spaces, `,` -> `-`) base font name to a
