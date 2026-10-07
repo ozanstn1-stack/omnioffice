@@ -176,6 +176,9 @@ fn analyze_page(doc: &Document, page: u32, page_id: ObjectId) -> PdfResult<(Cont
     let mut stack: Vec<TextState> = Vec::new();
     let mut x = 0.0f64;
     let mut y = 0.0f64;
+    // Start of the current line: `Td`, `T*`, `'` and `"` move relative to it,
+    // not to the end of the last run shown.
+    let mut line = (0.0f64, 0.0f64);
     for (operation_index, operation) in content.operations.iter().enumerate() {
         let operator = operation.operator.as_str();
         match operator {
@@ -188,6 +191,7 @@ fn analyze_page(doc: &Document, page: u32, page_id: ObjectId) -> PdfResult<(Cont
             "BT" => {
                 x = 0.0;
                 y = 0.0;
+                line = (0.0, 0.0);
             }
             "Tf" => {
                 if let Some(Object::Name(name)) = operation.operands.first() {
@@ -231,23 +235,26 @@ fn analyze_page(doc: &Document, page: u32, page_id: ObjectId) -> PdfResult<(Cont
                 if let (Some(tx), Some(ty)) = (number(operation.operands.get(4)), number(operation.operands.get(5))) {
                     x = tx;
                     y = ty;
+                    line = (tx, ty);
                 }
             }
             "Td" | "TD" => {
                 if let (Some(tx), Some(ty)) = (number(operation.operands.first()), number(operation.operands.get(1))) {
-                    x += tx;
-                    y += ty;
+                    line = (line.0 + tx, line.1 + ty);
+                    (x, y) = line;
                     if operator == "TD" {
                         state.leading = -ty;
                     }
                 }
             }
             "T*" => {
-                y -= state.leading;
+                line.1 -= state.leading;
+                (x, y) = line;
             }
             "Tj" | "'" | "\"" => {
                 if operator == "'" || operator == "\"" {
-                    y -= state.leading;
+                    line.1 -= state.leading;
+                    (x, y) = line;
                 }
                 let Some((string_index, object)) =
                     operation.operands.iter().enumerate().find(|(_, operand)| matches!(operand, Object::String(_, _)))
@@ -287,10 +294,22 @@ fn analyze_page(doc: &Document, page: u32, page_id: ObjectId) -> PdfResult<(Cont
                 if strings.is_empty() {
                     continue;
                 }
+                // Producers such as TeX write word spaces as kerning (`-333`)
+                // between strings rather than as space characters; read a
+                // shift of more than a fifth of an em as a space.
                 let mut text = String::new();
-                for index in &strings {
-                    if let Object::String(raw, _) = &items[*index] {
-                        text.push_str(&decode_string(doc, page_id, state.font.as_deref(), raw));
+                let mut gap = false;
+                for item in items {
+                    match item {
+                        Object::String(raw, _) => {
+                            let piece = decode_string(doc, page_id, state.font.as_deref(), raw);
+                            if gap && !text.is_empty() && !text.ends_with(' ') && !piece.starts_with(' ') {
+                                text.push(' ');
+                            }
+                            text.push_str(&piece);
+                            gap = false;
+                        }
+                        _ => gap |= number(Some(item)).is_some_and(|value| value < -200.0),
                     }
                 }
                 let width = estimate_width(&text, &state);
@@ -335,6 +354,12 @@ fn analyze_page(doc: &Document, page: u32, page_id: ObjectId) -> PdfResult<(Cont
         }
     }
     Ok((content, sites))
+}
+
+/// The text runs of one page of an already loaded document.
+pub(crate) fn page_text_runs(doc: &Document, page: u32, page_id: ObjectId) -> PdfResult<Vec<TextRunInfo>> {
+    let (_, sites) = analyze_page(doc, page, page_id)?;
+    Ok(sites.into_iter().map(|site| site.info).collect())
 }
 
 /// Lists the text runs of every page.
@@ -563,6 +588,26 @@ mod tests {
         let error = edit_text_runs(&bytes, &[TextRunEdit { page: 1, index: 0, text: "Hello".into() }])
             .expect_err("must refuse");
         assert!(format!("{error}").contains("No text was changed"));
+    }
+
+    #[test]
+    fn td_moves_from_the_line_start_not_the_end_of_the_run() {
+        let bytes = sample_with("BT\n/F1 12 Tf\n72 700 Td\n(A long first line) Tj\n0 -14 Td\n(Next) Tj\nET\n");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("lines.pdf");
+        std::fs::write(&path, &bytes).unwrap();
+        let runs = list_text_runs_in_file(&path, None).expect("list");
+        assert_eq!((runs[1].x, runs[1].y), (72.0, 686.0));
+    }
+
+    #[test]
+    fn tj_kerning_wider_than_a_space_reads_as_a_space() {
+        let bytes = sample_with("BT\n/F1 12 Tf\n72 700 Td\n[(Hello) -333 (world) -20 (s)] TJ\nET\n");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("kern.pdf");
+        std::fs::write(&path, &bytes).unwrap();
+        let runs = list_text_runs_in_file(&path, None).expect("list");
+        assert_eq!(runs[0].text, "Hello worlds");
     }
 
     #[test]
