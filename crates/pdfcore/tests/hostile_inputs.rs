@@ -183,3 +183,58 @@ fn a_reasonable_to_unicode_map_still_decodes() {
     assert_eq!(runs.len(), 40);
     assert_eq!(runs[0].text, "X X");
 }
+
+// ---------------------------------------------------------------------------
+// rebuild: inherited attributes are shared, not copied onto every page
+// ---------------------------------------------------------------------------
+
+#[test]
+fn rebuilding_a_page_tree_does_not_multiply_inherited_resources() {
+    use pdfcore::progress::CancelToken;
+    use pdfcore::rebuild::rebuild_pdf;
+
+    const PAGES: usize = 300;
+    const FONTS: usize = 20_000;
+    let mut doc = Document::with_version("1.7");
+    let font = doc.add_object(dictionary! { "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica" });
+    let mut fonts = lopdf::Dictionary::new();
+    for index in 0..FONTS {
+        fonts.set(format!("F{index}"), Object::Reference(font));
+    }
+    let pages_id = doc.new_object_id();
+    let mut kids = Vec::new();
+    for _ in 0..PAGES {
+        let content = doc.add_object(Object::Stream(Stream::new(dictionary! {}, b"BT /F1 12 Tf (x) Tj ET".to_vec())));
+        let page = doc.add_object(dictionary! { "Type" => "Page", "Parent" => pages_id, "Contents" => content });
+        kids.push(Object::Reference(page));
+    }
+    // No /Count: the tree counts as damaged and is flattened.
+    doc.objects.insert(
+        pages_id,
+        Object::Dictionary(dictionary! {
+            "Type" => "Pages",
+            "Kids" => kids,
+            "MediaBox" => vec![0.into(), 0.into(), 200.into(), 200.into()],
+            "Resources" => dictionary! { "Font" => fonts },
+        }),
+    );
+    let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+    doc.trailer.set("Root", Object::Reference(catalog));
+    let mut input = Vec::new();
+    doc.save_to(&mut input).expect("save");
+
+    let started = Instant::now();
+    let rebuilt = rebuild_pdf(&input, &CancelToken::default()).expect("rebuild");
+    assert!(started.elapsed() < Duration::from_secs(10), "took {:?}", started.elapsed());
+    assert_eq!(rebuilt.pages as usize, PAGES);
+    assert!(rebuilt.bytes.len() <= input.len() * 2, "{} bytes in, {} bytes out", input.len(), rebuilt.bytes.len());
+
+    let output = Document::load_mem(&rebuilt.bytes).expect("reload");
+    let pages = output.get_pages();
+    assert_eq!(pages.len(), PAGES);
+    for page_id in pages.values().step_by(100) {
+        let fonts = output.get_page_fonts(*page_id).expect("fonts");
+        assert_eq!(fonts.len(), FONTS);
+        assert!(fonts.contains_key(b"F1".as_slice()));
+    }
+}

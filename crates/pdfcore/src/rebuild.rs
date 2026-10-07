@@ -1084,10 +1084,19 @@ impl TreeWalk<'_> {
     }
 }
 
-/// Replaces the page tree with one node holding `pages`, after copying the
-/// attributes each page inherited from its old ancestors onto it.
+/// Arrays longer than this are shared as an indirect object instead of being
+/// copied onto every page that inherits them.
+const MAX_INLINE_ARRAY: usize = 8;
+
+/// Replaces the page tree with one node holding `pages`, after giving each
+/// page the attributes it inherited from its old ancestors.
+///
+/// A large inherited value (a `/Resources` dictionary above all) is written
+/// once as an indirect object and referenced from every page that inherits
+/// it; copying it onto each page would multiply the file by the page count.
 fn flatten_page_tree(objects: &mut BTreeMap<ObjectId, Object>, pages: &[ObjectId], root: ObjectId) -> usize {
-    let mut inherited: Vec<(ObjectId, Vec<(Vec<u8>, Object)>)> = Vec::with_capacity(pages.len());
+    // Per page, the attributes it inherits and the ancestor each comes from.
+    let mut inherited: Vec<(ObjectId, Vec<(Vec<u8>, ObjectId)>)> = Vec::with_capacity(pages.len());
     for &page in pages {
         let Some(dict) = objects.get(&page).and_then(|object| object.as_dict().ok()) else {
             continue;
@@ -1103,22 +1112,58 @@ fn flatten_page_tree(objects: &mut BTreeMap<ObjectId, Object>, pages: &[ObjectId
             let Some(node) = objects.get(&parent_id).and_then(|object| object.as_dict().ok()) else {
                 break;
             };
-            missing.retain(|key| match node.get(key) {
-                Ok(value) => {
-                    found.push((key.to_vec(), value.clone()));
-                    false
+            missing.retain(|key| {
+                let present = node.has(key);
+                if present {
+                    found.push((key.to_vec(), parent_id));
                 }
-                Err(_) => true,
+                !present
             });
             parent = node.get(b"Parent").and_then(Object::as_reference).ok();
         }
         inherited.push((page, found));
     }
+
+    // Each distinct (ancestor, attribute) value is stored once.
+    let mut shared: HashMap<(ObjectId, Vec<u8>), Object> = HashMap::new();
+    let mut added: Vec<(ObjectId, Object)> = Vec::new();
+    let mut next = root.0;
+    for (_, found) in &inherited {
+        for (key, node) in found {
+            if shared.contains_key(&(*node, key.clone())) {
+                continue;
+            }
+            let Some(value) =
+                objects.get(node).and_then(|object| object.as_dict().ok()).and_then(|dict| dict.get(key).ok())
+            else {
+                continue;
+            };
+            let large = match value {
+                Object::Dictionary(_) => true,
+                Object::Array(items) => items.len() > MAX_INLINE_ARRAY,
+                _ => false,
+            };
+            let id = next.checked_add(1).filter(|number| *number <= MAX_OBJECT_NUMBER);
+            let replacement = match (large, id) {
+                (true, Some(number)) => {
+                    next = number;
+                    added.push(((number, 0), value.clone()));
+                    Object::Reference((number, 0))
+                }
+                _ => value.clone(),
+            };
+            shared.insert((*node, key.clone()), replacement);
+        }
+    }
+    objects.extend(added);
+
     let mut sizeless = 0;
     for (page, found) in inherited {
         if let Some(Object::Dictionary(dict)) = objects.get_mut(&page) {
-            for (key, value) in found {
-                dict.set(key, value);
+            for (key, node) in found {
+                if let Some(value) = shared.get(&(node, key.clone())) {
+                    dict.set(key, value.clone());
+                }
             }
             if !dict.has(b"MediaBox") {
                 // US Letter, the default most readers assume as well.
