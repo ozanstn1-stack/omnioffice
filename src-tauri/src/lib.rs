@@ -188,6 +188,7 @@ pub fn run() {
             ai::ai_cleanup_text,
             ai::ai_suggest_metadata,
             ai::ai_cancel,
+            ai::edit::ai_edit_text,
             ai::ai_save_output,
             ai::ai_example_prompts,
             ai::ai_models,
