@@ -1059,13 +1059,15 @@ These are real and honest:
 - **Bookmarks**: the model and PDF export resolve bookmarks; the DOCX writer
   does not yet emit `w:bookmarkStart/End` anchors, so REF targets rely on the
   cached field values in Word.
-- **PDF/A**: Type0/CID fonts, symbolic fonts, custom encodings and fonts used
-  only inside form appearances are skipped and reported; PT Sans fallbacks
-  are not metric-compatible; there is no subsetting; the generated sRGB ICC
+- **PDF/A**: embedded fonts are subset to the characters the document uses.
+  Type0/CID fonts without a ToUnicode map, symbolic fonts, custom encodings
+  and fonts used only inside form appearances are skipped and reported; PT
+  Sans fallbacks are not metric-compatible; the generated sRGB ICC
   profile is structurally valid but has not been run through an external
   validator, and no external veraPDF run is claimed.
-- **Signatures**: trust is reported `unknown` (no network revocation/OCSP,
-  no system trust store); encrypted PDFs must be decrypted first; RC2/RC4
+- **Signatures**: trust is reported `unknown` (there is no system trust
+  store; revocation is only asked of the OCSP responder or CRL when the
+  optional setting is on); encrypted PDFs must be decrypted first; RC2/RC4
   PFX files are rejected with a clear error; ECDSA is P-256 only; the
   `/Contents` placeholder holds up to 8 KB of DER. An RFC 3161 timestamp's
   `genTime` is read and reported, but the TSA certificate chain and its
@@ -1156,7 +1158,8 @@ Next (architecture prepared, not implemented):
   DOCX `w:moveFrom`/`w:moveTo`
 - PDF content-stream object editing (text/vector) with graphics-state-aware
   rewriting
-- Font subsetting and CID remapping for PDF/A-2/3 with Type0 fonts
+- CID remapping for PDF/A-2/3 Type0 fonts without a ToUnicode map (embedded
+  fonts are already subset)
 - OAuth cloud providers (OneDrive/Google Drive) and background sync
 - Android foreground service for long-running jobs and share-sheet polish
 - SmartArt and advanced PPTX effect import

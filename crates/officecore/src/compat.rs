@@ -236,8 +236,8 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
             false,
             vec![
                 feature("editing", SupportLevel::Partial, "Page tools, annotations, forms and object editing where the PDF allows it."),
-                feature("pdfa", SupportLevel::Partial, "Validation and best-effort conversion: simple fonts are embedded as FontFile2 and the output intent carries an sRGB profile; CID/Type0, symbolic and custom-encoded fonts are reported instead of embedded, and there is no subsetting."),
-                feature("signatures", SupportLevel::Partial, "Detached CMS/PKCS#7 signatures are created and validated (digest, coverage, signer, chain); archived validation data (DSS) is written for offline PAdES B-LT, RFC 3161 timestamps are not requested yet."),
+                feature("pdfa", SupportLevel::Partial, "Validation and best-effort conversion: non-embedded simple fonts and Identity Type0 fonts with a ToUnicode map are embedded as substitute programs subset to the characters the document uses, and the output intent carries an sRGB profile; Type0/CID fonts without ToUnicode, symbolic and custom-encoded fonts are reported instead of embedded."),
+                feature("signatures", SupportLevel::Partial, "Detached CMS/PKCS#7 signatures are created and validated (digest, coverage, signer, chain); archived validation data (DSS) is written for offline PAdES B-LT; an optional TSA URL adds an RFC 3161 timestamp (its time is reported, the TSA chain is not validated) and an optional OCSP/CRL check reports revocation, while trust stays unknown without a trust store."),
             ],
         ),
         "oswk" => (
