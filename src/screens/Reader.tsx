@@ -6,10 +6,24 @@ import { DropZone, InfoStrip } from "../components/files";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
-import { pagePreview, pageText, searchDocument, toAppError } from "../lib/api";
-import { clamp, fileBaseName, previewRasterWidth, uid } from "../lib/format";
+import { pagePreview, pageText, pageTile, searchDocument, toAppError } from "../lib/api";
+import { clamp, fileBaseName, previewPixelRatio, previewRasterWidth, uid } from "../lib/format";
 import { reportError, useJobProgress, useToasts } from "../lib/store";
-import type { PageGeometry, SearchResponse, TextMatch } from "../lib/types";
+import {
+  TILE_VIEW_MARGIN,
+  TileRequestQueue,
+  forgetOtherDocuments,
+  rememberTile,
+  sameTiles,
+  tileDocId,
+  tileGrid,
+  tileKey,
+  tilesInView,
+  visibleLayerRect,
+  type TileGrid,
+  type TileSpec,
+} from "../lib/tiles";
+import type { PageGeometry, SearchResponse, TextMatch, Thumbnail } from "../lib/types";
 
 const PT_TO_CSS = 96 / 72;
 
@@ -124,16 +138,183 @@ export function reusablePreview(cache: Map<number, CachedPreview>, page: number,
   return entry && entry.width >= width ? entry : null;
 }
 
+/**
+ * Sharp tiles over a page whose display needs more pixels than a full-page
+ * preview may have. The upscaled preview stays underneath as the base layer;
+ * only the tiles inside the viewport (plus a margin) are requested, and only
+ * while the page is near the viewport.
+ */
+function ReaderTiles({
+  docId,
+  path,
+  page,
+  password,
+  grid,
+  cssWidth,
+  cache,
+  queue,
+}: {
+  /** Identity of this open of the document (see `tileDocId`); part of every tile key. */
+  docId: string;
+  path: string;
+  page: number;
+  password?: string;
+  grid: TileGrid;
+  cssWidth: number;
+  cache: Map<string, string>;
+  queue: TileRequestQueue<Thumbnail>;
+}) {
+  const layerRef = useRef<HTMLDivElement | null>(null);
+  // Whether the page was near the viewport when the effect below last ran, so
+  // a resize (which re-runs it) keeps following the page instead of dropping
+  // its tiles until the observer reports again.
+  const nearRef = useRef(false);
+  // The tiles the viewport needs, with the grid they were computed for.
+  const [needed, setNeeded] = useState<{ grid: TileGrid; tiles: TileSpec[] }>({ grid, tiles: [] });
+  const [, setLoaded] = useState(0);
+  const failedRef = useRef(new Set<string>());
+
+  // Follow the visible part of the page. Scrolling is only tracked while the
+  // page is near the viewport: at high zoom every page has a tile layer.
+  useEffect(() => {
+    const layer = layerRef.current;
+    if (!layer) return;
+    const scroller = layer.closest<HTMLElement>(".reader-scroll");
+    let frame = 0;
+    let near = false;
+    const measure = () => {
+      frame = 0;
+      const viewport = scroller?.getBoundingClientRect() ?? {
+        left: 0,
+        top: 0,
+        right: window.innerWidth,
+        bottom: window.innerHeight,
+      };
+      const layoutWidth = layer.offsetWidth || cssWidth;
+      const view = near ? visibleLayerRect(layer.getBoundingClientRect(), viewport, layoutWidth) : null;
+      const tiles = view ? tilesInView(grid, view, layoutWidth) : [];
+      setNeeded((current) => (current.grid === grid && sameTiles(current.tiles, tiles) ? current : { grid, tiles }));
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
+    const follow = (on: boolean) => {
+      if (on === near) return;
+      near = on;
+      nearRef.current = on;
+      if (on) {
+        scroller?.addEventListener("scroll", schedule, { passive: true });
+        window.addEventListener("resize", schedule);
+      } else {
+        scroller?.removeEventListener("scroll", schedule);
+        window.removeEventListener("resize", schedule);
+      }
+      schedule();
+    };
+    const observer = new IntersectionObserver(
+      (entries) => follow(entries[entries.length - 1]?.isIntersecting ?? false),
+      { root: scroller, rootMargin: `${TILE_VIEW_MARGIN}px` },
+    );
+    observer.observe(layer);
+    // A page that was near stays near across the re-run (the observer corrects
+    // it on its first report); otherwise this drops the previous zoom's tiles
+    // while the page is off screen.
+    if (nearRef.current) follow(true);
+    else schedule();
+    return () => {
+      observer.disconnect();
+      scroller?.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [cssWidth, grid]);
+
+  // Request the missing tiles. A zoom change or a scroll that drops a tile
+  // cancels its queued request; a render already running is ignored.
+  const { grid: neededGrid, tiles } = needed;
+  useEffect(() => {
+    let cancelled = false;
+    const requests = tiles.flatMap((tile) => {
+      const key = tileKey(docId, page, neededGrid, tile);
+      const cached = cache.get(key);
+      if (cached !== undefined) {
+        // Keep the tiles on screen the most recently used ones.
+        rememberTile(cache, key, cached);
+        return [];
+      }
+      if (failedRef.current.has(key)) return [];
+      const request = queue.request(key, () => pageTile(path, page, neededGrid.scale, tile, password));
+      void request.promise.then(
+        (tileImage) => {
+          if (cancelled) return;
+          rememberTile(cache, key, tileImage.dataUrl);
+          setLoaded((count) => count + 1);
+        },
+        () => {
+          // The preview underneath stays; do not retry the tile on every scroll.
+          if (!cancelled) failedRef.current.add(key);
+        },
+      );
+      return [request];
+    });
+    return () => {
+      cancelled = true;
+      for (const request of requests) request.cancel();
+    };
+  }, [cache, docId, neededGrid, page, password, path, queue, tiles]);
+
+  return (
+    <div
+      ref={layerRef}
+      className="reader-tiles"
+      aria-hidden="true"
+      style={{
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: "100%",
+        aspectRatio: `${grid.width} / ${grid.height}`,
+        pointerEvents: "none",
+      }}
+    >
+      {tiles.map((tile) => {
+        const key = tileKey(docId, page, neededGrid, tile);
+        const src = cache.get(key);
+        return src ? (
+          <img
+            key={key}
+            src={src}
+            alt=""
+            draggable={false}
+            style={{
+              position: "absolute",
+              display: "block",
+              left: `${(tile.x / neededGrid.width) * 100}%`,
+              top: `${(tile.y / neededGrid.height) * 100}%`,
+              width: `${(tile.width / neededGrid.width) * 100}%`,
+              height: `${(tile.height / neededGrid.height) * 100}%`,
+            }}
+          />
+        ) : null;
+      })}
+    </div>
+  );
+}
+
 const ReaderPage = memo(function ReaderPage({
+  docId,
   path,
   page,
   geometry,
   width,
   password,
   cache,
+  tileCache,
+  tileQueue,
   register,
   highlight,
 }: {
+  docId: string;
   path: string;
   page: number;
   geometry: PageGeometry;
@@ -141,12 +322,21 @@ const ReaderPage = memo(function ReaderPage({
   width: number;
   password?: string;
   cache: Map<number, CachedPreview>;
+  tileCache: Map<string, string>;
+  tileQueue: TileRequestQueue<Thumbnail>;
   register: (page: number, element: HTMLDivElement | null) => void;
   highlight?: string;
 }) {
   // Render at the display's pixel density: requesting CSS pixels made zoomed
   // pages visibly blurry on Android (the bitmap was upscaled by the browser).
   const requestedWidth = previewRasterWidth(width);
+  // Past the preview's raster cap the bitmap is upscaled; sharp tiles then
+  // cover the part of the page on screen (null at normal zoom).
+  const pixelRatio = previewPixelRatio();
+  const grid = useMemo(
+    () => tileGrid(geometry.display_width_pt, geometry.display_height_pt, width, pixelRatio),
+    [geometry.display_height_pt, geometry.display_width_pt, pixelRatio, width],
+  );
   // What this page instance fetched; the cache holds bitmaps rendered by any
   // instance, so both are candidates for display.
   const [fetched, setFetched] = useState<CachedPreview | null>(null);
@@ -212,7 +402,7 @@ const ReaderPage = memo(function ReaderPage({
       }}
       data-page={page}
       className="card overflow-hidden shrink-0"
-      style={{ width, minHeight: height, background: "white" }}
+      style={{ width, minHeight: height, background: "white", position: grid ? "relative" : undefined }}
     >
       {src ? (
         <img
@@ -231,6 +421,18 @@ const ReaderPage = memo(function ReaderPage({
           <Spinner size={22} />
         </div>
       )}
+      {grid ? (
+        <ReaderTiles
+          docId={docId}
+          path={path}
+          page={page}
+          password={password}
+          grid={grid}
+          cssWidth={width}
+          cache={tileCache}
+          queue={tileQueue}
+        />
+      ) : null}
       {highlight ? (
         <div
           className="px-3 py-1.5 text-[12px] muted border-t"
@@ -253,6 +455,10 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
   // A plain memo value (not a ref) so rendering and effects share the persistent
   // cache map without reading a ref during render.
   const [imageCacheMap] = useState(() => new Map<number, CachedPreview>());
+  // High-zoom tiles (data URLs by tile key) and the queue that bounds their
+  // renders, shared by every page.
+  const [tileCacheMap] = useState(() => new Map<string, string>());
+  const [tileQueue] = useState(() => new TileRequestQueue<Thumbnail>());
   const currentPageRef = useRef(1);
   const framePending = useRef(false);
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
@@ -332,10 +538,27 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
     setQuery("");
     setCurrentPage(1);
     setZoom("fit");
-    // Drop the previous document's bitmaps before the new pages render, so a
-    // page number cannot be served a stale image from another file.
-    imageCacheMap.clear();
   }
+
+  // Which open of which file the cached bitmaps belong to. The path alone is
+  // not an identity: picking the same path again (a file replaced on disk) or
+  // entering another password gives new pixels, and a tile still rendering for
+  // the old open must never be shown on the new one. `session.primary` is a
+  // new object for every open and the password is part of the identity, so
+  // either change starts a new generation that the page keys, the tile cache
+  // keys and the render queue keys all carry.
+  const openPrimary = session.primary;
+  const openPassword = session.password;
+  const [openState, setOpenState] = useState({ primary: openPrimary, password: openPassword, generation: 0 });
+  if (openState.primary !== openPrimary || openState.password !== openPassword) {
+    const generation = openState.generation + 1;
+    setOpenState({ primary: openPrimary, password: openPassword, generation });
+    // Drop the previous open's bitmaps before the new pages render, so a page
+    // number cannot be served a stale image from another file.
+    imageCacheMap.clear();
+    forgetOtherDocuments(tileCacheMap, tileDocId(openPrimary?.path ?? "", generation));
+  }
+  const docId = tileDocId(docKey, openState.generation);
 
   // Scroll the reading area back to the top once per document (effects may
   // touch refs; render may not).
@@ -780,13 +1003,16 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
             ) : null}
             {geometries.map((geometry) => (
               <ReaderPage
-                key={`${docKey}-${geometry.page}`}
+                key={`${docId}-${geometry.page}`}
+                docId={docId}
                 path={session.primary!.path}
                 page={geometry.page}
                 geometry={geometry}
                 width={renderWidth}
                 password={session.password || undefined}
                 cache={imageCacheMap}
+                tileCache={tileCacheMap}
+                tileQueue={tileQueue}
                 register={register}
                 highlight={
                   matchesByPage.get(geometry.page)?.[0]?.snippet

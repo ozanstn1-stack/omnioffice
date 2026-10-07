@@ -10,6 +10,7 @@ mod concurrency;
 mod diagnostics;
 mod jobs;
 mod library;
+mod netpolicy;
 mod oauth;
 mod office;
 mod office_tools;
@@ -135,6 +136,7 @@ pub fn run() {
             commands::pdf_info,
             commands::page_thumbnail,
             commands::page_preview,
+            commands::page_tile,
             commands::page_text,
             commands::search_document,
             commands::check_password,
@@ -247,6 +249,7 @@ pub fn run() {
             sign::pdf_archive_validation_data,
             sign::pdf_sign,
             sign::pdf_verify_signatures,
+            sign::pdf_verify_signatures_online,
             sign::pdf_list_signing_certificates,
             vault::vault_status,
             vault::vault_configure,

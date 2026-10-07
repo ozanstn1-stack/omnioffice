@@ -705,6 +705,85 @@ pub struct ConversionInfo {
     pub warnings: Vec<String>,
 }
 
+/// Maps the layout pdfcore recovered onto the Writer model: headings use the
+/// Heading1-3 styles, list items carry their list level, and every page after
+/// the first starts with a page break.
+fn pdf_layout_to_document(title: &str, recovered: &pdfcore::pdf2doc::RecoveredDocument) -> TextDocument {
+    use pdfcore::pdf2doc::{BlockKind, ListKind};
+
+    let mut document = TextDocument { title: title.to_string(), ..Default::default() };
+    if let Some(first) = recovered.pages.iter().find(|page| page.width > 0.0 && page.height > 0.0) {
+        document.page.width_pt = first.width;
+        document.page.height_pt = first.height;
+        let (short, long) = (first.width.min(first.height), first.width.max(first.height));
+        document.page.size = match (short.round() as i64, long.round() as i64) {
+            (595, 842) => "a4",
+            (612, 792) => "letter",
+            _ => "custom",
+        }
+        .into();
+        document.page.orientation = if first.width > first.height { "landscape" } else { "portrait" }.into();
+    }
+    document.blocks.clear();
+    let mut page_break = false;
+    for page in &recovered.pages {
+        for (index, block) in page.blocks.iter().enumerate() {
+            let mut props = ParaProps::default();
+            match &block.kind {
+                BlockKind::Paragraph => {}
+                BlockKind::Heading(level) => props.style = format!("Heading{}", (*level).clamp(1, 3)),
+                BlockKind::ListItem(item) => {
+                    let kind = if item.kind == ListKind::Bullet { "bullet" } else { "number" };
+                    props.space_after_pt = 2.0;
+                    props.list = Some(ListInfo {
+                        kind: kind.into(),
+                        level: item.level.min(8),
+                        start: item.start,
+                        marker: item.marker.clone(),
+                    });
+                }
+            }
+            // The break goes on the first block of the page, not into a
+            // paragraph of its own that could spill onto an extra page.
+            props.page_break_before = page_break && index == 0;
+            page_break = false;
+            let runs = block
+                .spans
+                .iter()
+                .map(|span| Run { text: span.text.clone(), bold: span.bold, italic: span.italic, ..Default::default() })
+                .collect();
+            document.blocks.push(Block::Paragraph { props, runs });
+        }
+        // A blank page is skipped, but the next page still starts on a new one.
+        page_break = !document.blocks.is_empty();
+    }
+    if document.blocks.is_empty() {
+        document.blocks.push(Block::paragraph(""));
+    }
+    document
+}
+
+/// The earlier conversion: one paragraph per text line pdfium extracts.
+fn pdf_plain_text_document(input: &Path, title: &str) -> Result<TextDocument, OfficeErrorPayload> {
+    let pages =
+        pdfcore::render::page_geometries(input, None).map_err(|e| payload(OfficeError::internal(e.to_string())))?;
+    let mut document = TextDocument { title: title.to_string(), ..Default::default() };
+    for page in &pages {
+        let content = pdfcore::render::extract_page_text(input, None, page.page)
+            .map_err(|e| payload(OfficeError::internal(e.to_string())))?;
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() {
+                document.blocks.push(Block::paragraph(trimmed));
+            }
+        }
+    }
+    if document.blocks.is_empty() {
+        document.blocks.push(Block::paragraph(""));
+    }
+    Ok(document)
+}
+
 pub fn convert(input: &Path, output: &Path, _options: &ConvertOptions) -> Result<ConversionInfo, OfficeErrorPayload> {
     let input_extension = extension(input);
     let output_extension = extension(output);
@@ -764,29 +843,27 @@ pub fn convert(input: &Path, output: &Path, _options: &ConvertOptions) -> Result
                 warnings: vec![],
             });
         } else if output_extension == "docx" {
-            let pages = pdfcore::render::page_geometries(input, None)
-                .map_err(|e| payload(OfficeError::internal(e.to_string())))?;
-            let mut document =
-                officecore::model::TextDocument { title: officecore::io::file_stem(input), ..Default::default() };
-            for page in &pages {
-                let content = pdfcore::render::extract_page_text(input, None, page.page)
-                    .map_err(|e| payload(OfficeError::internal(e.to_string())))?;
-                for line in content.lines() {
-                    let trimmed = line.trim();
-                    if !trimmed.is_empty() {
-                        document.blocks.push(officecore::model::Block::paragraph(trimmed));
-                    }
-                }
-            }
-            if document.blocks.is_empty() {
-                document.blocks.push(officecore::model::Block::paragraph(""));
-            }
+            // Layout recovery keeps paragraphs, headings, lists and pages; a
+            // file it cannot read (or one without a text layer) falls back to
+            // one paragraph per extracted line.
+            let title = officecore::io::file_stem(input);
+            let recovered = pdfcore::pdf2doc::recover_file(input, None).ok().filter(|found| found.has_text());
+            let (document, message) = match recovered {
+                Some(found) => (
+                    pdf_layout_to_document(&title, &found),
+                    "Paragraphs, headings, lists and page breaks recovered from the PDF into a Word DOCX document.",
+                ),
+                None => (
+                    pdf_plain_text_document(input, &title)?,
+                    "Text content extracted from PDF into Word DOCX document.",
+                ),
+            };
             officecore::docx::write_docx_file(output, &document).map_err(payload)?;
             return Ok(ConversionInfo {
                 input: input.to_string_lossy().to_string(),
                 output: output.to_string_lossy().to_string(),
                 converted: true,
-                warnings: vec!["Text content extracted from PDF into Word DOCX document.".into()],
+                warnings: vec![message.into()],
             });
         }
     }
@@ -1188,6 +1265,101 @@ mod tests {
         let doc_targets = office_conversion_targets("doc".into());
         assert!(doc_targets.contains(&"pdf".into()));
         assert!(doc_targets.contains(&"docx".into()));
+    }
+
+    /// A two-page PDF: heading, paragraph and bullets, then a heading and a
+    /// paragraph, with a page number in each footer.
+    fn write_sample_pdf(path: &Path) {
+        use lopdf::{dictionary, Document, Object, Stream};
+        let mut doc = Document::new();
+        let regular = doc.add_object(Object::Dictionary(dictionary! {
+            "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica", "Encoding" => "WinAnsiEncoding",
+        }));
+        let bold = doc.add_object(Object::Dictionary(dictionary! {
+            "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica-Bold", "Encoding" => "WinAnsiEncoding",
+        }));
+        let resources = doc.add_object(Object::Dictionary(dictionary! {
+            "Font" => dictionary! { "F1" => regular, "F2" => bold },
+        }));
+        let pages: [&[(&str, f64, f64, &str)]; 2] = [
+            &[
+                ("F2", 24.0, 760.0, "Quarterly Notes"),
+                ("F1", 11.0, 716.0, "The first quarter went well and the team shipped every feature that was planned"),
+                ("F1", 11.0, 702.0, "for the release, including the new importer."),
+                ("F1", 11.0, 678.0, "- Faster start up"),
+                ("F1", 11.0, 664.0, "- Smaller installers"),
+                ("F1", 10.0, 40.0, "1"),
+            ],
+            &[
+                ("F2", 24.0, 760.0, "Next Steps"),
+                ("F1", 11.0, 716.0, "Planning for the second quarter starts next week with a review of the backlog."),
+                ("F1", 10.0, 40.0, "2"),
+            ],
+        ];
+        let mut kids = Vec::new();
+        for rows in pages {
+            let mut content = String::new();
+            for (font, size, y, text) in rows {
+                let x = if *y < 100.0 { 296.0 } else { 72.0 };
+                content.push_str(&format!("BT\n/{font} {size} Tf\n{x} {y} Td\n({text}) Tj\nET\n"));
+            }
+            let content_id = doc.add_object(Object::Stream(Stream::new(dictionary! {}, content.into_bytes())));
+            kids.push(doc.add_object(Object::Dictionary(dictionary! {
+                "Type" => "Page",
+                "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
+                "Resources" => resources,
+                "Contents" => content_id,
+            })));
+        }
+        let pages_id = doc.add_object(Object::Dictionary(dictionary! {
+            "Type" => "Pages",
+            "Kids" => kids.iter().map(|id| Object::Reference(*id)).collect::<Vec<Object>>(),
+            "Count" => kids.len() as i64,
+        }));
+        for id in &kids {
+            doc.get_object_mut(*id).unwrap().as_dict_mut().unwrap().set("Parent", Object::Reference(pages_id));
+        }
+        let catalog = doc.add_object(Object::Dictionary(dictionary! { "Type" => "Catalog", "Pages" => pages_id }));
+        doc.trailer.set("Root", Object::Reference(catalog));
+        doc.save(path).expect("save pdf");
+    }
+
+    #[test]
+    fn pdf_to_docx_keeps_headings_lists_and_pages() {
+        let dir = tempfile::tempdir().unwrap();
+        let (input, output) = (dir.path().join("notes.pdf"), dir.path().join("notes.docx"));
+        write_sample_pdf(&input);
+        convert(&input, &output, &ConvertOptions::default()).expect("convert");
+
+        let read = docx::read_docx_file(&output).expect("read docx");
+        let paragraphs: Vec<(&ParaProps, String)> = read
+            .document
+            .blocks
+            .iter()
+            .filter_map(|block| match block {
+                Block::Paragraph { props, runs } => Some((props, runs.iter().map(|run| run.text.as_str()).collect())),
+                _ => None,
+            })
+            .collect();
+        let texts: Vec<&str> = paragraphs.iter().map(|(_, text)| text.as_str()).collect();
+        assert_eq!(
+            texts,
+            [
+                "Quarterly Notes",
+                "The first quarter went well and the team shipped every feature that was planned for the release, including the new importer.",
+                "Faster start up",
+                "Smaller installers",
+                "Next Steps",
+                "Planning for the second quarter starts next week with a review of the backlog.",
+            ]
+        );
+        assert_eq!(paragraphs[0].0.style, "Heading1");
+        assert_eq!(paragraphs[1].0.style, "Normal");
+        assert!(paragraphs[2].0.list.as_ref().is_some_and(|list| list.kind == "bullet"));
+        assert!(paragraphs[3].0.list.is_some());
+        assert!(paragraphs[4].0.page_break_before);
+        assert!(!paragraphs[0].0.page_break_before);
+        assert!(!paragraphs[5].0.page_break_before);
     }
 
     #[test]

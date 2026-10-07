@@ -10,9 +10,18 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 4.0.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 4.1.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 4.1.0
+
+- **Reader:** pages stay sharp at high zoom.
+- **Repair** works without qpdf, so it is available on Android too.
+- **PDF/A** output embeds only the characters it needs, so files are smaller.
+- **Signatures:** an optional online revocation check (OCSP/CRL), off by
+  default.
+- **PDF to Word** keeps headings, paragraphs, lists and pages.
 
 ## What's new in 4.0.0
 

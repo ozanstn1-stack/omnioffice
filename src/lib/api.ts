@@ -180,6 +180,30 @@ export const pagePreview = (
   quality = 86,
 ) => invoke<Thumbnail>("page_preview", { path, page, maxWidth, password: password || null, format, quality });
 
+/** One tile of a page rendered at `scale` output pixels per PDF point; the
+ *  region is in output pixels (reader high-zoom overlay). */
+export const pageTile = (
+  path: string,
+  page: number,
+  scale: number,
+  region: { x: number; y: number; width: number; height: number },
+  password?: string,
+  format: "png" | "jpeg" = "jpeg",
+  quality = 90,
+) =>
+  invoke<Thumbnail>("page_tile", {
+    path,
+    page,
+    scale,
+    x: region.x,
+    y: region.y,
+    width: region.width,
+    height: region.height,
+    password: password || null,
+    format,
+    quality,
+  });
+
 export const pageText = (path: string, page: number, password?: string) =>
   invoke<string>("page_text", { path, page, password: password || null });
 
@@ -451,8 +475,9 @@ export const vaultScan = <T>(request: { folders: string[]; rescan: boolean; maxF
 // Digital signatures - real CMS/PKCS#7 detached signatures (SHA-256)
 //
 // The Rust side never claims a signature is trusted: `trust` is always
-// "unknown" because there is no system trust store and no revocation check.
-// Verification is performed locally against the embedded certificate.
+// "unknown" because there is no system trust store. Verification is performed
+// locally against the embedded certificate; the optional online revocation
+// check (`pdfVerifySignaturesOnline`) is reported separately in `revocation`.
 // ---------------------------------------------------------------------------
 
 export interface SignatureCertificateInfo {
@@ -464,6 +489,27 @@ export interface SignatureCertificateInfo {
   expired: boolean;
   isCa: boolean;
   sha256Fingerprint: string;
+}
+
+export type RevocationStatus = "not_checked" | "good" | "revoked" | "unknown" | "error";
+
+/**
+ * Result of the optional online revocation check of the signer certificate.
+ * Separate from `trust`: a certificate that is not revoked is still not trusted.
+ */
+export interface RevocationInfo {
+  status: RevocationStatus;
+  source?: "ocsp" | "crl" | null;
+  /** RFC 3339 time the check ran. */
+  checkedAt?: string | null;
+  /** The responder or CRL URL that answered. */
+  url?: string | null;
+  /** RFC 3339 revocation time when `status` is "revoked". */
+  revokedAt?: string | null;
+  /** RFC 5280 CRLReason name, e.g. "keyCompromise". */
+  reason?: string | null;
+  /** Why the status is unknown or an error. */
+  detail?: string | null;
 }
 
 export interface SignatureInfo {
@@ -488,6 +534,8 @@ export interface SignatureInfo {
   timestamp?: string | null;
   algorithm: string;
   trust: string;
+  /** Absent in reports from older builds; treat as "not_checked". */
+  revocation?: RevocationInfo;
   notes: string[];
 }
 
@@ -530,6 +578,10 @@ export interface SigningCertificateSummary {
 }
 
 export const pdfVerifySignatures = (path: string) => invoke<SignatureReport>("pdf_verify_signatures", { path });
+
+/** Verifies, then asks each signer certificate's CA about revocation. Needs the `onlineRevocationCheck` setting. */
+export const pdfVerifySignaturesOnline = (path: string) =>
+  invoke<SignatureReport>("pdf_verify_signatures_online", { path });
 
 /** What the validation-data archiving wrote into the document. */
 export interface LtvReport {

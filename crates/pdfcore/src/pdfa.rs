@@ -25,15 +25,15 @@
 //! an XMP packet with the correct `pdfaid:part`/`conformance` is written, an
 //! sRGB `GTS_PDFA1` output intent **with a generated ICC v4 profile** as its
 //! `/DestOutputProfile` is declared, `/NeedAppearances` is turned off, and
-//! non-embedded simple fonts receive a bundled substitute program (see
-//! [`crate::fontembed`]). The per-font outcome, including every honest skip
-//! (CID/Type0, symbolic, custom encodings, non-metric substitutes), travels
-//! back in [`PdfaReport::font_embedding`].
+//! non-embedded simple fonts and Identity-H/V Type0 fonts with a `/ToUnicode`
+//! CMap receive a bundled substitute program, subset to the glyphs the
+//! document uses (see [`crate::fontembed`]). The per-font outcome, including
+//! every honest skip (Type0 without ToUnicode, symbolic, custom encodings,
+//! non-metric substitutes), travels back in [`PdfaReport::font_embedding`].
 //!
 //! What this still does **not** do, and the validator therefore still reports:
-//! fonts are embedded whole (no subsetting), Type0/CID fonts are skipped, and
-//! the PT Sans fallback used for Times/Courier/unknown families is not
-//! metric-compatible. The ICC profile is generated deterministically to the
+//! Type0/CID fonts without `/ToUnicode` are skipped, and the PT Sans fallback
+//! used for Times/Courier/unknown families is not metric-compatible. The ICC profile is generated deterministically to the
 //! ICC v4 layout and checked structurally by this crate's tests; it has not
 //! been run through an external validator such as veraPDF. The converter never
 //! claims a success it did not achieve.
@@ -767,9 +767,10 @@ fn remove_need_appearances(doc: &mut Document) {
 /// Converts a file towards `level` with the fixes lopdf can actually apply,
 /// then re-validates the written output and returns that real report. The
 /// font-embedding step runs before saving and its per-font outcome is carried
-/// in [`PdfaReport::font_embedding`]; fonts it refuses (CID/Type0, symbolic,
-/// custom encodings) still make the re-run validator report `valid: false`,
-/// and the converter never claims a success it did not achieve.
+/// in [`PdfaReport::font_embedding`]; fonts it refuses (Type0 without
+/// ToUnicode, symbolic, custom encodings) still make the re-run validator
+/// report `valid: false`, and the converter never claims a success it did not
+/// achieve.
 pub fn convert_pdfa(
     input: &Path,
     output: &Path,

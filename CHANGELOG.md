@@ -4,6 +4,42 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0] - PDF tools
+
+### Added
+
+- **Sharp pages at high zoom.** Past the size of a single page bitmap, the
+  reader draws the visible part of the page as tiles rendered at full
+  resolution, so text stays crisp up to 400 %. Normal zoom is unchanged.
+- **PDF repair without qpdf.** A built-in engine rebuilds damaged files: it
+  recovers objects from the raw bytes (broken or missing cross-reference
+  tables, wrong stream lengths, truncated files, object streams) and rebuilds
+  the page tree when the catalog is lost. Repair now works on Android; qpdf is
+  still used when it is installed (also from PATH on Linux and macOS), and the
+  result says which engine ran.
+- **Smaller PDF/A files.** Fonts embedded during PDF/A conversion now contain
+  only the characters the document uses (a Helvetica text came out at about
+  10 % of the full font), and CID fonts without an embedded program are
+  embedded when they carry a ToUnicode map.
+- **Optional certificate revocation check** (Settings, off by default). When
+  turned on, signature verification asks the certificate authority's OCSP
+  responder, or downloads its CRL, and shows "Not revoked" or "Revoked on …".
+  A certificate that is not revoked is not called trusted; the trust state
+  stays "unknown" without a trust store.
+- **PDF to Word keeps the layout.** Headings, paragraphs (joined across line
+  breaks and hyphenation), bulleted and numbered lists, bold/italic, two-column
+  pages and page breaks are recovered; running headers, footers and page
+  numbers are dropped.
+
+### Security
+
+- Revocation requests only go to public internet addresses on ports 80/443
+  (checked again after DNS resolution and on every redirect), and one
+  verification makes at most 20 requests within 45 seconds.
+- Hostile PDFs that could crash or stall PDF to Word, text extraction, repair
+  or PDF/A font embedding are bounded (found by an independent review before
+  release, each with a regression test).
+
 ## [4.0.0] - Office formats and editing tools
 
 ### Added

@@ -46,6 +46,10 @@ thiserror = "2.0.20"
 time = "0.3"
 getrandom = "0.2"
 x509-cert = { version = "0.2", default-features = false, features = ["std"] }
+# OCSP request/response types only (no `builder` feature), on the same der /
+# spki / x509-cert versions as above. revocation.rs builds the request and
+# verifies the answer; the HTTP exchange happens in the app, never here.
+x509-ocsp = "0.2"
 
 [dev-dependencies]
 # Test-only: generate throwaway self-signed identities and build PKCS#12

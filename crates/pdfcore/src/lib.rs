@@ -22,10 +22,12 @@
 //! * `ocr`       - Tesseract-based OCR pipeline
 //! * `engines`   - engine discovery (pdfium.dll, qpdf.exe, tesseract.exe)
 //! * `sanitize`  - full-object removal of scripts, actions, attachments
-//! * `repair`    - qpdf-backed recovery and linearization (desktop only)
+//! * `repair`    - recovery (qpdf, or the built-in rebuild) and linearization
+//! * `rebuild`   - built-in object-scanning repair that needs no qpdf
 //! * `pdfa`      - PDF/A validation and best-effort conversion
 //! * `flatten`   - annotation and form flattening
 //! * `forms`     - AcroForm fields (list/fill/validate) and page object editing
+//! * `pdf2doc`   - layout recovery (paragraphs, headings, lists) for PDF to Word
 
 pub mod annotate;
 pub mod compare;
@@ -37,6 +39,7 @@ pub mod engines;
 pub mod error;
 pub mod flatten;
 pub mod fontembed;
+mod fontusage;
 pub mod forms;
 pub mod images;
 pub mod incremental;
@@ -50,17 +53,21 @@ pub mod ocr;
 pub mod organize;
 pub mod pagelayout;
 pub mod pages;
+pub mod pdf2doc;
 pub mod pdfa;
 pub mod progress;
+pub mod rebuild;
 pub mod redact;
 pub mod render;
 pub mod repair;
+pub mod revocation;
 pub mod sanitize;
 pub mod security;
 pub mod sign;
 pub mod textbox;
 pub mod textimg;
 pub mod timestamp;
+pub mod ttfsubset;
 pub mod watermark;
 
 pub use error::{ErrorCode, PdfError, PdfResult};

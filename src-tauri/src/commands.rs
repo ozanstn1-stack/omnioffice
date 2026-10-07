@@ -179,22 +179,70 @@ pub async fn page_preview(
         // webview upscaled it (the blurry zoom on Android).
         let options = pdfcore::render::RenderOptions { dpi: 600.0, max_width: Some(max_width), max_height: None };
         let rendered = pdfcore::render::render_page(&path, password.as_deref(), page, &options)?;
-        // Reading mode requests JPEG (much smaller for large pages); the
-        // thumbnail/preview default stays lossless PNG.
-        let (bytes, mime) = match format.as_deref() {
-            Some("jpeg") | Some("jpg") => (
-                pdfcore::images::encode_image(
-                    &rendered,
-                    pdfcore::images::ImageFormat::Jpeg,
-                    quality.unwrap_or(86),
-                    false,
-                )?,
-                "image/jpeg",
-            ),
-            _ => (pdfcore::images::encode_image(&rendered, pdfcore::images::ImageFormat::Png, 90, false)?, "image/png"),
-        };
-        let data_url = format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes));
-        Ok(Thumbnail { data_url, width: rendered.width, height: rendered.height })
+        preview_data_url(&rendered, format.as_deref(), quality)
+    })
+    .await
+}
+
+/// Encodes a preview or tile as a data URL. Reading mode requests JPEG (much
+/// smaller for large pages); the thumbnail/preview default stays lossless PNG.
+fn preview_data_url(
+    rendered: &pdfcore::render::RenderedPage,
+    format: Option<&str>,
+    quality: Option<u8>,
+) -> Result<Thumbnail, PdfError> {
+    let (bytes, mime) = match format {
+        Some("jpeg") | Some("jpg") => (
+            pdfcore::images::encode_image(rendered, pdfcore::images::ImageFormat::Jpeg, quality.unwrap_or(86), false)?,
+            "image/jpeg",
+        ),
+        _ => (pdfcore::images::encode_image(rendered, pdfcore::images::ImageFormat::Png, 90, false)?, "image/png"),
+    };
+    let data_url = format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes));
+    Ok(Thumbnail { data_url, width: rendered.width, height: rendered.height })
+}
+
+/// Largest tile edge `page_tile` renders, in pixels.
+const MAX_TILE_EDGE: u32 = 1024;
+
+/// Highest tile scale in output pixels per PDF point: the reader's 400 % zoom
+/// (96/72 CSS px per point at 100 %) at its 2.5 device pixel ratio cap.
+const MAX_TILE_SCALE: f32 = 4.0 * (96.0 / 72.0) * 2.5;
+
+/// Renders one tile of a page for the reader's high-zoom overlay: the region
+/// `x, y, width, height` (output pixels) of the page as if it were rendered
+/// whole at `scale` pixels per point. Past the full-page preview's raster cap
+/// the reader keeps that preview as a base layer and lays these tiles over the
+/// part of the page on screen. The open document is reused between tiles.
+#[tauri::command]
+pub async fn page_tile(
+    path: String,
+    page: u32,
+    scale: f32,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    password: Option<String>,
+    format: Option<String>,
+    quality: Option<u8>,
+) -> Result<Thumbnail, PdfError> {
+    let path = crate::paths::input_file(&path)?.into_path_buf();
+    // Unlike the preview width, a tile's scale and position are not clamped:
+    // a clamped tile would no longer line up with the page underneath it. The
+    // small slack absorbs the frontend computing the same bound in f64.
+    if !scale.is_finite() || scale <= 0.0 || scale > MAX_TILE_SCALE * 1.001 {
+        return Err(PdfError::InvalidInput(format!("tile scale out of range: {scale}")));
+    }
+    if width == 0 || height == 0 || width > MAX_TILE_EDGE || height > MAX_TILE_EDGE {
+        return Err(PdfError::InvalidInput(format!(
+            "tile must be 1-{MAX_TILE_EDGE} px per side, got {width}x{height}"
+        )));
+    }
+    run_blocking(move || {
+        let region = pdfcore::render::PixelRegion { x, y, width, height };
+        let rendered = pdfcore::render::render_page_region(&path, password.as_deref(), page, scale, region)?;
+        preview_data_url(&rendered, format.as_deref(), quality)
     })
     .await
 }

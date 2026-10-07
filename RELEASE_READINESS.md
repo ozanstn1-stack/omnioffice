@@ -1,11 +1,48 @@
-# Release Readiness — OmniOffice 4.0.0
+# Release Readiness — OmniOffice 4.1.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
 
-## Implemented (this cycle, 4.0.0) - office formats and tools (plan phase 2)
+## Implemented (this cycle, 4.1.0) - PDF tools (plan phase 3)
+
+- `render.rs` `render_page_region` + a two-document cache, `page_tile`
+  command, `src/lib/tiles.ts` (tile math, LRU, request queue) and the Reader
+  overlay above `MAX_PREVIEW_RASTER_WIDTH`.
+- `rebuild.rs`: raw-object repair; `repair.rs` picks qpdf (Windows bundle,
+  PATH, Homebrew) or the built-in engine and reports `method`.
+- `ttfsubset.rs` (glyph-preserving subset), `fontusage.rs` (glyph usage
+  through content, forms, patterns, soft masks, Type3, annotations),
+  `fontembed.rs` subset tags and Type0 `CIDToGIDMap`.
+- Revocation: OCSP/CRL request and response handling in pdfcore,
+  `pdf_verify_signatures_online` with `netpolicy.rs` (public addresses only,
+  filtered DNS, 20 requests / 45 s), setting `onlineRevocationCheck`.
+- `pdf2doc.rs` layout recovery wired into PDF to DOCX.
+- An independent review found seven issues, all fixed with regression tests
+  in `crates/pdfcore/tests/hostile_inputs.rs` and the module tests: an
+  unbounded allocation in PDF to Word (process abort), ToUnicode CMaps
+  re-parsed per string, inherited attributes copied into every page during
+  repair, revocation requests to private addresses and without a request
+  cap, glyphs dropped from fonts used only in soft masks, and tiles shown on
+  the wrong document.
+- Tests: pdfcore lib 119, `repair_builtin` 19, `pdfa_fonts` 8, `revocation`
+  31, `pdf2doc_test` 3, `hostile_inputs` 5, app crate 99, frontend 811.
+
+### Not done in this pass (honest)
+
+- pdfium is not available in the Linux test environment: the region-render
+  comparison and the pdfium path of PDF to Word run only in the Windows CI
+  job. The Android repair path was not run on a device.
+- The revocation check was not tried against a live certificate authority;
+  behind a proxy without local DNS the revocation URLs cannot be resolved.
+- PDF to Word: no password support in the converter yet, no tables, and a
+  second numbered list continues the first one's numbering in Word.
+- Times and Courier still fall back to PT Sans (not metric-compatible) during
+  PDF/A embedding.
+- Repair peak memory is about three times the file size.
+
+## Implemented in 4.0.0 - office formats and tools (plan phase 2)
 
 The phase was re-scoped after checking the code: XLSX charts, PPTX
 animations/groups and DOCX comments already round-tripped, so the work went

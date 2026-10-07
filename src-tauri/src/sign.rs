@@ -8,14 +8,25 @@
 //! Secrets (PFX passwords, exported private keys) are held in memory only and
 //! are never logged or written to disk.
 
+use crate::netpolicy::UrlPolicy;
 use pdfcore::error::{PdfError, PdfResult};
+use pdfcore::revocation::{
+    FetchBudget, RevocationFetch, MAX_CRL_BYTES, MAX_OCSP_RESPONSE_BYTES, VERIFICATION_DEADLINE,
+};
 use pdfcore::sign::{self, SignOptions, SignatureInfo, SignatureReport};
 use serde::{Deserialize, Serialize};
+use std::io::Read;
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Maximum accepted RFC 3161 response body (a token is a few KB).
 const MAX_TSA_RESPONSE_BYTES: usize = 1024 * 1024;
+/// Time allowed for one OCSP exchange.
+const OCSP_TIMEOUT: Duration = Duration::from_secs(10);
+/// CRLs can be megabytes, so they get a longer (still bounded) window.
+const CRL_TIMEOUT: Duration = Duration::from_secs(30);
+/// Redirects followed per revocation request.
+const MAX_REVOCATION_REDIRECTS: usize = 3;
 
 /// Exchanges a signature value for an RFC 3161 timestamp token over HTTPS
 /// (plain HTTP only for a loopback TSA, mirroring the WebDAV transport rule).
@@ -263,6 +274,134 @@ pub async fn pdf_verify_signatures(path: String) -> Result<SignatureReport, PdfE
     tauri::async_runtime::spawn_blocking(move || {
         let bytes = crate::paths::read_input_file(&path, 2u64 * 1024 * 1024 * 1024)?;
         Ok(sign::verify_signatures(&bytes))
+    })
+    .await
+    .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
+}
+
+/// True when the stored settings turn the online revocation check on.
+fn online_revocation_enabled(settings: &serde_json::Value) -> bool {
+    settings.get("onlineRevocationCheck").and_then(serde_json::Value::as_bool).unwrap_or(false)
+}
+
+/// OCSP and CRL URLs come from certificates inside the (untrusted) PDF. Their
+/// answers are signed by the CA, so plain http:// is fine (and usual) - but
+/// only http(s) to public addresses on ports 80/443 (see `netpolicy`), or a
+/// crafted certificate could point the check at the user's own network.
+fn revocation_url(url: &str, policy: UrlPolicy) -> PdfResult<reqwest::Url> {
+    let parsed = reqwest::Url::parse(url.trim())
+        .map_err(|error| PdfError::InvalidInput(format!("invalid revocation URL {url}: {error}")))?;
+    policy
+        .check_resolved(&parsed)
+        .map_err(|reason| PdfError::InvalidInput(format!("revocation URL {url} refused: {reason}")))?;
+    Ok(parsed)
+}
+
+/// Reads at most `limit` bytes; a longer body is an error, not a truncation.
+fn read_limited(reader: impl Read, limit: usize) -> PdfResult<Vec<u8>> {
+    let mut body = Vec::new();
+    reader
+        .take(limit as u64 + 1)
+        .read_to_end(&mut body)
+        .map_err(|error| PdfError::ProcessingFailed(format!("the answer could not be read: {error}")))?;
+    if body.len() > limit {
+        return Err(PdfError::ProcessingFailed(format!("the answer is larger than {limit} bytes")));
+    }
+    Ok(body)
+}
+
+fn revocation_client_builder(policy: UrlPolicy) -> reqwest::blocking::ClientBuilder {
+    let builder = reqwest::blocking::Client::builder()
+        .connect_timeout(OCSP_TIMEOUT)
+        // Every redirect hop is held to the same policy as the first request:
+        // http(s) only, public addresses only, ports 80/443 only.
+        .redirect(policy.redirect_policy(MAX_REVOCATION_REDIRECTS))
+        .user_agent(concat!("OmniOffice/", env!("CARGO_PKG_VERSION"), " (revocation)"));
+    // Names are resolved through a filter that drops non-public addresses at
+    // connect time, so a host cannot change its answer after the check.
+    policy.apply(builder)
+}
+
+fn revocation_client() -> PdfResult<reqwest::blocking::Client> {
+    revocation_client_builder(UrlPolicy::Public)
+        .build()
+        .map_err(|error| PdfError::Internal(format!("could not build the revocation client: {error}")))
+}
+
+/// The time one request may take: its own timeout, but never beyond the
+/// overall deadline of the verification it belongs to.
+fn request_timeout(own: Duration, deadline: Instant) -> PdfResult<Duration> {
+    let left = deadline.saturating_duration_since(Instant::now());
+    if left.is_zero() {
+        return Err(PdfError::ProcessingFailed(format!(
+            "the {} second time limit for the revocation check was reached",
+            VERIFICATION_DEADLINE.as_secs()
+        )));
+    }
+    Ok(own.min(left))
+}
+
+/// One OCSP POST or CRL download for `pdfcore::revocation`.
+fn fetch_revocation(
+    client: &reqwest::blocking::Client,
+    policy: UrlPolicy,
+    deadline: Instant,
+    request: RevocationFetch<'_>,
+) -> PdfResult<Vec<u8>> {
+    let (builder, limit) = match request {
+        RevocationFetch::Ocsp { url, body } => (
+            client
+                .post(revocation_url(url, policy)?)
+                .timeout(request_timeout(OCSP_TIMEOUT, deadline)?)
+                .header("Content-Type", "application/ocsp-request")
+                .header("Accept", "application/ocsp-response")
+                .body(body.to_vec()),
+            MAX_OCSP_RESPONSE_BYTES,
+        ),
+        RevocationFetch::Crl { url } => {
+            (client.get(revocation_url(url, policy)?).timeout(request_timeout(CRL_TIMEOUT, deadline)?), MAX_CRL_BYTES)
+        }
+    };
+    let response = builder
+        .send()
+        .map_err(|error| PdfError::ProcessingFailed(format!("the server could not be reached: {error}")))?;
+    if !response.status().is_success() {
+        return Err(PdfError::ProcessingFailed(format!("the server returned HTTP {}", response.status().as_u16())));
+    }
+    if response.content_length().is_some_and(|length| length > limit as u64) {
+        return Err(PdfError::ProcessingFailed(format!("the answer is larger than {limit} bytes")));
+    }
+    read_limited(response, limit)
+}
+
+/// Verifies every signature and asks each signer certificate's CA whether it
+/// was revoked (OCSP, then the CRL). This is the only signature command that
+/// touches the network, and it re-reads the stored setting itself so a stale
+/// or buggy caller cannot reach the CA while the user has the check off.
+#[tauri::command]
+pub async fn pdf_verify_signatures_online(app: tauri::AppHandle, path: String) -> Result<SignatureReport, PdfError> {
+    let settings = crate::commands::load_settings(app)?;
+    if !online_revocation_enabled(&settings) {
+        return Err(PdfError::InvalidInput(
+            "online revocation checking is turned off; enable it in Settings first".into(),
+        ));
+    }
+    let _permit = crate::concurrency::acquire().await;
+    tauri::async_runtime::spawn_blocking(move || {
+        let bytes = crate::paths::read_input_file(&path, 2u64 * 1024 * 1024 * 1024)?;
+        let client = revocation_client()?;
+        // One budget for the whole file: at most MAX_FETCHES_PER_VERIFICATION
+        // requests and VERIFICATION_DEADLINE seconds, however many signatures
+        // and certificates the PDF carries.
+        let started = Instant::now();
+        let deadline = started + VERIFICATION_DEADLINE;
+        let fetch = |request: RevocationFetch<'_>| fetch_revocation(&client, UrlPolicy::Public, deadline, request);
+        Ok(sign::verify_signatures_online_with_budget(
+            &bytes,
+            &fetch,
+            pdfcore::revocation::unix_now(),
+            FetchBudget::standard(started),
+        ))
     })
     .await
     .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
@@ -612,5 +751,187 @@ mod tests {
         assert!(info.digest_matches);
         assert!(info.covers_whole_document);
         println!("store signing ok: {} / {}", info.algorithm, info.signer.subject);
+    }
+}
+
+#[cfg(test)]
+mod revocation_tests {
+    use super::*;
+    use std::io::Write;
+    use std::net::TcpListener;
+
+    /// Serves one canned HTTP response per connection on a loopback port and
+    /// hands back the request heads it saw. Nothing leaves the machine.
+    fn serve(responses: Vec<Vec<u8>>) -> (String, std::thread::JoinHandle<Vec<String>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+        let url = format!("http://{}/", listener.local_addr().expect("address"));
+        let handle = std::thread::spawn(move || {
+            let mut heads = Vec::new();
+            for response in responses {
+                let (mut stream, _) = listener.accept().expect("accept");
+                let mut head = Vec::new();
+                let mut byte = [0u8; 1];
+                while !head.ends_with(b"\r\n\r\n") && stream.read(&mut byte).unwrap_or(0) == 1 {
+                    head.push(byte[0]);
+                }
+                let head = String::from_utf8_lossy(&head).to_ascii_lowercase();
+                // Drain the request body so closing does not reset the socket.
+                let length = head
+                    .lines()
+                    .find_map(|line| line.strip_prefix("content-length:"))
+                    .and_then(|value| value.trim().parse::<u64>().ok())
+                    .unwrap_or(0);
+                let _ = std::io::copy(&mut (&mut stream).take(length), &mut std::io::sink());
+                let _ = stream.write_all(&response);
+                heads.push(head);
+            }
+            heads
+        });
+        (url, handle)
+    }
+
+    /// The production client minus the system proxy and the public-address
+    /// rule, so a loopback test server can answer.
+    fn client() -> reqwest::blocking::Client {
+        revocation_client_builder(UrlPolicy::Unrestricted).no_proxy().build().expect("client")
+    }
+
+    /// The production client (public addresses only) minus the system proxy.
+    fn strict_client() -> reqwest::blocking::Client {
+        revocation_client_builder(UrlPolicy::Public).no_proxy().build().expect("client")
+    }
+
+    fn deadline() -> Instant {
+        Instant::now() + VERIFICATION_DEADLINE
+    }
+
+    /// `fetch_revocation` with the loopback-friendly policy.
+    fn fetch_local(client: &reqwest::blocking::Client, request: RevocationFetch<'_>) -> PdfResult<Vec<u8>> {
+        fetch_revocation(client, UrlPolicy::Unrestricted, deadline(), request)
+    }
+
+    fn ok_response(body: &[u8]) -> Vec<u8> {
+        let mut response =
+            format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).into_bytes();
+        response.extend_from_slice(body);
+        response
+    }
+
+    #[test]
+    fn the_online_check_is_off_unless_the_setting_is_true() {
+        assert!(!online_revocation_enabled(&serde_json::json!({})));
+        assert!(!online_revocation_enabled(&serde_json::json!({ "onlineRevocationCheck": false })));
+        assert!(!online_revocation_enabled(&serde_json::json!({ "onlineRevocationCheck": "true" })));
+        assert!(!online_revocation_enabled(&serde_json::Value::Null));
+        assert!(online_revocation_enabled(&serde_json::json!({ "onlineRevocationCheck": true })));
+    }
+
+    #[test]
+    fn only_http_and_https_revocation_urls_are_used() {
+        let policy = UrlPolicy::Unrestricted;
+        assert!(revocation_url("http://ocsp.example.test/", policy).is_ok());
+        assert!(revocation_url(" https://crl.example.test/ca.crl ", policy).is_ok());
+        for url in ["ldap://ldap.example.test/cn=ca", "file:///etc/passwd", "ftp://example.test/ca.crl", "data:,x", "x"]
+        {
+            assert!(revocation_url(url, policy).is_err(), "{url}");
+            assert!(revocation_url(url, UrlPolicy::Public).is_err(), "{url}");
+        }
+    }
+
+    #[test]
+    fn urls_from_a_certificate_cannot_reach_local_or_private_hosts() {
+        for url in [
+            "http://127.0.0.1/ocsp",
+            "http://localhost/ocsp",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://10.1.2.3/",
+            "http://192.168.0.1:80/",
+            "http://[::1]/",
+            "http://[::ffff:10.0.0.1]/",
+            "http://8.8.8.8:8080/",
+            "http://user:secret@8.8.8.8/",
+        ] {
+            let error = revocation_url(url, UrlPolicy::Public).expect_err(url);
+            assert!(error.to_string().contains("refused"), "{url}: {error}");
+        }
+        assert!(revocation_url("http://8.8.8.8/ocsp", UrlPolicy::Public).is_ok());
+    }
+
+    #[test]
+    fn the_production_policy_stops_a_request_before_it_leaves_the_machine() {
+        // Nothing listens here and nothing is sent: the URL is refused first.
+        let error = fetch_revocation(
+            &strict_client(),
+            UrlPolicy::Public,
+            deadline(),
+            RevocationFetch::Crl { url: "http://127.0.0.1:9/ca.crl" },
+        )
+        .expect_err("loopback is refused");
+        assert!(error.to_string().contains("refused"), "{error}");
+    }
+
+    #[test]
+    fn a_redirect_to_a_local_address_is_refused_on_the_hop() {
+        // The first hop is the loopback test server (reached by calling the
+        // client directly, bypassing the URL check); its redirect to the cloud
+        // metadata address must be stopped by the production redirect policy.
+        let redirect =
+            b"HTTP/1.1 302 Found\r\nLocation: http://169.254.169.254/meta\r\nContent-Length: 0\r\n\r\n".to_vec();
+        let (url, server) = serve(vec![redirect]);
+        let error = strict_client().get(&url).send().expect_err("the redirect must not be followed");
+        assert!(error.is_redirect(), "{error}");
+        assert!(format!("{error:?}").contains("redirect refused"), "{error:?}");
+        assert_eq!(server.join().expect("server").len(), 1);
+    }
+
+    #[test]
+    fn a_request_is_never_given_more_time_than_the_verification_has_left() {
+        let now = Instant::now();
+        assert_eq!(request_timeout(OCSP_TIMEOUT, now + Duration::from_secs(300)).unwrap(), OCSP_TIMEOUT);
+        let clamped = request_timeout(CRL_TIMEOUT, now + Duration::from_secs(5)).unwrap();
+        assert!(clamped <= Duration::from_secs(5), "{clamped:?}");
+        assert!(request_timeout(CRL_TIMEOUT, now).is_err(), "no time left means no request");
+    }
+
+    #[test]
+    fn bodies_over_the_limit_are_refused_not_truncated() {
+        assert_eq!(read_limited(&b"abc"[..], 3).expect("fits"), b"abc");
+        assert!(read_limited(&b"abcd"[..], 3).is_err());
+        assert!(read_limited(std::io::repeat(0x30), MAX_OCSP_RESPONSE_BYTES).is_err());
+    }
+
+    #[test]
+    fn the_ocsp_request_is_posted_with_its_content_type() {
+        let (url, server) = serve(vec![ok_response(b"answer")]);
+        let body = fetch_local(&client(), RevocationFetch::Ocsp { url: &url, body: b"request" }).expect("fetch");
+        assert_eq!(body, b"answer");
+        let heads = server.join().expect("server");
+        assert!(heads[0].starts_with("post / "), "{}", heads[0]);
+        assert!(heads[0].contains("content-type: application/ocsp-request"), "{}", heads[0]);
+    }
+
+    #[test]
+    fn redirects_to_other_schemes_errors_and_oversized_answers_are_refused() {
+        let redirect =
+            b"HTTP/1.1 302 Found\r\nLocation: ftp://example.test/ca.crl\r\nContent-Length: 0\r\n\r\n".to_vec();
+        let (url, _server) = serve(vec![redirect]);
+        assert!(fetch_local(&client(), RevocationFetch::Crl { url: &url }).is_err());
+
+        let (url, _server) = serve(vec![b"HTTP/1.1 500 Oops\r\nContent-Length: 0\r\n\r\n".to_vec()]);
+        let error = fetch_local(&client(), RevocationFetch::Crl { url: &url }).expect_err("500");
+        assert!(error.to_string().contains("HTTP 500"), "{error}");
+
+        // No Content-Length: the limit is enforced while reading.
+        let mut endless = b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_vec();
+        endless.extend(std::iter::repeat_n(0x30u8, MAX_OCSP_RESPONSE_BYTES + 10));
+        let (url, _server) = serve(vec![endless]);
+        let error = fetch_local(&client(), RevocationFetch::Ocsp { url: &url, body: b"request" }).expect_err("too big");
+        assert!(error.to_string().contains("larger"), "{error}");
+
+        // A declared length over the limit is refused before reading.
+        let declared = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", MAX_CRL_BYTES + 1).into_bytes();
+        let (url, _server) = serve(vec![declared]);
+        let error = fetch_local(&client(), RevocationFetch::Crl { url: &url }).expect_err("declared too big");
+        assert!(error.to_string().contains("larger"), "{error}");
     }
 }

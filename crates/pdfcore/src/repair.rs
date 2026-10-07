@@ -1,16 +1,26 @@
-//! qpdf-backed document repair and linearization.
+//! Document repair and qpdf-backed linearization.
 //!
-//! qpdf is the bundled desktop engine (`engines::qpdf_path`); it is not shipped
-//! on Android, where this module reports the engine as missing. Both operations
-//! rewrite the file through qpdf and then re-open the result so the report
-//! describes the file that was actually produced, not the intent.
+//! Repair uses qpdf when it is available (bundled on Windows, a system install
+//! on Linux/macOS, see `engines::qpdf_path`) and otherwise - on Android, or
+//! when qpdf fails - the built-in rebuild in `rebuild`. Linearization needs
+//! qpdf. Every operation re-opens the result so the report describes the file
+//! that was actually produced, not the intent.
 
-use crate::engines;
 use crate::error::{PdfError, PdfResult};
 use crate::progress::{CancelToken, ProgressCallback, ProgressEvent, ProgressReporter};
+use crate::{docutil, engines, rebuild};
 use serde::Serialize;
 use std::path::Path;
 use std::process::Stdio;
+
+/// The engine that rewrote a repaired file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RepairMethod {
+    Qpdf,
+    /// The built-in object-scanning rebuild (`rebuild::rebuild_pdf`).
+    Builtin,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,16 +29,21 @@ pub struct RepairReport {
     pub output: String,
     /// Pages in the produced file (0 when it could not be re-opened).
     pub pages: u32,
-    /// qpdf diagnostics, capped; these are the repair's warnings.
+    /// qpdf diagnostics or the rebuild's notes, capped; these are the
+    /// repair's warnings.
     pub warnings: Vec<String>,
+    /// Which engine repaired the file; absent for linearization.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub method: Option<RepairMethod>,
 }
 
 /// The qpdf exit code that means "warnings only" (errors are 2).
 const QPDF_WARNING_EXIT: i32 = 3;
 
 fn qpdf_command() -> PdfResult<std::process::Command> {
-    let exe = engines::qpdf_path()
-        .ok_or_else(|| PdfError::EngineMissing("qpdf is only bundled with the desktop build".into()))?;
+    let exe =
+        engines::qpdf_path().ok_or_else(|| PdfError::EngineMissing("qpdf is not available on this device".into()))?;
+    #[cfg_attr(not(windows), allow(unused_mut))]
     let mut cmd = std::process::Command::new(exe);
     #[cfg(windows)]
     {
@@ -100,8 +115,10 @@ fn reopen_pages(path: &Path) -> Option<u32> {
     u32::try_from(pages).ok()
 }
 
-/// Rewrites a damaged PDF through qpdf, recovering what the simple lopdf
-/// parser cannot (broken xref chains, dangling objects, bad stream lengths).
+/// Rewrites a damaged PDF, recovering what the simple lopdf parser cannot
+/// (broken xref chains, dangling objects, bad stream lengths). qpdf is used
+/// when it is available; without it, or when it fails, the built-in rebuild
+/// takes over.
 pub fn repair_pdf(
     input: &Path,
     output: &Path,
@@ -109,6 +126,69 @@ pub fn repair_pdf(
     cancel: &CancelToken,
 ) -> PdfResult<RepairReport> {
     cancel.check()?;
+    if engines::qpdf_path().is_none() {
+        return repair_pdf_builtin(input, output, progress, cancel);
+    }
+    match repair_with_qpdf(input, output, progress, cancel) {
+        Ok(report) if report.pages > 0 => Ok(report),
+        Ok(report) => retry_empty_with_builtin(report, input, output, progress, cancel),
+        Err(PdfError::Cancelled) => Err(PdfError::Cancelled),
+        Err(error) => {
+            let mut report = repair_pdf_builtin(input, output, progress, cancel)?;
+            report
+                .warnings
+                .insert(0, format!("qpdf could not repair the file ({error}); the built-in engine was used."));
+            Ok(report)
+        }
+    }
+}
+
+/// qpdf exited cleanly but its output has no readable pages (a page tree it
+/// kept as it was, or a file the built-in parser cannot open). The built-in
+/// rebuild gets a try too, into a side file, and the result with more pages
+/// is kept; on a tie qpdf's file stays.
+fn retry_empty_with_builtin(
+    qpdf: RepairReport,
+    input: &Path,
+    output: &Path,
+    progress: &ProgressCallback,
+    cancel: &CancelToken,
+) -> PdfResult<RepairReport> {
+    let mut side = output.as_os_str().to_owned();
+    side.push(".rebuild");
+    let side = std::path::PathBuf::from(side);
+    let rebuilt = repair_pdf_builtin(input, &side, progress, cancel);
+    let better = match rebuilt {
+        Ok(report) if report.pages > qpdf.pages => Some(report),
+        Err(PdfError::Cancelled) => {
+            let _ = std::fs::remove_file(&side);
+            return Err(PdfError::Cancelled);
+        }
+        _ => None,
+    };
+    let Some(mut report) = better else {
+        let _ = std::fs::remove_file(&side);
+        return Ok(qpdf);
+    };
+    if let Err(error) = std::fs::rename(&side, output) {
+        let _ = std::fs::remove_file(&side);
+        let mut qpdf = qpdf;
+        qpdf.warnings.push(format!("The built-in rebuild found pages but its file could not be saved ({error})."));
+        return Ok(qpdf);
+    }
+    report.output = output.display().to_string();
+    report
+        .warnings
+        .insert(0, "qpdf's output had no readable pages; the built-in engine's result was kept instead.".into());
+    Ok(report)
+}
+
+fn repair_with_qpdf(
+    input: &Path,
+    output: &Path,
+    progress: &ProgressCallback,
+    cancel: &CancelToken,
+) -> PdfResult<RepairReport> {
     let reporter = ProgressReporter::new(progress);
     reporter.emit(ProgressEvent::new("repair.read", 0, 2));
     let args = vec![
@@ -131,7 +211,45 @@ pub fn repair_pdf(
         );
     }
     reporter.emit(ProgressEvent::new("repair.done", 2, 2));
-    Ok(RepairReport { output: output.display().to_string(), pages, warnings })
+    Ok(RepairReport { output: output.display().to_string(), pages, warnings, method: Some(RepairMethod::Qpdf) })
+}
+
+/// Rebuilds a damaged PDF with the built-in engine (no qpdf): every object is
+/// recovered by scanning the file and the result gets a fresh
+/// cross-reference table. See `rebuild` for what it tolerates.
+pub fn repair_pdf_builtin(
+    input: &Path,
+    output: &Path,
+    progress: &ProgressCallback,
+    cancel: &CancelToken,
+) -> PdfResult<RepairReport> {
+    cancel.check()?;
+    let reporter = ProgressReporter::new(progress);
+    reporter.emit(ProgressEvent::new("repair.read", 0, 3));
+    rebuild::check_input_size(std::fs::metadata(input).map_err(PdfError::from_io)?.len())?;
+    let data = std::fs::read(input).map_err(PdfError::from_io)?;
+    cancel.check()?;
+    reporter.emit(ProgressEvent::new("repair.rebuild", 1, 3));
+    let rebuilt = rebuild::rebuild_pdf(&data, cancel)?;
+    drop(data);
+    cancel.check()?;
+    docutil::write_bytes_atomic(output, &rebuilt.bytes)?;
+    reporter.emit(ProgressEvent::new("repair.verify", 2, 3));
+    let mut warnings = rebuilt.warnings;
+    let pages = match reopen_pages(output).filter(|&pages| pages > 0) {
+        Some(pages) => pages,
+        // An encrypted result only re-opens here when it needs no password;
+        // the rebuilt page tree is known either way.
+        None if rebuilt.encrypted => rebuilt.pages,
+        None => {
+            warnings.push(
+                "The rewritten file could not be re-opened by the built-in parser; it may still open elsewhere.".into(),
+            );
+            0
+        }
+    };
+    reporter.emit(ProgressEvent::new("repair.done", 3, 3));
+    Ok(RepairReport { output: output.display().to_string(), pages, warnings, method: Some(RepairMethod::Builtin) })
 }
 
 /// Rewrites a PDF with qpdf's linearization (Fast Web View layout).
@@ -159,5 +277,68 @@ pub fn linearize_pdf(
     }
     let pages = reopen_pages(output).unwrap_or(0);
     reporter.emit(ProgressEvent::new("linearize.done", 2, 2));
-    Ok(RepairReport { output: output.display().to_string(), pages, warnings })
+    Ok(RepairReport { output: output.display().to_string(), pages, warnings, method: None })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lopdf::{dictionary, Document, Object, Stream};
+
+    fn one_page_pdf(path: &Path) {
+        let mut doc = Document::with_version("1.7");
+        let content = doc.add_object(Object::Stream(Stream::new(dictionary! {}, b"BT ET".to_vec())));
+        let pages_id = doc.new_object_id();
+        let page = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages_id,
+            "MediaBox" => vec![0.into(), 0.into(), 200.into(), 200.into()], "Contents" => content,
+        });
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(
+                dictionary! { "Type" => "Pages", "Kids" => vec![Object::Reference(page)], "Count" => 1 },
+            ),
+        );
+        let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        doc.trailer.set("Root", Object::Reference(catalog));
+        doc.save(path).unwrap();
+    }
+
+    fn qpdf_report(output: &Path) -> RepairReport {
+        RepairReport {
+            output: output.display().to_string(),
+            pages: 0,
+            warnings: Vec::new(),
+            method: Some(RepairMethod::Qpdf),
+        }
+    }
+
+    #[test]
+    fn a_qpdf_result_without_pages_is_replaced_by_a_better_builtin_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let (input, output) = (dir.path().join("in.pdf"), dir.path().join("out.pdf"));
+        one_page_pdf(&input);
+        std::fs::write(&output, b"%PDF-1.7\n% qpdf wrote something without pages\n").unwrap();
+        let progress = |_: ProgressEvent| {};
+        let report =
+            retry_empty_with_builtin(qpdf_report(&output), &input, &output, &progress, &CancelToken::new()).unwrap();
+        assert_eq!(report.method, Some(RepairMethod::Builtin));
+        assert_eq!(report.pages, 1);
+        assert_eq!(reopen_pages(&output), Some(1));
+        assert!(!dir.path().join("out.pdf.rebuild").exists());
+    }
+
+    #[test]
+    fn the_qpdf_result_stays_when_the_builtin_rebuild_finds_nothing_either() {
+        let dir = tempfile::tempdir().unwrap();
+        let (input, output) = (dir.path().join("in.pdf"), dir.path().join("out.pdf"));
+        std::fs::write(&input, b"not a pdf at all").unwrap();
+        std::fs::write(&output, b"qpdf output").unwrap();
+        let progress = |_: ProgressEvent| {};
+        let report =
+            retry_empty_with_builtin(qpdf_report(&output), &input, &output, &progress, &CancelToken::new()).unwrap();
+        assert_eq!(report.method, Some(RepairMethod::Qpdf));
+        assert_eq!(std::fs::read(&output).unwrap(), b"qpdf output");
+        assert!(!dir.path().join("out.pdf.rebuild").exists());
+    }
 }

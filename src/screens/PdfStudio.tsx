@@ -3,7 +3,8 @@
  * PDF/A validation/conversion and real digital signatures. Every result shown
  * here comes from a real check in pdfcore; nothing is reported as "compliant"
  * or "signed" without validation, and signature trust is always reported as
- * unknown (this build has no system trust store and no revocation check).
+ * unknown (this build has no system trust store). Revocation is a separate,
+ * opt-in online check.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -25,10 +26,11 @@ import {
   Wrench,
 } from "lucide-react";
 import { useT } from "../lib/i18n";
-import { errorMessage, useToasts } from "../lib/store";
+import { errorMessage, useSettings, useToasts } from "../lib/store";
 import { invokeTracked } from "../lib/api";
 import { DropZone, FileList } from "../components/files";
 import { Badge, Card, Field, Toggle } from "../components/ui";
+import { RevocationStatus } from "../components/revocation-status";
 import { PageCanvas } from "../components/pages";
 import {
   pdfArchiveValidationData,
@@ -43,6 +45,7 @@ import {
   pdfSign,
   pdfValidateForm,
   pdfVerifySignatures,
+  pdfVerifySignaturesOnline,
   suggestOutput,
   toAppError,
   type FieldIssue,
@@ -217,11 +220,13 @@ interface FlattenReport {
   warnings: string[];
 }
 
-/** Result of the qpdf-backed repair/linearize commands (`RepairReport` in Rust). */
+/** Result of the repair/linearize commands (`RepairReport` in Rust). */
 interface RepairReport {
   output: string;
   pages: number;
   warnings: string[];
+  /** Engine that repaired the file; absent for linearization and older builds. */
+  method?: "qpdf" | "builtin";
 }
 
 interface PdfaCheck {
@@ -252,6 +257,7 @@ function signatureTone(info: SignatureInfo): "ok" | "warn" | "danger" {
 
 export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[]; dragging?: boolean }) {
   const t = useT();
+  const onlineRevocation = useSettings((s) => s.settings.onlineRevocationCheck === true);
   const [tab, setTab] = useState<StudioTab>("sanitize");
   const [files, setFiles] = useState<string[]>(initialFiles ?? []);
   const [level, setLevel] = useState("A-2b");
@@ -330,7 +336,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
   }, [running]);
 
   const input = files[0];
-  const toast = (kind: "success" | "error", title: string, detail?: string) =>
+  const toast = (kind: "success" | "error" | "info", title: string, detail?: string) =>
     useToasts.getState().push({ kind, title, detail });
 
   const run = async (action: () => Promise<void>, jobId: string) => {
@@ -361,10 +367,20 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
 
   const runRepair = () =>
     run(async () => {
+      // On Android the result is exported through the system save flow, so the
+      // destination is picked before the work starts.
+      let androidTarget: AndroidTarget | null = null;
+      if (isAndroid() && input) {
+        androidTarget = await pickAndroidSaveTarget(fileBaseName(input).replace(/\.pdf$/i, "-repaired.pdf")).catch(
+          () => null,
+        );
+        if (!androidTarget) return;
+      }
       const report = await invokeTracked<RepairReport>("pdf_repair", {
         request: { input, jobId: "studio-repair" },
       });
       setRepairReport(report);
+      if (androidTarget) await publishOutputs([report.output], { file: androidTarget });
       toast("success", t("studio.repairDone"));
     }, "studio-repair");
 
@@ -842,7 +858,18 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
     }
     setVerifying(true);
     try {
-      const report = await pdfVerifySignatures(input);
+      let report: SignatureReport;
+      if (onlineRevocation) {
+        try {
+          report = await pdfVerifySignaturesOnline(input);
+        } catch {
+          // The online check is an add-on: keep the offline result usable.
+          report = await pdfVerifySignatures(input);
+          toast("info", t("studio.revocationOffline"));
+        }
+      } else {
+        report = await pdfVerifySignatures(input);
+      }
       setSignReport(report);
       toast("success", t("studio.verifyDone"));
     } catch (error) {
@@ -1120,14 +1147,16 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
             >
               {t("studio.repairRun")}
             </button>
-            <button
-              type="button"
-              className="btn"
-              disabled={!input || running !== null}
-              onClick={() => void runLinearize()}
-            >
-              {t("studio.linearizeRun")}
-            </button>
+            {isAndroid() ? null : (
+              <button
+                type="button"
+                className="btn"
+                disabled={!input || running !== null}
+                onClick={() => void runLinearize()}
+              >
+                {t("studio.linearizeRun")}
+              </button>
+            )}
           </div>
           {repairReport ? (
             <div className="stack" style={{ marginTop: 10 }}>
@@ -1137,6 +1166,11 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                 </Badge>
                 <code className="break-all">{repairReport.output}</code>
               </div>
+              {repairReport.method ? (
+                <p className="muted small">
+                  {repairReport.method === "qpdf" ? t("studio.repairMethodQpdf") : t("studio.repairMethodBuiltin")}
+                </p>
+              ) : null}
               {repairReport.warnings.map((warning, index) => (
                 <p key={index} className="muted small">
                   {warning}
@@ -1290,6 +1324,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                         {info.modifiedAfterSigning ? <Badge tone="danger">{t("studio.modifiedAfter")}</Badge> : null}
                         {info.supersededByLaterRevision ? <Badge tone="warn">{t("studio.superseded")}</Badge> : null}
                         <Badge tone="warn">{t("studio.trustUnknown")}</Badge>
+                      </div>
+                      <div className="row">
+                        <RevocationStatus revocation={info.revocation} />
                       </div>
                       <p className="muted small">
                         <strong>{info.fieldName}</strong> · {info.subFilter || "?"} · {info.algorithm}
