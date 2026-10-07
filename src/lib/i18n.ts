@@ -686,7 +686,8 @@ const en: Dict = {
   "writer.findOneMatch": "1 match",
   "writer.findNoMatches": "No matches",
   "writer.findSearching": "Searching…",
-  "writer.regexTooSlow": "This pattern takes too long to search. Simplify it (for example, avoid nested repeats like (a+)+).",
+  "writer.regexTooSlow":
+    "This pattern takes too long to search. Simplify it (for example, avoid nested repeats like (a+)+).",
   "writer.findMatchOf": "Match {current} of {count}",
   "writer.findInvalidRegex": "Invalid regular expression",
   "writer.styles": "Styles",
@@ -802,7 +803,8 @@ const en: Dict = {
   "calc.removeDuplicatesNeedsRange": "Select a range of at least two rows.",
   "calc.duplicatesHeaders": "My data has headers",
   "calc.duplicatesColumns": "Columns to compare",
-  "calc.duplicatesHint": "Rows whose checked columns match an earlier row are removed. Text is compared without regard to case.",
+  "calc.duplicatesHint":
+    "Rows whose checked columns match an earlier row are removed. Text is compared without regard to case.",
   "calc.columnLabel": "Column {column}",
   "calc.duplicatesRemoved": "Duplicate rows removed: {removed}. Unique rows remaining: {kept}.",
   "calc.duplicatesNone": "No duplicate rows found.",
@@ -2448,7 +2450,8 @@ const tr: Dict = {
   "writer.findOneMatch": "1 eşleşme",
   "writer.findNoMatches": "Eşleşme yok",
   "writer.findSearching": "Aranıyor…",
-  "writer.regexTooSlow": "Bu desenle arama çok uzun sürüyor. Deseni sadeleştirin (örneğin (a+)+ gibi iç içe tekrarlardan kaçının).",
+  "writer.regexTooSlow":
+    "Bu desenle arama çok uzun sürüyor. Deseni sadeleştirin (örneğin (a+)+ gibi iç içe tekrarlardan kaçının).",
   "writer.findMatchOf": "{current} / {count} eşleşme",
   "writer.findInvalidRegex": "Geçersiz düzenli ifade",
   "writer.styles": "Stiller",
@@ -2564,7 +2567,8 @@ const tr: Dict = {
   "calc.removeDuplicatesNeedsRange": "En az iki satırlık bir aralık seçin.",
   "calc.duplicatesHeaders": "Verilerimde başlık satırı var",
   "calc.duplicatesColumns": "Karşılaştırılacak sütunlar",
-  "calc.duplicatesHint": "İşaretli sütunları daha önceki bir satırla aynı olan satırlar kaldırılır. Metinler büyük/küçük harf ayrımı yapılmadan karşılaştırılır.",
+  "calc.duplicatesHint":
+    "İşaretli sütunları daha önceki bir satırla aynı olan satırlar kaldırılır. Metinler büyük/küçük harf ayrımı yapılmadan karşılaştırılır.",
   "calc.columnLabel": "{column} sütunu",
   "calc.duplicatesRemoved": "Kaldırılan yinelenen satır: {removed}. Kalan benzersiz satır: {kept}.",
   "calc.duplicatesNone": "Yinelenen satır bulunamadı.",
