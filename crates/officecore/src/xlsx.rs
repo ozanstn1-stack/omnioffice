@@ -1975,11 +1975,14 @@ pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
             (range.start().map(|(row, _)| row).unwrap_or(0), range.start().map(|(_, column)| column).unwrap_or(0));
         let mut max_row = 0u32;
         let mut max_col = 0u32;
+        let mut cut_off = false;
         for (row_index, row) in range.rows().enumerate() {
             for (column_index, value) in row.iter().enumerate() {
                 let row_number = start_row + row_index as u32;
                 let column_number = start_col + column_index as u32;
-                if row_number > 100_000 || column_number > 1_000 {
+                if row_number > MAX_IMPORT_ROWS || column_number > MAX_IMPORT_COLS {
+                    // Empty padding past the budget costs nothing; data does.
+                    cut_off |= !matches!(value, calamine::Data::Empty);
                     continue;
                 }
                 let cell_value = match value {
@@ -2013,6 +2016,9 @@ pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
         }
         sheet.row_count = (max_row + 51).max(200);
         sheet.col_count = (max_col + 6).max(26);
+        if cut_off {
+            warnings.push(import_limit_warning(name, MAX_IMPORT_ROWS, MAX_IMPORT_COLS));
+        }
         if used_names.iter().any(|existing| existing == &sheet.name) {
             let unique = {
                 let mut index = 2;
@@ -2088,9 +2094,18 @@ pub fn read_workbook_file(path: &Path) -> OfficeResult<SheetRead> {
 // Import: OOXML styles, layout, validation, names and tables
 // ---------------------------------------------------------------------------
 
-/// Same row/column budgets as the calamine pass.
+/// Row/column budgets of the import: cells past them are not read.
 const MAX_IMPORT_ROWS: u32 = 100_000;
 const MAX_IMPORT_COLS: u32 = 1_000;
+
+/// Import warning for a sheet with cells outside the imported area. The UI
+/// recognises this wording (`src/lib/importWarnings.ts`) to show it translated,
+/// so change both together.
+pub(crate) fn import_limit_warning(sheet: &str, max_rows: u32, max_cols: u32) -> String {
+    format!(
+        "Import limit: sheet \"{sheet}\" has cells beyond row {max_rows} or column {max_cols}; they were not imported."
+    )
+}
 /// Worksheet parts bigger than this are skipped by the detailed pass so a
 /// hostile file cannot make the XML tree explode; calamine still returns the
 /// values. 64 MiB is far above any sheet the 100k-row budget can produce.

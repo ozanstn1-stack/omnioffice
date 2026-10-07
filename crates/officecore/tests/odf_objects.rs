@@ -723,3 +723,69 @@ fn oversized_or_repeated_chart_objects_are_bounded() {
     assert!(read.warnings.iter().any(|warning| warning.contains("300 series")));
     assert!(read.warnings.iter().any(|warning| warning.contains("cached values")));
 }
+
+// ---------------------------------------------------------------------------
+// Large files: the ODS import budget (100,000 rows, 1,000 columns) is reported.
+// ---------------------------------------------------------------------------
+
+fn ods_with_content(body: &str) -> Vec<u8> {
+    let content = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><office:document-content \
+         xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" \
+         xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\" \
+         xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\"><office:body><office:spreadsheet>{body}\
+         </office:spreadsheet></office:body></office:document-content>"
+    );
+    let mut writer = officecore::zip::ZipWriter::new();
+    writer.add("content.xml", content.as_bytes());
+    writer.finish()
+}
+
+fn import_limit_warnings(warnings: &[String]) -> Vec<&String> {
+    warnings.iter().filter(|warning| warning.starts_with("Import limit:")).collect()
+}
+
+#[test]
+fn ods_rows_beyond_the_budget_are_reported() {
+    // An empty repeated gap (what LibreOffice writes) moves the next row far down.
+    let bytes = ods_with_content(
+        "<table:table table:name=\"Log\">\
+         <table:table-row><table:table-cell office:value-type=\"string\"><text:p>kept</text:p></table:table-cell></table:table-row>\
+         <table:table-row table:number-rows-repeated=\"100100\"><table:table-cell/></table:table-row>\
+         <table:table-row><table:table-cell office:value-type=\"float\" office:value=\"7\"/></table:table-row>\
+         </table:table>",
+    );
+    let read = odf::read_ods(&bytes).unwrap();
+    let found = import_limit_warnings(&read.warnings);
+    assert_eq!(found.len(), 1, "warnings: {:?}", read.warnings);
+    assert_eq!(
+        found[0],
+        "Import limit: sheet \"Log\" has cells beyond row 100000 or column 1000; they were not imported."
+    );
+    assert!(read.workbook.sheets[0].get("A1").is_some());
+}
+
+#[test]
+fn ods_columns_beyond_the_budget_are_reported() {
+    let bytes = ods_with_content(
+        "<table:table table:name=\"Wide\"><table:table-row>\
+         <table:table-cell table:number-columns-repeated=\"1100\"/>\
+         <table:table-cell office:value-type=\"float\" office:value=\"7\"/>\
+         </table:table-row></table:table>",
+    );
+    let read = odf::read_ods(&bytes).unwrap();
+    assert_eq!(import_limit_warnings(&read.warnings).len(), 1, "warnings: {:?}", read.warnings);
+}
+
+#[test]
+fn ods_trailing_empty_rows_are_not_a_data_loss_warning() {
+    // LibreOffice pads sheets with a million empty rows; that is not lost data.
+    let bytes = ods_with_content(
+        "<table:table table:name=\"Padded\">\
+         <table:table-row><table:table-cell office:value-type=\"string\"><text:p>x</text:p></table:table-cell></table:table-row>\
+         <table:table-row table:number-rows-repeated=\"1048000\"><table:table-cell table:number-columns-repeated=\"1024\"/></table:table-row>\
+         </table:table>",
+    );
+    let read = odf::read_ods(&bytes).unwrap();
+    assert!(import_limit_warnings(&read.warnings).is_empty(), "warnings: {:?}", read.warnings);
+}
