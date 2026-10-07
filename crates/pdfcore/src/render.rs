@@ -5,8 +5,10 @@
 use crate::engines;
 use crate::error::{PdfError, PdfResult};
 use pdfium_render::prelude::*;
-use std::path::Path;
-use std::sync::OnceLock;
+use sha2::{Digest, Sha256};
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+use std::time::SystemTime;
 
 static PDFIUM: OnceLock<Result<Pdfium, String>> = OnceLock::new();
 
@@ -171,6 +173,170 @@ pub fn render_page_bytes(
 ) -> PdfResult<Vec<u8>> {
     let rendered = render_page(path, password, page_number, options)?;
     crate::images::encode_image(&rendered, format, jpeg_quality, grayscale)
+}
+
+// ---------------------------------------------------------------------------
+// Region rendering (reader tiles at high zoom)
+// ---------------------------------------------------------------------------
+
+/// A rectangle of a page raster, in output pixels from the top-left corner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PixelRegion {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Largest region edge [`render_page_region`] accepts, in pixels.
+pub const MAX_REGION_EDGE: u32 = 4096;
+
+/// Largest region scale in output pixels per PDF point (7200 dpi).
+pub const MAX_REGION_SCALE: f32 = 100.0;
+
+/// How many documents the region renderer keeps open. Two covers the reader
+/// plus one document it was switched away from.
+const DOCUMENT_CACHE_CAPACITY: usize = 2;
+
+/// Identifies one version of a file on disk; a save (an atomic rename over
+/// the path) changes at least one of these.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FileStamp {
+    len: u64,
+    modified: Option<SystemTime>,
+    #[cfg(unix)]
+    inode: (u64, u64),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DocumentKey {
+    path: PathBuf,
+    file: FileStamp,
+    /// SHA-256 of the password, so the plain text does not outlive the call.
+    password: Option<[u8; 32]>,
+}
+
+impl DocumentKey {
+    fn new(path: &Path, password: Option<&str>) -> PdfResult<Self> {
+        let meta = std::fs::metadata(path).map_err(PdfError::from_io)?;
+        #[cfg(unix)]
+        let inode = {
+            use std::os::unix::fs::MetadataExt;
+            (meta.dev(), meta.ino())
+        };
+        Ok(Self {
+            path: path.to_path_buf(),
+            file: FileStamp {
+                len: meta.len(),
+                modified: meta.modified().ok(),
+                #[cfg(unix)]
+                inode,
+            },
+            password: password.map(|value| Sha256::digest(value.as_bytes()).into()),
+        })
+    }
+}
+
+struct CachedDocument {
+    key: DocumentKey,
+    document: PdfDocument<'static>,
+}
+
+/// Open documents for region rendering, most recently used first. A reader
+/// at high zoom asks for a dozen tiles per screen, and re-parsing the file for
+/// every one of them would dominate the render time.
+///
+/// The lock is held for the whole render, so a cached document is never used
+/// from two threads at once; pdfium serializes every call through the
+/// `thread_safe` bindings anyway, so this costs no parallelism. Documents are
+/// opened through `std::fs::File`, which on Windows shares delete and write
+/// access, so a cached document never blocks a save over the same path.
+static DOCUMENT_CACHE: Mutex<Vec<CachedDocument>> = Mutex::new(Vec::new());
+
+fn with_cached_document<T>(
+    path: &Path,
+    password: Option<&str>,
+    work: impl FnOnce(&PdfDocument<'static>) -> PdfResult<T>,
+) -> PdfResult<T> {
+    let key = DocumentKey::new(path, password)?;
+    let mut cache = DOCUMENT_CACHE.lock().unwrap_or_else(|poisoned| {
+        // A panic mid-render may have left a document in an unknown state.
+        DOCUMENT_CACHE.clear_poison();
+        let mut cache = poisoned.into_inner();
+        cache.clear();
+        cache
+    });
+    let entry = match cache.iter().position(|entry| entry.key == key) {
+        Some(index) => cache.remove(index),
+        None => {
+            // An older version of the same file is never needed again.
+            cache.retain(|entry| entry.key.path != key.path || entry.key.file == key.file);
+            let document =
+                pdfium()?.load_pdf_from_file(path, password).map_err(|e| PdfError::InvalidPdf(format!("{e}")))?;
+            CachedDocument { key, document }
+        }
+    };
+    let result = work(&entry.document);
+    cache.insert(0, entry);
+    cache.truncate(DOCUMENT_CACHE_CAPACITY);
+    result
+}
+
+/// Renders `region` of a page (1-based index) as if the whole page were
+/// rasterized at `scale` output pixels per PDF point, without rendering the
+/// rest of the page. The region is clipped to the page; the returned image has
+/// the clipped size.
+///
+/// This uses pdfium's regular page render (`FPDF_RenderPageBitmap` plus the
+/// form overlay) with the page origin shifted into a region-sized bitmap, so
+/// the pixels match a full-page [`render_page`] at the same scale. The matrix
+/// render path would clip as well, but it cannot draw form field data.
+pub fn render_page_region(
+    path: &Path,
+    password: Option<&str>,
+    page_number: u32,
+    scale: f32,
+    region: PixelRegion,
+) -> PdfResult<RenderedPage> {
+    if !scale.is_finite() || scale <= 0.0 || scale > MAX_REGION_SCALE {
+        return Err(PdfError::InvalidInput(format!("render scale out of range: {scale}")));
+    }
+    if region.width == 0 || region.height == 0 || region.width > MAX_REGION_EDGE || region.height > MAX_REGION_EDGE {
+        return Err(PdfError::InvalidInput(format!(
+            "render region must be 1-{MAX_REGION_EDGE} px per side, got {}x{}",
+            region.width, region.height
+        )));
+    }
+    let index = page_number.checked_sub(1).ok_or(PdfError::RangeOutOfBounds)? as PdfPageIndex;
+    with_cached_document(path, password, |doc| {
+        if index as usize >= doc.pages().len() as usize {
+            return Err(PdfError::RangeOutOfBounds);
+        }
+        let page = doc.pages().get(index).map_err(|e| PdfError::ProcessingFailed(format!("{e}")))?;
+        let full_w = (page.width().value * scale).round().max(1.0);
+        let full_h = (page.height().value * scale).round().max(1.0);
+        if full_w > i32::MAX as f32 || full_h > i32::MAX as f32 {
+            return Err(PdfError::InvalidInput("page is too large for this render scale".into()));
+        }
+        let (full_w, full_h) = (full_w as u32, full_h as u32);
+        if region.x >= full_w || region.y >= full_h {
+            return Err(PdfError::InvalidInput("render region lies outside the page".into()));
+        }
+        let width = region.width.min(full_w - region.x);
+        let height = region.height.min(full_h - region.y);
+        let config = PdfRenderConfig::new()
+            .set_target_width(full_w as i32)
+            .set_target_height(full_h as i32)
+            .render_form_data(true)
+            .set_origin(-(region.x as i32), -(region.y as i32));
+        let mut bitmap = PdfBitmap::empty(width as i32, height as i32, PdfBitmapFormat::default())
+            .map_err(|e| PdfError::ConversionFailed(format!("bitmap allocation failed: {e}")))?;
+        page.render_into_bitmap_with_config(&mut bitmap, &config)
+            .map_err(|e| PdfError::ConversionFailed(format!("render failed: {e}")))?;
+        let image =
+            bitmap.as_image().map_err(|e| PdfError::ConversionFailed(format!("bitmap conversion failed: {e}")))?;
+        Ok(RenderedPage { width, height, rgba: image.to_rgba8().into_raw() })
+    })
 }
 
 /// Extracts the text layer of a page via pdfium (empty when the page is a

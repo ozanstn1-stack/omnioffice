@@ -180,6 +180,30 @@ export const pagePreview = (
   quality = 86,
 ) => invoke<Thumbnail>("page_preview", { path, page, maxWidth, password: password || null, format, quality });
 
+/** One tile of a page rendered at `scale` output pixels per PDF point; the
+ *  region is in output pixels (reader high-zoom overlay). */
+export const pageTile = (
+  path: string,
+  page: number,
+  scale: number,
+  region: { x: number; y: number; width: number; height: number },
+  password?: string,
+  format: "png" | "jpeg" = "jpeg",
+  quality = 90,
+) =>
+  invoke<Thumbnail>("page_tile", {
+    path,
+    page,
+    scale,
+    x: region.x,
+    y: region.y,
+    width: region.width,
+    height: region.height,
+    password: password || null,
+    format,
+    quality,
+  });
+
 export const pageText = (path: string, page: number, password?: string) =>
   invoke<string>("page_text", { path, page, password: password || null });
 
