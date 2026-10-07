@@ -4,6 +4,33 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0] - AI in the editors, Claude, safer keys
+
+### Added
+
+- **Claude (Anthropic) as an AI provider**: Claude Opus 5.5, Sonnet 5.5 and
+  Haiku 4.5 through the Messages API with your own key, including streaming
+  and the model list. Gemini's model list works again.
+- **AI inside the editors** (optional, off until a provider is set up).
+  Writer: rewrite, shorten, expand, fix, translate and change tone for the
+  selection; Calc: summarize a column and suggest a formula; Impress: slides
+  from an outline. Every result is previewed first and applied as one undo
+  step. A notice names the provider and what will be sent before the first
+  request of each kind.
+- **Encrypted keys on Android**: the AI key, cloud-sync tokens and the WebDAV
+  password are encrypted with the Android Keystore; existing values are
+  migrated on first use without being lost.
+- **One key per AI provider**: switching provider never sends another
+  provider's key.
+
+### Fixed
+
+- An AI answer cut off by the token limit is reported instead of replacing
+  your text with a partial one.
+- API keys are never sent to a different host after a redirect.
+- Suggested formulas that could reach the network or other programs
+  (WEBSERVICE, HYPERLINK, DDE, external references) are refused.
+
 ## [4.1.0] - PDF tools
 
 ### Added
