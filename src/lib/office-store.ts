@@ -11,6 +11,7 @@ export type { Deck, Slide, SlideObject, TextDocument, Workbook } from "./office-
 import * as api from "./office-api";
 import { toAppError } from "./api";
 import { makeTranslate } from "./i18n";
+import { describeImportLimit, splitImportWarnings } from "./importWarnings";
 import { OFFICE_DOCUMENT_EXTENSIONS, fileBaseName, isOfficeDocument } from "./format";
 import { useRecent, useSettings, useToasts } from "./store";
 
@@ -570,12 +571,22 @@ export async function openOfficePath(path: string): Promise<OpenPathResult> {
         useOfficeTabs.getState().setFingerprint(id, null);
       }
     }
-    if (result.warnings.length > 0 && useSettings.getState().settings.showImportWarnings) {
-      const t = makeTranslate(useSettings.getState().settings.language);
+    const { limits, notes } = splitImportWarnings(result.warnings);
+    const t = makeTranslate(useSettings.getState().settings.language);
+    // Cells that were not imported are lost if the original is overwritten, so
+    // this notice is shown whatever the "import notes" setting says.
+    if (limits.length > 0) {
+      useToasts.getState().push({
+        kind: "info",
+        title: t("office.importLimitTitle"),
+        detail: limits.map((limit) => describeImportLimit(limit, t)).join(" "),
+      });
+    }
+    if (notes.length > 0 && useSettings.getState().settings.showImportWarnings) {
       useToasts.getState().push({
         kind: "info",
         title: t("office.openedWithNotes"),
-        detail: result.warnings.slice(0, 3).join(" "),
+        detail: notes.slice(0, 3).join(" "),
       });
     }
     return { ok: true, kind: result.kind };

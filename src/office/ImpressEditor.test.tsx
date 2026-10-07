@@ -1,5 +1,5 @@
-import { fireEvent, render, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The editor module pulls in the session hook, which touches Tauri at import
 // time; stubs keep the pure helpers testable in jsdom.
@@ -26,7 +26,9 @@ import {
   ungroupSelection,
 } from "./ImpressEditor";
 import { useOfficeTabs, type OfficeTab } from "../lib/office-store";
+import { useSettings } from "../lib/store";
 import {
+  defaultRun,
   newAnimation,
   newDeck,
   newSlide,
@@ -309,6 +311,33 @@ describe("pointer gestures on the slide canvas", () => {
     tap(2);
     expect(document.querySelector(".slide-text-editor")).not.toBeNull();
   });
+
+  it("keeps paragraph structure and drops stale runs when an imported frame is edited", () => {
+    const deck = newDeck("Import");
+    const frame = newTextFrame("", 20);
+    const [base] = frame.paragraphs;
+    frame.paragraphs = [
+      { ...base, text: "Intro", runs: [{ ...defaultRun("Intro"), bold: true }] },
+      { ...base, text: "Detail", level: 1, bullet: true, runs: [defaultRun("Detail")] },
+    ];
+    deck.slides[0].objects = [{ ...newSlideObject("rect", 100, 100, 200, 100), id: "r1", z: 1, text: frame }];
+    const id = useOfficeTabs.getState().create("impress", "Import", deck);
+    render(<Harness id={id} />);
+
+    const object = document.querySelector<HTMLElement>(".slide-object:not(.is-inherited)")!;
+    for (const pointerId of [1, 2]) {
+      fireEvent.pointerDown(object, { pointerId, pointerType: "touch", button: 0, clientX: 40, clientY: 40 });
+      fireEvent.pointerUp(window, { pointerId, pointerType: "touch", clientX: 40, clientY: 40 });
+    }
+    const editor = document.querySelector<HTMLTextAreaElement>(".slide-text-editor")!;
+    fireEvent.change(editor, { target: { value: "Intro\nDetail changed" } });
+    fireEvent.blur(editor);
+
+    const paragraphs = (useOfficeTabs.getState().tabs[0].model as Deck).slides[0].objects[0].text!.paragraphs;
+    expect(paragraphs.map((paragraph) => paragraph.text)).toEqual(["Intro", "Detail changed"]);
+    expect(paragraphs[0].runs.map((run) => run.text)).toEqual(["Intro"]);
+    expect(paragraphs[1]).toMatchObject({ level: 1, bullet: true, runs: [] });
+  });
 });
 
 describe("chart data helpers", () => {
@@ -488,5 +517,32 @@ describe("Impress chart data editor", () => {
     const chart = savedChart(id);
     expect(chart.series).toHaveLength(2);
     expect(chart.seriesValuesCache).toEqual([[10, 20, 30], [9]]);
+  });
+});
+
+describe("transition names", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+  });
+  afterEach(() => {
+    useSettings.setState((state) => ({ settings: { ...state.settings, language: "en" } }));
+  });
+
+  /** The labels of the slide transition dropdown, in the given app language. */
+  function transitionLabels(language: "en" | "tr"): string[] {
+    useSettings.setState((state) => ({ settings: { ...state.settings, language } }));
+    const id = useOfficeTabs.getState().create("impress", "Transitions", newDeck("Transitions"));
+    render(<Harness id={id} />);
+    fireEvent.click(screen.getByRole("button", { name: language === "en" ? "Transitions" : "Geçişler" }));
+    const select = document.querySelector<HTMLSelectElement>("select.tool-select")!;
+    return [...select.options].map((option) => option.textContent ?? "");
+  }
+
+  it("lists the transitions in English", () => {
+    expect(transitionLabels("en")).toEqual(["None", "Fade", "Slide", "Push", "Wipe"]);
+  });
+
+  it("lists the transitions in Turkish instead of English words", () => {
+    expect(transitionLabels("tr")).toEqual(["Yok", "Solma", "Kaydırma", "İtme", "Silme"]);
   });
 });

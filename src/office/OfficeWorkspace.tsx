@@ -10,6 +10,7 @@ import { errorMessage, useDev, useSettings, useToasts } from "../lib/store";
 import { useT } from "../lib/i18n";
 import * as api from "../lib/office-api";
 import { Dialog } from "./office-ui";
+import { historyKeyFor } from "./historyKey";
 import { WriterEditor } from "./WriterEditor";
 import { CalcEditor } from "./CalcEditor";
 import { ImpressEditor } from "./ImpressEditor";
@@ -25,7 +26,7 @@ export function OfficeWorkspace() {
   const bootstrapped = useRef(false);
   const [recovered, setRecovered] = useState<Array<{ documentId: string; kind: string; title: string }>>([]);
   const [pendingClose, setPendingClose] = useState<{ tabId: string; title: string } | null>(null);
-  const [historyFor, setHistoryFor] = useState<string | null>(null);
+  const [historyFor, setHistoryFor] = useState<{ tabId: string; key: string } | null>(null);
 
   // Automation hook (screenshots/tests) and external open requests.
   useEffect(() => {
@@ -213,7 +214,7 @@ export function OfficeWorkspace() {
             title={t("office.versionHistory")}
             aria-label={t("office.versionHistory")}
             disabled={!active}
-            onClick={() => active && setHistoryFor(active.id)}
+            onClick={() => active && setHistoryFor({ tabId: active.id, key: historyKeyFor(active) })}
           >
             <History size={15} />
           </button>
@@ -318,7 +319,13 @@ export function OfficeWorkspace() {
         </Dialog>
       ) : null}
 
-      {historyFor ? <VersionHistoryDialog documentId={historyFor} onClose={() => setHistoryFor(null)} /> : null}
+      {historyFor ? (
+        <VersionHistoryDialog
+          tabId={historyFor.tabId}
+          historyKey={historyFor.key}
+          onClose={() => setHistoryFor(null)}
+        />
+      ) : null}
 
       {/* The Data Loss dialog host lives in App so the converter is covered too. */}
     </div>
@@ -330,8 +337,18 @@ export function OfficeWorkspace() {
  *
  * History is written on every save but used to be write-only: no screen ever
  * called `history_list`, so 25 snapshots per document accumulated unreadable.
+ * `historyKey` identifies the document's history (its path, see `historyKey`),
+ * `tabId` is the tab a restored version is written into.
  */
-function VersionHistoryDialog({ documentId, onClose }: { documentId: string; onClose: () => void }) {
+function VersionHistoryDialog({
+  tabId,
+  historyKey,
+  onClose,
+}: {
+  tabId: string;
+  historyKey: string;
+  onClose: () => void;
+}) {
   const t = useT();
   const [entries, setEntries] = useState<
     Array<{ version: number; savedAt: string; title: string; kind: string; size: number }>
@@ -341,7 +358,7 @@ function VersionHistoryDialog({ documentId, onClose }: { documentId: string; onC
   useEffect(() => {
     let alive = true;
     void api
-      .historyList(documentId)
+      .historyList(historyKey)
       .then((list) => {
         if (alive) setEntries([...list].sort((a, b) => b.version - a.version));
       })
@@ -355,13 +372,13 @@ function VersionHistoryDialog({ documentId, onClose }: { documentId: string; onC
     return () => {
       alive = false;
     };
-  }, [documentId, t]);
+  }, [historyKey, t]);
 
   const restore = async (version: number) => {
     setBusy(true);
     try {
-      const model = await api.historyLoad(documentId, version);
-      useOfficeTabs.getState().edit(documentId, () => model as never);
+      const model = await api.historyLoad(historyKey, version);
+      useOfficeTabs.getState().edit(tabId, () => model as never);
       useToasts.getState().push({ kind: "success", title: t("office.versionRestored"), detail: `v${version}` });
       onClose();
     } catch (error) {
@@ -404,7 +421,7 @@ function VersionHistoryDialog({ documentId, onClose }: { documentId: string; onC
             onClick={async () => {
               setBusy(true);
               try {
-                await api.historyClear(documentId);
+                await api.historyClear(historyKey);
                 setEntries([]);
               } finally {
                 setBusy(false);

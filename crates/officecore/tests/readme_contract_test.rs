@@ -143,10 +143,18 @@ fn the_matrix_describes_the_features_it_claims() {
         "the signature note must describe DSS as written and timestamps as missing: {}",
         signatures.note
     );
+    // RFC 3161 timestamps shipped in 3.6.0 (optional TSA URL) and the optional
+    // OCSP/CRL check in 4.1.0; neither may be described as missing.
     assert!(
-        signatures.note.contains("RFC 3161 timestamps are not"),
-        "the signature note must state that RFC 3161 timestamps are not requested yet: {}",
+        signatures.note.contains("RFC 3161 timestamp") && !signatures.note.contains("not requested"),
+        "the signature note must describe RFC 3161 timestamps as supported: {}",
         signatures.note
+    );
+    // PDF/A font embedding subsets the program since 4.1.0.
+    assert!(
+        pdfa.note.contains("subset") && !pdfa.note.contains("no subsetting"),
+        "the PDF/A note must say fonts are subset: {}",
+        pdfa.note
     );
     // Macro-enabled formats must say what happens to the macros.
     for extension in ["docm", "xlsm", "pptm"] {

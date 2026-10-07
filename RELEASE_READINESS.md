@@ -426,7 +426,7 @@ mocked, and the APK/EXE are built by the tag workflows.
 - **Windows**: source builds and tests locally; installer/portable ZIP via
   `npm run release:local` or CI, with SBOMs, checksums and provenance.
 - **Android**: built by CI and by `npm run release:local`; artifacts are named
-  `PDF-Swiss-Army-Knife-Android-3.5.5-<abi>.apk`.
+  `OmniOffice-Android-<version>-<abi>.apk` (and `.aab`).
 - **Linux/macOS desktop**: built and tested by CI; the E2E job runs on Linux.
 - **Chrome extension**: unchanged.
 

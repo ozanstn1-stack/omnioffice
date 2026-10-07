@@ -173,6 +173,8 @@ export interface Run {
   field?: FieldRef | null;
   /** Tracked revision (V3). */
   revision?: RevisionMark | null;
+  /** BCP 47 language of the run, when the source declared one. */
+  lang?: string | null;
 }
 
 /** True when the run is a tracked deletion. */
@@ -667,6 +669,8 @@ export interface TextParagraph {
   align: string;
   bullet: boolean;
   runs: Run[];
+  /** Language of the paragraph text when it has no runs of its own. */
+  lang?: string | null;
 }
 
 export interface TextFrame {
@@ -770,6 +774,8 @@ export interface Deck {
   /** Masters with layouts (V3). */
   masters?: SlideMaster[];
   metadata: DocMetadata;
+  /** Default text language (BCP 47), when known. */
+  lang?: string | null;
 }
 
 // ---------------------------------------------------------------------------
