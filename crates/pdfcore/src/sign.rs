@@ -45,7 +45,9 @@
 //!   (they are legacy-only); AES (PBES2) and 3DES (PKCS#12 PBE) are supported.
 
 use crate::error::{PdfError, PdfResult};
-use crate::revocation::{check_online, RevocationFetcher, RevocationInfo, RevocationSubject};
+use crate::revocation::{
+    check_online, FetchBudget, LimitedFetcher, RevocationFetch, RevocationFetcher, RevocationInfo, RevocationSubject,
+};
 use const_oid::ObjectIdentifier;
 use der::asn1::{Any, AnyRef, GeneralizedTime, ObjectIdentifier as DerObjectIdentifier, OctetString, UtcTime};
 use der::{Decode, Encode, Tagged};
@@ -60,7 +62,7 @@ use serde::{Deserialize, Serialize};
 use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha384, Sha512};
 use std::collections::HashSet;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use x509_cert::Certificate;
 
 // ---------------------------------------------------------------------------
@@ -2041,10 +2043,33 @@ pub fn verify_signatures_online(pdf: &[u8], fetch: &RevocationFetcher<'_>) -> Si
 
 /// [`verify_signatures_online`] evaluated at Unix time `now`.
 pub fn verify_signatures_online_at(pdf: &[u8], fetch: &RevocationFetcher<'_>, now: u64) -> SignatureReport {
+    verify_signatures_online_with_budget(pdf, fetch, now, FetchBudget::standard(Instant::now()))
+}
+
+/// The key under which a network revocation answer is cached: the signer
+/// certificate and the CA certificate it is checked against. The time a
+/// signature claims to have been made is deliberately not part of it - it is
+/// unverified signer input, so a PDF could otherwise multiply the requests by
+/// forging many signing times. That time only qualifies the cached answer
+/// afterwards ([`RevocationInfo::qualified_by_signing_time`]).
+fn revocation_cache_key(signer_der: &[u8], issuer_der: &[u8]) -> (Vec<u8>, Vec<u8>) {
+    (signer_der.to_vec(), issuer_der.to_vec())
+}
+
+/// [`verify_signatures_online_at`] with explicit limits: every request counts
+/// against `budget` and identical requests are made once. Signers still
+/// waiting when it runs out are reported as `unknown` with the reason.
+pub fn verify_signatures_online_with_budget(
+    pdf: &[u8],
+    fetch: &RevocationFetcher<'_>,
+    now: u64,
+    budget: FetchBudget,
+) -> SignatureReport {
     let (inspected, warnings) = inspect_signatures(pdf);
+    let limited = LimitedFetcher::new(fetch, budget);
+    let limited_fetch = |request: RevocationFetch<'_>| limited.fetch(request);
     // Several signatures by one signer ask the CA once.
-    let mut answers: std::collections::HashMap<(Vec<u8>, Option<u64>), RevocationInfo> =
-        std::collections::HashMap::new();
+    let mut answers: std::collections::HashMap<(Vec<u8>, Vec<u8>), RevocationInfo> = std::collections::HashMap::new();
     let mut signatures = Vec::with_capacity(inspected.len());
     for entry in inspected {
         let mut info = entry.info;
@@ -2062,13 +2087,27 @@ pub fn verify_signatures_online_at(pdf: &[u8], fetch: &RevocationFetcher<'_>, no
                  answer could not be verified",
                 now,
             ),
-            (Some(signer), Some(issuer)) => answers
-                .entry((signer.clone(), entry.claimed_time))
-                .or_insert_with(|| match RevocationSubject::new(&signer, &issuer) {
-                    Ok(subject) => check_online(&subject.with_signing_time(entry.claimed_time), fetch, now),
-                    Err(error) => RevocationInfo::error(error.to_string(), now),
-                })
-                .clone(),
+            (Some(signer), Some(issuer)) => {
+                let key = revocation_cache_key(&signer, &issuer);
+                let answer = match answers.get(&key) {
+                    Some(cached) => cached.clone(),
+                    None => {
+                        let fresh = match limited.budget().exhausted(Instant::now()) {
+                            Some(reason) => RevocationInfo::unknown(
+                                format!("{}, so this signer certificate was not checked", reason.describe()),
+                                now,
+                            ),
+                            None => match RevocationSubject::new(&signer, &issuer) {
+                                Ok(subject) => check_online(&subject, &limited_fetch, now),
+                                Err(error) => RevocationInfo::error(error.to_string(), now),
+                            },
+                        };
+                        answers.insert(key, fresh.clone());
+                        fresh
+                    }
+                };
+                answer.qualified_by_signing_time(entry.claimed_time)
+            }
         };
         signatures.push(info);
     }
