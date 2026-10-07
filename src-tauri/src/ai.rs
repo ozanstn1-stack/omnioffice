@@ -37,7 +37,7 @@ fn ai_error(error: AiError) -> PdfError {
         AiError::NoText => ErrorCode::AiNoText,
         AiError::TooLarge => ErrorCode::AiTooLarge,
         AiError::Server(_, _) => ErrorCode::AiServerError,
-        AiError::InvalidResponse(_) => ErrorCode::AiInvalidResponse,
+        AiError::InvalidResponse(_) | AiError::Truncated(_) => ErrorCode::AiInvalidResponse,
         AiError::ProviderUnreachable(_) => ErrorCode::AiNetwork,
         AiError::InvalidBaseUrl(_) => ErrorCode::InvalidInput,
         AiError::Unsupported(_) => ErrorCode::Unsupported,

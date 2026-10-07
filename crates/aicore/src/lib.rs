@@ -409,7 +409,16 @@ fn is_redirect_target_allowed(url: &reqwest::Url, allow_loopback_http: bool) -> 
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Scheme, host and port identify an origin. `reqwest` drops `Authorization`
+/// on a cross-host redirect but not custom headers such as Anthropic's
+/// `x-api-key`, so the client never follows a redirect to another origin.
+fn is_same_origin(a: &reqwest::Url, b: &reqwest::Url) -> bool {
+    a.scheme() == b.scheme()
+        && a.host_str().map(str::to_ascii_lowercase) == b.host_str().map(str::to_ascii_lowercase)
+        && a.port_or_known_default() == b.port_or_known_default()
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiConfig {
     pub api_key: String,
@@ -426,8 +435,8 @@ pub struct AiConfig {
     #[serde(default = "default_thinking")]
     pub thinking: bool,
     /// "low" | "medium" | "high" | "xhigh" | "max". DeepSeek maps medium/xhigh
-    /// to high; Anthropic receives it as `output_config.effort` (not for "high",
-    /// its default, nor for Haiku).
+    /// to high; Anthropic receives it as `output_config.effort` (always, except
+    /// for Haiku, which has no effort setting).
     #[serde(default = "default_reasoning_effort")]
     pub reasoning_effort: String,
     /// Input budget in tokens (1M maximum). Controls how much document text is
@@ -440,6 +449,24 @@ pub struct AiConfig {
     /// Optional embedding model, used by providers that expose embeddings.
     #[serde(default)]
     pub embedding_model: Option<String>,
+}
+
+/// Manual `Debug`: the API key must never reach a log line or a panic message.
+impl std::fmt::Debug for AiConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AiConfig")
+            .field("api_key", &if self.api_key.is_empty() { "<empty>" } else { "<redacted>" })
+            .field("base_url", &self.base_url)
+            .field("model", &self.model)
+            .field("temperature", &self.temperature)
+            .field("max_tokens", &self.max_tokens)
+            .field("thinking", &self.thinking)
+            .field("reasoning_effort", &self.reasoning_effort)
+            .field("context_tokens", &self.context_tokens)
+            .field("provider", &self.provider)
+            .field("embedding_model", &self.embedding_model)
+            .finish()
+    }
 }
 
 pub fn default_context_tokens() -> u32 {
@@ -546,6 +573,10 @@ pub enum AiError {
     NoText,
     #[error("request was too large for the model context")]
     TooLarge,
+    /// The provider stopped before the answer was complete: the output limit
+    /// was reached (`max_tokens` / `length`) or the stream ended early.
+    #[error("{0} cut the answer off before it was complete (output limit reached or connection ended early)")]
+    Truncated(String),
     #[error("{0}")]
     ProviderUnreachable(String),
     #[error("invalid provider URL: {0}")]
@@ -635,6 +666,8 @@ struct ChatResponseBody {
 #[derive(Debug, Deserialize)]
 struct ChatChoice {
     message: ChatMessageContent,
+    #[serde(default)]
+    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -669,6 +702,8 @@ struct StreamChunk {
 #[derive(Debug, Deserialize)]
 struct StreamChoice {
     delta: StreamDelta,
+    #[serde(default)]
+    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -728,6 +763,9 @@ struct OllamaChatResponse {
     message: OllamaMessage,
     #[serde(default)]
     done: bool,
+    /// "stop" for a natural end, "length" when `num_predict` ran out.
+    #[serde(default)]
+    done_reason: String,
     #[serde(default)]
     error: String,
 }
@@ -743,10 +781,35 @@ struct OllamaMessage {
 /// The name is kept for backwards compatibility: it talks to DeepSeek by
 /// default, and to any OpenAI-compatible, Ollama, Gemini or custom endpoint
 /// selected with [`ProviderKind`].
-#[derive(Debug)]
 pub struct DeepSeekClient {
     config: AiConfig,
     http: reqwest::Client,
+}
+
+impl std::fmt::Debug for DeepSeekClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // `AiConfig` redacts the key; the HTTP client is not worth printing.
+        f.debug_struct("DeepSeekClient").field("config", &self.config).finish_non_exhaustive()
+    }
+}
+
+/// How often a pending request or an idle stream re-checks the cancel token.
+const CANCEL_POLL: Duration = Duration::from_millis(100);
+
+/// Awaits `future` but gives up with [`AiError::Cancelled`] shortly after the
+/// token is set, so Stop aborts a request that is still connecting or waiting
+/// for the next chunk instead of waiting for the server.
+async fn until_cancelled<T>(cancel: &CancelToken, future: impl std::future::Future<Output = T>) -> AiResult<T> {
+    use futures_util::future::{select, Either};
+    cancel.check()?;
+    futures_util::pin_mut!(future);
+    loop {
+        let tick = Box::pin(tokio::time::sleep(CANCEL_POLL));
+        match select(future.as_mut(), tick).await {
+            Either::Left((value, _)) => return Ok(value),
+            Either::Right(_) => cancel.check()?,
+        }
+    }
 }
 
 /// Hard cap for a provider response (non-streaming body or the accumulated
@@ -776,6 +839,14 @@ impl DeepSeekClient {
                         "a redirect to a non-local http:// endpoint was refused to keep the API key encrypted in transit"
                             .to_string(),
                     );
+                }
+                if let Some(previous) = attempt.previous().last() {
+                    if !is_same_origin(previous, attempt.url()) {
+                        return attempt.error(
+                            "a redirect to a different host was refused so the API key is only ever sent to the configured server"
+                                .to_string(),
+                        );
+                    }
                 }
                 if attempt.previous().len() >= 5 {
                     attempt.stop()
@@ -954,12 +1025,11 @@ impl DeepSeekClient {
         }
         let parsed: ChatResponseBody =
             serde_json::from_str(&text).map_err(|_| AiError::InvalidResponse(self.provider_name()))?;
-        parsed
-            .choices
-            .into_iter()
-            .next()
-            .and_then(|choice| choice.message.text())
-            .ok_or_else(|| AiError::InvalidResponse(self.provider_name()))
+        let choice = parsed.choices.into_iter().next().ok_or_else(|| AiError::InvalidResponse(self.provider_name()))?;
+        if choice.finish_reason.as_deref() == Some("length") {
+            return Err(AiError::Truncated(self.provider_name()));
+        }
+        choice.message.text().ok_or_else(|| AiError::InvalidResponse(self.provider_name()))
     }
 
     async fn chat_anthropic(&self, messages: &[ChatMessage], options: &ChatOptions) -> AiResult<String> {
@@ -982,7 +1052,9 @@ impl DeepSeekClient {
         on_reasoning: &mut (dyn FnMut(&str) + Send),
     ) -> AiResult<String> {
         let body = anthropic::build_request(&self.config, messages, &options, true);
-        let response = self.request().json(&body).send().await.map_err(|error| self.unreachable(error))?;
+        let response = until_cancelled(cancel, self.request().json(&body).send())
+            .await?
+            .map_err(|error| self.unreachable(error))?;
         let status = response.status();
         if !status.is_success() {
             let text = self.response_text(response).await.unwrap_or_default();
@@ -991,7 +1063,7 @@ impl DeepSeekClient {
         let provider = self.provider_name();
         let mut parser = anthropic::StreamParser::default();
         let mut stream = response.bytes_stream();
-        while let Some(chunk) = stream.next().await {
+        while let Some(chunk) = until_cancelled(cancel, stream.next()).await? {
             cancel.check()?;
             let bytes = chunk.map_err(|error| self.unreachable(error))?;
             if parser.held_bytes() + bytes.len() > MAX_RESPONSE_BYTES {
@@ -1019,6 +1091,9 @@ impl DeepSeekClient {
             serde_json::from_str(&text).map_err(|_| AiError::InvalidResponse(self.provider_name()))?;
         if !parsed.error.trim().is_empty() {
             return Err(AiError::Server(self.provider_name(), parsed.error));
+        }
+        if parsed.done_reason == "length" {
+            return Err(AiError::Truncated(self.provider_name()));
         }
         if parsed.message.content.trim().is_empty() {
             return Err(AiError::InvalidResponse(self.provider_name()));
@@ -1058,7 +1133,9 @@ impl DeepSeekClient {
         on_reasoning: &mut (dyn FnMut(&str) + Send),
     ) -> AiResult<String> {
         let body = ChatRequestBody::new(&self.config, messages, &options, true);
-        let response = self.request().json(&body).send().await.map_err(|error| self.unreachable(error))?;
+        let response = until_cancelled(cancel, self.request().json(&body).send())
+            .await?
+            .map_err(|error| self.unreachable(error))?;
         let status = response.status();
         if !status.is_success() {
             let text = self.response_text(response).await.unwrap_or_default();
@@ -1069,7 +1146,8 @@ impl DeepSeekClient {
         let mut buffer = String::new();
         let mut full = String::new();
         let mut reasoning_text = String::new();
-        while let Some(chunk) = stream.next().await {
+        let mut hit_length_limit = false;
+        while let Some(chunk) = until_cancelled(cancel, stream.next()).await? {
             cancel.check()?;
             let bytes = chunk.map_err(|error| self.unreachable(error))?;
             if full.len() + reasoning_text.len() + buffer.len() + bytes.len() > MAX_RESPONSE_BYTES {
@@ -1092,6 +1170,9 @@ impl DeepSeekClient {
                 }
                 if let Ok(parsed) = serde_json::from_str::<StreamChunk>(payload) {
                     if let Some(choice) = parsed.choices.into_iter().next() {
+                        if choice.finish_reason.as_deref() == Some("length") {
+                            hit_length_limit = true;
+                        }
                         if let Some(reasoning) = choice.delta.reasoning_content {
                             if !reasoning.is_empty() {
                                 reasoning_text.push_str(&reasoning);
@@ -1107,6 +1188,9 @@ impl DeepSeekClient {
                     }
                 }
             }
+        }
+        if hit_length_limit {
+            return Err(AiError::Truncated(self.provider_name()));
         }
         if full.trim().is_empty() {
             // Thinking mode can consume the whole budget before any answer
@@ -1128,7 +1212,9 @@ impl DeepSeekClient {
         on_delta: &mut (dyn FnMut(&str) + Send),
     ) -> AiResult<String> {
         let body = OllamaChatRequestBody::new(&self.config, messages, &options, true);
-        let response = self.request().json(&body).send().await.map_err(|error| self.unreachable(error))?;
+        let response = until_cancelled(cancel, self.request().json(&body).send())
+            .await?
+            .map_err(|error| self.unreachable(error))?;
         let status = response.status();
         if !status.is_success() {
             let text = self.response_text(response).await.unwrap_or_default();
@@ -1141,7 +1227,8 @@ impl DeepSeekClient {
         let mut buffer = String::new();
         let mut full = String::new();
         let mut finished = false;
-        while let Some(chunk) = stream.next().await {
+        let mut hit_length_limit = false;
+        while let Some(chunk) = until_cancelled(cancel, stream.next()).await? {
             cancel.check()?;
             let bytes = chunk.map_err(|error| self.unreachable(error))?;
             if full.len() + buffer.len() + bytes.len() > MAX_RESPONSE_BYTES {
@@ -1167,6 +1254,7 @@ impl DeepSeekClient {
                     on_delta(&parsed.message.content);
                 }
                 if parsed.done {
+                    hit_length_limit = parsed.done_reason == "length";
                     finished = true;
                     break;
                 }
@@ -1189,6 +1277,9 @@ impl DeepSeekClient {
                 }
             }
         }
+        if hit_length_limit {
+            return Err(AiError::Truncated(self.provider_name()));
+        }
         if full.trim().is_empty() {
             return Err(AiError::InvalidResponse(self.provider_name()));
         }
@@ -1198,8 +1289,12 @@ impl DeepSeekClient {
     /// Cheap connectivity/credentials check for the settings screen.
     pub async fn test_connection(&self) -> AiResult<String> {
         let messages = vec![ChatMessage::user("Reply with the single word: ready")];
-        let reply = self.chat(&messages, ChatOptions { temperature: Some(0.0), max_tokens: Some(16) }).await?;
-        Ok(reply.trim().to_string())
+        // A cut-off reply still proves the endpoint and the key work.
+        match self.chat(&messages, ChatOptions { temperature: Some(0.0), max_tokens: Some(16) }).await {
+            Ok(reply) => Ok(reply.trim().to_string()),
+            Err(AiError::Truncated(_)) => Ok("ready".to_string()),
+            Err(error) => Err(error),
+        }
     }
 }
 
@@ -1333,6 +1428,28 @@ mod tests {
         assert!(!is_redirect_target_allowed(&public_http, true));
         assert!(!is_redirect_target_allowed(&loopback_http, false));
         assert!(is_redirect_target_allowed(&loopback_http, true));
+    }
+
+    #[test]
+    fn redirects_must_stay_on_the_same_origin() {
+        let url = |value: &str| reqwest::Url::parse(value).unwrap();
+        assert!(is_same_origin(&url("https://api.anthropic.com/v1/messages"), &url("https://API.anthropic.com/other")));
+        assert!(is_same_origin(&url("https://api.example.com/a"), &url("https://api.example.com:443/b")));
+        assert!(!is_same_origin(&url("https://api.example.com/a"), &url("https://evil.example.net/a")));
+        assert!(!is_same_origin(&url("https://api.example.com/a"), &url("http://api.example.com/a")));
+        assert!(!is_same_origin(&url("http://127.0.0.1:1000/a"), &url("http://127.0.0.1:2000/a")));
+    }
+
+    #[test]
+    fn debug_output_never_contains_the_api_key() {
+        let config = AiConfig { api_key: "sk-super-secret".into(), ..Default::default() };
+        let formatted = format!("{config:?}");
+        assert!(!formatted.contains("sk-super-secret"), "{formatted}");
+        assert!(formatted.contains("<redacted>"), "{formatted}");
+        let client = DeepSeekClient::new(config).expect("client");
+        let formatted = format!("{client:?}");
+        assert!(!formatted.contains("sk-super-secret"), "{formatted}");
+        assert!(format!("{:?}", AiConfig::default()).contains("<empty>"));
     }
 
     #[test]

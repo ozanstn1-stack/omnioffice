@@ -4,8 +4,10 @@
 use aicore::{AiConfig, AiError, CancelToken, ChatMessage, ChatOptions, DeepSeekClient, ProviderKind};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::{Duration, Instant};
 
 /// Reads a full request (headers and Content-Length body).
 fn read_request_with_body(stream: &mut TcpStream) -> String {
@@ -128,7 +130,10 @@ async fn chat_posts_to_v1_messages_with_api_key_headers() {
 
     let body = request_body(&request);
     assert_eq!(body["model"], "claude-opus-5-5");
-    assert_eq!(body["max_tokens"], 512);
+    // Claude calls never go below 2048 tokens: thinking can consume a small budget.
+    assert_eq!(body["max_tokens"], 2048);
+    // The configured effort is always sent (the server default depends on the model).
+    assert_eq!(body["output_config"], serde_json::json!({"effort": "high"}));
     assert_eq!(body["system"], "Be terse.");
     assert_eq!(body["stream"], false);
     assert_eq!(body["messages"], serde_json::json!([{"role": "user", "content": "ping"}]));
@@ -194,13 +199,27 @@ async fn stream_error_event_fails_and_cancellation_stops() {
     assert!(matches!(error, AiError::RateLimited(_)), "{error:?}");
     handle.join().unwrap();
 
-    let (url, _captured, handle) = mock_sequence_server(vec![canned(200, "text/event-stream", body, true)]);
+    // Stop pressed while the answer streams: the next read returns Cancelled.
+    let slow = (0..50)
+        .map(|index| {
+            format!(
+                "data: {{\"type\":\"content_block_delta\",\"delta\":{{\"type\":\"text_delta\",\"text\":\"{index}\"}}}}\n\n"
+            )
+        })
+        .collect::<String>();
+    let (url, _captured, handle) = mock_sequence_server(vec![canned(200, "text/event-stream", slow, true)]);
     let cancel = CancelToken::new();
-    cancel.cancel();
+    let stopper = cancel.clone();
     let result = claude_client(url)
-        .chat_stream(&[ChatMessage::user("hi")], ChatOptions::default(), &cancel, &mut |_| {}, &mut |_| {})
+        .chat_stream(
+            &[ChatMessage::user("hi")],
+            ChatOptions::default(),
+            &cancel,
+            &mut |_| stopper.cancel(),
+            &mut |_| {},
+        )
         .await;
-    assert!(matches!(result, Err(AiError::Cancelled)));
+    assert!(matches!(result, Err(AiError::Cancelled)), "{result:?}");
     handle.join().unwrap();
 }
 
@@ -317,4 +336,123 @@ async fn gemini_discovery_uses_the_openai_compatible_listing() {
     let request = captured.lock().unwrap()[0].clone();
     assert!(request.starts_with("GET /openai/models "), "{request}");
     assert!(request.to_lowercase().contains("authorization: bearer gem-key"), "{request}");
+}
+
+#[tokio::test]
+async fn truncated_answers_are_an_error_not_a_success() {
+    // Non-streaming: stop_reason max_tokens.
+    let body = r#"{"stop_reason":"max_tokens","content":[{"type":"text","text":"half an ans"}]}"#;
+    let (url, _captured, handle) = mock_sequence_server(vec![canned(200, "application/json", body, false)]);
+    let error = claude_client(url).chat(&[ChatMessage::user("x")], ChatOptions::default()).await.unwrap_err();
+    assert!(matches!(error, AiError::Truncated(_)), "{error:?}");
+    handle.join().unwrap();
+
+    // Streaming: max_tokens in message_delta.
+    let stream = concat!(
+        "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"half\"}}\n\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"max_tokens\"}}\n\n",
+        "data: {\"type\":\"message_stop\"}\n\n"
+    );
+    let (url, _captured, handle) = mock_sequence_server(vec![canned(200, "text/event-stream", stream, true)]);
+    let error = claude_client(url)
+        .chat_stream(&[ChatMessage::user("x")], ChatOptions::default(), &CancelToken::new(), &mut |_| {}, &mut |_| {})
+        .await
+        .unwrap_err();
+    assert!(matches!(error, AiError::Truncated(_)), "{error:?}");
+    handle.join().unwrap();
+
+    // Streaming: the connection ends before message_stop.
+    let stream = "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"half\"}}\n\n";
+    let (url, _captured, handle) = mock_sequence_server(vec![canned(200, "text/event-stream", stream, true)]);
+    let error = claude_client(url)
+        .chat_stream(&[ChatMessage::user("x")], ChatOptions::default(), &CancelToken::new(), &mut |_| {}, &mut |_| {})
+        .await
+        .unwrap_err();
+    assert!(matches!(error, AiError::Truncated(_)), "{error:?}");
+    handle.join().unwrap();
+}
+
+/// Accepts connections until `stop` is set and records every request seen.
+fn watching_server(stop: Arc<AtomicBool>) -> (u16, Arc<Mutex<Vec<String>>>, thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    listener.set_nonblocking(true).expect("nonblocking");
+    let port = listener.local_addr().expect("addr").port();
+    let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let seen_clone = seen.clone();
+    let handle = thread::spawn(move || {
+        while !stop.load(Ordering::SeqCst) {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    let _ = stream.set_nonblocking(false);
+                    seen_clone.lock().unwrap().push(read_request_with_body(&mut stream));
+                    let reply = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}";
+                    let _ = stream.write_all(reply.as_bytes());
+                }
+                Err(_) => thread::sleep(Duration::from_millis(10)),
+            }
+        }
+    });
+    (port, seen, handle)
+}
+
+#[tokio::test]
+async fn a_redirect_to_another_host_never_receives_the_key_or_the_body() {
+    for provider in [ProviderKind::Anthropic, ProviderKind::DeepSeek, ProviderKind::Ollama] {
+        let stop = Arc::new(AtomicBool::new(false));
+        let (other_port, seen, watcher) = watching_server(stop.clone());
+        // 307 keeps the method and body, so a followed redirect would carry both.
+        let redirect = format!(
+            "HTTP/1.1 307 Temporary Redirect\r\nLocation: http://127.0.0.1:{other_port}/v1/messages\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let origin = thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let _ = read_request_with_body(&mut stream);
+                let _ = stream.write_all(redirect.as_bytes());
+            }
+        });
+        let client = DeepSeekClient::new(AiConfig {
+            api_key: "sk-must-not-leak".into(),
+            base_url: url,
+            provider,
+            model: "m".into(),
+            ..Default::default()
+        })
+        .expect("client");
+        let result = client.chat(&[ChatMessage::user("confidential document text")], ChatOptions::default()).await;
+        assert!(result.is_err(), "{provider:?}: the redirect must fail");
+        origin.join().unwrap();
+        // Give a (wrongly) followed redirect time to arrive before checking.
+        thread::sleep(Duration::from_millis(150));
+        stop.store(true, Ordering::SeqCst);
+        watcher.join().unwrap();
+        assert!(seen.lock().unwrap().is_empty(), "{provider:?}: redirect target received {:?}", seen.lock().unwrap());
+    }
+}
+
+#[tokio::test]
+async fn stop_aborts_a_request_the_server_never_answers() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let server = thread::spawn(move || {
+        if let Ok((mut stream, _)) = listener.accept() {
+            let _ = read_request_with_body(&mut stream);
+            // Hold the connection open without answering.
+            thread::sleep(Duration::from_secs(4));
+        }
+    });
+    let cancel = CancelToken::new();
+    let stopper = cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        stopper.cancel();
+    });
+    let started = Instant::now();
+    let result = claude_client(url)
+        .chat_stream(&[ChatMessage::user("hi")], ChatOptions::default(), &cancel, &mut |_| {}, &mut |_| {})
+        .await;
+    assert!(matches!(result, Err(AiError::Cancelled)), "{result:?}");
+    assert!(started.elapsed() < Duration::from_secs(2), "Stop took {:?}", started.elapsed());
+    drop(server);
 }

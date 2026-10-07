@@ -22,6 +22,10 @@ pub const ANTHROPIC_DEFAULT_MODEL: &str = "claude-opus-5-5";
 /// Output cap used for Claude requests. Lower than the DeepSeek cap because a
 /// larger `max_tokens` is rejected by the smaller Claude models.
 pub const ANTHROPIC_MAX_OUTPUT_TOKENS: u32 = 64_000;
+/// Smallest `max_tokens` sent to Claude. Thinking is always on for the newer
+/// models and counts against the budget, so a few hundred tokens (connection
+/// test, short metadata call) can be consumed before any answer text appears.
+pub const ANTHROPIC_MIN_OUTPUT_TOKENS: u32 = 2_048;
 /// Model ids offered in the settings (alias ids, never date-suffixed ones).
 pub const ANTHROPIC_MODELS: &[(&str, &str)] = &[
     ("claude-opus-5-5", "Claude Opus 5.5 (highest quality, recommended)"),
@@ -60,16 +64,17 @@ pub(crate) struct MessagesRequest<'a> {
 
 /// Maps the stored `reasoning_effort` onto an `output_config.effort` value.
 ///
-/// Only sent when the value is valid, differs from the server default
-/// ("high") and the model supports it (Haiku does not).
-/// Returning `None` simply omits the field.
+/// Always sent when the value is valid and the model supports it (Haiku does
+/// not): the server default differs per model (`medium` on Opus 5.5), so
+/// "high" must be sent explicitly to mean high. Returning `None` omits the
+/// field.
 pub(crate) fn effort_for(config: &AiConfig) -> Option<&'static str> {
     if config.model.to_lowercase().contains("haiku") {
         return None;
     }
     let wanted = config.reasoning_effort.trim().to_lowercase();
     let level = EFFORT_LEVELS.iter().copied().find(|level| *level == wanted)?;
-    (level != "high").then_some(level)
+    Some(level)
 }
 
 /// Builds the request. `system`-role messages move into the top-level
@@ -111,7 +116,8 @@ pub(crate) fn build_request<'a>(
             merged.push(AnthropicMessage { role: "user", content: text });
         }
     }
-    let max_tokens = options.max_tokens.unwrap_or(config.max_tokens).clamp(256, ANTHROPIC_MAX_OUTPUT_TOKENS);
+    let max_tokens =
+        options.max_tokens.unwrap_or(config.max_tokens).clamp(ANTHROPIC_MIN_OUTPUT_TOKENS, ANTHROPIC_MAX_OUTPUT_TOKENS);
     MessagesRequest {
         model: &config.model,
         max_tokens,
@@ -158,13 +164,16 @@ struct ContentBlock {
 }
 
 /// Parses a non-streaming response: concatenates the `text` blocks (thinking
-/// blocks are ignored). A `refusal` stop reason is an error; `max_tokens`
-/// keeps the text that was produced.
+/// blocks are ignored). A `refusal` stop reason is an error, and so is
+/// `max_tokens`: an answer that was cut off must never pass as complete.
 pub(crate) fn parse_message_response(body: &str, provider: &str) -> AiResult<String> {
     let parsed: MessagesResponse =
         serde_json::from_str(body).map_err(|_| AiError::InvalidResponse(provider.to_string()))?;
     if parsed.stop_reason.as_deref() == Some("refusal") {
         return Err(refusal_error(provider));
+    }
+    if parsed.stop_reason.as_deref() == Some("max_tokens") {
+        return Err(AiError::Truncated(provider.to_string()));
     }
     let text: String =
         parsed.content.iter().filter(|block| block.kind == "text").map(|block| block.text.as_str()).collect();
@@ -196,6 +205,17 @@ fn capped(message: &str) -> String {
     message.chars().take(MAX_ERROR_MESSAGE_CHARS).collect()
 }
 
+/// True only when an `invalid_request_error` message clearly says the prompt
+/// or context is too long. A bare mention of "context" (an unknown
+/// `context_management` field, for example) is an ordinary request error.
+fn says_context_too_long(lowered: &str) -> bool {
+    if lowered.contains("prompt is too long") || lowered.contains("input is too long") {
+        return true;
+    }
+    lowered.contains("context")
+        && ["too long", "too large", "exceed", "window", "length"].iter().any(|word| lowered.contains(word))
+}
+
 /// Maps an Anthropic error type (`{"type":"error","error":{"type":..}}`) to the
 /// shared error enum. Used for both HTTP error bodies and in-stream `error`
 /// events.
@@ -213,9 +233,7 @@ pub(crate) fn map_error_kind(kind: &str, message: &str, provider: &str) -> AiErr
         "invalid_request_error" if lowered.contains("credit balance") => {
             AiError::InsufficientBalance(provider.to_string())
         }
-        "invalid_request_error" if lowered.contains("prompt is too long") || lowered.contains("context") => {
-            AiError::TooLarge
-        }
+        "invalid_request_error" if says_context_too_long(&lowered) => AiError::TooLarge,
         _ => {
             let message = capped(message);
             let summary = match (kind.is_empty(), message.is_empty()) {
@@ -256,6 +274,11 @@ pub(crate) struct StreamParser {
     pub text: String,
     pub thinking: String,
     stop_reason: Option<String>,
+    /// True once the `message_stop` event arrived (the stream ended cleanly).
+    saw_stop: bool,
+    /// Bytes at the start of `buffer` already known to hold no newline, so a
+    /// long line is not rescanned from byte 0 on every network read.
+    scanned: usize,
 }
 
 impl StreamParser {
@@ -272,15 +295,22 @@ impl StreamParser {
         on_thinking: &mut (dyn FnMut(&str) + Send),
     ) -> AiResult<()> {
         self.buffer.extend_from_slice(bytes);
-        while let Some(position) = self.buffer.iter().position(|byte| *byte == b'\n') {
+        loop {
+            let Some(offset) = self.buffer[self.scanned..].iter().position(|byte| *byte == b'\n') else {
+                self.scanned = self.buffer.len();
+                return Ok(());
+            };
+            let position = self.scanned + offset;
             let line: Vec<u8> = self.buffer.drain(..=position).collect();
+            self.scanned = 0;
             self.handle_line(&line, provider, on_text, on_thinking)?;
         }
-        Ok(())
     }
 
     /// Processes a final line that was not newline-terminated and returns the
-    /// accumulated answer. Fails on a refusal or when no text was produced.
+    /// accumulated answer. Fails on a refusal, when the answer was cut off
+    /// (`max_tokens`, or the stream ended without `message_stop`) or when no
+    /// text was produced.
     pub fn finish(
         mut self,
         provider: &str,
@@ -294,8 +324,14 @@ impl StreamParser {
         if self.stop_reason.as_deref() == Some("refusal") {
             return Err(refusal_error(provider));
         }
+        if self.stop_reason.as_deref() == Some("max_tokens") {
+            return Err(AiError::Truncated(provider.to_string()));
+        }
         if self.text.trim().is_empty() {
             return Err(AiError::InvalidResponse(provider.to_string()));
+        }
+        if !self.saw_stop {
+            return Err(AiError::Truncated(provider.to_string()));
         }
         Ok(self.text)
     }
@@ -346,13 +382,14 @@ impl StreamParser {
                     self.stop_reason = Some(reason.to_string());
                 }
             }
+            "message_stop" => self.saw_stop = true,
             "error" => {
                 let error = value.get("error");
                 let kind = error.and_then(|e| e.get("type")).and_then(|k| k.as_str()).unwrap_or_default();
                 let message = error.and_then(|e| e.get("message")).and_then(|m| m.as_str()).unwrap_or_default();
                 return Err(map_error_kind(kind, message, provider));
             }
-            // message_start, content_block_start/stop, message_stop, ping and
+            // message_start, content_block_start/stop, ping and
             // any event type added later are not needed to assemble the text.
             _ => {}
         }
@@ -441,17 +478,17 @@ mod tests {
         let config = AiConfig { thinking: true, ..config() };
         let messages = [ChatMessage::system("Be brief."), ChatMessage::user("Hi")];
         let body =
-            body_json(&config, &messages, &ChatOptions { temperature: Some(0.3), max_tokens: Some(1000) }, false);
+            body_json(&config, &messages, &ChatOptions { temperature: Some(0.3), max_tokens: Some(3000) }, false);
         assert_eq!(body["model"], "claude-opus-5-5");
-        assert_eq!(body["max_tokens"], 1000);
+        assert_eq!(body["max_tokens"], 3000);
         assert_eq!(body["system"], "Be brief.");
         assert_eq!(body["stream"], false);
         assert_eq!(body["messages"], json!([{"role": "user", "content": "Hi"}]));
         for forbidden in ["temperature", "top_p", "top_k", "thinking"] {
             assert!(body.get(forbidden).is_none(), "{forbidden} must not be sent: {body}");
         }
-        // The default effort ("high") is the server default and is omitted.
-        assert!(body.get("output_config").is_none());
+        // "high" is sent explicitly: the server default is model dependent.
+        assert_eq!(body["output_config"], json!({"effort": "high"}));
     }
 
     #[test]
@@ -494,7 +531,9 @@ mod tests {
             &ChatOptions { max_tokens: Some(1), ..Default::default() },
             false,
         );
-        assert_eq!(low["max_tokens"], 256);
+        // Thinking can eat a tiny budget, so Claude calls never go below 2048.
+        assert_eq!(low["max_tokens"], ANTHROPIC_MIN_OUTPUT_TOKENS);
+        assert_eq!(low["max_tokens"], 2048);
         let high = body_json(
             &config(),
             &[ChatMessage::user("x")],
@@ -518,7 +557,8 @@ mod tests {
         assert_eq!(effort_for(&with(" XHigh ", "claude-opus-5-5", true)), Some("xhigh"));
         assert_eq!(effort_for(&with("max", "claude-sonnet-5-5", true)), Some("max"));
         assert_eq!(effort_for(&with("medium", "claude-sonnet-5-5", true)), Some("medium"));
-        assert_eq!(effort_for(&with("high", "claude-opus-5-5", true)), None);
+        assert_eq!(effort_for(&with("high", "claude-opus-5-5", true)), Some("high"));
+        assert_eq!(effort_for(&with("high", "claude-haiku-4-5", true)), None);
         assert_eq!(effort_for(&with("turbo", "claude-opus-5-5", true)), None);
         assert_eq!(effort_for(&with("low", "claude-haiku-4-5", true)), None);
         // The DeepSeek-only thinking toggle does not gate the effort.
@@ -547,9 +587,9 @@ mod tests {
     }
 
     #[test]
-    fn max_tokens_stop_keeps_the_partial_text() {
+    fn max_tokens_stop_is_a_truncation_error() {
         let body = r#"{"stop_reason":"max_tokens","content":[{"type":"text","text":"partial answ"}]}"#;
-        assert_eq!(parse_message_response(body, "Anthropic (Claude)").unwrap(), "partial answ");
+        assert!(matches!(parse_message_response(body, "Anthropic (Claude)"), Err(AiError::Truncated(_))));
     }
 
     #[test]
@@ -636,8 +676,41 @@ mod tests {
 
     #[test]
     fn stream_without_a_trailing_newline_still_delivers_the_last_event() {
-        let stream = "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"tail\"}}";
+        let stream = concat!(
+            "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"tail\"}}\n\n",
+            "data: {\"type\":\"message_stop\"}"
+        );
         assert_eq!(run_stream(&[stream.as_bytes()]).0.unwrap(), "tail");
+    }
+
+    #[test]
+    fn stream_cut_off_by_max_tokens_or_a_dropped_connection_is_truncated() {
+        let delta =
+            "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"part\"}}\n\n";
+        let max_tokens = format!(
+            "{delta}data: {{\"type\":\"message_delta\",\"delta\":{{\"stop_reason\":\"max_tokens\"}}}}\n\ndata: {{\"type\":\"message_stop\"}}\n\n"
+        );
+        let (outcome, text, _) = run_stream(&[max_tokens.as_bytes()]);
+        assert_eq!(text, "part");
+        assert!(matches!(outcome, Err(AiError::Truncated(_))), "{outcome:?}");
+
+        // No message_stop: the connection ended mid-answer.
+        let dropped =
+            format!("{delta}data: {{\"type\":\"message_delta\",\"delta\":{{\"stop_reason\":\"end_turn\"}}}}\n\n");
+        assert!(matches!(run_stream(&[dropped.as_bytes()]).0, Err(AiError::Truncated(_))));
+        assert!(matches!(run_stream(&[delta.as_bytes()]).0, Err(AiError::Truncated(_))));
+    }
+
+    #[test]
+    fn long_lines_are_assembled_across_many_small_reads() {
+        // One enormous text delta fed in tiny pieces: the newline scan resumes
+        // where it stopped, and the result is still exact.
+        let big = "x".repeat(50_000);
+        let stream = format!(
+            "data: {{\"type\":\"content_block_delta\",\"delta\":{{\"type\":\"text_delta\",\"text\":\"{big}\"}}}}\n\ndata: {{\"type\":\"message_stop\"}}\n\n"
+        );
+        let chunks: Vec<&[u8]> = stream.as_bytes().chunks(7).collect();
+        assert_eq!(run_stream(&chunks).0.unwrap(), big);
     }
 
     #[test]
@@ -705,6 +778,16 @@ mod tests {
         }
         match http_error(404, "not_found_error", "model: claude-nope") {
             AiError::Server(_, message) => assert_eq!(message, "model: claude-nope"),
+            other => panic!("unexpected: {other:?}"),
+        }
+        // Only a message that clearly says the prompt/context is too long maps
+        // to TooLarge; a stray mention of "context" does not.
+        assert!(matches!(
+            http_error(400, "invalid_request_error", "input length and max_tokens exceed context window size"),
+            AiError::TooLarge
+        ));
+        match http_error(400, "invalid_request_error", "context_management: Extra inputs are not permitted") {
+            AiError::Server(_, message) => assert!(message.contains("context_management"), "{message}"),
             other => panic!("unexpected: {other:?}"),
         }
         match http_error(400, "invalid_request_error", "messages: field required") {

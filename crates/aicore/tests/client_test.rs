@@ -231,9 +231,17 @@ async fn cancellation_stops_the_stream() {
     let (url, handle) = mock_server(200, "text/event-stream", body, true);
     let client = client_for(url);
     let cancel = CancelToken::new();
-    cancel.cancel();
-    let result =
-        client.chat_stream(&[ChatMessage::user("hi")], ChatOptions::default(), &cancel, &mut |_| {}, &mut |_| {}).await;
+    // Stop pressed while the answer streams: the next read returns Cancelled.
+    let stopper = cancel.clone();
+    let result = client
+        .chat_stream(
+            &[ChatMessage::user("hi")],
+            ChatOptions::default(),
+            &cancel,
+            &mut |_| stopper.cancel(),
+            &mut |_| {},
+        )
+        .await;
     assert!(matches!(result, Err(AiError::Cancelled)));
     handle.join().unwrap();
 }
@@ -828,4 +836,63 @@ fn selection_summary_prompt_uses_the_requested_language() {
     assert!(messages[1].content.contains("Selected words"));
     let auto = summarize_selection_prompt("Words", "auto");
     assert!(auto[1].content.contains("same language as the document"));
+}
+
+#[tokio::test]
+async fn openai_compatible_length_finish_reason_is_a_truncation_error() {
+    let body = r#"{"choices":[{"message":{"role":"assistant","content":"half an ans"},"finish_reason":"length"}]}"#;
+    let (url, handle) = mock_server(200, "application/json", body.to_string(), false);
+    let error = client_for(url).chat(&[ChatMessage::user("x")], ChatOptions::default()).await.unwrap_err();
+    assert!(matches!(error, AiError::Truncated(_)), "{error:?}");
+    handle.join().unwrap();
+
+    let stream = concat!(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"half\"},\"finish_reason\":null}]}\n\n",
+        "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}\n\n",
+        "data: [DONE]\n\n"
+    );
+    let (url, handle) = mock_server(200, "text/event-stream", stream.to_string(), true);
+    let error = client_for(url)
+        .chat_stream(&[ChatMessage::user("x")], ChatOptions::default(), &CancelToken::new(), &mut |_| {}, &mut |_| {})
+        .await
+        .unwrap_err();
+    assert!(matches!(error, AiError::Truncated(_)), "{error:?}");
+    handle.join().unwrap();
+
+    // A normal stop still succeeds.
+    let stream = concat!(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"done\"},\"finish_reason\":null}]}\n\n",
+        "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+        "data: [DONE]\n\n"
+    );
+    let (url, handle) = mock_server(200, "text/event-stream", stream.to_string(), true);
+    let full = client_for(url)
+        .chat_stream(&[ChatMessage::user("x")], ChatOptions::default(), &CancelToken::new(), &mut |_| {}, &mut |_| {})
+        .await
+        .expect("stop");
+    assert_eq!(full, "done");
+    handle.join().unwrap();
+}
+
+#[tokio::test]
+async fn ollama_length_done_reason_is_a_truncation_error() {
+    let body = r#"{"message":{"role":"assistant","content":"half"},"done":true,"done_reason":"length"}"#;
+    let (url, handle) = mock_server(200, "application/json", body.to_string(), false);
+    let client = provider_client(url, ProviderKind::Ollama, "");
+    let error = client.chat(&[ChatMessage::user("x")], ChatOptions::default()).await.unwrap_err();
+    assert!(matches!(error, AiError::Truncated(_)), "{error:?}");
+    handle.join().unwrap();
+
+    let stream = concat!(
+        "{\"message\":{\"role\":\"assistant\",\"content\":\"half\"},\"done\":false}\n",
+        "{\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"done\":true,\"done_reason\":\"length\"}\n"
+    );
+    let (url, handle) = mock_server(200, "application/x-ndjson", stream.to_string(), true);
+    let client = provider_client(url, ProviderKind::Ollama, "");
+    let error = client
+        .chat_stream(&[ChatMessage::user("x")], ChatOptions::default(), &CancelToken::new(), &mut |_| {}, &mut |_| {})
+        .await
+        .unwrap_err();
+    assert!(matches!(error, AiError::Truncated(_)), "{error:?}");
+    handle.join().unwrap();
 }
