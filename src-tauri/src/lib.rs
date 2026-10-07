@@ -12,6 +12,7 @@ mod concurrency;
 mod crash_log;
 mod diagnostics;
 mod jobs;
+mod launch;
 mod library;
 mod netpolicy;
 mod oauth;
@@ -28,6 +29,35 @@ mod vault;
 
 use jobs::{JobRegistry, JobStore};
 use tauri::Manager;
+
+/// Brings the main window to the front, for a launch that was forwarded to the
+/// running instance (it may be minimized or sit behind other windows).
+#[cfg(desktop)]
+fn focus_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+/// Single instance (desktop): a second launch, for example another document
+/// opened from Explorer, never starts a second app. Its arguments are queued
+/// for the frontend (see launch.rs) and the running window is focused.
+#[cfg(desktop)]
+fn single_instance_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    use tauri::Emitter;
+    tauri_plugin_single_instance::init(|app, argv, cwd| {
+        let files = launch::launch_files(argv, Some(std::path::Path::new(&cwd)));
+        if !files.is_empty() {
+            if let Some(queue) = app.try_state::<launch::LaunchQueue>() {
+                queue.push(files);
+            }
+            let _ = app.emit("launch:files-queued", ());
+        }
+        focus_main_window(app);
+    })
+}
 
 /// Hands the app log directory to the panic hook as soon as plugins are set
 /// up, which is before the setup hook and the first window.
@@ -50,7 +80,12 @@ pub fn run() {
     // Persistent job history, shared by the registry and the jobs_* commands.
     // Managed as Arc<JobStore> so both sides see the same records.
     let job_store = JobStore::shared();
-    let builder = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // The single-instance plugin has to come first: a second launch must be
+    // detected (and exit) before any other plugin or the setup hook runs.
+    #[cfg(desktop)]
+    let builder = builder.plugin(single_instance_plugin());
+    let builder = builder
         .plugin(crash_log_dir_plugin())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -58,7 +93,8 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_android_fs::init())
         .manage(job_store.clone())
-        .manage(JobRegistry::new(job_store));
+        .manage(JobRegistry::new(job_store))
+        .manage(launch::LaunchQueue::default());
     // Android Keystore bridge for the secret store (API key, OAuth tokens,
     // WebDAV password); see android_keystore.rs.
     #[cfg(target_os = "android")]
@@ -229,6 +265,7 @@ pub fn run() {
             commands::clear_operations,
             commands::log_frontend,
             office::office_startup_files,
+            launch::office_take_launch_files,
             office::office_open_document,
             office::office_save_document,
             office::office_save_unit,

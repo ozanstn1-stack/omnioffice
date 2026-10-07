@@ -49,7 +49,8 @@ import {
 import { useT } from "./lib/i18n";
 import { useDev, useDrop, useJobs, useRecent, useSettings, useToasts } from "./lib/store";
 import packageJson from "../package.json";
-import { devLaunchContext, startupFiles } from "./lib/api";
+import { devLaunchContext } from "./lib/api";
+import { watchLaunchFiles } from "./lib/launch-files";
 import type { Navigate, ScreenId } from "./lib/nav";
 // Route-level code splitting: every screen is loaded when it is first opened,
 // so the startup bundle only carries the shell, the navigation and the shared
@@ -573,12 +574,12 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [screen]);
 
-  // Files handed to the process (Windows file association, "open with").
-  useEffect(() => {
-    let cancelled = false;
-    void startupFiles()
-      .then((paths) => {
-        if (cancelled || paths.length === 0) return;
+  // Files handed to the app: the command line of this launch (Windows file
+  // association, "open with") and the files later launches forward to this
+  // window, because the single-instance plugin keeps one app per user.
+  useEffect(
+    () =>
+      watchLaunchFiles((paths) => {
         const officePaths = paths.filter((path) => isOfficePath(path));
         if (officePaths.length > 0) {
           setScreen("office");
@@ -589,12 +590,9 @@ export default function App() {
           setFiles(pdfPaths);
           setScreen("reader");
         }
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      }),
+    [],
+  );
 
   // Routes documents that arrived through an Android open-with intent to the
   // tool that can handle them. Unknown leftovers are handed to the system

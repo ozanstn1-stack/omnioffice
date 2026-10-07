@@ -56,3 +56,10 @@ tempfile = "3"
 # fallback and reports it in the UI instead.
 [target.'cfg(not(target_os = "android"))'.dependencies]
 keyring = "4"
+
+# One window per user: opening a second document in Explorer hands its
+# arguments to the running instance instead of starting another app. Desktop
+# only (Android activities are already singleTask); it has no npm counterpart,
+# so scripts/check-tauri-plugin-versions.mjs has nothing to pair it with.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"

@@ -21,6 +21,7 @@ const invoke = vi.fn(async (command: string) => {
       return { theme: "dark", language: "en" };
     case "load_recent":
     case "office_startup_files":
+    case "office_take_launch_files":
       return [];
     case "dev_launch_context":
       return { startScreen: null, files: [], autoRun: false, tab: null, newTab: null };
