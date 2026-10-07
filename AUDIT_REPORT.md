@@ -13,8 +13,8 @@ left for the next phase with a recommendation (not silently ignored).
 **Status as of 4.2.0.** This report describes 3.2.1; the entries below keep
 their original wording as the audit record. `CHANGELOG.md` shows these items
 were fixed afterwards: C11 and M12 (3.5.5), M7, M16 and L6 (3.5.3), and
-M8-M11, M13 and M14 (3.3.0); each entry carries a **Status** line with the
-release. Items not named here were not re-audited for 4.2.0 and stand as
+M8-M11, M13 and M14 (3.3.0); M15 (partly) and L7 follow in 4.3.0. Each entry
+carries a **Status** line with the release. Items not named here were not re-audited for 4.2.0 and stand as
 written (the remaining L-items are informational).
 
 ---
@@ -369,11 +369,15 @@ written (the remaining L-items are informational).
   open/save (`file_fingerprint`) and offers exactly those three choices when it
   changed on disk before a write.
 
-### M15. Writer: version history keyed by transient tab id — REMAINING
+### M15. Writer: version history keyed by transient tab id — PARTLY FIXED (4.3.0)
 - Versions written under the session tab id are unreachable after reopening
   the same file; repeated saves on an unchanged document also push copies.
 - **Recommendation:** key by stable document identity (saved path / persisted
   id) and skip pushes when the tab is clean.
+- **Status:** 4.3.0 keys the history by the saved file's path (hashed, since the
+  store only accepts `[A-Za-z0-9_-]`), falling back to the tab id for an unsaved
+  document; histories written under old tab ids are not migrated. Repeated saves
+  of an unchanged document still push a copy.
 
 ### M16. Writer: fields never refresh; ordered lists always show "1" — FIXED (3.5.3)
 - `fieldValues` is never supplied, so page/pages/cross-reference values stay
@@ -407,6 +411,8 @@ written (the remaining L-items are informational).
 - **L7.** `office_history` removes the old version file before writing the
   index; a crash can leave an index row without its version file. The version
   files are now written atomically, so only the ordering remains.
+  *Fixed in 4.3.0: the new index is written first, pruned files are removed
+  after it.*
 
 ### Verified sound (spot checks)
 - **Redaction** reports a trinary contract (`Removed` / `PossiblyPresent` /
@@ -430,9 +436,9 @@ written (the remaining L-items are informational).
 
 | Area | Fixed in this pass | Left for the next phase |
 |---|---|---|
-| Atomic writes / fsync | office, PDF, sync sidecars, jobs, all JSON stores, secrets, OCR/convert/compare outputs; `UniqueName` reservation (M7, 3.5.3) | version-index ordering (L7) |
+| Atomic writes / fsync | office, PDF, sync sidecars, jobs, all JSON stores, secrets, OCR/convert/compare outputs; `UniqueName` reservation (M7, 3.5.3); version-index ordering (L7, 4.3.0) | |
 | Jobs | failure persistence, corrupt-file quarantine, id reuse, temp/rename, live visibility; retry handlers (L6, 3.5.3) | dropped-future liveness on Android |
-| Writer | structural run loss, selection Shift+Enter, Delete object loss, multi-block cells, caret offsets, hard breaks, revision hiding, pagination numbering; run-preserving track changes (M12, 3.5.5), model undo (M13, 3.3.0), fields/lists (M16, 3.5.3) | history keys (M15) |
+| Writer | structural run loss, selection Shift+Enter, Delete object loss, multi-block cells, caret offsets, hard breaks, revision hiding, pagination numbering; run-preserving track changes (M12, 3.5.5), model undo (M13, 3.3.0), fields/lists (M16, 3.5.3); history keyed by file path (M15, 4.3.0) | no push-skip for unchanged documents (M15) |
 | Calc | broadcast, error literals, TEXT/TIME; MATCH/XLOOKUP/wildcards/NUMBERVALUE/FILTER/SUMPRODUCT (M8–M11, 3.3.0) | |
 | PDF/XLSX | hyperlink-only cells; cross-sheet comments (C11, 3.5.5) | PDF deep pass not completed (see below) |
 | Security | WebDAV ETag, plugin SSRF, sync paths, AI response caps | plugin symlink re-checks (L2), plugin manifest strictness (L3) |

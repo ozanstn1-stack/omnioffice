@@ -21,6 +21,7 @@ import { openOfficePath, rememberOfficePath, useOfficeTabs, type OfficeTab } fro
 import { useSettings, useToasts, reportError } from "../lib/store";
 import { useT } from "../lib/i18n";
 import * as api from "../lib/office-api";
+import { historyKeyFor } from "./historyKey";
 import { compatibilityReport, gatingLossItems, type CompatibilityReport } from "../components/compatibility";
 import { useDataLossPrompt } from "../components/data-loss-dialog";
 import { useFileConflictPrompt, type ConflictDetails } from "../components/file-conflict-dialog";
@@ -291,7 +292,11 @@ export function useOfficeSession(tab: OfficeTab) {
           notify(t("office.saved"), result.path);
         }
         if (useSettings.getState().settings.versionHistory) {
-          void api.historyPush(tab.id, tab.kind, tab.title, tab.model).catch(() => undefined);
+          // Keyed by the path just written, so the history survives reopening
+          // the file (the tab id changes every time it is opened).
+          void api
+            .historyPush(historyKeyFor({ id: tab.id, path: result.path }), tab.kind, tab.title, tab.model)
+            .catch(() => undefined);
         }
         if (!lossless && result.warnings.length > 0) {
           // A lossy export may have dropped something the user cares about, so
@@ -413,7 +418,7 @@ export function useOfficeSession(tab: OfficeTab) {
   const openRecentVersion = useCallback(
     async (version: number) => {
       try {
-        const model = await api.historyLoad(tab.id, version);
+        const model = await api.historyLoad(historyKeyFor({ id: tab.id, path: tab.path }), version);
         if (model) {
           useOfficeTabs.getState().edit(tab.id, () => model as never);
           useToasts.getState().push({ kind: "info", title: t("office.versionRestored"), detail: `v${version}` });
@@ -422,7 +427,7 @@ export function useOfficeSession(tab: OfficeTab) {
         reportError(error, t);
       }
     },
-    [t, tab.id],
+    [t, tab.id, tab.path],
   );
 
   const choosePath = useCallback(async (): Promise<string | null> => {
