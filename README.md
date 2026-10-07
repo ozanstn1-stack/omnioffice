@@ -10,9 +10,22 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 3.9.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 4.0.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 4.0.0
+
+- **ODF formats keep more:** comments in ODT and RTF, groups and animations
+  in ODP, and charts in ODS now survive saving and reopening.
+- **Calc:** Text to columns, Remove duplicates, and a dropdown on cells with a
+  list rule.
+- **Writer:** find & replace with regular expressions and a single Replace,
+  and a quick style gallery.
+- **Turkish templates:** Dilekçe, Özgeçmiş, Toplantı Tutanağı, Fatura and
+  Bütçe Tablosu.
+- Fixes for ODT, ODP and ODS import (comment text in the body, lost shape
+  positions, sheet names).
 
 ## What's new in 3.9.0
 

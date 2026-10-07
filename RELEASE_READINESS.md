@@ -1,11 +1,49 @@
-# Release Readiness — OmniOffice 3.9.0
+# Release Readiness — OmniOffice 4.0.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
 
-## Implemented (this cycle, 3.9.0) - user experience (plan phase 1)
+## Implemented (this cycle, 4.0.0) - office formats and tools (plan phase 2)
+
+The phase was re-scoped after checking the code: XLSX charts, PPTX
+animations/groups and DOCX comments already round-tripped, so the work went
+to the ODF/RTF gaps listed as "lost" in `compat.rs`.
+
+- `odf.rs` / `rtf.rs`: ODT and RTF comments (export and import); ODP nested
+  groups and SMIL animations; ODS charts as `Object N/` chart documents with
+  manifest entries, and pivot output as values. `compat.rs` updated (ODT
+  comments kept unless they have replies, RTF comments "transformed", ODP
+  groups and ODS charts "unchanged", ODP animations "partial").
+- Tests: `crates/officecore/tests/odf_rtf_comments.rs` (8) and
+  `odf_objects.rs` (13), plus an XLSX list-reference test; 197 officecore
+  tests pass. ODP and ODS output was also opened and re-saved with
+  LibreOffice 24.2 during development.
+- Calc `calc/data-tools.ts` (text to columns, duplicates, list items,
+  formula remapping), Writer `writer/find-replace.ts`, `writer/regex-probe.ts`
+  and `writer/StyleGallery.tsx`, Turkish templates in `templates.ts`; 784
+  frontend tests pass.
+- An independent review of the merged work found six issues, all fixed
+  before release: unbounded memory for hostile ODS charts, quadratic comment
+  import, regex freezes, Remove Duplicates shifting outside references, XLSX
+  list references, charts anchored past row 100,000.
+
+### Not done in this pass (honest)
+
+- The ODT reader still ignores character styles on spans (bold/italic from
+  an ODT are lost on import), and the RTF reader starts a new paragraph at
+  every group. Both predate this release; comments are unaffected.
+- Comment reply dates and initials are not kept in ODT/RTF; RTF comment ids
+  are renumbered.
+- ODP charts are still placeholders; scatter charts are not supported in any
+  format.
+- Animation details: grow/shrink use LibreOffice's 150 %/50 % presets and
+  fly-in/out use one direction.
+- Remove Duplicates updates references inside the moved block only;
+  formulas elsewhere that point into the block are not adjusted.
+
+## Implemented in 3.9.0 - user experience (plan phase 1)
 
 - `src-tauri/src/update.rs`: `update_check` reads
   `api.github.com/repos/ozanstn1-stack/omnioffice/releases/latest` and picks
