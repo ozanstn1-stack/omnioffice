@@ -47,13 +47,13 @@ describe("Office workspace crash isolation", () => {
     render(<OfficeWorkspace />);
 
     const host = document.querySelector(".office-editor-host") as HTMLElement;
-    expect(within(host).getByRole("alert")).toHaveTextContent("Something went wrong");
+    expect(await within(host).findByRole("alert")).toHaveTextContent("Something went wrong");
     expect(within(host).getByRole("alert")).toHaveTextContent("writer render exploded");
     // Both tabs are still in the bar and the working one opens normally.
     expect(screen.getAllByRole("tab")).toHaveLength(2);
     await user.click(screen.getByRole("tab", { name: /Budget/ }));
     expect(useOfficeTabs.getState().activeId).toBe(calc);
-    expect(within(host).getByText("calc editor for Budget")).toBeInTheDocument();
+    expect(await within(host).findByText("calc editor for Budget")).toBeInTheDocument();
     expect(within(host).queryByRole("alert")).toBeNull();
   });
 
@@ -70,13 +70,13 @@ describe("Office workspace crash isolation", () => {
     const logged = calls("log_frontend").map((args) => String(args.message));
     expect(logged.some((message) => message.includes("scope: office:writer"))).toBe(true);
     // The fallback explains what happened to unsaved work.
-    expect(screen.getByRole("alert")).toHaveTextContent("recovery copy");
+    expect(await screen.findByRole("alert")).toHaveTextContent("recovery copy");
   });
 
   it("does not snapshot a document that has no unsaved changes", async () => {
     useOfficeTabs.getState().create("writer", "Clean");
     render(<OfficeWorkspace />);
-    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
     await waitFor(() => expect(calls("log_frontend")).toHaveLength(1));
     expect(calls("recovery_save")).toHaveLength(0);
   });
@@ -85,11 +85,11 @@ describe("Office workspace crash isolation", () => {
     const user = userEvent.setup();
     useOfficeTabs.getState().create("writer", "Draft");
     render(<OfficeWorkspace />);
-    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
 
     crash.writer = false;
     await user.click(screen.getByRole("button", { name: "Try again" }));
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByText("writer editor for Draft")).toBeInTheDocument();
+    expect(await screen.findByText("writer editor for Draft")).toBeInTheDocument();
   });
 });

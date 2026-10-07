@@ -2,7 +2,7 @@
  * Office workspace: a tab bar over the Writer/Calc/Impress editors with
  * shared autosave, crash recovery and version-history affordances.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { FilePlus2, FileSpreadsheet, FileText, History, Presentation, RotateCcw, X } from "lucide-react";
 import { isOfficePath, openOfficePath, useRecovery, useOfficeTabs } from "../lib/office-store";
 import type { OfficeKind } from "../lib/office-types";
@@ -12,9 +12,12 @@ import * as api from "../lib/office-api";
 import { Dialog } from "./office-ui";
 import { historyKeyFor } from "./historyKey";
 import { ErrorBoundary } from "../components/ErrorBoundary";
-import { WriterEditor } from "./WriterEditor";
-import { CalcEditor } from "./CalcEditor";
-import { ImpressEditor } from "./ImpressEditor";
+// Each editor is its own chunk: only the kind of document being edited is
+// downloaded, which keeps the workspace chunk inside the bundle budget as the
+// editors grow.
+const WriterEditor = lazy(() => import("./WriterEditor").then((module) => ({ default: module.WriterEditor })));
+const CalcEditor = lazy(() => import("./CalcEditor").then((module) => ({ default: module.CalcEditor })));
+const ImpressEditor = lazy(() => import("./ImpressEditor").then((module) => ({ default: module.ImpressEditor })));
 
 /**
  * Best-effort recovery copy for a tab whose editor just crashed. It goes through
@@ -295,13 +298,15 @@ export function OfficeWorkspace() {
             note={t("errors.boundaryOfficeNote")}
             onError={() => saveRecoveryCopy(active.id)}
           >
-            {active.kind === "writer" ? (
-              <WriterEditor tab={active as never} />
-            ) : active.kind === "calc" ? (
-              <CalcEditor tab={active as never} />
-            ) : (
-              <ImpressEditor tab={active as never} />
-            )}
+            <Suspense fallback={<div className="empty-state" aria-busy="true" />}>
+              {active.kind === "writer" ? (
+                <WriterEditor tab={active as never} />
+              ) : active.kind === "calc" ? (
+                <CalcEditor tab={active as never} />
+              ) : (
+                <ImpressEditor tab={active as never} />
+              )}
+            </Suspense>
           </ErrorBoundary>
         ) : (
           <div className="empty-state">
