@@ -678,6 +678,12 @@ const en: Dict = {
   "progress.cancel": "Cancel",
 
   "errors.title": "Something went wrong",
+  "errors.boundaryBody": "This part of the app stopped unexpectedly. The rest of OmniOffice is not affected.",
+  "errors.boundaryOfficeNote":
+    "A recovery copy of unsaved changes is saved when possible and offered the next time the workspace opens.",
+  "errors.tryAgain": "Try again",
+  "errors.copyDetails": "Copy details",
+  "errors.copied": "Copied",
   "errors.invalid_pdf": "This file is not a valid PDF.",
   "errors.corrupt_pdf": "Unable to process this PDF. The document may be corrupted.",
   "errors.password_required": "This document is password protected. Open it with the Unlock tool first.",
@@ -2548,6 +2554,12 @@ const tr: Dict = {
   "progress.page": "Sayfa",
   "progress.cancel": "İptal",
   "errors.title": "Bir şeyler ters gitti",
+  "errors.boundaryBody": "Uygulamanın bu bölümü beklenmedik şekilde durdu. OmniOffice'in geri kalanı etkilenmedi.",
+  "errors.boundaryOfficeNote":
+    "Kaydedilmemiş değişikliklerin kurtarma kopyası mümkünse kaydedilir ve çalışma alanı bir sonraki açılışında sunulur.",
+  "errors.tryAgain": "Yeniden dene",
+  "errors.copyDetails": "Ayrıntıları kopyala",
+  "errors.copied": "Kopyalandı",
   "errors.invalid_pdf": "Bu dosya geçerli bir PDF değil.",
   "errors.corrupt_pdf": "Bu PDF işlenemedi. Belge bozuk olabilir.",
   "errors.password_required": "Bu belge parola korumalı. Önce Kilidi aç aracıyla açın.",

@@ -117,6 +117,7 @@ import { DataLossDialogHost } from "./components/data-loss-dialog";
 import { FileConflictDialogHost } from "./components/file-conflict-dialog";
 import { Badge, IconButton, Spinner } from "./components/ui";
 import { BrandMark } from "./components/brand";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { isAndroid, openAnyFile, pickAndroidFiles } from "./lib/mobile";
 import { isImage } from "./lib/format";
 import {
@@ -137,6 +138,19 @@ function ScreenLoading() {
     <div className="flex items-center justify-center h-full">
       <Spinner size={22} />
     </div>
+  );
+}
+
+/**
+ * One routed screen. A render crash stays inside this frame: the sidebar, the
+ * toasts and the other screens keep working (the wrapper is keyed per screen,
+ * so navigating away resets it).
+ */
+function ScreenFrame({ screen, children }: { screen: ScreenId; children: React.ReactNode }) {
+  return (
+    <ErrorBoundary scope={`screen:${screen}`}>
+      <React.Suspense fallback={<ScreenLoading />}>{children}</React.Suspense>
+    </ErrorBoundary>
   );
 }
 
@@ -888,7 +902,7 @@ export default function App() {
 
         <main className="flex-1 min-w-0 relative overflow-hidden">
           <div key={`${screen}-${files.join("|")}`} className="h-full">
-            <React.Suspense fallback={<ScreenLoading />}>{screens[screen]}</React.Suspense>
+            <ScreenFrame screen={screen}>{screens[screen]}</ScreenFrame>
           </div>
         </main>
 
@@ -984,7 +998,7 @@ export default function App() {
           </div>
         ) : null}
         <div key={`${screen}-${files.join("|")}`} className="h-full">
-          <React.Suspense fallback={<ScreenLoading />}>{screens[screen]}</React.Suspense>
+          <ScreenFrame screen={screen}>{screens[screen]}</ScreenFrame>
         </div>
       </main>
 

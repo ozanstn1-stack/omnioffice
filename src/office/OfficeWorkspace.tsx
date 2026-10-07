@@ -10,9 +10,21 @@ import { errorMessage, useDev, useSettings, useToasts } from "../lib/store";
 import { useT } from "../lib/i18n";
 import * as api from "../lib/office-api";
 import { Dialog } from "./office-ui";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { WriterEditor } from "./WriterEditor";
 import { CalcEditor } from "./CalcEditor";
 import { ImpressEditor } from "./ImpressEditor";
+
+/**
+ * Best-effort recovery copy for a tab whose editor just crashed. It goes through
+ * the regular autosave path (`recovery_save`, the same snapshot the timer
+ * writes), so the next start offers it in the recovery banner. The tab itself
+ * lives in the store, not in the crashed component, so its data stays intact.
+ */
+function saveRecoveryCopy(tabId: string) {
+  const tab = useOfficeTabs.getState().tabs.find((candidate) => candidate.id === tabId);
+  if (tab) void useRecovery.getState().save(tab);
+}
 
 export function OfficeWorkspace() {
   const t = useT();
@@ -274,13 +286,22 @@ export function OfficeWorkspace() {
 
       <div className="office-editor-host">
         {active ? (
-          active.kind === "writer" ? (
-            <WriterEditor key={active.id} tab={active as never} />
-          ) : active.kind === "calc" ? (
-            <CalcEditor key={active.id} tab={active as never} />
-          ) : (
-            <ImpressEditor key={active.id} tab={active as never} />
-          )
+          // One boundary per tab: a crashing editor leaves the tab bar and the
+          // other documents alone.
+          <ErrorBoundary
+            key={active.id}
+            scope={`office:${active.kind}`}
+            note={t("errors.boundaryOfficeNote")}
+            onError={() => saveRecoveryCopy(active.id)}
+          >
+            {active.kind === "writer" ? (
+              <WriterEditor tab={active as never} />
+            ) : active.kind === "calc" ? (
+              <CalcEditor tab={active as never} />
+            ) : (
+              <ImpressEditor tab={active as never} />
+            )}
+          </ErrorBoundary>
         ) : (
           <div className="empty-state">
             <FilePlus2 size={26} />
