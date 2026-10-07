@@ -585,6 +585,10 @@ export interface FormulaContext {
   currentRow?: number;
   /** A1 address of the formula's own cell, for `CELL("address")` without an argument. */
   currentAddress?: string;
+  /** Stored formula of a cell (ISFORMULA, FORMULATEXT, SUBTOTAL's nested-total rule); null for a constant. */
+  getFormula?: (sheet: string | null, address: string) => string | null;
+  /** Visibility of a 0-based row, for SUBTOTAL/AGGREGATE; omitted when every row shows. */
+  hiddenRow?: (sheet: string | null, row: number) => "filtered" | "hidden" | null;
 }
 
 interface EvalState {
@@ -770,6 +774,8 @@ function functionHost(state: EvalState): FunctionHost {
     sheetNames: context.sheetNames,
     parseReference: (text) => parseReferenceText(text, state),
     read: (reference) => readCells(reference, state),
+    formulaAt: (sheet, address) => context.getFormula?.(sheet, formatAddress(address.row, address.col)) ?? null,
+    hiddenRow: (sheet, row) => context.hiddenRow?.(sheet, row) ?? null,
   };
 }
 

@@ -28,8 +28,10 @@ import {
   formatNumber,
   isError,
   parseAddress,
+  parseRange,
   rangeSize,
   type CellMatrix,
+  type FormulaContext,
   type Scalar,
 } from "./formula";
 import { structuredReferenceRanges } from "./structured";
@@ -379,6 +381,28 @@ function planSpill(scope: EvalScope, key: string, sheetName: string, address: st
   return true;
 }
 
+/**
+ * What functions may ask the model besides cell values: stored formulas
+ * (ISFORMULA, FORMULATEXT) and which rows are out of sight (SUBTOTAL).
+ *
+ * A row is hidden when its height is 0. It counts as filtered when the sheet's
+ * AutoFilter covers it, otherwise it was hidden by hand.
+ */
+function modelAccess(
+  sheets: Map<string, Sheet>,
+  currentSheet: string,
+): Pick<FormulaContext, "getFormula" | "hiddenRow"> {
+  return {
+    getFormula: (sheetName, address) => sheets.get(sheetName ?? currentSheet)?.cells[address]?.formula ?? null,
+    hiddenRow: (sheetName, row) => {
+      const sheet = sheets.get(sheetName ?? currentSheet);
+      if (!sheet || sheet.rowHeights[row] !== 0) return null;
+      const covered = sheet.filter ? parseRange(sheet.filter.range) : null;
+      return covered && row >= covered.start.row && row <= covered.end.row ? "filtered" : "hidden";
+    },
+  };
+}
+
 function evaluateCell(scope: EvalScope, key: string): Scalar {
   if (scope.resolving.has(key)) return ERR.circular();
   if (scope.computed.has(key)) return scope.entry.values.get(key) ?? "";
@@ -409,6 +433,7 @@ function evaluateCell(scope: EvalScope, key: string): Scalar {
     tables: sheet.tables ?? [],
     currentRow: position ? position.row + 1 : undefined,
     currentAddress: address,
+    ...modelAccess(scope.sheets, sheetName),
   });
   scope.resolving.delete(key);
   if (Array.isArray(result)) {
@@ -623,6 +648,7 @@ export function formulaResult(
     tables: sheet.tables ?? [],
     currentRow,
     currentAddress,
+    ...modelAccess(new Map(workbook.sheets.map((candidate) => [candidate.name, candidate])), sheet.name),
   });
   // A dynamic-array formula keeps its first value in the source cell; the rest
   // of the matrix is spilled by the value pass, not stored in the model.

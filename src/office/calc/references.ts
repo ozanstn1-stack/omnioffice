@@ -62,9 +62,16 @@ export function offsetReference(
   return makeReference(base.sheet, { row: top, col: left }, { row: top + nextHeight - 1, col: left + nextWidth - 1 });
 }
 
-/** A sheet name as it must be written in front of `!`. */
-function sheetPrefix(sheet: string): string {
-  return /^[A-Za-z_][A-Za-z0-9_.]*$/.test(sheet) ? `${sheet}!` : `'${sheet.replace(/'/g, "''")}'!`;
+/**
+ * A sheet name as it must be written in front of `!`. A name that would read as
+ * a cell (`A1`) or as R1C1 (`R2C3`) is quoted like one with spaces; a leading
+ * `[Book]` workbook part is kept outside the check, as Microsoft's ADDRESS
+ * example shows.
+ */
+export function sheetPrefix(sheet: string): string {
+  const plain = /^(\[[^\]]+\])?[A-Za-z_][A-Za-z0-9_.]*$/.test(sheet);
+  const looksLikeCell = /^[A-Za-z]{1,3}\d+$/.test(sheet) || /^R\d*C\d*$/i.test(sheet) || /^[RC]$/i.test(sheet);
+  return plain && !looksLikeCell ? `${sheet}!` : `'${sheet.replace(/'/g, "''")}'!`;
 }
 
 /**
