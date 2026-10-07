@@ -1,3 +1,4 @@
+import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
@@ -5,7 +6,7 @@ const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 
-import { applyTheme, useSettings } from "./store";
+import { applyTheme, useIsDarkTheme, useSettings } from "./store";
 
 /** A controllable `prefers-color-scheme: dark` media query list. */
 function installMatchMedia(initialDark: boolean) {
@@ -122,5 +123,20 @@ describe("system theme", () => {
     expect(media.list.addListener).toHaveBeenCalledTimes(1);
     applyTheme("dark");
     expect(media.list.removeListener).toHaveBeenCalledTimes(1);
+  });
+
+  it("tells React whether the applied theme is dark, following the OS live", () => {
+    const media = installMatchMedia(false);
+    const { result } = renderHook(() => useIsDarkTheme());
+    act(() => applyTheme("system"));
+    expect(result.current).toBe(false);
+
+    act(() => media.setDark(true));
+    expect(result.current).toBe(true);
+
+    act(() => applyTheme("light"));
+    expect(result.current).toBe(false);
+    act(() => applyTheme("midnight"));
+    expect(result.current).toBe(true);
   });
 });

@@ -47,7 +47,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { useT } from "./lib/i18n";
-import { useDev, useDrop, useJobs, useRecent, useSettings, useToasts } from "./lib/store";
+import { useDev, useDrop, useIsDarkTheme, useJobs, useRecent, useSettings, useToasts } from "./lib/store";
 import packageJson from "../package.json";
 import { devLaunchContext } from "./lib/api";
 import { watchLaunchFiles } from "./lib/launch-files";
@@ -164,6 +164,7 @@ export default function App() {
   const t = useT();
   const init = useSettings((s) => s.init);
   const settings = useSettings((s) => s.settings);
+  const appliedDark = useIsDarkTheme();
   const update = useSettings((s) => s.update);
   const attachJobs = useJobs((s) => s.attach);
   const refreshRecent = useRecent((s) => s.refresh);
@@ -311,20 +312,15 @@ export default function App() {
     return () => unlisten?.();
   }, [attachJobs, init, navigate, refreshRecent]);
 
-  // Keep the native window chrome in sync with the selected theme.
+  // Keep the native window chrome in sync with the selected theme (the
+  // "system" theme follows the OS live, see applyTheme in lib/store).
   useEffect(() => {
     const resolved: "dark" | "light" =
-      settings.theme === "system"
-        ? document.documentElement.classList.contains("dark")
-          ? "dark"
-          : "light"
-        : settings.theme === "paper"
-          ? "light"
-          : "dark";
+      settings.theme === "system" ? (appliedDark ? "dark" : "light") : settings.theme === "paper" ? "light" : "dark";
     void import("@tauri-apps/api/window")
       .then(({ getCurrentWindow }) => getCurrentWindow().setTheme(resolved))
       .catch(() => undefined);
-  }, [settings.theme]);
+  }, [settings.theme, appliedDark]);
 
   // The document language drives spell check and assistive technology.
   useEffect(() => {
@@ -820,8 +816,7 @@ export default function App() {
     },
   ];
 
-  const isDark =
-    settings.theme === "dark" || (settings.theme === "system" && document.documentElement.classList.contains("dark"));
+  const isDark = settings.theme === "dark" || (settings.theme === "system" && appliedDark);
 
   const renderNav = (showLabels: boolean) => (
     <>
