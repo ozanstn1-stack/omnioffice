@@ -49,6 +49,7 @@ import {
 } from "./ToolsScreens";
 import { TEMPLATES } from "./templates";
 import { useOfficeTabs } from "../lib/office-store";
+import { useSettings } from "../lib/store";
 
 describe("local productivity tools render and act on their stores", () => {
   beforeEach(() => {
@@ -119,6 +120,32 @@ describe("local productivity tools render and act on their stores", () => {
     await waitFor(() => expect(useOfficeTabs.getState().tabs.length).toBe(1));
     // The workspace must be opened too: without it the click looked dead.
     expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("badges the Turkish templates and lists them first for a Turkish interface", async () => {
+    const cardNames = () =>
+      screen
+        .getAllByRole("button")
+        .filter((button) => button.className.includes("template-card"))
+        .map((button) => button.querySelector("strong")?.textContent);
+    const turkish = TEMPLATES.filter((template) => template.language === "tr").map((template) => template.name);
+    const english = useSettings.getState().settings;
+    try {
+      const { unmount } = render(<TemplatesScreen />);
+      expect(await screen.findByRole("heading", { name: "Templates" })).toBeInTheDocument();
+      expect(cardNames().slice(-turkish.length)).toEqual(turkish);
+      expect(screen.getAllByText("TR")).toHaveLength(turkish.length);
+      unmount();
+
+      useSettings.setState({ settings: { ...english, language: "tr" } });
+      const turkishScreen = render(<TemplatesScreen />);
+      expect(await screen.findByRole("heading", { name: "Şablonlar" })).toBeInTheDocument();
+      expect(cardNames().slice(0, turkish.length)).toEqual(turkish);
+      expect(screen.getAllByText("TR")[0].closest("button")?.textContent).toContain("Dilekçe");
+      turkishScreen.unmount();
+    } finally {
+      useSettings.setState({ settings: english });
+    }
   });
 
   it("renders the converter, cleaner and PDF forms screens", async () => {

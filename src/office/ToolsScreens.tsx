@@ -29,7 +29,7 @@ import {
   FileImage,
 } from "lucide-react";
 import { useT } from "../lib/i18n";
-import { errorMessage, reportError, useToasts } from "../lib/store";
+import { errorMessage, reportError, useSettings, useToasts } from "../lib/store";
 import {
   isAndroid,
   pickAndroidFiles,
@@ -49,7 +49,7 @@ import * as api from "../lib/office-api";
 import { Screen } from "../components/layout";
 import { compatibilityReport, gatingLossItems } from "../components/compatibility";
 import { useDataLossPrompt } from "../components/data-loss-dialog";
-import { TEMPLATES, templatesFor } from "./templates";
+import { orderTemplates, TEMPLATES, templatesFor } from "./templates";
 
 // ---------------------------------------------------------------------------
 // Notes
@@ -1046,8 +1046,9 @@ function escapeXml(value: string): string {
 export function TemplatesScreen({ onOpen }: { onOpen?: () => void } = {}) {
   const t = useT();
   const create = useOfficeTabs((state) => state.create);
+  const language = useSettings((state) => state.settings.language);
   const [filter, setFilter] = useState<"all" | "writer" | "calc" | "impress">("all");
-  const visible = filter === "all" ? TEMPLATES : templatesFor(filter);
+  const visible = orderTemplates(filter === "all" ? TEMPLATES : templatesFor(filter), language);
   return (
     <Screen title={t("templates.title")} subtitle={t("templates.subtitle")}>
       <div className="row">
@@ -1084,6 +1085,11 @@ export function TemplatesScreen({ onOpen }: { onOpen?: () => void } = {}) {
             </span>
             <strong>{template.name}</strong>
             <span className="muted">{template.description}</span>
+            {template.language === "tr" ? (
+              <span className="badge badge-accent template-lang" title={t("templates.turkish")}>
+                TR
+              </span>
+            ) : null}
           </button>
         ))}
       </div>
