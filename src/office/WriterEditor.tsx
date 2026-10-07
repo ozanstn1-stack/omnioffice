@@ -23,9 +23,12 @@ import {
   Image as ImageIcon,
   Indent,
   Italic,
+  Languages,
   Link2,
   List,
   ListOrdered,
+  Maximize2,
+  Minimize2,
   Minus,
   Outdent,
   Printer,
@@ -33,6 +36,8 @@ import {
   Save,
   Search,
   SeparatorHorizontal,
+  Sparkles,
+  SpellCheck,
   Strikethrough,
   Table as TableIcon,
   Underline,
@@ -40,6 +45,7 @@ import {
   MessageSquare,
   Columns2,
   Trash2,
+  Wand2,
   X,
 } from "lucide-react";
 import type { OfficeTab, TextDocument } from "../lib/office-store";
@@ -140,6 +146,10 @@ import {
 } from "./writer/find-replace";
 import { canProbeRegex, probeRegex, type ProbeStatus, type RegexProbe } from "./writer/regex-probe";
 import { StyleGallery } from "./writer/StyleGallery";
+import { applyAiText } from "./writer/ai-edit";
+import { WriterAiDialog, type WriterAiTask } from "./writer/WriterAiDialog";
+import { AI_EDIT_MAX_CHARS, useAiStatus } from "./ai/editor-ai";
+import type { AiEditResult } from "../lib/types";
 import { measureBlocks } from "./writer/measure";
 import { paginate, pageOfBlock, type Fragment, type PageLayout } from "./writer/pagination";
 import { LayoutList, ListTree, ListOrdered as TocIcon, RefreshCw } from "lucide-react";
@@ -206,6 +216,15 @@ function noteNumber(document: TextDocument, id: string): number {
   }
   return order.indexOf(id) + 1;
 }
+
+const AI_RIBBON: Array<{ task: WriterAiTask; icon: typeof Wand2 }> = [
+  { task: "rewrite", icon: Wand2 },
+  { task: "shorten", icon: Minimize2 },
+  { task: "expand", icon: Maximize2 },
+  { task: "fix", icon: SpellCheck },
+  { task: "translate", icon: Languages },
+  { task: "tone", icon: Sparkles },
+];
 
 export function WriterEditor({ tab }: { tab: WriterTab }) {
   const t = useT();
@@ -554,6 +573,77 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     return block?.type === "paragraph" ? block : null;
   };
 
+  // -------------------------------------------------------------------------
+  // AI actions on the selection / current paragraph
+  // -------------------------------------------------------------------------
+
+  const aiStatus = useAiStatus();
+  const [aiJob, setAiJob] = useState<{
+    task: WriterAiTask;
+    index: number;
+    from: number;
+    to: number;
+    original: string;
+    /** Paragraph runs the request was based on (DOM state when the model lags). */
+    baseRuns: Run[];
+    wholeParagraph: boolean;
+  } | null>(null);
+
+  const startAi = (task: WriterAiTask) => {
+    const push = useToasts.getState().push;
+    const active = window.document.activeElement as HTMLElement | null;
+    const scope = active?.dataset?.scope;
+    if (editingHeader || !active?.dataset?.blockIndex || (scope !== "body" && scope !== "page")) {
+      push({ kind: "info", title: t("ai.edit.noTarget") });
+      return;
+    }
+    const index = Number(active.dataset.blockIndex);
+    const block = document.blocks[index];
+    if (block?.type !== "paragraph") {
+      push({ kind: "info", title: t("ai.edit.noTarget") });
+      return;
+    }
+    const domRuns = domToRuns(active);
+    const baseRuns = domRuns.length > 0 ? domRuns : block.runs;
+    const text = runsText(baseRuns);
+    const range = selectedRange(active);
+    const [from, to] = range && range[1] > range[0] ? [range[0], Math.min(range[1], text.length)] : [0, text.length];
+    const original = text.slice(from, to);
+    if (!original.trim()) {
+      push({ kind: "info", title: t("ai.edit.noText") });
+      return;
+    }
+    if (original.length > AI_EDIT_MAX_CHARS) {
+      push({ kind: "error", title: t("ai.edit.tooLong", { max: AI_EDIT_MAX_CHARS }) });
+      return;
+    }
+    setAiJob({ task, index, from, to, original, baseRuns, wholeParagraph: !range || range[1] <= range[0] });
+  };
+
+  /** Accepting is one undoable `updateBlock` transaction on one paragraph. */
+  const acceptAi = (result: AiEditResult) => {
+    const job = aiJob;
+    if (!job) return;
+    setAiJob(null);
+    const current = document.blocks[job.index];
+    if (current?.type !== "paragraph" || runsText(current.runs) !== runsText(job.baseRuns)) {
+      useToasts.getState().push({ kind: "error", title: t("ai.edit.docChanged") });
+      return;
+    }
+    let runs = applyAiText(current.runs, job.from, job.to, result.text);
+    if (document.trackChanges) runs = trackRunChanges(current.runs, runs, revisionAuthor);
+    const after: Block = { ...current, runs };
+    const blocks = document.blocks.map((block, position) => (position === job.index ? after : block));
+    const model: TextDocument = { ...document, blocks };
+    historyRef.current = recordHistory(historyRef.current, document, {
+      label: `ai-${job.task}`,
+      operations: [{ kind: "updateBlock", index: job.index, before: current, after }],
+      after: model,
+    });
+    setHistoryDepth({ undo: historyRef.current.undo.length, redo: historyRef.current.redo.length });
+    edit(tab.id, () => model);
+  };
+
   const applyParaChange = (patch: Partial<ParaProps>) => {
     const index = activeIndex();
     if (index === null) return;
@@ -604,7 +694,12 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         // pending deletion.
         runs = trackRunChanges(block.runs, runs, revisionAuthor);
       }
-      updateBlock(index, { ...block, runs: runs.length > 0 ? runs : [emptyRun()] });
+      const nextRuns = runs.length > 0 ? runs : [emptyRun()];
+      // A blur that changed nothing must not push an undo step: it would sit
+      // on top of the real edit (typing, an accepted AI suggestion) and the
+      // first Undo would only revert this no-op.
+      if (JSON.stringify(nextRuns) === JSON.stringify(block.runs)) return;
+      updateBlock(index, { ...block, runs: nextRuns });
     } else if (block.type === "table") {
       // Table cells are handled by syncCell.
     }
@@ -1722,6 +1817,22 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
             <RibbonGroup label={t("writer.find")}>
               <ToolButton icon={<Search size={16} />} label={t("common.find")} onClick={() => setFindOpen(true)} />
             </RibbonGroup>
+            <RibbonGroup label={t("ai.edit.group")}>
+              {AI_RIBBON.map(({ task, icon: Icon }) => (
+                <ToolButton
+                  key={task}
+                  icon={<Icon size={16} />}
+                  keepFocus
+                  disabled={!aiStatus.configured || session.busy}
+                  title={
+                    aiStatus.configured
+                      ? t(`ai.edit.btn.${task}`)
+                      : `${t(`ai.edit.btn.${task}`)} - ${t("ai.edit.notConfigured")}`
+                  }
+                  onClick={() => startAi(task)}
+                />
+              ))}
+            </RibbonGroup>
           </>
         ) : null}
 
@@ -2300,6 +2411,18 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
             </div>
           </div>
         </Dialog>
+      ) : null}
+
+      {aiJob ? (
+        <WriterAiDialog
+          task={aiJob.task}
+          docId={tab.id}
+          status={aiStatus}
+          original={aiJob.original}
+          wholeParagraph={aiJob.wholeParagraph}
+          onAccept={acceptAi}
+          onClose={() => setAiJob(null)}
+        />
       ) : null}
 
       {insertTable ? (

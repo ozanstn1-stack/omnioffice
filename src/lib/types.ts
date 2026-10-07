@@ -369,11 +369,12 @@ export interface TranslateOptions {
   bilingual: boolean;
 }
 
-export type ReasoningEffort = "low" | "high" | "max";
+/** "medium" and "xhigh" are accepted by the backend (Anthropic effort levels) but have no UI control yet. */
+export type ReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface AiSettingsView {
   configured: boolean;
-  keyStorage: "none" | "dpapi" | "plain" | string;
+  keyStorage: "none" | "dpapi" | "keystore" | "plain" | string;
   maskedKey: string;
   baseUrl: string;
   model: string;
@@ -384,6 +385,18 @@ export interface AiSettingsView {
   contextTokens: number;
   /** Hard API maximum for generated tokens (384K on DeepSeek V4). */
   maxOutputTokens: number;
+  /** Provider id ("deepseek" | "ollama") and its short display name. */
+  provider?: string;
+  providerLabel?: string;
+  /** Key state per provider id: keys are stored separately for each provider. */
+  providerKeys?: Record<string, AiKeyState>;
+}
+
+/** Whether a key is stored for one provider (never the key itself). */
+export interface AiKeyState {
+  configured: boolean;
+  maskedKey: string;
+  keyStorage: "none" | "dpapi" | "keystore" | "plain" | string;
 }
 
 export interface AiSettingsInput {
@@ -414,6 +427,49 @@ export interface AiTextResult {
   text: string;
   pages: number;
   characters: number;
+  model: string;
+  elapsedMs: number;
+}
+
+/** In-editor AI actions (`ai_edit_text`). */
+export type AiEditTask =
+  | "rewrite"
+  | "shorten"
+  | "expand"
+  | "fix"
+  | "translate"
+  | "tone"
+  | "summarize_column"
+  | "suggest_formula"
+  | "outline_to_slides";
+
+export interface AiEditOptions {
+  /** Target language of `translate`; reply language of the summary / outline tasks. */
+  language?: string;
+  tone?: string;
+  /** Extra data the task needs, e.g. sheet headers for `suggest_formula`. */
+  context?: string;
+}
+
+export interface AiEditRequest {
+  task: AiEditTask;
+  text: string;
+  options?: AiEditOptions;
+  jobId: string;
+  /** Provider and host the user consented to; the backend refuses a request when the saved settings differ. */
+  expectedProvider: string;
+  expectedHost: string;
+}
+
+export interface AiOutlineSlide {
+  title: string;
+  bullets: string[];
+}
+
+export interface AiEditResult {
+  text: string;
+  /** Validated slides, only for `outline_to_slides`. */
+  slides: AiOutlineSlide[] | null;
   model: string;
   elapsedMs: number;
 }

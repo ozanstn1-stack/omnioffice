@@ -2464,3 +2464,157 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* In-editor AI dialog (Writer / Calc / Impress). */
+.ai-dlg-overlay {
+  z-index: 70;
+}
+
+.ai-dlg {
+  max-width: 760px;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+
+.ai-dlg-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ai-dlg-head h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ai-dlg-body {
+  padding: 14px 16px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 80px;
+}
+
+.ai-dlg-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.ai-dlg-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+.ai-dlg-consent p,
+.ai-dlg-running p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.ai-dlg-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ai-dlg-willsend {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ai-dlg-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.ai-dlg-form select,
+.ai-dlg-form input,
+.ai-dlg-form textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.ai-dlg-form textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+
+.ai-dlg-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.ai-dlg-pane {
+  min-width: 0;
+}
+
+.ai-dlg-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.ai-dlg-text {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.ai-dlg-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ai-dlg-list ul {
+  margin: 2px 0 6px;
+  padding-left: 18px;
+  color: var(--muted);
+}
+
+.ai-dlg-error {
+  margin: 0;
+  color: var(--danger, #dc2626);
+}
+
+@media (max-width: 760px) {
+  .ai-dlg-overlay {
+    padding: 12px;
+  }
+  .ai-dlg-compare {
+    grid-template-columns: 1fr;
+  }
+}

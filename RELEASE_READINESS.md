@@ -1,11 +1,34 @@
-# Release Readiness — OmniOffice 4.1.0
+# Release Readiness — OmniOffice 4.2.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
 
-## Implemented (this cycle, 4.1.0) - PDF tools (plan phase 3)
+## Implemented (this cycle, 4.2.0) - AI and keys (plan phase 4)
+
+- `crates/aicore/src/anthropic.rs`: Messages API client (x-api-key,
+  anthropic-version 2023-06-01, SSE, models pagination); Gemini model list via
+  the OpenAI-compatible listing; per-provider key files; same-origin redirects
+  only; truncation reported as an error.
+- `ai_edit_text` plus Writer/Calc/Impress AI dialogs with consent per
+  document, provider and data category; formula allow-list checks.
+- Android Keystore (AES-256-GCM) secret storage through a Tauri mobile plugin;
+  the full Android build, Kotlin unit tests and the emulator launch test passed
+  on the branch before release.
+- An independent review found seven issues (truncated answers accepted, key
+  forwarded on redirects, one key for all providers, effort default, consent
+  scope, formula safety, minor items); all fixed with tests.
+- Tests: aicore 74, app crate 131, frontend 837.
+
+### Not done in this pass (honest)
+
+- Live Google Drive / OneDrive OAuth was not tested: it needs OAuth client IDs
+  created by the project owner. Android has no custom-scheme OAuth redirect yet.
+- The Claude provider was not exercised against the live API (tests use local
+  mock servers); the Keystore was exercised only on the CI emulator.
+
+## Implemented in 4.1.0 - PDF tools (plan phase 3)
 
 - `render.rs` `render_page_region` + a two-document cache, `page_tile`
   command, `src/lib/tiles.ts` (tile math, LRU, request queue) and the Reader

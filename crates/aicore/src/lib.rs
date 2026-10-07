@@ -14,8 +14,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+pub mod anthropic;
 pub mod prompts;
 
+pub use anthropic::{ANTHROPIC_BASE_URL, ANTHROPIC_DEFAULT_MODEL, ANTHROPIC_MODELS};
 pub use prompts::{chunk_text, summarize_prompt_with_budget, Plan};
 
 pub const DEFAULT_BASE_URL: &str = "https://api.deepseek.com";
@@ -143,6 +145,58 @@ pub fn parse_ollama_models(body: &str) -> Vec<ModelInfo> {
     models
 }
 
+/// Parses Gemini model listings. The OpenAI-compatible listing
+/// (`{base}/openai/models`, `{"data":[{"id":"models/gemini-2.0-flash"}]}`) is
+/// what the client requests; the native shape (`{"models":[{"name":
+/// "models/gemini-...","supportedGenerationMethods":[..]}]}`) is understood as
+/// well. The `models/` prefix is stripped so the id can be used as the chat
+/// model, and native entries that cannot `generateContent` (embedding-only
+/// models, for example) are dropped.
+pub fn parse_gemini_models(body: &str) -> Vec<ModelInfo> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
+        return Vec::new();
+    };
+    let mut models: Vec<ModelInfo> = Vec::new();
+    if let Some(entries) = value.get("models").and_then(|models| models.as_array()) {
+        for entry in entries {
+            if let Some(methods) = entry.get("supportedGenerationMethods").and_then(|methods| methods.as_array()) {
+                if !methods.iter().any(|method| method.as_str() == Some("generateContent")) {
+                    continue;
+                }
+            }
+            let Some(name) = entry.get("name").or_else(|| entry.get("id")).and_then(|name| name.as_str()) else {
+                continue;
+            };
+            let id = name.trim().trim_start_matches("models/");
+            if id.is_empty() {
+                continue;
+            }
+            let number =
+                |key: &str| entry.get(key).and_then(|value| value.as_u64()).and_then(|value| u32::try_from(value).ok());
+            models.push(ModelInfo {
+                id: id.to_string(),
+                label: entry
+                    .get("displayName")
+                    .and_then(|name| name.as_str())
+                    .filter(|name| !name.trim().is_empty())
+                    .map(|name| name.to_string()),
+                context_tokens: number("inputTokenLimit"),
+                max_output_tokens: number("outputTokenLimit"),
+                local: false,
+            });
+        }
+    }
+    for mut model in parse_openai_models(body) {
+        model.id = model.id.trim_start_matches("models/").to_string();
+        if !model.id.is_empty() {
+            models.push(model);
+        }
+    }
+    models.sort_by(|a, b| a.id.cmp(&b.id));
+    models.dedup_by(|a, b| a.id == b.id);
+    models
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
@@ -151,6 +205,7 @@ pub enum ProviderKind {
     OpenAiCompatible,
     Ollama,
     Gemini,
+    Anthropic,
     Custom,
 }
 
@@ -161,6 +216,7 @@ impl ProviderKind {
             Self::OpenAiCompatible => "openai_compatible",
             Self::Ollama => "ollama",
             Self::Gemini => "gemini",
+            Self::Anthropic => "anthropic",
             Self::Custom => "custom",
         }
     }
@@ -172,6 +228,7 @@ impl ProviderKind {
             "openai_compatible" | "openai" | "open_ai" | "compatible" => Some(Self::OpenAiCompatible),
             "ollama" | "local" => Some(Self::Ollama),
             "gemini" | "google" | "google_gemini" => Some(Self::Gemini),
+            "anthropic" | "claude" | "anthropic_claude" => Some(Self::Anthropic),
             "custom" | "other" => Some(Self::Custom),
             _ => None,
         }
@@ -183,6 +240,7 @@ impl ProviderKind {
             Self::OpenAiCompatible => "OpenAI-compatible",
             Self::Ollama => "Ollama (local)",
             Self::Gemini => "Google Gemini",
+            Self::Anthropic => "Anthropic (Claude)",
             Self::Custom => "Custom endpoint",
         }
     }
@@ -193,8 +251,34 @@ impl ProviderKind {
             Self::OpenAiCompatible => "https://api.openai.com/v1",
             Self::Ollama => "http://localhost:11434",
             Self::Gemini => "https://generativelanguage.googleapis.com/v1beta",
+            Self::Anthropic => ANTHROPIC_BASE_URL,
             Self::Custom => "",
         }
+    }
+
+    /// Model preselected when the provider is chosen (`None`: the user picks).
+    pub fn default_model(self) -> Option<&'static str> {
+        match self {
+            Self::DeepSeek => Some(DEFAULT_MODEL),
+            Self::Anthropic => Some(ANTHROPIC_DEFAULT_MODEL),
+            Self::Gemini => Some("gemini-2.0-flash"),
+            Self::Ollama => Some("llama3.2"),
+            Self::OpenAiCompatible | Self::Custom => None,
+        }
+    }
+
+    /// True when the document text stays on this computer / local network.
+    pub fn is_local(self) -> bool {
+        self == Self::Ollama
+    }
+}
+
+/// Static model suggestions for a provider (shown before, or without, live
+/// discovery). Providers without their own list keep the DeepSeek suggestions.
+pub fn suggested_models(kind: ProviderKind) -> &'static [(&'static str, &'static str)] {
+    match kind {
+        ProviderKind::Anthropic => ANTHROPIC_MODELS,
+        _ => SUGGESTED_MODELS,
     }
 }
 
@@ -222,6 +306,9 @@ impl ProviderCapabilities {
             ProviderKind::Gemini => {
                 Self { chat: true, embeddings: true, vision: true, structured_output: true, streaming: true }
             }
+            ProviderKind::Anthropic => {
+                Self { chat: true, embeddings: false, vision: true, structured_output: false, streaming: true }
+            }
             ProviderKind::Custom => {
                 Self { chat: true, embeddings: false, vision: false, structured_output: false, streaming: true }
             }
@@ -242,6 +329,9 @@ pub fn provider_notes(kind: ProviderKind) -> &'static str {
             "Local models. Ollama runs on your computer and the document text never leaves the computer."
         }
         ProviderKind::Gemini => "Cloud API. The document text is sent to Google Gemini together with your API key.",
+        ProviderKind::Anthropic => {
+            "Cloud API. The document text is sent to Anthropic's API (api.anthropic.com) together with your API key from console.anthropic.com."
+        }
         ProviderKind::Custom => {
             "Custom endpoint. The document text is sent wherever that endpoint points; check its privacy policy."
         }
@@ -319,7 +409,16 @@ fn is_redirect_target_allowed(url: &reqwest::Url, allow_loopback_http: bool) -> 
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Scheme, host and port identify an origin. `reqwest` drops `Authorization`
+/// on a cross-host redirect but not custom headers such as Anthropic's
+/// `x-api-key`, so the client never follows a redirect to another origin.
+fn is_same_origin(a: &reqwest::Url, b: &reqwest::Url) -> bool {
+    a.scheme() == b.scheme()
+        && a.host_str().map(str::to_ascii_lowercase) == b.host_str().map(str::to_ascii_lowercase)
+        && a.port_or_known_default() == b.port_or_known_default()
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiConfig {
     pub api_key: String,
@@ -335,7 +434,9 @@ pub struct AiConfig {
     /// Ignored for models that are not DeepSeek V4.
     #[serde(default = "default_thinking")]
     pub thinking: bool,
-    /// "low" | "high" | "max" (DeepSeek maps medium/xhigh to high).
+    /// "low" | "medium" | "high" | "xhigh" | "max". DeepSeek maps medium/xhigh
+    /// to high; Anthropic receives it as `output_config.effort` (always, except
+    /// for Haiku, which has no effort setting).
     #[serde(default = "default_reasoning_effort")]
     pub reasoning_effort: String,
     /// Input budget in tokens (1M maximum). Controls how much document text is
@@ -348,6 +449,24 @@ pub struct AiConfig {
     /// Optional embedding model, used by providers that expose embeddings.
     #[serde(default)]
     pub embedding_model: Option<String>,
+}
+
+/// Manual `Debug`: the API key must never reach a log line or a panic message.
+impl std::fmt::Debug for AiConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AiConfig")
+            .field("api_key", &if self.api_key.is_empty() { "<empty>" } else { "<redacted>" })
+            .field("base_url", &self.base_url)
+            .field("model", &self.model)
+            .field("temperature", &self.temperature)
+            .field("max_tokens", &self.max_tokens)
+            .field("thinking", &self.thinking)
+            .field("reasoning_effort", &self.reasoning_effort)
+            .field("context_tokens", &self.context_tokens)
+            .field("provider", &self.provider)
+            .field("embedding_model", &self.embedding_model)
+            .finish()
+    }
 }
 
 pub fn default_context_tokens() -> u32 {
@@ -454,6 +573,10 @@ pub enum AiError {
     NoText,
     #[error("request was too large for the model context")]
     TooLarge,
+    /// The provider stopped before the answer was complete: the output limit
+    /// was reached (`max_tokens` / `length`) or the stream ended early.
+    #[error("{0} cut the answer off before it was complete (output limit reached or connection ended early)")]
+    Truncated(String),
     #[error("{0}")]
     ProviderUnreachable(String),
     #[error("invalid provider URL: {0}")]
@@ -543,6 +666,8 @@ struct ChatResponseBody {
 #[derive(Debug, Deserialize)]
 struct ChatChoice {
     message: ChatMessageContent,
+    #[serde(default)]
+    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -577,6 +702,8 @@ struct StreamChunk {
 #[derive(Debug, Deserialize)]
 struct StreamChoice {
     delta: StreamDelta,
+    #[serde(default)]
+    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -636,6 +763,9 @@ struct OllamaChatResponse {
     message: OllamaMessage,
     #[serde(default)]
     done: bool,
+    /// "stop" for a natural end, "length" when `num_predict` ran out.
+    #[serde(default)]
+    done_reason: String,
     #[serde(default)]
     error: String,
 }
@@ -651,10 +781,35 @@ struct OllamaMessage {
 /// The name is kept for backwards compatibility: it talks to DeepSeek by
 /// default, and to any OpenAI-compatible, Ollama, Gemini or custom endpoint
 /// selected with [`ProviderKind`].
-#[derive(Debug)]
 pub struct DeepSeekClient {
     config: AiConfig,
     http: reqwest::Client,
+}
+
+impl std::fmt::Debug for DeepSeekClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // `AiConfig` redacts the key; the HTTP client is not worth printing.
+        f.debug_struct("DeepSeekClient").field("config", &self.config).finish_non_exhaustive()
+    }
+}
+
+/// How often a pending request or an idle stream re-checks the cancel token.
+const CANCEL_POLL: Duration = Duration::from_millis(100);
+
+/// Awaits `future` but gives up with [`AiError::Cancelled`] shortly after the
+/// token is set, so Stop aborts a request that is still connecting or waiting
+/// for the next chunk instead of waiting for the server.
+async fn until_cancelled<T>(cancel: &CancelToken, future: impl std::future::Future<Output = T>) -> AiResult<T> {
+    use futures_util::future::{select, Either};
+    cancel.check()?;
+    futures_util::pin_mut!(future);
+    loop {
+        let tick = Box::pin(tokio::time::sleep(CANCEL_POLL));
+        match select(future.as_mut(), tick).await {
+            Either::Left((value, _)) => return Ok(value),
+            Either::Right(_) => cancel.check()?,
+        }
+    }
 }
 
 /// Hard cap for a provider response (non-streaming body or the accumulated
@@ -684,6 +839,14 @@ impl DeepSeekClient {
                         "a redirect to a non-local http:// endpoint was refused to keep the API key encrypted in transit"
                             .to_string(),
                     );
+                }
+                if let Some(previous) = attempt.previous().last() {
+                    if !is_same_origin(previous, attempt.url()) {
+                        return attempt.error(
+                            "a redirect to a different host was refused so the API key is only ever sent to the configured server"
+                                .to_string(),
+                        );
+                    }
                 }
                 if attempt.previous().len() >= 5 {
                     attempt.stop()
@@ -719,7 +882,24 @@ impl DeepSeekClient {
         let base = self.config.base_url.trim().trim_end_matches('/');
         match self.provider() {
             ProviderKind::Ollama => format!("{base}/api/tags"),
+            ProviderKind::Anthropic => anthropic::models_endpoint(base),
+            // The native v1beta listing wants a different credential header
+            // than the chat route; the OpenAI-compatible listing takes the
+            // same Bearer key as `{base}/openai/chat/completions`.
+            ProviderKind::Gemini => format!("{base}/openai/models"),
             _ => format!("{base}/models"),
+        }
+    }
+
+    /// Adds the provider's credentials: Anthropic uses `x-api-key` plus the API
+    /// version header, Ollama none, everyone else a Bearer token.
+    fn authorize(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match self.provider() {
+            ProviderKind::Ollama => builder,
+            ProviderKind::Anthropic => builder
+                .header("x-api-key", self.config.api_key.trim())
+                .header("anthropic-version", anthropic::ANTHROPIC_VERSION),
+            _ => builder.bearer_auth(self.config.api_key.trim()),
         }
     }
 
@@ -728,12 +908,10 @@ impl DeepSeekClient {
     /// empty list and the caller keeps its configured model. No API key is ever
     /// logged; on failure only the provider label is named.
     pub async fn discover_models(&self) -> AiResult<Vec<ModelInfo>> {
-        let builder = self.http.get(self.models_endpoint());
-        let builder = if self.provider() == ProviderKind::Ollama {
-            builder
-        } else {
-            builder.bearer_auth(self.config.api_key.trim())
-        };
+        if self.provider() == ProviderKind::Anthropic {
+            return self.discover_anthropic_models().await;
+        }
+        let builder = self.authorize(self.http.get(self.models_endpoint()));
         let response = builder.send().await.map_err(|error| self.unreachable(error))?;
         let status = response.status();
         let body = self.response_text(response).await?;
@@ -742,8 +920,41 @@ impl DeepSeekClient {
         }
         Ok(match self.provider() {
             ProviderKind::Ollama => parse_ollama_models(&body),
+            ProviderKind::Gemini => parse_gemini_models(&body),
             _ => parse_openai_models(&body),
         })
+    }
+
+    /// `GET /v1/models` is cursor-paginated (`has_more` / `last_id`); the page
+    /// count is capped so a misbehaving endpoint cannot loop forever.
+    async fn discover_anthropic_models(&self) -> AiResult<Vec<ModelInfo>> {
+        let endpoint = self.models_endpoint();
+        let mut models: Vec<ModelInfo> = Vec::new();
+        let mut after: Option<String> = None;
+        for _ in 0..anthropic::MODELS_MAX_PAGES {
+            let mut query = vec![("limit", anthropic::MODELS_PAGE_LIMIT.to_string())];
+            if let Some(cursor) = &after {
+                query.push(("after_id", cursor.clone()));
+            }
+            let response = self
+                .authorize(self.http.get(&endpoint))
+                .query(&query)
+                .send()
+                .await
+                .map_err(|error| self.unreachable(error))?;
+            let status = response.status();
+            let body = self.response_text(response).await?;
+            if !status.is_success() {
+                return Err(anthropic::map_http_error(status.as_u16(), &body, &self.provider_name()));
+            }
+            let (page, next) = anthropic::parse_models_page(&body);
+            models.extend(page);
+            match next {
+                Some(cursor) if after.as_deref() != Some(cursor.as_str()) => after = Some(cursor),
+                _ => break,
+            }
+        }
+        Ok(anthropic::finish_models(models))
     }
 
     fn endpoint(&self) -> String {
@@ -751,6 +962,7 @@ impl DeepSeekClient {
         match self.provider() {
             ProviderKind::Ollama => format!("{base}/api/chat"),
             ProviderKind::Gemini => format!("{base}/openai/chat/completions"),
+            ProviderKind::Anthropic => anthropic::messages_endpoint(base),
             ProviderKind::DeepSeek | ProviderKind::OpenAiCompatible | ProviderKind::Custom => {
                 format!("{base}/chat/completions")
             }
@@ -758,12 +970,7 @@ impl DeepSeekClient {
     }
 
     fn request(&self) -> reqwest::RequestBuilder {
-        let builder = self.http.post(self.endpoint());
-        if self.provider() == ProviderKind::Ollama {
-            builder
-        } else {
-            builder.bearer_auth(self.config.api_key.trim())
-        }
+        self.authorize(self.http.post(self.endpoint()))
     }
 
     /// Reads a response body with a hard byte cap. The cap protects the process
@@ -800,10 +1007,10 @@ impl DeepSeekClient {
 
     /// Non-streaming completion (used for tests and short tasks).
     pub async fn chat(&self, messages: &[ChatMessage], options: ChatOptions) -> AiResult<String> {
-        if self.provider() == ProviderKind::Ollama {
-            self.chat_ollama(messages, &options).await
-        } else {
-            self.chat_openai_compatible(messages, &options).await
+        match self.provider() {
+            ProviderKind::Ollama => self.chat_ollama(messages, &options).await,
+            ProviderKind::Anthropic => self.chat_anthropic(messages, &options).await,
+            _ => self.chat_openai_compatible(messages, &options).await,
         }
     }
 
@@ -818,12 +1025,57 @@ impl DeepSeekClient {
         }
         let parsed: ChatResponseBody =
             serde_json::from_str(&text).map_err(|_| AiError::InvalidResponse(self.provider_name()))?;
-        parsed
-            .choices
-            .into_iter()
-            .next()
-            .and_then(|choice| choice.message.text())
-            .ok_or_else(|| AiError::InvalidResponse(self.provider_name()))
+        let choice = parsed.choices.into_iter().next().ok_or_else(|| AiError::InvalidResponse(self.provider_name()))?;
+        if choice.finish_reason.as_deref() == Some("length") {
+            return Err(AiError::Truncated(self.provider_name()));
+        }
+        choice.message.text().ok_or_else(|| AiError::InvalidResponse(self.provider_name()))
+    }
+
+    async fn chat_anthropic(&self, messages: &[ChatMessage], options: &ChatOptions) -> AiResult<String> {
+        let body = anthropic::build_request(&self.config, messages, options, false);
+        let response = self.request().json(&body).send().await.map_err(|error| self.unreachable(error))?;
+        let status = response.status();
+        let text = self.response_text(response).await?;
+        if !status.is_success() {
+            return Err(anthropic::map_http_error(status.as_u16(), &text, &self.provider_name()));
+        }
+        anthropic::parse_message_response(&text, &self.provider_name())
+    }
+
+    async fn chat_stream_anthropic(
+        &self,
+        messages: &[ChatMessage],
+        options: ChatOptions,
+        cancel: &CancelToken,
+        on_delta: &mut (dyn FnMut(&str) + Send),
+        on_reasoning: &mut (dyn FnMut(&str) + Send),
+    ) -> AiResult<String> {
+        let body = anthropic::build_request(&self.config, messages, &options, true);
+        let response = until_cancelled(cancel, self.request().json(&body).send())
+            .await?
+            .map_err(|error| self.unreachable(error))?;
+        let status = response.status();
+        if !status.is_success() {
+            let text = self.response_text(response).await.unwrap_or_default();
+            return Err(anthropic::map_http_error(status.as_u16(), &text, &self.provider_name()));
+        }
+        let provider = self.provider_name();
+        let mut parser = anthropic::StreamParser::default();
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = until_cancelled(cancel, stream.next()).await? {
+            cancel.check()?;
+            let bytes = chunk.map_err(|error| self.unreachable(error))?;
+            if parser.held_bytes() + bytes.len() > MAX_RESPONSE_BYTES {
+                return Err(AiError::Server(
+                    provider,
+                    format!("the provider stream exceeded the {} MB safety limit", MAX_RESPONSE_BYTES / (1024 * 1024)),
+                ));
+            }
+            parser.feed(&bytes, &provider, on_delta, on_reasoning)?;
+        }
+        cancel.check()?;
+        parser.finish(&provider, on_delta, on_reasoning)
     }
 
     async fn chat_ollama(&self, messages: &[ChatMessage], options: &ChatOptions) -> AiResult<String> {
@@ -839,6 +1091,9 @@ impl DeepSeekClient {
             serde_json::from_str(&text).map_err(|_| AiError::InvalidResponse(self.provider_name()))?;
         if !parsed.error.trim().is_empty() {
             return Err(AiError::Server(self.provider_name(), parsed.error));
+        }
+        if parsed.done_reason == "length" {
+            return Err(AiError::Truncated(self.provider_name()));
         }
         if parsed.message.content.trim().is_empty() {
             return Err(AiError::InvalidResponse(self.provider_name()));
@@ -857,11 +1112,15 @@ impl DeepSeekClient {
         on_delta: &mut (dyn FnMut(&str) + Send),
         on_reasoning: &mut (dyn FnMut(&str) + Send),
     ) -> AiResult<String> {
-        if self.provider() == ProviderKind::Ollama {
-            let _ = on_reasoning;
-            self.chat_stream_ollama(messages, options, cancel, on_delta).await
-        } else {
-            self.chat_stream_openai_compatible(messages, options, cancel, on_delta, on_reasoning).await
+        match self.provider() {
+            ProviderKind::Ollama => {
+                let _ = on_reasoning;
+                self.chat_stream_ollama(messages, options, cancel, on_delta).await
+            }
+            ProviderKind::Anthropic => {
+                self.chat_stream_anthropic(messages, options, cancel, on_delta, on_reasoning).await
+            }
+            _ => self.chat_stream_openai_compatible(messages, options, cancel, on_delta, on_reasoning).await,
         }
     }
 
@@ -874,7 +1133,9 @@ impl DeepSeekClient {
         on_reasoning: &mut (dyn FnMut(&str) + Send),
     ) -> AiResult<String> {
         let body = ChatRequestBody::new(&self.config, messages, &options, true);
-        let response = self.request().json(&body).send().await.map_err(|error| self.unreachable(error))?;
+        let response = until_cancelled(cancel, self.request().json(&body).send())
+            .await?
+            .map_err(|error| self.unreachable(error))?;
         let status = response.status();
         if !status.is_success() {
             let text = self.response_text(response).await.unwrap_or_default();
@@ -885,7 +1146,8 @@ impl DeepSeekClient {
         let mut buffer = String::new();
         let mut full = String::new();
         let mut reasoning_text = String::new();
-        while let Some(chunk) = stream.next().await {
+        let mut hit_length_limit = false;
+        while let Some(chunk) = until_cancelled(cancel, stream.next()).await? {
             cancel.check()?;
             let bytes = chunk.map_err(|error| self.unreachable(error))?;
             if full.len() + reasoning_text.len() + buffer.len() + bytes.len() > MAX_RESPONSE_BYTES {
@@ -908,6 +1170,9 @@ impl DeepSeekClient {
                 }
                 if let Ok(parsed) = serde_json::from_str::<StreamChunk>(payload) {
                     if let Some(choice) = parsed.choices.into_iter().next() {
+                        if choice.finish_reason.as_deref() == Some("length") {
+                            hit_length_limit = true;
+                        }
                         if let Some(reasoning) = choice.delta.reasoning_content {
                             if !reasoning.is_empty() {
                                 reasoning_text.push_str(&reasoning);
@@ -923,6 +1188,9 @@ impl DeepSeekClient {
                     }
                 }
             }
+        }
+        if hit_length_limit {
+            return Err(AiError::Truncated(self.provider_name()));
         }
         if full.trim().is_empty() {
             // Thinking mode can consume the whole budget before any answer
@@ -944,7 +1212,9 @@ impl DeepSeekClient {
         on_delta: &mut (dyn FnMut(&str) + Send),
     ) -> AiResult<String> {
         let body = OllamaChatRequestBody::new(&self.config, messages, &options, true);
-        let response = self.request().json(&body).send().await.map_err(|error| self.unreachable(error))?;
+        let response = until_cancelled(cancel, self.request().json(&body).send())
+            .await?
+            .map_err(|error| self.unreachable(error))?;
         let status = response.status();
         if !status.is_success() {
             let text = self.response_text(response).await.unwrap_or_default();
@@ -957,7 +1227,8 @@ impl DeepSeekClient {
         let mut buffer = String::new();
         let mut full = String::new();
         let mut finished = false;
-        while let Some(chunk) = stream.next().await {
+        let mut hit_length_limit = false;
+        while let Some(chunk) = until_cancelled(cancel, stream.next()).await? {
             cancel.check()?;
             let bytes = chunk.map_err(|error| self.unreachable(error))?;
             if full.len() + buffer.len() + bytes.len() > MAX_RESPONSE_BYTES {
@@ -983,6 +1254,7 @@ impl DeepSeekClient {
                     on_delta(&parsed.message.content);
                 }
                 if parsed.done {
+                    hit_length_limit = parsed.done_reason == "length";
                     finished = true;
                     break;
                 }
@@ -1005,6 +1277,9 @@ impl DeepSeekClient {
                 }
             }
         }
+        if hit_length_limit {
+            return Err(AiError::Truncated(self.provider_name()));
+        }
         if full.trim().is_empty() {
             return Err(AiError::InvalidResponse(self.provider_name()));
         }
@@ -1014,8 +1289,12 @@ impl DeepSeekClient {
     /// Cheap connectivity/credentials check for the settings screen.
     pub async fn test_connection(&self) -> AiResult<String> {
         let messages = vec![ChatMessage::user("Reply with the single word: ready")];
-        let reply = self.chat(&messages, ChatOptions { temperature: Some(0.0), max_tokens: Some(16) }).await?;
-        Ok(reply.trim().to_string())
+        // A cut-off reply still proves the endpoint and the key work.
+        match self.chat(&messages, ChatOptions { temperature: Some(0.0), max_tokens: Some(16) }).await {
+            Ok(reply) => Ok(reply.trim().to_string()),
+            Err(AiError::Truncated(_)) => Ok("ready".to_string()),
+            Err(error) => Err(error),
+        }
     }
 }
 
@@ -1093,6 +1372,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn gemini_model_listings_are_parsed_in_both_shapes() {
+        // OpenAI-compatible listing: ids carry the `models/` prefix.
+        let compat = r#"{"object":"list","data":[
+            {"id":"models/gemini-2.5-flash","object":"model","owned_by":"google"},
+            {"id":"models/gemini-2.0-flash","object":"model","owned_by":"google"},
+            {"id":"models/gemini-2.0-flash","object":"model"}]}"#;
+        let ids: Vec<String> = parse_gemini_models(compat).into_iter().map(|model| model.id).collect();
+        assert_eq!(ids, ["gemini-2.0-flash", "gemini-2.5-flash"]);
+
+        // Native listing: only models that support generateContent are kept.
+        let native = r#"{"models":[
+            {"name":"models/gemini-2.5-pro","displayName":"Gemini 2.5 Pro","inputTokenLimit":1048576,"outputTokenLimit":65536,
+             "supportedGenerationMethods":["generateContent","countTokens"]},
+            {"name":"models/text-embedding-004","supportedGenerationMethods":["embedContent"]},
+            {"name":"models/gemini-2.0-flash"}]}"#;
+        let models = parse_gemini_models(native);
+        let ids: Vec<&str> = models.iter().map(|model| model.id.as_str()).collect();
+        assert_eq!(ids, ["gemini-2.0-flash", "gemini-2.5-pro"]);
+        assert_eq!(models[1].label.as_deref(), Some("Gemini 2.5 Pro"));
+        assert_eq!(models[1].context_tokens, Some(1_048_576));
+        assert_eq!(models[1].max_output_tokens, Some(65_536));
+
+        // The generic OpenAI parser cannot read the native shape - the original bug.
+        assert!(parse_openai_models(native).is_empty());
+        assert!(parse_gemini_models("nonsense").is_empty());
+    }
+
+    #[test]
     fn provider_url_requires_https_for_remote_hosts() {
         assert_eq!(normalize_base_url(" https://api.deepseek.com/ ").unwrap(), "https://api.deepseek.com");
         assert_eq!(normalize_base_url("https://api.openai.com/v1/").unwrap(), "https://api.openai.com/v1");
@@ -1121,6 +1428,28 @@ mod tests {
         assert!(!is_redirect_target_allowed(&public_http, true));
         assert!(!is_redirect_target_allowed(&loopback_http, false));
         assert!(is_redirect_target_allowed(&loopback_http, true));
+    }
+
+    #[test]
+    fn redirects_must_stay_on_the_same_origin() {
+        let url = |value: &str| reqwest::Url::parse(value).unwrap();
+        assert!(is_same_origin(&url("https://api.anthropic.com/v1/messages"), &url("https://API.anthropic.com/other")));
+        assert!(is_same_origin(&url("https://api.example.com/a"), &url("https://api.example.com:443/b")));
+        assert!(!is_same_origin(&url("https://api.example.com/a"), &url("https://evil.example.net/a")));
+        assert!(!is_same_origin(&url("https://api.example.com/a"), &url("http://api.example.com/a")));
+        assert!(!is_same_origin(&url("http://127.0.0.1:1000/a"), &url("http://127.0.0.1:2000/a")));
+    }
+
+    #[test]
+    fn debug_output_never_contains_the_api_key() {
+        let config = AiConfig { api_key: "sk-super-secret".into(), ..Default::default() };
+        let formatted = format!("{config:?}");
+        assert!(!formatted.contains("sk-super-secret"), "{formatted}");
+        assert!(formatted.contains("<redacted>"), "{formatted}");
+        let client = DeepSeekClient::new(config).expect("client");
+        let formatted = format!("{client:?}");
+        assert!(!formatted.contains("sk-super-secret"), "{formatted}");
+        assert!(format!("{:?}", AiConfig::default()).contains("<empty>"));
     }
 
     #[test]

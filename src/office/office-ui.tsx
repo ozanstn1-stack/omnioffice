@@ -145,6 +145,7 @@ export function ToolButton({
   active,
   disabled,
   title,
+  keepFocus,
 }: {
   icon?: ReactNode;
   label?: string;
@@ -152,11 +153,14 @@ export function ToolButton({
   active?: boolean;
   disabled?: boolean;
   title?: string;
+  /** Keeps the text selection / focus of the editing surface when pressed. */
+  keepFocus?: boolean;
 }) {
   return (
     <button
       type="button"
       className={`tool-btn${active ? " is-active" : ""}${label ? "" : " is-icon-only"}`}
+      onMouseDown={keepFocus ? (event) => event.preventDefault() : undefined}
       onClick={onClick}
       disabled={disabled}
       title={title ?? label}

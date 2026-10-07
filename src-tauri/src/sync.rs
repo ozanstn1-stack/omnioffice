@@ -210,15 +210,7 @@ fn save_config_file(app: &AppHandle, config: &SyncConfigFile) -> Result<(), PdfE
 }
 
 fn password_storage(app: &AppHandle) -> String {
-    password_path(app)
-        .ok()
-        .filter(|path| path.exists())
-        .map(|path| {
-            std::fs::read_to_string(&path)
-                .map(|content| if content.starts_with("dpapi:") { "dpapi".to_string() } else { "plain".to_string() })
-                .unwrap_or_else(|_| "plain".to_string())
-        })
-        .unwrap_or_else(|| "none".to_string())
+    password_path(app).map(|path| secret::storage_kind(&path).to_string()).unwrap_or_else(|_| "none".to_string())
 }
 
 fn config_view(app: &AppHandle) -> SyncConfigView {
@@ -371,8 +363,7 @@ fn sync_context(app: &AppHandle) -> Result<SyncContext, PdfError> {
             if config.url.trim().is_empty() {
                 return Err(PdfError::coded(ErrorCode::InvalidInput, "Add the WebDAV server URL before using sync."));
             }
-            let password =
-                password_path(app).ok().and_then(|path| secret::load_api_key(&path).ok()).unwrap_or_default();
+            let password = secret::load_api_key(&password_path(app)?)?;
             let provider =
                 WebDavProvider::new_with_options(&config.url, &config.username, &password, config.allow_insecure_http)
                     .map_err(sync_error)?;

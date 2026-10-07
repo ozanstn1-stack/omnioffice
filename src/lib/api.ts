@@ -3,6 +3,8 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AiAskRequest,
   AiCleanupRequest,
+  AiEditRequest,
+  AiEditResult,
   AiExamplePrompts,
   AiMetadataSuggestion,
   AiLibraryEntry,
@@ -96,7 +98,8 @@ export const onProgress = (handler: (payload: ProgressPayload) => void): Promise
 
 export const aiGetSettings = () => invoke<AiSettingsView>("ai_get_settings");
 export const aiSaveSettings = (input: AiSettingsInput) => invoke<AiSettingsView>("ai_save_settings", { input });
-export const aiClearKey = () => invoke<AiSettingsView>("ai_clear_key");
+/** Removes the stored key of `provider` (the saved provider when omitted). */
+export const aiClearKey = (provider?: string) => invoke<AiSettingsView>("ai_clear_key", { provider: provider ?? null });
 export const aiTestConnection = () => invoke<AiTestResult>("ai_test_connection");
 export const aiDocumentPreview = (path: string, pages: number[] | undefined, password?: string) =>
   invoke<AiPreview>("ai_document_preview", { path, pages: pages ?? null, password: password || null });
@@ -104,12 +107,17 @@ export const aiSummarize = (request: AiSummarizeRequest) => invokeTracked<AiText
 export const aiTranslate = (request: AiTranslateRequest) => invokeTracked<AiTextResult>("ai_translate", { request });
 export const aiAsk = (request: AiAskRequest) => invokeTracked<AiTextResult>("ai_ask", { request });
 export const aiCleanupText = (request: AiCleanupRequest) => invokeTracked<AiTextResult>("ai_cleanup_text", { request });
+/**
+ * In-editor AI action. Deliberately NOT `invokeTracked`: the retry store
+ * persists the invoke args, which here hold the user's selected document text.
+ */
+export const aiEditText = (request: AiEditRequest) => invoke<AiEditResult>("ai_edit_text", { request });
 export const aiSuggestMetadata = (path: string, password: string | undefined, jobId: string) =>
   invokeTracked<AiMetadataSuggestion>("ai_suggest_metadata", { request: { path, password: password || null, jobId } });
 export const aiSaveOutput = (path: string, text: string, overwrite?: string) =>
   invoke<string>("ai_save_output", { path, text, overwrite: overwrite ?? null });
 export const aiExamplePrompts = () => invoke<AiExamplePrompts>("ai_example_prompts");
-export const aiModels = () => invoke<AiModelOption[]>("ai_models");
+export const aiModels = (provider?: string) => invoke<AiModelOption[]>("ai_models", { provider: provider ?? null });
 
 // ---------------------------------------------------------------------------
 // AI library (saved results) and the operation log
@@ -630,7 +638,7 @@ export interface SyncConfigView {
   allowInsecureHttp: boolean;
   remoteDir: string;
   hasPassword: boolean;
-  passwordStorage: "dpapi" | "plain" | "none";
+  passwordStorage: "dpapi" | "keystore" | "plain" | "none";
 }
 
 export interface SyncSaveInput {

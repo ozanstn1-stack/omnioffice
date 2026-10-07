@@ -10,9 +10,16 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 4.1.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 4.2.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 4.2.0
+
+- **Claude** can be chosen as the AI provider (Opus 5.5, Sonnet 5.5, Haiku 4.5).
+- **AI in Writer, Calc and Impress**: rewrite or translate a selection,
+  suggest formulas, turn an outline into slides; always previewed and undoable.
+- **Android** stores API keys and sync tokens encrypted with the Keystore.
 
 ## What's new in 4.1.0
 
