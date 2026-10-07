@@ -289,6 +289,8 @@ pub fn ai_save_settings(app: AppHandle, input: AiSettingsInput) -> Result<AiSett
             .reasoning_effort
             .map(|value| match value.trim().to_lowercase().as_str() {
                 "low" => "low".to_string(),
+                "medium" => "medium".to_string(),
+                "xhigh" => "xhigh".to_string(),
                 "max" => "max".to_string(),
                 _ => "high".to_string(),
             })
@@ -1020,13 +1022,18 @@ pub struct AiModelOption {
 /// Static fallback list (used before a provider answers, or when discovery is
 /// unavailable). The live list comes from [`ai_discover_models`].
 #[tauri::command]
-pub fn ai_models() -> Vec<AiModelOption> {
-    aicore::SUGGESTED_MODELS
+pub fn ai_models(provider: Option<String>) -> Vec<AiModelOption> {
+    let kind = provider.as_deref().map(provider_kind).unwrap_or_default();
+    let default_model = match kind {
+        aicore::ProviderKind::Anthropic => aicore::ANTHROPIC_DEFAULT_MODEL,
+        _ => aicore::DEFAULT_MODEL,
+    };
+    aicore::suggested_models(kind)
         .iter()
         .map(|(id, label)| AiModelOption {
             id: (*id).to_string(),
             label: (*label).to_string(),
-            recommended: *id == aicore::DEFAULT_MODEL,
+            recommended: *id == default_model,
         })
         .collect()
 }

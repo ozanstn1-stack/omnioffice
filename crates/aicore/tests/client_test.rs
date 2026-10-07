@@ -532,6 +532,7 @@ fn provider_kinds_parse_round_trip_and_default_to_deepseek() {
         ProviderKind::OpenAiCompatible,
         ProviderKind::Ollama,
         ProviderKind::Gemini,
+        ProviderKind::Anthropic,
         ProviderKind::Custom,
     ] {
         assert_eq!(ProviderKind::parse(kind.as_str()), Some(kind));
@@ -548,6 +549,10 @@ fn provider_kinds_parse_round_trip_and_default_to_deepseek() {
 
     assert_eq!(ProviderKind::Ollama.default_base_url(), "http://localhost:11434");
     assert_eq!(ProviderKind::Gemini.default_base_url(), "https://generativelanguage.googleapis.com/v1beta");
+    assert_eq!(ProviderKind::Anthropic.default_base_url(), "https://api.anthropic.com");
+    assert_eq!(ProviderKind::Anthropic.label(), "Anthropic (Claude)");
+    assert_eq!(ProviderKind::parse("Claude"), Some(ProviderKind::Anthropic));
+    assert_eq!(ProviderKind::Anthropic.default_model(), Some("claude-opus-5-5"));
 }
 
 #[test]
@@ -565,6 +570,10 @@ fn provider_capability_table_matches_each_provider() {
 
     let gemini = ProviderCapabilities::for_kind(ProviderKind::Gemini);
     assert!(gemini.chat && gemini.streaming && gemini.embeddings && gemini.vision && gemini.structured_output);
+
+    let anthropic = ProviderCapabilities::for_kind(ProviderKind::Anthropic);
+    assert!(anthropic.chat && anthropic.streaming && anthropic.vision);
+    assert!(!anthropic.embeddings && !anthropic.structured_output);
 
     let custom = ProviderCapabilities::for_kind(ProviderKind::Custom);
     assert!(custom.chat && custom.streaming);
@@ -591,9 +600,16 @@ fn provider_notes_state_where_the_text_goes() {
     let note = provider_notes(ProviderKind::Ollama).to_lowercase();
     assert!(note.contains("never leaves"), "{note}");
     assert!(note.contains("computer"), "{note}");
-    for kind in [ProviderKind::DeepSeek, ProviderKind::OpenAiCompatible, ProviderKind::Gemini, ProviderKind::Custom] {
+    for kind in [
+        ProviderKind::DeepSeek,
+        ProviderKind::OpenAiCompatible,
+        ProviderKind::Gemini,
+        ProviderKind::Anthropic,
+        ProviderKind::Custom,
+    ] {
         assert!(!provider_notes(kind).is_empty());
     }
+    assert!(provider_notes(ProviderKind::Anthropic).contains("Anthropic"));
 }
 
 #[tokio::test]
