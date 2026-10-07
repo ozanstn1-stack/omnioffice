@@ -12,8 +12,10 @@ import { reportError, useJobProgress, useToasts } from "../lib/store";
 import {
   TILE_VIEW_MARGIN,
   TileRequestQueue,
+  forgetOtherDocuments,
   rememberTile,
   sameTiles,
+  tileDocId,
   tileGrid,
   tileKey,
   tilesInView,
@@ -143,6 +145,7 @@ export function reusablePreview(cache: Map<number, CachedPreview>, page: number,
  * while the page is near the viewport.
  */
 function ReaderTiles({
+  docId,
   path,
   page,
   password,
@@ -151,6 +154,8 @@ function ReaderTiles({
   cache,
   queue,
 }: {
+  /** Identity of this open of the document (see `tileDocId`); part of every tile key. */
+  docId: string;
   path: string;
   page: number;
   password?: string;
@@ -160,6 +165,10 @@ function ReaderTiles({
   queue: TileRequestQueue<Thumbnail>;
 }) {
   const layerRef = useRef<HTMLDivElement | null>(null);
+  // Whether the page was near the viewport when the effect below last ran, so
+  // a resize (which re-runs it) keeps following the page instead of dropping
+  // its tiles until the observer reports again.
+  const nearRef = useRef(false);
   // The tiles the viewport needs, with the grid they were computed for.
   const [needed, setNeeded] = useState<{ grid: TileGrid; tiles: TileSpec[] }>({ grid, tiles: [] });
   const [, setLoaded] = useState(0);
@@ -192,6 +201,7 @@ function ReaderTiles({
     const follow = (on: boolean) => {
       if (on === near) return;
       near = on;
+      nearRef.current = on;
       if (on) {
         scroller?.addEventListener("scroll", schedule, { passive: true });
         window.addEventListener("resize", schedule);
@@ -206,8 +216,11 @@ function ReaderTiles({
       { root: scroller, rootMargin: `${TILE_VIEW_MARGIN}px` },
     );
     observer.observe(layer);
-    // Also drops the previous zoom's tiles while the page is off screen.
-    schedule();
+    // A page that was near stays near across the re-run (the observer corrects
+    // it on its first report); otherwise this drops the previous zoom's tiles
+    // while the page is off screen.
+    if (nearRef.current) follow(true);
+    else schedule();
     return () => {
       observer.disconnect();
       scroller?.removeEventListener("scroll", schedule);
@@ -222,7 +235,7 @@ function ReaderTiles({
   useEffect(() => {
     let cancelled = false;
     const requests = tiles.flatMap((tile) => {
-      const key = tileKey(page, neededGrid, tile);
+      const key = tileKey(docId, page, neededGrid, tile);
       const cached = cache.get(key);
       if (cached !== undefined) {
         // Keep the tiles on screen the most recently used ones.
@@ -248,7 +261,7 @@ function ReaderTiles({
       cancelled = true;
       for (const request of requests) request.cancel();
     };
-  }, [cache, neededGrid, page, password, path, queue, tiles]);
+  }, [cache, docId, neededGrid, page, password, path, queue, tiles]);
 
   return (
     <div
@@ -265,7 +278,7 @@ function ReaderTiles({
       }}
     >
       {tiles.map((tile) => {
-        const key = tileKey(page, neededGrid, tile);
+        const key = tileKey(docId, page, neededGrid, tile);
         const src = cache.get(key);
         return src ? (
           <img
@@ -289,6 +302,7 @@ function ReaderTiles({
 }
 
 const ReaderPage = memo(function ReaderPage({
+  docId,
   path,
   page,
   geometry,
@@ -300,6 +314,7 @@ const ReaderPage = memo(function ReaderPage({
   register,
   highlight,
 }: {
+  docId: string;
   path: string;
   page: number;
   geometry: PageGeometry;
@@ -408,6 +423,7 @@ const ReaderPage = memo(function ReaderPage({
       )}
       {grid ? (
         <ReaderTiles
+          docId={docId}
           path={path}
           page={page}
           password={password}
@@ -522,11 +538,27 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
     setQuery("");
     setCurrentPage(1);
     setZoom("fit");
-    // Drop the previous document's bitmaps before the new pages render, so a
-    // page number cannot be served a stale image from another file.
-    imageCacheMap.clear();
-    tileCacheMap.clear();
   }
+
+  // Which open of which file the cached bitmaps belong to. The path alone is
+  // not an identity: picking the same path again (a file replaced on disk) or
+  // entering another password gives new pixels, and a tile still rendering for
+  // the old open must never be shown on the new one. `session.primary` is a
+  // new object for every open and the password is part of the identity, so
+  // either change starts a new generation that the page keys, the tile cache
+  // keys and the render queue keys all carry.
+  const openPrimary = session.primary;
+  const openPassword = session.password;
+  const [openState, setOpenState] = useState({ primary: openPrimary, password: openPassword, generation: 0 });
+  if (openState.primary !== openPrimary || openState.password !== openPassword) {
+    const generation = openState.generation + 1;
+    setOpenState({ primary: openPrimary, password: openPassword, generation });
+    // Drop the previous open's bitmaps before the new pages render, so a page
+    // number cannot be served a stale image from another file.
+    imageCacheMap.clear();
+    forgetOtherDocuments(tileCacheMap, tileDocId(openPrimary?.path ?? "", generation));
+  }
+  const docId = tileDocId(docKey, openState.generation);
 
   // Scroll the reading area back to the top once per document (effects may
   // touch refs; render may not).
@@ -971,7 +1003,8 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
             ) : null}
             {geometries.map((geometry) => (
               <ReaderPage
-                key={`${docKey}-${geometry.page}`}
+                key={`${docId}-${geometry.page}`}
+                docId={docId}
                 path={session.primary!.path}
                 page={geometry.page}
                 geometry={geometry}

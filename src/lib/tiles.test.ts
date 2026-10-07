@@ -4,9 +4,11 @@ import {
   MAX_TILE_EDGE,
   MAX_TILE_SCALE,
   TileRequestQueue,
+  forgetOtherDocuments,
   rememberTile,
   sameTiles,
   tileAt,
+  tileDocId,
   tileGrid,
   tileKey,
   tileScale,
@@ -73,16 +75,29 @@ describe("tile grid", () => {
     expect(tileScale(Number.NaN)).toBe(MAX_TILE_SCALE);
   });
 
-  it("keys tiles by page, zoom bucket and position", () => {
+  it("keys tiles by document, page, zoom bucket and position", () => {
     const grid = tileGrid(A4.width, A4.height, AT_200, 2)!;
     const resized = tileGrid(A4.width, A4.height, AT_200 + 12, 2)!;
     const tile = tileAt(grid, 1, 2);
+    const doc = tileDocId("/docs/a.pdf", 1);
     // A slightly different layout width reuses the same bucket and keys.
-    expect(tileKey(3, resized, tileAt(resized, 1, 2))).toBe(tileKey(3, grid, tile));
-    expect(tileKey(4, grid, tile)).not.toBe(tileKey(3, grid, tile));
-    expect(tileKey(3, grid, tileAt(grid, 2, 1))).not.toBe(tileKey(3, grid, tile));
+    expect(tileKey(doc, 3, resized, tileAt(resized, 1, 2))).toBe(tileKey(doc, 3, grid, tile));
+    expect(tileKey(doc, 4, grid, tile)).not.toBe(tileKey(doc, 3, grid, tile));
+    expect(tileKey(doc, 3, grid, tileAt(grid, 2, 1))).not.toBe(tileKey(doc, 3, grid, tile));
     const zoomed = tileGrid(A4.width, A4.height, AT_200 * 1.5, 2)!;
-    expect(tileKey(3, zoomed, tileAt(zoomed, 1, 2))).not.toBe(tileKey(3, grid, tile));
+    expect(tileKey(doc, 3, zoomed, tileAt(zoomed, 1, 2))).not.toBe(tileKey(doc, 3, grid, tile));
+  });
+
+  it("gives every open of a document its own tile keys", () => {
+    const grid = tileGrid(A4.width, A4.height, AT_200, 2)!;
+    const tile = tileAt(grid, 0, 0);
+    const first = tileDocId("/docs/a.pdf", 1);
+    // Another file, the same path reopened (replaced on disk, new password).
+    expect(tileKey(tileDocId("/docs/b.pdf", 1), 1, grid, tile)).not.toBe(tileKey(first, 1, grid, tile));
+    expect(tileKey(tileDocId("/docs/a.pdf", 2), 1, grid, tile)).not.toBe(tileKey(first, 1, grid, tile));
+    expect(tileKey(tileDocId("/docs/a.pdf", 1), 1, grid, tile)).toBe(tileKey(first, 1, grid, tile));
+    // Generation 1 of "x" is not generation 11 of the same prefix.
+    expect(tileDocId("1", 1)).not.toBe(tileDocId("", 11));
   });
 });
 
@@ -150,6 +165,41 @@ describe("tile cache and request queue", () => {
     rememberTile(cache, "t2", "again", 3);
     rememberTile(cache, "t5", "src5", 3);
     expect([...cache.keys()]).toEqual(["t4", "t2", "t5"]);
+  });
+
+  it("forgets the tiles of every other document", () => {
+    const grid = tileGrid(A4.width, A4.height, AT_200, 2)!;
+    const tile = tileAt(grid, 0, 0);
+    const old = tileDocId("/docs/a.pdf", 1);
+    const next = tileDocId("/docs/a.pdf", 2);
+    const cache = new Map<string, string>();
+    rememberTile(cache, tileKey(old, 1, grid, tile), "old page 1");
+    rememberTile(cache, tileKey(old, 2, grid, tile), "old page 2");
+    rememberTile(cache, tileKey(next, 1, grid, tile), "new page 1");
+    forgetOtherDocuments(cache, next);
+    expect([...cache.values()]).toEqual(["new page 1"]);
+    forgetOtherDocuments(cache, tileDocId("/docs/c.pdf", 3));
+    expect(cache.size).toBe(0);
+  });
+
+  it("never shares a render between two documents showing the same tile", async () => {
+    const grid = tileGrid(A4.width, A4.height, AT_200, 2)!;
+    const tile = tileAt(grid, 0, 0);
+    const queue = new TileRequestQueue<string>(2);
+    const resolvers: Array<(value: string) => void> = [];
+    const load = vi.fn(
+      (label: string) => new Promise<string>((resolve) => resolvers.push((v) => resolve(`${label}:${v}`))),
+    );
+    // Same path, page and tile; the user switched to a replaced copy while the
+    // first render was still running.
+    const first = queue.request(tileKey(tileDocId("/docs/a.pdf", 1), 1, grid, tile), () => load("first"));
+    const second = queue.request(tileKey(tileDocId("/docs/a.pdf", 2), 1, grid, tile), () => load("second"));
+    first.cancel();
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    resolvers[0]("pixels");
+    resolvers[1]("pixels");
+    await expect(second.promise).resolves.toBe("second:pixels");
+    await expect(first.promise).resolves.toBe("first:pixels");
   });
 
   it("runs at most `limit` renders and starts the next when one finishes", async () => {

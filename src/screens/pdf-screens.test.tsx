@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -182,6 +182,7 @@ import {
   MAX_PREVIEW_CACHE_ENTRIES,
 } from "./Reader";
 import { previewRasterWidth } from "../lib/format";
+import { useDrop } from "../lib/store";
 import { PdfStudio, displayDeltaToPage, displayRectToPageRect, pageRectToDisplayRect } from "./PdfStudio";
 
 // jsdom has no PointerEvent; MouseEvent carries button/clientX/pointerId, which
@@ -459,6 +460,53 @@ describe("reader preview sizing and cache", () => {
   });
 });
 
+/** A 2x display whose every observed element is near the viewport, in a
+ *  1000 x 800 reading area; the undo functions are pushed onto `restore`. */
+function installTileEnvironment(restore: Array<() => void>) {
+  // A 2x display: at 244 % an A4 page wants a 3874 px raster, past the
+  // 3000 px preview cap; fit width (828 CSS px) stays well under it.
+  const ratio = Object.getOwnPropertyDescriptor(window, "devicePixelRatio");
+  Object.defineProperty(window, "devicePixelRatio", { configurable: true, value: 2 });
+  restore.push(() => {
+    if (ratio) Object.defineProperty(window, "devicePixelRatio", ratio);
+  });
+  // Every observed element is near the viewport.
+  const OriginalObserver = globalThis.IntersectionObserver;
+  globalThis.IntersectionObserver = class {
+    root = null;
+    rootMargin = "";
+    thresholds: number[] = [];
+    constructor(private readonly callback: IntersectionObserverCallback) {}
+    observe(target: Element) {
+      this.callback(
+        [{ isIntersecting: true, target } as unknown as IntersectionObserverEntry],
+        this as unknown as IntersectionObserver,
+      );
+    }
+    unobserve() {}
+    disconnect() {}
+    takeRecords() {
+      return [];
+    }
+  } as unknown as typeof IntersectionObserver;
+  restore.push(() => {
+    globalThis.IntersectionObserver = OriginalObserver;
+  });
+  // jsdom has no layout: a 1000 x 800 reading area with the page's tile
+  // layer at its top-left corner, as wide as the page is laid out.
+  const box = (width: number, height: number) =>
+    ({ x: 0, y: 0, left: 0, top: 0, right: width, bottom: height, width, height }) as DOMRect;
+  const rects = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+    if (this.classList.contains("reader-scroll")) return box(1000, 800);
+    if (this.classList.contains("reader-tiles")) {
+      const width = parseFloat((this.parentElement as HTMLElement).style.width) || 0;
+      return box(width, (width * 841.89) / 595.28);
+    }
+    return box(0, 0);
+  });
+  restore.push(() => rects.mockRestore());
+}
+
 describe("reader high-zoom tiles", () => {
   beforeEach(() => {
     invoke.mockClear();
@@ -467,48 +515,7 @@ describe("reader high-zoom tiles", () => {
   it("overlays sharp tiles for the visible part of the page only past the preview cap", async () => {
     const restore: Array<() => void> = [];
     try {
-      // A 2x display: at 244 % an A4 page wants a 3874 px raster, past the
-      // 3000 px preview cap; fit width (828 CSS px) stays well under it.
-      const ratio = Object.getOwnPropertyDescriptor(window, "devicePixelRatio");
-      Object.defineProperty(window, "devicePixelRatio", { configurable: true, value: 2 });
-      restore.push(() => {
-        if (ratio) Object.defineProperty(window, "devicePixelRatio", ratio);
-      });
-      // Every observed element is near the viewport.
-      const OriginalObserver = globalThis.IntersectionObserver;
-      globalThis.IntersectionObserver = class {
-        root = null;
-        rootMargin = "";
-        thresholds: number[] = [];
-        constructor(private readonly callback: IntersectionObserverCallback) {}
-        observe(target: Element) {
-          this.callback(
-            [{ isIntersecting: true, target } as unknown as IntersectionObserverEntry],
-            this as unknown as IntersectionObserver,
-          );
-        }
-        unobserve() {}
-        disconnect() {}
-        takeRecords() {
-          return [];
-        }
-      } as unknown as typeof IntersectionObserver;
-      restore.push(() => {
-        globalThis.IntersectionObserver = OriginalObserver;
-      });
-      // jsdom has no layout: a 1000 x 800 reading area with the page's tile
-      // layer at its top-left corner, as wide as the page is laid out.
-      const box = (width: number, height: number) =>
-        ({ x: 0, y: 0, left: 0, top: 0, right: width, bottom: height, width, height }) as DOMRect;
-      const rects = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
-        if (this.classList.contains("reader-scroll")) return box(1000, 800);
-        if (this.classList.contains("reader-tiles")) {
-          const width = parseFloat((this.parentElement as HTMLElement).style.width) || 0;
-          return box(width, (width * 841.89) / 595.28);
-        }
-        return box(0, 0);
-      });
-      restore.push(() => rects.mockRestore());
+      installTileEnvironment(restore);
 
       render(<Reader {...props} />);
       await waitFor(() => expect(document.querySelector('[data-page="1"] img')).not.toBeNull());
@@ -542,6 +549,33 @@ describe("reader high-zoom tiles", () => {
       }
       // The upscaled preview stays underneath as the base layer.
       expect(document.querySelector('[data-page="1"] > img')).not.toBeNull();
+    } finally {
+      for (const undo of restore.reverse()) undo();
+    }
+  });
+
+  it("never shows a tile of the previous open of a file when it is reopened at the same path", async () => {
+    const restore: Array<() => void> = [];
+    try {
+      installTileEnvironment(restore);
+      render(<Reader {...props} />);
+      await waitFor(() => expect(document.querySelector('[data-page="1"] img')).not.toBeNull());
+      const zoomIn = screen.getByRole("button", { name: /zoom in/i });
+      for (let click = 0; click < 4; click += 1) fireEvent.click(zoomIn);
+      await waitFor(() => expect(document.querySelectorAll(".reader-tiles img")).toHaveLength(9));
+      const tileCalls = () => invoke.mock.calls.filter(([name]) => name === "page_tile");
+      expect(tileCalls()).toHaveLength(9);
+
+      // The file was replaced on disk and opened again: same path, new open.
+      const drop = useDrop.getState().handler;
+      expect(drop).not.toBeNull();
+      await act(async () => {
+        drop?.(["C:/a.pdf"]);
+      });
+      // Every tile is rendered again for the new open instead of reusing the
+      // old open's cache, and the page shows the same nine once they arrive.
+      await waitFor(() => expect(tileCalls()).toHaveLength(18));
+      await waitFor(() => expect(document.querySelectorAll(".reader-tiles img")).toHaveLength(9));
     } finally {
       for (const undo of restore.reverse()) undo();
     }
