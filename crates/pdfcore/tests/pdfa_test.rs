@@ -60,7 +60,9 @@ fn find_font_by_base(doc: &Document, base_prefix: &str) -> (ObjectId, Dictionary
         .find_map(|(id, object)| {
             let dict = object.as_dict().ok()?;
             let base = dict.get(b"BaseFont").ok()?.as_name().ok()?;
-            if base.starts_with(base_prefix.as_bytes()) {
+            // Subset programs carry an `ABCDEF+` tag in front of the name.
+            let untagged = if base.get(6) == Some(&b'+') { &base[7..] } else { base };
+            if untagged.starts_with(base_prefix.as_bytes()) {
                 Some((*id, dict.clone()))
             } else {
                 None
@@ -290,7 +292,7 @@ fn pdfa_conversion_embeds_missing_fonts_and_writes_xmp() {
     let program_id = descriptor.get(b"FontFile2").expect("FontFile2").as_reference().expect("indirect program");
     let stream = converted.get_object(program_id).unwrap().as_stream().unwrap();
     let bytes = stream.decompressed_content().unwrap();
-    assert!(bytes.len() > 100_000, "the full Liberation face was embedded ({} bytes)", bytes.len());
+    assert!(bytes.len() < 40_000, "only the used glyphs of the Liberation face were embedded ({} bytes)", bytes.len());
     assert_eq!(
         stream.dict.get(b"Length1").unwrap().as_i64().unwrap(),
         bytes.len() as i64,
