@@ -3,7 +3,8 @@
  * PDF/A validation/conversion and real digital signatures. Every result shown
  * here comes from a real check in pdfcore; nothing is reported as "compliant"
  * or "signed" without validation, and signature trust is always reported as
- * unknown (this build has no system trust store and no revocation check).
+ * unknown (this build has no system trust store). Revocation is a separate,
+ * opt-in online check.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -25,10 +26,11 @@ import {
   Wrench,
 } from "lucide-react";
 import { useT } from "../lib/i18n";
-import { errorMessage, useToasts } from "../lib/store";
+import { errorMessage, useSettings, useToasts } from "../lib/store";
 import { invokeTracked } from "../lib/api";
 import { DropZone, FileList } from "../components/files";
 import { Badge, Card, Field, Toggle } from "../components/ui";
+import { RevocationStatus } from "../components/revocation-status";
 import { PageCanvas } from "../components/pages";
 import {
   pdfArchiveValidationData,
@@ -43,6 +45,7 @@ import {
   pdfSign,
   pdfValidateForm,
   pdfVerifySignatures,
+  pdfVerifySignaturesOnline,
   suggestOutput,
   toAppError,
   type FieldIssue,
@@ -252,6 +255,7 @@ function signatureTone(info: SignatureInfo): "ok" | "warn" | "danger" {
 
 export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[]; dragging?: boolean }) {
   const t = useT();
+  const onlineRevocation = useSettings((s) => s.settings.onlineRevocationCheck === true);
   const [tab, setTab] = useState<StudioTab>("sanitize");
   const [files, setFiles] = useState<string[]>(initialFiles ?? []);
   const [level, setLevel] = useState("A-2b");
@@ -330,7 +334,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
   }, [running]);
 
   const input = files[0];
-  const toast = (kind: "success" | "error", title: string, detail?: string) =>
+  const toast = (kind: "success" | "error" | "info", title: string, detail?: string) =>
     useToasts.getState().push({ kind, title, detail });
 
   const run = async (action: () => Promise<void>, jobId: string) => {
@@ -842,7 +846,18 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
     }
     setVerifying(true);
     try {
-      const report = await pdfVerifySignatures(input);
+      let report: SignatureReport;
+      if (onlineRevocation) {
+        try {
+          report = await pdfVerifySignaturesOnline(input);
+        } catch {
+          // The online check is an add-on: keep the offline result usable.
+          report = await pdfVerifySignatures(input);
+          toast("info", t("studio.revocationOffline"));
+        }
+      } else {
+        report = await pdfVerifySignatures(input);
+      }
       setSignReport(report);
       toast("success", t("studio.verifyDone"));
     } catch (error) {
@@ -1290,6 +1305,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                         {info.modifiedAfterSigning ? <Badge tone="danger">{t("studio.modifiedAfter")}</Badge> : null}
                         {info.supersededByLaterRevision ? <Badge tone="warn">{t("studio.superseded")}</Badge> : null}
                         <Badge tone="warn">{t("studio.trustUnknown")}</Badge>
+                      </div>
+                      <div className="row">
+                        <RevocationStatus revocation={info.revocation} />
                       </div>
                       <p className="muted small">
                         <strong>{info.fieldName}</strong> · {info.subFilter || "?"} · {info.algorithm}
