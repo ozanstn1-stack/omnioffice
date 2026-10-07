@@ -11,6 +11,7 @@ import "./datetime";
 import "./financial";
 import "./lookup";
 import "./math";
+import "./reference";
 import "./statistics";
 import "./text";
 
