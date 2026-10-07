@@ -10,6 +10,7 @@ mod concurrency;
 mod diagnostics;
 mod jobs;
 mod library;
+mod netpolicy;
 mod oauth;
 mod office;
 mod office_tools;

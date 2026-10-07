@@ -59,3 +59,42 @@ openssl crl -in crl.pem -outform DER -out ca.crl
 Regenerating changes every key, date and signature: update `FIXTURE_TIME`
 and `NEXT_UPDATE` in the test afterwards (`openssl ocsp -respin ocsp-good.der
 -resp_text -noverify` prints both).
+
+## Extra fixtures (CRL partitions, issuers that are not CAs)
+
+`generate-extra.sh` and `openssl-extra.cnf` build three small, independent
+PKIs (each: a self-signed P-256 issuer plus one signer, serial 0x1000, with AIA
+`http://ocsp.omnioffice.test/` and CRL distribution point
+`http://crl.omnioffice.test/part1.crl`). All answers have `thisUpdate`
+2026-10-07T12:10:31Z (Unix 1791375031, `EXTRA_TIME` in the test) and
+`nextUpdate` 2126-09-13T12:10:31Z.
+
+| Files | What they are |
+| --- | --- |
+| `idp-ca.der`, `idp-signer.der` | A proper CA (`CA:true`, `keyCertSign, cRLSign`) and its signer |
+| `idp-match.crl` | CRL with a critical IssuingDistributionPoint `fullname URI:http://crl.omnioffice.test/part1.crl` (the signer's own point): applicable |
+| `idp-other.crl` | Same, but the point is `.../part2.crl`: another partition, must give `unknown` |
+| `idp-none.crl` | No IssuingDistributionPoint: a complete CRL |
+| `notca-ca.der`, `notca-signer.der`, `notca.crl`, `notca-ocsp.der` | Issuer with `basicConstraints CA:false`; its CRL and a `good` OCSP response signed with its key must be rejected |
+| `nokcs-ca.der`, `nokcs-signer.der`, `nokcs.crl`, `nokcs-ocsp.der` | `CA:true` issuer whose `keyUsage` is `digitalSignature, cRLSign` (no `keyCertSign`); its CRL and OCSP response must be rejected |
+
+Regenerate (then update `EXTRA_TIME` in the test from
+`openssl crl -inform DER -in idp-match.crl -noout -lastupdate`):
+
+```sh
+mkdir -p /tmp/pki-extra && cp openssl-extra.cnf /tmp/pki-extra/
+bash generate-extra.sh /tmp/pki-extra "$PWD"
+```
+
+The commands, in short (`$IDP_URI` is read by `openssl-extra.cnf`):
+
+```sh
+openssl req -x509 -new -key ca.key -subj "/CN=..." -days 36500 -config openssl-extra.cnf \
+  -extensions v3_ca   # or v3_not_ca, v3_no_keycertsign
+openssl ca -batch -config openssl-extra.cnf -cert ca.pem -keyfile ca.key -extensions v3_signer \
+  -in signer.csr -out signer.pem
+IDP_URI=http://crl.omnioffice.test/part1.crl openssl ca -config openssl-extra.cnf -cert ca.pem \
+  -keyfile ca.key -gencrl -crldays 36500 -out crl.pem
+openssl ocsp -index index.txt -CA ca.pem -rsigner ca.pem -rkey ca.key -resp_key_id \
+  -reqin req.der -respout notca-ocsp.der -ndays 36500
+```

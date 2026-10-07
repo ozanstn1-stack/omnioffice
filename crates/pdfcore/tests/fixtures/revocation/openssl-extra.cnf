@@ -1,0 +1,64 @@
+# Extra throwaway PKIs for the CRL partition and issuer-capability tests in
+# crates/pdfcore/tests/revocation.rs (see generate-extra.sh). Test keys only.
+
+[ ca ]
+default_ca = test_ca
+
+[ test_ca ]
+dir              = .
+database         = index.txt
+new_certs_dir    = newcerts
+serial           = serial
+crlnumber        = crlnumber
+default_md       = sha256
+default_days     = 36500
+default_crl_days = 36500
+policy           = policy_any
+unique_subject   = no
+copy_extensions  = none
+crl_extensions   = crl_ext
+
+[ policy_any ]
+commonName = supplied
+
+[ req ]
+distinguished_name = req_dn
+prompt             = no
+
+[ req_dn ]
+CN = unused
+
+# A proper CA.
+[ v3_ca ]
+basicConstraints     = critical, CA:true
+keyUsage             = critical, keyCertSign, cRLSign
+subjectKeyIdentifier = hash
+
+# basicConstraints says CA:false: an end-entity certificate used as an issuer.
+[ v3_not_ca ]
+basicConstraints     = critical, CA:false
+keyUsage             = critical, digitalSignature, cRLSign
+subjectKeyIdentifier = hash
+
+# A CA by basicConstraints whose keyUsage does not allow keyCertSign.
+[ v3_no_keycertsign ]
+basicConstraints     = critical, CA:true
+keyUsage             = critical, digitalSignature, cRLSign
+subjectKeyIdentifier = hash
+
+[ v3_signer ]
+basicConstraints       = CA:false
+keyUsage               = critical, digitalSignature, nonRepudiation
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid
+authorityInfoAccess    = OCSP;URI:http://ocsp.omnioffice.test/
+crlDistributionPoints  = URI:http://crl.omnioffice.test/part1.crl
+
+# The CRL is limited to the distribution point named in $IDP_URI. CRLs without
+# an IssuingDistributionPoint use a copy of this file without crl_extensions
+# (see generate-extra.sh).
+[ crl_ext ]
+issuingDistributionPoint = critical, @idp
+
+[ idp ]
+fullname = URI:$ENV::IDP_URI

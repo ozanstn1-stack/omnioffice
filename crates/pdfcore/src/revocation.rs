@@ -19,8 +19,9 @@
 use crate::error::{PdfError, PdfResult};
 use crate::sign::{certificate_issued_by, digest_of_signature_algorithm, hash_with_oid, verify_signed_data};
 use const_oid::db::rfc5280::{
-    ID_AD_OCSP, ID_CE_CRL_DISTRIBUTION_POINTS, ID_CE_CRL_REASONS, ID_CE_DELTA_CRL_INDICATOR, ID_CE_EXT_KEY_USAGE,
-    ID_CE_ISSUING_DISTRIBUTION_POINT, ID_CE_KEY_USAGE, ID_KP_OCSP_SIGNING, ID_PE_AUTHORITY_INFO_ACCESS,
+    ID_AD_OCSP, ID_CE_BASIC_CONSTRAINTS, ID_CE_CRL_DISTRIBUTION_POINTS, ID_CE_CRL_REASONS, ID_CE_DELTA_CRL_INDICATOR,
+    ID_CE_EXT_KEY_USAGE, ID_CE_ISSUING_DISTRIBUTION_POINT, ID_CE_KEY_USAGE, ID_KP_OCSP_SIGNING,
+    ID_PE_AUTHORITY_INFO_ACCESS,
 };
 use const_oid::db::rfc6960::ID_PKIX_OCSP_BASIC;
 use const_oid::ObjectIdentifier;
@@ -28,11 +29,15 @@ use der::asn1::{Null, OctetString};
 use der::{Decode, Encode, Header, Reader, SliceReader};
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use x509_cert::crl::CertificateList;
 use x509_cert::ext::pkix::crl::dp::IssuingDistributionPoint;
 use x509_cert::ext::pkix::name::{DistributionPointName, GeneralName};
-use x509_cert::ext::pkix::{AuthorityInfoAccessSyntax, CrlDistributionPoints, CrlReason, ExtendedKeyUsage, KeyUsage};
+use x509_cert::ext::pkix::{
+    AuthorityInfoAccessSyntax, BasicConstraints, CrlDistributionPoints, CrlReason, ExtendedKeyUsage, KeyUsage,
+};
 use x509_cert::spki::AlgorithmIdentifierOwned;
 use x509_cert::Certificate;
 use x509_ocsp::{BasicOcspResponse, CertId, CertStatus, OcspRequest, OcspResponse, OcspResponseStatus};
@@ -113,6 +118,35 @@ impl RevocationInfo {
     /// `error` with an explanation.
     pub fn error(detail: impl Into<String>, now: u64) -> Self {
         Self { detail: Some(detail.into()), ..Self::with_status(RevocationStatus::Error, now) }
+    }
+
+    /// Adds the caveat about the signature's *claimed* signing time to a
+    /// `revoked` answer that has none yet. The network answer is cached per
+    /// signer certificate; this per-signature interpretation is applied
+    /// afterwards, so signatures that differ only in the (unverified) time
+    /// they claim never cause another request.
+    pub fn qualified_by_signing_time(mut self, claimed: Option<u64>) -> Self {
+        if self.status == RevocationStatus::Revoked && self.detail.is_none() {
+            let revoked_at = self
+                .revoked_at
+                .as_deref()
+                .and_then(|text| text.parse::<der::DateTime>().ok())
+                .map(|time| time.unix_duration().as_secs());
+            if let (Some(revoked_at), Some(claimed)) = (revoked_at, claimed) {
+                self.detail = Some(signing_time_note(revoked_at, claimed));
+            }
+        }
+        self
+    }
+}
+
+fn signing_time_note(revoked_at: u64, claimed_signing_time: u64) -> String {
+    if revoked_at > claimed_signing_time {
+        "The certificate was revoked after the time the signature claims it was made, but that time comes from the \
+         signer and is not verified here, so the signature cannot be relied on."
+            .to_string()
+    } else {
+        "The certificate was already revoked when the signature claims it was made.".to_string()
     }
 }
 
@@ -214,6 +248,46 @@ pub fn revocation_endpoints(cert_der: &[u8]) -> PdfResult<RevocationEndpoints> {
     Ok(endpoints_of(&cert))
 }
 
+/// Every URI of the certificate's CRL distribution points, whatever the
+/// scheme (an IssuingDistributionPoint may name the ldap:// one).
+fn crldp_uris(cert: &Certificate) -> Vec<String> {
+    let mut uris = Vec::new();
+    let Some(value) = extension_value(cert, ID_CE_CRL_DISTRIBUTION_POINTS) else {
+        return uris;
+    };
+    let Ok(points) = CrlDistributionPoints::from_der(value) else {
+        return uris;
+    };
+    for point in &points.0 {
+        if let Some(DistributionPointName::FullName(names)) = &point.distribution_point {
+            for name in names {
+                if let GeneralName::UniformResourceIdentifier(uri) = name {
+                    uris.push(uri.as_str().trim().to_string());
+                }
+            }
+        }
+    }
+    uris
+}
+
+/// True when a CRL's IssuingDistributionPoint name covers the certificate:
+/// it names the URL the CRL was fetched from or one of the certificate's own
+/// CRL distribution points (RFC 5280 6.3.3 (b)(2)(i)). A name relative to the
+/// CRL issuer cannot be matched to a URL and never covers.
+fn idp_covers(name: &DistributionPointName, fetched_from: Option<&str>, cert_points: &[String]) -> bool {
+    let DistributionPointName::FullName(names) = name else {
+        return false;
+    };
+    names.iter().any(|name| {
+        let GeneralName::UniformResourceIdentifier(uri) = name else {
+            return false;
+        };
+        let uri = uri.as_str().trim();
+        fetched_from.is_some_and(|url| url.trim().eq_ignore_ascii_case(uri))
+            || cert_points.iter().any(|point| point.eq_ignore_ascii_case(uri))
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
@@ -259,6 +333,31 @@ fn check_freshness(what: &str, this_update: u64, next_update: Option<u64>, now: 
         }
         _ => Ok(()),
     }
+}
+
+/// The CA certificate whose key authenticates an OCSP response or a CRL must
+/// be able to act as a CA: `basicConstraints` (when present) says `cA`, and
+/// `keyUsage` (when present) allows `keyCertSign` and, for a CRL, `cRLSign`.
+/// Absent extensions are tolerated, as RFC 5280 allows for old CA certificates.
+fn check_issuer_may_sign(issuer: &Certificate, crl: bool) -> Result<(), String> {
+    if let Some(value) = extension_value(issuer, ID_CE_BASIC_CONSTRAINTS) {
+        let is_ca = BasicConstraints::from_der(value).map(|constraints| constraints.ca).unwrap_or(false);
+        if !is_ca {
+            return Err(
+                "the issuing certificate is not a certificate authority (basicConstraints cA is not set)".into()
+            );
+        }
+    }
+    if let Some(value) = extension_value(issuer, ID_CE_KEY_USAGE) {
+        let usage = KeyUsage::from_der(value).map_err(|_| "the issuing certificate's key usage is invalid")?;
+        if !usage.key_cert_sign() {
+            return Err("the issuing certificate is not allowed to sign certificates (keyCertSign)".into());
+        }
+        if crl && !usage.crl_sign() {
+            return Err("the issuing certificate is not allowed to sign CRLs".into());
+        }
+    }
+    Ok(())
 }
 
 fn verify_with(signer: &Certificate, algorithm: ObjectIdentifier, message: &[u8], signature: &[u8]) -> bool {
@@ -374,6 +473,7 @@ impl RevocationSubject {
         if bytes.response_type != ID_PKIX_OCSP_BASIC {
             return Err(format!("unsupported OCSP response type {}", bytes.response_type));
         }
+        check_issuer_may_sign(&self.issuer, false)?;
         let basic_der = bytes.response.as_bytes();
         let basic = BasicOcspResponse::from_der(basic_der)
             .map_err(|err| format!("the basic OCSP response is not valid DER ({err})"))?;
@@ -456,14 +556,24 @@ impl RevocationSubject {
         })
     }
 
-    /// Evaluates a DER CRL at Unix time `now`.
+    /// Evaluates a DER CRL at Unix time `now`. A CRL limited to one
+    /// distribution point is accepted only when that point is one of the
+    /// certificate's own; use [`Self::evaluate_crl_from`] when the URL is known.
     pub fn evaluate_crl(&self, crl: &[u8], now: u64) -> RevocationInfo {
-        let mut info = self.read_crl(crl, now).unwrap_or_else(|detail| RevocationInfo::error(detail, now));
+        self.evaluate_crl_from(crl, None, now)
+    }
+
+    /// Evaluates a DER CRL downloaded from `url` at Unix time `now`. A CRL
+    /// whose IssuingDistributionPoint names a distribution point that is
+    /// neither `url` nor one of the certificate's own does not cover this
+    /// certificate: the result is `unknown`, never `good`.
+    pub fn evaluate_crl_from(&self, crl: &[u8], url: Option<&str>, now: u64) -> RevocationInfo {
+        let mut info = self.read_crl(crl, url, now).unwrap_or_else(|detail| RevocationInfo::error(detail, now));
         info.source = Some(RevocationSource::Crl);
         info
     }
 
-    fn read_crl(&self, crl: &[u8], now: u64) -> Result<RevocationInfo, String> {
+    fn read_crl(&self, crl: &[u8], url: Option<&str>, now: u64) -> Result<RevocationInfo, String> {
         if crl.len() > MAX_CRL_BYTES {
             return Err("the CRL is larger than 10 MB".into());
         }
@@ -476,12 +586,7 @@ impl RevocationSubject {
         if tbs.signature.oid != list.signature_algorithm.oid {
             return Err("the CRL's two signature algorithm fields disagree".into());
         }
-        let may_sign_crls = extension_value(&self.issuer, ID_CE_KEY_USAGE)
-            .map(|value| KeyUsage::from_der(value).map(|usage| usage.crl_sign()).unwrap_or(false))
-            .unwrap_or(true);
-        if !may_sign_crls {
-            return Err("the issuing certificate is not allowed to sign CRLs".into());
-        }
+        check_issuer_may_sign(&self.issuer, true)?;
         let signature = list.signature.as_bytes().ok_or("the CRL signature is not a whole number of bytes")?;
         if !verify_with(&self.issuer, list.signature_algorithm.oid, signed, signature) {
             return Err(format!(
@@ -504,6 +609,17 @@ impl RevocationSubject {
                     || point.only_some_reasons.is_some()
                 {
                     return Err("the CRL covers only part of the certificates or reasons".into());
+                }
+                // A CRL partitioned by distribution point only speaks for the
+                // certificates that name that point.
+                if let Some(name) = &point.distribution_point {
+                    if !idp_covers(name, url, &crldp_uris(&self.cert)) {
+                        return Ok(RevocationInfo::unknown(
+                            "the CRL is limited to a distribution point this certificate does not name, so it cannot \
+                             show that the certificate is not revoked",
+                            now,
+                        ));
+                    }
                 }
             } else if extension.critical {
                 return Err(format!("the CRL has an unsupported critical extension {}", extension.extn_id));
@@ -534,15 +650,7 @@ impl RevocationSubject {
     }
 
     fn revoked(&self, revoked_at: u64, reason: Option<CrlReason>, now: u64) -> RevocationInfo {
-        let detail = self.claimed_signing_time.map(|signed| {
-            if revoked_at > signed {
-                "The certificate was revoked after the time the signature claims it was made, but that time comes \
-                 from the signer and is not verified here, so the signature cannot be relied on."
-                    .to_string()
-            } else {
-                "The certificate was already revoked when the signature claims it was made.".to_string()
-            }
-        });
+        let detail = self.claimed_signing_time.map(|signed| signing_time_note(revoked_at, signed));
         RevocationInfo {
             revoked_at: format_time(revoked_at),
             reason: reason.map(|reason| reason_name(reason).to_string()),
@@ -620,7 +728,7 @@ pub fn check_online(subject: &RevocationSubject, fetch: &RevocationFetcher<'_>, 
     }
     for url in &endpoints.crl {
         let info = match fetch(RevocationFetch::Crl { url }) {
-            Ok(crl) => subject.evaluate_crl(&crl, now),
+            Ok(crl) => subject.evaluate_crl_from(&crl, Some(url), now),
             Err(error) => RevocationInfo::error(error.to_string(), now),
         };
         if let Some(answer) = attempts.settle(info, url, "CRL") {
@@ -629,6 +737,136 @@ pub fn check_online(subject: &RevocationSubject, fetch: &RevocationFetcher<'_>, 
     }
     let Attempts { unknown, failures } = attempts;
     unknown.unwrap_or_else(|| RevocationInfo::error(failures.join("; "), now))
+}
+
+// ---------------------------------------------------------------------------
+// Limits for one verification
+// ---------------------------------------------------------------------------
+
+/// Network exchanges one verification may make in total. The URLs come from
+/// certificates inside an untrusted PDF, so without a ceiling a crafted file
+/// could turn one verification into an unbounded number of requests.
+pub const MAX_FETCHES_PER_VERIFICATION: usize = 20;
+/// Wall-clock time one verification may spend asking CAs; after it the
+/// remaining signatures are reported as `unknown`. The application also clamps
+/// each request's timeout to what is left of it.
+pub const VERIFICATION_DEADLINE: Duration = Duration::from_secs(45);
+
+/// Why no further request may be made.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BudgetExhausted {
+    Fetches,
+    Deadline,
+}
+
+impl BudgetExhausted {
+    pub fn describe(self) -> String {
+        match self {
+            Self::Fetches => {
+                format!(
+                    "the limit of {MAX_FETCHES_PER_VERIFICATION} revocation requests for one verification was reached"
+                )
+            }
+            Self::Deadline => format!(
+                "the {} second time limit for the revocation check of one verification was reached",
+                VERIFICATION_DEADLINE.as_secs()
+            ),
+        }
+    }
+}
+
+/// A request counter plus a deadline. Time is passed in, so the logic is a
+/// pure function of its inputs.
+#[derive(Debug)]
+pub struct FetchBudget {
+    max_fetches: usize,
+    spent: Cell<usize>,
+    deadline: Instant,
+}
+
+impl FetchBudget {
+    pub fn new(max_fetches: usize, started: Instant, allowed: Duration) -> Self {
+        Self { max_fetches, spent: Cell::new(0), deadline: started + allowed }
+    }
+
+    /// The default limits, starting at `started`.
+    pub fn standard(started: Instant) -> Self {
+        Self::new(MAX_FETCHES_PER_VERIFICATION, started, VERIFICATION_DEADLINE)
+    }
+
+    /// Why the next request would be refused, if it would.
+    pub fn exhausted(&self, now: Instant) -> Option<BudgetExhausted> {
+        if now >= self.deadline {
+            Some(BudgetExhausted::Deadline)
+        } else if self.spent.get() >= self.max_fetches {
+            Some(BudgetExhausted::Fetches)
+        } else {
+            None
+        }
+    }
+
+    /// Counts one request, or says why it must not be made.
+    pub fn try_spend(&self, now: Instant) -> Result<(), BudgetExhausted> {
+        match self.exhausted(now) {
+            Some(reason) => Err(reason),
+            None => {
+                self.spent.set(self.spent.get() + 1);
+                Ok(())
+            }
+        }
+    }
+
+    pub fn spent(&self) -> usize {
+        self.spent.get()
+    }
+}
+
+/// Identity of an exchange for de-duplication: the same URL (and, for OCSP,
+/// the same request body) is asked once per verification.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum FetchKey {
+    Ocsp(String, Vec<u8>),
+    Crl(String),
+}
+
+impl FetchKey {
+    fn of(request: &RevocationFetch<'_>) -> Self {
+        match request {
+            RevocationFetch::Ocsp { url, body } => Self::Ocsp(url.trim().to_ascii_lowercase(), body.to_vec()),
+            RevocationFetch::Crl { url } => Self::Crl(url.trim().to_ascii_lowercase()),
+        }
+    }
+}
+
+/// Wraps the application's fetcher with a [`FetchBudget`] and an answer cache:
+/// identical exchanges (failed ones too) are performed once, and nothing is
+/// sent after the budget is spent.
+pub struct LimitedFetcher<'a> {
+    inner: &'a RevocationFetcher<'a>,
+    budget: FetchBudget,
+    answers: RefCell<HashMap<FetchKey, Result<Vec<u8>, String>>>,
+}
+
+impl<'a> LimitedFetcher<'a> {
+    pub fn new(inner: &'a RevocationFetcher<'a>, budget: FetchBudget) -> Self {
+        Self { inner, budget, answers: RefCell::new(HashMap::new()) }
+    }
+
+    pub fn budget(&self) -> &FetchBudget {
+        &self.budget
+    }
+
+    pub fn fetch(&self, request: RevocationFetch<'_>) -> PdfResult<Vec<u8>> {
+        let key = FetchKey::of(&request);
+        if let Some(cached) = self.answers.borrow().get(&key) {
+            return cached.clone().map_err(PdfError::ProcessingFailed);
+        }
+        self.budget.try_spend(Instant::now()).map_err(|reason| PdfError::ProcessingFailed(reason.describe()))?;
+        let outcome = (self.inner)(request);
+        let stored = outcome.as_ref().map(Clone::clone).map_err(ToString::to_string);
+        self.answers.borrow_mut().insert(key, stored);
+        outcome
+    }
 }
 
 #[cfg(test)]

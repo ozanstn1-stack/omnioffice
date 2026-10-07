@@ -174,9 +174,29 @@ export function sameTiles(a: readonly TileSpec[], b: readonly TileSpec[]): boole
   return b.every((tile) => names.has(`${tile.column}:${tile.row}`));
 }
 
-/** Cache key of a tile: page, zoom bucket, tile size and grid position. */
-export function tileKey(page: number, grid: TileGrid, tile: TileSpec): string {
-  return `${page}:${grid.scale.toFixed(4)}:${grid.tileSize}:${tile.column}:${tile.row}`;
+/**
+ * Identity of one opened document: its path plus the number of this open. The
+ * path alone is not enough - a file replaced on disk, reopened, or reopened
+ * with another password keeps its path but renders different pixels - so the
+ * reader bumps `generation` for each of those and every tile and queue key
+ * carries the result.
+ */
+export function tileDocId(path: string, generation: number): string {
+  return `${generation}:${path}`;
+}
+
+/** Cache and queue key of a tile: document identity, page, zoom bucket, tile
+ *  size and grid position. */
+export function tileKey(docId: string, page: number, grid: TileGrid, tile: TileSpec): string {
+  return `${docId}|${page}:${grid.scale.toFixed(4)}:${grid.tileSize}:${tile.column}:${tile.row}`;
+}
+
+/** Drops every cached tile that does not belong to `docId`. */
+export function forgetOtherDocuments<T>(cache: Map<string, T>, docId: string): void {
+  const prefix = `${docId}|`;
+  for (const key of [...cache.keys()]) {
+    if (!key.startsWith(prefix)) cache.delete(key);
+  }
 }
 
 /** Stores a tile and evicts the least recently used ones beyond the cap. */
