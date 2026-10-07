@@ -60,8 +60,9 @@ fn unprotect(blob: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 /// Why a platform cipher could not protect or unprotect a value.
-// Only the Windows and Android ciphers (and the tests) build these.
-#[cfg_attr(not(any(windows, target_os = "android", test)), allow(dead_code))]
+// Only the Android cipher (and the tests) builds `KeyLost`; Windows DPAPI
+// reports every failure as `Failed`, so the variant is dead code there.
+#[cfg_attr(not(any(target_os = "android", test)), allow(dead_code))]
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum CipherError {
     /// The key that sealed the value is gone or unusable (Android: backup
