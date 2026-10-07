@@ -4,6 +4,45 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.0] - Update notice, Android printing, mobile layout
+
+### Added
+
+- **"New version available" notice.** Once a week (and from Settings -
+  "Check for updates") the app asks GitHub's public release list for the
+  latest OmniOffice release. When it is newer, Home shows a banner that opens
+  the Windows installer or the Android APK for this device (arm64 or armv7);
+  only links under this repository's releases are opened. The check sends
+  nothing about the user or their documents and can be turned off.
+- **Printing on Android.** Writer, Calc and Impress "Print" did nothing in the
+  Android WebView. The document is now rendered to a PDF in the app cache and
+  opened in the system viewer, whose menu prints it. Desktop printing is
+  unchanged.
+- **Export diagnostics** (Settings). Writes a plain-text report - app and core
+  version, platform, engine status, the last 20 jobs and the tail of the app
+  log - to a file the user picks, to attach to a GitHub issue. Job titles and
+  inputs are left out and every path is reduced to `<path>` plus its
+  extension; nothing is sent anywhere.
+- **Welcome card** on Home for new installs: the office suite, the PDF tools
+  and the optional AI setup, one tap each. Upgrades skip it; Settings can show
+  it again.
+- **Office documents in Recent files.** Documents opened or saved in Writer,
+  Calc and Impress are listed on Home and in the Documents / Spreadsheets /
+  Presentations launchers; "Open" takes them back to their editor.
+- **Touch selection in Calc.** One finger on the sheet now scrolls it, a tap
+  selects a cell (a double tap edits it) and two round grips on the
+  selection's corners drag its extent. The fill handle sits just outside the
+  bottom-right grip. Mouse and pen input are unchanged.
+- **Folding ribbon on phones.** At phone width the Writer, Calc and Impress
+  ribbons show their first row of groups and a "More" button reveals the rest,
+  instead of a long sideways scroll.
+
+### Fixed
+
+- Opening a recent document from a launcher skipped the legacy-format import
+  and the "changed on disk" fingerprint; it now uses the same opener as every
+  other entry point.
+
 ## [3.8.3] - Automatic releases and reliable CI
 
 No change to the app itself; this release makes every following update reach

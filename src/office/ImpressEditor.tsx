@@ -1890,7 +1890,7 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
             label={t("writer.exportPdf")}
             onClick={() => void session.exportPdf()}
           />
-          <ToolButton icon={<Printer size={16} />} label={t("common.print")} onClick={() => window.print()} />
+          <ToolButton icon={<Printer size={16} />} label={t("common.print")} onClick={() => void session.print()} />
         </RibbonGroup>
       </Ribbon>
 

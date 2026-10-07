@@ -41,7 +41,10 @@ export const useSettings = create<SettingsState>((set, get) => ({
         engineStatus().catch(() => null),
         ocrLanguages().catch(() => []),
       ]);
-      const settings: Settings = { ...DEFAULT_SETTINGS, ...stored };
+      // A settings file written by an older version means this is not a
+      // first run, so upgraders do not get the welcome card.
+      const upgraded = Object.keys(stored).length > 0;
+      const settings: Settings = { ...DEFAULT_SETTINGS, onboardingDone: upgraded, ...stored };
       set({ settings, engine, languages, loaded: true });
       applyTheme(settings.theme);
       void import("./api").then(({ logFrontend }) => logFrontend("info", `engines: ${JSON.stringify(engine)}`));

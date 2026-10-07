@@ -1253,7 +1253,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     }
   };
   const handlePrint = () => {
-    window.print();
+    void session.print();
   };
 
   const handleExportPdf = () => {

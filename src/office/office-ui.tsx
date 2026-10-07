@@ -3,11 +3,49 @@
  * tool buttons, dialogs and small inputs. Styling comes from CSS variables in
  * styles.css so all themes (light/dark/midnight/paper) work unchanged.
  */
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { useT } from "../lib/i18n";
 
 export interface RibbonTab {
   id: string;
   label: string;
+}
+
+/** Phone-width windows fold the ribbon instead of scrolling it sideways. */
+export const NARROW_RIBBON_QUERY = "(max-width: 760px)";
+
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() =>
+    typeof window.matchMedia === "function" ? window.matchMedia(query).matches : false,
+  );
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const list = window.matchMedia(query);
+    const update = () => setMatches(list.matches);
+    list.addEventListener?.("change", update);
+    return () => list.removeEventListener?.("change", update);
+  }, [query]);
+  return matches;
+}
+
+/**
+ * Height that shows only the first row of a wrapped ribbon body (including
+ * its padding and border), or 0 when every group fits on one row.
+ */
+export function firstRowHeight(body: HTMLElement): number {
+  const items = Array.from(body.children).filter(
+    (child): child is HTMLElement => child instanceof HTMLElement && child.offsetHeight > 0,
+  );
+  if (items.length === 0) return 0;
+  const top = Math.min(...items.map((item) => item.offsetTop));
+  const firstRow = items.filter((item) => item.offsetTop < top + 4);
+  if (firstRow.length === items.length) return 0;
+  const style = window.getComputedStyle(body);
+  const chrome = ["paddingTop", "paddingBottom", "borderTopWidth", "borderBottomWidth"]
+    .map((key) => parseFloat(style[key as "paddingTop"]) || 0)
+    .reduce((sum, value) => sum + value, 0);
+  return Math.max(...firstRow.map((item) => item.offsetTop - top + item.offsetHeight)) + chrome;
 }
 
 export function Ribbon({
@@ -21,8 +59,40 @@ export function Ribbon({
   onSelect: (id: string) => void;
   children: ReactNode;
 }) {
+  const t = useT();
+  const bodyId = useId();
+  const narrow = useMediaQuery(NARROW_RIBBON_QUERY);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  // 0 = the groups fit (or the window is wide): nothing to fold.
+  const [collapsedHeight, setCollapsedHeight] = useState(0);
+  // Expansion belongs to one tab; switching tabs starts folded again.
+  const [expandedTab, setExpandedTab] = useState<string | null>(null);
+  const expanded = expandedTab === active;
+
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    if (!narrow || !body) {
+      setCollapsedHeight(0);
+      return;
+    }
+    const measure = () => setCollapsedHeight(firstRowHeight(body));
+    measure();
+    // Width changes re-wrap the groups; tab switches and state-driven
+    // buttons change them, so watch both.
+    const resize = new ResizeObserver(measure);
+    resize.observe(body);
+    const mutation = new MutationObserver(measure);
+    mutation.observe(body, { childList: true, subtree: true });
+    return () => {
+      resize.disconnect();
+      mutation.disconnect();
+    };
+  }, [narrow]);
+
+  const folds = narrow && collapsedHeight > 0;
+
   return (
-    <div className="ribbon">
+    <div className={`ribbon${narrow ? " is-narrow" : ""}${folds && expanded ? " is-expanded" : ""}`}>
       <div className="ribbon-tabs">
         {tabs.map((tab) => (
           <button
@@ -34,8 +104,27 @@ export function Ribbon({
             {tab.label}
           </button>
         ))}
+        {folds ? (
+          <button
+            type="button"
+            className="ribbon-tab ribbon-more"
+            aria-expanded={expanded}
+            aria-controls={bodyId}
+            onClick={() => setExpandedTab(expanded ? null : active)}
+          >
+            {expanded ? <ChevronUp size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
+            {expanded ? t("office.ribbonLess") : t("office.ribbonMore")}
+          </button>
+        ) : null}
       </div>
-      <div className="ribbon-body">{children}</div>
+      <div
+        ref={bodyRef}
+        id={bodyId}
+        className="ribbon-body"
+        style={folds && !expanded ? { maxHeight: collapsedHeight } : undefined}
+      >
+        {children}
+      </div>
     </div>
   );
 }

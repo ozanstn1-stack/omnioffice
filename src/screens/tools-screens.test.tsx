@@ -24,9 +24,19 @@ const invoke = vi.fn(async (command: string, _payload?: unknown) => {
       return [
         { path: "C:/docs/report.pdf", fileName: "report.pdf", tool: "_merged", timestamp: 1_700_000_000 },
         { path: "C:/docs/notes.txt", fileName: "notes.txt", tool: "_info", timestamp: 1_700_000_100 },
+        { path: "C:/docs/budget.xlsx", fileName: "budget.xlsx", tool: "_office", timestamp: 1_700_000_200 },
       ];
     case "clear_recent":
       return null;
+    case "office_open_document":
+      return {
+        kind: "calc",
+        title: "budget",
+        path: "C:/docs/budget.xlsx",
+        model: { sheets: [], activeSheet: 0 },
+        warnings: [],
+        legacy: false,
+      };
     case "load_operations":
       return [
         {
@@ -107,6 +117,8 @@ const invoke = vi.fn(async (command: string, _payload?: unknown) => {
       return [];
     case "ai_library_default_dir":
       return "C:/docs/AI";
+    case "diagnostics_report":
+      return "OmniOffice diagnostics\nVersion: 3.9.0\n";
     default:
       return null;
   }
@@ -122,6 +134,11 @@ vi.mock("@tauri-apps/api/path", () => ({
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: vi.fn(async () => null),
   save: vi.fn(async () => "C:/docs/out.pdf"),
+}));
+const writeFile = vi.fn(async (_path: string, _bytes: Uint8Array) => undefined);
+vi.mock("@tauri-apps/plugin-fs", () => ({
+  readFile: vi.fn(async () => new Uint8Array()),
+  writeFile: (path: string, bytes: Uint8Array) => writeFile(path, bytes),
 }));
 
 const pdfInfo = {
@@ -162,6 +179,8 @@ import { InfoScreen } from "./Info";
 import { History } from "./History";
 import { Home } from "./Home";
 import { Settings } from "./Settings";
+import { useToasts } from "../lib/store";
+import { useOfficeTabs } from "../lib/office-store";
 
 const props = { dragging: false, initialFiles: ["C:/docs/a.pdf"] };
 
@@ -310,6 +329,25 @@ describe("History, Home and Settings act on the local stores", () => {
     expect(onNavigate).toHaveBeenCalledWith("reader");
   });
 
+  it("opens a recent office document in its editor and keeps it in the recent list", async () => {
+    const user = userEvent.setup();
+    const onNavigate = vi.fn();
+    render(<Home onNavigate={onNavigate} onDropFiles={vi.fn()} dragging={false} onFileList={vi.fn()} />);
+    expect(await screen.findByText("budget.xlsx")).toBeInTheDocument();
+    const openButtons = await screen.findAllByRole("button", { name: "Open" });
+    await user.click(openButtons[2]);
+    expect(onNavigate).toHaveBeenCalledWith("office");
+    expect(requestOf("office_open_document")).toEqual({ path: "C:/docs/budget.xlsx" });
+    await waitFor(() =>
+      expect(requestOf("add_recent")).toEqual({
+        entry: expect.objectContaining({ path: "C:/docs/budget.xlsx", fileName: "budget.xlsx", tool: "_office" }),
+      }),
+    );
+    await waitFor(() =>
+      expect(useOfficeTabs.getState().tabs.some((tab) => tab.path === "C:/docs/budget.xlsx")).toBe(true),
+    );
+  });
+
   it("persists theme and office default choices through save_settings", async () => {
     const user = userEvent.setup();
     render(<Settings />);
@@ -330,5 +368,21 @@ describe("History, Home and Settings act on the local stores", () => {
       );
       expect(saves.some(([, payload]) => payload.settings.defaultWriterFormat === "odt")).toBe(true);
     });
+  });
+
+  it("exports the diagnostics report to the file the user picks", async () => {
+    const user = userEvent.setup();
+    useToasts.setState({ toasts: [] });
+    render(<Settings />);
+    await user.click(await screen.findByRole("button", { name: "Export diagnostics" }));
+    await waitFor(() =>
+      expect(useToasts.getState().toasts.some((toast) => toast.title === "Diagnostics report saved")).toBe(true),
+    );
+    const names = (invoke.mock.calls as unknown as [string][]).map(([name]) => name);
+    expect(names).toContain("diagnostics_report");
+    expect(writeFile).toHaveBeenCalledWith(
+      "C:/docs/out.pdf",
+      new TextEncoder().encode("OmniOffice diagnostics\nVersion: 3.9.0\n"),
+    );
   });
 });

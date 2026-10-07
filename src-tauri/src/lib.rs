@@ -7,6 +7,7 @@ mod ai;
 mod android_intent;
 mod commands;
 mod concurrency;
+mod diagnostics;
 mod jobs;
 mod library;
 mod oauth;
@@ -18,6 +19,7 @@ mod plugin;
 mod secret;
 mod sign;
 mod sync;
+mod update;
 mod vault;
 
 use jobs::{JobRegistry, JobStore};
@@ -118,6 +120,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            update::update_check,
+            update::update_open,
+            diagnostics::diagnostics_report,
             commands::engine_status,
             commands::ocr_languages,
             commands::cancel_job,

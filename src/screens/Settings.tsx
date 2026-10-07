@@ -9,12 +9,14 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import { Badge, Card, Kbd } from "../components/ui";
+import { Badge, Button, Card, Kbd } from "../components/ui";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
-import { useSettings } from "../lib/store";
+import { reportError, useSettings, useToasts } from "../lib/store";
+import { useUpdate } from "../lib/update";
 import { AiSettings } from "../components/ai-settings";
-import { appInfo } from "../lib/api";
+import { appInfo, diagnosticsReport, updateOpen } from "../lib/api";
+import { saveFileBytes } from "../lib/mobile";
 
 function VersionLine() {
   const t = useT();
@@ -28,6 +30,102 @@ function VersionLine() {
     <p className="text-xs muted">
       {t("settings.version")}: {version || "…"}
     </p>
+  );
+}
+
+/** Weekly update check toggle plus a manual "check now". */
+function UpdateControls() {
+  const t = useT();
+  const enabled = useSettings((s) => s.settings.updateCheck);
+  const updateSettings = useSettings((s) => s.update);
+  const info = useUpdate((s) => s.info);
+  const checking = useUpdate((s) => s.checking);
+  const error = useUpdate((s) => s.error);
+  const check = useUpdate((s) => s.check);
+  const [ran, setRan] = useState(false);
+
+  const result =
+    !ran || checking
+      ? ""
+      : error
+        ? t("update.failed", { error })
+        : info?.newer
+          ? t("update.available", { version: info.latest })
+          : info
+            ? t("update.upToDate", { version: info.current })
+            : "";
+
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="checkbox">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(event) => void updateSettings({ updateCheck: event.target.checked })}
+        />
+        <span>{t("update.weekly")}</span>
+      </label>
+      <div className="flex items-center gap-2 flex-wrap">
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={checking}
+          onClick={() => {
+            setRan(true);
+            void check(true);
+          }}
+        >
+          {checking ? t("update.checking") : t("update.checkNow")}
+        </Button>
+        {ran && info?.newer && !checking ? (
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() =>
+              void updateOpen(info.downloadUrl ?? info.releaseUrl).catch((err: unknown) => reportError(err, t))
+            }
+          >
+            {info.downloadUrl ? t("update.download") : t("update.openRelease")}
+          </Button>
+        ) : null}
+        <span className="text-xs muted" role="status">
+          {result}
+        </span>
+      </div>
+      <p className="text-xs muted">{t("update.hint")}</p>
+    </div>
+  );
+}
+
+/** Writes a redacted plain-text report the user can attach to an issue. */
+function DiagnosticsExport() {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  const exportReport = async () => {
+    setBusy(true);
+    try {
+      const report = await diagnosticsReport();
+      const stamp = new Date().toISOString().slice(0, 10);
+      const saved = await saveFileBytes(new TextEncoder().encode(report), `omnioffice-diagnostics-${stamp}.txt`, {
+        name: "Text",
+        extensions: ["txt"],
+      });
+      if (saved) useToasts.getState().push({ kind: "success", title: t("settings.diagnosticsSaved"), detail: saved });
+    } catch (error) {
+      reportError(error, t);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <div>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void exportReport()}>
+          {t("settings.diagnosticsExport")}
+        </Button>
+      </div>
+      <p className="text-xs muted">{t("settings.diagnosticsHint")}</p>
+    </div>
   );
 }
 
@@ -254,6 +352,14 @@ export function Settings() {
           <label className="checkbox">
             <input
               type="checkbox"
+              checked={!settings.onboardingDone}
+              onChange={(event) => void update({ onboardingDone: !event.target.checked })}
+            />
+            <span>{t("settings.showWelcome")}</span>
+          </label>
+          <label className="checkbox">
+            <input
+              type="checkbox"
               checked={settings.autoCleanupTemp}
               onChange={(event) => void update({ autoCleanupTemp: event.target.checked })}
             />
@@ -281,7 +387,7 @@ export function Settings() {
               </Badge>
             </li>
           </ul>
-          <p className="text-xs muted">{engine?.ocr_languages.length ?? 0} OCR languages installed</p>
+          <p className="text-xs muted">{t("settings.ocrInstalled", { count: engine?.ocr_languages.length ?? 0 })}</p>
         </Card>
 
         <Card className="p-5 flex flex-col gap-4">
@@ -316,6 +422,8 @@ export function Settings() {
           </h3>
           <p className="text-[13px] muted leading-relaxed">{t("settings.privacyBody")}</p>
           <VersionLine />
+          <UpdateControls />
+          <DiagnosticsExport />
         </Card>
       </div>
     </Screen>
