@@ -211,6 +211,108 @@ if (-not (Test-Path $sevenZip)) {
 }
 
 # ---------------------------------------------------------------- tesseract
+# The UB-Mannheim installer carries the whole toolchain: tesseract.exe, 15
+# training tools (text2image, lstmtraining, ...), winpath.exe, the uninstaller
+# and 51 DLLs, 223 MB uncompressed. OmniOffice only ever runs tesseract.exe (see
+# pdfcore::engines::tesseract_command), so only that exe and the DLLs it can
+# actually load are shipped. The set is derived, not guessed: the static import
+# table of tesseract.exe is followed recursively through the DLLs of the
+# payload. For the pinned 5.4.0.20240606 build that is tesseract.exe plus 26
+# DLLs, 116 MB (about 26 MB smaller in the compressed installer):
+#   libtesseract-5, libleptonica-6, libarchive-13, libstdc++-6, libgcc_s_seh-1,
+#   libwinpthread-1, libtiff-6, libjpeg-8, libgif-7, libopenjp2-7, libpng16-16,
+#   libwebp-7, libwebpmux-3, libsharpyuv-0, libLerc, libdeflate, libjbig-0,
+#   libb2-1, libbz2-1, libcrypto-3-x64, libexpat-1, libiconv-2, liblz4,
+#   liblzma-5, libzstd, zlib1
+# Not shipped: the pango/cairo/glib/harfbuzz/fontconfig/ICU/brotli stack (only
+# text2image links it), the training exes, winpath.exe and the uninstaller. The
+# payload has no delay-load tables and none of the binaries checked (tesseract,
+# libtesseract, libleptonica, libarchive, libtiff) names another payload DLL as
+# a string, so the static closure is the whole runtime set.
+# Anything unexpected (a payload that cannot be parsed, a closure without
+# libtesseract/libleptonica) falls back to copying every DLL, still without the
+# training exes, instead of risking a tesseract.exe that cannot start.
+
+# DLL names a PE file lists in its static import table, or $null when the file
+# is not a PE image this parser understands.
+function Get-PeImports {
+    param([string]$Path)
+    $b = [System.IO.File]::ReadAllBytes($Path)
+    if ($b.Length -lt 0x40 -or $b[0] -ne 0x4D -or $b[1] -ne 0x5A) { return $null }
+    $pe = [int64][BitConverter]::ToUInt32($b, 0x3C)
+    if ($pe + 24 -gt $b.Length -or [BitConverter]::ToUInt32($b, [int]$pe) -ne 0x00004550) { return $null }
+    $sectionCount = [int][BitConverter]::ToUInt16($b, [int]($pe + 6))
+    $optionalSize = [int64][BitConverter]::ToUInt16($b, [int]($pe + 20))
+    $optional = $pe + 24
+    $magic = [BitConverter]::ToUInt16($b, [int]$optional)
+    if ($magic -eq 0x20B) { $directories = $optional + 112 }
+    elseif ($magic -eq 0x10B) { $directories = $optional + 96 }
+    else { return $null }
+    # Data directory 1 is the import table.
+    $importRva = [int64][BitConverter]::ToUInt32($b, [int]($directories + 8))
+    if ($importRva -eq 0) { return ,@() }
+    $sections = $optional + $optionalSize
+    $toOffset = {
+        param([int64]$Rva)
+        for ($i = 0; $i -lt $sectionCount; $i++) {
+            $s = [int]($sections + 40 * $i)
+            $virtualSize = [int64][BitConverter]::ToUInt32($b, $s + 8)
+            $virtualAddress = [int64][BitConverter]::ToUInt32($b, $s + 12)
+            $rawSize = [int64][BitConverter]::ToUInt32($b, $s + 16)
+            $rawPointer = [int64][BitConverter]::ToUInt32($b, $s + 20)
+            $span = [Math]::Max($virtualSize, $rawSize)
+            if ($Rva -ge $virtualAddress -and $Rva -lt ($virtualAddress + $span)) { return ($Rva - $virtualAddress + $rawPointer) }
+        }
+        return -1
+    }
+    $names = New-Object System.Collections.ArrayList
+    $descriptor = & $toOffset $importRva
+    if ($descriptor -lt 0) { return $null }
+    # One 20-byte descriptor per imported DLL; the table ends with a zeroed one.
+    while ($descriptor + 20 -le $b.Length) {
+        $nameRva = [int64][BitConverter]::ToUInt32($b, [int]($descriptor + 12))
+        if ($nameRva -eq 0) { break }
+        $nameOffset = & $toOffset $nameRva
+        if ($nameOffset -lt 0) { return $null }
+        $end = [int]$nameOffset
+        while ($end -lt $b.Length -and $b[$end] -ne 0) { $end++ }
+        [void]$names.Add([System.Text.Encoding]::ASCII.GetString($b, [int]$nameOffset, $end - [int]$nameOffset))
+        $descriptor += 20
+    }
+    return ,@($names)
+}
+
+# Every exe/dll of $Dir that $Roots load, directly or through other payload
+# DLLs (imports that are not in the payload are Windows system DLLs). Returns
+# $null when any file cannot be parsed or a root is missing.
+function Get-RuntimeClosure {
+    param([string]$Dir, [string[]]$Roots)
+    $present = @{}
+    foreach ($file in Get-ChildItem -Path $Dir -File) {
+        if ($file.Extension -in '.dll', '.exe') { $present[$file.Name] = $file.Name }
+    }
+    $needed = @{}
+    $queue = New-Object System.Collections.ArrayList
+    foreach ($rootName in $Roots) {
+        if (-not $present.ContainsKey($rootName)) { return $null }
+        $needed[$present[$rootName]] = $true
+        [void]$queue.Add($present[$rootName])
+    }
+    while ($queue.Count -gt 0) {
+        $name = [string]$queue[0]
+        $queue.RemoveAt(0)
+        $imports = Get-PeImports -Path (Join-Path $Dir $name)
+        if ($null -eq $imports) { return $null }
+        foreach ($dependency in $imports) {
+            if ($present.ContainsKey($dependency) -and -not $needed.ContainsKey($present[$dependency])) {
+                $needed[$present[$dependency]] = $true
+                [void]$queue.Add($present[$dependency])
+            }
+        }
+    }
+    return ,@($needed.Keys | Sort-Object)
+}
+
 $tessDir = Join-Path $enginesDir 'tesseract'
 $tessExe = Join-Path $tessDir 'tesseract.exe'
 if ($Force -or -not (Test-Path $tessExe)) {
@@ -225,8 +327,24 @@ if ($Force -or -not (Test-Path $tessExe)) {
     if ($LASTEXITCODE -ne 0) { throw "7zr extraction failed with code $LASTEXITCODE" }
     # The installer payload puts the program at the root of $INSTDIR and the
     # runtime tessdata bits (configs, tessconfigs, pdf.ttf) under tessdata\.
-    Get-ChildItem $tmp -Filter '*.exe' | Copy-Item -Destination $tessDir -Force
-    Get-ChildItem $tmp -Filter '*.dll' | Copy-Item -Destination $tessDir -Force
+    # Only tesseract.exe and the DLLs it loads are kept (see the note above);
+    # stale files from an earlier, fuller fetch are removed so -Force really
+    # produces the lean layout.
+    Get-ChildItem -Path $tessDir -File | Where-Object { $_.Extension -in '.exe', '.dll' } | Remove-Item -Force
+    $closure = $null
+    try { $closure = Get-RuntimeClosure -Dir $tmp -Roots @('tesseract.exe') }
+    catch { Write-Warning "could not follow the tesseract.exe imports: $($_.Exception.Message)" }
+    $closureLooksRight = $closure -and ($closure | Where-Object { $_ -like 'libtesseract*' }) -and ($closure | Where-Object { $_ -like 'libleptonica*' })
+    if ($closureLooksRight) {
+        foreach ($name in $closure) { Copy-Item (Join-Path $tmp $name) $tessDir -Force }
+        $shipped = @($closure).Count
+        $total = @(Get-ChildItem -Path $tmp -File | Where-Object { $_.Extension -in '.exe', '.dll' }).Count
+        Write-Host "  -> tesseract.exe + $($shipped - 1) DLLs of $total executables/libraries in the installer"
+    } else {
+        Write-Warning 'tesseract import closure unavailable or implausible: copying every DLL (training tools and the uninstaller are still left out)'
+        Copy-Item (Join-Path $tmp 'tesseract.exe') $tessDir -Force
+        Get-ChildItem $tmp -Filter '*.dll' | Copy-Item -Destination $tessDir -Force
+    }
     $tessDataDir = Join-Path $tessDir 'tessdata'
     New-Item -ItemType Directory -Force -Path $tessDataDir | Out-Null
     $payloadData = Join-Path $tmp 'tessdata'
