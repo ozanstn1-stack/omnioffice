@@ -26,6 +26,7 @@
 //! * `pdfa`      - PDF/A validation and best-effort conversion
 //! * `flatten`   - annotation and form flattening
 //! * `forms`     - AcroForm fields (list/fill/validate) and page object editing
+//! * `pdf2doc`   - layout recovery (paragraphs, headings, lists) for PDF to Word
 
 pub mod annotate;
 pub mod compare;
@@ -50,6 +51,7 @@ pub mod ocr;
 pub mod organize;
 pub mod pagelayout;
 pub mod pages;
+pub mod pdf2doc;
 pub mod pdfa;
 pub mod progress;
 pub mod redact;
