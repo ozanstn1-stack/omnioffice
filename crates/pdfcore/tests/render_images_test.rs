@@ -3,10 +3,11 @@ mod common;
 use common::*;
 use pdfcore::annotate::{annotate_pdf, Annotation};
 use pdfcore::docutil::OverwritePolicy;
+use pdfcore::error::PdfError;
 use pdfcore::images::{images_to_pdf, ImageFormat, ImageItem, ImageToPdfOptions};
 use pdfcore::numbering::{add_page_numbers, NumberingOptions};
 use pdfcore::progress::CancelToken;
-use pdfcore::render::RenderOptions;
+use pdfcore::render::{PixelRegion, RenderOptions};
 use pdfcore::watermark::{add_watermark, WatermarkOptions};
 
 fn engine_available() -> bool {
@@ -398,4 +399,180 @@ fn annotations_are_flattened_into_pages() {
     let src = pdfcore::render::render_page(&input, None, 1, &render_options).unwrap();
     let annotated = pdfcore::render::render_page(&out, None, 1, &render_options).unwrap();
     assert!(changed_pixels(&src, &annotated, 8) > 200);
+}
+
+/// The pixels of `region` cut out of a full-page render.
+fn crop(full: &pdfcore::render::RenderedPage, region: PixelRegion) -> Vec<u8> {
+    let mut out = Vec::with_capacity((region.width * region.height * 4) as usize);
+    for row in region.y..region.y + region.height {
+        let start = ((row * full.width + region.x) * 4) as usize;
+        out.extend_from_slice(&full.rgba[start..start + (region.width * 4) as usize]);
+    }
+    out
+}
+
+/// (largest, mean) absolute channel difference between two RGBA buffers.
+fn channel_diff(a: &[u8], b: &[u8]) -> (u8, f64) {
+    assert_eq!(a.len(), b.len(), "buffers must have the same size");
+    let mut largest = 0u8;
+    let mut total = 0u64;
+    for (x, y) in a.iter().zip(b) {
+        let diff = x.abs_diff(*y);
+        largest = largest.max(diff);
+        total += diff as u64;
+    }
+    (largest, total as f64 / a.len().max(1) as f64)
+}
+
+/// A region render must be the matching crop of a full-page render at the
+/// same scale: the reader lays tiles over the page by those coordinates, so
+/// any drift shows up as seams or doubled text. Covers a text page, a
+/// `/Rotate 90` page and a raster (scan-like) page, interior and edge regions.
+#[test]
+fn region_render_matches_a_crop_of_the_full_page() {
+    if !engine_available() {
+        eprintln!("skipping: pdfium not available");
+        return;
+    }
+    let dir = TestDir::new();
+    let text = dir.path("tiles-text.pdf");
+    write_doc(&mut build_text_doc(1, "tiles", "Tiles"), &text);
+    let rotated = dir.path("tiles-rotated.pdf");
+    let mut doc = build_text_doc(1, "rotated", "Rotated");
+    let page_id = *doc.get_pages().get(&1).unwrap();
+    doc.get_object_mut(page_id).unwrap().as_dict_mut().unwrap().set("Rotate", 90);
+    write_doc(&mut doc, &rotated);
+    let scanned = dir.path("tiles-scan.pdf");
+    write_doc(&mut build_scanned_doc(1, "Tile scan", "Scan"), &scanned);
+
+    // 2 px per point is 144 dpi; the full render goes through `render_page`.
+    let scale = 2.0f32;
+    let options = RenderOptions { dpi: 72.0 * scale, max_width: None, max_height: None };
+    // Each document's interior region covers its heading (and the box stroke):
+    // content, not just the page background.
+    let documents = [
+        (&text, PixelRegion { x: 130, y: 210, width: 512, height: 300 }),
+        (&rotated, PixelRegion { x: 1150, y: 120, width: 512, height: 300 }),
+        (&scanned, PixelRegion { x: 60, y: 120, width: 512, height: 300 }),
+    ];
+    for (input, interior) in documents {
+        let full = pdfcore::render::render_page(input, None, 1, &options).unwrap();
+        let regions = [
+            // The top-left corner, the interior region and an edge region the
+            // page boundary clips.
+            PixelRegion { x: 0, y: 0, width: 256, height: 256 },
+            interior,
+            PixelRegion { x: full.width - 100, y: full.height - 60, width: 512, height: 512 },
+        ];
+        for region in regions {
+            let tile = pdfcore::render::render_page_region(input, None, 1, scale, region).unwrap();
+            let expected = PixelRegion {
+                width: region.width.min(full.width - region.x),
+                height: region.height.min(full.height - region.y),
+                ..region
+            };
+            assert_eq!((tile.width, tile.height), (expected.width, expected.height), "{input:?} {region:?}");
+            let (largest, mean) = channel_diff(&tile.rgba, &crop(&full, expected));
+            assert!(
+                largest <= 24 && mean < 0.5,
+                "{input:?} {region:?}: region differs from the full render (max {largest}, mean {mean:.3})"
+            );
+        }
+        // Negative control: a crop shifted by a few pixels must not match, so
+        // the agreement above cannot come from comparing two blank areas.
+        let tile = pdfcore::render::render_page_region(input, None, 1, scale, interior).unwrap();
+        let shifted = crop(&full, PixelRegion { x: interior.x + 7, y: interior.y + 5, ..interior });
+        let (_, mean) = channel_diff(&tile.rgba, &shifted);
+        assert!(mean > 1.0, "{input:?}: the comparison is not discriminating (mean {mean:.3})");
+    }
+}
+
+/// Region renders reuse an open document between calls; a save over the same
+/// path must still be picked up instead of serving the old file's pixels.
+#[test]
+fn region_render_reloads_a_file_that_changed_on_disk() {
+    if !engine_available() {
+        eprintln!("skipping: pdfium not available");
+        return;
+    }
+    let dir = TestDir::new();
+    let path = dir.path("tiles-reload.pdf");
+    write_doc(&mut build_text_doc(1, "first", "First"), &path);
+    let region = PixelRegion { x: 100, y: 200, width: 400, height: 120 };
+    let before = pdfcore::render::render_page_region(&path, None, 1, 2.0, region).unwrap();
+    // Served from the open document: the same pixels again.
+    let again = pdfcore::render::render_page_region(&path, None, 1, 2.0, region).unwrap();
+    assert_eq!(before.rgba, again.rgba);
+
+    // Replace the file the way the app saves: write elsewhere, rename over.
+    let replacement = dir.path("tiles-reload-new.pdf");
+    write_doc(&mut build_scanned_doc(1, "Second version", "Second"), &replacement);
+    std::fs::rename(&replacement, &path).unwrap();
+    let after = pdfcore::render::render_page_region(&path, None, 1, 2.0, region).unwrap();
+    let options = RenderOptions { dpi: 144.0, max_width: None, max_height: None };
+    let full = pdfcore::render::render_page(&path, None, 1, &options).unwrap();
+    let (_, mean) = channel_diff(&after.rgba, &crop(&full, region));
+    assert!(mean < 0.5, "the region must come from the new file (mean {mean:.3})");
+    let (_, stale) = channel_diff(&after.rgba, &before.rgba);
+    assert!(stale > 1.0, "the region still shows the old file (mean {stale:.3})");
+}
+
+/// The open document is keyed by password too: once a protected file was
+/// rendered with the right password, a call without it (or with a wrong one)
+/// must still fail instead of being served from the open document.
+#[test]
+fn region_render_does_not_reuse_a_document_across_passwords() {
+    if !engine_available() {
+        eprintln!("skipping: pdfium not available");
+        return;
+    }
+    let dir = TestDir::new();
+    let plain = dir.path("tiles-plain.pdf");
+    write_doc(&mut build_text_doc(1, "secret", "Secret"), &plain);
+    let protected = dir.path("tiles-protected.pdf");
+    let options = pdfcore::security::ProtectOptions {
+        user_password: "user-pass".into(),
+        owner_password: "owner-pass".into(),
+        allow_printing: true,
+        allow_copying: true,
+        allow_editing: true,
+        allow_commenting: true,
+    };
+    pdfcore::security::protect_pdf(&plain, &protected, &options, OverwritePolicy::Replace, None).unwrap();
+    let region = PixelRegion { x: 100, y: 200, width: 256, height: 128 };
+    let unlocked = pdfcore::render::render_page_region(&protected, Some("user-pass"), 1, 2.0, region).unwrap();
+    assert!(pdfcore::render::render_page_region(&protected, None, 1, 2.0, region).is_err());
+    assert!(pdfcore::render::render_page_region(&protected, Some("wrong"), 1, 2.0, region).is_err());
+    let again = pdfcore::render::render_page_region(&protected, Some("user-pass"), 1, 2.0, region).unwrap();
+    assert_eq!(unlocked.rgba, again.rgba);
+}
+
+#[test]
+fn region_render_rejects_bad_scales_and_regions() {
+    let dir = TestDir::new();
+    let path = dir.path("tiles-bounds.pdf");
+    write_doc(&mut build_text_doc(1, "bounds", "Bounds"), &path);
+    let region = PixelRegion { x: 0, y: 0, width: 256, height: 256 };
+    // Argument checks run before the engine is touched.
+    for scale in [0.0, -1.0, f32::NAN, f32::INFINITY, pdfcore::render::MAX_REGION_SCALE + 1.0] {
+        let error = pdfcore::render::render_page_region(&path, None, 1, scale, region).unwrap_err();
+        assert!(matches!(error, PdfError::InvalidInput(_)), "scale {scale}: {error:?}");
+    }
+    for (width, height) in [(0, 10), (10, 0), (pdfcore::render::MAX_REGION_EDGE + 1, 10)] {
+        let sized = PixelRegion { width, height, ..region };
+        let error = pdfcore::render::render_page_region(&path, None, 1, 1.0, sized).unwrap_err();
+        assert!(matches!(error, PdfError::InvalidInput(_)), "{width}x{height}: {error:?}");
+    }
+    if !engine_available() {
+        eprintln!("skipping the engine checks: pdfium not available");
+        return;
+    }
+    // A4 at 1 px per point is 595 x 842: a region starting past it is empty.
+    let outside = PixelRegion { x: 600, y: 0, width: 64, height: 64 };
+    let error = pdfcore::render::render_page_region(&path, None, 1, 1.0, outside).unwrap_err();
+    assert!(matches!(error, PdfError::InvalidInput(_)), "{error:?}");
+    for page in [0, 2] {
+        let error = pdfcore::render::render_page_region(&path, None, page, 1.0, region).unwrap_err();
+        assert!(matches!(error, PdfError::RangeOutOfBounds), "page {page}: {error:?}");
+    }
 }

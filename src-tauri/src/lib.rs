@@ -135,6 +135,7 @@ pub fn run() {
             commands::pdf_info,
             commands::page_thumbnail,
             commands::page_preview,
+            commands::page_tile,
             commands::page_text,
             commands::search_document,
             commands::check_password,
