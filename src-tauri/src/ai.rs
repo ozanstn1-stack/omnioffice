@@ -1111,6 +1111,8 @@ pub fn ai_example_prompts() -> AiExamplePrompts {
     }
 }
 
+pub mod edit;
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -19,6 +19,7 @@ import {
   CopyX,
   Eraser,
   Eye,
+  FileText,
   Filter,
   FolderOpen,
   GitBranch,
@@ -32,6 +33,7 @@ import {
   Redo2,
   Save,
   Sigma,
+  Sparkles,
   Table2,
   Trash2,
   Tag,
@@ -78,6 +80,9 @@ import {
   type Scalar,
 } from "./calc/formula";
 import { addressInRange } from "./calc/addresses";
+import { AI_EDIT_MAX_CHARS, useAiStatus } from "./ai/editor-ai";
+import { columnValueLines, headerContext, lastRowOfColumn, summaryCellText } from "./calc/ai-calc";
+import { SuggestFormulaDialog, SummarizeColumnDialog } from "./calc/CalcAiDialogs";
 import {
   findCircularReferences,
   invalidReferences,
@@ -450,6 +455,14 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const [printDialog, setPrintDialog] = useState(false);
   const [textToColumnsDialog, setTextToColumnsDialog] = useState(false);
   const [duplicatesDialog, setDuplicatesDialog] = useState(false);
+  const aiStatus = useAiStatus();
+  // The AI dialogs remember the cell they were opened for: the selection may
+  // move while the request runs, but the result goes where it was asked for.
+  const [aiDialog, setAiDialog] = useState<
+    | { kind: "summarize"; sheetIndex: number; row: number; col: number; lines: string[] }
+    | { kind: "formula"; sheetIndex: number; row: number; col: number; headers: string; selection: string }
+    | null
+  >(null);
   // The open choice list of a list-validated active cell; `index` is the
   // highlighted choice. It always belongs to the active cell (see below).
   const [listDropdown, setListDropdown] = useState<{ index: number } | null>(null);
@@ -1817,6 +1830,47 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     setDuplicatesDialog(true);
   };
 
+  const openAiSummarize = () => {
+    const push = useToasts.getState().push;
+    const col = selection.focus.col;
+    const last = lastRowOfColumn(sheet, col);
+    const { start, end } = selectionBounds;
+    const inColumn = start.col === end.col && end.row > start.row;
+    const lines = columnValueLines(computed, col, inColumn ? start.row : 0, inColumn ? Math.min(end.row, last) : last);
+    if (lines.length === 0) {
+      push({ kind: "info", title: t("ai.edit.columnEmpty", { column: columnLabel(col) }) });
+      return;
+    }
+    if (lines.join("\n").length > AI_EDIT_MAX_CHARS) {
+      push({ kind: "error", title: t("ai.edit.tooLong", { max: AI_EDIT_MAX_CHARS }) });
+      return;
+    }
+    setAiDialog({ kind: "summarize", sheetIndex, row: last + 1, col, lines });
+  };
+
+  const openAiFormula = () => {
+    const { anchor, focus } = selection;
+    const single = anchor.row === focus.row && anchor.col === focus.col;
+    const focusAddress = formatAddress(focus.row, focus.col);
+    setAiDialog({
+      kind: "formula",
+      sheetIndex,
+      row: focus.row,
+      col: focus.col,
+      headers: headerContext(computed, sheet.colCount),
+      selection: single ? focusAddress : `${formatAddress(anchor.row, anchor.col)}:${focusAddress}`,
+    });
+  };
+
+  /** One undo step: the AI text goes into one cell. */
+  const acceptAiCell = (text: string, message?: string) => {
+    const dialog = aiDialog;
+    if (!dialog) return;
+    setAiDialog(null);
+    update((current) => applyCellEdit(current, dialog.sheetIndex, dialog.row, dialog.col, text));
+    if (message) useToasts.getState().push({ kind: "success", title: message });
+  };
+
   /** Column letters and first-row values of the selection, for the dialog. */
   const duplicateColumns = () => {
     const { start, end } = selectionBounds;
@@ -2614,6 +2668,28 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 onClick={openRemoveDuplicates}
               />
             </RibbonGroup>
+            <RibbonGroup label={t("ai.edit.group")}>
+              <ToolButton
+                icon={<FileText size={16} />}
+                label={t("ai.edit.btn.summarizeColumn")}
+                onClick={openAiSummarize}
+                disabled={!aiStatus.configured}
+                title={
+                  aiStatus.configured
+                    ? undefined
+                    : `${t("ai.edit.btn.summarizeColumn")} - ${t("ai.edit.notConfigured")}`
+                }
+              />
+              <ToolButton
+                icon={<Sparkles size={16} />}
+                label={t("ai.edit.btn.suggestFormula")}
+                onClick={openAiFormula}
+                disabled={!aiStatus.configured}
+                title={
+                  aiStatus.configured ? undefined : `${t("ai.edit.btn.suggestFormula")} - ${t("ai.edit.notConfigured")}`
+                }
+              />
+            </RibbonGroup>
             <RibbonGroup label={t("calc.structure")}>
               <ToolButton
                 icon={<Plus size={16} />}
@@ -3169,6 +3245,34 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           columns={duplicateColumns()}
           onClose={() => setDuplicatesDialog(false)}
           onApply={removeDuplicates}
+        />
+      ) : null}
+
+      {aiDialog?.kind === "summarize" ? (
+        <SummarizeColumnDialog
+          docId={tab.id}
+          status={aiStatus}
+          column={columnLabel(aiDialog.col)}
+          lines={aiDialog.lines}
+          onInsert={(summary) =>
+            acceptAiCell(
+              summaryCellText(summary),
+              t("ai.edit.insertedBelow", { cell: formatAddress(aiDialog.row, aiDialog.col) }),
+            )
+          }
+          onClose={() => setAiDialog(null)}
+        />
+      ) : null}
+
+      {aiDialog?.kind === "formula" ? (
+        <SuggestFormulaDialog
+          docId={tab.id}
+          status={aiStatus}
+          cell={formatAddress(aiDialog.row, aiDialog.col)}
+          headers={aiDialog.headers}
+          selection={aiDialog.selection}
+          onAccept={(formula) => acceptAiCell(formula)}
+          onClose={() => setAiDialog(null)}
         />
       ) : null}
 
