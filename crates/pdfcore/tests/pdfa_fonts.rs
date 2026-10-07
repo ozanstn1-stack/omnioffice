@@ -227,6 +227,52 @@ fn acroform_default_resource_fonts_keep_the_full_program() {
     assert!(program_of(&converted, &descriptor_of(&converted, &font)).len() > 100_000);
 }
 
+#[test]
+fn text_drawn_only_by_a_soft_mask_group_keeps_its_glyphs() {
+    let dir = TestDir::new();
+    let mut doc = build_text_doc(1, "Plain", "Mask");
+    let page_id = *doc.get_pages().values().next().unwrap();
+    // The page and the mask group share one indirect Resources object.
+    let resources = doc.get_dictionary(page_id).unwrap().get(b"Resources").unwrap().as_reference().expect("indirect");
+    let group = doc.add_object(Object::Stream(Stream::new(
+        dictionary! {
+            "Type" => "XObject",
+            "Subtype" => "Form",
+            "BBox" => vec![0.into(), 0.into(), 300.into(), 50.into()],
+            "Group" => dictionary! { "S" => "Transparency", "CS" => "DeviceGray" },
+            "Resources" => Object::Reference(resources),
+        },
+        b"BT /F1 12 Tf 10 10 Td (XYZ) Tj ET".to_vec(),
+    )));
+    let state = Object::Dictionary(dictionary! {
+        "Type" => "ExtGState",
+        "SMask" => dictionary! { "Type" => "Mask", "S" => "Luminosity", "G" => Object::Reference(group) },
+    });
+    pdfcore::docutil::add_resource_entry(&mut doc, page_id, b"ExtGState", "GS1", state).unwrap();
+    let mut content = doc.get_object(page_content_id(&doc)).unwrap().as_stream().unwrap().content.clone();
+    content.extend_from_slice(b"\nq /GS1 gs 0 0 100 100 re f Q\n");
+    set_content(&mut doc, &String::from_utf8(content).unwrap());
+
+    let (report, converted) = convert(&mut doc, &dir, "smask");
+    assert!(report.valid, "failures: {:?}", failures(&report));
+    let (_, font) = converted
+        .objects
+        .iter()
+        .filter_map(|(id, object)| Some((*id, object.as_dict().ok()?.clone())))
+        .find(|(_, dict)| {
+            dict.get(b"BaseFont")
+                .ok()
+                .and_then(|name| name.as_name().ok())
+                .is_some_and(|name| name == b"LiberationSans" || name.ends_with(b"+LiberationSans"))
+        })
+        .expect("the page font is embedded");
+    let program = program_of(&converted, &descriptor_of(&converted, &font));
+    let subset = FontRef::try_from_slice(&program).unwrap();
+    for character in "XYZPlainpge1".chars() {
+        assert!(has_outline(&subset, character), "{character} is drawn by the page or its mask and must be kept");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // ttfsubset
 // ---------------------------------------------------------------------------

@@ -7,7 +7,9 @@
 //! content stream, every form XObject reached through `Do` (recursively, with
 //! the caller's current font inherited), every tiling pattern reached through
 //! `scn`/`SCN`, and every annotation appearance stream (`/AP` `/N`, `/R`,
-//! `/D`, including appearance-state sub-dictionaries). The current font
+//! `/D`, including appearance-state sub-dictionaries), the soft-mask group
+//! (`/SMask` `/G`) of every ExtGState applied with `gs`, and the glyph
+//! procedures of every Type 3 font selected with `Tf`. The current font
 //! follows `Tf`, an ExtGState `/Font` applied with `gs`, and `q`/`Q`.
 //!
 //! Codes are recorded raw: one byte per code for simple fonts, two bytes for
@@ -23,7 +25,10 @@
 //! * any object the scan did not interpret refers to the font, for example the
 //!   resources of a Type 3 glyph procedure or a form XObject no page draws.
 //!   Every indirect reference to the font anywhere in the file is matched
-//!   against the resource dictionaries the scan actually walked.
+//!   against the resource dictionaries the scan actually walked, and every
+//!   page, form, pattern or Type 3 font the scan did not walk contributes the
+//!   fonts reachable from its resources, even when those resources are shared
+//!   with an object that was walked.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -70,6 +75,9 @@ pub(crate) struct UsageScan {
     /// Font -> the indirect objects whose references to it the scan walked.
     covered: HashMap<ObjectId, HashSet<ObjectId>>,
     default_resource_fonts: HashSet<ObjectId>,
+    /// Everything reachable from the resources of a page, form, pattern or
+    /// Type 3 font the scan did not interpret.
+    unwalked_reach: HashSet<ObjectId>,
     aborted: Option<String>,
     /// Resource dictionaries of the form XObjects, tiling patterns and
     /// appearance streams that were interpreted. Their fonts need a program
@@ -94,7 +102,7 @@ impl UsageScan {
                 FontUsage::Unknown(DEFAULT_RESOURCES_REASON.to_string())
             } else if let Some(reason) = self.uncertain.get(font) {
                 FontUsage::Unknown(reason.clone())
-            } else if unread_holder {
+            } else if unread_holder || self.unwalked_reach.contains(font) {
                 FontUsage::Unknown(UNREAD_REFERENCE_REASON.to_string())
             } else {
                 FontUsage::Codes(self.codes.get(font).cloned().unwrap_or_default())
@@ -124,11 +132,13 @@ pub(crate) fn scan_document(doc: &Document) -> UsageScan {
         }
         scanner.scan_page(*page_id, &fallback);
     }
+    scanner.reach_from_unwalked();
     UsageScan {
         codes: scanner.codes,
         uncertain: scanner.uncertain,
         covered: scanner.covered,
         default_resource_fonts: scanner.default_resource_fonts,
+        unwalked_reach: scanner.unwalked_reach,
         aborted: scanner.aborted,
         extra_resources: scanner.extra_resources,
     }
@@ -158,6 +168,15 @@ struct Scanner<'a> {
     default_resource_fonts: HashSet<ObjectId>,
     widths: HashMap<ObjectId, CodeWidth>,
     visited: HashSet<(ObjectId, Option<ObjectId>, Option<ObjectId>)>,
+    /// Pages, forms, patterns, appearance streams and Type 3 fonts whose
+    /// content was interpreted.
+    walked: HashSet<ObjectId>,
+    unwalked_reach: HashSet<ObjectId>,
+    /// Resource containers whose fonts are already marked covered, and
+    /// (container, reason) pairs already marked uncertain: a Resources object
+    /// shared by thousands of pages is only walked once.
+    covered_levels: HashSet<ObjectId>,
+    uncertain_levels: HashSet<(ObjectId, &'static str)>,
     extra_resources: Vec<Dictionary>,
     extra_containers: HashSet<ObjectId>,
     form_runs: usize,
@@ -175,6 +194,10 @@ impl<'a> Scanner<'a> {
             default_resource_fonts: HashSet::new(),
             widths: HashMap::new(),
             visited: HashSet::new(),
+            walked: HashSet::new(),
+            unwalked_reach: HashSet::new(),
+            covered_levels: HashSet::new(),
+            uncertain_levels: HashSet::new(),
             extra_resources: Vec::new(),
             extra_containers: HashSet::new(),
             form_runs: 0,
@@ -185,6 +208,7 @@ impl<'a> Scanner<'a> {
 
     fn scan_page(&mut self, page_id: ObjectId, fallback: &[ResourceLevel<'a>]) {
         let chain = self.page_chain(page_id);
+        self.walked.insert(page_id);
         let mut content: Vec<u8> = Vec::new();
         let mut readable = true;
         for stream_id in self.doc.get_page_contents(page_id) {
@@ -273,6 +297,9 @@ impl<'a> Scanner<'a> {
                         .and_then(|value| value.as_name().ok())
                         .and_then(|name| self.lookup(chain, b"Font", name))
                         .and_then(|(value, _)| value.as_reference().ok());
+                    if let Some(selected) = font {
+                        self.run_type3(chain, selected, depth);
+                    }
                 }
                 "gs" => {
                     if let Some(selected) = operands
@@ -281,6 +308,10 @@ impl<'a> Scanner<'a> {
                         .and_then(|name| self.state_font(chain, name))
                     {
                         font = Some(selected);
+                        self.run_type3(chain, selected, depth);
+                    }
+                    if let Some(name) = operands.first().and_then(|value| value.as_name().ok()) {
+                        self.run_soft_mask(chain, name, font, depth);
                     }
                 }
                 "Tj" | "'" => {
@@ -343,6 +374,76 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    /// The transparency group of an ExtGState soft mask (`/SMask` `/G`) draws
+    /// when the state is applied, so its text counts like any form's.
+    fn run_soft_mask(&mut self, chain: &[ResourceLevel<'a>], name: &[u8], font: Option<ObjectId>, depth: usize) {
+        let Some((value, container)) = self.lookup(chain, b"ExtGState", name) else {
+            return;
+        };
+        let Some((state, state_container)) = self.dict_at(Some(value), container) else {
+            return;
+        };
+        let Some((mask, _)) = self.dict_at(state.get(b"SMask").ok(), state_container) else {
+            return;
+        };
+        let Some(Object::Reference(id)) = mask.get(b"G").ok() else {
+            return;
+        };
+        if let Ok(Object::Stream(stream)) = self.doc.get_object(*id) {
+            self.run_form(*id, stream, chain, font, depth + 1);
+        }
+    }
+
+    /// A Type 3 font draws its glyphs with content streams (`/CharProcs`),
+    /// which may show text in other fonts; run them once the font is selected.
+    fn run_type3(&mut self, chain: &[ResourceLevel<'a>], font_id: ObjectId, depth: usize) {
+        let Ok(dict) = self.doc.get_dictionary(font_id) else {
+            return;
+        };
+        if dict.get(b"Subtype").and_then(Object::as_name).ok() != Some(b"Type3".as_slice()) {
+            return;
+        }
+        let own = dict.get(b"Resources").ok().and_then(|value| self.level(value, font_id));
+        let procs: Vec<(ObjectId, &'a Stream)> = match self.dict_at(dict.get(b"CharProcs").ok(), font_id) {
+            Some((procs, _)) => procs
+                .iter()
+                .filter_map(|(_, value)| match value {
+                    Object::Reference(id) => match self.doc.get_object(*id) {
+                        Ok(Object::Stream(stream)) => Some((*id, stream)),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .collect(),
+            None => Vec::new(),
+        };
+        let inherited_key = if own.is_some() { None } else { chain.first().map(|level| level.container) };
+        if !self.visited.insert((font_id, None, inherited_key)) {
+            return;
+        }
+        let chain: Vec<ResourceLevel<'a>> = match own {
+            Some(level) => vec![level],
+            None => chain.to_vec(),
+        };
+        if depth >= MAX_FORM_DEPTH || self.form_runs.saturating_add(procs.len()) > MAX_FORM_RUNS {
+            self.chain_uncertain(&chain, None, "form XObjects nest deeper than the usage scan follows");
+            return;
+        }
+        self.walked.insert(font_id);
+        if let Some(level) = own {
+            if self.extra_containers.insert(level.container) {
+                self.extra_resources.push(level.dict.clone());
+            }
+        }
+        for (_, stream) in procs {
+            self.form_runs += 1;
+            match self.decompress(stream) {
+                Some(content) => self.run(&content, &chain, None, depth + 1),
+                None => self.chain_uncertain(&chain, None, "a Type 3 glyph procedure could not be decompressed"),
+            }
+        }
+    }
+
     /// Runs a form-like stream (form XObject, tiling pattern, appearance). A
     /// stream without its own `/Resources` uses the caller's chain, as PDF 1.1
     /// era files rely on.
@@ -368,6 +469,7 @@ impl<'a> Scanner<'a> {
             return;
         }
         self.form_runs += 1;
+        self.walked.insert(id);
         if let Some(level) = own {
             if self.extra_containers.insert(level.container) {
                 self.extra_resources.push(level.dict.clone());
@@ -498,26 +600,28 @@ impl<'a> Scanner<'a> {
     /// Every indirect font a chain can select, with the object holding each
     /// reference: `/Font` entries and ExtGState `/Font` arrays.
     fn chain_fonts(&self, chain: &[ResourceLevel<'a>]) -> Vec<(ObjectId, ObjectId)> {
+        chain.iter().flat_map(|level| self.level_fonts(level)).collect()
+    }
+
+    fn level_fonts(&self, level: &ResourceLevel<'a>) -> Vec<(ObjectId, ObjectId)> {
         let mut fonts: Vec<(ObjectId, ObjectId)> = Vec::new();
-        for level in chain {
-            if let Some((map, container)) = self.dict_at(level.dict.get(b"Font").ok(), level.container) {
-                for (_, value) in map.iter() {
-                    if let Object::Reference(id) = value {
-                        fonts.push((*id, container));
-                    }
+        if let Some((map, container)) = self.dict_at(level.dict.get(b"Font").ok(), level.container) {
+            for (_, value) in map.iter() {
+                if let Object::Reference(id) = value {
+                    fonts.push((*id, container));
                 }
             }
-            if let Some((states, container)) = self.dict_at(level.dict.get(b"ExtGState").ok(), level.container) {
-                for (_, value) in states.iter() {
-                    let Some((state, state_container)) = self.dict_at(Some(value), container) else {
-                        continue;
-                    };
-                    let Some((array, array_container)) = self.array_at(state.get(b"Font").ok(), state_container) else {
-                        continue;
-                    };
-                    if let Some(Object::Reference(id)) = array.first() {
-                        fonts.push((*id, array_container));
-                    }
+        }
+        if let Some((states, container)) = self.dict_at(level.dict.get(b"ExtGState").ok(), level.container) {
+            for (_, value) in states.iter() {
+                let Some((state, state_container)) = self.dict_at(Some(value), container) else {
+                    continue;
+                };
+                let Some((array, array_container)) = self.array_at(state.get(b"Font").ok(), state_container) else {
+                    continue;
+                };
+                if let Some(Object::Reference(id)) = array.first() {
+                    fonts.push((*id, array_container));
                 }
             }
         }
@@ -526,16 +630,73 @@ impl<'a> Scanner<'a> {
 
     /// The chain's font references have been seen by an interpreted stream.
     fn chain_covered(&mut self, chain: &[ResourceLevel<'a>]) {
-        for (font, container) in self.chain_fonts(chain) {
-            self.covered.entry(font).or_default().insert(container);
+        for level in chain {
+            if !self.covered_levels.insert(level.container) {
+                continue;
+            }
+            for (font, container) in self.level_fonts(level) {
+                self.covered.entry(font).or_default().insert(container);
+            }
         }
     }
 
-    fn chain_uncertain(&mut self, chain: &[ResourceLevel<'a>], inherited: Option<ObjectId>, reason: &str) {
-        let fonts = self.chain_fonts(chain).into_iter().map(|(font, _)| font).chain(inherited);
-        for font in fonts.collect::<Vec<_>>() {
+    fn chain_uncertain(&mut self, chain: &[ResourceLevel<'a>], inherited: Option<ObjectId>, reason: &'static str) {
+        let mut fonts: Vec<ObjectId> = inherited.into_iter().collect();
+        for level in chain {
+            if self.uncertain_levels.insert((level.container, reason)) {
+                fonts.extend(self.level_fonts(level).into_iter().map(|(font, _)| font));
+            }
+        }
+        for font in fonts {
             self.uncertain.entry(font).or_insert_with(|| reason.to_string());
         }
+    }
+
+    /// Collects everything reachable from the resources of each page, form,
+    /// pattern, appearance or Type 3 font that was not interpreted. A
+    /// Resources object it shares with an interpreted object is reached all
+    /// the same, so its fonts cannot be trusted to be fully accounted for.
+    fn reach_from_unwalked(&mut self) {
+        if self.aborted.is_some() {
+            return;
+        }
+        let doc = self.doc;
+        let mut reached: HashSet<ObjectId> = HashSet::new();
+        for (id, object) in &doc.objects {
+            if self.walked.contains(id) {
+                continue;
+            }
+            let roots: Vec<&Object> = match object {
+                Object::Stream(stream) => stream.dict.get(b"Resources").ok().into_iter().collect(),
+                Object::Dictionary(dict) if dict.has_type(b"Page") => {
+                    let chain = self.page_chain(*id);
+                    chain.iter().flat_map(|level| level.dict.iter().map(|(_, value)| value)).collect()
+                }
+                Object::Dictionary(dict)
+                    if dict.get(b"Subtype").and_then(Object::as_name).ok() == Some(b"Type3".as_slice()) =>
+                {
+                    dict.get(b"Resources").ok().into_iter().collect()
+                }
+                _ => continue,
+            };
+            let mut stack = roots;
+            while let Some(object) = stack.pop() {
+                match object {
+                    Object::Reference(target) => {
+                        if reached.insert(*target) {
+                            if let Ok(object) = doc.get_object(*target) {
+                                stack.push(object);
+                            }
+                        }
+                    }
+                    Object::Array(items) => stack.extend(items.iter()),
+                    Object::Dictionary(dict) => stack.extend(dict.iter().map(|(_, value)| value)),
+                    Object::Stream(stream) => stack.extend(stream.dict.iter().map(|(_, value)| value)),
+                    _ => {}
+                }
+            }
+        }
+        self.unwalked_reach = reached;
     }
 }
 
@@ -857,5 +1018,158 @@ mod tests {
         }
         hostile.extend_from_slice(b"endbfrange");
         assert!(parse_to_unicode(&hostile).is_none(), "the work budget must stop overlapping full ranges");
+    }
+
+    // -----------------------------------------------------------------------
+    // Scan coverage
+    // -----------------------------------------------------------------------
+
+    use lopdf::dictionary;
+
+    /// A document with one Type1 font, one shared indirect Resources object
+    /// holding it (and any extra entries), and a page showing `content`.
+    struct Fixture {
+        doc: Document,
+        font: ObjectId,
+        resources: ObjectId,
+        page: ObjectId,
+    }
+
+    fn fixture(content: &str) -> Fixture {
+        let mut doc = Document::with_version("1.7");
+        let font = doc.add_object(dictionary! {
+            "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica", "Encoding" => "WinAnsiEncoding",
+        });
+        let resources = doc.add_object(dictionary! { "Font" => dictionary! { "F1" => font } });
+        let stream = doc.add_object(Stream::new(Dictionary::new(), content.as_bytes().to_vec()));
+        let pages = doc.new_object_id();
+        let page = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages, "MediaBox" => vec![0.into(), 0.into(), 200.into(), 200.into()],
+            "Resources" => resources, "Contents" => stream,
+        });
+        doc.objects.insert(
+            pages,
+            Object::Dictionary(
+                dictionary! { "Type" => "Pages", "Kids" => vec![Object::Reference(page)], "Count" => 1 },
+            ),
+        );
+        let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages });
+        doc.trailer.set("Root", Object::Reference(catalog));
+        Fixture { doc, font, resources, page }
+    }
+
+    impl Fixture {
+        fn form(&mut self, content: &str) -> ObjectId {
+            self.doc.add_object(Stream::new(
+                dictionary! {
+                    "Type" => "XObject", "Subtype" => "Form",
+                    "BBox" => vec![0.into(), 0.into(), 200.into(), 200.into()],
+                    "Resources" => self.resources,
+                },
+                content.as_bytes().to_vec(),
+            ))
+        }
+
+        fn add_resource(&mut self, category: &str, name: &str, value: Object) {
+            let resources = self.doc.get_dictionary_mut(self.resources).unwrap();
+            if !resources.has(category.as_bytes()) {
+                resources.set(category, Dictionary::new());
+            }
+            resources.get_mut(category.as_bytes()).unwrap().as_dict_mut().unwrap().set(name, value);
+        }
+
+        fn usage(&self) -> FontUsage {
+            let scan = scan_document(&self.doc);
+            scan.usage(&self.doc, &[self.font]).remove(&self.font).unwrap()
+        }
+    }
+
+    fn codes(text: &str) -> BTreeSet<u16> {
+        text.bytes().map(u16::from).collect()
+    }
+
+    #[test]
+    fn text_in_a_soft_mask_group_counts_as_used() {
+        let mut fixture = fixture("BT /F1 12 Tf (ABC) Tj ET /GS1 gs 0 0 100 100 re f");
+        let group = fixture.form("BT /F1 12 Tf (XYZ) Tj ET");
+        fixture.add_resource(
+            "ExtGState",
+            "GS1",
+            Object::Dictionary(dictionary! {
+                "Type" => "ExtGState",
+                "SMask" => dictionary! { "Type" => "Mask", "S" => "Luminosity", "G" => group },
+            }),
+        );
+        assert_eq!(fixture.usage(), FontUsage::Codes(codes("ABCXYZ")));
+    }
+
+    #[test]
+    fn a_form_nobody_draws_makes_a_shared_resources_object_unreliable() {
+        // The form shares the page's Resources, so the walked page alone would
+        // make those resources look covered; the unwalked form shows XYZ.
+        let mut fixture = fixture("BT /F1 12 Tf (ABC) Tj ET");
+        fixture.form("BT /F1 12 Tf (XYZ) Tj ET");
+        assert!(matches!(fixture.usage(), FontUsage::Unknown(_)), "{:?}", fixture.usage());
+    }
+
+    #[test]
+    fn a_form_drawn_by_the_page_keeps_the_exact_usage() {
+        let mut fixture = fixture("BT /F1 12 Tf (ABC) Tj ET /Fm1 Do");
+        let form = fixture.form("BT /F1 12 Tf (XYZ) Tj ET");
+        fixture.add_resource("XObject", "Fm1", Object::Reference(form));
+        assert_eq!(fixture.usage(), FontUsage::Codes(codes("ABCXYZ")));
+    }
+
+    #[test]
+    fn text_in_type3_glyph_procedures_counts_as_used() {
+        let mut fixture = fixture("BT /T3 12 Tf (a) Tj ET");
+        let glyph =
+            fixture.doc.add_object(Stream::new(Dictionary::new(), b"1000 0 d0 BT /F1 10 Tf (XYZ) Tj ET".to_vec()));
+        let type3 = fixture.doc.add_object(dictionary! {
+            "Type" => "Font", "Subtype" => "Type3",
+            "FontBBox" => vec![0.into(), 0.into(), 1000.into(), 1000.into()],
+            "FontMatrix" => vec![Object::Real(0.001), 0.into(), 0.into(), Object::Real(0.001), 0.into(), 0.into()],
+            "CharProcs" => dictionary! { "a" => glyph },
+            "Encoding" => dictionary! { "Type" => "Encoding", "Differences" => vec![97.into(), "a".into()] },
+            "FirstChar" => 97, "LastChar" => 97, "Widths" => vec![1000.into()],
+            "Resources" => dictionary! { "Font" => dictionary! { "F1" => fixture.font } },
+        });
+        fixture.add_resource("Font", "T3", Object::Reference(type3));
+        assert_eq!(fixture.usage(), FontUsage::Codes(codes("XYZ")));
+    }
+
+    #[test]
+    fn a_thousand_pages_sharing_one_resources_object_scan_quickly() {
+        const PAGES: usize = 1_500;
+        const FONTS: usize = 1_500;
+        let mut fixture = fixture("");
+        let mut ids = vec![fixture.font];
+        for index in 1..FONTS {
+            let font = fixture.doc.add_object(dictionary! {
+                "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica", "Encoding" => "WinAnsiEncoding",
+            });
+            fixture.add_resource("Font", &format!("G{index}"), Object::Reference(font));
+            ids.push(font);
+        }
+        let pages_id =
+            fixture.doc.get_dictionary(fixture.page).unwrap().get(b"Parent").unwrap().as_reference().unwrap();
+        let mut kids = vec![Object::Reference(fixture.page)];
+        for _ in 1..PAGES {
+            let content = fixture.doc.add_object(Stream::new(Dictionary::new(), b"BT /F1 12 Tf (A) Tj ET".to_vec()));
+            let page = fixture.doc.add_object(dictionary! {
+                "Type" => "Page", "Parent" => pages_id, "Resources" => fixture.resources, "Contents" => content,
+            });
+            kids.push(Object::Reference(page));
+        }
+        let pages = fixture.doc.get_dictionary_mut(pages_id).unwrap();
+        pages.set("Kids", kids);
+        pages.set("Count", PAGES as i64);
+
+        let started = std::time::Instant::now();
+        let scan = scan_document(&fixture.doc);
+        let usage = scan.usage(&fixture.doc, &ids);
+        assert!(started.elapsed() < std::time::Duration::from_millis(600), "took {:?}", started.elapsed());
+        assert_eq!(usage[&fixture.font], FontUsage::Codes(codes("A")));
+        assert_eq!(usage[&ids[1]], FontUsage::Codes(BTreeSet::new()));
     }
 }
