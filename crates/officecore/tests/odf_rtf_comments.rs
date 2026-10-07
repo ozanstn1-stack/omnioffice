@@ -352,3 +352,29 @@ fn compatibility_report_describes_comments_in_odt_and_rtf() {
         assert_eq!(comments.level, officecore::compat::SupportLevel::Partial, "{}", capabilities.extension);
     }
 }
+
+/// Thousands of unnamed annotations import in linear time: ids used to be
+/// checked against every earlier comment, so a 5 KB file took half a minute.
+#[test]
+fn many_unnamed_comments_import_quickly() {
+    const COUNT: usize = 20_000;
+    let annotations = "<office:annotation><text:p>a</text:p></office:annotation>x".repeat(COUNT);
+    let content = format!(
+        concat!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+            "<office:document-content xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" ",
+            "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" office:version=\"1.2\">",
+            "<office:body><office:text><text:p>{}</text:p></office:text></office:body></office:document-content>"
+        ),
+        annotations
+    );
+    let started = std::time::Instant::now();
+    let read = odf::read_odt(&odt_package(&content)).unwrap();
+    assert_eq!(read.document.comments.len(), COUNT);
+    assert_eq!(read.document.comments[COUNT - 1].id, format!("odt-comment-{COUNT}"));
+
+    let rtf = format!("{{\\rtf1\\ansi {}\\par}}", "{\\*\\annotation a}x".repeat(COUNT));
+    let rtf_read = rtf::read_rtf(rtf.as_bytes()).unwrap();
+    assert_eq!(rtf_read.document.comments.len(), COUNT);
+    assert!(started.elapsed().as_secs() < 20, "took {:?}", started.elapsed());
+}

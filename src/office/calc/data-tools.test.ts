@@ -3,7 +3,14 @@
  */
 import { describe, expect, it } from "vitest";
 import { FormulaError } from "./formula";
-import { delimiterText, findDuplicateRows, listValidationItems, planTextToColumns, splitDelimited } from "./data-tools";
+import {
+  delimiterText,
+  findDuplicateRows,
+  listValidationItems,
+  planTextToColumns,
+  remapMovedRows,
+  splitDelimited,
+} from "./data-tools";
 
 describe("splitDelimited", () => {
   it("splits on each built-in delimiter", () => {
@@ -138,5 +145,32 @@ describe("listValidationItems", () => {
     // An unresolvable reference offers no choices; a non-reference is literal.
     expect(listValidationItems(["=A1:A3"], none)).toEqual([]);
     expect(listValidationItems(["=1+2"], none)).toEqual(["=1+2"]);
+  });
+});
+
+describe("remapMovedRows", () => {
+  // Rows 2..10 (0-based 1..9) of A:B; row 3 (0-based 2) was a duplicate.
+  const block = { top: 1, bottom: 9, left: 0, right: 1 };
+  const rowMap = new Map([
+    [1, 1],
+    [3, 2],
+    [4, 3],
+  ]);
+
+  it("keeps references outside the block", () => {
+    expect(remapMovedRows("=C4*2", block, rowMap)).toBe("=C4*2");
+    expect(remapMovedRows("=A1+A20", block, rowMap)).toBe("=A1+A20");
+  });
+
+  it("moves references into the block with their cells, absolute rows included", () => {
+    expect(remapMovedRows("=A4+B$5", block, rowMap)).toBe("=A3+B$4");
+    expect(remapMovedRows("=SUM(A2:A5)", block, rowMap)).toBe("=SUM(A2:A4)");
+  });
+
+  it("leaves other sheets, removed rows and function names alone", () => {
+    expect(remapMovedRows("=Other!A4+'My Sheet'!A4", block, rowMap)).toBe("=Other!A4+'My Sheet'!A4");
+    expect(remapMovedRows("=A3", block, rowMap)).toBe("=A3");
+    expect(remapMovedRows("=LOG10(A4)", block, rowMap)).toBe("=LOG10(A3)");
+    expect(remapMovedRows(null, block, rowMap)).toBeNull();
   });
 });

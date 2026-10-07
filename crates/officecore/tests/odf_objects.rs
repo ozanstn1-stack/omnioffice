@@ -637,3 +637,89 @@ fn compatibility_reports_reflect_odf_object_support() {
     assert_eq!(level("charts"), compat::SupportLevel::Full);
     assert_eq!(level("pivotTables"), compat::SupportLevel::Partial);
 }
+
+#[test]
+fn ods_far_anchored_charts_and_sheet_names_survive_a_round_trip() {
+    let mut workbook = chart_workbook();
+    workbook.sheets[0].charts[1].anchor = "A100002".into();
+    let bytes = odf::write_ods(&workbook).unwrap();
+    // The empty rows up to the far anchor are written as one repeated row.
+    let content = ZipReader::open(bytes.clone()).unwrap().read_text("content.xml").unwrap();
+    assert!(content.len() < 64 * 1024, "content.xml is {} bytes", content.len());
+    assert!(content.contains("table:number-rows-repeated="));
+
+    let read = odf::read_ods(&bytes).unwrap();
+    let sheet = &read.workbook.sheets[0];
+    assert_eq!(sheet.name, "Sales Data");
+    assert_eq!(sheet.charts.len(), 2, "warnings: {:?}", read.warnings);
+    // Past the imported area the anchor is clamped to its last row.
+    let far = sheet.charts.iter().find(|chart| chart.id == "chart-pie").expect("far chart");
+    assert_eq!(far.anchor, "A100001");
+}
+
+/// A small package whose sheet shows the same chart object five times, the
+/// object declaring 300 series over 5,000 local rows.
+fn oversized_chart_package() -> Vec<u8> {
+    let frames: String = (0..5)
+        .map(|index| {
+            format!(
+                "<draw:frame draw:name=\"c{index}\" svg:width=\"8cm\" svg:height=\"6cm\"><draw:object xlink:href=\"./Object 1\"/></draw:frame>"
+            )
+        })
+        .collect();
+    let content = format!(
+        concat!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+            "<office:document-content xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" ",
+            "xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\" ",
+            "xmlns:draw=\"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0\" ",
+            "xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\" ",
+            "xmlns:xlink=\"http://www.w3.org/1999/xlink\" office:version=\"1.2\">",
+            "<office:body><office:spreadsheet><table:table table:name=\"Big\">",
+            "<table:table-row><table:table-cell>{}</table:table-cell></table:table-row>",
+            "</table:table></office:spreadsheet></office:body></office:document-content>"
+        ),
+        frames
+    );
+    let series: String = (0..300)
+        .map(|index| format!("<chart:series chart:values-cell-range-address=\"Big.B1:Big.B{}\"/>", index + 1))
+        .collect();
+    let rows: String = (0..5_000)
+        .map(|_| "<table:table-row><table:table-cell office:value-type=\"float\" office:value=\"1\"/><table:table-cell office:value-type=\"float\" office:value=\"2\"/></table:table-row>")
+        .collect();
+    let object = format!(
+        concat!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+            "<office:document-content xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" ",
+            "xmlns:chart=\"urn:oasis:names:tc:opendocument:xmlns:chart:1.0\" ",
+            "xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\" office:version=\"1.2\">",
+            "<office:body><office:chart><chart:chart chart:class=\"chart:bar\"><chart:plot-area>{}</chart:plot-area>",
+            "<table:table table:name=\"local-table\"><table:table-rows>{}</table:table-rows></table:table>",
+            "</chart:chart></office:chart></office:body></office:document-content>"
+        ),
+        series, rows
+    );
+    let mut zip = officecore::zip::ZipWriter::new();
+    zip.add_text("mimetype", "application/vnd.oasis.opendocument.spreadsheet");
+    zip.add_text("content.xml", &content);
+    zip.add_text("Object 1/content.xml", &object);
+    zip.finish()
+}
+
+#[test]
+fn oversized_or_repeated_chart_objects_are_bounded() {
+    let read = odf::read_ods(&oversized_chart_package()).unwrap();
+    let sheet = &read.workbook.sheets[0];
+    assert_eq!(sheet.name, "Big");
+    // One object shown five times is read once.
+    assert_eq!(sheet.charts.len(), 1, "warnings: {:?}", read.warnings);
+    let chart = &sheet.charts[0].chart;
+    assert_eq!(chart.series.len(), 255);
+    // 255 series x 5,000 rows is past the cache budget: ranges stay, caches go.
+    assert!(chart.series_values_cache.is_empty());
+    assert!(chart.categories_cache.is_empty());
+    assert!(chart.series[0].range.ends_with("B1:B1"), "range {}", chart.series[0].range);
+    assert!(read.warnings.iter().any(|warning| warning.contains("more than once")));
+    assert!(read.warnings.iter().any(|warning| warning.contains("300 series")));
+    assert!(read.warnings.iter().any(|warning| warning.contains("cached values")));
+}

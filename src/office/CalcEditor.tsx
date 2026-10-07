@@ -103,6 +103,7 @@ import {
   findDuplicateRows,
   listValidationItems,
   planTextToColumns,
+  remapMovedRows,
   type ColumnSplitPlan,
   type DuplicateOptions,
   type SplitDelimiter,
@@ -1829,8 +1830,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   /**
    * Removes the rows of the selection that repeat an earlier row, moves the
    * remaining rows up and clears the vacated rows at the bottom, all inside
-   * the selected columns and as one undo step. Relative row references of a
-   * moved formula follow it, the way a fill does.
+   * the selected columns and as one undo step. A moved formula's references
+   * into the block follow the moved cells; references outside it stay put.
    */
   const removeDuplicates = (options: DuplicateOptions) => {
     setDuplicatesDialog(false);
@@ -1846,6 +1847,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       useToasts.getState().push({ kind: "info", title: t("calc.duplicatesNone") });
       return;
     }
+    const block = { top: start.row, bottom: end.row, left: start.col, right: end.col };
+    const rowMap = new Map(result.keep.map((fromOffset, toOffset) => [start.row + fromOffset, start.row + toOffset]));
     updateSheet((current) => {
       const cells = { ...current.cells };
       for (let row = start.row; row <= end.row; row += 1) {
@@ -1857,7 +1860,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           if (!cell) continue;
           cells[formatAddress(start.row + toOffset, col)] = {
             ...cell,
-            formula: shiftFormulaRows(cell.formula, toOffset - fromOffset),
+            formula: remapMovedRows(cell.formula, block, rowMap),
           };
         }
       });

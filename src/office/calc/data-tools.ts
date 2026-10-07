@@ -6,6 +6,7 @@
  * without mounting the editor; `CalcEditor` turns the results into a single
  * undoable sheet edit.
  */
+import { parseAddress } from "./addresses";
 import { isError, toText, type Scalar } from "./formula";
 
 // ---------------------------------------------------------------------------
@@ -172,6 +173,40 @@ export function findDuplicateRows(rows: readonly (readonly Scalar[])[], options:
     }
   });
   return { keep, removed };
+}
+
+/** The rows and columns Remove Duplicates rearranges (0-based, inclusive). */
+export interface MovedBlock {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+/**
+ * Rewrites a formula for Remove Duplicates, which deletes rows inside a block
+ * and shifts the rest up (Excel's delete-and-shift semantics, not a fill): a
+ * reference to a cell of the block follows that cell's row through `rowMap`
+ * (old row -> new row, 0-based). References outside the block, to other
+ * sheets, and to removed rows are left as written, so `=C3*2` beside the
+ * block keeps reading C3.
+ */
+export function remapMovedRows(formula: string | null, block: MovedBlock, rowMap: ReadonlyMap<number, number>) {
+  if (!formula) return formula;
+  return formula.replace(
+    /(?<![A-Za-z0-9_$!'.])(\$?)([A-Za-z]{1,3})(\$?)(\d{1,7})(?![A-Za-z0-9_(!])/g,
+    (match, dollarCol: string, letters: string, dollarRow: string, digits: string) => {
+      const address = parseAddress(`${letters}${digits}`);
+      if (!address) return match;
+      const inside =
+        address.row >= block.top &&
+        address.row <= block.bottom &&
+        address.col >= block.left &&
+        address.col <= block.right;
+      const row = inside ? rowMap.get(address.row) : undefined;
+      return row === undefined ? match : `${dollarCol}${letters}${dollarRow}${row + 1}`;
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-﻿import { render, screen } from "@testing-library/react";
+﻿import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,6 +24,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(async () => null), sav
 vi.mock("@tauri-apps/plugin-fs", () => ({ readFile: vi.fn(async () => new Uint8Array()) }));
 
 import { WriterEditor } from "./WriterEditor";
+import { PROBE_TIMEOUT_MS } from "./writer/regex-probe";
 import { useOfficeTabs, type OfficeTab } from "../lib/office-store";
 import type { Block, Run, TextDocument } from "../lib/office-types";
 import { caretOffset, setCaretOffset } from "./writer/caret";
@@ -545,6 +546,36 @@ describe("Writer find & replace and quick styles", () => {
     await user.type(query, "Al|ga)");
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByRole("status")).toHaveTextContent("2 matches");
+  });
+
+  it("stops a regular expression that takes too long instead of freezing the editor", async () => {
+    // A worker that never answers stands in for a catastrophic pattern.
+    class HangingWorker {
+      onmessage: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      postMessage() {}
+      terminate() {}
+    }
+    vi.stubGlobal("Worker", HangingWorker);
+    try {
+      const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      render(<Harness id={seed(["Alpha beta gamma"])} />);
+      const query = await openFind(user);
+      await user.click(screen.getByLabelText("Regular expression"));
+      await user.click(query);
+      await user.paste("(\\p{L}+\\s?)+;");
+      expect(screen.getByRole("status")).toHaveTextContent("Searching");
+      await act(async () => {
+        vi.advanceTimersByTime(250 + PROBE_TIMEOUT_MS);
+      });
+      expect(screen.getByRole("status")).toHaveTextContent("takes too long");
+      await user.click(screen.getByRole("button", { name: "Replace all" }));
+      expect(blockTexts()).toEqual(["Alpha beta gamma"]);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
   });
 
   it("replaces the current match and moves to the next one", async () => {

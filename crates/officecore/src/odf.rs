@@ -8,7 +8,7 @@ use crate::error::{OfficeError, OfficeResult};
 use crate::model::*;
 use crate::xml::{parse_xml, XmlNode, XmlWriter};
 use crate::zip::{ZipReader, ZipWriter};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 
 const NS: &str = concat!(
@@ -793,6 +793,11 @@ struct NoteReadState {
     endnotes: Vec<Footnote>,
     sequence: usize,
     comments: Vec<Comment>,
+    /// Ids already used by `comments`, so a new id is checked in constant time
+    /// (a file with thousands of annotations used to take quadratic time).
+    comment_ids: HashSet<String>,
+    /// Next number tried for an unnamed annotation's `odt-comment-N` id.
+    next_comment_number: usize,
     /// Names of the annotations that have an `office:annotation-end` in the
     /// part being read; any other annotation is a point comment.
     ranged_comments: std::collections::HashSet<String>,
@@ -891,17 +896,18 @@ fn annotation_paragraph_text(paragraph: &XmlNode) -> String {
 fn read_annotation(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState) {
     let name = node.attr_any_ns("name").filter(|name| !name.is_empty());
     let id = match name {
-        Some(name) if !notes.comments.iter().any(|comment| comment.id == name) => name.to_string(),
+        Some(name) if !notes.comment_ids.contains(name) => name.to_string(),
         // Unnamed (or duplicate) annotations get a fresh id and, having no
         // end marker of their own, anchor as point comments.
-        _ => {
-            let mut number = notes.comments.len() + 1;
-            while notes.comments.iter().any(|comment| comment.id == format!("odt-comment-{number}")) {
-                number += 1;
+        _ => loop {
+            notes.next_comment_number = notes.next_comment_number.max(notes.comments.len()) + 1;
+            let candidate = format!("odt-comment-{}", notes.next_comment_number);
+            if !notes.comment_ids.contains(&candidate) {
+                break candidate;
             }
-            format!("odt-comment-{number}")
-        }
+        },
     };
+    notes.comment_ids.insert(id.clone());
     let created = node.child("date").map(XmlNode::deep_text).unwrap_or_default().trim().to_string();
     let mut comment = Comment {
         id: id.clone(),
@@ -1535,6 +1541,17 @@ const ODS_DEFAULT_ROW_PT: f64 = 12.8;
 /// Upper bound on the rows read from a chart's local table.
 const ODS_MAX_CHART_ROWS: usize = 100_000;
 
+/// Limits that keep a small hostile package from exhausting memory: series per
+/// chart, cached values per chart (series x rows) and charts per sheet.
+const ODS_MAX_CHART_SERIES: usize = 255;
+const ODS_MAX_CHART_VALUES: usize = 1_000_000;
+const ODS_MAX_CHARTS_PER_SHEET: usize = 64;
+
+/// The sheet area `read_ods` imports cells from; a chart anchor outside it is
+/// clamped to it, so an import never asks the writer for millions of rows.
+const ODS_MAX_READ_ROW: u32 = 100_000;
+const ODS_MAX_READ_COLUMN: u32 = 1_000;
+
 /// A chart written as the `Object N/` sub-document of an ODS package.
 struct OdsChartObject {
     name: String,
@@ -1848,16 +1865,13 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
         body.push_str(&format!("<table:table table:name=\"{}\">", escape(&sheet.name)));
         let cells = ods_cells_with_pivots(workbook, sheet);
         let frames = ods_chart_frames(sheet, &cells, &mut chart_objects);
-        let mut max_row = 0u32;
         let mut max_col = 0u32;
         for address in cells.keys() {
-            if let Some((row, column)) = crate::address::parse(address) {
-                max_row = max_row.max(row);
+            if let Some((_, column)) = crate::address::parse(address) {
                 max_col = max_col.max(column);
             }
         }
-        for (row, column) in frames.keys() {
-            max_row = max_row.max(*row);
+        for (_, column) in frames.keys() {
             max_col = max_col.max(*column);
         }
         for column in 0..=max_col.min(200) {
@@ -1868,8 +1882,23 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
                 cm(width * 0.75)
             ));
         }
-        let mut row = 0u32;
-        while row <= max_row {
+        // Only rows holding a cell or a chart are written one by one; the gaps
+        // between them become repeated empty rows, so a far-away anchor costs
+        // one element instead of a row per index.
+        let mut occupied: BTreeSet<u32> =
+            cells.keys().filter_map(|address| crate::address::parse(address).map(|(row, _)| row)).collect();
+        occupied.extend(frames.keys().map(|(row, _)| *row));
+        occupied.insert(0);
+        let mut next_row = 0u32;
+        for row in occupied {
+            if row > next_row {
+                body.push_str(&format!(
+                    "<table:table-row table:number-rows-repeated=\"{}\"><table:table-cell table:number-columns-repeated=\"{}\"/></table:table-row>",
+                    row - next_row,
+                    max_col + 1
+                ));
+            }
+            next_row = row + 1;
             let mut row_output = String::new();
             let mut column = 0u32;
             let mut empty_run = 0u32;
@@ -1936,7 +1965,6 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
                 row_output.push_str(&format!("<table:table-cell table:number-columns-repeated=\"{}\"/>", empty_run));
             }
             body.push_str(&format!("<table:table-row>{row_output}</table:table-row>"));
-            row += 1;
         }
         body.push_str("</table:table>");
     }
@@ -2055,11 +2083,18 @@ fn read_ods_chart(
     frame: &XmlNode,
     anchor: String,
     sheet: &Sheet,
+    seen_objects: &mut HashSet<String>,
     warnings: &mut Vec<String>,
 ) -> Option<ChartPlacement> {
     let object = frame.child("object")?;
     let href = object.attr_any_ns("href")?.trim().trim_start_matches("./").trim_end_matches('/').to_string();
     if href.is_empty() {
+        return None;
+    }
+    // Each object is read once: frames repeating one href would otherwise each
+    // hold a full copy of its caches.
+    if !seen_objects.insert(href.clone()) {
+        warnings.push(format!("The embedded object \"{href}\" is shown more than once; only the first copy was kept."));
         return None;
     }
     let Some(root) = reader.read_text(&format!("{href}/content.xml")).ok().and_then(|text| parse_xml(&text).ok())
@@ -2122,7 +2157,20 @@ fn read_ods_chart(
     let mut show_labels = labels_on(plot_properties);
     let mut series = Vec::new();
     let mut series_values_cache = Vec::new();
-    for (index, node) in plot.map(|plot| plot.children_of("series")).unwrap_or_default().into_iter().enumerate() {
+    let mut series_nodes = plot.map(|plot| plot.children_of("series")).unwrap_or_default();
+    if series_nodes.len() > ODS_MAX_CHART_SERIES {
+        warnings
+            .push(format!("A chart with {} series was cut to its first {ODS_MAX_CHART_SERIES}.", series_nodes.len()));
+        series_nodes.truncate(ODS_MAX_CHART_SERIES);
+    }
+    // Cached values are a convenience (the ranges stay): drop them rather than
+    // allocate series x rows values past the limit.
+    let cache_rows = local.as_ref().map_or(0, |table| table.rows.len());
+    let keep_caches = cache_rows.saturating_mul(series_nodes.len()) <= ODS_MAX_CHART_VALUES;
+    if !keep_caches {
+        warnings.push("A chart's cached values were too large and were left out; its cell ranges are kept.".into());
+    }
+    for (index, node) in series_nodes.into_iter().enumerate() {
         let style_name = node.attr_any_ns("style-name");
         show_labels |= labels_on(ods_style_child(&styles, style_name, "chart-properties"));
         let graphic = ods_style_child(&styles, style_name, "graphic-properties");
@@ -2158,6 +2206,7 @@ fn read_ods_chart(
         let range = node.attr_any_ns("values-cell-range-address").map(ods_range_to_ours).unwrap_or_default();
         let values: Vec<f64> = local
             .as_ref()
+            .filter(|_| keep_caches)
             .filter(|table| table.rows.iter().any(|row| row.len() > index + 1))
             .map(|table| {
                 table.rows.iter().map(|row| row.get(index + 1).and_then(|cell| cell.1).unwrap_or(0.0)).collect()
@@ -2173,6 +2222,7 @@ fn read_ods_chart(
     }
     let mut categories_cache: Vec<String> = local
         .as_ref()
+        .filter(|_| keep_caches)
         .map(|table| table.rows.iter().map(|row| row.first().map(|cell| cell.0.clone()).unwrap_or_default()).collect())
         .unwrap_or_default();
     if categories_cache.iter().all(String::is_empty) {
@@ -2217,8 +2267,8 @@ fn ods_shape_anchor(frame: &XmlNode) -> String {
     let x = frame.attr_any_ns("x").and_then(parse_cm).unwrap_or(0.0).max(0.0);
     let y = frame.attr_any_ns("y").and_then(parse_cm).unwrap_or(0.0).max(0.0);
     crate::address::format(
-        ((y / ODS_DEFAULT_ROW_PT).floor() as u32).min(1_048_575),
-        ((x / ODS_DEFAULT_COLUMN_PT).floor() as u32).min(16_383),
+        ((y / ODS_DEFAULT_ROW_PT).floor() as u32).min(ODS_MAX_READ_ROW),
+        ((x / ODS_DEFAULT_COLUMN_PT).floor() as u32).min(ODS_MAX_READ_COLUMN),
     )
 }
 
@@ -2234,19 +2284,23 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
     let mut warnings = Vec::new();
     let mut tables = Vec::new();
     root.find_all("table", &mut tables);
+    let mut seen_objects = HashSet::new();
     for table in tables {
-        let name = table.attr("name").unwrap_or("Sheet").to_string();
+        // `table:name`: a plain `attr("name")` never matched the prefixed
+        // attribute, so every imported sheet used to be called "Sheet".
+        let name = table.attr_any_ns("name").unwrap_or("Sheet").to_string();
         let mut sheet = Sheet::new(&name);
         // Frames anchored to a cell, with that cell; charts are read once the
         // cells are in so a series label cell can be resolved.
         let mut frames: Vec<(String, &XmlNode)> = Vec::new();
         let mut row = 0u32;
+        let mut last_row = 0u32;
         for row_node in table.children_named("table-row") {
-            let repeat_rows = row_node
-                .attr_any_ns("number-rows-repeated")
-                .and_then(|value| value.parse::<u32>().ok())
-                .unwrap_or(1)
-                .min(2048);
+            // The repeat only moves the position (a repeated row's cells are
+            // set once), so it is taken as written: capping it shifted every
+            // cell after a long empty gap up to the wrong row.
+            let repeat_rows =
+                row_node.attr_any_ns("number-rows-repeated").and_then(|value| value.parse::<u32>().ok()).unwrap_or(1);
             let mut column = 0u32;
             for cell in row_node.children_named("table-cell") {
                 let repeat = cell
@@ -2254,6 +2308,16 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
                     .and_then(|value| value.parse::<u32>().ok())
                     .unwrap_or(1)
                     .min(1024);
+                // Past the imported area only charts are still picked up, so a
+                // chart anchored far down or right is not lost on reopening.
+                if row > ODS_MAX_READ_ROW || column > ODS_MAX_READ_COLUMN {
+                    for frame in cell.children_named("frame") {
+                        let anchor = crate::address::format(row.min(ODS_MAX_READ_ROW), column.min(ODS_MAX_READ_COLUMN));
+                        frames.push((anchor, frame));
+                    }
+                    column = column.saturating_add(repeat);
+                    continue;
+                }
                 let value_type = cell.attr_any_ns("value-type").unwrap_or("string").to_string();
                 let formula = cell.attr_any_ns("formula").map(odf_formula_to_ours);
                 let value = match value_type.as_str() {
@@ -2286,6 +2350,7 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
                     }
                 };
                 if !matches!(value, CellValue::Empty) || formula.is_some() {
+                    last_row = last_row.max(row);
                     for offset in 0..repeat.min(64) {
                         let address = crate::address::format(row, column + offset);
                         sheet.set(
@@ -2295,27 +2360,28 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
                     }
                 }
                 for frame in cell.children_named("frame") {
+                    last_row = last_row.max(row);
                     frames.push((crate::address::format(row, column), frame));
                 }
-                column += repeat;
-                if column > 1_000 {
-                    break;
-                }
+                column = column.saturating_add(repeat);
             }
-            row += repeat_rows;
-            if row > 100_000 {
-                break;
-            }
+            row = row.saturating_add(repeat_rows.max(1));
         }
         for shapes in table.children_named("shapes") {
             frames.extend(shapes.children_named("frame").map(|frame| (ods_shape_anchor(frame), frame)));
         }
         for (anchor, frame) in frames {
-            if let Some(placement) = read_ods_chart(&reader, frame, anchor, &sheet, &mut warnings) {
+            if sheet.charts.len() >= ODS_MAX_CHARTS_PER_SHEET {
+                warnings.push(format!(
+                    "Sheet \"{name}\" has more than {ODS_MAX_CHARTS_PER_SHEET} charts; the rest were skipped."
+                ));
+                break;
+            }
+            if let Some(placement) = read_ods_chart(&reader, frame, anchor, &sheet, &mut seen_objects, &mut warnings) {
                 sheet.charts.push(placement);
             }
         }
-        sheet.row_count = (row + 51).max(200);
+        sheet.row_count = (last_row.min(ODS_MAX_READ_ROW) + 51).max(200);
         sheet.col_count = 26;
         workbook.sheets.push(sheet);
     }

@@ -279,6 +279,15 @@ function paragraphAt(blocks: Block[], path: number[]): Paragraph | null {
   return cell ? paragraphAt(cell.blocks, rest) : null;
 }
 
+/** The text of every searched paragraph (body, tables, header, footer), in order. */
+export function documentTexts(document: TextDocument): string[] {
+  const out: string[] = [];
+  for (const scope of SCOPES) {
+    visitParagraphs(scopeBlocks(document, scope), [], (paragraph) => out.push(runsText(paragraph.runs)));
+  }
+  return out;
+}
+
 /** Every match in document order, up to `limit`. */
 export function documentMatches(document: TextDocument, pattern: RegExp, limit = MATCH_LIMIT): MatchLocation[] {
   const out: MatchLocation[] = [];

@@ -130,6 +130,7 @@ import { emptyRun as emptyWriterRun } from "./writer/runs";
 import {
   compileSearch,
   documentMatches,
+  documentTexts,
   MATCH_LIMIT,
   nextMatchIndex,
   replaceAllInDocument,
@@ -137,6 +138,7 @@ import {
   sameMatch,
   type MatchLocation,
 } from "./writer/find-replace";
+import { canProbeRegex, probeRegex, type ProbeStatus, type RegexProbe } from "./writer/regex-probe";
 import { StyleGallery } from "./writer/StyleGallery";
 import { measureBlocks } from "./writer/measure";
 import { paginate, pageOfBlock, type Fragment, type PageLayout } from "./writer/pagination";
@@ -988,7 +990,29 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     () => (findOpen ? compileSearch(findText, { matchCase, wholeWord, regex: useRegex }) : null),
     [findOpen, findText, matchCase, wholeWord, useRegex],
   );
-  const matches = useMemo(() => (search?.ok ? documentMatches(document, search.pattern) : []), [search, document]);
+  // A regular expression is first run in a worker (writer/regex-probe.ts), a
+  // moment after the last keystroke: a catastrophic pattern is stopped there
+  // instead of freezing the editor with the unsaved document in it.
+  const probing = useRegex && search?.ok === true && canProbeRegex();
+  const probeKey = useMemo(() => ({ search, document }), [search, document]);
+  const [probe, setProbe] = useState<{ key: object; status: ProbeStatus } | null>(null);
+  useEffect(() => {
+    if (!probing || !search?.ok) return;
+    let run: RegexProbe | null = null;
+    const timer = setTimeout(() => {
+      run = probeRegex(search.pattern, documentTexts(document));
+      void run.promise.then((status) => setProbe({ key: probeKey, status }));
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      run?.cancel();
+    };
+  }, [probing, probeKey, search, document]);
+  const probeStatus: ProbeStatus | "pending" = !probing ? "ok" : probe?.key === probeKey ? probe.status : "pending";
+  const matches = useMemo(
+    () => (search?.ok && probeStatus === "ok" ? documentMatches(document, search.pattern) : []),
+    [search, document, probeStatus],
+  );
   const currentMatchIndex = currentMatch ? matches.findIndex((match) => sameMatch(match, currentMatch)) : -1;
   // A match found by Replace is selected after the commit that renders it.
   const revealRequest = useRef<MatchLocation | null>(null);
@@ -1066,7 +1090,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   };
 
   const replaceAll = () => {
-    if (!search?.ok) return;
+    if (!search?.ok || probeStatus !== "ok") return;
     const result = replaceAllInDocument(document, search.pattern, replaceText, useRegex);
     if (result.count > 0) update(() => result.document);
     setCurrentMatch(null);
@@ -1076,13 +1100,17 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   const matchCount = matches.length >= MATCH_LIMIT ? `${MATCH_LIMIT}+` : matches.length;
   const findStatus = !search?.ok
     ? ""
-    : matches.length === 0
-      ? t("writer.findNoMatches")
-      : currentMatchIndex >= 0
-        ? t("writer.findMatchOf", { current: currentMatchIndex + 1, count: matchCount })
-        : matches.length === 1
-          ? t("writer.findOneMatch")
-          : t("writer.findMatches", { count: matchCount });
+    : probeStatus === "slow"
+      ? t("writer.regexTooSlow")
+      : probeStatus === "pending"
+        ? t("writer.findSearching")
+        : matches.length === 0
+          ? t("writer.findNoMatches")
+          : currentMatchIndex >= 0
+            ? t("writer.findMatchOf", { current: currentMatchIndex + 1, count: matchCount })
+            : matches.length === 1
+              ? t("writer.findOneMatch")
+              : t("writer.findMatches", { count: matchCount });
 
   const closeFind = () => {
     setFindOpen(false);

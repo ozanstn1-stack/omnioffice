@@ -7,7 +7,7 @@
 
 use crate::error::{OfficeError, OfficeResult};
 use crate::model::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 #[derive(Debug, Clone)]
@@ -755,6 +755,11 @@ struct Reader {
     /// A point annotation (no `\atnref` range) waiting for the next text run.
     pending_comment: Option<String>,
     comments: Vec<Comment>,
+    /// Ids already used by `comments` (constant-time checks; thousands of
+    /// annotations used to make the import quadratic) and the next number
+    /// tried for an `rtf-comment-N` id.
+    comment_ids: HashSet<String>,
+    next_comment_number: usize,
 }
 
 #[derive(Default)]
@@ -803,6 +808,8 @@ impl Reader {
             comment_date: None,
             pending_comment: None,
             comments: Vec::new(),
+            comment_ids: HashSet::new(),
+            next_comment_number: 0,
         }
     }
 
@@ -1187,18 +1194,18 @@ fn read_annotation(reader: &mut Reader, content: &str) {
     while paragraphs.last().is_some_and(|paragraph| paragraph.trim().is_empty()) {
         paragraphs.pop();
     }
-    let reference =
-        reference.filter(|number| !number.is_empty() && !reader.comments.iter().any(|comment| &comment.id == number));
+    let reference = reference.filter(|number| !number.is_empty() && !reader.comment_ids.contains(number));
     let id = match &reference {
         Some(number) => number.clone(),
-        None => {
-            let mut number = reader.comments.len() + 1;
-            while reader.comments.iter().any(|comment| comment.id == format!("rtf-comment-{number}")) {
-                number += 1;
+        None => loop {
+            reader.next_comment_number = reader.next_comment_number.max(reader.comments.len()) + 1;
+            let candidate = format!("rtf-comment-{}", reader.next_comment_number);
+            if !reader.comment_ids.contains(&candidate) {
+                break candidate;
             }
-            format!("rtf-comment-{number}")
-        }
+        },
     };
+    reader.comment_ids.insert(id.clone());
     if reference.is_none() {
         reader.pending_comment = Some(id.clone());
     }

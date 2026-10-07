@@ -552,7 +552,13 @@ fn sheet_xml(
                 ),
                 _ => continue,
             };
-            let quoted = if kind == "list" { format!("\"{formula1}\"") } else { formula1 };
+            // A list drawn from cells (`=A1:A5`) is a bare reference in Excel;
+            // quoting it would offer the literal text "=A1:A5" as the only choice.
+            let quoted = match (kind, list_reference(&validation.values)) {
+                ("list", Some(reference)) => reference,
+                ("list", None) => format!("\"{formula1}\""),
+                _ => formula1,
+            };
             let second = if formula2.is_empty() {
                 String::new()
             } else {
@@ -2669,8 +2675,11 @@ fn apply_validations(root: &XmlNode, sheet: &mut Sheet, warnings: &mut Vec<Strin
         let formula2 = node.child("formula2").map(XmlNode::deep_text).unwrap_or_default();
         let validation = match kind {
             "list" => {
-                let values = parse_list_values(&formula1);
-                if values.is_empty() && !formula1.trim().is_empty() {
+                let mut values = parse_list_values(&formula1);
+                if values.is_empty() && is_list_reference(formula1.trim()) {
+                    // The editor resolves a single `=reference` entry from the cells.
+                    values = vec![format!("={}", formula1.trim())];
+                } else if values.is_empty() && !formula1.trim().is_empty() {
                     range_lists += 1;
                 }
                 Validation {
@@ -2712,10 +2721,46 @@ fn apply_validations(root: &XmlNode, sheet: &mut Sheet, warnings: &mut Vec<Strin
     }
     if range_lists > 0 {
         warnings.push(format!(
-            "{range_lists} list validation(s) on sheet \"{}\" take their values from a cell range, which is not imported; the rule is kept without its list.",
+            "{range_lists} list validation(s) on sheet \"{}\" take their values from a formula or named range, which is not imported; the rule is kept without its list.",
             sheet.name
         ));
     }
+}
+
+/// The bare reference of a list rule whose only entry is `=A1:A5` or
+/// `='My Sheet'!$A$1:$A$9`, or None for an inline list.
+fn list_reference(values: &[String]) -> Option<String> {
+    let [only] = values else { return None };
+    let reference = only.trim().strip_prefix('=')?.trim();
+    is_list_reference(reference).then(|| reference.to_string())
+}
+
+/// `A1`, `$A$1:$B$9`, `Sheet!A1:A9` or `'My Sheet'!A1:A9`; formulas, named
+/// ranges and whole columns are not.
+fn is_list_reference(text: &str) -> bool {
+    let range = match text.rfind('!') {
+        Some(bang) => {
+            let sheet = &text[..bang];
+            let quoted = sheet.len() >= 2 && sheet.starts_with('\'') && sheet.ends_with('\'');
+            let plain = !sheet.is_empty()
+                && sheet.chars().all(|character| character.is_alphanumeric() || matches!(character, '_' | '.'));
+            if !quoted && !plain {
+                return false;
+            }
+            &text[bang + 1..]
+        }
+        None => text,
+    };
+    let cell = |part: &str| {
+        let bare = part.replace('$', "");
+        !bare.is_empty()
+            && bare.chars().all(|character| character.is_ascii_alphanumeric())
+            && crate::address::parse(&bare).is_some()
+    };
+    let mut parts = range.split(':');
+    let first = parts.next().is_some_and(cell);
+    let second = parts.next().is_none_or(cell);
+    first && second && parts.next().is_none()
 }
 
 fn parse_list_values(formula: &str) -> Vec<String> {
