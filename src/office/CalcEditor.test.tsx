@@ -804,3 +804,138 @@ describe("Calc row geometry", () => {
     expect(document.querySelector<HTMLInputElement>(".name-box")?.value).toBe("A1");
   });
 });
+
+describe("Calc frozen panes", () => {
+  // Two frozen rows and one frozen column, as after freezing at B3.
+  const frozen = (sheet: Sheet) => ({ ...sheet, freezeRows: 2, freezeCols: 1 });
+  const nameBox = () => document.querySelector<HTMLInputElement>(".name-box")!;
+  const grid = () => document.querySelector<HTMLElement>(".calc-grid")!;
+  const scrollTo = (top: number, left: number) =>
+    fireEvent.scroll(grid(), { target: { scrollTop: top, scrollLeft: left } });
+
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+    vi.mocked(isAndroid).mockReturnValue(false);
+  });
+
+  it("keeps the frozen rows and columns pinned to the scroll offset", () => {
+    // Regression: freezeRows/freezeCols were stored but the grid never read them.
+    const id = seedWorkbook({ A1: "h1", B1: "h2", A3: "left" }, frozen);
+    render(<Harness id={id} />);
+    scrollTo(240, 300);
+
+    // The frozen cells are rendered although the window scrolled far past them.
+    expect(cellAt(0, 0).style.top).toBe("240px");
+    expect(cellAt(0, 0).style.left).toBe("300px");
+    expect(cellAt(1, 0).style.top).toBe("264px");
+    // A frozen row follows the vertical scroll only; a frozen column the horizontal one.
+    expect(cellAt(0, 4).style.top).toBe("240px");
+    expect(cellAt(0, 4).style.left).toBe("384px");
+    expect(cellAt(9, 0).style.top).toBe("216px");
+    expect(cellAt(9, 0).style.left).toBe("300px");
+    // Everything else scrolls with the sheet.
+    expect(cellAt(10, 4).style.top).toBe("240px");
+    expect(cellAt(10, 4).style.left).toBe("384px");
+    // The corner sits above the strips, which sit above the scrolled cells.
+    expect(cellAt(0, 0).style.zIndex).toBe("3");
+    expect(cellAt(0, 4).style.zIndex).toBe("2");
+    expect(cellAt(9, 0).style.zIndex).toBe("2");
+    expect(cellAt(10, 4).style.zIndex).toBe("");
+    // Headers of frozen rows and columns stay too.
+    expect(document.querySelector<HTMLElement>('[data-col-header="0"]')!.style.left).toBe("300px");
+    expect(document.querySelector<HTMLElement>('[data-row-header="1"]')!.style.top).toBe("264px");
+    expect(document.querySelector<HTMLElement>('[data-row-header="9"]')!.style.top).toBe("216px");
+  });
+
+  it("draws a divider on the edge of the frozen band", () => {
+    const id = seedWorkbook({}, frozen);
+    render(<Harness id={id} />);
+    scrollTo(240, 300);
+
+    // 48px of frozen rows and 96px of frozen columns, on a 2px line.
+    expect(document.querySelector<HTMLElement>(".calc-freeze-line.is-row")!.style.top).toBe("287px");
+    expect(document.querySelector<HTMLElement>(".calc-freeze-line.is-col")!.style.left).toBe("395px");
+  });
+
+  it("draws nothing extra when no panes are frozen", () => {
+    const id = seedWorkbook({});
+    render(<Harness id={id} />);
+    expect(document.querySelector(".calc-freeze-line")).toBeNull();
+    expect(cellAt(0, 0).style.zIndex).toBe("");
+  });
+
+  it("selects and edits a frozen cell where it is drawn", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({}, frozen);
+    render(<Harness id={id} />);
+    scrollTo(240, 300);
+
+    await user.click(cellAt(1, 0));
+    expect(nameBox().value).toBe("A2");
+    expect(cellAt(1, 0).classList.contains("is-selected")).toBe(true);
+
+    await user.dblClick(cellAt(1, 0));
+    const editor = cellAt(1, 0).querySelector<HTMLInputElement>(".cell-editor");
+    expect(editor).not.toBeNull();
+    await user.keyboard("pinned{Enter}");
+    expect(cellText(workbookOf().sheets[0].cells.A2)).toBe("pinned");
+  });
+
+  it("moves the fill handle with a frozen selection and hides it under the band", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({}, frozen);
+    render(<Harness id={id} />);
+    scrollTo(240, 300);
+    const handle = () => document.querySelector<HTMLElement>("[data-fill-handle]")!;
+
+    // A2 is frozen: its bottom-right corner follows both scroll offsets.
+    await user.click(cellAt(1, 0));
+    expect(handle().style.top).toBe(`${24 + 48 + 240 - 5}px`);
+    expect(handle().style.left).toBe(`${56 + 96 + 300 - 5}px`);
+    expect(handle().style.display).toBe("");
+
+    // B3 is a scrolled cell that now sits beneath the frozen band: no handle.
+    fireEvent.change(nameBox(), { target: { value: "B3" } });
+    expect(handle().style.display).toBe("none");
+    // E13 starts below the band (rows 10 and 11 are the ones it covers) and keeps its place.
+    fireEvent.change(nameBox(), { target: { value: "E13" } });
+    expect(handle().style.display).toBe("");
+    expect(handle().style.top).toBe(`${24 + 288 + 24 - 5}px`);
+  });
+
+  it("keeps a keyboard-revealed cell clear of the frozen rows", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({}, frozen);
+    render(<Harness id={id} />);
+    Object.defineProperty(grid(), "clientHeight", { configurable: true, value: 200 });
+    Object.defineProperty(grid(), "clientWidth", { configurable: true, value: 600 });
+    grid().scrollTop = 1056;
+
+    // Row 45 starts at y 1080, but with 48px frozen rows it is only visible
+    // when the scroll offset is at most 1080 - 48.
+    fireEvent.change(nameBox(), { target: { value: "A45" } });
+    grid().focus();
+    await user.keyboard("{ArrowDown}");
+    expect(nameBox().value).toBe("A46");
+    expect(grid().scrollTop).toBe(1032);
+  });
+
+  it("freezes at the selection and releases on the next press", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({});
+    render(<Harness id={id} />);
+
+    fireEvent.change(nameBox(), { target: { value: "C3" } });
+    await user.click(screen.getByRole("button", { name: "View" }));
+    await user.click(screen.getByRole("button", { name: "Freeze panes" }));
+    expect(workbookOf().sheets[0]).toMatchObject({ freezeRows: 2, freezeCols: 2 });
+    expect(document.querySelector(".calc-freeze-line.is-row")).not.toBeNull();
+
+    // Pressed again from another cell it unfreezes instead of moving the split.
+    fireEvent.change(nameBox(), { target: { value: "F9" } });
+    await user.click(screen.getByRole("button", { name: "Unfreeze panes" }));
+    expect(workbookOf().sheets[0]).toMatchObject({ freezeRows: 0, freezeCols: 0 });
+    expect(document.querySelector(".calc-freeze-line")).toBeNull();
+    expect(screen.getByRole("button", { name: "Freeze panes" })).toBeInTheDocument();
+  });
+});

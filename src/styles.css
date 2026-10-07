@@ -1235,9 +1235,22 @@ body {
 .calc-canvas {
   position: relative;
 }
+/* The header strips and the corner sit above every cell, frozen or scrolled. */
 .calc-col-headers,
 .calc-row-headers {
   position: absolute;
+  z-index: 5;
+}
+.calc-corner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 56px;
+  height: 24px;
+  z-index: 6;
+  background: var(--surface-2);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 .calc-col-header {
   position: absolute;
@@ -1288,6 +1301,20 @@ body {
 .calc-cells {
   position: absolute;
   top: 24px;
+}
+/* Divider on the edge of the frozen rows / columns. */
+.calc-freeze-line {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+  background: var(--muted);
+  opacity: 0.7;
+}
+.calc-freeze-line.is-row {
+  height: 2px;
+}
+.calc-freeze-line.is-col {
+  width: 2px;
 }
 .calc-cell {
   position: absolute;
