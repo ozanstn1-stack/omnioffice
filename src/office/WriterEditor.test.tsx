@@ -1,4 +1,4 @@
-﻿import { render, screen } from "@testing-library/react";
+﻿import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,8 +24,9 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(async () => null), sav
 vi.mock("@tauri-apps/plugin-fs", () => ({ readFile: vi.fn(async () => new Uint8Array()) }));
 
 import { WriterEditor } from "./WriterEditor";
+import { PROBE_TIMEOUT_MS } from "./writer/regex-probe";
 import { useOfficeTabs, type OfficeTab } from "../lib/office-store";
-import type { Block, TextDocument } from "../lib/office-types";
+import type { Block, Run, TextDocument } from "../lib/office-types";
 import { caretOffset, setCaretOffset } from "./writer/caret";
 
 function Harness({ id }: { id: string }) {
@@ -493,5 +494,163 @@ describe("Writer paginated in-place editing", () => {
     // PAGE/NUMPAGES/TITLE come from the pagination result and metadata; the
     // cached values are only the fallback.
     expect(fields).toEqual(["1", "1", "Report Title"]);
+  });
+});
+
+describe("Writer find & replace and quick styles", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+  });
+
+  /** Creates a document whose paragraphs hold the given runs (or plain text). */
+  function seed(paragraphsRuns: Array<string | Partial<Run>[]>, header: string[] = []): string {
+    const id = useOfficeTabs.getState().create("writer", "Untitled");
+    const model = useOfficeTabs.getState().tabs[0].model as TextDocument;
+    const first = model.blocks.find((block) => block.type === "paragraph") as Extract<Block, { type: "paragraph" }>;
+    const make = (runs: string | Partial<Run>[]) => ({
+      type: "paragraph" as const,
+      props: { ...first.props },
+      runs: (typeof runs === "string" ? [{ text: runs }] : runs).map((run) => ({ ...first.runs[0], ...run })),
+    });
+    useOfficeTabs.setState((state) => ({
+      tabs: state.tabs.map((entry) =>
+        entry.id === id
+          ? { ...entry, model: { ...model, blocks: paragraphsRuns.map(make), header: header.map(make) } }
+          : entry,
+      ),
+    }));
+    return id;
+  }
+
+  async function openFind(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole("button", { name: "Find" }));
+    return screen.getByLabelText("Find");
+  }
+
+  it("counts matches live and reports an invalid regular expression inline", async () => {
+    const user = userEvent.setup();
+    render(<Harness id={seed(["Alpha beta", "beta gamma Beta"])} />);
+    const query = await openFind(user);
+
+    await user.type(query, "beta");
+    expect(screen.getByRole("status")).toHaveTextContent("3 matches");
+    await user.click(screen.getByLabelText("Match case"));
+    expect(screen.getByRole("status")).toHaveTextContent("2 matches");
+
+    await user.click(screen.getByLabelText("Regular expression"));
+    await user.clear(query);
+    await user.type(query, "(");
+    // Inline, not a thrown error, and nothing can run on a broken pattern.
+    expect(screen.getByRole("alert")).toHaveTextContent("Invalid regular expression");
+    expect(screen.getByRole("button", { name: "Replace all" })).toBeDisabled();
+    await user.type(query, "Al|ga)");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("2 matches");
+  });
+
+  it("stops a regular expression that takes too long instead of freezing the editor", async () => {
+    // A worker that never answers stands in for a catastrophic pattern.
+    class HangingWorker {
+      onmessage: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      postMessage() {}
+      terminate() {}
+    }
+    vi.stubGlobal("Worker", HangingWorker);
+    try {
+      const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      render(<Harness id={seed(["Alpha beta gamma"])} />);
+      const query = await openFind(user);
+      await user.click(screen.getByLabelText("Regular expression"));
+      await user.click(query);
+      await user.paste("(\\p{L}+\\s?)+;");
+      expect(screen.getByRole("status")).toHaveTextContent("Searching");
+      await act(async () => {
+        vi.advanceTimersByTime(250 + PROBE_TIMEOUT_MS);
+      });
+      expect(screen.getByRole("status")).toHaveTextContent("takes too long");
+      await user.click(screen.getByRole("button", { name: "Replace all" }));
+      expect(blockTexts()).toEqual(["Alpha beta gamma"]);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("replaces the current match and moves to the next one", async () => {
+    const user = userEvent.setup();
+    render(<Harness id={seed(["cat and cat", "a cat"])} />);
+    const query = await openFind(user);
+    await user.type(query, "cat");
+    await user.type(screen.getByLabelText("Replace with"), "dog");
+
+    await user.click(screen.getByRole("button", { name: "Find next" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Match 1 of 3");
+    expect(window.getSelection()?.toString()).toBe("cat");
+
+    await user.click(screen.getByRole("button", { name: "Replace" }));
+    expect(blockTexts()).toEqual(["dog and cat", "a cat"]);
+    expect(screen.getByRole("status")).toHaveTextContent("Match 1 of 2");
+
+    await user.click(screen.getByRole("button", { name: "Replace" }));
+    expect(blockTexts()).toEqual(["dog and dog", "a cat"]);
+    await user.click(screen.getByRole("button", { name: "Replace" }));
+    expect(blockTexts()).toEqual(["dog and dog", "a dog"]);
+    expect(screen.getByRole("status")).toHaveTextContent("No matches");
+  });
+
+  it("only selects the next match when Replace is pressed without one", async () => {
+    const user = userEvent.setup();
+    render(<Harness id={seed(["one two one"])} />);
+    await user.type(await openFind(user), "one");
+    await user.type(screen.getByLabelText("Replace with"), "1");
+    await user.click(screen.getByRole("button", { name: "Replace" }));
+    expect(blockTexts()).toEqual(["one two one"]);
+    expect(screen.getByRole("status")).toHaveTextContent("Match 1 of 2");
+  });
+
+  it("replaces every regex match with $1 groups and keeps the run formatting", async () => {
+    const user = userEvent.setup();
+    const due = [
+      { text: "Due: ", bold: true },
+      { text: "2026-10-06", italic: true },
+    ];
+    render(<Harness id={seed([due], ["Printed 2026-01-31"])} />);
+    const query = await openFind(user);
+    await user.click(screen.getByLabelText("Regular expression"));
+    await user.click(query);
+    await user.paste("(\\d{4})-(\\d{2})-(\\d{2})");
+    await user.type(screen.getByLabelText("Replace with"), "$3.$2.$1");
+    expect(screen.getByRole("status")).toHaveTextContent("2 matches");
+
+    await user.click(screen.getByRole("button", { name: "Replace all" }));
+    const saved = documentOf();
+    const body = saved.blocks[0];
+    expect(body.type === "paragraph" ? body.runs.map((run) => [run.text, run.bold, run.italic]) : []).toEqual([
+      ["Due: ", true, false],
+      ["06.10.2026", false, true],
+    ]);
+    expect(blockText(saved.header[0])).toBe("Printed 31.01.2026");
+    expect(screen.getByRole("status")).toHaveTextContent("No matches");
+  });
+
+  it("applies a quick style to the paragraph with the caret and marks it active", async () => {
+    const user = userEvent.setup();
+    render(<Harness id={seed(["First", "Second"])} />);
+    const editable = await openPageEditor(user, 1);
+    expect(editable.dataset.blockIndex).toBe("1");
+    expect(screen.getByRole("button", { name: "Normal" })).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(screen.getByRole("button", { name: "Heading 1" }));
+    const blocks = documentOf().blocks;
+    expect(blocks.map((block) => (block.type === "paragraph" ? block.props.style : ""))).toEqual([
+      "Normal",
+      "Heading1",
+    ]);
+    // The caret stayed in the paragraph and the gallery follows the change.
+    expect(document.activeElement).toBe(pageEditables()[0]);
+    expect(screen.getByRole("button", { name: "Heading 1" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Normal" })).toHaveAttribute("aria-pressed", "false");
   });
 });

@@ -7,7 +7,7 @@
 
 use crate::error::{OfficeError, OfficeResult};
 use crate::model::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 #[derive(Debug, Clone)]
@@ -92,11 +92,13 @@ impl RtfTables {
 }
 
 /// Note bodies keyed by id, resolved while writing runs. RTF footnotes cannot
-/// nest, so note bodies are written with an empty context.
+/// nest, so note bodies are written with an empty context. `comments` places
+/// the body's annotations; it stays empty for headers, footers and notes.
 #[derive(Default, Clone)]
 struct RtfNotes {
     footnotes: HashMap<String, Footnote>,
     endnotes: HashMap<String, Footnote>,
+    comments: RtfComments,
 }
 
 impl RtfNotes {
@@ -104,6 +106,7 @@ impl RtfNotes {
         Self {
             footnotes: document.footnotes.iter().map(|note| (note.id.clone(), note.clone())).collect(),
             endnotes: document.endnotes.iter().map(|note| (note.id.clone(), note.clone())).collect(),
+            comments: RtfComments::default(),
         }
     }
 
@@ -114,6 +117,136 @@ impl RtfNotes {
     fn endnote_for(&self, run: &Run) -> Option<&Footnote> {
         run.endnote.as_ref().and_then(|id| self.endnotes.get(id))
     }
+}
+
+/// Word annotation placement for the RTF body, mirroring the ODT writer:
+/// `{\*\atrfstart N}` goes before the first body run anchored to a comment,
+/// `{\*\atrfend N}` and the annotation group after the last one. A comment
+/// whose anchored runs carry no content is a point annotation (no range), and
+/// comments no body run refers to are written as point annotations at the
+/// start of the first paragraph, so the export keeps them.
+#[derive(Default, Clone)]
+struct RtfComments {
+    /// Comment and its annotation number (`N` above) by id.
+    comments: HashMap<String, (usize, Comment)>,
+    /// Anchored body runs per comment id, and whether any of them has content.
+    anchors: HashMap<String, (usize, bool)>,
+    /// Anchored runs written so far per comment id.
+    written: std::cell::RefCell<HashMap<String, usize>>,
+    unanchored: std::cell::RefCell<Vec<Comment>>,
+}
+
+impl RtfComments {
+    fn for_document(document: &TextDocument) -> Self {
+        let mut anchors = HashMap::new();
+        count_comment_runs(&document.blocks, 0, &mut anchors);
+        let mut comments = HashMap::new();
+        let mut unanchored = Vec::new();
+        for comment in &document.comments {
+            if comments.contains_key(&comment.id) {
+                continue;
+            }
+            if !anchors.contains_key(&comment.id) {
+                unanchored.push(comment.clone());
+            }
+            comments.insert(comment.id.clone(), (comments.len() + 1, comment.clone()));
+        }
+        Self { comments, anchors, written: Default::default(), unanchored: std::cell::RefCell::new(unanchored) }
+    }
+
+    /// Writes the comments no body run refers to; only the first call writes.
+    fn write_unanchored(&self, out: &mut String) {
+        for comment in self.unanchored.take() {
+            write_annotation(out, &comment, None);
+        }
+    }
+
+    fn before_run(&self, out: &mut String, run: &Run) {
+        let Some(id) = run.comment.as_deref() else { return };
+        let (Some((number, comment)), Some(&(_, has_content))) = (self.comments.get(id), self.anchors.get(id)) else {
+            return;
+        };
+        let mut written = self.written.borrow_mut();
+        let count = written.entry(id.to_string()).or_insert(0);
+        *count += 1;
+        if *count == 1 {
+            if has_content {
+                out.push_str(&format!("{{\\*\\atrfstart {number}}}"));
+            } else {
+                write_annotation(out, comment, None);
+            }
+        }
+    }
+
+    fn after_run(&self, out: &mut String, run: &Run) {
+        let Some(id) = run.comment.as_deref() else { return };
+        let (Some((number, comment)), Some(&(total, has_content))) = (self.comments.get(id), self.anchors.get(id))
+        else {
+            return;
+        };
+        if has_content && self.written.borrow().get(id) == Some(&total) {
+            out.push_str(&format!("{{\\*\\atrfend {number}}}"));
+            write_annotation(out, comment, Some(*number));
+        }
+    }
+}
+
+/// Counts the runs `write_block` writes for each comment id; tables deeper
+/// than `write_block` writes are skipped the same way.
+fn count_comment_runs(blocks: &[Block], depth: usize, anchors: &mut HashMap<String, (usize, bool)>) {
+    for block in blocks {
+        match block {
+            Block::Paragraph { runs, .. } => {
+                for run in runs {
+                    if let Some(id) = &run.comment {
+                        let entry = anchors.entry(id.clone()).or_insert((0, false));
+                        entry.0 += 1;
+                        entry.1 |= !run.text.is_empty() || run.footnote.is_some() || run.endnote.is_some();
+                    }
+                }
+            }
+            Block::Table { table } if depth <= 2 => {
+                for cell in table.rows.iter().flat_map(|row| row.cells.iter()) {
+                    count_comment_runs(&cell.blocks, depth + 1, anchors);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn initials(author: &str) -> String {
+    author.split_whitespace().filter_map(|word| word.chars().next()).take(3).collect::<String>().to_uppercase()
+}
+
+/// Word's annotation group: `{\*\atnid}{\*\atnauthor}\chatn{\*\annotation}`.
+/// `\atnref` ties it to the `\atrfstart`/`\atrfend` range of the same number
+/// (point annotations have none) and `\atndate` is a DTTM, so seconds are
+/// lost. RTF has no reply threading, so replies follow the text as
+/// "Re: author: text" paragraphs, as in DOCX; the resolved state rides on our
+/// own ignorable `{\*\oswkresolved}` marker, which Word skips.
+fn write_annotation(out: &mut String, comment: &Comment, range: Option<usize>) {
+    out.push_str(&format!(
+        "{{\\*\\atnid {}}}{{\\*\\atnauthor {}}}\\chatn {{\\*\\annotation",
+        escape_rtf(&initials(&comment.author)),
+        escape_rtf(&comment.author)
+    ));
+    if let Some(number) = range {
+        out.push_str(&format!("{{\\*\\atnref {number}}}"));
+    }
+    if let Some(dttm) = iso_to_dttm(&comment.created) {
+        out.push_str(&format!("{{\\*\\atndate {dttm}}}"));
+    }
+    if comment.resolved {
+        out.push_str("{\\*\\oswkresolved}");
+    }
+    let mut paragraphs: Vec<String> = comment.text.split('\n').map(escape_rtf).collect();
+    for reply in &comment.replies {
+        paragraphs.push(escape_rtf(&format!("Re: {}: {}", reply.author, reply.text)));
+    }
+    out.push_str("\\pard\\plain ");
+    out.push_str(&paragraphs.join("\\par "));
+    out.push('}');
 }
 
 /// RTF writes `\revdttm` as a packed 32-bit DTTM (6-bit minute, 5-bit hour,
@@ -332,8 +465,11 @@ fn write_block(
                 }
             }
             out.push(' ');
+            notes.comments.write_unanchored(out);
             for run in runs {
+                notes.comments.before_run(out, run);
                 write_run(out, run, tables, notes);
+                notes.comments.after_run(out, run);
             }
             out.push_str("\\par\n");
         }
@@ -452,8 +588,16 @@ pub fn write_rtf(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     let notes = RtfNotes::for_document(document);
     let mut tables = RtfTables { fonts, colors: Vec::new(), authors };
     let mut body = String::new();
+    // Annotations are body-only: headers and footers use the plain context.
+    let body_notes = RtfNotes { comments: RtfComments::for_document(document), ..notes.clone() };
     for block in &document.blocks {
-        write_block(&mut body, block, &mut tables, document, &notes, 0);
+        write_block(&mut body, block, &mut tables, document, &body_notes, 0);
+    }
+    // A body without any paragraph still needs a home for unanchored comments.
+    let mut unanchored = String::new();
+    body_notes.comments.write_unanchored(&mut unanchored);
+    if !unanchored.is_empty() {
+        body.push_str(&format!("\\pard {unanchored}\\par\n"));
     }
     let mut header = String::new();
     for block in &document.header {
@@ -600,6 +744,22 @@ struct Reader {
     note_seq: usize,
     footnotes: Vec<Footnote>,
     endnotes: Vec<Footnote>,
+    /// `\atrfstart` numbers of the annotation ranges open at the current
+    /// position, innermost last; body text read meanwhile is anchored to it.
+    comment_ranges: Vec<String>,
+    /// `\atnauthor`, `\atnref` and `\atndate` seen ahead of the `\annotation`
+    /// destination they describe.
+    comment_author: Option<String>,
+    comment_ref: Option<String>,
+    comment_date: Option<u32>,
+    /// A point annotation (no `\atnref` range) waiting for the next text run.
+    pending_comment: Option<String>,
+    comments: Vec<Comment>,
+    /// Ids already used by `comments` (constant-time checks; thousands of
+    /// annotations used to make the import quadratic) and the next number
+    /// tried for an `rtf-comment-N` id.
+    comment_ids: HashSet<String>,
+    next_comment_number: usize,
 }
 
 #[derive(Default)]
@@ -642,6 +802,14 @@ impl Reader {
             note_seq: 0,
             footnotes: Vec::new(),
             endnotes: Vec::new(),
+            comment_ranges: Vec::new(),
+            comment_author: None,
+            comment_ref: None,
+            comment_date: None,
+            pending_comment: None,
+            comments: Vec::new(),
+            comment_ids: HashSet::new(),
+            next_comment_number: 0,
         }
     }
 
@@ -691,6 +859,13 @@ impl Reader {
             return;
         }
         let format = self.char_format.clone();
+        // Note text is never anchored; body text takes the innermost open
+        // annotation range, else a waiting point annotation.
+        let comment = if self.note_depth.is_some() {
+            None
+        } else {
+            self.comment_ranges.last().cloned().or_else(|| self.pending_comment.take())
+        };
         let run = Run {
             text: text.to_string(),
             bold: format.bold,
@@ -704,6 +879,7 @@ impl Reader {
             superscript: format.superscript,
             subscript: format.subscript,
             revision: self.revision.clone(),
+            comment,
             ..Default::default()
         };
         // Text inside a \footnote destination belongs to the note, not to the
@@ -719,6 +895,7 @@ impl Reader {
                 && last.font == run.font
                 && last.size_pt == run.size_pt
                 && last.revision == run.revision
+                && last.comment == run.comment
             {
                 last.text.push_str(&run.text);
                 return;
@@ -868,6 +1045,193 @@ fn parse_revtbl(reader: &mut Reader, raw: &str) {
             _ => {}
         }
     }
+}
+
+/// Decodes the text of an RTF destination (`raw` is the group content after
+/// its keyword) into paragraphs: `\par` starts a new paragraph, `\line` and
+/// `\tab` become `\n` and `\t`, `\uN` (honouring `\ucN`), `\'hh` and escaped
+/// symbols become text, and every other control word is dropped. Ignorable
+/// `{\*\name ...}` subgroups are handed to `ignorable` (name, content after the
+/// keyword) instead of being read as text.
+fn destination_paragraphs(raw: &str, ignorable: &mut dyn FnMut(&str, &str)) -> Vec<String> {
+    let chars: Vec<char> = raw.chars().collect();
+    let mut paragraphs = Vec::new();
+    let mut text = String::new();
+    let mut unicode_skip = 1usize;
+    let mut skip = 0usize;
+    let mut index = 0usize;
+    while index < chars.len() {
+        let ch = chars[index];
+        match ch {
+            '{' if chars.get(index + 1) == Some(&'\\') && chars.get(index + 2) == Some(&'*') => {
+                let end = skip_group(&chars, index + 1);
+                let name_start = (index + 4).min(end);
+                let mut name_end = name_start;
+                while name_end < end && chars[name_end].is_ascii_alphabetic() {
+                    name_end += 1;
+                }
+                let content_start = if chars.get(name_end) == Some(&' ') { name_end + 1 } else { name_end };
+                let content_end = if end > name_end && chars[end - 1] == '}' { end - 1 } else { end };
+                let name: String = chars[name_start..name_end].iter().collect();
+                let content: String = chars[content_start.min(content_end)..content_end].iter().collect();
+                ignorable(&name, &content);
+                index = end;
+            }
+            '{' | '}' | '\r' | '\n' => index += 1,
+            '\\' => {
+                index += 1;
+                let Some(&next) = chars.get(index) else { break };
+                if next.is_ascii_alphabetic() {
+                    let start = index;
+                    while index < chars.len() && chars[index].is_ascii_alphabetic() {
+                        index += 1;
+                    }
+                    let word: String = chars[start..index].iter().collect();
+                    let param_start = index;
+                    if chars.get(index) == Some(&'-') {
+                        index += 1;
+                    }
+                    while index < chars.len() && chars[index].is_ascii_digit() {
+                        index += 1;
+                    }
+                    let param = chars[param_start..index].iter().collect::<String>().parse::<i32>().ok();
+                    if chars.get(index) == Some(&' ') {
+                        index += 1;
+                    }
+                    match word.as_str() {
+                        "par" => paragraphs.push(std::mem::take(&mut text)),
+                        "line" => text.push('\n'),
+                        "tab" => text.push('\t'),
+                        "uc" => unicode_skip = param.unwrap_or(1).max(0) as usize,
+                        "u" => {
+                            if let Some(value) = param {
+                                let code = if value < 0 { (value + 65536) as u32 } else { value as u32 };
+                                text.extend(char::from_u32(code));
+                                skip = unicode_skip;
+                            }
+                        }
+                        _ => {}
+                    }
+                } else if next == '\'' {
+                    let hex: String = chars.iter().skip(index + 1).take(2).collect();
+                    index = (index + 3).min(chars.len());
+                    if skip > 0 {
+                        skip -= 1;
+                    } else if let Ok(value) = u8::from_str_radix(&hex, 16) {
+                        if let Ok(decoded) = crate::zip::decode_utf8(&[value], "text") {
+                            text.push_str(&decoded);
+                        }
+                    }
+                } else {
+                    if matches!(next, '\\' | '{' | '}') {
+                        if skip > 0 {
+                            skip -= 1;
+                        } else {
+                            text.push(next);
+                        }
+                    }
+                    index += 1;
+                }
+            }
+            _ => {
+                if skip > 0 {
+                    skip -= 1;
+                } else {
+                    text.push(ch);
+                }
+                index += 1;
+            }
+        }
+    }
+    paragraphs.push(text);
+    paragraphs
+}
+
+/// A single-value destination such as `\atnauthor` or `\atrfstart`.
+fn destination_value(raw: &str) -> String {
+    destination_paragraphs(raw, &mut |_, _| {}).join(" ").trim().to_string()
+}
+
+/// Word's annotation destinations. `\atrfstart`/`\atrfend` bracket the
+/// commented range by number, `\atnauthor` (and `\atnid`, the initials, which
+/// the model derives from the author) precede the `\chatn` reference, and
+/// `\annotation` holds the comment. Any other destination is ignored.
+fn read_comment_destination(reader: &mut Reader, name: &str, content: &str) {
+    match name {
+        "atrfstart" => {
+            let number = destination_value(content);
+            if !number.is_empty() {
+                reader.comment_ranges.push(number);
+            }
+        }
+        "atrfend" => {
+            let number = destination_value(content);
+            reader.comment_ranges.retain(|open| *open != number);
+        }
+        "atnauthor" => reader.comment_author = Some(destination_value(content)),
+        "atnref" => reader.comment_ref = Some(destination_value(content)),
+        "atndate" => reader.comment_date = destination_value(content).parse::<i64>().ok().map(|value| value as u32),
+        "annotation" => read_annotation(reader, content),
+        _ => {}
+    }
+}
+
+/// Builds a comment from an `\annotation` destination. Its id is the
+/// `\atnref` number, which is also what the runs of its `\atrfstart` range were
+/// anchored to; an annotation without a range anchors the next text run, as
+/// DOCX import does for an empty comment range. "Re: author: text" paragraphs
+/// become replies again and `{\*\oswkresolved}` restores the resolved state.
+fn read_annotation(reader: &mut Reader, content: &str) {
+    let mut reference = reader.comment_ref.take();
+    let mut date = reader.comment_date.take();
+    let mut resolved = false;
+    let mut paragraphs = destination_paragraphs(content, &mut |name, inner| match name {
+        "atnref" => reference = Some(destination_value(inner)),
+        "atndate" => date = destination_value(inner).parse::<i64>().ok().map(|value| value as u32),
+        "oswkresolved" => resolved = true,
+        _ => {}
+    });
+    while paragraphs.last().is_some_and(|paragraph| paragraph.trim().is_empty()) {
+        paragraphs.pop();
+    }
+    let reference = reference.filter(|number| !number.is_empty() && !reader.comment_ids.contains(number));
+    let id = match &reference {
+        Some(number) => number.clone(),
+        None => loop {
+            reader.next_comment_number = reader.next_comment_number.max(reader.comments.len()) + 1;
+            let candidate = format!("rtf-comment-{}", reader.next_comment_number);
+            if !reader.comment_ids.contains(&candidate) {
+                break candidate;
+            }
+        },
+    };
+    reader.comment_ids.insert(id.clone());
+    if reference.is_none() {
+        reader.pending_comment = Some(id.clone());
+    }
+    let created = date.map(dttm_to_iso).unwrap_or_default();
+    let mut comment = Comment {
+        id,
+        author: reader.comment_author.take().unwrap_or_else(|| "Unknown".into()),
+        text: String::new(),
+        created: created.clone(),
+        resolved,
+        modified: created,
+        replies: Vec::new(),
+    };
+    let mut lines = Vec::new();
+    for paragraph in paragraphs {
+        match paragraph.strip_prefix("Re: ").and_then(|rest| rest.split_once(": ")) {
+            Some((author, text)) => comment.replies.push(CommentReply {
+                author: author.to_string(),
+                text: text.to_string(),
+                created: String::new(),
+            }),
+            None => lines.push(paragraph),
+        }
+    }
+    comment.text = lines.join("\n");
+    reader.comments.push(comment);
 }
 
 fn apply_pict_control(reader: &mut Reader, word: &str, param: Option<i32>) {
@@ -1148,9 +1512,10 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
                     continue;
                 }
                 if next == '*' {
-                    // Ignorable destinations are skipped, but two of them carry
-                    // data we care about: \revtbl (revision authors) and our own
-                    // \oswkendnote marker (endnote class).
+                    // Ignorable destinations are skipped, but some carry data we
+                    // care about: \revtbl (revision authors), our own
+                    // \oswkendnote marker (endnote class) and Word's annotation
+                    // destinations (comments).
                     let mut probe = i + 2;
                     let mut name = String::new();
                     while probe < chars.len() && chars[probe].is_ascii_alphabetic() {
@@ -1164,6 +1529,12 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
                         parse_revtbl(&mut reader, &content);
                     } else if name == "oswkendnote" && reader.note_depth.is_some() {
                         reader.note_endnote = true;
+                    } else {
+                        // Word annotations: ranges, author and comment text. The
+                        // space after the keyword is its delimiter, not text.
+                        let rest = content.strip_prefix('\\').and_then(|rest| rest.strip_prefix(name.as_str()));
+                        let rest = rest.map(|rest| rest.strip_prefix(' ').unwrap_or(rest));
+                        read_comment_destination(&mut reader, &name, rest.unwrap_or_default());
                     }
                     i = end;
                     reader.close_revision_group();
@@ -1306,6 +1677,7 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
     document.footer = reader.footer_blocks;
     document.footnotes = reader.footnotes;
     document.endnotes = reader.endnotes;
+    document.comments = reader.comments;
     Ok(RtfRead { document, warnings })
 }
 

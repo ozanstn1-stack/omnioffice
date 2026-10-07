@@ -127,6 +127,19 @@ import {
   wrapCellRuns,
 } from "./writer/writerDom";
 import { emptyRun as emptyWriterRun } from "./writer/runs";
+import {
+  compileSearch,
+  documentMatches,
+  documentTexts,
+  MATCH_LIMIT,
+  nextMatchIndex,
+  replaceAllInDocument,
+  replaceMatch,
+  sameMatch,
+  type MatchLocation,
+} from "./writer/find-replace";
+import { canProbeRegex, probeRegex, type ProbeStatus, type RegexProbe } from "./writer/regex-probe";
+import { StyleGallery } from "./writer/StyleGallery";
 import { measureBlocks } from "./writer/measure";
 import { paginate, pageOfBlock, type Fragment, type PageLayout } from "./writer/pagination";
 import { LayoutList, ListTree, ListOrdered as TocIcon, RefreshCw } from "lucide-react";
@@ -207,6 +220,9 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   const [replaceText, setReplaceText] = useState("");
   const [matchCase, setMatchCase] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
+  const [useRegex, setUseRegex] = useState(false);
+  // The match Find next/previous last selected; Replace acts on it.
+  const [currentMatch, setCurrentMatch] = useState<MatchLocation | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [insertTable, setInsertTable] = useState(false);
   const [selectedImage, setSelectedImage] = useState<number | null>(null);
@@ -650,6 +666,11 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     const block = currentBlocks()[index];
     if (block?.type === "paragraph") {
       updateBlock(index, { ...block, props: { ...block.props, style: styleId } });
+      // The paragraph keeps focus, so no focus event refreshes the selection
+      // that the style gallery and dropdown show as active.
+      setSelection((current) =>
+        current ? { ...current, paragraph: { ...current.paragraph, style: styleId } } : current,
+      );
     }
   };
 
@@ -962,62 +983,138 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   // Find / replace
   // -------------------------------------------------------------------------
 
-  const runFind = (forward: boolean) => {
-    if (!findText) return;
-    try {
-      (
-        window as unknown as {
-          find: (text: string, matchCase: boolean, backwards: boolean, wrap: boolean, wholeWord: boolean) => boolean;
-        }
-      ).find(findText, matchCase, !forward, true, wholeWord);
-    } catch {
-      useToasts
-        .getState()
-        .push({ kind: "info", title: t("writer.findUnsupported"), detail: t("writer.findUnsupportedHint") });
+  // Matching runs on the model (writer/find-replace.ts), so regular
+  // expressions, the live count and Replace see exactly what Replace All
+  // changes, including table cells, the header and the footer.
+  const search = useMemo(
+    () => (findOpen ? compileSearch(findText, { matchCase, wholeWord, regex: useRegex }) : null),
+    [findOpen, findText, matchCase, wholeWord, useRegex],
+  );
+  // A regular expression is first run in a worker (writer/regex-probe.ts), a
+  // moment after the last keystroke: a catastrophic pattern is stopped there
+  // instead of freezing the editor with the unsaved document in it.
+  const probing = useRegex && search?.ok === true && canProbeRegex();
+  const probeKey = useMemo(() => ({ search, document }), [search, document]);
+  const [probe, setProbe] = useState<{ key: object; status: ProbeStatus } | null>(null);
+  useEffect(() => {
+    if (!probing || !search?.ok) return;
+    let run: RegexProbe | null = null;
+    const timer = setTimeout(() => {
+      run = probeRegex(search.pattern, documentTexts(document));
+      void run.promise.then((status) => setProbe({ key: probeKey, status }));
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      run?.cancel();
+    };
+  }, [probing, probeKey, search, document]);
+  const probeStatus: ProbeStatus | "pending" = !probing ? "ok" : probe?.key === probeKey ? probe.status : "pending";
+  const matches = useMemo(
+    () => (search?.ok && probeStatus === "ok" ? documentMatches(document, search.pattern) : []),
+    [search, document, probeStatus],
+  );
+  const currentMatchIndex = currentMatch ? matches.findIndex((match) => sameMatch(match, currentMatch)) : -1;
+  // A match found by Replace is selected after the commit that renders it.
+  const revealRequest = useRef<MatchLocation | null>(null);
+
+  /**
+   * Selects a match in the rendered page and scrolls it into view. A split
+   * paragraph renders its whole text in every page fragment, so the fragment
+   * whose band actually shows the match is preferred.
+   */
+  const revealMatch = (match: MatchLocation) => {
+    const paginated = view === "paginated" && !editingHeader;
+    const scope = match.scope === "body" && paginated ? "page" : match.scope;
+    const hosts =
+      match.path.length === 1
+        ? Array.from(
+            window.document.querySelectorAll<HTMLElement>(
+              `[data-scope="${scope}"][data-block-index="${match.path[0]}"]`,
+            ),
+          )
+        : [];
+    for (const host of hosts) {
+      // Only paragraph hosts: a page fragment wraps a table or image in a
+      // `data-block-index="0"` box of its own, which must not be picked.
+      const para = host.classList.contains("para")
+        ? host
+        : host.classList.contains("para-row")
+          ? host.querySelector<HTMLElement>(".para")
+          : null;
+      if (!para) continue;
+      setSelectionRange(para, match.start, match.end);
+      const band = para.closest<HTMLElement>(".writer-fragment");
+      if (band && !selectionShownIn(band)) continue;
+      (band ?? para).scrollIntoView?.({ block: "center" });
+      return;
+    }
+    // Table cells (and a body match while the header is edited) have no
+    // selectable paragraph here: bring the block's page into view instead.
+    if (match.scope === "body" && paginated) {
+      window.document
+        .querySelector<HTMLElement>(`[data-page-index="${pageOfBlock(pages, match.path[0]) - 1}"]`)
+        ?.scrollIntoView?.({ block: "start" });
     }
   };
 
+  useEffect(() => {
+    const request = revealRequest.current;
+    if (!request) return;
+    revealRequest.current = null;
+    revealMatch(request);
+  });
+
+  const findStep = (forward: boolean) => {
+    const index = nextMatchIndex(matches, currentMatch, forward);
+    if (index < 0) return;
+    setCurrentMatch(matches[index]);
+    revealMatch(matches[index]);
+  };
+
+  const replaceCurrent = () => {
+    if (!search?.ok) return;
+    const current = currentMatchIndex >= 0 ? matches[currentMatchIndex] : null;
+    // Word behaviour: without a selected match Replace only finds the next
+    // one, so nothing changes that the user has not seen.
+    const result = current ? replaceMatch(document, current, search.pattern, replaceText, useRegex) : null;
+    if (!current || !result) {
+      findStep(true);
+      return;
+    }
+    update(() => result.document);
+    const following = documentMatches(result.document, search.pattern);
+    const index = nextMatchIndex(following, { ...current, start: result.end }, true, true);
+    const next = index >= 0 ? following[index] : null;
+    setCurrentMatch(next);
+    revealRequest.current = next;
+  };
+
   const replaceAll = () => {
-    if (!findText) return;
-    let count = 0;
-    const transform = (text: string) => {
-      const flags = matchCase ? "g" : "gi";
-      const escaped = findText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const pattern = wholeWord ? new RegExp(`\\b${escaped}\\b`, flags) : new RegExp(escaped, flags);
-      return { text: text.replace(pattern, replaceText), hits: (text.match(pattern) ?? []).length };
-    };
-    const mapRuns = (runs: Run[]): Run[] =>
-      runs.map((run) => {
-        const { text, hits } = transform(run.text);
-        count += hits;
-        return { ...run, text };
-      });
-    const mapBlocks = (blocks: Block[]): Block[] =>
-      blocks.map((block) => {
-        if (block.type === "paragraph") return { ...block, runs: mapRuns(block.runs) };
-        if (block.type === "table")
-          return {
-            ...block,
-            table: {
-              ...block.table,
-              rows: block.table.rows.map((row) => ({
-                ...row,
-                cells: row.cells.map((cell) => ({ ...cell, blocks: mapBlocks(cell.blocks) })),
-              })),
-            },
-          };
-        return block;
-      });
-    update((doc) => {
-      const next = {
-        ...doc,
-        blocks: mapBlocks(doc.blocks),
-        header: mapBlocks(doc.header),
-        footer: mapBlocks(doc.footer),
-      };
-      return next;
-    });
-    useToasts.getState().push({ kind: "success", title: t("writer.replaceDone"), detail: `${count}` });
+    if (!search?.ok || probeStatus !== "ok") return;
+    const result = replaceAllInDocument(document, search.pattern, replaceText, useRegex);
+    if (result.count > 0) update(() => result.document);
+    setCurrentMatch(null);
+    useToasts.getState().push({ kind: "success", title: t("writer.replaceDone"), detail: `${result.count}` });
+  };
+
+  const matchCount = matches.length >= MATCH_LIMIT ? `${MATCH_LIMIT}+` : matches.length;
+  const findStatus = !search?.ok
+    ? ""
+    : probeStatus === "slow"
+      ? t("writer.regexTooSlow")
+      : probeStatus === "pending"
+        ? t("writer.findSearching")
+        : matches.length === 0
+          ? t("writer.findNoMatches")
+          : currentMatchIndex >= 0
+            ? t("writer.findMatchOf", { current: currentMatchIndex + 1, count: matchCount })
+            : matches.length === 1
+              ? t("writer.findOneMatch")
+              : t("writer.findMatches", { count: matchCount });
+
+  const closeFind = () => {
+    setFindOpen(false);
+    setCurrentMatch(null);
   };
 
   // -------------------------------------------------------------------------
@@ -1619,6 +1716,9 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                 width={70}
               />
             </RibbonGroup>
+            <RibbonGroup label={t("writer.styles")}>
+              <StyleGallery document={document} active={activeStyle} onApply={setParagraphStyle} />
+            </RibbonGroup>
             <RibbonGroup label={t("writer.find")}>
               <ToolButton icon={<Search size={16} />} label={t("common.find")} onClick={() => setFindOpen(true)} />
             </RibbonGroup>
@@ -2140,13 +2240,32 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
       </div>
 
       {findOpen ? (
-        <Dialog title={t("writer.findReplace")} onClose={() => setFindOpen(false)}>
+        <Dialog title={t("writer.findReplace")} onClose={closeFind}>
           <div className="stack">
             <label className="field">
               <span>{t("writer.findWhat")}</span>
-              {/* eslint-disable-next-line jsx-a11y/no-autofocus -- opening Find must put the caret in the search field */}
-              <input value={findText} onChange={(event) => setFindText(event.target.value)} autoFocus />
+              <input
+                value={findText}
+                onChange={(event) => setFindText(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  event.preventDefault();
+                  findStep(!event.shiftKey);
+                }}
+                aria-invalid={search?.ok === false}
+                // eslint-disable-next-line jsx-a11y/no-autofocus -- opening Find must put the caret in the search field
+                autoFocus
+              />
             </label>
+            {search && !search.ok ? (
+              <p className="find-error" role="alert">
+                {t("writer.findInvalidRegex")}: {search.error}
+              </p>
+            ) : (
+              <p className="find-count muted" role="status">
+                {findStatus}
+              </p>
+            )}
             <label className="field">
               <span>{t("writer.replaceWith")}</span>
               <input value={replaceText} onChange={(event) => setReplaceText(event.target.value)} />
@@ -2160,15 +2279,22 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                 <input type="checkbox" checked={wholeWord} onChange={(event) => setWholeWord(event.target.checked)} />{" "}
                 {t("writer.wholeWord")}
               </label>
+              <label className="check">
+                <input type="checkbox" checked={useRegex} onChange={(event) => setUseRegex(event.target.checked)} />{" "}
+                {t("writer.regex")}
+              </label>
             </div>
             <div className="row">
-              <button type="button" className="btn btn-soft" onClick={() => runFind(true)}>
+              <button type="button" className="btn btn-soft" onClick={() => findStep(true)} disabled={!search?.ok}>
                 {t("writer.findNext")}
               </button>
-              <button type="button" className="btn btn-soft" onClick={() => runFind(false)}>
+              <button type="button" className="btn btn-soft" onClick={() => findStep(false)} disabled={!search?.ok}>
                 {t("writer.findPrevious")}
               </button>
-              <button type="button" className="btn btn-primary" onClick={replaceAll}>
+              <button type="button" className="btn btn-soft" onClick={replaceCurrent} disabled={!search?.ok}>
+                {t("writer.replace")}
+              </button>
+              <button type="button" className="btn btn-primary" onClick={replaceAll} disabled={!search?.ok}>
                 {t("writer.replaceAll")}
               </button>
             </div>
@@ -3701,6 +3827,17 @@ function effectiveFontSize(block: Extract<Block, { type: "paragraph" }>): number
 
 function applyVisualStyle(element: HTMLElement, property: string, value: string) {
   element.style.setProperty(property, value);
+}
+
+/** True when the selection overlaps `box` vertically, or when there is no layout to tell (jsdom). */
+function selectionShownIn(box: HTMLElement): boolean {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return true;
+  const range = selection.getRangeAt(0);
+  const rect = typeof range.getBoundingClientRect === "function" ? range.getBoundingClientRect() : null;
+  const bounds = box.getBoundingClientRect();
+  if (!rect || rect.height === 0 || bounds.height === 0) return true;
+  return rect.bottom > bounds.top && rect.top < bounds.bottom;
 }
 
 function mimeFromName(name: string): string {

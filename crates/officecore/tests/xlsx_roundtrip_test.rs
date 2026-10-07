@@ -735,3 +735,37 @@ fn xlsx_two_cell_anchored_picture_round_trips_its_corners() {
     let read2 = xlsx::read_workbook_bytes(&second).unwrap();
     assert_eq!(read2.workbook.sheets[0].images, read.workbook.sheets[0].images);
 }
+
+#[test]
+fn xlsx_list_validation_from_cells_is_a_bare_reference() {
+    let mut workbook = Workbook::new_blank("Lists");
+    let sheet = &mut workbook.sheets[0];
+    let list = |id: &str, range: &str, values: &[&str]| Validation {
+        id: id.into(),
+        range: range.into(),
+        kind: "list".into(),
+        values: values.iter().map(|value| value.to_string()).collect(),
+        allow_blank: true,
+        ..Default::default()
+    };
+    sheet.validations = vec![
+        list("v1", "B1:B9", &["=A1:A5"]),
+        list("v2", "C1", &["='My Sheet'!$A$1:$A$3"]),
+        list("v3", "D1", &["Yes", "No"]),
+        list("v4", "E1", &["=SUM(A1:A2)"]),
+    ];
+    let bytes = xlsx::write_xlsx(&workbook).unwrap();
+    let xml = ZipReader::open(bytes.clone()).unwrap().read_text("xl/worksheets/sheet1.xml").unwrap();
+    assert!(xml.contains("<formula1>A1:A5</formula1>"), "{xml}");
+    assert!(xml.contains("<formula1>'My Sheet'!$A$1:$A$3</formula1>"), "{xml}");
+    assert!(xml.contains("<formula1>\"Yes,No\"</formula1>"), "{xml}");
+    // Only plain references are written bare; anything else stays a literal.
+    assert!(xml.contains("<formula1>\"=SUM(A1:A2)\"</formula1>"), "{xml}");
+
+    let read = xlsx::read_workbook_bytes(&bytes).unwrap();
+    let values: Vec<Vec<String>> =
+        read.workbook.sheets[0].validations.iter().map(|validation| validation.values.clone()).collect();
+    assert_eq!(values[0], vec!["=A1:A5".to_string()]);
+    assert_eq!(values[1], vec!["='My Sheet'!$A$1:$A$3".to_string()]);
+    assert_eq!(values[2], vec!["Yes".to_string(), "No".to_string()]);
+}

@@ -4,6 +4,55 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - Office formats and editing tools
+
+### Added
+
+- **Comments in ODT and RTF.** Writer comments are written to and read from
+  ODT (`office:annotation` ranges, LibreOffice's resolved flag) and RTF
+  (Word-style annotations). Replies are written as "Re: Author: text"
+  paragraphs, as for DOCX, and read back as replies.
+- **ODP keeps groups and animations.** Groups are written as nested
+  `draw:g` and read back; slide animations (entrance, exit and emphasis
+  effects, on click / with previous / after previous, duration and delay)
+  use LibreOffice's own timing presets in both directions.
+- **ODS keeps charts.** Column, bar, line, pie and area charts are written
+  as embedded chart objects with titles, legend, colours, labels, stacking
+  and cached values, and are read back. Pivot tables are written as their
+  computed values.
+- **Calc data tools** (Data tab): Text to columns (comma, semicolon, tab,
+  space or a custom delimiter, quoted text, preview) and Remove duplicates
+  (column choice, header row), each one undo step. A list validation shows
+  a dropdown arrow on the cell (mouse, touch and Alt+Down); a list can also
+  come from cells, such as `=A1:A5`.
+- **Writer find & replace**: regular expressions with `$1` groups, a single
+  Replace, a live match count, and whole-word matching that understands
+  Turkish letters. A pattern that would take too long is stopped with a
+  message instead of freezing the editor.
+- **Quick style gallery** in the Writer Home ribbon (Normal, Title,
+  Heading 1-3, Quote) with a preview of each style.
+- **Turkish templates**: Dilekçe, Özgeçmiş, Toplantı Tutanağı, Fatura (KDV
+  %20 with formulas, ₺ format) and Bütçe Tablosu. They carry a "TR" badge
+  and are listed first when the app is in Turkish.
+
+### Fixed
+
+- **ODT import put comment text into the document.** An inline comment's
+  author, date and text became body text. Text after an inline element was
+  also read out of order ("Before **bold** after" became "Before after
+  bold"), which misplaced footnote markers too.
+- **ODP import lost positions and pictures.** Shape positions and sizes and
+  picture links were looked up under the wrong attribute names, so every
+  shape came back at the default position and pictures were dropped; shapes
+  inside groups were skipped.
+- **ODS import named every sheet "Sheet"**, and cells after an empty gap of
+  more than 2,048 rows landed on the wrong row.
+- **XLSX list validation from cells** is written as a reference that Excel
+  resolves, instead of a one-item list containing the text "=A1:A5".
+- **Hostile files**: a small ODS whose chart declared thousands of series
+  could exhaust memory, and a document with tens of thousands of comments
+  took minutes to open. Both are bounded now.
+
 ## [3.9.0] - Update notice, Android printing, mobile layout
 
 ### Added

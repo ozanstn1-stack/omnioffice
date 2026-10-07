@@ -1,6 +1,6 @@
 //! V3 Impress coverage: masters and layouts, placeholders, nested groups,
 //! ChartML charts and entrance/emphasis/exit animations through a real
-//! write -> read cycle, plus the ODP degradation warnings.
+//! write -> read cycle, plus what the ODP export keeps and degrades.
 
 use officecore::model::*;
 use officecore::zip::ZipReader;
@@ -467,17 +467,19 @@ fn charts_without_caches_stay_range_only() {
 }
 
 #[test]
-fn odp_degrades_groups_charts_and_animations_with_warnings() {
+fn odp_keeps_groups_and_animations_and_degrades_charts_with_a_warning() {
     let write = odf::write_odp_package(&sample_deck()).unwrap();
     assert!(
-        write.warnings.iter().any(|warning| warning == "Groups are exported as individual shapes."),
+        !write.warnings.iter().any(|warning| warning.contains("individual shapes")),
         "warnings: {:?}",
         write.warnings
     );
     assert!(write.warnings.iter().any(|warning| warning.contains("Chart data is kept in the native .oswk file")));
-    assert!(write.warnings.iter().any(|warning| warning.contains("Animations are kept in the native .oswk file")));
+    assert!(!write.warnings.iter().any(|warning| warning.contains("Animations are kept in the native .oswk file")));
     let reader = ZipReader::open(write.bytes).unwrap();
     let content = reader.read_text("content.xml").unwrap();
     assert!(content.contains("Sales"), "the chart placeholder must not be dropped silently");
     assert!(content.contains("Badge"));
+    assert!(content.contains("<draw:g "), "groups are written as draw:g");
+    assert!(content.contains("smil:targetElement=\"chart-1\""), "animations are written as SMIL timing");
 }

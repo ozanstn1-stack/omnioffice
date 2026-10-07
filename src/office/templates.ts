@@ -4,6 +4,7 @@
  * directly as an editable document.
  */
 import {
+  defaultCellStyle,
   defaultParaProps,
   defaultRun,
   newDeck,
@@ -13,8 +14,11 @@ import {
   newWorkbook,
   uid,
   type Block,
+  type Cell,
+  type CellStyle,
   type Deck,
   type ParaProps,
+  type Run,
   type TableData,
   type TextDocument,
   type Workbook,
@@ -26,8 +30,12 @@ void templateTitlesDisabled;
 const STYLE_BLOCKED = false;
 void STYLE_BLOCKED;
 
-function paragraph(text: string, style = "Normal", extra: Partial<ParaProps> = {}): Block {
-  return { type: "paragraph", props: { ...defaultParaProps(style), ...extra }, runs: [{ ...defaultRun(text) }] };
+function paragraph(text: string, style = "Normal", extra: Partial<ParaProps> = {}, run: Partial<Run> = {}): Block {
+  return {
+    type: "paragraph",
+    props: { ...defaultParaProps(style), ...extra },
+    runs: [{ ...defaultRun(text), ...run }],
+  };
 }
 
 function table(rows: string[][]): Block {
@@ -59,6 +67,8 @@ export interface OfficeTemplate {
   kind: "writer" | "calc" | "impress";
   name: string;
   description: string;
+  /** Content language when it is not English; such templates get a badge and lead for that UI language. */
+  language?: "tr";
   build: () => TextDocument | Workbook | Deck;
 }
 
@@ -151,6 +161,39 @@ function slideBullets(items: string[]) {
     align: "left",
   };
   return object;
+}
+
+/** Marks a template whose content is Turkish. */
+const turkish = (template: OfficeTemplate): OfficeTemplate => ({ ...template, language: "tr" });
+
+const bullet = (): Partial<ParaProps> => ({ list: { kind: "bullet", level: 0, start: 1, marker: "•" } });
+const numbered = (): Partial<ParaProps> => ({ list: { kind: "number", level: 0, start: 1, marker: "1." } });
+
+/**
+ * Turkish lira amounts. Excel and LibreOffice put the quoted sign after the
+ * number as Turkish usage does; Calc's own formatter shows it in front.
+ */
+const TRY_FORMAT = '#,##0.00 "₺"';
+
+/**
+ * One Calc cell: a number, a text, a formula (cached as 0 until the sheet
+ * computes it, like the templates above) or null for an empty cell that only
+ * carries a format.
+ */
+function sheetCell(content: string | number | null, style: Partial<CellStyle> = {}): Cell {
+  const formula = typeof content === "string" && content.startsWith("=") ? content : null;
+  return {
+    value: formula
+      ? { kind: "number", value: 0 }
+      : typeof content === "number"
+        ? { kind: "number", value: content }
+        : content
+          ? { kind: "text", value: content }
+          : { kind: "empty" },
+    formula,
+    style: { ...defaultCellStyle(), ...style },
+    comment: null,
+  };
 }
 
 export const TEMPLATES: OfficeTemplate[] = [
@@ -832,8 +875,269 @@ export const TEMPLATES: OfficeTemplate[] = [
       { ...newSlide(), objects: [slideTitle("Next steps"), slideBullets(["Action one", "Action two"])] },
     ];
   }),
+
+  // Turkish templates: they lead the list when the interface is Turkish (see
+  // `orderTemplates`) and keep their Turkish content in every UI language.
+  turkish(
+    writer(
+      "trPetition",
+      "Dilekçe",
+      "Kurumlara başvuru için tarih, muhatap, imza, iletişim bilgileri ve ekler bölümü olan resmî dilekçe.",
+      (document) => {
+        document.blocks = [
+          paragraph("…/…/20…", "Normal", { align: "right" }),
+          paragraph(
+            "……………………………… MÜDÜRLÜĞÜNE",
+            "Normal",
+            { align: "center", spaceBeforePt: 24, spaceAfterPt: 24 },
+            { bold: true },
+          ),
+          paragraph(
+            "……………………………… nedeniyle ……………………………………… konusunda kurumunuza başvuruda bulunmak istiyorum. Konuyla ilgili bilgi ve belgeler ekte sunulmuştur.",
+            "Normal",
+            { align: "justify", firstLinePt: 36 },
+          ),
+          paragraph("Gereğini bilgilerinize arz ederim.", "Normal", { firstLinePt: 36 }),
+          paragraph("Ad Soyad\nİmza", "Normal", { align: "right", spaceBeforePt: 24 }),
+          paragraph("T.C. Kimlik No: ………………………\nAdres: ………………………………………………………\nTelefon: ………………………", "Normal", {
+            spaceBeforePt: 24,
+          }),
+          paragraph("Ekler:", "Normal", { spaceBeforePt: 12, spaceAfterPt: 4 }, { bold: true }),
+          paragraph("………………………………………", "Normal", numbered()),
+          paragraph("………………………………………", "Normal", numbered()),
+        ];
+      },
+    ),
+  ),
+  turkish(
+    writer(
+      "trCv",
+      "Özgeçmiş",
+      "Kişisel bilgiler, eğitim, iş deneyimi, yetenekler, diller ve referanslarla sade bir özgeçmiş.",
+      (document) => {
+        document.blocks = [
+          paragraph("Ad Soyad", "Title"),
+          paragraph("Meslek / Unvan", "Subtitle"),
+          paragraph("Kişisel Bilgiler", "Heading2"),
+          paragraph(
+            "Doğum Tarihi: GG.AA.YYYY\nTelefon: +90 5XX XXX XX XX\nE-posta: ad.soyad@ornek.com\nAdres: Mahalle, İlçe / İl",
+          ),
+          paragraph("Eğitim", "Heading2"),
+          paragraph("2016 – 2020 · Üniversite Adı · Bölüm (Lisans)"),
+          paragraph("Mezuniyet derecesi, öne çıkan dersler veya projeler."),
+          paragraph("2012 – 2016 · Lise Adı"),
+          paragraph("İş Deneyimi", "Heading2"),
+          paragraph("2022 – Günümüz · Şirket Adı · Pozisyon"),
+          paragraph("Sorumluluklarınızı ve işinize kattığınız ölçülebilir sonuçları kısaca yazın."),
+          paragraph("2020 – 2022 · Şirket Adı · Pozisyon"),
+          paragraph("Sorumluluklarınızı ve işinize kattığınız ölçülebilir sonuçları kısaca yazın."),
+          paragraph("Yetenekler", "Heading2"),
+          paragraph("Proje yönetimi", "Normal", bullet()),
+          paragraph("Veri analizi ve raporlama", "Normal", bullet()),
+          paragraph("Ekip çalışması ve iletişim", "Normal", bullet()),
+          paragraph("Diller", "Heading2"),
+          table([
+            ["Dil", "Seviye"],
+            ["Türkçe", "Ana dil"],
+            ["İngilizce", "İleri (C1)"],
+            ["Almanca", "Başlangıç (A2)"],
+          ]),
+          paragraph("Referanslar", "Heading2"),
+          paragraph("Ad Soyad · Unvan, Kurum · Telefon / E-posta"),
+          paragraph("Ad Soyad · Unvan, Kurum · Telefon / E-posta"),
+        ];
+      },
+    ),
+  ),
+  turkish(
+    writer(
+      "trMinutes",
+      "Toplantı Tutanağı",
+      "Tarih, katılımcılar, gündem, alınan kararlar ve imzalarla toplantı tutanağı.",
+      (document) => {
+        document.blocks = [
+          paragraph("Toplantı Tutanağı", "Title"),
+          paragraph("Tarih: GG.AA.YYYY\nSaat: SS:DD\nYer: ………………………"),
+          paragraph("Katılımcılar", "Heading3"),
+          paragraph("Ad Soyad – Unvan", "Normal", bullet()),
+          paragraph("Ad Soyad – Unvan", "Normal", bullet()),
+          paragraph("Ad Soyad – Unvan", "Normal", bullet()),
+          paragraph("Gündem", "Heading3"),
+          paragraph("Açılış ve gündemin okunması", "Normal", numbered()),
+          paragraph("Önceki toplantı kararlarının gözden geçirilmesi", "Normal", numbered()),
+          paragraph("Gündem maddesi", "Normal", numbered()),
+          paragraph("Dilek ve temenniler", "Normal", numbered()),
+          paragraph("Alınan Kararlar", "Heading3"),
+          table([
+            ["Karar", "Sorumlu", "Tarih"],
+            ["Alınan kararı kısaca yazın.", "Ad Soyad", "GG.AA.YYYY"],
+            ["", "", ""],
+            ["", "", ""],
+          ]),
+          paragraph("İmzalar", "Heading3"),
+          table([
+            ["Toplantı Başkanı", "Raportör", "Katılımcı"],
+            ["Ad Soyad", "Ad Soyad", "Ad Soyad"],
+            ["İmza:", "İmza:", "İmza:"],
+          ]),
+        ];
+      },
+    ),
+  ),
+  turkish(
+    calc(
+      "trInvoice",
+      "Fatura",
+      "Satıcı ve alıcı bilgileri, kalemler, KDV ve genel toplamı formülle hesaplanan fatura.",
+      (workbook) => {
+        const sheet = workbook.sheets[0];
+        sheet.name = "Fatura";
+        const header = { bold: true, fill: "#EEF2FF" };
+        const label = { bold: true, align: "right" };
+        const money = { numberFormat: TRY_FORMAT };
+        sheet.cells.A1 = sheetCell("FATURA", { bold: true, sizePt: 18 });
+        sheet.cells.A2 = sheetCell("Fatura No:", { bold: true });
+        sheet.cells.B2 = sheetCell("FTR-2026-0001");
+        sheet.cells.A3 = sheetCell("Fatura Tarihi:", { bold: true });
+        sheet.cells.B3 = sheetCell("GG.AA.YYYY");
+        sheet.cells.A4 = sheetCell("Vade Tarihi:", { bold: true });
+        sheet.cells.B4 = sheetCell("GG.AA.YYYY");
+        sheet.cells.A6 = sheetCell("SATICI", header);
+        sheet.cells.C6 = sheetCell("ALICI", header);
+        const parties = [
+          ["Firma Unvanı", "Ad Soyad / Firma Unvanı"],
+          ["Adres", "Adres"],
+          ["Vergi Dairesi / Vergi No", "Vergi Dairesi / VKN veya TCKN"],
+          ["Telefon / E-posta", "Telefon / E-posta"],
+        ];
+        parties.forEach(([seller, buyer], index) => {
+          sheet.cells[`A${7 + index}`] = sheetCell(seller);
+          sheet.cells[`C${7 + index}`] = sheetCell(buyer);
+        });
+        ["Açıklama", "Miktar", "Birim Fiyat", "Tutar"].forEach((title, index) => {
+          sheet.cells[`${String.fromCharCode(65 + index)}12`] = sheetCell(title, header);
+        });
+        // Five line items; empty quantity/price cells already carry their format.
+        for (let row = 13; row <= 17; row += 1) {
+          if (row === 13) sheet.cells[`A${row}`] = sheetCell("Ürün veya hizmet açıklaması");
+          sheet.cells[`B${row}`] = sheetCell(row === 13 ? 1 : null, { numberFormat: "#,##0" });
+          sheet.cells[`C${row}`] = sheetCell(row === 13 ? 0 : null, money);
+          sheet.cells[`D${row}`] = sheetCell(`=B${row}*C${row}`, money);
+        }
+        sheet.cells.C19 = sheetCell("Ara Toplam", label);
+        sheet.cells.D19 = sheetCell("=SUM(D13:D17)", money);
+        sheet.cells.C20 = sheetCell("KDV (%20)", label);
+        sheet.cells.D20 = sheetCell("=D19*0.2", money);
+        sheet.cells.C21 = sheetCell("Genel Toplam", label);
+        sheet.cells.D21 = sheetCell("=D19+D20", { ...money, bold: true, sizePt: 12, fill: "#F1F5F9" });
+        sheet.cells.A23 = sheetCell("Ödeme Bilgileri", { bold: true });
+        sheet.cells.A24 = sheetCell("Banka: ………………  IBAN: TR00 0000 0000 0000 0000 0000 00");
+        sheet.cells.A25 = sheetCell("Ödemeyi vade tarihine kadar, açıklamaya fatura numarasını yazarak yapınız.");
+        sheet.colWidths = { "0": 230, "1": 90, "2": 170, "3": 130 };
+      },
+    ),
+  ),
+  turkish(
+    calc(
+      "trBudget",
+      "Bütçe Tablosu",
+      "Aylık gelir ve gider kalemleri; her ayın ve yılın toplamı formülle hesaplanır.",
+      (workbook) => {
+        const sheet = workbook.sheets[0];
+        sheet.name = "Bütçe";
+        const months = [
+          "Ocak",
+          "Şubat",
+          "Mart",
+          "Nisan",
+          "Mayıs",
+          "Haziran",
+          "Temmuz",
+          "Ağustos",
+          "Eylül",
+          "Ekim",
+          "Kasım",
+          "Aralık",
+        ];
+        // Months fill B..M; N holds the yearly total of each row.
+        const columns = months.map((_, index) => String.fromCharCode(66 + index));
+        const header = { bold: true, fill: "#EEF2FF" };
+        const money = { numberFormat: TRY_FORMAT };
+        const totals = { ...money, bold: true, fill: "#F1F5F9" };
+        sheet.cells.A1 = sheetCell("Kategori", header);
+        months.forEach((month, index) => {
+          sheet.cells[`${columns[index]}1`] = sheetCell(month, { ...header, align: "right" });
+        });
+        sheet.cells.N1 = sheetCell("Yıllık Toplam", { ...header, align: "right" });
+        /** A titled block of category rows plus its monthly totals row; returns that row. */
+        const section = (titleRow: number, title: string, items: string[], totalLabel: string): number => {
+          sheet.cells[`A${titleRow}`] = sheetCell(title, { bold: true, color: "#1D4ED8" });
+          const first = titleRow + 1;
+          const last = titleRow + items.length;
+          items.forEach((item, offset) => {
+            const row = first + offset;
+            sheet.cells[`A${row}`] = sheetCell(item);
+            for (const column of columns) sheet.cells[`${column}${row}`] = sheetCell(0, money);
+            sheet.cells[`N${row}`] = sheetCell(`=SUM(B${row}:M${row})`, { ...money, bold: true });
+          });
+          const totalRow = last + 1;
+          sheet.cells[`A${totalRow}`] = sheetCell(totalLabel, { bold: true, fill: "#F1F5F9" });
+          for (const column of columns) {
+            sheet.cells[`${column}${totalRow}`] = sheetCell(`=SUM(${column}${first}:${column}${last})`, totals);
+          }
+          sheet.cells[`N${totalRow}`] = sheetCell(`=SUM(B${totalRow}:M${totalRow})`, totals);
+          return totalRow;
+        };
+        const income = section(2, "GELİRLER", ["Maaş", "Ek Gelir", "Kira Geliri", "Diğer Gelirler"], "Toplam Gelir");
+        const expenses = section(
+          income + 2,
+          "GİDERLER",
+          [
+            "Kira",
+            "Market ve Mutfak",
+            "Elektrik, Su, Doğalgaz",
+            "İnternet ve Telefon",
+            "Ulaşım",
+            "Sağlık",
+            "Eğitim",
+            "Eğlence ve Sosyal",
+            "Diğer Giderler",
+          ],
+          "Toplam Gider",
+        );
+        const net = expenses + 2;
+        sheet.cells[`A${net}`] = sheetCell("Net (Gelir - Gider)", { bold: true });
+        for (const column of [...columns, "N"]) {
+          sheet.cells[`${column}${net}`] = sheetCell(`=${column}${income}-${column}${expenses}`, {
+            ...money,
+            bold: true,
+          });
+        }
+        sheet.freezeRows = 1;
+        sheet.freezeCols = 1;
+        sheet.colWidths = Object.fromEntries([
+          ["0", 190],
+          ...columns.map((_, index) => [String(index + 1), 95]),
+          ["13", 120],
+        ]);
+      },
+    ),
+  ),
 ];
 
 export function templatesFor(kind: "writer" | "calc" | "impress"): OfficeTemplate[] {
   return TEMPLATES.filter((template) => template.kind === kind);
+}
+
+/**
+ * Display order for a UI language: with a Turkish interface the Turkish
+ * templates come first; otherwise the catalogue order is kept, which lists
+ * them last.
+ */
+export function orderTemplates(templates: OfficeTemplate[], language: string): OfficeTemplate[] {
+  if (language !== "tr") return templates;
+  return [
+    ...templates.filter((template) => template.language === "tr"),
+    ...templates.filter((template) => template.language !== "tr"),
+  ];
 }
