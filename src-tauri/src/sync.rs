@@ -99,8 +99,9 @@ pub struct SyncConfigFile {
     /// Cloud sync is OFF unless the user turns it on. Default `false`.
     #[serde(default)]
     pub enabled: bool,
-    /// "webdav" | "onedrive" | "google-drive". The latter two are stored but
-    /// always rejected at use time in this build.
+    /// "webdav" | "onedrive" | "google-drive". The latter two sign in with
+    /// OAuth 2.0 PKCE (see `crate::oauth`) and need a client ID; any other
+    /// value is treated as WebDAV (`provider_kind`).
     #[serde(default = "default_provider")]
     pub provider: String,
     #[serde(default)]

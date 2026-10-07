@@ -10,6 +10,13 @@ Legend: **FIXED** = corrected in this pass · **MITIGATED** = concrete
 protection added, residual risk documented · **REMAINING** = verified issue
 left for the next phase with a recommendation (not silently ignored).
 
+**Status as of 4.2.0.** This report describes 3.2.1; the entries below keep
+their original wording as the audit record. `CHANGELOG.md` shows these items
+were fixed afterwards: C11 and M12 (3.5.5), M7, M16 and L6 (3.5.3), and
+M8-M11, M13 and M14 (3.3.0); each entry carries a **Status** line with the
+release. Items not named here were not re-audited for 4.2.0 and stand as
+written (the remaining L-items are informational).
+
 ---
 
 ## CRITICAL
@@ -117,15 +124,16 @@ left for the next phase with a recommendation (not silently ignored).
 - **Fix:** `link.is_none()` is part of `is_empty`.
 - **Tests:** `xlsx_roundtrip_keeps_a_hyperlink_on_a_blank_cell`.
 
-### C11. XLSX: comments from different sheets contaminate each other — REMAINING
+### C11. XLSX: comments from different sheets contaminate each other — FIXED (3.5.5)
 - **File:** `crates/officecore/src/xlsx.rs` (one `comments1.xml` per workbook;
   import reads every `<comment>` per sheet).
 - **Impact:** two sheets with a comment on the same address end up sharing one
   comment after a save, permanently. Data corruption, silent.
 - **Recommendation:** one comments part (and VML shape set) per sheet, keyed by
   sheet relations; regression fixture with two sheets.
-- **Not fixed in this pass:** touches the package writer broadly; needs its own
-  change window with LibreOffice-structural verification.
+- **Status:** fixed in 3.5.5 as recommended: comments and their VML shape sets
+  are one part per sheet, wired through that sheet's own relationships; the
+  regression test writes two sheets with a comment on A1 and re-reads the file.
 
 ### C12. Vault could stay `scanning: true` forever after a crash — FIXED
 - **File:** `src-tauri/src/vault.rs`.
@@ -307,15 +315,17 @@ left for the next phase with a recommendation (not silently ignored).
   dropped silently, leaving a stale record on disk.
 - **Fix:** UUID temp name, fsync, cleanup on failure.
 
-### M7. `resolve_output_path` TOCTOU remains for `UniqueName` — REMAINING
+### M7. `resolve_output_path` TOCTOU remains for `UniqueName` — FIXED (3.5.3)
 - **File:** `crates/pdfcore/src/docutil.rs`.
 - **Problem:** `exists()` is checked, then the file is written later; two
   concurrent operations can pick the same "unique" name and one result is
   silently replaced.
 - **Recommendation:** reserve the candidate with `OpenOptions::create_new`
   and promote into the reservation, removing it on failure.
+- **Status:** fixed in 3.5.3: the candidate is reserved atomically with
+  `create_new`, so concurrent runs cannot pick the same name.
 
-### M8–M11. Calc function-level correctness gaps — REMAINING
+### M8–M11. Calc function-level correctness gaps — FIXED (3.3.0)
 - `MATCH`/`HLOOKUP` approximate modes and `XLOOKUP` modes ±2 return
   positions from a sorted copy / dead branches (`functions/lookup.ts`).
 - `COUNTIF`/`SUMIF`/`COUNTIFS` lack `*`/`?` wildcards (`scalars.ts`).
@@ -324,28 +334,40 @@ left for the next phase with a recommendation (not silently ignored).
 - `SUMPRODUCT` of a raw boolean matrix returns 0 (`functions/statistics.ts`).
 - **Recommendation:** one focused Calc correctness change with the vectors
   from the audit as tests; they are wrong-result (not data-loss) bugs.
+- **Status:** fixed in 3.3.0: `MATCH`/`HLOOKUP` approximate modes return the
+  position in the original range, `XLOOKUP` modes ±2 work, `COUNTIF`/`SUMIF`
+  support `*`/`?` wildcards and `~` escapes, `NUMBERVALUE` keeps the decimal
+  separator, `FILTER` treats a blank mask cell as FALSE and
+  `SUMPRODUCT(--(range>1))` works.
 
-### M12. Writer `trackRunChanges` destroys per-run formatting/revision ids — REMAINING
+### M12. Writer `trackRunChanges` destroys per-run formatting/revision ids — FIXED (3.5.5)
 - **File:** `src/office/writer/revisions.ts`.
 - **Problem:** it flattens runs to text and rebuilds up to four runs from the
   first run's format; every suggest-mode keystroke restyles surrounding text,
   drops structure and re-ids prior insertions.
 - **Recommendation:** diff runs, not text; split only the edited run and mark
   only new text with a fresh revision id.
+- **Status:** fixed in 3.5.5: the diff works on runs, unchanged runs keep their
+  formatting, links and anchors, and an existing insertion keeps its id.
 
-### M13. Writer undo/redo is browser `execCommand` only — REMAINING
+### M13. Writer undo/redo is browser `execCommand` only — FIXED (3.3.0)
 - No model-level history; structural/format changes are not undoable and the
   native stack can restore a stale DOM that is then written back on blur.
 - **Recommendation:** a bounded model undo stack per tab like Calc/Impress,
   with toolbar `mousedown` prevented so selection survives.
+- **Status:** fixed in 3.3.0: `src/office/writer/history.ts` keeps reversible
+  edit operations in a bounded checkpoint + delta stack behind Ctrl+Z / Ctrl+Y.
 
-### M14. Third-party file modification is detected only for sync, not for saves — REMAINING
+### M14. Third-party file modification is detected only for sync, not for saves — FIXED (3.3.0)
 - **Problem:** documents opened and then changed by another program are
   overwritten on save without a fingerprint check or conflict UI. (Requested
   by the audit brief, section 6.)
 - **Recommendation:** capture a hash/mtime/identity at open, compare before
   save, and offer Reload external changes / Save as new file / Cancel. The
   sync side already has the three-way state model to reuse.
+- **Status:** fixed in 3.3.0: the office session fingerprints a file at
+  open/save (`file_fingerprint`) and offers exactly those three choices when it
+  changed on disk before a write.
 
 ### M15. Writer: version history keyed by transient tab id — REMAINING
 - Versions written under the session tab id are unreachable after reopening
@@ -353,11 +375,13 @@ left for the next phase with a recommendation (not silently ignored).
 - **Recommendation:** key by stable document identity (saved path / persisted
   id) and skip pushes when the tab is clean.
 
-### M16. Writer: fields never refresh; ordered lists always show "1" — REMAINING
+### M16. Writer: fields never refresh; ordered lists always show "1" — FIXED (3.5.3)
 - `fieldValues` is never supplied, so page/pages/cross-reference values stay
   at their insertion-time cache; list markers use `props.list.start` only.
 - **Recommendation:** compute field values from the pagination result and
   renumber list runs at render/export time.
+- **Status:** fixed in 3.5.3: list numbering and PAGE/NUMPAGES/DATE/TIME/TITLE/
+  AUTHOR values are computed at render time.
 
 ---
 
@@ -379,6 +403,7 @@ left for the next phase with a recommendation (not silently ignored).
   capability comment overstates the scope.
 - **L6.** `vault_clear` and a few other commands have no UI caller; the
   frontend "Retry" path has no registered handler. Dead but harmless surface.
+  *Fixed in 3.5.3: Vault Clear has a UI and Jobs Retry has per-kind handlers.*
 - **L7.** `office_history` removes the old version file before writing the
   index; a crash can leave an index row without its version file. The version
   files are now written atomically, so only the ordering remains.
@@ -405,13 +430,13 @@ left for the next phase with a recommendation (not silently ignored).
 
 | Area | Fixed in this pass | Left for the next phase |
 |---|---|---|
-| Atomic writes / fsync | office, PDF, sync sidecars, jobs, all JSON stores, secrets, OCR/convert/compare outputs | version-index ordering (L7), `resolve_output_path` TOCTOU (M7) |
-| Jobs | failure persistence, corrupt-file quarantine, id reuse, temp/rename, live visibility | retry handler wiring (L6), dropped-future liveness on Android |
-| Writer | structural run loss, selection Shift+Enter, Delete object loss, multi-block cells, caret offsets, hard breaks, revision hiding, pagination numbering | track-changes run preservation (M12), model undo (M13), fields/lists (M16), history keys (M15) |
-| Calc | broadcast, error literals, TEXT/TIME | MATCH/XLOOKUP/wildcards/NUMBERVALUE/FILTER/SUMPRODUCT (M8–M11) |
-| PDF/XLSX | hyperlink-only cells | cross-sheet comments (C11), PDF deep pass not completed (see below) |
+| Atomic writes / fsync | office, PDF, sync sidecars, jobs, all JSON stores, secrets, OCR/convert/compare outputs; `UniqueName` reservation (M7, 3.5.3) | version-index ordering (L7) |
+| Jobs | failure persistence, corrupt-file quarantine, id reuse, temp/rename, live visibility; retry handlers (L6, 3.5.3) | dropped-future liveness on Android |
+| Writer | structural run loss, selection Shift+Enter, Delete object loss, multi-block cells, caret offsets, hard breaks, revision hiding, pagination numbering; run-preserving track changes (M12, 3.5.5), model undo (M13, 3.3.0), fields/lists (M16, 3.5.3) | history keys (M15) |
+| Calc | broadcast, error literals, TEXT/TIME; MATCH/XLOOKUP/wildcards/NUMBERVALUE/FILTER/SUMPRODUCT (M8–M11, 3.3.0) | |
+| PDF/XLSX | hyperlink-only cells; cross-sheet comments (C11, 3.5.5) | PDF deep pass not completed (see below) |
 | Security | WebDAV ETag, plugin SSRF, sync paths, AI response caps | plugin symlink re-checks (L2), plugin manifest strictness (L3) |
-| Reliability | vault scanning flag, bounded concurrency | AI extraction concurrency, external-file conflict UI (M14) |
+| Reliability | vault scanning flag, bounded concurrency; external-file conflict guard (M14, 3.3.0) | AI extraction concurrency |
 
 ## Environment limitations (honest report)
 

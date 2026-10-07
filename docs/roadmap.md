@@ -11,9 +11,9 @@ Effort estimates assume a single developer.
 | 0 | Docs consistency, `compat.rs` freshness contract, frontend coverage baseline, roadmap | Done in 3.4.0 |
 | 1 (v3.4) | Quick wins: command palette + keybindings, Settings completion, Home IA, a11y pass, dead ends | Done in 3.4.0 |
 | 2 (v3.5) | Quality infrastructure: coverage thresholds, screen tests, desktop E2E, fuzzing, benchmark trends, CI hardening | Done in 3.5.0-3.5.5 (coverage gate + screen tests in 3.5.0; E2E, fuzzing, benchmark trends in 3.5.4; regression gate + deep flows + repo-wide format in 3.5.5) |
-| 3 (v3.6) | PDF depth: content-stream object editing, render cache, Reader, Studio UX, PDF/A subsetting, signature chain (RFC 3161/OCSP) | Partial in 3.6.0: content-stream **text** editing, Reader bookmarks, RFC 3161 timestamps. Font subsetting, tiled rendering and OCSP/CRL remain |
-| 4 (v3.7) | Office depth: Writer fields/revisions, Calc data tools + chart UI, Impress timeline + media, format fidelity | Planned |
-| 5 (v4.x) | Platform: auto-update, macOS/Linux packaging, stores, Android foreground service + Keystore, sync OAuth, Vault 2.0, plugins, AI | Planned |
+| 3 (v3.6) | PDF depth: content-stream object editing, render cache, Reader, Studio UX, PDF/A subsetting, signature chain (RFC 3161/OCSP) | Done in 3.6.0-4.1.0: content-stream **text** editing, Reader bookmarks and RFC 3161 timestamps in 3.6.0; tiled rendering, PDF/A font subsetting and the optional OCSP/CRL check in 4.1.0. Vector-object editing stays read-only |
+| 4 (v3.7) | Office depth: Writer fields/revisions, Calc data tools + chart UI, Impress timeline + media, format fidelity | Partly delivered: Writer fields and run-preserving revisions (3.5.3, 3.5.5), Calc data tools and ODF fidelity - comments, groups, animations, charts (4.0.0). Chart UI, Impress media and further format fidelity are open |
+| 5 (v4.x) | Platform: auto-update, macOS/Linux packaging, stores, Android foreground service + Keystore, sync OAuth, Vault 2.0, plugins, AI | Partly delivered: sync OAuth (3.5.7), update notice (3.9.0, it opens the installer, it does not install in place), Android Keystore and AI (Claude, in-editor AI) in 4.2.0. Store packaging, the Android foreground service and Vault 2.0 are open |
 
 ## 3.4.0 — Quick wins (delivered)
 
@@ -166,4 +166,62 @@ Effort estimates assume a single developer.
 - Still open from Phase 3: PDF/A font subsetting (Type0/CID), tiled rendering
   for extreme zoom, OCSP/CRL revocation, vector-object editing, and the
   coverage re-baseline that the vitest 4/5 instrumentation change requires. PDF → Word/Excel layout reconstruction is
-  not planned for v3.6.
+  not planned for v3.6. (PDF/A font subsetting, tiled rendering and OCSP/CRL
+  were closed in 4.1.0, see below.)
+
+## 3.9.0 — Update notice, Android printing, mobile layout (delivered)
+
+- A weekly (and on-demand) "New version available" check against this
+  repository's public release list; Home shows a banner that opens the
+  installer or the APK for the device. It sends nothing about the user and can
+  be turned off. This is a notice, not an in-place updater.
+- Android printing: Writer, Calc and Impress render a PDF into the app cache
+  and hand it to the system viewer, whose menu prints it.
+- Export diagnostics (Settings), a welcome card for new installs, office
+  documents in Recent files, touch selection in Calc and a folding ribbon on
+  phones.
+- Fixed: recent documents now open through the same opener as every other
+  entry point (legacy import and the "changed on disk" fingerprint).
+
+## 4.0.0 — Office formats and editing tools (delivered)
+
+- Writer comments round-trip through ODT and RTF; ODP keeps groups and
+  animations (LibreOffice timing presets); ODS keeps charts, and pivot tables
+  are written as their computed values.
+- Calc Text to columns and Remove duplicates, list-validation dropdowns.
+- Writer regular-expression find & replace, a quick style gallery and Turkish
+  templates.
+- Fixed: ODT comment text leaking into the body, ODP positions and pictures,
+  ODS sheet names and row gaps, XLSX list validation from cells, and two
+  hostile-file cases (many chart series, many comments).
+
+## 4.1.0 — PDF tools (delivered)
+
+- Tiled rendering: past the size of one page bitmap the Reader draws the
+  visible part at full resolution, so text stays sharp up to 400 %. This
+  closes the tiled-rendering item left open since 3.5.1.
+- A built-in repair engine rebuilds damaged files without qpdf (Android
+  included); qpdf is still used when installed and the result names the engine.
+- PDF/A conversion subsets the fonts it embeds and embeds CID fonts that carry
+  a ToUnicode map. CID fonts without ToUnicode are still reported, not guessed.
+- Optional OCSP/CRL revocation check (off by default); "not revoked" is not
+  called trusted, trust stays "unknown" without a trust store.
+- PDF to Word recovers headings, lists, columns and page breaks.
+- Revocation requests only go to public addresses on ports 80/443 and one
+  verification is bounded to 20 requests in 45 seconds.
+
+## 4.2.0 — AI in the editors, Claude, safer keys (delivered)
+
+- Claude (Anthropic) as an AI provider with your own key; one key per
+  provider, and switching provider never sends another provider's key.
+- Optional AI inside the editors: Writer rewrite/shorten/expand/fix/translate/
+  tone, Calc column summary and formula suggestion, Impress slides from an
+  outline. Every result is previewed and applied as one undo step, with a
+  notice before the first request of each kind.
+- Android Keystore encrypts the AI key, sync tokens and the WebDAV password,
+  migrating existing values on first use.
+- Fixed: answers cut off by the token limit are reported, keys are never sent
+  after a redirect to another host, and suggested formulas that reach the
+  network or other programs are refused.
+- Still open across 3.9-4.2: the Android foreground service, background sync
+  for the cloud providers, and vector-object editing in PDFs.

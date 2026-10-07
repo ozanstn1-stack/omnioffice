@@ -1084,13 +1084,15 @@ These are real and honest:
 - **XLSX**: pivot caches are preserved and re-exported, not recomputed;
   unsupported chart kinds, secondary/combo axes and some conditional formats
   degrade with warnings; SVG export of sheets is not offered.
-- **PDF repair / Fast Web View** run the bundled qpdf, which is a desktop
-  engine: Android and engine-less builds report the tool as unavailable.
-  Repair rewrites the file as qpdf reads it (encrypted documents need the
-  password first); a file too damaged for qpdf is reported, not guessed at.
+- **PDF repair / Fast Web View.** Fast Web View needs qpdf, a desktop engine
+  (bundled on Windows, a system install on Linux/macOS): Android and builds
+  without qpdf report it as unavailable. Repair uses qpdf when present and
+  otherwise the built-in rebuild (so it works on Android too); encrypted
+  documents need the password first, and the result says which engine ran.
 - **PPTX**: programmatic animations are simplified to what the model
-  represents; ODP loses animations, groups and charts on export (declared in
-  the compatibility matrix and gated by Data Loss Protection).
+  represents; ODP keeps groups and animations (since 4.0.0) but exports
+  charts as drawn shapes and a single default master (declared in the
+  compatibility matrix and gated by Data Loss Protection).
 - **ODT/RTF**: RTF cannot mark endnotes distinctly (endnote-only documents
   request endnote placement via `\aendnotes`), revision timestamps lose
   seconds, and format-change revisions are not written to RTF.
@@ -1160,7 +1162,7 @@ Next (architecture prepared, not implemented):
   rewriting
 - CID remapping for PDF/A-2/3 Type0 fonts without a ToUnicode map (embedded
   fonts are already subset)
-- OAuth cloud providers (OneDrive/Google Drive) and background sync
+- Background sync for the OAuth cloud providers (OneDrive/Google Drive)
 - Android foreground service for long-running jobs and share-sheet polish
 - SmartArt and advanced PPTX effect import
 
