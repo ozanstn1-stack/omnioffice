@@ -74,7 +74,7 @@ const invoke = vi.fn(async (command: string) => {
       return { edited: 1, deleted: 0, warnings: [] };
     // qpdf-backed repair/linearize (camelCase RepairReport).
     case "pdf_repair":
-      return { output: "C:/a-repaired.pdf", pages: 1, warnings: [] };
+      return { output: "C:/a-repaired.pdf", pages: 1, warnings: [], method: "builtin" };
     case "pdf_linearize":
       return { output: "C:/a-linearized.pdf", pages: 1, warnings: [] };
     // V3.6 content-stream text runs.
@@ -320,6 +320,8 @@ describe("PDF Studio repair tab", () => {
     // The report from the backend is rendered, which proves the wire fields
     // (output/pages/warnings) are read.
     expect(await screen.findByText("C:/a-repaired.pdf")).toBeInTheDocument();
+    // The engine that did the work is named (here the built-in one).
+    expect(await screen.findByText(/repaired with the built-in engine/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /fast web view/i }));
     await waitFor(() => {
       expect(invoke.mock.calls.some(([name]) => name === "pdf_linearize")).toBe(true);
