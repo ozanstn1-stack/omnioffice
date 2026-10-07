@@ -49,6 +49,7 @@ import { reportError, useToasts } from "../lib/store";
 import type { AiOutlineSlide } from "../lib/types";
 import { useAiStatus } from "./ai/editor-ai";
 import { ImpressAiDialog } from "./impress/ImpressAiDialog";
+import { editedParagraphs, withFrameAlign, withFrameSize } from "./impress/textFrame";
 import { Dialog, Ribbon, RibbonGroup, TextField, ToolButton, ToolColor, ToolNumber, ToolSelect } from "./office-ui";
 import { openIntoWorkspace, useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
 
@@ -1087,7 +1088,9 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   const handleTextChange = (path: SelectionPath, text: string) => {
     const object = objectAtPath(slide.objects, path);
     if (!object?.text) return;
-    updatePath(path, { text: { ...object.text, paragraphs: [{ ...object.text.paragraphs[0], text }] } }, false);
+    const paragraphs = editedParagraphs(object.text.paragraphs, text);
+    if (paragraphs === object.text.paragraphs) return;
+    updatePath(path, { text: { ...object.text, paragraphs } }, false);
   };
 
   // -------------------------------------------------------------------------
@@ -2224,12 +2227,7 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
                     type="number"
                     value={primary.text.paragraphs[0]?.sizePt ?? primary.text.sizePt ?? 18}
                     onChange={(event) =>
-                      updatePath(primaryPath, {
-                        text: {
-                          ...primary.text!,
-                          paragraphs: [{ ...primary.text!.paragraphs[0], sizePt: Number(event.target.value) }],
-                        },
-                      })
+                      updatePath(primaryPath, { text: withFrameSize(primary.text!, Number(event.target.value)) })
                     }
                   />
                 </label>
@@ -2240,12 +2238,7 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
                   value={primary.text?.paragraphs[0]?.align ?? "left"}
                   onChange={(event) =>
                     updatePath(primaryPath, {
-                      text: primary.text
-                        ? {
-                            ...primary.text,
-                            paragraphs: [{ ...primary.text.paragraphs[0], align: event.target.value }],
-                          }
-                        : null,
+                      text: primary.text ? withFrameAlign(primary.text, event.target.value) : null,
                     })
                   }
                 >

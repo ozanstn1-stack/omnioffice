@@ -27,6 +27,7 @@ import {
 } from "./ImpressEditor";
 import { useOfficeTabs, type OfficeTab } from "../lib/office-store";
 import {
+  defaultRun,
   newAnimation,
   newDeck,
   newSlide,
@@ -308,6 +309,33 @@ describe("pointer gestures on the slide canvas", () => {
     expect(document.querySelector(".slide-text-editor")).toBeNull();
     tap(2);
     expect(document.querySelector(".slide-text-editor")).not.toBeNull();
+  });
+
+  it("keeps paragraph structure and drops stale runs when an imported frame is edited", () => {
+    const deck = newDeck("Import");
+    const frame = newTextFrame("", 20);
+    const [base] = frame.paragraphs;
+    frame.paragraphs = [
+      { ...base, text: "Intro", runs: [{ ...defaultRun("Intro"), bold: true }] },
+      { ...base, text: "Detail", level: 1, bullet: true, runs: [defaultRun("Detail")] },
+    ];
+    deck.slides[0].objects = [{ ...newSlideObject("rect", 100, 100, 200, 100), id: "r1", z: 1, text: frame }];
+    const id = useOfficeTabs.getState().create("impress", "Import", deck);
+    render(<Harness id={id} />);
+
+    const object = document.querySelector<HTMLElement>(".slide-object:not(.is-inherited)")!;
+    for (const pointerId of [1, 2]) {
+      fireEvent.pointerDown(object, { pointerId, pointerType: "touch", button: 0, clientX: 40, clientY: 40 });
+      fireEvent.pointerUp(window, { pointerId, pointerType: "touch", clientX: 40, clientY: 40 });
+    }
+    const editor = document.querySelector<HTMLTextAreaElement>(".slide-text-editor")!;
+    fireEvent.change(editor, { target: { value: "Intro\nDetail changed" } });
+    fireEvent.blur(editor);
+
+    const paragraphs = (useOfficeTabs.getState().tabs[0].model as Deck).slides[0].objects[0].text!.paragraphs;
+    expect(paragraphs.map((paragraph) => paragraph.text)).toEqual(["Intro", "Detail changed"]);
+    expect(paragraphs[0].runs.map((run) => run.text)).toEqual(["Intro"]);
+    expect(paragraphs[1]).toMatchObject({ level: 1, bullet: true, runs: [] });
   });
 });
 
