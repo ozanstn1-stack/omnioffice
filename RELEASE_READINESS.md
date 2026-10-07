@@ -1,11 +1,38 @@
-# Release Readiness — OmniOffice 4.2.0
+# Release Readiness — OmniOffice 4.3.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
 
-## Implemented (this cycle, 4.2.0) - AI and keys (plan phase 4)
+## Implemented (this cycle, 4.3.0) - fixes and robustness (plan 2, phase 5)
+
+- PPTX writer: real bullet, per-run/paragraph/deck language, runs used only
+  when they match the paragraph text; Impress edits keep unchanged paragraphs.
+- Calc: sparse prefix-sum row layout, sticky frozen panes, validation index,
+  OFFSET/INDIRECT/CELL/INFO (INDIRECT R1C1 returns `#REF!`).
+- Version history keyed by document path; index written before pruning.
+- ErrorBoundary around screens and editor tabs; `crash.log` panic hook;
+  single-instance launch forwarding on desktop.
+- Android: typed intent filters for Office formats (manifest guard test in
+  vitest, Kotlin JVM test), foreground service for long jobs.
+- Installer: only `tesseract.exe` and its 26 imported DLLs.
+- Tests: frontend 1033, officecore 128, app crate 159.
+
+### Not done in this pass (honest)
+
+- The Android foreground service, intent filters and Keystore were compiled
+  and unit-tested but not run through Gradle or on a device here; the CI
+  Android workflow does that.
+- Single-instance, window focus and the trimmed engine fetch (PowerShell) first
+  run on Windows CI. The freeze-pane look and header stacking were not checked
+  in a real browser.
+- Converter shows importer warnings untranslated; charts and pivots float over
+  the frozen band; column widths still use the old O(cols) loops.
+- Carried over from 4.2.0: live Drive/OneDrive OAuth needs the owner's client
+  IDs; the Claude provider was only tested against mock servers.
+
+## Implemented (4.2.0) - AI and keys (plan phase 4)
 
 - `crates/aicore/src/anthropic.rs`: Messages API client (x-api-key,
   anthropic-version 2023-06-01, SSE, models pagination); Gemini model list via

@@ -4,6 +4,48 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.0] - Fixes and robustness
+
+### Fixed
+
+- **PowerPoint export**: bullets are written as real bullets instead of
+  garbled characters, text is no longer marked as Turkish, and text edited in
+  Impress is exported as edited. Decks saved by 4.2.0 export correctly now.
+- **Impress**: changing the font size or alignment of a text frame no longer
+  merges its paragraphs.
+- **Android**: Word, Excel, PowerPoint and OpenDocument files now appear in
+  "Open with" and in the share sheet.
+- **Calc**: Freeze panes is visible and stays in place while scrolling;
+  custom and hidden row heights are honoured (no overlapping or blank rows);
+  data validation applies to every cell of its range, not just the first 100;
+  arrow keys skip rows hidden by a filter; scrolling a cell into view is exact.
+- **Calc functions**: OFFSET, INDIRECT, CELL and INFO work instead of
+  returning `#NAME?`.
+- **Version history** is kept per document path, so it survives closing and
+  reopening a file, and a crash while pruning can no longer leave an index
+  pointing at a missing version.
+- **Import notice** when an XLSX or ODS file has data beyond 100,000 rows or
+  1,000 columns, which is not imported.
+- "System" theme follows the operating system live.
+- Table menu in Writer and transition names in Impress are translated.
+- The compatibility notes for PDF/A font subsetting and RFC 3161 timestamps
+  were out of date and are corrected.
+
+### Added
+
+- **Crash safety**: a screen or editor tab that fails shows a recovery panel
+  instead of blanking the app, with an autosave copy of unsaved work; Rust
+  panics are written to `crash.log` and included in the diagnostics export.
+- **Windows**: opening a second file uses the running window instead of
+  starting another copy.
+- **Android**: long jobs (OCR, compression, conversion) keep running when the
+  app is in the background, with a notification.
+
+### Changed
+
+- The Windows installer ships only `tesseract.exe` and the libraries it loads,
+  about 26 MB smaller compressed.
+
 ## [4.2.0] - AI in the editors, Claude, safer keys
 
 ### Added
