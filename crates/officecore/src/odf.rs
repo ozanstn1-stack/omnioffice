@@ -132,11 +132,13 @@ impl Media {
 
 /// Writer-side note lookup: citation numbers come from the document's
 /// reference order (`TextDocument::footnote_order` / `endnote_order`) so the
-/// `text:note-citation` values match what the editor shows.
+/// `text:note-citation` values match what the editor shows. `comments` places
+/// the body's annotations; it stays empty for headers, footers and note bodies.
 #[derive(Default)]
 struct NoteContext {
     footnotes: HashMap<String, (usize, Footnote)>,
     endnotes: HashMap<String, (usize, Footnote)>,
+    comments: CommentAnchors,
 }
 
 impl NoteContext {
@@ -162,6 +164,122 @@ impl NoteContext {
             self.footnotes.get(id)
         }
     }
+}
+
+/// LibreOffice's extension namespace, declared on content.xml for the
+/// `loext:resolved` comment flag.
+const LOEXT_NS: &str = "xmlns:loext=\"urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0\"";
+
+/// Writer-side `office:annotation` placement for the ODT body.
+///
+/// The annotation is written before the first body run anchored to a comment
+/// and `office:annotation-end` after the last one, so a range can span runs and
+/// paragraphs. A comment whose anchored runs carry no content becomes a point
+/// annotation (no end marker), which is how LibreOffice stores a comment made
+/// without a selection. Comments no body run refers to are written as point
+/// annotations at the start of the first paragraph, so the export keeps them.
+#[derive(Default)]
+struct CommentAnchors {
+    comments: HashMap<String, Comment>,
+    /// Anchored body runs per comment id, and whether any of them has content.
+    anchors: HashMap<String, (usize, bool)>,
+    /// Anchored runs written so far per comment id.
+    written: std::cell::RefCell<HashMap<String, usize>>,
+    unanchored: std::cell::RefCell<Vec<Comment>>,
+}
+
+impl CommentAnchors {
+    fn for_document(document: &TextDocument) -> Self {
+        let mut anchors = HashMap::new();
+        count_comment_runs(&document.blocks, &mut anchors);
+        let mut comments = HashMap::new();
+        let mut unanchored = Vec::new();
+        for comment in &document.comments {
+            if comments.contains_key(&comment.id) {
+                continue;
+            }
+            if !anchors.contains_key(&comment.id) {
+                unanchored.push(comment.clone());
+            }
+            comments.insert(comment.id.clone(), comment.clone());
+        }
+        Self { comments, anchors, written: Default::default(), unanchored: std::cell::RefCell::new(unanchored) }
+    }
+
+    /// Writes the comments no body run refers to; only the first call writes.
+    fn write_unanchored(&self, writer: &mut XmlWriter) {
+        for comment in self.unanchored.take() {
+            writer.raw(&annotation_xml(&comment));
+        }
+    }
+
+    /// Opens the annotation when `run` is the first body run of its comment.
+    fn before_run(&self, writer: &mut XmlWriter, run: &Run) {
+        let Some(comment) = run.comment.as_deref().and_then(|id| self.comments.get(id)) else { return };
+        let mut written = self.written.borrow_mut();
+        let count = written.entry(comment.id.clone()).or_insert(0);
+        *count += 1;
+        if *count == 1 {
+            writer.raw(&annotation_xml(comment));
+        }
+    }
+
+    /// Closes a ranged annotation after the last body run of its comment.
+    fn after_run(&self, writer: &mut XmlWriter, run: &Run) {
+        let Some(id) = run.comment.as_deref().filter(|id| self.comments.contains_key(*id)) else { return };
+        let Some(&(total, has_content)) = self.anchors.get(id) else { return };
+        if has_content && self.written.borrow().get(id) == Some(&total) {
+            writer.raw(&format!("<office:annotation-end office:name=\"{}\"/>", escape(id)));
+        }
+    }
+}
+
+/// Counts the runs `write_blocks` writes for each comment id (paragraphs and
+/// table cells, at any depth).
+fn count_comment_runs(blocks: &[Block], anchors: &mut HashMap<String, (usize, bool)>) {
+    for block in blocks {
+        match block {
+            Block::Paragraph { runs, .. } => {
+                for run in runs {
+                    if let Some(id) = &run.comment {
+                        let entry = anchors.entry(id.clone()).or_insert((0, false));
+                        entry.0 += 1;
+                        entry.1 |= !run.text.is_empty() || run.footnote.is_some() || run.endnote.is_some();
+                    }
+                }
+            }
+            Block::Table { table } => {
+                for cell in table.rows.iter().flat_map(|row| row.cells.iter()) {
+                    count_comment_runs(&cell.blocks, anchors);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// One `office:annotation` element. ODF has no portable reply threading, so
+/// replies follow the comment text as "Re: author: text" paragraphs, the same
+/// convention the DOCX writer uses; reply line breaks stay inside the reply
+/// paragraph so the reader can tell replies from comment lines.
+fn annotation_xml(comment: &Comment) -> String {
+    let mut out = format!("<office:annotation office:name=\"{}\"", escape(&comment.id));
+    if comment.resolved {
+        out.push_str(" loext:resolved=\"true\"");
+    }
+    out.push_str(&format!("><dc:creator>{}</dc:creator>", crate::xml::escape_text(&comment.author)));
+    if !comment.created.is_empty() {
+        out.push_str(&format!("<dc:date>{}</dc:date>", crate::xml::escape_text(&comment.created)));
+    }
+    for line in comment.text.split('\n') {
+        out.push_str(&format!("<text:p>{}</text:p>", crate::xml::escape_text(line)));
+    }
+    for reply in &comment.replies {
+        let text = reply.text.split('\n').map(crate::xml::escape_text).collect::<Vec<_>>().join("<text:line-break/>");
+        out.push_str(&format!("<text:p>Re: {}: {text}</text:p>", crate::xml::escape_text(&reply.author)));
+    }
+    out.push_str("</office:annotation>");
+    out
 }
 
 /// `text:id` must be an XML ID (an NCName). Imported ids are often numeric
@@ -267,7 +385,9 @@ fn run_style_xml(run: &Run) -> String {
 }
 
 fn write_runs(writer: &mut XmlWriter, runs: &[Run], styles: &mut AutoStyles, notes: &NoteContext) {
+    notes.comments.write_unanchored(writer);
     for run in runs {
+        notes.comments.before_run(writer, run);
         let text = run.text.replace('\n', " ");
         if !text.is_empty() {
             let content = crate::xml::escape_text(&text);
@@ -306,6 +426,7 @@ fn write_runs(writer: &mut XmlWriter, runs: &[Run], styles: &mut AutoStyles, not
             let _ = last;
             let _ = url;
         }
+        notes.comments.after_run(writer, run);
     }
 }
 
@@ -579,11 +700,19 @@ pub struct TextRead {
 pub fn write_odt(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     let mut styles = AutoStyles::default();
     let mut media = Media::default();
-    let notes = NoteContext::for_document(document);
+    let mut notes = NoteContext::for_document(document);
+    notes.comments = CommentAnchors::for_document(document);
     let mut body = XmlWriter::new();
     write_blocks(&mut body, &document.blocks, &mut styles, &mut media, &notes, 0);
+    // A body without any paragraph still needs a home for unanchored comments.
+    let mut unanchored = XmlWriter::new();
+    notes.comments.write_unanchored(&mut unanchored);
+    let unanchored = unanchored.finish();
+    if !unanchored.is_empty() {
+        body.raw(&format!("<text:p>{unanchored}</text:p>"));
+    }
     let content = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content {NS} office:version=\"1.2\">{}{}<office:body><office:text text:style-name=\"Standard\">{}</office:text></office:body></office:document-content>",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content {NS} {LOEXT_NS} office:version=\"1.2\">{}{}<office:body><office:text text:style-name=\"Standard\">{}</office:text></office:body></office:document-content>",
         styles.xml(),
         named_styles_xml(document),
         body.finish()
@@ -655,13 +784,151 @@ fn read_span_style(node: &XmlNode) -> Run {
     run
 }
 
-/// Reader-side note accumulator. Notes are collected while paragraphs are
-/// parsed and attached to the document once the whole body is read.
+/// Reader-side note and comment accumulator. Notes and comments are collected
+/// while paragraphs are parsed and attached to the document once the whole
+/// body is read.
 #[derive(Default)]
 struct NoteReadState {
     footnotes: Vec<Footnote>,
     endnotes: Vec<Footnote>,
     sequence: usize,
+    comments: Vec<Comment>,
+    /// Names of the annotations that have an `office:annotation-end` in the
+    /// part being read; any other annotation is a point comment.
+    ranged_comments: std::collections::HashSet<String>,
+    /// Ranged comments open at the current position, innermost last. Ranges
+    /// may span paragraphs.
+    open_comments: Vec<String>,
+    /// A point comment waiting for the next run with content.
+    pending_comment: Option<String>,
+}
+
+impl NoteReadState {
+    /// Prepares comment anchoring for a new part (content.xml or styles.xml).
+    fn start_comment_part(&mut self, root: &XmlNode) {
+        let mut ends = Vec::new();
+        root.find_all("annotation-end", &mut ends);
+        self.ranged_comments = ends.iter().filter_map(|end| end.attr_any_ns("name")).map(str::to_string).collect();
+        self.open_comments.clear();
+        self.pending_comment = None;
+    }
+
+    /// Resolves the annotation markers in one paragraph's runs.
+    fn anchor_paragraph(&mut self, runs: &mut Vec<Run>) {
+        anchor_comments(runs, &self.ranged_comments, &mut self.open_comments, &mut self.pending_comment);
+    }
+}
+
+/// `FieldRef::kind` of the placeholder runs `node_text_runs` leaves where an
+/// `office:annotation` / `office:annotation-end` sits. `anchor_comments` turns
+/// them into `Run::comment` anchors and removes them before a paragraph is
+/// stored; the ODT reader produces no other field runs.
+const ANNOTATION_START: &str = "odf-annotation-start";
+const ANNOTATION_END: &str = "odf-annotation-end";
+
+fn annotation_marker(kind: &str, name: &str) -> Run {
+    Run {
+        field: Some(FieldRef { kind: kind.into(), target: name.into(), cached: String::new() }),
+        ..Default::default()
+    }
+}
+
+/// Replaces the annotation markers in `runs` with anchors. Runs between an
+/// annotation and its end marker belong to that comment (the innermost one
+/// when ranges nest). An annotation without an end marker is a point comment
+/// and anchors the next run with content, the way DOCX import attaches a
+/// comment range start to the following text.
+fn anchor_comments(
+    runs: &mut Vec<Run>,
+    ranged: &std::collections::HashSet<String>,
+    open: &mut Vec<String>,
+    pending: &mut Option<String>,
+) {
+    let mut anchored = Vec::with_capacity(runs.len());
+    for mut run in std::mem::take(runs) {
+        let marker = run.field.as_ref().filter(|field| field.kind == ANNOTATION_START || field.kind == ANNOTATION_END);
+        if let Some(field) = marker {
+            if field.kind == ANNOTATION_END {
+                open.retain(|id| *id != field.target);
+            } else if ranged.contains(&field.target) {
+                open.push(field.target.clone());
+            } else {
+                *pending = Some(field.target.clone());
+            }
+            continue;
+        }
+        if run.comment.is_none() {
+            run.comment = open.last().cloned();
+        }
+        if run.comment.is_none() && (!run.text.is_empty() || run.footnote.is_some() || run.endnote.is_some()) {
+            run.comment = pending.take();
+        }
+        anchored.push(run);
+    }
+    *runs = anchored;
+}
+
+/// Plain text of one annotation paragraph (spaces, tabs and line breaks
+/// included).
+fn annotation_paragraph_text(paragraph: &XmlNode) -> String {
+    let mut runs = Vec::new();
+    let mut scratch = NoteReadState::default();
+    for inner in &paragraph.children {
+        node_text_runs(inner, &mut runs, &mut scratch);
+    }
+    let mut text = paragraph.text.clone();
+    for run in runs {
+        text.push_str(&run.text);
+    }
+    text
+}
+
+/// Reads one inline `office:annotation` into `notes.comments` and leaves a
+/// start marker in `runs`, so the author, date and comment body never become
+/// paragraph text. `office:name` is the comment id (our writer stores the id
+/// there); replies written as "Re: author: text" paragraphs become `replies`
+/// again, as in DOCX import, and `loext:resolved` is LibreOffice's flag.
+fn read_annotation(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState) {
+    let name = node.attr_any_ns("name").filter(|name| !name.is_empty());
+    let id = match name {
+        Some(name) if !notes.comments.iter().any(|comment| comment.id == name) => name.to_string(),
+        // Unnamed (or duplicate) annotations get a fresh id and, having no
+        // end marker of their own, anchor as point comments.
+        _ => {
+            let mut number = notes.comments.len() + 1;
+            while notes.comments.iter().any(|comment| comment.id == format!("odt-comment-{number}")) {
+                number += 1;
+            }
+            format!("odt-comment-{number}")
+        }
+    };
+    let created = node.child("date").map(XmlNode::deep_text).unwrap_or_default().trim().to_string();
+    let mut comment = Comment {
+        id: id.clone(),
+        author: node.child("creator").map(XmlNode::deep_text).unwrap_or_else(|| "Unknown".into()),
+        text: String::new(),
+        created: created.clone(),
+        resolved: node.attr_any_ns("resolved") == Some("true"),
+        modified: created,
+        replies: Vec::new(),
+    };
+    let mut paragraphs = Vec::new();
+    node.find_all("p", &mut paragraphs);
+    let mut lines = Vec::new();
+    for paragraph in paragraphs {
+        let text = annotation_paragraph_text(paragraph);
+        match text.strip_prefix("Re: ").and_then(|rest| rest.split_once(": ")) {
+            Some((author, reply)) => comment.replies.push(CommentReply {
+                author: author.to_string(),
+                text: reply.to_string(),
+                created: String::new(),
+            }),
+            None => lines.push(text),
+        }
+    }
+    comment.text = lines.join("\n");
+    notes.comments.push(comment);
+    runs.push(annotation_marker(ANNOTATION_START, &id));
 }
 
 /// Reads one inline `text:note`: a reference run goes into `runs` at this
@@ -699,6 +966,9 @@ fn read_note(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState) {
             }
         }
     }
+    // The note body is read before the surrounding paragraph is anchored, so
+    // its markers are resolved on their own and body ranges do not reach in.
+    anchor_comments(&mut body_runs, &notes.ranged_comments, &mut Vec::new(), &mut None);
     if body_runs.is_empty() {
         body_runs.push(Run::default());
     }
@@ -728,6 +998,7 @@ fn node_text_runs(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState
                     "tab" => runs.push(Run { text: "\t".into(), ..base.clone() }),
                     "line-break" => runs.push(Run { text: "\n".into(), ..base.clone() }),
                     "note" => read_note(child, runs, notes),
+                    "annotation" | "annotation-end" => node_text_runs(child, runs, notes),
                     _ => {
                         let text = child.deep_text();
                         if !text.is_empty() {
@@ -754,6 +1025,10 @@ fn node_text_runs(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState
             }
         }
         "note" => read_note(node, runs, notes),
+        // Comments must not reach the catch-all below, which would fold their
+        // author, date and text into the paragraph.
+        "annotation" => read_annotation(node, runs, notes),
+        "annotation-end" => runs.push(annotation_marker(ANNOTATION_END, node.attr_any_ns("name").unwrap_or_default())),
         "s" => {
             let count = node.attr_any_ns("c").and_then(|value| value.parse::<usize>().ok()).unwrap_or(1);
             runs.push(Run { text: " ".repeat(count), ..Default::default() });
@@ -800,6 +1075,7 @@ fn read_blocks(
                 for inner in &child.children {
                     node_text_runs(inner, &mut runs, notes);
                 }
+                notes.anchor_paragraph(&mut runs);
                 let mut props = paragraph_props(child, style_map);
                 if child.local_name() == "h" {
                     let level =
@@ -819,6 +1095,7 @@ fn read_blocks(
                             for part in &inner.children {
                                 node_text_runs(part, &mut runs, notes);
                             }
+                            notes.anchor_paragraph(&mut runs);
                             let mut props = paragraph_props(inner, style_map);
                             let level =
                                 inner.attr_any_ns("level").and_then(|value| value.parse::<u32>().ok()).unwrap_or(0);
@@ -870,7 +1147,8 @@ fn read_blocks(
             "section" => {
                 blocks.extend(read_blocks(child, style_map, reader, warnings, notes));
             }
-            "annotation" => warnings.push("Comments in the document were not imported.".into()),
+            // Not valid ODF outside a paragraph: keep the comment, unanchored.
+            "annotation" => read_annotation(child, &mut Vec::new(), notes),
             _ => {
                 if child.local_name() == "frame" {
                     let mut images = Vec::new();
@@ -953,6 +1231,66 @@ fn collect_styles(root: &XmlNode, style_map: &mut HashMap<String, ParaProps>) {
     }
 }
 
+/// `parse_xml` appends text that follows a child element to the parent's
+/// `text`, so mixed paragraph content loses its order: "a <span>b</span> c"
+/// reads as "a c" + "b", and notes and annotation anchors land in the wrong
+/// place. Before an ODT part is parsed, text that follows a child element
+/// inside `text:p`, `text:h`, `text:span` or `text:a` is wrapped in an
+/// unstyled `text:span`, which the run walker reads in document order. The
+/// rest of the part is copied byte for byte; XML the tokenizer rejects is
+/// returned unchanged so `parse_xml` reports it.
+fn wrap_trailing_text(xml: &str) -> String {
+    use quick_xml::events::Event;
+    let mut reader = quick_xml::Reader::from_str(xml);
+    let mut out = String::with_capacity(xml.len() + xml.len() / 16);
+    let mut copied = 0usize;
+    // Per open element: (holds paragraph content, has had a child element).
+    let mut stack: Vec<(bool, bool)> = Vec::new();
+    let mut wrapping = false;
+    loop {
+        let before = reader.buffer_position() as usize;
+        let event = match reader.read_event() {
+            Ok(Event::Eof) => break,
+            Ok(event) => event,
+            Err(_) => return xml.to_string(),
+        };
+        let is_text = matches!(event, Event::Text(_) | Event::CData(_) | Event::GeneralRef(_));
+        if is_text && !wrapping && stack.last() == Some(&(true, true)) {
+            out.push_str(&xml[copied..before]);
+            out.push_str("<text:span>");
+            copied = before;
+            wrapping = true;
+        } else if !is_text && wrapping {
+            out.push_str(&xml[copied..before]);
+            out.push_str("</text:span>");
+            copied = before;
+            wrapping = false;
+        }
+        match &event {
+            Event::Start(start) => {
+                if let Some(parent) = stack.last_mut() {
+                    parent.1 = true;
+                }
+                stack.push((matches!(start.local_name().into_inner(), "p" | "h" | "span" | "a"), false));
+            }
+            Event::Empty(_) => {
+                if let Some(parent) = stack.last_mut() {
+                    parent.1 = true;
+                }
+            }
+            Event::End(_) => {
+                stack.pop();
+            }
+            _ => {}
+        }
+    }
+    out.push_str(&xml[copied..]);
+    if wrapping {
+        out.push_str("</text:span>");
+    }
+    out
+}
+
 pub fn read_odt(bytes: &[u8]) -> OfficeResult<TextRead> {
     let reader = ZipReader::open(bytes.to_vec())?;
     if !reader.contains("content.xml") {
@@ -963,18 +1301,14 @@ pub fn read_odt(bytes: &[u8]) -> OfficeResult<TextRead> {
     if let Ok(text) = reader.read_text("styles.xml") {
         if let Ok(root) = parse_xml(&text) {
             collect_styles(&root, &mut style_map);
-            let mut notes = Vec::new();
-            root.find_all("annotation", &mut notes);
-            if !notes.is_empty() {
-                warnings.push("Comments in the document were not imported.".into());
-            }
         }
     }
     let text = reader.read_text("content.xml")?;
-    let root = parse_xml(&text)?;
+    let root = parse_xml(&wrap_trailing_text(&text))?;
     collect_styles(&root, &mut style_map);
     let mut document = TextDocument::new_blank("Imported document");
     let mut note_state = NoteReadState::default();
+    note_state.start_comment_part(&root);
     let container = root.child("body").and_then(|body| body.child("text")).unwrap_or(&root);
     document.blocks = read_blocks(container, &style_map, &reader, &mut warnings, &mut note_state);
     if document.blocks.is_empty() {
@@ -995,7 +1329,8 @@ pub fn read_odt(bytes: &[u8]) -> OfficeResult<TextRead> {
     }
     // Page setup from the master page.
     if let Ok(styles) = reader.read_text("styles.xml") {
-        if let Ok(root) = parse_xml(&styles) {
+        if let Ok(root) = parse_xml(&wrap_trailing_text(&styles)) {
+            note_state.start_comment_part(&root);
             let mut layouts = Vec::new();
             root.find_all("page-layout-properties", &mut layouts);
             if let Some(properties) = layouts.first() {
@@ -1039,6 +1374,7 @@ pub fn read_odt(bytes: &[u8]) -> OfficeResult<TextRead> {
     }
     document.footnotes = note_state.footnotes;
     document.endnotes = note_state.endnotes;
+    document.comments = note_state.comments;
     if reader.names().any(|name| name.starts_with("Object")) {
         warnings.push("Embedded objects in the document were not imported.".into());
     }
