@@ -1,16 +1,26 @@
-//! qpdf-backed document repair and linearization.
+//! Document repair and qpdf-backed linearization.
 //!
-//! qpdf is the bundled desktop engine (`engines::qpdf_path`); it is not shipped
-//! on Android, where this module reports the engine as missing. Both operations
-//! rewrite the file through qpdf and then re-open the result so the report
-//! describes the file that was actually produced, not the intent.
+//! Repair uses qpdf when it is available (bundled on Windows, a system install
+//! on Linux/macOS, see `engines::qpdf_path`) and otherwise - on Android, or
+//! when qpdf fails - the built-in rebuild in `rebuild`. Linearization needs
+//! qpdf. Every operation re-opens the result so the report describes the file
+//! that was actually produced, not the intent.
 
-use crate::engines;
 use crate::error::{PdfError, PdfResult};
 use crate::progress::{CancelToken, ProgressCallback, ProgressEvent, ProgressReporter};
+use crate::{docutil, engines, rebuild};
 use serde::Serialize;
 use std::path::Path;
 use std::process::Stdio;
+
+/// The engine that rewrote a repaired file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RepairMethod {
+    Qpdf,
+    /// The built-in object-scanning rebuild (`rebuild::rebuild_pdf`).
+    Builtin,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,16 +29,21 @@ pub struct RepairReport {
     pub output: String,
     /// Pages in the produced file (0 when it could not be re-opened).
     pub pages: u32,
-    /// qpdf diagnostics, capped; these are the repair's warnings.
+    /// qpdf diagnostics or the rebuild's notes, capped; these are the
+    /// repair's warnings.
     pub warnings: Vec<String>,
+    /// Which engine repaired the file; absent for linearization.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub method: Option<RepairMethod>,
 }
 
 /// The qpdf exit code that means "warnings only" (errors are 2).
 const QPDF_WARNING_EXIT: i32 = 3;
 
 fn qpdf_command() -> PdfResult<std::process::Command> {
-    let exe = engines::qpdf_path()
-        .ok_or_else(|| PdfError::EngineMissing("qpdf is only bundled with the desktop build".into()))?;
+    let exe =
+        engines::qpdf_path().ok_or_else(|| PdfError::EngineMissing("qpdf is not available on this device".into()))?;
+    #[cfg_attr(not(windows), allow(unused_mut))]
     let mut cmd = std::process::Command::new(exe);
     #[cfg(windows)]
     {
@@ -100,8 +115,10 @@ fn reopen_pages(path: &Path) -> Option<u32> {
     u32::try_from(pages).ok()
 }
 
-/// Rewrites a damaged PDF through qpdf, recovering what the simple lopdf
-/// parser cannot (broken xref chains, dangling objects, bad stream lengths).
+/// Rewrites a damaged PDF, recovering what the simple lopdf parser cannot
+/// (broken xref chains, dangling objects, bad stream lengths). qpdf is used
+/// when it is available; without it, or when it fails, the built-in rebuild
+/// takes over.
 pub fn repair_pdf(
     input: &Path,
     output: &Path,
@@ -109,6 +126,28 @@ pub fn repair_pdf(
     cancel: &CancelToken,
 ) -> PdfResult<RepairReport> {
     cancel.check()?;
+    if engines::qpdf_path().is_none() {
+        return repair_pdf_builtin(input, output, progress, cancel);
+    }
+    match repair_with_qpdf(input, output, progress, cancel) {
+        Ok(report) => Ok(report),
+        Err(PdfError::Cancelled) => Err(PdfError::Cancelled),
+        Err(error) => {
+            let mut report = repair_pdf_builtin(input, output, progress, cancel)?;
+            report
+                .warnings
+                .insert(0, format!("qpdf could not repair the file ({error}); the built-in engine was used."));
+            Ok(report)
+        }
+    }
+}
+
+fn repair_with_qpdf(
+    input: &Path,
+    output: &Path,
+    progress: &ProgressCallback,
+    cancel: &CancelToken,
+) -> PdfResult<RepairReport> {
     let reporter = ProgressReporter::new(progress);
     reporter.emit(ProgressEvent::new("repair.read", 0, 2));
     let args = vec![
@@ -131,7 +170,45 @@ pub fn repair_pdf(
         );
     }
     reporter.emit(ProgressEvent::new("repair.done", 2, 2));
-    Ok(RepairReport { output: output.display().to_string(), pages, warnings })
+    Ok(RepairReport { output: output.display().to_string(), pages, warnings, method: Some(RepairMethod::Qpdf) })
+}
+
+/// Rebuilds a damaged PDF with the built-in engine (no qpdf): every object is
+/// recovered by scanning the file and the result gets a fresh
+/// cross-reference table. See `rebuild` for what it tolerates.
+pub fn repair_pdf_builtin(
+    input: &Path,
+    output: &Path,
+    progress: &ProgressCallback,
+    cancel: &CancelToken,
+) -> PdfResult<RepairReport> {
+    cancel.check()?;
+    let reporter = ProgressReporter::new(progress);
+    reporter.emit(ProgressEvent::new("repair.read", 0, 3));
+    rebuild::check_input_size(std::fs::metadata(input).map_err(PdfError::from_io)?.len())?;
+    let data = std::fs::read(input).map_err(PdfError::from_io)?;
+    cancel.check()?;
+    reporter.emit(ProgressEvent::new("repair.rebuild", 1, 3));
+    let rebuilt = rebuild::rebuild_pdf(&data, cancel)?;
+    drop(data);
+    cancel.check()?;
+    docutil::write_bytes_atomic(output, &rebuilt.bytes)?;
+    reporter.emit(ProgressEvent::new("repair.verify", 2, 3));
+    let mut warnings = rebuilt.warnings;
+    let pages = match reopen_pages(output).filter(|&pages| pages > 0) {
+        Some(pages) => pages,
+        // An encrypted result only re-opens here when it needs no password;
+        // the rebuilt page tree is known either way.
+        None if rebuilt.encrypted => rebuilt.pages,
+        None => {
+            warnings.push(
+                "The rewritten file could not be re-opened by the built-in parser; it may still open elsewhere.".into(),
+            );
+            0
+        }
+    };
+    reporter.emit(ProgressEvent::new("repair.done", 3, 3));
+    Ok(RepairReport { output: output.display().to_string(), pages, warnings, method: Some(RepairMethod::Builtin) })
 }
 
 /// Rewrites a PDF with qpdf's linearization (Fast Web View layout).
@@ -159,5 +236,5 @@ pub fn linearize_pdf(
     }
     let pages = reopen_pages(output).unwrap_or(0);
     reporter.emit(ProgressEvent::new("linearize.done", 2, 2));
-    Ok(RepairReport { output: output.display().to_string(), pages, warnings })
+    Ok(RepairReport { output: output.display().to_string(), pages, warnings, method: None })
 }

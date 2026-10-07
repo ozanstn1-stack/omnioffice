@@ -217,11 +217,13 @@ interface FlattenReport {
   warnings: string[];
 }
 
-/** Result of the qpdf-backed repair/linearize commands (`RepairReport` in Rust). */
+/** Result of the repair/linearize commands (`RepairReport` in Rust). */
 interface RepairReport {
   output: string;
   pages: number;
   warnings: string[];
+  /** Engine that repaired the file; absent for linearization and older builds. */
+  method?: "qpdf" | "builtin";
 }
 
 interface PdfaCheck {
@@ -361,10 +363,20 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
 
   const runRepair = () =>
     run(async () => {
+      // On Android the result is exported through the system save flow, so the
+      // destination is picked before the work starts.
+      let androidTarget: AndroidTarget | null = null;
+      if (isAndroid() && input) {
+        androidTarget = await pickAndroidSaveTarget(fileBaseName(input).replace(/\.pdf$/i, "-repaired.pdf")).catch(
+          () => null,
+        );
+        if (!androidTarget) return;
+      }
       const report = await invokeTracked<RepairReport>("pdf_repair", {
         request: { input, jobId: "studio-repair" },
       });
       setRepairReport(report);
+      if (androidTarget) await publishOutputs([report.output], { file: androidTarget });
       toast("success", t("studio.repairDone"));
     }, "studio-repair");
 
@@ -1120,14 +1132,16 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
             >
               {t("studio.repairRun")}
             </button>
-            <button
-              type="button"
-              className="btn"
-              disabled={!input || running !== null}
-              onClick={() => void runLinearize()}
-            >
-              {t("studio.linearizeRun")}
-            </button>
+            {isAndroid() ? null : (
+              <button
+                type="button"
+                className="btn"
+                disabled={!input || running !== null}
+                onClick={() => void runLinearize()}
+              >
+                {t("studio.linearizeRun")}
+              </button>
+            )}
           </div>
           {repairReport ? (
             <div className="stack" style={{ marginTop: 10 }}>
@@ -1137,6 +1151,11 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                 </Badge>
                 <code className="break-all">{repairReport.output}</code>
               </div>
+              {repairReport.method ? (
+                <p className="muted small">
+                  {repairReport.method === "qpdf" ? t("studio.repairMethodQpdf") : t("studio.repairMethodBuiltin")}
+                </p>
+              ) : null}
               {repairReport.warnings.map((warning, index) => (
                 <p key={index} className="muted small">
                   {warning}

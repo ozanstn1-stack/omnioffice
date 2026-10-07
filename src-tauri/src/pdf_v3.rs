@@ -58,7 +58,8 @@ pub struct RepairRequest {
     pub job_id: Option<String>,
 }
 
-/// Repairs a damaged PDF through the bundled qpdf engine.
+/// Repairs a damaged PDF: qpdf when it is available, otherwise (Android, or
+/// when qpdf fails) the built-in rebuild. The report names the method used.
 #[tauri::command]
 pub async fn pdf_repair(
     app: AppHandle,
