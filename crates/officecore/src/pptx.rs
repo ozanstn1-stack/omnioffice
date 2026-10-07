@@ -444,7 +444,10 @@ impl SlideWriter {
                 paragraph.level.min(8),
                 alignment(if paragraph.align.is_empty() { &text.align } else { &paragraph.align })
             ));
-            if paragraph.runs.is_empty() {
+            // Runs describe the paragraph text; when they no longer add up to
+            // it (an edit that kept the old runs) the paragraph text wins.
+            let runs_match = paragraph.runs.iter().map(|run| run.text.as_str()).collect::<String>() == paragraph.text;
+            if paragraph.runs.is_empty() || !runs_match {
                 let mut attributes = format!(
                     "{} sz=\"{}\"",
                     lang_attr(paragraph.lang.as_deref().or(deck_lang)),
@@ -2590,6 +2593,66 @@ mod tests {
 
         let unknown = read_pptx(&write_pptx(&lang_deck(None, None)).unwrap()).unwrap();
         assert_eq!(unknown.deck.lang, None);
+    }
+
+    fn runs_deck(paragraphs: Vec<TextParagraph>) -> Deck {
+        let mut deck = Deck::new_blank("Edited");
+        let mut slide = Slide::default();
+        let mut body = SlideObject::new("text", 60.0, 60.0, 600.0, 300.0);
+        body.text = Some(TextFrame { paragraphs, ..Default::default() });
+        slide.objects = vec![body];
+        deck.slides = vec![slide];
+        deck
+    }
+
+    fn formatted(text: &str, level: u32) -> TextParagraph {
+        TextParagraph {
+            text: text.into(),
+            level,
+            bullet: true,
+            runs: vec![Run { text: text.into(), bold: true, ..Default::default() }],
+            ..Default::default()
+        }
+    }
+
+    fn exported_paragraphs(deck: &Deck) -> (String, Vec<TextParagraph>) {
+        let bytes = write_pptx(deck).unwrap();
+        let slide_xml = ZipReader::open(bytes.clone()).unwrap().read_text("ppt/slides/slide1.xml").unwrap();
+        let read = read_pptx(&bytes).unwrap();
+        (slide_xml, read.deck.slides[0].objects[0].text.clone().unwrap().paragraphs)
+    }
+
+    #[test]
+    fn pptx_edited_paragraph_exports_its_new_text() {
+        // An imported slide: both paragraphs carry runs. The editor changes
+        // the second paragraph and clears its runs, the first one is kept.
+        let (_, imported) = exported_paragraphs(&runs_deck(vec![formatted("Title", 0), formatted("Old detail", 1)]));
+        let mut edited = imported.clone();
+        edited[1].text = "New detail".into();
+        edited[1].runs.clear();
+
+        let (slide_xml, paragraphs) = exported_paragraphs(&runs_deck(edited));
+        assert!(slide_xml.contains("New detail"), "slide: {slide_xml}");
+        assert!(!slide_xml.contains("Old detail"), "slide: {slide_xml}");
+        assert_eq!(paragraphs.len(), 2);
+        assert_eq!(paragraphs[0].text, "Title");
+        assert_eq!(paragraphs[0].runs.len(), 1);
+        assert!(paragraphs[0].runs[0].bold);
+        assert_eq!(paragraphs[1].text, "New detail");
+        assert!(paragraphs[1].bullet && paragraphs[1].level == 1);
+    }
+
+    #[test]
+    fn pptx_never_writes_runs_that_contradict_the_paragraph_text() {
+        // Decks saved by 4.2.0 can hold a changed paragraph text next to the
+        // runs of the old text; the paragraph text is what the user sees.
+        let mut stale = formatted("Old detail", 1);
+        stale.text = "New detail".into();
+        let (slide_xml, paragraphs) = exported_paragraphs(&runs_deck(vec![stale]));
+        assert!(slide_xml.contains("New detail"), "slide: {slide_xml}");
+        assert!(!slide_xml.contains("Old detail"), "slide: {slide_xml}");
+        assert_eq!(paragraphs[0].text, "New detail");
+        assert!(paragraphs[0].bullet && paragraphs[0].level == 1);
     }
 
     #[test]
