@@ -173,6 +173,38 @@ describe("Calc AI actions", () => {
     expect(workbookOf().sheets[0].cells.B4).toBeUndefined();
   });
 
+  it("asks again for another kind of data and names what is sent, to whom, and the consented target", async () => {
+    mockBackend({ reply: "=A1" });
+    const user = userEvent.setup();
+    render(<Harness id={seedWorkbook({ A1: "Fruit", A2: "apple", A3: "pear" })} />);
+    selectRange("A1");
+    await openAiTab(user, "Summarize column");
+    await user.click(await screen.findByRole("button", { name: "Send and continue" }));
+    await screen.findByTestId("ai-suggestion");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(editCalls()).toHaveLength(1);
+    expect(editCalls()[0][1]).toMatchObject({
+      request: { expectedProvider: "deepseek", expectedHost: "api.deepseek.com" },
+    });
+
+    // Consent to column values is not consent to headers + a free-text request.
+    selectRange("B2");
+    await openAiTab(user, "Suggest formula");
+    const dialog = await screen.findByRole("dialog", { name: "Suggest a formula with AI" });
+    expect(within(dialog).getByRole("button", { name: "Send and continue" })).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Send and continue" }));
+    await user.type(within(dialog).getByLabelText("What should the formula calculate?"), "copy A1");
+    expect(within(dialog).getByTestId("ai-will-send")).toHaveTextContent(
+      /Will send: your request and the column headers, ~\d+ characters, to DeepSeek \(api\.deepseek\.com\)\./,
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Run" }));
+    await within(dialog).findByTestId("ai-suggestion");
+    expect(editCalls()).toHaveLength(2);
+    expect(editCalls()[1][1]).toMatchObject({
+      request: { task: "suggest_formula", expectedProvider: "deepseek", expectedHost: "api.deepseek.com" },
+    });
+  });
+
   it("disables both actions with a hint while AI is not configured", async () => {
     mockBackend({ configured: false });
     const user = userEvent.setup();

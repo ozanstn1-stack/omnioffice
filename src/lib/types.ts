@@ -456,6 +456,9 @@ export interface AiEditRequest {
   text: string;
   options?: AiEditOptions;
   jobId: string;
+  /** Provider and host the user consented to; the backend refuses a request when the saved settings differ. */
+  expectedProvider: string;
+  expectedHost: string;
 }
 
 export interface AiOutlineSlide {

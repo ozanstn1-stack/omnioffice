@@ -33,6 +33,7 @@ export function SummarizeColumnDialog({
       title={t("ai.edit.summarizeColumnTitle")}
       docId={docId}
       status={status}
+      category="column"
       sends={t("ai.edit.sendsColumn", { count: lines.length, column, chars: text.length })}
       autoRun
       streamPreview
@@ -101,6 +102,7 @@ export function SuggestFormulaDialog({
       title={t("ai.edit.suggestFormulaTitle")}
       docId={docId}
       status={status}
+      category="headers"
       sends={t("ai.edit.sendsFormula")}
       form={
         <label>

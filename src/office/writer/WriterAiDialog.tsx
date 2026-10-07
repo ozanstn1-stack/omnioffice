@@ -64,6 +64,7 @@ export function WriterAiDialog({
       title={t(`ai.edit.${task}Title`)}
       docId={docId}
       status={status}
+      category="selection"
       sends={t(wholeParagraph ? "ai.edit.sendsParagraph" : "ai.edit.sendsSelection", { chars })}
       form={form}
       autoRun={form === undefined}

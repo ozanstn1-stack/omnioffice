@@ -2529,6 +2529,12 @@ body {
   gap: 10px;
 }
 
+.ai-dlg-willsend {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .ai-dlg-form label {
   display: flex;
   flex-direction: column;

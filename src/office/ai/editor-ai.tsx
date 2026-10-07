@@ -7,8 +7,11 @@
  *   names what will be sent, an optional options form, the running state
  *   (with Stop), and the result preview with Accept / Try again / Cancel.
  *
- * Consent is remembered in memory per open document and provider, never
- * persisted: a new document tab, or a different provider/endpoint, asks again.
+ * Consent is remembered in memory per open document, provider and kind of
+ * data (selected text, column values, headers + request, outline), never
+ * persisted: a new document tab, a different provider/endpoint or another kind
+ * of data asks again. The request names the consented provider and host, and
+ * the backend refuses it when the saved settings no longer match.
  */
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Bot, Check, Loader2, ShieldAlert, Square } from "lucide-react";
@@ -74,17 +77,20 @@ export function useAiStatus(): AiStatus {
 }
 
 // ---------------------------------------------------------------------------
-// Consent (in memory, per document and provider)
+// Consent (in memory, per document, provider and kind of data)
 // ---------------------------------------------------------------------------
 
 const consented = new Set<string>();
 
-function consentKey(docId: string, status: AiStatus): string {
-  return `${docId}|${status.provider}|${status.host}`;
+/** What an AI action sends; consent is given separately for each kind. */
+export type AiDataCategory = "selection" | "column" | "headers" | "outline";
+
+function consentKey(docId: string, status: AiStatus, category: AiDataCategory): string {
+  return `${docId}|${status.provider}|${status.host}|${category}`;
 }
 
-export function hasAiConsent(docId: string, status: AiStatus): boolean {
-  return consented.has(consentKey(docId, status));
+export function hasAiConsent(docId: string, status: AiStatus, category: AiDataCategory): boolean {
+  return consented.has(consentKey(docId, status, category));
 }
 
 /** Forgets every consent (used when a document closes and by tests). */
@@ -135,6 +141,8 @@ export interface AiAssistDialogProps {
   /** Open document id: consent is remembered per document and provider. */
   docId: string;
   status: AiStatus;
+  /** Kind of data sent: part of the consent key and named in the "will send" line. */
+  category: AiDataCategory;
   /** Names what will be sent, shown in the consent step. */
   sends: string;
   /** Options shown before the request is made (language, tone, description). */
@@ -144,7 +152,7 @@ export interface AiAssistDialogProps {
   /** Run as soon as consent is given instead of waiting for the form. */
   autoRun?: boolean;
   /** Builds the request when running; return an error message to refuse it. */
-  buildRequest: () => Omit<AiEditRequest, "jobId"> | { error: string };
+  buildRequest: () => Omit<AiEditRequest, "jobId" | "expectedProvider" | "expectedHost"> | { error: string };
   /** Show streamed text while the model is working (plain-text tasks only). */
   streamPreview?: boolean;
   /** Original text, shown next to the suggestion. */
@@ -156,11 +164,22 @@ export interface AiAssistDialogProps {
   onClose: () => void;
 }
 
+/** Characters a built request sends (text plus context); null for a refused request. */
+function requestChars(built: ReturnType<AiAssistDialogProps["buildRequest"]>): number | null {
+  if ("error" in built) return null;
+  return built.text.length + (built.options?.context?.length ?? 0);
+}
+
 export function AiAssistDialog(props: AiAssistDialogProps) {
-  const { title, docId, status, sends, form, autoRun, streamPreview, original, onClose } = props;
+  const { title, docId, status, category, sends, form, autoRun, streamPreview, original, onClose } = props;
   const t = useT();
   const language = useSettings((state) => state.settings.language);
-  const [phase, setPhase] = useState<Phase>(() => (hasAiConsent(docId, status) ? "form" : "consent"));
+  const [phase, setPhase] = useState<Phase>(() => (hasAiConsent(docId, status, category) ? "form" : "consent"));
+  // Provider and host the user agreed to, sent along so the backend can refuse
+  // a request when the saved settings changed in the meantime.
+  const [consentedTarget, setConsentedTarget] = useState({ provider: status.provider, host: status.host });
+  const targetRef = useRef(consentedTarget);
+  const [sentChars, setSentChars] = useState<number | null>(null);
   const [streamed, setStreamed] = useState("");
   const [result, setResult] = useState<AiEditResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -169,6 +188,7 @@ export function AiAssistDialog(props: AiAssistDialogProps) {
   const propsRef = useRef(props);
   useEffect(() => {
     propsRef.current = props;
+    targetRef.current = consentedTarget;
   });
 
   const run = useCallback(() => {
@@ -181,11 +201,17 @@ export function AiAssistDialog(props: AiAssistDialogProps) {
     const jobId = uid("aiedit");
     const seq = ++seqRef.current;
     jobRef.current = jobId;
+    setSentChars(requestChars(built));
     setStreamed("");
     setResult(null);
     setError(null);
     setPhase("running");
-    aiEditText({ ...built, jobId })
+    aiEditText({
+      ...built,
+      jobId,
+      expectedProvider: targetRef.current.provider,
+      expectedHost: targetRef.current.host,
+    })
       .then((reply) => {
         if (seq !== seqRef.current) return;
         jobRef.current = null;
@@ -260,9 +286,19 @@ export function AiAssistDialog(props: AiAssistDialogProps) {
   }, [close]);
 
   const giveConsent = () => {
-    consented.add(consentKey(docId, status));
+    consented.add(consentKey(docId, status, category));
+    setConsentedTarget({ provider: status.provider, host: status.host });
     setPhase("form");
   };
+
+  /** One line naming what is sent, to whom and how much (null: size not known yet). */
+  const willSend = (chars: number | null) =>
+    t(chars === null ? "ai.edit.willSendUnknown" : "ai.edit.willSend", {
+      what: t(`ai.edit.category.${category}`),
+      chars: chars ?? 0,
+      provider: consentedTarget.provider === status.provider ? status.providerLabel : consentedTarget.provider,
+      host: consentedTarget.host || "-",
+    });
 
   const retry = () => {
     if (autoRun) run();
@@ -316,12 +352,22 @@ export function AiAssistDialog(props: AiAssistDialogProps) {
             </div>
           ) : null}
 
-          {phase === "form" ? <div className="ai-dlg-form">{form}</div> : null}
+          {phase === "form" ? (
+            <div className="ai-dlg-form">
+              {form}
+              <p className="ai-dlg-willsend" data-testid="ai-will-send">
+                {willSend(requestChars(props.buildRequest()))}
+              </p>
+            </div>
+          ) : null}
 
           {phase === "running" ? (
             <div className="ai-dlg-running" role="status">
               <p>
                 <Loader2 size={14} className="spin" aria-hidden /> {t("ai.edit.working")}
+              </p>
+              <p className="ai-dlg-willsend" data-testid="ai-will-send">
+                {willSend(sentChars)}
               </p>
               {streamPreview && streamed ? <pre className="ai-dlg-text">{streamed}</pre> : null}
             </div>

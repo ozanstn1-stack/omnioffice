@@ -32,14 +32,18 @@ export function lastRowOfColumn(sheet: Sheet, col: number): number {
   return last;
 }
 
-/** "A: Name; B: Amount" from the first row, for the formula prompt. */
+/** Most header cells, and longest header text, sent with a formula request. */
+export const MAX_HEADER_CELLS = 30;
+export const MAX_HEADER_CHARS = 40;
+
+/** "A: Name; B: Amount" from the first row, for the formula prompt (bounded: 30 headers of 40 characters). */
 export function headerContext(computed: Map<string, Scalar>, colCount: number): string {
   const parts: string[] = [];
-  for (let col = 0; col < Math.min(colCount, 60); col += 1) {
+  for (let col = 0; col < colCount && parts.length < MAX_HEADER_CELLS; col += 1) {
     const header = toText(computed.get(formatAddress(0, col)) ?? "")
       .replace(/\s+/g, " ")
       .trim()
-      .slice(0, 60);
+      .slice(0, MAX_HEADER_CHARS);
     if (header) parts.push(`${columnLabel(col)}: ${header}`);
   }
   return parts.join("; ");

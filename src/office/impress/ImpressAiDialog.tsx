@@ -25,6 +25,7 @@ export function ImpressAiDialog({
       title={t("ai.edit.outlineToSlidesTitle")}
       docId={docId}
       status={status}
+      category="outline"
       sends={t("ai.edit.sendsOutline")}
       form={
         <label>
