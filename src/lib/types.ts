@@ -374,7 +374,7 @@ export type ReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface AiSettingsView {
   configured: boolean;
-  keyStorage: "none" | "dpapi" | "plain" | string;
+  keyStorage: "none" | "dpapi" | "keystore" | "plain" | string;
   maskedKey: string;
   baseUrl: string;
   model: string;

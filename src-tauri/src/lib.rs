@@ -5,6 +5,8 @@
 
 mod ai;
 mod android_intent;
+#[cfg(target_os = "android")]
+mod android_keystore;
 mod commands;
 mod concurrency;
 mod diagnostics;
@@ -39,6 +41,10 @@ pub fn run() {
         .plugin(tauri_plugin_android_fs::init())
         .manage(job_store.clone())
         .manage(JobRegistry::new(job_store));
+    // Android Keystore bridge for the secret store (API key, OAuth tokens,
+    // WebDAV password); see android_keystore.rs.
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(android_keystore::init());
 
     builder
         .setup(|app| {

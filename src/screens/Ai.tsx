@@ -1093,9 +1093,11 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                 <p>
                   {aiSettings.keyStorage === "dpapi"
                     ? t("ai.keySecure")
-                    : aiSettings.keyStorage === "plain"
-                      ? t("ai.keyPlain")
-                      : t("ai.keyMissing")}
+                    : aiSettings.keyStorage === "keystore"
+                      ? t("ai.keyKeystore")
+                      : aiSettings.keyStorage === "plain"
+                        ? t("ai.keyPlain")
+                        : t("ai.keyMissing")}
                 </p>
                 {aiSettings.providerNote ? <p>{aiSettings.providerNote}</p> : null}
                 {preview ? <p>{formatBytes(preview.characters)}</p> : null}
