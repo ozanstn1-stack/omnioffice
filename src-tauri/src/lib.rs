@@ -4,9 +4,13 @@
 //! commands, progress events, cancellation and engine discovery.
 
 mod ai;
+#[cfg(target_os = "android")]
+mod android_background;
 mod android_intent;
 #[cfg(target_os = "android")]
 mod android_keystore;
+#[cfg(any(target_os = "android", test))]
+mod background_work;
 mod commands;
 mod concurrency;
 mod crash_log;
@@ -99,14 +103,26 @@ pub fn run() {
     // WebDAV password); see android_keystore.rs.
     #[cfg(target_os = "android")]
     let builder = builder.plugin(android_keystore::init());
+    // Foreground service that keeps the process alive while jobs run in the
+    // background; see android_background.rs.
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(android_background::init());
 
     builder
         .setup(|app| {
+            // Android: keep a foreground service up for as long as any job runs,
+            // so the system does not freeze the process when the app leaves the
+            // screen.
+            #[cfg(target_os = "android")]
+            if let Some(registry) = app.try_state::<JobRegistry>() {
+                registry.set_activity_listener(Box::new(android_background::set_active));
+            }
             // Restore the persistent job history from <config>/jobs.json and
             // flip every job that was still running/queued when the previous
             // process died to `interrupted` (Android activity recreation or an
-            // app restart). This only preserves state; it does not keep the
-            // process - and therefore the work - alive.
+            // app restart). This only restores state; it is the foreground
+            // service above that tries to keep the process - and therefore the
+            // work - alive.
             if let Ok(config_dir) = app.path().app_config_dir() {
                 if let Some(store) = app.try_state::<std::sync::Arc<JobStore>>() {
                     store.attach_path(config_dir.join("jobs.json"));

@@ -11,11 +11,13 @@
 //!
 //! Android honesty: a Rust worker keeps running while the *process* lives.
 //! This store makes the state survive process death; it does NOT keep the
-//! process alive. If Android kills the process in the background the work
-//! stops, and the next start flips every `running`/`queued` record to
-//! `interrupted` so the UI never pretends a dead job is still running.
-//! Actually continuing work in the background needs a foreground service,
-//! which is out of scope for V3.1.
+//! process alive. While a registry job runs, Android builds start a `dataSync`
+//! foreground service (see `android_background.rs`) through the activity
+//! listener of [`JobRegistry`], which protects the process from being frozen
+//! when the app leaves the screen. It is still not a guarantee: swiping the
+//! app away or an aggressive battery manager can end the process, and then
+//! the next start flips every `running`/`queued` record to `interrupted` so
+//! the UI never pretends a dead job is still running.
 //!
 //! Persistence contract:
 //! - writes are atomic (temp file + rename over the target),
@@ -463,6 +465,10 @@ impl Drop for JobFinishGuard<'_> {
     }
 }
 
+/// Called with `true` when the first job starts and `false` when the last one
+/// ends.
+type ActivityListener = Box<dyn Fn(bool) + Send + Sync>;
+
 /// Cancellation registry. Keeps the existing method surface used by
 /// commands.rs/ai.rs/vault.rs/pdf_v3.rs and additionally maintains the
 /// persistent store.
@@ -472,11 +478,47 @@ pub struct JobRegistry {
     /// the PDF engine), so both maps are kept side by side.
     ai_jobs: Mutex<HashMap<String, aicore::CancelToken>>,
     store: Arc<JobStore>,
+    /// Told when "any job is running" flips; Android keeps a foreground
+    /// service alive for exactly that span. Never set on desktop.
+    activity_listener: OnceLock<ActivityListener>,
+    /// The last state handed to the listener, so it only hears transitions.
+    activity_reported: Mutex<bool>,
 }
 
 impl JobRegistry {
     pub fn new(store: Arc<JobStore>) -> Self {
-        Self { jobs: Mutex::new(HashMap::new()), ai_jobs: Mutex::new(HashMap::new()), store }
+        Self {
+            jobs: Mutex::new(HashMap::new()),
+            ai_jobs: Mutex::new(HashMap::new()),
+            store,
+            activity_listener: OnceLock::new(),
+            activity_reported: Mutex::new(false),
+        }
+    }
+
+    /// Installs the listener for "a job is running" transitions (once).
+    #[cfg(any(target_os = "android", test))]
+    pub fn set_activity_listener(&self, listener: ActivityListener) {
+        let _ = self.activity_listener.set(listener);
+    }
+
+    /// Reports a change of "is any job running" to the listener. Called after
+    /// every mutation of the token maps. The report is made while holding the
+    /// `activity_reported` lock, so transitions reach the listener in order.
+    fn sync_activity(&self) {
+        let Some(listener) = self.activity_listener.get() else { return };
+        let mut reported = self.activity_reported.lock().unwrap_or_else(|poison| poison.into_inner());
+        let running = self.has_live_jobs();
+        if *reported != running {
+            *reported = running;
+            listener(running);
+        }
+    }
+
+    fn has_live_jobs(&self) -> bool {
+        let plain = self.jobs.lock().map(|jobs| !jobs.is_empty()).unwrap_or(false);
+        let ai = self.ai_jobs.lock().map(|jobs| !jobs.is_empty()).unwrap_or(false);
+        plain || ai
     }
 
     pub fn register(&self, job_id: &str) -> CancelToken {
@@ -493,6 +535,7 @@ impl JobRegistry {
             jobs.retain(|_, token| !token.is_cancelled());
             jobs.insert(job_id.to_string(), token.clone());
         }
+        self.sync_activity();
         token
     }
 
@@ -515,6 +558,7 @@ impl JobRegistry {
         if let Ok(mut jobs) = self.ai_jobs.lock() {
             jobs.remove(job_id);
         }
+        self.sync_activity();
         self.store.fail_if_active(job_id);
     }
 
@@ -529,6 +573,7 @@ impl JobRegistry {
             jobs.retain(|_, token| !token.is_cancelled());
             jobs.insert(job_id.to_string(), token.clone());
         }
+        self.sync_activity();
         token
     }
 
@@ -549,6 +594,7 @@ impl JobRegistry {
                 found = true;
             }
         }
+        self.sync_activity();
         if found {
             self.store.set_status(job_id, JobStatus::Cancelled, None);
         }
@@ -563,6 +609,7 @@ impl JobRegistry {
         if let Ok(mut jobs) = self.ai_jobs.lock() {
             jobs.remove(job_id);
         }
+        self.sync_activity();
         self.store.finish(job_id);
     }
 
@@ -575,6 +622,7 @@ impl JobRegistry {
         if let Ok(mut jobs) = self.ai_jobs.lock() {
             jobs.remove(job_id);
         }
+        self.sync_activity();
         if succeeded {
             self.store.finish(job_id);
         } else {
@@ -595,6 +643,7 @@ impl JobRegistry {
             }
             jobs.clear();
         }
+        self.sync_activity();
         self.store.cancel_active();
     }
 }
@@ -933,6 +982,93 @@ mod tests {
         assert_eq!(record.kind, "vault");
         assert_eq!(record.title, "Vault scan");
         assert!(record.payload.is_some());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Records every report of the activity listener, in order.
+    fn recording_registry(tag: &str) -> (JobRegistry, Arc<Mutex<Vec<bool>>>, PathBuf) {
+        let path = temp_path(tag);
+        let store = JobStore::shared();
+        store.attach_path(path.clone());
+        let registry = JobRegistry::new(store);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let sink = seen.clone();
+        registry.set_activity_listener(Box::new(move |running| sink.lock().unwrap().push(running)));
+        (registry, seen, path)
+    }
+
+    fn seen_of(seen: &Arc<Mutex<Vec<bool>>>) -> Vec<bool> {
+        seen.lock().unwrap().clone()
+    }
+
+    #[test]
+    fn activity_listener_hears_only_first_start_and_last_end() {
+        let (registry, seen, path) = recording_registry("activity");
+        let _pdf = registry.register("pdf-job");
+        assert_eq!(seen_of(&seen), vec![true]);
+
+        // A second job (either kind) does not repeat the report, and the first
+        // one ending does not stop the service while the other still runs.
+        let _ai = registry.register_ai("ai-job");
+        registry.complete("pdf-job", true);
+        assert_eq!(seen_of(&seen), vec![true]);
+
+        registry.cancel("ai-job");
+        assert_eq!(seen_of(&seen), vec![true, false]);
+
+        // Ending something that is not running reports nothing.
+        registry.finish("ai-job");
+        registry.complete("ghost", false);
+        registry.cancel("ghost");
+        assert_eq!(seen_of(&seen), vec![true, false]);
+
+        let _next = registry.register("next-job");
+        assert_eq!(seen_of(&seen), vec![true, false, true]);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn activity_listener_covers_every_way_a_job_can_end() {
+        let (registry, seen, path) = recording_registry("activity-ends");
+        let _ = registry.register("a");
+        registry.finish("a");
+        let _ = registry.register("b");
+        registry.complete("b", false);
+        let _ = registry.register("c");
+        registry.fail_active("c");
+        let _ = registry.register("d");
+        let _ = registry.register_ai("e");
+        registry.cancel_all();
+        assert_eq!(seen_of(&seen), vec![true, false, true, false, true, false, true, false]);
+
+        // The managed AI guard ends its job on drop.
+        let (_token, guard) = registry.register_ai_managed("guarded");
+        assert_eq!(seen_of(&seen).last(), Some(&true));
+        drop(guard);
+        assert_eq!(seen_of(&seen).last(), Some(&false));
+        assert_eq!(seen_of(&seen).len(), 10);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn reusing_an_id_keeps_the_service_running() {
+        let (registry, seen, path) = recording_registry("activity-reuse");
+        let _ = registry.register("vault-scan");
+        let _ = registry.register("vault-scan");
+        assert_eq!(seen_of(&seen), vec![true], "the second run replaces the first without a stop in between");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_registry_without_a_listener_works_as_before() {
+        let path = temp_path("no-listener");
+        let store = JobStore::shared();
+        store.attach_path(path.clone());
+        let registry = JobRegistry::new(store.clone());
+        let token = registry.register("job");
+        registry.complete("job", true);
+        assert!(!token.is_cancelled());
+        assert_eq!(store.record("job").unwrap().status, JobStatus::Done);
         let _ = std::fs::remove_file(&path);
     }
 }
