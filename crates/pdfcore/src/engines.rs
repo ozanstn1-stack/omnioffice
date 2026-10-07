@@ -155,9 +155,21 @@ pub fn qpdf_path() -> Option<PathBuf> {
     {
         None
     }
-    #[cfg(not(target_os = "android"))]
+    #[cfg(windows)]
     {
         find_in_bases("qpdf/qpdf.exe").or_else(|| find_in_path("qpdf.exe"))
+    }
+    #[cfg(not(any(windows, target_os = "android")))]
+    {
+        // Linux and macOS builds bundle no qpdf; a system install is used.
+        // Apps started from the macOS Finder do not inherit Homebrew's PATH,
+        // so its prefixes are checked as well.
+        let homebrew: &[&str] =
+            if cfg!(target_os = "macos") { &["/opt/homebrew/bin/qpdf", "/usr/local/bin/qpdf"] } else { &[] };
+        find_in_bases("qpdf/qpdf.exe")
+            .or_else(|| find_in_path("qpdf.exe"))
+            .or_else(|| find_in_path("qpdf"))
+            .or_else(|| homebrew.iter().map(PathBuf::from).find(|path| path.is_file()))
     }
 }
 
