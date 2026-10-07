@@ -715,3 +715,92 @@ describe("Calc data validation", () => {
     expect(cellAt(149, 0).classList.contains("is-invalid")).toBe(false);
   });
 });
+
+describe("Calc row geometry", () => {
+  const withHeights = (rowHeights: Record<string, number>) => (sheet: Sheet) => ({ ...sheet, rowHeights });
+  const px = (element: HTMLElement, property: "top" | "height" | "left") => element.style[property];
+  const rowHeader = (row: number) => document.querySelector<HTMLElement>(`[data-row-header="${row}"]`);
+
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+    vi.mocked(isAndroid).mockReturnValue(false);
+  });
+
+  it("places each row after the real height of the rows above it", () => {
+    // Regression: rows sat at row * 24, so a 48px row overlapped the next one.
+    const id = seedWorkbook({}, withHeights({ "1": 48 }));
+    render(<Harness id={id} />);
+
+    expect(px(cellAt(1, 0), "top")).toBe("24px");
+    expect(px(cellAt(1, 0), "height")).toBe("48px");
+    expect(px(cellAt(2, 0), "top")).toBe("72px");
+    expect(px(cellAt(3, 0), "top")).toBe("96px");
+    expect(px(rowHeader(2)!, "top")).toBe("72px");
+    expect(px(rowHeader(1)!, "height")).toBe("48px");
+  });
+
+  it("leaves no gap where a filter hid a row", () => {
+    // Regression: a hidden row (height 0) still advanced the next row by 24px.
+    const id = seedWorkbook({}, withHeights({ "1": 0, "2": 0 }));
+    render(<Harness id={id} />);
+
+    expect(document.querySelector('[data-cell="1:0"]')).toBeNull();
+    expect(document.querySelector('[data-cell="2:0"]')).toBeNull();
+    expect(rowHeader(1)).toBeNull();
+    expect(px(cellAt(3, 0), "top")).toBe("24px");
+    expect(px(rowHeader(3)!, "top")).toBe("24px");
+  });
+
+  it("sizes the canvas to the rows' combined height", () => {
+    const id = seedWorkbook({}, withHeights({ "1": 48, "5": 0, "6": 0 }));
+    render(<Harness id={id} />);
+    const rowCount = workbookOf().sheets[0].rowCount;
+
+    // One taller row adds 24px; the two hidden rows take away 48px.
+    const rowsHeight = rowCount * 24 + 24 - 48;
+    expect(document.querySelector<HTMLElement>(".calc-canvas")!.style.height).toBe(`${24 + rowsHeight}px`);
+    expect(document.querySelector<HTMLElement>(".calc-cells")!.style.height).toBe(`${rowsHeight}px`);
+  });
+
+  it("puts the fill handle on the bottom edge of the selection's last row", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({}, withHeights({ "1": 48 }));
+    render(<Harness id={id} />);
+
+    await user.click(cellAt(2, 0));
+    // Header 24 + rows 0..1 (24 + 48) + row 2 (24), minus half the 10px handle.
+    expect(document.querySelector<HTMLElement>("[data-fill-handle]")!.style.top).toBe(`${24 + 72 + 24 - 5}px`);
+    expect(document.querySelector<HTMLElement>('[data-select-handle="start"]')!.style.top).toBe(`${24 + 72}px`);
+  });
+
+  it("scrolls the keyboard selection into view using the real row positions", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({}, withHeights({ "1": 100 }));
+    render(<Harness id={id} />);
+    const grid = document.querySelector<HTMLElement>(".calc-grid")!;
+    Object.defineProperty(grid, "clientHeight", { configurable: true, value: 200 });
+    Object.defineProperty(grid, "clientWidth", { configurable: true, value: 600 });
+
+    await user.click(cellAt(0, 0));
+    await user.keyboard("{ArrowDown>7/}");
+    expect(document.querySelector<HTMLInputElement>(".name-box")?.value).toBe("A8");
+    // Row 7 spans y 244..268 (one 100px row above it); with the 24px header its
+    // bottom is at 292 on a 200px viewport.
+    expect(grid.scrollTop).toBe(92);
+    await user.keyboard("{ArrowUp>7/}");
+    expect(document.querySelector<HTMLInputElement>(".name-box")?.value).toBe("A1");
+    expect(grid.scrollTop).toBe(0);
+  });
+
+  it("steps over hidden rows with the arrow keys", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({}, withHeights({ "1": 0, "2": 0 }));
+    render(<Harness id={id} />);
+
+    await user.click(cellAt(0, 0));
+    await user.keyboard("{ArrowDown}");
+    expect(document.querySelector<HTMLInputElement>(".name-box")?.value).toBe("A4");
+    await user.keyboard("{ArrowUp}");
+    expect(document.querySelector<HTMLInputElement>(".name-box")?.value).toBe("A1");
+  });
+});

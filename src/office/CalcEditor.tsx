@@ -92,6 +92,8 @@ import {
 } from "./calc/audit";
 import { tableByName, tableColumnBodyRange } from "./calc/structured";
 import { validationLookup } from "./calc/validation-index";
+import { revealScroll } from "./calc/grid-geometry";
+import { rowLayoutFor } from "./calc/row-layout";
 import {
   applyCellEdit,
   applyCellEdits,
@@ -122,6 +124,8 @@ export { scalarToCellValue, computeWorkbookValues, applyCellEdit, shiftFormulaRo
 type CalcTab = OfficeTab & { model: Workbook };
 
 const ROW_HEIGHT = 24;
+/** The column header band above the first row. */
+const HEADER_HEIGHT = 24;
 const HEADER_WIDTH = 56;
 const DEFAULT_COL_WIDTH = 96;
 
@@ -521,6 +525,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   }, []);
 
   const sheet = workbook.sheets[Math.min(sheetIndex, workbook.sheets.length - 1)] ?? workbook.sheets[0];
+  // Row offsets honour custom heights and hidden (filtered) rows. The table is
+  // memoized on the sheet's rowHeights object, so it is rebuilt only when a
+  // height changes, not on every render or scroll.
+  const rowLayout = rowLayoutFor(sheet.rowCount, sheet.rowHeights, ROW_HEIGHT);
   const activeCell = sheet.cells[formatAddress(selection.focus.row, selection.focus.col)];
   const computed = useMemo(() => computeSheetValues(workbook, sheet), [workbook, sheet]);
   const catalogue = useMemo(() => new Map(functionCatalogue().map((entry) => [entry.name, entry] as const)), []);
@@ -745,22 +753,28 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       if (!grid) return clamped;
       // Scroll offsets are outer pixels; the cell geometry is in canvas
       // coordinates, so the zoom the canvas is laid out with maps between.
-      const zoom = gridZoomRef.current;
       let left = 0;
       for (let col = 0; col < clamped.col; col += 1) left += sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH;
-      const width = sheet.colWidths[String(clamped.col)] ?? DEFAULT_COL_WIDTH;
-      const top = clamped.row * (sheet.rowHeights[String(clamped.row)] ?? ROW_HEIGHT);
-      const height = sheet.rowHeights[String(clamped.row)] ?? ROW_HEIGHT;
-      if (top * zoom < grid.scrollTop) grid.scrollTop = top * zoom;
-      else if ((top + height) * zoom > grid.scrollTop + grid.clientHeight)
-        grid.scrollTop = (top + height) * zoom - grid.clientHeight;
-      if (left * zoom < grid.scrollLeft) grid.scrollLeft = Math.max(0, left * zoom);
-      else if ((left + width) * zoom > grid.scrollLeft + grid.clientWidth - HEADER_WIDTH * zoom) {
-        grid.scrollLeft = (left + width) * zoom - grid.clientWidth + HEADER_WIDTH * zoom;
-      }
+      const next = revealScroll({
+        cell: {
+          top: rowLayout.offsetOf(clamped.row),
+          height: rowLayout.heightOf(clamped.row),
+          left,
+          width: sheet.colWidths[String(clamped.col)] ?? DEFAULT_COL_WIDTH,
+        },
+        scrollTop: grid.scrollTop,
+        scrollLeft: grid.scrollLeft,
+        clientHeight: grid.clientHeight,
+        clientWidth: grid.clientWidth,
+        zoom: gridZoomRef.current,
+        headerHeight: HEADER_HEIGHT,
+        headerWidth: HEADER_WIDTH,
+      });
+      if (next.scrollTop !== grid.scrollTop) grid.scrollTop = next.scrollTop;
+      if (next.scrollLeft !== grid.scrollLeft) grid.scrollLeft = next.scrollLeft;
       return clamped;
     },
-    [sheet],
+    [sheet, rowLayout],
   );
 
   const commitEdit = (move: CommitMove = "down", restoreFocus = true) => {
@@ -1302,10 +1316,20 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     if (event.nativeEvent.isComposing) return;
     const { row, col } = selection.focus;
     const mod = event.ctrlKey || event.metaKey;
-    const move = (dRow: number, dCol: number, extend = false) => {
+    const moveTo = (nextRow: number, dCol: number, extend = false) => {
       event.preventDefault();
-      const next = revealCell({ row: row + dRow, col: col + dCol });
+      const next = revealCell({ row: nextRow, col: col + dCol });
       setSelection(extend ? { anchor: selection.anchor, focus: next } : { anchor: next, focus: next });
+    };
+    // Vertical steps count visible rows: a filter-hidden row is never landed on.
+    const move = (dRow: number, dCol: number, extend = false) =>
+      moveTo(dRow === 0 ? row : rowLayout.nextVisible(row, dRow), dCol, extend);
+    // A page is one row short of the viewport, measured in pixels so custom
+    // row heights count for what they are.
+    const movePage = (direction: 1 | -1, extend: boolean) => {
+      const span = Math.max(ROW_HEIGHT, scroll.height / gridZoom - HEADER_HEIGHT - ROW_HEIGHT);
+      const target = rowLayout.rowAtY(rowLayout.offsetOf(row) + direction * span);
+      moveTo(target === row ? rowLayout.nextVisible(row, direction) : target, 0, extend);
     };
     const openEditor = (value?: string) => {
       event.preventDefault();
@@ -1352,10 +1376,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         break;
       }
       case "PageDown":
-        move(pageSize, 0, event.shiftKey);
+        movePage(1, event.shiftKey);
         break;
       case "PageUp":
-        move(-pageSize, 0, event.shiftKey);
+        movePage(-1, event.shiftKey);
         break;
       case "Tab":
         event.preventDefault();
@@ -2121,10 +2145,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     const viewLeft = scroll.left / gridZoom;
     const viewWidth = scroll.width / gridZoom;
     const viewHeight = scroll.height / gridZoom;
-    const rows: number[] = [];
-    const startRow = Math.max(0, Math.floor(viewTop / ROW_HEIGHT) - 2);
-    const endRow = Math.min(sheet.rowCount - 1, startRow + Math.ceil(viewHeight / ROW_HEIGHT) + 4);
-    for (let row = startRow; row <= endRow; row += 1) rows.push(row);
+    // Hidden rows are left out and the window follows the real row heights;
+    // the cells start one header band below the top of the canvas.
+    const rows = rowLayout.visibleRows(viewTop - HEADER_HEIGHT, viewTop + viewHeight - HEADER_HEIGHT);
     const columns: Array<{ col: number; x: number }> = [];
     let x = 0;
     let startCol = 0;
@@ -2140,7 +2163,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       x += width;
     }
     return { rows, columns, startCol };
-  }, [scroll, sheet, gridZoom]);
+  }, [scroll, sheet, gridZoom, rowLayout]);
 
   const parsedSelectionBounds = parseRange(
     `${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`,
@@ -2266,16 +2289,13 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   // The touch-only fill handle sits on the selection's bottom-right corner.
   const fillHandle = {
     x: columnX(selectionBounds.end.col) + (sheet.colWidths[String(selectionBounds.end.col)] ?? DEFAULT_COL_WIDTH),
-    y:
-      ROW_HEIGHT +
-      selectionBounds.end.row * ROW_HEIGHT +
-      (sheet.rowHeights[String(selectionBounds.end.row)] ?? ROW_HEIGHT),
+    y: HEADER_HEIGHT + rowLayout.offsetOf(selectionBounds.end.row) + rowLayout.heightOf(selectionBounds.end.row),
   };
   // Touch selection handles: round grips on the top-left and bottom-right
   // corners (centred on the corner by CSS) that drag the selection's extent.
   const selectHandleStart = {
     x: columnX(selectionBounds.start.col),
-    y: ROW_HEIGHT + selectionBounds.start.row * ROW_HEIGHT,
+    y: HEADER_HEIGHT + rowLayout.offsetOf(selectionBounds.start.row),
   };
 
   const selectionAddress = formatAddress(selection.focus.row, selection.focus.col);
@@ -2306,15 +2326,15 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   // The arrow sits inside the right edge of the active cell, in canvas
   // coordinates like the fill handle. The list opens below the cell, or above
   // it when the viewport has no room left underneath.
-  const listCellHeight = sheet.rowHeights[String(selection.focus.row)] ?? ROW_HEIGHT;
+  const listCellHeight = rowLayout.heightOf(selection.focus.row);
   const listCell =
     activeListItems.length > 0 && !editing && listCellHeight > 0
       ? (() => {
           const left = columnX(selection.focus.col);
           const width = sheet.colWidths[String(selection.focus.col)] ?? DEFAULT_COL_WIDTH;
-          const top = ROW_HEIGHT + selection.focus.row * ROW_HEIGHT;
+          const top = HEADER_HEIGHT + rowLayout.offsetOf(selection.focus.row);
           const popupHeight = Math.min(activeListItems.length, 8) * (android ? 40 : 26) + 8;
-          const viewTop = scroll.top / gridZoom + ROW_HEIGHT;
+          const viewTop = scroll.top / gridZoom + HEADER_HEIGHT;
           const viewBottom = (scroll.top + scroll.height) / gridZoom;
           const above = top + listCellHeight + popupHeight > viewBottom && top - popupHeight >= viewTop;
           return { left, width, top, height: listCellHeight, above };
@@ -2336,7 +2356,6 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   // The last valid row/column, used for Ctrl+End, Space and the data extent.
   const lastRow = Math.max(0, sheet.rowCount - 1);
   const lastCol = Math.max(0, sheet.colCount - 1);
-  const pageSize = Math.max(1, Math.floor(scroll.height / ROW_HEIGHT) - 1);
 
   /** Ctrl+D: copy the first row of the selection down the rest of it. */
   const fillFromSelection = () => {
@@ -2824,7 +2843,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         >
           <div
             className="calc-canvas"
-            style={{ width: HEADER_WIDTH + totalWidth, height: ROW_HEIGHT * (sheet.rowCount + 1), zoom: gridZoom }}
+            style={{ width: HEADER_WIDTH + totalWidth, height: HEADER_HEIGHT + rowLayout.total, zoom: gridZoom }}
           >
             <div
               className="calc-col-headers"
@@ -2852,7 +2871,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   key={row}
                   data-row-header={row}
                   className={`calc-row-header${selection.focus.row === row ? " is-active" : ""}`}
-                  style={{ top: row * ROW_HEIGHT, height: sheet.rowHeights[String(row)] ?? ROW_HEIGHT }}
+                  style={{ top: rowLayout.offsetOf(row), height: rowLayout.heightOf(row) }}
                 >
                   {row + 1}
                 </div>
@@ -2863,7 +2882,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
               style={{
                 transform: `translate(${HEADER_WIDTH}px, 0)`,
                 width: totalWidth,
-                height: ROW_HEIGHT * sheet.rowCount,
+                height: rowLayout.total,
               }}
             >
               {visible.rows.map((row) =>
@@ -2910,9 +2929,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                       className={`calc-cell${inSelection ? " is-selected" : ""}${invalid ? " is-invalid" : ""}`}
                       style={{
                         left: x,
-                        top: row * ROW_HEIGHT,
+                        top: rowLayout.offsetOf(row),
                         width,
-                        height: sheet.rowHeights[String(row)] ?? ROW_HEIGHT,
+                        height: rowLayout.heightOf(row),
                         background: fill ?? tableFill ?? style.fill ?? undefined,
                         fontWeight: style.bold || (tableHeader && tableEntry!.table.headerBold) ? 700 : undefined,
                         fontStyle: style.italic ? "italic" : undefined,
@@ -3049,7 +3068,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   sheet={sheet}
                   workbook={workbook}
                   x={columnX(position.col)}
-                  y={position.row * ROW_HEIGHT + ROW_HEIGHT}
+                  y={HEADER_HEIGHT + rowLayout.offsetOf(position.row)}
                   onRemove={() =>
                     updateSheet((current) => ({
                       ...current,
@@ -3068,7 +3087,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   sheet={sheet}
                   workbook={workbook}
                   x={columnX(position.col)}
-                  y={position.row * ROW_HEIGHT + ROW_HEIGHT}
+                  y={HEADER_HEIGHT + rowLayout.offsetOf(position.row)}
                   onRemove={() =>
                     updateSheet((current) => ({
                       ...current,
