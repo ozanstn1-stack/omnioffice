@@ -3,6 +3,8 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AiAskRequest,
   AiCleanupRequest,
+  AiEditRequest,
+  AiEditResult,
   AiExamplePrompts,
   AiMetadataSuggestion,
   AiLibraryEntry,
@@ -104,6 +106,11 @@ export const aiSummarize = (request: AiSummarizeRequest) => invokeTracked<AiText
 export const aiTranslate = (request: AiTranslateRequest) => invokeTracked<AiTextResult>("ai_translate", { request });
 export const aiAsk = (request: AiAskRequest) => invokeTracked<AiTextResult>("ai_ask", { request });
 export const aiCleanupText = (request: AiCleanupRequest) => invokeTracked<AiTextResult>("ai_cleanup_text", { request });
+/**
+ * In-editor AI action. Deliberately NOT `invokeTracked`: the retry store
+ * persists the invoke args, which here hold the user's selected document text.
+ */
+export const aiEditText = (request: AiEditRequest) => invoke<AiEditResult>("ai_edit_text", { request });
 export const aiSuggestMetadata = (path: string, password: string | undefined, jobId: string) =>
   invokeTracked<AiMetadataSuggestion>("ai_suggest_metadata", { request: { path, password: password || null, jobId } });
 export const aiSaveOutput = (path: string, text: string, overwrite?: string) =>
