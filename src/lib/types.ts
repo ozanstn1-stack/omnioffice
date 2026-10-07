@@ -302,6 +302,12 @@ export interface Settings {
   dismissedUpdate: string;
   /** The first-run welcome card on Home was closed. */
   onboardingDone: boolean;
+  /**
+   * Ask the certificate authority (OCSP, then CRL) whether a signer
+   * certificate was revoked when signatures are verified. Off by default:
+   * it is the one signature feature that contacts a server.
+   */
+  onlineRevocationCheck: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -327,6 +333,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lastUpdateCheck: 0,
   dismissedUpdate: "",
   onboardingDone: false,
+  onlineRevocationCheck: false,
 };
 
 export interface TextMatch {

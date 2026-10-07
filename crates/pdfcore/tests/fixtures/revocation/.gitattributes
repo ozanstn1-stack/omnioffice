@@ -1,0 +1,3 @@
+# DER fixtures are byte contracts; never let a checkout convert line endings.
+*.der binary
+*.crl binary

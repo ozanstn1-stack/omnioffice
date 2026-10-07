@@ -1571,6 +1571,16 @@ const en: Dict = {
   "vault.localNote": "Everything stays on this computer; nothing is uploaded.",
   "nav.pdfStudio": "PDF Studio",
   "studio.title": "PDF Studio",
+  "studio.revocationNotChecked": "Revocation not checked",
+  "studio.revocationGood": "Not revoked ({source}, checked {time})",
+  "studio.revocationRevoked": "Revoked on {time}",
+  "studio.revocationReason": "Revocation reason: {reason}",
+  "studio.revocationUnknown": "Revocation status unknown",
+  "studio.revocationError": "Revocation check failed",
+  "studio.revocationOffline": "The online revocation check could not run; showing the offline result.",
+  "settings.onlineRevocation": "Check certificate revocation online when verifying signatures",
+  "settings.onlineRevocationHint":
+    "Contacts the certificate authority's OCSP and CRL servers named in the signer's certificate (they see its serial number, not your document). Off by default.",
   "studio.subtitle": "Sanitize, flatten and validate PDFs against PDF/A - every result is a real check.",
   "studio.sanitize": "Sanitize",
   "studio.sanitizeHint":
@@ -1613,7 +1623,7 @@ const en: Dict = {
 
   "studio.signatures": "Signatures",
   "studio.signaturesHint":
-    "Real CMS/PKCS#7 detached signatures (SHA-256). Verification runs locally against the embedded certificate; trust is reported as unknown because this build has no system trust store and no revocation check.",
+    "Real CMS/PKCS#7 detached signatures (SHA-256). Verification runs locally against the embedded certificate; trust is reported as unknown because this build has no system trust store. Revocation is only checked online if you turn that on in Settings.",
   "studio.verify": "Verify signatures",
   "studio.verifyDone": "Verification finished",
   "studio.noSignatures": "No digital signatures found in this document.",
@@ -3318,6 +3328,16 @@ const tr: Dict = {
   "vault.localNote": "Her şey bu bilgisayarda kalır; hiçbir şey yüklenmez.",
   "nav.pdfStudio": "PDF Stüdyo",
   "studio.title": "PDF Stüdyo",
+  "studio.revocationNotChecked": "İptal denetlenmedi",
+  "studio.revocationGood": "İptal edilmemiş ({source}, denetim: {time})",
+  "studio.revocationRevoked": "{time} tarihinde iptal edildi",
+  "studio.revocationReason": "İptal nedeni: {reason}",
+  "studio.revocationUnknown": "İptal durumu bilinmiyor",
+  "studio.revocationError": "İptal denetimi başarısız oldu",
+  "studio.revocationOffline": "Çevrimiçi iptal denetimi çalışmadı; çevrimdışı sonuç gösteriliyor.",
+  "settings.onlineRevocation": "İmzalar doğrulanırken sertifika iptalini çevrimiçi denetle",
+  "settings.onlineRevocationHint":
+    "İmzalayanın sertifikasında belirtilen sertifika yetkilisinin OCSP ve CRL sunucularına bağlanır (belgenizi değil, sertifikanın seri numarasını görürler). Varsayılan olarak kapalıdır.",
   "studio.subtitle": "PDF'leri temizleyin, düzleştirin ve PDF/A'ya karşı doğrulayın - her sonuç gerçek bir denetimdir.",
   "studio.sanitize": "Temizle",
   "studio.sanitizeHint":
@@ -3359,7 +3379,7 @@ const tr: Dict = {
 
   "studio.signatures": "İmzalar",
   "studio.signaturesHint":
-    "Gerçek CMS/PKCS#7 ayrık imzalar (SHA-256). Doğrulama, gömülü sertifikaya karşı tamamen yerelde çalışır; bu sürümde sistem güven deposu ve iptal denetimi olmadığı için güven bilinmiyor olarak raporlanır.",
+    "Gerçek CMS/PKCS#7 ayrık imzalar (SHA-256). Doğrulama, gömülü sertifikaya karşı tamamen yerelde çalışır; bu sürümde sistem güven deposu olmadığı için güven bilinmiyor olarak raporlanır. İptal, yalnızca Ayarlar'dan açarsanız çevrimiçi denetlenir.",
   "studio.verify": "İmzaları doğrula",
   "studio.verifyDone": "Doğrulama tamamlandı",
   "studio.noSignatures": "Bu belgede dijital imza bulunamadı.",

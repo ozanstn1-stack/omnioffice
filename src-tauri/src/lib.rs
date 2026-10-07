@@ -248,6 +248,7 @@ pub fn run() {
             sign::pdf_archive_validation_data,
             sign::pdf_sign,
             sign::pdf_verify_signatures,
+            sign::pdf_verify_signatures_online,
             sign::pdf_list_signing_certificates,
             vault::vault_status,
             vault::vault_configure,

@@ -97,6 +97,26 @@ function UpdateControls() {
   );
 }
 
+/** Opt-in OCSP/CRL lookup for signer certificates; the only signature feature that uses the network. */
+function RevocationControl() {
+  const t = useT();
+  const enabled = useSettings((s) => s.settings.onlineRevocationCheck);
+  const updateSettings = useSettings((s) => s.update);
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="checkbox">
+        <input
+          type="checkbox"
+          checked={enabled === true}
+          onChange={(event) => void updateSettings({ onlineRevocationCheck: event.target.checked })}
+        />
+        <span>{t("settings.onlineRevocation")}</span>
+      </label>
+      <p className="text-xs muted">{t("settings.onlineRevocationHint")}</p>
+    </div>
+  );
+}
+
 /** Writes a redacted plain-text report the user can attach to an issue. */
 function DiagnosticsExport() {
   const t = useT();
@@ -423,6 +443,7 @@ export function Settings() {
           <p className="text-[13px] muted leading-relaxed">{t("settings.privacyBody")}</p>
           <VersionLine />
           <UpdateControls />
+          <RevocationControl />
           <DiagnosticsExport />
         </Card>
       </div>

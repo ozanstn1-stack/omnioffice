@@ -30,17 +30,22 @@
 //! byte.
 //!
 //! Honest limitations (surfaced as `trust = "unknown"`):
-//! * There is no system trust store, no network access and therefore no
-//!   certificate path validation or revocation checking. A valid signature
-//!   proves that the private key belonging to the embedded certificate signed
-//!   these bytes - nothing more. Chain linkage is checked structurally
-//!   (issuer/subject plus the certificate signature) but never reported as
+//! * There is no system trust store and therefore no certificate path
+//!   validation. A valid signature proves that the private key belonging to
+//!   the embedded certificate signed these bytes - nothing more. Chain linkage
+//!   is checked structurally (issuer/subject plus the certificate signature)
+//!   but never reported as trusted.
+//! * Revocation is checked only by `verify_signatures_online`, which the app
+//!   calls when the user turned the online check on; the HTTP exchange is the
+//!   app's, the request building and answer verification live in
+//!   `crate::revocation`. A "not revoked" answer does not make a certificate
 //!   trusted.
 //! * Encrypted input PDFs are rejected; decrypt them first.
 //! * PKCS#12 files protected with RC2/RC4 are rejected with a clear error
 //!   (they are legacy-only); AES (PBES2) and 3DES (PKCS#12 PBE) are supported.
 
 use crate::error::{PdfError, PdfResult};
+use crate::revocation::{check_online, RevocationFetcher, RevocationInfo, RevocationSubject};
 use const_oid::ObjectIdentifier;
 use der::asn1::{Any, AnyRef, GeneralizedTime, ObjectIdentifier as DerObjectIdentifier, OctetString, UtcTime};
 use der::{Decode, Encode, Tagged};
@@ -221,12 +226,16 @@ pub struct SignatureInfo {
     #[serde(default)]
     pub timestamp: Option<String>,
     pub algorithm: String,
-    /// Always `"unknown"` in this offline build: no system trust store and no
-    /// revocation checking are available.
+    /// Always `"unknown"`: there is no system trust store. A `good`
+    /// revocation answer does not change that.
     pub trust: String,
     /// Human readable notes about anything that could not be checked.
     #[serde(default)]
     pub notes: Vec<String>,
+    /// Revocation status of the signer certificate. `not_checked` unless the
+    /// signatures were verified with [`verify_signatures_online`].
+    #[serde(default)]
+    pub revocation: RevocationInfo,
 }
 
 /// Result of [`verify_signatures`].
@@ -573,7 +582,7 @@ fn certificate_info(cert: &Certificate, der: &[u8]) -> CertificateInfo {
 /// Digest implied by a combined signature algorithm OID (`sha256WithRSA...`,
 /// `ecdsa-with-SHA256`, ...). Certificate signatures always use a combined
 /// OID, unlike CMS SignerInfo which splits digest and signature algorithm.
-fn digest_of_signature_algorithm(oid: ObjectIdentifier) -> Option<ObjectIdentifier> {
+pub(crate) fn digest_of_signature_algorithm(oid: ObjectIdentifier) -> Option<ObjectIdentifier> {
     match oid {
         OID_SHA1_WITH_RSA => Some(OID_SHA1),
         OID_SHA256_WITH_RSA => Some(OID_SHA256),
@@ -615,7 +624,7 @@ fn certificate_is_self_signed(cert: &Certificate) -> bool {
 
 /// True when the certificate was signed by the CA that issued it (issuer name
 /// matches subject and the signature verifies).
-fn certificate_issued_by(child: &Certificate, parent: &Certificate) -> bool {
+pub(crate) fn certificate_issued_by(child: &Certificate, parent: &Certificate) -> bool {
     child.tbs_certificate.issuer == parent.tbs_certificate.subject && certificate_signed_by(child, parent)
 }
 
@@ -626,7 +635,7 @@ fn certificate_issued_by(child: &Certificate, parent: &Certificate) -> bool {
 /// Verifies an RSA PKCS#1 v1.5 or ECDSA signature. `signature_algorithm` is
 /// the OID from the SignerInfo (or the certificate signature), `digest_oid`
 /// selects the hash; for ECDSA only P-256/SHA-256 is implemented.
-fn verify_signed_data(
+pub(crate) fn verify_signed_data(
     signature_algorithm: ObjectIdentifier,
     digest_oid: ObjectIdentifier,
     spki_der: &[u8],
@@ -671,7 +680,7 @@ fn verify_signed_data(
     }
 }
 
-fn hash_with_oid(oid: ObjectIdentifier, data: &[u8]) -> Option<Vec<u8>> {
+pub(crate) fn hash_with_oid(oid: ObjectIdentifier, data: &[u8]) -> Option<Vec<u8>> {
     match oid {
         OID_SHA1 => Some(Sha1::digest(data).to_vec()),
         OID_SHA256 => Some(Sha256::digest(data).to_vec()),
@@ -1596,8 +1605,20 @@ fn byte_range_pairs(values: &[Object]) -> Option<Vec<(usize, usize)>> {
     Some(pairs)
 }
 
+/// One inspected signature plus the certificate material an online
+/// revocation check needs (none of it is serialized).
+struct InspectedSignature {
+    info: SignatureInfo,
+    signer_der: Option<Vec<u8>>,
+    /// The embedded certificate that issued the signer certificate.
+    issuer_der: Option<Vec<u8>>,
+    signer_self_signed: bool,
+    /// Timestamp `genTime`, else the `signingTime` attribute (Unix seconds).
+    claimed_time: Option<u64>,
+}
+
 /// Inspects one signature dictionary. `pdf` is the complete raw file.
-fn inspect_signature(pdf: &[u8], dict: &Dictionary, field_name: String) -> SignatureInfo {
+fn inspect_signature(pdf: &[u8], dict: &Dictionary, field_name: String) -> InspectedSignature {
     let mut notes: Vec<String> = Vec::new();
     let sub_filter = dict
         .get(b"SubFilter")
@@ -1677,6 +1698,10 @@ fn inspect_signature(pdf: &[u8], dict: &Dictionary, field_name: String) -> Signa
     let mut signing_time: Option<String> = None;
     let mut timestamp: Option<String> = None;
     let mut algorithm = String::from("unknown");
+    let mut signer_der_out: Option<Vec<u8>> = None;
+    let mut issuer_der: Option<Vec<u8>> = None;
+    let mut signer_self_signed = false;
+    let mut claimed_time: Option<u64> = None;
 
     match cms_slice.and_then(|slice| cms::content_info::ContentInfo::from_der(slice).ok()) {
         Some(content) => match content.content.decode_as::<cms::signed_data::SignedData>() {
@@ -1727,7 +1752,7 @@ fn inspect_signature(pdf: &[u8], dict: &Dictionary, field_name: String) -> Signa
                         {
                             digest_matches = expected == computed;
                         }
-                        signing_time = info.signed_attrs.as_ref().and_then(|attrs| {
+                        let signed_at = info.signed_attrs.as_ref().and_then(|attrs| {
                             attrs.iter().find_map(|attribute| {
                                 if attribute.oid != OID_ATTR_SIGNING_TIME {
                                     return None;
@@ -1737,19 +1762,20 @@ fn inspect_signature(pdf: &[u8], dict: &Dictionary, field_name: String) -> Signa
                                     // (x509-cert's Time type does not implement
                                     // DecodeValue for `decode_as`).
                                     match value.tag() {
-                                        der::Tag::UtcTime => value
-                                            .decode_as::<UtcTime>()
-                                            .ok()
-                                            .map(|time| time.to_date_time().to_string()),
-                                        der::Tag::GeneralizedTime => value
-                                            .decode_as::<GeneralizedTime>()
-                                            .ok()
-                                            .map(|time| time.to_date_time().to_string()),
+                                        der::Tag::UtcTime => value.decode_as::<UtcTime>().ok().map(|time| {
+                                            (time.to_date_time().to_string(), time.to_unix_duration().as_secs())
+                                        }),
+                                        der::Tag::GeneralizedTime => {
+                                            value.decode_as::<GeneralizedTime>().ok().map(|time| {
+                                                (time.to_date_time().to_string(), time.to_unix_duration().as_secs())
+                                            })
+                                        }
                                         _ => None,
                                     }
                                 })
                             })
                         });
+                        signing_time = signed_at.as_ref().map(|(text, _)| text.clone());
                         // RFC 3161 timestamp token as an unsigned attribute.
                         timestamp = info.unsigned_attrs.as_ref().and_then(|attrs| {
                             attrs.iter().find_map(|attribute| {
@@ -1764,6 +1790,14 @@ fn inspect_signature(pdf: &[u8], dict: &Dictionary, field_name: String) -> Signa
                                     .and_then(|der| crate::timestamp::parse_token_time(&der))
                             })
                         });
+                        // The time an online revocation answer is compared
+                        // with: the timestamp when there is one.
+                        let timestamp_unix = timestamp.as_ref().and_then(|text| {
+                            GeneralizedTime::from_der(&der_tlv(0x18, text.as_bytes()))
+                                .ok()
+                                .map(|time| time.to_unix_duration().as_secs())
+                        });
+                        claimed_time = timestamp_unix.or(signed_at.map(|(_, unix)| unix));
 
                         // Embedded certificates, ordered as a path starting at
                         // the signer.
@@ -1809,6 +1843,12 @@ fn inspect_signature(pdf: &[u8], dict: &Dictionary, field_name: String) -> Signa
                                     })
                                     .map(|(_, cert)| certificate_is_self_signed(cert))
                                     .unwrap_or(false);
+                            signer_self_signed = certificate_is_self_signed(&signer_cert);
+                            issuer_der = embedded
+                                .iter()
+                                .find(|(der, cert)| *der != signer_der && certificate_issued_by(&signer_cert, cert))
+                                .map(|(der, _)| der.clone());
+                            signer_der_out = Some(signer_der);
                         } else {
                             notes.push("the signer certificate is not embedded in the signature".into());
                         }
@@ -1834,7 +1874,7 @@ fn inspect_signature(pdf: &[u8], dict: &Dictionary, field_name: String) -> Signa
     let modified_after_signing = !digest_matches || unsigned_gap_inside_revision;
     superseded_by_later_revision = superseded_by_later_revision && digest_matches && signature_valid;
 
-    SignatureInfo {
+    let info = SignatureInfo {
         field_name,
         sub_filter,
         covers_whole_document,
@@ -1851,7 +1891,9 @@ fn inspect_signature(pdf: &[u8], dict: &Dictionary, field_name: String) -> Signa
         algorithm,
         trust: "unknown".to_string(),
         notes,
-    }
+        revocation: RevocationInfo::default(),
+    };
+    InspectedSignature { info, signer_der: signer_der_out, issuer_der, signer_self_signed, claimed_time }
 }
 
 /// Finds the certificate referenced by the SignerInfo identifier.
@@ -1948,17 +1990,16 @@ fn chain_is_linked(embedded: &[(Vec<u8>, Certificate)], chain: &[CertificateInfo
     true
 }
 
-/// Verifies every signature embedded in `pdf`. Returns an empty list when the
-/// bytes are not a parseable PDF.
-pub fn verify_signatures(pdf: &[u8]) -> SignatureReport {
-    let mut report = SignatureReport::default();
+/// Inspects every signature embedded in `pdf`; the second value carries the
+/// document-level warnings.
+fn inspect_signatures(pdf: &[u8]) -> (Vec<InspectedSignature>, Vec<String>) {
+    let mut signatures = Vec::new();
     let doc = match Document::load_mem(pdf) {
         Ok(doc) => doc,
         Err(error) => {
-            report
-                .warnings
-                .push(format!("The file could not be parsed as a PDF ({error}), so signatures could not be checked."));
-            return report;
+            let warning =
+                format!("The file could not be parsed as a PDF ({error}), so signatures could not be checked.");
+            return (signatures, vec![warning]);
         }
     };
     let field_names = collect_signature_field_names(&doc);
@@ -1978,9 +2019,60 @@ pub fn verify_signatures(pdf: &[u8]) -> SignatureReport {
             .and_then(crate::docutil::pdf_text_value)
             .or_else(|| field_names.get(id).cloned())
             .unwrap_or_else(|| format!("Signature{}", id.0));
-        report.signatures.push(inspect_signature(pdf, dict, field_name));
+        signatures.push(inspect_signature(pdf, dict, field_name));
     }
-    report
+    (signatures, Vec::new())
+}
+
+/// Verifies every signature embedded in `pdf`. Returns an empty list when the
+/// bytes are not a parseable PDF. Never touches the network: every
+/// `revocation` is `not_checked`.
+pub fn verify_signatures(pdf: &[u8]) -> SignatureReport {
+    let (inspected, warnings) = inspect_signatures(pdf);
+    SignatureReport { signatures: inspected.into_iter().map(|entry| entry.info).collect(), warnings }
+}
+
+/// [`verify_signatures`] plus an online revocation check of each signer
+/// certificate (OCSP, then the CRL) through `fetch`, which performs the HTTP
+/// exchanges. The app calls this only when the user turned the check on.
+pub fn verify_signatures_online(pdf: &[u8], fetch: &RevocationFetcher<'_>) -> SignatureReport {
+    verify_signatures_online_at(pdf, fetch, crate::revocation::unix_now())
+}
+
+/// [`verify_signatures_online`] evaluated at Unix time `now`.
+pub fn verify_signatures_online_at(pdf: &[u8], fetch: &RevocationFetcher<'_>, now: u64) -> SignatureReport {
+    let (inspected, warnings) = inspect_signatures(pdf);
+    // Several signatures by one signer ask the CA once.
+    let mut answers: std::collections::HashMap<(Vec<u8>, Option<u64>), RevocationInfo> =
+        std::collections::HashMap::new();
+    let mut signatures = Vec::with_capacity(inspected.len());
+    for entry in inspected {
+        let mut info = entry.info;
+        info.revocation = match (entry.signer_der, entry.issuer_der) {
+            (None, _) => RevocationInfo::unknown(
+                "the signer certificate is not embedded, so its revocation status cannot be checked",
+                now,
+            ),
+            (Some(_), None) if entry.signer_self_signed => RevocationInfo::unknown(
+                "the signer certificate is self-signed: no certificate authority publishes its revocation status",
+                now,
+            ),
+            (Some(_), None) => RevocationInfo::unknown(
+                "the certificate of the CA that issued the signer certificate is not embedded, so an OCSP or CRL \
+                 answer could not be verified",
+                now,
+            ),
+            (Some(signer), Some(issuer)) => answers
+                .entry((signer.clone(), entry.claimed_time))
+                .or_insert_with(|| match RevocationSubject::new(&signer, &issuer) {
+                    Ok(subject) => check_online(&subject.with_signing_time(entry.claimed_time), fetch, now),
+                    Err(error) => RevocationInfo::error(error.to_string(), now),
+                })
+                .clone(),
+        };
+        signatures.push(info);
+    }
+    SignatureReport { signatures, warnings }
 }
 
 // ---------------------------------------------------------------------------
