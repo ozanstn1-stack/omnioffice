@@ -9,6 +9,7 @@ mod android_intent;
 mod android_keystore;
 mod commands;
 mod concurrency;
+mod crash_log;
 mod diagnostics;
 mod jobs;
 mod library;
@@ -28,12 +29,29 @@ mod vault;
 use jobs::{JobRegistry, JobStore};
 use tauri::Manager;
 
+/// Hands the app log directory to the panic hook as soon as plugins are set
+/// up, which is before the setup hook and the first window.
+fn crash_log_dir_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    tauri::plugin::Builder::<tauri::Wry>::new("omnioffice-crash-log")
+        .setup(|app, _api| {
+            if let Ok(dir) = app.path().app_log_dir() {
+                crash_log::set_log_dir(dir);
+            }
+            Ok(())
+        })
+        .build()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Release builds abort on panic: record the panic in crash.log first (the
+    // log directory is handed over by the plugin below once the app exists).
+    crash_log::install_panic_hook();
     // Persistent job history, shared by the registry and the jobs_* commands.
     // Managed as Arc<JobStore> so both sides see the same records.
     let job_store = JobStore::shared();
     let builder = tauri::Builder::default()
+        .plugin(crash_log_dir_plugin())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
