@@ -690,3 +690,28 @@ describe("Calc list validation dropdown", () => {
     expect(cellAt(1, 0).classList.contains("is-invalid")).toBe(false);
   });
 });
+
+describe("Calc data validation", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+    vi.mocked(isAndroid).mockReturnValue(false);
+  });
+
+  it("flags an invalid value far down a long validated range", () => {
+    // Regression: the grid only looked at the first 100 addresses of each rule,
+    // so A151 inside A1:A500 was never validated.
+    const id = seedWorkbook({ A151: "99", A150: "5" }, (sheet) => ({
+      ...sheet,
+      rowCount: 500,
+      validations: [
+        { id: "v1", range: "A1:A500", kind: "number", values: [], min: 1, max: 10, message: "", allowBlank: true },
+      ],
+    }));
+    render(<Harness id={id} />);
+    const grid = document.querySelector<HTMLElement>(".calc-grid")!;
+    fireEvent.scroll(grid, { target: { scrollTop: 24 * 148 } });
+
+    expect(cellAt(150, 0).classList.contains("is-invalid")).toBe(true);
+    expect(cellAt(149, 0).classList.contains("is-invalid")).toBe(false);
+  });
+});

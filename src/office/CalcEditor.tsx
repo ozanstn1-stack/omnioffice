@@ -91,6 +91,7 @@ import {
   type AuditNode,
 } from "./calc/audit";
 import { tableByName, tableColumnBodyRange } from "./calc/structured";
+import { validationLookup } from "./calc/validation-index";
 import {
   applyCellEdit,
   applyCellEdits,
@@ -2231,6 +2232,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     return bars;
   }, [sheet, computed]);
 
+  // Rule ranges are parsed once per rule list, so the per-cell lookup below is a
+  // few integer comparisons however large the validated range is.
+  const validationAt = validationLookup(sheet.validations);
+
   // The choices of every list validation, resolved once per data change: the
   // inline list as stored, or the values of a referenced range (`=A1:A5`).
   const listItems = useMemo(() => {
@@ -2875,9 +2880,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                     col <= selectionBounds.end.col;
                   const fill = conditionalFills.get(address);
                   const style = cell?.style ?? defaultCellStyle();
-                  const validation = sheet.validations.find((rule) =>
-                    addressesInRange(rule.range, 100).includes(address),
-                  );
+                  const validation = validationAt.find(row, col);
                   const invalid = validation ? !isValid(validation, value, listItems.get(validation.id)) : false;
                   // The structured table (if any) that owns this cell decides
                   // header/banding/outline; the cell's own formatting still wins.
