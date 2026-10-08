@@ -122,10 +122,12 @@ pub fn feature_manifest(kind: &str, model: &Value) -> Vec<String> {
                 if sheets.iter().any(|sheet| !empty(sheet.get("validations"))) {
                     features.push("validation".into());
                 }
-                if sheets
-                    .iter()
-                    .any(|sheet| !empty(sheet.get("conditionalFormats")) || !empty(sheet.get("conditional_formats")))
-                {
+                // `conditional` is the model's key; the other spellings are older drafts.
+                if sheets.iter().any(|sheet| {
+                    !empty(sheet.get("conditional"))
+                        || !empty(sheet.get("conditionalFormats"))
+                        || !empty(sheet.get("conditional_formats"))
+                }) {
                     features.push("conditional-formatting".into());
                 }
                 if sheets.iter().any(|sheet| !empty(sheet.get("pivotTables")) || !empty(sheet.get("pivot_tables"))) {

@@ -3,11 +3,13 @@
 //! Export covers values, formulas, styling, number formats, column widths, row
 //! heights, merges, freeze panes, gridline settings, defined names, autofilters,
 //! tab colours, hyperlinks, cell comments, data validation, conditional
-//! formatting, structured tables, sheet protection, print layout (margins,
+//! formatting (highlight and formula rules, color scales, data bars, icon
+//! sets), structured tables, sheet protection, print layout (margins,
 //! headers/footers, page breaks, print area/titles), charts (column, bar, line,
-//! pie, area) as real ChartML parts anchored to their cells and sheet pictures
-//! in `xl/media` with drawing anchors. Imported pivot caches/tables are
-//! re-exported from the raw parts they came in as.
+//! pie, area, scatter, doughnut) as real ChartML parts anchored to their cells
+//! and sheet pictures in `xl/media` with drawing anchors. Hyperlinks are limited
+//! to http, https, mailto and internal references. Imported pivot caches/tables
+//! are re-exported from the raw parts they came in as.
 //!
 //! Import is two passes: the well-tested `calamine` parser reads values and
 //! formulas from XLSX, XLS and ODS files from Excel and LibreOffice, then a
@@ -53,6 +55,8 @@ struct StyleTable {
     borders: Vec<String>,
     num_formats: Vec<(u32, String)>,
     xfs: Vec<String>,
+    /// Differential formats of the conditional-formatting rules (`<dxfs>`).
+    dxfs: Vec<String>,
     font_keys: BTreeMap<String, usize>,
     fill_keys: BTreeMap<String, usize>,
     border_keys: BTreeMap<String, usize>,
@@ -217,6 +221,40 @@ impl StyleTable {
         index
     }
 
+    /// The `<dxf>` index for a highlight rule's look. A rule without any look
+    /// gets the shared highlight fill, so it still shows something.
+    fn dxf_id(&mut self, fill: Option<&str>, color: Option<&str>, bold: bool, italic: bool) -> usize {
+        let fill = fill.and_then(normalize_hex);
+        let color = color.and_then(normalize_hex);
+        let fill = match (&fill, &color, bold || italic) {
+            (None, None, false) => Some(CONDITIONAL_FILL.to_string()),
+            _ => fill,
+        };
+        let mut xml = String::from("<dxf>");
+        if bold || italic || color.is_some() {
+            xml.push_str("<font>");
+            if bold {
+                xml.push_str("<b/>");
+            }
+            if italic {
+                xml.push_str("<i/>");
+            }
+            if let Some(color) = &color {
+                xml.push_str(&format!("<color rgb=\"{}\"/>", argb_of(color)));
+            }
+            xml.push_str("</font>");
+        }
+        if let Some(fill) = &fill {
+            xml.push_str(&format!("<fill><patternFill><bgColor rgb=\"{}\"/></patternFill></fill>", argb_of(fill)));
+        }
+        xml.push_str("</dxf>");
+        if let Some(index) = self.dxfs.iter().position(|existing| existing == &xml) {
+            return index;
+        }
+        self.dxfs.push(xml);
+        self.dxfs.len() - 1
+    }
+
     fn xml(&self) -> String {
         let mut writer = XmlWriter::new();
         writer.declaration();
@@ -252,14 +290,14 @@ impl StyleTable {
         }
         writer.raw("</cellXfs>");
         writer.raw("<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>");
-        // One differential format backs every conditional-formatting rule, so
-        // the highlight colour a rule shows in the editor is the colour a
-        // spreadsheet shows after the round trip.
-        writer.raw(&format!(
-            "<dxfs count=\"1\"><dxf><font><color rgb=\"{}\"/></font><fill><patternFill><bgColor rgb=\"{}\"/></patternFill></fill></dxf></dxfs>",
-            argb_of(CONDITIONAL_FILL),
-            argb_of(CONDITIONAL_FILL)
-        ));
+        // Every highlight rule points at its own differential format, so the
+        // colours a rule shows in the editor are the colours a spreadsheet shows
+        // after the round trip.
+        writer.raw(&format!("<dxfs count=\"{}\">", self.dxfs.len()));
+        for dxf in &self.dxfs {
+            writer.raw(dxf);
+        }
+        writer.raw("</dxfs>");
         writer.raw("</styleSheet>");
         writer.finish()
     }
@@ -282,7 +320,18 @@ fn column_width_units(pixels: f64) -> f64 {
 struct SheetPart {
     xml: String,
     rels: Vec<(String, String, String)>,
-    comments: Vec<(String, String)>,
+    comments: Vec<SheetNote>,
+}
+
+/// The author a note is filed under when the model does not know who wrote it.
+const DEFAULT_NOTE_AUTHOR: &str = "OmniOffice";
+
+/// One cell note headed for `xl/commentsN.xml` and its VML shape.
+struct SheetNote {
+    address: String,
+    text: String,
+    author: String,
+    visible: bool,
 }
 
 /// One worksheet cell as row XML, or `None` when there is nothing to write.
@@ -343,7 +392,7 @@ fn cell_xml(
 ///
 /// Collected before `sheet_xml` so the caller can assign each commented sheet
 /// its own part number and keep the workbook-wide numbering stable.
-fn sheet_comments(sheet: &Sheet) -> Vec<(String, String)> {
+fn sheet_comments(sheet: &Sheet) -> Vec<SheetNote> {
     let mut comments = Vec::new();
     for (address, cell) in &sheet.cells {
         if cell.is_empty() {
@@ -351,7 +400,18 @@ fn sheet_comments(sheet: &Sheet) -> Vec<(String, String)> {
         }
         if let (Some(text), Some((row, column))) = (cell.comment.as_ref(), crate::address::parse(address)) {
             if !text.trim().is_empty() {
-                comments.push((crate::address::format(row, column), text.clone()));
+                comments.push(SheetNote {
+                    address: crate::address::format(row, column),
+                    text: text.clone(),
+                    author: cell
+                        .comment_author
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|author| !author.is_empty())
+                        .unwrap_or(DEFAULT_NOTE_AUTHOR)
+                        .to_string(),
+                    visible: cell.comment_visible,
+                });
             }
         }
     }
@@ -362,12 +422,13 @@ fn sheet_xml(
     sheet: &Sheet,
     drawing_number: Option<usize>,
     comment_number: Option<usize>,
-    comments: Vec<(String, String)>,
+    comments: Vec<SheetNote>,
     pivot_cells: &[(String, CellValue)],
     table_numbers: &[usize],
     styles: &mut StyleTable,
     shared: &mut Vec<String>,
     shared_index: &mut BTreeMap<String, usize>,
+    warnings: &mut Vec<String>,
 ) -> SheetPart {
     let mut writer = XmlWriter::new();
     writer.declaration();
@@ -426,13 +487,23 @@ fn sheet_xml(
 
     writer.raw("<sheetData>");
     let mut rows: BTreeMap<u32, Vec<(u32, &Cell)>> = BTreeMap::new();
-    let mut hyperlinks: Vec<(String, String)> = Vec::new();
+    // (address, target, display, tooltip) of every link that passes the target check.
+    let mut hyperlinks: Vec<(String, String, Option<String>, Option<String>)> = Vec::new();
+    let mut unsafe_links = 0usize;
     for (address, cell) in &sheet.cells {
         if cell.is_empty() {
             continue;
         }
         if let (Some(target), Some((row, column))) = (cell.link.as_ref(), crate::address::parse(address)) {
-            hyperlinks.push((crate::address::format(row, column), target.clone()));
+            match safe_link_target(target) {
+                Some(target) => hyperlinks.push((
+                    crate::address::format(row, column),
+                    target,
+                    cell.link_display.clone().filter(|text| !text.is_empty()),
+                    cell.link_tooltip.clone().filter(|text| !text.is_empty()),
+                )),
+                None => unsafe_links += 1,
+            }
         }
         if let Some((row, column)) = crate::address::parse(address) {
             rows.entry(row).or_default().push((column, cell));
@@ -531,10 +602,18 @@ fn sheet_xml(
         writer.raw("</mergeCells>");
     }
 
-    // Conditional formatting; each rule points at the shared dxf in styles.xml.
+    // Conditional formatting; a highlight rule points at its own dxf in
+    // styles.xml. A rule that cannot be written stays in the .oswk file and is
+    // reported, the way charts are.
     for (index, rule) in sheet.conditional.iter().enumerate() {
-        if let Some(xml) = conditional_formatting_xml(rule, index) {
-            writer.raw(&xml);
+        match conditional_formatting_xml(rule, index, styles) {
+            Ok(xml) => {
+                writer.raw(&xml);
+            }
+            Err(reason) => warnings.push(format!(
+                "A conditional formatting rule on sheet \"{}\" was kept in the .oswk file only: {reason}.",
+                sheet.name
+            )),
         }
     }
 
@@ -582,18 +661,37 @@ fn sheet_xml(
         }
     }
 
-    // Hyperlinks: one external relationship per target.
+    // Hyperlinks: an external link is one relationship per target; an internal
+    // one (`#Sheet2!A1`) is a `location` and needs none.
     let mut rels: Vec<(String, String, String)> = Vec::new();
+    if unsafe_links > 0 {
+        warnings.push(format!(
+            "{unsafe_links} hyperlink(s) on sheet \"{}\" were not written: only http, https, mailto and internal references are allowed.",
+            sheet.name
+        ));
+    }
     if !hyperlinks.is_empty() {
         writer.raw(&format!("<hyperlinks count=\"{}\">", hyperlinks.len()));
-        for (address, target) in &hyperlinks {
-            let rid = format!("rId{}", rels.len() + 1);
-            writer.raw(&format!("<hyperlink ref=\"{}\" r:id=\"{rid}\"/>", escape_attr(address)));
-            rels.push((
-                rid,
-                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink".into(),
-                target.clone(),
-            ));
+        for (address, target, display, tooltip) in &hyperlinks {
+            let mut attributes = format!("ref=\"{}\"", escape_attr(address));
+            if let Some(location) = target.strip_prefix('#') {
+                attributes.push_str(&format!(" location=\"{}\"", escape_attr(location)));
+            } else {
+                let rid = format!("rId{}", rels.len() + 1);
+                attributes.push_str(&format!(" r:id=\"{rid}\""));
+                rels.push((
+                    rid,
+                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink".into(),
+                    target.clone(),
+                ));
+            }
+            if let Some(display) = display {
+                attributes.push_str(&format!(" display=\"{}\"", escape_attr(display)));
+            }
+            if let Some(tooltip) = tooltip {
+                attributes.push_str(&format!(" tooltip=\"{}\"", escape_attr(tooltip)));
+            }
+            writer.raw(&format!("<hyperlink {attributes}/>"));
         }
         writer.raw("</hyperlinks>");
     }
@@ -650,71 +748,155 @@ fn sheet_xml(
     SheetPart { xml: writer.finish(), rels, comments }
 }
 
-/// Builds a `<conditionalFormatting>` block plus the dxf index it points at.
+/// Highlight colour used by a highlight rule that carries no look of its own.
+pub(crate) const CONDITIONAL_FILL: &str = "#FFF3C4";
+
+/// The threshold types of a color scale, data bar or icon set (`cfvo/@type`).
+pub(crate) const CFVO_KINDS: [&str; 6] = ["min", "max", "num", "percent", "percentile", "formula"];
+
+/// The number of icons in an OOXML icon set name (`3Arrows` -> 3, `5Rating` ->
+/// 5); `None` for a name that is not an icon set.
+pub(crate) fn icon_set_count(name: &str) -> Option<usize> {
+    let count = name.chars().next()?.to_digit(10)? as usize;
+    let tail = &name[1..];
+    ((3..=5).contains(&count) && !tail.is_empty() && tail.chars().all(|ch| ch.is_ascii_alphanumeric())).then_some(count)
+}
+
+/// Even percent thresholds for an icon set: 0/33/67 for three icons, 0/25/50/75
+/// for four, the way Excel fills them in.
+pub(crate) fn default_icon_thresholds(count: usize) -> Vec<CondThreshold> {
+    (0..count)
+        .map(|step| CondThreshold {
+            kind: "percent".into(),
+            value: format!("{}", (step as f64 * 100.0 / count as f64).round() as u32),
+            color: None,
+        })
+        .collect()
+}
+
+/// One `<cfvo>` element.
+fn cfvo_xml(threshold: &CondThreshold) -> Result<String, String> {
+    let kind = threshold.kind.as_str();
+    if !CFVO_KINDS.contains(&kind) {
+        return Err(format!("the threshold type \"{kind}\" is unknown"));
+    }
+    if matches!(kind, "min" | "max") {
+        return Ok(format!("<cfvo type=\"{kind}\"/>"));
+    }
+    let value = threshold.value.trim();
+    Ok(format!("<cfvo type=\"{kind}\" val=\"{}\"/>", escape_attr(if value.is_empty() { "0" } else { value })))
+}
+
+/// Builds a `<conditionalFormatting>` block for one rule.
 ///
-/// Returns `None` for rule kinds that have no XLSX equivalent, which the caller
-/// reports through the import/export warnings rather than emitting a broken
-/// package.
-fn conditional_formatting_xml(rule: &CondRule, index: usize) -> Option<String> {
+/// `Err` carries the reason a rule cannot be written; the caller keeps the rule
+/// in the .oswk file and warns, instead of emitting a package Excel would repair.
+fn conditional_formatting_xml(rule: &CondRule, index: usize, styles: &mut StyleTable) -> Result<String, String> {
     let priority = index + 1;
     let stop = if rule.stop_if_true { " stopIfTrue=\"1\"" } else { "" };
-    let range = escape_attr(&rule.range);
-    let dxf = CONDITIONAL_DXF_ID;
+    if rule.range.trim().is_empty() {
+        return Err("the rule has no range".into());
+    }
+    let range = escape_attr(rule.range.trim());
+    let wrap = |cf_rule: String| format!("<conditionalFormatting sqref=\"{range}\">{cf_rule}</conditionalFormatting>");
     let anchor = anchor_of(&rule.range);
 
-    // A data bar does not use the shared dxf: its colour lives in the rule.
-    if rule.kind == "dataBar" {
-        let color = rule.fill.as_deref().map(argb_of).unwrap_or_else(|| "FF638EC6".into());
-        return Some(format!(
-            "<conditionalFormatting sqref=\"{range}\"><cfRule type=\"dataBar\" priority=\"{priority}\"{stop}><dataBar><cfvo type=\"min\"/><cfvo type=\"max\"/><color rgb=\"{color}\"/></dataBar></cfRule></conditionalFormatting>"
-        ));
+    // Color scales, data bars and icon sets carry their look in the rule; no dxf.
+    match rule.kind.as_str() {
+        "colorScale" => {
+            if !(2..=3).contains(&rule.thresholds.len()) {
+                return Err("a color scale needs two or three colour stops".into());
+            }
+            let mut values = String::new();
+            let mut colors = String::new();
+            for stop_point in &rule.thresholds {
+                values.push_str(&cfvo_xml(stop_point)?);
+                colors.push_str(&format!(
+                    "<color rgb=\"{}\"/>",
+                    argb_of(stop_point.color.as_deref().unwrap_or("#FFFFFF"))
+                ));
+            }
+            return Ok(wrap(format!(
+                "<cfRule type=\"colorScale\" priority=\"{priority}\"{stop}><colorScale>{values}{colors}</colorScale></cfRule>"
+            )));
+        }
+        "dataBar" => {
+            // Automatic minimum and maximum unless the rule names its own.
+            let bounds = match rule.thresholds.as_slice() {
+                [low, high] => format!("{}{}", cfvo_xml(low)?, cfvo_xml(high)?),
+                _ => "<cfvo type=\"min\"/><cfvo type=\"max\"/>".to_string(),
+            };
+            let color = rule.fill.as_deref().map(argb_of).unwrap_or_else(|| "FF638EC6".into());
+            let show = if rule.hide_value { " showValue=\"0\"" } else { "" };
+            return Ok(wrap(format!(
+                "<cfRule type=\"dataBar\" priority=\"{priority}\"{stop}><dataBar{show}>{bounds}<color rgb=\"{color}\"/></dataBar></cfRule>"
+            )));
+        }
+        "iconSet" => {
+            let name =
+                rule.icon_set.as_deref().map(str::trim).filter(|name| !name.is_empty()).unwrap_or("3TrafficLights1");
+            let count = icon_set_count(name).ok_or_else(|| format!("the icon set \"{name}\" is unknown"))?;
+            let thresholds =
+                if rule.thresholds.len() == count { rule.thresholds.clone() } else { default_icon_thresholds(count) };
+            let mut values = String::new();
+            for threshold in &thresholds {
+                values.push_str(&cfvo_xml(threshold)?);
+            }
+            let mut attributes = format!(" iconSet=\"{}\"", escape_attr(name));
+            if rule.hide_value {
+                attributes.push_str(" showValue=\"0\"");
+            }
+            if rule.reverse_icons {
+                attributes.push_str(" reverse=\"1\"");
+            }
+            return Ok(wrap(format!(
+                "<cfRule type=\"iconSet\" priority=\"{priority}\"{stop}><iconSet{attributes}>{values}</iconSet></cfRule>"
+            )));
+        }
+        _ => {}
     }
 
-    // (attributes, formula body) for the remaining rule kinds. The editor
-    // writes `textContains` / `duplicate`; older files may carry the shorter
-    // spellings, so both are accepted.
-    let (attributes, formula): (String, String) = match rule.kind.as_str() {
-        "greater" => (
-            format!("type=\"cellIs\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} operator=\"greaterThan\""),
-            format!("&gt;{}", escape_text(first_value(rule, "0"))),
+    let dxf = styles.dxf_id(rule.fill.as_deref(), rule.color.as_deref(), rule.bold, rule.italic);
+    let cell_is = |operator: &str, formulas: &[&str]| -> String {
+        let body: String = formulas.iter().map(|value| format!("<formula>{}</formula>", escape_text(value))).collect();
+        format!(
+            "<cfRule type=\"cellIs\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} operator=\"{operator}\">{body}</cfRule>"
+        )
+    };
+    // The editor writes `textContains` / `duplicate`; older files may carry the
+    // shorter spellings, so both are accepted.
+    let cf_rule = match rule.kind.as_str() {
+        "greater" => cell_is("greaterThan", &[first_value(rule, "0")]),
+        "less" => cell_is("lessThan", &[first_value(rule, "0")]),
+        "equal" => cell_is("equal", &[first_value(rule, "0")]),
+        "between" => cell_is("between", &[first_value(rule, "0"), second_value(rule, "0")]),
+        "text" | "textContains" => format!(
+            "<cfRule type=\"containsText\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} operator=\"containsText\" text=\"{}\"><formula>NOT(ISERROR(SEARCH(&quot;{}&quot;,{})))</formula></cfRule>",
+            escape_attr(first_value(rule, "")),
+            escape_text(first_value(rule, "")),
+            anchor
         ),
-        "less" => (
-            format!("type=\"cellIs\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} operator=\"lessThan\""),
-            format!("&lt;{}", escape_text(first_value(rule, "0"))),
-        ),
-        "equal" => (
-            format!("type=\"cellIs\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} operator=\"equal\""),
-            escape_text(first_value(rule, "0")),
-        ),
-        "between" => (
-            format!("type=\"cellIs\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} operator=\"between\""),
-            format!("{}~{}", escape_text(first_value(rule, "0")), escape_text(second_value(rule, "0"))),
-        ),
-        "text" | "textContains" => (
-            format!(
-                "type=\"containsText\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} operator=\"containsText\" text=\"{}\"",
-                escape_attr(first_value(rule, ""))
-            ),
-            format!("NOT(ISERROR(SEARCH(&quot;{}&quot;,{})))", escape_text(first_value(rule, "")), anchor),
-        ),
-        "duplicates" | "duplicate" => (
-            format!("type=\"duplicateValues\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop}"),
-            format!("COUNTIF({anchor},{anchor})>1"),
+        "duplicates" | "duplicate" => format!(
+            "<cfRule type=\"duplicateValues\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop}/>"
         ),
         "top" | "bottom" => {
             let rank = rule.top_n.unwrap_or(10);
             let bottom = if rule.kind == "bottom" { " bottom=\"1\"" } else { "" };
-            (
-                format!("type=\"top10\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} rank=\"{rank}\"{bottom}"),
-                String::new(),
+            format!("<cfRule type=\"top10\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} rank=\"{rank}\"{bottom}/>")
+        }
+        "expression" => {
+            let formula = rule.formula.as_deref().map(|formula| formula.trim().trim_start_matches('=').trim()).unwrap_or("");
+            if formula.is_empty() {
+                return Err("the formula rule has no formula".into());
+            }
+            format!(
+                "<cfRule type=\"expression\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop}><formula>{}</formula></cfRule>",
+                escape_text(formula)
             )
         }
-        _ => return None,
+        other => return Err(format!("the rule type \"{other}\" is not exportable")),
     };
-    let formulas = if formula.is_empty() { String::new() } else { format!("<formula>{formula}</formula>") };
-    Some(format!(
-        "<conditionalFormatting sqref=\"{range}\"><cfRule {attributes}>{formulas}</cfRule></conditionalFormatting>"
-    ))
+    Ok(wrap(cf_rule))
 }
 
 fn first_value<'a>(rule: &'a CondRule, fallback: &'a str) -> &'a str {
@@ -726,16 +908,11 @@ fn second_value<'a>(rule: &'a CondRule, fallback: &'a str) -> &'a str {
 }
 
 /// The top-left cell of a range, used as the relative anchor in rule formulas.
-fn anchor_of(range: &str) -> String {
-    range.split(':').next().unwrap_or(range).to_string()
+/// A multi-area range (`A1:A5 C1:C5`) anchors at its first area.
+pub(crate) fn anchor_of(range: &str) -> String {
+    let first = range.split_whitespace().next().unwrap_or(range);
+    first.split(':').next().unwrap_or(first).to_string()
 }
-
-/// One shared dxf for the whole workbook; every rule reuses it so the styles
-/// part stays small and consistent with what the editor preview shows.
-const CONDITIONAL_DXF_ID: usize = 0;
-
-/// Highlight colour used by the single shared differential format.
-const CONDITIONAL_FILL: &str = "#FFF3C4";
 
 // ---------------------------------------------------------------------------
 // Charts
@@ -761,7 +938,7 @@ struct PlannedImage {
 
 /// The chart kinds the exporter writes as real ChartML parts.
 fn chart_kind_supported(kind: &str) -> bool {
-    matches!(kind, "column" | "bar" | "line" | "pie" | "area")
+    matches!(kind, "column" | "bar" | "line" | "pie" | "area" | "scatter" | "doughnut")
 }
 
 /// Quotes a sheet name when a formula reference needs it (`'My Sheet'!`).
@@ -830,6 +1007,8 @@ fn chart_title_xml(text: &str) -> String {
 
 const CHART_CATEGORY_AXIS: u64 = 111_111_111;
 const CHART_VALUE_AXIS: u64 = 222_222_222;
+/// Excel's default doughnut hole, the value `ChartData::hole_size == None` means.
+const DOUGHNUT_DEFAULT_HOLE: u32 = 50;
 
 /// One cached value the way Excel writes `c:v`: plain decimal where possible.
 fn chart_cache_number(value: f64) -> String {
@@ -880,6 +1059,77 @@ fn chart_axes_xml(chart: &ChartData) -> String {
     )
 }
 
+/// The two value axes of a scatter chart: X along the bottom, Y on the left.
+fn scatter_axes_xml(chart: &ChartData) -> String {
+    let x_title = if chart.x_title.is_empty() { String::new() } else { chart_title_xml(&chart.x_title) };
+    let y_title = if chart.y_title.is_empty() { String::new() } else { chart_title_xml(&chart.y_title) };
+    format!(
+        "<c:valAx><c:axId val=\"{x}\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling><c:delete val=\"0\"/><c:axPos val=\"b\"/>{x_title}<c:numFmt formatCode=\"General\" sourceLinked=\"1\"/><c:crossAx val=\"{y}\"/><c:crossBetween val=\"midCat\"/></c:valAx><c:valAx><c:axId val=\"{y}\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling><c:delete val=\"0\"/><c:axPos val=\"l\"/>{y_title}<c:numFmt formatCode=\"General\" sourceLinked=\"1\"/><c:crossAx val=\"{x}\"/><c:crossBetween val=\"midCat\"/></c:valAx>",
+        x = CHART_CATEGORY_AXIS,
+        y = CHART_VALUE_AXIS,
+    )
+}
+
+/// What a scatter style draws: (lines, markers, smoothed lines). `None` and the
+/// unknown spellings are markers only, which is Excel's plain "Scatter".
+pub(crate) fn scatter_flavour(style: Option<&str>) -> (bool, bool, bool) {
+    match style {
+        Some("lineMarker") => (true, true, false),
+        Some("line") => (true, false, false),
+        Some("smoothMarker") => (true, true, true),
+        Some("smooth") => (true, false, true),
+        _ => (false, true, false),
+    }
+}
+
+/// The `c:xVal` of a scatter series. X values that are all numbers are written
+/// as a number reference with their cache; anything else stays a string
+/// reference, which Excel plots as 1, 2, 3, ...
+fn scatter_x_values_xml(reference: &str, cache: &[String]) -> String {
+    let numbers: Vec<f64> = cache.iter().filter_map(|label| label.trim().parse::<f64>().ok()).collect();
+    if cache.is_empty() || numbers.len() == cache.len() {
+        format!(
+            "<c:xVal><c:numRef><c:f>{}</c:f>{}</c:numRef></c:xVal>",
+            escape_text(reference),
+            chart_num_cache_xml(&numbers)
+        )
+    } else {
+        format!(
+            "<c:xVal><c:strRef><c:f>{}</c:f>{}</c:strRef></c:xVal>",
+            escape_text(reference),
+            chart_str_cache_xml(cache)
+        )
+    }
+}
+
+/// The marker and line look of one scatter series, before its data.
+fn scatter_series_look_xml(color: Option<&str>, lines: bool, markers: bool) -> String {
+    let rgb = color.map(|color| argb_of(color).get(2..).unwrap_or("000000").to_string());
+    let line = match (&rgb, lines) {
+        (_, false) => "<a:ln w=\"19050\"><a:noFill/></a:ln>".to_string(),
+        (Some(rgb), true) => {
+            format!(
+                "<a:ln w=\"28575\" cap=\"rnd\"><a:solidFill><a:srgbClr val=\"{rgb}\"/></a:solidFill><a:round/></a:ln>"
+            )
+        }
+        (None, true) => String::new(),
+    };
+    let shape = if line.is_empty() { String::new() } else { format!("<c:spPr>{line}</c:spPr>") };
+    let marker = if !markers {
+        "<c:marker><c:symbol val=\"none\"/></c:marker>".to_string()
+    } else {
+        let fill = rgb
+            .map(|rgb| {
+                format!(
+                    "<c:spPr><a:solidFill><a:srgbClr val=\"{rgb}\"/></a:solidFill><a:ln w=\"9525\"><a:solidFill><a:srgbClr val=\"{rgb}\"/></a:solidFill></a:ln></c:spPr>"
+                )
+            })
+            .unwrap_or_default();
+        format!("<c:marker><c:symbol val=\"circle\"/><c:size val=\"7\"/>{fill}</c:marker>")
+    };
+    format!("{shape}{marker}")
+}
+
 /// Builds one `xl/charts/chartN.xml`. `Err` carries the user-facing reason the
 /// chart cannot be represented; the caller keeps it in `.oswk` and warns.
 fn chart_xml(placement: &ChartPlacement, sheet_name: &str) -> Result<String, String> {
@@ -888,11 +1138,18 @@ fn chart_xml(placement: &ChartPlacement, sheet_name: &str) -> Result<String, Str
     if !chart_kind_supported(kind) {
         return Err(format!("the chart type \"{kind}\" is not exportable"));
     }
-    let categories = absolute_ref(&chart.categories, sheet_name)
-        .ok_or_else(|| "the category range could not be read".to_string())?;
+    let scatter = kind == "scatter";
+    // A scatter chart may leave the X range empty (Excel then plots 1, 2, 3, ...);
+    // every other kind needs its category range.
+    let categories = absolute_ref(&chart.categories, sheet_name);
+    if categories.is_none() && !(scatter && chart.categories.trim().is_empty()) {
+        return Err("the category range could not be read".to_string());
+    }
+    let categories = categories.unwrap_or_default();
     if chart.series.is_empty() {
         return Err("the chart has no data series".into());
     }
+    let (scatter_lines, scatter_markers, scatter_smooth) = scatter_flavour(chart.scatter_style.as_deref());
 
     let mut series_xml = String::new();
     for (index, series) in chart.series.iter().enumerate() {
@@ -902,6 +1159,23 @@ fn chart_xml(placement: &ChartPlacement, sheet_name: &str) -> Result<String, Str
             "<c:ser><c:idx val=\"{index}\"/><c:order val=\"{index}\"/><c:tx><c:v>{}</c:v></c:tx>",
             escape_text(&series.name)
         ));
+        // Cached labels/values from an imported ChartML part are written back
+        // so a chart whose source range lives outside the package still renders
+        // and a second import sees the same model.
+        let value_cache =
+            chart.series_values_cache.get(index).map(|values| chart_num_cache_xml(values)).unwrap_or_default();
+        if scatter {
+            series_xml.push_str(&scatter_series_look_xml(series.color.as_deref(), scatter_lines, scatter_markers));
+            if !categories.is_empty() {
+                series_xml.push_str(&scatter_x_values_xml(&categories, &chart.categories_cache));
+            }
+            series_xml.push_str(&format!(
+                "<c:yVal><c:numRef><c:f>{}</c:f>{value_cache}</c:numRef></c:yVal><c:smooth val=\"{}\"/></c:ser>",
+                escape_text(&values),
+                u8::from(scatter_smooth)
+            ));
+            continue;
+        }
         if let Some(color) = series.color.as_deref() {
             let argb = argb_of(color);
             series_xml.push_str(&format!(
@@ -909,12 +1183,7 @@ fn chart_xml(placement: &ChartPlacement, sheet_name: &str) -> Result<String, Str
                 argb.get(2..).unwrap_or("000000")
             ));
         }
-        // Cached labels/values from an imported ChartML part are written back
-        // so a chart whose source range lives outside the package still renders
-        // and a second import sees the same model.
         let category_cache = if index == 0 { chart_str_cache_xml(&chart.categories_cache) } else { String::new() };
-        let value_cache =
-            chart.series_values_cache.get(index).map(|values| chart_num_cache_xml(values)).unwrap_or_default();
         series_xml.push_str(&format!(
             "<c:cat><c:strRef><c:f>{}</c:f>{category_cache}</c:strRef></c:cat><c:val><c:numRef><c:f>{}</c:f>{value_cache}</c:numRef></c:val></c:ser>",
             // A sheet name can contain `&` or `<`; the reference has to be
@@ -965,6 +1234,23 @@ fn chart_xml(placement: &ChartPlacement, sheet_name: &str) -> Result<String, Str
             plot.push_str(&format!(
                 "<c:pieChart><c:varyColors val=\"1\"/>{series_xml}{labels}<c:firstSliceAng val=\"0\"/></c:pieChart>"
             ));
+        }
+        "doughnut" => {
+            let hole = chart.hole_size.unwrap_or(DOUGHNUT_DEFAULT_HOLE).clamp(10, 90);
+            plot.push_str(&format!(
+                "<c:doughnutChart><c:varyColors val=\"1\"/>{series_xml}{labels}<c:firstSliceAng val=\"0\"/><c:holeSize val=\"{hole}\"/></c:doughnutChart>"
+            ));
+        }
+        "scatter" => {
+            // Excel spells every drawn flavour `lineMarker` (or `smoothMarker`);
+            // whether lines and markers show is decided per series above.
+            let style = if scatter_smooth { "smoothMarker" } else { "lineMarker" };
+            plot.push_str(&format!(
+                "<c:scatterChart><c:scatterStyle val=\"{style}\"/><c:varyColors val=\"0\"/>{series_xml}{labels}<c:axId val=\"{cat}\"/><c:axId val=\"{val}\"/></c:scatterChart>",
+                cat = CHART_CATEGORY_AXIS,
+                val = CHART_VALUE_AXIS,
+            ));
+            axes = scatter_axes_xml(chart);
         }
         _ => return Err(format!("the chart type \"{kind}\" is not exportable")),
     }
@@ -1434,6 +1720,7 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
             &mut styles,
             &mut shared,
             &mut shared_index,
+            &mut warnings,
         ));
     }
     if pivots_materialized > 0 {
@@ -1850,13 +2137,26 @@ fn defined_name_xml(entry: &NamedRange, local_sheet_id: Option<usize>) -> Option
 
 /// The `<comments>` part for one sheet, carrying only that sheet's notes.
 fn comments_xml(part: &SheetPart) -> String {
+    // Each distinct author is listed once; a comment points at it by position.
+    let mut authors: Vec<&str> = Vec::new();
+    for note in &part.comments {
+        if !authors.contains(&note.author.as_str()) {
+            authors.push(&note.author);
+        }
+    }
     let mut comments_xml = String::from(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<comments xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><authors><author>OmniOffice</author></authors><commentList>",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<comments xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><authors>",
     );
-    for (address, text) in &part.comments {
+    for author in &authors {
+        comments_xml.push_str(&format!("<author>{}</author>", escape_text(author)));
+    }
+    comments_xml.push_str("</authors><commentList>");
+    for note in &part.comments {
+        let author_id = authors.iter().position(|author| *author == note.author).unwrap_or(0);
         comments_xml.push_str(&format!(
-            "<comment ref=\"{address}\" authorId=\"0\"><text><r><rPr><sz val=\"9\"/></rPr><t xml:space=\"preserve\">{text}</t></r></text></comment>",
-            text = escape_text(text)
+            "<comment ref=\"{}\" authorId=\"{author_id}\"><text><r><rPr><sz val=\"9\"/></rPr><t xml:space=\"preserve\">{text}</t></r></text></comment>",
+            note.address,
+            text = escape_text(&note.text)
         ));
     }
     comments_xml.push_str("</commentList></comments>");
@@ -1876,11 +2176,13 @@ fn comments_vml(part: &SheetPart) -> String {
     vml.push_str(
         "<v:shapetype id=\"_x0000_t202\" coordsize=\"21600,21600\" o:spt=\"202\" path=\"m,l,21600r21600,l21600,xe\"><v:stroke joinstyle=\"miter\"/><v:path gradientshapeok=\"t\" o:connecttype=\"rect\"/></v:shapetype>",
     );
-    for (shape_id, (address, _)) in (1025u32..).zip(part.comments.iter()) {
+    for (shape_id, note) in (1025u32..).zip(part.comments.iter()) {
         // Column and row are zero based in the ClientData block.
-        let (row, column) = crate::address::parse(address).unwrap_or((0, 0));
+        let (row, column) = crate::address::parse(&note.address).unwrap_or((0, 0));
+        // A note that stays on screen says so twice, the way Excel does.
+        let (visibility, visible) = if note.visible { ("visible", "<x:Visible/>") } else { ("hidden", "") };
         vml.push_str(&format!(
-            "<v:shape id=\"_x0000_s{shape_id}\" type=\"#_x0000_t202\" style=\"position:absolute;margin-left:59.25pt;margin-top:1.5pt;width:108pt;height:59.25pt;z-index:1;visibility:hidden\" fillcolor=\"#ffffe1\" o:insetmode=\"auto\"><v:fill color2=\"#ffffe1\"/><v:shadow on=\"t\" color=\"black\" obscured=\"t\"/><v:path o:connecttype=\"none\"/><v:textbox style=\"mso-direction-alt:auto\"><div style=\"text-align:left\"/></v:textbox><x:ClientData ObjectType=\"Note\"><x:MoveWithCells/><x:SizeWithCells/><x:AutoFill>False</x:AutoFill><x:Row>{row}</x:Row><x:Column>{column}</x:Column></x:ClientData></v:shape>"
+            "<v:shape id=\"_x0000_s{shape_id}\" type=\"#_x0000_t202\" style=\"position:absolute;margin-left:59.25pt;margin-top:1.5pt;width:108pt;height:59.25pt;z-index:1;visibility:{visibility}\" fillcolor=\"#ffffe1\" o:insetmode=\"auto\"><v:fill color2=\"#ffffe1\"/><v:shadow on=\"t\" color=\"black\" obscured=\"t\"/><v:path o:connecttype=\"none\"/><v:textbox style=\"mso-direction-alt:auto\"><div style=\"text-align:left\"/></v:textbox><x:ClientData ObjectType=\"Note\"><x:MoveWithCells/><x:SizeWithCells/><x:AutoFill>False</x:AutoFill><x:Row>{row}</x:Row><x:Column>{column}</x:Column>{visible}</x:ClientData></v:shape>"
         ));
     }
     vml.push_str("</xml>");
@@ -2123,6 +2425,9 @@ struct ImportedStyles {
     /// `dxf` fill and font colours, indexed by `dxfId` in conditional rules.
     dxf_fills: Vec<Option<String>>,
     dxf_colors: Vec<Option<String>>,
+    /// Bold and italic flags of the same `dxf` entries.
+    dxf_bold: Vec<bool>,
+    dxf_italic: Vec<bool>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -2428,7 +2733,7 @@ fn apply_worksheet_part(
     apply_sheet_filter(&root, sheet);
     apply_validations(&root, sheet, warnings);
     apply_conditional(&root, sheet, styles, warnings);
-    apply_hyperlinks(zip, part, &root, sheet);
+    apply_hyperlinks(zip, part, &root, sheet, warnings);
     apply_comments(zip, part, sheet, warnings);
     apply_tables(zip, part, &root, sheet, table_number, warnings);
     apply_print_settings(&root, sheet);
@@ -2805,79 +3110,241 @@ fn numeric_bounds(operator: &str, first: &str, second: &str) -> (Option<f64>, Op
     }
 }
 
+/// The first area of a range with absolute marks (`B2:B5` -> `$B$2:$B$5`), the
+/// form a rule formula needs to refer to the whole range from every cell.
+pub(crate) fn absolute_area(range: &str) -> String {
+    let first = range.split_whitespace().next().unwrap_or(range);
+    let cell = |row: u32, column: u32| format!("${}${}", crate::address::column_name(column), row + 1);
+    match crate::address::parse_range(first) {
+        Some(((start_row, start_col), (end_row, end_col))) if (start_row, start_col) != (end_row, end_col) => {
+            format!("{}:{}", cell(start_row, start_col), cell(end_row, end_col))
+        }
+        Some(((row, column), _)) => cell(row, column),
+        None => first.to_string(),
+    }
+}
+
+/// Reads one `<cfRule>` into a model rule. `None` when the rule has a type or
+/// shape the model cannot hold.
+///
+/// Types with a model kind of their own (cell value, text, duplicates, top and
+/// bottom, color scale, data bar, icon set) map straight onto it. Excel states
+/// every other highlight rule as a formula (`beginsWith`, `containsBlanks`,
+/// `notBetween`, `aboveAverage`, ...), so those become `expression` rules and
+/// keep their meaning.
+fn read_cf_rule(rule: &XmlNode, range: &str, styles: &ImportedStyles) -> Option<CondRule> {
+    let kind = rule.attr("type").unwrap_or("").trim();
+    let dxf = parse_u32_attr(rule, "dxfId").map(|value| value as usize);
+    let mut out = CondRule {
+        range: range.to_string(),
+        stop_if_true: attr_on(rule, "stopIfTrue"),
+        fill: dxf.and_then(|index| styles.dxf_fills.get(index).cloned()).flatten(),
+        color: dxf.and_then(|index| styles.dxf_colors.get(index).cloned()).flatten(),
+        bold: dxf.and_then(|index| styles.dxf_bold.get(index).copied()).unwrap_or(false),
+        italic: dxf.and_then(|index| styles.dxf_italic.get(index).copied()).unwrap_or(false),
+        ..Default::default()
+    };
+    let formulas: Vec<String> =
+        rule.children_of("formula").iter().map(|node| node.deep_text().trim().to_string()).collect();
+    let formula = |index: usize| formulas.get(index).cloned().unwrap_or_default();
+    let anchor = anchor_of(range);
+    let all = absolute_area(range);
+    let text = rule.attr("text").unwrap_or("").to_string();
+    let quoted = text.replace('"', "\"\"");
+    let expression = |out: &mut CondRule, formula: String| {
+        out.kind = "expression".into();
+        out.formula = Some(formula);
+    };
+    // A formula Excel stored with the rule wins over one rebuilt from its parts.
+    let stated = |fallback: String| Some(formula(0)).filter(|stated| !stated.is_empty()).unwrap_or(fallback);
+    match kind {
+        "cellIs" => match rule.attr("operator").unwrap_or("") {
+            "greaterThan" => {
+                out.kind = "greater".into();
+                out.values = vec![strip_operator(&formula(0))];
+            }
+            "lessThan" => {
+                out.kind = "less".into();
+                out.values = vec![strip_operator(&formula(0))];
+            }
+            "equal" => {
+                out.kind = "equal".into();
+                out.values = vec![strip_operator(&formula(0))];
+            }
+            "between" => {
+                let first = formula(0);
+                // Older files of this editor encode `between` as one formula
+                // with a `~` separator; Excel uses two formula elements.
+                let (low, high) = match first.split_once('~') {
+                    Some((low, high)) => (low.to_string(), high.to_string()),
+                    None => (first, formula(1)),
+                };
+                out.kind = "between".into();
+                out.values = vec![strip_operator(&low), strip_operator(&high)];
+            }
+            "greaterThanOrEqual" => expression(&mut out, format!("{anchor}>={}", formula(0))),
+            "lessThanOrEqual" => expression(&mut out, format!("{anchor}<={}", formula(0))),
+            "notEqual" => expression(&mut out, format!("{anchor}<>{}", formula(0))),
+            "notBetween" => expression(&mut out, format!("OR({anchor}<{},{anchor}>{})", formula(0), formula(1))),
+            _ => return None,
+        },
+        "containsText" => {
+            out.kind = "textContains".into();
+            out.values = vec![if text.is_empty() { contains_text_value(&formula(0)) } else { text }];
+        }
+        "notContainsText" => expression(&mut out, stated(format!("ISERROR(SEARCH(\"{quoted}\",{anchor}))"))),
+        "beginsWith" => expression(&mut out, stated(format!("LEFT({anchor},LEN(\"{quoted}\"))=\"{quoted}\""))),
+        "endsWith" => expression(&mut out, stated(format!("RIGHT({anchor},LEN(\"{quoted}\"))=\"{quoted}\""))),
+        "containsBlanks" => expression(&mut out, stated(format!("LEN(TRIM({anchor}))=0"))),
+        "notContainsBlanks" => expression(&mut out, stated(format!("LEN(TRIM({anchor}))>0"))),
+        "containsErrors" => expression(&mut out, stated(format!("ISERROR({anchor})"))),
+        "notContainsErrors" => expression(&mut out, stated(format!("NOT(ISERROR({anchor}))"))),
+        "timePeriod" => {
+            // The period itself (`period="lastWeek"`) lives in the stated formula.
+            let stated = formula(0);
+            if stated.is_empty() {
+                return None;
+            }
+            expression(&mut out, stated);
+        }
+        "duplicateValues" => out.kind = "duplicate".into(),
+        "uniqueValues" => expression(&mut out, format!("COUNTIF({all},{anchor})=1")),
+        "top10" => {
+            let rank = parse_u32_attr(rule, "rank").unwrap_or(10);
+            let bottom = attr_on(rule, "bottom");
+            if attr_on(rule, "percent") {
+                // "Top 10 percent" is not a count; as a formula it stays exact.
+                expression(
+                    &mut out,
+                    if bottom {
+                        format!("{anchor}<=PERCENTILE({all},{rank}/100)")
+                    } else {
+                        format!("{anchor}>=PERCENTILE({all},1-{rank}/100)")
+                    },
+                );
+            } else {
+                out.kind = if bottom { "bottom" } else { "top" }.into();
+                out.top_n = Some(rank);
+            }
+        }
+        "aboveAverage" => {
+            if parse_u32_attr(rule, "stdDev").unwrap_or(0) > 0 {
+                return None;
+            }
+            let above = rule.attr("aboveAverage").map(|value| !matches!(value.trim(), "0" | "false")).unwrap_or(true);
+            let operator = match (above, attr_on(rule, "equalAverage")) {
+                (true, false) => ">",
+                (true, true) => ">=",
+                (false, false) => "<",
+                (false, true) => "<=",
+            };
+            expression(&mut out, format!("{anchor}{operator}AVERAGE({all})"));
+        }
+        "expression" => {
+            let stated = formula(0);
+            if stated.is_empty() {
+                return None;
+            }
+            expression(&mut out, stated.trim_start_matches('=').trim().to_string());
+        }
+        "colorScale" => {
+            let scale = rule.child("colorScale")?;
+            let values = scale.children_of("cfvo");
+            let colors = scale.children_of("color");
+            if !(2..=3).contains(&values.len()) || values.len() != colors.len() {
+                return None;
+            }
+            out.kind = "colorScale".into();
+            for (value, color) in values.into_iter().zip(colors) {
+                let mut threshold = read_cfvo(value)?;
+                // A theme or indexed colour has no portable value; white keeps the stop.
+                threshold.color = Some(color_of(color).unwrap_or_else(|| "#FFFFFF".into()));
+                out.thresholds.push(threshold);
+            }
+            out.fill = None;
+            out.color = None;
+        }
+        "dataBar" => {
+            let bar = rule.child("dataBar")?;
+            out.kind = "dataBar".into();
+            out.fill = bar.child("color").and_then(color_of);
+            out.color = None;
+            out.hide_value = bar.attr("showValue").map(|value| matches!(value.trim(), "0" | "false")).unwrap_or(false);
+            let values = bar.children_of("cfvo");
+            if let [low, high] = values.as_slice() {
+                let (low, high) = (read_cfvo(low)?, read_cfvo(high)?);
+                // The automatic bounds are the default; only explicit ones are kept.
+                if !(low.kind == "min" && high.kind == "max") {
+                    out.thresholds = vec![low, high];
+                }
+            }
+        }
+        "iconSet" => {
+            let set = rule.child("iconSet")?;
+            let name = set.attr("iconSet").map(str::trim).filter(|name| !name.is_empty()).unwrap_or("3TrafficLights1");
+            let count = icon_set_count(name)?;
+            let values = set.children_of("cfvo");
+            if values.len() != count {
+                return None;
+            }
+            out.kind = "iconSet".into();
+            out.icon_set = Some(name.to_string());
+            out.reverse_icons = attr_on(set, "reverse");
+            out.hide_value = set.attr("showValue").map(|value| matches!(value.trim(), "0" | "false")).unwrap_or(false);
+            for value in values {
+                out.thresholds.push(read_cfvo(value)?);
+            }
+            out.fill = None;
+            out.color = None;
+        }
+        _ => return None,
+    }
+    Some(out)
+}
+
+/// One `<cfvo>`; `None` for a threshold type the model does not know.
+fn read_cfvo(node: &XmlNode) -> Option<CondThreshold> {
+    let kind = node.attr("type")?.trim();
+    if !CFVO_KINDS.contains(&kind) {
+        return None;
+    }
+    let value =
+        if matches!(kind, "min" | "max") { String::new() } else { node.attr("val").unwrap_or("").trim().to_string() };
+    Some(CondThreshold { kind: kind.to_string(), value, color: None })
+}
+
 fn apply_conditional(root: &XmlNode, sheet: &mut Sheet, styles: &ImportedStyles, warnings: &mut Vec<String>) {
     let mut unsupported = 0usize;
+    // Excel evaluates rules by `priority` across all blocks, not by position.
+    let mut rules: Vec<(u32, CondRule)> = Vec::new();
     for block in root.children_of("conditionalFormatting") {
         let range = block.attr("sqref").unwrap_or("").trim().to_string();
         if range.is_empty() {
             continue;
         }
         for rule in block.children_of("cfRule") {
-            let kind = rule.attr("type").unwrap_or("").trim();
-            let stop_if_true = attr_on(rule, "stopIfTrue");
-            let dxf = parse_u32_attr(rule, "dxfId").map(|value| value as usize);
-            let mut fill = dxf.and_then(|index| styles.dxf_fills.get(index).cloned()).flatten();
-            let color = dxf.and_then(|index| styles.dxf_colors.get(index).cloned()).flatten();
-            let formulas = rule.children_of("formula");
-            let formula =
-                |index: usize| formulas.get(index).map(|node| node.deep_text().trim().to_string()).unwrap_or_default();
-            let (model_kind, values, top_n) = match kind {
-                "cellIs" => match rule.attr("operator").unwrap_or("") {
-                    "greaterThan" => ("greater", vec![strip_operator(&formula(0))], None),
-                    "lessThan" => ("less", vec![strip_operator(&formula(0))], None),
-                    "equal" => ("equal", vec![strip_operator(&formula(0))], None),
-                    "between" => {
-                        let first = formula(0);
-                        let second = formula(1);
-                        // This writer encodes `between` as one formula with a
-                        // `~` separator; Excel uses two formula elements.
-                        let (low, high) = match first.split_once('~') {
-                            Some((low, high)) => (low.to_string(), high.to_string()),
-                            None => (first, second),
-                        };
-                        ("between", vec![strip_operator(&low), strip_operator(&high)], None)
-                    }
-                    _ => {
-                        unsupported += 1;
-                        continue;
-                    }
-                },
-                "containsText" => {
-                    let text =
-                        rule.attr("text").map(str::to_string).unwrap_or_else(|| contains_text_value(&formula(0)));
-                    ("textContains", vec![text], None)
-                }
-                "duplicateValues" => ("duplicate", Vec::new(), None),
-                "top10" => {
-                    let rank = parse_u32_attr(rule, "rank").unwrap_or(10);
-                    if attr_on(rule, "bottom") {
-                        ("bottom", Vec::new(), Some(rank))
-                    } else {
-                        ("top", Vec::new(), Some(rank))
-                    }
-                }
-                "dataBar" => {
-                    if let Some(bar_color) = rule.child("dataBar").and_then(|bar| bar.child("color")).and_then(color_of)
-                    {
-                        fill = Some(bar_color);
-                    }
-                    ("dataBar", Vec::new(), None)
-                }
-                _ => {
-                    unsupported += 1;
-                    continue;
-                }
-            };
-            sheet.conditional.push(CondRule {
-                id: format!("cf{}", sheet.conditional.len() + 1),
-                range: range.clone(),
-                kind: model_kind.into(),
-                values,
-                fill,
-                color,
-                top_n,
-                stop_if_true,
-            });
+            match read_cf_rule(rule, &range, styles) {
+                Some(model) => rules.push((parse_u32_attr(rule, "priority").unwrap_or(u32::MAX), model)),
+                None => unsupported += 1,
+            }
+        }
+    }
+    rules.sort_by_key(|(priority, _)| *priority);
+    for (_, mut rule) in rules {
+        rule.id = format!("cf{}", sheet.conditional.len() + 1);
+        sheet.conditional.push(rule);
+    }
+    // Excel 2010 keeps negative bar colours, borders and custom icons in
+    // worksheet extensions; the basic rule above is imported, those are not.
+    if let Some(extensions) = root.child("extLst") {
+        let mut found = Vec::new();
+        extensions.find_all("cfRule", &mut found);
+        if !found.is_empty() {
+            warnings.push(format!(
+                "Sheet \"{}\" has {} Excel 2010 conditional formatting extension(s) (negative bar colours, custom icons); their extra options were not imported.",
+                sheet.name,
+                found.len()
+            ));
         }
     }
     if unsupported > 0 {
@@ -2904,31 +3371,128 @@ fn contains_text_value(formula: &str) -> String {
     String::new()
 }
 
-fn apply_hyperlinks(zip: &crate::zip::ZipReader, part: &str, root: &XmlNode, sheet: &mut Sheet) {
+/// Cells one hyperlink may cover (`ref="A1:C300"`), and the cells all of a
+/// sheet's links may cover, so a hostile range cannot build millions of cells.
+const MAX_LINK_RANGE_CELLS: usize = 10_000;
+const MAX_LINKED_CELLS: usize = 100_000;
+
+/// Reads `<hyperlinks>`: an external target comes through the sheet's
+/// relationships, an internal one through `location` (kept as `#Sheet2!A1`).
+///
+/// Every target is checked with [`safe_link_target`]; links to files, scripts
+/// and network paths are dropped and counted in one warning.
+fn apply_hyperlinks(
+    zip: &crate::zip::ZipReader,
+    part: &str,
+    root: &XmlNode,
+    sheet: &mut Sheet,
+    warnings: &mut Vec<String>,
+) {
     let Some(links) = root.child("hyperlinks") else { return };
     let relationships = read_relationships(zip, part);
+    let mut dropped = 0usize;
+    let mut linked = 0usize;
     for link in links.children_of("hyperlink") {
-        let Some((row, column)) = link.attr("ref").and_then(crate::address::parse) else { continue };
-        let address = crate::address::format(row, column);
-        // Only external targets have a relationship; internal `location` links
-        // cannot be expressed as a cell link in the model.
-        let Some(target) = link
+        let Some(reference) = link.attr("ref").map(str::trim).filter(|reference| !reference.is_empty()) else {
+            continue;
+        };
+        let external = link
             .attr_any_ns("id")
             .and_then(|id| relationships.get(id))
             .filter(|relationship| relationship.kind.ends_with("/hyperlink"))
-            .map(|relationship| relationship.target.clone())
+            .map(|relationship| relationship.target.trim().to_string());
+        let location = link.attr("location").map(str::trim).filter(|location| !location.is_empty());
+        let target = match (external, location) {
+            (Some(url), None) => url,
+            (Some(url), Some(location)) => format!("{url}#{location}"),
+            (None, Some(location)) => format!("#{location}"),
+            (None, None) => continue,
+        };
+        let Some(target) = safe_link_target(&target) else {
+            dropped += 1;
+            continue;
+        };
+        let display = link.attr("display").filter(|text| !text.is_empty()).map(str::to_string);
+        let tooltip = link.attr("tooltip").filter(|text| !text.is_empty()).map(str::to_string);
+        for address in crate::address::expand_range(reference, MAX_LINK_RANGE_CELLS) {
+            if linked >= MAX_LINKED_CELLS {
+                break;
+            }
+            linked += 1;
+            let cell = sheet.cells.entry(address).or_default();
+            // The cell text is the label; `display` is only worth keeping when
+            // it says something else (or the cell has no text at all).
+            let differs = match &cell.value {
+                CellValue::Text(text) => display.as_deref().is_some_and(|display| display != text),
+                CellValue::Empty => display.is_some(),
+                _ => false,
+            };
+            cell.link = Some(target.clone());
+            cell.link_display = if differs { display.clone() } else { None };
+            cell.link_tooltip = tooltip.clone();
+        }
+    }
+    if dropped > 0 {
+        warnings.push(format!(
+            "{dropped} hyperlink(s) on sheet \"{}\" were dropped: only http, https, mailto and internal references are allowed.",
+            sheet.name
+        ));
+    }
+}
+
+/// The note text of a `<comment>`: Excel starts a rich note with the author's
+/// name in a bold run ("Ada:"), which belongs to the author field and not to the
+/// text; the legacy copy of a threaded comment carries a notice that is dropped
+/// to leave the comment itself.
+fn note_text(text: Option<&XmlNode>, author: Option<&str>) -> String {
+    let Some(text) = text else { return String::new() };
+    let runs = text.children_of("r");
+    let mut out = String::new();
+    if runs.is_empty() {
+        out = text.deep_text();
+    }
+    for (index, run) in runs.iter().enumerate() {
+        let run_text = run.child("t").map(XmlNode::deep_text).unwrap_or_default();
+        let bold = run.child("rPr").is_some_and(|properties| properties.child("b").is_some());
+        let names_the_author = author.is_some_and(|author| run_text.trim().trim_end_matches(':').trim() == author);
+        if index == 0 && bold && names_the_author {
+            continue;
+        }
+        out.push_str(&run_text);
+    }
+    let out = out.trim();
+    if let Some((_, comment)) = out.strip_prefix("[Threaded comment]").and_then(|rest| rest.split_once("Comment:")) {
+        return comment
+            .lines()
+            .map(|line| line.strip_prefix("    ").unwrap_or(line))
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim()
+            .to_string();
+    }
+    out.to_string()
+}
+
+/// The cells whose note the legacy VML drawing keeps open (`<x:Visible/>` or
+/// `visibility:visible`), as zero-based (row, column).
+fn read_visible_notes(zip: &crate::zip::ZipReader, target: &str) -> std::collections::HashSet<(u32, u32)> {
+    let mut visible = std::collections::HashSet::new();
+    let Ok(root) = zip.read_text(target).and_then(|xml| parse_xml(&xml)) else { return visible };
+    let mut shapes = Vec::new();
+    root.find_all("shape", &mut shapes);
+    for shape in shapes {
+        let Some(client) = descendant(shape, "ClientData").filter(|client| client.attr("ObjectType") == Some("Note"))
         else {
             continue;
         };
-        match sheet.cells.get_mut(&address) {
-            Some(cell) => cell.link = Some(target),
-            None => {
-                // `Cell::is_empty` ignores links, so `Sheet::set` would drop
-                // this cell; insert it directly instead.
-                sheet.cells.insert(address, Cell { link: Some(target), ..Default::default() });
-            }
+        let number = |name: &str| client.child(name).and_then(|node| node.deep_text().trim().parse::<u32>().ok());
+        let open = client.child("Visible").is_some()
+            || shape.attr("style").is_some_and(|style| style.replace(' ', "").contains("visibility:visible"));
+        if let (true, Some(row), Some(column)) = (open, number("Row"), number("Column")) {
+            visible.insert((row, column));
         }
     }
+    visible
 }
 
 fn apply_comments(zip: &crate::zip::ZipReader, part: &str, sheet: &mut Sheet, warnings: &mut Vec<String>) {
@@ -2949,19 +3513,35 @@ fn apply_comments(zip: &crate::zip::ZipReader, part: &str, sheet: &mut Sheet, wa
         }
     };
     let Some(list) = root.child("commentList") else { return };
+    let authors: Vec<String> = root
+        .child("authors")
+        .map(|authors| {
+            authors.children_of("author").iter().map(|author| author.deep_text().trim().to_string()).collect()
+        })
+        .unwrap_or_default();
+    let open_notes = relationships
+        .values()
+        .find(|relationship| relationship.kind.ends_with("/vmlDrawing"))
+        .map(|relationship| read_visible_notes(zip, &resolve_part(part, &relationship.target)))
+        .unwrap_or_default();
     for comment in list.children_of("comment") {
         let Some((row, column)) = comment.attr("ref").and_then(crate::address::parse) else { continue };
-        let text = comment.child("text").map(XmlNode::deep_text).unwrap_or_default().trim().to_string();
+        // A threaded comment's legacy author is "tc={guid}", which names no one.
+        let author = comment
+            .attr("authorId")
+            .and_then(|id| id.trim().parse::<usize>().ok())
+            .and_then(|index| authors.get(index))
+            .filter(|author| !author.is_empty() && !author.starts_with("tc="))
+            .cloned();
+        let text = note_text(comment.child("text"), author.as_deref());
         if text.is_empty() {
             continue;
         }
         let address = crate::address::format(row, column);
-        match sheet.cells.get_mut(&address) {
-            Some(cell) => cell.comment = Some(text),
-            None => {
-                sheet.cells.insert(address, Cell { comment: Some(text), ..Default::default() });
-            }
-        }
+        let cell = sheet.cells.entry(address).or_default();
+        cell.comment = Some(text);
+        cell.comment_author = author.filter(|author| author != DEFAULT_NOTE_AUTHOR);
+        cell.comment_visible = open_notes.contains(&(row, column));
     }
 }
 
@@ -3150,6 +3730,8 @@ fn read_xlsx_chart(xml: &str, warnings: &mut Vec<String>) -> Option<ChartData> {
         "lineChart" => "line".to_string(),
         "pieChart" => "pie".to_string(),
         "areaChart" => "area".to_string(),
+        "scatterChart" => "scatter".to_string(),
+        "doughnutChart" => "doughnut".to_string(),
         other => {
             let raw = other.trim_end_matches("Chart").to_ascii_lowercase();
             if !raw.is_empty() {
@@ -3175,30 +3757,50 @@ fn read_xlsx_chart(xml: &str, warnings: &mut Vec<String>) -> Option<ChartData> {
             "An imported chart has its legend at \"{position}\"; the editor renders charts with a bottom legend."
         ));
     }
+    let scatter = kind == "scatter";
     let mut series = Vec::new();
     let mut categories = String::new();
     let mut categories_cache = Vec::new();
     let mut series_values_cache = Vec::new();
     for ser in plot_child.children_named("ser") {
         let name = ser.child("tx").map(chart_text_block).unwrap_or_default();
-        let range = ser
-            .child("val")
+        // A scatter series carries its X values in `xVal` and its Y values in
+        // `yVal`; every other kind uses `cat` and `val`.
+        let (value_node, category_node) =
+            if scatter { (ser.child("yVal"), ser.child("xVal")) } else { (ser.child("val"), ser.child("cat")) };
+        let range = value_node
             .and_then(|val| descendant(val, "f"))
             .map(XmlNode::deep_text)
             .map(|value| relative_ref(&value))
             .unwrap_or_default();
-        let color = descendant(ser, "spPr")
-            .and_then(|props| descendant(props, "srgbClr"))
-            .and_then(|color| color.attr("val"))
-            .map(|value| format!("#{}", value.trim_start_matches('#').to_ascii_uppercase()));
-        if categories.is_empty() {
-            if let Some(cat) = ser.child("cat") {
-                categories =
-                    descendant(cat, "f").map(XmlNode::deep_text).map(|value| relative_ref(&value)).unwrap_or_default();
+        // A markers-only scatter series puts its colour on the marker, not on
+        // the (hidden) line.
+        let colored = |props: Option<&XmlNode>| {
+            props
+                .and_then(|props| descendant(props, "srgbClr"))
+                .and_then(|color| color.attr("val"))
+                .map(|value| format!("#{}", value.trim_start_matches('#').to_ascii_uppercase()))
+        };
+        let color = if scatter {
+            colored(ser.child("spPr")).or_else(|| colored(ser.child("marker").and_then(|marker| marker.child("spPr"))))
+        } else {
+            colored(descendant(ser, "spPr"))
+        };
+        if let Some(cat) = category_node {
+            let reference =
+                descendant(cat, "f").map(XmlNode::deep_text).map(|value| relative_ref(&value)).unwrap_or_default();
+            if categories.is_empty() {
+                categories = reference;
                 categories_cache = cache_text_values(cat);
+            } else if scatter && !reference.is_empty() && reference != categories {
+                // The model has one X range per chart; a series with its own X
+                // values keeps the first range and reports the difference.
+                warnings.push(format!(
+                    "Scatter series \"{name}\" has its own X values ({reference}); the chart uses {categories} for every series."
+                ));
             }
         }
-        series_values_cache.push(ser.child("val").map(cache_number_values).unwrap_or_default());
+        series_values_cache.push(value_node.map(cache_number_values).unwrap_or_default());
         series.push(ChartSeries { name, range, color });
     }
     let stacked = descendant(plot_child, "grouping")
@@ -3216,10 +3818,29 @@ fn read_xlsx_chart(xml: &str, warnings: &mut Vec<String>) -> Option<ChartData> {
         .and_then(|node| node.attr("val"))
         .map(|value| value == "1")
         .unwrap_or(false);
-    let x_title =
-        descendant(plot, "catAx").and_then(|axis| axis.child("title")).map(chart_text_block).unwrap_or_default();
-    let y_title =
-        descendant(plot, "valAx").and_then(|axis| axis.child("title")).map(chart_text_block).unwrap_or_default();
+    let axis_title =
+        |axis: Option<&XmlNode>| axis.and_then(|axis| axis.child("title")).map(chart_text_block).unwrap_or_default();
+    // A scatter chart has two value axes: the one along the bottom (or top) is
+    // X, the other is Y.
+    let (x_title, y_title) = if scatter {
+        let axes = plot.children_of("valAx");
+        let horizontal =
+            |axis: &XmlNode| matches!(axis.child("axPos").and_then(|node| node.attr("val")), Some("b") | Some("t"));
+        let x_index = axes.iter().position(|axis| horizontal(axis)).unwrap_or(0);
+        let y_index = usize::from(x_index == 0);
+        (axis_title(axes.get(x_index).copied()), axis_title(axes.get(y_index).copied()))
+    } else {
+        (axis_title(descendant(plot, "catAx")), axis_title(descendant(plot, "valAx")))
+    };
+    let hole_size = if kind == "doughnut" {
+        descendant(plot_child, "holeSize")
+            .and_then(|node| parse_u32_attr(node, "val"))
+            .map(|hole| hole.clamp(10, 90))
+            .filter(|hole| *hole != DOUGHNUT_DEFAULT_HOLE)
+    } else {
+        None
+    };
+    let scatter_style = if scatter { read_scatter_style(plot_child) } else { None };
     Some(ChartData {
         kind,
         title,
@@ -3232,7 +3853,44 @@ fn read_xlsx_chart(xml: &str, warnings: &mut Vec<String>) -> Option<ChartData> {
         show_labels,
         categories_cache,
         series_values_cache,
+        hole_size,
+        scatter_style,
     })
+}
+
+/// The scatter flavour of a `c:scatterChart`, in the model's spelling. Excel
+/// writes `lineMarker` for plain scatter too, so the look comes from what the
+/// series draw: a hidden line (`a:ln/a:noFill`) or a `none` marker symbol.
+/// Markers only is the default and reads as `None`.
+fn read_scatter_style(plot_child: &XmlNode) -> Option<String> {
+    let declared = plot_child.child("scatterStyle").and_then(|node| node.attr("val")).unwrap_or("lineMarker");
+    let series = plot_child.children_named("ser").collect::<Vec<_>>();
+    let line_hidden = |ser: &XmlNode| {
+        ser.child("spPr")
+            .and_then(|props| props.child("ln"))
+            .map(|line| line.child("noFill").is_some())
+            .unwrap_or(false)
+    };
+    let marker_hidden = |ser: &XmlNode| {
+        ser.child("marker").and_then(|marker| marker.child("symbol")).and_then(|symbol| symbol.attr("val"))
+            == Some("none")
+    };
+    // `c:smooth` without a value means on (CT_Boolean defaults to true).
+    let smooth = declared.starts_with("smooth")
+        || series
+            .iter()
+            .filter_map(|ser| ser.child("smooth"))
+            .any(|node| node.attr("val").map(|value| matches!(value.trim(), "1" | "true")).unwrap_or(true));
+    let lines = !series.iter().all(|ser| line_hidden(ser)) && !matches!(declared, "marker" | "none");
+    let markers =
+        !(!series.is_empty() && series.iter().all(|ser| marker_hidden(ser))) && !matches!(declared, "line" | "smooth");
+    match (lines, markers, smooth) {
+        (false, ..) => None,
+        (true, true, false) => Some("lineMarker".into()),
+        (true, false, false) => Some("line".into()),
+        (true, true, true) => Some("smoothMarker".into()),
+        (true, false, true) => Some("smooth".into()),
+    }
 }
 
 /// The cell anchor of a `oneCellAnchor`/`twoCellAnchor`, in the model's terms.
@@ -3638,13 +4296,17 @@ fn parse_styles(xml: &str) -> OfficeResult<ImportedStyles> {
         .unwrap_or_default();
     let mut dxf_fills = Vec::new();
     let mut dxf_colors = Vec::new();
+    let mut dxf_bold = Vec::new();
+    let mut dxf_italic = Vec::new();
     if let Some(node) = root.child("dxfs") {
         for dxf in node.children_of("dxf") {
             dxf_fills.push(dxf.child("fill").and_then(parse_fill));
             dxf_colors.push(dxf.child("font").and_then(|font| font.child("color")).and_then(color_of));
+            dxf_bold.push(dxf.child("font").and_then(|font| font.child("b")).map(font_flag).unwrap_or(false));
+            dxf_italic.push(dxf.child("font").and_then(|font| font.child("i")).map(font_flag).unwrap_or(false));
         }
     }
-    Ok(ImportedStyles { cell_styles, dxf_fills, dxf_colors })
+    Ok(ImportedStyles { cell_styles, dxf_fills, dxf_colors, dxf_bold, dxf_italic })
 }
 
 fn parse_xf(
@@ -3980,8 +4642,7 @@ mod tests {
                 y_title: "EUR".into(),
                 stacked: false,
                 show_labels: true,
-                categories_cache: Vec::new(),
-                series_values_cache: Vec::new(),
+                ..Default::default()
             },
             anchor: "D2".into(),
             width_px: 420.0,
@@ -4042,6 +4703,7 @@ mod tests {
                 color: None,
                 top_n,
                 stop_if_true: false,
+                ..Default::default()
             });
         }
         let bytes = write_xlsx(&workbook).unwrap();

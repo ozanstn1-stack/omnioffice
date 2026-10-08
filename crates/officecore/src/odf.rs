@@ -1561,7 +1561,7 @@ struct OdsChartObject {
 /// Why a sheet chart cannot be written to ODS, if it cannot. The writer skips
 /// such a chart; the compatibility report names it before the save.
 pub(crate) fn ods_chart_problem(chart: &ChartData) -> Option<String> {
-    if !matches!(chart.kind.as_str(), "column" | "bar" | "line" | "pie" | "area") {
+    if !matches!(chart.kind.as_str(), "column" | "bar" | "line" | "pie" | "area" | "scatter" | "doughnut") {
         return Some(format!("the chart type \"{}\" is not exportable", chart.kind));
     }
     if chart.series.is_empty() {
@@ -1691,10 +1691,17 @@ fn ods_chart_local_table(chart: &ChartData, cells: &std::collections::BTreeMap<S
     out.push_str("</table:table-row></table:table-header-rows><table:table-rows>");
     for row in 0..rows {
         let label = categories.get(row).map(String::as_str).unwrap_or("");
-        out.push_str(&format!(
-            "<table:table-row><table:table-cell office:value-type=\"string\"><text:p>{}</text:p></table:table-cell>",
-            crate::xml::escape_text(label)
-        ));
+        // The first column of a scatter chart holds X values, which are numbers.
+        match label.trim().parse::<f64>().ok().filter(|number| chart.kind == "scatter" && number.is_finite()) {
+            Some(number) => out.push_str(&format!(
+                "<table:table-row><table:table-cell office:value-type=\"float\" office:value=\"{number}\"><text:p>{}</text:p></table:table-cell>",
+                crate::xml::escape_text(label)
+            )),
+            None => out.push_str(&format!(
+                "<table:table-row><table:table-cell office:value-type=\"string\"><text:p>{}</text:p></table:table-cell>",
+                crate::xml::escape_text(label)
+            )),
+        }
         for values in &series {
             match values.get(row).copied().flatten() {
                 Some(value) => out.push_str(&format!(
@@ -1720,50 +1727,81 @@ fn ods_chart_content(
 ) -> String {
     let chart = &placement.chart;
     let kind = chart.kind.as_str();
-    let pie = kind == "pie";
+    let pie = matches!(kind, "pie" | "doughnut");
+    let scatter = kind == "scatter";
+    // LibreOffice's donut is the `chart:ring` class. ODF has no hole size, so a
+    // custom `hole_size` stays in the .oswk and XLSX files only.
     let class = match kind {
         "line" => "chart:line",
         "pie" => "chart:circle",
+        "doughnut" => "chart:ring",
         "area" => "chart:area",
+        "scatter" => "chart:scatter",
         _ => "chart:bar",
     };
+    let (scatter_lines, scatter_markers, scatter_smooth) = crate::xlsx::scatter_flavour(chart.scatter_style.as_deref());
     let mut plot_properties = String::new();
     if matches!(kind, "column" | "bar") {
         plot_properties.push_str(&format!(" chart:vertical=\"{}\"", kind == "bar"));
     }
-    if chart.stacked && !pie {
+    if chart.stacked && !pie && !scatter {
         plot_properties.push_str(" chart:stacked=\"true\"");
+    }
+    if scatter && scatter_smooth {
+        plot_properties.push_str(" chart:interpolation=\"cubic-spline\"");
     }
     let mut styles = format!(
         "<style:style style:name=\"chPlot\" style:family=\"chart\"><style:chart-properties{plot_properties}/></style:style>"
     );
+    // A scatter chart reads its X values from the first series' domain.
+    let domain = if scatter { ods_range_address(sheet_name, &chart.categories) } else { None };
     let mut series_xml = String::new();
     for (index, series) in chart.series.iter().enumerate() {
         let style_name = format!("chS{}", index + 1);
-        let labels = if chart.show_labels { " chart:data-label-number=\"value\"" } else { "" };
-        let graphic = series
-            .color
-            .as_deref()
-            .and_then(ods_color)
-            .map(|color| {
-                format!(
-                    "<style:graphic-properties draw:fill=\"solid\" draw:fill-color=\"{color}\" svg:stroke-color=\"{color}\"/>"
-                )
-            })
-            .unwrap_or_default();
+        let mut chart_properties = String::new();
+        if chart.show_labels {
+            chart_properties.push_str(" chart:data-label-number=\"value\"");
+        }
+        if scatter {
+            let symbol = if scatter_markers { "automatic" } else { "none" };
+            chart_properties.push_str(&format!(" chart:symbol-type=\"{symbol}\""));
+        }
+        let color = series.color.as_deref().and_then(ods_color);
+        let stroke = if scatter {
+            format!(" draw:stroke=\"{}\"", if scatter_lines { "solid" } else { "none" })
+        } else {
+            String::new()
+        };
+        let graphic = match color {
+            Some(color) => format!(
+                "<style:graphic-properties{stroke} draw:fill=\"solid\" draw:fill-color=\"{color}\" svg:stroke-color=\"{color}\"/>"
+            ),
+            None if scatter => format!("<style:graphic-properties{stroke}/>"),
+            None => String::new(),
+        };
         styles.push_str(&format!(
-            "<style:style style:name=\"{style_name}\" style:family=\"chart\"><style:chart-properties{labels}/>{graphic}</style:style>"
+            "<style:style style:name=\"{style_name}\" style:family=\"chart\"><style:chart-properties{chart_properties}/>{graphic}</style:style>"
         ));
         // LibreOffice stores a literal series name as a quoted string literal.
-        series_xml.push_str(&format!(
-            "<chart:series chart:style-name=\"{style_name}\" chart:class=\"{class}\" chart:values-cell-range-address=\"{}\" loext:label-string=\"{}\"/>",
+        let domain_xml = domain
+            .as_deref()
+            .map(|range| format!("<chart:domain table:cell-range-address=\"{}\"/>", escape(range)))
+            .unwrap_or_default();
+        let series_head = format!(
+            "<chart:series chart:style-name=\"{style_name}\" chart:class=\"{class}\" chart:values-cell-range-address=\"{}\" loext:label-string=\"{}\"",
             escape(&ods_range_address(sheet_name, &series.range).unwrap_or_default()),
             escape(&format!("\"{}\"", series.name.replace('"', "\"\"")))
-        ));
+        );
+        if domain_xml.is_empty() {
+            series_xml.push_str(&format!("{series_head}/>"));
+        } else {
+            series_xml.push_str(&format!("{series_head}>{domain_xml}</chart:series>"));
+        }
     }
     let categories = ods_range_address(sheet_name, &chart.categories);
     let categories_xml = categories
         .as_deref()
+        .filter(|_| !scatter)
         .map(|range| format!("<chart:categories table:cell-range-address=\"{}\"/>", escape(range)))
         .unwrap_or_default();
     // Like the XLSX export, a pie chart has no axes worth a title.
@@ -1857,10 +1895,422 @@ fn ods_cells_with_pivots<'a>(
     cells
 }
 
+// ---------------------------------------------------------------------------
+// ODS conditional formatting (LibreOffice's `calcext` extension)
+// ---------------------------------------------------------------------------
+
+const CALCEXT_NS: &str = "xmlns:calcext=\"urn:org:documentfoundation:names:experimental:calc:xmlns:calcext:1.0\"";
+
+/// Rules of a sheet that cannot be written to ODS, as the reason each was left
+/// out. Mirrors `ods_chart_problem` so the compatibility report can name them.
+pub(crate) fn ods_conditional_problem(rule: &CondRule) -> Option<String> {
+    let known = |threshold: &CondThreshold| crate::xlsx::CFVO_KINDS.contains(&threshold.kind.as_str());
+    match rule.kind.as_str() {
+        "colorScale" if !(2..=3).contains(&rule.thresholds.len()) || !rule.thresholds.iter().all(known) => {
+            Some("a color scale needs two or three valid colour stops".into())
+        }
+        "iconSet" if rule.icon_set.as_deref().map(crate::xlsx::icon_set_count).is_some_and(|count| count.is_none()) => {
+            Some("the icon set is unknown".into())
+        }
+        "expression" if rule.formula.as_deref().map(str::trim).unwrap_or("").is_empty() => {
+            Some("the formula rule has no formula".into())
+        }
+        "greater" | "less" | "equal" | "between" | "text" | "textContains" | "duplicate" | "duplicates" | "top"
+        | "bottom" | "expression" | "colorScale" | "dataBar" | "iconSet" => {
+            rule.range.trim().is_empty().then(|| "the rule has no range".to_string())
+        }
+        other => Some(format!("the rule type \"{other}\" is not exportable")),
+    }
+}
+
+/// `A1:B5 D2` on `sheet` as the space separated cell range list ODF wants
+/// (`Sheet1.A1:Sheet1.B5 Sheet1.D2`); parts that are not ranges are dropped.
+fn ods_target_ranges(sheet: &str, range: &str) -> String {
+    let sheet = ods_sheet_ref(sheet);
+    range
+        .split(|ch: char| ch.is_whitespace() || ch == ',')
+        .filter_map(|part| {
+            let ((start_row, start_col), (end_row, end_col)) = crate::address::parse_range(part)?;
+            let start = format!("{sheet}.{}", crate::address::format(start_row, start_col));
+            Some(if (start_row, start_col) == (end_row, end_col) {
+                start
+            } else {
+                format!("{start}:{sheet}.{}", crate::address::format(end_row, end_col))
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Whether `chars[index..]` starts a cell reference the way a rule formula
+/// writes it (`A1`, `$B$2`, `A1:C5`, `Sheet2!A1`, `'My Sheet'!A1:B2`), and if so
+/// the number of characters it spans and its ODF spelling (`[.A1]`,
+/// `[.A1:.C5]`, `[$Sheet2.A1]`).
+fn ods_reference_at(chars: &[char], index: usize) -> Option<(usize, String)> {
+    let cell_at = |start: usize| -> Option<(usize, String)> {
+        let mut cursor = start;
+        let mut text = String::new();
+        if chars.get(cursor) == Some(&'$') {
+            text.push('$');
+            cursor += 1;
+        }
+        let letters = chars[cursor..].iter().take_while(|ch| ch.is_ascii_alphabetic()).count();
+        if !(1..=3).contains(&letters) {
+            return None;
+        }
+        text.extend(chars[cursor..cursor + letters].iter().map(char::to_ascii_uppercase));
+        cursor += letters;
+        if chars.get(cursor) == Some(&'$') {
+            text.push('$');
+            cursor += 1;
+        }
+        let digits = chars[cursor..].iter().take_while(|ch| ch.is_ascii_digit()).count();
+        if digits == 0 {
+            return None;
+        }
+        text.extend(&chars[cursor..cursor + digits]);
+        Some((cursor + digits - start, text))
+    };
+    // An optional sheet prefix: `Name!` or `'Quoted name'!`.
+    let mut cursor = index;
+    let mut sheet = None;
+    if chars.get(cursor) == Some(&'\'') {
+        let mut end = cursor + 1;
+        let mut name = String::new();
+        while end < chars.len() {
+            match (chars[end], chars.get(end + 1)) {
+                ('\'', Some('\'')) => {
+                    name.push('\'');
+                    end += 2;
+                }
+                ('\'', _) => break,
+                (ch, _) => {
+                    name.push(ch);
+                    end += 1;
+                }
+            }
+        }
+        if chars.get(end) != Some(&'\'') || chars.get(end + 1) != Some(&'!') {
+            return None;
+        }
+        sheet = Some(ods_sheet_ref(&name));
+        cursor = end + 2;
+    } else {
+        let word = chars[cursor..].iter().take_while(|ch| ch.is_alphanumeric() || **ch == '_').count();
+        if word > 0 && chars.get(cursor + word) == Some(&'!') {
+            sheet = Some(chars[cursor..cursor + word].iter().collect());
+            cursor += word + 1;
+        }
+    }
+    let (first_len, first) = cell_at(cursor)?;
+    cursor += first_len;
+    let mut reference = first;
+    if chars.get(cursor) == Some(&':') {
+        if let Some((second_len, second)) = cell_at(cursor + 1) {
+            reference = format!("{reference}:.{second}");
+            cursor += 1 + second_len;
+        }
+    }
+    // `LOG10(` and `Rate1` are not references.
+    if chars.get(cursor).is_some_and(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '(' | '.')) {
+        return None;
+    }
+    let text = match sheet {
+        Some(sheet) => format!("[${sheet}.{reference}]"),
+        None => format!("[.{reference}]"),
+    };
+    Some((cursor - index, text))
+}
+
+/// A rule formula in the editor's spelling (`AND($A2>20,B2<4)`) as ODF writes
+/// it in conditions: bracketed references and `;` between arguments.
+fn formula_to_ods(formula: &str) -> String {
+    let chars: Vec<char> = formula.chars().collect();
+    let mut out = String::new();
+    let (mut index, mut quoted) = (0usize, false);
+    while index < chars.len() {
+        let ch = chars[index];
+        if ch == '"' {
+            quoted = !quoted;
+        }
+        if quoted || ch == '"' {
+            out.push(ch);
+            index += 1;
+            continue;
+        }
+        if ch == ',' {
+            out.push(';');
+            index += 1;
+            continue;
+        }
+        let after_word = index > 0 && (chars[index - 1].is_alphanumeric() || matches!(chars[index - 1], '_' | '.'));
+        if !after_word {
+            if let Some((length, text)) = ods_reference_at(&chars, index) {
+                out.push_str(&text);
+                index += length;
+                continue;
+            }
+        }
+        out.push(ch);
+        index += 1;
+    }
+    out
+}
+
+/// The inverse of [`formula_to_ods`]: `[.$D1]` -> `$D1`, `[$Data.$B1]` ->
+/// `Data!$B1`, `;` -> `,`.
+fn formula_from_ods(formula: &str) -> String {
+    let chars: Vec<char> = formula.chars().collect();
+    let mut out = String::new();
+    let (mut index, mut quoted) = (0usize, false);
+    while index < chars.len() {
+        let ch = chars[index];
+        if ch == '"' {
+            quoted = !quoted;
+        }
+        if quoted || ch == '"' {
+            out.push(ch);
+            index += 1;
+            continue;
+        }
+        match ch {
+            ';' => out.push(','),
+            '[' => {
+                let end = chars[index..].iter().position(|ch| *ch == ']').map_or(chars.len(), |offset| index + offset);
+                let inner: String = chars[index + 1..end.min(chars.len())].iter().collect();
+                out.push_str(&ods_reference_to_ours(&inner));
+                index = end + 1;
+                continue;
+            }
+            _ => out.push(ch),
+        }
+        index += 1;
+    }
+    out
+}
+
+/// `.A1:.B2`, `$Data.$B1` or `$'My Sheet'.A1:.B2` to the editor's spelling.
+fn ods_reference_to_ours(inner: &str) -> String {
+    // Split at ':' and '.' outside quoted sheet names.
+    let mut parts: Vec<(String, String)> = vec![(String::new(), String::new())];
+    let (mut quoted, mut after_dot) = (false, false);
+    for ch in inner.chars() {
+        match ch {
+            '\'' => {
+                quoted = !quoted;
+                let part = parts.last_mut().unwrap();
+                if after_dot {
+                    part.1.push(ch)
+                } else {
+                    part.0.push(ch)
+                }
+            }
+            ':' if !quoted => {
+                parts.push((String::new(), String::new()));
+                after_dot = false;
+            }
+            '.' if !quoted && !after_dot => after_dot = true,
+            ch => {
+                let part = parts.last_mut().unwrap();
+                if after_dot {
+                    part.1.push(ch)
+                } else {
+                    part.0.push(ch)
+                }
+            }
+        }
+    }
+    let sheet = parts[0].0.trim_start_matches('$').to_string();
+    let cells: Vec<&str> = parts.iter().map(|(_, cell)| cell.as_str()).collect();
+    let range = cells.join(":");
+    if sheet.is_empty() {
+        range
+    } else {
+        format!("{sheet}!{range}")
+    }
+}
+
+/// A rule operand as a condition literal: numbers stay, text is quoted.
+fn ods_condition_literal(value: &str) -> String {
+    let value = value.trim();
+    if value.parse::<f64>().is_ok() || value.starts_with('"') {
+        value.to_string()
+    } else {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    }
+}
+
+/// The `calcext:value` of a highlight rule, in the grammar LibreOffice writes:
+/// an operator and operand (`>5`), `between(1,9)`, `contains-text("x")`,
+/// `top-elements(3)` or `formula-is(...)`.
+fn ods_condition_value(rule: &CondRule) -> Option<String> {
+    let first = rule.values.first().map(String::as_str).unwrap_or("0");
+    let second = rule.values.get(1).map(String::as_str).unwrap_or("0");
+    Some(match rule.kind.as_str() {
+        "greater" => format!(">{}", ods_condition_literal(first)),
+        "less" => format!("<{}", ods_condition_literal(first)),
+        "equal" => format!("={}", ods_condition_literal(first)),
+        "between" => format!("between({},{})", ods_condition_literal(first), ods_condition_literal(second)),
+        "text" | "textContains" => format!("contains-text(\"{}\")", first.replace('"', "\"\"")),
+        "duplicate" | "duplicates" => "duplicate".to_string(),
+        "top" => format!("top-elements({})", rule.top_n.unwrap_or(10)),
+        "bottom" => format!("bottom-elements({})", rule.top_n.unwrap_or(10)),
+        "expression" => {
+            let formula = rule.formula.as_deref()?.trim().trim_start_matches('=').trim();
+            format!("formula-is({})", formula_to_ods(formula))
+        }
+        _ => return None,
+    })
+}
+
+/// A threshold type in the words of `calcext:type`.
+fn ods_threshold_type(kind: &str) -> &'static str {
+    match kind {
+        "min" => "minimum",
+        "max" => "maximum",
+        "percent" => "percent",
+        "percentile" => "percentile",
+        "formula" => "formula",
+        _ => "number",
+    }
+}
+
+/// One threshold entry. An icon set's first entry also says whether the cell
+/// value stays visible, where LibreOffice reads it.
+fn ods_entry(tag: &str, threshold: &CondThreshold, hide_value: bool) -> String {
+    let value = if matches!(threshold.kind.as_str(), "min" | "max") { "0" } else { threshold.value.trim() };
+    let color = threshold
+        .color
+        .as_deref()
+        .and_then(ods_color)
+        .map(|color| format!(" calcext:color=\"{color}\""))
+        .unwrap_or_default();
+    let show = if hide_value { " calcext:show-value=\"false\"" } else { "" };
+    format!(
+        "<calcext:{tag}{show} calcext:value=\"{}\" calcext:type=\"{}\"{color}/>",
+        escape(if value.is_empty() { "0" } else { value }),
+        ods_threshold_type(&threshold.kind)
+    )
+}
+
+/// The `calcext:conditional-formats` block of one sheet. Highlight looks are
+/// collected into `look_styles` (named table-cell styles for `styles.xml`).
+fn ods_conditional_formats(sheet: &Sheet, look_styles: &mut Vec<(String, String)>) -> String {
+    let mut out = String::new();
+    for rule in &sheet.conditional {
+        if ods_conditional_problem(rule).is_some() {
+            continue;
+        }
+        let target = ods_target_ranges(&sheet.name, &rule.range);
+        if target.is_empty() {
+            continue;
+        }
+        let base =
+            format!("{}.{}", ods_sheet_ref(&sheet.name), crate::xlsx::anchor_of(&rule.range).trim_start_matches('$'));
+        let body = match rule.kind.as_str() {
+            "colorScale" => {
+                let entries: String =
+                    rule.thresholds.iter().map(|stop| ods_entry("color-scale-entry", stop, false)).collect();
+                format!("<calcext:color-scale>{entries}</calcext:color-scale>")
+            }
+            "dataBar" => {
+                let color = rule.fill.as_deref().and_then(ods_color).unwrap_or_else(|| "#638EC6".into());
+                let (low, high) = match rule.thresholds.as_slice() {
+                    [low, high] => {
+                        (ods_entry("formatting-entry", low, false), ods_entry("formatting-entry", high, false))
+                    }
+                    _ => (
+                        "<calcext:formatting-entry calcext:value=\"0\" calcext:type=\"auto-minimum\"/>".to_string(),
+                        "<calcext:formatting-entry calcext:value=\"0\" calcext:type=\"auto-maximum\"/>".to_string(),
+                    ),
+                };
+                format!(
+                    "<calcext:data-bar calcext:positive-color=\"{color}\" calcext:gradient=\"true\" calcext:axis-position=\"automatic\" calcext:show-value=\"{}\" calcext:axis-color=\"#000000\" calcext:negative-color=\"#ff0000\" calcext:min-length=\"0\" calcext:max-length=\"100\">{low}{high}</calcext:data-bar>",
+                    !rule.hide_value
+                )
+            }
+            "iconSet" => {
+                let name = rule
+                    .icon_set
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or("3TrafficLights1");
+                let count = crate::xlsx::icon_set_count(name).unwrap_or(3);
+                let thresholds = if rule.thresholds.len() == count {
+                    rule.thresholds.clone()
+                } else {
+                    crate::xlsx::default_icon_thresholds(count)
+                };
+                let entries: String = thresholds
+                    .iter()
+                    .enumerate()
+                    .map(|(position, entry)| ods_entry("formatting-entry", entry, rule.hide_value && position == 0))
+                    .collect();
+                // LibreOffice has no reversed icon sets; the flag is ours, kept
+                // so the editor's own files round-trip.
+                let reverse = if rule.reverse_icons { " calcext:reverse=\"true\"" } else { "" };
+                format!(
+                    "<calcext:icon-set calcext:icon-set-type=\"{}\"{reverse}>{entries}</calcext:icon-set>",
+                    escape(name)
+                )
+            }
+            _ => {
+                let Some(value) = ods_condition_value(rule) else { continue };
+                // The look is a named cell style; a rule with none gets the
+                // shared highlight, as in the XLSX export.
+                let fill = rule.fill.as_deref().and_then(ods_color);
+                let color = rule.color.as_deref().and_then(ods_color);
+                let fill = if fill.is_none() && color.is_none() && !rule.bold && !rule.italic {
+                    ods_color(crate::xlsx::CONDITIONAL_FILL)
+                } else {
+                    fill
+                };
+                let mut text = String::new();
+                if let Some(color) = &color {
+                    text.push_str(&format!(" fo:color=\"{color}\""));
+                }
+                if rule.bold {
+                    text.push_str(" fo:font-weight=\"bold\"");
+                }
+                if rule.italic {
+                    text.push_str(" fo:font-style=\"italic\"");
+                }
+                let cell = fill.map(|fill| format!(" fo:background-color=\"{fill}\"")).unwrap_or_default();
+                let style_xml = format!("<style:text-properties{text}/><style:table-cell-properties{cell}/>");
+                let position = match look_styles.iter().position(|(_, existing)| existing == &style_xml) {
+                    Some(position) => position,
+                    None => {
+                        look_styles.push((format!("OmniCF{}", look_styles.len() + 1), style_xml));
+                        look_styles.len() - 1
+                    }
+                };
+                format!(
+                    "<calcext:condition calcext:apply-style-name=\"{}\" calcext:value=\"{}\" calcext:base-cell-address=\"{}\"/>",
+                    look_styles[position].0,
+                    escape(&value),
+                    escape(&base)
+                )
+            }
+        };
+        out.push_str(&format!(
+            "<calcext:conditional-format calcext:target-range-address=\"{}\">{body}</calcext:conditional-format>",
+            escape(&target)
+        ));
+    }
+    if out.is_empty() {
+        out
+    } else {
+        format!("<calcext:conditional-formats>{out}</calcext:conditional-formats>")
+    }
+}
+
 pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
     let mut styles = AutoStyles::default();
     let mut body = String::new();
     let mut chart_objects: Vec<OdsChartObject> = Vec::new();
+    // Highlight looks of conditional-formatting rules, shared by every sheet.
+    let mut look_styles: Vec<(String, String)> = Vec::new();
     for sheet in &workbook.sheets {
         body.push_str(&format!("<table:table table:name=\"{}\">", escape(&sheet.name)));
         let cells = ods_cells_with_pivots(workbook, sheet);
@@ -1882,6 +2332,9 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
                 cm(width * 0.75)
             ));
         }
+        // LibreOffice writes the sheet's conditional formats between the
+        // columns and the rows.
+        body.push_str(&ods_conditional_formats(sheet, &mut look_styles));
         // Only rows holding a cell or a chart are written one by one; the gaps
         // between them become repeated empty rows, so a far-away anchor costs
         // one element instead of a row per index.
@@ -1933,13 +2386,46 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
                         attributes.push_str(&format!(" table:number-columns-spanned=\"{}\"", end_col - start_col + 1));
                     }
                 }
-                let value_xml = match &cell.value {
-                    CellValue::Empty => "<text:p/>".to_string(),
-                    CellValue::Number(number) => format!("<text:p>{number}</text:p>"),
-                    CellValue::Bool(value) => format!("<text:p>{}</text:p>", if *value { "TRUE" } else { "FALSE" }),
-                    CellValue::Text(text) => format!("<text:p>{}</text:p>", crate::xml::escape_text(text)),
-                    CellValue::Error(error) => format!("<text:p>{}</text:p>", crate::xml::escape_text(error)),
+                let label = match &cell.value {
+                    CellValue::Empty => String::new(),
+                    CellValue::Number(number) => format!("{number}"),
+                    CellValue::Bool(value) => if *value { "TRUE" } else { "FALSE" }.to_string(),
+                    CellValue::Text(text) | CellValue::Error(text) => text.clone(),
                 };
+                // A hyperlink is a `text:a` around the cell text. A cell with no
+                // text shows the link's display text (or its target) instead, since
+                // ODF has no link without a label. Targets outside the allowed
+                // schemes are not written.
+                let link_target = cell.link.as_deref().and_then(safe_link_target);
+                let paragraph = match &link_target {
+                    Some(target) => {
+                        let shown = if label.is_empty() {
+                            cell.link_display.clone().filter(|text| !text.is_empty()).unwrap_or_else(|| target.clone())
+                        } else {
+                            label
+                        };
+                        let tip = cell
+                            .link_tooltip
+                            .as_deref()
+                            .filter(|text| !text.is_empty())
+                            .map(|text| format!(" office:title=\"{}\"", escape(text)))
+                            .unwrap_or_default();
+                        format!(
+                            "<text:p><text:a xlink:type=\"simple\" xlink:href=\"{}\"{tip}>{}</text:a></text:p>",
+                            escape(&ods_href(target)),
+                            crate::xml::escape_text(&shown)
+                        )
+                    }
+                    None if label.is_empty() => "<text:p/>".to_string(),
+                    None => format!("<text:p>{}</text:p>", crate::xml::escape_text(&label)),
+                };
+                let annotation = cell
+                    .comment
+                    .as_deref()
+                    .filter(|text| !text.trim().is_empty())
+                    .map(|text| ods_annotation(text, cell.comment_author.as_deref(), cell.comment_visible))
+                    .unwrap_or_default();
+                let value_xml = format!("{annotation}{paragraph}");
                 let value_type = match &cell.value {
                     CellValue::Number(_) => "float",
                     CellValue::Bool(_) => "boolean",
@@ -1955,7 +2441,12 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
                     CellValue::Bool(value) => {
                         format!(" office:boolean-value=\"{}\"", if *value { "true" } else { "false" })
                     }
-                    CellValue::Text(text) => format!(" office:string-value=\"{}\"", escape(text)),
+                    // LibreOffice takes a cell's text from `office:string-value` when
+                    // it is there and then never sees the `text:a` link, so a linked
+                    // cell carries its text in the paragraph only.
+                    CellValue::Text(text) if link_target.is_none() => {
+                        format!(" office:string-value=\"{}\"", escape(text))
+                    }
                     _ => String::new(),
                 };
                 row_output.push_str(&format!("<table:table-cell office:value-type=\"{value_type}\"{value_attr}{attributes}{formula}>{frame}{value_xml}</table:table-cell>"));
@@ -1969,10 +2460,17 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
         body.push_str("</table:table>");
     }
     let content = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content {NS} office:version=\"1.2\">{}{}<office:body><office:spreadsheet>{body}</office:spreadsheet></office:body></office:document-content>",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content {NS} {CALCEXT_NS} office:version=\"1.2\">{}{}<office:body><office:spreadsheet>{body}</office:spreadsheet></office:body></office:document-content>",
         styles.xml(),
         "<office:styles/>"
     );
+    // The looks a conditional format applies are named cell styles.
+    let look_styles_xml: String = look_styles
+        .iter()
+        .map(|(name, xml)| {
+            format!("<style:style style:name=\"{name}\" style:family=\"table-cell\">{xml}</style:style>")
+        })
+        .collect();
     // Every chart object is a sub-document with its own manifest entries.
     let mut object_entries = String::new();
     for object in &chart_objects {
@@ -1989,7 +2487,13 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
     zip.add_text("content.xml", &content);
     zip.add_text(
         "styles.xml",
-        &format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles {NS} office:version=\"1.2\"/>"),
+        &if look_styles_xml.is_empty() {
+            format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles {NS} office:version=\"1.2\"/>")
+        } else {
+            format!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles {NS} office:version=\"1.2\"><office:styles>{look_styles_xml}</office:styles></office:document-styles>"
+            )
+        },
     );
     zip.add_text("meta.xml", &meta_xml(&workbook.title, "OmniOffice"));
     for object in &chart_objects {
@@ -2122,12 +2626,13 @@ fn read_ods_chart(
         "bar" => "column",
         "line" => "line",
         "circle" => "pie",
+        "ring" => "doughnut",
         "area" => "area",
+        "scatter" => "scatter",
         other => {
             let mapped = match other {
-                "ring" => "pie",
                 "filled-radar" => "area",
-                "scatter" | "bubble" | "stock" | "radar" => "line",
+                "bubble" | "stock" | "radar" => "line",
                 _ => "column",
             };
             warnings.push(format!("A \"{other}\" chart was imported as a {mapped} chart."));
@@ -2170,10 +2675,26 @@ fn read_ods_chart(
     if !keep_caches {
         warnings.push("A chart's cached values were too large and were left out; its cell ranges are kept.".into());
     }
+    let mut lines_hidden = true;
+    let mut markers_hidden = true;
     for (index, node) in series_nodes.into_iter().enumerate() {
         let style_name = node.attr_any_ns("style-name");
         show_labels |= labels_on(ods_style_child(&styles, style_name, "chart-properties"));
         let graphic = ods_style_child(&styles, style_name, "graphic-properties");
+        if kind == "scatter" {
+            // A scatter series draws a line unless its stroke is `none` and
+            // shows markers unless its symbol type is `none`.
+            lines_hidden &= graphic.and_then(|graphic| graphic.attr_any_ns("stroke")) == Some("none");
+            markers_hidden &= ods_style_child(&styles, style_name, "chart-properties")
+                .and_then(|properties| properties.attr_any_ns("symbol-type"))
+                == Some("none");
+            // The X values are the series' domain; the first one is the chart's.
+            if categories.is_empty() {
+                if let Some(range) = node.child("domain").and_then(|domain| domain.attr_any_ns("cell-range-address")) {
+                    categories = ods_range_to_ours(range);
+                }
+            }
+        }
         let color = graphic
             .and_then(|graphic| {
                 let stroke = graphic.attr_any_ns("stroke-color");
@@ -2254,6 +2775,17 @@ fn read_ods_chart(
             show_labels,
             categories_cache,
             series_values_cache,
+            hole_size: None,
+            scatter_style: (kind == "scatter" && !lines_hidden).then(|| {
+                let smooth = plot_properties.and_then(|node| node.attr_any_ns("interpolation")) == Some("cubic-spline");
+                match (markers_hidden, smooth) {
+                    (false, false) => "lineMarker",
+                    (true, false) => "line",
+                    (false, true) => "smoothMarker",
+                    (true, true) => "smooth",
+                }
+                .to_string()
+            }),
         },
         anchor,
         width_px: size("width", 480.0),
@@ -2283,6 +2815,386 @@ fn ods_cell_has_content(cell: &XmlNode) -> bool {
     paragraphs.iter().any(|node| !node.deep_text().is_empty())
 }
 
+/// A cell note as `office:annotation`, the first child of its cell.
+fn ods_annotation(text: &str, author: Option<&str>, visible: bool) -> String {
+    let paragraphs: String =
+        text.lines().map(|line| format!("<text:p>{}</text:p>", crate::xml::escape_text(line))).collect();
+    let creator = author
+        .filter(|author| !author.trim().is_empty())
+        .map(|author| format!("<dc:creator>{}</dc:creator>", crate::xml::escape_text(author.trim())))
+        .unwrap_or_default();
+    format!("<office:annotation office:display=\"{visible}\">{creator}{paragraphs}</office:annotation>")
+}
+
+/// An internal link in ODS spells the sheet separator `.` (`#Sheet2.A1`,
+/// `#'My Sheet'.A1`); the model, like XLSX, uses `!`.
+fn swap_sheet_separator(reference: &str, from: char, to: char) -> String {
+    let mut quoted = false;
+    let mut last = None;
+    for (index, ch) in reference.char_indices() {
+        match ch {
+            '\'' => quoted = !quoted,
+            ch if ch == from && !quoted => last = Some(index),
+            _ => {}
+        }
+    }
+    match last {
+        Some(index) => format!("{}{to}{}", &reference[..index], &reference[index + 1..]),
+        None => reference.to_string(),
+    }
+}
+
+/// The `xlink:href` for a model link target.
+fn ods_href(target: &str) -> String {
+    match target.strip_prefix('#') {
+        Some(reference) => format!("#{}", swap_sheet_separator(reference, '!', '.')),
+        None => target.to_string(),
+    }
+}
+
+/// A cell's `office:annotation` as (text, author, shown permanently).
+fn read_ods_annotation(annotation: &XmlNode) -> Option<(String, Option<String>, bool)> {
+    let text = annotation.children_of("p").iter().map(|node| node.deep_text()).collect::<Vec<_>>().join("\n");
+    if text.trim().is_empty() {
+        return None;
+    }
+    let author = annotation
+        .child("creator")
+        .map(|creator| creator.deep_text().trim().to_string())
+        .filter(|author| !author.is_empty());
+    Some((text, author, annotation.attr_any_ns("display") == Some("true")))
+}
+
+/// The hyperlink of a cell: (target, screen tip) of the first `text:a` in its
+/// paragraphs. A target that is not http, https, mailto or internal is counted in
+/// `dropped` and ignored.
+fn read_ods_cell_link(cell: &XmlNode, dropped: &mut usize) -> Option<(String, Option<String>)> {
+    let mut anchors = Vec::new();
+    for paragraph in cell.children_of("p") {
+        paragraph.find_all("a", &mut anchors);
+    }
+    let anchor = anchors.into_iter().find(|anchor| anchor.attr_any_ns("href").is_some())?;
+    let href = anchor.attr_any_ns("href")?.trim();
+    let target = match href.strip_prefix('#') {
+        Some(reference) => format!("#{}", swap_sheet_separator(reference, '.', '!')),
+        None => href.to_string(),
+    };
+    let Some(target) = safe_link_target(&target) else {
+        *dropped += 1;
+        return None;
+    };
+    let tooltip = anchor.attr_any_ns("title").map(str::to_string).filter(|title| !title.is_empty());
+    Some((target, tooltip))
+}
+
+/// Conditional-format entries kept per sheet; a hostile file cannot make the
+/// importer build an unbounded rule list.
+const ODS_MAX_CONDITIONAL_RULES: usize = 5_000;
+
+/// What a table-cell style paints: fill, font colour, bold, italic.
+type OdsLook = (Option<String>, Option<String>, bool, bool);
+
+/// The looks of every table-cell style in `roots` (content.xml's automatic
+/// styles and styles.xml), by style name.
+fn ods_cell_looks(roots: &[&XmlNode]) -> HashMap<String, OdsLook> {
+    let mut looks = HashMap::new();
+    for root in roots {
+        let mut nodes = Vec::new();
+        root.find_all("style", &mut nodes);
+        for node in nodes {
+            if node.attr("style:family") != Some("table-cell") {
+                continue;
+            }
+            let Some(name) = node.attr("style:name") else { continue };
+            let fill = node
+                .child("table-cell-properties")
+                .and_then(|properties| properties.attr_any_ns("background-color"))
+                .and_then(ods_color)
+                .map(|color| color.to_ascii_uppercase());
+            let text = node.child("text-properties");
+            let color = text
+                .and_then(|text| text.attr_any_ns("color"))
+                .and_then(ods_color)
+                .map(|color| color.to_ascii_uppercase());
+            let bold = text.and_then(|text| text.attr_any_ns("font-weight")) == Some("bold");
+            let italic = text.and_then(|text| text.attr_any_ns("font-style")) == Some("italic");
+            // LibreOffice escapes odd characters in `style:name` (`ConditionalStyle_5f_1`)
+            // and refers to the style by its display name.
+            if let Some(display) = node.attr("style:display-name") {
+                looks.insert(display.to_string(), (fill.clone(), color.clone(), bold, italic));
+            }
+            looks.insert(name.to_string(), (fill, color, bold, italic));
+        }
+    }
+    looks
+}
+
+/// Splits an ODF cell range list on whitespace outside quoted sheet names and
+/// maps each range to the sheet-local form (`Sheet1.A1:Sheet1.B5` -> `A1:B5`).
+fn ods_ranges_to_ours(addresses: &str) -> String {
+    let mut parts = vec![String::new()];
+    let mut quoted = false;
+    for ch in addresses.trim().chars() {
+        match ch {
+            '\'' => {
+                quoted = !quoted;
+                parts.last_mut().unwrap().push(ch);
+            }
+            ch if ch.is_whitespace() && !quoted => parts.push(String::new()),
+            ch => parts.last_mut().unwrap().push(ch),
+        }
+    }
+    parts
+        .iter()
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let range = ods_range_to_ours(part);
+            // LibreOffice spells a single cell as `Sheet1.A1:Sheet1.A1`.
+            match range.split_once(':') {
+                Some((start, end)) if start == end => start.to_string(),
+                _ => range,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Splits condition arguments on `,` or `;` outside string literals and nested
+/// parentheses.
+fn split_ods_args(inner: &str) -> Vec<String> {
+    let mut args = vec![String::new()];
+    let (mut quoted, mut depth) = (false, 0i32);
+    for ch in inner.chars() {
+        match ch {
+            '"' => quoted = !quoted,
+            '(' if !quoted => depth += 1,
+            ')' if !quoted => depth -= 1,
+            ',' | ';' if !quoted && depth == 0 => {
+                args.push(String::new());
+                continue;
+            }
+            _ => {}
+        }
+        args.last_mut().unwrap().push(ch);
+    }
+    args.into_iter().map(|arg| arg.trim().to_string()).collect()
+}
+
+/// `"a ""b"""` -> `a "b"`; text without quotes is returned as written.
+fn unquote_ods(text: &str) -> String {
+    let text = text.trim();
+    match text.strip_prefix('"').and_then(|inner| inner.strip_suffix('"')) {
+        Some(inner) => inner.replace("\"\"", "\""),
+        None => text.to_string(),
+    }
+}
+
+/// A `calcext:value` condition as a model rule (kind, operands and formula
+/// only). Conditions that are only formulas in the editor's vocabulary
+/// (`>=`, begins-with, unique, above-average, ...) become `expression` rules.
+fn ods_condition_rule(value: &str, anchor: &str, all: &str) -> Option<CondRule> {
+    let value = value.trim();
+    let mut rule = CondRule::default();
+    let call = |name: &str| value.strip_prefix(name).and_then(|rest| rest.strip_suffix(')'));
+    let mut expression = |formula: String| {
+        rule.kind = "expression".into();
+        rule.formula = Some(formula);
+    };
+    // LibreOffice writes `>5`, `between(1,9)` and `formula-is(...)`; the ODF
+    // style-map spellings (`cell-content()>5`, `cell-content-is-between(1,9)`,
+    // `is-true-formula(...)`) come from other producers and are read as well.
+    let operand_form = value.strip_prefix("cell-content()").unwrap_or(value);
+    if let Some(inner) = call("formula-is(").or_else(|| call("is-true-formula(")) {
+        expression(formula_from_ods(inner.trim()));
+    } else if let Some(inner) = call("between(").or_else(|| call("cell-content-is-between(")) {
+        let args = split_ods_args(inner);
+        let [low, high] = args.as_slice() else { return None };
+        rule.kind = "between".into();
+        rule.values = vec![low.clone(), high.clone()];
+    } else if let Some(inner) = call("not-between(").or_else(|| call("cell-content-is-not-between(")) {
+        let args = split_ods_args(inner);
+        let [low, high] = args.as_slice() else { return None };
+        expression(format!("OR({anchor}<{low},{anchor}>{high})"));
+    } else if let Some(operator) =
+        [">=", "<=", "!=", "<>", ">", "<", "="].into_iter().find(|operator| operand_form.starts_with(operator))
+    {
+        let operand = operand_form[operator.len()..].trim().to_string();
+        match operator {
+            ">" | "<" | "=" => {
+                rule.kind = match operator {
+                    ">" => "greater",
+                    "<" => "less",
+                    _ => "equal",
+                }
+                .into();
+                rule.values = vec![operand];
+            }
+            "!=" | "<>" => expression(format!("{anchor}<>{operand}")),
+            _ => expression(format!("{anchor}{operator}{operand}")),
+        }
+    } else if let Some(inner) = call("contains-text(") {
+        rule.kind = "textContains".into();
+        rule.values = vec![unquote_ods(inner)];
+    } else if let Some(inner) = call("not-contains-text(") {
+        let text = unquote_ods(inner).replace('"', "\"\"");
+        expression(format!("ISERROR(SEARCH(\"{text}\",{anchor}))"));
+    } else if let Some(inner) = call("begins-with(") {
+        let text = unquote_ods(inner).replace('"', "\"\"");
+        expression(format!("LEFT({anchor},LEN(\"{text}\"))=\"{text}\""));
+    } else if let Some(inner) = call("ends-with(") {
+        let text = unquote_ods(inner).replace('"', "\"\"");
+        expression(format!("RIGHT({anchor},LEN(\"{text}\"))=\"{text}\""));
+    } else if matches!(value, "duplicate" | "is-duplicate") {
+        rule.kind = "duplicate".into();
+    } else if matches!(value, "unique" | "is-unique") {
+        expression(format!("COUNTIF({all},{anchor})=1"));
+    } else if let Some(inner) = call("top-elements(") {
+        rule.kind = "top".into();
+        rule.top_n = Some(inner.trim().parse().ok()?);
+    } else if let Some(inner) = call("bottom-elements(") {
+        rule.kind = "bottom".into();
+        rule.top_n = Some(inner.trim().parse().ok()?);
+    } else if let Some(inner) = call("top-percent(") {
+        let rank: u32 = inner.trim().parse().ok()?;
+        expression(format!("{anchor}>=PERCENTILE({all},1-{rank}/100)"));
+    } else if let Some(inner) = call("bottom-percent(") {
+        let rank: u32 = inner.trim().parse().ok()?;
+        expression(format!("{anchor}<=PERCENTILE({all},{rank}/100)"));
+    } else if let Some(operator) = match value {
+        "above-average" => Some(">"),
+        "above-equal-average" => Some(">="),
+        "below-average" => Some("<"),
+        "below-equal-average" => Some("<="),
+        _ => None,
+    } {
+        expression(format!("{anchor}{operator}AVERAGE({all})"));
+    } else if value == "is-error" {
+        expression(format!("ISERROR({anchor})"));
+    } else if value == "is-no-error" {
+        expression(format!("NOT(ISERROR({anchor}))"));
+    } else {
+        return None;
+    }
+    Some(rule)
+}
+
+/// One `calcext:formatting-entry` / `color-scale-entry` as a threshold.
+fn ods_threshold(node: &XmlNode) -> Option<CondThreshold> {
+    let kind = match node.attr_any_ns("type")? {
+        "minimum" | "auto-minimum" => "min",
+        "maximum" | "auto-maximum" => "max",
+        "value" | "number" => "num",
+        "percent" => "percent",
+        "percentile" => "percentile",
+        "formula" => "formula",
+        _ => return None,
+    };
+    let value = if matches!(kind, "min" | "max") {
+        String::new()
+    } else {
+        node.attr_any_ns("value").unwrap_or("").trim().to_string()
+    };
+    let color = node.attr_any_ns("color").and_then(ods_color).map(|color| color.to_ascii_uppercase());
+    Some(CondThreshold { kind: kind.to_string(), value, color })
+}
+
+/// Reads the `calcext:conditional-formats` of one sheet; returns how many
+/// entries the model could not hold.
+fn read_ods_conditional_formats(formats: &XmlNode, sheet: &mut Sheet, looks: &HashMap<String, OdsLook>) -> usize {
+    let mut unsupported = 0usize;
+    for format in formats.children_of("conditional-format") {
+        let range = ods_ranges_to_ours(format.attr_any_ns("target-range-address").unwrap_or(""));
+        if range.is_empty() {
+            continue;
+        }
+        let all = crate::xlsx::absolute_area(&range);
+        for entry in &format.children {
+            if sheet.conditional.len() >= ODS_MAX_CONDITIONAL_RULES {
+                return unsupported + 1;
+            }
+            let model = match entry.local_name() {
+                "condition" => {
+                    let base = entry.attr_any_ns("base-cell-address").map(ods_range_to_ours).unwrap_or_default();
+                    let anchor = base.split(':').next().filter(|cell| !cell.is_empty()).map(str::to_string);
+                    let anchor = anchor.unwrap_or_else(|| crate::xlsx::anchor_of(&range));
+                    let rule = ods_condition_rule(entry.attr_any_ns("value").unwrap_or(""), &anchor, &all);
+                    rule.map(|mut rule| {
+                        if let Some((fill, color, bold, italic)) =
+                            entry.attr_any_ns("apply-style-name").and_then(|name| looks.get(name))
+                        {
+                            rule.fill = fill.clone();
+                            rule.color = color.clone();
+                            rule.bold = *bold;
+                            rule.italic = *italic;
+                        }
+                        rule
+                    })
+                }
+                "color-scale" => {
+                    let stops: Option<Vec<CondThreshold>> =
+                        entry.children_of("color-scale-entry").into_iter().map(ods_threshold).collect();
+                    stops.filter(|stops| (2..=3).contains(&stops.len())).map(|thresholds| CondRule {
+                        kind: "colorScale".into(),
+                        thresholds,
+                        ..Default::default()
+                    })
+                }
+                "data-bar" => {
+                    let bounds: Option<Vec<CondThreshold>> =
+                        entry.children_of("formatting-entry").into_iter().map(ods_threshold).collect();
+                    bounds.map(|bounds| {
+                        // The automatic bounds are the default; only explicit ones are kept.
+                        let thresholds = match bounds.as_slice() {
+                            [low, high] if !(low.kind == "min" && high.kind == "max") => bounds.clone(),
+                            _ => Vec::new(),
+                        };
+                        CondRule {
+                            kind: "dataBar".into(),
+                            fill: entry
+                                .attr_any_ns("positive-color")
+                                .and_then(ods_color)
+                                .map(|color| color.to_ascii_uppercase()),
+                            hide_value: entry.attr_any_ns("show-value") == Some("false"),
+                            thresholds,
+                            ..Default::default()
+                        }
+                    })
+                }
+                "icon-set" => {
+                    let name = entry.attr_any_ns("icon-set-type").unwrap_or("3TrafficLights1").trim().to_string();
+                    let thresholds: Option<Vec<CondThreshold>> =
+                        entry.children_of("formatting-entry").into_iter().map(ods_threshold).collect();
+                    crate::xlsx::icon_set_count(&name).zip(thresholds).filter(|(count, list)| list.len() == *count).map(
+                        |(_, thresholds)| CondRule {
+                            kind: "iconSet".into(),
+                            icon_set: Some(name),
+                            reverse_icons: entry.attr_any_ns("reverse") == Some("true"),
+                            // LibreOffice says "hide the value" on the first entry.
+                            hide_value: entry.attr_any_ns("show-value") == Some("false")
+                                || entry
+                                    .children_of("formatting-entry")
+                                    .iter()
+                                    .any(|threshold| threshold.attr_any_ns("show-value") == Some("false")),
+                            thresholds,
+                            ..Default::default()
+                        },
+                    )
+                }
+                _ => None,
+            };
+            match model {
+                Some(mut rule) => {
+                    rule.id = format!("cf{}", sheet.conditional.len() + 1);
+                    rule.range = range.clone();
+                    sheet.conditional.push(rule);
+                }
+                None => unsupported += 1,
+            }
+        }
+    }
+    unsupported
+}
+
 pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
     let reader = ZipReader::open(bytes.to_vec())?;
     if !reader.contains("content.xml") {
@@ -2296,6 +3208,11 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
     let mut tables = Vec::new();
     root.find_all("table", &mut tables);
     let mut seen_objects = HashSet::new();
+    // The named and automatic cell styles conditional formats point at.
+    let styles_root = reader.read_text("styles.xml").ok().and_then(|text| parse_xml(&text).ok());
+    let looks = ods_cell_looks(&[&root, styles_root.as_ref().unwrap_or(&root)]);
+    let mut unsupported_formats = 0usize;
+    let mut dropped_links = 0usize;
     for table in tables {
         // `table:name`: a plain `attr("name")` never matched the prefixed
         // attribute, so every imported sheet used to be called "Sheet".
@@ -2348,11 +3265,10 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
                         .map(|value| CellValue::Text(value.to_string()))
                         .unwrap_or(CellValue::Empty),
                     _ => {
-                        let text = {
-                            let mut paragraphs = Vec::new();
-                            cell.find_all("p", &mut paragraphs);
-                            paragraphs.iter().map(|node| node.deep_text()).collect::<Vec<_>>().join("\n")
-                        };
+                        // Only the cell's own paragraphs: a note's text lives in
+                        // `office:annotation`, which is not part of the value.
+                        let text =
+                            cell.children_of("p").iter().map(|node| node.deep_text()).collect::<Vec<_>>().join("\n");
                         if text.is_empty() {
                             CellValue::Empty
                         } else if formula.is_some() && text.starts_with('#') {
@@ -2362,14 +3278,24 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
                         }
                     }
                 };
-                if !matches!(value, CellValue::Empty) || formula.is_some() {
+                let note = cell.child("annotation").and_then(read_ods_annotation);
+                let link = read_ods_cell_link(cell, &mut dropped_links);
+                if !matches!(value, CellValue::Empty) || formula.is_some() || note.is_some() || link.is_some() {
                     last_row = last_row.max(row);
                     for offset in 0..repeat.min(64) {
                         let address = crate::address::format(row, column + offset);
-                        sheet.set(
-                            &address,
-                            Cell { value: value.clone(), formula: formula.clone(), ..Default::default() },
-                        );
+                        let mut model = Cell { value: value.clone(), formula: formula.clone(), ..Default::default() };
+                        if let Some((target, tooltip)) = &link {
+                            model.link = Some(target.clone());
+                            model.link_tooltip = tooltip.clone();
+                        }
+                        // Only the first cell of a repeated run keeps the note.
+                        if let (Some((text, author, visible)), 0) = (&note, offset) {
+                            model.comment = Some(text.clone());
+                            model.comment_author = author.clone();
+                            model.comment_visible = *visible;
+                        }
+                        sheet.set(&address, model);
                     }
                 }
                 for frame in cell.children_named("frame") {
@@ -2382,6 +3308,9 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
         }
         for shapes in table.children_named("shapes") {
             frames.extend(shapes.children_named("frame").map(|frame| (ods_shape_anchor(frame), frame)));
+        }
+        for formats in table.children_named("conditional-formats") {
+            unsupported_formats += read_ods_conditional_formats(formats, &mut sheet, &looks);
         }
         for (anchor, frame) in frames {
             if sheet.charts.len() >= ODS_MAX_CHARTS_PER_SHEET {
@@ -2403,6 +3332,16 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
     }
     if workbook.sheets.is_empty() {
         workbook.sheets.push(Sheet::new("Sheet1"));
+    }
+    if unsupported_formats > 0 {
+        warnings.push(format!(
+            "{unsupported_formats} conditional formatting rule(s) use types this editor cannot import and were dropped."
+        ));
+    }
+    if dropped_links > 0 {
+        warnings.push(format!(
+            "{dropped_links} hyperlink(s) were dropped: only http, https, mailto and internal references are allowed."
+        ));
     }
     warnings.push("Cell formatting from ODS files is imported with limited support.".into());
     Ok(SheetRead { workbook, warnings })
@@ -3416,5 +4355,24 @@ mod tests {
         assert_eq!(odf_formula_to_ours("of:=SUM([.A1:.A2])"), "=SUM(A1:A2)");
         assert_eq!(our_formula_to_odf("=SUM(A1:B2)+1"), "of:=SUM([.A1:.B2])+1");
         assert_eq!(odf_formula_to_ours("of:=[.A1]*2"), "=A1*2");
+    }
+
+    #[test]
+    fn condition_formulas_convert_references_and_separators() {
+        let ours = "AND($D1>4,MOD($D1,2)=0,Data!$B1<3,'My Sheet'!A1:B2<>\"a,b A1\")";
+        let odf = "AND([.$D1]>4;MOD([.$D1];2)=0;[$Data.$B1]<3;[$'My Sheet'.A1:.B2]<>\"a,b A1\")";
+        assert_eq!(formula_to_ods(ours), odf);
+        assert_eq!(formula_from_ods(odf), ours);
+        // Function names with digits and names that end in digits are not references.
+        assert_eq!(formula_to_ods("LOG10(Rate1)+SUM(A1:A3)"), "LOG10(Rate1)+SUM([.A1:.A3])");
+        assert_eq!(formula_from_ods("LOG10(Rate1)+SUM([.A1:.A3])"), "LOG10(Rate1)+SUM(A1:A3)");
+        assert_eq!(formula_to_ods("1.5*A1"), "1.5*[.A1]");
+    }
+
+    #[test]
+    fn condition_arguments_split_outside_quotes_and_parentheses() {
+        assert_eq!(split_ods_args("1,9"), ["1", "9"]);
+        assert_eq!(split_ods_args("\"a,b\";MAX(1;2)"), ["\"a,b\"", "MAX(1;2)"]);
+        assert_eq!(unquote_ods("\"say \"\"hi\"\"\""), "say \"hi\"");
     }
 }
