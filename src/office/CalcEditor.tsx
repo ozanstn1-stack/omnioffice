@@ -88,6 +88,7 @@ import { planSort, sortContext, type SortLevel, type SortRange } from "./calc/so
 import { edgeVisible, isHiddenIndex, stepVisible } from "./calc/visibility";
 import { uniqueColumnName, uniqueTableName } from "./calc/table-names";
 import { CalcRibbon } from "./calc/ui/CalcRibbon";
+import { cellTextStyle } from "./calc/ui/cell-style";
 import { ChartBox, ChartDialog } from "./calc/ui/ChartPanel";
 import { ConditionalDialog } from "./calc/ui/ConditionalDialog";
 import { RemoveDuplicatesDialog, TextToColumnsDialog } from "./calc/ui/DataToolsDialogs";
@@ -105,6 +106,10 @@ import { useFindReplace } from "./calc/ui/useFindReplace";
 import { usePasteSpecial, type InternalClipboard } from "./calc/ui/usePasteSpecial";
 import { useVisibilityActions, type Axis } from "./calc/ui/useVisibilityActions";
 import { ValidationDialog } from "./calc/ui/ValidationDialog";
+import { useCellAnnotations } from "./calc/ui/useCellAnnotations";
+import { VisibleNotes } from "./calc/ui/NoteViews";
+import { cellLinkTarget, isLinkCell } from "./calc/links";
+import { noteOf } from "./calc/notes";
 import { useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
 
 export { scalarToCellValue, computeWorkbookValues, applyCellEdit, shiftFormulaRows, isBlankCell };
@@ -772,6 +777,16 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     }
     if (cell) {
       const position = { row: Number(cell.dataset.row), col: Number(cell.dataset.col) };
+      // Ctrl+click on a link follows it; the cell is selected but no drag starts.
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        !event.shiftKey &&
+        isLinkCell(sheet.cells[formatAddress(position.row, position.col)])
+      ) {
+        setSelection({ anchor: position, focus: position });
+        void annotations.follow(position.row, position.col);
+        return;
+      }
       gestureRef.current = {
         kind: "cells",
         pointerId: event.pointerId,
@@ -1160,6 +1175,17 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     if (event.altKey && !mod && (event.key === "=" || event.code === "Equal")) {
       event.preventDefault();
       autoSum();
+      return;
+    }
+    // Ctrl+K inserts or edits the link of the active cell, Shift+F2 its note.
+    if (mod && !event.altKey && event.code === "KeyK") {
+      event.preventDefault();
+      annotations.insertLink();
+      return;
+    }
+    if (event.shiftKey && !mod && event.key === "F2") {
+      event.preventDefault();
+      annotations.insertNote();
       return;
     }
     // Ctrl+9 / Ctrl+0 hide the selected rows / columns; with Shift they show them again.
@@ -1967,6 +1993,24 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     select: (anchor, focus) => setSelection({ anchor, focus }),
   });
 
+  // Notes and hyperlinks: the cell menu, the note editor, Insert link, and following a link.
+  const annotations = useCellAnnotations({
+    workbook,
+    sheet,
+    sheetIndex,
+    focus: selection.focus,
+    computed,
+    commit: update,
+    select: (position) => setSelection({ anchor: position, focus: position }),
+    jumpTo: jumpToCell,
+    restoreFocus: () => gridRef.current?.focus({ preventScroll: true }),
+    isSelected: (row, col) =>
+      row >= selectionBounds.start.row &&
+      row <= selectionBounds.end.row &&
+      col >= selectionBounds.start.col &&
+      col <= selectionBounds.end.col,
+  });
+
   /** Alt+=: the SUM of the numbers above or to the left, or of the selected range. */
   const autoSum = () => {
     if (isSheetProtected(sheet)) {
@@ -2154,6 +2198,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         : `${formatAddress(selectionBounds.start.row, selectionBounds.start.col)}:${formatAddress(selectionBounds.end.row, selectionBounds.end.col)}`,
     display: formatCellDisplay(computed.get(selectionAddress) ?? "", activeCell?.style ?? defaultCellStyle()),
     formula: activeCell?.formula ?? null,
+    note: noteOf(activeCell)?.text ?? null,
   });
   const selectedTable = (sheet.tables ?? []).find((table) => addressInRange(selectionAddress, table.range));
   const nameBox = selectedTable
@@ -2365,6 +2410,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           merge: () => toggleMerge(sheet, selection, updateSheet),
           borders: () => applyBorder("all"),
           openChart: () => setChartDialog(true),
+          insertLink: () => annotations.insertLink(),
+          insertNote: () => annotations.insertNote(),
           openPivot: () => setPivotDialog(true),
           openTable: () => setTableDialog(true),
           toggleTablesPanel: () => setTablesPanel((open) => !open),
@@ -2440,7 +2487,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         </div>
       ) : null}
 
-      <div className="calc-grid-wrap" ref={containerRef}>
+      <div className="calc-grid-wrap" ref={containerRef} {...annotations.hoverHandlers}>
         <div
           className="calc-grid"
           tabIndex={0}
@@ -2562,6 +2609,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                     }
                     const traceKind = tracedCells.get(address);
                     const errorTip = isError(value) ? errorTitle(t, value.code) : null;
+                    const linked = isLinkCell(cell);
                     const frozenRow = row < freeze.rows;
                     const frozenCol = col < freeze.cols;
                     return (
@@ -2578,7 +2626,15 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                         data-row={row}
                         data-col={col}
                         className={`calc-cell${inSelection ? " is-selected" : ""}${invalid ? " is-invalid" : ""}${errorTip ? " is-error" : ""}`}
-                        title={errorTip ?? undefined}
+                        data-note={cell?.comment ? "" : undefined}
+                        title={
+                          errorTip ??
+                          (linked
+                            ? [cell?.linkTooltip || cellLinkTarget(cell), t("calc.linkHint")]
+                                .filter(Boolean)
+                                .join(" - ")
+                            : undefined)
+                        }
                         style={{
                           left: pinnedPosition(col, freeze.cols, x, scrollX),
                           top: pinnedPosition(row, freeze.rows, rowLayout.offsetOf(row), scrollY),
@@ -2588,26 +2644,16 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                           zIndex: frozenRow && frozenCol ? 3 : frozenRow || frozenCol ? 2 : undefined,
                           background:
                             fill ?? tableFill ?? style.fill ?? (frozenRow || frozenCol ? "var(--bg)" : undefined),
-                          fontWeight: style.bold || (tableHeader && tableEntry!.table.headerBold) ? 700 : undefined,
-                          fontStyle: style.italic ? "italic" : undefined,
-                          textDecoration:
-                            [style.underline ? "underline" : "", style.strike ? "line-through" : ""]
-                              .filter(Boolean)
-                              .join(" ") || undefined,
-                          color: style.color ?? (tableFill && tableHeader ? "#ffffff" : undefined),
-                          textAlign: (style.align === "general"
-                            ? typeof value === "number"
-                              ? "right"
-                              : "left"
-                            : style.align) as "left" | "right" | "center",
-                          justifyContent:
-                            style.align === "center"
-                              ? "center"
-                              : style.align === "right" || (style.align === "general" && typeof value === "number")
-                                ? "flex-end"
-                                : "flex-start",
+                          ...cellTextStyle({
+                            style,
+                            numeric: typeof value === "number",
+                            headerBold: tableHeader && tableEntry!.table.headerBold,
+                            onHeaderFill: Boolean(tableFill && tableHeader),
+                            linked,
+                          }),
                         }}
                         onDoubleClick={() => setEditing({ row, col, value: cell?.formula ?? cellText(cell) })}
+                        onContextMenu={(event) => annotations.openMenu(event, row, col)}
                       >
                         {isEditing ? (
                           <input
@@ -2692,7 +2738,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                           return <span className="data-bar" style={{ width: `${width}%`, background: bar.fill }} />;
                         })()}
                         {errorTip ? <span className="cell-error-flag" /> : null}
-                        {cell?.comment ? <span className="cell-comment-dot" title={cell.comment} /> : null}
+                        {cell?.comment ? <span className="cell-comment-dot" /> : null}
                       </div>
                     );
                   })}
@@ -2770,6 +2816,13 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 />
               );
             })}
+            <VisibleNotes
+              cells={sheet.cells}
+              place={(row, col) => ({
+                left: columnX(col) + (sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH),
+                top: HEADER_HEIGHT + rowLayout.offsetOf(row),
+              })}
+            />
             {(sheet.pivotTables ?? []).map((pivot) => {
               const position = parseAddress(pivot.anchor) ?? { row: 0, col: 0 };
               return (
@@ -3037,6 +3090,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       {find.panel ? <FindReplacePanel panel={find.panel} /> : null}
 
       {pasteSpecial.dialog}
+
+      {annotations.elements}
 
       {headerMenu ? (
         <HeaderMenu

@@ -15,11 +15,16 @@ export function cellAnnouncement(
     /** The text the cell shows; empty for an empty cell. */
     display: string;
     formula: string | null;
+    /** The text of the active cell's note, which a keyboard user cannot hover to read. */
+    note?: string | null;
   },
 ): string {
   const value = cell.display === "" ? t("calc.announceEmpty") : cell.display;
-  if (cell.range) return t("calc.announceRange", { range: cell.range, cell: cell.address, value });
-  return cell.formula
-    ? t("calc.announceCellFormula", { cell: cell.address, value, formula: cell.formula })
-    : t("calc.announceCell", { cell: cell.address, value });
+  const withNote = (text: string) => (cell.note ? `${text}. ${t("calc.announceNote", { note: cell.note })}` : text);
+  if (cell.range) return withNote(t("calc.announceRange", { range: cell.range, cell: cell.address, value }));
+  return withNote(
+    cell.formula
+      ? t("calc.announceCellFormula", { cell: cell.address, value, formula: cell.formula })
+      : t("calc.announceCell", { cell: cell.address, value }),
+  );
 }

@@ -17,13 +17,19 @@ import { withCellAt } from "./cells";
 /** The longest target kept, in UTF-8 bytes, like the Rust side. */
 const MAX_LINK_TARGET = 8_192;
 
-// Unicode Cc: what Rust's `char::is_control` rejects.
-const CONTROL_CHARACTER = /[\u0000-\u001f\u007f-\u009f]/;
+/** Unicode Cc, what Rust's `char::is_control` rejects. */
+function hasControlCharacter(text: string): boolean {
+  for (const ch of text) {
+    const code = ch.codePointAt(0)!;
+    if (code <= 0x1f || (code >= 0x7f && code <= 0x9f)) return true;
+  }
+  return false;
+}
 
 /** The trimmed target when it is a web, mail or internal address; null for anything else. */
 export function safeLinkTarget(target: string): string | null {
   const trimmed = target.trim();
-  if (trimmed === "" || CONTROL_CHARACTER.test(trimmed)) return null;
+  if (trimmed === "" || hasControlCharacter(trimmed)) return null;
   if (new TextEncoder().encode(trimmed).length > MAX_LINK_TARGET) return null;
   // ASCII-only lower-casing: the scheme check must not see "İ" as an "i".
   const lower = trimmed.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
@@ -162,9 +168,16 @@ export function cellLinkTarget(cell: Cell | undefined): string | null {
   return cell?.link ? safeLinkTarget(cell.link) : null;
 }
 
+const HYPERLINK_CALL = /^\s*=?\s*HYPERLINK\s*\(/i;
+
+/** True when the grid draws the cell as a link: a stored link that passes the allow-list, or a HYPERLINK formula. */
+export function isLinkCell(cell: Cell | undefined): boolean {
+  return cellLinkTarget(cell) !== null || HYPERLINK_CALL.test(cell?.formula ?? "");
+}
+
 /** The source of the first argument of a formula that is a `HYPERLINK(...)` call, else null. */
 export function hyperlinkFormulaArgument(formula: string | null | undefined): string | null {
-  const match = /^\s*=?\s*HYPERLINK\s*\(/i.exec(formula ?? "");
+  const match = HYPERLINK_CALL.exec(formula ?? "");
   if (!match || !formula) return null;
   let depth = 1;
   let quote = false;

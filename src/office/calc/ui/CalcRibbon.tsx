@@ -24,8 +24,10 @@ import {
   GitBranch,
   Grid3x3,
   Italic,
+  Link2,
   Merge,
   Minus,
+  MessageSquarePlus,
   Plus,
   Printer,
   Redo2,
@@ -66,6 +68,8 @@ export interface CalcRibbonActions {
   merge: () => void;
   borders: () => void;
   openChart: () => void;
+  insertLink: () => void;
+  insertNote: () => void;
   openPivot: () => void;
   openTable: () => void;
   toggleTablesPanel: () => void;
@@ -250,6 +254,22 @@ export function CalcRibbon({
           </RibbonGroup>
           <RibbonGroup label={t("calc.pivotTable")}>
             <ToolButton icon={<Grid3x3 size={16} />} label={t("calc.pivotTable")} onClick={actions.openPivot} />
+          </RibbonGroup>
+          <RibbonGroup label={t("calc.links")}>
+            <ToolButton
+              icon={<Link2 size={16} />}
+              label={t("calc.link")}
+              onClick={actions.insertLink}
+              title={`${t("calc.linkInsert")} (Ctrl+K)`}
+            />
+          </RibbonGroup>
+          <RibbonGroup label={t("calc.notes")}>
+            <ToolButton
+              icon={<MessageSquarePlus size={16} />}
+              label={t("calc.note")}
+              onClick={actions.insertNote}
+              title={`${t("calc.noteInsert")} (Shift+F2)`}
+            />
           </RibbonGroup>
           <RibbonGroup label={t("calc.structuredTables")}>
             <ToolButton icon={<Table2 size={16} />} label={t("calc.insertTable")} onClick={actions.openTable} />
