@@ -1,4 +1,4 @@
-//! Hidden rows and columns in XLSX and PDF.
+//! Hidden rows and columns in XLSX, ODS and PDF.
 //!
 //! The editor hides a row or a column by storing size 0 for it in the sheet's
 //! sparse `row_heights` / `col_widths` tables (`src/office/calc/visibility.ts`;
@@ -10,7 +10,7 @@
 
 use officecore::model::*;
 use officecore::zip::{ZipLimits, ZipReader, ZipWriter};
-use officecore::{layout, xlsx};
+use officecore::{layout, odf, xlsx};
 
 fn text_cell(text: &str) -> Cell {
     Cell { value: CellValue::Text(text.into()), ..Default::default() }
@@ -165,6 +165,94 @@ fn xlsx_import_reads_hidden_flags_excel_writes() {
     // Values next to them are intact.
     assert_eq!(sheet.get("A2").map(|cell| cell.value.clone()), Some(CellValue::Number(3.0)));
     assert_eq!(sheet.get("A4").map(|cell| cell.value.clone()), Some(CellValue::Number(4.0)));
+}
+
+fn content_xml(bytes: &[u8]) -> String {
+    ZipReader::open(bytes.to_vec()).unwrap().read_text("content.xml").unwrap()
+}
+
+#[test]
+fn ods_writes_hidden_rows_and_columns_as_collapsed() {
+    let content = content_xml(&odf::write_ods(&hidden_workbook()).unwrap());
+    // Columns B and F: hidden, the other columns not.
+    assert_eq!(content.matches("table:visibility=\"collapse\"").count(), 5, "{content}");
+    let columns: Vec<&str> =
+        content.split("<table:table-column ").skip(1).map(|part| &part[..part.find("/>").unwrap()]).collect();
+    assert!(columns[1].contains("table:visibility=\"collapse\""), "{columns:?}");
+    assert!(columns[5].contains("table:visibility=\"collapse\""), "{columns:?}");
+    assert!(!columns[0].contains("visibility") && !columns[2].contains("visibility"), "{columns:?}");
+    // Rows 2 (with cells), 7 and 9 (empty).
+    assert_eq!(content.matches("<table:table-row table:visibility=\"collapse\">").count(), 3, "{content}");
+}
+
+#[test]
+fn ods_round_trip_keeps_hidden_rows_and_columns() {
+    let bytes = odf::write_ods(&hidden_workbook()).unwrap();
+    let read = odf::read_ods(&bytes).unwrap();
+    let sheet = &read.workbook.sheets[0];
+    assert_eq!(hidden_rows(sheet), vec![1, 6, 8]);
+    assert_eq!(hidden_columns(sheet), vec![1, 5]);
+    assert_eq!(sheet.get("A2").map(|cell| cell.value.clone()), Some(CellValue::Text("row 2".into())));
+    assert_eq!(sheet.get("C5").map(|cell| cell.value.clone()), Some(CellValue::Number(5.0)));
+}
+
+/// What LibreOffice 24.2 writes for a sheet with hidden rows and columns,
+/// header rows, a collapsed row group, a filtered row and repeated runs.
+fn libreoffice_hidden_package() -> Vec<u8> {
+    let content = concat!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+        "<office:document-content xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" ",
+        "xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\" ",
+        "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" office:version=\"1.3\">",
+        "<office:body><office:spreadsheet><table:table table:name=\"Sheet1\">",
+        "<table:table-column table:style-name=\"co1\" table:default-cell-style-name=\"Default\"/>",
+        "<table:table-column table:style-name=\"co1\" table:visibility=\"collapse\" table:number-columns-repeated=\"2\" table:default-cell-style-name=\"Default\"/>",
+        "<table:table-column table:style-name=\"co1\" table:visibility=\"visible\" table:default-cell-style-name=\"Default\"/>",
+        "<table:table-header-columns><table:table-column table:visibility=\"collapse\" table:default-cell-style-name=\"Default\"/></table:table-header-columns>",
+        "<table:table-column table:visibility=\"collapse\" table:number-columns-repeated=\"1020\" table:default-cell-style-name=\"Default\"/>",
+        "<table:table-header-rows><table:table-row table:style-name=\"ro1\"><table:table-cell office:value-type=\"string\"><text:p>head</text:p></table:table-cell></table:table-row></table:table-header-rows>",
+        "<table:table-row table:style-name=\"ro1\" table:visibility=\"collapse\"><table:table-cell office:value-type=\"float\" office:value=\"1\"><text:p>1</text:p></table:table-cell></table:table-row>",
+        "<table:table-row table:style-name=\"ro1\" table:visibility=\"collapse\" table:number-rows-repeated=\"3\"><table:table-cell table:number-columns-repeated=\"2\"/></table:table-row>",
+        "<table:table-row table:style-name=\"ro1\" table:visibility=\"filter\"><table:table-cell office:value-type=\"float\" office:value=\"2\"><text:p>2</text:p></table:table-cell></table:table-row>",
+        "<table:table-row-group table:display=\"false\">",
+        "<table:table-row table:style-name=\"ro1\"><table:table-cell office:value-type=\"float\" office:value=\"3\"><text:p>3</text:p></table:table-cell></table:table-row>",
+        "<table:table-row-group><table:table-row table:style-name=\"ro1\"><table:table-cell office:value-type=\"float\" office:value=\"4\"><text:p>4</text:p></table:table-cell></table:table-row></table:table-row-group>",
+        "</table:table-row-group>",
+        "<table:table-row table:style-name=\"ro1\"><table:table-cell office:value-type=\"float\" office:value=\"5\"><text:p>5</text:p></table:table-cell></table:table-row>",
+        "<table:table-row table:style-name=\"ro1\" table:visibility=\"collapse\" table:number-rows-repeated=\"1048000\"><table:table-cell table:number-columns-repeated=\"1024\"/></table:table-row>",
+        "</table:table></office:spreadsheet></office:body></office:document-content>",
+    );
+    let mut writer = ZipWriter::new();
+    writer.add_text("mimetype", "application/vnd.oasis.opendocument.spreadsheet");
+    writer.add_text("content.xml", content);
+    writer.finish()
+}
+
+#[test]
+fn ods_import_reads_the_visibility_libreoffice_writes() {
+    let read = odf::read_ods(&libreoffice_hidden_package()).unwrap();
+    let sheet = &read.workbook.sheets[0];
+    // Row 0 is the header row (visible), 1 hidden, 2-4 hidden (repeated), 5 filtered,
+    // 6 and 7 sit in a collapsed group, 8 is visible, the rest of the sheet is hidden.
+    let hidden = hidden_rows(sheet);
+    for row in [1, 2, 3, 4, 5, 6, 7] {
+        assert!(hidden.contains(&row), "row {row} should be hidden: {hidden:?}");
+    }
+    for row in [0, 8] {
+        assert!(!hidden.contains(&row), "row {row} should be visible: {hidden:?}");
+    }
+    // Only the sheet's own grid is recorded, not a million rows.
+    assert!(hidden.iter().all(|row| *row < sheet.row_count), "{hidden:?} vs {}", sheet.row_count);
+    assert!(hidden.len() < 1_000, "{} hidden rows recorded", hidden.len());
+    // Column 0 visible, 1-2 hidden (repeated), 3 explicitly visible, 4 (header column) and 5.. hidden.
+    let columns = hidden_columns(sheet);
+    assert_eq!(&columns[..4], &[1, 2, 4, 5], "{columns:?}");
+    assert!(!columns.contains(&0) && !columns.contains(&3));
+    // The cells in the collapsed group were not lost to the nesting.
+    assert_eq!(sheet.get("A1").map(|cell| cell.value.clone()), Some(CellValue::Text("head".into())));
+    assert_eq!(sheet.get("A7").map(|cell| cell.value.clone()), Some(CellValue::Number(3.0)));
+    assert_eq!(sheet.get("A8").map(|cell| cell.value.clone()), Some(CellValue::Number(4.0)));
+    assert_eq!(sheet.get("A9").map(|cell| cell.value.clone()), Some(CellValue::Number(5.0)));
 }
 
 /// Text drawing operations (`Tj`) on every page of a PDF.
