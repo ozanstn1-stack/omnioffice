@@ -318,7 +318,18 @@ fn column_width_units(pixels: f64) -> f64 {
 struct SheetPart {
     xml: String,
     rels: Vec<(String, String, String)>,
-    comments: Vec<(String, String)>,
+    comments: Vec<SheetNote>,
+}
+
+/// The author a note is filed under when the model does not know who wrote it.
+const DEFAULT_NOTE_AUTHOR: &str = "OmniOffice";
+
+/// One cell note headed for `xl/commentsN.xml` and its VML shape.
+struct SheetNote {
+    address: String,
+    text: String,
+    author: String,
+    visible: bool,
 }
 
 /// One worksheet cell as row XML, or `None` when there is nothing to write.
@@ -379,7 +390,7 @@ fn cell_xml(
 ///
 /// Collected before `sheet_xml` so the caller can assign each commented sheet
 /// its own part number and keep the workbook-wide numbering stable.
-fn sheet_comments(sheet: &Sheet) -> Vec<(String, String)> {
+fn sheet_comments(sheet: &Sheet) -> Vec<SheetNote> {
     let mut comments = Vec::new();
     for (address, cell) in &sheet.cells {
         if cell.is_empty() {
@@ -387,7 +398,18 @@ fn sheet_comments(sheet: &Sheet) -> Vec<(String, String)> {
         }
         if let (Some(text), Some((row, column))) = (cell.comment.as_ref(), crate::address::parse(address)) {
             if !text.trim().is_empty() {
-                comments.push((crate::address::format(row, column), text.clone()));
+                comments.push(SheetNote {
+                    address: crate::address::format(row, column),
+                    text: text.clone(),
+                    author: cell
+                        .comment_author
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|author| !author.is_empty())
+                        .unwrap_or(DEFAULT_NOTE_AUTHOR)
+                        .to_string(),
+                    visible: cell.comment_visible,
+                });
             }
         }
     }
@@ -398,7 +420,7 @@ fn sheet_xml(
     sheet: &Sheet,
     drawing_number: Option<usize>,
     comment_number: Option<usize>,
-    comments: Vec<(String, String)>,
+    comments: Vec<SheetNote>,
     pivot_cells: &[(String, CellValue)],
     table_numbers: &[usize],
     styles: &mut StyleTable,
@@ -463,13 +485,23 @@ fn sheet_xml(
 
     writer.raw("<sheetData>");
     let mut rows: BTreeMap<u32, Vec<(u32, &Cell)>> = BTreeMap::new();
-    let mut hyperlinks: Vec<(String, String)> = Vec::new();
+    // (address, target, display, tooltip) of every link that passes the target check.
+    let mut hyperlinks: Vec<(String, String, Option<String>, Option<String>)> = Vec::new();
+    let mut unsafe_links = 0usize;
     for (address, cell) in &sheet.cells {
         if cell.is_empty() {
             continue;
         }
         if let (Some(target), Some((row, column))) = (cell.link.as_ref(), crate::address::parse(address)) {
-            hyperlinks.push((crate::address::format(row, column), target.clone()));
+            match safe_link_target(target) {
+                Some(target) => hyperlinks.push((
+                    crate::address::format(row, column),
+                    target,
+                    cell.link_display.clone().filter(|text| !text.is_empty()),
+                    cell.link_tooltip.clone().filter(|text| !text.is_empty()),
+                )),
+                None => unsafe_links += 1,
+            }
         }
         if let Some((row, column)) = crate::address::parse(address) {
             rows.entry(row).or_default().push((column, cell));
@@ -627,18 +659,37 @@ fn sheet_xml(
         }
     }
 
-    // Hyperlinks: one external relationship per target.
+    // Hyperlinks: an external link is one relationship per target; an internal
+    // one (`#Sheet2!A1`) is a `location` and needs none.
     let mut rels: Vec<(String, String, String)> = Vec::new();
+    if unsafe_links > 0 {
+        warnings.push(format!(
+            "{unsafe_links} hyperlink(s) on sheet \"{}\" were not written: only http, https, mailto and internal references are allowed.",
+            sheet.name
+        ));
+    }
     if !hyperlinks.is_empty() {
         writer.raw(&format!("<hyperlinks count=\"{}\">", hyperlinks.len()));
-        for (address, target) in &hyperlinks {
-            let rid = format!("rId{}", rels.len() + 1);
-            writer.raw(&format!("<hyperlink ref=\"{}\" r:id=\"{rid}\"/>", escape_attr(address)));
-            rels.push((
-                rid,
-                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink".into(),
-                target.clone(),
-            ));
+        for (address, target, display, tooltip) in &hyperlinks {
+            let mut attributes = format!("ref=\"{}\"", escape_attr(address));
+            if let Some(location) = target.strip_prefix('#') {
+                attributes.push_str(&format!(" location=\"{}\"", escape_attr(location)));
+            } else {
+                let rid = format!("rId{}", rels.len() + 1);
+                attributes.push_str(&format!(" r:id=\"{rid}\""));
+                rels.push((
+                    rid,
+                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink".into(),
+                    target.clone(),
+                ));
+            }
+            if let Some(display) = display {
+                attributes.push_str(&format!(" display=\"{}\"", escape_attr(display)));
+            }
+            if let Some(tooltip) = tooltip {
+                attributes.push_str(&format!(" tooltip=\"{}\"", escape_attr(tooltip)));
+            }
+            writer.raw(&format!("<hyperlink {attributes}/>"));
         }
         writer.raw("</hyperlinks>");
     }
@@ -2084,13 +2135,26 @@ fn defined_name_xml(entry: &NamedRange, local_sheet_id: Option<usize>) -> Option
 
 /// The `<comments>` part for one sheet, carrying only that sheet's notes.
 fn comments_xml(part: &SheetPart) -> String {
+    // Each distinct author is listed once; a comment points at it by position.
+    let mut authors: Vec<&str> = Vec::new();
+    for note in &part.comments {
+        if !authors.contains(&note.author.as_str()) {
+            authors.push(&note.author);
+        }
+    }
     let mut comments_xml = String::from(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<comments xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><authors><author>OmniOffice</author></authors><commentList>",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<comments xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><authors>",
     );
-    for (address, text) in &part.comments {
+    for author in &authors {
+        comments_xml.push_str(&format!("<author>{}</author>", escape_text(author)));
+    }
+    comments_xml.push_str("</authors><commentList>");
+    for note in &part.comments {
+        let author_id = authors.iter().position(|author| *author == note.author).unwrap_or(0);
         comments_xml.push_str(&format!(
-            "<comment ref=\"{address}\" authorId=\"0\"><text><r><rPr><sz val=\"9\"/></rPr><t xml:space=\"preserve\">{text}</t></r></text></comment>",
-            text = escape_text(text)
+            "<comment ref=\"{}\" authorId=\"{author_id}\"><text><r><rPr><sz val=\"9\"/></rPr><t xml:space=\"preserve\">{text}</t></r></text></comment>",
+            note.address,
+            text = escape_text(&note.text)
         ));
     }
     comments_xml.push_str("</commentList></comments>");
@@ -2110,11 +2174,13 @@ fn comments_vml(part: &SheetPart) -> String {
     vml.push_str(
         "<v:shapetype id=\"_x0000_t202\" coordsize=\"21600,21600\" o:spt=\"202\" path=\"m,l,21600r21600,l21600,xe\"><v:stroke joinstyle=\"miter\"/><v:path gradientshapeok=\"t\" o:connecttype=\"rect\"/></v:shapetype>",
     );
-    for (shape_id, (address, _)) in (1025u32..).zip(part.comments.iter()) {
+    for (shape_id, note) in (1025u32..).zip(part.comments.iter()) {
         // Column and row are zero based in the ClientData block.
-        let (row, column) = crate::address::parse(address).unwrap_or((0, 0));
+        let (row, column) = crate::address::parse(&note.address).unwrap_or((0, 0));
+        // A note that stays on screen says so twice, the way Excel does.
+        let (visibility, visible) = if note.visible { ("visible", "<x:Visible/>") } else { ("hidden", "") };
         vml.push_str(&format!(
-            "<v:shape id=\"_x0000_s{shape_id}\" type=\"#_x0000_t202\" style=\"position:absolute;margin-left:59.25pt;margin-top:1.5pt;width:108pt;height:59.25pt;z-index:1;visibility:hidden\" fillcolor=\"#ffffe1\" o:insetmode=\"auto\"><v:fill color2=\"#ffffe1\"/><v:shadow on=\"t\" color=\"black\" obscured=\"t\"/><v:path o:connecttype=\"none\"/><v:textbox style=\"mso-direction-alt:auto\"><div style=\"text-align:left\"/></v:textbox><x:ClientData ObjectType=\"Note\"><x:MoveWithCells/><x:SizeWithCells/><x:AutoFill>False</x:AutoFill><x:Row>{row}</x:Row><x:Column>{column}</x:Column></x:ClientData></v:shape>"
+            "<v:shape id=\"_x0000_s{shape_id}\" type=\"#_x0000_t202\" style=\"position:absolute;margin-left:59.25pt;margin-top:1.5pt;width:108pt;height:59.25pt;z-index:1;visibility:{visibility}\" fillcolor=\"#ffffe1\" o:insetmode=\"auto\"><v:fill color2=\"#ffffe1\"/><v:shadow on=\"t\" color=\"black\" obscured=\"t\"/><v:path o:connecttype=\"none\"/><v:textbox style=\"mso-direction-alt:auto\"><div style=\"text-align:left\"/></v:textbox><x:ClientData ObjectType=\"Note\"><x:MoveWithCells/><x:SizeWithCells/><x:AutoFill>False</x:AutoFill><x:Row>{row}</x:Row><x:Column>{column}</x:Column>{visible}</x:ClientData></v:shape>"
         ));
     }
     vml.push_str("</xml>");
@@ -2650,7 +2716,7 @@ fn apply_worksheet_part(
     apply_sheet_filter(&root, sheet);
     apply_validations(&root, sheet, warnings);
     apply_conditional(&root, sheet, styles, warnings);
-    apply_hyperlinks(zip, part, &root, sheet);
+    apply_hyperlinks(zip, part, &root, sheet, warnings);
     apply_comments(zip, part, sheet, warnings);
     apply_tables(zip, part, &root, sheet, table_number, warnings);
     apply_print_settings(&root, sheet);
@@ -3288,31 +3354,128 @@ fn contains_text_value(formula: &str) -> String {
     String::new()
 }
 
-fn apply_hyperlinks(zip: &crate::zip::ZipReader, part: &str, root: &XmlNode, sheet: &mut Sheet) {
+/// Cells one hyperlink may cover (`ref="A1:C300"`), and the cells all of a
+/// sheet's links may cover, so a hostile range cannot build millions of cells.
+const MAX_LINK_RANGE_CELLS: usize = 10_000;
+const MAX_LINKED_CELLS: usize = 100_000;
+
+/// Reads `<hyperlinks>`: an external target comes through the sheet's
+/// relationships, an internal one through `location` (kept as `#Sheet2!A1`).
+///
+/// Every target is checked with [`safe_link_target`]; links to files, scripts
+/// and network paths are dropped and counted in one warning.
+fn apply_hyperlinks(
+    zip: &crate::zip::ZipReader,
+    part: &str,
+    root: &XmlNode,
+    sheet: &mut Sheet,
+    warnings: &mut Vec<String>,
+) {
     let Some(links) = root.child("hyperlinks") else { return };
     let relationships = read_relationships(zip, part);
+    let mut dropped = 0usize;
+    let mut linked = 0usize;
     for link in links.children_of("hyperlink") {
-        let Some((row, column)) = link.attr("ref").and_then(crate::address::parse) else { continue };
-        let address = crate::address::format(row, column);
-        // Only external targets have a relationship; internal `location` links
-        // cannot be expressed as a cell link in the model.
-        let Some(target) = link
+        let Some(reference) = link.attr("ref").map(str::trim).filter(|reference| !reference.is_empty()) else {
+            continue;
+        };
+        let external = link
             .attr_any_ns("id")
             .and_then(|id| relationships.get(id))
             .filter(|relationship| relationship.kind.ends_with("/hyperlink"))
-            .map(|relationship| relationship.target.clone())
+            .map(|relationship| relationship.target.trim().to_string());
+        let location = link.attr("location").map(str::trim).filter(|location| !location.is_empty());
+        let target = match (external, location) {
+            (Some(url), None) => url,
+            (Some(url), Some(location)) => format!("{url}#{location}"),
+            (None, Some(location)) => format!("#{location}"),
+            (None, None) => continue,
+        };
+        let Some(target) = safe_link_target(&target) else {
+            dropped += 1;
+            continue;
+        };
+        let display = link.attr("display").filter(|text| !text.is_empty()).map(str::to_string);
+        let tooltip = link.attr("tooltip").filter(|text| !text.is_empty()).map(str::to_string);
+        for address in crate::address::expand_range(reference, MAX_LINK_RANGE_CELLS) {
+            if linked >= MAX_LINKED_CELLS {
+                break;
+            }
+            linked += 1;
+            let cell = sheet.cells.entry(address).or_default();
+            // The cell text is the label; `display` is only worth keeping when
+            // it says something else (or the cell has no text at all).
+            let differs = match &cell.value {
+                CellValue::Text(text) => display.as_deref().is_some_and(|display| display != text),
+                CellValue::Empty => display.is_some(),
+                _ => false,
+            };
+            cell.link = Some(target.clone());
+            cell.link_display = if differs { display.clone() } else { None };
+            cell.link_tooltip = tooltip.clone();
+        }
+    }
+    if dropped > 0 {
+        warnings.push(format!(
+            "{dropped} hyperlink(s) on sheet \"{}\" were dropped: only http, https, mailto and internal references are allowed.",
+            sheet.name
+        ));
+    }
+}
+
+/// The note text of a `<comment>`: Excel starts a rich note with the author's
+/// name in a bold run ("Ada:"), which belongs to the author field and not to the
+/// text; the legacy copy of a threaded comment carries a notice that is dropped
+/// to leave the comment itself.
+fn note_text(text: Option<&XmlNode>, author: Option<&str>) -> String {
+    let Some(text) = text else { return String::new() };
+    let runs = text.children_of("r");
+    let mut out = String::new();
+    if runs.is_empty() {
+        out = text.deep_text();
+    }
+    for (index, run) in runs.iter().enumerate() {
+        let run_text = run.child("t").map(XmlNode::deep_text).unwrap_or_default();
+        let bold = run.child("rPr").is_some_and(|properties| properties.child("b").is_some());
+        let names_the_author = author.is_some_and(|author| run_text.trim().trim_end_matches(':').trim() == author);
+        if index == 0 && bold && names_the_author {
+            continue;
+        }
+        out.push_str(&run_text);
+    }
+    let out = out.trim();
+    if let Some((_, comment)) = out.strip_prefix("[Threaded comment]").and_then(|rest| rest.split_once("Comment:")) {
+        return comment
+            .lines()
+            .map(|line| line.strip_prefix("    ").unwrap_or(line))
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim()
+            .to_string();
+    }
+    out.to_string()
+}
+
+/// The cells whose note the legacy VML drawing keeps open (`<x:Visible/>` or
+/// `visibility:visible`), as zero-based (row, column).
+fn read_visible_notes(zip: &crate::zip::ZipReader, target: &str) -> std::collections::HashSet<(u32, u32)> {
+    let mut visible = std::collections::HashSet::new();
+    let Ok(root) = zip.read_text(target).and_then(|xml| parse_xml(&xml)) else { return visible };
+    let mut shapes = Vec::new();
+    root.find_all("shape", &mut shapes);
+    for shape in shapes {
+        let Some(client) = descendant(shape, "ClientData").filter(|client| client.attr("ObjectType") == Some("Note"))
         else {
             continue;
         };
-        match sheet.cells.get_mut(&address) {
-            Some(cell) => cell.link = Some(target),
-            None => {
-                // `Cell::is_empty` ignores links, so `Sheet::set` would drop
-                // this cell; insert it directly instead.
-                sheet.cells.insert(address, Cell { link: Some(target), ..Default::default() });
-            }
+        let number = |name: &str| client.child(name).and_then(|node| node.deep_text().trim().parse::<u32>().ok());
+        let open = client.child("Visible").is_some()
+            || shape.attr("style").is_some_and(|style| style.replace(' ', "").contains("visibility:visible"));
+        if let (true, Some(row), Some(column)) = (open, number("Row"), number("Column")) {
+            visible.insert((row, column));
         }
     }
+    visible
 }
 
 fn apply_comments(zip: &crate::zip::ZipReader, part: &str, sheet: &mut Sheet, warnings: &mut Vec<String>) {
@@ -3333,19 +3496,35 @@ fn apply_comments(zip: &crate::zip::ZipReader, part: &str, sheet: &mut Sheet, wa
         }
     };
     let Some(list) = root.child("commentList") else { return };
+    let authors: Vec<String> = root
+        .child("authors")
+        .map(|authors| {
+            authors.children_of("author").iter().map(|author| author.deep_text().trim().to_string()).collect()
+        })
+        .unwrap_or_default();
+    let open_notes = relationships
+        .values()
+        .find(|relationship| relationship.kind.ends_with("/vmlDrawing"))
+        .map(|relationship| read_visible_notes(zip, &resolve_part(part, &relationship.target)))
+        .unwrap_or_default();
     for comment in list.children_of("comment") {
         let Some((row, column)) = comment.attr("ref").and_then(crate::address::parse) else { continue };
-        let text = comment.child("text").map(XmlNode::deep_text).unwrap_or_default().trim().to_string();
+        // A threaded comment's legacy author is "tc={guid}", which names no one.
+        let author = comment
+            .attr("authorId")
+            .and_then(|id| id.trim().parse::<usize>().ok())
+            .and_then(|index| authors.get(index))
+            .filter(|author| !author.is_empty() && !author.starts_with("tc="))
+            .cloned();
+        let text = note_text(comment.child("text"), author.as_deref());
         if text.is_empty() {
             continue;
         }
         let address = crate::address::format(row, column);
-        match sheet.cells.get_mut(&address) {
-            Some(cell) => cell.comment = Some(text),
-            None => {
-                sheet.cells.insert(address, Cell { comment: Some(text), ..Default::default() });
-            }
-        }
+        let cell = sheet.cells.entry(address).or_default();
+        cell.comment = Some(text);
+        cell.comment_author = author.filter(|author| author != DEFAULT_NOTE_AUTHOR);
+        cell.comment_visible = open_notes.contains(&(row, column));
     }
 }
 

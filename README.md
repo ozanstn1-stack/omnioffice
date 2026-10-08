@@ -631,6 +631,11 @@ These were exercised on the built application and with automated tests:
   merges, freeze panes, validations, conditional formatting, hyperlinks,
   comments, names, tables, charts, pictures, print settings, sheet
   protection and preserved pivot parts
+- **Calc file model (V4.4)**: scatter and doughnut charts, color scales, data
+  bars, icon sets and formula rules, and cell notes and hyperlinks as editable
+  data (note author and visibility, link display text, screen tip, internal
+  references) round-trip through `.oswk`, XLSX and ODS; links are limited to
+  http, https, mailto and internal targets
 - Cell formatting, sorting, filtering, conditional formatting, data
   validation, freeze panes, charts (column/bar/line/pie/area), pivot tables
 - **Mobile (V3.1)**: touch selection, fill handle, pinch zoom, bottom-docked
@@ -1080,8 +1085,12 @@ These are real and honest:
   fields are flagged but not evaluated. Non-WinAnsi characters fall back to
   `?` in generated Base14 appearances (the real `/V` keeps the string).
 - **XLSX**: pivot caches are preserved and re-exported, not recomputed;
-  unsupported chart kinds, secondary/combo axes and some conditional formats
-  degrade with warnings; SVG export of sheets is not offered.
+  unsupported chart kinds (radar, bubble, stock, surface), secondary/combo
+  axes, scatter series with their own X values and Excel 2010 data-bar and
+  icon-set extensions (negative colours, custom icons) degrade with warnings;
+  hyperlinks other than http, https, mailto and internal references (file:,
+  javascript:, network paths) are dropped on import and export; SVG export of
+  sheets is not offered.
 - **PDF repair / Fast Web View** run the bundled qpdf, which is a desktop
   engine: Android and engine-less builds report the tool as unavailable.
   Repair rewrites the file as qpdf reads it (encrypted documents need the

@@ -326,14 +326,28 @@ export interface Cell {
   value: CellValue;
   formula: string | null;
   style: CellStyle;
+  /** The text of the cell's note. */
   comment: string | null;
   /**
-   * Hyperlink target; the cell text is the label.
+   * Hyperlink target; the cell text is the label. Only `http:`, `https:` and
+   * `mailto:` URLs and internal references (`#Sheet2!A1`, `#'My Sheet'!A1`,
+   * `#Name`) are valid: the file writers and readers drop any other target.
    *
    * Optional because the Rust model defaults it, so a document written by an
    * older build simply has no `link` key.
    */
   link?: string | null;
+  /** Who wrote the note; absent when unknown (the writers then use the app name). */
+  commentAuthor?: string | null;
+  /** The note stays on screen instead of appearing on hover. */
+  commentVisible?: boolean;
+  /**
+   * The link's display text when it differs from the cell text (XLSX `display`).
+   * ODS shows it as the label of a link on an empty cell.
+   */
+  linkDisplay?: string | null;
+  /** The screen tip shown when pointing at the link. */
+  linkTooltip?: string | null;
 }
 
 export interface MergeRange {

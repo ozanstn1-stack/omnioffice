@@ -111,3 +111,62 @@ fn a_workbook_without_the_new_features_serializes_without_the_new_keys() {
     let again: Workbook = serde_json::from_str(&text).unwrap();
     assert_eq!(again, workbook);
 }
+
+#[test]
+fn the_new_fields_round_trip_through_json_under_camel_case_keys() {
+    let mut workbook = load(&previous_release_workbook());
+    let sheet = &mut workbook.sheets[0];
+    sheet.charts[0].chart.kind = "doughnut".into();
+    sheet.charts[0].chart.hole_size = Some(65);
+    sheet.charts.push(ChartPlacement {
+        id: "c2".into(),
+        chart: ChartData { kind: "scatter".into(), scatter_style: Some("smoothMarker".into()), ..Default::default() },
+        ..Default::default()
+    });
+    sheet.conditional.push(CondRule {
+        id: "r3".into(),
+        range: "B2:B4".into(),
+        kind: "iconSet".into(),
+        icon_set: Some("3Arrows".into()),
+        reverse_icons: true,
+        hide_value: true,
+        thresholds: vec![CondThreshold { kind: "percent".into(), value: "33".into(), color: None }],
+        ..Default::default()
+    });
+    sheet.conditional.push(CondRule {
+        id: "r4".into(),
+        range: "B2:B4".into(),
+        kind: "expression".into(),
+        formula: Some("$B2>1".into()),
+        bold: true,
+        italic: true,
+        ..Default::default()
+    });
+    let cell = sheet.cells.get_mut("A1").unwrap();
+    cell.comment_author = Some("Ada".into());
+    cell.comment_visible = true;
+    cell.link_display = Some("Open".into());
+    cell.link_tooltip = Some("Tip".into());
+
+    let value = serde_json::to_value(&workbook).unwrap();
+    let json = value["sheets"][0].clone();
+    assert_eq!(json["charts"][0]["chart"]["holeSize"], 65);
+    assert_eq!(json["charts"][1]["chart"]["scatterStyle"], "smoothMarker");
+    assert_eq!(json["conditional"][2]["iconSet"], "3Arrows");
+    assert_eq!(json["conditional"][2]["reverseIcons"], true);
+    assert_eq!(json["conditional"][2]["hideValue"], true);
+    assert_eq!(json["conditional"][2]["thresholds"][0]["kind"], "percent");
+    assert_eq!(json["conditional"][3]["formula"], "$B2>1");
+    assert_eq!(json["conditional"][3]["bold"], true);
+    assert_eq!(json["conditional"][3]["italic"], true);
+    assert_eq!(json["cells"]["A1"]["commentAuthor"], "Ada");
+    assert_eq!(json["cells"]["A1"]["commentVisible"], true);
+    assert_eq!(json["cells"]["A1"]["linkDisplay"], "Open");
+    assert_eq!(json["cells"]["A1"]["linkTooltip"], "Tip");
+    // Rules and cells that do not use the new fields stay as they were.
+    assert!(json["conditional"][0].get("thresholds").is_none());
+    assert!(json["cells"]["B2"].get("commentAuthor").is_none());
+
+    let back: Workbook = serde_json::from_value(value).unwrap();
+    assert_eq!(back, workbook);
+}

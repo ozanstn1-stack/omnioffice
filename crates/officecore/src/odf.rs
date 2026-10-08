@@ -2386,13 +2386,46 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
                         attributes.push_str(&format!(" table:number-columns-spanned=\"{}\"", end_col - start_col + 1));
                     }
                 }
-                let value_xml = match &cell.value {
-                    CellValue::Empty => "<text:p/>".to_string(),
-                    CellValue::Number(number) => format!("<text:p>{number}</text:p>"),
-                    CellValue::Bool(value) => format!("<text:p>{}</text:p>", if *value { "TRUE" } else { "FALSE" }),
-                    CellValue::Text(text) => format!("<text:p>{}</text:p>", crate::xml::escape_text(text)),
-                    CellValue::Error(error) => format!("<text:p>{}</text:p>", crate::xml::escape_text(error)),
+                let label = match &cell.value {
+                    CellValue::Empty => String::new(),
+                    CellValue::Number(number) => format!("{number}"),
+                    CellValue::Bool(value) => if *value { "TRUE" } else { "FALSE" }.to_string(),
+                    CellValue::Text(text) | CellValue::Error(text) => text.clone(),
                 };
+                // A hyperlink is a `text:a` around the cell text. A cell with no
+                // text shows the link's display text (or its target) instead, since
+                // ODF has no link without a label. Targets outside the allowed
+                // schemes are not written.
+                let link_target = cell.link.as_deref().and_then(safe_link_target);
+                let paragraph = match &link_target {
+                    Some(target) => {
+                        let shown = if label.is_empty() {
+                            cell.link_display.clone().filter(|text| !text.is_empty()).unwrap_or_else(|| target.clone())
+                        } else {
+                            label
+                        };
+                        let tip = cell
+                            .link_tooltip
+                            .as_deref()
+                            .filter(|text| !text.is_empty())
+                            .map(|text| format!(" office:title=\"{}\"", escape(text)))
+                            .unwrap_or_default();
+                        format!(
+                            "<text:p><text:a xlink:type=\"simple\" xlink:href=\"{}\"{tip}>{}</text:a></text:p>",
+                            escape(&ods_href(target)),
+                            crate::xml::escape_text(&shown)
+                        )
+                    }
+                    None if label.is_empty() => "<text:p/>".to_string(),
+                    None => format!("<text:p>{}</text:p>", crate::xml::escape_text(&label)),
+                };
+                let annotation = cell
+                    .comment
+                    .as_deref()
+                    .filter(|text| !text.trim().is_empty())
+                    .map(|text| ods_annotation(text, cell.comment_author.as_deref(), cell.comment_visible))
+                    .unwrap_or_default();
+                let value_xml = format!("{annotation}{paragraph}");
                 let value_type = match &cell.value {
                     CellValue::Number(_) => "float",
                     CellValue::Bool(_) => "boolean",
@@ -2408,7 +2441,12 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
                     CellValue::Bool(value) => {
                         format!(" office:boolean-value=\"{}\"", if *value { "true" } else { "false" })
                     }
-                    CellValue::Text(text) => format!(" office:string-value=\"{}\"", escape(text)),
+                    // LibreOffice takes a cell's text from `office:string-value` when
+                    // it is there and then never sees the `text:a` link, so a linked
+                    // cell carries its text in the paragraph only.
+                    CellValue::Text(text) if link_target.is_none() => {
+                        format!(" office:string-value=\"{}\"", escape(text))
+                    }
                     _ => String::new(),
                 };
                 row_output.push_str(&format!("<table:table-cell office:value-type=\"{value_type}\"{value_attr}{attributes}{formula}>{frame}{value_xml}</table:table-cell>"));
@@ -2766,6 +2804,78 @@ fn ods_shape_anchor(frame: &XmlNode) -> String {
     )
 }
 
+/// A cell note as `office:annotation`, the first child of its cell.
+fn ods_annotation(text: &str, author: Option<&str>, visible: bool) -> String {
+    let paragraphs: String =
+        text.lines().map(|line| format!("<text:p>{}</text:p>", crate::xml::escape_text(line))).collect();
+    let creator = author
+        .filter(|author| !author.trim().is_empty())
+        .map(|author| format!("<dc:creator>{}</dc:creator>", crate::xml::escape_text(author.trim())))
+        .unwrap_or_default();
+    format!("<office:annotation office:display=\"{visible}\">{creator}{paragraphs}</office:annotation>")
+}
+
+/// An internal link in ODS spells the sheet separator `.` (`#Sheet2.A1`,
+/// `#'My Sheet'.A1`); the model, like XLSX, uses `!`.
+fn swap_sheet_separator(reference: &str, from: char, to: char) -> String {
+    let mut quoted = false;
+    let mut last = None;
+    for (index, ch) in reference.char_indices() {
+        match ch {
+            '\'' => quoted = !quoted,
+            ch if ch == from && !quoted => last = Some(index),
+            _ => {}
+        }
+    }
+    match last {
+        Some(index) => format!("{}{to}{}", &reference[..index], &reference[index + 1..]),
+        None => reference.to_string(),
+    }
+}
+
+/// The `xlink:href` for a model link target.
+fn ods_href(target: &str) -> String {
+    match target.strip_prefix('#') {
+        Some(reference) => format!("#{}", swap_sheet_separator(reference, '!', '.')),
+        None => target.to_string(),
+    }
+}
+
+/// A cell's `office:annotation` as (text, author, shown permanently).
+fn read_ods_annotation(annotation: &XmlNode) -> Option<(String, Option<String>, bool)> {
+    let text = annotation.children_of("p").iter().map(|node| node.deep_text()).collect::<Vec<_>>().join("\n");
+    if text.trim().is_empty() {
+        return None;
+    }
+    let author = annotation
+        .child("creator")
+        .map(|creator| creator.deep_text().trim().to_string())
+        .filter(|author| !author.is_empty());
+    Some((text, author, annotation.attr_any_ns("display") == Some("true")))
+}
+
+/// The hyperlink of a cell: (target, screen tip) of the first `text:a` in its
+/// paragraphs. A target that is not http, https, mailto or internal is counted in
+/// `dropped` and ignored.
+fn read_ods_cell_link(cell: &XmlNode, dropped: &mut usize) -> Option<(String, Option<String>)> {
+    let mut anchors = Vec::new();
+    for paragraph in cell.children_of("p") {
+        paragraph.find_all("a", &mut anchors);
+    }
+    let anchor = anchors.into_iter().find(|anchor| anchor.attr_any_ns("href").is_some())?;
+    let href = anchor.attr_any_ns("href")?.trim();
+    let target = match href.strip_prefix('#') {
+        Some(reference) => format!("#{}", swap_sheet_separator(reference, '.', '!')),
+        None => href.to_string(),
+    };
+    let Some(target) = safe_link_target(&target) else {
+        *dropped += 1;
+        return None;
+    };
+    let tooltip = anchor.attr_any_ns("title").map(str::to_string).filter(|title| !title.is_empty());
+    Some((target, tooltip))
+}
+
 /// Conditional-format entries kept per sheet; a hostile file cannot make the
 /// importer build an unbounded rule list.
 const ODS_MAX_CONDITIONAL_RULES: usize = 5_000;
@@ -3091,6 +3201,7 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
     let styles_root = reader.read_text("styles.xml").ok().and_then(|text| parse_xml(&text).ok());
     let looks = ods_cell_looks(&[&root, styles_root.as_ref().unwrap_or(&root)]);
     let mut unsupported_formats = 0usize;
+    let mut dropped_links = 0usize;
     for table in tables {
         // `table:name`: a plain `attr("name")` never matched the prefixed
         // attribute, so every imported sheet used to be called "Sheet".
@@ -3141,11 +3252,10 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
                         .map(|value| CellValue::Text(value.to_string()))
                         .unwrap_or(CellValue::Empty),
                     _ => {
-                        let text = {
-                            let mut paragraphs = Vec::new();
-                            cell.find_all("p", &mut paragraphs);
-                            paragraphs.iter().map(|node| node.deep_text()).collect::<Vec<_>>().join("\n")
-                        };
+                        // Only the cell's own paragraphs: a note's text lives in
+                        // `office:annotation`, which is not part of the value.
+                        let text =
+                            cell.children_of("p").iter().map(|node| node.deep_text()).collect::<Vec<_>>().join("\n");
                         if text.is_empty() {
                             CellValue::Empty
                         } else if formula.is_some() && text.starts_with('#') {
@@ -3155,14 +3265,24 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
                         }
                     }
                 };
-                if !matches!(value, CellValue::Empty) || formula.is_some() {
+                let note = cell.child("annotation").and_then(read_ods_annotation);
+                let link = read_ods_cell_link(cell, &mut dropped_links);
+                if !matches!(value, CellValue::Empty) || formula.is_some() || note.is_some() || link.is_some() {
                     last_row = last_row.max(row);
                     for offset in 0..repeat.min(64) {
                         let address = crate::address::format(row, column + offset);
-                        sheet.set(
-                            &address,
-                            Cell { value: value.clone(), formula: formula.clone(), ..Default::default() },
-                        );
+                        let mut model = Cell { value: value.clone(), formula: formula.clone(), ..Default::default() };
+                        if let Some((target, tooltip)) = &link {
+                            model.link = Some(target.clone());
+                            model.link_tooltip = tooltip.clone();
+                        }
+                        // Only the first cell of a repeated run keeps the note.
+                        if let (Some((text, author, visible)), 0) = (&note, offset) {
+                            model.comment = Some(text.clone());
+                            model.comment_author = author.clone();
+                            model.comment_visible = *visible;
+                        }
+                        sheet.set(&address, model);
                     }
                 }
                 for frame in cell.children_named("frame") {
@@ -3200,6 +3320,11 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
     if unsupported_formats > 0 {
         warnings.push(format!(
             "{unsupported_formats} conditional formatting rule(s) use types this editor cannot import and were dropped."
+        ));
+    }
+    if dropped_links > 0 {
+        warnings.push(format!(
+            "{dropped_links} hyperlink(s) were dropped: only http, https, mailto and internal references are allowed."
         ));
     }
     warnings.push("Cell formatting from ODS files is imported with limited support.".into());

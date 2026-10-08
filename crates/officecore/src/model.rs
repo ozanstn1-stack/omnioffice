@@ -981,9 +981,52 @@ pub struct Cell {
     pub value: CellValue,
     pub formula: Option<String>,
     pub style: CellStyle,
+    /// The text of the cell's note (a comment in Excel, an annotation in ODS).
     pub comment: Option<String>,
-    /// Hyperlink target; the cell text is the label.
+    /// Hyperlink target; the cell text is the label. Only `http`, `https` and
+    /// `mailto` URLs and internal references (`#Sheet2!A1`, `#Name`) are valid, see
+    /// [`safe_link_target`].
     pub link: Option<String>,
+    /// Who wrote the note. Unset means unknown; the writers then use the
+    /// application name. Like the fields below it is not serialized when unset,
+    /// so older `.oswk` files and the ones older builds read are unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment_author: Option<String>,
+    /// The note stays on screen instead of appearing on hover.
+    #[serde(skip_serializing_if = "is_false")]
+    pub comment_visible: bool,
+    /// The text XLSX stores as the link's `display` when it differs from the
+    /// cell text. On a cell with no text ODS shows it (or the target) as the label.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link_display: Option<String>,
+    /// The screen tip shown when pointing at the link.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link_tooltip: Option<String>,
+}
+
+/// The longest hyperlink target kept, comfortably above Excel's own limit.
+const MAX_LINK_TARGET: usize = 8_192;
+
+/// A hyperlink target the editor stores, writes and follows, trimmed; `None`
+/// for anything else.
+///
+/// Only `http`, `https` and `mailto` URLs and internal references (a leading
+/// `#`, as in `#Sheet2!A1`) pass. `file:`, `javascript:`, `data:` and other
+/// schemes, UNC paths (`\\server\share`, `//server/share`) and bare relative
+/// paths are dropped: a document must not be able to open a local program or
+/// leak credentials to a network share when its link is followed.
+pub fn safe_link_target(target: &str) -> Option<String> {
+    let target = target.trim();
+    if target.is_empty() || target.len() > MAX_LINK_TARGET || target.chars().any(char::is_control) {
+        return None;
+    }
+    let lower = target.to_ascii_lowercase();
+    let after = |scheme: &str| lower.strip_prefix(scheme).filter(|rest| !rest.trim_start_matches('/').is_empty());
+    let allowed = after("http://").is_some()
+        || after("https://").is_some()
+        || after("mailto:").is_some()
+        || lower.strip_prefix('#').is_some_and(|rest| !rest.is_empty());
+    allowed.then(|| target.to_string())
 }
 
 /// Paper, orientation and print options for one sheet.
