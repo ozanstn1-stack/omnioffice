@@ -166,6 +166,89 @@ export function applyCellEdits(
 }
 
 /**
+ * One change to a cell of a known sheet (see `applyCellTextEdits`): typed text,
+ * a style, or both. Without `text` the cell keeps its content.
+ */
+export interface CellTextEdit {
+  row: number;
+  col: number;
+  text?: string;
+  style?: CellStyle;
+}
+
+/**
+ * Applies many typed values to one sheet with a single recalculation, as one
+ * model change: Replace all and the sort/paste tools use it where
+ * `applyCellEdit` per cell would copy the sheet and recalculate once per cell.
+ *
+ * Every text goes through the same parser as typing; a formula's cached value
+ * is resolved from one incremental pass over all the edited cells.
+ */
+export function applyCellTextEdits(workbook: Workbook, sheetIndex: number, edits: readonly CellTextEdit[]): Workbook {
+  const index = Math.min(Math.max(0, sheetIndex), workbook.sheets.length - 1);
+  const target = workbook.sheets[index];
+  if (!target || edits.length === 0) return workbook;
+  const cells = { ...target.cells };
+  const addresses: string[] = [];
+  let rowCount = target.rowCount;
+  let colCount = target.colCount;
+  for (const edit of edits) {
+    const address = formatAddress(edit.row, edit.col);
+    let staged: Cell = cells[address] ?? emptyCell();
+    if (edit.text !== undefined) {
+      staged = edit.text.startsWith("=")
+        ? { ...staged, formula: edit.text, value: { kind: "empty" } }
+        : { ...staged, formula: null, value: parseInputValue(edit.text) };
+    }
+    if (edit.style) staged = { ...staged, style: edit.style };
+    if (isBlankCell(staged)) delete cells[address];
+    else cells[address] = staged;
+    addresses.push(address);
+    rowCount = Math.max(rowCount, edit.row + 51);
+    colCount = Math.max(colCount, edit.col + 6);
+  }
+  return commitStagedSheet(workbook, index, { ...target, cells, rowCount, colCount }, addresses);
+}
+
+/**
+ * Puts a staged sheet into the workbook as one edit of `addresses`: formula
+ * cells among them get their cached value from one incremental pass, and the
+ * result is marked so the next value computation stays incremental too.
+ */
+function commitStagedSheet(workbook: Workbook, index: number, stagedSheet: Sheet, addresses: string[]): Workbook {
+  const name = workbook.sheets[index].name;
+  const staged = markDirty(replaceSheet(workbook, index, stagedSheet), workbook, name, addresses);
+  const formulas = addresses.filter((address) => stagedSheet.cells[address]?.formula);
+  if (formulas.length === 0) return staged;
+
+  const values = computeWorkbookValues(staged);
+  const resolved = { ...stagedSheet.cells };
+  for (const address of formulas) {
+    const value = values.get(keyOf(name, address));
+    resolved[address] = { ...resolved[address], value: scalarToCellValue(value === undefined ? "" : asScalar(value)) };
+  }
+  const final = replaceSheet(staged, index, { ...stagedSheet, cells: resolved });
+  return markDirty(final, workbook, name, addresses);
+}
+
+/**
+ * Replaces a sheet's cells wholesale (a sort rearranges them) as one edit.
+ * `changed` lists the addresses whose content differs, so only the formulas
+ * that read them are recalculated.
+ */
+export function applySheetCells(
+  workbook: Workbook,
+  sheetIndex: number,
+  cells: Record<string, Cell>,
+  changed: string[],
+): Workbook {
+  const index = Math.min(Math.max(0, sheetIndex), workbook.sheets.length - 1);
+  const target = workbook.sheets[index];
+  if (!target || changed.length === 0) return workbook;
+  return commitStagedSheet(workbook, index, { ...target, cells }, changed);
+}
+
+/**
  * Shifts the row part of every relative reference in a formula by `delta`.
  * Absolute rows (`$1`) and non-references (bare numbers) are untouched. The
  * lookbehind stops the rewrite from biting into sheet names such as `Data1`,
@@ -566,6 +649,15 @@ export function computeWorkbookValues(workbook: Workbook): Map<string, Scalar> {
     }
   }
   return computeFull(workbook);
+}
+
+/**
+ * The values of this workbook object as the grid last computed them, or a
+ * fresh computation when there are none. Find, replace and the other
+ * whole-workbook tools read through it so the render's work is not repeated.
+ */
+export function workbookValues(workbook: Workbook): Map<string, Scalar> {
+  return computeEntries.get(workbook)?.values ?? computeWorkbookValues(workbook);
 }
 
 export interface ComputeStats {
