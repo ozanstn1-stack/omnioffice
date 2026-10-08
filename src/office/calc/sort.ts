@@ -10,8 +10,9 @@
  * are sorted among themselves, as a filtered list is in Excel.
  */
 import type { Cell, Sheet } from "../../lib/office-types";
-import { shiftFormulaRows } from "./cells";
+import { shiftFormulaRows, usedRange } from "./cells";
 import { formatAddress, isError, parseAddress, parseRange, type Scalar } from "./formula";
+import { isSheetProtected } from "./protection";
 
 export interface SortRange {
   top: number;
@@ -173,4 +174,38 @@ export function planSort(
     }
   }
   return { cells, changed: [...changed] };
+}
+
+export type SortContext =
+  { ok: true; range: SortRange; headerGuess: boolean } | { ok: false; reason: "protected" | "merged" | "tooSmall" };
+
+/**
+ * What a sort works on. A selection of several cells is sorted as it is,
+ * clipped to the used area of the sheet; a single cell stands for the whole
+ * list: the filter range if the sheet has one, else the used range. The
+ * answer also carries whether the first row looks like a header, and why a
+ * sort is not possible (protected sheet, merged cells, fewer than two rows).
+ */
+export function sortContext(sheet: Sheet, values: ReadonlyMap<string, Scalar>, selection: SortRange): SortContext {
+  if (isSheetProtected(sheet)) return { ok: false, reason: "protected" };
+  const used = parseRange(usedRange(sheet));
+  const list = parseRange(sheet.filter?.range ?? usedRange(sheet));
+  if (!used || !list) return { ok: false, reason: "tooSmall" };
+  const single = selection.top === selection.bottom && selection.left === selection.right;
+  const range: SortRange = single
+    ? { top: list.start.row, left: list.start.col, bottom: list.end.row, right: list.end.col }
+    : {
+        top: selection.top,
+        left: selection.left,
+        bottom: Math.min(selection.bottom, used.end.row),
+        right: Math.min(selection.right, used.end.col),
+      };
+  if (range.bottom <= range.top || range.right < range.left) return { ok: false, reason: "tooSmall" };
+  if (rangeHasMerges(sheet, range)) return { ok: false, reason: "merged" };
+  const rowValues = (row: number) => {
+    const out: Scalar[] = [];
+    for (let col = range.left; col <= range.right; col += 1) out.push(values.get(formatAddress(row, col)) ?? "");
+    return out;
+  };
+  return { ok: true, range, headerGuess: guessHeaders(rowValues(range.top), rowValues(range.top + 1)) };
 }

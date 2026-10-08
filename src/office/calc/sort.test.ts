@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { cellText, newSheet, newWorkbook, type Sheet, type Workbook } from "../../lib/office-types";
 import { applyCellEdit, applySheetCells, computeSheetValues, computeWorkbookValues } from "./cells";
 import { FormulaError, parseAddress, type Scalar } from "./formula";
-import { compareValues, guessHeaders, planSort, rangeHasMerges, sortOrder } from "./sort";
+import { compareValues, guessHeaders, planSort, rangeHasMerges, sortContext, sortOrder } from "./sort";
 
 /** A one-sheet workbook from `{ A1: "typed text or =formula" }`. */
 function seed(values: Record<string, string>): Workbook {
@@ -313,5 +313,54 @@ describe("planSort applied to a workbook", () => {
   it("returns the same workbook when nothing changed", () => {
     const workbook = seed({ A1: "1" });
     expect(applySheetCells(workbook, 0, workbook.sheets[0].cells, [])).toBe(workbook);
+  });
+});
+
+describe("sortContext", () => {
+  const people = { A1: "Name", B1: "Age", A2: "Cy", B2: "30", A3: "Al", B3: "25", B9: "far" };
+
+  function context(
+    selection: { top: number; left: number; bottom: number; right: number },
+    patch?: (sheet: Sheet) => Sheet,
+  ) {
+    const workbook = seed(people);
+    const sheet = patch ? patch(workbook.sheets[0]) : workbook.sheets[0];
+    return sortContext(sheet, computeSheetValues(workbook, sheet), selection);
+  }
+
+  it("takes the whole used range for a single selected cell, and guesses the header", () => {
+    const result = context({ top: 1, left: 1, bottom: 1, right: 1 });
+    expect(result).toEqual({ ok: true, range: { top: 0, left: 0, bottom: 8, right: 1 }, headerGuess: true });
+  });
+
+  it("prefers the filter range to the used range", () => {
+    const result = context({ top: 0, left: 0, bottom: 0, right: 0 }, (sheet) => ({
+      ...sheet,
+      filter: { range: "A1:B3", column: 0, values: [] },
+    }));
+    expect(result).toMatchObject({ ok: true, range: { top: 0, left: 0, bottom: 2, right: 1 } });
+  });
+
+  it("sorts a multi-cell selection as selected, clipped to the data", () => {
+    const result = context({ top: 1, left: 0, bottom: 500, right: 1 });
+    expect(result).toEqual({ ok: true, range: { top: 1, left: 0, bottom: 8, right: 1 }, headerGuess: false });
+  });
+
+  it("explains why a sort is not possible", () => {
+    expect(context({ top: 0, left: 0, bottom: 0, right: 0 }, (sheet) => ({ ...sheet, sheetProtection: "X" }))).toEqual({
+      ok: false,
+      reason: "protected",
+    });
+    expect(
+      context({ top: 0, left: 0, bottom: 2, right: 1 }, (sheet) => ({
+        ...sheet,
+        merges: [{ start: "A2", end: "B2" }],
+      })),
+    ).toEqual({ ok: false, reason: "merged" });
+    expect(context({ top: 3, left: 0, bottom: 3, right: 1 })).toMatchObject({ ok: false, reason: "tooSmall" });
+    expect(sortContext(newSheet("E"), new Map(), { top: 0, left: 0, bottom: 0, right: 0 })).toEqual({
+      ok: false,
+      reason: "tooSmall",
+    });
   });
 });
