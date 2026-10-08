@@ -1,8 +1,10 @@
 //! XLSX export (written directly as OOXML) and spreadsheet import.
 //!
-//! Export covers values, formulas, styling, number formats, column widths, row
-//! heights, merges, freeze panes, gridline settings, defined names, autofilters,
-//! tab colours, hyperlinks, cell comments, data validation, conditional
+//! Export covers values, formulas (functions Excel 2010 and later added carry
+//! the `_xlfn.` prefix Excel needs, see `formula`), error values (`#CALC!`,
+//! `#SPILL!`), styling, number formats, column widths, row heights, hidden rows
+//! and columns, merges, freeze panes, gridline settings, defined names,
+//! autofilters, tab colours, hyperlinks, cell comments, data validation, conditional
 //! formatting (highlight and formula rules, color scales, data bars, icon
 //! sets), structured tables, sheet protection, print layout (margins,
 //! headers/footers, page breaks, print area/titles), charts (column, bar, line,
@@ -14,12 +16,15 @@
 //! Import is two passes: the well-tested `calamine` parser reads values and
 //! formulas from XLSX, XLS and ODS files from Excel and LibreOffice, then a
 //! best-effort OOXML pass (only for XLSX/XLSM) reads styles, column widths, row
-//! heights, merges, freeze panes, validations, conditional formatting, defined
-//! names, hyperlinks, comments, structured tables, print settings, sheet
-//! protection, drawings (charts and pictures) and pivot parts straight from the
-//! package through the hardened ZIP/XML readers. The second pass never fails the
+//! heights, hidden rows and columns, merges, freeze panes, validations,
+//! conditional formatting, defined names, hyperlinks, comments, structured
+//! tables, print settings, sheet protection, drawings (charts and pictures) and
+//! pivot parts straight from the package through the hardened ZIP/XML readers. The second pass never fails the
 //! import: a part that cannot be parsed adds a warning and the values from the
-//! first pass are still returned.
+//! first pass are still returned. The one thing the first pass cannot survive is
+//! an error code `calamine` has no name for (Excel 365's `#CALC!`); it is read
+//! again from a copy of the package that hides the code, and the second pass puts
+//! it back.
 
 use crate::error::{OfficeError, OfficeResult};
 use crate::io::{normalize_hex, write_atomic};
@@ -307,6 +312,9 @@ impl StyleTable {
 // Export
 // ---------------------------------------------------------------------------
 
+/// The editor's default column width, used for the width a hidden column keeps.
+const DEFAULT_COLUMN_PX: f64 = 96.0;
+
 fn column_width_units(pixels: f64) -> f64 {
     // Approximate Excel's character-based width.
     ((pixels - 5.0) / 7.0).max(2.0)
@@ -348,7 +356,8 @@ fn cell_xml(
 ) -> Option<String> {
     let style_id = styles.xf_id(style);
     let style_attr = if style_id > 0 { format!(" s=\"{style_id}\"") } else { String::new() };
-    let formula = formula.map(|formula| formula.trim_start_matches('=').to_string());
+    // Excel refuses the plain name of every function added after 2007.
+    let formula = formula.map(crate::formula::to_xlsx);
     let mut value_xml = String::new();
     let mut type_attr = String::new();
     match value {
@@ -359,7 +368,7 @@ fn cell_xml(
         }
         CellValue::Error(error) => {
             type_attr = " t=\"e\"".into();
-            value_xml = format!("<v>{}</v>", escape_text(error));
+            value_xml = format!("<v>{}</v>", crate::formula::excel_error(error));
         }
         CellValue::Text(text) if !text.is_empty() => {
             if formula.is_some() {
@@ -475,11 +484,16 @@ fn sheet_xml(
         let mut widths: Vec<(&u32, &f64)> = sheet.col_widths.iter().collect();
         widths.sort_by_key(|(column, _)| **column);
         for (column, width) in widths {
+            // The editor hides a column by storing width 0. The file keeps the
+            // flag and a width Excel shows again on "Unhide"; the clamp in
+            // `column_width_units` would otherwise draw it 2 characters wide.
+            let hidden = *width <= 0.0;
             writer.raw(&format!(
-                "<col min=\"{}\" max=\"{}\" width=\"{:.2}\" customWidth=\"1\"/>",
+                "<col min=\"{}\" max=\"{}\" width=\"{:.2}\"{} customWidth=\"1\"/>",
                 column + 1,
                 column + 1,
-                column_width_units(*width)
+                column_width_units(if hidden { DEFAULT_COLUMN_PX } else { *width }),
+                if hidden { " hidden=\"1\"" } else { "" }
             ));
         }
         writer.raw("</cols>");
@@ -521,16 +535,19 @@ fn sheet_xml(
         line.sort_by_key(|(column, _)| *column);
     }
 
+    // A row without cells is still a row when it is hidden or resized.
+    for row in sheet.row_heights.keys() {
+        rows.entry(*row).or_default();
+    }
     for (row, mut cells) in rows {
         cells.sort_by_key(|(column, _)| *column);
-        match sheet.row_heights.get(&row) {
-            Some(height) => {
-                writer.raw(&format!("<row r=\"{}\" ht=\"{:.2}\" customHeight=\"1\">", row + 1, height * 0.75));
-            }
-            None => {
-                writer.raw(&format!("<row r=\"{}\">", row + 1));
-            }
-        }
+        // The editor hides a row (or an AutoFilter does) by storing height 0.
+        let row_open = match sheet.row_heights.get(&row) {
+            Some(height) if *height <= 0.0 => format!("<row r=\"{}\" hidden=\"1\"", row + 1),
+            Some(height) => format!("<row r=\"{}\" ht=\"{:.2}\" customHeight=\"1\"", row + 1, height * 0.75),
+            None => format!("<row r=\"{}\"", row + 1),
+        };
+        let mut row_cells = String::new();
         // Two-pointer merge of the model cells and the pivot cells, both
         // sorted by column.
         enum RowCell<'a> {
@@ -570,10 +587,14 @@ fn sheet_xml(
                 }
             };
             if let Some(xml) = xml {
-                writer.raw(&xml);
+                row_cells.push_str(&xml);
             }
         }
-        writer.raw("</row>");
+        if row_cells.is_empty() {
+            writer.raw(&format!("{row_open}/>"));
+        } else {
+            writer.raw(&format!("{row_open}>{row_cells}</row>"));
+        }
     }
     writer.raw("</sheetData>");
 
@@ -885,13 +906,13 @@ fn conditional_formatting_xml(rule: &CondRule, index: usize, styles: &mut StyleT
             format!("<cfRule type=\"top10\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} rank=\"{rank}\"{bottom}/>")
         }
         "expression" => {
-            let formula = rule.formula.as_deref().map(|formula| formula.trim().trim_start_matches('=').trim()).unwrap_or("");
+            let formula = rule.formula.as_deref().map(crate::formula::to_xlsx).unwrap_or_default();
             if formula.is_empty() {
                 return Err("the formula rule has no formula".into());
             }
             format!(
                 "<cfRule type=\"expression\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop}><formula>{}</formula></cfRule>",
-                escape_text(formula)
+                escape_text(&formula)
             )
         }
         other => return Err(format!("the rule type \"{other}\" is not exportable")),
@@ -1556,7 +1577,7 @@ fn table_xml(table: &SpreadsheetTable, number: usize, name: &str) -> String {
                 "<tableColumn id=\"{}\" name=\"{}\"><calculatedColumnFormula>{}</calculatedColumnFormula></tableColumn>",
                 index + 1,
                 escape_attr(&name),
-                escape_text(formula.trim_start_matches('='))
+                escape_text(&crate::formula::to_xlsx(formula))
             )),
             None => xml.push_str(&format!("<tableColumn id=\"{}\" name=\"{}\"/>", index + 1, escape_attr(&name))),
         }
@@ -2240,14 +2261,21 @@ fn package_without_styles(bytes: &[u8]) -> Option<Vec<u8>> {
     Some(writer.finish())
 }
 
-pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
-    if bytes.len() < 8 {
-        return Err(OfficeError::corrupt("The file is too small to be a spreadsheet."));
-    }
-    let mut warnings: Vec<String> = Vec::new();
-    let mut workbook = Workbook::new_blank("Imported workbook");
-    workbook.sheets.clear();
+/// Why the `calamine` pass could not read the cell values.
+enum ValuesFailure {
+    /// A `t="e"` cell holds a code `calamine` has no name for (`#CALC!`).
+    UnknownErrorCode,
+    Failed(OfficeError),
+}
 
+impl From<OfficeError> for ValuesFailure {
+    fn from(error: OfficeError) -> Self {
+        Self::Failed(error)
+    }
+}
+
+/// The first pass: values and formulas for every sheet, through `calamine`.
+fn read_cell_values(bytes: &[u8], workbook: &mut Workbook, warnings: &mut Vec<String>) -> Result<(), ValuesFailure> {
     let cursor = Cursor::new(bytes.to_vec());
     let mut sheets = match calamine::open_workbook_auto_from_rs(cursor) {
         Ok(sheets) => sheets,
@@ -2256,7 +2284,7 @@ pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
             // malformed part, which would lose every value. Retry without the
             // damaged part; the OOXML layout pass below reports it as a warning.
             let Some(repaired) = package_without_styles(bytes) else {
-                return Err(OfficeError::corrupt(format!("Could not read the spreadsheet: {error}")));
+                return Err(OfficeError::corrupt(format!("Could not read the spreadsheet: {error}")).into());
             };
             calamine::open_workbook_auto_from_rs(Cursor::new(repaired))
                 .map_err(|error| OfficeError::corrupt(format!("Could not read the spreadsheet: {error}")))?
@@ -2264,14 +2292,18 @@ pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
     };
     let names: Vec<String> = sheets.sheet_names().to_vec();
     if names.is_empty() {
-        return Err(OfficeError::corrupt("The spreadsheet does not contain any sheet."));
+        return Err(OfficeError::corrupt("The spreadsheet does not contain any sheet.").into());
     }
     let mut used_names: Vec<String> = Vec::new();
     for name in &names {
         let mut sheet = Sheet::new(name);
-        let range = sheets
-            .worksheet_range(name)
-            .map_err(|error| OfficeError::corrupt(format!("Could not read sheet {name}: {error}")))?;
+        let range = match sheets.worksheet_range(name) {
+            Ok(range) => range,
+            Err(calamine::Error::Xlsx(calamine::XlsxError::CellError(_))) => {
+                return Err(ValuesFailure::UnknownErrorCode)
+            }
+            Err(error) => return Err(OfficeError::corrupt(format!("Could not read sheet {name}: {error}")).into()),
+        };
         let formulas = sheets.worksheet_formula(name).ok();
         let (start_row, start_col) =
             (range.start().map(|(row, _)| row).unwrap_or(0), range.start().map(|(_, column)| column).unwrap_or(0));
@@ -2297,16 +2329,13 @@ pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
                     calamine::Data::DateTime(serial) => CellValue::Number(serial.as_f64()),
                     calamine::Data::DateTimeIso(text) => CellValue::Text(text.clone()),
                     calamine::Data::DurationIso(text) => CellValue::Text(text.clone()),
-                    calamine::Data::Error(error) => CellValue::Error(format!("{error:?}")),
+                    calamine::Data::Error(error) => CellValue::Error(calamine_error_text(error)),
                 };
                 let formula = formulas
                     .as_ref()
                     .and_then(|range| range.get_value((row_number, column_number)))
                     .filter(|text| !text.is_empty())
-                    .map(|text| {
-                        let trimmed = text.trim().trim_start_matches('=');
-                        format!("={trimmed}")
-                    });
+                    .map(|text| crate::formula::from_xlsx(text));
                 if matches!(cell_value, CellValue::Empty) && formula.is_none() {
                     continue;
                 }
@@ -2338,6 +2367,94 @@ pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
         workbook.sheets.push(sheet);
     }
 
+    Ok(())
+}
+
+/// Error codes `calamine` parses; any other `t="e"` value fails the whole sheet.
+const CALAMINE_ERRORS: [&str; 7] = ["#DIV/0!", "#N/A", "#NAME?", "#NULL!", "#NUM!", "#REF!", "#VALUE!"];
+
+fn calamine_error_text(error: &calamine::CellErrorType) -> String {
+    match error {
+        calamine::CellErrorType::GettingData => "#GETTING_DATA".into(),
+        other => other.to_string(),
+    }
+}
+
+/// A copy of the package whose worksheets only carry error codes `calamine`
+/// can parse. Excel 365 writes `#SPILL!`, `#CALC!`, `#FIELD!` and others as
+/// ordinary error cells, which `calamine` rejects; the codes become `#VALUE!`
+/// here and `restore_error_codes` puts the real ones back from the original.
+fn neutralise_error_codes(bytes: &[u8]) -> Option<Vec<u8>> {
+    let zip = crate::zip::ZipReader::open(bytes.to_vec()).ok()?;
+    let names: Vec<String> = zip.names().map(str::to_string).collect();
+    let mut writer = ZipWriter::new();
+    for name in names {
+        let data = zip.read(&name).ok()?;
+        let is_sheet = name.starts_with("xl/worksheets/") && name.ends_with(".xml");
+        match String::from_utf8(data).map(|text| (is_sheet, text)) {
+            Ok((true, text)) if text.contains("t=\"e\"") => writer.add_text(&name, &neutralise_sheet_errors(&text)),
+            Ok((_, text)) => writer.add(&name, text.as_bytes()),
+            Err(error) => writer.add(&name, error.as_bytes()),
+        }
+    }
+    Some(writer.finish())
+}
+
+/// Rewrites the value of every `<c t="e">` cell that holds an unparsable code.
+fn neutralise_sheet_errors(sheet: &str) -> String {
+    let mut out = String::with_capacity(sheet.len());
+    let mut rest = sheet;
+    while let Some(at) = rest.find("<c ") {
+        let tag_end = rest[at..].find('>').map_or(rest.len(), |end| at + end + 1);
+        out.push_str(&rest[..tag_end]);
+        let tag = &rest[at..tag_end];
+        rest = &rest[tag_end..];
+        if !tag.contains("t=\"e\"") || tag.ends_with("/>") {
+            continue;
+        }
+        // The cell ends at its own `</c>`; its `<v>` is the value.
+        let cell_end = rest.find("</c>").unwrap_or(rest.len());
+        let cell = &rest[..cell_end];
+        match (cell.find("<v>"), cell.find("</v>")) {
+            (Some(open), Some(close)) if open + 3 <= close => {
+                let code = cell[open + 3..close].trim();
+                out.push_str(&cell[..open + 3]);
+                out.push_str(if CALAMINE_ERRORS.contains(&code) { code } else { "#VALUE!" });
+                out.push_str(&cell[close..]);
+            }
+            _ => out.push_str(cell),
+        }
+        rest = &rest[cell_end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
+    if bytes.len() < 8 {
+        return Err(OfficeError::corrupt("The file is too small to be a spreadsheet."));
+    }
+    let mut warnings: Vec<String> = Vec::new();
+    let mut workbook = Workbook::new_blank("Imported workbook");
+    workbook.sheets.clear();
+
+    match read_cell_values(bytes, &mut workbook, &mut warnings) {
+        Ok(()) => {}
+        Err(ValuesFailure::UnknownErrorCode) => {
+            let repaired = neutralise_error_codes(bytes)
+                .ok_or_else(|| OfficeError::corrupt("The spreadsheet holds an error code that cannot be read."))?;
+            workbook.sheets.clear();
+            warnings.clear();
+            match read_cell_values(&repaired, &mut workbook, &mut warnings) {
+                Ok(()) => {}
+                Err(ValuesFailure::UnknownErrorCode) => {
+                    return Err(OfficeError::corrupt("The spreadsheet holds an error code that cannot be read."));
+                }
+                Err(ValuesFailure::Failed(error)) => return Err(error),
+            }
+        }
+        Err(ValuesFailure::Failed(error)) => return Err(error),
+    }
     if workbook.sheets.is_empty() {
         workbook.sheets.push(Sheet::new("Sheet1"));
     }
@@ -2861,21 +2978,50 @@ fn apply_sheet_protection(root: &XmlNode, sheet: &mut Sheet) {
 fn apply_columns(root: &XmlNode, sheet: &mut Sheet) {
     let Some(cols) = root.child("cols") else { return };
     for col in cols.children_of("col") {
-        let Some(width) = col.attr("width").and_then(|value| value.trim().parse::<f64>().ok()) else { continue };
+        let width = col.attr("width").and_then(|value| value.trim().parse::<f64>().ok());
+        // Excel hides a column with a flag and keeps its width; a zero width
+        // is invisible too. The editor models both as width 0.
+        let hidden = attr_on(col, "hidden") || width.is_some_and(|width| width <= 0.0);
+        if width.is_none() && !hidden {
+            continue;
+        }
         let min = parse_u32_attr(col, "min").unwrap_or(1).saturating_sub(1);
         let max = parse_u32_attr(col, "max").unwrap_or(min + 1).saturating_sub(1).max(min);
         if min > MAX_IMPORT_COLS {
             continue;
         }
-        let pixels = (width * 7.0 + 5.0).max(24.0);
-        for column in min..=max.min(MAX_IMPORT_COLS) {
+        let pixels = if hidden { 0.0 } else { (width.unwrap_or(0.0) * 7.0 + 5.0).max(24.0) };
+        // "Hide everything right of Z" is one `<col min="27" max="16384">`; only
+        // the columns of the imported grid are recorded.
+        let last = if hidden { max.min(sheet.col_count.saturating_sub(1)) } else { max };
+        for column in min..=last.min(MAX_IMPORT_COLS) {
             sheet.col_widths.insert(column, pixels);
         }
     }
 }
 
-/// `<sheetData>` row heights (points -> pixels) and per-cell styles. Values and
-/// formulas are not touched: they came from the calamine pass.
+/// Puts the error code of a `t="e"` cell back when the first pass could only
+/// read it as `#VALUE!` (see `neutralise_error_codes`).
+fn restore_error_code(cell: &XmlNode, sheet: &mut Sheet, row: u32, column: u32) {
+    if cell.attr("t") != Some("e") {
+        return;
+    }
+    let code = cell.child("v").map(|value| value.deep_text().trim().to_string()).unwrap_or_default();
+    if code.is_empty() || CALAMINE_ERRORS.contains(&code.as_str()) {
+        return;
+    }
+    let address = crate::address::format(row, column);
+    match sheet.cells.get_mut(&address) {
+        Some(existing) => existing.value = CellValue::Error(code),
+        None => {
+            sheet.cells.insert(address, Cell { value: CellValue::Error(code), ..Default::default() });
+        }
+    }
+}
+
+/// `<sheetData>` row heights (points -> pixels), error codes `calamine` could
+/// not read and per-cell styles. Other values and formulas are not touched: they
+/// came from the calamine pass.
 fn apply_sheet_cells(root: &XmlNode, sheet: &mut Sheet, styles: &ImportedStyles) {
     let Some(data) = root.child("sheetData") else { return };
     let styles_available = !styles.cell_styles.is_empty();
@@ -2884,15 +3030,23 @@ fn apply_sheet_cells(root: &XmlNode, sheet: &mut Sheet, styles: &ImportedStyles)
         if row_number > MAX_IMPORT_ROWS {
             continue;
         }
-        if let Some(height) = row.attr("ht").and_then(|value| value.trim().parse::<f64>().ok()) {
+        if attr_on(row, "hidden") {
+            // Excel keeps a hidden row's height; the editor models hidden as 0.
+            // Rows below the imported grid are not recorded (a sheet that hides
+            // everything under its data would add a hundred thousand entries).
+            if row_number < sheet.row_count {
+                sheet.row_heights.insert(row_number, 0.0);
+            }
+        } else if let Some(height) = row.attr("ht").and_then(|value| value.trim().parse::<f64>().ok()) {
             sheet.row_heights.insert(row_number, height * PT_TO_PX);
-        }
-        if !styles_available {
-            continue;
         }
         for cell in row.children_of("c") {
             let Some((cell_row, cell_column)) = cell.attr("r").and_then(crate::address::parse) else { continue };
             if cell_row > MAX_IMPORT_ROWS || cell_column > MAX_IMPORT_COLS {
+                continue;
+            }
+            restore_error_code(cell, sheet, cell_row, cell_column);
+            if !styles_available {
                 continue;
             }
             let Some(style_index) = parse_u32_attr(cell, "s").map(|value| value as usize) else { continue };
@@ -3145,7 +3299,7 @@ fn read_cf_rule(rule: &XmlNode, range: &str, styles: &ImportedStyles) -> Option<
         ..Default::default()
     };
     let formulas: Vec<String> =
-        rule.children_of("formula").iter().map(|node| node.deep_text().trim().to_string()).collect();
+        rule.children_of("formula").iter().map(|node| crate::formula::unprefix_xlsx(&node.deep_text())).collect();
     let formula = |index: usize| formulas.get(index).cloned().unwrap_or_default();
     let anchor = anchor_of(range);
     let all = absolute_area(range);
@@ -3593,7 +3747,7 @@ fn parse_table_part(
             let name = column.attr("name").unwrap_or("").to_string();
             let formula = column
                 .child("calculatedColumnFormula")
-                .map(|node| node.deep_text().trim().trim_start_matches('=').to_string())
+                .map(|node| crate::formula::unprefix_xlsx(&node.deep_text()))
                 .filter(|text| !text.is_empty())
                 .map(|text| format!("={text}"));
             table.columns.push(TableColumn { name, formula });

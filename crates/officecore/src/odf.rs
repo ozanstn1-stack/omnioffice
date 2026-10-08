@@ -8,7 +8,7 @@ use crate::error::{OfficeError, OfficeResult};
 use crate::model::*;
 use crate::xml::{parse_xml, XmlNode, XmlWriter};
 use crate::zip::{ZipReader, ZipWriter};
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::Path;
 
 const NS: &str = concat!(
@@ -1409,74 +1409,11 @@ pub struct SheetRead {
 }
 
 fn odf_formula_to_ours(formula: &str) -> String {
-    let trimmed = formula.trim().trim_start_matches("of:=").trim_start_matches("oooc:=").trim_start_matches("msoxl:=");
-    let mut out = String::new();
-    let chars: Vec<char> = trimmed.chars().collect();
-    let mut index = 0usize;
-    while index < chars.len() {
-        if chars[index] == '[' {
-            let mut end = index;
-            let mut content = String::new();
-            while end + 1 < chars.len() && chars[end + 1] != ']' {
-                end += 1;
-                content.push(chars[end]);
-            }
-            index = (end + 1).min(chars.len() - 1);
-            let content = content.trim_start_matches('.').replace('.', "");
-            out.push_str(&content);
-        } else if chars[index] == ';' {
-            out.push(',');
-        } else {
-            out.push(chars[index]);
-        }
-        index += 1;
-    }
-    format!("={out}")
+    crate::formula::from_odf(formula)
 }
 
 fn our_formula_to_odf(formula: &str) -> String {
-    let trimmed = formula.trim().trim_start_matches('=');
-    let mut out = String::new();
-    let chars: Vec<char> = trimmed.chars().collect();
-    let mut index = 0usize;
-    while index < chars.len() {
-        let ch = chars[index];
-        if ch == ';' {
-            out.push(';');
-            index += 1;
-            continue;
-        }
-        let is_ref_start = ch.is_ascii_alphabetic()
-            && index + 1 < chars.len()
-            && chars[index + 1..].iter().take_while(|c| c.is_ascii_alphanumeric() || **c == '$').count() > 0
-            && chars[index + 1..]
-                .iter()
-                .take_while(|c| c.is_ascii_alphanumeric() || **c == '$')
-                .any(|c| c.is_ascii_digit());
-        if is_ref_start {
-            let mut end = index;
-            while end < chars.len() && (chars[end].is_ascii_alphanumeric() || chars[end] == '$') {
-                end += 1;
-            }
-            let reference: String = chars[index..end].iter().collect();
-            if end < chars.len() && chars[end] == ':' {
-                let mut end2 = end + 1;
-                while end2 < chars.len() && (chars[end2].is_ascii_alphanumeric() || chars[end2] == '$') {
-                    end2 += 1;
-                }
-                let second: String = chars[end + 1..end2].iter().collect();
-                out.push_str(&format!("[.{reference}:.{second}]"));
-                index = end2;
-            } else {
-                out.push_str(&format!("[.{reference}]"));
-                index = end;
-            }
-        } else {
-            out.push(ch);
-            index += 1;
-        }
-    }
-    format!("of:={out}")
+    crate::formula::to_odf(formula)
 }
 
 fn cell_style_xml(style: &CellStyle) -> String {
@@ -1900,6 +1837,9 @@ fn ods_cells_with_pivots<'a>(
 // ---------------------------------------------------------------------------
 
 const CALCEXT_NS: &str = "xmlns:calcext=\"urn:org:documentfoundation:names:experimental:calc:xmlns:calcext:1.0\"";
+/// The namespace behind the `of:` in `of:=SUM(...)`; LibreOffice reads a formula
+/// whose prefix is not declared as `Err:510`.
+const OF_NS: &str = "xmlns:of=\"urn:oasis:names:tc:opendocument:xmlns:of:1.2\"";
 
 /// Rules of a sheet that cannot be written to ODS, as the reason each was left
 /// out. Mirrors `ods_chart_problem` so the compatibility report can name them.
@@ -2305,6 +2245,11 @@ fn ods_conditional_formats(sheet: &Sheet, look_styles: &mut Vec<(String, String)
     }
 }
 
+/// The indexes whose stored size is 0: the rows or columns the editor hides.
+fn ods_hidden(sizes: &BTreeMap<u32, f64>) -> BTreeSet<u32> {
+    sizes.iter().filter(|(_, size)| **size <= 0.0).map(|(index, _)| *index).collect()
+}
+
 pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
     let mut styles = AutoStyles::default();
     let mut body = String::new();
@@ -2324,10 +2269,18 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
         for (_, column) in frames.keys() {
             max_col = max_col.max(*column);
         }
-        for column in 0..=max_col.min(200) {
+        // The editor hides a column or a row by storing size 0; ODF says so with
+        // `table:visibility="collapse"`. A hidden column past the last cell is
+        // still written. (`filter` is for rows an AutoFilter hid and needs the
+        // filter's database range, which this writer does not export.)
+        let hidden_columns = ods_hidden(&sheet.col_widths);
+        let hidden_rows = ods_hidden(&sheet.row_heights);
+        let last_column = hidden_columns.last().map_or(max_col, |last| max_col.max(*last)).min(200);
+        for column in 0..=last_column {
             let width = sheet.col_widths.get(&column).copied().unwrap_or(90.0);
+            let collapse = if hidden_columns.contains(&column) { " table:visibility=\"collapse\"" } else { "" };
             body.push_str(&format!(
-                "<table:table-column table:style-name=\"co{}\" style:column-width=\"{}\"/>",
+                "<table:table-column table:style-name=\"co{}\"{collapse} style:column-width=\"{}\"/>",
                 column,
                 cm(width * 0.75)
             ));
@@ -2341,6 +2294,7 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
         let mut occupied: BTreeSet<u32> =
             cells.keys().filter_map(|address| crate::address::parse(address).map(|(row, _)| row)).collect();
         occupied.extend(frames.keys().map(|(row, _)| *row));
+        occupied.extend(hidden_rows.iter().copied());
         occupied.insert(0);
         let mut next_row = 0u32;
         for row in occupied {
@@ -2431,6 +2385,10 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
                     CellValue::Bool(_) => "boolean",
                     _ => "string",
                 };
+                // LibreOffice marks an error cell as a string with its own flag, which is
+                // what tells an error from text that merely looks like one.
+                let error_flag =
+                    if matches!(cell.value, CellValue::Error(_)) { " calcext:value-type=\"error\"" } else { "" };
                 let formula = cell
                     .formula
                     .as_deref()
@@ -2449,18 +2407,19 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
                     }
                     _ => String::new(),
                 };
-                row_output.push_str(&format!("<table:table-cell office:value-type=\"{value_type}\"{value_attr}{attributes}{formula}>{frame}{value_xml}</table:table-cell>"));
+                row_output.push_str(&format!("<table:table-cell office:value-type=\"{value_type}\"{error_flag}{value_attr}{attributes}{formula}>{frame}{value_xml}</table:table-cell>"));
                 column += 1;
             }
             if empty_run > 0 {
                 row_output.push_str(&format!("<table:table-cell table:number-columns-repeated=\"{}\"/>", empty_run));
             }
-            body.push_str(&format!("<table:table-row>{row_output}</table:table-row>"));
+            let collapse = if hidden_rows.contains(&row) { " table:visibility=\"collapse\"" } else { "" };
+            body.push_str(&format!("<table:table-row{collapse}>{row_output}</table:table-row>"));
         }
         body.push_str("</table:table>");
     }
     let content = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content {NS} {CALCEXT_NS} office:version=\"1.2\">{}{}<office:body><office:spreadsheet>{body}</office:spreadsheet></office:body></office:document-content>",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content {NS} {CALCEXT_NS} {OF_NS} office:version=\"1.2\">{}{}<office:body><office:spreadsheet>{body}</office:spreadsheet></office:body></office:document-content>",
         styles.xml(),
         "<office:styles/>"
     );
@@ -3195,6 +3154,59 @@ fn read_ods_conditional_formats(formats: &XmlNode, sheet: &mut Sheet, looks: &Ha
     unsupported
 }
 
+/// Whether an ODF row or column element is hidden: `collapse` is a hand-hidden
+/// one, `filter` one an AutoFilter hid; both show as size 0 in the editor.
+fn ods_collapsed(node: &XmlNode) -> bool {
+    matches!(node.attr_any_ns("visibility"), Some("collapse" | "filter"))
+}
+
+/// `table:display="false"` on a row or column group: the group is folded.
+fn ods_group_folded(group: &XmlNode) -> bool {
+    group.attr_any_ns("display") == Some("false")
+}
+
+/// The rows of a table in document order with whether each is hidden. Rows may
+/// sit in `table-header-rows`, `table-rows` and nested `table-row-group`s; a
+/// folded group hides every row it holds.
+fn collect_ods_rows<'a>(node: &'a XmlNode, hidden: bool, out: &mut Vec<(&'a XmlNode, bool)>) {
+    for child in &node.children {
+        match child.local_name() {
+            "table-row" => out.push((child, hidden || ods_collapsed(child))),
+            "table-rows" | "table-header-rows" => collect_ods_rows(child, hidden, out),
+            "table-row-group" => collect_ods_rows(child, hidden || ods_group_folded(child), out),
+            _ => {}
+        }
+    }
+}
+
+/// Runs of hidden columns as (first column, count), from the column elements of
+/// a table, which may sit in `table-columns`, `table-header-columns` and groups.
+fn ods_hidden_column_runs(table: &XmlNode) -> Vec<(u32, u32)> {
+    fn walk(node: &XmlNode, hidden: bool, column: &mut u32, runs: &mut Vec<(u32, u32)>) {
+        for child in &node.children {
+            match child.local_name() {
+                "table-column" => {
+                    let repeat = child
+                        .attr_any_ns("number-columns-repeated")
+                        .and_then(|value| value.parse::<u32>().ok())
+                        .unwrap_or(1)
+                        .max(1);
+                    if hidden || ods_collapsed(child) {
+                        runs.push((*column, repeat));
+                    }
+                    *column = column.saturating_add(repeat);
+                }
+                "table-columns" | "table-header-columns" => walk(child, hidden, column, runs),
+                "table-column-group" => walk(child, hidden || ods_group_folded(child), column, runs),
+                _ => {}
+            }
+        }
+    }
+    let mut runs = Vec::new();
+    walk(table, false, &mut 0, &mut runs);
+    runs
+}
+
 pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
     let reader = ZipReader::open(bytes.to_vec())?;
     if !reader.contains("content.xml") {
@@ -3224,12 +3236,19 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
         let mut row = 0u32;
         let mut last_row = 0u32;
         let mut cut_off = false;
-        for row_node in table.children_named("table-row") {
+        // Runs of hidden rows as (first row, count), applied once the grid is known.
+        let mut hidden_row_runs: Vec<(u32, u32)> = Vec::new();
+        let mut table_rows = Vec::new();
+        collect_ods_rows(table, false, &mut table_rows);
+        for (row_node, row_hidden) in table_rows {
             // The repeat only moves the position (a repeated row's cells are
             // set once), so it is taken as written: capping it shifted every
             // cell after a long empty gap up to the wrong row.
             let repeat_rows =
                 row_node.attr_any_ns("number-rows-repeated").and_then(|value| value.parse::<u32>().ok()).unwrap_or(1);
+            if row_hidden {
+                hidden_row_runs.push((row, repeat_rows.max(1)));
+            }
             let mut column = 0u32;
             for cell in row_node.children_named("table-cell") {
                 let repeat = cell
@@ -3271,7 +3290,9 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
                             cell.children_of("p").iter().map(|node| node.deep_text()).collect::<Vec<_>>().join("\n");
                         if text.is_empty() {
                             CellValue::Empty
-                        } else if formula.is_some() && text.starts_with('#') {
+                        } else if cell.attr("calcext:value-type") == Some("error")
+                            || (formula.is_some() && text.starts_with('#'))
+                        {
                             CellValue::Error(text)
                         } else {
                             CellValue::Text(text)
@@ -3325,6 +3346,26 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
         }
         sheet.row_count = (last_row.min(ODS_MAX_READ_ROW) + 51).max(200);
         sheet.col_count = 26;
+        // A hidden row or column is size 0 in the sparse tables. Only the
+        // sheet's own grid is recorded: LibreOffice hides the unused rest of a
+        // sheet with one run a million rows long.
+        for (first, count) in hidden_row_runs {
+            for hidden in first..first.saturating_add(count).min(sheet.row_count) {
+                sheet.row_heights.insert(hidden, 0.0);
+            }
+        }
+        let content_columns = sheet
+            .cells
+            .keys()
+            .filter_map(|address| crate::address::parse(address).map(|(_, column)| column + 1))
+            .max()
+            .unwrap_or(0);
+        let grid_columns = sheet.col_count.max(content_columns).min(ODS_MAX_READ_COLUMN + 1);
+        for (first, count) in ods_hidden_column_runs(table) {
+            for hidden in first..first.saturating_add(count).min(grid_columns) {
+                sheet.col_widths.insert(hidden, 0.0);
+            }
+        }
         if cut_off {
             warnings.push(crate::xlsx::import_limit_warning(&name, ODS_MAX_READ_ROW, ODS_MAX_READ_COLUMN));
         }

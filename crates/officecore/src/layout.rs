@@ -1260,7 +1260,10 @@ fn render_sheet(fonts: &FontSet, sheet: &Sheet, workbook: &Workbook) -> Vec<Buil
             canvas.fill_rect(margin, content_top - 14.0, strip_width, 14.0, Rgb(241, 245, 249), 1.0);
             for column in strip_start..=strip_end {
                 let width = col_widths[column as usize];
-                canvas.text(x + 3.0, content_top - 3.0, &crate::address::column_name(column), &header_style);
+                // A hidden column (width 0) has no header and no cells.
+                if width > 0.0 {
+                    canvas.text(x + 3.0, content_top - 3.0, &crate::address::column_name(column), &header_style);
+                }
                 x += width;
             }
 
@@ -1268,6 +1271,11 @@ fn render_sheet(fonts: &FontSet, sheet: &Sheet, workbook: &Workbook) -> Vec<Buil
             let mut last_row = row;
             while y + row_height_px(sheet, last_row) <= content_bottom && last_row <= max_row {
                 let row_height = row_height_px(sheet, last_row);
+                // A hidden row (height 0, also what a filter does) is not printed.
+                if row_height <= 0.0 {
+                    last_row += 1;
+                    continue;
+                }
                 let mut x = margin;
                 if last_row % 2 == 1 {
                     canvas.fill_rect(margin, y, strip_width, row_height, Rgb(248, 250, 252), 1.0);
@@ -1276,6 +1284,9 @@ fn render_sheet(fonts: &FontSet, sheet: &Sheet, workbook: &Workbook) -> Vec<Buil
                 canvas.text(margin - 20.0, y + row_height * 0.65, &(last_row + 1).to_string(), &row_label_style);
                 for column in strip_start..=strip_end {
                     let width = col_widths[column as usize];
+                    if width <= 0.0 {
+                        continue;
+                    }
                     let address = crate::address::format(last_row, column);
                     if let Some(cell) = sheet.cells.get(&address) {
                         let text = format_cell_value(&cell.value, sheet, &address);
