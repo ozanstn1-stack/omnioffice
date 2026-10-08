@@ -165,11 +165,15 @@ export function applyCellEdits(
   return next;
 }
 
-/** One typed value for a cell of a known sheet (see `applyCellTextEdits`). */
+/**
+ * One change to a cell of a known sheet (see `applyCellTextEdits`): typed text,
+ * a style, or both. Without `text` the cell keeps its content.
+ */
 export interface CellTextEdit {
   row: number;
   col: number;
-  text: string;
+  text?: string;
+  style?: CellStyle;
 }
 
 /**
@@ -190,11 +194,13 @@ export function applyCellTextEdits(workbook: Workbook, sheetIndex: number, edits
   let colCount = target.colCount;
   for (const edit of edits) {
     const address = formatAddress(edit.row, edit.col);
-    const current = cells[address] ?? emptyCell();
-    const isFormula = edit.text.startsWith("=");
-    const staged: Cell = isFormula
-      ? { ...current, formula: edit.text, value: { kind: "empty" } }
-      : { ...current, formula: null, value: parseInputValue(edit.text) };
+    let staged: Cell = cells[address] ?? emptyCell();
+    if (edit.text !== undefined) {
+      staged = edit.text.startsWith("=")
+        ? { ...staged, formula: edit.text, value: { kind: "empty" } }
+        : { ...staged, formula: null, value: parseInputValue(edit.text) };
+    }
+    if (edit.style) staged = { ...staged, style: edit.style };
     if (isBlankCell(staged)) delete cells[address];
     else cells[address] = staged;
     addresses.push(address);
