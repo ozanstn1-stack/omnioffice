@@ -165,6 +165,58 @@ export function applyCellEdits(
   return next;
 }
 
+/** One typed value for a cell of a known sheet (see `applyCellTextEdits`). */
+export interface CellTextEdit {
+  row: number;
+  col: number;
+  text: string;
+}
+
+/**
+ * Applies many typed values to one sheet with a single recalculation, as one
+ * model change: Replace all and the sort/paste tools use it where
+ * `applyCellEdit` per cell would copy the sheet and recalculate once per cell.
+ *
+ * Every text goes through the same parser as typing; a formula's cached value
+ * is resolved from one incremental pass over all the edited cells.
+ */
+export function applyCellTextEdits(workbook: Workbook, sheetIndex: number, edits: readonly CellTextEdit[]): Workbook {
+  const index = Math.min(Math.max(0, sheetIndex), workbook.sheets.length - 1);
+  const target = workbook.sheets[index];
+  if (!target || edits.length === 0) return workbook;
+  const cells = { ...target.cells };
+  const formulas: string[] = [];
+  const addresses: string[] = [];
+  let rowCount = target.rowCount;
+  let colCount = target.colCount;
+  for (const edit of edits) {
+    const address = formatAddress(edit.row, edit.col);
+    const current = cells[address] ?? emptyCell();
+    const isFormula = edit.text.startsWith("=");
+    const staged: Cell = isFormula
+      ? { ...current, formula: edit.text, value: { kind: "empty" } }
+      : { ...current, formula: null, value: parseInputValue(edit.text) };
+    if (isBlankCell(staged)) delete cells[address];
+    else cells[address] = staged;
+    if (isFormula) formulas.push(address);
+    addresses.push(address);
+    rowCount = Math.max(rowCount, edit.row + 51);
+    colCount = Math.max(colCount, edit.col + 6);
+  }
+  const stagedSheet: Sheet = { ...target, cells, rowCount, colCount };
+  const staged = markDirty(replaceSheet(workbook, index, stagedSheet), workbook, target.name, addresses);
+  if (formulas.length === 0) return staged;
+
+  const values = computeWorkbookValues(staged);
+  const resolved = { ...cells };
+  for (const address of formulas) {
+    const value = values.get(keyOf(target.name, address));
+    resolved[address] = { ...resolved[address], value: scalarToCellValue(value === undefined ? "" : asScalar(value)) };
+  }
+  const final = replaceSheet(staged, index, { ...stagedSheet, cells: resolved });
+  return markDirty(final, workbook, target.name, addresses);
+}
+
 /**
  * Shifts the row part of every relative reference in a formula by `delta`.
  * Absolute rows (`$1`) and non-references (bare numbers) are untouched. The
@@ -566,6 +618,15 @@ export function computeWorkbookValues(workbook: Workbook): Map<string, Scalar> {
     }
   }
   return computeFull(workbook);
+}
+
+/**
+ * The values of this workbook object as the grid last computed them, or a
+ * fresh computation when there are none. Find, replace and the other
+ * whole-workbook tools read through it so the render's work is not repeated.
+ */
+export function workbookValues(workbook: Workbook): Map<string, Scalar> {
+  return computeEntries.get(workbook)?.values ?? computeWorkbookValues(workbook);
 }
 
 export interface ComputeStats {
