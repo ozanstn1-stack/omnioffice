@@ -3,11 +3,13 @@
 //! Export covers values, formulas, styling, number formats, column widths, row
 //! heights, merges, freeze panes, gridline settings, defined names, autofilters,
 //! tab colours, hyperlinks, cell comments, data validation, conditional
-//! formatting, structured tables, sheet protection, print layout (margins,
+//! formatting (highlight and formula rules, color scales, data bars, icon
+//! sets), structured tables, sheet protection, print layout (margins,
 //! headers/footers, page breaks, print area/titles), charts (column, bar, line,
-//! pie, area) as real ChartML parts anchored to their cells and sheet pictures
-//! in `xl/media` with drawing anchors. Imported pivot caches/tables are
-//! re-exported from the raw parts they came in as.
+//! pie, area, scatter, doughnut) as real ChartML parts anchored to their cells
+//! and sheet pictures in `xl/media` with drawing anchors. Hyperlinks are limited
+//! to http, https, mailto and internal references. Imported pivot caches/tables
+//! are re-exported from the raw parts they came in as.
 //!
 //! Import is two passes: the well-tested `calamine` parser reads values and
 //! formulas from XLSX, XLS and ODS files from Excel and LibreOffice, then a
