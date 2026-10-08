@@ -197,10 +197,15 @@ fn presentation_xml(deck: &Deck, master_ids: &[String], slide_ids: &[String]) ->
     }
     out.push_str("</p:sldIdLst>");
     out.push_str(&format!(
-        "<p:sldSz cx=\"{}\" cy=\"{}\"/><p:notesSz cx=\"6858000\" cy=\"9144000\"/></p:presentation>",
+        "<p:sldSz cx=\"{}\" cy=\"{}\"/><p:notesSz cx=\"6858000\" cy=\"9144000\"/>",
         emu(deck.size.width_pt.max(200.0)),
         emu(deck.size.height_pt.max(150.0))
     ));
+    let lang = lang_attr(deck.lang.as_deref());
+    if !lang.is_empty() {
+        out.push_str(&format!("<p:defaultTextStyle><a:defPPr><a:defRPr{lang}/></a:defPPr></p:defaultTextStyle>"));
+    }
+    out.push_str("</p:presentation>");
     out
 }
 
@@ -424,7 +429,7 @@ impl SlideWriter {
         out
     }
 
-    fn text_body(text: &TextFrame, theme: &Theme) -> String {
+    fn text_body(text: &TextFrame, theme: &Theme, deck_lang: Option<&str>) -> String {
         let default_size = text.size_pt.unwrap_or(18.0);
         let mut out =
             String::from("<p:txBody><a:bodyPr wrap=\"square\" rtlCol=\"0\"><a:normAutofit/></a:bodyPr><a:lstStyle/>");
@@ -433,14 +438,21 @@ impl SlideWriter {
         }
         for paragraph in &text.paragraphs {
             let size = paragraph.size_pt.unwrap_or(default_size);
-            let bullet = if paragraph.bullet { "<a:buChar char=\"Ã¢â‚¬Â¢\"/>" } else { "<a:buNone/>" };
+            let bullet = if paragraph.bullet { "<a:buChar char=\"\u{2022}\"/>" } else { "<a:buNone/>" };
             out.push_str(&format!(
                 "<a:p><a:pPr lvl=\"{}\" algn=\"{}\">{bullet}</a:pPr>",
                 paragraph.level.min(8),
                 alignment(if paragraph.align.is_empty() { &text.align } else { &paragraph.align })
             ));
-            if paragraph.runs.is_empty() {
-                let mut attributes = format!(" lang=\"tr-TR\" sz=\"{}\"", (size * 100.0).round() as i64);
+            // Runs describe the paragraph text; when they no longer add up to
+            // it (an edit that kept the old runs) the paragraph text wins.
+            let runs_match = paragraph.runs.iter().map(|run| run.text.as_str()).collect::<String>() == paragraph.text;
+            if paragraph.runs.is_empty() || !runs_match {
+                let mut attributes = format!(
+                    "{} sz=\"{}\"",
+                    lang_attr(paragraph.lang.as_deref().or(deck_lang)),
+                    (size * 100.0).round() as i64
+                );
                 if paragraph.bold {
                     attributes.push_str(" b=\"1\"");
                 }
@@ -466,8 +478,11 @@ impl SlideWriter {
                 ));
             } else {
                 for run in &paragraph.runs {
-                    let mut attributes =
-                        format!(" lang=\"tr-TR\" sz=\"{}\"", (run.size_pt.unwrap_or(size) * 100.0).round() as i64);
+                    let mut attributes = format!(
+                        "{} sz=\"{}\"",
+                        lang_attr(run.lang.as_deref().or(paragraph.lang.as_deref()).or(deck_lang)),
+                        (run.size_pt.unwrap_or(size) * 100.0).round() as i64
+                    );
                     if run.bold || paragraph.bold {
                         attributes.push_str(" b=\"1\"");
                     }
@@ -495,6 +510,15 @@ impl SlideWriter {
     }
 }
 
+/// ` lang="..."` for a known language tag, nothing when it is unknown so the
+/// consumer falls back to its own proofing language instead of ours.
+fn lang_attr(lang: Option<&str>) -> String {
+    match lang.map(str::trim).filter(|tag| !tag.is_empty()) {
+        Some(tag) => format!(" lang=\"{}\"", escape_attr(tag)),
+        None => String::new(),
+    }
+}
+
 fn alignment(value: &str) -> &'static str {
     match value {
         "center" => "ctr",
@@ -518,11 +542,13 @@ struct ExportContext {
     next_chart: usize,
     next_embedding: usize,
     warnings: Vec<String>,
+    /// Deck default language, the fallback for text that carries none.
+    lang: Option<String>,
 }
 
 impl ExportContext {
-    fn new() -> Self {
-        Self { media: Vec::new(), charts: Vec::new(), next_chart: 1, next_embedding: 1, warnings: Vec::new() }
+    fn new(lang: Option<String>) -> Self {
+        Self { media: Vec::new(), charts: Vec::new(), next_chart: 1, next_embedding: 1, warnings: Vec::new(), lang }
     }
 
     fn warn(&mut self, message: &str) {
@@ -946,7 +972,8 @@ fn object_xml(
                         })
                         .unwrap_or_else(|| "<a:solidFill><a:srgbClr val=\"FFFFFF\"/></a:solidFill>".into());
                     table_rows.push_str(&format!(
-                        "<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang=\"tr-TR\" sz=\"1200\"/><a:t>{}</a:t></a:r></a:p></a:txBody><a:tcPr>{fill_xml}<a:lnL w=\"6350\"><a:solidFill><a:srgbClr val=\"94A3B8\"/></a:solidFill></a:lnL><a:lnR w=\"6350\"><a:solidFill><a:srgbClr val=\"94A3B8\"/></a:solidFill></a:lnR><a:lnT w=\"6350\"><a:solidFill><a:srgbClr val=\"94A3B8\"/></a:solidFill></a:lnT><a:lnB w=\"6350\"><a:solidFill><a:srgbClr val=\"94A3B8\"/></a:solidFill></a:lnB></a:tcPr></a:tc>",
+                        "<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr{} sz=\"1200\"/><a:t>{}</a:t></a:r></a:p></a:txBody><a:tcPr>{fill_xml}<a:lnL w=\"6350\"><a:solidFill><a:srgbClr val=\"94A3B8\"/></a:solidFill></a:lnL><a:lnR w=\"6350\"><a:solidFill><a:srgbClr val=\"94A3B8\"/></a:solidFill></a:lnR><a:lnT w=\"6350\"><a:solidFill><a:srgbClr val=\"94A3B8\"/></a:solidFill></a:lnT><a:lnB w=\"6350\"><a:solidFill><a:srgbClr val=\"94A3B8\"/></a:solidFill></a:lnB></a:tcPr></a:tc>",
+                        lang_attr(export.lang.as_deref()),
                         escape_text(&text)
                     ));
                 }
@@ -983,7 +1010,7 @@ fn object_xml(
                 SlideWriter::fill(&stroke, &fill)
             ));
             if let Some(text) = &object.text {
-                body.push_str(&SlideWriter::text_body(text, theme));
+                body.push_str(&SlideWriter::text_body(text, theme, export.lang.as_deref()));
             } else {
                 body.push_str("<p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody>");
             }
@@ -1213,9 +1240,10 @@ fn slide_xml(slide: &Slide, theme: &Theme, writer: &mut SlideWriter, export: &mu
     )
 }
 
-fn notes_xml(slide: &Slide) -> String {
+fn notes_xml(slide: &Slide, deck_lang: Option<&str>) -> String {
     format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<p:notes {NS}><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/><p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Notes Placeholder\"/><p:cNvSpPr/><p:nvPr><p:ph type=\"body\" idx=\"1\"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang=\"tr-TR\"/><a:t>{}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<p:notes {NS}><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/><p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Notes Placeholder\"/><p:cNvSpPr/><p:nvPr><p:ph type=\"body\" idx=\"1\"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr{}/><a:t>{}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>",
+        lang_attr(deck_lang),
         escape_text(&slide.notes)
     )
 }
@@ -1234,7 +1262,7 @@ pub fn write_pptx_package(deck: &Deck) -> OfficeResult<DeckWrite> {
         _ => "FFFFFF",
     };
     let planned_masters = plan_masters(deck);
-    let mut export = ExportContext::new();
+    let mut export = ExportContext::new(deck.lang.clone());
 
     let mut theme_parts: Vec<(String, String)> = Vec::new();
     if empty_masters {
@@ -1283,7 +1311,7 @@ pub fn write_pptx_package(deck: &Deck) -> OfficeResult<DeckWrite> {
         let mut notes_part = None;
         if !slide.notes.trim().is_empty() {
             rels.add(REL_NOTES, &format!("../notesSlides/notesSlide{}.xml", index + 1));
-            notes_part = Some(notes_xml(slide));
+            notes_part = Some(notes_xml(slide, deck.lang.as_deref()));
         }
         parts.push((xml, rels.xml(), notes_part));
     }
@@ -1887,6 +1915,16 @@ fn read_transform(transform: Option<&XmlNode>) -> (f64, f64, f64, f64, f64) {
     (x, y, w, h, rotation)
 }
 
+/// A declared language tag, ignoring the "no proofing" placeholders.
+fn known_lang(tag: &str) -> Option<String> {
+    let tag = tag.trim();
+    if tag.is_empty() || tag.eq_ignore_ascii_case("x-none") || tag.eq_ignore_ascii_case("zxx") {
+        None
+    } else {
+        Some(tag.to_string())
+    }
+}
+
 fn read_paragraphs(text_body: &XmlNode) -> Vec<TextParagraph> {
     let mut paragraphs = Vec::new();
     for paragraph in text_body.children_named("p") {
@@ -1926,6 +1964,7 @@ fn read_paragraphs(text_body: &XmlNode) -> Vec<TextParagraph> {
                 .and_then(|node| node.find_descendant("srgbClr"))
                 .and_then(|color| color.attr("val"))
                 .map(|value| format!("#{value}"));
+            let run_lang = run_properties.and_then(|node| node.attr("lang")).and_then(known_lang);
             bold |= run_bold;
             italic |= run_italic;
             if size.is_none() {
@@ -1945,9 +1984,15 @@ fn read_paragraphs(text_body: &XmlNode) -> Vec<TextParagraph> {
                 italic: run_italic,
                 color: run_color,
                 size_pt: run_size,
+                lang: run_lang,
                 ..Default::default()
             });
         }
+        // A paragraph without text still declares its language on endParaRPr.
+        let lang = runs
+            .iter()
+            .find_map(|run| run.lang.clone())
+            .or_else(|| paragraph.child("endParaRPr").and_then(|node| node.attr("lang")).and_then(known_lang));
         paragraphs.push(TextParagraph {
             text,
             level,
@@ -1959,6 +2004,7 @@ fn read_paragraphs(text_body: &XmlNode) -> Vec<TextParagraph> {
             align,
             bullet,
             runs,
+            lang,
         });
     }
     paragraphs
@@ -2248,6 +2294,11 @@ pub fn read_pptx(bytes: &[u8]) -> OfficeResult<DeckRead> {
             deck.size.height_pt = pt_from_emu(cy);
         }
     }
+    if let Some(defaults) = root.child("defaultTextStyle") {
+        let mut default_runs = Vec::new();
+        defaults.find_all("defRPr", &mut default_runs);
+        deck.lang = default_runs.iter().find_map(|node| node.attr("lang").and_then(known_lang));
+    }
     let (masters, layout_index) = read_masters(&reader, &typed_rels, &mut warnings);
     deck.masters = masters;
     deck.slides.clear();
@@ -2376,7 +2427,7 @@ mod tests {
         let mut title = SlideObject::new("text", 60.0, 60.0, 600.0, 100.0);
         title.text = Some(TextFrame {
             paragraphs: vec![TextParagraph {
-                text: "BaÃ…Å¸lÃ„Â±k slaytÃ„Â±".into(),
+                text: "Başlık slaytı".into(),
                 size_pt: Some(32.0),
                 bold: true,
                 ..Default::default()
@@ -2436,9 +2487,172 @@ mod tests {
             .iter()
             .filter_map(|object| object.text.as_ref().map(TextFrame::plain))
             .collect();
-        assert!(texts.iter().any(|text| text.contains("BaÃ…Å¸lÃ„Â±k slaytÃ„Â±")), "texts: {texts:?}");
+        assert!(texts.iter().any(|text| text.contains("Başlık slaytı")), "texts: {texts:?}");
         assert!(read.deck.slides[0].notes.contains("Notlar"));
         assert_eq!(read.deck.size.width_pt.round() as i64, 960);
+    }
+
+    fn bullet_deck() -> Deck {
+        let mut deck = Deck::new_blank("Bullets");
+        let mut slide = Slide::default();
+        let mut body = SlideObject::new("text", 60.0, 60.0, 600.0, 300.0);
+        body.text = Some(TextFrame {
+            paragraphs: vec![
+                TextParagraph { text: "Top".into(), bullet: true, ..Default::default() },
+                TextParagraph { text: "Nested".into(), bullet: true, level: 2, ..Default::default() },
+                TextParagraph { text: "Plain".into(), ..Default::default() },
+            ],
+            ..Default::default()
+        });
+        slide.objects = vec![body];
+        deck.slides = vec![slide];
+        deck
+    }
+
+    #[test]
+    fn pptx_bullet_is_a_real_bullet_and_level_roundtrips() {
+        let result = write_pptx_package(&bullet_deck()).unwrap();
+        let reader = ZipReader::open(result.bytes.clone()).unwrap();
+        let slide_xml = reader.read_text("ppt/slides/slide1.xml").unwrap();
+        assert!(slide_xml.contains("<a:buChar char=\"\u{2022}\"/>"), "bullet glyph: {slide_xml}");
+        assert!(!slide_xml.contains('\u{00C3}') && !slide_xml.contains('\u{00E2}'), "mojibake in slide xml");
+
+        let read = read_pptx(&result.bytes).unwrap();
+        let paragraphs = &read.deck.slides[0].objects[0].text.as_ref().unwrap().paragraphs;
+        assert_eq!(paragraphs.len(), 3);
+        assert!(paragraphs[0].bullet && paragraphs[0].level == 0);
+        assert!(paragraphs[1].bullet && paragraphs[1].level == 2);
+        assert!(!paragraphs[2].bullet);
+    }
+
+    fn lang_deck(deck_lang: Option<&str>, run_lang: Option<&str>) -> Deck {
+        let mut deck = Deck::new_blank("Lang");
+        deck.lang = deck_lang.map(str::to_string);
+        let mut slide = Slide::default();
+        let mut body = SlideObject::new("text", 60.0, 60.0, 600.0, 300.0);
+        body.text = Some(TextFrame {
+            paragraphs: vec![
+                TextParagraph {
+                    text: "Hello".into(),
+                    runs: vec![Run { text: "Hello".into(), lang: run_lang.map(str::to_string), ..Default::default() }],
+                    ..Default::default()
+                },
+                TextParagraph { text: "Bare".into(), ..Default::default() },
+            ],
+            ..Default::default()
+        });
+        slide.objects = vec![body];
+        slide.notes = "Note".into();
+        let mut table = SlideObject::new("table", 60.0, 400.0, 400.0, 100.0);
+        table.table = Some(TableData::simple(1, 1, 400.0));
+        slide.objects.push(table);
+        deck.slides = vec![slide];
+        deck
+    }
+
+    fn lang_parts(deck: &Deck) -> (String, String, String) {
+        let result = write_pptx_package(deck).unwrap();
+        let reader = ZipReader::open(result.bytes).unwrap();
+        (
+            reader.read_text("ppt/slides/slide1.xml").unwrap(),
+            reader.read_text("ppt/notesSlides/notesSlide1.xml").unwrap(),
+            reader.read_text("ppt/presentation.xml").unwrap(),
+        )
+    }
+
+    #[test]
+    fn pptx_writes_no_language_when_unknown() {
+        let (slide, notes, presentation) = lang_parts(&lang_deck(None, None));
+        assert!(!slide.contains("lang="), "slide: {slide}");
+        assert!(!notes.contains("lang="), "notes: {notes}");
+        assert!(!presentation.contains("lang="), "presentation: {presentation}");
+    }
+
+    #[test]
+    fn pptx_uses_run_and_deck_language() {
+        let (slide, notes, presentation) = lang_parts(&lang_deck(Some("en-GB"), Some("de-DE")));
+        // The run keeps its own language, the paragraph without runs, the
+        // table cell and the notes fall back to the deck language.
+        assert_eq!(slide.matches("lang=\"de-DE\"").count(), 1, "slide: {slide}");
+        assert_eq!(slide.matches("lang=\"en-GB\"").count(), 2, "slide: {slide}");
+        assert!(notes.contains("lang=\"en-GB\""));
+        assert!(presentation.contains("<a:defRPr lang=\"en-GB\"/>"), "presentation: {presentation}");
+        assert!(!slide.contains("tr-TR") && !notes.contains("tr-TR"));
+    }
+
+    #[test]
+    fn pptx_language_roundtrips() {
+        let bytes = write_pptx(&lang_deck(Some("en-GB"), Some("de-DE"))).unwrap();
+        let read = read_pptx(&bytes).unwrap();
+        assert_eq!(read.deck.lang.as_deref(), Some("en-GB"));
+        let paragraphs = &read.deck.slides[0].objects[0].text.as_ref().unwrap().paragraphs;
+        assert_eq!(paragraphs[0].runs[0].lang.as_deref(), Some("de-DE"));
+        assert_eq!(paragraphs[0].lang.as_deref(), Some("de-DE"));
+        // The paragraph without runs was written with the deck language.
+        assert_eq!(paragraphs[1].lang.as_deref(), Some("en-GB"));
+
+        let unknown = read_pptx(&write_pptx(&lang_deck(None, None)).unwrap()).unwrap();
+        assert_eq!(unknown.deck.lang, None);
+    }
+
+    fn runs_deck(paragraphs: Vec<TextParagraph>) -> Deck {
+        let mut deck = Deck::new_blank("Edited");
+        let mut slide = Slide::default();
+        let mut body = SlideObject::new("text", 60.0, 60.0, 600.0, 300.0);
+        body.text = Some(TextFrame { paragraphs, ..Default::default() });
+        slide.objects = vec![body];
+        deck.slides = vec![slide];
+        deck
+    }
+
+    fn formatted(text: &str, level: u32) -> TextParagraph {
+        TextParagraph {
+            text: text.into(),
+            level,
+            bullet: true,
+            runs: vec![Run { text: text.into(), bold: true, ..Default::default() }],
+            ..Default::default()
+        }
+    }
+
+    fn exported_paragraphs(deck: &Deck) -> (String, Vec<TextParagraph>) {
+        let bytes = write_pptx(deck).unwrap();
+        let slide_xml = ZipReader::open(bytes.clone()).unwrap().read_text("ppt/slides/slide1.xml").unwrap();
+        let read = read_pptx(&bytes).unwrap();
+        (slide_xml, read.deck.slides[0].objects[0].text.clone().unwrap().paragraphs)
+    }
+
+    #[test]
+    fn pptx_edited_paragraph_exports_its_new_text() {
+        // An imported slide: both paragraphs carry runs. The editor changes
+        // the second paragraph and clears its runs, the first one is kept.
+        let (_, imported) = exported_paragraphs(&runs_deck(vec![formatted("Title", 0), formatted("Old detail", 1)]));
+        let mut edited = imported.clone();
+        edited[1].text = "New detail".into();
+        edited[1].runs.clear();
+
+        let (slide_xml, paragraphs) = exported_paragraphs(&runs_deck(edited));
+        assert!(slide_xml.contains("New detail"), "slide: {slide_xml}");
+        assert!(!slide_xml.contains("Old detail"), "slide: {slide_xml}");
+        assert_eq!(paragraphs.len(), 2);
+        assert_eq!(paragraphs[0].text, "Title");
+        assert_eq!(paragraphs[0].runs.len(), 1);
+        assert!(paragraphs[0].runs[0].bold);
+        assert_eq!(paragraphs[1].text, "New detail");
+        assert!(paragraphs[1].bullet && paragraphs[1].level == 1);
+    }
+
+    #[test]
+    fn pptx_never_writes_runs_that_contradict_the_paragraph_text() {
+        // Decks saved by 4.2.0 can hold a changed paragraph text next to the
+        // runs of the old text; the paragraph text is what the user sees.
+        let mut stale = formatted("Old detail", 1);
+        stale.text = "New detail".into();
+        let (slide_xml, paragraphs) = exported_paragraphs(&runs_deck(vec![stale]));
+        assert!(slide_xml.contains("New detail"), "slide: {slide_xml}");
+        assert!(!slide_xml.contains("Old detail"), "slide: {slide_xml}");
+        assert_eq!(paragraphs[0].text, "New detail");
+        assert!(paragraphs[0].bullet && paragraphs[0].level == 1);
     }
 
     #[test]

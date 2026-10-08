@@ -254,6 +254,13 @@ export const devLaunchContext = () =>
 
 export const startupFiles = () => invoke<string[]>("office_startup_files");
 
+/** Drains the files later launches forwarded to this (single) instance. */
+export const takeLaunchFiles = () => invoke<string[]>("office_take_launch_files");
+
+/** Fires when a later launch queued files; fetch them with `takeLaunchFiles`. */
+export const onLaunchFilesQueued = (handler: () => void): Promise<UnlistenFn> =>
+  listen("launch:files-queued", () => handler());
+
 // ---------------------------------------------------------------------------
 // Operations
 // ---------------------------------------------------------------------------

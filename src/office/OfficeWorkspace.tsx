@@ -2,7 +2,7 @@
  * Office workspace: a tab bar over the Writer/Calc/Impress editors with
  * shared autosave, crash recovery and version-history affordances.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { FilePlus2, FileSpreadsheet, FileText, History, Presentation, RotateCcw, X } from "lucide-react";
 import { isOfficePath, openOfficePath, useRecovery, useOfficeTabs } from "../lib/office-store";
 import type { OfficeKind } from "../lib/office-types";
@@ -10,9 +10,25 @@ import { errorMessage, useDev, useSettings, useToasts } from "../lib/store";
 import { useT } from "../lib/i18n";
 import * as api from "../lib/office-api";
 import { Dialog } from "./office-ui";
-import { WriterEditor } from "./WriterEditor";
-import { CalcEditor } from "./CalcEditor";
-import { ImpressEditor } from "./ImpressEditor";
+import { historyKeyFor } from "./historyKey";
+import { ErrorBoundary } from "../components/ErrorBoundary";
+// Each editor is its own chunk: only the kind of document being edited is
+// downloaded, which keeps the workspace chunk inside the bundle budget as the
+// editors grow.
+const WriterEditor = lazy(() => import("./WriterEditor").then((module) => ({ default: module.WriterEditor })));
+const CalcEditor = lazy(() => import("./CalcEditor").then((module) => ({ default: module.CalcEditor })));
+const ImpressEditor = lazy(() => import("./ImpressEditor").then((module) => ({ default: module.ImpressEditor })));
+
+/**
+ * Best-effort recovery copy for a tab whose editor just crashed. It goes through
+ * the regular autosave path (`recovery_save`, the same snapshot the timer
+ * writes), so the next start offers it in the recovery banner. The tab itself
+ * lives in the store, not in the crashed component, so its data stays intact.
+ */
+function saveRecoveryCopy(tabId: string) {
+  const tab = useOfficeTabs.getState().tabs.find((candidate) => candidate.id === tabId);
+  if (tab) void useRecovery.getState().save(tab);
+}
 
 export function OfficeWorkspace() {
   const t = useT();
@@ -25,7 +41,7 @@ export function OfficeWorkspace() {
   const bootstrapped = useRef(false);
   const [recovered, setRecovered] = useState<Array<{ documentId: string; kind: string; title: string }>>([]);
   const [pendingClose, setPendingClose] = useState<{ tabId: string; title: string } | null>(null);
-  const [historyFor, setHistoryFor] = useState<string | null>(null);
+  const [historyFor, setHistoryFor] = useState<{ tabId: string; key: string } | null>(null);
 
   // Automation hook (screenshots/tests) and external open requests.
   useEffect(() => {
@@ -213,7 +229,7 @@ export function OfficeWorkspace() {
             title={t("office.versionHistory")}
             aria-label={t("office.versionHistory")}
             disabled={!active}
-            onClick={() => active && setHistoryFor(active.id)}
+            onClick={() => active && setHistoryFor({ tabId: active.id, key: historyKeyFor(active) })}
           >
             <History size={15} />
           </button>
@@ -274,13 +290,24 @@ export function OfficeWorkspace() {
 
       <div className="office-editor-host">
         {active ? (
-          active.kind === "writer" ? (
-            <WriterEditor key={active.id} tab={active as never} />
-          ) : active.kind === "calc" ? (
-            <CalcEditor key={active.id} tab={active as never} />
-          ) : (
-            <ImpressEditor key={active.id} tab={active as never} />
-          )
+          // One boundary per tab: a crashing editor leaves the tab bar and the
+          // other documents alone.
+          <ErrorBoundary
+            key={active.id}
+            scope={`office:${active.kind}`}
+            note={t("errors.boundaryOfficeNote")}
+            onError={() => saveRecoveryCopy(active.id)}
+          >
+            <Suspense fallback={<div className="empty-state" aria-busy="true" />}>
+              {active.kind === "writer" ? (
+                <WriterEditor tab={active as never} />
+              ) : active.kind === "calc" ? (
+                <CalcEditor tab={active as never} />
+              ) : (
+                <ImpressEditor tab={active as never} />
+              )}
+            </Suspense>
+          </ErrorBoundary>
         ) : (
           <div className="empty-state">
             <FilePlus2 size={26} />
@@ -318,7 +345,13 @@ export function OfficeWorkspace() {
         </Dialog>
       ) : null}
 
-      {historyFor ? <VersionHistoryDialog documentId={historyFor} onClose={() => setHistoryFor(null)} /> : null}
+      {historyFor ? (
+        <VersionHistoryDialog
+          tabId={historyFor.tabId}
+          historyKey={historyFor.key}
+          onClose={() => setHistoryFor(null)}
+        />
+      ) : null}
 
       {/* The Data Loss dialog host lives in App so the converter is covered too. */}
     </div>
@@ -330,8 +363,18 @@ export function OfficeWorkspace() {
  *
  * History is written on every save but used to be write-only: no screen ever
  * called `history_list`, so 25 snapshots per document accumulated unreadable.
+ * `historyKey` identifies the document's history (its path, see `historyKey`),
+ * `tabId` is the tab a restored version is written into.
  */
-function VersionHistoryDialog({ documentId, onClose }: { documentId: string; onClose: () => void }) {
+function VersionHistoryDialog({
+  tabId,
+  historyKey,
+  onClose,
+}: {
+  tabId: string;
+  historyKey: string;
+  onClose: () => void;
+}) {
   const t = useT();
   const [entries, setEntries] = useState<
     Array<{ version: number; savedAt: string; title: string; kind: string; size: number }>
@@ -341,7 +384,7 @@ function VersionHistoryDialog({ documentId, onClose }: { documentId: string; onC
   useEffect(() => {
     let alive = true;
     void api
-      .historyList(documentId)
+      .historyList(historyKey)
       .then((list) => {
         if (alive) setEntries([...list].sort((a, b) => b.version - a.version));
       })
@@ -355,13 +398,13 @@ function VersionHistoryDialog({ documentId, onClose }: { documentId: string; onC
     return () => {
       alive = false;
     };
-  }, [documentId, t]);
+  }, [historyKey, t]);
 
   const restore = async (version: number) => {
     setBusy(true);
     try {
-      const model = await api.historyLoad(documentId, version);
-      useOfficeTabs.getState().edit(documentId, () => model as never);
+      const model = await api.historyLoad(historyKey, version);
+      useOfficeTabs.getState().edit(tabId, () => model as never);
       useToasts.getState().push({ kind: "success", title: t("office.versionRestored"), detail: `v${version}` });
       onClose();
     } catch (error) {
@@ -404,7 +447,7 @@ function VersionHistoryDialog({ documentId, onClose }: { documentId: string; onC
             onClick={async () => {
               setBusy(true);
               try {
-                await api.historyClear(documentId);
+                await api.historyClear(historyKey);
                 setEntries([]);
               } finally {
                 setBusy(false);

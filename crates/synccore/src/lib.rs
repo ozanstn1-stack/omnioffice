@@ -54,8 +54,10 @@ pub struct RemoteEntry {
 pub enum SyncError {
     #[error("cloud sync is disabled")]
     Disabled,
-    /// Provider exists in the UI but is not implemented in this build
-    /// (OAuth providers). Never pretend it works.
+    /// A provider or operation this build cannot perform. The OAuth providers
+    /// (OneDrive, Google Drive) are implemented in `cloud`; nothing returns
+    /// this today, but a future provider must report it rather than pretend
+    /// it works.
     #[error("unsupported sync provider: {0}")]
     Unsupported(String),
     #[error("remote file not found: {0}")]

@@ -605,3 +605,48 @@ fn foreign_drawing_print_protection_and_pivots_import() {
         Some(base64::Engine::encode(&base64::engine::general_purpose::STANDARD, FOREIGN_PIVOT_RECORDS).as_str())
     );
 }
+
+// ---------------------------------------------------------------------------
+// Large files: the import budget (100,000 rows, 1,000 columns) must be
+// reported, never silently applied.
+// ---------------------------------------------------------------------------
+
+fn limit_warnings(warnings: &[String]) -> Vec<&String> {
+    warnings.iter().filter(|warning| warning.starts_with("Import limit:")).collect()
+}
+
+#[test]
+fn rows_beyond_the_import_budget_are_reported() {
+    let mut workbook = Workbook::new_blank("Big");
+    workbook.sheets[0].name = "Log".into();
+    workbook.sheets[0].set("A1", Cell { value: CellValue::Text("kept".into()), ..Default::default() });
+    workbook.sheets[0].set("A100050", Cell { value: CellValue::Number(1.0), ..Default::default() });
+    let read = xlsx::read_workbook_bytes(&xlsx::write_xlsx(&workbook).unwrap()).unwrap();
+
+    let found = limit_warnings(&read.warnings);
+    assert_eq!(found.len(), 1, "warnings: {:?}", read.warnings);
+    assert_eq!(
+        found[0],
+        "Import limit: sheet \"Log\" has cells beyond row 100000 or column 1000; they were not imported."
+    );
+    assert_eq!(read.workbook.sheets[0].get("A1").map(|cell| cell.value.clone()), Some(CellValue::Text("kept".into())));
+    assert!(read.workbook.sheets[0].get("A100050").is_none());
+}
+
+#[test]
+fn columns_beyond_the_import_budget_are_reported() {
+    let mut workbook = Workbook::new_blank("Wide");
+    workbook.sheets[0].set("A1", Cell { value: CellValue::Text("kept".into()), ..Default::default() });
+    workbook.sheets[0].set("ALZ1", Cell { value: CellValue::Number(1.0), ..Default::default() });
+    let read = xlsx::read_workbook_bytes(&xlsx::write_xlsx(&workbook).unwrap()).unwrap();
+    assert_eq!(limit_warnings(&read.warnings).len(), 1, "warnings: {:?}", read.warnings);
+}
+
+#[test]
+fn a_workbook_inside_the_budget_gets_no_limit_warning() {
+    let mut workbook = Workbook::new_blank("Small");
+    workbook.sheets[0].set("A1", Cell { value: CellValue::Text("x".into()), ..Default::default() });
+    workbook.sheets[0].set("B200", Cell { value: CellValue::Number(2.0), ..Default::default() });
+    let read = xlsx::read_workbook_bytes(&xlsx::write_xlsx(&workbook).unwrap()).unwrap();
+    assert!(limit_warnings(&read.warnings).is_empty(), "warnings: {:?}", read.warnings);
+}

@@ -690,3 +690,252 @@ describe("Calc list validation dropdown", () => {
     expect(cellAt(1, 0).classList.contains("is-invalid")).toBe(false);
   });
 });
+
+describe("Calc data validation", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+    vi.mocked(isAndroid).mockReturnValue(false);
+  });
+
+  it("flags an invalid value far down a long validated range", () => {
+    // Regression: the grid only looked at the first 100 addresses of each rule,
+    // so A151 inside A1:A500 was never validated.
+    const id = seedWorkbook({ A151: "99", A150: "5" }, (sheet) => ({
+      ...sheet,
+      rowCount: 500,
+      validations: [
+        { id: "v1", range: "A1:A500", kind: "number", values: [], min: 1, max: 10, message: "", allowBlank: true },
+      ],
+    }));
+    render(<Harness id={id} />);
+    const grid = document.querySelector<HTMLElement>(".calc-grid")!;
+    fireEvent.scroll(grid, { target: { scrollTop: 24 * 148 } });
+
+    expect(cellAt(150, 0).classList.contains("is-invalid")).toBe(true);
+    expect(cellAt(149, 0).classList.contains("is-invalid")).toBe(false);
+  });
+});
+
+describe("Calc row geometry", () => {
+  const withHeights = (rowHeights: Record<string, number>) => (sheet: Sheet) => ({ ...sheet, rowHeights });
+  const px = (element: HTMLElement, property: "top" | "height" | "left") => element.style[property];
+  const rowHeader = (row: number) => document.querySelector<HTMLElement>(`[data-row-header="${row}"]`);
+
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+    vi.mocked(isAndroid).mockReturnValue(false);
+  });
+
+  it("places each row after the real height of the rows above it", () => {
+    // Regression: rows sat at row * 24, so a 48px row overlapped the next one.
+    const id = seedWorkbook({}, withHeights({ "1": 48 }));
+    render(<Harness id={id} />);
+
+    expect(px(cellAt(1, 0), "top")).toBe("24px");
+    expect(px(cellAt(1, 0), "height")).toBe("48px");
+    expect(px(cellAt(2, 0), "top")).toBe("72px");
+    expect(px(cellAt(3, 0), "top")).toBe("96px");
+    expect(px(rowHeader(2)!, "top")).toBe("72px");
+    expect(px(rowHeader(1)!, "height")).toBe("48px");
+  });
+
+  it("leaves no gap where a filter hid a row", () => {
+    // Regression: a hidden row (height 0) still advanced the next row by 24px.
+    const id = seedWorkbook({}, withHeights({ "1": 0, "2": 0 }));
+    render(<Harness id={id} />);
+
+    expect(document.querySelector('[data-cell="1:0"]')).toBeNull();
+    expect(document.querySelector('[data-cell="2:0"]')).toBeNull();
+    expect(rowHeader(1)).toBeNull();
+    expect(px(cellAt(3, 0), "top")).toBe("24px");
+    expect(px(rowHeader(3)!, "top")).toBe("24px");
+  });
+
+  it("sizes the canvas to the rows' combined height", () => {
+    const id = seedWorkbook({}, withHeights({ "1": 48, "5": 0, "6": 0 }));
+    render(<Harness id={id} />);
+    const rowCount = workbookOf().sheets[0].rowCount;
+
+    // One taller row adds 24px; the two hidden rows take away 48px.
+    const rowsHeight = rowCount * 24 + 24 - 48;
+    expect(document.querySelector<HTMLElement>(".calc-canvas")!.style.height).toBe(`${24 + rowsHeight}px`);
+    expect(document.querySelector<HTMLElement>(".calc-cells")!.style.height).toBe(`${rowsHeight}px`);
+  });
+
+  it("puts the fill handle on the bottom edge of the selection's last row", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({}, withHeights({ "1": 48 }));
+    render(<Harness id={id} />);
+
+    await user.click(cellAt(2, 0));
+    // Header 24 + rows 0..1 (24 + 48) + row 2 (24), minus half the 10px handle.
+    expect(document.querySelector<HTMLElement>("[data-fill-handle]")!.style.top).toBe(`${24 + 72 + 24 - 5}px`);
+    expect(document.querySelector<HTMLElement>('[data-select-handle="start"]')!.style.top).toBe(`${24 + 72}px`);
+  });
+
+  it("scrolls the keyboard selection into view using the real row positions", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({}, withHeights({ "1": 100 }));
+    render(<Harness id={id} />);
+    const grid = document.querySelector<HTMLElement>(".calc-grid")!;
+    Object.defineProperty(grid, "clientHeight", { configurable: true, value: 200 });
+    Object.defineProperty(grid, "clientWidth", { configurable: true, value: 600 });
+
+    await user.click(cellAt(0, 0));
+    await user.keyboard("{ArrowDown>7/}");
+    expect(document.querySelector<HTMLInputElement>(".name-box")?.value).toBe("A8");
+    // Row 7 spans y 244..268 (one 100px row above it); with the 24px header its
+    // bottom is at 292 on a 200px viewport.
+    expect(grid.scrollTop).toBe(92);
+    await user.keyboard("{ArrowUp>7/}");
+    expect(document.querySelector<HTMLInputElement>(".name-box")?.value).toBe("A1");
+    expect(grid.scrollTop).toBe(0);
+  });
+
+  it("steps over hidden rows with the arrow keys", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({}, withHeights({ "1": 0, "2": 0 }));
+    render(<Harness id={id} />);
+
+    await user.click(cellAt(0, 0));
+    await user.keyboard("{ArrowDown}");
+    expect(document.querySelector<HTMLInputElement>(".name-box")?.value).toBe("A4");
+    await user.keyboard("{ArrowUp}");
+    expect(document.querySelector<HTMLInputElement>(".name-box")?.value).toBe("A1");
+  });
+});
+
+describe("Calc frozen panes", () => {
+  // Two frozen rows and one frozen column, as after freezing at B3.
+  const frozen = (sheet: Sheet) => ({ ...sheet, freezeRows: 2, freezeCols: 1 });
+  const nameBox = () => document.querySelector<HTMLInputElement>(".name-box")!;
+  const grid = () => document.querySelector<HTMLElement>(".calc-grid")!;
+  const scrollTo = (top: number, left: number) =>
+    fireEvent.scroll(grid(), { target: { scrollTop: top, scrollLeft: left } });
+
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+    vi.mocked(isAndroid).mockReturnValue(false);
+  });
+
+  it("keeps the frozen rows and columns pinned to the scroll offset", () => {
+    // Regression: freezeRows/freezeCols were stored but the grid never read them.
+    const id = seedWorkbook({ A1: "h1", B1: "h2", A3: "left" }, frozen);
+    render(<Harness id={id} />);
+    scrollTo(240, 300);
+
+    // The frozen cells are rendered although the window scrolled far past them.
+    expect(cellAt(0, 0).style.top).toBe("240px");
+    expect(cellAt(0, 0).style.left).toBe("300px");
+    expect(cellAt(1, 0).style.top).toBe("264px");
+    // A frozen row follows the vertical scroll only; a frozen column the horizontal one.
+    expect(cellAt(0, 4).style.top).toBe("240px");
+    expect(cellAt(0, 4).style.left).toBe("384px");
+    expect(cellAt(9, 0).style.top).toBe("216px");
+    expect(cellAt(9, 0).style.left).toBe("300px");
+    // Everything else scrolls with the sheet.
+    expect(cellAt(10, 4).style.top).toBe("240px");
+    expect(cellAt(10, 4).style.left).toBe("384px");
+    // The corner sits above the strips, which sit above the scrolled cells.
+    expect(cellAt(0, 0).style.zIndex).toBe("3");
+    expect(cellAt(0, 4).style.zIndex).toBe("2");
+    expect(cellAt(9, 0).style.zIndex).toBe("2");
+    expect(cellAt(10, 4).style.zIndex).toBe("");
+    // Headers of frozen rows and columns stay too.
+    expect(document.querySelector<HTMLElement>('[data-col-header="0"]')!.style.left).toBe("300px");
+    expect(document.querySelector<HTMLElement>('[data-row-header="1"]')!.style.top).toBe("264px");
+    expect(document.querySelector<HTMLElement>('[data-row-header="9"]')!.style.top).toBe("216px");
+  });
+
+  it("draws a divider on the edge of the frozen band", () => {
+    const id = seedWorkbook({}, frozen);
+    render(<Harness id={id} />);
+    scrollTo(240, 300);
+
+    // 48px of frozen rows and 96px of frozen columns, on a 2px line.
+    expect(document.querySelector<HTMLElement>(".calc-freeze-line.is-row")!.style.top).toBe("287px");
+    expect(document.querySelector<HTMLElement>(".calc-freeze-line.is-col")!.style.left).toBe("395px");
+  });
+
+  it("draws nothing extra when no panes are frozen", () => {
+    const id = seedWorkbook({});
+    render(<Harness id={id} />);
+    expect(document.querySelector(".calc-freeze-line")).toBeNull();
+    expect(cellAt(0, 0).style.zIndex).toBe("");
+  });
+
+  it("selects and edits a frozen cell where it is drawn", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({}, frozen);
+    render(<Harness id={id} />);
+    scrollTo(240, 300);
+
+    await user.click(cellAt(1, 0));
+    expect(nameBox().value).toBe("A2");
+    expect(cellAt(1, 0).classList.contains("is-selected")).toBe(true);
+
+    await user.dblClick(cellAt(1, 0));
+    const editor = cellAt(1, 0).querySelector<HTMLInputElement>(".cell-editor");
+    expect(editor).not.toBeNull();
+    await user.keyboard("pinned{Enter}");
+    expect(cellText(workbookOf().sheets[0].cells.A2)).toBe("pinned");
+  });
+
+  it("moves the fill handle with a frozen selection and hides it under the band", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({}, frozen);
+    render(<Harness id={id} />);
+    scrollTo(240, 300);
+    const handle = () => document.querySelector<HTMLElement>("[data-fill-handle]")!;
+
+    // A2 is frozen: its bottom-right corner follows both scroll offsets.
+    await user.click(cellAt(1, 0));
+    expect(handle().style.top).toBe(`${24 + 48 + 240 - 5}px`);
+    expect(handle().style.left).toBe(`${56 + 96 + 300 - 5}px`);
+    expect(handle().style.display).toBe("");
+
+    // B3 is a scrolled cell that now sits beneath the frozen band: no handle.
+    fireEvent.change(nameBox(), { target: { value: "B3" } });
+    expect(handle().style.display).toBe("none");
+    // E13 starts below the band (rows 10 and 11 are the ones it covers) and keeps its place.
+    fireEvent.change(nameBox(), { target: { value: "E13" } });
+    expect(handle().style.display).toBe("");
+    expect(handle().style.top).toBe(`${24 + 288 + 24 - 5}px`);
+  });
+
+  it("keeps a keyboard-revealed cell clear of the frozen rows", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({}, frozen);
+    render(<Harness id={id} />);
+    Object.defineProperty(grid(), "clientHeight", { configurable: true, value: 200 });
+    Object.defineProperty(grid(), "clientWidth", { configurable: true, value: 600 });
+    grid().scrollTop = 1056;
+
+    // Row 45 starts at y 1080, but with 48px frozen rows it is only visible
+    // when the scroll offset is at most 1080 - 48.
+    fireEvent.change(nameBox(), { target: { value: "A45" } });
+    grid().focus();
+    await user.keyboard("{ArrowDown}");
+    expect(nameBox().value).toBe("A46");
+    expect(grid().scrollTop).toBe(1032);
+  });
+
+  it("freezes at the selection and releases on the next press", async () => {
+    const user = userEvent.setup();
+    const id = seedWorkbook({});
+    render(<Harness id={id} />);
+
+    fireEvent.change(nameBox(), { target: { value: "C3" } });
+    await user.click(screen.getByRole("button", { name: "View" }));
+    await user.click(screen.getByRole("button", { name: "Freeze panes" }));
+    expect(workbookOf().sheets[0]).toMatchObject({ freezeRows: 2, freezeCols: 2 });
+    expect(document.querySelector(".calc-freeze-line.is-row")).not.toBeNull();
+
+    // Pressed again from another cell it unfreezes instead of moving the split.
+    fireEvent.change(nameBox(), { target: { value: "F9" } });
+    await user.click(screen.getByRole("button", { name: "Unfreeze panes" }));
+    expect(workbookOf().sheets[0]).toMatchObject({ freezeRows: 0, freezeCols: 0 });
+    expect(document.querySelector(".calc-freeze-line")).toBeNull();
+    expect(screen.getByRole("button", { name: "Freeze panes" })).toBeInTheDocument();
+  });
+});

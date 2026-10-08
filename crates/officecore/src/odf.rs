@@ -2272,6 +2272,17 @@ fn ods_shape_anchor(frame: &XmlNode) -> String {
     )
 }
 
+/// True when a cell carries a value, a formula or text. The empty padding
+/// LibreOffice writes past the data is not content.
+fn ods_cell_has_content(cell: &XmlNode) -> bool {
+    if ["formula", "value", "boolean-value", "date-value"].iter().any(|name| cell.attr_any_ns(name).is_some()) {
+        return true;
+    }
+    let mut paragraphs = Vec::new();
+    cell.find_all("p", &mut paragraphs);
+    paragraphs.iter().any(|node| !node.deep_text().is_empty())
+}
+
 pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
     let reader = ZipReader::open(bytes.to_vec())?;
     if !reader.contains("content.xml") {
@@ -2295,6 +2306,7 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
         let mut frames: Vec<(String, &XmlNode)> = Vec::new();
         let mut row = 0u32;
         let mut last_row = 0u32;
+        let mut cut_off = false;
         for row_node in table.children_named("table-row") {
             // The repeat only moves the position (a repeated row's cells are
             // set once), so it is taken as written: capping it shifted every
@@ -2311,6 +2323,7 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
                 // Past the imported area only charts are still picked up, so a
                 // chart anchored far down or right is not lost on reopening.
                 if row > ODS_MAX_READ_ROW || column > ODS_MAX_READ_COLUMN {
+                    cut_off |= ods_cell_has_content(cell);
                     for frame in cell.children_named("frame") {
                         let anchor = crate::address::format(row.min(ODS_MAX_READ_ROW), column.min(ODS_MAX_READ_COLUMN));
                         frames.push((anchor, frame));
@@ -2383,6 +2396,9 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
         }
         sheet.row_count = (last_row.min(ODS_MAX_READ_ROW) + 51).max(200);
         sheet.col_count = 26;
+        if cut_off {
+            warnings.push(crate::xlsx::import_limit_warning(&name, ODS_MAX_READ_ROW, ODS_MAX_READ_COLUMN));
+        }
         workbook.sheets.push(sheet);
     }
     if workbook.sheets.is_empty() {

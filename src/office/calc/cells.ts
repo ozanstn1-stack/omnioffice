@@ -141,7 +141,7 @@ export function applyCellEdit(
   // Marking the staged workbook as dirty lets the formula evaluate against a
   // cache that only recalculates the cells this edit can affect.
   const stagedDirty = markDirty(stagedWorkbook, workbook, target.name, [address]);
-  const resolved: Cell = { ...staged, value: formulaResult(rawValue, stagedDirty, stagedSheet, row + 1) };
+  const resolved: Cell = { ...staged, value: formulaResult(rawValue, stagedDirty, stagedSheet, row + 1, address) };
   const final = replaceSheet(stagedDirty, index, {
     ...stagedSheet,
     cells: { ...stagedSheet.cells, [address]: resolved },
@@ -408,6 +408,7 @@ function evaluateCell(scope: EvalScope, key: string): Scalar {
     names: { ...scope.names.names, ...(scope.names.scoped.get(sheetName) ?? {}) },
     tables: sheet.tables ?? [],
     currentRow: position ? position.row + 1 : undefined,
+    currentAddress: address,
   });
   scope.resolving.delete(key);
   if (Array.isArray(result)) {
@@ -607,7 +608,13 @@ export function computeSheetValues(workbook: Workbook, sheet: Sheet): Map<string
   return out;
 }
 
-export function formulaResult(formula: string, workbook: Workbook, sheet: Sheet, currentRow?: number): CellValue {
+export function formulaResult(
+  formula: string,
+  workbook: Workbook,
+  sheet: Sheet,
+  currentRow?: number,
+  currentAddress?: string,
+): CellValue {
   const values = computeWorkbookValues(workbook);
   const result = evaluateFormulaResult(formula, {
     getValue: (sheetName, address) => values.get(`${sheetName ?? sheet.name}!${address}`) ?? "",
@@ -615,6 +622,7 @@ export function formulaResult(formula: string, workbook: Workbook, sheet: Sheet,
     currentSheet: sheet.name,
     tables: sheet.tables ?? [],
     currentRow,
+    currentAddress,
   });
   // A dynamic-array formula keeps its first value in the source cell; the rest
   // of the matrix is spilled by the value pass, not stored in the model.

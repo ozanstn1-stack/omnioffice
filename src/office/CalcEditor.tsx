@@ -91,6 +91,10 @@ import {
   type AuditNode,
 } from "./calc/audit";
 import { tableByName, tableColumnBodyRange } from "./calc/structured";
+import { validationLookup } from "./calc/validation-index";
+import { revealScroll } from "./calc/grid-geometry";
+import { isUnderBand, mergeFrozen, nextFreeze, pinnedPosition, resolveFrozenBands } from "./calc/freeze";
+import { rowLayoutFor } from "./calc/row-layout";
 import {
   applyCellEdit,
   applyCellEdits,
@@ -121,6 +125,8 @@ export { scalarToCellValue, computeWorkbookValues, applyCellEdit, shiftFormulaRo
 type CalcTab = OfficeTab & { model: Workbook };
 
 const ROW_HEIGHT = 24;
+/** The column header band above the first row. */
+const HEADER_HEIGHT = 24;
 const HEADER_WIDTH = 56;
 const DEFAULT_COL_WIDTH = 96;
 
@@ -520,6 +526,33 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   }, []);
 
   const sheet = workbook.sheets[Math.min(sheetIndex, workbook.sheets.length - 1)] ?? workbook.sheets[0];
+  // Row offsets honour custom heights and hidden (filtered) rows. The table is
+  // memoized on the sheet's rowHeights object, so it is rebuilt only when a
+  // height changes, not on every render or scroll.
+  const rowLayout = rowLayoutFor(sheet.rowCount, sheet.rowHeights, ROW_HEIGHT);
+  // Frozen panes: the rows above and the columns left of the freeze point stay
+  // pinned under the headers while the rest scrolls beneath them.
+  const freeze = useMemo(
+    () =>
+      resolveFrozenBands({
+        freezeRows: sheet.freezeRows,
+        freezeCols: sheet.freezeCols,
+        rowCount: sheet.rowCount,
+        colCount: sheet.colCount,
+        rowOffset: rowLayout.offsetOf,
+        colOffset: (count) => {
+          let total = 0;
+          for (let col = 0; col < count; col += 1) total += sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH;
+          return total;
+        },
+        viewportHeight: Math.max(0, scroll.height / gridZoom - HEADER_HEIGHT),
+        viewportWidth: Math.max(0, scroll.width / gridZoom - HEADER_WIDTH),
+      }),
+    [sheet, rowLayout, scroll.height, scroll.width, gridZoom],
+  );
+  // Scroll offsets in canvas pixels: what frozen layers are shifted by.
+  const scrollY = scroll.top / gridZoom;
+  const scrollX = scroll.left / gridZoom;
   const activeCell = sheet.cells[formatAddress(selection.focus.row, selection.focus.col)];
   const computed = useMemo(() => computeSheetValues(workbook, sheet), [workbook, sheet]);
   const catalogue = useMemo(() => new Map(functionCatalogue().map((entry) => [entry.name, entry] as const)), []);
@@ -744,22 +777,32 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       if (!grid) return clamped;
       // Scroll offsets are outer pixels; the cell geometry is in canvas
       // coordinates, so the zoom the canvas is laid out with maps between.
-      const zoom = gridZoomRef.current;
       let left = 0;
       for (let col = 0; col < clamped.col; col += 1) left += sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH;
-      const width = sheet.colWidths[String(clamped.col)] ?? DEFAULT_COL_WIDTH;
-      const top = clamped.row * (sheet.rowHeights[String(clamped.row)] ?? ROW_HEIGHT);
-      const height = sheet.rowHeights[String(clamped.row)] ?? ROW_HEIGHT;
-      if (top * zoom < grid.scrollTop) grid.scrollTop = top * zoom;
-      else if ((top + height) * zoom > grid.scrollTop + grid.clientHeight)
-        grid.scrollTop = (top + height) * zoom - grid.clientHeight;
-      if (left * zoom < grid.scrollLeft) grid.scrollLeft = Math.max(0, left * zoom);
-      else if ((left + width) * zoom > grid.scrollLeft + grid.clientWidth - HEADER_WIDTH * zoom) {
-        grid.scrollLeft = (left + width) * zoom - grid.clientWidth + HEADER_WIDTH * zoom;
-      }
+      const next = revealScroll({
+        cell: {
+          top: rowLayout.offsetOf(clamped.row),
+          height: rowLayout.heightOf(clamped.row),
+          left,
+          width: sheet.colWidths[String(clamped.col)] ?? DEFAULT_COL_WIDTH,
+        },
+        scrollTop: grid.scrollTop,
+        scrollLeft: grid.scrollLeft,
+        clientHeight: grid.clientHeight,
+        clientWidth: grid.clientWidth,
+        zoom: gridZoomRef.current,
+        headerHeight: HEADER_HEIGHT,
+        headerWidth: HEADER_WIDTH,
+        frozenHeight: freeze.height,
+        frozenWidth: freeze.width,
+        rowFrozen: clamped.row < freeze.rows,
+        colFrozen: clamped.col < freeze.cols,
+      });
+      if (next.scrollTop !== grid.scrollTop) grid.scrollTop = next.scrollTop;
+      if (next.scrollLeft !== grid.scrollLeft) grid.scrollLeft = next.scrollLeft;
       return clamped;
     },
-    [sheet],
+    [sheet, rowLayout, freeze],
   );
 
   const commitEdit = (move: CommitMove = "down", restoreFocus = true) => {
@@ -1301,10 +1344,20 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     if (event.nativeEvent.isComposing) return;
     const { row, col } = selection.focus;
     const mod = event.ctrlKey || event.metaKey;
-    const move = (dRow: number, dCol: number, extend = false) => {
+    const moveTo = (nextRow: number, dCol: number, extend = false) => {
       event.preventDefault();
-      const next = revealCell({ row: row + dRow, col: col + dCol });
+      const next = revealCell({ row: nextRow, col: col + dCol });
       setSelection(extend ? { anchor: selection.anchor, focus: next } : { anchor: next, focus: next });
+    };
+    // Vertical steps count visible rows: a filter-hidden row is never landed on.
+    const move = (dRow: number, dCol: number, extend = false) =>
+      moveTo(dRow === 0 ? row : rowLayout.nextVisible(row, dRow), dCol, extend);
+    // A page is one row short of the viewport, measured in pixels so custom
+    // row heights count for what they are.
+    const movePage = (direction: 1 | -1, extend: boolean) => {
+      const span = Math.max(ROW_HEIGHT, scroll.height / gridZoom - HEADER_HEIGHT - ROW_HEIGHT);
+      const target = rowLayout.rowAtY(rowLayout.offsetOf(row) + direction * span);
+      moveTo(target === row ? rowLayout.nextVisible(row, direction) : target, 0, extend);
     };
     const openEditor = (value?: string) => {
       event.preventDefault();
@@ -1351,10 +1404,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         break;
       }
       case "PageDown":
-        move(pageSize, 0, event.shiftKey);
+        movePage(1, event.shiftKey);
         break;
       case "PageUp":
-        move(-pageSize, 0, event.shiftKey);
+        movePage(-1, event.shiftKey);
         break;
       case "Tab":
         event.preventDefault();
@@ -1740,13 +1793,11 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   };
 
   const toggleFreeze = () => {
-    const row = selection.focus.row;
-    const col = selection.focus.col;
-    updateSheet((current) =>
-      current.freezeRows === row && current.freezeCols === col
-        ? { ...current, freezeRows: 0, freezeCols: 0 }
-        : { ...current, freezeRows: row, freezeCols: col },
-    );
+    const focus = selection.focus;
+    updateSheet((current) => {
+      const next = nextFreeze({ rows: current.freezeRows, cols: current.freezeCols }, focus);
+      return { ...current, freezeRows: next.rows, freezeCols: next.cols };
+    });
   };
 
   // -------------------------------------------------------------------------
@@ -2120,26 +2171,35 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     const viewLeft = scroll.left / gridZoom;
     const viewWidth = scroll.width / gridZoom;
     const viewHeight = scroll.height / gridZoom;
-    const rows: number[] = [];
-    const startRow = Math.max(0, Math.floor(viewTop / ROW_HEIGHT) - 2);
-    const endRow = Math.min(sheet.rowCount - 1, startRow + Math.ceil(viewHeight / ROW_HEIGHT) + 4);
-    for (let row = startRow; row <= endRow; row += 1) rows.push(row);
-    const columns: Array<{ col: number; x: number }> = [];
+    // Hidden rows are left out and the window follows the real row heights;
+    // the cells start one header band below the top of the canvas.
+    const windowRows = rowLayout.visibleRows(viewTop - HEADER_HEIGHT, viewTop + viewHeight - HEADER_HEIGHT);
+    // The frozen rows stay on screen however far the window has scrolled.
+    const rows = mergeFrozen(freeze.rows, windowRows, (row) => rowLayout.isHidden(row));
+    const windowColumns: Array<{ col: number; x: number }> = [];
+    const frozenColumns: Array<{ col: number; x: number }> = [];
     let x = 0;
     let startCol = 0;
     for (let col = 0; col < sheet.colCount; col += 1) {
       const width = sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH;
+      if (col < freeze.cols) frozenColumns.push({ col, x });
       if (x + width < viewLeft) {
         x += width;
         startCol = col + 1;
         continue;
       }
-      if (x > viewLeft + viewWidth + 200) break;
-      columns.push({ col, x });
+      if (x > viewLeft + viewWidth + 200) {
+        if (col >= freeze.cols) break;
+        x += width;
+        continue;
+      }
+      windowColumns.push({ col, x });
       x += width;
     }
+    const columns =
+      freeze.cols > 0 ? [...frozenColumns, ...windowColumns.filter(({ col }) => col >= freeze.cols)] : windowColumns;
     return { rows, columns, startCol };
-  }, [scroll, sheet, gridZoom]);
+  }, [scroll, sheet, gridZoom, rowLayout, freeze]);
 
   const parsedSelectionBounds = parseRange(
     `${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`,
@@ -2231,6 +2291,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     return bars;
   }, [sheet, computed]);
 
+  // Rule ranges are parsed once per rule list, so the per-cell lookup below is a
+  // few integer comparisons however large the validated range is.
+  const validationAt = validationLookup(sheet.validations);
+
   // The choices of every list validation, resolved once per data change: the
   // inline list as stored, or the values of a referenced range (`=A1:A5`).
   const listItems = useMemo(() => {
@@ -2261,17 +2325,25 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   // The touch-only fill handle sits on the selection's bottom-right corner.
   const fillHandle = {
     x: columnX(selectionBounds.end.col) + (sheet.colWidths[String(selectionBounds.end.col)] ?? DEFAULT_COL_WIDTH),
-    y:
-      ROW_HEIGHT +
-      selectionBounds.end.row * ROW_HEIGHT +
-      (sheet.rowHeights[String(selectionBounds.end.row)] ?? ROW_HEIGHT),
+    y: HEADER_HEIGHT + rowLayout.offsetOf(selectionBounds.end.row) + rowLayout.heightOf(selectionBounds.end.row),
   };
   // Touch selection handles: round grips on the top-left and bottom-right
   // corners (centred on the corner by CSS) that drag the selection's extent.
   const selectHandleStart = {
     x: columnX(selectionBounds.start.col),
-    y: ROW_HEIGHT + selectionBounds.start.row * ROW_HEIGHT,
+    y: HEADER_HEIGHT + rowLayout.offsetOf(selectionBounds.start.row),
   };
+  // A handle on a frozen row or column is pinned like the cell it belongs to;
+  // one whose cell has scrolled beneath the frozen band goes away with it.
+  const placeHandle = (point: { x: number; y: number }, row: number, col: number) => ({
+    left: pinnedPosition(col, freeze.cols, point.x, scrollX),
+    top: pinnedPosition(row, freeze.rows, point.y, scrollY),
+    hidden:
+      isUnderBand(row, freeze.rows, point.y - HEADER_HEIGHT, scrollY, freeze.height) ||
+      isUnderBand(col, freeze.cols, point.x - HEADER_WIDTH, scrollX, freeze.width),
+  });
+  const fillHandlePlace = placeHandle(fillHandle, selectionBounds.end.row, selectionBounds.end.col);
+  const selectHandleStartPlace = placeHandle(selectHandleStart, selectionBounds.start.row, selectionBounds.start.col);
 
   const selectionAddress = formatAddress(selection.focus.row, selection.focus.col);
   const selectedTable = (sheet.tables ?? []).find((table) => addressInRange(selectionAddress, table.range));
@@ -2301,15 +2373,24 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   // The arrow sits inside the right edge of the active cell, in canvas
   // coordinates like the fill handle. The list opens below the cell, or above
   // it when the viewport has no room left underneath.
-  const listCellHeight = sheet.rowHeights[String(selection.focus.row)] ?? ROW_HEIGHT;
+  const listCellHeight = rowLayout.heightOf(selection.focus.row);
   const listCell =
-    activeListItems.length > 0 && !editing && listCellHeight > 0
+    activeListItems.length > 0 &&
+    !editing &&
+    listCellHeight > 0 &&
+    !isUnderBand(selection.focus.row, freeze.rows, rowLayout.offsetOf(selection.focus.row), scrollY, freeze.height) &&
+    !isUnderBand(selection.focus.col, freeze.cols, columnX(selection.focus.col) - HEADER_WIDTH, scrollX, freeze.width)
       ? (() => {
-          const left = columnX(selection.focus.col);
+          const left = pinnedPosition(selection.focus.col, freeze.cols, columnX(selection.focus.col), scrollX);
           const width = sheet.colWidths[String(selection.focus.col)] ?? DEFAULT_COL_WIDTH;
-          const top = ROW_HEIGHT + selection.focus.row * ROW_HEIGHT;
+          const top = pinnedPosition(
+            selection.focus.row,
+            freeze.rows,
+            HEADER_HEIGHT + rowLayout.offsetOf(selection.focus.row),
+            scrollY,
+          );
           const popupHeight = Math.min(activeListItems.length, 8) * (android ? 40 : 26) + 8;
-          const viewTop = scroll.top / gridZoom + ROW_HEIGHT;
+          const viewTop = scroll.top / gridZoom + HEADER_HEIGHT;
           const viewBottom = (scroll.top + scroll.height) / gridZoom;
           const above = top + listCellHeight + popupHeight > viewBottom && top - popupHeight >= viewTop;
           return { left, width, top, height: listCellHeight, above };
@@ -2331,7 +2412,6 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   // The last valid row/column, used for Ctrl+End, Space and the data extent.
   const lastRow = Math.max(0, sheet.rowCount - 1);
   const lastCol = Math.max(0, sheet.colCount - 1);
-  const pageSize = Math.max(1, Math.floor(scroll.height / ROW_HEIGHT) - 1);
 
   /** Ctrl+D: copy the first row of the selection down the rest of it. */
   const fillFromSelection = () => {
@@ -2730,7 +2810,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
             <RibbonGroup label={t("calc.view")}>
               <ToolButton
                 icon={<Snowflake size={16} />}
-                label={t("calc.freezePanes")}
+                label={sheet.freezeRows > 0 || sheet.freezeCols > 0 ? t("calc.unfreezePanes") : t("calc.freezePanes")}
                 onClick={toggleFreeze}
                 active={sheet.freezeRows > 0 || sheet.freezeCols > 0}
               />
@@ -2819,7 +2899,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         >
           <div
             className="calc-canvas"
-            style={{ width: HEADER_WIDTH + totalWidth, height: ROW_HEIGHT * (sheet.rowCount + 1), zoom: gridZoom }}
+            style={{ width: HEADER_WIDTH + totalWidth, height: HEADER_HEIGHT + rowLayout.total, zoom: gridZoom }}
           >
             <div
               className="calc-col-headers"
@@ -2830,7 +2910,11 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   key={col}
                   data-col-header={col}
                   className={`calc-col-header${selection.focus.col === col ? " is-active" : ""}`}
-                  style={{ left: x, width: sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH }}
+                  style={{
+                    left: pinnedPosition(col, freeze.cols, x, scrollX),
+                    width: sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH,
+                    zIndex: col < freeze.cols ? 1 : undefined,
+                  }}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     insertColumn(sheet, col, updateSheet);
@@ -2847,18 +2931,23 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   key={row}
                   data-row-header={row}
                   className={`calc-row-header${selection.focus.row === row ? " is-active" : ""}`}
-                  style={{ top: row * ROW_HEIGHT, height: sheet.rowHeights[String(row)] ?? ROW_HEIGHT }}
+                  style={{
+                    top: pinnedPosition(row, freeze.rows, rowLayout.offsetOf(row), scrollY),
+                    height: rowLayout.heightOf(row),
+                    zIndex: row < freeze.rows ? 1 : undefined,
+                  }}
                 >
                   {row + 1}
                 </div>
               ))}
             </div>
+            <div className="calc-corner" style={{ transform: `translate(${scrollX}px, ${scrollY}px)` }} />
             <div
               className="calc-cells"
               style={{
                 transform: `translate(${HEADER_WIDTH}px, 0)`,
                 width: totalWidth,
-                height: ROW_HEIGHT * sheet.rowCount,
+                height: rowLayout.total,
               }}
             >
               {visible.rows.map((row) =>
@@ -2875,9 +2964,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                     col <= selectionBounds.end.col;
                   const fill = conditionalFills.get(address);
                   const style = cell?.style ?? defaultCellStyle();
-                  const validation = sheet.validations.find((rule) =>
-                    addressesInRange(rule.range, 100).includes(address),
-                  );
+                  const validation = validationAt.find(row, col);
                   const invalid = validation ? !isValid(validation, value, listItems.get(validation.id)) : false;
                   // The structured table (if any) that owns this cell decides
                   // header/banding/outline; the cell's own formatting still wins.
@@ -2898,6 +2985,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                     }
                   }
                   const traceKind = tracedCells.get(address);
+                  const frozenRow = row < freeze.rows;
+                  const frozenCol = col < freeze.cols;
                   return (
                     <div
                       key={address}
@@ -2906,11 +2995,14 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                       data-col={col}
                       className={`calc-cell${inSelection ? " is-selected" : ""}${invalid ? " is-invalid" : ""}`}
                       style={{
-                        left: x,
-                        top: row * ROW_HEIGHT,
+                        left: pinnedPosition(col, freeze.cols, x, scrollX),
+                        top: pinnedPosition(row, freeze.rows, rowLayout.offsetOf(row), scrollY),
                         width,
-                        height: sheet.rowHeights[String(row)] ?? ROW_HEIGHT,
-                        background: fill ?? tableFill ?? style.fill ?? undefined,
+                        height: rowLayout.heightOf(row),
+                        // Frozen cells cover what scrolls under them, so they need a fill.
+                        zIndex: frozenRow && frozenCol ? 3 : frozenRow || frozenCol ? 2 : undefined,
+                        background:
+                          fill ?? tableFill ?? style.fill ?? (frozenRow || frozenCol ? "var(--bg)" : undefined),
                         fontWeight: style.bold || (tableHeader && tableEntry!.table.headerBold) ? 700 : undefined,
                         fontStyle: style.italic ? "italic" : undefined,
                         textDecoration:
@@ -3019,23 +3111,57 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   );
                 }),
               )}
+              {freeze.rows > 0 ? (
+                <div
+                  className="calc-freeze-line is-row"
+                  aria-hidden
+                  style={{
+                    top: scrollY + freeze.height - 1,
+                    left: scrollX,
+                    width: Math.max(0, scroll.width / gridZoom - HEADER_WIDTH),
+                  }}
+                />
+              ) : null}
+              {freeze.cols > 0 ? (
+                <div
+                  className="calc-freeze-line is-col"
+                  aria-hidden
+                  style={{
+                    left: scrollX + freeze.width - 1,
+                    top: scrollY,
+                    height: Math.max(0, scroll.height / gridZoom - HEADER_HEIGHT),
+                  }}
+                />
+              ) : null}
             </div>
             <span
               className="calc-fill-handle"
               data-fill-handle=""
-              style={{ left: fillHandle.x - 5, top: fillHandle.y - 5 }}
+              style={{
+                left: fillHandlePlace.left - 5,
+                top: fillHandlePlace.top - 5,
+                display: fillHandlePlace.hidden ? "none" : undefined,
+              }}
             />
             <span
               className="calc-select-handle"
               data-select-handle="start"
               aria-hidden
-              style={{ left: selectHandleStart.x, top: selectHandleStart.y }}
+              style={{
+                left: selectHandleStartPlace.left,
+                top: selectHandleStartPlace.top,
+                display: selectHandleStartPlace.hidden ? "none" : undefined,
+              }}
             />
             <span
               className="calc-select-handle"
               data-select-handle="end"
               aria-hidden
-              style={{ left: fillHandle.x, top: fillHandle.y }}
+              style={{
+                left: fillHandlePlace.left,
+                top: fillHandlePlace.top,
+                display: fillHandlePlace.hidden ? "none" : undefined,
+              }}
             />
             {sheet.charts.map((chart) => {
               const position = parseAddress(chart.anchor) ?? { row: 0, col: 0 };
@@ -3046,7 +3172,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   sheet={sheet}
                   workbook={workbook}
                   x={columnX(position.col)}
-                  y={position.row * ROW_HEIGHT + ROW_HEIGHT}
+                  y={HEADER_HEIGHT + rowLayout.offsetOf(position.row)}
                   onRemove={() =>
                     updateSheet((current) => ({
                       ...current,
@@ -3065,7 +3191,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   sheet={sheet}
                   workbook={workbook}
                   x={columnX(position.col)}
-                  y={position.row * ROW_HEIGHT + ROW_HEIGHT}
+                  y={HEADER_HEIGHT + rowLayout.offsetOf(position.row)}
                   onRemove={() =>
                     updateSheet((current) => ({
                       ...current,

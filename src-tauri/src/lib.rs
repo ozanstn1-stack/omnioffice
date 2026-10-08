@@ -4,13 +4,19 @@
 //! commands, progress events, cancellation and engine discovery.
 
 mod ai;
+#[cfg(target_os = "android")]
+mod android_background;
 mod android_intent;
 #[cfg(target_os = "android")]
 mod android_keystore;
+#[cfg(any(target_os = "android", test))]
+mod background_work;
 mod commands;
 mod concurrency;
+mod crash_log;
 mod diagnostics;
 mod jobs;
+mod launch;
 mod library;
 mod netpolicy;
 mod oauth;
@@ -28,31 +34,95 @@ mod vault;
 use jobs::{JobRegistry, JobStore};
 use tauri::Manager;
 
+/// Brings the main window to the front, for a launch that was forwarded to the
+/// running instance (it may be minimized or sit behind other windows).
+#[cfg(desktop)]
+fn focus_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+/// Single instance (desktop): a second launch, for example another document
+/// opened from Explorer, never starts a second app. Its arguments are queued
+/// for the frontend (see launch.rs) and the running window is focused.
+#[cfg(desktop)]
+fn single_instance_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    use tauri::Emitter;
+    tauri_plugin_single_instance::init(|app, argv, cwd| {
+        let files = launch::launch_files(argv, Some(std::path::Path::new(&cwd)));
+        if !files.is_empty() {
+            if let Some(queue) = app.try_state::<launch::LaunchQueue>() {
+                queue.push(files);
+            }
+            let _ = app.emit("launch:files-queued", ());
+        }
+        focus_main_window(app);
+    })
+}
+
+/// Hands the app log directory to the panic hook as soon as plugins are set
+/// up, which is before the setup hook and the first window.
+fn crash_log_dir_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    tauri::plugin::Builder::<tauri::Wry>::new("omnioffice-crash-log")
+        .setup(|app, _api| {
+            if let Ok(dir) = app.path().app_log_dir() {
+                crash_log::set_log_dir(dir);
+            }
+            Ok(())
+        })
+        .build()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Release builds abort on panic: record the panic in crash.log first (the
+    // log directory is handed over by the plugin below once the app exists).
+    crash_log::install_panic_hook();
     // Persistent job history, shared by the registry and the jobs_* commands.
     // Managed as Arc<JobStore> so both sides see the same records.
     let job_store = JobStore::shared();
-    let builder = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // The single-instance plugin has to come first: a second launch must be
+    // detected (and exit) before any other plugin or the setup hook runs.
+    #[cfg(desktop)]
+    let builder = builder.plugin(single_instance_plugin());
+    let builder = builder
+        .plugin(crash_log_dir_plugin())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_android_fs::init())
         .manage(job_store.clone())
-        .manage(JobRegistry::new(job_store));
+        .manage(JobRegistry::new(job_store))
+        .manage(launch::LaunchQueue::default());
     // Android Keystore bridge for the secret store (API key, OAuth tokens,
     // WebDAV password); see android_keystore.rs.
     #[cfg(target_os = "android")]
     let builder = builder.plugin(android_keystore::init());
+    // Foreground service that keeps the process alive while jobs run in the
+    // background; see android_background.rs.
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(android_background::init());
 
     builder
         .setup(|app| {
+            // Android: keep a foreground service up for as long as any job runs,
+            // so the system does not freeze the process when the app leaves the
+            // screen.
+            #[cfg(target_os = "android")]
+            if let Some(registry) = app.try_state::<JobRegistry>() {
+                registry.set_activity_listener(Box::new(android_background::set_active));
+            }
             // Restore the persistent job history from <config>/jobs.json and
             // flip every job that was still running/queued when the previous
             // process died to `interrupted` (Android activity recreation or an
-            // app restart). This only preserves state; it does not keep the
-            // process - and therefore the work - alive.
+            // app restart). This only restores state; it is the foreground
+            // service above that tries to keep the process - and therefore the
+            // work - alive.
             if let Ok(config_dir) = app.path().app_config_dir() {
                 if let Some(store) = app.try_state::<std::sync::Arc<JobStore>>() {
                     store.attach_path(config_dir.join("jobs.json"));
@@ -211,6 +281,7 @@ pub fn run() {
             commands::clear_operations,
             commands::log_frontend,
             office::office_startup_files,
+            launch::office_take_launch_files,
             office::office_open_document,
             office::office_save_document,
             office::office_save_unit,

@@ -17,9 +17,11 @@
  *
  * Android honesty: a Rust worker keeps running while the process lives. This
  * persistence makes the *state* survive process death, it does NOT keep the
- * process alive; without a foreground service (out of scope for V3.1) Android
- * can kill background work. A job that died that way shows up as `interrupted`
- * on the next start with a Retry action, and no UI text here claims liveness.
+ * process alive. While a job runs, Android starts a foreground service (see
+ * src-tauri/src/android_background.rs) so the system does not freeze the app
+ * in the background, but swiping it away or a battery manager can still end
+ * the process. A job that died that way shows up as `interrupted` on the next
+ * start with a Retry action, and no UI text here claims liveness.
  */
 import { create } from "zustand";
 import type { ProgressPayload } from "./types";

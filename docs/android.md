@@ -106,8 +106,11 @@ the public Downloads folder.
 * **Tesseract** is the official CLI built for Android (statically linked,
   Apache-2.0). It is packaged as `libtesseract.so` because executables may only
   be started from the native library directory on Android 10+.
-* **qpdf** is not bundled (it is only used for desktop-side diagnostics); the
-  security features are implemented in Rust (`lopdf`, AES-256 R6).
+* **qpdf** is not bundled on Android (`engines::qpdf_path` returns `None`
+  there). PDF repair does not need it: the built-in engine rebuilds the file
+  from its raw objects, so Repair works on Android. Fast Web View
+  (linearization) needs qpdf and is desktop-only. The security features are
+  implemented in Rust (`lopdf`, AES-256 R6).
 * OCR quality is identical to the desktop build: same `tessdata_fast` models,
   same preprocessing pipeline, same output modes (searchable PDF, text,
   Markdown).

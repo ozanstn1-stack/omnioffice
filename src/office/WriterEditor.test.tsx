@@ -1,4 +1,4 @@
-﻿import { act, render, screen } from "@testing-library/react";
+﻿import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -26,7 +26,9 @@ vi.mock("@tauri-apps/plugin-fs", () => ({ readFile: vi.fn(async () => new Uint8A
 import { WriterEditor } from "./WriterEditor";
 import { PROBE_TIMEOUT_MS } from "./writer/regex-probe";
 import { useOfficeTabs, type OfficeTab } from "../lib/office-store";
-import type { Block, Run, TextDocument } from "../lib/office-types";
+import { useSettings } from "../lib/store";
+import { DEFAULT_SETTINGS } from "../lib/types";
+import type { Block, Run, TableCell, TextDocument } from "../lib/office-types";
 import { caretOffset, setCaretOffset } from "./writer/caret";
 
 function Harness({ id }: { id: string }) {
@@ -652,5 +654,83 @@ describe("Writer find & replace and quick styles", () => {
     expect(document.activeElement).toBe(pageEditables()[0]);
     expect(screen.getByRole("button", { name: "Heading 1" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Normal" })).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+describe("Writer table cell menu", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+    useSettings.setState({ settings: DEFAULT_SETTINGS });
+  });
+
+  /** A one-row, two-cell table as the only block. */
+  function seedTable(): string {
+    const id = useOfficeTabs.getState().create("writer", "Untitled");
+    const model = useOfficeTabs.getState().tabs[0].model as TextDocument;
+    const first = model.blocks.find((block) => block.type === "paragraph") as Extract<Block, { type: "paragraph" }>;
+    const cell = (text: string): TableCell => ({
+      blocks: [{ type: "paragraph", props: { ...first.props }, runs: [{ ...first.runs[0], text }] }],
+      colspan: 1,
+      rowspan: 1,
+      background: null,
+      align: "left",
+      valign: "top",
+      widthPt: null,
+    });
+    const table: Block = {
+      type: "table",
+      table: {
+        rows: [{ cells: [cell("A1"), cell("B1")], heightPt: null, header: false }],
+        columnWidthsPt: [200, 200],
+        borders: true,
+        borderColor: "#000000",
+        align: "left",
+      },
+    };
+    useOfficeTabs.setState((state) => ({
+      tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, blocks: [table] } } : entry)),
+    }));
+    return id;
+  }
+
+  /** Tables are static in the page view; clicking one opens the editable surface. */
+  async function openTable(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(document.querySelector(".writer-fragment") as HTMLElement);
+  }
+
+  it("shows English labels and adds a row below", async () => {
+    const user = userEvent.setup();
+    render(<Harness id={seedTable()} />);
+    await openTable(user);
+
+    fireEvent.contextMenu(document.querySelector(".writer-table td") as HTMLElement);
+    expect(screen.getByText("Row 1 · Cell 1")).toBeInTheDocument();
+    for (const label of ["Delete row", "Add column", "Delete column", "Toggle cell shade", "Toggle borders"]) {
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+    }
+    await user.click(screen.getByRole("button", { name: "Add row below" }));
+    const saved = documentOf().blocks[0];
+    expect(saved.type === "table" ? saved.table.rows.length : 0).toBe(2);
+  });
+
+  it("translates every label when the interface language is Turkish", async () => {
+    const user = userEvent.setup();
+    useSettings.setState({ settings: { ...DEFAULT_SETTINGS, language: "tr" } });
+    render(<Harness id={seedTable()} />);
+    await openTable(user);
+
+    fireEvent.contextMenu(document.querySelectorAll(".writer-table td")[1] as HTMLElement);
+    expect(screen.getByText("Satır 1 · Hücre 2")).toBeInTheDocument();
+    for (const label of [
+      "Altına satır ekle",
+      "Satırı sil",
+      "Sütun ekle",
+      "Sütunu sil",
+      "Hücre gölgesini aç/kapat",
+      "Kenarlıkları aç/kapat",
+    ]) {
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole("button", { name: "Add row below" })).toBeNull();
   });
 });

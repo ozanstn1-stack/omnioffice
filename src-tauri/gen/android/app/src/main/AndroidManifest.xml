@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Background work: a dataSync foreground service keeps long jobs (OCR,
+         compression, conversions) alive while the app is in the background.
+         POST_NOTIFICATIONS only shows its notification on Android 13+; the
+         service works without it and the prompt is asked for once. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -27,70 +34,172 @@
                 <!-- AndroidTV support -->
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
-            <!-- tauri-file-associations. AUTO-GENERATED. DO NOT REMOVE. -->
+            <!--
+              File associations ("Open with" and share). HAND-MAINTAINED, not generated:
+              tauri.android.conf.json clears bundle.fileAssociations, so tauri-build no longer
+              rewrites this block. Its output (a bare <data android:pathPattern> per extension)
+              never matched a real intent: a path is only evaluated when the filter also has a
+              scheme and a host, and a filter without any type or scheme only matches intents
+              that carry no data at all. How Android matches, and what each filter is for:
+              - Typed filter: SEND / SEND_MULTIPLE carry no data URI, only a type (so no scheme
+                here), and VIEW from a file manager arrives as content:// (or file://) + type.
+                With no scheme declared, a type alone matches content: and file: URIs.
+              - Fallback filters (VIEW): for senders that give a generic type (octet-stream) or
+                none, match on the file name instead. A path needs a scheme AND a host, hence
+                host="*" (it also matches the empty host of file:///). Do NOT put a specific
+                mimeType into these: type and path must both match, and most content:// paths
+                carry no extension.
+              - Before API 31 a `.*` glob stops at the first dot, so ".*\.docx" misses
+                "My.Report.docx"; one pattern per dot count covers up to three dots, and
+                pathSuffix (API 31+) is exact. Globs are case-sensitive; typed intents cover
+                upper-case names.
+              Every extension here must stay in IncomingFiles.openableExtensions, otherwise the
+              copy pipeline rejects the file after Android handed it over; ManifestIntentFiltersTest
+              (JVM) and OpenWithIntentTest (device) pin all of this.
+            -->
+            <!-- Typed: open with / share, one entry per supported type. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:pathPattern=".*\\.docx" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:pathPattern=".*\\.odt" />
-            </intent-filter>
-            <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
-                <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <!-- Word (docx) -->
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <!-- OpenDocument text (odt) -->
+                <data android:mimeType="application/vnd.oasis.opendocument.text" />
+                <!-- Rich text (rtf) -->
                 <data android:mimeType="application/rtf" />
-                <data android:pathPattern=".*\\.rtf" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:pathPattern=".*\\.xlsx" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:pathPattern=".*\\.ods" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:pathPattern=".*\\.pptx" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:pathPattern=".*\\.odp" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <action android:name="android.intent.action.SEND_MULTIPLE" />
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="text/rtf" />
+                <!-- Excel (xlsx) -->
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <!-- OpenDocument spreadsheet (ods) -->
+                <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
+                <!-- PowerPoint (pptx) -->
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+                <!-- OpenDocument presentation (odp) -->
+                <data android:mimeType="application/vnd.oasis.opendocument.presentation" />
+                <!-- PDF -->
                 <data android:mimeType="application/pdf" />
-                <data android:pathPattern=".*\\.pdf" />
+                <!-- OmniOffice document (oswk, no registered type) -->
+                <data android:mimeType="application/x-oswk" />
             </intent-filter>
+            <!-- Fallback with a generic type (typically application/octet-stream): match the file name. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+                <data android:pathSuffix=".docx" />
+                <data android:pathPattern=".*\\.docx" />
+                <data android:pathPattern=".*\\..*\\.docx" />
+                <data android:pathPattern=".*\\..*\\..*\\.docx" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.docx" />
+                <data android:pathSuffix=".odt" />
+                <data android:pathPattern=".*\\.odt" />
+                <data android:pathPattern=".*\\..*\\.odt" />
+                <data android:pathPattern=".*\\..*\\..*\\.odt" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.odt" />
+                <data android:pathSuffix=".rtf" />
+                <data android:pathPattern=".*\\.rtf" />
+                <data android:pathPattern=".*\\..*\\.rtf" />
+                <data android:pathPattern=".*\\..*\\..*\\.rtf" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.rtf" />
+                <data android:pathSuffix=".xlsx" />
+                <data android:pathPattern=".*\\.xlsx" />
+                <data android:pathPattern=".*\\..*\\.xlsx" />
+                <data android:pathPattern=".*\\..*\\..*\\.xlsx" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.xlsx" />
+                <data android:pathSuffix=".ods" />
+                <data android:pathPattern=".*\\.ods" />
+                <data android:pathPattern=".*\\..*\\.ods" />
+                <data android:pathPattern=".*\\..*\\..*\\.ods" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.ods" />
+                <data android:pathSuffix=".pptx" />
+                <data android:pathPattern=".*\\.pptx" />
+                <data android:pathPattern=".*\\..*\\.pptx" />
+                <data android:pathPattern=".*\\..*\\..*\\.pptx" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.pptx" />
+                <data android:pathSuffix=".odp" />
+                <data android:pathPattern=".*\\.odp" />
+                <data android:pathPattern=".*\\..*\\.odp" />
+                <data android:pathPattern=".*\\..*\\..*\\.odp" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.odp" />
+                <data android:pathSuffix=".pdf" />
+                <data android:pathPattern=".*\\.pdf" />
+                <data android:pathPattern=".*\\..*\\.pdf" />
+                <data android:pathPattern=".*\\..*\\..*\\.pdf" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.pdf" />
+                <data android:pathSuffix=".oswk" />
                 <data android:pathPattern=".*\\.oswk" />
+                <data android:pathPattern=".*\\..*\\.oswk" />
+                <data android:pathPattern=".*\\..*\\..*\\.oswk" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.oswk" />
             </intent-filter>
-            
-            <!-- tauri-file-associations. AUTO-GENERATED. DO NOT REMOVE. -->
+            <!-- Fallback without a type (provider could not tell, or file:// from older managers): match the file name. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:pathSuffix=".docx" />
+                <data android:pathPattern=".*\\.docx" />
+                <data android:pathPattern=".*\\..*\\.docx" />
+                <data android:pathPattern=".*\\..*\\..*\\.docx" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.docx" />
+                <data android:pathSuffix=".odt" />
+                <data android:pathPattern=".*\\.odt" />
+                <data android:pathPattern=".*\\..*\\.odt" />
+                <data android:pathPattern=".*\\..*\\..*\\.odt" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.odt" />
+                <data android:pathSuffix=".rtf" />
+                <data android:pathPattern=".*\\.rtf" />
+                <data android:pathPattern=".*\\..*\\.rtf" />
+                <data android:pathPattern=".*\\..*\\..*\\.rtf" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.rtf" />
+                <data android:pathSuffix=".xlsx" />
+                <data android:pathPattern=".*\\.xlsx" />
+                <data android:pathPattern=".*\\..*\\.xlsx" />
+                <data android:pathPattern=".*\\..*\\..*\\.xlsx" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.xlsx" />
+                <data android:pathSuffix=".ods" />
+                <data android:pathPattern=".*\\.ods" />
+                <data android:pathPattern=".*\\..*\\.ods" />
+                <data android:pathPattern=".*\\..*\\..*\\.ods" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.ods" />
+                <data android:pathSuffix=".pptx" />
+                <data android:pathPattern=".*\\.pptx" />
+                <data android:pathPattern=".*\\..*\\.pptx" />
+                <data android:pathPattern=".*\\..*\\..*\\.pptx" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.pptx" />
+                <data android:pathSuffix=".odp" />
+                <data android:pathPattern=".*\\.odp" />
+                <data android:pathPattern=".*\\..*\\.odp" />
+                <data android:pathPattern=".*\\..*\\..*\\.odp" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.odp" />
+                <data android:pathSuffix=".pdf" />
+                <data android:pathPattern=".*\\.pdf" />
+                <data android:pathPattern=".*\\..*\\.pdf" />
+                <data android:pathPattern=".*\\..*\\..*\\.pdf" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.pdf" />
+                <data android:pathSuffix=".oswk" />
+                <data android:pathPattern=".*\\.oswk" />
+                <data android:pathPattern=".*\\..*\\.oswk" />
+                <data android:pathPattern=".*\\..*\\..*\\.oswk" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.oswk" />
+            </intent-filter>
         </activity>
+
+        <!-- Started and stopped by BackgroundWorkPlugin while Rust jobs run. -->
+        <service
+            android:name=".BackgroundWorkService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <provider
           android:name="androidx.core.content.FileProvider"

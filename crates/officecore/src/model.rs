@@ -502,6 +502,10 @@ pub struct Run {
     /// while suggest mode was on.
     #[serde(default)]
     pub revision: Option<RevisionMark>,
+    /// BCP 47 language tag of the run (`en-US`, `tr-TR`), when the source
+    /// document declared one. Unset means "unknown", never a guessed default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lang: Option<String>,
 }
 
 impl Run {
@@ -1590,6 +1594,9 @@ pub struct TextParagraph {
     pub align: String,
     pub bullet: bool,
     pub runs: Vec<Run>,
+    /// Language tag for the paragraph text when it has no runs of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lang: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -1785,6 +1792,9 @@ pub struct Deck {
     #[serde(default)]
     pub masters: Vec<SlideMaster>,
     pub metadata: DocMetadata,
+    /// Default text language of the deck (BCP 47), when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lang: Option<String>,
 }
 
 impl Default for Deck {
@@ -1797,6 +1807,7 @@ impl Default for Deck {
             slides: vec![Slide::default()],
             masters: Vec::new(),
             metadata: DocMetadata::default(),
+            lang: None,
         }
     }
 }
@@ -1848,6 +1859,21 @@ impl Deck {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn language_fields_are_optional_in_saved_json() {
+        // Files saved before the language fields existed must still load,
+        // and an unknown language must not be written back as `null`.
+        let old_run: Run = serde_json::from_str(r#"{"text":"old"}"#).unwrap();
+        assert_eq!(old_run.lang, None);
+        let paragraph: TextParagraph = serde_json::from_str(r#"{"text":"old","level":1}"#).unwrap();
+        assert_eq!(paragraph.lang, None);
+        let deck: Deck = serde_json::from_str(r#"{"title":"old"}"#).unwrap();
+        assert_eq!(deck.lang, None);
+        assert!(!serde_json::to_string(&deck).unwrap().contains("lang"));
+        let tagged: Run = serde_json::from_str(r#"{"text":"t","lang":"tr-TR"}"#).unwrap();
+        assert_eq!(tagged.lang.as_deref(), Some("tr-TR"));
+    }
 
     #[test]
     fn writer_model_roundtrips_json() {
