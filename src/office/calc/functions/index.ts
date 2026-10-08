@@ -6,12 +6,16 @@
  * rather than "append it to a 2000-line file".
  */
 import { functionCount } from "../registry";
+import "./aggregate";
+import "./array-shape";
 import "./arrays";
 import "./datetime";
+import "./distributions";
 import "./financial";
 import "./lookup";
 import "./math";
 import "./reference";
+import "./regression";
 import "./statistics";
 import "./text";
 

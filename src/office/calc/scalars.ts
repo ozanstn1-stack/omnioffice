@@ -35,6 +35,8 @@ export const ERR = {
   circular: () => new FormulaError("#REF!", "circular reference"),
   // A dynamic array whose spill range is blocked by existing data.
   spill: () => new FormulaError("#SPILL!", "the spill range is not empty"),
+  // A dynamic array that would be empty (TAKE of 0 rows, DROP of everything).
+  calc: () => new FormulaError("#CALC!", "the array is empty"),
 };
 
 export function isError(value: unknown): value is FormulaError {
