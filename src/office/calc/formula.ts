@@ -1003,9 +1003,11 @@ function evaluateCall(node: Extract<Node, { type: "call" }>, state: EvalState): 
   for (const argument of node.args) {
     const value = evaluateNode(argument, state);
     const head = asScalar(value);
-    if (!spec.acceptsErrors && isError(head)) {
+    if (!spec.acceptsErrors && isError(head) && !(spec.ignoresRangeErrors && Array.isArray(value))) {
       // A failed range (runaway size, unknown sheet, circular reference) must
-      // surface instead of being silently skipped by numeric aggregates.
+      // surface instead of being silently skipped by numeric aggregates. The
+      // counting family reads an error in the first cell of a range like any
+      // other cell of it.
       return head;
     }
     if (!spec.acceptsErrors && !spec.ignoresRangeErrors && Array.isArray(value)) {

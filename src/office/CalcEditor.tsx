@@ -80,6 +80,7 @@ import type { CellPosition, GridSelection } from "./calc/grid-types";
 import { computeConditionalFills, computeDataBars, isValid } from "./calc/rules";
 import { deleteColumn, deleteRow, insertColumn, insertRow, toggleMerge } from "./calc/structure";
 import { cellAnnouncement } from "./calc/announce";
+import { errorTitle } from "./calc/error-info";
 import { planAutoSum } from "./calc/autosum";
 import { clipboardText, snapshotClipboard } from "./calc/paste-special";
 import { isSheetProtected } from "./calc/protection";
@@ -2067,7 +2068,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const selectedError = useMemo(() => {
     const address = formatAddress(selection.focus.row, selection.focus.col);
     const value = computed.get(address);
-    if (!isError(value) || value.code !== "#REF!") return null;
+    if (!isError(value)) return null;
+    // Only a circular or broken reference has more to say than its code.
+    if (value.code !== "#REF!") return errorTitle(t, value.code);
     const key = `${sheet.name}!${address}`;
     const cycle = findCircularReferences(workbook).find((candidate) => candidate.includes(key));
     if (cycle) return `${t("calc.circularReference")}: ${cycle.join(" → ")}`;
@@ -2558,6 +2561,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                       }
                     }
                     const traceKind = tracedCells.get(address);
+                    const errorTip = isError(value) ? errorTitle(t, value.code) : null;
                     const frozenRow = row < freeze.rows;
                     const frozenCol = col < freeze.cols;
                     return (
@@ -2573,7 +2577,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                         data-cell={`${row}:${col}`}
                         data-row={row}
                         data-col={col}
-                        className={`calc-cell${inSelection ? " is-selected" : ""}${invalid ? " is-invalid" : ""}`}
+                        className={`calc-cell${inSelection ? " is-selected" : ""}${invalid ? " is-invalid" : ""}${errorTip ? " is-error" : ""}`}
+                        title={errorTip ?? undefined}
                         style={{
                           left: pinnedPosition(col, freeze.cols, x, scrollX),
                           top: pinnedPosition(row, freeze.rows, rowLayout.offsetOf(row), scrollY),
@@ -2686,6 +2691,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                           const width = bar.max > 0 ? Math.min(100, (Math.abs(Number(value) || 0) / bar.max) * 100) : 0;
                           return <span className="data-bar" style={{ width: `${width}%`, background: bar.fill }} />;
                         })()}
+                        {errorTip ? <span className="cell-error-flag" /> : null}
                         {cell?.comment ? <span className="cell-comment-dot" title={cell.comment} /> : null}
                       </div>
                     );
