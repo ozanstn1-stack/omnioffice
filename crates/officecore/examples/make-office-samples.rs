@@ -108,6 +108,7 @@ fn workbook() -> Workbook {
                 style: CellStyle { bold: true, fill: Some("#EEF2FF".into()), ..Default::default() },
                 comment: None,
                 link: None,
+                ..Default::default()
             },
         );
     }

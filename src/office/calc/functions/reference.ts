@@ -1,40 +1,38 @@
 /**
- * Reference functions: OFFSET, INDIRECT, CELL and INFO.
+ * Reference functions: OFFSET, INDIRECT, CELL, INFO, ROW, COLUMN, ADDRESS,
+ * HYPERLINK, ISFORMULA and FORMULATEXT.
  *
- * They are registered as context functions because they need the reference an
- * argument denotes (OFFSET, CELL) or have to resolve text into one (INDIRECT),
- * which a plain "values in, value out" function cannot do. All four are
- * volatile (see `VOLATILE_FUNCTIONS` in formula.ts): their result depends on
- * cells the formula text does not name.
+ * Most are registered as context functions because they need the reference an
+ * argument denotes (OFFSET, CELL, ROW, ISFORMULA) or have to resolve text into
+ * one (INDIRECT), which a plain "values in, value out" function cannot do.
+ * OFFSET, INDIRECT, CELL and INFO are volatile (see `VOLATILE_FUNCTIONS` in
+ * formula.ts): their result depends on cells the formula text does not name.
+ * ROW and the others are not - what they read is named by their arguments.
  */
-import { registerContextFunction, type ContextArgument, type FunctionHost } from "../registry";
+import { MAX_COLS, MAX_ROWS, columnLabel } from "../addresses";
+import { registerContextFunction, registerFunction, type ContextArgument, type FunctionHost } from "../registry";
 import {
   cellTypeLetter,
   firstCell,
   isCellReference,
   offsetReference,
   referenceAddress,
+  referenceSize,
+  sheetPrefix,
   type CellReference,
 } from "../references";
-import { ERR, isError, toBool, toNumber, toText, type FormulaError, type Scalar } from "../scalars";
-
-/** The first value of an argument; an error value stays an error. */
-function scalarOf(arg: ContextArgument | undefined): Scalar {
-  const value = arg?.value();
-  if (value === undefined) return "";
-  return Array.isArray(value) ? (value[0]?.[0] ?? "") : value;
-}
-
-/** A skipped optional argument arrives as an empty string. */
-function isSkipped(arg: ContextArgument | undefined): boolean {
-  return arg === undefined || scalarOf(arg) === "";
-}
-
-/** A whole-number argument, truncated toward zero like Excel does. */
-function integerArg(arg: ContextArgument): number | FormulaError {
-  const value = toNumber(scalarOf(arg));
-  return isError(value) ? value : Math.trunc(value);
-}
+import {
+  ERR,
+  isError,
+  optionalBool,
+  toBool,
+  toNumber,
+  toText,
+  type CellMatrix,
+  type FormulaError,
+  type Scalar,
+} from "../scalars";
+import { integerArg, isSkipped, locationOf, scalarOf } from "./context-support";
 
 registerContextFunction(
   "OFFSET",
@@ -90,15 +88,7 @@ registerContextFunction(
 
 /** The reference CELL describes: its argument, or the formula's own cell. */
 function cellTarget(args: ContextArgument[], host: FunctionHost): CellReference | FormulaError {
-  if (args.length > 1) {
-    const reference = args[1].reference();
-    if (isError(reference)) return reference;
-    if (reference === null) {
-      const value = scalarOf(args[1]);
-      return isError(value) ? value : ERR.value();
-    }
-    return reference;
-  }
+  if (args.length > 1) return locationOf(args[1]);
   return host.currentAddress === null ? ERR.value() : host.parseReference(host.currentAddress);
 }
 
@@ -182,4 +172,131 @@ registerContextFunction(
   1,
   1,
   { signature: 'INFO(type_text)  type_text: "osversion", "system", "numfile", "recalc"', category: "Lookup" },
+);
+
+/** Same ceiling as the evaluator's range guard, for results built from a reference's shape. */
+const MAX_REFERENCE_CELLS = 200_000;
+
+/** The reference ROW and COLUMN describe: their argument, or the formula's own cell. */
+function positionTarget(args: ContextArgument[], host: FunctionHost): CellReference | FormulaError {
+  if (args.length > 0) return locationOf(args[0]);
+  return host.currentAddress === null ? ERR.value() : host.parseReference(host.currentAddress);
+}
+
+registerContextFunction(
+  "ROW",
+  (args, host) => {
+    const target = positionTarget(args, host);
+    if (isError(target)) return target;
+    const { rows } = referenceSize(target);
+    if (rows === 1) return target.start.row + 1;
+    if (rows > MAX_REFERENCE_CELLS) return ERR.ref();
+    // A multi-row reference gives one row number per row, as a column.
+    return Array.from({ length: rows }, (_, offset) => [target.start.row + offset + 1]);
+  },
+  0,
+  1,
+  { signature: "ROW([reference])", category: "Lookup" },
+);
+
+registerContextFunction(
+  "COLUMN",
+  (args, host) => {
+    const target = positionTarget(args, host);
+    if (isError(target)) return target;
+    const { cols } = referenceSize(target);
+    if (cols === 1) return target.start.col + 1;
+    return [Array.from({ length: cols }, (_, offset) => target.start.col + offset + 1)];
+  },
+  0,
+  1,
+  { signature: "COLUMN([reference])", category: "Lookup" },
+);
+
+/** A skipped optional argument reads as its default; anything else is converted. */
+function integerOption(arg: Scalar | undefined, fallback: number): number | FormulaError {
+  if (arg === undefined || arg === "") return fallback;
+  const number = toNumber(arg);
+  return isError(number) ? number : Math.trunc(number);
+}
+
+registerFunction(
+  "ADDRESS",
+  (args) => {
+    const row = integerOption(args[0]?.[0]?.[0], Number.NaN);
+    if (isError(row)) return row;
+    const col = integerOption(args[1]?.[0]?.[0], Number.NaN);
+    if (isError(col)) return col;
+    const mode = integerOption(args[2]?.[0]?.[0], 1);
+    if (isError(mode)) return mode;
+    const a1 = optionalBool(args[3]?.[0]?.[0], true);
+    if (isError(a1)) return a1;
+    if (!(row >= 1 && row <= MAX_ROWS && col >= 1 && col <= MAX_COLS && mode >= 1 && mode <= 4)) return ERR.value();
+    const rowAbsolute = mode === 1 || mode === 2;
+    const colAbsolute = mode === 1 || mode === 3;
+    let address: string;
+    if (a1) {
+      address = `${colAbsolute ? "$" : ""}${columnLabel(col - 1)}${rowAbsolute ? "$" : ""}${row}`;
+    } else {
+      // R1C1: an absolute part is a plain number, a relative one sits in brackets.
+      address = `R${rowAbsolute ? row : `[${row}]`}C${colAbsolute ? col : `[${col}]`}`;
+    }
+    const sheet = args[4]?.[0]?.[0];
+    return sheet === undefined || sheet === "" ? address : `${sheetPrefix(toText(sheet))}${address}`;
+  },
+  2,
+  5,
+  false,
+  { signature: "ADDRESS(row_num, column_num, [abs_num], [a1], [sheet_text])", category: "Lookup" },
+);
+
+registerFunction(
+  "HYPERLINK",
+  (args) => {
+    // The link itself is for the grid to follow; the cell shows the friendly
+    // name, or the link text when there is none.
+    if (args.length > 1) return args[1]?.[0]?.[0] ?? "";
+    return toText(args[0]?.[0]?.[0] ?? "");
+  },
+  1,
+  2,
+  false,
+  { signature: "HYPERLINK(link_location, [friendly_name])", category: "Lookup" },
+);
+
+registerContextFunction(
+  "ISFORMULA",
+  (args, host) => {
+    const target = locationOf(args[0]);
+    if (isError(target)) return target;
+    const { rows, cols } = referenceSize(target);
+    if (rows * cols > MAX_REFERENCE_CELLS) return ERR.ref();
+    const out: CellMatrix = [];
+    for (let row = target.start.row; row <= target.end.row; row += 1) {
+      const line: Scalar[] = [];
+      for (let col = target.start.col; col <= target.end.col; col += 1) {
+        line.push(host.formulaAt(target.sheet, { row, col }) !== null);
+      }
+      out.push(line);
+    }
+    return rows === 1 && cols === 1 ? out[0][0] : out;
+  },
+  1,
+  1,
+  { signature: "ISFORMULA(reference)", category: "Information" },
+);
+
+registerContextFunction(
+  "FORMULATEXT",
+  (args, host) => {
+    const target = locationOf(args[0]);
+    if (isError(target)) return target;
+    // A range answers for its top-left cell.
+    const formula = host.formulaAt(target.sheet, target.start);
+    if (formula === null) return ERR.na();
+    return formula.startsWith("=") ? formula : `=${formula}`;
+  },
+  1,
+  1,
+  { signature: "FORMULATEXT(reference)", category: "Lookup" },
 );

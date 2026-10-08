@@ -401,6 +401,7 @@ fn cached_chart_deck() -> Deck {
         show_labels: false,
         categories_cache: vec!["Q1".into(), "Q2".into(), "Q3".into()],
         series_values_cache: vec![vec![10.0, 20.5, 31.0], vec![5.0, 6.0, 7.0]],
+        ..Default::default()
     });
     deck.slides = vec![Slide { objects: vec![chart], ..Default::default() }];
     deck

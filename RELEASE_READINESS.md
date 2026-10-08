@@ -1,11 +1,38 @@
-# Release Readiness — OmniOffice 4.3.0
+# Release Readiness — OmniOffice 4.4.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
 
-## Implemented (this cycle, 4.3.0) - fixes and robustness (plan 2, phase 5)
+## Implemented (this cycle, 4.4.0) - Calc to Excel level (plan 2, phase 6)
+
+- `CalcEditor.tsx` split into `src/office/calc/*` and `src/office/calc/ui/*`
+  (4.9k to 3.1k lines); pure modules for find/replace, sort, filter, paste
+  special, visibility, conditional formats, notes and links.
+- 80 new functions (274 registered), each tested against documented examples.
+- officecore: scatter/doughnut charts, color scales, data bars, icon sets,
+  formula rules, notes and hyperlinks (http/https/mailto/internal only),
+  hidden rows/columns, `#CALC!`, `_xlfn.` prefixes, ODS formula syntax;
+  verified both ways with LibreOffice 24.2.
+- `open_external_link` command (same allow-list as the importers).
+- Tests: frontend 1719, Rust 599 across officecore, app, synccore and aicore.
+
+### Not done in this pass (honest)
+
+- No real Excel was available: XLSX output is checked against LibreOffice and
+  the specification, not against Excel itself. Dynamic-array spill metadata is
+  not written, so FILTER/SORT/HSTACK open in Excel as ordinary formulas.
+- The original size of a hidden row or column is not kept (hidden is size 0).
+- Tapping a link on a touch screen does not open it; use the long-press menu.
+- Condition filters store only the resulting value list.
+- Excel 2010 `x14` conditional-format extras and threaded comments are not
+  imported; ODS cannot store stop-if-true or reversed icon sets.
+- Carried over: live Drive/OneDrive OAuth, the Claude provider against the live
+  API, and the Windows-only 4.3.0 changes (single instance, trimmed Tesseract
+  DLL set) are verified by CI only. Please try OCR on the installed build.
+
+## Implemented (4.3.0) - fixes and robustness (plan 2, phase 5)
 
 - PPTX writer: real bullet, per-run/paragraph/deck language, runs used only
   when they match the paragraph text; Impress edits keep unchanged paragraphs.

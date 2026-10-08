@@ -213,7 +213,9 @@ function tokenize(input: string): Token[] {
     // token can. They used to fall into the unknown-character branch and turn
     // the whole formula into `#VALUE!`, so IFERROR(#N/A, ...) never worked.
     if (ch === "#") {
-      const literal = /^#(REF!|VALUE!|NAME\?|DIV\/0!|N\/A|NUM!|CIRC!|SPILL!)/.exec(input.slice(index).toUpperCase());
+      const literal = /^#(REF!|VALUE!|NAME\?|DIV\/0!|N\/A|NUM!|CIRC!|SPILL!|CALC!)/.exec(
+        input.slice(index).toUpperCase(),
+      );
       if (literal) {
         tokens.push({ type: "error", value: literal[0] });
         index += literal[0].length;
@@ -585,6 +587,10 @@ export interface FormulaContext {
   currentRow?: number;
   /** A1 address of the formula's own cell, for `CELL("address")` without an argument. */
   currentAddress?: string;
+  /** Stored formula of a cell (ISFORMULA, FORMULATEXT, SUBTOTAL's nested-total rule); null for a constant. */
+  getFormula?: (sheet: string | null, address: string) => string | null;
+  /** Visibility of a 0-based row, for SUBTOTAL/AGGREGATE; omitted when every row shows. */
+  hiddenRow?: (sheet: string | null, row: number) => "filtered" | "hidden" | null;
 }
 
 interface EvalState {
@@ -770,6 +776,8 @@ function functionHost(state: EvalState): FunctionHost {
     sheetNames: context.sheetNames,
     parseReference: (text) => parseReferenceText(text, state),
     read: (reference) => readCells(reference, state),
+    formulaAt: (sheet, address) => context.getFormula?.(sheet, formatAddress(address.row, address.col)) ?? null,
+    hiddenRow: (sheet, row) => context.hiddenRow?.(sheet, row) ?? null,
   };
 }
 
@@ -995,9 +1003,11 @@ function evaluateCall(node: Extract<Node, { type: "call" }>, state: EvalState): 
   for (const argument of node.args) {
     const value = evaluateNode(argument, state);
     const head = asScalar(value);
-    if (!spec.acceptsErrors && isError(head)) {
+    if (!spec.acceptsErrors && isError(head) && !(spec.ignoresRangeErrors && Array.isArray(value))) {
       // A failed range (runaway size, unknown sheet, circular reference) must
-      // surface instead of being silently skipped by numeric aggregates.
+      // surface instead of being silently skipped by numeric aggregates. The
+      // counting family reads an error in the first cell of a range like any
+      // other cell of it.
       return head;
     }
     if (!spec.acceptsErrors && !spec.ignoresRangeErrors && Array.isArray(value)) {

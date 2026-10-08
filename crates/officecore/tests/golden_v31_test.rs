@@ -345,6 +345,7 @@ fn v31_workbook() -> Workbook {
             show_labels: true,
             categories_cache: vec!["Widget".into(), "Gadget".into(), "Gizmo".into()],
             series_values_cache: vec![vec![20.0, 60.0, 120.0]],
+            ..Default::default()
         },
         anchor: "F3".into(),
         width_px: 420.0,
@@ -519,6 +520,7 @@ fn v31_deck() -> Deck {
         show_labels: true,
         categories_cache: vec!["Q1".into(), "Q2".into(), "Q3".into()],
         series_values_cache: vec![vec![10.0, 20.5, 31.0]],
+        ..Default::default()
     });
 
     let mut image = SlideObject::new("image", 60.0, 440.0, 64.0, 64.0);

@@ -28,8 +28,10 @@ import {
   formatNumber,
   isError,
   parseAddress,
+  parseRange,
   rangeSize,
   type CellMatrix,
+  type FormulaContext,
   type Scalar,
 } from "./formula";
 import { structuredReferenceRanges } from "./structured";
@@ -65,7 +67,7 @@ export function parseInputValue(text: string): CellValue {
     if (Number.isFinite(numeric)) return { kind: "number", value: numeric };
   }
   if (/^(true|false)$/i.test(trimmed)) return { kind: "bool", value: trimmed.toLowerCase() === "true" };
-  if (/^#(REF|VALUE|NAME|DIV\/0|N\/A|NUM)/i.test(trimmed)) return { kind: "error", value: trimmed.toUpperCase() };
+  if (/^#(REF|VALUE|NAME|DIV\/0|N\/A|NUM|CALC)/i.test(trimmed)) return { kind: "error", value: trimmed.toUpperCase() };
   return { kind: "text", value: text };
 }
 
@@ -92,13 +94,27 @@ export function isDefaultCellStyle(style: CellStyle): boolean {
   );
 }
 
-/** True when a cell carries no value, formula, comment or formatting. */
+/** True when a cell carries no value, formula, comment, link or formatting. */
 export function isBlankCell(cell: Cell): boolean {
-  return cell.value.kind === "empty" && !cell.formula && !cell.comment && isDefaultCellStyle(cell.style);
+  return cell.value.kind === "empty" && !cell.formula && !cell.comment && !cell.link && isDefaultCellStyle(cell.style);
 }
 
 function replaceSheet(workbook: Workbook, index: number, sheet: Sheet): Workbook {
   return { ...workbook, sheets: workbook.sheets.map((candidate, at) => (at === index ? sheet : candidate)) };
+}
+
+/**
+ * Puts one cell into a sheet, or removes it when `cell` is null or carries
+ * nothing. For changes that leave the values alone (notes, links), so the
+ * result is a plain new workbook and the next value pass is a full one.
+ */
+export function withCellAt(workbook: Workbook, sheetIndex: number, address: string, cell: Cell | null): Workbook {
+  const sheet = workbook.sheets[sheetIndex];
+  if (!sheet) return workbook;
+  const cells = { ...sheet.cells };
+  if (cell === null || isBlankCell(cell)) delete cells[address];
+  else cells[address] = cell;
+  return replaceSheet(workbook, sheetIndex, { ...sheet, cells });
 }
 
 /**
@@ -163,6 +179,89 @@ export function applyCellEdits(
     });
   });
   return next;
+}
+
+/**
+ * One change to a cell of a known sheet (see `applyCellTextEdits`): typed text,
+ * a style, or both. Without `text` the cell keeps its content.
+ */
+export interface CellTextEdit {
+  row: number;
+  col: number;
+  text?: string;
+  style?: CellStyle;
+}
+
+/**
+ * Applies many typed values to one sheet with a single recalculation, as one
+ * model change: Replace all and the sort/paste tools use it where
+ * `applyCellEdit` per cell would copy the sheet and recalculate once per cell.
+ *
+ * Every text goes through the same parser as typing; a formula's cached value
+ * is resolved from one incremental pass over all the edited cells.
+ */
+export function applyCellTextEdits(workbook: Workbook, sheetIndex: number, edits: readonly CellTextEdit[]): Workbook {
+  const index = Math.min(Math.max(0, sheetIndex), workbook.sheets.length - 1);
+  const target = workbook.sheets[index];
+  if (!target || edits.length === 0) return workbook;
+  const cells = { ...target.cells };
+  const addresses: string[] = [];
+  let rowCount = target.rowCount;
+  let colCount = target.colCount;
+  for (const edit of edits) {
+    const address = formatAddress(edit.row, edit.col);
+    let staged: Cell = cells[address] ?? emptyCell();
+    if (edit.text !== undefined) {
+      staged = edit.text.startsWith("=")
+        ? { ...staged, formula: edit.text, value: { kind: "empty" } }
+        : { ...staged, formula: null, value: parseInputValue(edit.text) };
+    }
+    if (edit.style) staged = { ...staged, style: edit.style };
+    if (isBlankCell(staged)) delete cells[address];
+    else cells[address] = staged;
+    addresses.push(address);
+    rowCount = Math.max(rowCount, edit.row + 51);
+    colCount = Math.max(colCount, edit.col + 6);
+  }
+  return commitStagedSheet(workbook, index, { ...target, cells, rowCount, colCount }, addresses);
+}
+
+/**
+ * Puts a staged sheet into the workbook as one edit of `addresses`: formula
+ * cells among them get their cached value from one incremental pass, and the
+ * result is marked so the next value computation stays incremental too.
+ */
+function commitStagedSheet(workbook: Workbook, index: number, stagedSheet: Sheet, addresses: string[]): Workbook {
+  const name = workbook.sheets[index].name;
+  const staged = markDirty(replaceSheet(workbook, index, stagedSheet), workbook, name, addresses);
+  const formulas = addresses.filter((address) => stagedSheet.cells[address]?.formula);
+  if (formulas.length === 0) return staged;
+
+  const values = computeWorkbookValues(staged);
+  const resolved = { ...stagedSheet.cells };
+  for (const address of formulas) {
+    const value = values.get(keyOf(name, address));
+    resolved[address] = { ...resolved[address], value: scalarToCellValue(value === undefined ? "" : asScalar(value)) };
+  }
+  const final = replaceSheet(staged, index, { ...stagedSheet, cells: resolved });
+  return markDirty(final, workbook, name, addresses);
+}
+
+/**
+ * Replaces a sheet's cells wholesale (a sort rearranges them) as one edit.
+ * `changed` lists the addresses whose content differs, so only the formulas
+ * that read them are recalculated.
+ */
+export function applySheetCells(
+  workbook: Workbook,
+  sheetIndex: number,
+  cells: Record<string, Cell>,
+  changed: string[],
+): Workbook {
+  const index = Math.min(Math.max(0, sheetIndex), workbook.sheets.length - 1);
+  const target = workbook.sheets[index];
+  if (!target || changed.length === 0) return workbook;
+  return commitStagedSheet(workbook, index, { ...target, cells }, changed);
 }
 
 /**
@@ -379,6 +478,28 @@ function planSpill(scope: EvalScope, key: string, sheetName: string, address: st
   return true;
 }
 
+/**
+ * What functions may ask the model besides cell values: stored formulas
+ * (ISFORMULA, FORMULATEXT) and which rows are out of sight (SUBTOTAL).
+ *
+ * A row is hidden when its height is 0. It counts as filtered when the sheet's
+ * AutoFilter covers it, otherwise it was hidden by hand.
+ */
+function modelAccess(
+  sheets: Map<string, Sheet>,
+  currentSheet: string,
+): Pick<FormulaContext, "getFormula" | "hiddenRow"> {
+  return {
+    getFormula: (sheetName, address) => sheets.get(sheetName ?? currentSheet)?.cells[address]?.formula ?? null,
+    hiddenRow: (sheetName, row) => {
+      const sheet = sheets.get(sheetName ?? currentSheet);
+      if (!sheet || sheet.rowHeights[row] !== 0) return null;
+      const covered = sheet.filter ? parseRange(sheet.filter.range) : null;
+      return covered && row >= covered.start.row && row <= covered.end.row ? "filtered" : "hidden";
+    },
+  };
+}
+
 function evaluateCell(scope: EvalScope, key: string): Scalar {
   if (scope.resolving.has(key)) return ERR.circular();
   if (scope.computed.has(key)) return scope.entry.values.get(key) ?? "";
@@ -409,6 +530,7 @@ function evaluateCell(scope: EvalScope, key: string): Scalar {
     tables: sheet.tables ?? [],
     currentRow: position ? position.row + 1 : undefined,
     currentAddress: address,
+    ...modelAccess(scope.sheets, sheetName),
   });
   scope.resolving.delete(key);
   if (Array.isArray(result)) {
@@ -568,6 +690,15 @@ export function computeWorkbookValues(workbook: Workbook): Map<string, Scalar> {
   return computeFull(workbook);
 }
 
+/**
+ * The values of this workbook object as the grid last computed them, or a
+ * fresh computation when there are none. Find, replace and the other
+ * whole-workbook tools read through it so the render's work is not repeated.
+ */
+export function workbookValues(workbook: Workbook): Map<string, Scalar> {
+  return computeEntries.get(workbook)?.values ?? computeWorkbookValues(workbook);
+}
+
 export interface ComputeStats {
   mode: "full" | "incremental";
   /** Formula cells evaluated by that computation. */
@@ -623,10 +754,36 @@ export function formulaResult(
     tables: sheet.tables ?? [],
     currentRow,
     currentAddress,
+    ...modelAccess(new Map(workbook.sheets.map((candidate) => [candidate.name, candidate])), sheet.name),
   });
   // A dynamic-array formula keeps its first value in the source cell; the rest
   // of the matrix is spilled by the value pass, not stored in the model.
   return scalarToCellValue(asScalar(result));
+}
+
+/**
+ * Evaluates formulas as if they were typed into cells of `sheet` (a conditional
+ * format rule's formula), reading the values the grid already computed.
+ */
+export function sheetFormulaEvaluator(
+  workbook: Workbook,
+  sheet: Sheet,
+): (formula: string, row: number, col: number) => Scalar {
+  const values = workbookValues(workbook);
+  const sheets = new Map(workbook.sheets.map((candidate) => [candidate.name, candidate]));
+  const { names, scoped } = namesContext(workbook);
+  const context: Omit<FormulaContext, "currentRow" | "currentAddress"> = {
+    getValue: (sheetName, address) => values.get(keyOf(sheetName ?? sheet.name, address)) ?? "",
+    sheetNames: workbook.sheets.map((candidate) => candidate.name),
+    currentSheet: sheet.name,
+    names: { ...names, ...(scoped.get(sheet.name) ?? {}) },
+    tables: sheet.tables ?? [],
+    ...modelAccess(sheets, sheet.name),
+  };
+  return (formula, row, col) =>
+    asScalar(
+      evaluateFormulaResult(formula, { ...context, currentRow: row + 1, currentAddress: formatAddress(row, col) }),
+    );
 }
 
 export function formatCellDisplay(value: Scalar, style: CellStyle): string {

@@ -7,6 +7,7 @@
 //!
 //! * `model`     - shared document model (the in-app source of truth)
 //! * `address`   - A1 cell addressing helpers
+//! * `formula`   - formula text and function names across XLSX / ODF
 //! * `zip`       - hardened ZIP container reader/writer
 //! * `xml`       - OOXML/ODF XML tree helpers
 //! * `pdfcanvas` - vector PDF output with embedded OFL fonts
@@ -18,6 +19,7 @@ pub mod csvio;
 pub mod docx;
 pub mod encoding;
 pub mod error;
+pub mod formula;
 pub mod io;
 pub mod layout;
 pub mod legacy;

@@ -6,6 +6,7 @@
  * them all in. `formula.ts` stays the parser/evaluator and does not know how
  * any individual function works.
  */
+import type { CellAddress } from "./addresses";
 import type { CellReference } from "./references";
 import { ERR, type FormulaError } from "./scalars";
 import type { CellMatrix, Scalar } from "./scalars";
@@ -42,6 +43,16 @@ export interface FunctionHost {
   parseReference(text: string): CellReference | FormulaError;
   /** The values a reference covers: a matrix, bounded by the range guard. */
   read(reference: CellReference): CellMatrix | FormulaError;
+  /**
+   * Formula text of a cell with its leading `=`; null for a constant or an
+   * empty cell, and when the caller does not expose formulas.
+   */
+  formulaAt(sheet: string | null, address: CellAddress): string | null;
+  /**
+   * Why a 0-based row is out of sight: an AutoFilter hid it, or it was hidden
+   * by hand. Null when it shows, and when the caller exposes no row layout.
+   */
+  hiddenRow(sheet: string | null, row: number): "filtered" | "hidden" | null;
 }
 
 /** A context function may answer with a location; the evaluator reads it. */

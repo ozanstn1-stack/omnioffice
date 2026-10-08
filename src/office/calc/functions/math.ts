@@ -3,7 +3,8 @@
  */
 import { registerFunction } from "../registry";
 import { formatNumber } from "../numberFormat";
-import { ERR, FormulaError, isError, numbers, toNumber, toText, type Scalar } from "../scalars";
+import { ERR, FormulaError, flatten, isError, toNumber, toText, type Scalar } from "../scalars";
+import { numericValues, sumOf, tidy } from "./stat-support";
 
 function scalarOf(args: Scalar[][][], index: number): Scalar {
   return args[index]?.[0]?.[0] ?? 0;
@@ -178,13 +179,25 @@ registerFunction(
   false,
   { signature: "TRUNC(number, [digits])", category: "Math" },
 );
+/** The whole numbers of a GCD/LCM argument list: empty cells are skipped, negatives are #NUM!. */
+function wholeNumbers(args: Scalar[][][]): number[] | FormulaError {
+  const out: number[] = [];
+  for (const value of flatten(args)) {
+    if (value === "") continue;
+    const number = toNumber(value);
+    if (isError(number)) return number;
+    const whole = Math.trunc(number);
+    if (whole < 0 || whole >= 2 ** 53) return ERR.num();
+    out.push(whole);
+  }
+  return out;
+}
+const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
 registerFunction(
   "GCD",
   (args) => {
-    const values = numbers(args);
-    if (values.length === 0) return 0;
-    const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b));
-    return values.map((value) => Math.abs(Math.trunc(value))).reduce(gcd);
+    const values = wholeNumbers(args);
+    return isError(values) ? values : values.reduce(gcd, 0);
   },
   1,
   64,
@@ -194,12 +207,10 @@ registerFunction(
 registerFunction(
   "LCM",
   (args) => {
-    const values = numbers(args);
+    const values = wholeNumbers(args);
+    if (isError(values)) return values;
     if (values.length === 0) return 0;
-    const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b));
-    return values
-      .map((value) => Math.abs(Math.trunc(value)))
-      .reduce((a, b) => (a === 0 || b === 0 ? 0 : Math.abs(a * b) / gcd(a, b)));
+    return values.reduce((a, b) => (a === 0 || b === 0 ? 0 : (a / gcd(a, b)) * b));
   },
   1,
   64,
@@ -221,28 +232,281 @@ registerFunction(
   false,
   { signature: "LOG(number, [base])", category: "Math" },
 );
-registerFunction("SUMX2MY2", (args) => pairAggregate(args, (a, b) => a * a - b * b), 1, 2, false, {
+registerFunction("SUMX2MY2", (args) => pairAggregate(args, (a, b) => a * a - b * b), 2, 2, false, {
   signature: "SUMX2MY2(array_x, array_y)",
   category: "Math",
 });
-registerFunction("SUMXMY2", (args) => pairAggregate(args, (a, b) => (a - b) * (a - b)), 1, 2, false, {
+registerFunction("SUMXMY2", (args) => pairAggregate(args, (a, b) => (a - b) * (a - b)), 2, 2, false, {
   signature: "SUMXMY2(array_x, array_y)",
   category: "Math",
 });
-registerFunction("SUMX2PY2", (args) => pairAggregate(args, (a, b) => a * a + b * b), 1, 2, false, {
+registerFunction("SUMX2PY2", (args) => pairAggregate(args, (a, b) => a * a + b * b), 2, 2, false, {
   signature: "SUMX2PY2(array_x, array_y)",
   category: "Math",
 });
 
+/**
+ * Adds `fn(x, y)` over two same-shaped arrays. A pair is skipped when either
+ * side is text, a boolean or empty; arrays of different shape are #N/A.
+ */
 function pairAggregate(args: Scalar[][][], fn: (a: number, b: number) => number): number | FormulaError {
-  const left = numbers([args[0] ?? []]);
-  const right = numbers([args[1] ?? []]);
-  const length = Math.min(left.length, right.length);
-  if (length === 0) return ERR.num();
+  const x = args[0] ?? [];
+  const y = args[1] ?? [];
+  if (x.length !== y.length || (x[0]?.length ?? 0) !== (y[0]?.length ?? 0)) return ERR.na();
   let total = 0;
-  for (let index = 0; index < length; index += 1) total += fn(left[index], right[index]);
+  x.forEach((line, row) =>
+    line.forEach((left, col) => {
+      const right = y[row]?.[col];
+      if (typeof left === "number" && typeof right === "number") total += fn(left, right);
+    }),
+  );
   return total;
 }
+
+/** A number argument truncated toward zero, as the combinatorics functions read theirs. */
+function wholeArg(args: Scalar[][][], index: number): number | FormulaError {
+  const value = toNumber(scalarOf(args, index));
+  return isError(value) ? value : Math.trunc(value);
+}
+
+/** A result that overflowed a double is #NUM!, like Excel's. */
+function finiteOrNum(value: number): number | FormulaError {
+  return Number.isFinite(value) ? value : ERR.num();
+}
+
+/** The product n * (n - step) * ... down to 1; `step` 1 is n!, 2 is n!!. */
+function descendingProduct(n: number, step: number): number {
+  let result = 1;
+  for (let factor = n; factor > 1; factor -= step) result *= factor;
+  return result;
+}
+
+/** Binomial coefficient for 0 <= k <= n, multiplied in an order that stays integral. */
+function choose(n: number, k: number): number {
+  const pick = Math.min(k, n - k);
+  let result = 1;
+  for (let step = 1; step <= pick; step += 1) result = (result * (n - pick + step)) / step;
+  return result < 2 ** 53 ? Math.round(result) : result;
+}
+
+registerFunction(
+  "FACT",
+  (args) => {
+    const n = wholeArg(args, 0);
+    if (isError(n)) return n;
+    // 171! no longer fits in a double.
+    return n < 0 || n > 170 ? ERR.num() : descendingProduct(n, 1);
+  },
+  1,
+  1,
+  false,
+  { signature: "FACT(number)", category: "Math" },
+);
+registerFunction(
+  "FACTDOUBLE",
+  (args) => {
+    const n = wholeArg(args, 0);
+    if (isError(n)) return n;
+    // Excel defines (-1)!! as 1, like 0!!.
+    if (n < -1) return ERR.num();
+    return finiteOrNum(descendingProduct(n, 2));
+  },
+  1,
+  1,
+  false,
+  { signature: "FACTDOUBLE(number)", category: "Math" },
+);
+registerFunction(
+  "COMBIN",
+  (args) => {
+    const n = wholeArg(args, 0);
+    if (isError(n)) return n;
+    const k = wholeArg(args, 1);
+    if (isError(k)) return k;
+    return n < 0 || k < 0 || n < k ? ERR.num() : finiteOrNum(choose(n, k));
+  },
+  2,
+  2,
+  false,
+  { signature: "COMBIN(number, number_chosen)", category: "Math" },
+);
+registerFunction(
+  "COMBINA",
+  (args) => {
+    const n = wholeArg(args, 0);
+    if (isError(n)) return n;
+    const k = wholeArg(args, 1);
+    if (isError(k)) return k;
+    if (n < 0 || k < 0 || (n === 0 && k > 0)) return ERR.num();
+    return k === 0 ? 1 : finiteOrNum(choose(n + k - 1, k));
+  },
+  2,
+  2,
+  false,
+  { signature: "COMBINA(number, number_chosen)", category: "Math" },
+);
+registerFunction(
+  "PERMUT",
+  (args) => {
+    const n = wholeArg(args, 0);
+    if (isError(n)) return n;
+    const k = wholeArg(args, 1);
+    if (isError(k)) return k;
+    if (n <= 0 || k < 0 || n < k) return ERR.num();
+    let result = 1;
+    for (let factor = n; factor > n - k; factor -= 1) result *= factor;
+    return finiteOrNum(result);
+  },
+  2,
+  2,
+  false,
+  { signature: "PERMUT(number, number_chosen)", category: "Math" },
+);
+registerFunction(
+  "PERMUTATIONA",
+  (args) => {
+    const n = wholeArg(args, 0);
+    if (isError(n)) return n;
+    const k = wholeArg(args, 1);
+    if (isError(k)) return k;
+    return n < 0 || k < 0 ? ERR.num() : finiteOrNum(n ** k);
+  },
+  2,
+  2,
+  false,
+  { signature: "PERMUTATIONA(number, number_chosen)", category: "Math" },
+);
+registerFunction(
+  "MULTINOMIAL",
+  (args) => {
+    const values = args.flatMap(numericValues).map(Math.trunc);
+    if (values.some((value) => value < 0)) return ERR.num();
+    // (a+b+c)! / (a! b! c!) as a product of binomials, which never overflows early.
+    let running = 0;
+    let result = 1;
+    for (const value of values) {
+      running += value;
+      result *= choose(running, value);
+    }
+    return finiteOrNum(result);
+  },
+  1,
+  64,
+  false,
+  { signature: "MULTINOMIAL(number1, ...)", category: "Math" },
+);
+
+/** -0 would print as "-0" in a few places; a zero result is always plain 0. */
+function plainZero(value: number): number {
+  return value === 0 ? 0 : value;
+}
+
+registerFunction(
+  "MROUND",
+  (args) => {
+    const value = toNumber(scalarOf(args, 0));
+    if (isError(value)) return value;
+    const multiple = toNumber(scalarOf(args, 1));
+    if (isError(multiple)) return multiple;
+    if (multiple === 0) return 0;
+    if (value * multiple < 0) return ERR.num();
+    const step = Math.abs(multiple);
+    // Halves go away from zero; tidy() keeps 1.3 / 0.2 from landing on 6.499999...
+    const units = Math.floor(tidy(Math.abs(value) / step) + 0.5);
+    return plainZero(tidy(units * step) * (value < 0 ? -1 : 1));
+  },
+  2,
+  2,
+  false,
+  { signature: "MROUND(number, multiple)", category: "Math" },
+);
+registerFunction(
+  "EVEN",
+  (args) => {
+    const value = toNumber(scalarOf(args, 0));
+    if (isError(value)) return value;
+    const magnitude = Math.ceil(Math.abs(value));
+    return plainZero((magnitude % 2 === 0 ? magnitude : magnitude + 1) * (value < 0 ? -1 : 1));
+  },
+  1,
+  1,
+  false,
+  { signature: "EVEN(number)", category: "Math" },
+);
+registerFunction(
+  "ODD",
+  (args) => {
+    const value = toNumber(scalarOf(args, 0));
+    if (isError(value)) return value;
+    const magnitude = Math.ceil(Math.abs(value));
+    return (magnitude % 2 === 1 ? magnitude : magnitude + 1) * (value < 0 ? -1 : 1);
+  },
+  1,
+  1,
+  false,
+  { signature: "ODD(number)", category: "Math" },
+);
+registerFunction(
+  "ATAN2",
+  (args) => {
+    // Excel takes x before y, the reverse of Math.atan2.
+    const x = toNumber(scalarOf(args, 0));
+    if (isError(x)) return x;
+    const y = toNumber(scalarOf(args, 1));
+    if (isError(y)) return y;
+    return x === 0 && y === 0 ? ERR.div() : Math.atan2(y, x);
+  },
+  2,
+  2,
+  false,
+  { signature: "ATAN2(x_num, y_num)", category: "Math" },
+);
+registerFunction("SUMSQ", (args) => sumOf(args.flatMap(numericValues).map((value) => value * value)), 1, 64, false, {
+  signature: "SUMSQ(number1, ...)",
+  category: "Math",
+});
+
+/**
+ * CEILING.MATH / FLOOR.MATH. The significance's sign is ignored. For a negative
+ * number, `mode` 0 rounds CEILING.MATH toward zero and FLOOR.MATH away from it;
+ * any other mode swaps the two.
+ */
+function mathRounding(args: Scalar[][][], ceiling: boolean): number | FormulaError {
+  const value = toNumber(scalarOf(args, 0));
+  if (isError(value)) return value;
+  const skipped = (index: number) => args[index] === undefined || scalarOf(args, index) === "";
+  const significance = skipped(1) ? 1 : toNumber(scalarOf(args, 1));
+  if (isError(significance)) return significance;
+  const mode = skipped(2) ? 0 : toNumber(scalarOf(args, 2));
+  if (isError(mode)) return mode;
+  const step = Math.abs(significance);
+  if (step === 0) return 0;
+  const quotient = tidy(value / step);
+  const up = value < 0 ? ceiling !== (mode !== 0) : ceiling;
+  return plainZero(tidy((up ? Math.ceil(quotient) : Math.floor(quotient)) * step));
+}
+registerFunction("CEILING.MATH", (args) => mathRounding(args, true), 1, 3, false, {
+  signature: "CEILING.MATH(number, [significance], [mode])",
+  category: "Math",
+});
+registerFunction("FLOOR.MATH", (args) => mathRounding(args, false), 1, 3, false, {
+  signature: "FLOOR.MATH(number, [significance], [mode])",
+  category: "Math",
+});
+// The ISO/PRECISE variants round up (down) whatever the signs involved: the
+// default mode of the *.MATH functions with the significance's sign ignored.
+registerFunction("ISO.CEILING", (args) => mathRounding(args, true), 1, 2, false, {
+  signature: "ISO.CEILING(number, [significance])",
+  category: "Math",
+});
+registerFunction("CEILING.PRECISE", (args) => mathRounding(args, true), 1, 2, false, {
+  signature: "CEILING.PRECISE(number, [significance])",
+  category: "Math",
+});
+registerFunction("FLOOR.PRECISE", (args) => mathRounding(args, false), 1, 2, false, {
+  signature: "FLOOR.PRECISE(number, [significance])",
+  category: "Math",
+});
 
 /** Used by the number-format picker to preview TEXT() output. */
 export function previewFormat(value: Scalar, pattern: string): string {

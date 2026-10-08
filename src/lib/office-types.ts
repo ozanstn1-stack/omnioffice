@@ -328,14 +328,28 @@ export interface Cell {
   value: CellValue;
   formula: string | null;
   style: CellStyle;
+  /** The text of the cell's note. */
   comment: string | null;
   /**
-   * Hyperlink target; the cell text is the label.
+   * Hyperlink target; the cell text is the label. Only `http:`, `https:` and
+   * `mailto:` URLs and internal references (`#Sheet2!A1`, `#'My Sheet'!A1`,
+   * `#Name`) are valid: the file writers and readers drop any other target.
    *
    * Optional because the Rust model defaults it, so a document written by an
    * older build simply has no `link` key.
    */
   link?: string | null;
+  /** Who wrote the note; absent when unknown (the writers then use the app name). */
+  commentAuthor?: string | null;
+  /** The note stays on screen instead of appearing on hover. */
+  commentVisible?: boolean;
+  /**
+   * The link's display text when it differs from the cell text (XLSX `display`).
+   * ODS shows it as the label of a link on an empty cell.
+   */
+  linkDisplay?: string | null;
+  /** The screen tip shown when pointing at the link. */
+  linkTooltip?: string | null;
 }
 
 export interface MergeRange {
@@ -376,6 +390,11 @@ export interface ChartSeries {
 }
 
 export interface ChartData {
+  /**
+   * `column`, `bar`, `line`, `pie`, `area`, plus `scatter` and `doughnut` in
+   * Calc. A scatter chart reads its X values from `categories` and the Y values
+   * from each series range.
+   */
   kind: string;
   title: string;
   categories: string;
@@ -393,6 +412,13 @@ export interface ChartData {
   categoriesCache?: string[];
   /** Cached values per series (ChartML `c:numCache`, V3.1), aligned with `series`. */
   seriesValuesCache?: number[][];
+  /** Doughnut hole as a percentage of the radius (10..90); absent or null is 50. */
+  holeSize?: number | null;
+  /**
+   * Scatter flavour, spelled like `c:scatterStyle`: `lineMarker`, `line`,
+   * `smoothMarker` or `smooth`. Absent or null is markers only.
+   */
+  scatterStyle?: string | null;
 }
 
 export interface ChartPlacement {
@@ -403,15 +429,61 @@ export interface ChartPlacement {
   heightPx: number;
 }
 
+/**
+ * One threshold of a color scale, data bar or icon set (OOXML `cfvo`, ODS
+ * `formatting-entry`).
+ */
+export interface CondThreshold {
+  /** `min`, `max`, `num`, `percent`, `percentile` or `formula`. */
+  kind: "min" | "max" | "num" | "percent" | "percentile" | "formula";
+  /** The number (or formula) the kind needs; empty for `min` and `max`. */
+  value: string;
+  /** Colour of a color-scale stop (`#RRGGBB`); unused by data bars and icon sets. */
+  color?: string | null;
+}
+
+/**
+ * One conditional-formatting rule over `range`.
+ *
+ * `kind` is `greater`, `less`, `equal`, `between`, `textContains`, `duplicate`,
+ * `top`, `bottom` (highlight rules styled by `fill`, `color`, `bold`,
+ * `italic`), `expression` (a formula, styled the same way), `colorScale`,
+ * `dataBar` or `iconSet`. Every field after `stopIfTrue` is optional and absent
+ * from rules the older kinds produce, so documents from earlier builds stay
+ * valid.
+ */
 export interface CondRule {
   id: string;
   range: string;
   kind: string;
   values: string[];
+  /** Highlight fill; the bar colour of a `dataBar`. */
   fill: string | null;
+  /** Font colour of a highlight rule. */
   color: string | null;
   topN: number | null;
   stopIfTrue: boolean;
+  /**
+   * `colorScale`: two or three stops, each with a `color`. `dataBar`: the lowest
+   * and highest threshold (absent or empty means automatic minimum and maximum).
+   * `iconSet`: the lower bound of each icon, as many as the set has icons.
+   */
+  thresholds?: CondThreshold[];
+  /** `iconSet`: the OOXML set name, e.g. `3Arrows`, `3Flags`, `3TrafficLights1`. */
+  iconSet?: string | null;
+  /** `iconSet`: the first icon belongs to the highest values. */
+  reverseIcons?: boolean;
+  /** `dataBar` and `iconSet`: show only the bar or icon, not the cell value. */
+  hideValue?: boolean;
+  /**
+   * `expression`: the formula without a leading `=`, relative to the top-left
+   * cell of `range`, e.g. `$B2>100`.
+   */
+  formula?: string | null;
+  /** Bold font of a highlight rule. */
+  bold?: boolean;
+  /** Italic font of a highlight rule. */
+  italic?: boolean;
 }
 
 export interface Validation {

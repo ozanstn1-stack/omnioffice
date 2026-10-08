@@ -985,9 +985,52 @@ pub struct Cell {
     pub value: CellValue,
     pub formula: Option<String>,
     pub style: CellStyle,
+    /// The text of the cell's note (a comment in Excel, an annotation in ODS).
     pub comment: Option<String>,
-    /// Hyperlink target; the cell text is the label.
+    /// Hyperlink target; the cell text is the label. Only `http`, `https` and
+    /// `mailto` URLs and internal references (`#Sheet2!A1`, `#Name`) are valid, see
+    /// [`safe_link_target`].
     pub link: Option<String>,
+    /// Who wrote the note. Unset means unknown; the writers then use the
+    /// application name. Like the fields below it is not serialized when unset,
+    /// so older `.oswk` files and the ones older builds read are unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment_author: Option<String>,
+    /// The note stays on screen instead of appearing on hover.
+    #[serde(skip_serializing_if = "is_false")]
+    pub comment_visible: bool,
+    /// The text XLSX stores as the link's `display` when it differs from the
+    /// cell text. On a cell with no text ODS shows it (or the target) as the label.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link_display: Option<String>,
+    /// The screen tip shown when pointing at the link.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link_tooltip: Option<String>,
+}
+
+/// The longest hyperlink target kept, comfortably above Excel's own limit.
+const MAX_LINK_TARGET: usize = 8_192;
+
+/// A hyperlink target the editor stores, writes and follows, trimmed; `None`
+/// for anything else.
+///
+/// Only `http`, `https` and `mailto` URLs and internal references (a leading
+/// `#`, as in `#Sheet2!A1`) pass. `file:`, `javascript:`, `data:` and other
+/// schemes, UNC paths (`\\server\share`, `//server/share`) and bare relative
+/// paths are dropped: a document must not be able to open a local program or
+/// leak credentials to a network share when its link is followed.
+pub fn safe_link_target(target: &str) -> Option<String> {
+    let target = target.trim();
+    if target.is_empty() || target.len() > MAX_LINK_TARGET || target.chars().any(char::is_control) {
+        return None;
+    }
+    let lower = target.to_ascii_lowercase();
+    let after = |scheme: &str| lower.strip_prefix(scheme).filter(|rest| !rest.trim_start_matches('/').is_empty());
+    let allowed = after("http://").is_some()
+        || after("https://").is_some()
+        || after("mailto:").is_some()
+        || lower.strip_prefix('#').is_some_and(|rest| !rest.is_empty());
+    allowed.then(|| target.to_string())
 }
 
 /// Paper, orientation and print options for one sheet.
@@ -1135,6 +1178,17 @@ pub struct ChartData {
     /// empty inner vector means that series only carries a range.
     #[serde(default)]
     pub series_values_cache: Vec<Vec<f64>>,
+    /// Doughnut hole as a percentage of the radius (`c:holeSize`, 10..90). `None`
+    /// is Excel's default of 50, so a plain doughnut stays untouched on a round
+    /// trip. Unset keys are not serialized, which keeps older `.oswk` files and
+    /// the files older builds read free of keys they do not know.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hole_size: Option<u32>,
+    /// Scatter flavour, spelled like `c:scatterStyle`: `lineMarker`, `line`,
+    /// `smoothMarker` or `smooth`. `None` is markers only. A scatter chart reads
+    /// its X values from `categories`; the series ranges are the Y values.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scatter_style: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -1162,6 +1216,28 @@ pub struct SheetImage {
     pub rotation_deg: f64,
 }
 
+/// One threshold of a color scale, data bar or icon set (the `cfvo` of XLSX,
+/// a `formatting-entry` of ODS).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CondThreshold {
+    /// `min`, `max`, `num`, `percent`, `percentile` or `formula`.
+    pub kind: String,
+    /// The number (or, for `formula`, the formula) the kind needs; empty for
+    /// `min` and `max`.
+    pub value: String,
+    /// The colour of a color-scale stop. Data bars and icon sets leave it unset.
+    pub color: Option<String>,
+}
+
+/// One conditional-formatting rule over `range`.
+///
+/// `kind` is one of `greater`, `less`, `equal`, `between`, `textContains`,
+/// `duplicate`, `top`, `bottom` (highlight rules styled by `fill`, `color`,
+/// `bold` and `italic`), `expression` (a formula, styled the same way),
+/// `colorScale`, `dataBar` and `iconSet`. The fields after `stop_if_true` belong
+/// to the newer kinds; unset ones are not serialized, so a workbook that does not
+/// use them reads and writes exactly as it did before they existed.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct CondRule {
@@ -1169,10 +1245,41 @@ pub struct CondRule {
     pub range: String,
     pub kind: String,
     pub values: Vec<String>,
+    /// Highlight fill; the bar colour of a `dataBar`.
     pub fill: Option<String>,
+    /// Font colour of a highlight rule.
     pub color: Option<String>,
     pub top_n: Option<u32>,
     pub stop_if_true: bool,
+    /// `colorScale`: two or three stops with their colours. `dataBar`: the lowest
+    /// and highest threshold (empty means automatic minimum and maximum).
+    /// `iconSet`: the lower bound of each icon, as many as the set has icons.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub thresholds: Vec<CondThreshold>,
+    /// `iconSet`: the set name as OOXML spells it, e.g. `3Arrows`, `3Flags`,
+    /// `3TrafficLights1`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_set: Option<String>,
+    /// `iconSet`: the first icon belongs to the highest values.
+    #[serde(skip_serializing_if = "is_false")]
+    pub reverse_icons: bool,
+    /// `dataBar` and `iconSet`: show only the bar or icon, not the cell value.
+    #[serde(skip_serializing_if = "is_false")]
+    pub hide_value: bool,
+    /// `expression`: the formula without a leading `=`, relative to the top-left
+    /// cell of `range` (the way XLSX and ODS store it).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub formula: Option<String>,
+    /// Bold font of a highlight rule.
+    #[serde(skip_serializing_if = "is_false")]
+    pub bold: bool,
+    /// Italic font of a highlight rule.
+    #[serde(skip_serializing_if = "is_false")]
+    pub italic: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

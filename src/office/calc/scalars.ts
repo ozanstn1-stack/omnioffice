@@ -35,6 +35,8 @@ export const ERR = {
   circular: () => new FormulaError("#REF!", "circular reference"),
   // A dynamic array whose spill range is blocked by existing data.
   spill: () => new FormulaError("#SPILL!", "the spill range is not empty"),
+  // A dynamic array that would be empty (TAKE of 0 rows, DROP of everything).
+  calc: () => new FormulaError("#CALC!", "the array is empty"),
 };
 
 export function isError(value: unknown): value is FormulaError {
@@ -153,8 +155,13 @@ export function criteriaMatcher(criteria: Scalar): (value: Scalar) => boolean {
   // plain text keeps the exact (case-insensitive) comparison.
   const hasWildcard = !isNumeric && /[*?]/.test(operand);
   const wildcard = hasWildcard ? wildcardRegex(operand) : null;
+  // An error literal as the criterion (`"#N/A"`, `"#CALC!"`) counts the cells
+  // showing that error; every other criterion skips error cells.
+  const errorCriterion = /^#(?:REF!|VALUE!|NAME\?|DIV\/0!|N\/A|NUM!|SPILL!|CALC!)$/i.test(operand.trim())
+    ? operand.trim().toUpperCase()
+    : null;
   return (value: Scalar) => {
-    if (isError(value)) return false;
+    if (isError(value)) return errorCriterion !== null && operator === "=" && value.code === errorCriterion;
     const valueNumber =
       typeof value === "number" ? value : typeof value === "boolean" ? (value ? 1 : 0) : Number(String(value));
     const numeric = isNumeric && Number.isFinite(valueNumber);

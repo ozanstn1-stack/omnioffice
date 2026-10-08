@@ -137,6 +137,7 @@ fn golden_workbook() -> Workbook {
         color: None,
         top_n: None,
         stop_if_true: false,
+        ..Default::default()
     });
     sheet.conditional.push(CondRule {
         id: "c2".into(),
@@ -147,6 +148,7 @@ fn golden_workbook() -> Workbook {
         color: None,
         top_n: None,
         stop_if_true: false,
+        ..Default::default()
     });
     sheet.charts.push(ChartPlacement {
         id: "chart-1".into(),
@@ -494,6 +496,7 @@ fn v31_workbook() -> Workbook {
             show_labels: true,
             categories_cache: vec!["Hardware".into(), "Hardware".into(), "Software".into()],
             series_values_cache: vec![vec![100.0, 150.0, 200.0]],
+            ..Default::default()
         },
         anchor: "E2".into(),
         width_px: 420.0,

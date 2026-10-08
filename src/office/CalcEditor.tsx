@@ -4,49 +4,11 @@
  * and SVG charts fed from cell ranges.
  */
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import {
-  AlignCenter,
-  AlignLeft,
-  AlignRight,
-  ArrowDownAZ,
-  ArrowUpAZ,
-  BarChart3,
-  Bold,
-  Check,
-  ChevronDown,
-  Columns3,
-  Copy,
-  CopyX,
-  Eraser,
-  Eye,
-  FileText,
-  Filter,
-  FolderOpen,
-  GitBranch,
-  Grid3x3,
-  Printer,
-  RefreshCw,
-  Italic,
-  Merge,
-  Minus,
-  Plus,
-  Redo2,
-  Save,
-  Sigma,
-  Sparkles,
-  Table2,
-  Trash2,
-  Tag,
-  Underline,
-  Undo2,
-  Snowflake,
-  X,
-  XCircle,
-} from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
 import { isAndroid } from "../lib/mobile";
 import type { OfficeTab, Workbook } from "../lib/office-store";
 import { useOfficeTabs } from "../lib/office-store";
-import { useT, type Translate } from "../lib/i18n";
+import { useT } from "../lib/i18n";
 import { useToasts } from "../lib/store";
 import {
   cellText,
@@ -57,16 +19,12 @@ import {
   newSpreadsheetTable,
   type Cell,
   type CellStyle,
-  type ChartData,
   type CondRule,
-  type NamedRange,
   type PivotTable,
   type PivotValueField,
-  type PrintSettings,
   type Sheet,
   type SpreadsheetTable,
 } from "../lib/office-types";
-import { computePivot, pivotFields } from "./calc/pivot";
 import {
   addressesInRange,
   columnLabel,
@@ -75,7 +33,6 @@ import {
   isError,
   parseAddress,
   parseRange,
-  suggestFunctions,
   toText,
   type Scalar,
 } from "./calc/formula";
@@ -90,7 +47,6 @@ import {
   tracePrecedents,
   type AuditNode,
 } from "./calc/audit";
-import { tableByName, tableColumnBodyRange } from "./calc/structured";
 import { validationLookup } from "./calc/validation-index";
 import { revealScroll } from "./calc/grid-geometry";
 import { isUnderBand, mergeFrozen, nextFreeze, pinnedPosition, resolveFrozenBands } from "./calc/freeze";
@@ -98,12 +54,15 @@ import { rowLayoutFor } from "./calc/row-layout";
 import {
   applyCellEdit,
   applyCellEdits,
+  applyCellTextEdits,
+  applySheetCells,
   computeSheetValues,
   computeWorkbookValues,
   formatCellDisplay,
   isBlankCell,
   parseInputValue,
   scalarToCellValue,
+  sheetFormulaEvaluator,
   shiftFormulaRows,
   uniqueSheetName,
   usedRange,
@@ -111,16 +70,55 @@ import {
 import {
   findDuplicateRows,
   listValidationItems,
-  planTextToColumns,
   remapMovedRows,
   type ColumnSplitPlan,
   type DuplicateOptions,
-  type SplitDelimiter,
 } from "./calc/data-tools";
-import { Dialog, Ribbon, RibbonGroup, ToolButton, ToolColor, ToolSelect } from "./office-ui";
-import { openIntoWorkspace, useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
+import { applyFilterDraft, clearFilter, sheetFilterDraft, tableFilterDraft, type FilterDraft } from "./calc/filter";
+import { argumentHintFor, buildSuggestions, type FormulaSuggestion } from "./calc/formula-assist";
+import { clampGridZoom, pinchGridZoom, shiftFormulaColumns } from "./calc/grid-math";
+import type { CellPosition, GridSelection } from "./calc/grid-types";
+import { prepareConditional } from "./calc/conditional";
+import { defaultRuleRange } from "./calc/conditional-form";
+import { isValid } from "./calc/rules";
+import { deleteColumn, deleteRow, insertColumn, insertRow, toggleMerge } from "./calc/structure";
+import { cellAnnouncement } from "./calc/announce";
+import { errorTitle } from "./calc/error-info";
+import { chartFromSelection, type ChartOptions } from "./calc/chart-data";
+import { planAutoSum } from "./calc/autosum";
+import { clipboardText, snapshotClipboard } from "./calc/paste-special";
+import { isSheetProtected } from "./calc/protection";
+import { planSort, sortContext, type SortLevel, type SortRange } from "./calc/sort";
+import { edgeVisible, isHiddenIndex, stepVisible } from "./calc/visibility";
+import { uniqueColumnName, uniqueTableName } from "./calc/table-names";
+import { CalcRibbon } from "./calc/ui/CalcRibbon";
+import { CfDecor } from "./calc/ui/CfDecor";
+import { cellTextStyle } from "./calc/ui/cell-style";
+import { ChartBox, ChartDialog } from "./calc/ui/ChartPanel";
+import { ConditionalDialog } from "./calc/ui/ConditionalDialog";
+import { RemoveDuplicatesDialog, TextToColumnsDialog } from "./calc/ui/DataToolsDialogs";
+import { FilterDialog } from "./calc/ui/FilterDialog";
+import { FormulaAssistPopup } from "./calc/ui/FormulaAssistPopup";
+import { HeaderMenu, type HeaderMenuItem } from "./calc/ui/HeaderMenu";
+import { isValidDefinedName, NameManagerDialog } from "./calc/ui/NameManagerDialog";
+import { PivotBox, PivotDialog } from "./calc/ui/PivotPanel";
+import { PrintLayoutDialog } from "./calc/ui/PrintLayoutDialog";
+import { SortDialog } from "./calc/ui/SortDialog";
+import { SheetTabs } from "./calc/ui/SheetTabs";
+import { FindReplacePanel } from "./calc/ui/FindReplacePanel";
+import { InsertTableDialog, TablesPanel } from "./calc/ui/TablesUi";
+import { useFindReplace } from "./calc/ui/useFindReplace";
+import { usePasteSpecial, type InternalClipboard } from "./calc/ui/usePasteSpecial";
+import { useVisibilityActions, type Axis } from "./calc/ui/useVisibilityActions";
+import { ValidationDialog } from "./calc/ui/ValidationDialog";
+import { useCellAnnotations } from "./calc/ui/useCellAnnotations";
+import { VisibleNotes } from "./calc/ui/NoteViews";
+import { isLinkCell } from "./calc/links";
+import { noteOf } from "./calc/notes";
+import { useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
 
 export { scalarToCellValue, computeWorkbookValues, applyCellEdit, shiftFormulaRows, isBlankCell };
+export { clampGridZoom, pinchGridZoom, shiftFormulaColumns, isValidDefinedName };
 
 type CalcTab = OfficeTab & { model: Workbook };
 
@@ -130,255 +128,12 @@ const HEADER_HEIGHT = 24;
 const HEADER_WIDTH = 56;
 const DEFAULT_COL_WIDTH = 96;
 
-interface Selection {
-  anchor: { row: number; col: number };
-  focus: { row: number; col: number };
-}
-
-interface CellPosition {
-  row: number;
-  col: number;
-}
-
 interface EditingCell extends CellPosition {
   value: string;
 }
 
 /** Where a committed edit sends the selection. */
 type CommitMove = "down" | "up" | "right" | "left" | "none";
-
-// ---------------------------------------------------------------------------
-// Formula assistance (autocomplete + argument hints)
-// ---------------------------------------------------------------------------
-
-type SuggestionKind = "function" | "name" | "sheet" | "table" | "column";
-
-interface FormulaSuggestion {
-  kind: SuggestionKind;
-  label: string;
-  insert: string;
-  detail: string;
-  /** Caret offset inside `insert` after the insertion (defaults to the end). */
-  caret?: number;
-}
-
-interface SuggestionList {
-  items: FormulaSuggestion[];
-  /** Range inside the draft the selected item replaces. */
-  start: number;
-  end: number;
-}
-
-interface ArgumentHint {
-  name: string;
-  parts: string[];
-  active: number;
-}
-
-interface CatalogueEntry {
-  name: string;
-  signature: string;
-  category: string;
-}
-
-/** The identifier or partial structured reference ending at `caret`. */
-function suggestionWord(text: string, caret: number): string {
-  return /[A-Za-z_$][A-Za-z0-9_$.]*$/.exec(text.slice(0, caret))?.[0] ?? "";
-}
-
-/**
- * The suggestion popup contents for a draft.
- *
- * Inside `Table[...]` the items are the table's columns; otherwise functions
- * (prefix match), defined names, sheet names and table names are offered.
- * Returns null when the draft is not a formula or nothing matches.
- */
-function buildSuggestions(
-  text: string,
-  caret: number,
-  workbook: Workbook,
-  sheet: Sheet,
-  catalogue: Map<string, CatalogueEntry>,
-  t: Translate,
-): SuggestionList | null {
-  if (!text.startsWith("=") || caret < 1 || caret > text.length) return null;
-  const before = text.slice(0, caret);
-  const bracket = /([A-Za-z_][A-Za-z0-9_$. ]*)\[([^[\]]*)$/.exec(before);
-  if (bracket) {
-    const table = tableByName(sheet.tables, bracket[1]);
-    if (!table) return null;
-    const partial = bracket[2];
-    const items = table.columns
-      .filter((column) => column.name.toUpperCase().startsWith(partial.toUpperCase()))
-      .map<FormulaSuggestion>((column) => ({
-        kind: "column",
-        label: column.name,
-        insert: text[caret] === "]" ? column.name : `${column.name}]`,
-        detail: `${table.name}[${column.name}]`,
-      }));
-    if (items.length === 0) return null;
-    return { items, start: caret - partial.length, end: caret };
-  }
-
-  const word = suggestionWord(text, caret);
-  if (!word) return null;
-  const upper = word.toUpperCase();
-  const items: FormulaSuggestion[] = [];
-  for (const name of suggestFunctions(word, 6)) {
-    const meta = catalogue.get(name);
-    items.push({
-      kind: "function",
-      label: name,
-      insert: `${name}(`,
-      caret: name.length + 1,
-      detail: meta ? `${meta.signature} · ${meta.category}` : name,
-    });
-  }
-  for (const entry of workbook.names ?? []) {
-    if (entry.name.toUpperCase().startsWith(upper)) {
-      items.push({ kind: "name", label: entry.name, insert: entry.name, detail: entry.definition });
-    }
-  }
-  for (const candidate of workbook.sheets) {
-    if (candidate.name.toUpperCase().startsWith(upper)) {
-      items.push({
-        kind: "sheet",
-        label: candidate.name,
-        insert: `${candidate.name}!`,
-        detail: t("calc.sheetReference"),
-      });
-    }
-  }
-  for (const table of sheet.tables ?? []) {
-    if (table.name.toUpperCase().startsWith(upper)) {
-      items.push({ kind: "table", label: table.name, insert: `${table.name}[`, detail: t("calc.tableReference") });
-    }
-  }
-  if (items.length === 0) return null;
-  return { items, start: caret - word.length, end: caret };
-}
-
-/** Splits a signature body on top-level commas (`VLOOKUP(a, [b], c)`). */
-function splitSignature(signature: string): string[] {
-  const open = signature.indexOf("(");
-  const close = signature.lastIndexOf(")");
-  if (open < 0 || close <= open) return [signature];
-  const body = signature.slice(open + 1, close);
-  const parts: string[] = [];
-  let depth = 0;
-  let current = "";
-  for (const character of body) {
-    if (character === "(" || character === "[") depth += 1;
-    else if (character === ")" || character === "]") depth -= 1;
-    if (character === "," && depth === 0) {
-      parts.push(current);
-      current = "";
-      continue;
-    }
-    current += character;
-  }
-  parts.push(current);
-  return parts.map((part) => part.trim());
-}
-
-/**
- * The argument hint for the call the caret is inside, or null.
- *
- * Scanning backwards from the caret, the innermost unmatched `(` names the
- * function and the separators at that depth count the current argument.
- */
-function argumentHintFor(text: string, caret: number, catalogue: Map<string, CatalogueEntry>): ArgumentHint | null {
-  if (!text.startsWith("=") || caret < 1) return null;
-  const before = text.slice(0, caret);
-  let depth = 0;
-  let separators = 0;
-  for (let index = before.length - 1; index >= 0; index -= 1) {
-    const character = before[index];
-    if (character === '"') {
-      // Skip a quoted string backwards; an unmatched quote just ends the scan.
-      index -= 1;
-      while (index >= 0 && before[index] !== '"') index -= 1;
-      continue;
-    }
-    if (character === ")") {
-      depth += 1;
-      continue;
-    }
-    if (character === "(") {
-      if (depth > 0) {
-        depth -= 1;
-        continue;
-      }
-      const match = /([A-Za-z_][A-Za-z0-9_.]*)$/.exec(before.slice(0, index));
-      const name = match?.[1]?.toUpperCase() ?? "";
-      const meta = catalogue.get(name);
-      if (!meta) return null;
-      const parts = splitSignature(meta.signature);
-      if (parts.length === 0) return null;
-      return { name, parts, active: Math.min(separators, parts.length - 1) };
-    }
-    if ((character === "," || character === ";") && depth === 0) separators += 1;
-  }
-  return null;
-}
-
-/** Appends a number until the name is unique inside the sheet's tables. */
-function uniqueTableName(tables: readonly SpreadsheetTable[], base: string): string {
-  let name = base;
-  let index = 1;
-  while (tables.some((table) => table.name.toLowerCase() === name.toLowerCase())) {
-    index += 1;
-    name = `${base}${index}`;
-  }
-  return name;
-}
-
-/** Appends a number until the column name is unique inside the table. */
-function uniqueColumnName(columns: readonly string[], base: string): string {
-  let name = base;
-  let index = 1;
-  while (columns.some((column) => column.toLowerCase() === name.toLowerCase())) {
-    index += 1;
-    name = `${base}${index}`;
-  }
-  return name;
-}
-
-// ---------------------------------------------------------------------------
-// Touch interaction maths (pure so jsdom can test them)
-// ---------------------------------------------------------------------------
-
-/** Clamps a grid zoom factor so a pinch can never shrink the grid away. */
-export function clampGridZoom(value: number): number {
-  if (!Number.isFinite(value)) return 1;
-  return Math.min(2, Math.max(0.6, Number(value.toFixed(3))));
-}
-
-/** The zoom a two-finger pinch asks for: `startZoom` scaled by the distance ratio. */
-export function pinchGridZoom(startZoom: number, startDistance: number, distance: number): number {
-  if (!Number.isFinite(distance) || !Number.isFinite(startDistance) || startDistance <= 0) return startZoom;
-  return clampGridZoom(startZoom * (distance / startDistance));
-}
-
-/**
- * Column shift for a fill-right, mirroring `shiftFormulaRows` in cells.ts:
- * relative column references move, absolute (`$A`) and the row stay put.
- */
-export function shiftFormulaColumns(formula: string | null, delta: number): string | null {
-  if (!formula || delta === 0) return formula;
-  return formula.replace(
-    /(?<![A-Za-z0-9_$])(\$?)([A-Za-z]{1,3})(\$?)(\d{1,7})(?![A-Za-z0-9_(])/g,
-    (match, dollarCol: string, letters: string, dollarRow: string, digits: string) => {
-      const position = parseAddress(`${letters}${digits}`);
-      if (position === null || dollarCol) return match;
-      const next = position.col + delta;
-      if (next < 0 || next >= 16_384) return match;
-      const label = columnLabel(next);
-      // Keep the case the author typed, like shiftFormulaRows keeps the letters.
-      return `${letters === letters.toLowerCase() ? label.toLowerCase() : label}${dollarRow}${digits}`;
-    },
-  );
-}
 
 /** The element carrying `attribute` under a pointer event: the event target
  * when the event bubbles from it, or hit-testing at the pointer's coordinates
@@ -449,7 +204,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const session = useOfficeSession(tab);
   const [ribbon, setRibbon] = useState("home");
   const [sheetIndex, setSheetIndex] = useState(workbook.activeSheet ?? 0);
-  const [selection, setSelection] = useState<Selection>({ anchor: { row: 0, col: 0 }, focus: { row: 0, col: 0 } });
+  const [selection, setSelection] = useState<GridSelection>({ anchor: { row: 0, col: 0 }, focus: { row: 0, col: 0 } });
   const [editing, setEditingState] = useState<EditingCell | null>(null);
   const [formulaDraft, setFormulaDraft] = useState("");
   const [scroll, setScroll] = useState({ top: 0, left: 0, width: 900, height: 500 });
@@ -474,12 +229,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const [listDropdown, setListDropdown] = useState<{ index: number } | null>(null);
   const listDropdownRef = useRef<HTMLDivElement>(null);
   const listDropdownId = useId();
-  const [filterOpen, setFilterOpen] = useState<{
-    col: number;
-    values: Array<{ value: string; checked: boolean }>;
-    tableId?: string;
-    tableName?: string;
-  } | null>(null);
+  const [filterOpen, setFilterOpen] = useState<FilterDraft | null>(null);
+  // The context menu of a row or column header, at the pointer position.
+  const [sortDialog, setSortDialog] = useState<{ range: SortRange; headerGuess: boolean } | null>(null);
+  const [headerMenu, setHeaderMenu] = useState<{ axis: Axis; x: number; y: number } | null>(null);
   const [undoStack, setUndoStack] = useState<Workbook[]>([]);
   const [redoStack, setRedoStack] = useState<Workbook[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -645,8 +398,6 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     return false;
   };
 
-  useEditorShortcuts(session);
-
   const update = useCallback(
     (mutate: (workbook: Workbook) => Workbook, recordUndo = true) => {
       if (recordUndo) {
@@ -805,6 +556,32 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     [sheet, rowLayout, freeze],
   );
 
+  // Selecting a cell of another sheet (Find next) switches the sheet first;
+  // the scroll waits for the commit that renders it, where `revealCell` sees
+  // that sheet's geometry.
+  const pendingRevealRef = useRef<CellPosition | null>(null);
+  const jumpToCell = useCallback((target: number, row: number, col: number) => {
+    setSheetIndex(target);
+    pendingRevealRef.current = { row, col };
+    setSelection({ anchor: { row, col }, focus: { row, col } });
+  }, []);
+  useLayoutEffect(() => {
+    const pending = pendingRevealRef.current;
+    if (!pending) return;
+    pendingRevealRef.current = null;
+    revealCell(pending);
+  }, [sheetIndex, selection, revealCell]);
+
+  const find = useFindReplace({
+    workbook,
+    sheetIndex,
+    focus: selection.focus,
+    jumpTo: jumpToCell,
+    commit: (next) => update(() => next),
+    onClosed: () => gridRef.current?.focus({ preventScroll: true }),
+  });
+  useEditorShortcuts(session, { onFind: () => find.show("find"), onReplace: () => find.show("replace") });
+
   const commitEdit = (move: CommitMove = "down", restoreFocus = true) => {
     // Read through the ref: the blur handler triggered by unmounting the editor
     // would otherwise commit the same value a second time.
@@ -828,7 +605,11 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       left: { row: 0, col: -1 },
     };
     const step = delta[move];
-    const next = revealCell({ row: row + step.row, col: col + step.col });
+    // Steps land on visible rows and columns: a hidden one is hopped over.
+    const next = revealCell({
+      row: step.row === 0 ? row : rowLayout.nextVisible(row, step.row),
+      col: step.col === 0 ? col : stepVisible(sheet.colWidths, col, step.col, sheet.colCount),
+    });
     setSelection({ anchor: next, focus: next });
     // Move focus in the same event, not in the effect: when the commit came
     // from the formula bar the editor state was already null, so no effect
@@ -1001,6 +782,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     }
     if (cell) {
       const position = { row: Number(cell.dataset.row), col: Number(cell.dataset.col) };
+      // Ctrl+click on a link follows it; the cell is selected but no drag starts.
+      if (annotations.handleCtrlClick(event, position)) return;
       gestureRef.current = {
         kind: "cells",
         pointerId: event.pointerId,
@@ -1289,23 +1072,22 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     });
   };
 
-  const clipboardRef = useRef<{ rows: Scalar[][]; start: CellPosition } | null>(null);
+  // The editor's own copy: the cells (formulas, formatting) for Paste special, and the text put on the system clipboard.
+  const clipboardRef = useRef<InternalClipboard | null>(null);
 
   const copySelection = () => {
     const parts = parseRange(
       `${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`,
     );
     if (!parts) return;
-    const rows: Scalar[][] = [];
-    for (let row = parts.start.row; row <= parts.end.row; row += 1) {
-      const line: Scalar[] = [];
-      for (let col = parts.start.col; col <= parts.end.col; col += 1) {
-        line.push(computed.get(formatAddress(row, col)) ?? "");
-      }
-      rows.push(line);
-    }
-    clipboardRef.current = { rows, start: { row: parts.start.row, col: parts.start.col } };
-    const text = rows.map((line) => line.map((value) => String(value ?? "")).join("\t")).join("\n");
+    const data = snapshotClipboard(sheet, computed, {
+      top: parts.start.row,
+      left: parts.start.col,
+      bottom: parts.end.row,
+      right: parts.end.col,
+    });
+    const text = clipboardText(data);
+    clipboardRef.current = { data, text };
     void navigator.clipboard?.writeText(text).catch(() => undefined);
   };
 
@@ -1324,7 +1106,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       // Clipboard read may be blocked; fall back to the in-app clipboard.
     }
     if (clipboardRef.current) {
-      applyPasted(clipboardRef.current.rows.map((line) => line.map((value) => String(value ?? ""))));
+      applyPasted(clipboardRef.current.data.values.map((line) => line.map((value) => String(value ?? ""))));
     }
   };
 
@@ -1344,20 +1126,28 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     if (event.nativeEvent.isComposing) return;
     const { row, col } = selection.focus;
     const mod = event.ctrlKey || event.metaKey;
-    const moveTo = (nextRow: number, dCol: number, extend = false) => {
+    const moveTo = (nextRow: number, nextCol: number, extend = false) => {
       event.preventDefault();
-      const next = revealCell({ row: nextRow, col: col + dCol });
+      const next = revealCell({ row: nextRow, col: nextCol });
       setSelection(extend ? { anchor: selection.anchor, focus: next } : { anchor: next, focus: next });
     };
-    // Vertical steps count visible rows: a filter-hidden row is never landed on.
+    // Steps count visible rows and columns: a hidden (or filtered) one is never landed on.
     const move = (dRow: number, dCol: number, extend = false) =>
-      moveTo(dRow === 0 ? row : rowLayout.nextVisible(row, dRow), dCol, extend);
+      moveTo(
+        dRow === 0 ? row : rowLayout.nextVisible(row, dRow),
+        dCol === 0 ? col : stepVisible(sheet.colWidths, col, dCol, sheet.colCount),
+        extend,
+      );
+    const firstRow = rowLayout.isHidden(0) ? rowLayout.nextVisible(0, 1) : 0;
+    const bottomRow = rowLayout.isHidden(lastRow) ? rowLayout.nextVisible(lastRow, -1) : lastRow;
+    const firstCol = edgeVisible(sheet.colWidths, sheet.colCount, "first");
+    const rightCol = edgeVisible(sheet.colWidths, sheet.colCount, "last");
     // A page is one row short of the viewport, measured in pixels so custom
     // row heights count for what they are.
     const movePage = (direction: 1 | -1, extend: boolean) => {
       const span = Math.max(ROW_HEIGHT, scroll.height / gridZoom - HEADER_HEIGHT - ROW_HEIGHT);
       const target = rowLayout.rowAtY(rowLayout.offsetOf(row) + direction * span);
-      moveTo(target === row ? rowLayout.nextVisible(row, direction) : target, 0, extend);
+      moveTo(target === row ? rowLayout.nextVisible(row, direction) : target, col, extend);
     };
     const openEditor = (value?: string) => {
       event.preventDefault();
@@ -1372,6 +1162,23 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     if (event.altKey && event.key === "ArrowDown" && activeListItems.length > 0) {
       event.preventDefault();
       openListDropdown();
+      return;
+    }
+    if (mod && event.altKey && event.code === "KeyV") {
+      event.preventDefault();
+      void pasteSpecial.open();
+      return;
+    }
+    if (event.altKey && !mod && (event.key === "=" || event.code === "Equal")) {
+      event.preventDefault();
+      autoSum();
+      return;
+    }
+    if (annotations.handleKey(event)) return;
+    // Ctrl+9 / Ctrl+0 hide the selected rows / columns; with Shift they show them again.
+    if (mod && (event.code === "Digit9" || event.code === "Digit0")) {
+      event.preventDefault();
+      visibility.change(event.code === "Digit9" ? "row" : "col", event.shiftKey ? "unhide" : "hide");
       return;
     }
     switch (event.key) {
@@ -1390,16 +1197,16 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       case "Home":
         event.preventDefault();
         if (mod) {
-          const next = revealCell({ row: 0, col: 0 });
+          const next = revealCell({ row: firstRow, col: firstCol });
           setSelection({ anchor: next, focus: next });
         } else {
-          const next = revealCell({ row, col: 0 });
+          const next = revealCell({ row, col: firstCol });
           setSelection(event.shiftKey ? { anchor: selection.anchor, focus: next } : { anchor: next, focus: next });
         }
         break;
       case "End": {
         event.preventDefault();
-        const next = mod ? revealCell({ row: lastRow, col: lastCol }) : revealCell({ row, col: lastCol });
+        const next = mod ? revealCell({ row: bottomRow, col: rightCol }) : revealCell({ row, col: rightCol });
         setSelection(event.shiftKey ? { anchor: selection.anchor, focus: next } : { anchor: next, focus: next });
         break;
       }
@@ -1565,148 +1372,80 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   // Sort / filter / conditional / validation
   // -------------------------------------------------------------------------
 
-  const sortByColumn = (column: number, ascending: boolean) => {
-    const parts = parseRange(sheet.filter?.range ?? usedRange(sheet));
-    if (!parts) return;
-    const header = sheet.cells[formatAddress(parts.start.row, column)] !== undefined && parts.start.row === 0;
-    const startRow = header ? parts.start.row + 1 : parts.start.row;
-    const rows: Array<{ values: Array<{ col: number; cell: Cell | undefined }>; key: Scalar }> = [];
-    for (let row = startRow; row <= parts.end.row; row += 1) {
-      const values = [];
-      for (let col = parts.start.col; col <= parts.end.col; col += 1) {
-        values.push({ col, cell: sheet.cells[formatAddress(row, col)] });
-      }
-      rows.push({ values, key: computed.get(formatAddress(row, column)) ?? "" });
+  /** The cells a sort starts from: the selection, or the whole list for a lone cell or a lone column. */
+  const sortSelection = (): SortRange => {
+    const { start, end } = selectionBounds;
+    const loneColumn = start.col === end.col && start.row === 0 && end.row >= sheet.rowCount - 1;
+    return loneColumn
+      ? { top: selection.focus.row, left: start.col, bottom: selection.focus.row, right: start.col }
+      : { top: start.row, left: start.col, bottom: end.row, right: end.col };
+  };
+
+  const sortRefusal = (reason: "protected" | "merged" | "tooSmall") =>
+    useToasts.getState().push({
+      kind: "info",
+      title: t(
+        { protected: "calc.sheetProtected", merged: "calc.sortMerged", tooSmall: "calc.sortNeedsRange" }[reason],
+      ),
+    });
+
+  /** Sorts a range as one undo step; the visible rows are sorted, hidden ones stay put. */
+  const runSort = (range: SortRange, levels: SortLevel[], hasHeaders: boolean) => {
+    const plan = planSort(sheet, computed, range, levels, { hasHeaders, isHidden: (row) => rowLayout.isHidden(row) });
+    if (!plan) {
+      useToasts.getState().push({ kind: "info", title: t("calc.sortNothing") });
+      return;
     }
-    rows.sort((a, b) => {
-      const left = a.key;
-      const right = b.key;
-      const leftNumber = typeof left === "number" ? left : Number(left);
-      const rightNumber = typeof right === "number" ? right : Number(right);
-      if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber))
-        return ascending ? leftNumber - rightNumber : rightNumber - leftNumber;
-      const compare = String(left).localeCompare(String(right));
-      return ascending ? compare : -compare;
-    });
-    updateSheet((current) => {
-      const cells = { ...current.cells };
-      for (const address of addressesInRange(
-        `${formatAddress(startRow, parts.start.col)}:${formatAddress(parts.end.row, parts.end.col)}`,
-      ))
-        delete cells[address];
-      rows.forEach((row, rowOffset) => {
-        row.values.forEach((value) => {
-          if (value.cell) cells[formatAddress(startRow + rowOffset, value.col)] = value.cell;
-        });
-      });
-      return { ...current, cells };
-    });
+    update((current) => applySheetCells(current, sheetIndex, plan.cells, plan.changed));
+  };
+
+  const sortByColumn = (column: number, ascending: boolean) => {
+    const context = sortContext(sheet, computed, sortSelection());
+    if (!context.ok) return sortRefusal(context.reason);
+    runSort(context.range, [{ column, ascending }], context.headerGuess);
+  };
+
+  const openSortDialog = () => {
+    const context = sortContext(sheet, computed, sortSelection());
+    if (!context.ok) return sortRefusal(context.reason);
+    setSortDialog({ range: context.range, headerGuess: context.headerGuess });
   };
 
   const openFilter = (col: number) => {
-    const parts = parseRange(usedRange(sheet));
-    if (!parts) return;
-    const values = new Map<string, boolean>();
-    for (let row = parts.start.row + 1; row <= parts.end.row; row += 1) {
-      const text = String(computed.get(formatAddress(row, col)) ?? "");
-      if (!values.has(text)) values.set(text, true);
-    }
-    setFilterOpen({ col, values: [...values.entries()].map(([value, checked]) => ({ value, checked })) });
+    const draft = sheetFilterDraft(sheet, computed, col);
+    if (draft) setFilterOpen(draft);
   };
 
   /** Opens the filter dialog scoped to one structured table column. */
   const openTableFilter = (table: SpreadsheetTable, columnName: string) => {
-    const parts = parseRange(table.range);
-    const columnIndex = table.columns.findIndex((column) => column.name === columnName);
-    if (!parts || columnIndex < 0) return;
-    const body = tableColumnBodyRange(table, columnName);
-    const values = new Map<string, boolean>();
-    if (body) {
-      for (const address of addressesInRange(`${body.start}:${body.end}`)) {
-        const text = String(computed.get(address) ?? "");
-        if (!values.has(text)) values.set(text, true);
-      }
-    }
-    setFilterOpen({
-      col: parts.start.col + columnIndex,
-      tableId: table.id,
-      tableName: table.name,
-      values: [...values.entries()].map(([value, checked]) => ({ value, checked })),
-    });
+    const draft = tableFilterDraft(table, computed, columnName);
+    if (draft) setFilterOpen(draft);
   };
 
   const applyFilter = () => {
     if (!filterOpen) return;
-    const state = filterOpen;
-    const allowed = new Set(state.values.filter((entry) => entry.checked).map((entry) => entry.value));
-    updateSheet((current) => {
-      const table = state.tableId
-        ? (current.tables ?? []).find((candidate) => candidate.id === state.tableId)
-        : undefined;
-      const parts = parseRange(table ? table.range : usedRange(current));
-      if (!parts) return current;
-      // A structured table filters its body only; the plain sheet filter keeps
-      // its original behaviour of scanning the whole used range.
-      const startRow = table ? parts.start.row + (table.hasHeaders ? 1 : 0) : parts.start.row;
-      const endRow = table ? parts.end.row - (table.hasTotals ? 1 : 0) : parts.end.row;
-      let rowHeights = current.rowHeights;
-      for (let row = startRow; row <= endRow; row += 1) {
-        const address = formatAddress(row, state.col);
-        const value = String(computed.get(address) ?? "");
-        const position = parseAddress(address);
-        if (!position) continue;
-        const hidden = !allowed.has(value);
-        if (hidden) {
-          rowHeights = { ...rowHeights, [position.row]: 0 };
-        } else if (rowHeights[position.row] === 0) {
-          rowHeights = { ...rowHeights };
-          delete rowHeights[position.row];
-        }
-      }
-      if (table) {
-        return {
-          ...current,
-          rowHeights,
-          tables: (current.tables ?? []).map((candidate) =>
-            candidate.id === table.id
-              ? { ...candidate, filter: { range: table.range, column: state.col, values: [...allowed] } }
-              : candidate,
-          ),
-        };
-      }
-      return { ...current, rowHeights, filter: { range: usedRange(current), column: state.col, values: [...allowed] } };
-    });
+    const draft = filterOpen;
+    updateSheet((current) => applyFilterDraft(current, draft, computed));
     setFilterOpen(null);
   };
 
-  const addChart = (kind: string) => {
+  const addChart = (kind: string, options: ChartOptions) => {
     const parts = parseRange(
       `${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`,
     );
-    if (!parts || parts.start.row === parts.end.row) {
+    const chart = parts
+      ? chartFromSelection(
+          kind,
+          parts,
+          (row, col) => String(computed.get(formatAddress(row, col)) ?? ""),
+          t("calc.chartTitle"),
+          options,
+        )
+      : null;
+    if (!parts || !chart) {
       useToasts.getState().push({ kind: "info", title: t("calc.chartNeedsData") });
       return;
     }
-    const categories = `${formatAddress(parts.start.row + 1, parts.start.col)}:${formatAddress(parts.end.row, parts.start.col)}`;
-    const series: ChartData["series"] = [];
-    for (let col = parts.start.col + 1; col <= parts.end.col; col += 1) {
-      series.push({
-        name: String(computed.get(formatAddress(parts.start.row, col)) ?? `Series ${col}`),
-        range: `${formatAddress(parts.start.row + 1, col)}:${formatAddress(parts.end.row, col)}`,
-        color: null,
-      });
-    }
-    const chart: ChartData = {
-      kind,
-      title: t("calc.chartTitle"),
-      categories,
-      series,
-      legend: true,
-      xTitle: "",
-      yTitle: "",
-      stacked: false,
-      showLabels: false,
-    };
     const anchor = formatAddress(parts.end.row + 2, parts.start.col);
     updateSheet((current) => ({
       ...current,
@@ -1744,26 +1483,16 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     setPivotDialog(false);
   };
 
-  const addConditional = (rule: { kind: string; values: string[]; fill: string; topN?: number }) => {
-    const range = usedRange(sheet);
+  const addConditional = (rule: Omit<CondRule, "id">) => {
     updateSheet((current) => ({
       ...current,
-      conditional: [
-        ...current.conditional,
-        {
-          id: crypto.randomUUID(),
-          range,
-          kind: rule.kind,
-          values: rule.values,
-          fill: rule.fill,
-          color: null,
-          topN: rule.topN ?? null,
-          stopIfTrue: false,
-        },
-      ],
+      conditional: [...current.conditional, { ...rule, id: crypto.randomUUID() }],
     }));
     setConditionalDialog(false);
   };
+
+  const deleteConditional = (id: string) =>
+    updateSheet((current) => ({ ...current, conditional: current.conditional.filter((rule) => rule.id !== id) }));
 
   const addValidation = (validation: {
     kind: string;
@@ -2182,6 +1911,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     let startCol = 0;
     for (let col = 0; col < sheet.colCount; col += 1) {
       const width = sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH;
+      // A hidden column has no width and draws nothing.
+      if (width === 0) continue;
       if (col < freeze.cols) frozenColumns.push({ col, x });
       if (x + width < viewLeft) {
         x += width;
@@ -2209,6 +1940,119 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     end: { row: selection.focus.row, col: selection.focus.col },
   };
 
+  const visibility = useVisibilityActions({
+    sheet,
+    bounds: selectionBounds,
+    updateSheet,
+    select: (position) => {
+      const next = revealCell(position);
+      setSelection({ anchor: next, focus: next });
+    },
+  });
+
+  const pasteSpecial = usePasteSpecial({
+    sheet,
+    sheetIndex,
+    target: selectionBounds.start,
+    internal: clipboardRef,
+    commit: update,
+    select: (anchor, focus) => setSelection({ anchor, focus }),
+  });
+
+  // Notes and hyperlinks: the cell menu, the note editor, Insert link, and following a link.
+  const annotations = useCellAnnotations({
+    workbook,
+    sheet,
+    sheetIndex,
+    focus: selection.focus,
+    computed,
+    commit: update,
+    select: (position) => setSelection({ anchor: position, focus: position }),
+    jumpTo: jumpToCell,
+    restoreFocus: () => gridRef.current?.focus({ preventScroll: true }),
+    isSelected: (row, col) =>
+      row >= selectionBounds.start.row &&
+      row <= selectionBounds.end.row &&
+      col >= selectionBounds.start.col &&
+      col <= selectionBounds.end.col,
+  });
+
+  /** Alt+=: the SUM of the numbers above or to the left, or of the selected range. */
+  const autoSum = () => {
+    if (isSheetProtected(sheet)) {
+      useToasts.getState().push({ kind: "info", title: t("calc.sheetProtected") });
+      return;
+    }
+    const { start, end } = selectionBounds;
+    const plan = planAutoSum(
+      computed,
+      { top: start.row, left: start.col, bottom: end.row, right: end.col },
+      selection.focus,
+    );
+    if (plan.kind === "edit") {
+      pendingCaretRef.current = plan.caret;
+      setEditing({ row: plan.row, col: plan.col, value: plan.text });
+      return;
+    }
+    update((current) => applyCellTextEdits(current, sheetIndex, plan.edits));
+    const first = plan.edits[0];
+    setSelection({ anchor: { row: first.row, col: first.col }, focus: { row: first.row, col: first.col } });
+  };
+
+  /** Right-click on a header: select it (unless it is in the selection) and open its menu. */
+  const openHeaderMenu = (axis: Axis, index: number, event: React.MouseEvent) => {
+    event.preventDefault();
+    const { start, end } = selectionBounds;
+    const inside = axis === "row" ? index >= start.row && index <= end.row : index >= start.col && index <= end.col;
+    if (!inside) {
+      setSelection(
+        axis === "row"
+          ? { anchor: { row: index, col: 0 }, focus: { row: index, col: sheet.colCount - 1 } }
+          : { anchor: { row: 0, col: index }, focus: { row: sheet.rowCount - 1, col: index } },
+      );
+    }
+    setHeaderMenu({ axis, x: event.clientX, y: event.clientY });
+  };
+
+  const headerMenuItems = (axis: Axis): HeaderMenuItem[] => {
+    const items: HeaderMenuItem[] =
+      axis === "row"
+        ? [
+            {
+              id: "insert",
+              label: t("calc.insertRow"),
+              onSelect: () => insertRow(sheet, selectionBounds.start.row, updateSheet),
+            },
+            {
+              id: "delete",
+              label: t("calc.deleteRow"),
+              onSelect: () => deleteRow(sheet, selectionBounds.start.row, updateSheet),
+            },
+            { id: "hide", label: t("calc.hideRows"), onSelect: () => visibility.change("row", "hide") },
+          ]
+        : [
+            {
+              id: "insert",
+              label: t("calc.insertColumn"),
+              onSelect: () => insertColumn(sheet, selectionBounds.start.col, updateSheet),
+            },
+            {
+              id: "delete",
+              label: t("calc.deleteColumn"),
+              onSelect: () => deleteColumn(sheet, selectionBounds.start.col, updateSheet),
+            },
+            { id: "hide", label: t("calc.hideColumns"), onSelect: () => visibility.change("col", "hide") },
+          ];
+    if (visibility.canUnhide(axis)) {
+      items.push({
+        id: "unhide",
+        label: t(axis === "row" ? "calc.unhideRows" : "calc.unhideColumns"),
+        onSelect: () => visibility.change(axis, "unhide"),
+      });
+    }
+    return items;
+  };
+
   // Structured tables and audit overlays are derived once per sheet/selection
   // change; the per-cell render only looks up whether a cell participates.
   const sheetTables = useMemo(() => {
@@ -2234,7 +2078,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const selectedError = useMemo(() => {
     const address = formatAddress(selection.focus.row, selection.focus.col);
     const value = computed.get(address);
-    if (!isError(value) || value.code !== "#REF!") return null;
+    if (!isError(value)) return null;
+    // Only a circular or broken reference has more to say than its code.
+    if (value.code !== "#REF!") return errorTitle(t, value.code);
     const key = `${sheet.name}!${address}`;
     const cycle = findCircularReferences(workbook).find((candidate) => candidate.includes(key));
     if (cycle) return `${t("calc.circularReference")}: ${cycle.join(" → ")}`;
@@ -2243,53 +2089,15 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   }, [computed, selection.focus, sheet.name, workbook, t]);
 
   // Conditional formatting is evaluated once per sheet/data change instead of
-  // per visible cell. The old per-cell `conditionalFill` rescanned the rule
-  // range for every cell in the viewport, which made a 5 000-cell rule
-  // quadratic on the render path.
-  const conditionalFills = useMemo(() => {
-    const fills = new Map<string, string>();
-    for (const rule of sheet.conditional) {
-      if (rule.kind === "dataBar" || fills.size >= 50_000) continue;
-      const addresses = addressesInRange(rule.range, 5000);
-      if (addresses.length === 0) continue;
-      const values = addresses.map((address) => computed.get(address) ?? "");
-      const numbers = values.map((value) => (typeof value === "number" ? value : Number(value)));
-      const limit = Math.max(1, rule.topN ?? 10);
-      const sorted = [...numbers.filter(Number.isFinite)].sort((a, b) => b - a);
-      const threshold = sorted[Math.min(limit, sorted.length) - 1] ?? Number.POSITIVE_INFINITY;
-      const counts = new Map<string, number>();
-      if (rule.kind === "duplicate") {
-        for (const value of values) {
-          const key = String(value ?? "");
-          if (key !== "") counts.set(key, (counts.get(key) ?? 0) + 1);
-        }
-      }
-      addresses.forEach((address, index) => {
-        // First matching rule wins, in the order the rules are listed.
-        if (fills.has(address)) return;
-        const fill = ruleFill(rule, values[index], numbers[index], counts, threshold);
-        if (fill) fills.set(address, fill);
-      });
-    }
-    return fills;
-  }, [sheet, computed]);
-
-  // One pass over the data-bar rules: the scale of a bar is relative to the
-  // largest value in its range, which is how every spreadsheet draws them.
-  const dataBars = useMemo(() => {
-    const bars = new Map<string, { max: number; fill: string }>();
-    for (const rule of sheet.conditional) {
-      if (rule.kind !== "dataBar") continue;
-      const addresses = addressesInRange(rule.range, 5000);
-      let max = 0;
-      for (const address of addresses) {
-        const value = Math.abs(Number(computed.get(address) ?? 0));
-        if (Number.isFinite(value)) max = Math.max(max, value);
-      }
-      for (const address of addresses) bars.set(address, { max, fill: rule.fill ?? "#638EC6" });
-    }
-    return bars;
-  }, [sheet, computed]);
+  // per visible cell (see calc/rules.ts).
+  const conditional = useMemo(() => {
+    let evaluate: ReturnType<typeof sheetFormulaEvaluator> | null = null;
+    return prepareConditional(sheet.conditional, {
+      values: computed,
+      // Only a formula rule needs the evaluator, and only for the cells it is asked about.
+      evaluate: (formula, row, col) => (evaluate ??= sheetFormulaEvaluator(workbook, sheet))(formula, row, col),
+    });
+  }, [sheet, computed, workbook]);
 
   // Rule ranges are parsed once per rule list, so the per-cell lookup below is a
   // few integer comparisons however large the validated range is.
@@ -2346,6 +2154,24 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const selectHandleStartPlace = placeHandle(selectHandleStart, selectionBounds.start.row, selectionBounds.start.col);
 
   const selectionAddress = formatAddress(selection.focus.row, selection.focus.col);
+
+  // Assistive technology: the grid points at its active cell while that cell is
+  // drawn (the grid is virtualised, a scrolled-away cell has no element to
+  // point at), and a polite live region says where the selection is.
+  const gridId = useId();
+  const cellId = (row: number, col: number) => `${gridId}-${row}-${col}`;
+  const activeCellDrawn =
+    visible.rows.includes(selection.focus.row) && visible.columns.some(({ col }) => col === selection.focus.col);
+  const announcement = cellAnnouncement(t, {
+    address: selectionAddress,
+    range:
+      selectionBounds.start.row === selectionBounds.end.row && selectionBounds.start.col === selectionBounds.end.col
+        ? null
+        : `${formatAddress(selectionBounds.start.row, selectionBounds.start.col)}:${formatAddress(selectionBounds.end.row, selectionBounds.end.col)}`,
+    display: formatCellDisplay(computed.get(selectionAddress) ?? "", activeCell?.style ?? defaultCellStyle()),
+    formula: activeCell?.formula ?? null,
+    note: noteOf(activeCell)?.text ?? null,
+  });
   const selectedTable = (sheet.tables ?? []).find((table) => addressInRange(selectionAddress, table.range));
   const nameBox = selectedTable
     ? selectedTable.name
@@ -2535,315 +2361,69 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       className={`editor calc-editor${android ? " is-android" : ""}`}
       style={android && keyboardInset > 0 ? { paddingBottom: keyboardInset } : undefined}
     >
-      <Ribbon
-        tabs={[
-          { id: "home", label: t("calc.tabHome") },
-          { id: "insert", label: t("calc.tabInsert") },
-          { id: "formulas", label: t("calc.tabFormulas") },
-          { id: "data", label: t("calc.tabData") },
-          { id: "view", label: t("calc.tabView") },
-        ]}
+      <CalcRibbon
         active={ribbon}
         onSelect={setRibbon}
-      >
-        {ribbon === "home" ? (
-          <>
-            <RibbonGroup label={t("writer.clipboard")}>
-              <ToolButton
-                icon={<Undo2 size={16} />}
-                onClick={undo}
-                disabled={undoStack.length === 0}
-                title={t("common.undo")}
-              />
-              <ToolButton
-                icon={<Redo2 size={16} />}
-                onClick={redo}
-                disabled={redoStack.length === 0}
-                title={t("common.redo")}
-              />
-              <ToolButton icon={<Copy size={16} />} onClick={copySelection} title={t("common.copy")} />
-              <ToolButton icon={<Eraser size={16} />} onClick={clearSelection} title={t("calc.clearCells")} />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.font")}>
-              <ToolButton
-                icon={<Bold size={16} />}
-                onClick={() => applyStyle({ bold: !(activeCell?.style.bold ?? false) })}
-                active={activeCell?.style.bold}
-                title={t("writer.bold")}
-              />
-              <ToolButton
-                icon={<Italic size={16} />}
-                onClick={() => applyStyle({ italic: !(activeCell?.style.italic ?? false) })}
-                active={activeCell?.style.italic}
-                title={t("writer.italic")}
-              />
-              <ToolButton
-                icon={<Underline size={16} />}
-                onClick={() => applyStyle({ underline: !(activeCell?.style.underline ?? false) })}
-                active={activeCell?.style.underline}
-                title={t("writer.underline")}
-              />
-              <ToolColor
-                value={activeCell?.style.color ?? "#1f2328"}
-                onChange={(color) => applyStyle({ color })}
-                title={t("writer.textColor")}
-              />
-              <ToolColor
-                value={activeCell?.style.fill ?? "#ffffff"}
-                onChange={(fill) => applyStyle({ fill })}
-                title={t("calc.fillColor")}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.paragraph")}>
-              <ToolButton
-                icon={<AlignLeft size={16} />}
-                onClick={() => applyStyle({ align: "left" })}
-                active={activeCell?.style.align === "left"}
-                title={t("writer.alignLeft")}
-              />
-              <ToolButton
-                icon={<AlignCenter size={16} />}
-                onClick={() => applyStyle({ align: "center" })}
-                active={activeCell?.style.align === "center"}
-                title={t("writer.alignCenter")}
-              />
-              <ToolButton
-                icon={<AlignRight size={16} />}
-                onClick={() => applyStyle({ align: "right" })}
-                active={activeCell?.style.align === "right"}
-                title={t("writer.alignRight")}
-              />
-              <ToolButton
-                icon={<Merge size={16} />}
-                onClick={() => toggleMerge(sheet, selection, updateSheet)}
-                title={t("calc.mergeCells")}
-              />
-              <ToolButton icon={<Grid3x3 size={16} />} onClick={() => applyBorder("all")} title={t("calc.borders")} />
-            </RibbonGroup>
-            <RibbonGroup label={t("calc.numberFormat")}>
-              <ToolSelect
-                value={activeCell?.style.numberFormat ?? "General"}
-                onChange={(numberFormat) => applyStyle({ numberFormat })}
-                options={[
-                  { value: "General", label: t("calc.formatGeneral") },
-                  { value: "0", label: "1234" },
-                  { value: "0.00", label: "12.34" },
-                  { value: "#,##0", label: "1,234" },
-                  { value: "#,##0.00", label: "1,234.56" },
-                  { value: "0%", label: "12%" },
-                  { value: "$#,##0.00", label: "$1,234.56" },
-                  { value: "dd.mm.yyyy", label: "31.12.2025" },
-                  { value: "hh:mm", label: "13:45" },
-                ]}
-                width={120}
-              />
-            </RibbonGroup>
-          </>
-        ) : null}
-
-        {ribbon === "insert" ? (
-          <>
-            <RibbonGroup label={t("calc.charts")}>
-              <ToolButton icon={<BarChart3 size={16} />} label={t("calc.chart")} onClick={() => setChartDialog(true)} />
-            </RibbonGroup>
-            <RibbonGroup label={t("calc.pivotTable")}>
-              <ToolButton
-                icon={<Grid3x3 size={16} />}
-                label={t("calc.pivotTable")}
-                onClick={() => setPivotDialog(true)}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("calc.structuredTables")}>
-              <ToolButton
-                icon={<Table2 size={16} />}
-                label={t("calc.insertTable")}
-                onClick={() => setTableDialog(true)}
-              />
-              <ToolButton
-                icon={<Eye size={16} />}
-                label={t("calc.tableList")}
-                onClick={() => setTablesPanel((open) => !open)}
-                active={tablesPanel}
-              />
-            </RibbonGroup>
-          </>
-        ) : null}
-
-        {ribbon === "formulas" ? (
-          <>
-            <RibbonGroup label={t("calc.functions")}>
-              <ToolButton icon={<Sigma size={16} />} label="SUM" onClick={() => insertFunction("SUM")} />
-              <ToolButton label="AVERAGE" onClick={() => insertFunction("AVERAGE")} />
-              <ToolButton label="IF" onClick={() => insertFunction("IF")} />
-              <ToolButton label="COUNT" onClick={() => insertFunction("COUNT")} />
-              <ToolButton label="ROUND" onClick={() => insertFunction("ROUND")} />
-              <ToolButton label="VLOOKUP" onClick={() => insertFunction("VLOOKUP")} />
-            </RibbonGroup>
-            <RibbonGroup label={t("calc.auditing")}>
-              <ToolButton
-                icon={<GitBranch size={16} />}
-                label={t("calc.tracePrecedents")}
-                onClick={() => traceFromSelection("precedents")}
-              />
-              <ToolButton
-                icon={<GitBranch size={16} />}
-                label={t("calc.traceDependents")}
-                onClick={() => traceFromSelection("dependents")}
-              />
-              <ToolButton
-                icon={<XCircle size={16} />}
-                label={t("calc.clearTrace")}
-                onClick={() => setTrace(null)}
-                disabled={trace === null}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("calc.structuredTables")}>
-              <ToolButton
-                icon={<Table2 size={16} />}
-                label={t("calc.insertTable")}
-                onClick={() => setTableDialog(true)}
-              />
-              <ToolButton
-                icon={<Eye size={16} />}
-                label={t("calc.tableList")}
-                onClick={() => setTablesPanel((open) => !open)}
-                active={tablesPanel}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("calc.conditional")}>
-              <ToolButton
-                icon={<Filter size={16} />}
-                label={t("calc.conditionalFormatting")}
-                onClick={() => setConditionalDialog(true)}
-              />
-              <ToolButton label={t("calc.dataValidation")} onClick={() => setValidationDialog(true)} />
-            </RibbonGroup>
-          </>
-        ) : null}
-
-        {ribbon === "data" ? (
-          <>
-            <RibbonGroup label={t("calc.sort")}>
-              <ToolButton
-                icon={<ArrowUpAZ size={16} />}
-                label={t("calc.sortAsc")}
-                onClick={() => sortByColumn(selection.focus.col, true)}
-              />
-              <ToolButton
-                icon={<ArrowDownAZ size={16} />}
-                label={t("calc.sortDesc")}
-                onClick={() => sortByColumn(selection.focus.col, false)}
-              />
-              <ToolButton
-                icon={<Filter size={16} />}
-                label={t("calc.filter")}
-                onClick={() => openFilter(selection.focus.col)}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("calc.dataTools")}>
-              <ToolButton icon={<Columns3 size={16} />} label={t("calc.textToColumns")} onClick={openTextToColumns} />
-              <ToolButton
-                icon={<CopyX size={16} />}
-                label={t("calc.removeDuplicates")}
-                onClick={openRemoveDuplicates}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("ai.edit.group")}>
-              <ToolButton
-                icon={<FileText size={16} />}
-                label={t("ai.edit.btn.summarizeColumn")}
-                onClick={openAiSummarize}
-                disabled={!aiStatus.configured}
-                title={
-                  aiStatus.configured
-                    ? undefined
-                    : `${t("ai.edit.btn.summarizeColumn")} - ${t("ai.edit.notConfigured")}`
-                }
-              />
-              <ToolButton
-                icon={<Sparkles size={16} />}
-                label={t("ai.edit.btn.suggestFormula")}
-                onClick={openAiFormula}
-                disabled={!aiStatus.configured}
-                title={
-                  aiStatus.configured ? undefined : `${t("ai.edit.btn.suggestFormula")} - ${t("ai.edit.notConfigured")}`
-                }
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("calc.structure")}>
-              <ToolButton
-                icon={<Plus size={16} />}
-                label={t("calc.insertRow")}
-                onClick={() => insertRow(sheet, selection.focus.row, updateSheet)}
-              />
-              <ToolButton
-                icon={<Minus size={16} />}
-                label={t("calc.deleteRow")}
-                onClick={() => deleteRow(sheet, selection.focus.row, updateSheet)}
-              />
-              <ToolButton
-                icon={<Plus size={16} />}
-                label={t("calc.insertColumn")}
-                onClick={() => insertColumn(sheet, selection.focus.col, updateSheet)}
-              />
-              <ToolButton
-                icon={<Minus size={16} />}
-                label={t("calc.deleteColumn")}
-                onClick={() => deleteColumn(sheet, selection.focus.col, updateSheet)}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("calc.names")}>
-              <ToolButton icon={<Tag size={16} />} label={t("calc.nameManager")} onClick={() => setNameDialog(true)} />
-            </RibbonGroup>
-            <RibbonGroup label={t("calc.printLayout")}>
-              <ToolButton
-                icon={<Printer size={16} />}
-                label={t("calc.printSetup")}
-                onClick={() => setPrintDialog(true)}
-              />
-            </RibbonGroup>
-          </>
-        ) : null}
-
-        {ribbon === "view" ? (
-          <>
-            <RibbonGroup label={t("calc.view")}>
-              <ToolButton
-                icon={<Snowflake size={16} />}
-                label={sheet.freezeRows > 0 || sheet.freezeCols > 0 ? t("calc.unfreezePanes") : t("calc.freezePanes")}
-                onClick={toggleFreeze}
-                active={sheet.freezeRows > 0 || sheet.freezeCols > 0}
-              />
-              <ToolButton
-                label={sheet.showGridlines ? t("calc.hideGridlines") : t("calc.showGridlines")}
-                onClick={() => updateSheet((current) => ({ ...current, showGridlines: !current.showGridlines }))}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("calc.sheets")}>
-              <ToolButton icon={<Plus size={16} />} label={t("calc.addSheet")} onClick={addSheet} />
-            </RibbonGroup>
-          </>
-        ) : null}
-
-        <div className="ribbon-spacer" />
-        <RibbonGroup>
-          <ToolButton
-            icon={<FolderOpen size={16} />}
-            label={t("common.open")}
-            onClick={() => void openIntoWorkspace()}
-          />
-          <ToolButton
-            icon={<Save size={16} />}
-            label={t("common.save")}
-            onClick={() => void session.save()}
-            disabled={session.busy}
-          />
-          <ToolButton label={t("common.saveAs")} onClick={() => void session.saveAs()} disabled={session.busy} />
-          <ToolButton icon={<Printer size={16} />} label={t("common.print")} onClick={() => void session.print()} />
-        </RibbonGroup>
-      </Ribbon>
+        canUndo={undoStack.length > 0}
+        canRedo={redoStack.length > 0}
+        activeStyle={activeCell?.style}
+        frozen={sheet.freezeRows > 0 || sheet.freezeCols > 0}
+        showGridlines={sheet.showGridlines}
+        tablesPanelOpen={tablesPanel}
+        traceActive={trace !== null}
+        aiConfigured={aiStatus.configured}
+        busy={session.busy}
+        actions={{
+          undo,
+          redo,
+          copy: copySelection,
+          clear: clearSelection,
+          applyStyle,
+          merge: () => toggleMerge(sheet, selection, updateSheet),
+          borders: () => applyBorder("all"),
+          openChart: () => setChartDialog(true),
+          insertLink: () => annotations.insertLink(),
+          insertNote: () => annotations.insertNote(),
+          openPivot: () => setPivotDialog(true),
+          openTable: () => setTableDialog(true),
+          toggleTablesPanel: () => setTablesPanel((open) => !open),
+          trace: traceFromSelection,
+          clearTrace: () => setTrace(null),
+          openConditional: () => setConditionalDialog(true),
+          openValidation: () => setValidationDialog(true),
+          sort: (ascending) => sortByColumn(selection.focus.col, ascending),
+          openSort: openSortDialog,
+          pasteSpecial: () => void pasteSpecial.open(),
+          autoSum,
+          filter: () => openFilter(selection.focus.col),
+          textToColumns: openTextToColumns,
+          removeDuplicates: openRemoveDuplicates,
+          aiSummarize: openAiSummarize,
+          aiFormula: openAiFormula,
+          insertRow: () => insertRow(sheet, selection.focus.row, updateSheet),
+          deleteRow: () => deleteRow(sheet, selection.focus.row, updateSheet),
+          insertColumn: () => insertColumn(sheet, selection.focus.col, updateSheet),
+          deleteColumn: () => deleteColumn(sheet, selection.focus.col, updateSheet),
+          openNames: () => setNameDialog(true),
+          openPrint: () => setPrintDialog(true),
+          toggleFreeze,
+          toggleGridlines: () => updateSheet((current) => ({ ...current, showGridlines: !current.showGridlines })),
+          hideRows: () => visibility.change("row", "hide"),
+          unhideRows: () => visibility.change("row", "unhide"),
+          hideColumns: () => visibility.change("col", "hide"),
+          unhideColumns: () => visibility.change("col", "unhide"),
+          addSheet,
+          save: () => void session.save(),
+          saveAs: () => void session.saveAs(),
+          print: () => void session.print(),
+        }}
+      />
 
       {!android ? formulaBar : null}
+
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {announcement}
+      </div>
 
       {trace || selectedError ? (
         <div
@@ -2879,12 +2459,16 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         </div>
       ) : null}
 
-      <div className="calc-grid-wrap" ref={containerRef}>
+      <div className="calc-grid-wrap" ref={containerRef} {...annotations.hoverHandlers}>
         <div
           className="calc-grid"
           tabIndex={0}
           role="grid"
           aria-label={t("calc.gridLabel")}
+          aria-rowcount={sheet.rowCount}
+          aria-colcount={sheet.colCount}
+          aria-multiselectable="true"
+          aria-activedescendant={activeCellDrawn ? cellId(selection.focus.row, selection.focus.col) : undefined}
           ref={gridRef}
           onPointerDown={handleGridPointerDown}
           onKeyDown={handleKeyDown}
@@ -2903,45 +2487,52 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           >
             <div
               className="calc-col-headers"
+              aria-hidden="true"
               style={{ transform: `translate(${HEADER_WIDTH}px, ${scroll.top / gridZoom}px)` }}
             >
               {visible.columns.map(({ col, x }) => (
                 <div
                   key={col}
                   data-col-header={col}
-                  className={`calc-col-header${selection.focus.col === col ? " is-active" : ""}`}
+                  className={`calc-col-header${selection.focus.col === col ? " is-active" : ""}${isHiddenIndex(sheet.colWidths, col - 1) ? " has-hidden-before" : ""}`}
                   style={{
                     left: pinnedPosition(col, freeze.cols, x, scrollX),
                     width: sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH,
                     zIndex: col < freeze.cols ? 1 : undefined,
                   }}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    insertColumn(sheet, col, updateSheet);
-                  }}
+                  onContextMenu={(event) => openHeaderMenu("col", col, event)}
                 >
                   {columnLabel(col)}
                   <span className="col-resize" data-col-resize={col} />
                 </div>
               ))}
             </div>
-            <div className="calc-row-headers" style={{ transform: `translate(${scroll.left / gridZoom}px, 0)` }}>
+            <div
+              className="calc-row-headers"
+              aria-hidden="true"
+              style={{ transform: `translate(${scroll.left / gridZoom}px, 0)` }}
+            >
               {visible.rows.map((row) => (
                 <div
                   key={row}
                   data-row-header={row}
-                  className={`calc-row-header${selection.focus.row === row ? " is-active" : ""}`}
+                  className={`calc-row-header${selection.focus.row === row ? " is-active" : ""}${rowLayout.isHidden(row - 1) ? " has-hidden-before" : ""}`}
                   style={{
                     top: pinnedPosition(row, freeze.rows, rowLayout.offsetOf(row), scrollY),
                     height: rowLayout.heightOf(row),
                     zIndex: row < freeze.rows ? 1 : undefined,
                   }}
+                  onContextMenu={(event) => openHeaderMenu("row", row, event)}
                 >
                   {row + 1}
                 </div>
               ))}
             </div>
-            <div className="calc-corner" style={{ transform: `translate(${scrollX}px, ${scrollY}px)` }} />
+            <div
+              className="calc-corner"
+              aria-hidden="true"
+              style={{ transform: `translate(${scrollX}px, ${scrollY}px)` }}
+            />
             <div
               className="calc-cells"
               style={{
@@ -2950,167 +2541,173 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 height: rowLayout.total,
               }}
             >
-              {visible.rows.map((row) =>
-                visible.columns.map(({ col, x }) => {
-                  const address = formatAddress(row, col);
-                  const value = computed.get(address) ?? "";
-                  const cell = sheet.cells[address];
-                  const width = sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH;
-                  const isEditing = editing?.row === row && editing?.col === col;
-                  const inSelection =
-                    row >= selectionBounds.start.row &&
-                    row <= selectionBounds.end.row &&
-                    col >= selectionBounds.start.col &&
-                    col <= selectionBounds.end.col;
-                  const fill = conditionalFills.get(address);
-                  const style = cell?.style ?? defaultCellStyle();
-                  const validation = validationAt.find(row, col);
-                  const invalid = validation ? !isValid(validation, value, listItems.get(validation.id)) : false;
-                  // The structured table (if any) that owns this cell decides
-                  // header/banding/outline; the cell's own formatting still wins.
-                  const tableEntry = sheetTables.find(
-                    ({ parts }) =>
-                      row >= parts.start.row && row <= parts.end.row && col >= parts.start.col && col <= parts.end.col,
-                  );
-                  let tableFill: string | undefined;
-                  let tableHeader = false;
-                  if (tableEntry) {
-                    const { table, parts } = tableEntry;
-                    tableHeader = table.hasHeaders && row === parts.start.row;
-                    const totalsRow = table.hasTotals && row === parts.end.row;
-                    if (tableHeader) tableFill = table.headerFill ?? undefined;
-                    else if (!totalsRow && table.bandedRows) {
-                      const bodyStart = parts.start.row + (table.hasHeaders ? 1 : 0);
-                      if ((row - bodyStart) % 2 === 1) tableFill = "#EFF6FF";
+              {visible.rows.map((row) => (
+                <div key={row} role="row" aria-rowindex={row + 1} className="calc-row">
+                  {visible.columns.map(({ col, x }) => {
+                    const address = formatAddress(row, col);
+                    const value = computed.get(address) ?? "";
+                    const cell = sheet.cells[address];
+                    const width = sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH;
+                    const isEditing = editing?.row === row && editing?.col === col;
+                    const inSelection =
+                      row >= selectionBounds.start.row &&
+                      row <= selectionBounds.end.row &&
+                      col >= selectionBounds.start.col &&
+                      col <= selectionBounds.end.col;
+                    const format = conditional.formatAt(row, col);
+                    const fill = format?.fill;
+                    const style = cell?.style ?? defaultCellStyle();
+                    const validation = validationAt.find(row, col);
+                    const invalid = validation ? !isValid(validation, value, listItems.get(validation.id)) : false;
+                    // The structured table (if any) that owns this cell decides
+                    // header/banding/outline; the cell's own formatting still wins.
+                    const tableEntry = sheetTables.find(
+                      ({ parts }) =>
+                        row >= parts.start.row &&
+                        row <= parts.end.row &&
+                        col >= parts.start.col &&
+                        col <= parts.end.col,
+                    );
+                    let tableFill: string | undefined;
+                    let tableHeader = false;
+                    if (tableEntry) {
+                      const { table, parts } = tableEntry;
+                      tableHeader = table.hasHeaders && row === parts.start.row;
+                      const totalsRow = table.hasTotals && row === parts.end.row;
+                      if (tableHeader) tableFill = table.headerFill ?? undefined;
+                      else if (!totalsRow && table.bandedRows) {
+                        const bodyStart = parts.start.row + (table.hasHeaders ? 1 : 0);
+                        if ((row - bodyStart) % 2 === 1) tableFill = "#EFF6FF";
+                      }
                     }
-                  }
-                  const traceKind = tracedCells.get(address);
-                  const frozenRow = row < freeze.rows;
-                  const frozenCol = col < freeze.cols;
-                  return (
-                    <div
-                      key={address}
-                      data-cell={`${row}:${col}`}
-                      data-row={row}
-                      data-col={col}
-                      className={`calc-cell${inSelection ? " is-selected" : ""}${invalid ? " is-invalid" : ""}`}
-                      style={{
-                        left: pinnedPosition(col, freeze.cols, x, scrollX),
-                        top: pinnedPosition(row, freeze.rows, rowLayout.offsetOf(row), scrollY),
-                        width,
-                        height: rowLayout.heightOf(row),
-                        // Frozen cells cover what scrolls under them, so they need a fill.
-                        zIndex: frozenRow && frozenCol ? 3 : frozenRow || frozenCol ? 2 : undefined,
-                        background:
-                          fill ?? tableFill ?? style.fill ?? (frozenRow || frozenCol ? "var(--bg)" : undefined),
-                        fontWeight: style.bold || (tableHeader && tableEntry!.table.headerBold) ? 700 : undefined,
-                        fontStyle: style.italic ? "italic" : undefined,
-                        textDecoration:
-                          [style.underline ? "underline" : "", style.strike ? "line-through" : ""]
-                            .filter(Boolean)
-                            .join(" ") || undefined,
-                        color: style.color ?? (tableFill && tableHeader ? "#ffffff" : undefined),
-                        textAlign: (style.align === "general"
-                          ? typeof value === "number"
-                            ? "right"
-                            : "left"
-                          : style.align) as "left" | "right" | "center",
-                        justifyContent:
-                          style.align === "center"
-                            ? "center"
-                            : style.align === "right" || (style.align === "general" && typeof value === "number")
-                              ? "flex-end"
-                              : "flex-start",
-                      }}
-                      onDoubleClick={() => setEditing({ row, col, value: cell?.formula ?? cellText(cell) })}
-                    >
-                      {isEditing ? (
-                        <input
-                          className="cell-editor"
-                          ref={cellInputRef}
-                          value={editing!.value}
-                          // eslint-disable-next-line jsx-a11y/no-autofocus -- typing replaces the cell content; focusing the editor is the whole point of the interaction
-                          autoFocus
-                          onFocus={(event) => {
-                            setFocusMode("cell");
-                            setSuggestDismissed(false);
-                            setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length);
-                          }}
-                          onSelect={(event) =>
-                            setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
-                          }
-                          onChange={(event) => {
-                            setDraftCaret(event.target.selectionStart ?? event.target.value.length);
-                            setSuggestDismissed(false);
-                            setEditing({ row, col, value: event.target.value });
-                          }}
-                          onBlur={() => {
-                            setFocusMode(null);
-                            commitEdit("none", false);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.nativeEvent.isComposing) return;
-                            // The popup owns Tab/Enter/Escape/arrows while it is open.
-                            if (handleAssistKey(event)) return;
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              commitEdit(event.shiftKey ? "up" : "down");
+                    const traceKind = tracedCells.get(address);
+                    const errorTip = isError(value) ? errorTitle(t, value.code) : null;
+                    const linked = isLinkCell(cell);
+                    const frozenRow = row < freeze.rows;
+                    const frozenCol = col < freeze.cols;
+                    return (
+                      // eslint-disable-next-line jsx-a11y/interactive-supports-focus -- the grid keeps the focus and points at its active cell with aria-activedescendant; cells are not tab stops
+                      <div
+                        key={address}
+                        id={cellId(row, col)}
+                        role="gridcell"
+                        aria-rowindex={row + 1}
+                        aria-colindex={col + 1}
+                        aria-selected={inSelection}
+                        aria-invalid={invalid || undefined}
+                        data-cell={`${row}:${col}`}
+                        data-row={row}
+                        data-col={col}
+                        className={`calc-cell${inSelection ? " is-selected" : ""}${invalid ? " is-invalid" : ""}${errorTip ? " is-error" : ""}`}
+                        data-note={cell?.comment ? "" : undefined}
+                        title={errorTip ?? annotations.linkTitle(cell)}
+                        style={{
+                          left: pinnedPosition(col, freeze.cols, x, scrollX),
+                          top: pinnedPosition(row, freeze.rows, rowLayout.offsetOf(row), scrollY),
+                          width,
+                          height: rowLayout.heightOf(row),
+                          // Frozen cells cover what scrolls under them, so they need a fill.
+                          zIndex: frozenRow && frozenCol ? 3 : frozenRow || frozenCol ? 2 : undefined,
+                          background:
+                            fill ?? tableFill ?? style.fill ?? (frozenRow || frozenCol ? "var(--bg)" : undefined),
+                          ...cellTextStyle({
+                            style,
+                            numeric: typeof value === "number",
+                            headerBold: tableHeader && tableEntry!.table.headerBold,
+                            onHeaderFill: Boolean(tableFill && tableHeader),
+                            linked,
+                            rule: format,
+                          }),
+                        }}
+                        onDoubleClick={() => setEditing({ row, col, value: cell?.formula ?? cellText(cell) })}
+                        onContextMenu={(event) => annotations.openMenu(event, row, col)}
+                      >
+                        {isEditing ? (
+                          <input
+                            className="cell-editor"
+                            ref={cellInputRef}
+                            value={editing!.value}
+                            // eslint-disable-next-line jsx-a11y/no-autofocus -- typing replaces the cell content; focusing the editor is the whole point of the interaction
+                            autoFocus
+                            onFocus={(event) => {
+                              setFocusMode("cell");
+                              setSuggestDismissed(false);
+                              setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length);
+                            }}
+                            onSelect={(event) =>
+                              setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
                             }
-                            if (event.key === "Tab") {
-                              event.preventDefault();
-                              commitEdit(event.shiftKey ? "left" : "right");
-                            }
-                            if (event.key === "Escape") {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              restoreGridFocusRef.current = true;
-                              setEditing(null);
-                            }
-                          }}
-                        />
-                      ) : (
-                        <span className="cell-text">{formatCellDisplay(value, style)}</span>
-                      )}
-                      {style.borders.top ? <span className="cell-border top" /> : null}
-                      {style.borders.bottom ? <span className="cell-border bottom" /> : null}
-                      {style.borders.left ? <span className="cell-border left" /> : null}
-                      {style.borders.right ? <span className="cell-border right" /> : null}
-                      {tableEntry ? (
-                        <span
-                          className="table-outline"
-                          style={{
-                            position: "absolute",
-                            inset: 0,
-                            pointerEvents: "none",
-                            borderTop: row === tableEntry.parts.start.row ? "2px solid #1d4ed8" : undefined,
-                            borderBottom: row === tableEntry.parts.end.row ? "2px solid #1d4ed8" : undefined,
-                            borderLeft: col === tableEntry.parts.start.col ? "2px solid #1d4ed8" : undefined,
-                            borderRight: col === tableEntry.parts.end.col ? "2px solid #1d4ed8" : undefined,
-                          }}
-                        />
-                      ) : null}
-                      {traceKind ? (
-                        <span
-                          className="cell-trace"
-                          style={{
-                            position: "absolute",
-                            inset: 0,
-                            pointerEvents: "none",
-                            boxShadow: `inset 0 0 0 2px ${traceKind === "precedents" ? "#2563eb" : "#dc2626"}`,
-                          }}
-                        />
-                      ) : null}
-                      {(() => {
-                        const bar = dataBars.get(address);
-                        if (!bar) return null;
-                        const width = bar.max > 0 ? Math.min(100, (Math.abs(Number(value) || 0) / bar.max) * 100) : 0;
-                        return <span className="data-bar" style={{ width: `${width}%`, background: bar.fill }} />;
-                      })()}
-                      {cell?.comment ? <span className="cell-comment-dot" title={cell.comment} /> : null}
-                    </div>
-                  );
-                }),
-              )}
+                            onChange={(event) => {
+                              setDraftCaret(event.target.selectionStart ?? event.target.value.length);
+                              setSuggestDismissed(false);
+                              setEditing({ row, col, value: event.target.value });
+                            }}
+                            onBlur={() => {
+                              setFocusMode(null);
+                              commitEdit("none", false);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.nativeEvent.isComposing) return;
+                              // The popup owns Tab/Enter/Escape/arrows while it is open.
+                              if (handleAssistKey(event)) return;
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                commitEdit(event.shiftKey ? "up" : "down");
+                              }
+                              if (event.key === "Tab") {
+                                event.preventDefault();
+                                commitEdit(event.shiftKey ? "left" : "right");
+                              }
+                              if (event.key === "Escape") {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                restoreGridFocusRef.current = true;
+                                setEditing(null);
+                              }
+                            }}
+                          />
+                        ) : (
+                          <span className="cell-text" style={format?.icon ? { paddingLeft: 16 } : undefined}>
+                            {format?.hideValue ? "" : formatCellDisplay(value, style)}
+                          </span>
+                        )}
+                        {style.borders.top ? <span className="cell-border top" /> : null}
+                        {style.borders.bottom ? <span className="cell-border bottom" /> : null}
+                        {style.borders.left ? <span className="cell-border left" /> : null}
+                        {style.borders.right ? <span className="cell-border right" /> : null}
+                        {tableEntry ? (
+                          <span
+                            className="table-outline"
+                            style={{
+                              position: "absolute",
+                              inset: 0,
+                              pointerEvents: "none",
+                              borderTop: row === tableEntry.parts.start.row ? "2px solid #1d4ed8" : undefined,
+                              borderBottom: row === tableEntry.parts.end.row ? "2px solid #1d4ed8" : undefined,
+                              borderLeft: col === tableEntry.parts.start.col ? "2px solid #1d4ed8" : undefined,
+                              borderRight: col === tableEntry.parts.end.col ? "2px solid #1d4ed8" : undefined,
+                            }}
+                          />
+                        ) : null}
+                        {traceKind ? (
+                          <span
+                            className="cell-trace"
+                            style={{
+                              position: "absolute",
+                              inset: 0,
+                              pointerEvents: "none",
+                              boxShadow: `inset 0 0 0 2px ${traceKind === "precedents" ? "#2563eb" : "#dc2626"}`,
+                            }}
+                          />
+                        ) : null}
+                        <CfDecor format={format} t={t} />
+                        {errorTip ? <span className="cell-error-flag" /> : null}
+                        {cell?.comment ? <span className="cell-comment-dot" /> : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
               {freeze.rows > 0 ? (
                 <div
                   className="calc-freeze-line is-row"
@@ -3137,6 +2734,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
             <span
               className="calc-fill-handle"
               data-fill-handle=""
+              aria-hidden="true"
               style={{
                 left: fillHandlePlace.left - 5,
                 top: fillHandlePlace.top - 5,
@@ -3182,6 +2780,13 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 />
               );
             })}
+            <VisibleNotes
+              cells={sheet.cells}
+              place={(row, col) => ({
+                left: columnX(col) + (sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH),
+                top: HEADER_HEIGHT + rowLayout.offsetOf(row),
+              })}
+            />
             {(sheet.pivotTables ?? []).map((pivot) => {
               const position = parseAddress(pivot.anchor) ?? { row: 0, col: 0 };
               return (
@@ -3268,50 +2873,19 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         </div>
       </div>
 
-      <div className="calc-sheet-tabs">
-        <button type="button" className="icon-btn" onClick={addSheet} title={t("calc.addSheet")}>
-          <Plus size={14} />
-        </button>
-        {workbook.sheets.map((candidate, index) => (
-          <div
-            key={candidate.id}
-            className={`sheet-tab${index === sheetIndex ? " is-active" : ""}`}
-            role="tab"
-            tabIndex={index === sheetIndex ? 0 : -1}
-            aria-selected={index === sheetIndex}
-            onClick={() => {
-              setSheetIndex(index);
-              setSelection({ anchor: { row: 0, col: 0 }, focus: { row: 0, col: 0 } });
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                setSheetIndex(index);
-                setSelection({ anchor: { row: 0, col: 0 }, focus: { row: 0, col: 0 } });
-              }
-            }}
-          >
-            <span onDoubleClick={() => renameSheet(index)}>{candidate.name}</span>
-            {workbook.sheets.length > 1 ? (
-              <button
-                type="button"
-                className="icon-btn"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  removeSheet(index);
-                }}
-                title={t("common.delete")}
-              >
-                <Trash2 size={11} />
-              </button>
-            ) : null}
-          </div>
-        ))}
-        <span className="spacer" />
-        <span className="muted">
-          {tab.path ?? t("writer.unsaved")} {tab.dirty ? "•" : ""}
-        </span>
-      </div>
+      <SheetTabs
+        sheets={workbook.sheets}
+        activeIndex={sheetIndex}
+        path={tab.path ?? null}
+        dirty={tab.dirty}
+        onSelect={(index) => {
+          setSheetIndex(index);
+          setSelection({ anchor: { row: 0, col: 0 }, focus: { row: 0, col: 0 } });
+        }}
+        onAdd={addSheet}
+        onRename={renameSheet}
+        onRemove={removeSheet}
+      />
 
       <div className="editor-status">
         <span>{nameBox}</span>
@@ -3331,25 +2905,20 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
 
       {android ? formulaBar : null}
 
-      {chartDialog ? (
-        <Dialog title={t("calc.chart")} onClose={() => setChartDialog(false)}>
-          <div className="chart-kind-grid">
-            {["column", "bar", "line", "pie", "area"].map((kind) => (
-              <button key={kind} type="button" className="btn btn-soft" onClick={() => addChart(kind)}>
-                {t(`calc.chart_${kind}`)}
-              </button>
-            ))}
-          </div>
-          <p className="muted">{t("calc.chartHint")}</p>
-        </Dialog>
-      ) : null}
+      {chartDialog ? <ChartDialog onPick={addChart} onClose={() => setChartDialog(false)} /> : null}
 
       {pivotDialog ? (
         <PivotDialog workbook={workbook} sheet={sheet} onClose={() => setPivotDialog(false)} onApply={addPivot} />
       ) : null}
 
       {conditionalDialog ? (
-        <ConditionalDialog onClose={() => setConditionalDialog(false)} onApply={addConditional} />
+        <ConditionalDialog
+          rules={sheet.conditional}
+          defaultRange={defaultRuleRange(selectionBounds, usedRange(sheet))}
+          onClose={() => setConditionalDialog(false)}
+          onApply={addConditional}
+          onDelete={deleteConditional}
+        />
       ) : null}
 
       {validationDialog ? (
@@ -3427,74 +2996,39 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         />
       ) : null}
 
+      {sortDialog ? (
+        <SortDialog
+          columns={Array.from({ length: sortDialog.range.right - sortDialog.range.left + 1 }, (_, offset) => {
+            const index = sortDialog.range.left + offset;
+            return {
+              index,
+              letter: columnLabel(index),
+              header: toText(computed.get(formatAddress(sortDialog.range.top, index)) ?? ""),
+            };
+          })}
+          range={`${formatAddress(sortDialog.range.top, sortDialog.range.left)}:${formatAddress(sortDialog.range.bottom, sortDialog.range.right)}`}
+          defaultColumn={selection.focus.col}
+          headerGuess={sortDialog.headerGuess}
+          onClose={() => setSortDialog(null)}
+          onApply={(levels, hasHeaders) => {
+            runSort(sortDialog.range, levels, hasHeaders);
+            setSortDialog(null);
+          }}
+        />
+      ) : null}
+
       {filterOpen ? (
-        <Dialog
-          title={filterOpen.tableName ? `${t("calc.filter")} · ${filterOpen.tableName}` : t("calc.filter")}
+        <FilterDialog
+          draft={filterOpen}
+          onChange={setFilterOpen}
+          onApply={applyFilter}
+          onClear={() => {
+            const tableId = filterOpen.tableId;
+            updateSheet((current) => clearFilter(current, tableId));
+            setFilterOpen(null);
+          }}
           onClose={() => setFilterOpen(null)}
-        >
-          <div className="stack filter-list">
-            {filterOpen.values.map((entry, index) => (
-              <label key={entry.value} className="check">
-                <input
-                  type="checkbox"
-                  checked={entry.checked}
-                  onChange={(event) =>
-                    setFilterOpen((current) =>
-                      current
-                        ? {
-                            ...current,
-                            values: current.values.map((candidate, position) =>
-                              position === index ? { ...candidate, checked: event.target.checked } : candidate,
-                            ),
-                          }
-                        : current,
-                    )
-                  }
-                />
-                {entry.value || t("calc.filterBlank")}
-              </label>
-            ))}
-          </div>
-          <div className="row">
-            <button
-              type="button"
-              className="btn btn-soft"
-              onClick={() =>
-                setFilterOpen((current) =>
-                  current
-                    ? { ...current, values: current.values.map((entry) => ({ ...entry, checked: true })) }
-                    : current,
-                )
-              }
-            >
-              {t("calc.selectAll")}
-            </button>
-            <button type="button" className="btn btn-primary" onClick={applyFilter}>
-              {t("calc.applyFilter")}
-            </button>
-            <button
-              type="button"
-              className="btn btn-soft"
-              onClick={() => {
-                const tableId = filterOpen.tableId;
-                updateSheet((current) =>
-                  tableId
-                    ? {
-                        ...current,
-                        rowHeights: {},
-                        tables: (current.tables ?? []).map((table) =>
-                          table.id === tableId ? { ...table, filter: null } : table,
-                        ),
-                      }
-                    : { ...current, rowHeights: {}, filter: null },
-                );
-                setFilterOpen(null);
-              }}
-            >
-              {t("calc.clearFilter")}
-            </button>
-          </div>
-        </Dialog>
+        />
       ) : null}
 
       {tableDialog ? (
@@ -3523,1399 +3057,36 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         />
       ) : null}
 
-      {assistAnchor && focusMode !== null && (suggestions || argumentHint) ? (
-        <div
-          className="calc-assist"
-          style={{
-            position: "fixed",
-            left: assistAnchor.left,
-            top: assistAnchor.top,
-            transform: assistAnchor.above ? "translateY(-100%)" : undefined,
-            zIndex: 60,
-            display: "flex",
-            flexDirection: "column",
-            gap: 4,
-            maxWidth: 460,
+      {find.panel ? <FindReplacePanel panel={find.panel} /> : null}
+
+      {pasteSpecial.dialog}
+
+      {annotations.elements}
+
+      {headerMenu ? (
+        <HeaderMenu
+          label={t(headerMenu.axis === "row" ? "calc.rowMenu" : "calc.columnMenu")}
+          x={headerMenu.x}
+          y={headerMenu.y}
+          items={headerMenuItems(headerMenu.axis)}
+          onClose={(reason) => {
+            setHeaderMenu(null);
+            if (reason !== "outside") gridRef.current?.focus({ preventScroll: true });
           }}
-        >
-          {argumentHint ? (
-            <div
-              style={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                boxShadow: "var(--shadow)",
-                padding: "4px 8px",
-                fontFamily: "Consolas, monospace",
-                fontSize: 11.5,
-                display: "flex",
-                gap: 2,
-                flexWrap: "wrap",
-              }}
-            >
-              <strong>{argumentHint.name}</strong>
-              <span>(</span>
-              {argumentHint.parts.map((part, index) => (
-                <span key={`${index}:${part}`}>
-                  {index > 0 ? <span>, </span> : null}
-                  <span
-                    style={
-                      index === argumentHint.active
-                        ? {
-                            background: "var(--accent-weak)",
-                            color: "var(--accent-text)",
-                            borderRadius: 3,
-                            padding: "0 3px",
-                            fontWeight: 600,
-                          }
-                        : undefined
-                    }
-                  >
-                    {part}
-                  </span>
-                </span>
-              ))}
-              <span>)</span>
-            </div>
-          ) : null}
-          {suggestions && suggestions.items.length > 0 ? (
-            <div
-              role="listbox"
-              aria-label={t("calc.suggestions")}
-              style={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                boxShadow: "var(--shadow)",
-                maxHeight: 220,
-                overflowY: "auto",
-              }}
-            >
-              {suggestions.items.map((item, index) => (
-                <div
-                  key={`${item.kind}:${item.label}`}
-                  role="option"
-                  tabIndex={-1}
-                  aria-selected={index === suggestIndex}
-                  // Applied on pointerdown, not click: on touch the input would
-                  // blur before a click ever fires, and preventDefault keeps the
-                  // caret (and the soft keyboard) in the editor.
-                  onPointerDown={(event) => {
-                    event.preventDefault();
-                    applySuggestion(item);
-                  }}
-                  onMouseEnter={() => setSuggestIndex(index)}
-                  style={{
-                    display: "flex",
-                    alignItems: "baseline",
-                    gap: 8,
-                    padding: android ? "9px 10px" : "3px 8px",
-                    minHeight: android ? 40 : undefined,
-                    cursor: "pointer",
-                    background: index === suggestIndex ? "var(--accent-weak)" : undefined,
-                    color: index === suggestIndex ? "var(--accent-text)" : undefined,
-                    fontSize: 12,
-                  }}
-                >
-                  <span style={{ fontWeight: 600, fontFamily: "Consolas, monospace" }}>{item.label}</span>
-                  <span
-                    className="muted small"
-                    style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                  >
-                    {item.detail}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
+        />
+      ) : null}
+
+      {assistAnchor && focusMode !== null && (suggestions || argumentHint) ? (
+        <FormulaAssistPopup
+          anchor={assistAnchor}
+          hint={argumentHint}
+          suggestions={suggestions}
+          selectedIndex={suggestIndex}
+          android={android}
+          onPick={applySuggestion}
+          onHover={setSuggestIndex}
+        />
       ) : null}
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Derived data
-// ---------------------------------------------------------------------------
-
-/** The highlight one rule paints on one cell, or null when it does not match. */
-function ruleFill(
-  rule: CondRule,
-  value: Scalar,
-  number: number,
-  counts: Map<string, number>,
-  threshold: number,
-): string | null {
-  const [first, second] = rule.values;
-  switch (rule.kind) {
-    case "greater":
-      return Number.isFinite(number) && number > Number(first) ? (rule.fill ?? "#FEE2E2") : null;
-    case "less":
-      return Number.isFinite(number) && number < Number(first) ? (rule.fill ?? "#FEE2E2") : null;
-    case "between":
-      return Number.isFinite(number) && number >= Number(first) && number <= Number(second)
-        ? (rule.fill ?? "#FEF3C7")
-        : null;
-    case "equal":
-      return String(value) === String(first) ? (rule.fill ?? "#DBEAFE") : null;
-    case "textContains":
-      return String(value).toLowerCase().includes(String(first).toLowerCase()) ? (rule.fill ?? "#E0E7FF") : null;
-    case "duplicate":
-      return String(value ?? "") !== "" && (counts.get(String(value ?? "")) ?? 0) > 1 ? (rule.fill ?? "#FECACA") : null;
-    case "top":
-      return Number.isFinite(number) && number >= threshold ? (rule.fill ?? "#BBF7D0") : null;
-    default:
-      return null;
-  }
-}
-
-/** `items` are the resolved choices of a list rule (see `listValidationItems`). */
-function isValid(
-  rule: { kind: string; values: string[]; min: number | null; max: number | null },
-  value: Scalar,
-  items: readonly string[] = rule.values,
-): boolean {
-  if (value === "" || value === undefined) return true;
-  if (rule.kind === "list")
-    return items.map((entry) => entry.trim().toLowerCase()).includes(String(value).trim().toLowerCase());
-  const number = Number(value);
-  if (!Number.isFinite(number)) return rule.kind !== "number";
-  if (rule.kind === "number") {
-    if (rule.min !== null && number < rule.min) return false;
-    if (rule.max !== null && number > rule.max) return false;
-  }
-  return true;
-}
-
-function insertFunction(name: string) {
-  const active = window.document.activeElement as HTMLElement | null;
-  const input = window.document.querySelector<HTMLInputElement>(".formula-input");
-  if (input) {
-    input.focus();
-    const start = input.selectionStart ?? input.value.length;
-    input.value = `${input.value.slice(0, start)}=${name}(`;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  }
-  void active;
-}
-
-function insertRow(_sheet: Sheet, row: number, updateSheet: (mutate: (sheet: Sheet) => Sheet) => void) {
-  updateSheet((current) => {
-    const cells: Sheet["cells"] = {};
-    for (const [address, cell] of Object.entries(current.cells)) {
-      const position = parseAddress(address);
-      if (!position) continue;
-      cells[formatAddress(position.row >= row ? position.row + 1 : position.row, position.col)] = cell;
-    }
-    return { ...current, cells, rowCount: current.rowCount + 1 };
-  });
-}
-
-function deleteRow(_sheet: Sheet, row: number, updateSheet: (mutate: (sheet: Sheet) => Sheet) => void) {
-  updateSheet((current) => {
-    const cells: Sheet["cells"] = {};
-    for (const [address, cell] of Object.entries(current.cells)) {
-      const position = parseAddress(address);
-      if (!position || position.row === row) continue;
-      cells[formatAddress(position.row > row ? position.row - 1 : position.row, position.col)] = cell;
-    }
-    return { ...current, cells, rowCount: Math.max(10, current.rowCount - 1) };
-  });
-}
-
-function insertColumn(_sheet: Sheet, col: number, updateSheet: (mutate: (sheet: Sheet) => Sheet) => void) {
-  updateSheet((current) => {
-    const cells: Sheet["cells"] = {};
-    for (const [address, cell] of Object.entries(current.cells)) {
-      const position = parseAddress(address);
-      if (!position) continue;
-      cells[formatAddress(position.row, position.col >= col ? position.col + 1 : position.col)] = cell;
-    }
-    return { ...current, cells, colCount: current.colCount + 1 };
-  });
-}
-
-function deleteColumn(_sheet: Sheet, col: number, updateSheet: (mutate: (sheet: Sheet) => Sheet) => void) {
-  updateSheet((current) => {
-    const cells: Sheet["cells"] = {};
-    for (const [address, cell] of Object.entries(current.cells)) {
-      const position = parseAddress(address);
-      if (!position || position.col === col) continue;
-      cells[formatAddress(position.row, position.col > col ? position.col - 1 : position.col)] = cell;
-    }
-    return { ...current, cells, colCount: Math.max(5, current.colCount - 1) };
-  });
-}
-
-function toggleMerge(_sheet: Sheet, selection: Selection, updateSheet: (mutate: (sheet: Sheet) => Sheet) => void) {
-  const start = formatAddress(
-    Math.min(selection.anchor.row, selection.focus.row),
-    Math.min(selection.anchor.col, selection.focus.col),
-  );
-  const end = formatAddress(
-    Math.max(selection.anchor.row, selection.focus.row),
-    Math.max(selection.anchor.col, selection.focus.col),
-  );
-  updateSheet((current) => {
-    const existing = current.merges.findIndex((merge) => merge.start === start && merge.end === end);
-    if (existing >= 0) return { ...current, merges: current.merges.filter((_, index) => index !== existing) };
-    return { ...current, merges: [...current.merges, { start, end }] };
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Charts
-// ---------------------------------------------------------------------------
-
-function ChartBox({
-  chart,
-  sheet,
-  workbook,
-  x,
-  y,
-  onRemove,
-}: {
-  chart: { id: string; chart: ChartData; anchor: string; widthPx: number; heightPx: number };
-  sheet: Sheet;
-  workbook: Workbook;
-  x: number;
-  y: number;
-  onRemove: () => void;
-}) {
-  const values = computeSheetValues(workbook, sheet);
-  const categories = addressesInRange(chart.chart.categories, 5000).map((address) => String(values.get(address) ?? ""));
-  const series = chart.chart.series.map((entry) => ({
-    name: entry.name,
-    values: addressesInRange(entry.range, 5000).map((address) => Number(values.get(address) ?? 0)),
-    color: entry.color,
-  }));
-  const palette = ["#2563eb", "#059669", "#d97706", "#dc2626", "#7c3aed", "#0891b2"];
-  const all = series.flatMap((entry) => entry.values).filter(Number.isFinite);
-  const max = Math.max(1, ...all);
-  const min = Math.min(0, ...all);
-  const width = chart.widthPx;
-  const height = chart.heightPx;
-  const plotWidth = width - 48;
-  const plotHeight = height - 56;
-  const count = Math.max(1, categories.length);
-
-  const pointsFor = (values2: number[]) =>
-    values2
-      .map((value, index) => {
-        const px = 40 + (count === 1 ? plotWidth / 2 : (index / (count - 1)) * plotWidth);
-        const py = 34 + plotHeight - ((value - min) / (max - min || 1)) * plotHeight;
-        return `${px},${py}`;
-      })
-      .join(" ");
-
-  return (
-    <div className="chart-box" style={{ left: x, top: y, width, height }}>
-      <div className="chart-head">
-        <strong>{chart.chart.title}</strong>
-        <button type="button" className="icon-btn" onClick={onRemove} title="Delete chart">
-          <Trash2 size={12} />
-        </button>
-      </div>
-      <svg width={width} height={height - 26} viewBox={`0 0 ${width} ${height - 26}`}>
-        <line x1={40} y1={height - 22} x2={width - 8} y2={height - 22} stroke="#cbd5e1" />
-        <line x1={40} y1={34} x2={40} y2={height - 22} stroke="#cbd5e1" />
-        {chart.chart.kind === "pie"
-          ? pieSlices(series[0]?.values ?? [], palette).map((slice, index) => (
-              <path key={index} d={slice.path} fill={slice.color} opacity={0.85} />
-            ))
-          : null}
-        {chart.chart.kind === "column" || chart.chart.kind === "bar"
-          ? series.map((entry, seriesIndex) =>
-              entry.values.map((value, index) => {
-                const bandWidth = plotWidth / count;
-                const barWidth = Math.max(2, (bandWidth * 0.7) / series.length);
-                const px = 40 + index * bandWidth + bandWidth * 0.15 + seriesIndex * barWidth;
-                const py = 34 + plotHeight - ((value - min) / (max - min || 1)) * plotHeight;
-                return (
-                  <rect
-                    key={`${seriesIndex}-${index}`}
-                    x={chart.chart.kind === "bar" ? py : px}
-                    y={chart.chart.kind === "bar" ? 34 + index * bandWidth : py}
-                    width={chart.chart.kind === "bar" ? 40 + plotHeight - py : barWidth}
-                    height={chart.chart.kind === "bar" ? barWidth : 34 + plotHeight - py}
-                    fill={entry.color ?? palette[seriesIndex % palette.length]}
-                    opacity={0.85}
-                  />
-                );
-              }),
-            )
-          : null}
-        {chart.chart.kind === "line" || chart.chart.kind === "area"
-          ? series.map((entry, index) => (
-              <g key={index}>
-                {chart.chart.kind === "area" ? (
-                  <polygon
-                    points={`40,${34 + plotHeight} ${pointsFor(entry.values)} ${40 + plotWidth},${34 + plotHeight}`}
-                    fill={entry.color ?? palette[index % palette.length]}
-                    opacity={0.25}
-                  />
-                ) : null}
-                <polyline
-                  points={pointsFor(entry.values)}
-                  fill="none"
-                  stroke={entry.color ?? palette[index % palette.length]}
-                  strokeWidth={2}
-                />
-              </g>
-            ))
-          : null}
-        {categories.map((label, index) => (
-          <text
-            key={index}
-            x={40 + (index + 0.5) * (plotWidth / count)}
-            y={height - 8}
-            fontSize={9}
-            textAnchor="middle"
-            fill="#64748b"
-          >
-            {label.length > 8 ? `${label.slice(0, 7)}…` : label}
-          </text>
-        ))}
-      </svg>
-      {chart.chart.legend ? (
-        <div className="chart-legend">
-          {series.map((entry, index) => (
-            <span key={index}>
-              <i style={{ background: entry.color ?? palette[index % palette.length] }} />
-              {entry.name}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function pieSlices(values: number[], palette: string[]): Array<{ path: string; color: string }> {
-  const total = values.reduce((sum, value) => sum + Math.max(0, value), 0) || 1;
-  let angle = -Math.PI / 2;
-  const radius = 60;
-  const cx = 110;
-  const cy = 90;
-  return values.map((value, index) => {
-    const sweep = (Math.max(0, value) / total) * Math.PI * 2;
-    const x1 = cx + radius * Math.cos(angle);
-    const y1 = cy + radius * Math.sin(angle);
-    angle += sweep;
-    const x2 = cx + radius * Math.cos(angle);
-    const y2 = cy + radius * Math.sin(angle);
-    const large = sweep > Math.PI ? 1 : 0;
-    return {
-      path: `M ${cx} ${cy} L ${x1} ${y1} A ${radius} ${radius} 0 ${large} 1 ${x2} ${y2} Z`,
-      color: palette[index % palette.length],
-    };
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Dialogs
-// ---------------------------------------------------------------------------
-
-/** The live pivot grid, rendered over the sheet at the pivot's anchor. */
-function PivotBox({
-  pivot,
-  sheet,
-  workbook,
-  x,
-  y,
-  onRemove,
-}: {
-  pivot: PivotTable;
-  sheet: Sheet;
-  workbook: Workbook;
-  x: number;
-  y: number;
-  onRemove: () => void;
-}) {
-  const t = useT();
-  const [refreshToken, setRefreshToken] = useState(0);
-  // Recomputing on every relevant render keeps the pivot live; the refresh
-  // button is for an explicit "show me the current data" action and bumps a
-  // token so the memo is invalidated even when nothing else changed.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- refreshToken forces the explicit refresh; sheet keeps the pivot live across sheet edits
-  const result = useMemo(() => computePivot(workbook, pivot), [workbook, pivot, refreshToken, sheet]);
-  return (
-    <div className="pivot-box" style={{ left: x, top: y }}>
-      <div className="chart-head">
-        <strong>{pivot.name}</strong>
-        <span className="spacer" />
-        <button
-          type="button"
-          className="icon-btn"
-          onClick={() => setRefreshToken((value) => value + 1)}
-          title={t("calc.pivotRefresh")}
-        >
-          <RefreshCw size={12} />
-        </button>
-        <button type="button" className="icon-btn" onClick={onRemove} title={t("common.delete")}>
-          <Trash2 size={12} />
-        </button>
-      </div>
-      {result ? (
-        <table className="pivot-grid">
-          <tbody>
-            {result.grid.map((line, rowIndex) => (
-              <tr key={rowIndex}>
-                {line.map((value, colIndex) => (
-                  <td
-                    key={colIndex}
-                    className={colIndex < result.rowFieldCount || rowIndex === 0 ? "is-label" : undefined}
-                  >
-                    {isError(value) ? value.code : value === "" ? "" : String(value)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <p className="muted" style={{ padding: "6px 10px" }}>
-          {t("calc.pivotNeedsData")}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/** Configure a pivot over the sheet's used range. */
-function PivotDialog({
-  workbook,
-  sheet,
-  onClose,
-  onApply,
-}: {
-  workbook: Workbook;
-  sheet: Sheet;
-  onClose: () => void;
-  onApply: (config: {
-    rows: string[];
-    columns: string[];
-    values: PivotValueField[];
-    filters: PivotTable["filters"];
-  }) => void;
-}) {
-  const t = useT();
-  const source = usedRange(sheet);
-  const fields = pivotFields(workbook, sheet.name, source);
-  const [row, setRow] = useState(fields[0] ?? "");
-  const [column, setColumn] = useState("");
-  const [value, setValue] = useState(fields[fields.length - 1] ?? fields[0] ?? "");
-  const [aggregation, setAggregation] = useState<PivotValueField["aggregation"]>("sum");
-  return (
-    <Dialog title={t("calc.pivotTable")} onClose={onClose}>
-      <div className="stack">
-        <p className="muted">
-          {t("calc.pivotHint")} · {source}
-        </p>
-        <label className="field">
-          <span>{t("calc.pivotRows")}</span>
-          <select value={row} onChange={(event) => setRow(event.target.value)}>
-            {fields.map((field) => (
-              <option key={field} value={field}>
-                {field}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>{t("calc.pivotColumns")}</span>
-          <select value={column} onChange={(event) => setColumn(event.target.value)}>
-            <option value="">—</option>
-            {fields.map((field) => (
-              <option key={field} value={field}>
-                {field}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>{t("calc.pivotValues")}</span>
-          <select value={value} onChange={(event) => setValue(event.target.value)}>
-            {fields.map((field) => (
-              <option key={field} value={field}>
-                {field}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>{t("calc.pivotAggregation")}</span>
-          <select
-            value={aggregation}
-            onChange={(event) => setAggregation(event.target.value as PivotValueField["aggregation"])}
-          >
-            {(["sum", "count", "average", "min", "max"] as const).map((kind) => (
-              <option key={kind} value={kind}>
-                {t(`calc.agg_${kind}`)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={fields.length < 2}
-          onClick={() =>
-            onApply({
-              rows: row ? [row] : [],
-              columns: column ? [column] : [],
-              values: value ? [{ field: value, aggregation }] : [],
-              filters: [],
-            })
-          }
-        >
-          {t("calc.pivotInsert")}
-        </button>
-      </div>
-    </Dialog>
-  );
-}
-
-function ConditionalDialog({
-  onClose,
-  onApply,
-}: {
-  onClose: () => void;
-  onApply: (rule: { kind: string; values: string[]; fill: string; topN?: number }) => void;
-}) {
-  const t = useT();
-  const [kind, setKind] = useState("greater");
-  const [first, setFirst] = useState("100");
-  const [second, setSecond] = useState("0");
-  const [fill, setFill] = useState("#FEE2E2");
-  return (
-    <Dialog title={t("calc.conditionalFormatting")} onClose={onClose}>
-      <div className="stack">
-        <label className="field">
-          <span>{t("calc.rule")}</span>
-          <select
-            value={kind}
-            onChange={(event) => {
-              setKind(event.target.value);
-              if (event.target.value === "dataBar") setFill("#638EC6");
-            }}
-          >
-            <option value="greater">{t("calc.ruleGreater")}</option>
-            <option value="less">{t("calc.ruleLess")}</option>
-            <option value="between">{t("calc.ruleBetween")}</option>
-            <option value="equal">{t("calc.ruleEqual")}</option>
-            <option value="textContains">{t("calc.ruleText")}</option>
-            <option value="duplicate">{t("calc.ruleDuplicate")}</option>
-            <option value="top">{t("calc.ruleTop")}</option>
-            <option value="dataBar">{t("calc.ruleDataBar")}</option>
-          </select>
-        </label>
-        {kind === "duplicate" || kind === "dataBar" ? null : (
-          <div className="row">
-            <label className="field">
-              <span>{t("calc.value")}</span>
-              <input value={first} onChange={(event) => setFirst(event.target.value)} />
-            </label>
-            {kind === "between" ? (
-              <label className="field">
-                <span>{t("calc.and")}</span>
-                <input value={second} onChange={(event) => setSecond(event.target.value)} />
-              </label>
-            ) : null}
-          </div>
-        )}
-        <label className="field">
-          <span>{t("calc.fillColor")}</span>
-          <input type="color" value={fill} onChange={(event) => setFill(event.target.value)} />
-        </label>
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() =>
-            onApply({ kind, values: [first, second], fill, topN: kind === "top" ? Number(first) || 10 : undefined })
-          }
-        >
-          {t("common.apply")}
-        </button>
-      </div>
-    </Dialog>
-  );
-}
-
-function ValidationDialog({
-  onClose,
-  onApply,
-}: {
-  onClose: () => void;
-  onApply: (validation: {
-    kind: string;
-    values: string[];
-    min: number | null;
-    max: number | null;
-    message: string;
-  }) => void;
-}) {
-  const t = useT();
-  const [kind, setKind] = useState("list");
-  const [list, setList] = useState("Open,In progress,Done");
-  const [min, setMin] = useState("0");
-  const [max, setMax] = useState("100");
-  const [message, setMessage] = useState("");
-  return (
-    <Dialog title={t("calc.dataValidation")} onClose={onClose}>
-      <div className="stack">
-        <label className="field">
-          <span>{t("calc.validationType")}</span>
-          <select value={kind} onChange={(event) => setKind(event.target.value)}>
-            <option value="list">{t("calc.validationList")}</option>
-            <option value="number">{t("calc.validationNumber")}</option>
-          </select>
-        </label>
-        {kind === "list" ? (
-          <label className="field">
-            <span>{t("calc.validationValues")}</span>
-            <input value={list} onChange={(event) => setList(event.target.value)} />
-          </label>
-        ) : (
-          <div className="row">
-            <label className="field">
-              <span>{t("calc.minimum")}</span>
-              <input value={min} onChange={(event) => setMin(event.target.value)} />
-            </label>
-            <label className="field">
-              <span>{t("calc.maximum")}</span>
-              <input value={max} onChange={(event) => setMax(event.target.value)} />
-            </label>
-          </div>
-        )}
-        <label className="field">
-          <span>{t("calc.validationMessage")}</span>
-          <input value={message} onChange={(event) => setMessage(event.target.value)} />
-        </label>
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() =>
-            onApply({
-              kind,
-              values: list.split(",").map((entry) => entry.trim()),
-              min: kind === "number" ? Number(min) : null,
-              max: kind === "number" ? Number(max) : null,
-              message,
-            })
-          }
-        >
-          {t("common.apply")}
-        </button>
-      </div>
-    </Dialog>
-  );
-}
-
-/**
- * Text to columns: splits the selected column on a delimiter into itself and
- * the columns to its right. The preview shows the first rows; replacing data
- * already in the target cells needs a second, explicit confirmation.
- */
-function TextToColumnsDialog({
-  texts,
-  startColumn,
-  holdsData,
-  onClose,
-  onApply,
-}: {
-  texts: string[];
-  startColumn: number;
-  /** True when the target cell at this offset from the first source cell holds data. */
-  holdsData: (rowOffset: number, colOffset: number) => boolean;
-  onClose: () => void;
-  onApply: (plan: ColumnSplitPlan) => void;
-}) {
-  const t = useT();
-  const radioName = useId();
-  const [delimiter, setDelimiter] = useState<SplitDelimiter>("comma");
-  const [custom, setCustom] = useState("");
-  const [mergeConsecutive, setMergeConsecutive] = useState(false);
-  // How many target cells would be replaced; non-null while asking about it.
-  const [overwrites, setOverwrites] = useState<number | null>(null);
-  const plan = planTextToColumns(texts, { delimiter, custom, mergeConsecutive });
-  const splits = plan.rows.some((pieces) => pieces !== null);
-  const preview = plan.rows.slice(0, 5).map((pieces, index) => pieces ?? [texts[index]]);
-  const previewWidth = Math.max(1, ...preview.map((pieces) => pieces.length));
-
-  const split = () => {
-    if (overwrites === null) {
-      let count = 0;
-      plan.rows.forEach((pieces, rowOffset) => {
-        for (let colOffset = 1; colOffset < (pieces?.length ?? 0); colOffset += 1) {
-          if (holdsData(rowOffset, colOffset)) count += 1;
-        }
-      });
-      if (count > 0) {
-        setOverwrites(count);
-        return;
-      }
-    }
-    onApply(plan);
-  };
-
-  return (
-    <Dialog title={t("calc.textToColumns")} onClose={onClose} wide>
-      <div className="stack">
-        <fieldset className="calc-tool-fieldset">
-          <legend>{t("calc.delimiter")}</legend>
-          {(["comma", "semicolon", "tab", "space", "custom"] as const).map((id) => (
-            <label key={id} className="check">
-              <input
-                type="radio"
-                name={radioName}
-                checked={delimiter === id}
-                onChange={() => {
-                  setDelimiter(id);
-                  setOverwrites(null);
-                }}
-              />
-              {t(`calc.delimiter_${id}`)}
-            </label>
-          ))}
-          <input
-            className="input calc-split-custom"
-            aria-label={t("calc.delimiterCustomValue")}
-            value={custom}
-            maxLength={8}
-            onChange={(event) => {
-              setCustom(event.target.value);
-              setDelimiter("custom");
-              setOverwrites(null);
-            }}
-          />
-        </fieldset>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={mergeConsecutive}
-            onChange={(event) => {
-              setMergeConsecutive(event.target.checked);
-              setOverwrites(null);
-            }}
-          />
-          {t("calc.mergeDelimiters")}
-        </label>
-        <div className="calc-split-preview">
-          <table aria-label={t("calc.preview")}>
-            <thead>
-              <tr>
-                {Array.from({ length: previewWidth }, (_, index) => (
-                  <th key={index}>{columnLabel(startColumn + index)}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {preview.map((pieces, row) => (
-                <tr key={row}>
-                  {Array.from({ length: previewWidth }, (_, col) => (
-                    <td key={col}>{pieces[col] ?? ""}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {splits ? null : <p className="muted small">{t("calc.splitNothing")}</p>}
-        {overwrites !== null ? (
-          <p className="calc-tool-warning" role="alert">
-            {t("calc.splitOverwrite", { count: overwrites })}
-          </p>
-        ) : null}
-      </div>
-      <div className="row" style={{ justifyContent: "flex-end", marginTop: 14 }}>
-        <button
-          type="button"
-          className="btn btn-soft"
-          onClick={overwrites === null ? onClose : () => setOverwrites(null)}
-        >
-          {t("common.cancel")}
-        </button>
-        <button type="button" className="btn btn-primary" disabled={!splits} onClick={split}>
-          {overwrites === null ? t("calc.split") : t("calc.splitReplace")}
-        </button>
-      </div>
-    </Dialog>
-  );
-}
-
-/**
- * Remove duplicates: picks the columns two rows must agree on. Text compares
- * case-insensitively, and the header row, when there is one, always stays.
- */
-function RemoveDuplicatesDialog({
-  columns,
-  onClose,
-  onApply,
-}: {
-  columns: Array<{ letter: string; header: string }>;
-  onClose: () => void;
-  onApply: (options: DuplicateOptions) => void;
-}) {
-  const t = useT();
-  const [hasHeaders, setHasHeaders] = useState(false);
-  const [checked, setChecked] = useState(() => columns.map(() => true));
-  const chosen = checked.flatMap((on, index) => (on ? [index] : []));
-  return (
-    <Dialog title={t("calc.removeDuplicates")} onClose={onClose}>
-      <div className="stack">
-        <label className="check">
-          <input type="checkbox" checked={hasHeaders} onChange={(event) => setHasHeaders(event.target.checked)} />
-          {t("calc.duplicatesHeaders")}
-        </label>
-        <fieldset className="calc-tool-fieldset is-list">
-          <legend>{t("calc.duplicatesColumns")}</legend>
-          {columns.map((column, index) => (
-            <label key={column.letter} className="check">
-              <input
-                type="checkbox"
-                checked={checked[index]}
-                onChange={(event) =>
-                  setChecked((current) => current.map((on, at) => (at === index ? event.target.checked : on)))
-                }
-              />
-              {hasHeaders && column.header ? column.header : t("calc.columnLabel", { column: column.letter })}
-            </label>
-          ))}
-        </fieldset>
-        <p className="muted small">{t("calc.duplicatesHint")}</p>
-      </div>
-      <div className="row" style={{ justifyContent: "flex-end", marginTop: 14 }}>
-        <button type="button" className="btn btn-soft" onClick={onClose}>
-          {t("common.cancel")}
-        </button>
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={chosen.length === 0}
-          onClick={() => onApply({ columns: chosen, hasHeaders })}
-        >
-          {t("calc.removeDuplicates")}
-        </button>
-      </div>
-    </Dialog>
-  );
-}
-
-/** Configures a new structured table over a cell range. */
-function InsertTableDialog({
-  defaultName,
-  defaultRange,
-  onClose,
-  onApply,
-}: {
-  defaultName: string;
-  defaultRange: string;
-  onClose: () => void;
-  onApply: (config: {
-    name: string;
-    range: string;
-    hasHeaders: boolean;
-    hasTotals: boolean;
-    bandedRows: boolean;
-  }) => void;
-}) {
-  const t = useT();
-  const [name, setName] = useState(defaultName);
-  const [range, setRange] = useState(defaultRange);
-  const [hasHeaders, setHasHeaders] = useState(true);
-  const [hasTotals, setHasTotals] = useState(false);
-  const [bandedRows, setBandedRows] = useState(true);
-  const valid = name.trim() !== "" && parseRange(range) !== null;
-  return (
-    <Dialog title={t("calc.insertTable")} onClose={onClose}>
-      <div className="stack">
-        <label className="field">
-          <span>{t("calc.tableName")}</span>
-          <input className="input" value={name} onChange={(event) => setName(event.target.value)} />
-        </label>
-        <label className="field">
-          <span>{t("calc.tableRange")}</span>
-          <input className="input" value={range} onChange={(event) => setRange(event.target.value)} />
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={hasHeaders} onChange={(event) => setHasHeaders(event.target.checked)} />
-          {t("calc.tableHeaders")}
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={hasTotals} onChange={(event) => setHasTotals(event.target.checked)} />
-          {t("calc.tableTotals")}
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={bandedRows} onChange={(event) => setBandedRows(event.target.checked)} />
-          {t("calc.tableBanded")}
-        </label>
-        <p className="muted small">=SUM(Name[Column])</p>
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={!valid}
-          onClick={() => onApply({ name, range, hasHeaders, hasTotals, bandedRows })}
-        >
-          {t("common.apply")}
-        </button>
-      </div>
-    </Dialog>
-  );
-}
-
-interface TablePanelDraft {
-  name: string;
-  formula: string;
-  filter: string;
-}
-
-/**
- * Side panel listing the active sheet's structured tables.
- *
- * Selecting a table jumps to it; the panel renames, deletes, toggles the
- * totals/banding flags, appends a calculated column, and opens the shared
- * filter dialog scoped to one table column.
- */
-function TablesPanel({
-  tables,
-  onClose,
-  onInsert,
-  onJump,
-  onRename,
-  onDelete,
-  onToggleTotals,
-  onToggleBanded,
-  onAddColumn,
-  onFilter,
-}: {
-  tables: SpreadsheetTable[];
-  onClose: () => void;
-  onInsert: () => void;
-  onJump: (table: SpreadsheetTable) => void;
-  onRename: (table: SpreadsheetTable) => void;
-  onDelete: (table: SpreadsheetTable) => void;
-  onToggleTotals: (table: SpreadsheetTable) => void;
-  onToggleBanded: (table: SpreadsheetTable) => void;
-  onAddColumn: (table: SpreadsheetTable, name: string, formula: string) => void;
-  onFilter: (table: SpreadsheetTable, column: string) => void;
-}) {
-  const t = useT();
-  const [drafts, setDrafts] = useState<Record<string, TablePanelDraft>>({});
-  const draftFor = (table: SpreadsheetTable): TablePanelDraft =>
-    drafts[table.id] ?? { name: "", formula: "", filter: table.columns[0]?.name ?? "" };
-  const patchDraft = (table: SpreadsheetTable, patch: Partial<TablePanelDraft>) => {
-    setDrafts((current) => ({
-      ...current,
-      [table.id]: {
-        ...(current[table.id] ?? { name: "", formula: "", filter: table.columns[0]?.name ?? "" }),
-        ...patch,
-      },
-    }));
-  };
-
-  return (
-    <aside
-      className="calc-tables-panel"
-      style={{
-        position: "fixed",
-        top: 150,
-        right: 14,
-        width: 320,
-        maxHeight: "62vh",
-        overflowY: "auto",
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: 10,
-        boxShadow: "var(--shadow)",
-        padding: 10,
-        zIndex: 30,
-      }}
-    >
-      <div className="row" style={{ alignItems: "center" }}>
-        <strong>{t("calc.tableList")}</strong>
-        <span className="spacer" />
-        <button type="button" className="btn btn-soft" onClick={onInsert}>
-          {t("calc.insertTable")}
-        </button>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label={t("common.close")}>
-          ×
-        </button>
-      </div>
-      {tables.length === 0 ? <p className="muted small">{t("calc.noTables")}</p> : null}
-      <div className="stack">
-        {tables.map((table) => {
-          const draft = draftFor(table);
-          return (
-            <div
-              key={table.id}
-              className="stack"
-              style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 8 }}
-            >
-              <div className="row" style={{ alignItems: "center", gap: 6 }}>
-                <button
-                  type="button"
-                  className="btn btn-soft"
-                  onClick={() => onJump(table)}
-                  title={t("calc.tableJump")}
-                >
-                  {table.name}
-                </button>
-                <span className="muted small">
-                  {table.range} · {table.columns.length}
-                </span>
-                <span className="spacer" />
-                <button
-                  type="button"
-                  className="icon-btn"
-                  onClick={() => onRename(table)}
-                  title={t("calc.tableRename")}
-                >
-                  <Tag size={13} />
-                </button>
-                <button type="button" className="icon-btn" onClick={() => onDelete(table)} title={t("common.delete")}>
-                  <Trash2 size={13} />
-                </button>
-              </div>
-              <div className="row wrap" style={{ gap: 10 }}>
-                <label className="check">
-                  <input type="checkbox" checked={table.hasTotals} onChange={() => onToggleTotals(table)} />
-                  {t("calc.tableTotals")}
-                </label>
-                <label className="check">
-                  <input type="checkbox" checked={table.bandedRows} onChange={() => onToggleBanded(table)} />
-                  {t("calc.tableBanded")}
-                </label>
-              </div>
-              <div className="row wrap" style={{ gap: 6, alignItems: "flex-end" }}>
-                <label className="field" style={{ flex: 1 }}>
-                  <span>{t("calc.tableFilter")}</span>
-                  <select
-                    className="input"
-                    value={draft.filter}
-                    onChange={(event) => patchDraft(table, { filter: event.target.value })}
-                  >
-                    {table.columns.map((column) => (
-                      <option key={column.name} value={column.name}>
-                        {column.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  className="btn btn-soft"
-                  onClick={() => onFilter(table, draft.filter)}
-                  disabled={draft.filter === ""}
-                >
-                  {t("calc.filter")}
-                </button>
-              </div>
-              <div className="row wrap" style={{ gap: 6, alignItems: "flex-end" }}>
-                <label className="field" style={{ flex: 1 }}>
-                  <span>{t("calc.tableNewColumn")}</span>
-                  <input
-                    className="input"
-                    value={draft.name}
-                    onChange={(event) => patchDraft(table, { name: event.target.value })}
-                  />
-                </label>
-                <label className="field" style={{ flex: 1.4 }}>
-                  <span>{t("calc.tableFormula")}</span>
-                  <input
-                    className="input"
-                    placeholder={`=${table.name}[${table.columns[0]?.name ?? "Column"}]`}
-                    value={draft.formula}
-                    onChange={(event) => patchDraft(table, { formula: event.target.value })}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={draft.name.trim() === "" || draft.formula.trim() === ""}
-                  onClick={() => {
-                    onAddColumn(table, draft.name, draft.formula);
-                    patchDraft(table, { name: "", formula: "" });
-                  }}
-                >
-                  {t("common.add")}
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </aside>
-  );
-}
-
-/**
- * Workbook- and sheet-scoped name manager.
- *
- * A name points at a range, a cell, a constant or a formula; the "this sheet
- * only" checkbox decides whether other sheets can see it. The scope rules match
- * what the formula evaluator does, so what is listed here is what resolves.
- */
-function NameManagerDialog({
-  names,
-  currentSheet,
-  selection,
-  onClose,
-  onChange,
-}: {
-  names: NamedRange[];
-  currentSheet: string;
-  selection: string;
-  onClose: () => void;
-  onChange: (names: NamedRange[]) => void;
-}) {
-  const t = useT();
-  const [entryName, setEntryName] = useState("");
-  const [entryTarget, setEntryTarget] = useState(selection);
-  const [entryScope, setEntryScope] = useState<"workbook" | "sheet">("workbook");
-
-  const problem =
-    entryName.trim() === ""
-      ? t("calc.nameRequired")
-      : !isValidDefinedName(entryName.trim())
-        ? t("calc.nameInvalid")
-        : "";
-
-  const save = () => {
-    if (problem) return;
-    const definition = entryTarget.trim();
-    const next: NamedRange = {
-      name: entryName.trim().toUpperCase(),
-      definition,
-      sheet: entryScope === "sheet" ? currentSheet : null,
-    };
-    // Replace an existing name with the same identifier and scope.
-    const without = names.filter((entry) => !(entry.name === next.name && entry.sheet === next.sheet));
-    onChange([...without, next]);
-  };
-
-  return (
-    <Dialog title={t("calc.nameManager")} onClose={onClose} wide>
-      <div className="stack">
-        <div className="row wrap" style={{ gap: 8 }}>
-          <input
-            className="input"
-            value={entryName}
-            placeholder={t("calc.namePlaceholder")}
-            onChange={(event) => setEntryName(event.target.value)}
-          />
-          <input
-            className="input"
-            value={entryTarget}
-            placeholder={t("calc.nameTarget")}
-            onChange={(event) => setEntryTarget(event.target.value)}
-          />
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={entryScope === "sheet"}
-              onChange={(event) => setEntryScope(event.target.checked ? "sheet" : "workbook")}
-            />
-            {t("calc.nameThisSheetOnly")}
-          </label>
-          <button type="button" className="btn btn-primary" onClick={save} disabled={problem !== ""}>
-            {t("common.add")}
-          </button>
-        </div>
-        {problem ? <p className="muted small">{problem}</p> : null}
-
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>{t("calc.nameColumn")}</th>
-              <th>{t("calc.nameTarget")}</th>
-              <th>{t("calc.nameScope")}</th>
-              <th>
-                <span className="sr-only">{t("common.actions")}</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {names.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="muted">
-                  {t("calc.noNames")}
-                </td>
-              </tr>
-            ) : null}
-            {names.map((entry) => (
-              <tr key={`${entry.sheet ?? ""}:${entry.name}`}>
-                <td>
-                  <input
-                    className="input"
-                    aria-label={t("calc.nameColumn")}
-                    defaultValue={entry.name}
-                    onBlur={(event) => {
-                      const next = event.target.value.trim().toUpperCase();
-                      if (!isValidDefinedName(next) || next === entry.name) return;
-                      onChange(
-                        names.map((candidate) => (candidate === entry ? { ...candidate, name: next } : candidate)),
-                      );
-                    }}
-                  />
-                </td>
-                <td>
-                  <input
-                    className="input"
-                    aria-label={t("calc.nameTarget")}
-                    defaultValue={entry.definition}
-                    onBlur={(event) =>
-                      onChange(
-                        names.map((candidate) =>
-                          candidate === entry ? { ...candidate, definition: event.target.value.trim() } : candidate,
-                        ),
-                      )
-                    }
-                  />
-                </td>
-                <td className="muted">{entry.sheet ?? t("calc.nameWorkbookScope")}</td>
-                <td>
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    aria-label={t("common.remove")}
-                    onClick={() => onChange(names.filter((candidate) => candidate !== entry))}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Dialog>
-  );
-}
-
-/**
- * Excel's rule for a legal name: it must start with a letter or underscore,
- * may contain letters, digits, dots and underscores, and must not look like a
- * cell reference (otherwise the formula parser reads `A1` as a cell).
- */
-export function isValidDefinedName(name: string): boolean {
-  if (!/^[A-Za-z_][A-Za-z0-9_.]*$/.test(name)) return false;
-  return parseAddress(name) === null;
-}
-
-/** Paper, orientation, scaling and header/footer for printing and PDF export. */
-function PrintLayoutDialog({
-  print,
-  sheetName,
-  onClose,
-  onApply,
-}: {
-  print: PrintSettings;
-  sheetName: string;
-  onClose: () => void;
-  onApply: (print: PrintSettings) => void;
-}) {
-  const t = useT();
-  const [draft, setDraft] = useState<PrintSettings>({ ...print });
-  const patch = (next: Partial<PrintSettings>) => setDraft((current) => ({ ...current, ...next }));
-
-  return (
-    <Dialog title={t("calc.printSetup")} onClose={onClose} wide>
-      <div className="stack">
-        <label className="field">
-          <span>{t("calc.paperSize")}</span>
-          <select
-            className="input"
-            value={draft.paperSize}
-            onChange={(event) => patch({ paperSize: Number(event.target.value) })}
-          >
-            <option value={9}>A4</option>
-            <option value={1}>Letter</option>
-            <option value={5}>Legal</option>
-            <option value={8}>A3</option>
-            <option value={9}>A4</option>
-            <option value={11}>A5</option>
-          </select>
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={draft.landscape}
-            onChange={(event) => patch({ landscape: event.target.checked })}
-          />
-          {t("calc.landscape")}
-        </label>
-        <label className="field">
-          <span>{t("calc.scale")}</span>
-          <input
-            className="input"
-            type="number"
-            min={10}
-            max={400}
-            value={draft.scale}
-            onChange={(event) => patch({ scale: Math.min(400, Math.max(10, Number(event.target.value) || 100)) })}
-          />
-        </label>
-        <label className="field">
-          <span>{t("calc.fitToWidth")}</span>
-          <input
-            className="input"
-            type="number"
-            min={0}
-            max={10}
-            value={draft.fitToWidth}
-            onChange={(event) => patch({ fitToWidth: Math.max(0, Number(event.target.value) || 0) })}
-          />
-        </label>
-        <label className="field">
-          <span>{t("calc.printTitlesRows")}</span>
-          <input
-            className="input"
-            placeholder="1:1"
-            value={draft.printTitlesRows ?? ""}
-            onChange={(event) =>
-              patch({ printTitlesRows: event.target.value.trim() === "" ? null : event.target.value.trim() })
-            }
-          />
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={draft.printGridlines}
-            onChange={(event) => patch({ printGridlines: event.target.checked })}
-          />
-          {t("calc.printGridlines")}
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={draft.printHeadings}
-            onChange={(event) => patch({ printHeadings: event.target.checked })}
-          />
-          {t("calc.printHeadings")}
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={draft.centerHorizontally}
-            onChange={(event) => patch({ centerHorizontally: event.target.checked })}
-          />
-          {t("calc.centerHorizontally")}
-        </label>
-        <label className="field">
-          <span>{t("calc.header")}</span>
-          <input className="input" value={draft.header} onChange={(event) => patch({ header: event.target.value })} />
-        </label>
-        <p className="muted small">{t("calc.printSheetNote", { sheet: sheetName })}</p>
-      </div>
-      <div className="row" style={{ justifyContent: "flex-end", marginTop: 14 }}>
-        <button type="button" className="btn btn-soft" onClick={onClose}>
-          {t("common.cancel")}
-        </button>
-        <button type="button" className="btn btn-primary" onClick={() => onApply(draft)}>
-          {t("common.apply")}
-        </button>
-      </div>
-    </Dialog>
   );
 }

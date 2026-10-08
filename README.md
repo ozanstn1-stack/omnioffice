@@ -10,9 +10,19 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 4.3.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 4.4.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 4.4.0
+
+- **Calc:** find & replace, multi-level sort, filter conditions, hide/unhide,
+  paste special, AutoSum, notes and hyperlinks.
+- **Charts and formatting:** scatter and doughnut charts; color scales, data
+  bars, icon sets and formula rules.
+- **80 more functions** (SUBTOTAL, AGGREGATE, NORM.DIST, FORECAST, HSTACK ...).
+- **ODS formulas** now work in LibreOffice, and XLSX files keep their newer
+  functions in Excel.
 
 ## What's new in 4.3.0
 
@@ -629,7 +639,7 @@ These were exercised on the built application and with automated tests:
 ### Calc (spreadsheet)
 - XLSX, ODS, CSV/TSV import/export · XLS import (read-only) · PDF export
 - Virtualised grid, name box and formula bar, multi-sheet workbooks
-- Formula engine with 160+ functions, `LET`, named ranges, inline arrays,
+- Formula engine with 274 functions, `LET`, named ranges, inline arrays,
   dynamic arrays with spill, explicit errors and circular-reference detection
 - Dependency graph with incremental recalculation
 - Formula autocomplete (functions, names, sheets, tables, columns, argument
@@ -640,8 +650,19 @@ These were exercised on the built application and with automated tests:
   merges, freeze panes, validations, conditional formatting, hyperlinks,
   comments, names, tables, charts, pictures, print settings, sheet
   protection and preserved pivot parts
+- **Calc file model (V4.4)**: scatter and doughnut charts, color scales, data
+  bars, icon sets and formula rules, and cell notes and hyperlinks as editable
+  data (note author and visibility, link display text, screen tip, internal
+  references) round-trip through `.oswk`, XLSX and ODS; links are limited to
+  http, https, mailto and internal targets
+- **Calc editing (V4.4)**: the conditional-format dialog adds color scales,
+  data bars, icon sets and custom-formula rules; cell notes (right-click or
+  Shift+F2) and hyperlinks (Ctrl+K; Ctrl+click follows one, `HYPERLINK()`
+  cells included); `#CALC!` and the other error values are marked and
+  explained in the grid
 - Cell formatting, sorting, filtering, conditional formatting, data
-  validation, freeze panes, charts (column/bar/line/pie/area), pivot tables
+  validation, freeze panes, charts (column/bar/line/pie/doughnut/area/scatter),
+  pivot tables
 - **Mobile (V3.1)**: touch selection, fill handle, pinch zoom, bottom-docked
   formula bar, scrollable toolbars and tabs
 
@@ -1091,8 +1112,18 @@ These are real and honest:
   fields are flagged but not evaluated. Non-WinAnsi characters fall back to
   `?` in generated Base14 appearances (the real `/V` keeps the string).
 - **XLSX**: pivot caches are preserved and re-exported, not recomputed;
-  unsupported chart kinds, secondary/combo axes and some conditional formats
-  degrade with warnings; SVG export of sheets is not offered.
+  unsupported chart kinds (radar, bubble, stock, surface), secondary/combo
+  axes, scatter series with their own X values and Excel 2010 data-bar and
+  icon-set extensions (negative colours, custom icons) degrade with warnings;
+  hyperlinks other than http, https, mailto and internal references (file:,
+  javascript:, network paths) are dropped on import and export; SVG export of
+  sheets is not offered. Hidden rows and columns round-trip in XLSX and ODS
+  (also the rows an AutoFilter hides), but the editor keeps no size for a
+  hidden row or column, so showing it again gives the default size, and a sheet
+  that hides all unused rows with `zeroHeight` opens with them visible.
+  Dynamic-array formulas (`FILTER`, `SORT`, `HSTACK`, ...) are written with
+  Excel's `_xlfn.` names but without spill metadata, so Excel shows them as
+  ordinary formulas and does not spill them.
 - **PDF repair / Fast Web View.** Fast Web View needs qpdf, a desktop engine
   (bundled on Windows, a system install on Linux/macOS): Android and builds
   without qpdf report it as unavailable. Repair uses qpdf when present and
