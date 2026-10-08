@@ -11,8 +11,20 @@ import {
   toNumber,
   toText,
   type CellMatrix,
+  type FormulaError,
   type Scalar,
 } from "../scalars";
+import {
+  meanOf,
+  modesOf,
+  numericValues,
+  pairedNumbers,
+  percentileExc,
+  percentileInc,
+  quartileFraction,
+  sumSquaredDeviations,
+  tidy,
+} from "./stat-support";
 
 /** Sums the values in `sumMatrix` whose position passes every criteria pair. */
 function conditionalAggregate(
@@ -178,21 +190,11 @@ registerFunction("VAR.P", populationVariance, 1, 64, false, {
   category: "Statistics",
 });
 
-/** Inclusive percentile with linear interpolation between neighbours. */
-function percentileOf(values: number[], k: number): number | ReturnType<typeof ERR.num> {
-  if (values.length === 0 || k < 0 || k > 1) return ERR.num();
-  const position = (values.length - 1) * k;
-  const lower = Math.floor(position);
-  const upper = Math.ceil(position);
-  if (lower === upper) return values[lower];
-  return values[lower] + (values[upper] - values[lower]) * (position - lower);
-}
-
 const percentile = (args: Scalar[][][]) => {
   const values = numbers([args[0] ?? []]).sort((a, b) => a - b);
   const k = toNumber(args[1]?.[0]?.[0] ?? 0);
   if (isError(k)) return k;
-  return percentileOf(values, Math.trunc(k * 1e12) / 1e12);
+  return percentileInc(values, Math.trunc(k * 1e12) / 1e12);
 };
 registerFunction("PERCENTILE", percentile, 2, 2, false, { signature: "PERCENTILE(array, k)", category: "Statistics" });
 registerFunction("PERCENTILE.INC", percentile, 2, 2, false, {
@@ -205,7 +207,7 @@ const quartile = (args: Scalar[][][]) => {
   if (isError(quart)) return quart;
   const index = Math.trunc(quart);
   if (index !== quart || index < 0 || index > 4) return ERR.num();
-  return percentileOf(values, index / 4);
+  return percentileInc(values, index / 4);
 };
 registerFunction("QUARTILE", quartile, 2, 2, false, { signature: "QUARTILE(array, quart)", category: "Statistics" });
 registerFunction("QUARTILE.INC", quartile, 2, 2, false, {
@@ -213,13 +215,15 @@ registerFunction("QUARTILE.INC", quartile, 2, 2, false, {
   category: "Statistics",
 });
 
-/** Pairs two ranges into x/y series, stopping at the shorter one. */
-function pairedValues(args: Scalar[][][], minimum: number): { x: number[]; y: number[] } | ReturnType<typeof ERR.div> {
-  const x = numbers([args[0] ?? []]);
-  const y = numbers([args[1] ?? []]);
-  const length = Math.min(x.length, y.length);
-  if (length < minimum) return ERR.div();
-  return { x: x.slice(0, length), y: y.slice(0, length) };
+/**
+ * Pairs two ranges into x/y series. Different sizes are `#N/A`; text and blank
+ * cells drop their partner; fewer than `minimum` pairs is `#DIV/0!`.
+ */
+function pairedValues(args: Scalar[][][], minimum: number): { x: number[]; y: number[] } | FormulaError {
+  const paired = pairedNumbers(args[0] ?? [], args[1] ?? []);
+  if (isError(paired)) return paired;
+  if (paired.first.length < minimum) return ERR.div();
+  return { x: paired.first, y: paired.second };
 }
 
 function covarianceOf(x: number[], y: number[], divisor: number): number {
@@ -234,7 +238,7 @@ registerFunction(
   "CORREL",
   (args) => {
     const paired = pairedValues(args, 2);
-    if ("code" in paired) return paired;
+    if (isError(paired)) return paired;
     const covariance = covarianceOf(paired.x, paired.y, paired.x.length - 1);
     const spreadX = covarianceOf(paired.x, paired.x, paired.x.length - 1);
     const spreadY = covarianceOf(paired.y, paired.y, paired.y.length - 1);
@@ -250,7 +254,7 @@ registerFunction(
   "COVARIANCE.P",
   (args) => {
     const paired = pairedValues(args, 1);
-    if ("code" in paired) return paired;
+    if (isError(paired)) return paired;
     return covarianceOf(paired.x, paired.y, paired.x.length);
   },
   2,
@@ -262,7 +266,7 @@ registerFunction(
   "COVARIANCE.S",
   (args) => {
     const paired = pairedValues(args, 2);
-    if ("code" in paired) return paired;
+    if (isError(paired)) return paired;
     return covarianceOf(paired.x, paired.y, paired.x.length - 1);
   },
   2,
@@ -274,7 +278,7 @@ registerFunction(
   "COVAR",
   (args) => {
     const paired = pairedValues(args, 1);
-    if ("code" in paired) return paired;
+    if (isError(paired)) return paired;
     return covarianceOf(paired.x, paired.y, paired.x.length);
   },
   2,
@@ -344,6 +348,163 @@ registerFunction(
   3,
   false,
   { signature: "RANK.EQ(number, ref, [order])", category: "Statistics" },
+);
+
+registerFunction(
+  "PERCENTILE.EXC",
+  (args) => {
+    const values = numericValues(args[0] ?? []).sort((a, b) => a - b);
+    const k = toNumber(args[1]?.[0]?.[0] ?? 0);
+    return isError(k) ? k : percentileExc(values, k);
+  },
+  2,
+  2,
+  false,
+  { signature: "PERCENTILE.EXC(array, k)", category: "Statistics" },
+);
+registerFunction(
+  "QUARTILE.EXC",
+  (args) => {
+    const values = numericValues(args[0] ?? []).sort((a, b) => a - b);
+    const quart = toNumber(args[1]?.[0]?.[0] ?? 0);
+    if (isError(quart)) return quart;
+    const fraction = quartileFraction(quart, false);
+    return isError(fraction) ? fraction : percentileExc(values, fraction);
+  },
+  2,
+  2,
+  false,
+  { signature: "QUARTILE.EXC(array, quart)", category: "Statistics" },
+);
+
+/**
+ * PERCENTRANK: where `x` sits in `array` as a fraction. The inclusive version
+ * spreads ranks over 0..1, the exclusive one over 1/(n+1)..n/(n+1); a value
+ * between two data points interpolates, and the result is truncated (not
+ * rounded) to `significance` digits.
+ */
+function percentRank(args: Scalar[][][], inclusive: boolean): number | FormulaError {
+  const values = numericValues(args[0] ?? []).sort((a, b) => a - b);
+  const x = toNumber(args[1]?.[0]?.[0] ?? "");
+  if (isError(x)) return x;
+  const digits = args[2] === undefined || args[2][0]?.[0] === "" ? 3 : toNumber(args[2][0][0]);
+  if (isError(digits)) return digits;
+  if (values.length === 0 || digits < 1) return ERR.num();
+  const n = values.length;
+  if (x < values[0] || x > values[n - 1]) return ERR.na();
+  const rankOf = (index: number) => (inclusive ? (n === 1 ? 1 : index / (n - 1)) : (index + 1) / (n + 1));
+  const below = values.filter((value) => value < x).length;
+  let rank: number;
+  if (values[below] === x) {
+    rank = rankOf(below);
+  } else {
+    // x lies strictly between values[below - 1] and values[below]; the lower
+    // neighbour's rank is that of its first occurrence.
+    const lower = values[below - 1];
+    const lowerRank = rankOf(values.indexOf(lower));
+    rank = lowerRank + ((x - lower) / (values[below] - lower)) * (rankOf(below) - lowerRank);
+  }
+  const factor = 10 ** Math.trunc(digits);
+  return Math.floor(tidy(rank * factor)) / factor;
+}
+const percentRankInc = (args: Scalar[][][]) => percentRank(args, true);
+registerFunction("PERCENTRANK", percentRankInc, 2, 3, false, {
+  signature: "PERCENTRANK(array, x, [significance])",
+  category: "Statistics",
+});
+registerFunction("PERCENTRANK.INC", percentRankInc, 2, 3, false, {
+  signature: "PERCENTRANK.INC(array, x, [significance])",
+  category: "Statistics",
+});
+registerFunction("PERCENTRANK.EXC", (args) => percentRank(args, false), 2, 3, false, {
+  signature: "PERCENTRANK.EXC(array, x, [significance])",
+  category: "Statistics",
+});
+
+const modeSngl = (args: Scalar[][][]) => {
+  const { modes } = modesOf(args.flatMap(numericValues));
+  return modes.length === 0 ? ERR.na() : modes[0];
+};
+registerFunction("MODE", modeSngl, 1, 64, false, { signature: "MODE(number1, ...)", category: "Statistics" });
+registerFunction("MODE.SNGL", modeSngl, 1, 64, false, {
+  signature: "MODE.SNGL(number1, ...)",
+  category: "Statistics",
+});
+registerFunction(
+  "MODE.MULT",
+  (args) => {
+    const { modes } = modesOf(args.flatMap(numericValues));
+    return modes.length === 0 ? ERR.na() : modes.map((mode) => [mode]);
+  },
+  1,
+  64,
+  false,
+  { signature: "MODE.MULT(number1, ...)", category: "Statistics" },
+);
+
+registerFunction(
+  "GEOMEAN",
+  (args) => {
+    const values = args.flatMap(numericValues);
+    if (values.length === 0 || values.some((value) => value <= 0)) return ERR.num();
+    return Math.exp(meanOf(values.map(Math.log)));
+  },
+  1,
+  64,
+  false,
+  { signature: "GEOMEAN(number1, ...)", category: "Statistics" },
+);
+registerFunction(
+  "HARMEAN",
+  (args) => {
+    const values = args.flatMap(numericValues);
+    if (values.length === 0 || values.some((value) => value <= 0)) return ERR.num();
+    return values.length / values.reduce((total, value) => total + 1 / value, 0);
+  },
+  1,
+  64,
+  false,
+  { signature: "HARMEAN(number1, ...)", category: "Statistics" },
+);
+registerFunction(
+  "AVEDEV",
+  (args) => {
+    const values = args.flatMap(numericValues);
+    if (values.length === 0) return ERR.num();
+    const mean = meanOf(values);
+    return meanOf(values.map((value) => Math.abs(value - mean)));
+  },
+  1,
+  64,
+  false,
+  { signature: "AVEDEV(number1, ...)", category: "Statistics" },
+);
+registerFunction(
+  "DEVSQ",
+  (args) => {
+    const values = args.flatMap(numericValues);
+    return values.length === 0 ? ERR.num() : sumSquaredDeviations(values);
+  },
+  1,
+  64,
+  false,
+  { signature: "DEVSQ(number1, ...)", category: "Statistics" },
+);
+registerFunction(
+  "STANDARDIZE",
+  (args) => {
+    const x = toNumber(args[0]?.[0]?.[0] ?? "");
+    if (isError(x)) return x;
+    const mean = toNumber(args[1]?.[0]?.[0] ?? "");
+    if (isError(mean)) return mean;
+    const deviation = toNumber(args[2]?.[0]?.[0] ?? "");
+    if (isError(deviation)) return deviation;
+    return deviation <= 0 ? ERR.num() : (x - mean) / deviation;
+  },
+  3,
+  3,
+  false,
+  { signature: "STANDARDIZE(x, mean, standard_dev)", category: "Statistics" },
 );
 
 registerFunction(

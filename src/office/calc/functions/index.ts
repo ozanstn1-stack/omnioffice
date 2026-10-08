@@ -13,6 +13,7 @@ import "./financial";
 import "./lookup";
 import "./math";
 import "./reference";
+import "./regression";
 import "./statistics";
 import "./text";
 

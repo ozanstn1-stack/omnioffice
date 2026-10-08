@@ -96,3 +96,26 @@ export function quartileFraction(quart: number, inclusive: boolean): number | Fo
 export function tidy(value: number): number {
   return Number(value.toPrecision(15));
 }
+
+/**
+ * Two data sets read as x/y pairs. Arrays with a different number of cells
+ * (or none) are `#N/A`; a pair is dropped when either side is not a number, so
+ * a text or blank cell removes its partner too.
+ */
+export function pairedNumbers(
+  first: Scalar[][],
+  second: Scalar[][],
+): { first: number[]; second: number[] } | FormulaError {
+  const left = first.flat();
+  const right = second.flat();
+  if (left.length === 0 || left.length !== right.length) return ERR.na();
+  const out = { first: [] as number[], second: [] as number[] };
+  left.forEach((a, index) => {
+    const b = right[index];
+    if (typeof a === "number" && typeof b === "number") {
+      out.first.push(a);
+      out.second.push(b);
+    }
+  });
+  return out;
+}
