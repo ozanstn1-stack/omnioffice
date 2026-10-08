@@ -32,24 +32,7 @@ import {
   type FormulaError,
   type Scalar,
 } from "../scalars";
-
-/** The first value of an argument; an error value stays an error. */
-function scalarOf(arg: ContextArgument | undefined): Scalar {
-  const value = arg?.value();
-  if (value === undefined) return "";
-  return Array.isArray(value) ? (value[0]?.[0] ?? "") : value;
-}
-
-/** A skipped optional argument arrives as an empty string. */
-function isSkipped(arg: ContextArgument | undefined): boolean {
-  return arg === undefined || scalarOf(arg) === "";
-}
-
-/** A whole-number argument, truncated toward zero like Excel does. */
-function integerArg(arg: ContextArgument): number | FormulaError {
-  const value = toNumber(scalarOf(arg));
-  return isError(value) ? value : Math.trunc(value);
-}
+import { integerArg, isSkipped, locationOf, scalarOf } from "./context-support";
 
 registerContextFunction(
   "OFFSET",
@@ -102,17 +85,6 @@ registerContextFunction(
   2,
   { signature: "INDIRECT(ref_text, [a1])", category: "Lookup" },
 );
-
-/**
- * The location an argument denotes. A value that is not one is `#VALUE!`; an
- * error value (or an unresolvable reference) passes through.
- */
-export function locationOf(arg: ContextArgument): CellReference | FormulaError {
-  const reference = arg.reference();
-  if (reference !== null) return reference;
-  const value = scalarOf(arg);
-  return isError(value) ? value : ERR.value();
-}
 
 /** The reference CELL describes: its argument, or the formula's own cell. */
 function cellTarget(args: ContextArgument[], host: FunctionHost): CellReference | FormulaError {
