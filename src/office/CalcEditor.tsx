@@ -19,7 +19,6 @@ import {
   newSpreadsheetTable,
   type Cell,
   type CellStyle,
-  type ChartData,
   type PivotTable,
   type PivotValueField,
   type Sheet,
@@ -81,6 +80,7 @@ import { computeConditionalFills, computeDataBars, isValid } from "./calc/rules"
 import { deleteColumn, deleteRow, insertColumn, insertRow, toggleMerge } from "./calc/structure";
 import { cellAnnouncement } from "./calc/announce";
 import { errorTitle } from "./calc/error-info";
+import { chartFromSelection, type ChartOptions } from "./calc/chart-data";
 import { planAutoSum } from "./calc/autosum";
 import { clipboardText, snapshotClipboard } from "./calc/paste-special";
 import { isSheetProtected } from "./calc/protection";
@@ -1442,34 +1442,23 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     setFilterOpen(null);
   };
 
-  const addChart = (kind: string) => {
+  const addChart = (kind: string, options: ChartOptions) => {
     const parts = parseRange(
       `${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`,
     );
-    if (!parts || parts.start.row === parts.end.row) {
+    const chart = parts
+      ? chartFromSelection(
+          kind,
+          parts,
+          (row, col) => String(computed.get(formatAddress(row, col)) ?? ""),
+          t("calc.chartTitle"),
+          options,
+        )
+      : null;
+    if (!parts || !chart) {
       useToasts.getState().push({ kind: "info", title: t("calc.chartNeedsData") });
       return;
     }
-    const categories = `${formatAddress(parts.start.row + 1, parts.start.col)}:${formatAddress(parts.end.row, parts.start.col)}`;
-    const series: ChartData["series"] = [];
-    for (let col = parts.start.col + 1; col <= parts.end.col; col += 1) {
-      series.push({
-        name: String(computed.get(formatAddress(parts.start.row, col)) ?? `Series ${col}`),
-        range: `${formatAddress(parts.start.row + 1, col)}:${formatAddress(parts.end.row, col)}`,
-        color: null,
-      });
-    }
-    const chart: ChartData = {
-      kind,
-      title: t("calc.chartTitle"),
-      categories,
-      series,
-      legend: true,
-      xTitle: "",
-      yTitle: "",
-      stacked: false,
-      showLabels: false,
-    };
     const anchor = formatAddress(parts.end.row + 2, parts.start.col);
     updateSheet((current) => ({
       ...current,
