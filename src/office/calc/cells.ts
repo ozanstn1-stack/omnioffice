@@ -761,6 +761,31 @@ export function formulaResult(
   return scalarToCellValue(asScalar(result));
 }
 
+/**
+ * Evaluates formulas as if they were typed into cells of `sheet` (a conditional
+ * format rule's formula), reading the values the grid already computed.
+ */
+export function sheetFormulaEvaluator(
+  workbook: Workbook,
+  sheet: Sheet,
+): (formula: string, row: number, col: number) => Scalar {
+  const values = workbookValues(workbook);
+  const sheets = new Map(workbook.sheets.map((candidate) => [candidate.name, candidate]));
+  const { names, scoped } = namesContext(workbook);
+  const context: Omit<FormulaContext, "currentRow" | "currentAddress"> = {
+    getValue: (sheetName, address) => values.get(keyOf(sheetName ?? sheet.name, address)) ?? "",
+    sheetNames: workbook.sheets.map((candidate) => candidate.name),
+    currentSheet: sheet.name,
+    names: { ...names, ...(scoped.get(sheet.name) ?? {}) },
+    tables: sheet.tables ?? [],
+    ...modelAccess(sheets, sheet.name),
+  };
+  return (formula, row, col) =>
+    asScalar(
+      evaluateFormulaResult(formula, { ...context, currentRow: row + 1, currentAddress: formatAddress(row, col) }),
+    );
+}
+
 export function formatCellDisplay(value: Scalar, style: CellStyle): string {
   if (isError(value)) return value.code;
   if (typeof value === "number") return formatNumber(value, style.numberFormat || "General");

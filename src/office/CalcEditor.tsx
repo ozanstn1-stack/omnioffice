@@ -19,6 +19,7 @@ import {
   newSpreadsheetTable,
   type Cell,
   type CellStyle,
+  type CondRule,
   type PivotTable,
   type PivotValueField,
   type Sheet,
@@ -61,6 +62,7 @@ import {
   isBlankCell,
   parseInputValue,
   scalarToCellValue,
+  sheetFormulaEvaluator,
   shiftFormulaRows,
   uniqueSheetName,
   usedRange,
@@ -76,7 +78,8 @@ import { applyFilterDraft, clearFilter, sheetFilterDraft, tableFilterDraft, type
 import { argumentHintFor, buildSuggestions, type FormulaSuggestion } from "./calc/formula-assist";
 import { clampGridZoom, pinchGridZoom, shiftFormulaColumns } from "./calc/grid-math";
 import type { CellPosition, GridSelection } from "./calc/grid-types";
-import { computeConditionalFills, computeDataBars, isValid } from "./calc/rules";
+import { prepareConditional } from "./calc/conditional";
+import { isValid } from "./calc/rules";
 import { deleteColumn, deleteRow, insertColumn, insertRow, toggleMerge } from "./calc/structure";
 import { cellAnnouncement } from "./calc/announce";
 import { errorTitle } from "./calc/error-info";
@@ -88,6 +91,7 @@ import { planSort, sortContext, type SortLevel, type SortRange } from "./calc/so
 import { edgeVisible, isHiddenIndex, stepVisible } from "./calc/visibility";
 import { uniqueColumnName, uniqueTableName } from "./calc/table-names";
 import { CalcRibbon } from "./calc/ui/CalcRibbon";
+import { CfDecor } from "./calc/ui/CfDecor";
 import { cellTextStyle } from "./calc/ui/cell-style";
 import { ChartBox, ChartDialog } from "./calc/ui/ChartPanel";
 import { ConditionalDialog } from "./calc/ui/ConditionalDialog";
@@ -1496,25 +1500,23 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     setPivotDialog(false);
   };
 
-  const addConditional = (rule: { kind: string; values: string[]; fill: string; topN?: number }) => {
-    const range = usedRange(sheet);
+  const addConditional = (rule: Omit<CondRule, "id">) => {
     updateSheet((current) => ({
       ...current,
-      conditional: [
-        ...current.conditional,
-        {
-          id: crypto.randomUUID(),
-          range,
-          kind: rule.kind,
-          values: rule.values,
-          fill: rule.fill,
-          color: null,
-          topN: rule.topN ?? null,
-          stopIfTrue: false,
-        },
-      ],
+      conditional: [...current.conditional, { ...rule, id: crypto.randomUUID() }],
     }));
     setConditionalDialog(false);
+  };
+
+  const deleteConditional = (id: string) =>
+    updateSheet((current) => ({ ...current, conditional: current.conditional.filter((rule) => rule.id !== id) }));
+
+  /** A new rule starts on the selected block, or on everything in use when one cell is selected. */
+  const conditionalDefaultRange = () => {
+    const { start, end } = selectionBounds;
+    return start.row === end.row && start.col === end.col
+      ? usedRange(sheet)
+      : `${formatAddress(start.row, start.col)}:${formatAddress(end.row, end.col)}`;
   };
 
   const addValidation = (validation: {
@@ -2113,8 +2115,14 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
 
   // Conditional formatting is evaluated once per sheet/data change instead of
   // per visible cell (see calc/rules.ts).
-  const conditionalFills = useMemo(() => computeConditionalFills(sheet.conditional, computed), [sheet, computed]);
-  const dataBars = useMemo(() => computeDataBars(sheet.conditional, computed), [sheet, computed]);
+  const conditional = useMemo(() => {
+    let evaluate: ReturnType<typeof sheetFormulaEvaluator> | null = null;
+    return prepareConditional(sheet.conditional, {
+      values: computed,
+      // Only a formula rule needs the evaluator, and only for the cells it is asked about.
+      evaluate: (formula, row, col) => (evaluate ??= sheetFormulaEvaluator(workbook, sheet))(formula, row, col),
+    });
+  }, [sheet, computed, workbook]);
 
   // Rule ranges are parsed once per rule list, so the per-cell lookup below is a
   // few integer comparisons however large the validated range is.
@@ -2571,7 +2579,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                       row <= selectionBounds.end.row &&
                       col >= selectionBounds.start.col &&
                       col <= selectionBounds.end.col;
-                    const fill = conditionalFills.get(address);
+                    const format = conditional.formatAt(row, col);
+                    const fill = format?.fill;
                     const style = cell?.style ?? defaultCellStyle();
                     const validation = validationAt.find(row, col);
                     const invalid = validation ? !isValid(validation, value, listItems.get(validation.id)) : false;
@@ -2639,6 +2648,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                             headerBold: tableHeader && tableEntry!.table.headerBold,
                             onHeaderFill: Boolean(tableFill && tableHeader),
                             linked,
+                            rule: format,
                           }),
                         }}
                         onDoubleClick={() => setEditing({ row, col, value: cell?.formula ?? cellText(cell) })}
@@ -2689,7 +2699,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                             }}
                           />
                         ) : (
-                          <span className="cell-text">{formatCellDisplay(value, style)}</span>
+                          <span className="cell-text" style={format?.icon ? { paddingLeft: 16 } : undefined}>
+                            {format?.hideValue ? "" : formatCellDisplay(value, style)}
+                          </span>
                         )}
                         {style.borders.top ? <span className="cell-border top" /> : null}
                         {style.borders.bottom ? <span className="cell-border bottom" /> : null}
@@ -2720,12 +2732,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                             }}
                           />
                         ) : null}
-                        {(() => {
-                          const bar = dataBars.get(address);
-                          if (!bar) return null;
-                          const width = bar.max > 0 ? Math.min(100, (Math.abs(Number(value) || 0) / bar.max) * 100) : 0;
-                          return <span className="data-bar" style={{ width: `${width}%`, background: bar.fill }} />;
-                        })()}
+                        <CfDecor format={format} t={t} />
                         {errorTip ? <span className="cell-error-flag" /> : null}
                         {cell?.comment ? <span className="cell-comment-dot" /> : null}
                       </div>
@@ -2937,7 +2944,13 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       ) : null}
 
       {conditionalDialog ? (
-        <ConditionalDialog onClose={() => setConditionalDialog(false)} onApply={addConditional} />
+        <ConditionalDialog
+          rules={sheet.conditional}
+          defaultRange={conditionalDefaultRange()}
+          onClose={() => setConditionalDialog(false)}
+          onApply={addConditional}
+          onDelete={deleteConditional}
+        />
       ) : null}
 
       {validationDialog ? (
