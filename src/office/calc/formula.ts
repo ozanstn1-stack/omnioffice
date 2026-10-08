@@ -213,7 +213,7 @@ function tokenize(input: string): Token[] {
     // token can. They used to fall into the unknown-character branch and turn
     // the whole formula into `#VALUE!`, so IFERROR(#N/A, ...) never worked.
     if (ch === "#") {
-      const literal = /^#(REF!|VALUE!|NAME\?|DIV\/0!|N\/A|NUM!|CIRC!|SPILL!)/.exec(input.slice(index).toUpperCase());
+      const literal = /^#(REF!|VALUE!|NAME\?|DIV\/0!|N\/A|NUM!|CIRC!|SPILL!|CALC!)/.exec(input.slice(index).toUpperCase());
       if (literal) {
         tokens.push({ type: "error", value: literal[0] });
         index += literal[0].length;

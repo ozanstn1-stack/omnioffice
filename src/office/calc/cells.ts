@@ -67,7 +67,7 @@ export function parseInputValue(text: string): CellValue {
     if (Number.isFinite(numeric)) return { kind: "number", value: numeric };
   }
   if (/^(true|false)$/i.test(trimmed)) return { kind: "bool", value: trimmed.toLowerCase() === "true" };
-  if (/^#(REF|VALUE|NAME|DIV\/0|N\/A|NUM)/i.test(trimmed)) return { kind: "error", value: trimmed.toUpperCase() };
+  if (/^#(REF|VALUE|NAME|DIV\/0|N\/A|NUM|CALC)/i.test(trimmed)) return { kind: "error", value: trimmed.toUpperCase() };
   return { kind: "text", value: text };
 }
 

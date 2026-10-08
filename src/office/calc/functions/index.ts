@@ -7,6 +7,7 @@
  */
 import { functionCount } from "../registry";
 import "./aggregate";
+import "./array-shape";
 import "./arrays";
 import "./datetime";
 import "./distributions";

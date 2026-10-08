@@ -20,7 +20,7 @@ import {
 } from "../scalars";
 
 /** Hard ceiling on a spilled array, mirroring the evaluator's range guard. */
-const MAX_SPILL_CELLS = 20_000;
+export const MAX_SPILL_CELLS = 20_000;
 
 function guard(cells: number): boolean {
   return cells > MAX_SPILL_CELLS;
