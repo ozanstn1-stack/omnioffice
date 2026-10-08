@@ -24,6 +24,11 @@ export default defineConfig({
         manualChunks(id) {
           if (/node_modules[\\/]react(?:-dom)?[\\/]/.test(id)) return "react";
           if (/node_modules[\\/]zustand[\\/]/.test(id)) return "state";
+          // The spreadsheet function library (and the value types it shares
+          // with the evaluator) is a leaf: it imports nothing from the editor,
+          // so it can sit in its own chunk and keep the workspace chunk under
+          // the per-chunk budget.
+          if (/src[\\/]office[\\/]calc[\\/]functions[\\/]/.test(id)) return "calc-functions";
           return undefined;
         },
       },
