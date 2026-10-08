@@ -94,13 +94,27 @@ export function isDefaultCellStyle(style: CellStyle): boolean {
   );
 }
 
-/** True when a cell carries no value, formula, comment or formatting. */
+/** True when a cell carries no value, formula, comment, link or formatting. */
 export function isBlankCell(cell: Cell): boolean {
-  return cell.value.kind === "empty" && !cell.formula && !cell.comment && isDefaultCellStyle(cell.style);
+  return cell.value.kind === "empty" && !cell.formula && !cell.comment && !cell.link && isDefaultCellStyle(cell.style);
 }
 
 function replaceSheet(workbook: Workbook, index: number, sheet: Sheet): Workbook {
   return { ...workbook, sheets: workbook.sheets.map((candidate, at) => (at === index ? sheet : candidate)) };
+}
+
+/**
+ * Puts one cell into a sheet, or removes it when `cell` is null or carries
+ * nothing. For changes that leave the values alone (notes, links), so the
+ * result is a plain new workbook and the next value pass is a full one.
+ */
+export function withCellAt(workbook: Workbook, sheetIndex: number, address: string, cell: Cell | null): Workbook {
+  const sheet = workbook.sheets[sheetIndex];
+  if (!sheet) return workbook;
+  const cells = { ...sheet.cells };
+  if (cell === null || isBlankCell(cell)) delete cells[address];
+  else cells[address] = cell;
+  return replaceSheet(workbook, sheetIndex, { ...sheet, cells });
 }
 
 /**
