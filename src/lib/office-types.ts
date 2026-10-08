@@ -413,15 +413,61 @@ export interface ChartPlacement {
   heightPx: number;
 }
 
+/**
+ * One threshold of a color scale, data bar or icon set (OOXML `cfvo`, ODS
+ * `formatting-entry`).
+ */
+export interface CondThreshold {
+  /** `min`, `max`, `num`, `percent`, `percentile` or `formula`. */
+  kind: "min" | "max" | "num" | "percent" | "percentile" | "formula";
+  /** The number (or formula) the kind needs; empty for `min` and `max`. */
+  value: string;
+  /** Colour of a color-scale stop (`#RRGGBB`); unused by data bars and icon sets. */
+  color?: string | null;
+}
+
+/**
+ * One conditional-formatting rule over `range`.
+ *
+ * `kind` is `greater`, `less`, `equal`, `between`, `textContains`, `duplicate`,
+ * `top`, `bottom` (highlight rules styled by `fill`, `color`, `bold`,
+ * `italic`), `expression` (a formula, styled the same way), `colorScale`,
+ * `dataBar` or `iconSet`. Every field after `stopIfTrue` is optional and absent
+ * from rules the older kinds produce, so documents from earlier builds stay
+ * valid.
+ */
 export interface CondRule {
   id: string;
   range: string;
   kind: string;
   values: string[];
+  /** Highlight fill; the bar colour of a `dataBar`. */
   fill: string | null;
+  /** Font colour of a highlight rule. */
   color: string | null;
   topN: number | null;
   stopIfTrue: boolean;
+  /**
+   * `colorScale`: two or three stops, each with a `color`. `dataBar`: the lowest
+   * and highest threshold (absent or empty means automatic minimum and maximum).
+   * `iconSet`: the lower bound of each icon, as many as the set has icons.
+   */
+  thresholds?: CondThreshold[];
+  /** `iconSet`: the OOXML set name, e.g. `3Arrows`, `3Flags`, `3TrafficLights1`. */
+  iconSet?: string | null;
+  /** `iconSet`: the first icon belongs to the highest values. */
+  reverseIcons?: boolean;
+  /** `dataBar` and `iconSet`: show only the bar or icon, not the cell value. */
+  hideValue?: boolean;
+  /**
+   * `expression`: the formula without a leading `=`, relative to the top-left
+   * cell of `range`, e.g. `$B2>100`.
+   */
+  formula?: string | null;
+  /** Bold font of a highlight rule. */
+  bold?: boolean;
+  /** Italic font of a highlight rule. */
+  italic?: boolean;
 }
 
 export interface Validation {

@@ -1169,6 +1169,28 @@ pub struct SheetImage {
     pub rotation_deg: f64,
 }
 
+/// One threshold of a color scale, data bar or icon set (the `cfvo` of XLSX,
+/// a `formatting-entry` of ODS).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CondThreshold {
+    /// `min`, `max`, `num`, `percent`, `percentile` or `formula`.
+    pub kind: String,
+    /// The number (or, for `formula`, the formula) the kind needs; empty for
+    /// `min` and `max`.
+    pub value: String,
+    /// The colour of a color-scale stop. Data bars and icon sets leave it unset.
+    pub color: Option<String>,
+}
+
+/// One conditional-formatting rule over `range`.
+///
+/// `kind` is one of `greater`, `less`, `equal`, `between`, `textContains`,
+/// `duplicate`, `top`, `bottom` (highlight rules styled by `fill`, `color`,
+/// `bold` and `italic`), `expression` (a formula, styled the same way),
+/// `colorScale`, `dataBar` and `iconSet`. The fields after `stop_if_true` belong
+/// to the newer kinds; unset ones are not serialized, so a workbook that does not
+/// use them reads and writes exactly as it did before they existed.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct CondRule {
@@ -1176,10 +1198,41 @@ pub struct CondRule {
     pub range: String,
     pub kind: String,
     pub values: Vec<String>,
+    /// Highlight fill; the bar colour of a `dataBar`.
     pub fill: Option<String>,
+    /// Font colour of a highlight rule.
     pub color: Option<String>,
     pub top_n: Option<u32>,
     pub stop_if_true: bool,
+    /// `colorScale`: two or three stops with their colours. `dataBar`: the lowest
+    /// and highest threshold (empty means automatic minimum and maximum).
+    /// `iconSet`: the lower bound of each icon, as many as the set has icons.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub thresholds: Vec<CondThreshold>,
+    /// `iconSet`: the set name as OOXML spells it, e.g. `3Arrows`, `3Flags`,
+    /// `3TrafficLights1`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_set: Option<String>,
+    /// `iconSet`: the first icon belongs to the highest values.
+    #[serde(skip_serializing_if = "is_false")]
+    pub reverse_icons: bool,
+    /// `dataBar` and `iconSet`: show only the bar or icon, not the cell value.
+    #[serde(skip_serializing_if = "is_false")]
+    pub hide_value: bool,
+    /// `expression`: the formula without a leading `=`, relative to the top-left
+    /// cell of `range` (the way XLSX and ODS store it).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub formula: Option<String>,
+    /// Bold font of a highlight rule.
+    #[serde(skip_serializing_if = "is_false")]
+    pub bold: bool,
+    /// Italic font of a highlight rule.
+    #[serde(skip_serializing_if = "is_false")]
+    pub italic: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

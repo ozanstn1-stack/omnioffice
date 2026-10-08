@@ -388,6 +388,23 @@ pub fn workbook_feature_report(workbook: &Workbook, format: &str) -> Compatibili
             if tables > 0 {
                 items.push(item("tables", "transformed", "Structured tables export as plain cell ranges."));
             }
+            let unwritable: Vec<String> = workbook
+                .sheets
+                .iter()
+                .flat_map(|sheet| sheet.conditional.iter())
+                .filter_map(crate::odf::ods_conditional_problem)
+                .collect();
+            if !unwritable.is_empty() {
+                items.push(item(
+                    "conditionalFormatting",
+                    "lost",
+                    &format!(
+                        "{} conditional formatting rule(s) cannot be written to ODS and stay in .oswk only ({}).",
+                        unwritable.len(),
+                        unwritable.join("; ")
+                    ),
+                ));
+            }
             if pivots > 0 {
                 items.push(item(
                     "pivotTables",

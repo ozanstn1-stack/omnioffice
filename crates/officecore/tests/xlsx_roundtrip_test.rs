@@ -137,6 +137,7 @@ fn golden_workbook() -> Workbook {
         color: None,
         top_n: None,
         stop_if_true: false,
+        ..Default::default()
     });
     sheet.conditional.push(CondRule {
         id: "c2".into(),
@@ -147,6 +148,7 @@ fn golden_workbook() -> Workbook {
         color: None,
         top_n: None,
         stop_if_true: false,
+        ..Default::default()
     });
     sheet.charts.push(ChartPlacement {
         id: "chart-1".into(),

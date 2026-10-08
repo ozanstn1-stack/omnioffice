@@ -110,6 +110,7 @@ fn fidelity_workbook() -> Workbook {
         color: None,
         top_n: None,
         stop_if_true: false,
+        ..Default::default()
     });
     sheet.conditional.push(CondRule {
         id: "c2".into(),
@@ -120,6 +121,7 @@ fn fidelity_workbook() -> Workbook {
         color: None,
         top_n: None,
         stop_if_true: false,
+        ..Default::default()
     });
     sheet.tables.push(SpreadsheetTable {
         id: "t1".into(),
@@ -203,13 +205,13 @@ fn xlsx_import_restores_styles_layout_rules_links_comments_names_and_tables() {
     assert_eq!(sheet.validations[0].values, vec!["North".to_string(), "South".to_string()]);
     assert!(sheet.validations[0].allow_blank);
 
-    // Conditional rules: greater-than with the shared highlight dxf, plus the
+    // Conditional rules: greater-than with its own highlight dxf, plus the
     // data bar whose colour lives in the rule itself.
     assert_eq!(sheet.conditional.len(), 2);
     let rule = sheet.conditional.iter().find(|rule| rule.kind == "greater").expect("greater rule");
     assert_eq!(rule.range, "B2:B3");
     assert_eq!(rule.values, vec!["1000".to_string()]);
-    assert_eq!(rule.fill.as_deref(), Some("#FFF3C4"));
+    assert_eq!(rule.fill.as_deref(), Some("#FFC7CE"), "the rule's own colour survives, not a shared one");
     let bar = sheet.conditional.iter().find(|rule| rule.kind == "dataBar").expect("data bar rule");
     assert_eq!(bar.range, "B2:B3");
     assert_eq!(bar.fill.as_deref(), Some("#638EC6"));

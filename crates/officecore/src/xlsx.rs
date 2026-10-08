@@ -53,6 +53,8 @@ struct StyleTable {
     borders: Vec<String>,
     num_formats: Vec<(u32, String)>,
     xfs: Vec<String>,
+    /// Differential formats of the conditional-formatting rules (`<dxfs>`).
+    dxfs: Vec<String>,
     font_keys: BTreeMap<String, usize>,
     fill_keys: BTreeMap<String, usize>,
     border_keys: BTreeMap<String, usize>,
@@ -217,6 +219,40 @@ impl StyleTable {
         index
     }
 
+    /// The `<dxf>` index for a highlight rule's look. A rule without any look
+    /// gets the shared highlight fill, so it still shows something.
+    fn dxf_id(&mut self, fill: Option<&str>, color: Option<&str>, bold: bool, italic: bool) -> usize {
+        let fill = fill.and_then(normalize_hex);
+        let color = color.and_then(normalize_hex);
+        let fill = match (&fill, &color, bold || italic) {
+            (None, None, false) => Some(CONDITIONAL_FILL.to_string()),
+            _ => fill,
+        };
+        let mut xml = String::from("<dxf>");
+        if bold || italic || color.is_some() {
+            xml.push_str("<font>");
+            if bold {
+                xml.push_str("<b/>");
+            }
+            if italic {
+                xml.push_str("<i/>");
+            }
+            if let Some(color) = &color {
+                xml.push_str(&format!("<color rgb=\"{}\"/>", argb_of(color)));
+            }
+            xml.push_str("</font>");
+        }
+        if let Some(fill) = &fill {
+            xml.push_str(&format!("<fill><patternFill><bgColor rgb=\"{}\"/></patternFill></fill>", argb_of(fill)));
+        }
+        xml.push_str("</dxf>");
+        if let Some(index) = self.dxfs.iter().position(|existing| existing == &xml) {
+            return index;
+        }
+        self.dxfs.push(xml);
+        self.dxfs.len() - 1
+    }
+
     fn xml(&self) -> String {
         let mut writer = XmlWriter::new();
         writer.declaration();
@@ -252,14 +288,14 @@ impl StyleTable {
         }
         writer.raw("</cellXfs>");
         writer.raw("<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>");
-        // One differential format backs every conditional-formatting rule, so
-        // the highlight colour a rule shows in the editor is the colour a
-        // spreadsheet shows after the round trip.
-        writer.raw(&format!(
-            "<dxfs count=\"1\"><dxf><font><color rgb=\"{}\"/></font><fill><patternFill><bgColor rgb=\"{}\"/></patternFill></fill></dxf></dxfs>",
-            argb_of(CONDITIONAL_FILL),
-            argb_of(CONDITIONAL_FILL)
-        ));
+        // Every highlight rule points at its own differential format, so the
+        // colours a rule shows in the editor are the colours a spreadsheet shows
+        // after the round trip.
+        writer.raw(&format!("<dxfs count=\"{}\">", self.dxfs.len()));
+        for dxf in &self.dxfs {
+            writer.raw(dxf);
+        }
+        writer.raw("</dxfs>");
         writer.raw("</styleSheet>");
         writer.finish()
     }
@@ -368,6 +404,7 @@ fn sheet_xml(
     styles: &mut StyleTable,
     shared: &mut Vec<String>,
     shared_index: &mut BTreeMap<String, usize>,
+    warnings: &mut Vec<String>,
 ) -> SheetPart {
     let mut writer = XmlWriter::new();
     writer.declaration();
@@ -531,10 +568,18 @@ fn sheet_xml(
         writer.raw("</mergeCells>");
     }
 
-    // Conditional formatting; each rule points at the shared dxf in styles.xml.
+    // Conditional formatting; a highlight rule points at its own dxf in
+    // styles.xml. A rule that cannot be written stays in the .oswk file and is
+    // reported, the way charts are.
     for (index, rule) in sheet.conditional.iter().enumerate() {
-        if let Some(xml) = conditional_formatting_xml(rule, index) {
-            writer.raw(&xml);
+        match conditional_formatting_xml(rule, index, styles) {
+            Ok(xml) => {
+                writer.raw(&xml);
+            }
+            Err(reason) => warnings.push(format!(
+                "A conditional formatting rule on sheet \"{}\" was kept in the .oswk file only: {reason}.",
+                sheet.name
+            )),
         }
     }
 
@@ -650,71 +695,155 @@ fn sheet_xml(
     SheetPart { xml: writer.finish(), rels, comments }
 }
 
-/// Builds a `<conditionalFormatting>` block plus the dxf index it points at.
+/// Highlight colour used by a highlight rule that carries no look of its own.
+pub(crate) const CONDITIONAL_FILL: &str = "#FFF3C4";
+
+/// The threshold types of a color scale, data bar or icon set (`cfvo/@type`).
+pub(crate) const CFVO_KINDS: [&str; 6] = ["min", "max", "num", "percent", "percentile", "formula"];
+
+/// The number of icons in an OOXML icon set name (`3Arrows` -> 3, `5Rating` ->
+/// 5); `None` for a name that is not an icon set.
+pub(crate) fn icon_set_count(name: &str) -> Option<usize> {
+    let count = name.chars().next()?.to_digit(10)? as usize;
+    let tail = &name[1..];
+    ((3..=5).contains(&count) && !tail.is_empty() && tail.chars().all(|ch| ch.is_ascii_alphanumeric())).then_some(count)
+}
+
+/// Even percent thresholds for an icon set: 0/33/67 for three icons, 0/25/50/75
+/// for four, the way Excel fills them in.
+pub(crate) fn default_icon_thresholds(count: usize) -> Vec<CondThreshold> {
+    (0..count)
+        .map(|step| CondThreshold {
+            kind: "percent".into(),
+            value: format!("{}", (step as f64 * 100.0 / count as f64).round() as u32),
+            color: None,
+        })
+        .collect()
+}
+
+/// One `<cfvo>` element.
+fn cfvo_xml(threshold: &CondThreshold) -> Result<String, String> {
+    let kind = threshold.kind.as_str();
+    if !CFVO_KINDS.contains(&kind) {
+        return Err(format!("the threshold type \"{kind}\" is unknown"));
+    }
+    if matches!(kind, "min" | "max") {
+        return Ok(format!("<cfvo type=\"{kind}\"/>"));
+    }
+    let value = threshold.value.trim();
+    Ok(format!("<cfvo type=\"{kind}\" val=\"{}\"/>", escape_attr(if value.is_empty() { "0" } else { value })))
+}
+
+/// Builds a `<conditionalFormatting>` block for one rule.
 ///
-/// Returns `None` for rule kinds that have no XLSX equivalent, which the caller
-/// reports through the import/export warnings rather than emitting a broken
-/// package.
-fn conditional_formatting_xml(rule: &CondRule, index: usize) -> Option<String> {
+/// `Err` carries the reason a rule cannot be written; the caller keeps the rule
+/// in the .oswk file and warns, instead of emitting a package Excel would repair.
+fn conditional_formatting_xml(rule: &CondRule, index: usize, styles: &mut StyleTable) -> Result<String, String> {
     let priority = index + 1;
     let stop = if rule.stop_if_true { " stopIfTrue=\"1\"" } else { "" };
-    let range = escape_attr(&rule.range);
-    let dxf = CONDITIONAL_DXF_ID;
+    if rule.range.trim().is_empty() {
+        return Err("the rule has no range".into());
+    }
+    let range = escape_attr(rule.range.trim());
+    let wrap = |cf_rule: String| format!("<conditionalFormatting sqref=\"{range}\">{cf_rule}</conditionalFormatting>");
     let anchor = anchor_of(&rule.range);
 
-    // A data bar does not use the shared dxf: its colour lives in the rule.
-    if rule.kind == "dataBar" {
-        let color = rule.fill.as_deref().map(argb_of).unwrap_or_else(|| "FF638EC6".into());
-        return Some(format!(
-            "<conditionalFormatting sqref=\"{range}\"><cfRule type=\"dataBar\" priority=\"{priority}\"{stop}><dataBar><cfvo type=\"min\"/><cfvo type=\"max\"/><color rgb=\"{color}\"/></dataBar></cfRule></conditionalFormatting>"
-        ));
+    // Color scales, data bars and icon sets carry their look in the rule; no dxf.
+    match rule.kind.as_str() {
+        "colorScale" => {
+            if !(2..=3).contains(&rule.thresholds.len()) {
+                return Err("a color scale needs two or three colour stops".into());
+            }
+            let mut values = String::new();
+            let mut colors = String::new();
+            for stop_point in &rule.thresholds {
+                values.push_str(&cfvo_xml(stop_point)?);
+                colors.push_str(&format!(
+                    "<color rgb=\"{}\"/>",
+                    argb_of(stop_point.color.as_deref().unwrap_or("#FFFFFF"))
+                ));
+            }
+            return Ok(wrap(format!(
+                "<cfRule type=\"colorScale\" priority=\"{priority}\"{stop}><colorScale>{values}{colors}</colorScale></cfRule>"
+            )));
+        }
+        "dataBar" => {
+            // Automatic minimum and maximum unless the rule names its own.
+            let bounds = match rule.thresholds.as_slice() {
+                [low, high] => format!("{}{}", cfvo_xml(low)?, cfvo_xml(high)?),
+                _ => "<cfvo type=\"min\"/><cfvo type=\"max\"/>".to_string(),
+            };
+            let color = rule.fill.as_deref().map(argb_of).unwrap_or_else(|| "FF638EC6".into());
+            let show = if rule.hide_value { " showValue=\"0\"" } else { "" };
+            return Ok(wrap(format!(
+                "<cfRule type=\"dataBar\" priority=\"{priority}\"{stop}><dataBar{show}>{bounds}<color rgb=\"{color}\"/></dataBar></cfRule>"
+            )));
+        }
+        "iconSet" => {
+            let name =
+                rule.icon_set.as_deref().map(str::trim).filter(|name| !name.is_empty()).unwrap_or("3TrafficLights1");
+            let count = icon_set_count(name).ok_or_else(|| format!("the icon set \"{name}\" is unknown"))?;
+            let thresholds =
+                if rule.thresholds.len() == count { rule.thresholds.clone() } else { default_icon_thresholds(count) };
+            let mut values = String::new();
+            for threshold in &thresholds {
+                values.push_str(&cfvo_xml(threshold)?);
+            }
+            let mut attributes = format!(" iconSet=\"{}\"", escape_attr(name));
+            if rule.hide_value {
+                attributes.push_str(" showValue=\"0\"");
+            }
+            if rule.reverse_icons {
+                attributes.push_str(" reverse=\"1\"");
+            }
+            return Ok(wrap(format!(
+                "<cfRule type=\"iconSet\" priority=\"{priority}\"{stop}><iconSet{attributes}>{values}</iconSet></cfRule>"
+            )));
+        }
+        _ => {}
     }
 
-    // (attributes, formula body) for the remaining rule kinds. The editor
-    // writes `textContains` / `duplicate`; older files may carry the shorter
-    // spellings, so both are accepted.
-    let (attributes, formula): (String, String) = match rule.kind.as_str() {
-        "greater" => (
-            format!("type=\"cellIs\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} operator=\"greaterThan\""),
-            format!("&gt;{}", escape_text(first_value(rule, "0"))),
+    let dxf = styles.dxf_id(rule.fill.as_deref(), rule.color.as_deref(), rule.bold, rule.italic);
+    let cell_is = |operator: &str, formulas: &[&str]| -> String {
+        let body: String = formulas.iter().map(|value| format!("<formula>{}</formula>", escape_text(value))).collect();
+        format!(
+            "<cfRule type=\"cellIs\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} operator=\"{operator}\">{body}</cfRule>"
+        )
+    };
+    // The editor writes `textContains` / `duplicate`; older files may carry the
+    // shorter spellings, so both are accepted.
+    let cf_rule = match rule.kind.as_str() {
+        "greater" => cell_is("greaterThan", &[first_value(rule, "0")]),
+        "less" => cell_is("lessThan", &[first_value(rule, "0")]),
+        "equal" => cell_is("equal", &[first_value(rule, "0")]),
+        "between" => cell_is("between", &[first_value(rule, "0"), second_value(rule, "0")]),
+        "text" | "textContains" => format!(
+            "<cfRule type=\"containsText\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} operator=\"containsText\" text=\"{}\"><formula>NOT(ISERROR(SEARCH(&quot;{}&quot;,{})))</formula></cfRule>",
+            escape_attr(first_value(rule, "")),
+            escape_text(first_value(rule, "")),
+            anchor
         ),
-        "less" => (
-            format!("type=\"cellIs\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} operator=\"lessThan\""),
-            format!("&lt;{}", escape_text(first_value(rule, "0"))),
-        ),
-        "equal" => (
-            format!("type=\"cellIs\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} operator=\"equal\""),
-            escape_text(first_value(rule, "0")),
-        ),
-        "between" => (
-            format!("type=\"cellIs\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} operator=\"between\""),
-            format!("{}~{}", escape_text(first_value(rule, "0")), escape_text(second_value(rule, "0"))),
-        ),
-        "text" | "textContains" => (
-            format!(
-                "type=\"containsText\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} operator=\"containsText\" text=\"{}\"",
-                escape_attr(first_value(rule, ""))
-            ),
-            format!("NOT(ISERROR(SEARCH(&quot;{}&quot;,{})))", escape_text(first_value(rule, "")), anchor),
-        ),
-        "duplicates" | "duplicate" => (
-            format!("type=\"duplicateValues\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop}"),
-            format!("COUNTIF({anchor},{anchor})>1"),
+        "duplicates" | "duplicate" => format!(
+            "<cfRule type=\"duplicateValues\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop}/>"
         ),
         "top" | "bottom" => {
             let rank = rule.top_n.unwrap_or(10);
             let bottom = if rule.kind == "bottom" { " bottom=\"1\"" } else { "" };
-            (
-                format!("type=\"top10\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} rank=\"{rank}\"{bottom}"),
-                String::new(),
+            format!("<cfRule type=\"top10\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} rank=\"{rank}\"{bottom}/>")
+        }
+        "expression" => {
+            let formula = rule.formula.as_deref().map(|formula| formula.trim().trim_start_matches('=').trim()).unwrap_or("");
+            if formula.is_empty() {
+                return Err("the formula rule has no formula".into());
+            }
+            format!(
+                "<cfRule type=\"expression\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop}><formula>{}</formula></cfRule>",
+                escape_text(formula)
             )
         }
-        _ => return None,
+        other => return Err(format!("the rule type \"{other}\" is not exportable")),
     };
-    let formulas = if formula.is_empty() { String::new() } else { format!("<formula>{formula}</formula>") };
-    Some(format!(
-        "<conditionalFormatting sqref=\"{range}\"><cfRule {attributes}>{formulas}</cfRule></conditionalFormatting>"
-    ))
+    Ok(wrap(cf_rule))
 }
 
 fn first_value<'a>(rule: &'a CondRule, fallback: &'a str) -> &'a str {
@@ -726,16 +855,11 @@ fn second_value<'a>(rule: &'a CondRule, fallback: &'a str) -> &'a str {
 }
 
 /// The top-left cell of a range, used as the relative anchor in rule formulas.
-fn anchor_of(range: &str) -> String {
-    range.split(':').next().unwrap_or(range).to_string()
+/// A multi-area range (`A1:A5 C1:C5`) anchors at its first area.
+pub(crate) fn anchor_of(range: &str) -> String {
+    let first = range.split_whitespace().next().unwrap_or(range);
+    first.split(':').next().unwrap_or(first).to_string()
 }
-
-/// One shared dxf for the whole workbook; every rule reuses it so the styles
-/// part stays small and consistent with what the editor preview shows.
-const CONDITIONAL_DXF_ID: usize = 0;
-
-/// Highlight colour used by the single shared differential format.
-const CONDITIONAL_FILL: &str = "#FFF3C4";
 
 // ---------------------------------------------------------------------------
 // Charts
@@ -1543,6 +1667,7 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
             &mut styles,
             &mut shared,
             &mut shared_index,
+            &mut warnings,
         ));
     }
     if pivots_materialized > 0 {
@@ -2217,6 +2342,9 @@ struct ImportedStyles {
     /// `dxf` fill and font colours, indexed by `dxfId` in conditional rules.
     dxf_fills: Vec<Option<String>>,
     dxf_colors: Vec<Option<String>>,
+    /// Bold and italic flags of the same `dxf` entries.
+    dxf_bold: Vec<bool>,
+    dxf_italic: Vec<bool>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -2899,79 +3027,241 @@ fn numeric_bounds(operator: &str, first: &str, second: &str) -> (Option<f64>, Op
     }
 }
 
+/// The first area of a range with absolute marks (`B2:B5` -> `$B$2:$B$5`), the
+/// form a rule formula needs to refer to the whole range from every cell.
+pub(crate) fn absolute_area(range: &str) -> String {
+    let first = range.split_whitespace().next().unwrap_or(range);
+    let cell = |row: u32, column: u32| format!("${}${}", crate::address::column_name(column), row + 1);
+    match crate::address::parse_range(first) {
+        Some(((start_row, start_col), (end_row, end_col))) if (start_row, start_col) != (end_row, end_col) => {
+            format!("{}:{}", cell(start_row, start_col), cell(end_row, end_col))
+        }
+        Some(((row, column), _)) => cell(row, column),
+        None => first.to_string(),
+    }
+}
+
+/// Reads one `<cfRule>` into a model rule. `None` when the rule has a type or
+/// shape the model cannot hold.
+///
+/// Types with a model kind of their own (cell value, text, duplicates, top and
+/// bottom, color scale, data bar, icon set) map straight onto it. Excel states
+/// every other highlight rule as a formula (`beginsWith`, `containsBlanks`,
+/// `notBetween`, `aboveAverage`, ...), so those become `expression` rules and
+/// keep their meaning.
+fn read_cf_rule(rule: &XmlNode, range: &str, styles: &ImportedStyles) -> Option<CondRule> {
+    let kind = rule.attr("type").unwrap_or("").trim();
+    let dxf = parse_u32_attr(rule, "dxfId").map(|value| value as usize);
+    let mut out = CondRule {
+        range: range.to_string(),
+        stop_if_true: attr_on(rule, "stopIfTrue"),
+        fill: dxf.and_then(|index| styles.dxf_fills.get(index).cloned()).flatten(),
+        color: dxf.and_then(|index| styles.dxf_colors.get(index).cloned()).flatten(),
+        bold: dxf.and_then(|index| styles.dxf_bold.get(index).copied()).unwrap_or(false),
+        italic: dxf.and_then(|index| styles.dxf_italic.get(index).copied()).unwrap_or(false),
+        ..Default::default()
+    };
+    let formulas: Vec<String> =
+        rule.children_of("formula").iter().map(|node| node.deep_text().trim().to_string()).collect();
+    let formula = |index: usize| formulas.get(index).cloned().unwrap_or_default();
+    let anchor = anchor_of(range);
+    let all = absolute_area(range);
+    let text = rule.attr("text").unwrap_or("").to_string();
+    let quoted = text.replace('"', "\"\"");
+    let expression = |out: &mut CondRule, formula: String| {
+        out.kind = "expression".into();
+        out.formula = Some(formula);
+    };
+    // A formula Excel stored with the rule wins over one rebuilt from its parts.
+    let stated = |fallback: String| Some(formula(0)).filter(|stated| !stated.is_empty()).unwrap_or(fallback);
+    match kind {
+        "cellIs" => match rule.attr("operator").unwrap_or("") {
+            "greaterThan" => {
+                out.kind = "greater".into();
+                out.values = vec![strip_operator(&formula(0))];
+            }
+            "lessThan" => {
+                out.kind = "less".into();
+                out.values = vec![strip_operator(&formula(0))];
+            }
+            "equal" => {
+                out.kind = "equal".into();
+                out.values = vec![strip_operator(&formula(0))];
+            }
+            "between" => {
+                let first = formula(0);
+                // Older files of this editor encode `between` as one formula
+                // with a `~` separator; Excel uses two formula elements.
+                let (low, high) = match first.split_once('~') {
+                    Some((low, high)) => (low.to_string(), high.to_string()),
+                    None => (first, formula(1)),
+                };
+                out.kind = "between".into();
+                out.values = vec![strip_operator(&low), strip_operator(&high)];
+            }
+            "greaterThanOrEqual" => expression(&mut out, format!("{anchor}>={}", formula(0))),
+            "lessThanOrEqual" => expression(&mut out, format!("{anchor}<={}", formula(0))),
+            "notEqual" => expression(&mut out, format!("{anchor}<>{}", formula(0))),
+            "notBetween" => expression(&mut out, format!("OR({anchor}<{},{anchor}>{})", formula(0), formula(1))),
+            _ => return None,
+        },
+        "containsText" => {
+            out.kind = "textContains".into();
+            out.values = vec![if text.is_empty() { contains_text_value(&formula(0)) } else { text }];
+        }
+        "notContainsText" => expression(&mut out, stated(format!("ISERROR(SEARCH(\"{quoted}\",{anchor}))"))),
+        "beginsWith" => expression(&mut out, stated(format!("LEFT({anchor},LEN(\"{quoted}\"))=\"{quoted}\""))),
+        "endsWith" => expression(&mut out, stated(format!("RIGHT({anchor},LEN(\"{quoted}\"))=\"{quoted}\""))),
+        "containsBlanks" => expression(&mut out, stated(format!("LEN(TRIM({anchor}))=0"))),
+        "notContainsBlanks" => expression(&mut out, stated(format!("LEN(TRIM({anchor}))>0"))),
+        "containsErrors" => expression(&mut out, stated(format!("ISERROR({anchor})"))),
+        "notContainsErrors" => expression(&mut out, stated(format!("NOT(ISERROR({anchor}))"))),
+        "timePeriod" => {
+            // The period itself (`period="lastWeek"`) lives in the stated formula.
+            let stated = formula(0);
+            if stated.is_empty() {
+                return None;
+            }
+            expression(&mut out, stated);
+        }
+        "duplicateValues" => out.kind = "duplicate".into(),
+        "uniqueValues" => expression(&mut out, format!("COUNTIF({all},{anchor})=1")),
+        "top10" => {
+            let rank = parse_u32_attr(rule, "rank").unwrap_or(10);
+            let bottom = attr_on(rule, "bottom");
+            if attr_on(rule, "percent") {
+                // "Top 10 percent" is not a count; as a formula it stays exact.
+                expression(
+                    &mut out,
+                    if bottom {
+                        format!("{anchor}<=PERCENTILE({all},{rank}/100)")
+                    } else {
+                        format!("{anchor}>=PERCENTILE({all},1-{rank}/100)")
+                    },
+                );
+            } else {
+                out.kind = if bottom { "bottom" } else { "top" }.into();
+                out.top_n = Some(rank);
+            }
+        }
+        "aboveAverage" => {
+            if parse_u32_attr(rule, "stdDev").unwrap_or(0) > 0 {
+                return None;
+            }
+            let above = rule.attr("aboveAverage").map(|value| !matches!(value.trim(), "0" | "false")).unwrap_or(true);
+            let operator = match (above, attr_on(rule, "equalAverage")) {
+                (true, false) => ">",
+                (true, true) => ">=",
+                (false, false) => "<",
+                (false, true) => "<=",
+            };
+            expression(&mut out, format!("{anchor}{operator}AVERAGE({all})"));
+        }
+        "expression" => {
+            let stated = formula(0);
+            if stated.is_empty() {
+                return None;
+            }
+            expression(&mut out, stated.trim_start_matches('=').trim().to_string());
+        }
+        "colorScale" => {
+            let scale = rule.child("colorScale")?;
+            let values = scale.children_of("cfvo");
+            let colors = scale.children_of("color");
+            if !(2..=3).contains(&values.len()) || values.len() != colors.len() {
+                return None;
+            }
+            out.kind = "colorScale".into();
+            for (value, color) in values.into_iter().zip(colors) {
+                let mut threshold = read_cfvo(value)?;
+                // A theme or indexed colour has no portable value; white keeps the stop.
+                threshold.color = Some(color_of(color).unwrap_or_else(|| "#FFFFFF".into()));
+                out.thresholds.push(threshold);
+            }
+            out.fill = None;
+            out.color = None;
+        }
+        "dataBar" => {
+            let bar = rule.child("dataBar")?;
+            out.kind = "dataBar".into();
+            out.fill = bar.child("color").and_then(color_of);
+            out.color = None;
+            out.hide_value = bar.attr("showValue").map(|value| matches!(value.trim(), "0" | "false")).unwrap_or(false);
+            let values = bar.children_of("cfvo");
+            if let [low, high] = values.as_slice() {
+                let (low, high) = (read_cfvo(low)?, read_cfvo(high)?);
+                // The automatic bounds are the default; only explicit ones are kept.
+                if !(low.kind == "min" && high.kind == "max") {
+                    out.thresholds = vec![low, high];
+                }
+            }
+        }
+        "iconSet" => {
+            let set = rule.child("iconSet")?;
+            let name = set.attr("iconSet").map(str::trim).filter(|name| !name.is_empty()).unwrap_or("3TrafficLights1");
+            let count = icon_set_count(name)?;
+            let values = set.children_of("cfvo");
+            if values.len() != count {
+                return None;
+            }
+            out.kind = "iconSet".into();
+            out.icon_set = Some(name.to_string());
+            out.reverse_icons = attr_on(set, "reverse");
+            out.hide_value = set.attr("showValue").map(|value| matches!(value.trim(), "0" | "false")).unwrap_or(false);
+            for value in values {
+                out.thresholds.push(read_cfvo(value)?);
+            }
+            out.fill = None;
+            out.color = None;
+        }
+        _ => return None,
+    }
+    Some(out)
+}
+
+/// One `<cfvo>`; `None` for a threshold type the model does not know.
+fn read_cfvo(node: &XmlNode) -> Option<CondThreshold> {
+    let kind = node.attr("type")?.trim();
+    if !CFVO_KINDS.contains(&kind) {
+        return None;
+    }
+    let value =
+        if matches!(kind, "min" | "max") { String::new() } else { node.attr("val").unwrap_or("").trim().to_string() };
+    Some(CondThreshold { kind: kind.to_string(), value, color: None })
+}
+
 fn apply_conditional(root: &XmlNode, sheet: &mut Sheet, styles: &ImportedStyles, warnings: &mut Vec<String>) {
     let mut unsupported = 0usize;
+    // Excel evaluates rules by `priority` across all blocks, not by position.
+    let mut rules: Vec<(u32, CondRule)> = Vec::new();
     for block in root.children_of("conditionalFormatting") {
         let range = block.attr("sqref").unwrap_or("").trim().to_string();
         if range.is_empty() {
             continue;
         }
         for rule in block.children_of("cfRule") {
-            let kind = rule.attr("type").unwrap_or("").trim();
-            let stop_if_true = attr_on(rule, "stopIfTrue");
-            let dxf = parse_u32_attr(rule, "dxfId").map(|value| value as usize);
-            let mut fill = dxf.and_then(|index| styles.dxf_fills.get(index).cloned()).flatten();
-            let color = dxf.and_then(|index| styles.dxf_colors.get(index).cloned()).flatten();
-            let formulas = rule.children_of("formula");
-            let formula =
-                |index: usize| formulas.get(index).map(|node| node.deep_text().trim().to_string()).unwrap_or_default();
-            let (model_kind, values, top_n) = match kind {
-                "cellIs" => match rule.attr("operator").unwrap_or("") {
-                    "greaterThan" => ("greater", vec![strip_operator(&formula(0))], None),
-                    "lessThan" => ("less", vec![strip_operator(&formula(0))], None),
-                    "equal" => ("equal", vec![strip_operator(&formula(0))], None),
-                    "between" => {
-                        let first = formula(0);
-                        let second = formula(1);
-                        // This writer encodes `between` as one formula with a
-                        // `~` separator; Excel uses two formula elements.
-                        let (low, high) = match first.split_once('~') {
-                            Some((low, high)) => (low.to_string(), high.to_string()),
-                            None => (first, second),
-                        };
-                        ("between", vec![strip_operator(&low), strip_operator(&high)], None)
-                    }
-                    _ => {
-                        unsupported += 1;
-                        continue;
-                    }
-                },
-                "containsText" => {
-                    let text =
-                        rule.attr("text").map(str::to_string).unwrap_or_else(|| contains_text_value(&formula(0)));
-                    ("textContains", vec![text], None)
-                }
-                "duplicateValues" => ("duplicate", Vec::new(), None),
-                "top10" => {
-                    let rank = parse_u32_attr(rule, "rank").unwrap_or(10);
-                    if attr_on(rule, "bottom") {
-                        ("bottom", Vec::new(), Some(rank))
-                    } else {
-                        ("top", Vec::new(), Some(rank))
-                    }
-                }
-                "dataBar" => {
-                    if let Some(bar_color) = rule.child("dataBar").and_then(|bar| bar.child("color")).and_then(color_of)
-                    {
-                        fill = Some(bar_color);
-                    }
-                    ("dataBar", Vec::new(), None)
-                }
-                _ => {
-                    unsupported += 1;
-                    continue;
-                }
-            };
-            sheet.conditional.push(CondRule {
-                id: format!("cf{}", sheet.conditional.len() + 1),
-                range: range.clone(),
-                kind: model_kind.into(),
-                values,
-                fill,
-                color,
-                top_n,
-                stop_if_true,
-            });
+            match read_cf_rule(rule, &range, styles) {
+                Some(model) => rules.push((parse_u32_attr(rule, "priority").unwrap_or(u32::MAX), model)),
+                None => unsupported += 1,
+            }
+        }
+    }
+    rules.sort_by_key(|(priority, _)| *priority);
+    for (_, mut rule) in rules {
+        rule.id = format!("cf{}", sheet.conditional.len() + 1);
+        sheet.conditional.push(rule);
+    }
+    // Excel 2010 keeps negative bar colours, borders and custom icons in
+    // worksheet extensions; the basic rule above is imported, those are not.
+    if let Some(extensions) = root.child("extLst") {
+        let mut found = Vec::new();
+        extensions.find_all("cfRule", &mut found);
+        if !found.is_empty() {
+            warnings.push(format!(
+                "Sheet \"{}\" has {} Excel 2010 conditional formatting extension(s) (negative bar colours, custom icons); their extra options were not imported.",
+                sheet.name,
+                found.len()
+            ));
         }
     }
     if unsupported > 0 {
@@ -3810,13 +4100,17 @@ fn parse_styles(xml: &str) -> OfficeResult<ImportedStyles> {
         .unwrap_or_default();
     let mut dxf_fills = Vec::new();
     let mut dxf_colors = Vec::new();
+    let mut dxf_bold = Vec::new();
+    let mut dxf_italic = Vec::new();
     if let Some(node) = root.child("dxfs") {
         for dxf in node.children_of("dxf") {
             dxf_fills.push(dxf.child("fill").and_then(parse_fill));
             dxf_colors.push(dxf.child("font").and_then(|font| font.child("color")).and_then(color_of));
+            dxf_bold.push(dxf.child("font").and_then(|font| font.child("b")).map(font_flag).unwrap_or(false));
+            dxf_italic.push(dxf.child("font").and_then(|font| font.child("i")).map(font_flag).unwrap_or(false));
         }
     }
-    Ok(ImportedStyles { cell_styles, dxf_fills, dxf_colors })
+    Ok(ImportedStyles { cell_styles, dxf_fills, dxf_colors, dxf_bold, dxf_italic })
 }
 
 fn parse_xf(
@@ -4213,6 +4507,7 @@ mod tests {
                 color: None,
                 top_n,
                 stop_if_true: false,
+                ..Default::default()
             });
         }
         let bytes = write_xlsx(&workbook).unwrap();
