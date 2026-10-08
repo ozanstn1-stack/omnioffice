@@ -228,8 +228,10 @@ registerFunction(
 registerFunction(
   "N",
   (args) => {
-    const number = toNumber(args[0]?.[0]?.[0] ?? 0);
-    return isError(number) ? 0 : number;
+    // Numbers stay, TRUE/FALSE are 1/0, text (even "7") is 0, an error stays an error.
+    const value = args[0]?.[0]?.[0] ?? 0;
+    if (typeof value === "boolean") return value ? 1 : 0;
+    return typeof value === "string" ? 0 : value;
   },
   1,
   1,
@@ -239,8 +241,9 @@ registerFunction(
 registerFunction(
   "T",
   (args) => {
+    // Text stays, a number or boolean becomes "", an error stays an error.
     const value = args[0]?.[0]?.[0];
-    return typeof value === "string" ? value : "";
+    return typeof value === "string" || isError(value) ? (value ?? "") : "";
   },
   1,
   1,

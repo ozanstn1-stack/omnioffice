@@ -3,7 +3,7 @@
  */
 import { registerFunction } from "../registry";
 import { formatNumber } from "../numberFormat";
-import { ERR, FormulaError, flatten, isError, toNumber, toText, type Scalar } from "../scalars";
+import { ERR, FormulaError, flatten, isError, optionalBool, toNumber, toText, type Scalar } from "../scalars";
 
 function textArg(args: Scalar[][][], index: number): string {
   return toText(args[index]?.[0]?.[0] ?? "");
@@ -20,10 +20,11 @@ registerFunction("TRIM", (args) => textArg(args, 0).trim().replace(/\s+/g, " "),
   signature: "TRIM(text)",
   category: "Text",
 });
-// CLEAN() is defined as removing the non-printing control characters, so the
-// control-character class is the function, not an accident.
+// CLEAN() is defined as removing the first 32 non-printing characters (0-31),
+// tab and line breaks included, so the control-character class is the function,
+// not an accident.
 // eslint-disable-next-line no-control-regex
-registerFunction("CLEAN", (args) => textArg(args, 0).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ""), 1, 1, false, {
+registerFunction("CLEAN", (args) => textArg(args, 0).replace(/[\x00-\x1f]/g, ""), 1, 1, false, {
   signature: "CLEAN(text)",
   category: "Text",
 });
@@ -219,8 +220,11 @@ registerFunction(
   (args) => {
     const code = numberArg(args, 0, 0);
     if (typeof code !== "number") return code;
-    if (code < 1 || code > 0x10ffff) return ERR.value();
-    return String.fromCodePoint(Math.trunc(code));
+    const point = Math.trunc(code);
+    if (point < 1 || point > 0x10ffff) return ERR.value();
+    // Half of a surrogate pair is not a character on its own.
+    if (point >= 0xd800 && point <= 0xdfff) return ERR.na();
+    return String.fromCodePoint(point);
   },
   1,
   1,
@@ -286,81 +290,191 @@ registerFunction(
   false,
   { signature: "VALUE(text)", category: "Text" },
 );
+/**
+ * Reads text as a number with the separators given, the way NUMBERVALUE does:
+ * spaces are ignored anywhere, every trailing `%` divides by 100, a group
+ * separator is dropped (but not after the decimal one), and a second decimal
+ * separator or anything else that is not a number is `#VALUE!`.
+ */
+function parseNumberText(raw: string, decimalSep: string, groupSep: string): number | FormulaError {
+  let text = raw.replace(/\s/g, "");
+  if (text === "") return 0;
+  let percents = 0;
+  while (text.endsWith("%")) {
+    text = text.slice(0, -1);
+    percents += 1;
+  }
+  if (text.includes("%")) return ERR.value();
+  const decimalAt = text.indexOf(decimalSep);
+  if (decimalAt >= 0 && text.indexOf(decimalSep, decimalAt + 1) >= 0) return ERR.value();
+  if (groupSep) {
+    if (decimalAt >= 0 && text.lastIndexOf(groupSep) > decimalAt) return ERR.value();
+    text = text.split(groupSep).join("");
+  }
+  if (decimalSep !== ".") {
+    // A stray dot would otherwise be read as the decimal point.
+    if (text.includes(".")) return ERR.value();
+    text = text.replace(decimalSep, ".");
+  }
+  if (!/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(text)) return ERR.value();
+  return Number(text) / 100 ** percents;
+}
+
 registerFunction(
   "NUMBERVALUE",
   (args) => {
-    const raw = textArg(args, 0);
-    const decimalSep = textArg(args, 1) || ".";
+    // Only the first character of a separator counts.
+    const decimalSep = textArg(args, 1).charAt(0) || ".";
     // Only strip a group separator when it is not also the decimal separator;
     // otherwise `NUMBERVALUE("3.5", ".")` removed the decimal point itself.
-    const groupArg = args[2] !== undefined ? textArg(args, 2) : decimalSep === "." ? "," : "";
-    const groupSep = groupArg && groupArg !== decimalSep ? groupArg : "";
-    let text = raw;
-    if (groupSep) text = text.split(groupSep).join("");
-    // Normalize a non-dot decimal separator to a dot for Number().
-    if (decimalSep !== ".") text = text.split(decimalSep).join(".");
-    const parsed = Number(text);
-    return Number.isFinite(parsed) ? parsed : ERR.value();
+    const groupArg = textArg(args, 2).charAt(0) || (decimalSep === "." ? "," : "");
+    return parseNumberText(textArg(args, 0), decimalSep, groupArg === decimalSep ? "" : groupArg);
   },
   1,
   3,
   false,
-  { signature: "NUMBERVALUE(text, [decimal_sep], [group_sep])", category: "Text" },
+  { signature: "NUMBERVALUE(text, [decimal_separator], [group_separator])", category: "Text" },
 );
+
+/**
+ * |value| rounded half away from zero at `decimals` places, as digit strings.
+ * It works on the 15 significant digits Excel keeps, so 2.675 gives 2.68 as it
+ * does in a worksheet, not the 2.67 its binary expansion would.
+ */
+function roundDecimal(value: number, decimals: number): { whole: string; fraction: string } {
+  const [mantissa, exponent] = Math.abs(value).toExponential(14).split("e");
+  const digits = mantissa.replace(".", "");
+  // The value is 0.d1d2d3... x 10^pointAt; `keep` of those digits survive.
+  const keep = Number(exponent) + 1 + decimals;
+  let scaled: bigint;
+  if (value === 0 || keep < 0) scaled = 0n;
+  else if (keep >= digits.length) scaled = BigInt(digits + "0".repeat(keep - digits.length));
+  else scaled = BigInt(digits.slice(0, keep) || "0") + (digits[keep] >= "5" ? 1n : 0n);
+  if (decimals < 0) return { whole: (scaled * 10n ** BigInt(-decimals)).toString(), fraction: "" };
+  const text = scaled.toString().padStart(decimals + 1, "0");
+  return { whole: text.slice(0, text.length - decimals), fraction: text.slice(text.length - decimals) };
+}
+
+/** Number text for DOLLAR and FIXED. A value that rounds to zero carries no sign. */
+function fixedNumber(args: Scalar[][][], commas: boolean): { text: string; negative: boolean } | FormulaError {
+  const value = toNumber(args[0]?.[0]?.[0] ?? "");
+  if (isError(value)) return value;
+  const decimalsArg = args[1]?.[0]?.[0];
+  const decimals = decimalsArg === undefined || decimalsArg === "" ? 2 : toNumber(decimalsArg);
+  if (isError(decimals)) return decimals;
+  const places = Math.trunc(decimals);
+  if (Math.abs(places) > 127) return ERR.value();
+  const { whole, fraction } = roundDecimal(value, places);
+  const grouped = commas ? whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") : whole;
+  const isZero = /^0*$/.test(whole + fraction);
+  return { text: fraction ? `${grouped}.${fraction}` : grouped, negative: value < 0 && !isZero };
+}
+
+registerFunction(
+  "DOLLAR",
+  (args) => {
+    const fixed = fixedNumber(args, true);
+    if (isError(fixed)) return fixed;
+    // The en-US currency format: a dollar sign, and parentheses for a loss.
+    return fixed.negative ? `($${fixed.text})` : `$${fixed.text}`;
+  },
+  1,
+  2,
+  false,
+  { signature: "DOLLAR(number, [decimals])", category: "Text" },
+);
+registerFunction(
+  "FIXED",
+  (args) => {
+    const noCommas = optionalBool(args[2]?.[0]?.[0], false);
+    if (isError(noCommas)) return noCommas;
+    const fixed = fixedNumber(args, !noCommas);
+    if (isError(fixed)) return fixed;
+    return fixed.negative ? `-${fixed.text}` : fixed.text;
+  },
+  1,
+  3,
+  false,
+  { signature: "FIXED(number, [decimals], [no_commas])", category: "Text" },
+);
+registerFunction(
+  "ARRAYTOTEXT",
+  (args) => {
+    const formatArg = args[1]?.[0]?.[0];
+    const format = formatArg === undefined || formatArg === "" ? 0 : toNumber(formatArg);
+    if (isError(format)) return format;
+    if (format !== 0 && format !== 1) return ERR.value();
+    const matrix = args[0] ?? [];
+    // Concise: the values as they read, in one list. Strict: the array as a
+    // formula would write it, with text in quotes.
+    const render = (value: Scalar) =>
+      format === 1 && typeof value === "string" ? `"${value.replace(/"/g, '""')}"` : toText(value);
+    if (format === 0) return flatten([matrix]).map(render).join(", ");
+    return `{${matrix.map((row) => row.map(render).join(",")).join(";")}}`;
+  },
+  1,
+  2,
+  true,
+  { signature: "ARRAYTOTEXT(array, [format])", category: "Text" },
+);
+
+/** An optional whole-number argument; an empty slot reads as `fallback`. */
+function optionalInteger(args: Scalar[][][], index: number, fallback: number): number | FormulaError {
+  const arg = args[index]?.[0]?.[0];
+  if (arg === undefined || arg === "") return fallback;
+  const value = toNumber(arg);
+  return isError(value) ? value : Math.trunc(value);
+}
 
 /**
  * Shared implementation for TEXTBEFORE / TEXTAFTER.
  *
- * `instance` is 1-based and negative counts from the end, exactly as Excel
- * documents it, which is what makes `TEXTAFTER(A1, ".", -1)` return the
- * file extension.
+ * `instance_num` is 1-based and negative counts from the end, exactly as Excel
+ * documents it, which is what makes `TEXTAFTER(A1, ".", -1)` return the file
+ * extension. `match_mode` 1 ignores case; `match_end` 1 treats the end of the
+ * text (the start, when counting backwards) as one more delimiter; the
+ * `if_not_found` value, rather than `#N/A`, answers when there is no match.
  */
-function relativeSplit(text: string, delimiter: string, instance: number, before: boolean): string | FormulaError {
-  if (delimiter === "") return before ? "" : text;
-  if (instance === 0) return ERR.value();
-  const positions: number[] = [];
-  let from = 0;
-  while (true) {
-    const index = text.indexOf(delimiter, from);
-    if (index < 0) break;
-    positions.push(index);
-    from = index + delimiter.length;
+function relativeSplit(args: Scalar[][][], before: boolean): Scalar {
+  const text = textArg(args, 0);
+  const delimiter = textArg(args, 1);
+  const instance = optionalInteger(args, 2, 1);
+  if (isError(instance)) return instance;
+  const mode = optionalInteger(args, 3, 0);
+  if (isError(mode)) return mode;
+  const matchEnd = optionalInteger(args, 4, 0);
+  if (isError(matchEnd)) return matchEnd;
+  if ((mode !== 0 && mode !== 1) || (matchEnd !== 0 && matchEnd !== 1)) return ERR.value();
+  if (instance === 0 || Math.abs(instance) > text.length) return ERR.value();
+
+  const matches: Array<{ start: number; end: number }> = [];
+  if (delimiter === "") {
+    // An empty delimiter sits at the start, or at the end when counting back.
+    matches.push(instance > 0 ? { start: 0, end: 0 } : { start: text.length, end: text.length });
+  } else {
+    const haystack = mode === 1 ? text.toLowerCase() : text;
+    const needle = mode === 1 ? delimiter.toLowerCase() : delimiter;
+    for (let from = haystack.indexOf(needle); from >= 0; from = haystack.indexOf(needle, from + needle.length)) {
+      matches.push({ start: from, end: from + needle.length });
+    }
   }
-  if (positions.length === 0) return ERR.na();
-  const target = instance > 0 ? instance - 1 : positions.length + instance;
-  const position = positions[target];
-  if (position === undefined) return ERR.na();
-  return before ? text.slice(0, position) : text.slice(position + delimiter.length);
+  if (matchEnd === 1) {
+    if (instance > 0) matches.push({ start: text.length, end: text.length });
+    else matches.unshift({ start: 0, end: 0 });
+  }
+  const found = matches[instance > 0 ? instance - 1 : matches.length + instance];
+  if (!found) return args.length > 5 ? (args[5][0]?.[0] ?? "") : ERR.na();
+  return before ? text.slice(0, found.start) : text.slice(found.end);
 }
 
-registerFunction(
-  "TEXTBEFORE",
-  (args) => {
-    const text = textArg(args, 0);
-    const delimiter = textArg(args, 1);
-    const instance = args[2] ? numberArg(args, 2, 1) : 1;
-    if (typeof instance !== "number") return instance;
-    return relativeSplit(text, delimiter, Math.trunc(instance), true);
-  },
-  2,
-  3,
-  false,
-  { signature: "TEXTBEFORE(text, delimiter, [instance])", category: "Text" },
-);
-registerFunction(
-  "TEXTAFTER",
-  (args) => {
-    const text = textArg(args, 0);
-    const delimiter = textArg(args, 1);
-    const instance = args[2] ? numberArg(args, 2, 1) : 1;
-    if (typeof instance !== "number") return instance;
-    return relativeSplit(text, delimiter, Math.trunc(instance), false);
-  },
-  2,
-  3,
-  false,
-  { signature: "TEXTAFTER(text, delimiter, [instance])", category: "Text" },
-);
+registerFunction("TEXTBEFORE", (args) => relativeSplit(args, true), 2, 6, false, {
+  signature: "TEXTBEFORE(text, delimiter, [instance_num], [match_mode], [match_end], [if_not_found])",
+  category: "Text",
+});
+registerFunction("TEXTAFTER", (args) => relativeSplit(args, false), 2, 6, false, {
+  signature: "TEXTAFTER(text, delimiter, [instance_num], [match_mode], [match_end], [if_not_found])",
+  category: "Text",
+});
 registerFunction(
   "TEXTSPLIT",
   (args) => {
