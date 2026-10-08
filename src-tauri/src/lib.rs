@@ -18,6 +18,7 @@ mod diagnostics;
 mod jobs;
 mod launch;
 mod library;
+mod links;
 mod netpolicy;
 mod oauth;
 mod office;
@@ -199,6 +200,7 @@ pub fn run() {
             commands::app_info,
             update::update_check,
             update::update_open,
+            links::open_external_link,
             diagnostics::diagnostics_report,
             commands::engine_status,
             commands::ocr_languages,
