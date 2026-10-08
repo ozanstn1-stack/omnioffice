@@ -307,6 +307,9 @@ impl StyleTable {
 // Export
 // ---------------------------------------------------------------------------
 
+/// The editor's default column width, used for the width a hidden column keeps.
+const DEFAULT_COLUMN_PX: f64 = 96.0;
+
 fn column_width_units(pixels: f64) -> f64 {
     // Approximate Excel's character-based width.
     ((pixels - 5.0) / 7.0).max(2.0)
@@ -476,11 +479,16 @@ fn sheet_xml(
         let mut widths: Vec<(&u32, &f64)> = sheet.col_widths.iter().collect();
         widths.sort_by_key(|(column, _)| **column);
         for (column, width) in widths {
+            // The editor hides a column by storing width 0. The file keeps the
+            // flag and a width Excel shows again on "Unhide"; the clamp in
+            // `column_width_units` would otherwise draw it 2 characters wide.
+            let hidden = *width <= 0.0;
             writer.raw(&format!(
-                "<col min=\"{}\" max=\"{}\" width=\"{:.2}\" customWidth=\"1\"/>",
+                "<col min=\"{}\" max=\"{}\" width=\"{:.2}\"{} customWidth=\"1\"/>",
                 column + 1,
                 column + 1,
-                column_width_units(*width)
+                column_width_units(if hidden { DEFAULT_COLUMN_PX } else { *width }),
+                if hidden { " hidden=\"1\"" } else { "" }
             ));
         }
         writer.raw("</cols>");
@@ -522,16 +530,19 @@ fn sheet_xml(
         line.sort_by_key(|(column, _)| *column);
     }
 
+    // A row without cells is still a row when it is hidden or resized.
+    for row in sheet.row_heights.keys() {
+        rows.entry(*row).or_default();
+    }
     for (row, mut cells) in rows {
         cells.sort_by_key(|(column, _)| *column);
-        match sheet.row_heights.get(&row) {
-            Some(height) => {
-                writer.raw(&format!("<row r=\"{}\" ht=\"{:.2}\" customHeight=\"1\">", row + 1, height * 0.75));
-            }
-            None => {
-                writer.raw(&format!("<row r=\"{}\">", row + 1));
-            }
-        }
+        // The editor hides a row (or an AutoFilter does) by storing height 0.
+        let row_open = match sheet.row_heights.get(&row) {
+            Some(height) if *height <= 0.0 => format!("<row r=\"{}\" hidden=\"1\"", row + 1),
+            Some(height) => format!("<row r=\"{}\" ht=\"{:.2}\" customHeight=\"1\"", row + 1, height * 0.75),
+            None => format!("<row r=\"{}\"", row + 1),
+        };
+        let mut row_cells = String::new();
         // Two-pointer merge of the model cells and the pivot cells, both
         // sorted by column.
         enum RowCell<'a> {
@@ -571,10 +582,14 @@ fn sheet_xml(
                 }
             };
             if let Some(xml) = xml {
-                writer.raw(&xml);
+                row_cells.push_str(&xml);
             }
         }
-        writer.raw("</row>");
+        if row_cells.is_empty() {
+            writer.raw(&format!("{row_open}/>"));
+        } else {
+            writer.raw(&format!("{row_open}>{row_cells}</row>"));
+        }
     }
     writer.raw("</sheetData>");
 
@@ -2958,14 +2973,23 @@ fn apply_sheet_protection(root: &XmlNode, sheet: &mut Sheet) {
 fn apply_columns(root: &XmlNode, sheet: &mut Sheet) {
     let Some(cols) = root.child("cols") else { return };
     for col in cols.children_of("col") {
-        let Some(width) = col.attr("width").and_then(|value| value.trim().parse::<f64>().ok()) else { continue };
+        let width = col.attr("width").and_then(|value| value.trim().parse::<f64>().ok());
+        // Excel hides a column with a flag and keeps its width; a zero width
+        // is invisible too. The editor models both as width 0.
+        let hidden = attr_on(col, "hidden") || width.is_some_and(|width| width <= 0.0);
+        if width.is_none() && !hidden {
+            continue;
+        }
         let min = parse_u32_attr(col, "min").unwrap_or(1).saturating_sub(1);
         let max = parse_u32_attr(col, "max").unwrap_or(min + 1).saturating_sub(1).max(min);
         if min > MAX_IMPORT_COLS {
             continue;
         }
-        let pixels = (width * 7.0 + 5.0).max(24.0);
-        for column in min..=max.min(MAX_IMPORT_COLS) {
+        let pixels = if hidden { 0.0 } else { (width.unwrap_or(0.0) * 7.0 + 5.0).max(24.0) };
+        // "Hide everything right of Z" is one `<col min="27" max="16384">`; only
+        // the columns of the imported grid are recorded.
+        let last = if hidden { max.min(sheet.col_count.saturating_sub(1)) } else { max };
+        for column in min..=last.min(MAX_IMPORT_COLS) {
             sheet.col_widths.insert(column, pixels);
         }
     }
@@ -3001,7 +3025,14 @@ fn apply_sheet_cells(root: &XmlNode, sheet: &mut Sheet, styles: &ImportedStyles)
         if row_number > MAX_IMPORT_ROWS {
             continue;
         }
-        if let Some(height) = row.attr("ht").and_then(|value| value.trim().parse::<f64>().ok()) {
+        if attr_on(row, "hidden") {
+            // Excel keeps a hidden row's height; the editor models hidden as 0.
+            // Rows below the imported grid are not recorded (a sheet that hides
+            // everything under its data would add a hundred thousand entries).
+            if row_number < sheet.row_count {
+                sheet.row_heights.insert(row_number, 0.0);
+            }
+        } else if let Some(height) = row.attr("ht").and_then(|value| value.trim().parse::<f64>().ok()) {
             sheet.row_heights.insert(row_number, height * PT_TO_PX);
         }
         for cell in row.children_of("c") {
