@@ -185,7 +185,6 @@ export function applyCellTextEdits(workbook: Workbook, sheetIndex: number, edits
   const target = workbook.sheets[index];
   if (!target || edits.length === 0) return workbook;
   const cells = { ...target.cells };
-  const formulas: string[] = [];
   const addresses: string[] = [];
   let rowCount = target.rowCount;
   let colCount = target.colCount;
@@ -198,23 +197,49 @@ export function applyCellTextEdits(workbook: Workbook, sheetIndex: number, edits
       : { ...current, formula: null, value: parseInputValue(edit.text) };
     if (isBlankCell(staged)) delete cells[address];
     else cells[address] = staged;
-    if (isFormula) formulas.push(address);
     addresses.push(address);
     rowCount = Math.max(rowCount, edit.row + 51);
     colCount = Math.max(colCount, edit.col + 6);
   }
-  const stagedSheet: Sheet = { ...target, cells, rowCount, colCount };
-  const staged = markDirty(replaceSheet(workbook, index, stagedSheet), workbook, target.name, addresses);
+  return commitStagedSheet(workbook, index, { ...target, cells, rowCount, colCount }, addresses);
+}
+
+/**
+ * Puts a staged sheet into the workbook as one edit of `addresses`: formula
+ * cells among them get their cached value from one incremental pass, and the
+ * result is marked so the next value computation stays incremental too.
+ */
+function commitStagedSheet(workbook: Workbook, index: number, stagedSheet: Sheet, addresses: string[]): Workbook {
+  const name = workbook.sheets[index].name;
+  const staged = markDirty(replaceSheet(workbook, index, stagedSheet), workbook, name, addresses);
+  const formulas = addresses.filter((address) => stagedSheet.cells[address]?.formula);
   if (formulas.length === 0) return staged;
 
   const values = computeWorkbookValues(staged);
-  const resolved = { ...cells };
+  const resolved = { ...stagedSheet.cells };
   for (const address of formulas) {
-    const value = values.get(keyOf(target.name, address));
+    const value = values.get(keyOf(name, address));
     resolved[address] = { ...resolved[address], value: scalarToCellValue(value === undefined ? "" : asScalar(value)) };
   }
   const final = replaceSheet(staged, index, { ...stagedSheet, cells: resolved });
-  return markDirty(final, workbook, target.name, addresses);
+  return markDirty(final, workbook, name, addresses);
+}
+
+/**
+ * Replaces a sheet's cells wholesale (a sort rearranges them) as one edit.
+ * `changed` lists the addresses whose content differs, so only the formulas
+ * that read them are recalculated.
+ */
+export function applySheetCells(
+  workbook: Workbook,
+  sheetIndex: number,
+  cells: Record<string, Cell>,
+  changed: string[],
+): Workbook {
+  const index = Math.min(Math.max(0, sheetIndex), workbook.sheets.length - 1);
+  const target = workbook.sheets[index];
+  if (!target || changed.length === 0) return workbook;
+  return commitStagedSheet(workbook, index, { ...target, cells }, changed);
 }
 
 /**
