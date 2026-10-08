@@ -2,6 +2,7 @@
 import type { Sheet } from "../../lib/office-types";
 import { formatAddress, parseAddress } from "./formula";
 import type { GridSelection } from "./grid-types";
+import { shiftSizes } from "./visibility";
 
 type UpdateSheet = (mutate: (sheet: Sheet) => Sheet) => void;
 
@@ -13,7 +14,7 @@ export function insertRow(_sheet: Sheet, row: number, updateSheet: UpdateSheet) 
       if (!position) continue;
       cells[formatAddress(position.row >= row ? position.row + 1 : position.row, position.col)] = cell;
     }
-    return { ...current, cells, rowCount: current.rowCount + 1 };
+    return { ...current, cells, rowHeights: shiftSizes(current.rowHeights, row, 1), rowCount: current.rowCount + 1 };
   });
 }
 
@@ -25,7 +26,12 @@ export function deleteRow(_sheet: Sheet, row: number, updateSheet: UpdateSheet) 
       if (!position || position.row === row) continue;
       cells[formatAddress(position.row > row ? position.row - 1 : position.row, position.col)] = cell;
     }
-    return { ...current, cells, rowCount: Math.max(10, current.rowCount - 1) };
+    return {
+      ...current,
+      cells,
+      rowHeights: shiftSizes(current.rowHeights, row, -1),
+      rowCount: Math.max(10, current.rowCount - 1),
+    };
   });
 }
 
@@ -37,7 +43,7 @@ export function insertColumn(_sheet: Sheet, col: number, updateSheet: UpdateShee
       if (!position) continue;
       cells[formatAddress(position.row, position.col >= col ? position.col + 1 : position.col)] = cell;
     }
-    return { ...current, cells, colCount: current.colCount + 1 };
+    return { ...current, cells, colWidths: shiftSizes(current.colWidths, col, 1), colCount: current.colCount + 1 };
   });
 }
 
@@ -49,7 +55,12 @@ export function deleteColumn(_sheet: Sheet, col: number, updateSheet: UpdateShee
       if (!position || position.col === col) continue;
       cells[formatAddress(position.row, position.col > col ? position.col - 1 : position.col)] = cell;
     }
-    return { ...current, cells, colCount: Math.max(5, current.colCount - 1) };
+    return {
+      ...current,
+      cells,
+      colWidths: shiftSizes(current.colWidths, col, -1),
+      colCount: Math.max(5, current.colCount - 1),
+    };
   });
 }
 
