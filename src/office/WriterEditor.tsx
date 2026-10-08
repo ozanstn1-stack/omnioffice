@@ -1722,25 +1722,25 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
               <ToolButton
                 icon={<Bold size={16} />}
                 onClick={() => toggleInline("bold")}
-                active={activeRun?.bold}
+                active={Boolean(activeRun?.bold)}
                 title={t("writer.bold")}
               />
               <ToolButton
                 icon={<Italic size={16} />}
                 onClick={() => toggleInline("italic")}
-                active={activeRun?.italic}
+                active={Boolean(activeRun?.italic)}
                 title={t("writer.italic")}
               />
               <ToolButton
                 icon={<Underline size={16} />}
                 onClick={() => toggleInline("underline")}
-                active={activeRun?.underline}
+                active={Boolean(activeRun?.underline)}
                 title={t("writer.underline")}
               />
               <ToolButton
                 icon={<Strikethrough size={16} />}
                 onClick={() => toggleInline("strike")}
-                active={activeRun?.strike}
+                active={Boolean(activeRun?.strike)}
                 title={t("writer.strike")}
               />
               <ToolColor

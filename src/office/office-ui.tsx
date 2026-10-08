@@ -150,6 +150,7 @@ export function ToolButton({
   icon?: ReactNode;
   label?: string;
   onClick?: () => void;
+  /** Makes the button a toggle: highlighted and exposed as pressed when true. Leave it out for plain actions. */
   active?: boolean;
   disabled?: boolean;
   title?: string;
@@ -164,6 +165,8 @@ export function ToolButton({
       onClick={onClick}
       disabled={disabled}
       title={title ?? label}
+      // A button given an `active` state is a toggle and says whether it is on.
+      aria-pressed={active}
     >
       {icon}
       {label ? <span>{label}</span> : null}

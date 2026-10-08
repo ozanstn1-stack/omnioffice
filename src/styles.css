@@ -1302,6 +1302,10 @@ body {
   position: absolute;
   top: 24px;
 }
+/* The row element exists for assistive technology; the cells position themselves. */
+.calc-row {
+  display: contents;
+}
 /* Divider on the edge of the frozen rows / columns. */
 .calc-freeze-line {
   position: absolute;

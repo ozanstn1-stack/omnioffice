@@ -174,19 +174,19 @@ export function CalcRibbon({
             <ToolButton
               icon={<Bold size={16} />}
               onClick={() => actions.applyStyle({ bold: !(activeStyle?.bold ?? false) })}
-              active={activeStyle?.bold}
+              active={activeStyle?.bold ?? false}
               title={t("writer.bold")}
             />
             <ToolButton
               icon={<Italic size={16} />}
               onClick={() => actions.applyStyle({ italic: !(activeStyle?.italic ?? false) })}
-              active={activeStyle?.italic}
+              active={activeStyle?.italic ?? false}
               title={t("writer.italic")}
             />
             <ToolButton
               icon={<Underline size={16} />}
               onClick={() => actions.applyStyle({ underline: !(activeStyle?.underline ?? false) })}
-              active={activeStyle?.underline}
+              active={activeStyle?.underline ?? false}
               title={t("writer.underline")}
             />
             <ToolColor

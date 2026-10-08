@@ -79,6 +79,7 @@ import { clampGridZoom, pinchGridZoom, shiftFormulaColumns } from "./calc/grid-m
 import type { CellPosition, GridSelection } from "./calc/grid-types";
 import { computeConditionalFills, computeDataBars, isValid } from "./calc/rules";
 import { deleteColumn, deleteRow, insertColumn, insertRow, toggleMerge } from "./calc/structure";
+import { cellAnnouncement } from "./calc/announce";
 import { planAutoSum } from "./calc/autosum";
 import { clipboardText, snapshotClipboard } from "./calc/paste-special";
 import { isSheetProtected } from "./calc/protection";
@@ -2134,6 +2135,23 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const selectHandleStartPlace = placeHandle(selectHandleStart, selectionBounds.start.row, selectionBounds.start.col);
 
   const selectionAddress = formatAddress(selection.focus.row, selection.focus.col);
+
+  // Assistive technology: the grid points at its active cell while that cell is
+  // drawn (the grid is virtualised, a scrolled-away cell has no element to
+  // point at), and a polite live region says where the selection is.
+  const gridId = useId();
+  const cellId = (row: number, col: number) => `${gridId}-${row}-${col}`;
+  const activeCellDrawn =
+    visible.rows.includes(selection.focus.row) && visible.columns.some(({ col }) => col === selection.focus.col);
+  const announcement = cellAnnouncement(t, {
+    address: selectionAddress,
+    range:
+      selectionBounds.start.row === selectionBounds.end.row && selectionBounds.start.col === selectionBounds.end.col
+        ? null
+        : `${formatAddress(selectionBounds.start.row, selectionBounds.start.col)}:${formatAddress(selectionBounds.end.row, selectionBounds.end.col)}`,
+    display: formatCellDisplay(computed.get(selectionAddress) ?? "", activeCell?.style ?? defaultCellStyle()),
+    formula: activeCell?.formula ?? null,
+  });
   const selectedTable = (sheet.tables ?? []).find((table) => addressInRange(selectionAddress, table.range));
   const nameBox = selectedTable
     ? selectedTable.name
@@ -2381,6 +2399,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
 
       {!android ? formulaBar : null}
 
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {announcement}
+      </div>
+
       {trace || selectedError ? (
         <div
           className="calc-audit-banner"
@@ -2421,6 +2443,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           tabIndex={0}
           role="grid"
           aria-label={t("calc.gridLabel")}
+          aria-rowcount={sheet.rowCount}
+          aria-colcount={sheet.colCount}
+          aria-multiselectable="true"
+          aria-activedescendant={activeCellDrawn ? cellId(selection.focus.row, selection.focus.col) : undefined}
           ref={gridRef}
           onPointerDown={handleGridPointerDown}
           onKeyDown={handleKeyDown}
@@ -2439,6 +2465,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           >
             <div
               className="calc-col-headers"
+              aria-hidden="true"
               style={{ transform: `translate(${HEADER_WIDTH}px, ${scroll.top / gridZoom}px)` }}
             >
               {visible.columns.map(({ col, x }) => (
@@ -2458,7 +2485,11 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 </div>
               ))}
             </div>
-            <div className="calc-row-headers" style={{ transform: `translate(${scroll.left / gridZoom}px, 0)` }}>
+            <div
+              className="calc-row-headers"
+              aria-hidden="true"
+              style={{ transform: `translate(${scroll.left / gridZoom}px, 0)` }}
+            >
               {visible.rows.map((row) => (
                 <div
                   key={row}
@@ -2475,7 +2506,11 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 </div>
               ))}
             </div>
-            <div className="calc-corner" style={{ transform: `translate(${scrollX}px, ${scrollY}px)` }} />
+            <div
+              className="calc-corner"
+              aria-hidden="true"
+              style={{ transform: `translate(${scrollX}px, ${scrollY}px)` }}
+            />
             <div
               className="calc-cells"
               style={{
@@ -2484,167 +2519,179 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 height: rowLayout.total,
               }}
             >
-              {visible.rows.map((row) =>
-                visible.columns.map(({ col, x }) => {
-                  const address = formatAddress(row, col);
-                  const value = computed.get(address) ?? "";
-                  const cell = sheet.cells[address];
-                  const width = sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH;
-                  const isEditing = editing?.row === row && editing?.col === col;
-                  const inSelection =
-                    row >= selectionBounds.start.row &&
-                    row <= selectionBounds.end.row &&
-                    col >= selectionBounds.start.col &&
-                    col <= selectionBounds.end.col;
-                  const fill = conditionalFills.get(address);
-                  const style = cell?.style ?? defaultCellStyle();
-                  const validation = validationAt.find(row, col);
-                  const invalid = validation ? !isValid(validation, value, listItems.get(validation.id)) : false;
-                  // The structured table (if any) that owns this cell decides
-                  // header/banding/outline; the cell's own formatting still wins.
-                  const tableEntry = sheetTables.find(
-                    ({ parts }) =>
-                      row >= parts.start.row && row <= parts.end.row && col >= parts.start.col && col <= parts.end.col,
-                  );
-                  let tableFill: string | undefined;
-                  let tableHeader = false;
-                  if (tableEntry) {
-                    const { table, parts } = tableEntry;
-                    tableHeader = table.hasHeaders && row === parts.start.row;
-                    const totalsRow = table.hasTotals && row === parts.end.row;
-                    if (tableHeader) tableFill = table.headerFill ?? undefined;
-                    else if (!totalsRow && table.bandedRows) {
-                      const bodyStart = parts.start.row + (table.hasHeaders ? 1 : 0);
-                      if ((row - bodyStart) % 2 === 1) tableFill = "#EFF6FF";
+              {visible.rows.map((row) => (
+                <div key={row} role="row" aria-rowindex={row + 1} className="calc-row">
+                  {visible.columns.map(({ col, x }) => {
+                    const address = formatAddress(row, col);
+                    const value = computed.get(address) ?? "";
+                    const cell = sheet.cells[address];
+                    const width = sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH;
+                    const isEditing = editing?.row === row && editing?.col === col;
+                    const inSelection =
+                      row >= selectionBounds.start.row &&
+                      row <= selectionBounds.end.row &&
+                      col >= selectionBounds.start.col &&
+                      col <= selectionBounds.end.col;
+                    const fill = conditionalFills.get(address);
+                    const style = cell?.style ?? defaultCellStyle();
+                    const validation = validationAt.find(row, col);
+                    const invalid = validation ? !isValid(validation, value, listItems.get(validation.id)) : false;
+                    // The structured table (if any) that owns this cell decides
+                    // header/banding/outline; the cell's own formatting still wins.
+                    const tableEntry = sheetTables.find(
+                      ({ parts }) =>
+                        row >= parts.start.row &&
+                        row <= parts.end.row &&
+                        col >= parts.start.col &&
+                        col <= parts.end.col,
+                    );
+                    let tableFill: string | undefined;
+                    let tableHeader = false;
+                    if (tableEntry) {
+                      const { table, parts } = tableEntry;
+                      tableHeader = table.hasHeaders && row === parts.start.row;
+                      const totalsRow = table.hasTotals && row === parts.end.row;
+                      if (tableHeader) tableFill = table.headerFill ?? undefined;
+                      else if (!totalsRow && table.bandedRows) {
+                        const bodyStart = parts.start.row + (table.hasHeaders ? 1 : 0);
+                        if ((row - bodyStart) % 2 === 1) tableFill = "#EFF6FF";
+                      }
                     }
-                  }
-                  const traceKind = tracedCells.get(address);
-                  const frozenRow = row < freeze.rows;
-                  const frozenCol = col < freeze.cols;
-                  return (
-                    <div
-                      key={address}
-                      data-cell={`${row}:${col}`}
-                      data-row={row}
-                      data-col={col}
-                      className={`calc-cell${inSelection ? " is-selected" : ""}${invalid ? " is-invalid" : ""}`}
-                      style={{
-                        left: pinnedPosition(col, freeze.cols, x, scrollX),
-                        top: pinnedPosition(row, freeze.rows, rowLayout.offsetOf(row), scrollY),
-                        width,
-                        height: rowLayout.heightOf(row),
-                        // Frozen cells cover what scrolls under them, so they need a fill.
-                        zIndex: frozenRow && frozenCol ? 3 : frozenRow || frozenCol ? 2 : undefined,
-                        background:
-                          fill ?? tableFill ?? style.fill ?? (frozenRow || frozenCol ? "var(--bg)" : undefined),
-                        fontWeight: style.bold || (tableHeader && tableEntry!.table.headerBold) ? 700 : undefined,
-                        fontStyle: style.italic ? "italic" : undefined,
-                        textDecoration:
-                          [style.underline ? "underline" : "", style.strike ? "line-through" : ""]
-                            .filter(Boolean)
-                            .join(" ") || undefined,
-                        color: style.color ?? (tableFill && tableHeader ? "#ffffff" : undefined),
-                        textAlign: (style.align === "general"
-                          ? typeof value === "number"
-                            ? "right"
-                            : "left"
-                          : style.align) as "left" | "right" | "center",
-                        justifyContent:
-                          style.align === "center"
-                            ? "center"
-                            : style.align === "right" || (style.align === "general" && typeof value === "number")
-                              ? "flex-end"
-                              : "flex-start",
-                      }}
-                      onDoubleClick={() => setEditing({ row, col, value: cell?.formula ?? cellText(cell) })}
-                    >
-                      {isEditing ? (
-                        <input
-                          className="cell-editor"
-                          ref={cellInputRef}
-                          value={editing!.value}
-                          // eslint-disable-next-line jsx-a11y/no-autofocus -- typing replaces the cell content; focusing the editor is the whole point of the interaction
-                          autoFocus
-                          onFocus={(event) => {
-                            setFocusMode("cell");
-                            setSuggestDismissed(false);
-                            setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length);
-                          }}
-                          onSelect={(event) =>
-                            setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
-                          }
-                          onChange={(event) => {
-                            setDraftCaret(event.target.selectionStart ?? event.target.value.length);
-                            setSuggestDismissed(false);
-                            setEditing({ row, col, value: event.target.value });
-                          }}
-                          onBlur={() => {
-                            setFocusMode(null);
-                            commitEdit("none", false);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.nativeEvent.isComposing) return;
-                            // The popup owns Tab/Enter/Escape/arrows while it is open.
-                            if (handleAssistKey(event)) return;
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              commitEdit(event.shiftKey ? "up" : "down");
+                    const traceKind = tracedCells.get(address);
+                    const frozenRow = row < freeze.rows;
+                    const frozenCol = col < freeze.cols;
+                    return (
+                      // eslint-disable-next-line jsx-a11y/interactive-supports-focus -- the grid keeps the focus and points at its active cell with aria-activedescendant; cells are not tab stops
+                      <div
+                        key={address}
+                        id={cellId(row, col)}
+                        role="gridcell"
+                        aria-rowindex={row + 1}
+                        aria-colindex={col + 1}
+                        aria-selected={inSelection}
+                        aria-invalid={invalid || undefined}
+                        data-cell={`${row}:${col}`}
+                        data-row={row}
+                        data-col={col}
+                        className={`calc-cell${inSelection ? " is-selected" : ""}${invalid ? " is-invalid" : ""}`}
+                        style={{
+                          left: pinnedPosition(col, freeze.cols, x, scrollX),
+                          top: pinnedPosition(row, freeze.rows, rowLayout.offsetOf(row), scrollY),
+                          width,
+                          height: rowLayout.heightOf(row),
+                          // Frozen cells cover what scrolls under them, so they need a fill.
+                          zIndex: frozenRow && frozenCol ? 3 : frozenRow || frozenCol ? 2 : undefined,
+                          background:
+                            fill ?? tableFill ?? style.fill ?? (frozenRow || frozenCol ? "var(--bg)" : undefined),
+                          fontWeight: style.bold || (tableHeader && tableEntry!.table.headerBold) ? 700 : undefined,
+                          fontStyle: style.italic ? "italic" : undefined,
+                          textDecoration:
+                            [style.underline ? "underline" : "", style.strike ? "line-through" : ""]
+                              .filter(Boolean)
+                              .join(" ") || undefined,
+                          color: style.color ?? (tableFill && tableHeader ? "#ffffff" : undefined),
+                          textAlign: (style.align === "general"
+                            ? typeof value === "number"
+                              ? "right"
+                              : "left"
+                            : style.align) as "left" | "right" | "center",
+                          justifyContent:
+                            style.align === "center"
+                              ? "center"
+                              : style.align === "right" || (style.align === "general" && typeof value === "number")
+                                ? "flex-end"
+                                : "flex-start",
+                        }}
+                        onDoubleClick={() => setEditing({ row, col, value: cell?.formula ?? cellText(cell) })}
+                      >
+                        {isEditing ? (
+                          <input
+                            className="cell-editor"
+                            ref={cellInputRef}
+                            value={editing!.value}
+                            // eslint-disable-next-line jsx-a11y/no-autofocus -- typing replaces the cell content; focusing the editor is the whole point of the interaction
+                            autoFocus
+                            onFocus={(event) => {
+                              setFocusMode("cell");
+                              setSuggestDismissed(false);
+                              setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length);
+                            }}
+                            onSelect={(event) =>
+                              setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
                             }
-                            if (event.key === "Tab") {
-                              event.preventDefault();
-                              commitEdit(event.shiftKey ? "left" : "right");
-                            }
-                            if (event.key === "Escape") {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              restoreGridFocusRef.current = true;
-                              setEditing(null);
-                            }
-                          }}
-                        />
-                      ) : (
-                        <span className="cell-text">{formatCellDisplay(value, style)}</span>
-                      )}
-                      {style.borders.top ? <span className="cell-border top" /> : null}
-                      {style.borders.bottom ? <span className="cell-border bottom" /> : null}
-                      {style.borders.left ? <span className="cell-border left" /> : null}
-                      {style.borders.right ? <span className="cell-border right" /> : null}
-                      {tableEntry ? (
-                        <span
-                          className="table-outline"
-                          style={{
-                            position: "absolute",
-                            inset: 0,
-                            pointerEvents: "none",
-                            borderTop: row === tableEntry.parts.start.row ? "2px solid #1d4ed8" : undefined,
-                            borderBottom: row === tableEntry.parts.end.row ? "2px solid #1d4ed8" : undefined,
-                            borderLeft: col === tableEntry.parts.start.col ? "2px solid #1d4ed8" : undefined,
-                            borderRight: col === tableEntry.parts.end.col ? "2px solid #1d4ed8" : undefined,
-                          }}
-                        />
-                      ) : null}
-                      {traceKind ? (
-                        <span
-                          className="cell-trace"
-                          style={{
-                            position: "absolute",
-                            inset: 0,
-                            pointerEvents: "none",
-                            boxShadow: `inset 0 0 0 2px ${traceKind === "precedents" ? "#2563eb" : "#dc2626"}`,
-                          }}
-                        />
-                      ) : null}
-                      {(() => {
-                        const bar = dataBars.get(address);
-                        if (!bar) return null;
-                        const width = bar.max > 0 ? Math.min(100, (Math.abs(Number(value) || 0) / bar.max) * 100) : 0;
-                        return <span className="data-bar" style={{ width: `${width}%`, background: bar.fill }} />;
-                      })()}
-                      {cell?.comment ? <span className="cell-comment-dot" title={cell.comment} /> : null}
-                    </div>
-                  );
-                }),
-              )}
+                            onChange={(event) => {
+                              setDraftCaret(event.target.selectionStart ?? event.target.value.length);
+                              setSuggestDismissed(false);
+                              setEditing({ row, col, value: event.target.value });
+                            }}
+                            onBlur={() => {
+                              setFocusMode(null);
+                              commitEdit("none", false);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.nativeEvent.isComposing) return;
+                              // The popup owns Tab/Enter/Escape/arrows while it is open.
+                              if (handleAssistKey(event)) return;
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                commitEdit(event.shiftKey ? "up" : "down");
+                              }
+                              if (event.key === "Tab") {
+                                event.preventDefault();
+                                commitEdit(event.shiftKey ? "left" : "right");
+                              }
+                              if (event.key === "Escape") {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                restoreGridFocusRef.current = true;
+                                setEditing(null);
+                              }
+                            }}
+                          />
+                        ) : (
+                          <span className="cell-text">{formatCellDisplay(value, style)}</span>
+                        )}
+                        {style.borders.top ? <span className="cell-border top" /> : null}
+                        {style.borders.bottom ? <span className="cell-border bottom" /> : null}
+                        {style.borders.left ? <span className="cell-border left" /> : null}
+                        {style.borders.right ? <span className="cell-border right" /> : null}
+                        {tableEntry ? (
+                          <span
+                            className="table-outline"
+                            style={{
+                              position: "absolute",
+                              inset: 0,
+                              pointerEvents: "none",
+                              borderTop: row === tableEntry.parts.start.row ? "2px solid #1d4ed8" : undefined,
+                              borderBottom: row === tableEntry.parts.end.row ? "2px solid #1d4ed8" : undefined,
+                              borderLeft: col === tableEntry.parts.start.col ? "2px solid #1d4ed8" : undefined,
+                              borderRight: col === tableEntry.parts.end.col ? "2px solid #1d4ed8" : undefined,
+                            }}
+                          />
+                        ) : null}
+                        {traceKind ? (
+                          <span
+                            className="cell-trace"
+                            style={{
+                              position: "absolute",
+                              inset: 0,
+                              pointerEvents: "none",
+                              boxShadow: `inset 0 0 0 2px ${traceKind === "precedents" ? "#2563eb" : "#dc2626"}`,
+                            }}
+                          />
+                        ) : null}
+                        {(() => {
+                          const bar = dataBars.get(address);
+                          if (!bar) return null;
+                          const width = bar.max > 0 ? Math.min(100, (Math.abs(Number(value) || 0) / bar.max) * 100) : 0;
+                          return <span className="data-bar" style={{ width: `${width}%`, background: bar.fill }} />;
+                        })()}
+                        {cell?.comment ? <span className="cell-comment-dot" title={cell.comment} /> : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
               {freeze.rows > 0 ? (
                 <div
                   className="calc-freeze-line is-row"
@@ -2671,6 +2718,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
             <span
               className="calc-fill-handle"
               data-fill-handle=""
+              aria-hidden="true"
               style={{
                 left: fillHandlePlace.left - 5,
                 top: fillHandlePlace.top - 5,

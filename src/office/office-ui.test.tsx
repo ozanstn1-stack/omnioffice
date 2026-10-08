@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => null) }));
 
-import { NARROW_RIBBON_QUERY, Ribbon } from "./office-ui";
+import { NARROW_RIBBON_QUERY, Ribbon, ToolButton } from "./office-ui";
 
 /**
  * Narrow ribbons: jsdom has no layout, so each group reports the row it would
@@ -97,5 +97,28 @@ describe("ribbon on narrow screens", () => {
     const { container } = render(<Harness rows={[0, 1, 2]} />);
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
     expect(container.querySelector(".ribbon")).not.toHaveClass("is-narrow");
+  });
+});
+
+describe("ToolButton", () => {
+  it("exposes a toggle as pressed or not pressed", () => {
+    render(
+      <>
+        <ToolButton label="On" active />
+        <ToolButton label="Off" active={false} />
+      </>,
+    );
+    expect(screen.getByRole("button", { name: "On" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Off" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("carries no pressed state when it is a plain action", () => {
+    render(<ToolButton label="Action" />);
+    expect(screen.getByRole("button", { name: "Action" })).not.toHaveAttribute("aria-pressed");
+  });
+
+  it("keeps the highlight class in step with the pressed state", () => {
+    render(<ToolButton label="On" active />);
+    expect(screen.getByRole("button", { name: "On" })).toHaveClass("is-active");
   });
 });
