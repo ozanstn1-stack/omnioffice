@@ -88,7 +88,9 @@ import { isValidDefinedName, NameManagerDialog } from "./calc/ui/NameManagerDial
 import { PivotBox, PivotDialog } from "./calc/ui/PivotPanel";
 import { PrintLayoutDialog } from "./calc/ui/PrintLayoutDialog";
 import { SheetTabs } from "./calc/ui/SheetTabs";
+import { FindReplacePanel } from "./calc/ui/FindReplacePanel";
 import { InsertTableDialog, TablesPanel } from "./calc/ui/TablesUi";
+import { useFindReplace } from "./calc/ui/useFindReplace";
 import { ValidationDialog } from "./calc/ui/ValidationDialog";
 import { useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
 
@@ -370,8 +372,6 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     return false;
   };
 
-  useEditorShortcuts(session);
-
   const update = useCallback(
     (mutate: (workbook: Workbook) => Workbook, recordUndo = true) => {
       if (recordUndo) {
@@ -529,6 +529,32 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     },
     [sheet, rowLayout, freeze],
   );
+
+  // Selecting a cell of another sheet (Find next) switches the sheet first;
+  // the scroll waits for the commit that renders it, where `revealCell` sees
+  // that sheet's geometry.
+  const pendingRevealRef = useRef<CellPosition | null>(null);
+  const jumpToCell = useCallback((target: number, row: number, col: number) => {
+    setSheetIndex(target);
+    pendingRevealRef.current = { row, col };
+    setSelection({ anchor: { row, col }, focus: { row, col } });
+  }, []);
+  useLayoutEffect(() => {
+    const pending = pendingRevealRef.current;
+    if (!pending) return;
+    pendingRevealRef.current = null;
+    revealCell(pending);
+  }, [sheetIndex, selection, revealCell]);
+
+  const find = useFindReplace({
+    workbook,
+    sheetIndex,
+    focus: selection.focus,
+    jumpTo: jumpToCell,
+    commit: (next) => update(() => next),
+    onClosed: () => gridRef.current?.focus({ preventScroll: true }),
+  });
+  useEditorShortcuts(session, { onFind: () => find.show("find"), onReplace: () => find.show("replace") });
 
   const commitEdit = (move: CommitMove = "down", restoreFocus = true) => {
     // Read through the ref: the blur handler triggered by unmounting the editor
@@ -2788,6 +2814,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           onFilter={(table, column) => openTableFilter(table, column)}
         />
       ) : null}
+
+      {find.panel ? <FindReplacePanel panel={find.panel} /> : null}
 
       {assistAnchor && focusMode !== null && (suggestions || argumentHint) ? (
         <FormulaAssistPopup
