@@ -360,7 +360,7 @@ fn cell_xml(
         }
         CellValue::Error(error) => {
             type_attr = " t=\"e\"".into();
-            value_xml = format!("<v>{}</v>", escape_text(error));
+            value_xml = format!("<v>{}</v>", crate::formula::excel_error(error));
         }
         CellValue::Text(text) if !text.is_empty() => {
             if formula.is_some() {
@@ -2241,14 +2241,21 @@ fn package_without_styles(bytes: &[u8]) -> Option<Vec<u8>> {
     Some(writer.finish())
 }
 
-pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
-    if bytes.len() < 8 {
-        return Err(OfficeError::corrupt("The file is too small to be a spreadsheet."));
-    }
-    let mut warnings: Vec<String> = Vec::new();
-    let mut workbook = Workbook::new_blank("Imported workbook");
-    workbook.sheets.clear();
+/// Why the `calamine` pass could not read the cell values.
+enum ValuesFailure {
+    /// A `t="e"` cell holds a code `calamine` has no name for (`#CALC!`).
+    UnknownErrorCode,
+    Failed(OfficeError),
+}
 
+impl From<OfficeError> for ValuesFailure {
+    fn from(error: OfficeError) -> Self {
+        Self::Failed(error)
+    }
+}
+
+/// The first pass: values and formulas for every sheet, through `calamine`.
+fn read_cell_values(bytes: &[u8], workbook: &mut Workbook, warnings: &mut Vec<String>) -> Result<(), ValuesFailure> {
     let cursor = Cursor::new(bytes.to_vec());
     let mut sheets = match calamine::open_workbook_auto_from_rs(cursor) {
         Ok(sheets) => sheets,
@@ -2257,7 +2264,7 @@ pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
             // malformed part, which would lose every value. Retry without the
             // damaged part; the OOXML layout pass below reports it as a warning.
             let Some(repaired) = package_without_styles(bytes) else {
-                return Err(OfficeError::corrupt(format!("Could not read the spreadsheet: {error}")));
+                return Err(OfficeError::corrupt(format!("Could not read the spreadsheet: {error}")).into());
             };
             calamine::open_workbook_auto_from_rs(Cursor::new(repaired))
                 .map_err(|error| OfficeError::corrupt(format!("Could not read the spreadsheet: {error}")))?
@@ -2265,14 +2272,18 @@ pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
     };
     let names: Vec<String> = sheets.sheet_names().to_vec();
     if names.is_empty() {
-        return Err(OfficeError::corrupt("The spreadsheet does not contain any sheet."));
+        return Err(OfficeError::corrupt("The spreadsheet does not contain any sheet.").into());
     }
     let mut used_names: Vec<String> = Vec::new();
     for name in &names {
         let mut sheet = Sheet::new(name);
-        let range = sheets
-            .worksheet_range(name)
-            .map_err(|error| OfficeError::corrupt(format!("Could not read sheet {name}: {error}")))?;
+        let range = match sheets.worksheet_range(name) {
+            Ok(range) => range,
+            Err(calamine::Error::Xlsx(calamine::XlsxError::CellError(_))) => {
+                return Err(ValuesFailure::UnknownErrorCode)
+            }
+            Err(error) => return Err(OfficeError::corrupt(format!("Could not read sheet {name}: {error}")).into()),
+        };
         let formulas = sheets.worksheet_formula(name).ok();
         let (start_row, start_col) =
             (range.start().map(|(row, _)| row).unwrap_or(0), range.start().map(|(_, column)| column).unwrap_or(0));
@@ -2298,7 +2309,7 @@ pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
                     calamine::Data::DateTime(serial) => CellValue::Number(serial.as_f64()),
                     calamine::Data::DateTimeIso(text) => CellValue::Text(text.clone()),
                     calamine::Data::DurationIso(text) => CellValue::Text(text.clone()),
-                    calamine::Data::Error(error) => CellValue::Error(format!("{error:?}")),
+                    calamine::Data::Error(error) => CellValue::Error(calamine_error_text(error)),
                 };
                 let formula = formulas
                     .as_ref()
@@ -2336,6 +2347,94 @@ pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
         workbook.sheets.push(sheet);
     }
 
+    Ok(())
+}
+
+/// Error codes `calamine` parses; any other `t="e"` value fails the whole sheet.
+const CALAMINE_ERRORS: [&str; 7] = ["#DIV/0!", "#N/A", "#NAME?", "#NULL!", "#NUM!", "#REF!", "#VALUE!"];
+
+fn calamine_error_text(error: &calamine::CellErrorType) -> String {
+    match error {
+        calamine::CellErrorType::GettingData => "#GETTING_DATA".into(),
+        other => other.to_string(),
+    }
+}
+
+/// A copy of the package whose worksheets only carry error codes `calamine`
+/// can parse. Excel 365 writes `#SPILL!`, `#CALC!`, `#FIELD!` and others as
+/// ordinary error cells, which `calamine` rejects; the codes become `#VALUE!`
+/// here and `restore_error_codes` puts the real ones back from the original.
+fn neutralise_error_codes(bytes: &[u8]) -> Option<Vec<u8>> {
+    let zip = crate::zip::ZipReader::open(bytes.to_vec()).ok()?;
+    let names: Vec<String> = zip.names().map(str::to_string).collect();
+    let mut writer = ZipWriter::new();
+    for name in names {
+        let data = zip.read(&name).ok()?;
+        let is_sheet = name.starts_with("xl/worksheets/") && name.ends_with(".xml");
+        match String::from_utf8(data).map(|text| (is_sheet, text)) {
+            Ok((true, text)) if text.contains("t=\"e\"") => writer.add_text(&name, &neutralise_sheet_errors(&text)),
+            Ok((_, text)) => writer.add(&name, text.as_bytes()),
+            Err(error) => writer.add(&name, error.as_bytes()),
+        }
+    }
+    Some(writer.finish())
+}
+
+/// Rewrites the value of every `<c t="e">` cell that holds an unparsable code.
+fn neutralise_sheet_errors(sheet: &str) -> String {
+    let mut out = String::with_capacity(sheet.len());
+    let mut rest = sheet;
+    while let Some(at) = rest.find("<c ") {
+        let tag_end = rest[at..].find('>').map_or(rest.len(), |end| at + end + 1);
+        out.push_str(&rest[..tag_end]);
+        let tag = &rest[at..tag_end];
+        rest = &rest[tag_end..];
+        if !tag.contains("t=\"e\"") || tag.ends_with("/>") {
+            continue;
+        }
+        // The cell ends at its own `</c>`; its `<v>` is the value.
+        let cell_end = rest.find("</c>").unwrap_or(rest.len());
+        let cell = &rest[..cell_end];
+        match (cell.find("<v>"), cell.find("</v>")) {
+            (Some(open), Some(close)) if open + 3 <= close => {
+                let code = cell[open + 3..close].trim();
+                out.push_str(&cell[..open + 3]);
+                out.push_str(if CALAMINE_ERRORS.contains(&code) { code } else { "#VALUE!" });
+                out.push_str(&cell[close..]);
+            }
+            _ => out.push_str(cell),
+        }
+        rest = &rest[cell_end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
+    if bytes.len() < 8 {
+        return Err(OfficeError::corrupt("The file is too small to be a spreadsheet."));
+    }
+    let mut warnings: Vec<String> = Vec::new();
+    let mut workbook = Workbook::new_blank("Imported workbook");
+    workbook.sheets.clear();
+
+    match read_cell_values(bytes, &mut workbook, &mut warnings) {
+        Ok(()) => {}
+        Err(ValuesFailure::UnknownErrorCode) => {
+            let repaired = neutralise_error_codes(bytes)
+                .ok_or_else(|| OfficeError::corrupt("The spreadsheet holds an error code that cannot be read."))?;
+            workbook.sheets.clear();
+            warnings.clear();
+            match read_cell_values(&repaired, &mut workbook, &mut warnings) {
+                Ok(()) => {}
+                Err(ValuesFailure::UnknownErrorCode) => {
+                    return Err(OfficeError::corrupt("The spreadsheet holds an error code that cannot be read."));
+                }
+                Err(ValuesFailure::Failed(error)) => return Err(error),
+            }
+        }
+        Err(ValuesFailure::Failed(error)) => return Err(error),
+    }
     if workbook.sheets.is_empty() {
         workbook.sheets.push(Sheet::new("Sheet1"));
     }
@@ -2872,8 +2971,28 @@ fn apply_columns(root: &XmlNode, sheet: &mut Sheet) {
     }
 }
 
-/// `<sheetData>` row heights (points -> pixels) and per-cell styles. Values and
-/// formulas are not touched: they came from the calamine pass.
+/// Puts the error code of a `t="e"` cell back when the first pass could only
+/// read it as `#VALUE!` (see `neutralise_error_codes`).
+fn restore_error_code(cell: &XmlNode, sheet: &mut Sheet, row: u32, column: u32) {
+    if cell.attr("t") != Some("e") {
+        return;
+    }
+    let code = cell.child("v").map(|value| value.deep_text().trim().to_string()).unwrap_or_default();
+    if code.is_empty() || CALAMINE_ERRORS.contains(&code.as_str()) {
+        return;
+    }
+    let address = crate::address::format(row, column);
+    match sheet.cells.get_mut(&address) {
+        Some(existing) => existing.value = CellValue::Error(code),
+        None => {
+            sheet.cells.insert(address, Cell { value: CellValue::Error(code), ..Default::default() });
+        }
+    }
+}
+
+/// `<sheetData>` row heights (points -> pixels), error codes `calamine` could
+/// not read and per-cell styles. Other values and formulas are not touched: they
+/// came from the calamine pass.
 fn apply_sheet_cells(root: &XmlNode, sheet: &mut Sheet, styles: &ImportedStyles) {
     let Some(data) = root.child("sheetData") else { return };
     let styles_available = !styles.cell_styles.is_empty();
@@ -2885,12 +3004,13 @@ fn apply_sheet_cells(root: &XmlNode, sheet: &mut Sheet, styles: &ImportedStyles)
         if let Some(height) = row.attr("ht").and_then(|value| value.trim().parse::<f64>().ok()) {
             sheet.row_heights.insert(row_number, height * PT_TO_PX);
         }
-        if !styles_available {
-            continue;
-        }
         for cell in row.children_of("c") {
             let Some((cell_row, cell_column)) = cell.attr("r").and_then(crate::address::parse) else { continue };
             if cell_row > MAX_IMPORT_ROWS || cell_column > MAX_IMPORT_COLS {
+                continue;
+            }
+            restore_error_code(cell, sheet, cell_row, cell_column);
+            if !styles_available {
                 continue;
             }
             let Some(style_index) = parse_u32_attr(cell, "s").map(|value| value as usize) else { continue };

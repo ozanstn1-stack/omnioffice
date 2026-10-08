@@ -2371,6 +2371,10 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
                     CellValue::Bool(_) => "boolean",
                     _ => "string",
                 };
+                // LibreOffice marks an error cell as a string with its own flag, which is
+                // what tells an error from text that merely looks like one.
+                let error_flag =
+                    if matches!(cell.value, CellValue::Error(_)) { " calcext:value-type=\"error\"" } else { "" };
                 let formula = cell
                     .formula
                     .as_deref()
@@ -2389,7 +2393,7 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
                     }
                     _ => String::new(),
                 };
-                row_output.push_str(&format!("<table:table-cell office:value-type=\"{value_type}\"{value_attr}{attributes}{formula}>{frame}{value_xml}</table:table-cell>"));
+                row_output.push_str(&format!("<table:table-cell office:value-type=\"{value_type}\"{error_flag}{value_attr}{attributes}{formula}>{frame}{value_xml}</table:table-cell>"));
                 column += 1;
             }
             if empty_run > 0 {
@@ -3211,7 +3215,9 @@ pub fn read_ods(bytes: &[u8]) -> OfficeResult<SheetRead> {
                             cell.children_of("p").iter().map(|node| node.deep_text()).collect::<Vec<_>>().join("\n");
                         if text.is_empty() {
                             CellValue::Empty
-                        } else if formula.is_some() && text.starts_with('#') {
+                        } else if cell.attr("calcext:value-type") == Some("error")
+                            || (formula.is_some() && text.starts_with('#'))
+                        {
                             CellValue::Error(text)
                         } else {
                             CellValue::Text(text)

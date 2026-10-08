@@ -206,6 +206,48 @@ fn strip_prefixes<'a>(word: &'a str, prefixes: &[&str]) -> &'a str {
 }
 
 // ---------------------------------------------------------------------------
+// Error values
+// ---------------------------------------------------------------------------
+
+/// The codes Excel accepts in a `t="e"` cell.
+const EXCEL_ERRORS: &[&str] = &[
+    "#BLOCKED!",
+    "#CALC!",
+    "#CONNECT!",
+    "#DIV/0!",
+    "#EXTERNAL!",
+    "#FIELD!",
+    "#GETTING_DATA",
+    "#N/A",
+    "#NAME?",
+    "#NULL!",
+    "#NUM!",
+    "#PYTHON!",
+    "#REF!",
+    "#SPILL!",
+    "#UNKNOWN!",
+    "#VALUE!",
+];
+
+/// An error value as an XLSX error cell must hold it. A code Excel knows is kept
+/// (`#CALC!`, `#SPILL!`); LibreOffice's `Err:5xx` become their Excel equivalent;
+/// anything else is `#VALUE!`, because an unknown literal makes Excel report the
+/// file as damaged.
+pub fn excel_error(text: &str) -> &'static str {
+    let text = text.trim();
+    if let Some(code) = EXCEL_ERRORS.iter().find(|code| code.eq_ignore_ascii_case(text)) {
+        return code;
+    }
+    match text.strip_prefix("Err:").and_then(|number| number.trim().parse::<u32>().ok()) {
+        Some(503) => "#NUM!",
+        Some(524) => "#REF!",
+        Some(525) => "#NAME?",
+        Some(532) => "#DIV/0!",
+        _ => "#VALUE!",
+    }
+}
+
+// ---------------------------------------------------------------------------
 // XLSX
 // ---------------------------------------------------------------------------
 
@@ -537,7 +579,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn error_literals_are_kept_or_replaced_by_one_excel_accepts() {
+        for code in EXCEL_ERRORS {
+            assert_eq!(excel_error(code), *code);
+        }
+        assert_eq!(excel_error("#calc!"), "#CALC!");
+        assert_eq!(excel_error(" #N/A "), "#N/A");
+        assert_eq!(excel_error("Err:503"), "#NUM!");
+        assert_eq!(excel_error("Err:532"), "#DIV/0!");
+        assert_eq!(excel_error("Err:502"), "#VALUE!");
+        assert_eq!(excel_error(""), "#VALUE!");
+        assert_eq!(excel_error("divide by zero"), "#VALUE!");
+    }
+
+    #[test]
     fn tables_are_sorted_and_unique() {
+        assert!(EXCEL_ERRORS.windows(2).all(|pair| pair[0] < pair[1]));
         for table in [XLFN, XLFN_WS, ODF_OWN] {
             assert!(table.windows(2).all(|pair| pair[0] < pair[1]), "table out of order near {:?}", table);
         }
