@@ -4,6 +4,56 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.4.0] - Calc, closer to Excel
+
+### Added
+
+- **Find and replace** (Ctrl+F / Ctrl+H) in the sheet or the whole workbook,
+  in values or formulas, with case, whole-cell and regular-expression options.
+  A slow pattern is stopped instead of freezing the app; one undo step.
+- **Sort dialog** with up to three keys and a header row option, and **filter
+  conditions** (contains, begins/ends with, greater/less/between, top 10,
+  blank) next to the value list. Formulas move with their relative references.
+- **Hide and unhide rows and columns** (header menu, View tab, Ctrl+9 / Ctrl+0);
+  hidden rows and columns survive XLSX and ODS and are skipped in PDF export.
+- **Paste special** (Ctrl+Alt+V: values, formats, formulas, transpose) and
+  **AutoSum** (Alt+=).
+- **Cell notes**: add, edit, delete and pin; author and text are kept in XLSX
+  and ODS. **Hyperlinks** (Ctrl+K): web, e-mail and place in this document;
+  Ctrl+click follows a link, also for `HYPERLINK()` cells.
+- **Charts**: scatter and doughnut, with XLSX and ODS round trips.
+- **Conditional formatting**: color scales, data bars, icon sets and formula
+  rules, with bold, italic, fill and font color; read and written in XLSX and
+  ODS. The 5,000-cell limit per rule is gone.
+- **About 80 more functions** (now 274): SUBTOTAL, AGGREGATE, ROW, COLUMN,
+  ADDRESS, ISFORMULA, FORMULATEXT, MODE, GEOMEAN, SLOPE, INTERCEPT, FORECAST,
+  TREND, NORM.DIST, NORM.INV, T.DIST, BINOM.DIST, POISSON.DIST, HSTACK, VSTACK,
+  TAKE, DROP, CHOOSECOLS, TOCOL, WRAPROWS, FACT, COMBIN, MROUND, EVEN, ODD,
+  DOLLAR, FIXED and more. The `#CALC!` error (empty array result) is shown and
+  explained.
+- **Screen readers** hear the active cell, its value and its note; toggle
+  buttons report their state.
+
+### Fixed
+
+- **ODS formulas were all broken** (commas not turned into `;`, some function
+  names written as cell references, a missing namespace made LibreOffice show
+  `Err:510`). They now round trip and calculate in LibreOffice.
+- XLSX import no longer rejects a whole sheet that contains `#CALC!`, `#SPILL!`
+  or another error code it does not know.
+- XLSX export prefixes newer functions the way Excel expects (`_xlfn.`), so
+  they calculate in Excel instead of showing `#NAME?`.
+- Conditional-format colors are no longer replaced by a single yellow on export.
+- A plain sheet filter no longer hides the header row; inserting or deleting
+  rows and columns moves row heights and column widths with the data.
+- `COUNTIF` counts error values; several functions follow Excel more closely
+  (`N("7")` is 0, `CLEAN` removes all control characters, `GCD`/`LCM` reject
+  negatives).
+
+### Changed
+
+- The Calc editor is split into smaller modules and loads on demand.
+
 ## [4.3.0] - Fixes and robustness
 
 ### Fixed

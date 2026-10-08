@@ -10,9 +10,19 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 4.3.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 4.4.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 4.4.0
+
+- **Calc:** find & replace, multi-level sort, filter conditions, hide/unhide,
+  paste special, AutoSum, notes and hyperlinks.
+- **Charts and formatting:** scatter and doughnut charts; color scales, data
+  bars, icon sets and formula rules.
+- **80 more functions** (SUBTOTAL, AGGREGATE, NORM.DIST, FORECAST, HSTACK ...).
+- **ODS formulas** now work in LibreOffice, and XLSX files keep their newer
+  functions in Excel.
 
 ## What's new in 4.3.0
 
