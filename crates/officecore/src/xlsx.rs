@@ -1,8 +1,10 @@
 //! XLSX export (written directly as OOXML) and spreadsheet import.
 //!
-//! Export covers values, formulas, styling, number formats, column widths, row
-//! heights, merges, freeze panes, gridline settings, defined names, autofilters,
-//! tab colours, hyperlinks, cell comments, data validation, conditional
+//! Export covers values, formulas (functions Excel 2010 and later added carry
+//! the `_xlfn.` prefix Excel needs, see `formula`), error values (`#CALC!`,
+//! `#SPILL!`), styling, number formats, column widths, row heights, hidden rows
+//! and columns, merges, freeze panes, gridline settings, defined names,
+//! autofilters, tab colours, hyperlinks, cell comments, data validation, conditional
 //! formatting (highlight and formula rules, color scales, data bars, icon
 //! sets), structured tables, sheet protection, print layout (margins,
 //! headers/footers, page breaks, print area/titles), charts (column, bar, line,
@@ -14,12 +16,15 @@
 //! Import is two passes: the well-tested `calamine` parser reads values and
 //! formulas from XLSX, XLS and ODS files from Excel and LibreOffice, then a
 //! best-effort OOXML pass (only for XLSX/XLSM) reads styles, column widths, row
-//! heights, merges, freeze panes, validations, conditional formatting, defined
-//! names, hyperlinks, comments, structured tables, print settings, sheet
-//! protection, drawings (charts and pictures) and pivot parts straight from the
-//! package through the hardened ZIP/XML readers. The second pass never fails the
+//! heights, hidden rows and columns, merges, freeze panes, validations,
+//! conditional formatting, defined names, hyperlinks, comments, structured
+//! tables, print settings, sheet protection, drawings (charts and pictures) and
+//! pivot parts straight from the package through the hardened ZIP/XML readers. The second pass never fails the
 //! import: a part that cannot be parsed adds a warning and the values from the
-//! first pass are still returned.
+//! first pass are still returned. The one thing the first pass cannot survive is
+//! an error code `calamine` has no name for (Excel 365's `#CALC!`); it is read
+//! again from a copy of the package that hides the code, and the second pass puts
+//! it back.
 
 use crate::error::{OfficeError, OfficeResult};
 use crate::io::{normalize_hex, write_atomic};

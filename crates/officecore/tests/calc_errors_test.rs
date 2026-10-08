@@ -131,6 +131,35 @@ fn xlsx_import_reads_the_error_codes_excel_writes() {
     assert_eq!(sheet.get("C9").map(|cell| cell.value.clone()), Some(CellValue::Number(11.0)));
 }
 
+/// The values pass is repeated on a repaired copy when it meets an unknown
+/// code; sheets read before that must not be read twice.
+#[test]
+fn an_unknown_code_in_a_later_sheet_does_not_duplicate_earlier_sheets() {
+    let mut workbook = Workbook::new_blank("Two sheets");
+    workbook.sheets[0].name = "First".into();
+    workbook.sheets[0].set("A1", Cell { value: CellValue::Text("first".into()), ..Default::default() });
+    let mut second = Sheet::new("Second");
+    second.set("A1", Cell { value: CellValue::Number(7.0), ..Default::default() });
+    workbook.sheets.push(second);
+    let bytes = xlsx::write_xlsx(&workbook).unwrap();
+    let reader = ZipReader::open(bytes).unwrap();
+    let mut writer = ZipWriter::new();
+    for (name, data) in reader.read_all(ZipLimits::default()).unwrap() {
+        if name == "xl/worksheets/sheet2.xml" {
+            writer.add_text(&name, EXCEL_ERRORS);
+        } else {
+            writer.add(&name, &data);
+        }
+    }
+    let read = xlsx::read_workbook_bytes(&writer.finish()).unwrap();
+    let names: Vec<&str> = read.workbook.sheets.iter().map(|sheet| sheet.name.as_str()).collect();
+    assert_eq!(names, ["First", "Second"]);
+    assert_eq!(read.workbook.sheets[0].get("A1").map(|cell| cell.value.clone()), Some(CellValue::Text("first".into())));
+    let second = &read.workbook.sheets[1];
+    assert_eq!(second.get("B1").map(|cell| cell.value.clone()), Some(CellValue::Error("#CALC!".into())));
+    assert_eq!(second.get("B2").map(|cell| cell.value.clone()), Some(CellValue::Error("#SPILL!".into())));
+}
+
 #[test]
 fn xlsx_replaces_text_excel_would_reject_with_value_error() {
     let mut workbook = Workbook::new_blank("Foreign errors");
