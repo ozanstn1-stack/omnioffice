@@ -645,8 +645,14 @@ These were exercised on the built application and with automated tests:
   data (note author and visibility, link display text, screen tip, internal
   references) round-trip through `.oswk`, XLSX and ODS; links are limited to
   http, https, mailto and internal targets
+- **Calc editing (V4.4)**: the conditional-format dialog adds color scales,
+  data bars, icon sets and custom-formula rules; cell notes (right-click or
+  Shift+F2) and hyperlinks (Ctrl+K; Ctrl+click follows one, `HYPERLINK()`
+  cells included); `#CALC!` and the other error values are marked and
+  explained in the grid
 - Cell formatting, sorting, filtering, conditional formatting, data
-  validation, freeze panes, charts (column/bar/line/pie/area), pivot tables
+  validation, freeze panes, charts (column/bar/line/pie/doughnut/area/scatter),
+  pivot tables
 - **Mobile (V3.1)**: touch selection, fill handle, pinch zoom, bottom-docked
   formula bar, scrollable toolbars and tabs
 

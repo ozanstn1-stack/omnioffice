@@ -19,7 +19,7 @@ import {
   newSpreadsheetTable,
   type Cell,
   type CellStyle,
-  type ChartData,
+  type CondRule,
   type PivotTable,
   type PivotValueField,
   type Sheet,
@@ -62,6 +62,7 @@ import {
   isBlankCell,
   parseInputValue,
   scalarToCellValue,
+  sheetFormulaEvaluator,
   shiftFormulaRows,
   uniqueSheetName,
   usedRange,
@@ -77,9 +78,13 @@ import { applyFilterDraft, clearFilter, sheetFilterDraft, tableFilterDraft, type
 import { argumentHintFor, buildSuggestions, type FormulaSuggestion } from "./calc/formula-assist";
 import { clampGridZoom, pinchGridZoom, shiftFormulaColumns } from "./calc/grid-math";
 import type { CellPosition, GridSelection } from "./calc/grid-types";
-import { computeConditionalFills, computeDataBars, isValid } from "./calc/rules";
+import { prepareConditional } from "./calc/conditional";
+import { defaultRuleRange } from "./calc/conditional-form";
+import { isValid } from "./calc/rules";
 import { deleteColumn, deleteRow, insertColumn, insertRow, toggleMerge } from "./calc/structure";
 import { cellAnnouncement } from "./calc/announce";
+import { errorTitle } from "./calc/error-info";
+import { chartFromSelection, type ChartOptions } from "./calc/chart-data";
 import { planAutoSum } from "./calc/autosum";
 import { clipboardText, snapshotClipboard } from "./calc/paste-special";
 import { isSheetProtected } from "./calc/protection";
@@ -87,6 +92,8 @@ import { planSort, sortContext, type SortLevel, type SortRange } from "./calc/so
 import { edgeVisible, isHiddenIndex, stepVisible } from "./calc/visibility";
 import { uniqueColumnName, uniqueTableName } from "./calc/table-names";
 import { CalcRibbon } from "./calc/ui/CalcRibbon";
+import { CfDecor } from "./calc/ui/CfDecor";
+import { cellTextStyle } from "./calc/ui/cell-style";
 import { ChartBox, ChartDialog } from "./calc/ui/ChartPanel";
 import { ConditionalDialog } from "./calc/ui/ConditionalDialog";
 import { RemoveDuplicatesDialog, TextToColumnsDialog } from "./calc/ui/DataToolsDialogs";
@@ -104,6 +111,10 @@ import { useFindReplace } from "./calc/ui/useFindReplace";
 import { usePasteSpecial, type InternalClipboard } from "./calc/ui/usePasteSpecial";
 import { useVisibilityActions, type Axis } from "./calc/ui/useVisibilityActions";
 import { ValidationDialog } from "./calc/ui/ValidationDialog";
+import { useCellAnnotations } from "./calc/ui/useCellAnnotations";
+import { VisibleNotes } from "./calc/ui/NoteViews";
+import { isLinkCell } from "./calc/links";
+import { noteOf } from "./calc/notes";
 import { useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
 
 export { scalarToCellValue, computeWorkbookValues, applyCellEdit, shiftFormulaRows, isBlankCell };
@@ -771,6 +782,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     }
     if (cell) {
       const position = { row: Number(cell.dataset.row), col: Number(cell.dataset.col) };
+      // Ctrl+click on a link follows it; the cell is selected but no drag starts.
+      if (annotations.handleCtrlClick(event, position)) return;
       gestureRef.current = {
         kind: "cells",
         pointerId: event.pointerId,
@@ -1161,6 +1174,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       autoSum();
       return;
     }
+    if (annotations.handleKey(event)) return;
     // Ctrl+9 / Ctrl+0 hide the selected rows / columns; with Shift they show them again.
     if (mod && (event.code === "Digit9" || event.code === "Digit0")) {
       event.preventDefault();
@@ -1415,34 +1429,23 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     setFilterOpen(null);
   };
 
-  const addChart = (kind: string) => {
+  const addChart = (kind: string, options: ChartOptions) => {
     const parts = parseRange(
       `${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`,
     );
-    if (!parts || parts.start.row === parts.end.row) {
+    const chart = parts
+      ? chartFromSelection(
+          kind,
+          parts,
+          (row, col) => String(computed.get(formatAddress(row, col)) ?? ""),
+          t("calc.chartTitle"),
+          options,
+        )
+      : null;
+    if (!parts || !chart) {
       useToasts.getState().push({ kind: "info", title: t("calc.chartNeedsData") });
       return;
     }
-    const categories = `${formatAddress(parts.start.row + 1, parts.start.col)}:${formatAddress(parts.end.row, parts.start.col)}`;
-    const series: ChartData["series"] = [];
-    for (let col = parts.start.col + 1; col <= parts.end.col; col += 1) {
-      series.push({
-        name: String(computed.get(formatAddress(parts.start.row, col)) ?? `Series ${col}`),
-        range: `${formatAddress(parts.start.row + 1, col)}:${formatAddress(parts.end.row, col)}`,
-        color: null,
-      });
-    }
-    const chart: ChartData = {
-      kind,
-      title: t("calc.chartTitle"),
-      categories,
-      series,
-      legend: true,
-      xTitle: "",
-      yTitle: "",
-      stacked: false,
-      showLabels: false,
-    };
     const anchor = formatAddress(parts.end.row + 2, parts.start.col);
     updateSheet((current) => ({
       ...current,
@@ -1480,26 +1483,16 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     setPivotDialog(false);
   };
 
-  const addConditional = (rule: { kind: string; values: string[]; fill: string; topN?: number }) => {
-    const range = usedRange(sheet);
+  const addConditional = (rule: Omit<CondRule, "id">) => {
     updateSheet((current) => ({
       ...current,
-      conditional: [
-        ...current.conditional,
-        {
-          id: crypto.randomUUID(),
-          range,
-          kind: rule.kind,
-          values: rule.values,
-          fill: rule.fill,
-          color: null,
-          topN: rule.topN ?? null,
-          stopIfTrue: false,
-        },
-      ],
+      conditional: [...current.conditional, { ...rule, id: crypto.randomUUID() }],
     }));
     setConditionalDialog(false);
   };
+
+  const deleteConditional = (id: string) =>
+    updateSheet((current) => ({ ...current, conditional: current.conditional.filter((rule) => rule.id !== id) }));
 
   const addValidation = (validation: {
     kind: string;
@@ -1966,6 +1959,24 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     select: (anchor, focus) => setSelection({ anchor, focus }),
   });
 
+  // Notes and hyperlinks: the cell menu, the note editor, Insert link, and following a link.
+  const annotations = useCellAnnotations({
+    workbook,
+    sheet,
+    sheetIndex,
+    focus: selection.focus,
+    computed,
+    commit: update,
+    select: (position) => setSelection({ anchor: position, focus: position }),
+    jumpTo: jumpToCell,
+    restoreFocus: () => gridRef.current?.focus({ preventScroll: true }),
+    isSelected: (row, col) =>
+      row >= selectionBounds.start.row &&
+      row <= selectionBounds.end.row &&
+      col >= selectionBounds.start.col &&
+      col <= selectionBounds.end.col,
+  });
+
   /** Alt+=: the SUM of the numbers above or to the left, or of the selected range. */
   const autoSum = () => {
     if (isSheetProtected(sheet)) {
@@ -2067,7 +2078,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const selectedError = useMemo(() => {
     const address = formatAddress(selection.focus.row, selection.focus.col);
     const value = computed.get(address);
-    if (!isError(value) || value.code !== "#REF!") return null;
+    if (!isError(value)) return null;
+    // Only a circular or broken reference has more to say than its code.
+    if (value.code !== "#REF!") return errorTitle(t, value.code);
     const key = `${sheet.name}!${address}`;
     const cycle = findCircularReferences(workbook).find((candidate) => candidate.includes(key));
     if (cycle) return `${t("calc.circularReference")}: ${cycle.join(" → ")}`;
@@ -2077,8 +2090,14 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
 
   // Conditional formatting is evaluated once per sheet/data change instead of
   // per visible cell (see calc/rules.ts).
-  const conditionalFills = useMemo(() => computeConditionalFills(sheet.conditional, computed), [sheet, computed]);
-  const dataBars = useMemo(() => computeDataBars(sheet.conditional, computed), [sheet, computed]);
+  const conditional = useMemo(() => {
+    let evaluate: ReturnType<typeof sheetFormulaEvaluator> | null = null;
+    return prepareConditional(sheet.conditional, {
+      values: computed,
+      // Only a formula rule needs the evaluator, and only for the cells it is asked about.
+      evaluate: (formula, row, col) => (evaluate ??= sheetFormulaEvaluator(workbook, sheet))(formula, row, col),
+    });
+  }, [sheet, computed, workbook]);
 
   // Rule ranges are parsed once per rule list, so the per-cell lookup below is a
   // few integer comparisons however large the validated range is.
@@ -2151,6 +2170,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         : `${formatAddress(selectionBounds.start.row, selectionBounds.start.col)}:${formatAddress(selectionBounds.end.row, selectionBounds.end.col)}`,
     display: formatCellDisplay(computed.get(selectionAddress) ?? "", activeCell?.style ?? defaultCellStyle()),
     formula: activeCell?.formula ?? null,
+    note: noteOf(activeCell)?.text ?? null,
   });
   const selectedTable = (sheet.tables ?? []).find((table) => addressInRange(selectionAddress, table.range));
   const nameBox = selectedTable
@@ -2362,6 +2382,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           merge: () => toggleMerge(sheet, selection, updateSheet),
           borders: () => applyBorder("all"),
           openChart: () => setChartDialog(true),
+          insertLink: () => annotations.insertLink(),
+          insertNote: () => annotations.insertNote(),
           openPivot: () => setPivotDialog(true),
           openTable: () => setTableDialog(true),
           toggleTablesPanel: () => setTablesPanel((open) => !open),
@@ -2437,7 +2459,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         </div>
       ) : null}
 
-      <div className="calc-grid-wrap" ref={containerRef}>
+      <div className="calc-grid-wrap" ref={containerRef} {...annotations.hoverHandlers}>
         <div
           className="calc-grid"
           tabIndex={0}
@@ -2532,7 +2554,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                       row <= selectionBounds.end.row &&
                       col >= selectionBounds.start.col &&
                       col <= selectionBounds.end.col;
-                    const fill = conditionalFills.get(address);
+                    const format = conditional.formatAt(row, col);
+                    const fill = format?.fill;
                     const style = cell?.style ?? defaultCellStyle();
                     const validation = validationAt.find(row, col);
                     const invalid = validation ? !isValid(validation, value, listItems.get(validation.id)) : false;
@@ -2558,6 +2581,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                       }
                     }
                     const traceKind = tracedCells.get(address);
+                    const errorTip = isError(value) ? errorTitle(t, value.code) : null;
+                    const linked = isLinkCell(cell);
                     const frozenRow = row < freeze.rows;
                     const frozenCol = col < freeze.cols;
                     return (
@@ -2573,7 +2598,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                         data-cell={`${row}:${col}`}
                         data-row={row}
                         data-col={col}
-                        className={`calc-cell${inSelection ? " is-selected" : ""}${invalid ? " is-invalid" : ""}`}
+                        className={`calc-cell${inSelection ? " is-selected" : ""}${invalid ? " is-invalid" : ""}${errorTip ? " is-error" : ""}`}
+                        data-note={cell?.comment ? "" : undefined}
+                        title={errorTip ?? annotations.linkTitle(cell)}
                         style={{
                           left: pinnedPosition(col, freeze.cols, x, scrollX),
                           top: pinnedPosition(row, freeze.rows, rowLayout.offsetOf(row), scrollY),
@@ -2583,26 +2610,17 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                           zIndex: frozenRow && frozenCol ? 3 : frozenRow || frozenCol ? 2 : undefined,
                           background:
                             fill ?? tableFill ?? style.fill ?? (frozenRow || frozenCol ? "var(--bg)" : undefined),
-                          fontWeight: style.bold || (tableHeader && tableEntry!.table.headerBold) ? 700 : undefined,
-                          fontStyle: style.italic ? "italic" : undefined,
-                          textDecoration:
-                            [style.underline ? "underline" : "", style.strike ? "line-through" : ""]
-                              .filter(Boolean)
-                              .join(" ") || undefined,
-                          color: style.color ?? (tableFill && tableHeader ? "#ffffff" : undefined),
-                          textAlign: (style.align === "general"
-                            ? typeof value === "number"
-                              ? "right"
-                              : "left"
-                            : style.align) as "left" | "right" | "center",
-                          justifyContent:
-                            style.align === "center"
-                              ? "center"
-                              : style.align === "right" || (style.align === "general" && typeof value === "number")
-                                ? "flex-end"
-                                : "flex-start",
+                          ...cellTextStyle({
+                            style,
+                            numeric: typeof value === "number",
+                            headerBold: tableHeader && tableEntry!.table.headerBold,
+                            onHeaderFill: Boolean(tableFill && tableHeader),
+                            linked,
+                            rule: format,
+                          }),
                         }}
                         onDoubleClick={() => setEditing({ row, col, value: cell?.formula ?? cellText(cell) })}
+                        onContextMenu={(event) => annotations.openMenu(event, row, col)}
                       >
                         {isEditing ? (
                           <input
@@ -2649,7 +2667,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                             }}
                           />
                         ) : (
-                          <span className="cell-text">{formatCellDisplay(value, style)}</span>
+                          <span className="cell-text" style={format?.icon ? { paddingLeft: 16 } : undefined}>
+                            {format?.hideValue ? "" : formatCellDisplay(value, style)}
+                          </span>
                         )}
                         {style.borders.top ? <span className="cell-border top" /> : null}
                         {style.borders.bottom ? <span className="cell-border bottom" /> : null}
@@ -2680,13 +2700,9 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                             }}
                           />
                         ) : null}
-                        {(() => {
-                          const bar = dataBars.get(address);
-                          if (!bar) return null;
-                          const width = bar.max > 0 ? Math.min(100, (Math.abs(Number(value) || 0) / bar.max) * 100) : 0;
-                          return <span className="data-bar" style={{ width: `${width}%`, background: bar.fill }} />;
-                        })()}
-                        {cell?.comment ? <span className="cell-comment-dot" title={cell.comment} /> : null}
+                        <CfDecor format={format} t={t} />
+                        {errorTip ? <span className="cell-error-flag" /> : null}
+                        {cell?.comment ? <span className="cell-comment-dot" /> : null}
                       </div>
                     );
                   })}
@@ -2764,6 +2780,13 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 />
               );
             })}
+            <VisibleNotes
+              cells={sheet.cells}
+              place={(row, col) => ({
+                left: columnX(col) + (sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH),
+                top: HEADER_HEIGHT + rowLayout.offsetOf(row),
+              })}
+            />
             {(sheet.pivotTables ?? []).map((pivot) => {
               const position = parseAddress(pivot.anchor) ?? { row: 0, col: 0 };
               return (
@@ -2889,7 +2912,13 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       ) : null}
 
       {conditionalDialog ? (
-        <ConditionalDialog onClose={() => setConditionalDialog(false)} onApply={addConditional} />
+        <ConditionalDialog
+          rules={sheet.conditional}
+          defaultRange={defaultRuleRange(selectionBounds, usedRange(sheet))}
+          onClose={() => setConditionalDialog(false)}
+          onApply={addConditional}
+          onDelete={deleteConditional}
+        />
       ) : null}
 
       {validationDialog ? (
@@ -3031,6 +3060,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       {find.panel ? <FindReplacePanel panel={find.panel} /> : null}
 
       {pasteSpecial.dialog}
+
+      {annotations.elements}
 
       {headerMenu ? (
         <HeaderMenu

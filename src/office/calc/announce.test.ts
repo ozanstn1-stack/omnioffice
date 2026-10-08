@@ -26,6 +26,21 @@ describe("cellAnnouncement", () => {
     );
   });
 
+  it("reads the note of the active cell after the value", () => {
+    expect(cellAnnouncement(en, { address: "B7", range: null, display: "42", formula: null, note: "Check me" })).toBe(
+      "Cell B7: 42. Note: Check me",
+    );
+    expect(cellAnnouncement(en, { address: "B2", range: "A1:C3", display: "x", formula: null, note: "n" })).toBe(
+      "A1:C3 selected. Active cell B2: x. Note: n",
+    );
+    expect(cellAnnouncement(tr, { address: "B7", range: null, display: "1", formula: null, note: "bak" })).toBe(
+      "Hücre B7: 1. Not: bak",
+    );
+    expect(cellAnnouncement(en, { address: "B7", range: null, display: "42", formula: null, note: null })).toBe(
+      "Cell B7: 42",
+    );
+  });
+
   it("is translated", () => {
     expect(cellAnnouncement(tr, { address: "B7", range: null, display: "", formula: null })).toBe("Hücre B7: boş");
   });

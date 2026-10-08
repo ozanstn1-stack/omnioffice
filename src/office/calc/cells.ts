@@ -94,13 +94,27 @@ export function isDefaultCellStyle(style: CellStyle): boolean {
   );
 }
 
-/** True when a cell carries no value, formula, comment or formatting. */
+/** True when a cell carries no value, formula, comment, link or formatting. */
 export function isBlankCell(cell: Cell): boolean {
-  return cell.value.kind === "empty" && !cell.formula && !cell.comment && isDefaultCellStyle(cell.style);
+  return cell.value.kind === "empty" && !cell.formula && !cell.comment && !cell.link && isDefaultCellStyle(cell.style);
 }
 
 function replaceSheet(workbook: Workbook, index: number, sheet: Sheet): Workbook {
   return { ...workbook, sheets: workbook.sheets.map((candidate, at) => (at === index ? sheet : candidate)) };
+}
+
+/**
+ * Puts one cell into a sheet, or removes it when `cell` is null or carries
+ * nothing. For changes that leave the values alone (notes, links), so the
+ * result is a plain new workbook and the next value pass is a full one.
+ */
+export function withCellAt(workbook: Workbook, sheetIndex: number, address: string, cell: Cell | null): Workbook {
+  const sheet = workbook.sheets[sheetIndex];
+  if (!sheet) return workbook;
+  const cells = { ...sheet.cells };
+  if (cell === null || isBlankCell(cell)) delete cells[address];
+  else cells[address] = cell;
+  return replaceSheet(workbook, sheetIndex, { ...sheet, cells });
 }
 
 /**
@@ -745,6 +759,31 @@ export function formulaResult(
   // A dynamic-array formula keeps its first value in the source cell; the rest
   // of the matrix is spilled by the value pass, not stored in the model.
   return scalarToCellValue(asScalar(result));
+}
+
+/**
+ * Evaluates formulas as if they were typed into cells of `sheet` (a conditional
+ * format rule's formula), reading the values the grid already computed.
+ */
+export function sheetFormulaEvaluator(
+  workbook: Workbook,
+  sheet: Sheet,
+): (formula: string, row: number, col: number) => Scalar {
+  const values = workbookValues(workbook);
+  const sheets = new Map(workbook.sheets.map((candidate) => [candidate.name, candidate]));
+  const { names, scoped } = namesContext(workbook);
+  const context: Omit<FormulaContext, "currentRow" | "currentAddress"> = {
+    getValue: (sheetName, address) => values.get(keyOf(sheetName ?? sheet.name, address)) ?? "",
+    sheetNames: workbook.sheets.map((candidate) => candidate.name),
+    currentSheet: sheet.name,
+    names: { ...names, ...(scoped.get(sheet.name) ?? {}) },
+    tables: sheet.tables ?? [],
+    ...modelAccess(sheets, sheet.name),
+  };
+  return (formula, row, col) =>
+    asScalar(
+      evaluateFormulaResult(formula, { ...context, currentRow: row + 1, currentAddress: formatAddress(row, col) }),
+    );
 }
 
 export function formatCellDisplay(value: Scalar, style: CellStyle): string {
