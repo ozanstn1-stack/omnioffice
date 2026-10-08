@@ -93,6 +93,21 @@ describe("COLUMN", () => {
   });
 });
 
+describe("ROWS and COLUMNS", () => {
+  it("count the rows and columns of a reference or an array (Microsoft examples)", () => {
+    // =ROWS(C1:E4) is 4 and =COLUMNS(C1:E4) is 3; the array {1,2,3;4,5,6} is 2 x 3.
+    expect(evaluateFormula("=ROWS(C1:E4)", context())).toBe(4);
+    expect(evaluateFormula("=COLUMNS(C1:E4)", context())).toBe(3);
+    expect(evaluateFormula("=ROWS({1,2,3;4,5,6})", context())).toBe(2);
+    expect(evaluateFormula("=COLUMNS({1,2,3;4,5,6})", context())).toBe(3);
+  });
+
+  it("count one for a single cell", () => {
+    expect(evaluateFormula("=ROWS(A1)", context())).toBe(1);
+    expect(evaluateFormula("=COLUMNS(A1)", context())).toBe(1);
+  });
+});
+
 describe("ADDRESS", () => {
   it("builds an absolute reference by default (Microsoft example)", () => {
     expect(evaluateFormula("=ADDRESS(2,3)", context())).toBe("$C$2");
