@@ -7,6 +7,7 @@ import {
   AlignLeft,
   AlignRight,
   ArrowDownAZ,
+  ArrowDownUp,
   ArrowUpAZ,
   BarChart3,
   Bold,
@@ -72,6 +73,7 @@ export interface CalcRibbonActions {
   openConditional: () => void;
   openValidation: () => void;
   sort: (ascending: boolean) => void;
+  openSort: () => void;
   filter: () => void;
   textToColumns: () => void;
   removeDuplicates: () => void;
@@ -307,6 +309,7 @@ export function CalcRibbon({
               label={t("calc.sortDesc")}
               onClick={() => actions.sort(false)}
             />
+            <ToolButton icon={<ArrowDownUp size={16} />} label={t("calc.sortCustom")} onClick={actions.openSort} />
             <ToolButton icon={<Filter size={16} />} label={t("calc.filter")} onClick={actions.filter} />
           </RibbonGroup>
           <RibbonGroup label={t("calc.dataTools")}>

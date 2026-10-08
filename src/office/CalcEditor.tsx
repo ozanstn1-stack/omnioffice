@@ -54,6 +54,7 @@ import { rowLayoutFor } from "./calc/row-layout";
 import {
   applyCellEdit,
   applyCellEdits,
+  applySheetCells,
   computeSheetValues,
   computeWorkbookValues,
   formatCellDisplay,
@@ -77,6 +78,7 @@ import { clampGridZoom, pinchGridZoom, shiftFormulaColumns } from "./calc/grid-m
 import type { CellPosition, GridSelection } from "./calc/grid-types";
 import { computeConditionalFills, computeDataBars, isValid } from "./calc/rules";
 import { deleteColumn, deleteRow, insertColumn, insertRow, toggleMerge } from "./calc/structure";
+import { planSort, sortContext, type SortLevel, type SortRange } from "./calc/sort";
 import { edgeVisible, isHiddenIndex, stepVisible } from "./calc/visibility";
 import { uniqueColumnName, uniqueTableName } from "./calc/table-names";
 import { CalcRibbon } from "./calc/ui/CalcRibbon";
@@ -89,6 +91,7 @@ import { HeaderMenu, type HeaderMenuItem } from "./calc/ui/HeaderMenu";
 import { isValidDefinedName, NameManagerDialog } from "./calc/ui/NameManagerDialog";
 import { PivotBox, PivotDialog } from "./calc/ui/PivotPanel";
 import { PrintLayoutDialog } from "./calc/ui/PrintLayoutDialog";
+import { SortDialog } from "./calc/ui/SortDialog";
 import { SheetTabs } from "./calc/ui/SheetTabs";
 import { FindReplacePanel } from "./calc/ui/FindReplacePanel";
 import { InsertTableDialog, TablesPanel } from "./calc/ui/TablesUi";
@@ -211,6 +214,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const listDropdownId = useId();
   const [filterOpen, setFilterOpen] = useState<FilterDraft | null>(null);
   // The context menu of a row or column header, at the pointer position.
+  const [sortDialog, setSortDialog] = useState<{ range: SortRange; headerGuess: boolean } | null>(null);
   const [headerMenu, setHeaderMenu] = useState<{ axis: Axis; x: number; y: number } | null>(null);
   const [undoStack, setUndoStack] = useState<Workbook[]>([]);
   const [redoStack, setRedoStack] = useState<Workbook[]>([]);
@@ -1339,42 +1343,43 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   // Sort / filter / conditional / validation
   // -------------------------------------------------------------------------
 
-  const sortByColumn = (column: number, ascending: boolean) => {
-    const parts = parseRange(sheet.filter?.range ?? usedRange(sheet));
-    if (!parts) return;
-    const header = sheet.cells[formatAddress(parts.start.row, column)] !== undefined && parts.start.row === 0;
-    const startRow = header ? parts.start.row + 1 : parts.start.row;
-    const rows: Array<{ values: Array<{ col: number; cell: Cell | undefined }>; key: Scalar }> = [];
-    for (let row = startRow; row <= parts.end.row; row += 1) {
-      const values = [];
-      for (let col = parts.start.col; col <= parts.end.col; col += 1) {
-        values.push({ col, cell: sheet.cells[formatAddress(row, col)] });
-      }
-      rows.push({ values, key: computed.get(formatAddress(row, column)) ?? "" });
+  /** The cells a sort starts from: the selection, or the whole list for a lone cell or a lone column. */
+  const sortSelection = (): SortRange => {
+    const { start, end } = selectionBounds;
+    const loneColumn = start.col === end.col && start.row === 0 && end.row >= sheet.rowCount - 1;
+    return loneColumn
+      ? { top: selection.focus.row, left: start.col, bottom: selection.focus.row, right: start.col }
+      : { top: start.row, left: start.col, bottom: end.row, right: end.col };
+  };
+
+  const sortRefusal = (reason: "protected" | "merged" | "tooSmall") =>
+    useToasts.getState().push({
+      kind: "info",
+      title: t(
+        { protected: "calc.sheetProtected", merged: "calc.sortMerged", tooSmall: "calc.sortNeedsRange" }[reason],
+      ),
+    });
+
+  /** Sorts a range as one undo step; the visible rows are sorted, hidden ones stay put. */
+  const runSort = (range: SortRange, levels: SortLevel[], hasHeaders: boolean) => {
+    const plan = planSort(sheet, computed, range, levels, { hasHeaders, isHidden: (row) => rowLayout.isHidden(row) });
+    if (!plan) {
+      useToasts.getState().push({ kind: "info", title: t("calc.sortNothing") });
+      return;
     }
-    rows.sort((a, b) => {
-      const left = a.key;
-      const right = b.key;
-      const leftNumber = typeof left === "number" ? left : Number(left);
-      const rightNumber = typeof right === "number" ? right : Number(right);
-      if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber))
-        return ascending ? leftNumber - rightNumber : rightNumber - leftNumber;
-      const compare = String(left).localeCompare(String(right));
-      return ascending ? compare : -compare;
-    });
-    updateSheet((current) => {
-      const cells = { ...current.cells };
-      for (const address of addressesInRange(
-        `${formatAddress(startRow, parts.start.col)}:${formatAddress(parts.end.row, parts.end.col)}`,
-      ))
-        delete cells[address];
-      rows.forEach((row, rowOffset) => {
-        row.values.forEach((value) => {
-          if (value.cell) cells[formatAddress(startRow + rowOffset, value.col)] = value.cell;
-        });
-      });
-      return { ...current, cells };
-    });
+    update((current) => applySheetCells(current, sheetIndex, plan.cells, plan.changed));
+  };
+
+  const sortByColumn = (column: number, ascending: boolean) => {
+    const context = sortContext(sheet, computed, sortSelection());
+    if (!context.ok) return sortRefusal(context.reason);
+    runSort(context.range, [{ column, ascending }], context.headerGuess);
+  };
+
+  const openSortDialog = () => {
+    const context = sortContext(sheet, computed, sortSelection());
+    if (!context.ok) return sortRefusal(context.reason);
+    setSortDialog({ range: context.range, headerGuess: context.headerGuess });
   };
 
   const openFilter = (col: number) => {
@@ -2302,6 +2307,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           openConditional: () => setConditionalDialog(true),
           openValidation: () => setValidationDialog(true),
           sort: (ascending) => sortByColumn(selection.focus.col, ascending),
+          openSort: openSortDialog,
           filter: () => openFilter(selection.focus.col),
           textToColumns: openTextToColumns,
           removeDuplicates: openRemoveDuplicates,
@@ -2862,6 +2868,27 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           onApply={(print) => {
             updateSheet((current) => ({ ...current, print }));
             setPrintDialog(false);
+          }}
+        />
+      ) : null}
+
+      {sortDialog ? (
+        <SortDialog
+          columns={Array.from({ length: sortDialog.range.right - sortDialog.range.left + 1 }, (_, offset) => {
+            const index = sortDialog.range.left + offset;
+            return {
+              index,
+              letter: columnLabel(index),
+              header: toText(computed.get(formatAddress(sortDialog.range.top, index)) ?? ""),
+            };
+          })}
+          range={`${formatAddress(sortDialog.range.top, sortDialog.range.left)}:${formatAddress(sortDialog.range.bottom, sortDialog.range.right)}`}
+          defaultColumn={selection.focus.col}
+          headerGuess={sortDialog.headerGuess}
+          onClose={() => setSortDialog(null)}
+          onApply={(levels, hasHeaders) => {
+            runSort(sortDialog.range, levels, hasHeaders);
+            setSortDialog(null);
           }}
         />
       ) : null}
