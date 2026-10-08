@@ -54,6 +54,7 @@ import { rowLayoutFor } from "./calc/row-layout";
 import {
   applyCellEdit,
   applyCellEdits,
+  applyCellTextEdits,
   applySheetCells,
   computeSheetValues,
   computeWorkbookValues,
@@ -78,6 +79,9 @@ import { clampGridZoom, pinchGridZoom, shiftFormulaColumns } from "./calc/grid-m
 import type { CellPosition, GridSelection } from "./calc/grid-types";
 import { computeConditionalFills, computeDataBars, isValid } from "./calc/rules";
 import { deleteColumn, deleteRow, insertColumn, insertRow, toggleMerge } from "./calc/structure";
+import { planAutoSum } from "./calc/autosum";
+import { clipboardText, snapshotClipboard } from "./calc/paste-special";
+import { isSheetProtected } from "./calc/protection";
 import { planSort, sortContext, type SortLevel, type SortRange } from "./calc/sort";
 import { edgeVisible, isHiddenIndex, stepVisible } from "./calc/visibility";
 import { uniqueColumnName, uniqueTableName } from "./calc/table-names";
@@ -96,6 +100,7 @@ import { SheetTabs } from "./calc/ui/SheetTabs";
 import { FindReplacePanel } from "./calc/ui/FindReplacePanel";
 import { InsertTableDialog, TablesPanel } from "./calc/ui/TablesUi";
 import { useFindReplace } from "./calc/ui/useFindReplace";
+import { usePasteSpecial, type InternalClipboard } from "./calc/ui/usePasteSpecial";
 import { useVisibilityActions, type Axis } from "./calc/ui/useVisibilityActions";
 import { ValidationDialog } from "./calc/ui/ValidationDialog";
 import { useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
@@ -1053,23 +1058,22 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     });
   };
 
-  const clipboardRef = useRef<{ rows: Scalar[][]; start: CellPosition } | null>(null);
+  // The editor's own copy: the cells (formulas, formatting) for Paste special, and the text put on the system clipboard.
+  const clipboardRef = useRef<InternalClipboard | null>(null);
 
   const copySelection = () => {
     const parts = parseRange(
       `${formatAddress(selection.anchor.row, selection.anchor.col)}:${formatAddress(selection.focus.row, selection.focus.col)}`,
     );
     if (!parts) return;
-    const rows: Scalar[][] = [];
-    for (let row = parts.start.row; row <= parts.end.row; row += 1) {
-      const line: Scalar[] = [];
-      for (let col = parts.start.col; col <= parts.end.col; col += 1) {
-        line.push(computed.get(formatAddress(row, col)) ?? "");
-      }
-      rows.push(line);
-    }
-    clipboardRef.current = { rows, start: { row: parts.start.row, col: parts.start.col } };
-    const text = rows.map((line) => line.map((value) => String(value ?? "")).join("\t")).join("\n");
+    const data = snapshotClipboard(sheet, computed, {
+      top: parts.start.row,
+      left: parts.start.col,
+      bottom: parts.end.row,
+      right: parts.end.col,
+    });
+    const text = clipboardText(data);
+    clipboardRef.current = { data, text };
     void navigator.clipboard?.writeText(text).catch(() => undefined);
   };
 
@@ -1088,7 +1092,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       // Clipboard read may be blocked; fall back to the in-app clipboard.
     }
     if (clipboardRef.current) {
-      applyPasted(clipboardRef.current.rows.map((line) => line.map((value) => String(value ?? ""))));
+      applyPasted(clipboardRef.current.data.values.map((line) => line.map((value) => String(value ?? ""))));
     }
   };
 
@@ -1144,6 +1148,16 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     if (event.altKey && event.key === "ArrowDown" && activeListItems.length > 0) {
       event.preventDefault();
       openListDropdown();
+      return;
+    }
+    if (mod && event.altKey && event.code === "KeyV") {
+      event.preventDefault();
+      void pasteSpecial.open();
+      return;
+    }
+    if (event.altKey && !mod && (event.key === "=" || event.code === "Equal")) {
+      event.preventDefault();
+      autoSum();
       return;
     }
     // Ctrl+9 / Ctrl+0 hide the selected rows / columns; with Shift they show them again.
@@ -1942,6 +1956,37 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     },
   });
 
+  const pasteSpecial = usePasteSpecial({
+    sheet,
+    sheetIndex,
+    target: selectionBounds.start,
+    internal: clipboardRef,
+    commit: update,
+    select: (anchor, focus) => setSelection({ anchor, focus }),
+  });
+
+  /** Alt+=: the SUM of the numbers above or to the left, or of the selected range. */
+  const autoSum = () => {
+    if (isSheetProtected(sheet)) {
+      useToasts.getState().push({ kind: "info", title: t("calc.sheetProtected") });
+      return;
+    }
+    const { start, end } = selectionBounds;
+    const plan = planAutoSum(
+      computed,
+      { top: start.row, left: start.col, bottom: end.row, right: end.col },
+      selection.focus,
+    );
+    if (plan.kind === "edit") {
+      pendingCaretRef.current = plan.caret;
+      setEditing({ row: plan.row, col: plan.col, value: plan.text });
+      return;
+    }
+    update((current) => applyCellTextEdits(current, sheetIndex, plan.edits));
+    const first = plan.edits[0];
+    setSelection({ anchor: { row: first.row, col: first.col }, focus: { row: first.row, col: first.col } });
+  };
+
   /** Right-click on a header: select it (unless it is in the selection) and open its menu. */
   const openHeaderMenu = (axis: Axis, index: number, event: React.MouseEvent) => {
     event.preventDefault();
@@ -2308,6 +2353,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           openValidation: () => setValidationDialog(true),
           sort: (ascending) => sortByColumn(selection.focus.col, ascending),
           openSort: openSortDialog,
+          pasteSpecial: () => void pasteSpecial.open(),
+          autoSum,
           filter: () => openFilter(selection.focus.col),
           textToColumns: openTextToColumns,
           removeDuplicates: openRemoveDuplicates,
@@ -2934,6 +2981,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       ) : null}
 
       {find.panel ? <FindReplacePanel panel={find.panel} /> : null}
+
+      {pasteSpecial.dialog}
 
       {headerMenu ? (
         <HeaderMenu

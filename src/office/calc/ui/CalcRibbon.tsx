@@ -11,6 +11,7 @@ import {
   ArrowUpAZ,
   BarChart3,
   Bold,
+  ClipboardPaste,
   Columns3,
   Copy,
   CopyX,
@@ -74,6 +75,8 @@ export interface CalcRibbonActions {
   openValidation: () => void;
   sort: (ascending: boolean) => void;
   openSort: () => void;
+  pasteSpecial: () => void;
+  autoSum: () => void;
   filter: () => void;
   textToColumns: () => void;
   removeDuplicates: () => void;
@@ -158,6 +161,14 @@ export function CalcRibbon({
             />
             <ToolButton icon={<Copy size={16} />} onClick={actions.copy} title={t("common.copy")} />
             <ToolButton icon={<Eraser size={16} />} onClick={actions.clear} title={t("calc.clearCells")} />
+            <ToolButton
+              icon={<ClipboardPaste size={16} />}
+              onClick={actions.pasteSpecial}
+              title={t("calc.pasteSpecial")}
+            />
+          </RibbonGroup>
+          <RibbonGroup label={t("calc.editing")}>
+            <ToolButton icon={<Sigma size={16} />} label={t("calc.autoSum")} onClick={actions.autoSum} />
           </RibbonGroup>
           <RibbonGroup label={t("writer.font")}>
             <ToolButton
@@ -255,7 +266,8 @@ export function CalcRibbon({
       {active === "formulas" ? (
         <>
           <RibbonGroup label={t("calc.functions")}>
-            <ToolButton icon={<Sigma size={16} />} label="SUM" onClick={() => insertFunction("SUM")} />
+            <ToolButton icon={<Sigma size={16} />} label={t("calc.autoSum")} onClick={actions.autoSum} />
+            <ToolButton label="SUM" onClick={() => insertFunction("SUM")} />
             <ToolButton label="AVERAGE" onClick={() => insertFunction("AVERAGE")} />
             <ToolButton label="IF" onClick={() => insertFunction("IF")} />
             <ToolButton label="COUNT" onClick={() => insertFunction("COUNT")} />
