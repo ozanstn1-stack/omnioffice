@@ -1409,74 +1409,11 @@ pub struct SheetRead {
 }
 
 fn odf_formula_to_ours(formula: &str) -> String {
-    let trimmed = formula.trim().trim_start_matches("of:=").trim_start_matches("oooc:=").trim_start_matches("msoxl:=");
-    let mut out = String::new();
-    let chars: Vec<char> = trimmed.chars().collect();
-    let mut index = 0usize;
-    while index < chars.len() {
-        if chars[index] == '[' {
-            let mut end = index;
-            let mut content = String::new();
-            while end + 1 < chars.len() && chars[end + 1] != ']' {
-                end += 1;
-                content.push(chars[end]);
-            }
-            index = (end + 1).min(chars.len() - 1);
-            let content = content.trim_start_matches('.').replace('.', "");
-            out.push_str(&content);
-        } else if chars[index] == ';' {
-            out.push(',');
-        } else {
-            out.push(chars[index]);
-        }
-        index += 1;
-    }
-    format!("={out}")
+    crate::formula::from_odf(formula)
 }
 
 fn our_formula_to_odf(formula: &str) -> String {
-    let trimmed = formula.trim().trim_start_matches('=');
-    let mut out = String::new();
-    let chars: Vec<char> = trimmed.chars().collect();
-    let mut index = 0usize;
-    while index < chars.len() {
-        let ch = chars[index];
-        if ch == ';' {
-            out.push(';');
-            index += 1;
-            continue;
-        }
-        let is_ref_start = ch.is_ascii_alphabetic()
-            && index + 1 < chars.len()
-            && chars[index + 1..].iter().take_while(|c| c.is_ascii_alphanumeric() || **c == '$').count() > 0
-            && chars[index + 1..]
-                .iter()
-                .take_while(|c| c.is_ascii_alphanumeric() || **c == '$')
-                .any(|c| c.is_ascii_digit());
-        if is_ref_start {
-            let mut end = index;
-            while end < chars.len() && (chars[end].is_ascii_alphanumeric() || chars[end] == '$') {
-                end += 1;
-            }
-            let reference: String = chars[index..end].iter().collect();
-            if end < chars.len() && chars[end] == ':' {
-                let mut end2 = end + 1;
-                while end2 < chars.len() && (chars[end2].is_ascii_alphanumeric() || chars[end2] == '$') {
-                    end2 += 1;
-                }
-                let second: String = chars[end + 1..end2].iter().collect();
-                out.push_str(&format!("[.{reference}:.{second}]"));
-                index = end2;
-            } else {
-                out.push_str(&format!("[.{reference}]"));
-                index = end;
-            }
-        } else {
-            out.push(ch);
-            index += 1;
-        }
-    }
-    format!("of:={out}")
+    crate::formula::to_odf(formula)
 }
 
 fn cell_style_xml(style: &CellStyle) -> String {
@@ -1900,6 +1837,9 @@ fn ods_cells_with_pivots<'a>(
 // ---------------------------------------------------------------------------
 
 const CALCEXT_NS: &str = "xmlns:calcext=\"urn:org:documentfoundation:names:experimental:calc:xmlns:calcext:1.0\"";
+/// The namespace behind the `of:` in `of:=SUM(...)`; LibreOffice reads a formula
+/// whose prefix is not declared as `Err:510`.
+const OF_NS: &str = "xmlns:of=\"urn:oasis:names:tc:opendocument:xmlns:of:1.2\"";
 
 /// Rules of a sheet that cannot be written to ODS, as the reason each was left
 /// out. Mirrors `ods_chart_problem` so the compatibility report can name them.
@@ -2460,7 +2400,7 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
         body.push_str("</table:table>");
     }
     let content = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content {NS} {CALCEXT_NS} office:version=\"1.2\">{}{}<office:body><office:spreadsheet>{body}</office:spreadsheet></office:body></office:document-content>",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content {NS} {CALCEXT_NS} {OF_NS} office:version=\"1.2\">{}{}<office:body><office:spreadsheet>{body}</office:spreadsheet></office:body></office:document-content>",
         styles.xml(),
         "<office:styles/>"
     );

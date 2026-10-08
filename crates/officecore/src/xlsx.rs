@@ -348,7 +348,8 @@ fn cell_xml(
 ) -> Option<String> {
     let style_id = styles.xf_id(style);
     let style_attr = if style_id > 0 { format!(" s=\"{style_id}\"") } else { String::new() };
-    let formula = formula.map(|formula| formula.trim_start_matches('=').to_string());
+    // Excel refuses the plain name of every function added after 2007.
+    let formula = formula.map(crate::formula::to_xlsx);
     let mut value_xml = String::new();
     let mut type_attr = String::new();
     match value {
@@ -885,13 +886,13 @@ fn conditional_formatting_xml(rule: &CondRule, index: usize, styles: &mut StyleT
             format!("<cfRule type=\"top10\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop} rank=\"{rank}\"{bottom}/>")
         }
         "expression" => {
-            let formula = rule.formula.as_deref().map(|formula| formula.trim().trim_start_matches('=').trim()).unwrap_or("");
+            let formula = rule.formula.as_deref().map(crate::formula::to_xlsx).unwrap_or_default();
             if formula.is_empty() {
                 return Err("the formula rule has no formula".into());
             }
             format!(
                 "<cfRule type=\"expression\" dxfId=\"{dxf}\" priority=\"{priority}\"{stop}><formula>{}</formula></cfRule>",
-                escape_text(formula)
+                escape_text(&formula)
             )
         }
         other => return Err(format!("the rule type \"{other}\" is not exportable")),
@@ -1556,7 +1557,7 @@ fn table_xml(table: &SpreadsheetTable, number: usize, name: &str) -> String {
                 "<tableColumn id=\"{}\" name=\"{}\"><calculatedColumnFormula>{}</calculatedColumnFormula></tableColumn>",
                 index + 1,
                 escape_attr(&name),
-                escape_text(formula.trim_start_matches('='))
+                escape_text(&crate::formula::to_xlsx(formula))
             )),
             None => xml.push_str(&format!("<tableColumn id=\"{}\" name=\"{}\"/>", index + 1, escape_attr(&name))),
         }
@@ -2303,10 +2304,7 @@ pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
                     .as_ref()
                     .and_then(|range| range.get_value((row_number, column_number)))
                     .filter(|text| !text.is_empty())
-                    .map(|text| {
-                        let trimmed = text.trim().trim_start_matches('=');
-                        format!("={trimmed}")
-                    });
+                    .map(|text| crate::formula::from_xlsx(text));
                 if matches!(cell_value, CellValue::Empty) && formula.is_none() {
                     continue;
                 }
@@ -3145,7 +3143,7 @@ fn read_cf_rule(rule: &XmlNode, range: &str, styles: &ImportedStyles) -> Option<
         ..Default::default()
     };
     let formulas: Vec<String> =
-        rule.children_of("formula").iter().map(|node| node.deep_text().trim().to_string()).collect();
+        rule.children_of("formula").iter().map(|node| crate::formula::unprefix_xlsx(&node.deep_text())).collect();
     let formula = |index: usize| formulas.get(index).cloned().unwrap_or_default();
     let anchor = anchor_of(range);
     let all = absolute_area(range);
@@ -3593,7 +3591,7 @@ fn parse_table_part(
             let name = column.attr("name").unwrap_or("").to_string();
             let formula = column
                 .child("calculatedColumnFormula")
-                .map(|node| node.deep_text().trim().trim_start_matches('=').to_string())
+                .map(|node| crate::formula::unprefix_xlsx(&node.deep_text()))
                 .filter(|text| !text.is_empty())
                 .map(|text| format!("={text}"));
             table.columns.push(TableColumn { name, formula });
