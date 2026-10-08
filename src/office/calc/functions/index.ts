@@ -9,6 +9,7 @@ import { functionCount } from "../registry";
 import "./aggregate";
 import "./arrays";
 import "./datetime";
+import "./distributions";
 import "./financial";
 import "./lookup";
 import "./math";
