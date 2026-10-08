@@ -3,11 +3,11 @@
  * hover tooltip, the Insert link dialog, and following a link. Every change is
  * one `commit` (one undo step) and is refused on a protected sheet.
  */
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { useT } from "../../../lib/i18n";
-import { defaultCellStyle, type Sheet, type Workbook } from "../../../lib/office-types";
+import { defaultCellStyle, type Cell, type Sheet, type Workbook } from "../../../lib/office-types";
 import { useToasts } from "../../../lib/store";
-import { formatCellDisplay, formulaResult } from "../cells";
+import { formatCellDisplay, sheetFormulaEvaluator } from "../cells";
 import { formatAddress, type Scalar } from "../formula";
 import type { CellPosition } from "../grid-types";
 import {
@@ -97,8 +97,8 @@ export function useCellAnnotations(host: {
       const argument = hyperlinkFormulaArgument(cell?.formula);
       if (argument === null) return false;
       // HYPERLINK(location, name): the location is any expression, read as the cell would.
-      const value = formulaResult(`=${argument}`, workbook, sheet, row + 1, address);
-      target = safeLinkTarget(value.kind === "text" || value.kind === "number" ? String(value.value) : "");
+      const value = sheetFormulaEvaluator(workbook, sheet)(`=${argument}`, row, col);
+      target = safeLinkTarget(typeof value === "string" || typeof value === "number" ? String(value) : "");
     }
     if (!target) {
       push({ kind: "info", title: t("calc.linkInvalid") });
@@ -113,6 +113,31 @@ export function useCellAnnotations(host: {
     else push({ kind: "info", title: t("calc.linkBroken") });
     return true;
   };
+
+  /** Ctrl+K inserts or edits the link of the active cell, Shift+F2 its note. True when the key was used. */
+  const handleKey = (event: KeyboardEvent): boolean => {
+    const mod = event.ctrlKey || event.metaKey;
+    if (mod && !event.altKey && event.code === "KeyK") insertLink();
+    else if (event.shiftKey && !mod && event.key === "F2") insertNote();
+    else return false;
+    event.preventDefault();
+    return true;
+  };
+
+  /** Ctrl+click on a link cell selects it and follows the link. True when it did, so the caller starts no drag. */
+  const handleCtrlClick = (event: PointerEvent, position: CellPosition): boolean => {
+    if (!(event.ctrlKey || event.metaKey) || event.shiftKey) return false;
+    if (!isLinkCell(sheet.cells[formatAddress(position.row, position.col)])) return false;
+    host.select(position);
+    void follow(position.row, position.col);
+    return true;
+  };
+
+  /** The tooltip of a link cell: its screen tip or its target, and how to follow it. */
+  const linkTitle = (cell: Cell | undefined): string | undefined =>
+    isLinkCell(cell)
+      ? [cell?.linkTooltip || cellLinkTarget(cell), t("calc.linkHint")].filter(Boolean).join(" - ")
+      : undefined;
 
   /** Right-click on a cell: select it (unless it is in the selection) and open its menu. */
   const openMenu = (event: MouseEvent, row: number, col: number) => {
@@ -253,7 +278,9 @@ export function useCellAnnotations(host: {
   return {
     insertNote,
     insertLink,
-    follow,
+    handleKey,
+    handleCtrlClick,
+    linkTitle,
     openMenu,
     hoverHandlers: { onMouseOver, onMouseLeave: () => setHover(null) },
     elements,

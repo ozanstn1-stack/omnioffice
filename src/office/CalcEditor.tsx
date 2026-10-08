@@ -79,6 +79,7 @@ import { argumentHintFor, buildSuggestions, type FormulaSuggestion } from "./cal
 import { clampGridZoom, pinchGridZoom, shiftFormulaColumns } from "./calc/grid-math";
 import type { CellPosition, GridSelection } from "./calc/grid-types";
 import { prepareConditional } from "./calc/conditional";
+import { defaultRuleRange } from "./calc/conditional-form";
 import { isValid } from "./calc/rules";
 import { deleteColumn, deleteRow, insertColumn, insertRow, toggleMerge } from "./calc/structure";
 import { cellAnnouncement } from "./calc/announce";
@@ -112,7 +113,7 @@ import { useVisibilityActions, type Axis } from "./calc/ui/useVisibilityActions"
 import { ValidationDialog } from "./calc/ui/ValidationDialog";
 import { useCellAnnotations } from "./calc/ui/useCellAnnotations";
 import { VisibleNotes } from "./calc/ui/NoteViews";
-import { cellLinkTarget, isLinkCell } from "./calc/links";
+import { isLinkCell } from "./calc/links";
 import { noteOf } from "./calc/notes";
 import { useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
 
@@ -782,15 +783,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     if (cell) {
       const position = { row: Number(cell.dataset.row), col: Number(cell.dataset.col) };
       // Ctrl+click on a link follows it; the cell is selected but no drag starts.
-      if (
-        (event.ctrlKey || event.metaKey) &&
-        !event.shiftKey &&
-        isLinkCell(sheet.cells[formatAddress(position.row, position.col)])
-      ) {
-        setSelection({ anchor: position, focus: position });
-        void annotations.follow(position.row, position.col);
-        return;
-      }
+      if (annotations.handleCtrlClick(event, position)) return;
       gestureRef.current = {
         kind: "cells",
         pointerId: event.pointerId,
@@ -1181,17 +1174,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       autoSum();
       return;
     }
-    // Ctrl+K inserts or edits the link of the active cell, Shift+F2 its note.
-    if (mod && !event.altKey && event.code === "KeyK") {
-      event.preventDefault();
-      annotations.insertLink();
-      return;
-    }
-    if (event.shiftKey && !mod && event.key === "F2") {
-      event.preventDefault();
-      annotations.insertNote();
-      return;
-    }
+    if (annotations.handleKey(event)) return;
     // Ctrl+9 / Ctrl+0 hide the selected rows / columns; with Shift they show them again.
     if (mod && (event.code === "Digit9" || event.code === "Digit0")) {
       event.preventDefault();
@@ -1510,14 +1493,6 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
 
   const deleteConditional = (id: string) =>
     updateSheet((current) => ({ ...current, conditional: current.conditional.filter((rule) => rule.id !== id) }));
-
-  /** A new rule starts on the selected block, or on everything in use when one cell is selected. */
-  const conditionalDefaultRange = () => {
-    const { start, end } = selectionBounds;
-    return start.row === end.row && start.col === end.col
-      ? usedRange(sheet)
-      : `${formatAddress(start.row, start.col)}:${formatAddress(end.row, end.col)}`;
-  };
 
   const addValidation = (validation: {
     kind: string;
@@ -2625,14 +2600,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                         data-col={col}
                         className={`calc-cell${inSelection ? " is-selected" : ""}${invalid ? " is-invalid" : ""}${errorTip ? " is-error" : ""}`}
                         data-note={cell?.comment ? "" : undefined}
-                        title={
-                          errorTip ??
-                          (linked
-                            ? [cell?.linkTooltip || cellLinkTarget(cell), t("calc.linkHint")]
-                                .filter(Boolean)
-                                .join(" - ")
-                            : undefined)
-                        }
+                        title={errorTip ?? annotations.linkTitle(cell)}
                         style={{
                           left: pinnedPosition(col, freeze.cols, x, scrollX),
                           top: pinnedPosition(row, freeze.rows, rowLayout.offsetOf(row), scrollY),
@@ -2946,7 +2914,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       {conditionalDialog ? (
         <ConditionalDialog
           rules={sheet.conditional}
-          defaultRange={conditionalDefaultRange()}
+          defaultRange={defaultRuleRange(selectionBounds, usedRange(sheet))}
           onClose={() => setConditionalDialog(false)}
           onApply={addConditional}
           onDelete={deleteConditional}

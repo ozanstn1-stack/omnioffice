@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultRuleForm, isValidRange, ruleFromForm, type RuleForm } from "./conditional-form";
+import { defaultRuleForm, defaultRuleRange, isValidRange, ruleFromForm, type RuleForm } from "./conditional-form";
 
 const form = (patch: Partial<RuleForm>): RuleForm => ({ ...defaultRuleForm("A1:A9"), ...patch });
 const rule = (patch: Partial<RuleForm>) => {
@@ -13,6 +13,11 @@ const error = (patch: Partial<RuleForm>) => {
 };
 
 describe("range", () => {
+  it("starts on the selected block, or on the used range for a single cell", () => {
+    expect(defaultRuleRange({ start: { row: 1, col: 0 }, end: { row: 3, col: 2 } }, "A1:Z9")).toBe("A2:C4");
+    expect(defaultRuleRange({ start: { row: 4, col: 4 }, end: { row: 4, col: 4 } }, "A1:Z9")).toBe("A1:Z9");
+  });
+
   it("accepts cells, blocks and lists of areas", () => {
     expect(isValidRange("A1")).toBe(true);
     expect(isValidRange("$A$1:B9")).toBe(true);

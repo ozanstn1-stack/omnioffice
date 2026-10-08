@@ -3,7 +3,7 @@
  * dialog accepts and stores can be tested without rendering it.
  */
 import type { CondRule, CondThreshold } from "../../lib/office-types";
-import { parseRange } from "./formula";
+import { formatAddress, parseRange, type RangeParts } from "./formula";
 
 export const RULE_TYPES = [
   "greater",
@@ -91,6 +91,14 @@ export function defaultRuleForm(range: string): RuleForm {
       { kind: "percent", value: "67", color: "" },
     ],
   };
+}
+
+/** A new rule starts on the selected block, or on everything in use (`used`) when one cell is selected. */
+export function defaultRuleRange(selection: RangeParts, used: string): string {
+  const { start, end } = selection;
+  return start.row === end.row && start.col === end.col
+    ? used
+    : `${formatAddress(start.row, start.col)}:${formatAddress(end.row, end.col)}`;
 }
 
 export type RuleResult = { rule: Omit<CondRule, "id"> } | { error: string };
