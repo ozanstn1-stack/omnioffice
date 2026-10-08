@@ -77,6 +77,7 @@ import { clampGridZoom, pinchGridZoom, shiftFormulaColumns } from "./calc/grid-m
 import type { CellPosition, GridSelection } from "./calc/grid-types";
 import { computeConditionalFills, computeDataBars, isValid } from "./calc/rules";
 import { deleteColumn, deleteRow, insertColumn, insertRow, toggleMerge } from "./calc/structure";
+import { edgeVisible, isHiddenIndex, stepVisible } from "./calc/visibility";
 import { uniqueColumnName, uniqueTableName } from "./calc/table-names";
 import { CalcRibbon } from "./calc/ui/CalcRibbon";
 import { ChartBox, ChartDialog } from "./calc/ui/ChartPanel";
@@ -84,6 +85,7 @@ import { ConditionalDialog } from "./calc/ui/ConditionalDialog";
 import { RemoveDuplicatesDialog, TextToColumnsDialog } from "./calc/ui/DataToolsDialogs";
 import { FilterDialog } from "./calc/ui/FilterDialog";
 import { FormulaAssistPopup } from "./calc/ui/FormulaAssistPopup";
+import { HeaderMenu, type HeaderMenuItem } from "./calc/ui/HeaderMenu";
 import { isValidDefinedName, NameManagerDialog } from "./calc/ui/NameManagerDialog";
 import { PivotBox, PivotDialog } from "./calc/ui/PivotPanel";
 import { PrintLayoutDialog } from "./calc/ui/PrintLayoutDialog";
@@ -91,6 +93,7 @@ import { SheetTabs } from "./calc/ui/SheetTabs";
 import { FindReplacePanel } from "./calc/ui/FindReplacePanel";
 import { InsertTableDialog, TablesPanel } from "./calc/ui/TablesUi";
 import { useFindReplace } from "./calc/ui/useFindReplace";
+import { useVisibilityActions, type Axis } from "./calc/ui/useVisibilityActions";
 import { ValidationDialog } from "./calc/ui/ValidationDialog";
 import { useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
 
@@ -207,6 +210,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const listDropdownRef = useRef<HTMLDivElement>(null);
   const listDropdownId = useId();
   const [filterOpen, setFilterOpen] = useState<FilterDraft | null>(null);
+  // The context menu of a row or column header, at the pointer position.
+  const [headerMenu, setHeaderMenu] = useState<{ axis: Axis; x: number; y: number } | null>(null);
   const [undoStack, setUndoStack] = useState<Workbook[]>([]);
   const [redoStack, setRedoStack] = useState<Workbook[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -579,7 +584,11 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       left: { row: 0, col: -1 },
     };
     const step = delta[move];
-    const next = revealCell({ row: row + step.row, col: col + step.col });
+    // Steps land on visible rows and columns: a hidden one is hopped over.
+    const next = revealCell({
+      row: step.row === 0 ? row : rowLayout.nextVisible(row, step.row),
+      col: step.col === 0 ? col : stepVisible(sheet.colWidths, col, step.col, sheet.colCount),
+    });
     setSelection({ anchor: next, focus: next });
     // Move focus in the same event, not in the effect: when the commit came
     // from the formula bar the editor state was already null, so no effect
@@ -1095,20 +1104,28 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     if (event.nativeEvent.isComposing) return;
     const { row, col } = selection.focus;
     const mod = event.ctrlKey || event.metaKey;
-    const moveTo = (nextRow: number, dCol: number, extend = false) => {
+    const moveTo = (nextRow: number, nextCol: number, extend = false) => {
       event.preventDefault();
-      const next = revealCell({ row: nextRow, col: col + dCol });
+      const next = revealCell({ row: nextRow, col: nextCol });
       setSelection(extend ? { anchor: selection.anchor, focus: next } : { anchor: next, focus: next });
     };
-    // Vertical steps count visible rows: a filter-hidden row is never landed on.
+    // Steps count visible rows and columns: a hidden (or filtered) one is never landed on.
     const move = (dRow: number, dCol: number, extend = false) =>
-      moveTo(dRow === 0 ? row : rowLayout.nextVisible(row, dRow), dCol, extend);
+      moveTo(
+        dRow === 0 ? row : rowLayout.nextVisible(row, dRow),
+        dCol === 0 ? col : stepVisible(sheet.colWidths, col, dCol, sheet.colCount),
+        extend,
+      );
+    const firstRow = rowLayout.isHidden(0) ? rowLayout.nextVisible(0, 1) : 0;
+    const bottomRow = rowLayout.isHidden(lastRow) ? rowLayout.nextVisible(lastRow, -1) : lastRow;
+    const firstCol = edgeVisible(sheet.colWidths, sheet.colCount, "first");
+    const rightCol = edgeVisible(sheet.colWidths, sheet.colCount, "last");
     // A page is one row short of the viewport, measured in pixels so custom
     // row heights count for what they are.
     const movePage = (direction: 1 | -1, extend: boolean) => {
       const span = Math.max(ROW_HEIGHT, scroll.height / gridZoom - HEADER_HEIGHT - ROW_HEIGHT);
       const target = rowLayout.rowAtY(rowLayout.offsetOf(row) + direction * span);
-      moveTo(target === row ? rowLayout.nextVisible(row, direction) : target, 0, extend);
+      moveTo(target === row ? rowLayout.nextVisible(row, direction) : target, col, extend);
     };
     const openEditor = (value?: string) => {
       event.preventDefault();
@@ -1123,6 +1140,12 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     if (event.altKey && event.key === "ArrowDown" && activeListItems.length > 0) {
       event.preventDefault();
       openListDropdown();
+      return;
+    }
+    // Ctrl+9 / Ctrl+0 hide the selected rows / columns; with Shift they show them again.
+    if (mod && (event.code === "Digit9" || event.code === "Digit0")) {
+      event.preventDefault();
+      visibility.change(event.code === "Digit9" ? "row" : "col", event.shiftKey ? "unhide" : "hide");
       return;
     }
     switch (event.key) {
@@ -1141,16 +1164,16 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       case "Home":
         event.preventDefault();
         if (mod) {
-          const next = revealCell({ row: 0, col: 0 });
+          const next = revealCell({ row: firstRow, col: firstCol });
           setSelection({ anchor: next, focus: next });
         } else {
-          const next = revealCell({ row, col: 0 });
+          const next = revealCell({ row, col: firstCol });
           setSelection(event.shiftKey ? { anchor: selection.anchor, focus: next } : { anchor: next, focus: next });
         }
         break;
       case "End": {
         event.preventDefault();
-        const next = mod ? revealCell({ row: lastRow, col: lastCol }) : revealCell({ row, col: lastCol });
+        const next = mod ? revealCell({ row: bottomRow, col: rightCol }) : revealCell({ row, col: rightCol });
         setSelection(event.shiftKey ? { anchor: selection.anchor, focus: next } : { anchor: next, focus: next });
         break;
       }
@@ -1875,6 +1898,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     let startCol = 0;
     for (let col = 0; col < sheet.colCount; col += 1) {
       const width = sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH;
+      // A hidden column has no width and draws nothing.
+      if (width === 0) continue;
       if (col < freeze.cols) frozenColumns.push({ col, x });
       if (x + width < viewLeft) {
         x += width;
@@ -1900,6 +1925,70 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const selectionBounds = parsedSelectionBounds ?? {
     start: { row: selection.anchor.row, col: selection.anchor.col },
     end: { row: selection.focus.row, col: selection.focus.col },
+  };
+
+  const visibility = useVisibilityActions({
+    sheet,
+    bounds: selectionBounds,
+    updateSheet,
+    select: (position) => {
+      const next = revealCell(position);
+      setSelection({ anchor: next, focus: next });
+    },
+  });
+
+  /** Right-click on a header: select it (unless it is in the selection) and open its menu. */
+  const openHeaderMenu = (axis: Axis, index: number, event: React.MouseEvent) => {
+    event.preventDefault();
+    const { start, end } = selectionBounds;
+    const inside = axis === "row" ? index >= start.row && index <= end.row : index >= start.col && index <= end.col;
+    if (!inside) {
+      setSelection(
+        axis === "row"
+          ? { anchor: { row: index, col: 0 }, focus: { row: index, col: sheet.colCount - 1 } }
+          : { anchor: { row: 0, col: index }, focus: { row: sheet.rowCount - 1, col: index } },
+      );
+    }
+    setHeaderMenu({ axis, x: event.clientX, y: event.clientY });
+  };
+
+  const headerMenuItems = (axis: Axis): HeaderMenuItem[] => {
+    const items: HeaderMenuItem[] =
+      axis === "row"
+        ? [
+            {
+              id: "insert",
+              label: t("calc.insertRow"),
+              onSelect: () => insertRow(sheet, selectionBounds.start.row, updateSheet),
+            },
+            {
+              id: "delete",
+              label: t("calc.deleteRow"),
+              onSelect: () => deleteRow(sheet, selectionBounds.start.row, updateSheet),
+            },
+            { id: "hide", label: t("calc.hideRows"), onSelect: () => visibility.change("row", "hide") },
+          ]
+        : [
+            {
+              id: "insert",
+              label: t("calc.insertColumn"),
+              onSelect: () => insertColumn(sheet, selectionBounds.start.col, updateSheet),
+            },
+            {
+              id: "delete",
+              label: t("calc.deleteColumn"),
+              onSelect: () => deleteColumn(sheet, selectionBounds.start.col, updateSheet),
+            },
+            { id: "hide", label: t("calc.hideColumns"), onSelect: () => visibility.change("col", "hide") },
+          ];
+    if (visibility.canUnhide(axis)) {
+      items.push({
+        id: "unhide",
+        label: t(axis === "row" ? "calc.unhideRows" : "calc.unhideColumns"),
+        onSelect: () => visibility.change(axis, "unhide"),
+      });
+    }
+    return items;
   };
 
   // Structured tables and audit overlays are derived once per sheet/selection
@@ -2226,6 +2315,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           openPrint: () => setPrintDialog(true),
           toggleFreeze,
           toggleGridlines: () => updateSheet((current) => ({ ...current, showGridlines: !current.showGridlines })),
+          hideRows: () => visibility.change("row", "hide"),
+          unhideRows: () => visibility.change("row", "unhide"),
+          hideColumns: () => visibility.change("col", "hide"),
+          unhideColumns: () => visibility.change("col", "unhide"),
           addSheet,
           save: () => void session.save(),
           saveAs: () => void session.saveAs(),
@@ -2299,16 +2392,13 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 <div
                   key={col}
                   data-col-header={col}
-                  className={`calc-col-header${selection.focus.col === col ? " is-active" : ""}`}
+                  className={`calc-col-header${selection.focus.col === col ? " is-active" : ""}${isHiddenIndex(sheet.colWidths, col - 1) ? " has-hidden-before" : ""}`}
                   style={{
                     left: pinnedPosition(col, freeze.cols, x, scrollX),
                     width: sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH,
                     zIndex: col < freeze.cols ? 1 : undefined,
                   }}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    insertColumn(sheet, col, updateSheet);
-                  }}
+                  onContextMenu={(event) => openHeaderMenu("col", col, event)}
                 >
                   {columnLabel(col)}
                   <span className="col-resize" data-col-resize={col} />
@@ -2320,12 +2410,13 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 <div
                   key={row}
                   data-row-header={row}
-                  className={`calc-row-header${selection.focus.row === row ? " is-active" : ""}`}
+                  className={`calc-row-header${selection.focus.row === row ? " is-active" : ""}${rowLayout.isHidden(row - 1) ? " has-hidden-before" : ""}`}
                   style={{
                     top: pinnedPosition(row, freeze.rows, rowLayout.offsetOf(row), scrollY),
                     height: rowLayout.heightOf(row),
                     zIndex: row < freeze.rows ? 1 : undefined,
                   }}
+                  onContextMenu={(event) => openHeaderMenu("row", row, event)}
                 >
                   {row + 1}
                 </div>
@@ -2816,6 +2907,19 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       ) : null}
 
       {find.panel ? <FindReplacePanel panel={find.panel} /> : null}
+
+      {headerMenu ? (
+        <HeaderMenu
+          label={t(headerMenu.axis === "row" ? "calc.rowMenu" : "calc.columnMenu")}
+          x={headerMenu.x}
+          y={headerMenu.y}
+          items={headerMenuItems(headerMenu.axis)}
+          onClose={(reason) => {
+            setHeaderMenu(null);
+            if (reason !== "outside") gridRef.current?.focus({ preventScroll: true });
+          }}
+        />
+      ) : null}
 
       {assistAnchor && focusMode !== null && (suggestions || argumentHint) ? (
         <FormulaAssistPopup

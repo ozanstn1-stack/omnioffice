@@ -15,6 +15,7 @@ import {
   CopyX,
   Eraser,
   Eye,
+  EyeOff,
   FileText,
   Filter,
   FolderOpen,
@@ -84,6 +85,10 @@ export interface CalcRibbonActions {
   openPrint: () => void;
   toggleFreeze: () => void;
   toggleGridlines: () => void;
+  hideRows: () => void;
+  unhideRows: () => void;
+  hideColumns: () => void;
+  unhideColumns: () => void;
   addSheet: () => void;
   save: () => void;
   saveAs: () => void;
@@ -356,6 +361,12 @@ export function CalcRibbon({
               label={showGridlines ? t("calc.hideGridlines") : t("calc.showGridlines")}
               onClick={actions.toggleGridlines}
             />
+          </RibbonGroup>
+          <RibbonGroup label={t("calc.showHide")}>
+            <ToolButton icon={<EyeOff size={16} />} label={t("calc.hideRows")} onClick={actions.hideRows} />
+            <ToolButton icon={<Eye size={16} />} label={t("calc.unhideRows")} onClick={actions.unhideRows} />
+            <ToolButton icon={<EyeOff size={16} />} label={t("calc.hideColumns")} onClick={actions.hideColumns} />
+            <ToolButton icon={<Eye size={16} />} label={t("calc.unhideColumns")} onClick={actions.unhideColumns} />
           </RibbonGroup>
           <RibbonGroup label={t("calc.sheets")}>
             <ToolButton icon={<Plus size={16} />} label={t("calc.addSheet")} onClick={actions.addSheet} />
