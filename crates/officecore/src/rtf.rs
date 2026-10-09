@@ -715,6 +715,10 @@ struct Reader {
     colors: Vec<(u8, u8, u8)>,
     char_format: CharFormat,
     para_format: ParaFormat,
+    /// Character and paragraph formatting of the groups being read; RTF
+    /// formatting is group-scoped, so a `}` restores what the `{` saved.
+    char_format_stack: Vec<CharFormat>,
+    para_format_stack: Vec<ParaFormat>,
     blocks: Vec<Block>,
     runs: Vec<Run>,
     header_blocks: Vec<Block>,
@@ -778,6 +782,8 @@ impl Reader {
             colors: Vec::new(),
             char_format: CharFormat::default(),
             para_format: ParaFormat { align: "left".into(), line_spacing: 1.15, ..Default::default() },
+            char_format_stack: Vec::new(),
+            para_format_stack: Vec::new(),
             blocks: Vec::new(),
             runs: Vec::new(),
             header_blocks: Vec::new(),
@@ -1322,6 +1328,7 @@ fn apply_control(reader: &mut Reader, word: &str, param: Option<i32>) {
         "row" => {
             let cells = std::mem::take(&mut reader.current_row);
             reader.in_table = false;
+            reader.flush_run();
             if !cells.is_empty() {
                 let row = TableRow { cells, height_pt: None, header: false };
                 let appended = if let Some(Block::Table { table }) = reader.target_blocks().last_mut() {
@@ -1458,12 +1465,14 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
         let ch = chars[i];
         match ch {
             '{' => {
-                reader.flush_run();
                 reader.depth += 1;
                 reader.destination_stack.push(reader.destination);
-                // Revision properties are scoped like character formatting;
-                // remember the outer state so a `{\deleted ...}` group cannot
-                // leak into the following text.
+                // Character and paragraph formatting are scoped like character
+                // formatting; remember the outer state so a formatting group
+                // cannot leak into the following text.
+                reader.char_format_stack.push(reader.char_format.clone());
+                reader.para_format_stack.push(reader.para_format.clone());
+                // Revision properties are scoped the same way.
                 reader.revision_stack.push(reader.revision.clone());
                 i += 1;
             }
@@ -1471,6 +1480,8 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
                 if reader.pict.is_some() {
                     decode_pict(&mut reader);
                     reader.close_revision_group();
+                    reader.char_format = reader.char_format_stack.pop().unwrap_or_default();
+                    reader.para_format = reader.para_format_stack.pop().unwrap_or_default();
                     reader.destination = reader.destination_stack.pop().unwrap_or(Destination::Body);
                     reader.depth = reader.depth.saturating_sub(1);
                     i += 1;
@@ -1480,9 +1491,22 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
                 reader.close_revision_group();
                 if closing_note {
                     reader.finish_note();
+                    // A note destination always ends its paragraph; text after
+                    // the reference starts a new one.
+                    reader.flush_run();
                 }
-                reader.flush_run();
-                reader.destination = reader.destination_stack.pop().unwrap_or(Destination::Body);
+                let restored = reader.destination_stack.pop().unwrap_or(Destination::Body);
+                if restored != reader.destination {
+                    // Text must never land in the block the group is leaving.
+                    reader.flush_run();
+                }
+                reader.destination = restored;
+                if let Some(saved) = reader.char_format_stack.pop() {
+                    reader.char_format = saved;
+                }
+                if let Some(saved) = reader.para_format_stack.pop() {
+                    reader.para_format = saved;
+                }
                 reader.depth = reader.depth.saturating_sub(1);
                 i += 1;
             }
@@ -1539,7 +1563,16 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
                         read_comment_destination(&mut reader, &name, rest.unwrap_or_default());
                     }
                     i = end;
+                    // A skipped destination is a context boundary: pending runs
+                    // are closed here and the group's state is restored.
+                    reader.flush_run();
                     reader.close_revision_group();
+                    if let Some(saved) = reader.char_format_stack.pop() {
+                        reader.char_format = saved;
+                    }
+                    if let Some(saved) = reader.para_format_stack.pop() {
+                        reader.para_format = saved;
+                    }
                     reader.depth = reader.depth.saturating_sub(1);
                     reader.destination_stack.pop();
                     continue;
@@ -1580,7 +1613,16 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
                         _ => {}
                     }
                     i = end;
+                    // A skipped destination is a context boundary: pending runs
+                    // are closed here and the group's state is restored.
+                    reader.flush_run();
                     reader.close_revision_group();
+                    if let Some(saved) = reader.char_format_stack.pop() {
+                        reader.char_format = saved;
+                    }
+                    if let Some(saved) = reader.para_format_stack.pop() {
+                        reader.para_format = saved;
+                    }
                     reader.depth = reader.depth.saturating_sub(1);
                     reader.destination_stack.pop();
                     continue;
@@ -1597,8 +1639,14 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
                         reader.note_endnote = false;
                         reader.note_depth = Some(reader.depth);
                     }
-                    "header" | "headerl" | "headerr" | "headerf" => reader.destination = Destination::Header,
-                    "footer" | "footerl" | "footerr" | "footerf" => reader.destination = Destination::Footer,
+                    "header" | "headerl" | "headerr" | "headerf" => {
+                        reader.flush_run();
+                        reader.destination = Destination::Header;
+                    }
+                    "footer" | "footerl" | "footerr" | "footerf" => {
+                        reader.flush_run();
+                        reader.destination = Destination::Footer;
+                    }
                     "bin" => {
                         if let Some(count) = param {
                             i = (i + count.max(0) as usize).min(chars.len());
@@ -1983,5 +2031,64 @@ mod tests {
         assert_eq!(revision.kind, "delete");
         assert_eq!(revision.author, "Alice");
         assert!(text.contains("removed by Alice"), "text: {text}");
+    }
+
+    #[test]
+    fn formatting_groups_stay_one_paragraph() {
+        let rtf = br"{\rtf1\ansi{\fonttbl{\f0\fnil Calibri;}}\f0\fs24 {\b bold}{\i italic} plain\par}";
+        let read = read_rtf(rtf).unwrap();
+        let paragraphs: Vec<&Block> =
+            read.document.blocks.iter().filter(|block| matches!(block, Block::Paragraph { .. })).collect();
+        assert_eq!(paragraphs.len(), 1, "blocks: {:?}", read.document.blocks);
+        let Block::Paragraph { runs, .. } = paragraphs[0] else { unreachable!() };
+        let text: String = runs.iter().map(|run| run.text.as_str()).collect();
+        assert_eq!(text, "bolditalic plain");
+        let bold = runs.iter().find(|run| run.text == "bold").expect("bold run");
+        assert!(bold.bold && !bold.italic);
+        let italic = runs.iter().find(|run| run.text == "italic").expect("italic run");
+        assert!(!italic.bold && italic.italic);
+        let plain = runs.iter().find(|run| run.text == " plain").expect("plain run");
+        assert!(!plain.bold && !plain.italic);
+    }
+
+    #[test]
+    fn nested_groups_stay_one_paragraph() {
+        let rtf = br"{\rtf1\ansi{\fonttbl{\f0\fnil Calibri;}}\f0\fs24 lead{\b bold{\i both}bold} tail\par}";
+        let read = read_rtf(rtf).unwrap();
+        assert_eq!(read.document.blocks.len(), 1, "blocks: {:?}", read.document.blocks);
+        let Block::Paragraph { runs, .. } = &read.document.blocks[0] else { unreachable!() };
+        let text: String = runs.iter().map(|run| run.text.as_str()).collect();
+        assert_eq!(text, "leadboldbothbold tail");
+        let both = runs.iter().find(|run| run.text.contains("both")).expect("nested run");
+        assert!(both.bold && both.italic);
+        let outer: Vec<&Run> = runs.iter().filter(|run| run.text == "bold").collect();
+        assert_eq!(outer.len(), 2);
+        assert!(outer.iter().all(|run| run.bold && !run.italic));
+        let tail = runs.iter().find(|run| run.text.contains("tail")).expect("tail run");
+        assert!(!tail.bold && !tail.italic);
+    }
+
+    #[test]
+    fn writes_and_reads_multi_run_paragraph_as_one_block() {
+        let mut document = TextDocument::new_blank("Runs");
+        document.blocks = vec![Block::Paragraph {
+            props: ParaProps::default(),
+            runs: vec![
+                Run { text: "bold".into(), bold: true, ..Default::default() },
+                Run { text: "italic".into(), italic: true, ..Default::default() },
+                Run { text: " plain".into(), ..Default::default() },
+            ],
+        }];
+        let bytes = write_rtf(&document).unwrap();
+        let read = read_rtf(&bytes).unwrap();
+        let paragraphs: Vec<&Block> =
+            read.document.blocks.iter().filter(|block| matches!(block, Block::Paragraph { .. })).collect();
+        assert_eq!(paragraphs.len(), 1, "blocks: {:?}", read.document.blocks);
+        let Block::Paragraph { runs, .. } = paragraphs[0] else { unreachable!() };
+        let text: String = runs.iter().map(|run| run.text.as_str()).collect();
+        assert_eq!(text, "bolditalic plain");
+        assert!(runs.iter().any(|run| run.text == "bold" && run.bold && !run.italic));
+        assert!(runs.iter().any(|run| run.text == "italic" && run.italic && !run.bold));
+        assert!(runs.iter().any(|run| run.text == " plain" && !run.bold && !run.italic));
     }
 }

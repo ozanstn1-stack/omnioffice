@@ -20,6 +20,8 @@ const NS_DECL: &str = concat!(
     "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" ",
     "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" ",
     "xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\" ",
+    "xmlns:v=\"urn:schemas-microsoft-com:vml\" ",
+    "xmlns:o=\"urn:schemas-microsoft-com:office:office\" ",
     "xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\""
 );
 
@@ -301,6 +303,19 @@ fn write_paragraph_properties(writer: &mut XmlWriter, props: &ParaProps, sect: O
             attrs.push_str(&format!(" w:hanging=\"{}\"", twips(-props.first_line_pt)));
         }
         children.push(format!("<w:ind{attrs}/>"));
+    }
+    let tabs: Vec<String> = props
+        .tabs
+        .iter()
+        .filter_map(|tab| match tab.align.as_str() {
+            align @ ("left" | "center" | "right" | "decimal") => {
+                Some(format!("<w:tab w:val=\"{align}\" w:pos=\"{}\"/>", twips(tab.pos_pt)))
+            }
+            _ => None,
+        })
+        .collect();
+    if !tabs.is_empty() {
+        children.push(format!("<w:tabs>{}</w:tabs>", tabs.concat()));
     }
     if let Some(list) = &props.list {
         let num_id = if list.kind == "number" { 2 } else { 1 };
@@ -652,7 +667,15 @@ fn write_paragraph(state: &mut DocxState, writer: &mut XmlWriter, props: &ParaPr
     writer.raw("</w:p>");
 }
 
-fn write_image(state: &mut DocxState, writer: &mut XmlWriter, image: &ImageData, width_pt: f64, height_pt: f64) {
+fn write_image(
+    state: &mut DocxState,
+    writer: &mut XmlWriter,
+    image: &ImageData,
+    width_pt: f64,
+    height_pt: f64,
+    align: &str,
+    wrap: &str,
+) {
     let Some(target) = state.media.add(image) else {
         return;
     };
@@ -663,11 +686,33 @@ fn write_image(state: &mut DocxState, writer: &mut XmlWriter, image: &ImageData,
     let width = if width_pt > 1.0 { width_pt } else { 320.0 };
     let height = if height_pt > 1.0 { height_pt } else { 200.0 };
     writer.raw("<w:p><w:r><w:drawing>");
-    writer.raw(&format!(
-        "<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:extent cx=\"{}\" cy=\"{}\"/>",
-        emu(width),
-        emu(height)
-    ));
+    let anchored = wrap == "square" || wrap == "topBottom";
+    if anchored {
+        let position = match align {
+            "left" => "left",
+            "right" => "right",
+            _ => "center",
+        };
+        writer.raw(&format!(
+            "<wp:anchor distT=\"0\" distB=\"0\" distL=\"114300\" distR=\"114300\" simplePos=\"0\" relativeHeight=\"{id_counter}\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">"
+        ));
+        writer.raw("<wp:simplePos x=\"0\" y=\"0\"/>");
+        writer.raw(&format!("<wp:positionH relativeFrom=\"column\"><wp:align>{position}</wp:align></wp:positionH>"));
+        writer.raw("<wp:positionV relativeFrom=\"paragraph\"><wp:align>top</wp:align></wp:positionV>");
+        writer.raw(&format!("<wp:extent cx=\"{}\" cy=\"{}\"/>", emu(width), emu(height)));
+        writer.raw("<wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>");
+        writer.raw(if wrap == "topBottom" {
+            "<wp:wrapTopAndBottom/>"
+        } else {
+            "<wp:wrapSquare wrapText=\"bothSides\"/>"
+        });
+    } else {
+        writer.raw(&format!(
+            "<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:extent cx=\"{}\" cy=\"{}\"/>",
+            emu(width),
+            emu(height)
+        ));
+    }
     writer.raw(&format!(
         "<wp:docPr id=\"{}\" name=\"{}\" descr=\"{}\"/>",
         id_counter,
@@ -689,17 +734,69 @@ fn write_image(state: &mut DocxState, writer: &mut XmlWriter, image: &ImageData,
         emu(width),
         emu(height)
     ));
-    writer.raw("</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>");
+    let closer = if anchored { "</wp:anchor>" } else { "</wp:inline>" };
+    writer.raw(&format!("</pic:pic></a:graphicData></a:graphic>{closer}</w:drawing></w:r></w:p>"));
+}
+
+/// How many grid columns a table spans, counting colspans and the columns a
+/// rowspan keeps covered in the rows below it.
+fn table_grid_columns(table: &TableData) -> usize {
+    let mut open: Vec<usize> = Vec::new();
+    let mut columns = 0usize;
+    for row in &table.rows {
+        // `open` counts the rows still covered after the current one.
+        for remaining in open.iter_mut() {
+            *remaining = remaining.saturating_sub(1);
+        }
+        let mut column = 0usize;
+        for cell in &row.cells {
+            while column < open.len() && open[column] > 0 {
+                column += 1;
+            }
+            let span = cell.colspan.max(1) as usize;
+            while open.len() < column + span {
+                open.push(0);
+            }
+            if cell.rowspan > 1 {
+                for slot in open.iter_mut().skip(column).take(span) {
+                    *slot = cell.rowspan as usize;
+                }
+            }
+            column += span;
+        }
+        while column < open.len() && open[column] > 0 {
+            column += 1;
+        }
+        columns = columns.max(column);
+    }
+    columns
+}
+
+/// A `w:tc` that continues a vertical merge from the row above: no content,
+/// only the merge marker (and the width of the grid column it covers).
+fn write_merged_continuation(writer: &mut XmlWriter, width_pt: Option<f64>) {
+    writer.raw("<w:tc><w:tcPr>");
+    if let Some(width) = width_pt {
+        writer.raw(&format!("<w:tcW w:w=\"{}\" w:type=\"dxa\"/>", twips(width)));
+    }
+    writer.raw("<w:vMerge/></w:tcPr><w:p/></w:tc>");
 }
 
 fn write_table(state: &mut DocxState, writer: &mut XmlWriter, table: &TableData, depth: usize) {
     if depth > 4 {
         return;
     }
+    let grid_columns = table_grid_columns(table).max(table.column_widths_pt.len()).max(1);
+    let mut grid_widths = table.column_widths_pt.clone();
+    let fallback =
+        if grid_widths.is_empty() { 156.0 } else { grid_widths.iter().sum::<f64>() / grid_widths.len() as f64 };
+    while grid_widths.len() < grid_columns {
+        grid_widths.push(fallback);
+    }
+    grid_widths.truncate(grid_columns);
     writer.raw("<w:tbl>");
     writer.raw("<w:tblPr>");
-    let total: f64 =
-        if table.column_widths_pt.is_empty() { 9360.0 } else { table.column_widths_pt.iter().sum::<f64>().max(100.0) };
+    let total: f64 = grid_widths.iter().sum::<f64>().max(100.0);
     writer.raw(&format!("<w:tblW w:w=\"{}\" w:type=\"dxa\"/>", twips(total)));
     if table.borders {
         let color = bare_hex(&table.border_color).unwrap_or_else(|| "94A3B8".into());
@@ -718,15 +815,18 @@ fn write_table(state: &mut DocxState, writer: &mut XmlWriter, table: &TableData,
     }
     writer.raw("</w:tblPr>");
     writer.raw("<w:tblGrid>");
-    if table.column_widths_pt.is_empty() {
-        writer.raw("<w:gridCol w:w=\"3120\"/>");
-    } else {
-        for width in &table.column_widths_pt {
-            writer.raw(&format!("<w:gridCol w:w=\"{}\"/>", twips(*width)));
-        }
+    for width in &grid_widths {
+        writer.raw(&format!("<w:gridCol w:w=\"{}\"/>", twips(*width)));
     }
     writer.raw("</w:tblGrid>");
+    // Rows the model stores contain only the cells that start in them; every
+    // grid column a rowspan keeps covered gets an explicit continuation cell.
+    let mut open: Vec<usize> = Vec::new();
     for row in &table.rows {
+        // `open` counts the rows still covered after the current one.
+        for remaining in open.iter_mut() {
+            *remaining = remaining.saturating_sub(1);
+        }
         writer.raw("<w:tr>");
         if row.header {
             writer.raw("<w:trPr><w:tblHeader/></w:trPr>");
@@ -734,7 +834,16 @@ fn write_table(state: &mut DocxState, writer: &mut XmlWriter, table: &TableData,
         if let Some(height) = row.height_pt {
             writer.raw(&format!("<w:trPr><w:trHeight w:val=\"{}\"/></w:trPr>", twips(height)));
         }
+        let mut column = 0usize;
         for cell in &row.cells {
+            while column < open.len() && open[column] > 0 {
+                write_merged_continuation(writer, grid_widths.get(column).copied());
+                column += 1;
+            }
+            let span = cell.colspan.max(1) as usize;
+            while open.len() < column + span {
+                open.push(0);
+            }
             writer.raw("<w:tc><w:tcPr>");
             if let Some(width) = cell.width_pt {
                 writer.raw(&format!("<w:tcW w:w=\"{}\" w:type=\"dxa\"/>", twips(width)));
@@ -766,6 +875,16 @@ fn write_table(state: &mut DocxState, writer: &mut XmlWriter, table: &TableData,
                 }
             }
             writer.raw("</w:tc>");
+            if cell.rowspan > 1 {
+                for slot in open.iter_mut().skip(column).take(span) {
+                    *slot = cell.rowspan as usize;
+                }
+            }
+            column += span;
+        }
+        while column < open.len() && open[column] > 0 {
+            write_merged_continuation(writer, grid_widths.get(column).copied());
+            column += 1;
         }
         writer.raw("</w:tr>");
     }
@@ -778,7 +897,9 @@ fn write_block(state: &mut DocxState, writer: &mut XmlWriter, block: &Block, dep
     match block {
         Block::Paragraph { props, runs } => write_paragraph(state, writer, props, runs, None),
         Block::Table { table } => write_table(state, writer, table, depth),
-        Block::Image { image, width_pt, height_pt, .. } => write_image(state, writer, image, *width_pt, *height_pt),
+        Block::Image { image, width_pt, height_pt, align, wrap, .. } => {
+            write_image(state, writer, image, *width_pt, *height_pt, align, wrap)
+        }
         Block::PageBreak => {
             writer.raw("<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>");
         }
@@ -801,22 +922,68 @@ fn write_block(state: &mut DocxState, writer: &mut XmlWriter, block: &Block, dep
     }
 }
 
-fn write_head_foot(state: &mut DocxState, blocks: &[Block], is_header: bool) -> String {
+/// The canonical Word 2007 VML text watermark: the `_x0000_t136` shapetype and
+/// a shape whose `v:textpath` carries the text, as a default header part
+/// stores it. VML's `style` rotation is in degrees, so the model value is
+/// written as-is.
+fn watermark_paragraph(watermark: &Watermark) -> String {
+    let color =
+        watermark.color.as_deref().and_then(bare_hex).map(|hex| format!("#{hex}")).unwrap_or_else(|| "#C0C0C0".into());
+    let opacity = watermark.opacity.clamp(0.0, 1.0);
+    let weight = if watermark.bold { "bold" } else { "normal" };
+    let text = crate::xml::escape_attr(&watermark.text);
+    format!(
+        concat!(
+            "<w:p><w:r><w:pict>",
+            "<v:shapetype id=\"_x0000_t136\" coordsize=\"21600,21600\" o:spt=\"136\" adj=\"10800\" path=\"m@7,l@8,m@5,21600l@6,21600e\">",
+            "<v:formulas>",
+            "<v:f eqn=\"sum #0 0 10800\"/><v:f eqn=\"prod #0 2 1\"/><v:f eqn=\"sum 21600 0 @1\"/>",
+            "<v:f eqn=\"sum 0 0 @2\"/><v:f eqn=\"sum 21600 0 @3\"/><v:f eqn=\"if @0 @3 0\"/>",
+            "<v:f eqn=\"if @0 21600 @1\"/><v:f eqn=\"if @0 0 @2\"/><v:f eqn=\"if @0 @4 21600\"/>",
+            "<v:f eqn=\"mid @5 @6\"/><v:f eqn=\"mid @8 @5\"/><v:f eqn=\"mid @7 @8\"/>",
+            "<v:f eqn=\"mid @6 @7\"/><v:f eqn=\"sum @6 0 @5\"/>",
+            "</v:formulas>",
+            "<v:path textpathok=\"t\" o:connecttype=\"custom\" o:connectlocs=\"@9,0;@10,10800;@11,21600;@12,10800\" o:connectangles=\"270,180,90,0\"/>",
+            "<v:textpath on=\"t\" fitshape=\"t\"/>",
+            "<v:handles><v:h position=\"#0,bottomRight\" xrange=\"6629,14971\"/></v:handles>",
+            "</v:shapetype>",
+            "<v:shape id=\"OsakWatermark\" o:spid=\"_x0000_s2049\" type=\"#_x0000_t136\" ",
+            "style=\"position:absolute;margin-left:0;margin-top:0;width:415pt;height:207.5pt;rotation:{};z-index:-251658752;mso-position-horizontal:center;mso-position-horizontal-relative:margin;mso-position-vertical:center;mso-position-vertical-relative:margin\" ",
+            "fillcolor=\"{}\" stroked=\"f\"><v:fill opacity=\"{}\"/>",
+            "<v:textpath style=\"font-family:&quot;Calibri&quot;;font-size:{}pt;font-weight:{}\" string=\"{}\"/>",
+            "</v:shape></w:pict></w:r></w:p>"
+        ),
+        watermark.rotation, color, opacity, watermark.font_pt, weight, text
+    )
+}
+
+fn write_head_foot(state: &mut DocxState, blocks: &[Block], is_header: bool, watermark: Option<&Watermark>) -> String {
     let mut writer = XmlWriter::new();
     writer.declaration();
     writer.raw(&format!("<w:{} {NS_DECL}>", if is_header { "hdr" } else { "ftr" }));
-    if blocks.is_empty() {
+    if blocks.is_empty() && !(is_header && watermark.is_some()) {
         writer.raw("<w:p/>");
     }
     for block in blocks {
         write_block(state, &mut writer, block, 0);
+    }
+    if let Some(watermark) = watermark.filter(|_| is_header) {
+        writer.raw(&watermark_paragraph(watermark));
     }
     writer.raw(if is_header { "</w:hdr>" } else { "</w:ftr>" });
     writer.finish()
 }
 
 /// The `w:sectPr` payload for one section, registering header/footer parts.
-fn section_properties_xml(state: &mut DocxState, section: &SectionProps, parts: &mut DocxParts) -> String {
+///
+/// `watermark` is only set for the first section: its default header part then
+/// carries the VML text watermark, which is where Word looks for it.
+fn section_properties_xml(
+    state: &mut DocxState,
+    section: &SectionProps,
+    parts: &mut DocxParts,
+    watermark: Option<&Watermark>,
+) -> String {
     let mut out = String::new();
     let mut add_part = |state: &mut DocxState,
                         parts: &mut DocxParts,
@@ -824,12 +991,13 @@ fn section_properties_xml(state: &mut DocxState, section: &SectionProps, parts: 
                         is_header: bool,
                         kind: &str|
      -> Option<String> {
-        if blocks.is_empty() {
+        let watermark = if is_header && kind == "default" { watermark } else { None };
+        if blocks.is_empty() && watermark.is_none() {
             return None;
         }
         let index = if is_header { parts.headers.len() } else { parts.footers.len() } + 1;
         let name = format!("{}{}.xml", if is_header { "header" } else { "footer" }, index);
-        let xml = write_head_foot(state, blocks, is_header);
+        let xml = write_head_foot(state, blocks, is_header, watermark);
         let relationship = state.rels.add(
             if is_header {
                 "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header"
@@ -1170,8 +1338,9 @@ pub fn write_docx(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     let sections = document.all_sections();
     let mut parts = DocxParts::default();
     let mut section_xml: Vec<String> = Vec::new();
-    for section in &sections {
-        section_xml.push(section_properties_xml(&mut state, section, &mut parts));
+    for (index, section) in sections.iter().enumerate() {
+        let watermark = if index == 0 { document.watermark.as_ref() } else { None };
+        section_xml.push(section_properties_xml(&mut state, section, &mut parts, watermark));
     }
     parts.even_odd = sections.iter().any(|section| section.different_odd_even)
         || sections.iter().any(|section| !section.even_header.is_empty() || !section.even_footer.is_empty());
@@ -1621,14 +1790,36 @@ fn read_image_block(
             height_pt = cy / 12700.0;
         }
     }
-    Some(Block::Image {
-        image,
-        width_pt,
-        height_pt,
-        align: "center".into(),
-        caption: String::new(),
-        wrap: "inline".into(),
-    })
+    let mut align = "center".to_string();
+    let mut wrap = "inline".to_string();
+    let mut anchors = Vec::new();
+    node.find_all("wp:anchor", &mut anchors);
+    if let Some(anchor) = anchors.first() {
+        let mut positions = Vec::new();
+        anchor.find_all("wp:positionH", &mut positions);
+        if let Some(position) = positions.first().and_then(|position| position.child("align")) {
+            match position.deep_text().trim() {
+                "left" => align = "left".into(),
+                "right" => align = "right".into(),
+                "center" => align = "center".into(),
+                _ => {}
+            }
+        }
+        // wrapSquare and wrapTopAndBottom are the two kinds the model carries;
+        // every other wrap element is approximated as square. An anchored
+        // image with no wrap element at all stays inline.
+        if anchor.child("wrapSquare").is_some() {
+            wrap = "square".into();
+        } else if anchor.child("wrapTopAndBottom").is_some() {
+            wrap = "topBottom".into();
+        } else if anchor.child("wrapNone").is_some()
+            || anchor.child("wrapTight").is_some()
+            || anchor.child("wrapThrough").is_some()
+        {
+            wrap = "square".into();
+        }
+    }
+    Some(Block::Image { image, width_pt, height_pt, align, caption: String::new(), wrap })
 }
 
 /// Maps a Word field instruction onto the model field kinds we understand.
@@ -1921,6 +2112,16 @@ fn read_paragraph(node: &XmlNode, context: &mut PartContext, reader: &ZipReader,
             }
         }
         props.page_break_before = properties.child("pageBreakBefore").is_some();
+        if let Some(tabs) = properties.child("tabs") {
+            for tab in tabs.children_named("tab") {
+                let align = match tab.attr_any_ns("val").unwrap_or("left") {
+                    value @ ("left" | "center" | "right" | "decimal") => value.to_string(),
+                    _ => continue,
+                };
+                let Some(position) = tab.attr_any_ns("pos").and_then(parse_f64) else { continue };
+                props.tabs.push(TabStop { pos_pt: position / 20.0, align });
+            }
+        }
         if let Some(numbering_properties) = properties.child("numPr") {
             let num_id = numbering_properties
                 .child("numId")
@@ -1964,7 +2165,10 @@ fn read_table(
             widths.push(width);
         }
     }
-    let mut rows = Vec::new();
+    let mut rows: Vec<TableRow> = Vec::new();
+    // Per grid column, the cell an open `w:vMerge` from the row above continues
+    // (row index in `rows`, cell index in that row).
+    let mut open_origins: Vec<Option<(usize, usize)>> = Vec::new();
     for row_node in node.children_named("tr") {
         let mut row = TableRow::default();
         if let Some(properties) = row_node.child("trPr") {
@@ -1977,8 +2181,17 @@ fn read_table(
                 }
             }
         }
+        let previous_origins = std::mem::take(&mut open_origins);
+        // Origins started in this row, applied once the row is stored.
+        let mut pending_origins: Vec<(usize, usize, usize)> = Vec::new();
+        // Origins this row already extended; a colspan above two columns writes
+        // one continuation cell per grid column, but that is still one row.
+        let mut extended: Vec<(usize, usize)> = Vec::new();
+        let mut column = 0usize;
         for cell_node in row_node.children_named("tc") {
             let mut cell = TableCell::default();
+            // `Some(true)` is a `restart` vMerge, `Some(false)` a continuation.
+            let mut merge: Option<bool> = None;
             if let Some(properties) = cell_node.child("tcPr") {
                 if let Some(span) = properties
                     .child("gridSpan")
@@ -1987,8 +2200,11 @@ fn read_table(
                 {
                     cell.colspan = span.max(1);
                 }
-                if properties.child("vMerge").is_some() {
+                if let Some(node) = properties.child("vMerge") {
                     cell.rowspan = 1;
+                    merge = Some(
+                        node.attr_any_ns("val").map(|value| value.eq_ignore_ascii_case("restart")).unwrap_or(false),
+                    );
                 }
                 if let Some(fill) = properties.child("shd").and_then(|node| node.attr_any_ns("fill")) {
                     if !fill.eq_ignore_ascii_case("auto") {
@@ -2003,6 +2219,29 @@ fn read_table(
                     cell.width_pt = Some(width / 20.0);
                 }
             }
+            let span = cell.colspan.max(1) as usize;
+            if merge == Some(false) {
+                if let Some(origin) = previous_origins.get(column).copied().flatten() {
+                    if !extended.contains(&origin) {
+                        extended.push(origin);
+                        if let Some(target) =
+                            rows.get_mut(origin.0).and_then(|origin_row| origin_row.cells.get_mut(origin.1))
+                        {
+                            target.rowspan = target.rowspan.saturating_add(1);
+                        }
+                    }
+                    while open_origins.len() < column + span {
+                        open_origins.push(None);
+                    }
+                    for slot in open_origins.iter_mut().skip(column).take(span) {
+                        *slot = Some(origin);
+                    }
+                    column += span;
+                    continue;
+                }
+                // A continuation without a prior restart is kept as an empty
+                // cell rather than dropped.
+            }
             for child in &cell_node.children {
                 match child.local_name() {
                     "p" => cell.blocks.extend(read_paragraph(child, context, reader, numbering)),
@@ -2016,10 +2255,24 @@ fn read_table(
             if cell.blocks.is_empty() {
                 cell.blocks.push(Block::paragraph(""));
             }
+            let cell_index = row.cells.len();
             row.cells.push(cell);
+            if merge == Some(true) {
+                pending_origins.push((column, span, cell_index));
+            }
+            column += span;
         }
         if !row.cells.is_empty() {
+            let row_index = rows.len();
             rows.push(row);
+            for (column, span, cell_index) in pending_origins {
+                while open_origins.len() < column + span {
+                    open_origins.push(None);
+                }
+                for slot in open_origins.iter_mut().skip(column).take(span) {
+                    *slot = Some((row_index, cell_index));
+                }
+            }
         }
     }
     Block::Table {
@@ -2033,8 +2286,80 @@ fn read_table(
     }
 }
 
+/// One `name:value` entry of a VML `style` attribute (`rotation:315`).
+fn vml_style_value(style: &str, name: &str) -> Option<String> {
+    for part in style.split(';') {
+        let part = part.trim();
+        if let Some(value) = part.strip_prefix(name).and_then(|value| value.strip_prefix(':')) {
+            return Some(value.trim().to_string());
+        }
+    }
+    None
+}
+
+fn parse_pt(value: &str) -> Option<f64> {
+    value.trim().trim_end_matches("pt").trim().parse::<f64>().ok()
+}
+
+/// A VML `opacity`, which may be a fraction (`0.18`) or a percentage (`18%`).
+fn parse_opacity(value: &str) -> f64 {
+    let value = value.trim();
+    if let Some(percent) = value.strip_suffix('%') {
+        return percent.trim().parse::<f64>().map(|part| (part / 100.0).clamp(0.0, 1.0)).unwrap_or(1.0);
+    }
+    value
+        .parse::<f64>()
+        .map(|part| if part > 1.0 { (part / 100.0).clamp(0.0, 1.0) } else { part.clamp(0.0, 1.0) })
+        .unwrap_or(1.0)
+}
+
+/// Detects a VML text watermark: a `v:textpath` with a `string` attribute,
+/// as Word writes into the default header of a watermarked document.
+fn parse_watermark(root: &XmlNode) -> Option<Watermark> {
+    let mut textpaths = Vec::new();
+    root.find_all("v:textpath", &mut textpaths);
+    let textpath = textpaths.iter().find(|node| node.attr("string").is_some())?;
+    let text = textpath.attr("string").unwrap_or_default().to_string();
+    let font_style = textpath.attr("style").unwrap_or_default();
+    let font_pt = vml_style_value(font_style, "font-size").and_then(|value| parse_pt(&value)).unwrap_or(72.0);
+    let bold = vml_style_value(font_style, "font-weight")
+        .map(|value| value.eq_ignore_ascii_case("bold") || value == "700")
+        .unwrap_or(false);
+    let mut shapes = Vec::new();
+    root.find_all("v:shape", &mut shapes);
+    let shape = shapes.iter().find(|node| node.attr("fillcolor").is_some());
+    let color = shape.and_then(|node| node.attr("fillcolor")).and_then(|value| {
+        if value.eq_ignore_ascii_case("auto") {
+            None
+        } else {
+            normalize_hex(value)
+        }
+    });
+    let rotation = shape
+        .and_then(|node| node.attr("style"))
+        .and_then(|style| vml_style_value(style, "rotation"))
+        .and_then(|value| parse_f64(&value))
+        .unwrap_or(0.0);
+    let opacity = shape
+        .and_then(|node| {
+            let mut fills = Vec::new();
+            node.find_all("v:fill", &mut fills);
+            fills.first().and_then(|fill| fill.attr("opacity")).map(parse_opacity)
+        })
+        .unwrap_or(1.0);
+    Some(Watermark { text, color, opacity, rotation, font_pt, bold })
+}
+
+/// Reads a header part purely to look for a watermark paragraph.
+fn read_watermark_part(reader: &ZipReader, part: &str) -> Option<Watermark> {
+    let text = reader.read_text(part).ok()?;
+    let root = parse_xml(&text).ok()?;
+    parse_watermark(&root)
+}
+
 /// Parses a `w:sectPr` into the model's section properties, resolving the
-/// header/footer parts it references.
+/// header/footer parts it references. `watermark` is filled from the default
+/// header part when one is present.
 fn parse_section_props(
     node: &XmlNode,
     rels: &HashMap<String, RelLink>,
@@ -2042,6 +2367,7 @@ fn parse_section_props(
     numbering: &Numbering,
     part_dir: &str,
     warnings: &mut Vec<String>,
+    watermark: &mut Option<Watermark>,
 ) -> SectionProps {
     let mut section = SectionProps::default();
     let page = &mut section.page;
@@ -2094,6 +2420,9 @@ fn parse_section_props(
             };
             let blocks = read_part_blocks(reader, &path, numbering, warnings);
             let is_header = key.starts_with("header");
+            if is_header && kind == "default" && watermark.is_none() {
+                *watermark = read_watermark_part(reader, &path);
+            }
             let slot = match (is_header, kind) {
                 (true, "first") => &mut section.first_header,
                 (true, "even") => &mut section.even_header,
@@ -2153,7 +2482,11 @@ struct SectionPlan {
     /// `(block index after the paragraph, properties of that section)` for every
     /// paragraph-level `w:sectPr`.
     paragraph_sections: Vec<(usize, SectionProps)>,
+    /// Watermark found in each paragraph-level section's default header,
+    /// aligned with `paragraph_sections`.
+    paragraph_watermarks: Vec<Option<Watermark>>,
     body: Option<SectionProps>,
+    body_watermark: Option<Watermark>,
 }
 
 /// Reads the main document part, returning blocks plus the section plan.
@@ -2163,7 +2496,12 @@ fn read_body(
     numbering: &Numbering,
     warnings: &mut Vec<String>,
 ) -> (Vec<Block>, SectionPlan) {
-    let mut plan = SectionPlan { paragraph_sections: Vec::new(), body: None };
+    let mut plan = SectionPlan {
+        paragraph_sections: Vec::new(),
+        paragraph_watermarks: Vec::new(),
+        body: None,
+        body_watermark: None,
+    };
     let Ok(text) = reader.read_text(part) else {
         return (Vec::new(), plan);
     };
@@ -2180,13 +2518,18 @@ fn read_body(
             "p" => {
                 blocks.extend(read_paragraph(child, &mut context, reader, numbering));
                 if let Some(sect) = child.child("pPr").and_then(|properties| properties.child("sectPr")) {
-                    let props = parse_section_props(sect, &rels, reader, numbering, part_dir, warnings);
+                    let mut watermark = None;
+                    let props = parse_section_props(sect, &rels, reader, numbering, part_dir, warnings, &mut watermark);
                     plan.paragraph_sections.push((blocks.len(), props));
+                    plan.paragraph_watermarks.push(watermark);
                 }
             }
             "tbl" => blocks.push(read_table(child, &mut context, reader, numbering, warnings)),
             "sectPr" => {
-                plan.body = Some(parse_section_props(child, &rels, reader, numbering, part_dir, warnings));
+                let mut watermark = None;
+                plan.body =
+                    Some(parse_section_props(child, &rels, reader, numbering, part_dir, warnings, &mut watermark));
+                plan.body_watermark = watermark;
             }
             "sdt" => {
                 let mut inner = Vec::new();
@@ -2209,6 +2552,13 @@ fn read_body(
 
 /// Rebuilds the model's section list from the DOCX section plan.
 fn apply_section_plan(document: &mut TextDocument, mut blocks: Vec<Block>, plan: SectionPlan) {
+    // The watermark lives in the first section's default header; later
+    // sections do not override the document-level watermark.
+    document.watermark = if plan.paragraph_sections.is_empty() {
+        plan.body_watermark.clone()
+    } else {
+        plan.paragraph_watermarks.first().cloned().flatten()
+    };
     if plan.paragraph_sections.is_empty() {
         if let Some(body) = plan.body {
             apply_section_to_document(document, body);
@@ -2871,5 +3221,268 @@ mod tests {
         assert_eq!(fields.len(), 2, "warnings: {:?}", read.warnings);
         assert!(fields.iter().any(|field| field.kind == "refPage" && field.target == "Target"));
         assert!(fields.iter().any(|field| field.kind == "ref" && field.target == "Target"));
+    }
+
+    #[test]
+    fn roundtrip_table_spanning_cells() {
+        let mut document = TextDocument::new_blank("Spans");
+        let mut table = TableData::simple(3, 3, 450.0);
+        table.rows[0].cells = vec![
+            TableCell { blocks: vec![Block::paragraph("Span")], colspan: 2, rowspan: 2, ..Default::default() },
+            TableCell { blocks: vec![Block::paragraph("B")], ..Default::default() },
+        ];
+        table.rows[1].cells = vec![TableCell { blocks: vec![Block::paragraph("C")], ..Default::default() }];
+        document.blocks = vec![Block::Table { table }];
+        let bytes = write_docx(&document).unwrap();
+        let reader = ZipReader::open(bytes.clone()).unwrap();
+        let xml = reader.read_text("word/document.xml").unwrap();
+        assert!(xml.contains("<w:vMerge w:val=\"restart\"/>"), "xml: {xml}");
+        assert!(xml.contains("<w:vMerge/>"), "xml: {xml}");
+        assert!(xml.contains("<w:tc><w:tcPr><w:tcW w:w=\"3000\" w:type=\"dxa\"/><w:vMerge/></w:tcPr>"), "xml: {xml}");
+        assert_eq!(xml.matches("<w:gridCol").count(), 3, "xml: {xml}");
+        let read = read_docx(&bytes).unwrap();
+        let table = read
+            .document
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                Block::Table { table } => Some(table),
+                _ => None,
+            })
+            .expect("table missing");
+        assert_eq!(table.rows.len(), 3, "warnings: {:?}", read.warnings);
+        assert_eq!(table.rows[0].cells.len(), 2);
+        assert_eq!(table.rows[0].cells[0].colspan, 2);
+        assert_eq!(table.rows[0].cells[0].rowspan, 2);
+        assert_eq!(table.rows[0].cells[0].blocks[0].plain_text(), "Span");
+        assert_eq!(table.rows[1].cells.len(), 1);
+        assert_eq!(table.rows[1].cells[0].blocks[0].plain_text(), "C");
+        assert_eq!(table.rows[2].cells.len(), 3);
+    }
+
+    #[test]
+    fn roundtrip_image_wrapping() {
+        let mut document = TextDocument::new_blank("Wrap");
+        document.blocks = vec![
+            Block::Image {
+                image: ImageData::from_bytes("a.png", &sample_png()),
+                width_pt: 120.0,
+                height_pt: 90.0,
+                align: "right".into(),
+                caption: String::new(),
+                wrap: "square".into(),
+            },
+            Block::Image {
+                image: ImageData::from_bytes("b.png", &sample_png()),
+                width_pt: 100.0,
+                height_pt: 80.0,
+                align: "left".into(),
+                caption: String::new(),
+                wrap: "topBottom".into(),
+            },
+            Block::Image {
+                image: ImageData::from_bytes("c.png", &sample_png()),
+                width_pt: 80.0,
+                height_pt: 60.0,
+                align: "center".into(),
+                caption: String::new(),
+                wrap: "inline".into(),
+            },
+        ];
+        let bytes = write_docx(&document).unwrap();
+        let reader = ZipReader::open(bytes.clone()).unwrap();
+        let xml = reader.read_text("word/document.xml").unwrap();
+        assert!(xml.contains("<wp:wrapSquare wrapText=\"bothSides\"/>"), "xml: {xml}");
+        assert!(xml.contains("<wp:wrapTopAndBottom/>"), "xml: {xml}");
+        assert!(xml.contains("<wp:anchor "), "xml: {xml}");
+        assert!(xml.contains("<wp:inline "), "xml: {xml}");
+        assert!(
+            xml.contains("<wp:positionH relativeFrom=\"column\"><wp:align>right</wp:align></wp:positionH>"),
+            "xml: {xml}"
+        );
+        assert!(
+            xml.contains("<wp:positionV relativeFrom=\"paragraph\"><wp:align>top</wp:align></wp:positionV>"),
+            "xml: {xml}"
+        );
+        let read = read_docx(&bytes).unwrap();
+        let images: Vec<(&String, &String)> = read
+            .document
+            .blocks
+            .iter()
+            .filter_map(|block| match block {
+                Block::Image { align, wrap, .. } => Some((align, wrap)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(images.len(), 3, "warnings: {:?}", read.warnings);
+        assert_eq!((images[0].0.as_str(), images[0].1.as_str()), ("right", "square"));
+        assert_eq!((images[1].0.as_str(), images[1].1.as_str()), ("left", "topBottom"));
+        assert_eq!((images[2].0.as_str(), images[2].1.as_str()), ("center", "inline"));
+    }
+
+    #[test]
+    fn roundtrip_tab_stops() {
+        let mut document = TextDocument::new_blank("Tabs");
+        document.blocks = vec![Block::Paragraph {
+            props: ParaProps {
+                tabs: vec![
+                    TabStop { pos_pt: 36.0, align: "center".into() },
+                    TabStop { pos_pt: 144.0, align: "right".into() },
+                    TabStop { pos_pt: 72.0, align: "decimal".into() },
+                    TabStop { pos_pt: 10.0, align: "bar".into() },
+                ],
+                ..Default::default()
+            },
+            runs: vec![Run { text: "a\tb".into(), ..Default::default() }],
+        }];
+        let bytes = write_docx(&document).unwrap();
+        let reader = ZipReader::open(bytes.clone()).unwrap();
+        let xml = reader.read_text("word/document.xml").unwrap();
+        assert!(xml.contains("<w:tabs>"), "xml: {xml}");
+        assert!(xml.contains("<w:tab w:val=\"center\" w:pos=\"720\"/>"), "xml: {xml}");
+        assert!(xml.contains("<w:tab w:val=\"right\" w:pos=\"2880\"/>"), "xml: {xml}");
+        assert!(xml.contains("<w:tab w:val=\"decimal\" w:pos=\"1440\"/>"), "xml: {xml}");
+        assert!(!xml.contains("w:val=\"bar\""), "xml: {xml}");
+        let read = read_docx(&bytes).unwrap();
+        let props = read
+            .document
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                Block::Paragraph { props, .. } => Some(props),
+                _ => None,
+            })
+            .expect("paragraph missing");
+        assert_eq!(
+            props.tabs,
+            vec![
+                TabStop { pos_pt: 36.0, align: "center".into() },
+                TabStop { pos_pt: 144.0, align: "right".into() },
+                TabStop { pos_pt: 72.0, align: "decimal".into() },
+            ],
+            "warnings: {:?}",
+            read.warnings
+        );
+    }
+
+    #[test]
+    fn roundtrip_watermark() {
+        let mut document = TextDocument::new_blank("Watermark");
+        document.watermark = Some(Watermark {
+            text: "GİZLİ <taslak> & \"x\"".into(),
+            color: Some("#FF0000".into()),
+            opacity: 0.25,
+            rotation: -45.0,
+            font_pt: 48.0,
+            bold: false,
+        });
+        let bytes = write_docx(&document).unwrap();
+        let reader = ZipReader::open(bytes.clone()).unwrap();
+        assert!(reader.contains("word/header1.xml"), "watermark header part missing");
+        let header = reader.read_text("word/header1.xml").unwrap();
+        assert!(header.contains("v:textpath"), "header: {header}");
+        assert!(header.contains("string=\"GİZLİ &lt;taslak&gt; &amp; &quot;x&quot;\""), "header: {header}");
+        assert!(header.contains("fillcolor=\"#FF0000\""), "header: {header}");
+        assert!(header.contains("rotation:-45"), "header: {header}");
+        assert!(header.contains("font-weight:normal"), "header: {header}");
+        let read = read_docx(&bytes).unwrap();
+        let watermark = read.document.watermark.clone().expect("watermark missing");
+        assert_eq!(watermark.text, "GİZLİ <taslak> & \"x\"");
+        assert_eq!(watermark.color.as_deref(), Some("#FF0000"));
+        assert!((watermark.opacity - 0.25).abs() < 1e-9);
+        assert!((watermark.rotation + 45.0).abs() < 1e-9);
+        assert!((watermark.font_pt - 48.0).abs() < 1e-9);
+        assert!(!watermark.bold);
+        // A second write→read keeps every field identical.
+        let read_again = read_docx(&write_docx(&read.document).unwrap()).unwrap();
+        assert_eq!(read_again.document.watermark, read.document.watermark);
+    }
+
+    #[test]
+    fn watermark_defaults_fall_back_to_silver() {
+        let mut document = TextDocument::new_blank("Watermark");
+        document.watermark = Some(Watermark { color: None, ..Watermark::default() });
+        let bytes = write_docx(&document).unwrap();
+        let reader = ZipReader::open(bytes.clone()).unwrap();
+        let header = reader.read_text("word/header1.xml").unwrap();
+        assert!(header.contains("fillcolor=\"#C0C0C0\""), "header: {header}");
+        assert!(header.contains("font-weight:bold"), "header: {header}");
+        let read = read_docx(&bytes).unwrap();
+        let watermark = read.document.watermark.expect("watermark missing");
+        assert_eq!(watermark.text, "TASLAK");
+        assert_eq!(watermark.color.as_deref(), Some("#C0C0C0"));
+        assert!(watermark.bold);
+    }
+
+    #[test]
+    fn reads_hand_written_watermark_header() {
+        let mut zip = ZipWriter::new();
+        zip.add_text("word/document.xml", r#"<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body><w:p><w:r><w:t>Body</w:t></w:r></w:p><w:sectPr><w:headerReference w:type="default" r:id="rId1"/></w:sectPr></w:body></w:document>"#);
+        zip.add_text("word/_rels/document.xml.rels", r#"<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/></Relationships>"#);
+        zip.add_text("word/header1.xml", r##"<?xml version="1.0"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office"><w:p><w:r><w:pict><v:shapetype id="_x0000_t136" coordsize="21600,21600" o:spt="136"/><v:shape id="PowerPlusWaterMarkObject" type="#_x0000_t136" style="position:absolute;rotation:-45;width:415pt;height:207.5pt" fillcolor="#FF0000" stroked="f"><v:fill opacity="25%"/><v:textpath style="font-family:&quot;Calibri&quot;;font-size:36pt;font-weight:bold" string="GIZLI"/></v:shape></w:pict></w:r></w:p></w:hdr>"##);
+        let read = read_docx(&zip.finish()).unwrap();
+        let watermark = read.document.watermark.clone().expect("watermark missing");
+        assert_eq!(watermark.text, "GIZLI");
+        assert_eq!(watermark.color.as_deref(), Some("#FF0000"));
+        assert!((watermark.opacity - 0.25).abs() < 1e-9);
+        assert!((watermark.rotation + 45.0).abs() < 1e-9);
+        assert!((watermark.font_pt - 36.0).abs() < 1e-9);
+        assert!(watermark.bold);
+        assert!(read.document.header.iter().map(Block::plain_text).all(|text| !text.contains("GIZLI")));
+    }
+
+    #[test]
+    fn headers_without_textpath_do_not_invent_a_watermark() {
+        let mut zip = ZipWriter::new();
+        zip.add_text("word/document.xml", r#"<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body><w:p><w:r><w:t>Body</w:t></w:r></w:p><w:sectPr><w:headerReference w:type="default" r:id="rId1"/></w:sectPr></w:body></w:document>"#);
+        zip.add_text("word/_rels/document.xml.rels", r#"<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/></Relationships>"#);
+        zip.add_text("word/header1.xml", r##"<?xml version="1.0"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>Plain header</w:t></w:r></w:p></w:hdr>"##);
+        let read = read_docx(&zip.finish()).unwrap();
+        assert!(read.document.watermark.is_none());
+        assert!(read.document.header.iter().map(Block::plain_text).any(|text| text.contains("Plain header")));
+    }
+
+    #[test]
+    fn reads_foreign_and_malformed_vertical_merges() {
+        let mut zip = ZipWriter::new();
+        zip.add_text("word/document.xml", r#"<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:tbl><w:tblGrid><w:gridCol w:w="1000"/><w:gridCol w:w="1000"/><w:gridCol w:w="1000"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:gridSpan w:val="2"/><w:vMerge w:val="restart"/></w:tcPr><w:p/></w:tc><w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:gridSpan w:val="2"/><w:vMerge/></w:tcPr><w:p/></w:tc><w:tc><w:tcPr/><w:p/></w:tc></w:tr></w:tbl><w:p/></w:body></w:document>"#);
+        let read = read_docx(&zip.finish()).unwrap();
+        let table = read
+            .document
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                Block::Table { table } => Some(table),
+                _ => None,
+            })
+            .expect("table missing");
+        assert_eq!(table.rows.len(), 2);
+        assert_eq!(table.rows[0].cells.len(), 2);
+        assert_eq!(table.rows[0].cells[0].colspan, 2);
+        // The colspan-two continuation extends the origin once, not per column.
+        assert_eq!(table.rows[0].cells[0].rowspan, 2);
+        // The stray continuation with no restart above it stays a normal cell.
+        assert_eq!(table.rows[0].cells[1].rowspan, 1);
+        assert_eq!(table.rows[1].cells.len(), 1);
+        // Rewriting the model produces the same grid again.
+        let mut document = TextDocument::new_blank("Foreign merge");
+        document.blocks = vec![Block::Table { table: table.clone() }];
+        let bytes = write_docx(&document).unwrap();
+        let xml = ZipReader::open(bytes.clone()).unwrap().read_text("word/document.xml").unwrap();
+        assert!(xml.contains("<w:vMerge w:val=\"restart\"/>"), "xml: {xml}");
+        assert_eq!(xml.matches("<w:vMerge/>").count(), 2, "xml: {xml}");
+        let read_again = read_docx(&bytes).unwrap();
+        let table_again = read_again
+            .document
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                Block::Table { table } => Some(table),
+                _ => None,
+            })
+            .expect("table missing");
+        assert_eq!(table_again.rows[0].cells.len(), 2);
+        assert_eq!(table_again.rows[0].cells[0].rowspan, 2);
+        assert_eq!(table_again.rows[1].cells.len(), 1);
     }
 }
