@@ -109,6 +109,9 @@ pub fn feature_manifest(kind: &str, model: &Value) -> Vec<String> {
             if !empty(model.get("header")) || !empty(model.get("footer")) {
                 features.push("headers-footers".into());
             }
+            if !empty(model.get("watermark")) {
+                features.push("watermark".into());
+            }
         }
         "calc" => {
             features.push("sheets".into());
@@ -140,6 +143,9 @@ pub fn feature_manifest(kind: &str, model: &Value) -> Vec<String> {
             if !empty(model.get("masters")) {
                 features.push("masters".into());
             }
+            if !empty(model.get("footer")) {
+                features.push("footer".into());
+            }
             if let Some(slides) = model.get("slides").and_then(Value::as_array) {
                 if slides.iter().any(|slide| !empty(slide.get("animations"))) {
                     features.push("animations".into());
@@ -147,8 +153,13 @@ pub fn feature_manifest(kind: &str, model: &Value) -> Vec<String> {
                 if slides.iter().any(|slide| !empty(slide.get("notes"))) {
                     features.push("notes".into());
                 }
-                if slides.iter().any(|slide| !empty(slide.get("charts"))) {
+                // Slide charts live on the slide's objects (nested groups
+                // included), not directly on the slide.
+                if slides.iter().any(|slide| objects_have_chart(slide.get("objects"))) {
                     features.push("charts".into());
+                }
+                if slides.iter().any(|slide| slide.get("hidden").and_then(Value::as_bool).unwrap_or(false)) {
+                    features.push("hiddenSlides".into());
                 }
             }
         }
@@ -157,6 +168,17 @@ pub fn feature_manifest(kind: &str, model: &Value) -> Vec<String> {
     features.sort();
     features.dedup();
     features
+}
+
+/// Whether any object in a slide's `objects` array (children included) is a
+/// chart.
+fn objects_have_chart(objects: Option<&Value>) -> bool {
+    objects
+        .and_then(Value::as_array)
+        .map(|objects| {
+            objects.iter().any(|object| !empty(object.get("chart")) || objects_have_chart(object.get("children")))
+        })
+        .unwrap_or(false)
 }
 
 fn empty(value: Option<&Value>) -> bool {
@@ -230,12 +252,14 @@ mod tests {
         let writer = json!({
             "blocks": [{ "type": "table" }, { "type": "paragraph" }],
             "footnotes": [{ "id": "1" }],
-            "trackChanges": true
+            "trackChanges": true,
+            "watermark": { "text": "DRAFT" }
         });
         let features = feature_manifest("writer", &writer);
         assert!(features.contains(&"tables".to_string()));
         assert!(features.contains(&"notes".to_string()));
         assert!(features.contains(&"track-changes".to_string()));
+        assert!(features.contains(&"watermark".to_string()));
         assert!(!features.contains(&"comments".to_string()));
     }
 }

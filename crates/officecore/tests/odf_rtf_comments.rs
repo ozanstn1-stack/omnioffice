@@ -224,6 +224,7 @@ fn libreoffice_inline_annotation_imports_as_a_comment_and_leaves_the_body_clean(
 
     let runs = paragraphs(document)[0];
     let bold = runs.iter().find(|run| run.text == "bold words").expect("the span text is one run");
+    assert!(bold.bold, "the named text style T1 must resolve bold: {runs:?}");
     assert_eq!(bold.comment.as_deref(), Some(ranged.id.as_str()));
     assert!(runs
         .iter()
@@ -231,6 +232,95 @@ fn libreoffice_inline_annotation_imports_as_a_comment_and_leaves_the_body_clean(
         .all(|run| run.comment.is_none()));
     let tail = runs.iter().find(|run| run.text == " tail.").expect("text after the point comment");
     assert_eq!(tail.comment.as_deref(), Some(point.id.as_str()));
+}
+
+/// A named paragraph style in styles.xml must resolve align, indents, tab
+/// stops and page-break-before; `style:name` is the real attribute.
+#[test]
+fn odt_named_paragraph_style_imports_paragraph_properties() {
+    let styles = concat!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+        "<office:document-styles xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" ",
+        "xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\" ",
+        "xmlns:fo=\"urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0\" office:version=\"1.2\">",
+        "<office:styles><style:style style:name=\"Fancy\" style:family=\"paragraph\">",
+        "<style:paragraph-properties fo:text-align=\"center\" fo:margin-left=\"1.27cm\" ",
+        "fo:text-indent=\"0.635cm\" fo:break-before=\"page\"><style:tab-stops>",
+        "<style:tab-stop style:position=\"2.54cm\" style:type=\"char\" style:char=\".\"/>",
+        "</style:tab-stops></style:paragraph-properties></style:style></office:styles>",
+        "</office:document-styles>"
+    );
+    let content = concat!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+        "<office:document-content xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" ",
+        "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" office:version=\"1.2\">",
+        "<office:body><office:text><text:p text:style-name=\"Fancy\">Yeni sayfa</text:p>",
+        "</office:text></office:body></office:document-content>"
+    );
+    let mut zip = ZipWriter::new();
+    zip.add_text("mimetype", "application/vnd.oasis.opendocument.text");
+    zip.add_text("content.xml", content);
+    zip.add_text("styles.xml", styles);
+    let read = odf::read_odt(&zip.finish()).unwrap();
+
+    let props = match &read.document.blocks[0] {
+        Block::Paragraph { props, .. } => props,
+        _ => panic!("first block should be a paragraph"),
+    };
+    assert_eq!(props.align, "center");
+    assert!(props.page_break_before);
+    assert!((props.indent_left_pt - 36.0).abs() < 0.1, "indent: {}", props.indent_left_pt);
+    assert!((props.first_line_pt - 18.0).abs() < 0.1, "first line: {}", props.first_line_pt);
+    assert_eq!(props.tabs.len(), 1);
+    assert!((props.tabs[0].pos_pt - 72.0).abs() < 0.01, "tabs: {:?}", props.tabs);
+    assert_eq!(props.tabs[0].align, "decimal");
+}
+
+/// A foreign package with a vertically and horizontally merged table: the
+/// origin carries both span counts and the covered grid positions are
+/// `table:covered-table-cell` (repeated, as LibreOffice writes them).
+#[test]
+fn odt_table_spans_import_from_a_foreign_package() {
+    let content = concat!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+        "<office:document-content xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" ",
+        "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" ",
+        "xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\" office:version=\"1.2\">",
+        "<office:body><office:text><table:table>",
+        "<table:table-column table:number-columns-repeated=\"3\"/>",
+        "<table:table-row>",
+        "<table:table-cell office:value-type=\"string\" table:number-columns-spanned=\"2\" ",
+        "table:number-rows-spanned=\"2\"><text:p>Span</text:p></table:table-cell>",
+        "<table:table-cell office:value-type=\"string\"><text:p>B</text:p></table:table-cell>",
+        "</table:table-row>",
+        "<table:table-row><table:covered-table-cell table:number-columns-repeated=\"2\"/>",
+        "<table:table-cell office:value-type=\"string\"><text:p>C</text:p></table:table-cell></table:table-row>",
+        "</table:table></office:text></office:body></office:document-content>"
+    );
+    let mut zip = ZipWriter::new();
+    zip.add_text("mimetype", "application/vnd.oasis.opendocument.text");
+    zip.add_text("content.xml", content);
+    let read = odf::read_odt(&zip.finish()).unwrap();
+
+    let table = read
+        .document
+        .blocks
+        .iter()
+        .find_map(|block| match block {
+            Block::Table { table } => Some(table),
+            _ => None,
+        })
+        .expect("table missing");
+    assert_eq!(table.rows.len(), 2, "warnings: {:?}", read.warnings);
+    assert_eq!(table.rows[0].cells.len(), 2);
+    assert_eq!(table.rows[0].cells[0].colspan, 2);
+    assert_eq!(table.rows[0].cells[0].rowspan, 2);
+    assert_eq!(table.rows[0].cells[0].blocks[0].plain_text(), "Span");
+    assert_eq!(table.rows[0].cells[1].blocks[0].plain_text(), "B");
+    // Only the origin survives; the covered positions are absorbed.
+    assert_eq!(table.rows[1].cells.len(), 1);
+    assert_eq!(table.rows[1].cells[0].blocks[0].plain_text(), "C");
+    assert_eq!(table.column_widths_pt.len(), 3);
 }
 
 #[test]

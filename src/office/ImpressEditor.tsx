@@ -10,46 +10,85 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   AlignCenterHorizontal,
+  AlignCenterVertical,
   AlignEndHorizontal,
+  AlignEndVertical,
   AlignStartHorizontal,
+  AlignStartVertical,
   ArrowRight,
+  Bold,
   Braces,
   Circle,
+  CircleDot,
   Copy,
+  Crop,
+  Eraser,
   FileDown,
   FolderOpen,
+  Grid2X2,
   Group,
   Image as ImageIcon,
+  IndentDecrease,
+  IndentIncrease,
+  Italic,
   LayoutTemplate,
   LineChart,
+  Link2,
+  List,
   Minus,
   MonitorPlay,
   Move,
+  PenLine,
   Play,
   Plus,
+  Pointer,
   Printer,
   Redo2,
   RotateCw,
+  Rows3,
   Save,
   Sparkles,
   Square,
   Table as TableIcon,
   Trash2,
   Type,
+  Underline,
   Undo2,
   Ungroup,
 } from "lucide-react";
 import type { OfficeTab } from "../lib/office-store";
 import { useOfficeTabs } from "../lib/office-store";
-import type { Animation, ChartData, Deck, Slide, SlideLayout, SlideObject } from "../lib/office-types";
-import { newAnimation, newSlideMaster, uid, type ShapeStyle } from "../lib/office-types";
+import type {
+  Animation,
+  ChartData,
+  Deck,
+  ImageCrop,
+  LineSpec,
+  Slide,
+  SlideFooter,
+  SlideLayout,
+  SlideObject,
+  TextParagraph,
+} from "../lib/office-types";
+import { newAnimation, newSlideMaster, newSlideObject, uid, type ShapeStyle } from "../lib/office-types";
 import { useT } from "../lib/i18n";
 import { mimeForName, pickFileBytes } from "../lib/mobile";
 import { reportError, useToasts } from "../lib/store";
 import type { AiOutlineSlide } from "../lib/types";
 import { useAiStatus } from "./ai/editor-ai";
+import { alignBox, distributePositions } from "./impress/arrange";
+import {
+  connectorPatch,
+  nearestSite,
+  recomputeConnectors,
+  remapConnectorTargets,
+  routeConnector,
+} from "./impress/connectors";
+import { clampCrop, cropPreview, isFullCrop } from "./impress/crop-preview";
 import { ImpressAiDialog } from "./impress/ImpressAiDialog";
-import { editedParagraphs, withFrameAlign, withFrameSize } from "./impress/textFrame";
+import { simplifyStroke, strokeHit, strokePath, type StrokePoint } from "./impress/show-drawing";
+import { withFrameAlign, withFrameSize } from "./impress/textFrame";
+import { TextFrameEditor, type TextEditHandle, type TextSelectionInfo } from "./impress/TextFrameEditor";
 import { Dialog, Ribbon, RibbonGroup, TextField, ToolButton, ToolColor, ToolNumber, ToolSelect } from "./office-ui";
 import { openIntoWorkspace, useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
 
@@ -77,6 +116,8 @@ export type AnimationDoneState = Record<string, boolean>;
 const MAX_GROUP_DEPTH = 8;
 const INHERITED_KEYS: Set<string> = new Set();
 const CHART_PALETTE = ["#2563EB", "#F97316", "#10B981", "#8B5CF6", "#EF4444", "#14B8A6"];
+/** Quick text colours offered by the frame editing toolbar. */
+const TEXT_COLORS = ["#111827", "#DC2626", "#EA580C", "#16A34A", "#2563EB", "#7C3AED", "#DB2777", "#64748B"];
 
 export const ANIMATION_EFFECTS: Record<string, string[]> = {
   entrance: ["appear", "fade", "flyIn", "zoom"],
@@ -788,10 +829,29 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   const [animationEditing, setAnimationEditing] = useState<Animation | null>(null);
   const aiStatus = useAiStatus();
   const [outlineDialog, setOutlineDialog] = useState(false);
+  const [footerDialog, setFooterDialog] = useState(false);
+  const [view, setView] = useState<"normal" | "sorter">("normal");
+  const [connectorMode, setConnectorMode] = useState(false);
+  const [connectorStart, setConnectorStart] = useState<string | null>(null);
+  const [cropPath, setCropPath] = useState<SelectionPath | null>(null);
+  const [cropDraft, setCropDraft] = useState<ImageCrop | null>(null);
   const [undoStack, setUndoStack] = useState<Deck[]>([]);
   const [redoStack, setRedoStack] = useState<Deck[]>([]);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(0);
+  const textHandleRef = useRef<TextEditHandle | null>(null);
+  const [textSelection, setTextSelection] = useState<TextSelectionInfo | null>(null);
+  const clipboardRef = useRef<SlideObject[]>([]);
+  const sorterDragRef = useRef<number | null>(null);
+  const dropIndexRef = useRef<number | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const [showTool, setShowTool] = useState<"pointer" | "laser" | "pen" | "eraser">("pointer");
+  const [strokes, setStrokes] = useState<StrokePoint[][]>([]);
+  const [draftStroke, setDraftStroke] = useState<StrokePoint[] | null>(null);
+  const [laser, setLaser] = useState<StrokePoint | null>(null);
+  const strokeRef = useRef<StrokePoint[] | null>(null);
+  const laserRef = useRef<StrokePoint | null>(null);
+  const slideAreaRef = useRef<HTMLDivElement>(null);
   const dragState = useRef<{
     path: SelectionPath;
     mode: "move" | "resize" | "rotate";
@@ -817,7 +877,14 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
     setElapsedMs(0);
     setAnimRunning({});
     setAnimDone({});
-    if (!showActive) setPresenterView(false);
+    if (!showActive) {
+      setPresenterView(false);
+      // Ink and the laser are session-only; each show starts clean.
+      setStrokes([]);
+      setDraftStroke(null);
+      setLaser(null);
+      setShowTool("pointer");
+    }
   }
 
   const slide = deck.slides[Math.min(slideIndex, deck.slides.length - 1)] ?? deck.slides[0];
@@ -858,7 +925,12 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
       update(
         (current) => ({
           ...current,
-          slides: current.slides.map((candidate, index) => (index === slideIndex ? mutate(candidate) : candidate)),
+          // Connectors follow the shapes they are glued to on every change.
+          slides: current.slides.map((candidate, index) => {
+            if (index !== slideIndex) return candidate;
+            const next = mutate(candidate);
+            return { ...next, objects: recomputeConnectors(next.objects) };
+          }),
         }),
         recordUndo,
       ),
@@ -1075,6 +1147,24 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
 
   const handleObjectPointerDown = (event: React.PointerEvent, path: SelectionPath) => {
     event.stopPropagation();
+    if (connectorMode) {
+      const object = objectAtPath(slide.objects, path);
+      if (!object || isInheritedId(path[0]) || object.kind === "line" || object.kind === "arrow") return;
+      if (!connectorStart) {
+        setConnectorStart(object.id);
+        setSelected([[path[0]]]);
+        return;
+      }
+      if (connectorStart === object.id) {
+        setConnectorStart(null);
+        return;
+      }
+      const from = slide.objects.find((candidate) => candidate.id === connectorStart);
+      setConnectorStart(null);
+      setConnectorMode(false);
+      if (from) createConnector(from, object);
+      return;
+    }
     selectFromPointer(event, path);
     beginDrag(event, event.altKey ? path : [path[0]], "move");
   };
@@ -1082,15 +1172,18 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   const handleObjectDoubleClick = (event: React.MouseEvent, path: SelectionPath) => {
     event.stopPropagation();
     const object = objectAtPath(slide.objects, path);
-    if (object) openObjectEditor(path, object);
+    if (!object) return;
+    // Editing a frame also makes it the primary selection, so its properties
+    // (and the text toolbar) are on screen.
+    setSelected([path.length === 1 ? path : [path[0]]]);
+    openObjectEditor(path, object);
   };
 
-  const handleTextChange = (path: SelectionPath, text: string) => {
+  const handleTextCommit = (path: SelectionPath, paragraphs: TextParagraph[], recordUndo: boolean) => {
     const object = objectAtPath(slide.objects, path);
     if (!object?.text) return;
-    const paragraphs = editedParagraphs(object.text.paragraphs, text);
     if (paragraphs === object.text.paragraphs) return;
-    updatePath(path, { text: { ...object.text, paragraphs } }, false);
+    updatePath(path, { text: { ...object.text, paragraphs } }, recordUndo);
   };
 
   // -------------------------------------------------------------------------
@@ -1152,16 +1245,19 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
     setSlideIndex(Math.max(0, slideIndex - 1));
   };
 
-  const moveSlide = (from: number, to: number) => {
-    if (to < 0 || to >= deck.slides.length) return;
-    update((current) => {
-      const slides = [...current.slides];
-      const [moved] = slides.splice(from, 1);
-      slides.splice(to, 0, moved);
-      return { ...current, slides };
-    });
-    setSlideIndex(to);
-  };
+  const moveSlide = useCallback(
+    (from: number, to: number) => {
+      if (to < 0 || to >= deck.slides.length) return;
+      update((current) => {
+        const slides = [...current.slides];
+        const [moved] = slides.splice(from, 1);
+        slides.splice(to, 0, moved);
+        return { ...current, slides };
+      });
+      setSlideIndex(to);
+    },
+    [deck.slides.length, update],
+  );
 
   const applyLayout = (layoutId: string) => {
     const layout = LAYOUTS.find((candidate) => candidate.id === layoutId);
@@ -1306,35 +1402,109 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
     setSelected(copies.map((object) => [object.id]));
   };
 
+  // -------------------------------------------------------------------------
+  // Internal object clipboard and connectors
+  // -------------------------------------------------------------------------
+
+  const copySelected = () => {
+    const members = selected
+      .filter((path) => path.length === 1)
+      .map((path) => slide.objects.find((object) => object.id === path[0]))
+      .filter((object): object is SlideObject => Boolean(object));
+    if (members.length === 0) return;
+    clipboardRef.current = JSON.parse(JSON.stringify(members)) as SlideObject[];
+  };
+
+  const pasteClipboard = () => {
+    if (clipboardRef.current.length === 0) return;
+    const { objects: copies, idMap } = cloneObjects(clipboardRef.current);
+    const placed = remapConnectorTargets(copies, idMap).map((object) => ({
+      ...object,
+      x: object.x + 16,
+      y: object.y + 16,
+    }));
+    updateSlide((current) => ({
+      ...current,
+      objects: [...current.objects, ...placed].map((object, index) => ({ ...object, z: index + 1 })),
+    }));
+    setSelected(placed.map((object) => [object.id]));
+  };
+
+  const cutSelected = () => {
+    copySelected();
+    deleteSelected();
+  };
+
+  /** A connector line glued to the two shapes, routed site to site. */
+  const createConnector = (from: SlideObject, to: SlideObject) => {
+    const fromCenter = { x: from.x + from.w / 2, y: from.y + from.h / 2 };
+    const toCenter = { x: to.x + to.w / 2, y: to.y + to.h / 2 };
+    const line: LineSpec = {
+      x2: Math.round(toCenter.x - fromCenter.x),
+      y2: Math.round(toCenter.y - fromCenter.y),
+      beginArrow: false,
+      endArrow: true,
+      dash: "solid",
+      beginObject: from.id,
+      endObject: to.id,
+      beginSite: nearestSite(from, toCenter),
+      endSite: nearestSite(to, fromCenter),
+    };
+    const base: SlideObject = {
+      ...newSlideObject("line", from.x, from.y, 40, 40),
+      line,
+      style: { fill: null, stroke: theme.accent, strokeWidthPt: 2, opacity: 1, cornerRadiusPt: 0, shadow: false },
+      name: "Connector",
+    };
+    const created = connectorPatch(base, [...slide.objects, base]);
+    created.z = slide.objects.length + 1;
+    updateSlide((current) => ({ ...current, objects: [...current.objects, created] }));
+    setSelected([[created.id]]);
+  };
+
   const alignSelected = (mode: "left" | "center" | "right" | "top" | "middle" | "bottom") => {
     if (selected.length === 0) return;
     updateSlide((current) => {
+      const targets = selected
+        .map((path) => ({ path, object: objectAtPath(current.objects, path) }))
+        .filter((entry): entry is { path: SelectionPath; object: SlideObject } => Boolean(entry.object));
+      if (targets.length === 0) return current;
+      // A single object aligns to the slide; several align to their bounding box.
+      const bounds =
+        targets.length === 1
+          ? { x: 0, y: 0, w: deck.size.widthPt, h: deck.size.heightPt }
+          : objectBounds(targets.map((entry) => entry.object));
       let objects = current.objects;
-      for (const path of selected) {
-        const object = objectAtPath(objects, path);
-        if (!object) continue;
-        switch (mode) {
-          case "left":
-            objects = replaceObjectAtPath(objects, path, { x: 0 });
-            break;
-          case "center":
-            objects = replaceObjectAtPath(objects, path, { x: Math.round((deck.size.widthPt - object.w) / 2) });
-            break;
-          case "right":
-            objects = replaceObjectAtPath(objects, path, { x: Math.round(deck.size.widthPt - object.w) });
-            break;
-          case "top":
-            objects = replaceObjectAtPath(objects, path, { y: 0 });
-            break;
-          case "middle":
-            objects = replaceObjectAtPath(objects, path, { y: Math.round((deck.size.heightPt - object.h) / 2) });
-            break;
-          default:
-            objects = replaceObjectAtPath(objects, path, { y: Math.round(deck.size.heightPt - object.h) });
-            break;
-        }
+      for (const target of targets) {
+        objects = replaceObjectAtPath(objects, target.path, alignBox(target.object, bounds, mode));
       }
       return { ...current, objects: refreshGroupBounds(objects) };
+    });
+  };
+
+  /** Equal spacing between edge pairs; needs at least three top-level objects. */
+  const distributeSelected = (axis: "x" | "y") => {
+    const targets = selected
+      .filter((path) => path.length === 1)
+      .map((path) => slide.objects.find((object) => object.id === path[0]))
+      .filter((object): object is SlideObject => Boolean(object));
+    if (targets.length < 3) return;
+    updateSlide((current) => {
+      const boxes = targets.map((object) => ({
+        id: object.id,
+        x: object.x,
+        y: object.y,
+        w: object.w,
+        h: object.h,
+      }));
+      const positions = distributePositions(boxes, axis);
+      let objects = current.objects;
+      for (const box of boxes) {
+        const value = positions.get(box.id);
+        if (value === undefined) continue;
+        objects = replaceObjectAtPath(objects, [box.id], axis === "x" ? { x: value } : { y: value });
+      }
+      return { ...current, objects };
     });
   };
 
@@ -1395,6 +1565,45 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
       patch.children = primary.children.map((child) => scaleObject(child, sx, sy, primary.x, primary.y));
     }
     updatePath(primaryPath, patch);
+  };
+
+  /** Drags one crop handle: fractions move with the pointer, committed once. */
+  const beginCropDrag = (event: React.PointerEvent, mode: string) => {
+    if (!primary || !primaryPath || !primary.image) return;
+    event.stopPropagation();
+    const base = cropDraft ?? clampCrop(primary.image.crop);
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const width = Math.max(1, primary.w);
+    const height = Math.max(1, primary.h);
+    const pointerId = event.pointerId;
+    let latest = base;
+    const onMove = (move: PointerEvent) => {
+      if (move.pointerId !== pointerId) return;
+      const dx = (move.clientX - startX) / scale / width;
+      const dy = (move.clientY - startY) / scale / height;
+      const next = { ...base };
+      if (mode.includes("left")) next.left = base.left + dx;
+      if (mode.includes("right")) next.right = base.right - dx;
+      if (mode.includes("top")) next.top = base.top + dy;
+      if (mode.includes("bottom")) next.bottom = base.bottom - dy;
+      latest = clampCrop(next);
+      setCropDraft(latest);
+    };
+    const onUp = (up: PointerEvent) => {
+      if (up.pointerId !== pointerId) return;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      setCropDraft(null);
+      const committed = clampCrop(latest);
+      updatePath(primaryPath, {
+        image: { ...primary.image!, crop: isFullCrop(committed) ? null : committed },
+      });
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   };
 
   const undo = () => {
@@ -1497,6 +1706,16 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
     setStepIndex(stepIndexRef.current);
   }, []);
 
+  /** Nearest visible slide in a direction; stays put when there is none. */
+  const nextVisibleIndex = useCallback(
+    (index: number, direction: 1 | -1) => {
+      let next = index;
+      while (next >= 0 && next < deck.slides.length && deck.slides[next]?.hidden) next += direction;
+      return next >= 0 && next < deck.slides.length ? next : index;
+    },
+    [deck.slides],
+  );
+
   const goToSlide = useCallback(
     (index: number) => {
       clearShowTimers();
@@ -1506,9 +1725,11 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
       setStepIndex(0);
       setAnimRunning({});
       setAnimDone({});
-      setSlideshow(index);
+      const clamped = Math.max(0, Math.min(index, deck.slides.length - 1));
+      // The slideshow skips hidden slides in both directions.
+      setSlideshow(deck.slides[clamped]?.hidden ? nextVisibleIndex(clamped, 1) : clamped);
     },
-    [clearShowTimers],
+    [clearShowTimers, deck.slides, nextVisibleIndex],
   );
 
   const showSlide = slideshow === null ? undefined : deck.slides[Math.min(slideshow, deck.slides.length - 1)];
@@ -1523,8 +1744,9 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
       if (step.waitForClick) runStep(step);
       return;
     }
-    if (slideshow < deck.slides.length - 1) goToSlide(slideshow + 1);
-  }, [deck.slides.length, goToSlide, runStep, slideshow, stepList]);
+    const next = nextVisibleIndex(slideshow + 1, 1);
+    if (next > slideshow) goToSlide(next);
+  }, [goToSlide, nextVisibleIndex, runStep, slideshow, stepList]);
 
   useEffect(() => {
     advanceRef.current = advanceShow;
@@ -1555,6 +1777,8 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   useEffect(() => {
     if (slideshow === null) return;
     const handler = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("input,textarea,select,[contenteditable=true]")) return;
       if (event.key === "Escape") {
         setSlideshow(null);
         setPresenterView(false);
@@ -1567,14 +1791,23 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
       }
       if (event.key === "ArrowLeft") {
         event.preventDefault();
-        goToSlide(Math.max(0, slideshow - 1));
+        goToSlide(nextVisibleIndex(slideshow - 1, -1));
         return;
       }
-      if (event.key.toLowerCase() === "p") setPresenterView((value) => !value);
+      const key = event.key.toLowerCase();
+      if (key === "p") {
+        setPresenterView((value) => !value);
+        return;
+      }
+      // Presentation tools: laser, pen and eraser toggle; C clears the ink.
+      if (key === "l") setShowTool((value) => (value === "laser" ? "pointer" : "laser"));
+      if (key === "b") setShowTool((value) => (value === "pen" ? "pointer" : "pen"));
+      if (key === "e") setShowTool((value) => (value === "eraser" ? "pointer" : "eraser"));
+      if (key === "c") setStrokes([]);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [goToSlide, slideshow]);
+  }, [goToSlide, nextVisibleIndex, slideshow]);
 
   useEffect(() => {
     if (!showActive) return;
@@ -1585,19 +1818,182 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
 
   useEffect(() => () => clearShowTimers(), [clearShowTimers]);
 
+  // -------------------------------------------------------------------------
+  // Keyboard shortcuts
+  // -------------------------------------------------------------------------
+
+  const shortcutsRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
+  const slideshowRef = useRef<number | null>(null);
+  useEffect(() => {
+    slideshowRef.current = slideshow;
+  }, [slideshow]);
+  useEffect(() => {
+    shortcutsRef.current = (event: KeyboardEvent) => {
+      // The slideshow owns the keyboard while it is open.
+      if (slideshowRef.current !== null) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest("input,textarea,select,[contenteditable=true]")) return;
+      if (event.key === "Escape") {
+        if (editingText) {
+          setEditingText(null);
+          setTextSelection(null);
+        }
+        setSelected([]);
+        setConnectorMode(false);
+        setConnectorStart(null);
+        setCropPath(null);
+        setCropDraft(null);
+        return;
+      }
+      if (event.ctrlKey || event.metaKey) {
+        switch (event.key.toLowerCase()) {
+          case "z":
+            event.preventDefault();
+            if (event.shiftKey) redo();
+            else undo();
+            return;
+          case "y":
+            event.preventDefault();
+            redo();
+            return;
+          case "c":
+            event.preventDefault();
+            copySelected();
+            return;
+          case "x":
+            event.preventDefault();
+            cutSelected();
+            return;
+          case "v":
+            event.preventDefault();
+            pasteClipboard();
+            return;
+          case "d":
+            event.preventDefault();
+            duplicateSelected();
+            return;
+          default:
+            return;
+        }
+      }
+      if (event.key === "Delete" || event.key === "Backspace") {
+        if (selected.length > 0) {
+          event.preventDefault();
+          deleteSelected();
+        }
+        return;
+      }
+      if (event.key.startsWith("Arrow")) {
+        const stage = document.querySelector<HTMLElement>(".slide-stage");
+        if (!stage) return;
+        event.preventDefault();
+        if (event.key === "ArrowRight") stage.scrollLeft += 60;
+        if (event.key === "ArrowLeft") stage.scrollLeft = Math.max(0, stage.scrollLeft - 60);
+        if (event.key === "ArrowDown") stage.scrollTop += 60;
+        if (event.key === "ArrowUp") stage.scrollTop = Math.max(0, stage.scrollTop - 60);
+      }
+    };
+  });
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => shortcutsRef.current(event);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
+
+  // Sorter drag: pointerup commits the reorder at the last hovered cell.
+  useEffect(() => {
+    const up = () => {
+      const from = sorterDragRef.current;
+      sorterDragRef.current = null;
+      const to = dropIndexRef.current;
+      dropIndexRef.current = null;
+      setDropIndex(null);
+      if (from === null || to === null || to === from) return;
+      moveSlide(from, to);
+    };
+    window.addEventListener("pointerup", up);
+    return () => window.removeEventListener("pointerup", up);
+  }, [moveSlide]);
+
   const showObjectStyle = useCallback(
     (object: SlideObject) => animationObjectStyle(object.id, showAnimations, animRunning, animDone),
     [animDone, animRunning, showAnimations],
   );
 
+  /** Pointer position in slide units, for ink and the laser dot. */
+  const showPoint = (event: { clientX: number; clientY: number }): StrokePoint | null => {
+    const element = slideAreaRef.current;
+    if (!element) return null;
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return { x: event.clientX, y: event.clientY };
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * deck.size.widthPt,
+      y: ((event.clientY - rect.top) / rect.height) * deck.size.heightPt,
+    };
+  };
+
+  const eraseAt = (point: StrokePoint) => {
+    setStrokes((current) => {
+      const hit = strokeHit(current, point, 14);
+      return hit < 0 ? current : current.filter((_, index) => index !== hit);
+    });
+  };
+
   const slideshowSlideArea = showSlide ? (
     <div
+      ref={slideAreaRef}
       className="slideshow-slide"
       data-transition={showSlide.transition ?? "fade"}
       style={{
         width: presenterView ? "100%" : "90vw",
         height: presenterView ? "100%" : `${(90 * deck.size.heightPt) / deck.size.widthPt}vh`,
         background: showSlide.background ?? theme.background,
+        touchAction: showTool === "pointer" ? undefined : "none",
+      }}
+      onPointerDown={(event) => {
+        if (showTool === "pointer") return;
+        event.stopPropagation();
+        const point = showPoint(event);
+        if (!point) return;
+        if (showTool === "pen") {
+          strokeRef.current = [point];
+          setDraftStroke([point]);
+        } else if (showTool === "eraser") {
+          eraseAt(point);
+        }
+      }}
+      onPointerMove={(event) => {
+        if (showTool === "pointer") return;
+        const point = showPoint(event);
+        if (!point) return;
+        if (showTool === "laser") {
+          laserRef.current = point;
+          setLaser(point);
+          return;
+        }
+        if (showTool === "eraser") {
+          if (event.buttons) eraseAt(point);
+          return;
+        }
+        if (showTool === "pen" && strokeRef.current) {
+          strokeRef.current = [...strokeRef.current, point];
+          setDraftStroke(strokeRef.current);
+        }
+      }}
+      onPointerUp={(event) => {
+        if (showTool !== "pen") return;
+        event.stopPropagation();
+        const points = strokeRef.current;
+        strokeRef.current = null;
+        setDraftStroke(null);
+        if (!points || points.length === 0) return;
+        setStrokes((current) => [...current, simplifyStroke(points)]);
+      }}
+      onPointerLeave={() => {
+        if (showTool === "laser" && laserRef.current) {
+          laserRef.current = null;
+          setLaser(null);
+        }
       }}
     >
       <SlidePreview
@@ -1610,6 +2006,41 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
         slideHeight={deck.size.heightPt}
         objectStyle={showObjectStyle}
       />
+      <svg
+        className="slideshow-ink"
+        viewBox={`0 0 ${deck.size.widthPt} ${deck.size.heightPt}`}
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        {strokes.map((stroke, index) => (
+          <path
+            key={index}
+            d={strokePath(stroke)}
+            fill="none"
+            stroke="#ef4444"
+            strokeWidth={3}
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+        {draftStroke ? (
+          <path
+            d={strokePath(draftStroke)}
+            fill="none"
+            stroke="#ef4444"
+            strokeWidth={3}
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
+      </svg>
+      {laser ? (
+        <span
+          className="slideshow-laser"
+          style={{
+            left: `${(laser.x / deck.size.widthPt) * 100}%`,
+            top: `${(laser.y / deck.size.heightPt) * 100}%`,
+          }}
+        />
+      ) : null}
     </div>
   ) : null;
 
@@ -1679,6 +2110,33 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
       <button type="button" className="btn btn-soft" onClick={() => setPresenterView((value) => !value)}>
         {t("impress.presenterView")}
       </button>
+      <div className="slideshow-tools" role="toolbar" aria-label={t("impress.showTools")}>
+        <ToolButton
+          icon={<Pointer size={14} />}
+          title={t("impress.pointer")}
+          active={showTool === "pointer"}
+          onClick={() => setShowTool("pointer")}
+        />
+        <ToolButton
+          icon={<CircleDot size={14} />}
+          title={t("impress.laserPointer")}
+          active={showTool === "laser"}
+          onClick={() => setShowTool("laser")}
+        />
+        <ToolButton
+          icon={<PenLine size={14} />}
+          title={t("impress.pen")}
+          active={showTool === "pen"}
+          onClick={() => setShowTool("pen")}
+        />
+        <ToolButton
+          icon={<Eraser size={14} />}
+          title={t("impress.eraser")}
+          active={showTool === "eraser"}
+          onClick={() => setShowTool("eraser")}
+        />
+        <ToolButton icon={<Trash2 size={14} />} title={t("impress.clearInk")} onClick={() => setStrokes([])} />
+      </div>
       <button
         type="button"
         className="btn btn-soft"
@@ -1748,6 +2206,15 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
                 label={t("impress.arrow")}
                 onClick={() => addObject("arrow")}
               />
+              <ToolButton
+                icon={<Link2 size={16} />}
+                label={t("impress.connector")}
+                onClick={() => {
+                  setConnectorMode((value) => !value);
+                  setConnectorStart(null);
+                }}
+                active={connectorMode}
+              />
               <ToolButton icon={<ImageIcon size={16} />} label={t("writer.image")} onClick={() => addObject("image")} />
               <ToolButton icon={<TableIcon size={16} />} label={t("writer.table")} onClick={() => addObject("table")} />
               <ToolButton icon={<LineChart size={16} />} label={t("calc.chart")} onClick={() => addObject("chart")} />
@@ -1767,6 +2234,31 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
                 icon={<AlignEndHorizontal size={16} />}
                 onClick={() => alignSelected("right")}
                 title={t("impress.alignRight")}
+              />
+              <ToolButton
+                icon={<AlignStartVertical size={16} />}
+                onClick={() => alignSelected("top")}
+                title={t("impress.alignTop")}
+              />
+              <ToolButton
+                icon={<AlignCenterVertical size={16} />}
+                onClick={() => alignSelected("middle")}
+                title={t("impress.alignMiddle")}
+              />
+              <ToolButton
+                icon={<AlignEndVertical size={16} />}
+                onClick={() => alignSelected("bottom")}
+                title={t("impress.alignBottom")}
+              />
+              <ToolButton
+                icon={<Rows3 size={16} />}
+                onClick={() => distributeSelected("y")}
+                title={t("impress.distributeVertical")}
+              />
+              <ToolButton
+                icon={<Grid2X2 size={16} />}
+                onClick={() => distributeSelected("x")}
+                title={t("impress.distributeHorizontal")}
               />
               <ToolButton icon={<Move size={16} />} onClick={() => bringForward(1)} title={t("impress.bringForward")} />
               <ToolButton
@@ -1859,6 +2351,13 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
                 onClick={() => updateSlide((current) => ({ ...current, background: null }))}
               />
             </RibbonGroup>
+            <RibbonGroup label={t("impress.headerFooter")}>
+              <ToolButton
+                icon={<Rows3 size={16} />}
+                label={t("impress.headerFooter")}
+                onClick={() => setFooterDialog(true)}
+              />
+            </RibbonGroup>
           </>
         ) : null}
 
@@ -1915,24 +2414,40 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
         ) : null}
 
         {ribbon === "view" ? (
-          <RibbonGroup label={t("impress.present")}>
-            <ToolButton
-              icon={<Play size={16} />}
-              label={t("impress.startShow")}
-              onClick={() => {
-                setPresenterView(false);
-                goToSlide(slideIndex);
-              }}
-            />
-            <ToolButton
-              icon={<MonitorPlay size={16} />}
-              label={t("impress.presenter")}
-              onClick={() => {
-                setPresenterView(true);
-                goToSlide(slideIndex);
-              }}
-            />
-          </RibbonGroup>
+          <>
+            <RibbonGroup label={t("impress.view")}>
+              <ToolButton
+                icon={<Rows3 size={16} />}
+                label={t("impress.viewNormal")}
+                onClick={() => setView("normal")}
+                active={view === "normal"}
+              />
+              <ToolButton
+                icon={<Grid2X2 size={16} />}
+                label={t("impress.slideSorter")}
+                onClick={() => setView("sorter")}
+                active={view === "sorter"}
+              />
+            </RibbonGroup>
+            <RibbonGroup label={t("impress.present")}>
+              <ToolButton
+                icon={<Play size={16} />}
+                label={t("impress.startShow")}
+                onClick={() => {
+                  setPresenterView(false);
+                  goToSlide(slideIndex);
+                }}
+              />
+              <ToolButton
+                icon={<MonitorPlay size={16} />}
+                label={t("impress.presenter")}
+                onClick={() => {
+                  setPresenterView(true);
+                  goToSlide(slideIndex);
+                }}
+              />
+            </RibbonGroup>
+          </>
         ) : null}
 
         <div className="ribbon-spacer" />
@@ -1958,408 +2473,599 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
         </RibbonGroup>
       </Ribbon>
 
-      <div className="impress-layout">
-        <div className="slide-list">
-          {deck.slides.map((candidate, index) => (
-            <div
-              key={candidate.id}
-              className={`slide-thumb${index === slideIndex ? " is-active" : ""}`}
-              role="button"
-              tabIndex={0}
-              aria-label={`${t("impress.slide")} ${index + 1}`}
-              onClick={() => {
-                setSlideIndex(index);
-                setSelected([]);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
+      <div className={`impress-layout${view === "sorter" ? " is-sorter" : ""}`}>
+        {view === "sorter" ? (
+          <div className="slide-sorter">
+            {deck.slides.map((candidate, index) => (
+              <div
+                key={candidate.id}
+                className={`sorter-item${index === slideIndex ? " is-active" : ""}${
+                  candidate.hidden ? " is-hidden" : ""
+                }${dropIndex === index ? " is-drop" : ""}`}
+                data-slide-index={index}
+                role="button"
+                tabIndex={0}
+                aria-label={`${t("impress.slide")} ${index + 1}`}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
                   setSlideIndex(index);
                   setSelected([]);
-                }
-              }}
-            >
-              <span className="slide-number">{index + 1}</span>
-              <SlidePreview deck={deck} slide={candidate} theme={theme} width={148} />
-              <div className="slide-thumb-actions">
-                <button
-                  type="button"
-                  className="icon-btn"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    moveSlide(index, index - 1);
-                  }}
-                  title={t("common.moveUp")}
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  className="icon-btn"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    moveSlide(index, index + 1);
-                  }}
-                  title={t("common.moveDown")}
-                >
-                  ↓
-                </button>
-              </div>
-            </div>
-          ))}
-          <button type="button" className="btn btn-soft slide-add" onClick={addSlide}>
-            <Plus size={14} /> {t("impress.newSlide")}
-          </button>
-        </div>
-
-        <div
-          className="slide-stage"
-          ref={canvasRef}
-          role="presentation"
-          onPointerDown={(event) => {
-            if (event.target === event.currentTarget) setSelected([]);
-          }}
-        >
-          <div
-            className="slide-canvas"
-            role="presentation"
-            style={{
-              width: deck.size.widthPt * scale,
-              height: deck.size.heightPt * scale,
-              background: slide.background ?? theme.background,
-            }}
-            onClick={(event) => event.stopPropagation()}
-            onPointerDown={beginMarquee}
-          >
-            {marquee ? (
-              <div
-                className="slide-marquee"
-                style={{
-                  left: marquee.x * scale,
-                  top: marquee.y * scale,
-                  width: marquee.w * scale,
-                  height: marquee.h * scale,
+                  sorterDragRef.current = index;
+                  dropIndexRef.current = index;
+                  setDropIndex(index);
                 }}
-              />
-            ) : null}
-            {inherited.map((object) => (
-              <div
-                key={object.id}
-                className="slide-object is-inherited"
-                style={{
-                  left: object.x * scale,
-                  top: object.y * scale,
-                  width: object.w * scale,
-                  height: object.h * scale,
-                  transform: `rotate(${object.rotation}deg)`,
-                  zIndex: 0,
-                  pointerEvents: "none",
+                onPointerEnter={() => {
+                  if (sorterDragRef.current === null) return;
+                  dropIndexRef.current = index;
+                  setDropIndex(index);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setSlideIndex(index);
+                    setSelected([]);
+                  }
                 }}
               >
-                <ObjectTree
-                  object={object}
-                  path={[object.id]}
-                  depth={0}
-                  theme={theme}
-                  scale={scale}
-                  selectedKeys={INHERITED_KEYS}
-                  editingKey={null}
-                  interactive={false}
-                />
+                <span className="slide-number">{index + 1}</span>
+                {candidate.hidden ? (
+                  <span className="slide-hidden-badge" title={t("impress.hiddenSlide")}>
+                    {t("impress.hiddenSlide")}
+                  </span>
+                ) : null}
+                <SlidePreview deck={deck} slide={candidate} theme={theme} width={210} />
               </div>
             ))}
-            {[...slide.objects]
-              .sort((a, b) => a.z - b.z)
-              .map((object) => {
-                const path: SelectionPath = [object.id];
-                const isSelected = selectedKeys.has(pathKey(path));
-                return (
-                  <div
-                    key={object.id}
-                    className={`slide-object${isSelected ? " is-selected" : ""}`}
-                    style={{
-                      left: object.x * scale,
-                      top: object.y * scale,
-                      width: object.w * scale,
-                      height: object.h * scale,
-                      transform: `rotate(${object.rotation}deg)`,
-                      zIndex: object.z,
-                    }}
-                    onPointerDown={(event) => handleObjectPointerDown(event, path)}
-                    onDoubleClick={(event) => handleObjectDoubleClick(event, path)}
-                  >
-                    <ObjectTree
-                      object={object}
-                      path={path}
-                      depth={0}
-                      theme={theme}
-                      scale={scale}
-                      selectedKeys={selectedKeys}
-                      editingKey={editingText}
-                      interactive
-                      onObjectPointerDown={handleObjectPointerDown}
-                      onObjectDoubleClick={handleObjectDoubleClick}
-                      onHandlePointerDown={beginDrag}
-                      onTextChange={handleTextChange}
-                      onTextDone={() => setEditingText(null)}
-                    />
-                    {isSelected ? (
-                      <SelectionHandles onHandlePointerDown={(event, mode) => beginDrag(event, path, mode)} />
-                    ) : null}
-                  </div>
-                );
-              })}
+            <button type="button" className="btn btn-soft slide-add" onClick={addSlide}>
+              <Plus size={14} /> {t("impress.newSlide")}
+            </button>
           </div>
-        </div>
-
-        <div className="slide-properties">
-          <h4>{t("impress.properties")}</h4>
-          <div className="stack">
-            <label className="field">
-              <span>{t("impress.master")}</span>
-              <select
-                value={slide.masterId ?? masters[0]?.id ?? ""}
-                onChange={(event) => selectMaster(event.target.value)}
-              >
-                {masters.length === 0 ? <option value="">{t("impress.noMaster")}</option> : null}
-                {masters.map((master) => (
-                  <option key={master.id} value={master.id}>
-                    {master.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>{t("impress.layout")}</span>
-              <select value={slide.layoutId ?? ""} onChange={(event) => selectLayout(event.target.value)}>
-                <option value="">{t("impress.noLayout")}</option>
-                {(selectedMaster?.layouts ?? []).map((layout) => (
-                  <option key={layout.id} value={layout.id}>
-                    {layout.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          {primary && primaryPath ? (
-            <div className="stack">
-              <div className="row">
-                <ToolNumber
-                  value={Math.round(primary.x)}
-                  onChange={(x) => setPrimaryPosition("x", x)}
-                  title="X"
-                  width={64}
-                />
-                <ToolNumber
-                  value={Math.round(primary.y)}
-                  onChange={(y) => setPrimaryPosition("y", y)}
-                  title="Y"
-                  width={64}
-                />
-              </div>
-              <div className="row">
-                <ToolNumber
-                  value={Math.round(primary.w)}
-                  onChange={(w) => setPrimarySize("w", w)}
-                  title="W"
-                  width={64}
-                />
-                <ToolNumber
-                  value={Math.round(primary.h)}
-                  onChange={(h) => setPrimarySize("h", h)}
-                  title="H"
-                  width={64}
-                />
-              </div>
-              <div className="row">
-                <ToolNumber
-                  value={Math.round(primary.rotation)}
-                  onChange={(rotation) => updatePath(primaryPath, { rotation })}
-                  min={-180}
-                  max={180}
-                  title={t("impress.rotation")}
-                  width={64}
-                />
-                <ToolNumber
-                  value={primary.z}
-                  onChange={(z) => updatePath(primaryPath, { z })}
-                  min={1}
-                  max={99}
-                  title="Z"
-                  width={64}
-                />
-              </div>
-              {primary.kind === "rect" || primary.kind === "ellipse" || primary.kind === "roundRect" ? (
-                <>
-                  <label className="field">
-                    <span>{t("impress.fill")}</span>
-                    <input
-                      type="color"
-                      value={primary.style?.fill ?? "#2563eb"}
-                      onChange={(event) =>
-                        updatePath(primaryPath, {
-                          style: { ...(primary.style ?? defaultShapeStyle()), fill: event.target.value },
-                        })
-                      }
-                    />
-                  </label>
-                  <label className="field">
-                    <span>{t("impress.cornerRadius")}</span>
-                    <input
-                      type="number"
-                      value={primary.style?.cornerRadiusPt ?? 0}
-                      onChange={(event) =>
-                        updatePath(primaryPath, {
-                          style: {
-                            ...(primary.style ?? defaultShapeStyle()),
-                            cornerRadiusPt: Number(event.target.value),
-                          },
-                        })
-                      }
-                    />
-                  </label>
-                </>
-              ) : null}
-              {primary.text ? (
-                <label className="field">
-                  <span>{t("impress.fontSize")}</span>
-                  <input
-                    type="number"
-                    value={primary.text.paragraphs[0]?.sizePt ?? primary.text.sizePt ?? 18}
-                    onChange={(event) =>
-                      updatePath(primaryPath, { text: withFrameSize(primary.text!, Number(event.target.value)) })
+        ) : (
+          <>
+            <div className="slide-list">
+              {deck.slides.map((candidate, index) => (
+                <div
+                  key={candidate.id}
+                  className={`slide-thumb${index === slideIndex ? " is-active" : ""}${
+                    candidate.hidden ? " is-hidden" : ""
+                  }`}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${t("impress.slide")} ${index + 1}`}
+                  onClick={() => {
+                    setSlideIndex(index);
+                    setSelected([]);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSlideIndex(index);
+                      setSelected([]);
                     }
-                  />
-                </label>
-              ) : null}
-              <label className="field">
-                <span>{t("writer.paragraph")}</span>
-                <select
-                  value={primary.text?.paragraphs[0]?.align ?? "left"}
-                  onChange={(event) =>
-                    updatePath(primaryPath, {
-                      text: primary.text ? withFrameAlign(primary.text, event.target.value) : null,
-                    })
-                  }
+                  }}
                 >
-                  <option value="left">{t("writer.alignLeft")}</option>
-                  <option value="center">{t("writer.alignCenter")}</option>
-                  <option value="right">{t("writer.alignRight")}</option>
-                </select>
-              </label>
-              {primary.kind === "chart" ? (
-                <ToolButton
-                  icon={<LineChart size={14} />}
-                  label={t("impress.chartData")}
-                  onClick={() => setChartPath(primaryPath)}
-                />
-              ) : null}
-              <ToolButton
-                label={t("impress.editText")}
-                onClick={() =>
-                  primary.text
-                    ? setEditingText(pathKey(primaryPath))
-                    : updatePath(primaryPath, {
-                        text: {
-                          paragraphs: [
-                            {
-                              text: "New text",
-                              level: 0,
-                              bold: false,
-                              italic: false,
-                              underline: false,
-                              sizePt: 20,
-                              color: null,
-                              align: "left",
-                              bullet: false,
-                              runs: [],
-                            },
-                          ],
-                          valign: "top",
-                          font: null,
-                          sizePt: 20,
-                          color: null,
-                          align: "left",
-                        },
-                      })
-                }
-              />
-            </div>
-          ) : (
-            <p className="muted">{t("impress.noSelection")}</p>
-          )}
-          <h4>{t("impress.notes")}</h4>
-          <textarea
-            className="notes-input"
-            value={slide.notes}
-            onChange={(event) => updateSlide((current) => ({ ...current, notes: event.target.value }))}
-            placeholder={t("impress.notesHint")}
-          />
-          <h4>{t("impress.animations")}</h4>
-          <div className="stack">
-            {[...(slide.animations ?? [])]
-              .sort((a, b) => a.order - b.order)
-              .map((animation, index, list) => {
-                const target = slide.objects.find((object) => object.id === animation.objectId);
-                return (
-                  <div key={animation.id} className="row" style={{ alignItems: "center", gap: 4 }}>
-                    <span
-                      className="muted"
-                      style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                    >
-                      {target?.name ?? t("impress.animationMissingObject")} · {animation.kind} · {animation.effect} ·{" "}
-                      {animation.trigger}
+                  <span className="slide-number">{index + 1}</span>
+                  {candidate.hidden ? (
+                    <span className="slide-hidden-badge" title={t("impress.hiddenSlide")}>
+                      {t("impress.hiddenSlide")}
                     </span>
+                  ) : null}
+                  <SlidePreview deck={deck} slide={candidate} theme={theme} width={148} />
+                  <div className="slide-thumb-actions">
                     <button
                       type="button"
                       className="icon-btn"
-                      onClick={() => reorderAnimation(animation.id, -1)}
-                      disabled={index === 0}
-                      title={t("impress.moveUp")}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        moveSlide(index, index - 1);
+                      }}
+                      title={t("common.moveUp")}
                     >
                       ↑
                     </button>
                     <button
                       type="button"
                       className="icon-btn"
-                      onClick={() => reorderAnimation(animation.id, 1)}
-                      disabled={index === list.length - 1}
-                      title={t("impress.moveDown")}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        moveSlide(index, index + 1);
+                      }}
+                      title={t("common.moveDown")}
                     >
                       ↓
                     </button>
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      onClick={() => setAnimationEditing(animation)}
-                      title={t("common.edit")}
-                    >
-                      ✎
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      onClick={() =>
-                        updateSlide((current) => ({
-                          ...current,
-                          animations: (current.animations ?? []).filter((candidate) => candidate.id !== animation.id),
-                        }))
-                      }
-                      title={t("common.delete")}
-                    >
-                      ×
-                    </button>
                   </div>
-                );
-              })}
-            <ToolButton
-              icon={<Sparkles size={14} />}
-              label={t("impress.addAnimation")}
-              onClick={addAnimation}
-              disabled={slide.objects.length === 0}
-            />
-          </div>
-        </div>
+                </div>
+              ))}
+              <button type="button" className="btn btn-soft slide-add" onClick={addSlide}>
+                <Plus size={14} /> {t("impress.newSlide")}
+              </button>
+            </div>
+
+            <div
+              className="slide-stage"
+              ref={canvasRef}
+              role="presentation"
+              onPointerDown={(event) => {
+                if (event.target === event.currentTarget) setSelected([]);
+              }}
+            >
+              <div
+                className="slide-canvas"
+                role="presentation"
+                style={{
+                  width: deck.size.widthPt * scale,
+                  height: deck.size.heightPt * scale,
+                  background: slide.background ?? theme.background,
+                }}
+                onClick={(event) => event.stopPropagation()}
+                onPointerDown={beginMarquee}
+              >
+                {marquee ? (
+                  <div
+                    className="slide-marquee"
+                    style={{
+                      left: marquee.x * scale,
+                      top: marquee.y * scale,
+                      width: marquee.w * scale,
+                      height: marquee.h * scale,
+                    }}
+                  />
+                ) : null}
+                {inherited.map((object) => (
+                  <div
+                    key={object.id}
+                    className="slide-object is-inherited"
+                    style={{
+                      left: object.x * scale,
+                      top: object.y * scale,
+                      width: object.w * scale,
+                      height: object.h * scale,
+                      transform: `rotate(${object.rotation}deg)`,
+                      zIndex: 0,
+                      pointerEvents: "none",
+                    }}
+                  >
+                    <ObjectTree
+                      object={object}
+                      path={[object.id]}
+                      depth={0}
+                      theme={theme}
+                      scale={scale}
+                      selectedKeys={INHERITED_KEYS}
+                      editingKey={null}
+                      interactive={false}
+                    />
+                  </div>
+                ))}
+                {[...slide.objects]
+                  .sort((a, b) => a.z - b.z)
+                  .map((object) => {
+                    const path: SelectionPath = [object.id];
+                    const isSelected = selectedKeys.has(pathKey(path));
+                    const isCropTarget = cropPath !== null && pathKey(cropPath) === pathKey(path);
+                    // While a crop drag runs, the canvas previews the draft crop.
+                    const rendered =
+                      isCropTarget && cropDraft && object.image
+                        ? { ...object, image: { ...object.image, crop: cropDraft } }
+                        : object;
+                    return (
+                      <div
+                        key={object.id}
+                        className={`slide-object${isSelected ? " is-selected" : ""}${
+                          connectorStart === object.id ? " is-connector-start" : ""
+                        }`}
+                        style={{
+                          left: rendered.x * scale,
+                          top: rendered.y * scale,
+                          width: rendered.w * scale,
+                          height: rendered.h * scale,
+                          transform: `rotate(${rendered.rotation}deg)`,
+                          zIndex: rendered.z,
+                        }}
+                        onPointerDown={(event) => handleObjectPointerDown(event, path)}
+                        onDoubleClick={(event) => handleObjectDoubleClick(event, path)}
+                      >
+                        <ObjectTree
+                          object={rendered}
+                          objects={slide.objects}
+                          path={path}
+                          depth={0}
+                          theme={theme}
+                          scale={scale}
+                          selectedKeys={selectedKeys}
+                          editingKey={editingText}
+                          interactive
+                          onObjectPointerDown={handleObjectPointerDown}
+                          onObjectDoubleClick={handleObjectDoubleClick}
+                          onHandlePointerDown={beginDrag}
+                          onTextCommit={handleTextCommit}
+                          onTextDone={() => {
+                            setEditingText(null);
+                            setTextSelection(null);
+                          }}
+                          onTextSelection={setTextSelection}
+                          textEditRef={textHandleRef}
+                        />
+                        {isSelected ? (
+                          <SelectionHandles onHandlePointerDown={(event, mode) => beginDrag(event, path, mode)} />
+                        ) : null}
+                        {isCropTarget ? <CropHandles onHandlePointerDown={beginCropDrag} /> : null}
+                      </div>
+                    );
+                  })}
+                <SlideFooterBar
+                  footer={deck.footer}
+                  slideNumber={slideIndex + 1}
+                  scale={scale}
+                  color={theme.bodyColor}
+                />
+              </div>
+            </div>
+
+            <div className="slide-properties">
+              <h4>{t("impress.properties")}</h4>
+              <div className="stack">
+                <label className="field">
+                  <span>{t("impress.master")}</span>
+                  <select
+                    value={slide.masterId ?? masters[0]?.id ?? ""}
+                    onChange={(event) => selectMaster(event.target.value)}
+                  >
+                    {masters.length === 0 ? <option value="">{t("impress.noMaster")}</option> : null}
+                    {masters.map((master) => (
+                      <option key={master.id} value={master.id}>
+                        {master.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>{t("impress.layout")}</span>
+                  <select value={slide.layoutId ?? ""} onChange={(event) => selectLayout(event.target.value)}>
+                    <option value="">{t("impress.noLayout")}</option>
+                    {(selectedMaster?.layouts ?? []).map((layout) => (
+                      <option key={layout.id} value={layout.id}>
+                        {layout.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>{t("impress.hiddenSlide")}</span>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(slide.hidden)}
+                    onChange={(event) => updateSlide((current) => ({ ...current, hidden: event.target.checked }))}
+                  />
+                </label>
+              </div>
+              {primary && primaryPath ? (
+                <div className="stack">
+                  <div className="row">
+                    <ToolNumber
+                      value={Math.round(primary.x)}
+                      onChange={(x) => setPrimaryPosition("x", x)}
+                      title="X"
+                      width={64}
+                    />
+                    <ToolNumber
+                      value={Math.round(primary.y)}
+                      onChange={(y) => setPrimaryPosition("y", y)}
+                      title="Y"
+                      width={64}
+                    />
+                  </div>
+                  <div className="row">
+                    <ToolNumber
+                      value={Math.round(primary.w)}
+                      onChange={(w) => setPrimarySize("w", w)}
+                      title="W"
+                      width={64}
+                    />
+                    <ToolNumber
+                      value={Math.round(primary.h)}
+                      onChange={(h) => setPrimarySize("h", h)}
+                      title="H"
+                      width={64}
+                    />
+                  </div>
+                  <div className="row">
+                    <ToolNumber
+                      value={Math.round(primary.rotation)}
+                      onChange={(rotation) => updatePath(primaryPath, { rotation })}
+                      min={-180}
+                      max={180}
+                      title={t("impress.rotation")}
+                      width={64}
+                    />
+                    <ToolNumber
+                      value={primary.z}
+                      onChange={(z) => updatePath(primaryPath, { z })}
+                      min={1}
+                      max={99}
+                      title="Z"
+                      width={64}
+                    />
+                  </div>
+                  {primary.kind === "rect" || primary.kind === "ellipse" || primary.kind === "roundRect" ? (
+                    <>
+                      <label className="field">
+                        <span>{t("impress.fill")}</span>
+                        <input
+                          type="color"
+                          value={primary.style?.fill ?? "#2563eb"}
+                          onChange={(event) =>
+                            updatePath(primaryPath, {
+                              style: { ...(primary.style ?? defaultShapeStyle()), fill: event.target.value },
+                            })
+                          }
+                        />
+                      </label>
+                      <label className="field">
+                        <span>{t("impress.cornerRadius")}</span>
+                        <input
+                          type="number"
+                          value={primary.style?.cornerRadiusPt ?? 0}
+                          onChange={(event) =>
+                            updatePath(primaryPath, {
+                              style: {
+                                ...(primary.style ?? defaultShapeStyle()),
+                                cornerRadiusPt: Number(event.target.value),
+                              },
+                            })
+                          }
+                        />
+                      </label>
+                    </>
+                  ) : null}
+                  {primary.text ? (
+                    <label className="field">
+                      <span>{t("impress.fontSize")}</span>
+                      <input
+                        type="number"
+                        value={primary.text.paragraphs[0]?.sizePt ?? primary.text.sizePt ?? 18}
+                        onChange={(event) =>
+                          updatePath(primaryPath, { text: withFrameSize(primary.text!, Number(event.target.value)) })
+                        }
+                      />
+                    </label>
+                  ) : null}
+                  {primary.kind === "image" ? (
+                    <div className="row">
+                      <ToolButton
+                        icon={<Crop size={14} />}
+                        label={t("impress.crop")}
+                        active={cropPath !== null}
+                        onClick={() => {
+                          if (cropPath) {
+                            setCropPath(null);
+                            setCropDraft(null);
+                            return;
+                          }
+                          setCropPath(primaryPath);
+                          setCropDraft(clampCrop(primary.image?.crop));
+                        }}
+                      />
+                      {primary.image?.crop ? (
+                        <ToolButton
+                          label={t("impress.resetCrop")}
+                          onClick={() => updatePath(primaryPath, { image: { ...primary.image!, crop: null } })}
+                        />
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {editingText ? (
+                    <div className="slide-text-tools" data-keep-text-edit>
+                      <div className="row">
+                        <ToolButton
+                          keepFocus
+                          icon={<Bold size={14} />}
+                          title={t("impress.bold")}
+                          active={Boolean(textSelection?.bold)}
+                          onClick={() => textHandleRef.current?.applyFormat({ bold: !textSelection?.bold })}
+                        />
+                        <ToolButton
+                          keepFocus
+                          icon={<Italic size={14} />}
+                          title={t("impress.italic")}
+                          active={Boolean(textSelection?.italic)}
+                          onClick={() => textHandleRef.current?.applyFormat({ italic: !textSelection?.italic })}
+                        />
+                        <ToolButton
+                          keepFocus
+                          icon={<Underline size={14} />}
+                          title={t("impress.underline")}
+                          active={Boolean(textSelection?.underline)}
+                          onClick={() => textHandleRef.current?.applyFormat({ underline: !textSelection?.underline })}
+                        />
+                        <ToolButton
+                          keepFocus
+                          icon={<List size={14} />}
+                          title={t("impress.bullets")}
+                          active={Boolean(textSelection?.bullet)}
+                          onClick={() => textHandleRef.current?.toggleBullet()}
+                        />
+                      </div>
+                      <div className="row">
+                        <ToolButton
+                          keepFocus
+                          icon={<IndentDecrease size={14} />}
+                          title={t("impress.decreaseLevel")}
+                          onClick={() => textHandleRef.current?.changeLevel(-1)}
+                        />
+                        <ToolButton
+                          keepFocus
+                          icon={<IndentIncrease size={14} />}
+                          title={t("impress.increaseLevel")}
+                          onClick={() => textHandleRef.current?.changeLevel(1)}
+                        />
+                        <ToolNumber
+                          value={
+                            textSelection?.sizePt ?? primary.text!.paragraphs[0]?.sizePt ?? primary.text!.sizePt ?? 18
+                          }
+                          onChange={(sizePt) => textHandleRef.current?.applyFormat({ sizePt })}
+                          min={4}
+                          max={400}
+                          title={t("impress.fontSize")}
+                          width={64}
+                        />
+                      </div>
+                      <div className="row slide-text-colors">
+                        {TEXT_COLORS.map((color) => (
+                          <button
+                            key={color}
+                            type="button"
+                            className="color-swatch"
+                            style={{ background: color }}
+                            title={color}
+                            aria-label={color}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => textHandleRef.current?.applyFormat({ color })}
+                          />
+                        ))}
+                        <input
+                          type="color"
+                          className="tool-color"
+                          title={t("impress.textColor")}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onChange={(event) => textHandleRef.current?.applyFormat({ color: event.target.value })}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                  <label className="field">
+                    <span>{t("writer.paragraph")}</span>
+                    <select
+                      value={primary.text?.paragraphs[0]?.align ?? "left"}
+                      onChange={(event) =>
+                        updatePath(primaryPath, {
+                          text: primary.text ? withFrameAlign(primary.text, event.target.value) : null,
+                        })
+                      }
+                    >
+                      <option value="left">{t("writer.alignLeft")}</option>
+                      <option value="center">{t("writer.alignCenter")}</option>
+                      <option value="right">{t("writer.alignRight")}</option>
+                    </select>
+                  </label>
+                  {primary.kind === "chart" ? (
+                    <ToolButton
+                      icon={<LineChart size={14} />}
+                      label={t("impress.chartData")}
+                      onClick={() => setChartPath(primaryPath)}
+                    />
+                  ) : null}
+                  <ToolButton
+                    label={t("impress.editText")}
+                    onClick={() =>
+                      primary.text
+                        ? setEditingText(pathKey(primaryPath))
+                        : updatePath(primaryPath, {
+                            text: {
+                              paragraphs: [
+                                {
+                                  text: "New text",
+                                  level: 0,
+                                  bold: false,
+                                  italic: false,
+                                  underline: false,
+                                  sizePt: 20,
+                                  color: null,
+                                  align: "left",
+                                  bullet: false,
+                                  runs: [],
+                                },
+                              ],
+                              valign: "top",
+                              font: null,
+                              sizePt: 20,
+                              color: null,
+                              align: "left",
+                            },
+                          })
+                    }
+                  />
+                </div>
+              ) : (
+                <p className="muted">{t("impress.noSelection")}</p>
+              )}
+              <h4>{t("impress.notes")}</h4>
+              <textarea
+                className="notes-input"
+                value={slide.notes}
+                onChange={(event) => updateSlide((current) => ({ ...current, notes: event.target.value }))}
+                placeholder={t("impress.notesHint")}
+              />
+              <h4>{t("impress.animations")}</h4>
+              <div className="stack">
+                {[...(slide.animations ?? [])]
+                  .sort((a, b) => a.order - b.order)
+                  .map((animation, index, list) => {
+                    const target = slide.objects.find((object) => object.id === animation.objectId);
+                    return (
+                      <div key={animation.id} className="row" style={{ alignItems: "center", gap: 4 }}>
+                        <span
+                          className="muted"
+                          style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        >
+                          {target?.name ?? t("impress.animationMissingObject")} · {animation.kind} · {animation.effect}{" "}
+                          · {animation.trigger}
+                        </span>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={() => reorderAnimation(animation.id, -1)}
+                          disabled={index === 0}
+                          title={t("impress.moveUp")}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={() => reorderAnimation(animation.id, 1)}
+                          disabled={index === list.length - 1}
+                          title={t("impress.moveDown")}
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={() => setAnimationEditing(animation)}
+                          title={t("common.edit")}
+                        >
+                          ✎
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={() =>
+                            updateSlide((current) => ({
+                              ...current,
+                              animations: (current.animations ?? []).filter(
+                                (candidate) => candidate.id !== animation.id,
+                              ),
+                            }))
+                          }
+                          title={t("common.delete")}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    );
+                  })}
+                <ToolButton
+                  icon={<Sparkles size={14} />}
+                  label={t("impress.addAnimation")}
+                  onClick={addAnimation}
+                  disabled={slide.objects.length === 0}
+                />
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="editor-status">
@@ -2378,8 +3084,9 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
           role="presentation"
           onClick={(event) => {
             // Clicks inside the presenter control panel must not advance the
-            // show to the next slide.
+            // show to the next slide, and a drawing tool owns the click.
             if (event.target instanceof Element && event.target.closest(".presenter-panel")) return;
+            if (showTool !== "pointer") return;
             advanceShow();
           }}
           style={
@@ -2438,6 +3145,14 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
         />
       ) : null}
 
+      {footerDialog ? (
+        <FooterDialog
+          footer={deck.footer}
+          onChange={(footer) => update((current) => ({ ...current, footer }), false)}
+          onClose={() => setFooterDialog(false)}
+        />
+      ) : null}
+
       {chartPath ? (
         <ChartDialog
           key={pathKey(chartPath)}
@@ -2488,6 +3203,78 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
 
 function defaultShapeStyle(): ShapeStyle {
   return { fill: "#2563eb", stroke: null, strokeWidthPt: 1.5, opacity: 1, cornerRadiusPt: 0, shadow: false };
+}
+
+/** Today as YYYY-MM-DD; the default date text when a footer is first enabled. */
+function todayIso(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function defaultFooter(): SlideFooter {
+  return { enabled: false, text: "", showText: true, showSlideNumber: false, showDate: false, dateText: todayIso() };
+}
+
+/** Deck-wide header & footer settings; changes apply to every slide. */
+function FooterDialog({
+  footer,
+  onChange,
+  onClose,
+}: {
+  footer: SlideFooter | null | undefined;
+  onChange: (footer: SlideFooter) => void;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const current: SlideFooter = { ...defaultFooter(), ...(footer ?? {}) };
+  const patch = (change: Partial<SlideFooter>) => onChange({ ...current, ...change });
+  return (
+    <Dialog title={t("impress.headerFooter")} onClose={onClose}>
+      <div className="stack">
+        <label className="field">
+          <span>{t("impress.footerEnabled")}</span>
+          <input
+            type="checkbox"
+            checked={current.enabled}
+            onChange={(event) => patch({ enabled: event.target.checked })}
+          />
+        </label>
+        <label className="field">
+          <span>{t("impress.showFooterText")}</span>
+          <input
+            type="checkbox"
+            checked={current.showText}
+            onChange={(event) => patch({ showText: event.target.checked })}
+          />
+        </label>
+        <TextField label={t("impress.footerText")} value={current.text} onChange={(text) => patch({ text })} />
+        <label className="field">
+          <span>{t("impress.showSlideNumber")}</span>
+          <input
+            type="checkbox"
+            checked={current.showSlideNumber}
+            onChange={(event) => patch({ showSlideNumber: event.target.checked })}
+          />
+        </label>
+        <label className="field">
+          <span>{t("impress.showDate")}</span>
+          <input
+            type="checkbox"
+            checked={current.showDate}
+            onChange={(event) => patch({ showDate: event.target.checked })}
+          />
+        </label>
+        <TextField
+          label={t("impress.dateText")}
+          value={current.dateText}
+          onChange={(dateText) => patch({ dateText })}
+        />
+        <p className="muted">{t("impress.footerHint")}</p>
+      </div>
+    </Dialog>
+  );
 }
 
 function MasterDialog({
@@ -3204,11 +3991,39 @@ interface ObjectTreeProps {
   selectedKeys: Set<string>;
   editingKey: string | null;
   interactive: boolean;
+  /** Sibling objects, so a connector line can resolve its glued endpoints. */
+  objects?: SlideObject[];
   onObjectPointerDown?: (event: React.PointerEvent, path: SelectionPath) => void;
   onObjectDoubleClick?: (event: React.MouseEvent, path: SelectionPath) => void;
   onHandlePointerDown?: (event: React.PointerEvent, path: SelectionPath, mode: "resize" | "rotate") => void;
-  onTextChange?: (path: SelectionPath, text: string) => void;
+  onTextCommit?: (path: SelectionPath, paragraphs: TextParagraph[], recordUndo: boolean) => void;
   onTextDone?: () => void;
+  onTextSelection?: (info: TextSelectionInfo | null) => void;
+  textEditRef?: React.Ref<TextEditHandle>;
+}
+
+/** Crop handles over an image: four edges plus four corners. */
+function CropHandles({
+  onHandlePointerDown,
+}: {
+  onHandlePointerDown: (event: React.PointerEvent, mode: string) => void;
+}) {
+  const modes = ["left", "right", "top", "bottom", "topleft", "topright", "bottomleft", "bottomright"];
+  return (
+    <>
+      {modes.map((mode) => (
+        <span
+          key={mode}
+          className={`crop-handle is-${mode}`}
+          data-crop-handle={mode}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            onHandlePointerDown(event, mode);
+          }}
+        />
+      ))}
+    </>
+  );
 }
 
 function SelectionHandles({
@@ -3279,11 +4094,14 @@ function ObjectTree(props: ObjectTreeProps) {
   return (
     <SlideObjectView
       object={object}
+      objects={props.objects}
       theme={theme}
       scale={scale}
       editing={editingKey === pathKey(path)}
-      onTextChange={(text) => props.onTextChange?.(path, text)}
+      onTextCommit={(paragraphs, recordUndo) => props.onTextCommit?.(path, paragraphs, recordUndo)}
       onTextDone={() => props.onTextDone?.()}
+      onTextSelection={(info) => props.onTextSelection?.(info)}
+      textEditRef={props.textEditRef}
     />
   );
 }
@@ -3647,34 +4465,66 @@ function ChartPreview({ chart, theme, scale }: { chart: ChartData | null; theme:
 
 function SlideObjectView({
   object,
+  objects,
   theme,
   scale,
   editing,
-  onTextChange,
+  onTextCommit,
   onTextDone,
+  onTextSelection,
+  textEditRef,
 }: {
   object: SlideObject;
+  objects?: SlideObject[];
   theme: Theme;
   scale: number;
   editing: boolean;
-  onTextChange: (text: string) => void;
+  onTextCommit: (paragraphs: TextParagraph[], recordUndo: boolean) => void;
   onTextDone: () => void;
+  onTextSelection?: (info: TextSelectionInfo | null) => void;
+  textEditRef?: React.Ref<TextEditHandle>;
 }) {
   if (object.kind === "group") return null;
   if (object.kind === "image") {
     if (!object.image || object.image.dataBase64 === "")
       return <div className="slide-image-placeholder">{object.placeholder ?? "Double-click to add an image"}</div>;
+    const crop = object.image.crop ?? null;
+    const preview = cropPreview(crop);
+    if (isFullCrop(crop)) {
+      return (
+        <img
+          className="slide-image"
+          src={`data:${object.image.mime};base64,${object.image.dataBase64}`}
+          alt={object.image.alt}
+          draggable={false}
+        />
+      );
+    }
+    // The full image stays in the model; the window only scales and shifts it.
     return (
-      <img
-        className="slide-image"
-        src={`data:${object.image.mime};base64,${object.image.dataBase64}`}
-        alt={object.image.alt}
-        draggable={false}
-      />
+      <div className="slide-image-crop">
+        <img
+          className="slide-image"
+          src={`data:${object.image.mime};base64,${object.image.dataBase64}`}
+          alt={object.image.alt}
+          draggable={false}
+          style={{
+            position: "absolute",
+            width: `${preview.widthPct}%`,
+            height: `${preview.heightPct}%`,
+            left: `${preview.offsetXPct}%`,
+            top: `${preview.offsetYPct}%`,
+          }}
+        />
+      </div>
     );
   }
   if (object.kind === "line" || object.kind === "arrow") {
     const line = object.line ?? { x2: object.w, y2: 0, beginArrow: false, endArrow: false, dash: "solid" };
+    // A glued line draws between the routed anchors; a free line keeps its box.
+    const routed = objects
+      ? routeConnector(object, objects)
+      : { x1: object.x, y1: object.y, x2: object.x + line.x2, y2: object.y + line.y2 };
     return (
       <svg width="100%" height="100%" viewBox={`0 0 ${object.w} ${object.h}`} preserveAspectRatio="none">
         <defs>
@@ -3683,10 +4533,10 @@ function SlideObjectView({
           </marker>
         </defs>
         <line
-          x1={0}
-          y1={0}
-          x2={line.x2}
-          y2={line.y2}
+          x1={routed.x1 - object.x}
+          y1={routed.y1 - object.y}
+          x2={routed.x2 - object.x}
+          y2={routed.y2 - object.y}
           stroke={object.style?.stroke ?? theme.accent}
           strokeWidth={object.style?.strokeWidthPt ?? 2}
           strokeDasharray={line.dash === "dashed" ? "6 4" : line.dash === "dotted" ? "1 3" : undefined}
@@ -3755,22 +4605,14 @@ function SlideObjectView({
         </div>
       ) : object.text ? (
         editing ? (
-          <textarea
-            className="slide-text-editor"
-            // eslint-disable-next-line jsx-a11y/no-autofocus -- the user just double-clicked the text object; the editor must take focus
-            autoFocus
-            defaultValue={object.text.paragraphs.map((paragraph) => paragraph.text).join("\n")}
-            onBlur={(event) => {
-              onTextChange(event.target.value);
-              onTextDone();
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") onTextDone();
-            }}
-            style={{
-              fontSize: (object.text.paragraphs[0]?.sizePt ?? object.text.sizePt ?? 18) * scale,
-              color: object.text.paragraphs[0]?.color ?? theme.bodyColor,
-            }}
+          <TextFrameEditor
+            ref={textEditRef}
+            frame={object.text}
+            scale={scale}
+            color={theme.bodyColor}
+            onCommit={onTextCommit}
+            onDone={onTextDone}
+            onSelection={(info) => onTextSelection?.(info)}
           />
         ) : (
           <div
@@ -3827,6 +4669,9 @@ export function SlidePreview({
   const scale = actualWidth / deck.size.widthPt;
   const height = full ? (slideHeight ?? deck.size.heightPt) : (deck.size.heightPt * width) / deck.size.widthPt;
   const inherited = inheritedObjects(deck, slide);
+  // Imported decks may carry connectors whose box was never recomputed.
+  const objects = recomputeConnectors(slide.objects);
+  const slideNumber = deck.slides.indexOf(slide) + 1;
   return (
     <div
       className="slide-preview"
@@ -3864,7 +4709,7 @@ export function SlidePreview({
           />
         </div>
       ))}
-      {[...slide.objects]
+      {[...objects]
         .sort((a, b) => a.z - b.z)
         .map((object) => (
           <div
@@ -3881,6 +4726,7 @@ export function SlidePreview({
           >
             <ObjectTree
               object={object}
+              objects={objects}
               path={[object.id]}
               depth={0}
               theme={theme}
@@ -3891,6 +4737,34 @@ export function SlidePreview({
             />
           </div>
         ))}
+      <SlideFooterBar
+        footer={deck.footer}
+        slideNumber={slideNumber > 0 ? slideNumber : 1}
+        scale={full ? scale * 1.2 : scale}
+        color={theme.bodyColor}
+      />
+    </div>
+  );
+}
+
+/** The bottom line of the slide: footer text, date and slide number. */
+function SlideFooterBar({
+  footer,
+  slideNumber,
+  scale,
+  color,
+}: {
+  footer: SlideFooter | null | undefined;
+  slideNumber: number;
+  scale: number;
+  color: string;
+}) {
+  if (!footer?.enabled) return null;
+  return (
+    <div className="slide-footer" style={{ fontSize: Math.max(7, 10 * scale), color }}>
+      <span className="slide-footer-left">{footer.showText ? footer.text : ""}</span>
+      <span className="slide-footer-center">{footer.showDate ? footer.dateText : ""}</span>
+      <span className="slide-footer-right">{footer.showSlideNumber ? String(slideNumber) : ""}</span>
     </div>
   );
 }

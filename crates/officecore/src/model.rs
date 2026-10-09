@@ -48,12 +48,31 @@ pub struct ImageData {
     pub mime: String,
     pub data_base64: String,
     pub alt: String,
+    /// Source-image crop; `None` shows the full picture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crop: Option<ImageCrop>,
 }
 
 impl Default for ImageData {
     fn default() -> Self {
-        Self { name: "image".into(), mime: "image/png".into(), data_base64: String::new(), alt: String::new() }
+        Self {
+            name: "image".into(),
+            mime: "image/png".into(),
+            data_base64: String::new(),
+            alt: String::new(),
+            crop: None,
+        }
     }
+}
+
+/// Fractions of the source image trimmed from each side (0..1).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ImageCrop {
+    pub left: f64,
+    pub top: f64,
+    pub right: f64,
+    pub bottom: f64,
 }
 
 impl ImageData {
@@ -64,6 +83,7 @@ impl ImageData {
             mime,
             data_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
             alt: String::new(),
+            crop: None,
         }
     }
 
@@ -389,6 +409,22 @@ impl Default for ListInfo {
     }
 }
 
+/// One custom tab stop on a paragraph's ruler.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TabStop {
+    /// Distance from the left margin, in points.
+    pub pos_pt: f64,
+    /// `left`, `center`, `right` or `decimal`.
+    pub align: String,
+}
+
+impl Default for TabStop {
+    fn default() -> Self {
+        Self { pos_pt: 0.0, align: "left".into() }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ParaProps {
@@ -407,6 +443,9 @@ pub struct ParaProps {
     pub keep_with_next: bool,
     #[serde(default)]
     pub keep_together: bool,
+    /// Custom tab stops, written to DOCX `w:tabs` and ODF `style:tab-stops`.
+    #[serde(default)]
+    pub tabs: Vec<TabStop>,
 }
 
 impl Default for ParaProps {
@@ -424,6 +463,7 @@ impl Default for ParaProps {
             page_break_before: false,
             keep_with_next: false,
             keep_together: false,
+            tabs: Vec::new(),
         }
     }
 }
@@ -658,6 +698,9 @@ pub enum Block {
         height_pt: f64,
         align: String,
         caption: String,
+        /// Text wrapping: `inline`, `square` or `topBottom`.
+        #[serde(default)]
+        wrap: String,
     },
     PageBreak,
     Rule,
@@ -766,6 +809,34 @@ pub struct Comment {
     pub replies: Vec<CommentReply>,
 }
 
+/// A document watermark drawn behind the page content and carried into the
+/// PDF export.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Watermark {
+    pub text: String,
+    pub color: Option<String>,
+    /// Ink opacity, 0..1.
+    pub opacity: f64,
+    /// Rotation in degrees.
+    pub rotation: f64,
+    pub font_pt: f64,
+    pub bold: bool,
+}
+
+impl Default for Watermark {
+    fn default() -> Self {
+        Self {
+            text: "TASLAK".into(),
+            color: Some("#94a3b8".into()),
+            opacity: 0.18,
+            rotation: 45.0,
+            font_pt: 72.0,
+            bold: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TextDocument {
@@ -793,6 +864,9 @@ pub struct TextDocument {
     /// Whether pending revisions are rendered in the editor.
     #[serde(default = "default_true")]
     pub show_revisions: bool,
+    /// Page watermark; `None` means none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub watermark: Option<Watermark>,
 }
 
 fn default_true() -> bool {
@@ -816,6 +890,7 @@ impl Default for TextDocument {
             bookmarks: Vec::new(),
             track_changes: false,
             show_revisions: true,
+            watermark: None,
         }
     }
 }
@@ -1742,6 +1817,18 @@ pub struct LineSpec {
     pub begin_arrow: bool,
     pub end_arrow: bool,
     pub dash: String,
+    /// Object the start point is glued to; the connector follows it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub begin_object: Option<String>,
+    /// Object the end point is glued to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_object: Option<String>,
+    /// Connection site index (0 = top, 1 = left, 2 = bottom, 3 = right) on
+    /// the begin object; used by the OOXML `stCxn` attribute.
+    #[serde(default)]
+    pub begin_site: u32,
+    #[serde(default)]
+    pub end_site: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1867,6 +1954,10 @@ pub struct Slide {
     #[serde(default)]
     pub animations: Vec<Animation>,
     pub notes: String,
+    /// Hidden slides stay in the file but are skipped by the slideshow and
+    /// the PDF export.
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 impl Default for Slide {
@@ -1882,8 +1973,23 @@ impl Default for Slide {
             objects: Vec::new(),
             animations: Vec::new(),
             notes: String::new(),
+            hidden: false,
         }
     }
+}
+
+/// Deck-wide footer, date and slide-number settings.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SlideFooter {
+    /// Master switch for everything below.
+    pub enabled: bool,
+    pub text: String,
+    pub show_text: bool,
+    pub show_slide_number: bool,
+    pub show_date: bool,
+    /// Literal date text, so exports stay deterministic.
+    pub date_text: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1902,6 +2008,9 @@ pub struct Deck {
     /// Default text language of the deck (BCP 47), when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lang: Option<String>,
+    /// Footer/date/slide-number settings; `None` means all off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub footer: Option<SlideFooter>,
 }
 
 impl Default for Deck {
@@ -1915,6 +2024,7 @@ impl Default for Deck {
             masters: Vec::new(),
             metadata: DocMetadata::default(),
             lang: None,
+            footer: None,
         }
     }
 }

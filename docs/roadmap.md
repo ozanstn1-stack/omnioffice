@@ -225,3 +225,35 @@ Effort estimates assume a single developer.
   network or other programs are refused.
 - Still open across 3.9-4.2: the Android foreground service, background sync
   for the cloud providers, and vector-object editing in PDFs.
+
+## 4.5.0 — Writer and Impress, deeper editing (plan 2, phase 7) (delivered)
+
+- **Writer editor**: table cell merge/split and column-width drag; image wrap
+  options with corner size handles; format painter; a ruler with custom tab
+  stops; a watermark dialog with an on-page preview; ODT span/named-style
+  import fixes and the RTF single-paragraph fix; only dirty blocks are
+  re-measured during pagination.
+- **Impress editor**: paragraph/run rich-text editing with formatting and
+  bullet levels, keyboard shortcuts, align/distribute, glued connectors,
+  image crop, footer/date/slide number settings, hidden slides, a slide
+  sorter grid, and laser/pen during the show; ODP writes real chart objects
+  and keeps runs, footer fields, hidden slides and connectors.
+- **Writer PDF**: table cells lay out on the grid, so colspan/rowspan merged
+  cells get their combined width and the cells that start in later rows land
+  on the right columns (`column_widths_pt` drives the grid); a `\t` advances
+  to the paragraph's custom tab stops (default 36 pt), with center, right and
+  decimal stops approximated by advancing to the stop.
+- **Impress PDF**: hidden slides are skipped; text frames render per-run
+  formatting with paragraph-level indents and bullets; inherited master and
+  layout objects are drawn first (master, then layout), and `slideNumber` /
+  `footer` / `date` placeholders resolve from the deck footer; cropped images
+  are clipped to their visible region.
+- **Writer PDF watermarks**: `TextDocument.watermark` is applied through
+  pdfcore's incremental watermarker in the save and export paths, so a signed
+  PDF keeps its signatures.
+- **ODP**: the save path surfaces the warnings `write_odp_package` returns.
+- **Compatibility honesty**: `compat.rs` documents ODP real charts, rich
+  text, hidden slides, footer placeholders, connectors and image crops, plus
+  DOCX/ODT merged tables, tab stops, image wrap and watermarks and the RTF /
+  text-format losses; `unit.rs` feature manifests report the writer watermark,
+  impress hidden slides / footer and slide-object charts.

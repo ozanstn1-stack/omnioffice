@@ -16,7 +16,8 @@
           "pageBreakBefore": false,
           "spaceAfterPt": 8.0,
           "spaceBeforePt": 0.0,
-          "style": "Heading1"
+          "style": "Heading1",
+          "tabs": []
         },
         "runs": [
           {
@@ -54,7 +55,8 @@
           "pageBreakBefore": false,
           "spaceAfterPt": 8.0,
           "spaceBeforePt": 0.0,
-          "style": "Normal"
+          "style": "Normal",
+          "tabs": []
         },
         "runs": [
           {
@@ -317,7 +319,8 @@
           "pageBreakBefore": false,
           "spaceAfterPt": 8.0,
           "spaceBeforePt": 0.0,
-          "style": "Normal"
+          "style": "Normal",
+          "tabs": []
         },
         "runs": [
           {
@@ -362,7 +365,8 @@
                 "pageBreakBefore": false,
                 "spaceAfterPt": 8.0,
                 "spaceBeforePt": 0.0,
-                "style": "Normal"
+                "style": "Normal",
+                "tabs": []
               },
               "runs": [
                 {
@@ -403,7 +407,8 @@
                 "pageBreakBefore": false,
                 "spaceAfterPt": 8.0,
                 "spaceBeforePt": 0.0,
-                "style": "Normal"
+                "style": "Normal",
+                "tabs": []
               },
               "runs": [
                 {
@@ -443,7 +448,8 @@
                 "pageBreakBefore": false,
                 "spaceAfterPt": 8.0,
                 "spaceBeforePt": 0.0,
-                "style": "Normal"
+                "style": "Normal",
+                "tabs": []
               },
               "runs": [
                 {
@@ -483,7 +489,8 @@
                 "pageBreakBefore": false,
                 "spaceAfterPt": 8.0,
                 "spaceBeforePt": 0.0,
-                "style": "Normal"
+                "style": "Normal",
+                "tabs": []
               },
               "runs": [
                 {
@@ -541,7 +548,8 @@
           "pageBreakBefore": false,
           "spaceAfterPt": 8.0,
           "spaceBeforePt": 0.0,
-          "style": "Normal"
+          "style": "Normal",
+          "tabs": []
         },
         "runs": [
           {
@@ -595,7 +603,8 @@
                         "pageBreakBefore": false,
                         "spaceAfterPt": 8.0,
                         "spaceBeforePt": 0.0,
-                        "style": "Normal"
+                        "style": "Normal",
+                        "tabs": []
                       },
                       "runs": [
                         {
@@ -643,7 +652,8 @@
                         "pageBreakBefore": false,
                         "spaceAfterPt": 8.0,
                         "spaceBeforePt": 0.0,
-                        "style": "Normal"
+                        "style": "Normal",
+                        "tabs": []
                       },
                       "runs": [
                         {
@@ -697,7 +707,8 @@
                         "pageBreakBefore": false,
                         "spaceAfterPt": 8.0,
                         "spaceBeforePt": 0.0,
-                        "style": "Normal"
+                        "style": "Normal",
+                        "tabs": []
                       },
                       "runs": [
                         {
@@ -745,7 +756,8 @@
                         "pageBreakBefore": false,
                         "spaceAfterPt": 8.0,
                         "spaceBeforePt": 0.0,
-                        "style": "Normal"
+                        "style": "Normal",
+                        "tabs": []
                       },
                       "runs": [
                         {
@@ -795,7 +807,8 @@
           "name": "pixel.png"
         },
         "type": "image",
-        "width_pt": 96.0
+        "width_pt": 96.0,
+        "wrap": "inline"
       }
     ],
     "bookmarks": [
@@ -864,7 +877,8 @@
           "pageBreakBefore": false,
           "spaceAfterPt": 8.0,
           "spaceBeforePt": 0.0,
-          "style": "Normal"
+          "style": "Normal",
+          "tabs": []
         },
         "runs": [
           {
@@ -931,7 +945,8 @@
           "pageBreakBefore": false,
           "spaceAfterPt": 8.0,
           "spaceBeforePt": 0.0,
-          "style": "Normal"
+          "style": "Normal",
+          "tabs": []
         },
         "runs": [
           {

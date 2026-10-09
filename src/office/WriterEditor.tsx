@@ -6,7 +6,7 @@
  * the model runs on input. Structural changes (lists, tables, images, page
  * setup, styles) mutate the model directly, which keeps DOCX/ODT export exact.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { pickFileBytes } from "../lib/mobile";
 import {
@@ -31,6 +31,7 @@ import {
   Minimize2,
   Minus,
   Outdent,
+  Paintbrush,
   Printer,
   Redo2,
   Save,
@@ -38,6 +39,7 @@ import {
   SeparatorHorizontal,
   Sparkles,
   SpellCheck,
+  Stamp,
   Strikethrough,
   Table as TableIcon,
   Underline,
@@ -63,8 +65,10 @@ import {
   type ParaProps,
   type Run,
   type SectionProps,
+  type TabStop,
   type TableData,
   type TocEntry,
+  type Watermark,
 } from "../lib/office-types";
 import {
   defaultPageSetup,
@@ -151,7 +155,9 @@ import { WriterAiDialog, type WriterAiTask } from "./writer/WriterAiDialog";
 import { AI_EDIT_MAX_CHARS, useAiStatus } from "./ai/editor-ai";
 import type { AiEditResult } from "../lib/types";
 import { measureBlocks } from "./writer/measure";
-import { paginate, pageOfBlock, type Fragment, type PageLayout } from "./writer/pagination";
+import { paginate, pageOfBlock, type BlockMetrics, type Fragment, type PageLayout } from "./writer/pagination";
+import { cellStartColumns, isRectangular, mergeCells, splitCell, type CellRange } from "./writer/table-ops";
+import { WriterRuler } from "./writer/WriterRuler";
 import { LayoutList, ListTree, ListOrdered as TocIcon, RefreshCw } from "lucide-react";
 
 export { runsToHtml, domToRuns };
@@ -245,6 +251,11 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [insertTable, setInsertTable] = useState(false);
   const [selectedImage, setSelectedImage] = useState<number | null>(null);
+  const [watermarkOpen, setWatermarkOpen] = useState(false);
+  // Format painter: captures the focused paragraph's formatting and applies it
+  // to the next paragraph the user clicks (one-shot, like Word's single click).
+  // Escape or a second press of the ribbon button cancels it.
+  const [formatPainter, setFormatPainter] = useState<SelectionInfo | null>(null);
   const [measuredPageCount, setMeasuredPageCount] = useState(1);
   // V2.5: a real paginated view. The page layout is measured from a hidden
   // probe column and computed by the pagination engine; "continuous" keeps the
@@ -265,6 +276,13 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   const [layoutVersion, setLayoutVersion] = useState(0);
   const probeRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  // Incremental pagination (Phase 7): the previous block list gives the dirty
+  // indices by reference equality, and the cache reuses the metrics of blocks
+  // that did not change. Layout inputs (view, zoom, page geometry) invalidate
+  // the whole cache.
+  const metricsCacheRef = useRef<Map<number, BlockMetrics>>(new Map());
+  const metricsLayoutKeyRef = useRef("");
+  const previousBlocksRef = useRef<Block[] | null>(null);
   // Caret the model wants placed after a structural edit. It is consumed by
   // the layout effect below, in the same commit that renders the new blocks.
   const pendingFocus = useRef<{ index: number; offset: number; scope: string } | null>(null);
@@ -288,6 +306,9 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   // layout effect uses so the caret never jumps to the start.
   const pageCaret = useRef<{ block: number; offset: number; from: number } | null>(null);
   const picker = useTablePicker();
+  // Last paragraph that received focus: the ruler and the format painter target
+  // it because clicking a ruler or ribbon control moves focus off the editable.
+  const [activeBlockIndex, setActiveBlockIndex] = useState<number | null>(null);
 
   const document = tab.model;
   const revisionAuthor = document.metadata.author.trim() || "You";
@@ -390,7 +411,10 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
       if (mod && (event.key === "y" || event.key === "Y")) {
         event.preventDefault();
         redoRef.current();
+        return;
       }
+      // Escape always disarms the format painter (Word behaves the same).
+      if (event.key === "Escape") setFormatPainter(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -462,7 +486,35 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     if (view !== "paginated" || editingHeader) return;
     const probe = probeRef.current;
     if (!probe) return;
-    const metrics = measureBlocks(probe, document.blocks);
+    // Only re-measure what changed. A different block list length means an
+    // insertion/removal shifted everything from the first difference on, so
+    // that whole tail is dirty; otherwise reference equality finds the edited
+    // blocks. Layout changes clear the cache entirely.
+    const layoutKey = `${view}|${zoom}|${contentWidthPx}|${contentHeightPx}|${layoutVersion}`;
+    const cache = metricsCacheRef.current;
+    let dirty: Set<number>;
+    if (metricsLayoutKeyRef.current !== layoutKey) {
+      cache.clear();
+      dirty = new Set(document.blocks.map((_, index) => index));
+    } else {
+      const previous = previousBlocksRef.current;
+      dirty = new Set<number>();
+      if (!previous || previous.length !== document.blocks.length) {
+        const limit = Math.min(previous?.length ?? 0, document.blocks.length);
+        let firstDifference = 0;
+        while (previous && firstDifference < limit && previous[firstDifference] === document.blocks[firstDifference]) {
+          firstDifference += 1;
+        }
+        for (let index = firstDifference; index < document.blocks.length; index += 1) dirty.add(index);
+      } else {
+        document.blocks.forEach((block, index) => {
+          if (block !== previous[index]) dirty.add(index);
+        });
+      }
+    }
+    metricsLayoutKeyRef.current = layoutKey;
+    previousBlocksRef.current = document.blocks;
+    const metrics = measureBlocks(probe, document.blocks, dirty, cache);
     const sections = documentSections(document);
     // V3: each block knows its section; a section break switches the geometry
     // and the following pages use that section's page setup. Footnote text is
@@ -556,8 +608,60 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   // Selection tracking (focusin gives the edited paragraph)
   // -------------------------------------------------------------------------
 
+  /**
+   * Applies a captured format-painter source to one paragraph and its runs.
+   *
+   * A single `updateBlock` keeps the whole application in one undo step, and
+   * the selection state is refreshed so the ribbon follows the new formatting.
+   */
+  const applyPainterAt = (index: number, source: SelectionInfo) => {
+    const block = currentBlocks()[index];
+    if (block?.type !== "paragraph") return;
+    const painterRun = {
+      bold: source.run.bold,
+      italic: source.run.italic,
+      underline: source.run.underline,
+      strike: source.run.strike,
+      color: source.run.color,
+      highlight: source.run.highlight,
+      font: source.run.font,
+      sizePt: source.run.sizePt,
+      superscript: source.run.superscript,
+      subscript: source.run.subscript,
+    };
+    const props: ParaProps = { ...block.props, ...source.paragraph };
+    const runs = (block.runs.length > 0 ? block.runs : [emptyRun()]).map((run) => ({ ...run, ...painterRun }));
+    updateBlock(index, { ...block, props, runs });
+    setSelection({ paragraph: props, run: runs[0] });
+  };
+
   const handleParagraphFocus = (block: Extract<Block, { type: "paragraph" }>) => {
     setSelection({ paragraph: block.props, run: block.runs[0] ?? emptyRun() });
+    const focused = activeIndex();
+    if (focused !== null) setActiveBlockIndex(focused);
+    const painter = formatPainter;
+    if (painter) {
+      // One-shot policy: the painter applies to exactly one target paragraph
+      // and turns itself off, like a single click on Word's format painter.
+      setFormatPainter(null);
+      if (focused !== null) applyPainterAt(focused, painter);
+    }
+  };
+
+  /** Arms the painter from the focused paragraph, or disarms it when active. */
+  const toggleFormatPainter = () => {
+    if (formatPainter) {
+      setFormatPainter(null);
+      return;
+    }
+    const index = activeBlockIndex ?? activeIndex();
+    const block = index !== null ? currentBlocks()[index] : null;
+    const paragraph = (block?.type === "paragraph" ? block : null) ?? activeParagraph();
+    if (!paragraph) return;
+    setFormatPainter({
+      paragraph: { ...paragraph.props },
+      run: { ...(paragraph.runs[0] ?? emptyRun()) },
+    });
   };
 
   const activeIndex = (): number | null => {
@@ -650,6 +754,20 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     const block = currentBlocks()[index];
     if (block?.type !== "paragraph") return;
     updateBlock(index, { ...block, props: { ...block.props, ...patch } });
+  };
+
+  /** Paragraph patch for a specific block (the ruler targets the last one). */
+  const applyParaChangeAt = (index: number, patch: Partial<ParaProps>) => {
+    const block = currentBlocks()[index];
+    if (block?.type !== "paragraph") return;
+    updateBlock(index, { ...block, props: { ...block.props, ...patch } });
+  };
+
+  /** Applies a tab-stop list to the paragraph the ruler is showing. */
+  const applyTabs = (tabs: TabStop[]) => {
+    const index = activeBlockIndex ?? activeIndex();
+    if (index === null) return;
+    applyParaChangeAt(index, { tabs });
   };
 
   const applyRunChange = (patch: Partial<Run>) => {
@@ -871,7 +989,15 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
       const image: ImageData = { name, mime, dataBase64: btoa(base64), alt: "" };
       const active = window.document.activeElement as HTMLElement | null;
       const index = active?.dataset?.blockIndex ? Number(active.dataset.blockIndex) + 1 : currentBlocks().length;
-      insertBlockAfter(index - 1, { type: "image", image, widthPt: 320, heightPt: 220, align: "center", caption: "" });
+      insertBlockAfter(index - 1, {
+        type: "image",
+        image,
+        widthPt: 320,
+        heightPt: 220,
+        align: "center",
+        caption: "",
+        wrap: "inline",
+      });
     } catch (error) {
       reportError(error, t);
     }
@@ -1408,6 +1534,13 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   const pageHeight = document.page.heightPt * (96 / 72) * zoom;
   const marginTop = document.page.marginTopPt * (96 / 72) * zoom;
   const marginX = document.page.marginLeftPt * (96 / 72) * zoom;
+  // The ruler follows the geometry of the first laid-out page's section.
+  const rulerSetup = (pages[0] ? sections[pages[0].sectionIndex] : undefined)?.page ?? document.page;
+  // The ruler reads the live model, not the selection snapshot: editing tabs
+  // updates the block but not the (already stored) SelectionInfo.
+  const rulerIndex = activeBlockIndex;
+  const rulerBlock = rulerIndex !== null ? document.blocks[rulerIndex] : undefined;
+  const rulerParagraph = rulerBlock?.type === "paragraph" ? rulerBlock.props : (selection?.paragraph ?? null);
   const styleOptions = document.styles.map((style) => ({ value: style.id, label: style.name }));
   const activeStyle = selection?.paragraph.style ?? "Normal";
   const activeRun = selection?.run;
@@ -1755,6 +1888,12 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                 title={t("writer.highlight")}
               />
               <ToolButton icon={<Eraser size={16} />} onClick={clearFormatting} title={t("writer.clearFormatting")} />
+              <ToolButton
+                icon={<Paintbrush size={16} />}
+                onClick={toggleFormatPainter}
+                active={formatPainter !== null}
+                title={t("writer.formatPainter")}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("writer.paragraph")}>
               <ToolButton
@@ -1966,6 +2105,13 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                 title={t("writer.sections")}
               />
             </RibbonGroup>
+            <RibbonGroup label={t("writer.watermark")}>
+              <ToolButton
+                icon={<Stamp size={16} />}
+                label={t("writer.watermark")}
+                onClick={() => setWatermarkOpen(true)}
+              />
+            </RibbonGroup>
             <RibbonGroup label={t("writer.spacing")}>
               <ToolNumber
                 value={selection?.paragraph.spaceBeforePt ?? 0}
@@ -2171,6 +2317,16 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         <div className="editor-scroll">
           {view === "paginated" && !editingHeader ? (
             <div className="writer-pages">
+              <WriterRuler
+                pageWidthPt={rulerSetup.widthPt}
+                marginLeftPt={rulerSetup.marginLeftPt}
+                marginRightPt={rulerSetup.marginRightPt}
+                zoom={zoom}
+                props={rulerParagraph}
+                onChange={(patch) => {
+                  if (patch.tabs) applyTabs(patch.tabs);
+                }}
+              />
               {pages.map((page, pageIndex) => {
                 const section = sections[page.sectionIndex] ?? sections[0];
                 const setup = section.page;
@@ -2213,6 +2369,14 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                     data-section-index={page.sectionIndex}
                     style={{ width: sheetWidth, minHeight: sheetHeight, padding: `${marginTop}px ${marginX}px` }}
                   >
+                    {document.watermark ? (
+                      <WatermarkLayer
+                        watermark={document.watermark}
+                        widthPx={sheetWidth}
+                        heightPx={sheetHeight}
+                        zoom={zoom}
+                      />
+                    ) : null}
                     {headerBlocks.length > 0 ? (
                       <div className="writer-header-zone muted">
                         <StaticBlocks
@@ -2302,6 +2466,9 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
               onMouseDown={handlePageMouseDown}
               style={{ width: pageWidth, minHeight: pageHeight, padding: `${marginTop}px ${marginX}px` }}
             >
+              {document.watermark ? (
+                <WatermarkLayer watermark={document.watermark} widthPx={pageWidth} heightPx={pageHeight} zoom={zoom} />
+              ) : null}
               {editingHeader ? (
                 <div className="writer-header-zone">
                   {renderBlocks(editingHeader === "header" ? document.header : document.footer, editingHeader)}
@@ -2435,15 +2602,31 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         <Dialog title={t("writer.imageOptions")} onClose={() => setSelectedImage(null)}>
           <ImageOptions
             block={document.blocks[selectedImage]}
-            onChange={(width, height, align, caption) =>
+            onChange={(width, height, align, caption, wrap) =>
               update((doc) => {
                 const blocks = [...doc.blocks];
                 const block = blocks[selectedImage];
                 if (block?.type === "image")
-                  blocks[selectedImage] = { ...block, widthPt: width, heightPt: height, align, caption };
+                  blocks[selectedImage] = { ...block, widthPt: width, heightPt: height, align, caption, wrap };
                 return { ...doc, blocks };
               })
             }
+          />
+        </Dialog>
+      ) : null}
+
+      {watermarkOpen ? (
+        <Dialog title={t("writer.watermark")} onClose={() => setWatermarkOpen(false)}>
+          <WatermarkOptions
+            watermark={document.watermark ?? null}
+            onApply={(watermark) => {
+              update((doc) => ({ ...doc, watermark }));
+              setWatermarkOpen(false);
+            }}
+            onRemove={() => {
+              update((doc) => ({ ...doc, watermark: null }));
+              setWatermarkOpen(false);
+            }}
           />
         </Dialog>
       ) : null}
@@ -2775,19 +2958,7 @@ function substituteTokens(runs: Run[], page: number, pages: number): Run[] {
   }));
 }
 
-function StaticParagraph({
-  block,
-  index,
-  scope,
-  zoom,
-  page = 0,
-  pages = 0,
-  noteNumbers,
-  showRevisions = true,
-  listNumber,
-  fieldValues,
-  onOpen,
-}: {
+interface StaticParagraphProps {
   block: Extract<Block, { type: "paragraph" }>;
   index: number;
   scope: string;
@@ -2802,7 +2973,50 @@ function StaticParagraph({
   fieldValues?: Record<string, string>;
   /** Click target for header/footer previews; page fragments use pointer events. */
   onOpen?: () => void;
-}) {
+}
+
+/** Shallow equality for the small maps threaded through the static renderers. */
+function sameCounts(left?: Record<string, unknown>, right?: Record<string, unknown>): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  const keys = Object.keys(left);
+  return keys.length === Object.keys(right).length && keys.every((key) => left[key] === right[key]);
+}
+
+/**
+ * The probe re-renders on every keystroke, so an unchanged paragraph must not
+ * be reconciled again. `onOpen` is deliberately compared by nothing: the
+ * handlers are tiny closures over a stable index and would otherwise defeat
+ * the memo on every parent render.
+ */
+function sameStaticParagraph(prev: StaticParagraphProps, next: StaticParagraphProps): boolean {
+  return (
+    prev.block === next.block &&
+    prev.index === next.index &&
+    prev.scope === next.scope &&
+    prev.zoom === next.zoom &&
+    prev.page === next.page &&
+    prev.pages === next.pages &&
+    prev.showRevisions === next.showRevisions &&
+    prev.listNumber === next.listNumber &&
+    sameCounts(prev.noteNumbers, next.noteNumbers) &&
+    sameCounts(prev.fieldValues, next.fieldValues)
+  );
+}
+
+const StaticParagraph = memo(function StaticParagraph({
+  block,
+  index,
+  scope,
+  zoom,
+  page = 0,
+  pages = 0,
+  noteNumbers,
+  showRevisions = true,
+  listNumber,
+  fieldValues,
+  onOpen,
+}: StaticParagraphProps) {
   const props = block.props;
   const listMarker = props.list ? orderedListMarker(props, listNumber) : null;
   // Callers with full document context pass the map; previews without it still
@@ -2849,7 +3063,7 @@ function StaticParagraph({
       />
     </div>
   );
-}
+}, sameStaticParagraph);
 
 function StaticTable({ table, zoom, from = 0, to }: { table: TableData; zoom: number; from?: number; to?: number }) {
   const end = to ?? table.rows.length;
@@ -2921,18 +3135,7 @@ function TocView({ entries, onOpen }: { entries: TocEntry[]; onOpen: (anchor: nu
   );
 }
 
-function StaticBlocks({
-  blocks,
-  scope,
-  page,
-  pages,
-  zoom,
-  noteNumbers,
-  showRevisions = true,
-  listNumbers,
-  fieldValues,
-  onOpen,
-}: {
+interface StaticBlocksProps {
   blocks: Block[];
   scope: string;
   page: number;
@@ -2944,7 +3147,39 @@ function StaticBlocks({
   listNumbers?: Map<number, number>;
   fieldValues?: Record<string, string>;
   onOpen: (index: number) => void;
-}) {
+}
+
+/** Reference equality per block; unchanged blocks are the ones the probe reuses. */
+function sameBlocks(prev: Block[], next: Block[]): boolean {
+  return prev === next || (prev.length === next.length && prev.every((block, index) => block === next[index]));
+}
+
+function sameStaticBlocks(prev: StaticBlocksProps, next: StaticBlocksProps): boolean {
+  return (
+    prev.scope === next.scope &&
+    sameBlocks(prev.blocks, next.blocks) &&
+    prev.page === next.page &&
+    prev.pages === next.pages &&
+    prev.zoom === next.zoom &&
+    prev.showRevisions === next.showRevisions &&
+    prev.listNumbers === next.listNumbers &&
+    sameCounts(prev.noteNumbers, next.noteNumbers) &&
+    sameCounts(prev.fieldValues, next.fieldValues)
+  );
+}
+
+const StaticBlocks = memo(function StaticBlocks({
+  blocks,
+  scope,
+  page,
+  pages,
+  zoom,
+  noteNumbers,
+  showRevisions = true,
+  listNumbers,
+  fieldValues,
+  onOpen,
+}: StaticBlocksProps) {
   return (
     <>
       {blocks.map((block, index) => {
@@ -2991,7 +3226,7 @@ function StaticBlocks({
       })}
     </>
   );
-}
+}, sameStaticBlocks);
 
 /** One page fragment: whole block, paragraph lines or table rows. */
 function PageFragmentView({
@@ -3360,6 +3595,7 @@ function BlockView({
   showRevisions,
   listNumber,
   fieldValues,
+  selectedImage,
   onSelectImage,
   onFocusParagraph,
   onSync,
@@ -3385,6 +3621,9 @@ function BlockView({
   onStructure: (action: StructureAction) => void;
   onOpenBlock: (index: number) => void;
 }) {
+  // Live size while an image handle is dragged. The model is only written on
+  // pointerup, so the whole drag is one undo step.
+  const [imagePreview, setImagePreview] = useState<{ widthPt: number; heightPt: number } | null>(null);
   if (block.type === "paragraph") {
     return (
       <ParagraphView
@@ -3407,19 +3646,38 @@ function BlockView({
     return <TableView block={block} index={index} zoom={zoom} onUpdate={onUpdate} onSyncCell={onSyncCell} />;
   }
   if (block.type === "image") {
+    const widthPt = imagePreview?.widthPt ?? block.widthPt;
+    const heightPt = imagePreview?.heightPt ?? block.heightPt;
     return (
-      <figure className="writer-image" style={{ textAlign: block.align as "left" | "center" | "right" }}>
-        <button
-          type="button"
-          onClick={() => onSelectImage(index)}
-          style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}
-        >
-          <img
-            src={`data:${block.image.mime};base64,${block.image.dataBase64}`}
-            alt={block.image.alt}
-            style={{ width: block.widthPt * (96 / 72) * zoom }}
-          />
-        </button>
+      <figure
+        className={`writer-image${selectedImage === index ? " is-selected" : ""}`}
+        style={{ textAlign: block.align as "left" | "center" | "right" }}
+      >
+        <span className="writer-image-frame">
+          <button
+            type="button"
+            onClick={() => onSelectImage(index)}
+            style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}
+          >
+            <img
+              src={`data:${block.image.mime};base64,${block.image.dataBase64}`}
+              alt={block.image.alt}
+              style={{ width: widthPt * (96 / 72) * zoom, height: heightPt * (96 / 72) * zoom }}
+            />
+          </button>
+          {selectedImage === index ? (
+            <ImageSizeHandles
+              widthPt={widthPt}
+              heightPt={heightPt}
+              zoom={zoom}
+              onPreview={setImagePreview}
+              onCommit={(next) => {
+                setImagePreview(null);
+                onUpdate({ ...block, widthPt: next.widthPt, heightPt: next.heightPt });
+              }}
+            />
+          ) : null}
+        </span>
         <figcaption>
           <button
             type="button"
@@ -3450,6 +3708,104 @@ function BlockView({
     return <TocView entries={block.entries} onOpen={onOpenBlock} />;
   }
   return <hr className="writer-rule" />;
+}
+
+/**
+ * The four corner grips of a selected image.
+ *
+ * A drag always preserves the aspect ratio (the horizontal delta drives the
+ * width; the height follows), clamps to a 24pt minimum, previews locally and
+ * commits the final size once on pointerup.
+ */
+function ImageSizeHandles({
+  widthPt,
+  heightPt,
+  zoom,
+  onPreview,
+  onCommit,
+}: {
+  widthPt: number;
+  heightPt: number;
+  zoom: number;
+  onPreview: (size: { widthPt: number; heightPt: number }) => void;
+  onCommit: (size: { widthPt: number; heightPt: number }) => void;
+}) {
+  const dragRef = useRef<{
+    startX: number;
+    startWidthPt: number;
+    directionX: 1 | -1;
+    widthPt: number;
+    heightPt: number;
+    aspect: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const move = (event: PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const dx = ((event.clientX - drag.startX) * 72) / 96 / zoom;
+      let width = Math.max(24, drag.startWidthPt + drag.directionX * dx);
+      let height = width / drag.aspect;
+      if (height < 24) {
+        height = 24;
+        width = height * drag.aspect;
+      }
+      drag.widthPt = width;
+      drag.heightPt = height;
+      onPreview({ widthPt: width, heightPt: height });
+    };
+    const up = () => {
+      const drag = dragRef.current;
+      dragRef.current = null;
+      if (!drag) return;
+      onCommit({ widthPt: drag.widthPt, heightPt: drag.heightPt });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+  });
+
+  const start = (event: React.PointerEvent<HTMLSpanElement>, directionX: 1 | -1) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dragRef.current = {
+      startX: event.clientX,
+      startWidthPt: widthPt,
+      directionX,
+      widthPt,
+      heightPt,
+      aspect: widthPt / Math.max(1, heightPt),
+    };
+    try {
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    } catch {
+      // Pointer capture is unavailable (jsdom, older webviews).
+    }
+  };
+
+  const corners: Array<{ corner: string; directionX: 1 | -1 }> = [
+    { corner: "nw", directionX: -1 },
+    { corner: "ne", directionX: 1 },
+    { corner: "sw", directionX: -1 },
+    { corner: "se", directionX: 1 },
+  ];
+  return (
+    <>
+      {corners.map(({ corner, directionX }) => (
+        <span
+          key={corner}
+          className={`writer-image-handle is-${corner}`}
+          data-image-handle={corner}
+          onPointerDown={(event) => start(event, directionX)}
+        />
+      ))}
+    </>
+  );
 }
 
 /**
@@ -3705,7 +4061,79 @@ function TableView({
   const t = useT();
   const table = block.table;
   const [menuCell, setMenuCell] = useState<{ row: number; cell: number } | null>(null);
+  // Selected cell rectangle (grid coordinates) for merge, and the anchor a
+  // drag or shift-click extends from.
+  const [selection, setSelection] = useState<CellRange | null>(null);
+  const anchorRef = useRef<{ row: number; col: number } | null>(null);
+  const draggingRef = useRef(false);
+  // Column resize: a local preview while the pointer moves, committed to the
+  // model once on pointerup so the whole drag is one undo step.
+  const resizeRef = useRef<{ col: number; startX: number; startWidthPt: number; widthPt: number } | null>(null);
+  const [resize, setResize] = useState<{ col: number; widthPt: number } | null>(null);
   const updateTable = (mutate: (table: TableData) => TableData) => onUpdate({ type: "table", table: mutate(table) });
+
+  useEffect(() => {
+    const move = (event: PointerEvent) => {
+      const drag = resizeRef.current;
+      if (!drag) return;
+      const widthPt = Math.max(24, drag.startWidthPt + ((event.clientX - drag.startX) * 72) / 96 / zoom);
+      drag.widthPt = widthPt;
+      setResize({ col: drag.col, widthPt });
+    };
+    const up = () => {
+      const drag = resizeRef.current;
+      resizeRef.current = null;
+      setResize(null);
+      draggingRef.current = false;
+      if (!drag) return;
+      updateTable((current) => ({
+        ...current,
+        columnWidthsPt: current.columnWidthsPt.map((width, columnIndex) =>
+          columnIndex === drag.col ? drag.widthPt : width,
+        ),
+      }));
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+  });
+
+  const starts = cellStartColumns(table);
+  const inSelection = (row: number, col: number) =>
+    selection !== null &&
+    row >= selection.row0 &&
+    row <= selection.row1 &&
+    col >= selection.col0 &&
+    col <= selection.col1;
+
+  /** Sets (or, while extending, grows) the selected rectangle. */
+  const selectPosition = (row: number, col: number, extend: boolean) => {
+    const anchor = anchorRef.current;
+    if (extend && anchor) {
+      setSelection({
+        row0: Math.min(anchor.row, row),
+        col0: Math.min(anchor.col, col),
+        row1: Math.max(anchor.row, row),
+        col1: Math.max(anchor.col, col),
+      });
+      return;
+    }
+    anchorRef.current = { row, col };
+    setSelection({ row0: row, col0: col, row1: row, col1: col });
+  };
+
+  const menuCanSplit = (() => {
+    if (!menuCell) return false;
+    const cell = table.rows[menuCell.row]?.cells[menuCell.cell];
+    return Boolean(cell && (Math.max(1, cell.colspan) > 1 || Math.max(1, cell.rowspan) > 1));
+  })();
+  const selectionValid = selection !== null && isRectangular(table, selection);
+  const resizeWidth = (columnIndex: number, width: number) => (resize?.col === columnIndex ? resize.widthPt : width);
 
   return (
     <div className="writer-table-wrap">
@@ -3714,42 +4142,84 @@ function TableView({
         style={{
           width: `${(table.columnWidthsPt.reduce((sum, value) => sum + value, 0) || 400) * (96 / 72) * zoom}px`,
         }}
+        onPointerUp={() => {
+          draggingRef.current = false;
+        }}
       >
         <colgroup>
           {table.columnWidthsPt.map((width, columnIndex) => (
-            <col key={columnIndex} style={{ width: `${width * (96 / 72) * zoom}px` }} />
+            <col key={columnIndex} style={{ width: `${resizeWidth(columnIndex, width) * (96 / 72) * zoom}px` }} />
           ))}
         </colgroup>
         <tbody>
           {table.rows.map((row, rowIndex) => (
             <tr key={rowIndex} className={row.header ? "is-header" : ""}>
-              {row.cells.map((cell, cellIndex) => (
-                <td
-                  key={cellIndex}
-                  colSpan={cell.colspan}
-                  rowSpan={cell.rowspan}
-                  style={{
-                    background: cell.background ?? undefined,
-                    textAlign: (cell.align || "left") as "left" | "center" | "right",
-                    verticalAlign: (cell.valign || "top") as "top" | "middle" | "bottom",
-                  }}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    setMenuCell({ row: rowIndex, cell: cellIndex });
-                  }}
-                >
-                  {(cell.blocks.length > 0 ? cell.blocks : [newParaBlock()]).map((inner, innerIndex) =>
-                    inner.type === "paragraph" ? (
-                      <CellParagraph
-                        key={innerIndex}
-                        block={inner}
-                        tablePath={[index, rowIndex, cellIndex, innerIndex]}
-                        onSyncCell={onSyncCell}
-                      />
-                    ) : null,
-                  )}
-                </td>
-              ))}
+              {row.cells.map((cell, cellIndex) => {
+                const gridCol = starts[rowIndex]?.[cellIndex] ?? cellIndex;
+                const lastCol = gridCol + Math.max(1, cell.colspan) - 1;
+                return (
+                  <td
+                    key={cellIndex}
+                    colSpan={cell.colspan}
+                    rowSpan={cell.rowspan}
+                    className={inSelection(rowIndex, gridCol) ? "is-selected" : undefined}
+                    data-grid-row={rowIndex}
+                    data-grid-col={gridCol}
+                    style={{
+                      background: cell.background ?? undefined,
+                      textAlign: (cell.align || "left") as "left" | "center" | "right",
+                      verticalAlign: (cell.valign || "top") as "top" | "middle" | "bottom",
+                    }}
+                    onPointerDown={(event) => {
+                      if (event.button !== 0) return;
+                      draggingRef.current = true;
+                      selectPosition(rowIndex, gridCol, event.shiftKey);
+                    }}
+                    onPointerEnter={() => {
+                      if (!draggingRef.current) return;
+                      selectPosition(rowIndex, gridCol, true);
+                    }}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      if (!inSelection(rowIndex, gridCol)) selectPosition(rowIndex, gridCol, false);
+                      setMenuCell({ row: rowIndex, cell: cellIndex });
+                    }}
+                  >
+                    {(cell.blocks.length > 0 ? cell.blocks : [newParaBlock()]).map((inner, innerIndex) =>
+                      inner.type === "paragraph" ? (
+                        <CellParagraph
+                          key={innerIndex}
+                          block={inner}
+                          tablePath={[index, rowIndex, cellIndex, innerIndex]}
+                          onSyncCell={onSyncCell}
+                        />
+                      ) : null,
+                    )}
+                    <span
+                      className="writer-col-resize"
+                      data-col-resize={lastCol}
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const width = table.columnWidthsPt[lastCol] ?? 64;
+                        resizeRef.current = {
+                          col: lastCol,
+                          startX: event.clientX,
+                          startWidthPt: width,
+                          widthPt: width,
+                        };
+                        setResize({ col: lastCol, widthPt: width });
+                        try {
+                          event.currentTarget.setPointerCapture?.(event.pointerId);
+                        } catch {
+                          // Pointer capture is unavailable (jsdom, older webviews).
+                        }
+                      }}
+                      onDoubleClick={(event) => event.stopPropagation()}
+                    />
+                  </td>
+                );
+              })}
             </tr>
           ))}
         </tbody>
@@ -3860,6 +4330,32 @@ function TableView({
             >
               {t("writer.tableToggleBorders")}
             </button>
+            <button
+              type="button"
+              className="btn btn-soft"
+              disabled={!selectionValid}
+              onClick={() => {
+                if (!selection) return;
+                updateTable((current) => mergeCells(current, selection));
+                setSelection(null);
+                setMenuCell(null);
+              }}
+            >
+              {t("writer.tableMerge")}
+            </button>
+            <button
+              type="button"
+              className="btn btn-soft"
+              disabled={!menuCanSplit}
+              onClick={() => {
+                if (!menuCell) return;
+                updateTable((current) => splitCell(current, menuCell.row, menuCell.cell));
+                setSelection(null);
+                setMenuCell(null);
+              }}
+            >
+              {t("writer.tableSplit")}
+            </button>
           </div>
         </Dialog>
       ) : null}
@@ -3903,41 +4399,176 @@ function ImageOptions({
   onChange,
 }: {
   block: Block;
-  onChange: (width: number, height: number, align: string, caption: string) => void;
+  onChange: (width: number, height: number, align: string, caption: string, wrap: string) => void;
 }) {
+  const t = useT();
   if (block.type !== "image") return null;
   const aspect = block.widthPt / Math.max(1, block.heightPt);
+  const wrap = block.wrap || "inline";
+  const commit = (width: number, height: number, align: string, caption: string, wrapValue: string) =>
+    onChange(width, height, align, caption, wrapValue);
   return (
     <div className="stack">
       <label className="field">
-        <span>Width (pt)</span>
+        <span>{t("writer.imageWidth")}</span>
         <input
           type="number"
           value={Math.round(block.widthPt)}
           onChange={(event) => {
             const width = Number(event.target.value);
-            onChange(width, Math.round(width / aspect), block.align, block.caption);
+            commit(width, Math.round(width / aspect), block.align, block.caption, wrap);
           }}
         />
       </label>
       <label className="field">
-        <span>Caption</span>
+        <span>{t("writer.imageCaption")}</span>
         <input
           value={block.caption}
-          onChange={(event) => onChange(block.widthPt, block.heightPt, block.align, event.target.value)}
+          onChange={(event) => commit(block.widthPt, block.heightPt, block.align, event.target.value, wrap)}
         />
       </label>
       <label className="field">
-        <span>Alignment</span>
+        <span>{t("writer.imageAlign")}</span>
         <select
           value={block.align}
-          onChange={(event) => onChange(block.widthPt, block.heightPt, event.target.value, block.caption)}
+          onChange={(event) => commit(block.widthPt, block.heightPt, event.target.value, block.caption, wrap)}
         >
-          <option value="left">Left</option>
-          <option value="center">Center</option>
-          <option value="right">Right</option>
+          <option value="left">{t("writer.imageAlignLeft")}</option>
+          <option value="center">{t("writer.imageAlignCenter")}</option>
+          <option value="right">{t("writer.imageAlignRight")}</option>
         </select>
       </label>
+      <label className="field">
+        <span>{t("writer.imageWrap")}</span>
+        <select
+          value={wrap}
+          onChange={(event) => commit(block.widthPt, block.heightPt, block.align, block.caption, event.target.value)}
+        >
+          <option value="inline">{t("writer.imageWrapInline")}</option>
+          <option value="square">{t("writer.imageWrapSquare")}</option>
+          <option value="topBottom">{t("writer.imageWrapTopBottom")}</option>
+        </select>
+      </label>
+    </div>
+  );
+}
+
+/** Watermark defaults: a large translucent diagonal stamp. */
+const WATERMARK_DEFAULTS: Watermark = { text: "", color: null, opacity: 0.2, rotation: -45, fontPt: 72, bold: true };
+
+function WatermarkOptions({
+  watermark,
+  onApply,
+  onRemove,
+}: {
+  watermark: Watermark | null;
+  onApply: (watermark: Watermark) => void;
+  onRemove: () => void;
+}) {
+  const t = useT();
+  const [draft, setDraft] = useState<Watermark>(watermark ? { ...watermark } : { ...WATERMARK_DEFAULTS });
+  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+  return (
+    <div className="stack">
+      <div className="row">
+        <button
+          type="button"
+          className="btn btn-soft"
+          onClick={() => setDraft((current) => ({ ...current, text: t("writer.watermarkDraft"), bold: true }))}
+        >
+          {t("writer.watermarkDraft")}
+        </button>
+        <button
+          type="button"
+          className="btn btn-soft"
+          onClick={() => setDraft((current) => ({ ...current, text: t("writer.watermarkConfidential"), bold: true }))}
+        >
+          {t("writer.watermarkConfidential")}
+        </button>
+      </div>
+      <label className="field">
+        <span>{t("writer.watermarkText")}</span>
+        <input value={draft.text} onChange={(event) => setDraft({ ...draft, text: event.target.value })} />
+      </label>
+      <div className="row">
+        <label className="field">
+          <span>{t("writer.watermarkOpacity")}</span>
+          <input
+            type="number"
+            min={0}
+            max={1}
+            step={0.05}
+            value={draft.opacity}
+            onChange={(event) => setDraft({ ...draft, opacity: clamp(Number(event.target.value), 0, 1) })}
+          />
+        </label>
+        <label className="field">
+          <span>{t("writer.watermarkRotation")}</span>
+          <input
+            type="number"
+            min={-180}
+            max={180}
+            step={5}
+            value={draft.rotation}
+            onChange={(event) => setDraft({ ...draft, rotation: clamp(Number(event.target.value), -180, 180) })}
+          />
+        </label>
+        <label className="field">
+          <span>{t("writer.watermarkSize")}</span>
+          <input
+            type="number"
+            min={8}
+            max={200}
+            step={4}
+            value={draft.fontPt}
+            onChange={(event) => setDraft({ ...draft, fontPt: clamp(Number(event.target.value), 8, 200) })}
+          />
+        </label>
+      </div>
+      <div className="row">
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={!draft.text.trim()}
+          onClick={() => onApply({ ...draft, text: draft.text.trim() })}
+        >
+          {t("writer.watermarkApply")}
+        </button>
+        <button type="button" className="btn btn-soft" onClick={onRemove}>
+          {t("writer.watermarkRemove")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** The translucent, rotated watermark drawn behind a page's content. */
+function WatermarkLayer({
+  watermark,
+  widthPx,
+  heightPx,
+  zoom,
+}: {
+  watermark: Watermark;
+  widthPx: number;
+  heightPx: number;
+  zoom: number;
+}) {
+  if (!watermark.text.trim()) return null;
+  return (
+    <div className="writer-watermark-layer" aria-hidden="true" style={{ width: widthPx, height: heightPx }}>
+      <span
+        className="writer-watermark"
+        style={{
+          color: watermark.color ?? "#94a3b8",
+          opacity: watermark.opacity,
+          fontSize: `${watermark.fontPt * zoom}pt`,
+          fontWeight: watermark.bold ? 700 : 400,
+          transform: `rotate(${watermark.rotation}deg)`,
+        }}
+      >
+        {watermark.text}
+      </span>
     </div>
   );
 }

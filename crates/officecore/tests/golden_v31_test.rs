@@ -247,6 +247,7 @@ fn v31_writer() -> TextDocument {
             height_pt: 96.0,
             align: "center".into(),
             caption: "Golden pixel".into(),
+            wrap: "inline".into(),
         },
     ];
     document

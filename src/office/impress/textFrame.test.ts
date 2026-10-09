@@ -74,12 +74,14 @@ describe("editedParagraphs", () => {
     expect(after[2]).toMatchObject({ text: "Nested point", level: 1, bullet: true, sizePt: 16, align: "right" });
   });
 
-  it("drops the stale runs of an edited paragraph only", () => {
+  it("keeps the runs of an edited paragraph by mapping them onto the new text", () => {
     const before = imported();
     const after = editedParagraphs(before, "Agenda\nSecond point\nNested point");
     expect(after[0]).toBe(before[0]);
     expect(after[0].runs).toHaveLength(1);
-    expect(after[1].runs).toEqual([]);
+    // The old run's formatting survives; only its text is remapped.
+    expect(after[1].runs).toHaveLength(1);
+    expect(after[1].runs[0]).toMatchObject({ text: "Second point", sizePt: 20 });
     expect(after[2]).toBe(before[2]);
     expect(after[2].runs).toHaveLength(2);
   });
@@ -88,7 +90,9 @@ describe("editedParagraphs", () => {
     const after = editedParagraphs(imported(), "Agenda\nFirst point\nNested point\nAnother nested");
     expect(after).toHaveLength(4);
     expect(after[3]).toMatchObject({ text: "Another nested", level: 1, bullet: true, sizePt: 16, align: "right" });
-    expect(after[3].runs).toEqual([]);
+    // The inherited paragraph keeps the above line's run formatting, remapped.
+    expect(after[3].runs.map((entry) => entry.text).join("")).toBe("Another nested");
+    expect(after[3].runs[after[3].runs.length - 1].italic).toBe(true);
   });
 
   it("keeps the paragraphs around a line inserted in the middle", () => {
@@ -97,7 +101,9 @@ describe("editedParagraphs", () => {
     expect(after.map((paragraph) => paragraph.text)).toEqual(["Agenda", "First point", "Brand new", "Nested point"]);
     expect(after[0]).toBe(before[0]);
     expect(after[1]).toBe(before[1]);
-    expect(after[2]).toMatchObject({ level: 0, bullet: true, sizePt: 20, runs: [] });
+    expect(after[2]).toMatchObject({ level: 0, bullet: true, sizePt: 20 });
+    expect(after[2].runs).toHaveLength(1);
+    expect(after[2].runs[0]).toMatchObject({ text: "Brand new", sizePt: 20 });
     expect(after[3]).toBe(before[2]);
   });
 
@@ -113,7 +119,8 @@ describe("editedParagraphs", () => {
     const after = editedParagraphs([imported()[1]], "One\nTwo\nThree");
     expect(after.map((paragraph) => paragraph.text)).toEqual(["One", "Two", "Three"]);
     for (const paragraph of after) {
-      expect(paragraph).toMatchObject({ level: 0, bullet: true, sizePt: 20, runs: [] });
+      expect(paragraph).toMatchObject({ level: 0, bullet: true, sizePt: 20 });
+      expect(paragraph.runs.map((entry) => entry.text).join("")).toBe(paragraph.text);
     }
   });
 
@@ -125,7 +132,9 @@ describe("editedParagraphs", () => {
   it("clearing the text leaves one empty paragraph that keeps its formatting", () => {
     const after = editedParagraphs(imported(), "");
     expect(after).toHaveLength(1);
-    expect(after[0]).toMatchObject({ text: "", sizePt: 28, runs: [] });
+    expect(after[0]).toMatchObject({ text: "", sizePt: 28 });
+    expect(after[0].runs).toHaveLength(1);
+    expect(after[0].runs[0].text).toBe("");
   });
 
   it("builds plain paragraphs for a frame that had none", () => {

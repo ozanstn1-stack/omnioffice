@@ -1,4 +1,5 @@
 import type { TextFrame, TextParagraph } from "../../lib/office-types";
+import { remapRuns } from "./rich-text";
 
 /** A plain paragraph, used when a frame that had none gets its first text. */
 function plainParagraph(): TextParagraph {
@@ -16,22 +17,24 @@ function plainParagraph(): TextParagraph {
   };
 }
 
-/** `template` carrying a new text. The runs described the old text, so they go. */
+/** `template` carrying a new text. The runs are mapped onto the new text at
+ * the same offsets instead of being dropped, so imported formatting survives a
+ * plain-text edit. */
 function withText(template: TextParagraph, text: string): TextParagraph {
-  return { ...template, text, runs: [] };
+  if (template.text === text) return template;
+  return { ...template, text, runs: remapRuns(template.runs, template.text, text) };
 }
 
 /**
- * The paragraphs of a text frame after its text was edited in the plain
- * textarea. One paragraph per line; level, bullet, alignment, size and the
- * other paragraph formatting are kept per paragraph. A paragraph whose text
- * is unchanged is returned as is (its runs still describe it), a paragraph
- * whose text changed loses its runs, because the exporter writes `runs`
- * whenever present and would put the old text back.
+ * The paragraphs of a text frame after its text was edited in a plain text
+ * editor (import fallback path). One paragraph per line; level, bullet,
+ * alignment, size and the other paragraph formatting are kept per paragraph.
  *
  * Lines are matched to the old paragraphs by the unchanged lines at both
- * ends, then by position. A line that has no old paragraph (the user pressed
- * Enter) inherits the formatting of the paragraph above it.
+ * ends, then by position. A line whose text changed keeps its runs by mapping
+ * them onto the new line at the same offsets (rich-text remap), so a run-level
+ * format is not silently dropped. A line that has no old paragraph (the user
+ * pressed Enter) inherits the formatting of the paragraph above it.
  */
 export function editedParagraphs(previous: TextParagraph[], value: string): TextParagraph[] {
   const lines = value.split(/\r\n|\r|\n/);

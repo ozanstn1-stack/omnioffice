@@ -366,6 +366,150 @@ fn odp_unknown_presets_import_as_the_closest_effect_with_a_warning() {
     assert!(read.warnings.iter().any(|warning| warning.contains("motion-path")));
 }
 
+#[test]
+fn odp_rich_text_bullets_and_connectors_round_trip_inside_a_group() {
+    let mut rich = text_box("rich-text", "Intro", 120.0, 400.0, 4);
+    rich.text.as_mut().unwrap().paragraphs = vec![
+        TextParagraph {
+            text: "Intro".into(),
+            align: "right".into(),
+            runs: vec![Run { text: "Intro".into(), bold: true, ..Default::default() }],
+            ..Default::default()
+        },
+        TextParagraph { text: "One".into(), bullet: true, ..Default::default() },
+        TextParagraph { text: "Two".into(), bullet: true, level: 1, ..Default::default() },
+    ];
+    let mut connector = shape("line", "conn", 220.0, 140.0, 100.0, 60.0, 3);
+    connector.line = Some(LineSpec {
+        x2: 100.0,
+        y2: 60.0,
+        begin_object: Some("leaf-a".into()),
+        end_object: Some("leaf-last".into()),
+        begin_site: 2,
+        end_site: 0,
+        ..Default::default()
+    });
+    let mut slide = grouped_slide();
+    slide.objects.push(rich);
+    slide.objects.push(connector);
+    let mut deck = Deck::new_blank("ODP objects");
+    deck.slides = vec![slide];
+
+    let write = odf::write_odp_package(&deck).unwrap();
+    let content = ZipReader::open(write.bytes.clone()).unwrap().read_text("content.xml").unwrap();
+    assert!(content.contains("<draw:connector "), "content: {content}");
+    assert!(content.contains("draw:start-shape=\"leaf-a\" draw:start-glue-point=\"2\""), "content: {content}");
+    assert!(content.contains("<text:span "), "content: {content}");
+    assert!(content.contains("<text:list text:style-name=\"LB\">"), "content: {content}");
+
+    let read = odf::read_odp(&write.bytes).unwrap();
+    let objects = &read.deck.slides[0].objects;
+    let rich = find(objects, "rich-text").expect("rich text box");
+    let paragraphs = &rich.text.as_ref().expect("text frame").paragraphs;
+    assert_eq!(paragraphs.len(), 3, "warnings: {:?}", read.warnings);
+    assert_eq!(paragraphs[0].align, "right");
+    assert!(paragraphs[0].runs.iter().any(|run| run.bold), "{:?}", paragraphs[0]);
+    assert!(paragraphs[1].bullet && paragraphs[1].level == 0);
+    assert!(paragraphs[2].bullet && paragraphs[2].level == 1);
+    let connector = find(objects, "conn").expect("connector");
+    let line = connector.line.clone().expect("line spec");
+    assert_eq!(line.begin_object.as_deref(), Some("leaf-a"));
+    assert_eq!(line.end_object.as_deref(), Some("leaf-last"));
+    assert_eq!((line.begin_site, line.end_site), (2, 0));
+}
+
+#[test]
+fn odp_charts_are_sub_documents_listed_in_the_manifest() {
+    let mut column = shape("chart", "chart-1", 60.0, 60.0, 480.0, 288.0, 1);
+    column.chart = Some(ChartData {
+        kind: "column".into(),
+        title: "Sales".into(),
+        categories: "A2:A4".into(),
+        series: vec![ChartSeries { name: "North".into(), range: "B2:B4".into(), color: Some("#1D4ED8".into()) }],
+        legend: true,
+        categories_cache: vec!["Q1".into(), "Q2".into(), "Q3".into()],
+        series_values_cache: vec![vec![10.0, 20.5, 31.0]],
+        ..Default::default()
+    });
+    let mut pie = shape("chart", "chart-2", 60.0, 380.0, 320.0, 240.0, 2);
+    pie.chart = Some(ChartData {
+        kind: "pie".into(),
+        title: "Share".into(),
+        categories: "A2:A4".into(),
+        series: vec![ChartSeries { name: "North".into(), range: "B2:B4".into(), color: None }],
+        categories_cache: vec!["Q1".into(), "Q2".into(), "Q3".into()],
+        series_values_cache: vec![vec![10.0, 20.5, 31.0]],
+        ..Default::default()
+    });
+    let mut deck = Deck::new_blank("ODP charts");
+    deck.slides = vec![Slide { objects: vec![column, pie], ..Default::default() }];
+
+    let write = odf::write_odp_package(&deck).unwrap();
+    assert!(write.warnings.is_empty(), "warnings: {:?}", write.warnings);
+    let reader = ZipReader::open(write.bytes.clone()).unwrap();
+    let manifest = reader.read_text("META-INF/manifest.xml").unwrap();
+    for object in ["Object 1", "Object 2"] {
+        assert!(
+            manifest.contains(&format!(
+                "manifest:full-path=\"{object}/\" manifest:version=\"1.2\" manifest:media-type=\"application/vnd.oasis.opendocument.chart\""
+            )),
+            "manifest: {manifest}"
+        );
+        for part in ["content.xml", "styles.xml"] {
+            let path = format!("{object}/{part}");
+            assert!(manifest.contains(&format!("manifest:full-path=\"{path}\"")), "{path} is missing");
+            assert!(reader.contains(&path), "{path} is present");
+        }
+    }
+    for name in reader.names() {
+        if name == "mimetype" || name.starts_with("META-INF/") {
+            continue;
+        }
+        assert!(manifest.contains(&format!("manifest:full-path=\"{name}\"")), "{name} is not in the manifest");
+    }
+    let content = reader.read_text("content.xml").unwrap();
+    assert!(content.contains("xlink:href=\"./Object 1\"") && content.contains("xlink:href=\"./Object 2\""));
+    assert!(reader.read_text("Object 1/content.xml").unwrap().contains("chart:class=\"chart:bar\""));
+    assert!(reader.read_text("Object 2/content.xml").unwrap().contains("chart:class=\"chart:circle\""));
+
+    let read = odf::read_odp(&write.bytes).unwrap();
+    let objects = &read.deck.slides[0].objects;
+    let column = find(objects, "chart-1").expect("column chart");
+    assert_eq!(column.chart.as_ref(), deck.slides[0].objects[0].chart.as_ref());
+    let pie = find(objects, "chart-2").expect("pie chart");
+    assert_eq!(pie.chart.as_ref(), deck.slides[0].objects[1].chart.as_ref());
+}
+
+#[test]
+fn odp_hidden_slides_and_footer_round_trip() {
+    let mut deck = animated_deck();
+    deck.slides[1].hidden = true;
+    deck.footer = Some(SlideFooter {
+        enabled: true,
+        text: "Deck footer".into(),
+        show_text: true,
+        show_slide_number: true,
+        show_date: true,
+        date_text: "2026-10-10".into(),
+    });
+
+    let write = odf::write_odp_package(&deck).unwrap();
+    let reader = ZipReader::open(write.bytes.clone()).unwrap();
+    let content = reader.read_text("content.xml").unwrap();
+    assert!(content.contains("presentation:visibility=\"hidden\""), "content: {content}");
+    let styles = reader.read_text("styles.xml").unwrap();
+    assert!(styles.contains("presentation:display-footer=\"true\""), "styles: {styles}");
+    assert!(styles.contains("<text:page-number>"), "styles: {styles}");
+
+    let read = odf::read_odp(&write.bytes).unwrap();
+    assert!(!read.deck.slides[0].hidden);
+    assert!(read.deck.slides[1].hidden);
+    let footer = read.deck.footer.clone().expect("footer");
+    assert!(footer.enabled && footer.show_text && footer.show_slide_number && footer.show_date);
+    assert_eq!(footer.text, "Deck footer");
+    assert_eq!(footer.date_text, "2026-10-10");
+}
+
 // ---------------------------------------------------------------------------
 // ODS
 // ---------------------------------------------------------------------------

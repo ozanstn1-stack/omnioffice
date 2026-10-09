@@ -394,6 +394,38 @@ pub async fn office_open_document(path: String) -> Result<OpenDocument, OfficeEr
 // Save
 // ---------------------------------------------------------------------------
 
+/// The pdfcore watermark options that mirror a Writer watermark model.
+fn watermark_options(watermark: &Watermark) -> pdfcore::watermark::WatermarkOptions {
+    pdfcore::watermark::WatermarkOptions {
+        kind: "text".into(),
+        text: watermark.text.clone(),
+        font_size_pt: watermark.font_pt,
+        bold: watermark.bold,
+        color: watermark.color.clone().unwrap_or_else(|| "#94a3b8".into()),
+        opacity: watermark.opacity,
+        rotation_deg: watermark.rotation,
+        position: "center".into(),
+        margin_pt: 24.0,
+        tile: false,
+        image_path: None,
+        image_scale: 0.35,
+        pages: Vec::new(),
+    }
+}
+
+/// Applies a Writer watermark to freshly exported PDF bytes as an incremental
+/// revision (so a signed PDF keeps its signatures). Returns the original bytes
+/// and a warning when the watermark cannot be drawn.
+fn watermark_pdf(bytes: Vec<u8>, watermark: Option<&Watermark>) -> (Vec<u8>, Option<String>) {
+    let Some(watermark) = watermark.filter(|watermark| !watermark.text.trim().is_empty()) else {
+        return (bytes, None);
+    };
+    match pdfcore::watermark::watermark_pdf_incremental(&bytes, &watermark_options(watermark)) {
+        Ok(marked) => (marked, None),
+        Err(error) => (bytes, Some(format!("The watermark could not be added to the PDF: {error}"))),
+    }
+}
+
 pub fn save_model(kind: &str, model: Value, path: &Path) -> Result<SaveDocument, OfficeErrorPayload> {
     let extension = extension(path);
     let mut warnings = Vec::new();
@@ -425,8 +457,12 @@ pub fn save_model(kind: &str, model: Value, path: &Path) -> Result<SaveDocument,
                         .map_err(payload)?;
                 }
                 "pdf" => {
-                    let bytes = layout::document_to_pdf(&document);
+                    let (bytes, watermark_warning) =
+                        watermark_pdf(layout::document_to_pdf(&document), document.watermark.as_ref());
                     officecore::io::write_atomic(path, &bytes).map_err(payload)?;
+                    if let Some(warning) = watermark_warning {
+                        warnings.push(warning);
+                    }
                 }
                 other => {
                     return Err(payload(OfficeError::unsupported(format!(
@@ -482,8 +518,9 @@ pub fn save_model(kind: &str, model: Value, path: &Path) -> Result<SaveDocument,
                     officecore::io::write_atomic(path, &result.bytes).map_err(payload)?;
                 }
                 "odp" => {
-                    let bytes = odf::write_odp(&deck).map_err(payload)?;
-                    officecore::io::write_atomic(path, &bytes).map_err(payload)?;
+                    let result = odf::write_odp_package(&deck).map_err(payload)?;
+                    warnings.extend(result.warnings);
+                    officecore::io::write_atomic(path, &result.bytes).map_err(payload)?;
                 }
                 "pdf" => {
                     let bytes = layout::deck_to_pdf(&deck);
@@ -670,8 +707,17 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 // ---------------------------------------------------------------------------
 
 pub fn export_pdf(kind: &str, model: Value, path: &Path) -> Result<SaveDocument, OfficeErrorPayload> {
+    let mut warnings = Vec::new();
     let bytes = match kind {
-        "writer" => layout::document_to_pdf(&writer_from_value(model)?),
+        "writer" => {
+            let document = writer_from_value(model)?;
+            let (bytes, watermark_warning) =
+                watermark_pdf(layout::document_to_pdf(&document), document.watermark.as_ref());
+            if let Some(warning) = watermark_warning {
+                warnings.push(warning);
+            }
+            bytes
+        }
         "calc" => layout::workbook_to_pdf(&workbook_from_value(model)?, 20),
         "impress" => layout::deck_to_pdf(&deck_from_value(model)?),
         other => {
@@ -679,7 +725,7 @@ pub fn export_pdf(kind: &str, model: Value, path: &Path) -> Result<SaveDocument,
         }
     };
     officecore::io::write_atomic(path, &bytes).map_err(payload)?;
-    Ok(SaveDocument { path: path.to_string_lossy().to_string(), warnings: Vec::new() })
+    Ok(SaveDocument { path: path.to_string_lossy().to_string(), warnings })
 }
 
 #[tauri::command]
@@ -1388,6 +1434,42 @@ mod tests {
         let value = timestamp();
         assert_eq!(value.len(), 20);
         assert!(value.ends_with('Z'));
+    }
+
+    #[test]
+    fn writer_pdf_watermark_is_applied_as_a_new_revision() {
+        let mut document = TextDocument::new_blank("Watermark");
+        document.blocks = vec![Block::paragraph("Body")];
+        let plain = layout::document_to_pdf(&document);
+
+        // No watermark: the bytes pass through untouched.
+        let (same, warning) = watermark_pdf(plain.clone(), None);
+        assert_eq!(plain, same);
+        assert!(warning.is_none());
+
+        document.watermark = Some(Watermark::default());
+        let (marked, warning) = watermark_pdf(plain.clone(), document.watermark.as_ref());
+        assert!(warning.is_none(), "warning: {warning:?}");
+        assert_ne!(plain, marked, "the watermark must change the produced PDF");
+        assert!(marked.starts_with(b"%PDF"));
+    }
+
+    #[test]
+    fn odp_save_surfaces_package_warnings() {
+        let mut deck = Deck::new_blank("Deck");
+        let mut chart = SlideObject::new("chart", 10.0, 10.0, 300.0, 200.0);
+        // Radar charts cannot be written to ODP, so the package must warn.
+        chart.chart = Some(ChartData {
+            kind: "radar".into(),
+            series: vec![ChartSeries { name: "S".into(), range: "A1:A3".into(), color: None }],
+            ..Default::default()
+        });
+        deck.slides[0].objects.push(chart);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("deck.odp");
+        let saved = save_model("impress", serde_json::to_value(&deck).unwrap(), &path).expect("save odp");
+        assert!(!saved.warnings.is_empty(), "the ODP package warnings must be surfaced");
+        assert!(path.exists());
     }
 
     fn push(dir: &Path, text: &str, limit: usize) -> OfficeResult<HistoryEntry> {
