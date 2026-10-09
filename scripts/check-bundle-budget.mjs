@@ -36,7 +36,9 @@ const largestKb = largestBytes / 1024;
 
 const ENTRY_BUDGET_KB = 180;
 const CHUNK_BUDGET_KB = 100;
-const TOTAL_BUDGET_KB = 450;
+// Raised from 450 in 4.5.0: the Writer ruler/table tools and the Impress
+// rich-text, connectors, crop and sorter features add real UI to the chunks.
+const TOTAL_BUDGET_KB = 470;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);
