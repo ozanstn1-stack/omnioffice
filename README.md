@@ -1130,9 +1130,16 @@ These are real and honest:
   otherwise the built-in rebuild (so it works on Android too); encrypted
   documents need the password first, and the result says which engine ran.
 - **PPTX**: programmatic animations are simplified to what the model
-  represents; ODP keeps groups and animations (since 4.0.0) but exports
-  charts as drawn shapes and a single default master (declared in the
+  represents; ODP keeps groups, animations, real charts, footer/date/
+  slide-number frames, hidden slides, connectors and image crops (since
+  4.5.0) but writes a single default master page (declared in the
   compatibility matrix and gated by Data Loss Protection).
+- **Writer PDF export** lays out custom tab stops (center/right/decimal
+  stops are approximated by advancing to the stop) and colspan/rowspan table
+  cells on the grid; a text watermark is added as an incremental PDF
+  revision. Image wrap is block-level in PDF (square/top-and-bottom wrap
+  round-trip in DOCX and ODT). RTF keeps no merged cells, custom tab stops
+  or watermarks, and Markdown/TXT drop image data.
 - **ODT/RTF**: RTF cannot mark endnotes distinctly (endnote-only documents
   request endnote placement via `\aendnotes`), revision timestamps lose
   seconds, and format-change revisions are not written to RTF.

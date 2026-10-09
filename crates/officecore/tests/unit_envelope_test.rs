@@ -23,7 +23,8 @@ fn writer_model() -> Value {
         "bookmarks": [{ "id": "b-1", "name": "mark" }],
         "sections": [{ "id": "s-1" }],
         "trackChanges": true,
-        "showRevisions": true
+        "showRevisions": true,
+        "watermark": { "text": "DRAFT" }
     })
 }
 
@@ -76,13 +77,14 @@ fn checksum_mismatch_is_a_corrupt_document() {
 #[test]
 fn feature_manifest_lists_the_writer_features_in_use() {
     let features = unit::feature_manifest("writer", &writer_model());
-    for expected in ["text", "tables", "notes", "comments", "bookmarks", "sections", "track-changes"] {
+    for expected in ["text", "tables", "notes", "comments", "bookmarks", "sections", "track-changes", "watermark"] {
         assert!(features.contains(&expected.to_string()), "{expected} missing from {features:?}");
     }
     // A plain paragraph does not claim table/image support.
     let plain = json!({ "blocks": [{ "type": "paragraph", "runs": [] }] });
     let plain_features = unit::feature_manifest("writer", &plain);
     assert!(!plain_features.contains(&"tables".to_string()));
+    assert!(!plain_features.contains(&"watermark".to_string()));
     assert!(plain_features.contains(&"text".to_string()));
 }
 
@@ -104,12 +106,29 @@ fn calc_and_impress_feature_manifests() {
 
     let deck = json!({
         "masters": [{ "id": "m1" }],
-        "slides": [{ "animations": [{ "id": "a1" }], "notes": "hello" }]
+        "footer": { "enabled": true, "text": "Acme" },
+        "slides": [
+            {
+                "animations": [{ "id": "a1" }],
+                "notes": "hello",
+                "objects": [
+                    { "kind": "chart", "chart": { "kind": "column" } },
+                    { "kind": "group", "children": [{ "kind": "chart", "chart": { "kind": "pie" } }] }
+                ]
+            },
+            { "hidden": true, "objects": [] }
+        ]
     });
     let features = unit::feature_manifest("impress", &deck);
-    for expected in ["slides", "masters", "animations", "notes"] {
+    for expected in ["slides", "masters", "animations", "notes", "charts", "hiddenSlides", "footer"] {
         assert!(features.contains(&expected.to_string()), "{expected} missing from {features:?}");
     }
+    // A deck with no hidden slides and no footer does not claim them.
+    let plain = json!({ "slides": [{ "objects": [] }] });
+    let plain_features = unit::feature_manifest("impress", &plain);
+    assert!(!plain_features.contains(&"hiddenSlides".to_string()));
+    assert!(!plain_features.contains(&"footer".to_string()));
+    assert!(!plain_features.contains(&"charts".to_string()));
 }
 
 #[test]

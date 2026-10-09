@@ -145,13 +145,14 @@ to the ODF/RTF gaps listed as "lost" in `compat.rs`.
 
 ### Not done in this pass (honest)
 
-- The ODT reader still ignores character styles on spans (bold/italic from
-  an ODT are lost on import), and the RTF reader starts a new paragraph at
-  every group. Both predate this release; comments are unaffected.
+- The ODT reader resolves character styles on spans and the RTF reader keeps
+  formatting groups inside one paragraph; the old "ODT span formatting lost"
+  and "RTF paragraph per group" notes no longer apply.
 - Comment reply dates and initials are not kept in ODT/RTF; RTF comment ids
   are renumbered.
-- ODP charts are still placeholders; scatter charts are not supported in any
-  format.
+- ODP charts are written as real embedded chart objects (fixed in 4.5.0);
+  PDF export still draws charts as labelled data-range boxes and renders
+  image wrap as block-level.
 - Animation details: grow/shrink use LibreOffice's 150 %/50 % presets and
   fly-in/out use one direction.
 - Remove Duplicates updates references inside the moved block only;

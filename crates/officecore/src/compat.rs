@@ -11,7 +11,7 @@
 //! The reports are deterministic and testable; the string status values are
 //! part of the UI contract and must stay stable.
 
-use crate::model::{Deck, TextDocument, Workbook};
+use crate::model::{Block, Deck, TextDocument, Workbook};
 use serde::{Deserialize, Serialize};
 
 /// How well a format supports one feature.
@@ -110,6 +110,10 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
                 feature("comments", SupportLevel::Partial, "Comments round-trip; DOCX has no native reply threading, so replies are stored as reply paragraphs."),
                 feature("fields", SupportLevel::Partial, "PAGE, NUMPAGES, DATE, TIME, TITLE, AUTHOR, REF and PAGEREF are written as real fields."),
                 feature("styles", SupportLevel::Full, "Based-on inheritance and next styles."),
+                feature("tables", SupportLevel::Full, "Merged cells round-trip: colspans as w:gridSpan and rowspans as w:vMerge with continuation cells."),
+                feature("images", SupportLevel::Full, "Anchored images with square or top-and-bottom wrap round-trip."),
+                feature("tabStops", SupportLevel::Full, "Custom tab stops round-trip as w:tabs."),
+                feature("watermark", SupportLevel::Full, "Text watermarks round-trip through the default header's VML shape."),
                 feature("charts", SupportLevel::Unsupported, "Writer charts are not implemented."),
                 feature("digitalSignature", SupportLevel::Partial, "Existing signatures are preserved but the writer does not create new ones."),
                 feature("macros", SupportLevel::Unsupported, "Macros are detected and never executed; saving writes the macro-free document, so the VBA project is dropped."),
@@ -126,6 +130,10 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
                 feature("trackChanges", SupportLevel::Unsupported, "Tracked changes are kept in .oswk only; a warning is reported when exporting to ODT."),
                 feature("comments", SupportLevel::Partial, "Comments round-trip as office:annotation ranges with LibreOffice's resolved flag; ODF has no portable reply threading, so replies are stored as reply paragraphs."),
                 feature("fields", SupportLevel::Unsupported, "Fields export as their cached text."),
+                feature("tables", SupportLevel::Full, "Merged cells round-trip as table:number-columns-spanned / table:number-rows-spanned with covered-table-cell placeholders."),
+                feature("images", SupportLevel::Partial, "Anchored images keep their wrap style (parallel/none); a wrap the model cannot name imports as top-and-bottom."),
+                feature("tabStops", SupportLevel::Full, "Custom tab stops round-trip as style:tab-stops."),
+                feature("watermark", SupportLevel::Full, "The watermark is written as a run-through frame and kept losslessly in meta:user-defined."),
             ],
         ),
         "rtf" => (
@@ -138,6 +146,10 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
                 feature("footnotes", SupportLevel::Partial, "Footnotes are written as real \\footnote destinations; the endnote class survives through an ignorable \\* marker because RTF has no per-note endnote class."),
                 feature("trackChanges", SupportLevel::Partial, "Insertions and deletions are written as \\revised/\\deleted marks with a \\revtbl author table; formatting revisions are not representable."),
                 feature("comments", SupportLevel::Partial, "Comments are written as Word annotations (\\atrfstart/\\atrfend ranges and \\annotation groups); replies are stored as reply paragraphs, timestamps keep minute precision and the resolved state survives only through an ignorable \\* marker."),
+                feature("tables", SupportLevel::Partial, "Rows and cells are written, but colspan/rowspan merging is not representable."),
+                feature("images", SupportLevel::Partial, "Images are embedded inline; wrapping and cropping are not representable."),
+                feature("tabStops", SupportLevel::Unsupported, "Custom tab stops are not written; tab characters stay in the text."),
+                feature("watermark", SupportLevel::Unsupported, "The watermark is not written to RTF."),
             ],
         ),
         "txt" | "md" | "markdown" | "html" | "htm" => (
@@ -149,6 +161,9 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
                 feature("sections", SupportLevel::Partial, "Sections become page breaks."),
                 feature("footnotes", SupportLevel::Partial, "Note text is appended at the end of the document."),
                 feature("trackChanges", SupportLevel::Unsupported, "Tracked changes are applied visually only."),
+                feature("tables", SupportLevel::Partial, "Tables export as tab-separated text (TXT), pipe tables (Markdown) or HTML; merged cells are flattened."),
+                feature("images", SupportLevel::Partial, "HTML embeds image data; Markdown writes a reference without the data and TXT drops images."),
+                feature("watermark", SupportLevel::Unsupported, "The watermark is not written to text formats."),
             ],
         ),
         "xlsx" | "xlsm" => (
@@ -210,6 +225,11 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
                 feature("masters", SupportLevel::Full, "Slide masters, layouts and placeholder inheritance."),
                 feature("groups", SupportLevel::Full, "Nested shape groups round-trip."),
                 feature("charts", SupportLevel::Full, "Column, bar, line, pie and area charts with cached values and an embedded workbook."),
+                feature("richText", SupportLevel::Full, "Per-run bold/italic/underline, colour, size and language round-trip."),
+                feature("slideNumbers", SupportLevel::Full, "Footer, date and slide-number placeholders round-trip; an enabled deck footer is written as real fields on the master."),
+                feature("hiddenSlides", SupportLevel::Full, "Hidden slides keep their flag (p:sldId show=\"0\") and are skipped by the slideshow and the PDF export."),
+                feature("connectors", SupportLevel::Full, "Connectors keep their glue points (stCxn/endCxn) and connection sites."),
+                feature("imageCrop", SupportLevel::Full, "Image crops round-trip as a:srcRect source rectangles."),
                 feature("animations", SupportLevel::Partial, "Entrance/emphasis/exit effects; PowerPoint-only effects are simplified."),
                 feature("smartArt", SupportLevel::Partial, "SmartArt is imported as its rendered shapes when available."),
                 feature("macros", SupportLevel::Unsupported, "Macros are detected and never executed; saving writes the macro-free presentation, so the VBA project is dropped."),
@@ -232,9 +252,14 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
             true,
             true,
             vec![
-                feature("masters", SupportLevel::Partial, "A single default master page."),
+                feature("masters", SupportLevel::Partial, "A single default master page (now carrying the footer, date and slide-number frames)."),
                 feature("groups", SupportLevel::Full, "Nested shape groups round-trip as draw:g elements."),
-                feature("charts", SupportLevel::Partial, "Charts export as drawn shapes."),
+                feature("charts", SupportLevel::Full, "Column, bar, line, pie, area, scatter and doughnut charts are written as embedded chart objects (Object N sub-documents) with their ranges, title, legend and cached values, and read back; a chart kind ODF cannot name is reported and keeps a placeholder."),
+                feature("richText", SupportLevel::Full, "Paragraph runs round-trip as text:span with named character styles."),
+                feature("slideNumbers", SupportLevel::Full, "The footer, date and slide-number master frames and their display flags round-trip."),
+                feature("hiddenSlides", SupportLevel::Full, "Hidden slides are written with presentation:visibility=\"hidden\" and read back."),
+                feature("connectors", SupportLevel::Full, "draw:connector keeps its glue points (draw:start-shape/end-shape) and connection sites."),
+                feature("imageCrop", SupportLevel::Full, "Image crops round-trip as fo:clip rectangles."),
                 feature("animations", SupportLevel::Partial, "Entrance, emphasis and exit effects are written as SMIL timing with LibreOffice presets; LibreOffice effects without an editor equivalent import as the closest one."),
             ],
         ),
@@ -245,6 +270,7 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
             false,
             vec![
                 feature("editing", SupportLevel::Partial, "Page tools, annotations, forms and object editing where the PDF allows it."),
+                feature("officeExport", SupportLevel::Partial, "Writer and Impress export to PDF: paragraph/run formatting, tab stops, merged table cells and text watermarks are rendered; hidden slides are skipped; footer/date/slide-number placeholders and image crops are resolved; charts are drawn as labelled data-range boxes and image wrap is block-level."),
                 feature("pdfa", SupportLevel::Partial, "Validation and best-effort conversion: non-embedded simple fonts and Identity Type0 fonts with a ToUnicode map are embedded as substitute programs subset to the characters the document uses, and the output intent carries an sRGB profile; Type0/CID fonts without ToUnicode, symbolic and custom-encoded fonts are reported instead of embedded."),
                 feature("signatures", SupportLevel::Partial, "Detached CMS/PKCS#7 signatures are created and validated (digest, coverage, signer, chain); archived validation data (DSS) is written for offline PAdES B-LT; an optional TSA URL adds an RFC 3161 timestamp (its time is reported, the TSA chain is not validated) and an optional OCSP/CRL check reports revocation, while trust stays unknown without a trust store."),
             ],
@@ -279,6 +305,37 @@ fn has_notes(document: &TextDocument, endnotes: bool) -> bool {
 
 fn table_comment(document: &TextDocument) -> bool {
     document.comments.iter().any(|comment| !comment.replies.is_empty())
+}
+
+/// Whether any table cell starts a colspan / rowspan merge.
+fn table_spans(document: &TextDocument) -> (bool, bool) {
+    let mut colspan = false;
+    let mut rowspan = false;
+    for block in &document.blocks {
+        if let Block::Table { table } = block {
+            for cell in table.rows.iter().flat_map(|row| row.cells.iter()) {
+                colspan |= cell.colspan > 1;
+                rowspan |= cell.rowspan > 1;
+            }
+        }
+    }
+    (colspan, rowspan)
+}
+
+/// Whether any paragraph carries custom tab stops.
+fn has_tab_stops(document: &TextDocument) -> bool {
+    document.blocks.iter().any(|block| match block {
+        Block::Paragraph { props, .. } => !props.tabs.is_empty(),
+        _ => false,
+    })
+}
+
+/// Whether the document contains a table / image block.
+fn has_block(document: &TextDocument, kind: &str) -> bool {
+    document
+        .blocks
+        .iter()
+        .any(|block| matches!((kind, block), ("table", Block::Table { .. }) | ("image", Block::Image { .. })))
 }
 
 /// What a Writer document loses when saved as `format`.
@@ -347,6 +404,28 @@ pub fn document_feature_report(document: &TextDocument, format: &str) -> Compati
             if has_notes(document, false) || has_notes(document, true) {
                 items.push(item("footnotes", "transformed", "Notes are written as RTF \\footnote destinations; endnote classes are preserved with an ignorable marker that Word ignores."));
             }
+            let (colspan, rowspan) = table_spans(document);
+            if colspan || rowspan {
+                items.push(item(
+                    "tables",
+                    "transformed",
+                    "RTF has no cell merging, so colspan/rowspan cells are written as separate cells.",
+                ));
+            }
+            if has_tab_stops(document) {
+                items.push(item(
+                    "tabStops",
+                    "lost",
+                    "Custom tab stops are not written to RTF; the tab characters stay in the text.",
+                ));
+            }
+            if document.watermark.is_some() {
+                items.push(item(
+                    "watermark",
+                    "lost",
+                    "The watermark is not written to RTF; DOCX, ODT and PDF keep it.",
+                ));
+            }
         }
         "txt" | "md" | "markdown" | "html" | "htm" => {
             if sections > 0 {
@@ -362,10 +441,44 @@ pub fn document_feature_report(document: &TextDocument, format: &str) -> Compati
             if has_revisions(document) || !document.comments.is_empty() {
                 items.push(item("review", "lost", "Tracked changes and comments are not written to this format."));
             }
+            let (colspan, rowspan) = table_spans(document);
+            if has_block(document, "table") {
+                let message = match format.as_str() {
+                    "html" | "htm" if colspan || rowspan => {
+                        "Tables export as HTML; colspan is kept but rowspan is flattened."
+                    }
+                    "html" | "htm" => "Tables export as HTML with their cell backgrounds and alignment.",
+                    "md" | "markdown" => "Tables export as pipe tables; merged cells are flattened.",
+                    _ => "Tables export as tab-separated text.",
+                };
+                let status =
+                    if matches!(format.as_str(), "html" | "htm") && !rowspan { "unchanged" } else { "transformed" };
+                items.push(item("tables", status, message));
+            }
+            if has_block(document, "image") {
+                let (status, message) = match format.as_str() {
+                    "html" | "htm" => ("unchanged", "Image data is embedded as data URIs with its caption."),
+                    "md" | "markdown" => {
+                        ("lost", "Images are written as a link reference; the image data is not kept.")
+                    }
+                    _ => ("lost", "Images are not written to plain text."),
+                };
+                items.push(item("images", status, message));
+            }
+            if document.watermark.is_some() {
+                items.push(item("watermark", "lost", "The watermark is not written to text formats."));
+            }
         }
         "pdf" => {
             if document.track_changes || has_revisions(document) {
                 items.push(item("trackChanges", "transformed", "Revisions are rendered (insertions underlined, deletions struck through) rather than exported as revisions."));
+            }
+            if document.watermark.is_some() {
+                items.push(item(
+                    "watermark",
+                    "unchanged",
+                    "The watermark is drawn on every page as an incremental PDF revision.",
+                ));
             }
         }
         _ => items.push(item("format", "lost", "This format is not a Writer target.")),
@@ -499,7 +612,11 @@ pub fn deck_feature_report(deck: &Deck, format: &str) -> CompatibilityReport {
                 ));
             }
             if charts > 0 {
-                items.push(item("charts", "transformed", "Charts are exported as drawn shapes."));
+                items.push(item(
+                    "charts",
+                    "unchanged",
+                    "Charts are written as embedded chart objects (Object N sub-documents) with their ranges, title, legend and cached values; a chart kind ODF cannot name is reported and keeps a placeholder.",
+                ));
             }
             if animations > 0 {
                 items.push(item(
@@ -545,6 +662,11 @@ pub struct DocumentCapabilities {
     pub supports_animations: bool,
     pub supports_masters: bool,
     pub supports_groups: bool,
+    pub supports_watermark: bool,
+    pub supports_hidden_slides: bool,
+    pub supports_footer: bool,
+    pub supports_connectors: bool,
+    pub supports_image_crop: bool,
 }
 
 /// Model capabilities for `writer`, `calc` or `impress`.
@@ -564,6 +686,11 @@ pub fn model_capabilities(kind: &str) -> DocumentCapabilities {
             supports_animations: false,
             supports_masters: false,
             supports_groups: false,
+            supports_watermark: true,
+            supports_hidden_slides: false,
+            supports_footer: false,
+            supports_connectors: false,
+            supports_image_crop: false,
         },
         "calc" => DocumentCapabilities {
             kind: "calc".into(),
@@ -579,6 +706,11 @@ pub fn model_capabilities(kind: &str) -> DocumentCapabilities {
             supports_animations: false,
             supports_masters: false,
             supports_groups: false,
+            supports_watermark: false,
+            supports_hidden_slides: false,
+            supports_footer: false,
+            supports_connectors: false,
+            supports_image_crop: false,
         },
         _ => DocumentCapabilities {
             kind: "impress".into(),
@@ -594,6 +726,11 @@ pub fn model_capabilities(kind: &str) -> DocumentCapabilities {
             supports_animations: true,
             supports_masters: true,
             supports_groups: true,
+            supports_watermark: false,
+            supports_hidden_slides: true,
+            supports_footer: true,
+            supports_connectors: true,
+            supports_image_crop: true,
         },
     }
 }
@@ -602,8 +739,8 @@ pub fn model_capabilities(kind: &str) -> DocumentCapabilities {
 mod tests {
     use super::*;
     use crate::model::{
-        Block, ChartData, ChartPlacement, ChartSeries, Footnote, PivotTable, RevisionMark, Run, SectionProps,
-        SpreadsheetTable,
+        Block, ChartData, ChartPlacement, ChartSeries, Footnote, ParaProps, PivotTable, RevisionMark, Run,
+        SectionProps, SpreadsheetTable, TabStop, TableData, Watermark,
     };
 
     #[test]
@@ -692,5 +829,76 @@ mod tests {
         let odp = deck_feature_report(&deck, "odp");
         assert!(odp.items.iter().any(|item| item.feature == "animations" && item.status == "partial"));
         assert!(!odp.items.iter().any(|item| item.status == "lost"));
+    }
+
+    #[test]
+    fn odp_capabilities_report_real_charts_and_new_impress_features() {
+        let odp = format_capabilities("odp");
+        let charts = odp.features.iter().find(|feature| feature.feature == "charts").expect("charts row");
+        assert_eq!(charts.level, SupportLevel::Full);
+        assert!(!charts.note.contains("drawn shapes"), "the ODP chart note is stale: {}", charts.note);
+        for name in ["richText", "slideNumbers", "hiddenSlides", "connectors", "imageCrop"] {
+            assert!(odp.features.iter().any(|feature| feature.feature == name), "odp is missing {name}");
+        }
+
+        let pptx = format_capabilities("pptx");
+        for name in ["richText", "slideNumbers", "hiddenSlides", "connectors", "imageCrop"] {
+            assert!(pptx.features.iter().any(|feature| feature.feature == name), "pptx is missing {name}");
+        }
+
+        let docx = format_capabilities("docx");
+        for name in ["tables", "images", "tabStops", "watermark"] {
+            assert!(docx.features.iter().any(|feature| feature.feature == name), "docx is missing {name}");
+        }
+        let odt = format_capabilities("odt");
+        for name in ["tables", "images", "tabStops", "watermark"] {
+            assert!(odt.features.iter().any(|feature| feature.feature == name), "odt is missing {name}");
+        }
+        let rtf = format_capabilities("rtf");
+        let tables = rtf.features.iter().find(|feature| feature.feature == "tables").expect("rtf tables row");
+        assert_eq!(tables.level, SupportLevel::Partial);
+        let watermark = rtf.features.iter().find(|feature| feature.feature == "watermark").expect("rtf watermark");
+        assert_eq!(watermark.level, SupportLevel::Unsupported);
+        let pdf = format_capabilities("pdf");
+        assert!(pdf.features.iter().any(|feature| feature.feature == "officeExport"));
+    }
+
+    #[test]
+    fn writer_report_names_rtf_and_text_format_limits() {
+        let mut document = TextDocument::new_blank("Losses");
+        let mut table = TableData::simple(2, 2, 200.0);
+        table.rows[0].cells[0].colspan = 2;
+        document.blocks.push(Block::Table { table });
+        document.blocks.push(Block::Paragraph {
+            props: ParaProps { tabs: vec![TabStop { pos_pt: 72.0, align: "left".into() }], ..Default::default() },
+            runs: vec![Run { text: "a\tb".into(), ..Default::default() }],
+        });
+        document.watermark = Some(Watermark::default());
+
+        let rtf = document_feature_report(&document, "rtf");
+        assert!(rtf.items.iter().any(|item| item.feature == "tables" && item.status == "transformed"));
+        assert!(rtf.items.iter().any(|item| item.feature == "tabStops" && item.status == "lost"));
+        assert!(rtf.items.iter().any(|item| item.feature == "watermark" && item.status == "lost"));
+
+        let txt = document_feature_report(&document, "txt");
+        assert!(txt.items.iter().any(|item| item.feature == "tables" && item.status == "transformed"));
+        assert!(txt.items.iter().any(|item| item.feature == "watermark" && item.status == "lost"));
+
+        // HTML keeps colspan (only a rowspan would be flattened).
+        let html = document_feature_report(&document, "html");
+        assert!(html.items.iter().any(|item| item.feature == "tables" && item.status == "unchanged"));
+
+        let pdf = document_feature_report(&document, "pdf");
+        assert!(pdf.items.iter().any(|item| item.feature == "watermark" && item.status == "unchanged"));
+    }
+
+    #[test]
+    fn impress_report_writes_real_charts_to_odp() {
+        let mut deck = Deck::new_blank("Charts");
+        let mut object = crate::model::SlideObject::new("chart", 0.0, 0.0, 100.0, 100.0);
+        object.chart = Some(ChartData { kind: "column".into(), ..Default::default() });
+        deck.slides[0].objects.push(object);
+        let odp = deck_feature_report(&deck, "odp");
+        assert!(odp.items.iter().any(|item| item.feature == "charts" && item.status == "unchanged"));
     }
 }
