@@ -39,6 +39,7 @@ import {
   type Deck,
   type SlideObject,
 } from "../lib/office-types";
+import { setCaretOffset } from "./writer/caret";
 
 // jsdom has no PointerEvent, so testing-library would fall back to a plain
 // Event and drop button/clientX/pointerId. MouseEvent carries those fields and
@@ -312,7 +313,7 @@ describe("pointer gestures on the slide canvas", () => {
     expect(document.querySelector(".slide-text-editor")).not.toBeNull();
   });
 
-  it("keeps paragraph structure and drops stale runs when an imported frame is edited", () => {
+  it("keeps paragraph structure and preserves runs when an imported frame is edited", () => {
     const deck = newDeck("Import");
     const frame = newTextFrame("", 20);
     const [base] = frame.paragraphs;
@@ -329,14 +330,69 @@ describe("pointer gestures on the slide canvas", () => {
       fireEvent.pointerDown(object, { pointerId, pointerType: "touch", button: 0, clientX: 40, clientY: 40 });
       fireEvent.pointerUp(window, { pointerId, pointerType: "touch", clientX: 40, clientY: 40 });
     }
-    const editor = document.querySelector<HTMLTextAreaElement>(".slide-text-editor")!;
-    fireEvent.change(editor, { target: { value: "Intro\nDetail changed" } });
-    fireEvent.blur(editor);
+    const editor = document.querySelector<HTMLElement>(".slide-text-editor")!;
+    const surfaces = editor.querySelectorAll<HTMLElement>(".slide-text-paragraph");
+    expect(surfaces).toHaveLength(2);
+    // Model a DOM edit in the second paragraph and commit it by blurring.
+    surfaces[1].textContent = "Detail changed";
+    fireEvent.input(surfaces[1]);
+    fireEvent.blur(surfaces[1]);
 
     const paragraphs = (useOfficeTabs.getState().tabs[0].model as Deck).slides[0].objects[0].text!.paragraphs;
     expect(paragraphs.map((paragraph) => paragraph.text)).toEqual(["Intro", "Detail changed"]);
-    expect(paragraphs[0].runs.map((run) => run.text)).toEqual(["Intro"]);
-    expect(paragraphs[1]).toMatchObject({ level: 1, bullet: true, runs: [] });
+    // The untouched paragraph keeps its bold run.
+    expect(paragraphs[0].runs).toHaveLength(1);
+    expect(paragraphs[0].runs[0]).toMatchObject({ text: "Intro", bold: true });
+    // The edited paragraph keeps its paragraph formatting and its run mapping.
+    expect(paragraphs[1]).toMatchObject({ level: 1, bullet: true });
+    expect(paragraphs[1].runs.map((run) => run.text).join("")).toBe("Detail changed");
+  });
+
+  it("splits a paragraph on Enter and merges it back on Backspace as undo steps", () => {
+    const deck = newDeck("Structure");
+    deck.slides[0].objects = [
+      { ...newSlideObject("rect", 100, 100, 300, 100), id: "r1", z: 1, text: newTextFrame("Intro", 20) },
+    ];
+    const id = useOfficeTabs.getState().create("impress", "Structure", deck);
+    render(<Harness id={id} />);
+
+    fireEvent.doubleClick(document.querySelector(".slide-object:not(.is-inherited)")!);
+    const paragraphTexts = () =>
+      (useOfficeTabs.getState().tabs[0].model as Deck).slides[0].objects[0].text!.paragraphs.map((p) => p.text);
+
+    const first = () => document.querySelectorAll<HTMLElement>(".slide-text-paragraph")[0];
+    setCaretOffset(first(), 3);
+    fireEvent.keyDown(first(), { key: "Enter" });
+    expect(paragraphTexts()).toEqual(["Int", "ro"]);
+
+    // The structural edit was one undo step: Ctrl+Z restores the original.
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    expect(paragraphTexts()).toEqual(["Intro"]);
+
+    // Backspace at offset 0 merges the second paragraph into the first.
+    setCaretOffset(first(), 3);
+    fireEvent.keyDown(first(), { key: "Enter" });
+    const second = () => document.querySelectorAll<HTMLElement>(".slide-text-paragraph")[1];
+    setCaretOffset(second(), 0);
+    fireEvent.keyDown(second(), { key: "Backspace" });
+    expect(paragraphTexts()).toEqual(["Intro"]);
+  });
+
+  it("applies toolbar formatting to the edited paragraph", () => {
+    const deck = newDeck("Format");
+    deck.slides[0].objects = [
+      { ...newSlideObject("rect", 100, 100, 300, 100), id: "r1", z: 1, text: newTextFrame("Hello", 20) },
+    ];
+    const id = useOfficeTabs.getState().create("impress", "Format", deck);
+    render(<Harness id={id} />);
+
+    fireEvent.doubleClick(document.querySelector(".slide-object:not(.is-inherited)")!);
+    fireEvent.click(screen.getByTitle("Bold"));
+    fireEvent.click(screen.getByTitle("Italic"));
+
+    const paragraph = (useOfficeTabs.getState().tabs[0].model as Deck).slides[0].objects[0].text!.paragraphs[0];
+    expect(paragraph.bold).toBe(true);
+    expect(paragraph.italic).toBe(true);
   });
 });
 
@@ -544,5 +600,354 @@ describe("transition names", () => {
 
   it("lists the transitions in Turkish instead of English words", () => {
     expect(transitionLabels("tr")).toEqual(["Yok", "Solma", "Kaydırma", "İtme", "Silme"]);
+  });
+});
+
+describe("keyboard shortcuts", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+  });
+
+  function seed(): string {
+    const deck = newDeck("Keys");
+    deck.slides[0].objects = [rect("r1", 100, 100, 200, 100, 1), rect("r2", 500, 300, 100, 100, 2)];
+    const id = useOfficeTabs.getState().create("impress", "Keys", deck);
+    render(<Harness id={id} />);
+    return id;
+  }
+
+  function modelObjects(id: string): SlideObject[] {
+    return (useOfficeTabs.getState().tabs.find((tab) => tab.id === id)!.model as Deck).slides[0].objects;
+  }
+
+  function selectObject(index: number, pointerId = 1): void {
+    const object = document.querySelectorAll<HTMLElement>(".slide-object:not(.is-inherited)")[index];
+    fireEvent.pointerDown(object, { pointerId, pointerType: "mouse", button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(window, { pointerId, pointerType: "mouse" });
+  }
+
+  it("deletes the selection with Delete and restores it with Ctrl+Z / Ctrl+Y", () => {
+    const id = seed();
+    selectObject(0);
+    fireEvent.keyDown(window, { key: "Delete" });
+    expect(modelObjects(id)).toHaveLength(1);
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    expect(modelObjects(id)).toHaveLength(2);
+    fireEvent.keyDown(window, { key: "y", ctrlKey: true });
+    expect(modelObjects(id)).toHaveLength(1);
+  });
+
+  it("duplicates with Ctrl+D and pastes a copied object with Ctrl+V", () => {
+    const id = seed();
+    selectObject(0);
+    fireEvent.keyDown(window, { key: "d", ctrlKey: true });
+    expect(modelObjects(id)).toHaveLength(3);
+    // The duplicate is offset by 16 points.
+    expect(modelObjects(id)[2]).toMatchObject({ x: 116, y: 116 });
+
+    selectObject(0, 2);
+    fireEvent.keyDown(window, { key: "c", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "v", ctrlKey: true });
+    expect(modelObjects(id)).toHaveLength(4);
+    expect(modelObjects(id)[3]).toMatchObject({ x: 116, y: 116 });
+  });
+
+  it("cuts with Ctrl+X", () => {
+    const id = seed();
+    selectObject(0);
+    fireEvent.keyDown(window, { key: "x", ctrlKey: true });
+    expect(modelObjects(id)).toHaveLength(1);
+  });
+
+  it("scrolls the slide stage with the arrow keys when nothing is edited", () => {
+    seed();
+    const stage = document.querySelector<HTMLElement>(".slide-stage")!;
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(stage.scrollLeft).toBe(60);
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    expect(stage.scrollTop).toBe(60);
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    expect(stage.scrollLeft).toBe(0);
+    fireEvent.keyDown(window, { key: "ArrowUp" });
+    expect(stage.scrollTop).toBe(0);
+  });
+
+  it("does not fire shortcuts while a text field has focus", () => {
+    const id = seed();
+    selectObject(0);
+    fireEvent.keyDown(document.querySelector(".notes-input")!, { key: "Delete" });
+    expect(modelObjects(id)).toHaveLength(2);
+  });
+});
+
+describe("align and distribute", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+  });
+
+  function threeObjects(): string {
+    const deck = newDeck("Arrange");
+    deck.slides[0].objects = [
+      rect("a", 100, 50, 50, 30, 1),
+      rect("b", 200, 90, 100, 30, 2),
+      rect("c", 400, 130, 50, 30, 3),
+    ];
+    const id = useOfficeTabs.getState().create("impress", "Arrange", deck);
+    render(<Harness id={id} />);
+    return id;
+  }
+
+  function selectAll(): void {
+    document.querySelectorAll<HTMLElement>(".slide-object:not(.is-inherited)").forEach((object, index) => {
+      fireEvent.pointerDown(object, {
+        pointerId: index + 1,
+        pointerType: "mouse",
+        button: 0,
+        shiftKey: true,
+        clientX: 10,
+        clientY: 10,
+      });
+      fireEvent.pointerUp(window, { pointerId: index + 1, pointerType: "mouse" });
+    });
+  }
+
+  function modelObjects(id: string): SlideObject[] {
+    return (useOfficeTabs.getState().tabs.find((tab) => tab.id === id)!.model as Deck).slides[0].objects;
+  }
+
+  it("aligns a multi-object selection to its bounding box", () => {
+    const id = threeObjects();
+    selectAll();
+    fireEvent.click(screen.getByTitle("Align left"));
+    expect(modelObjects(id).map((object) => object.x)).toEqual([100, 100, 100]);
+
+    fireEvent.click(screen.getByTitle("Align top"));
+    expect(modelObjects(id).map((object) => object.y)).toEqual([50, 50, 50]);
+  });
+
+  it("keeps slide-edge alignment for a single object", () => {
+    const id = threeObjects();
+    fireEvent.pointerDown(document.querySelectorAll<HTMLElement>(".slide-object:not(.is-inherited)")[0], {
+      pointerId: 1,
+      pointerType: "mouse",
+      button: 0,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerUp(window, { pointerId: 1, pointerType: "mouse" });
+    fireEvent.click(screen.getByTitle("Align left"));
+    expect(modelObjects(id)[0].x).toBe(0);
+  });
+
+  it("distributes three objects with equal gaps", () => {
+    const id = threeObjects();
+    selectAll();
+    fireEvent.click(screen.getByTitle("Distribute horizontally"));
+    // Span 100..450 with widths 50+100+50 leaves a 75 gap between edges.
+    expect(modelObjects(id).map((object) => object.x)).toEqual([100, 225, 400]);
+  });
+});
+
+describe("hidden slides", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+  });
+
+  it("marks hidden slides and skips them when the show advances", () => {
+    const deck = newDeck("Hidden");
+    const slides = [newSlide(), { ...newSlide(), hidden: true }, newSlide()];
+    deck.slides = slides;
+    const id = useOfficeTabs.getState().create("impress", "Hidden", deck);
+    render(<Harness id={id} />);
+
+    expect(document.querySelectorAll(".slide-hidden-badge")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start show" }));
+    expect(document.querySelector(".slideshow-nav span")!.textContent).toContain("1 / 3");
+    fireEvent.click(document.querySelector(".slideshow")!);
+    // Slide 2 is hidden, so the show lands on slide 3.
+    expect(document.querySelector(".slideshow-nav span")!.textContent).toContain("3 / 3");
+  });
+
+  it("toggles slide.hidden from the properties panel", () => {
+    const deck = newDeck("Hide toggle");
+    useOfficeTabs.getState().create("impress", "Hide toggle", deck);
+    render(<Harness id={useOfficeTabs.getState().tabs[0].id} />);
+
+    fireEvent.click(screen.getByLabelText("Hidden"));
+    expect((useOfficeTabs.getState().tabs[0].model as Deck).slides[0].hidden).toBe(true);
+  });
+});
+
+describe("header and footer", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+  });
+
+  it("renders slide numbers for every slide when enabled and removes them when off", () => {
+    const deck = newDeck("Footers");
+    deck.slides = [newSlide(), newSlide()];
+    deck.footer = {
+      enabled: true,
+      text: "Office",
+      showText: true,
+      showSlideNumber: true,
+      showDate: false,
+      dateText: "",
+    };
+    const id = useOfficeTabs.getState().create("impress", "Footers", deck);
+    render(<Harness id={id} />);
+
+    const numbers = [...document.querySelectorAll(".slide-footer-right")].map((element) => element.textContent);
+    // One footer per slide thumbnail plus the editor canvas.
+    expect(numbers.slice(0, 2)).toEqual(["1", "2"]);
+    expect(numbers).toHaveLength(3);
+
+    // Turn the numbers off through the Design ribbon dialog.
+    fireEvent.click(screen.getByRole("button", { name: "Design" }));
+    fireEvent.click(screen.getByRole("button", { name: "Header & footer" }));
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    fireEvent.click(within(dialog).getByLabelText("Slide number"));
+    fireEvent.click(within(dialog).getByLabelText("Close"));
+
+    const after = [...document.querySelectorAll(".slide-footer-right")].map((element) => element.textContent);
+    expect(after.every((value) => value === "")).toBe(true);
+  });
+});
+
+describe("slide sorter", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+  });
+
+  it("switches to a grid and reorders slides with a pointer drag", () => {
+    const deck = newDeck("Sorter");
+    const slides = [newSlide(), newSlide(), newSlide()];
+    slides.forEach((slide, index) => {
+      slide.objects = [{ ...newSlideObject("rect", 10, 10, 50, 50), id: `s${index}`, z: 1 }];
+    });
+    deck.slides = slides;
+    const id = useOfficeTabs.getState().create("impress", "Sorter", deck);
+    render(<Harness id={id} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+    fireEvent.click(screen.getByRole("button", { name: "Slide sorter" }));
+    const items = document.querySelectorAll<HTMLElement>(".sorter-item");
+    expect(items).toHaveLength(3);
+
+    fireEvent.pointerDown(items[0], { pointerId: 1, pointerType: "mouse", button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerEnter(items[2]);
+    fireEvent.pointerUp(window, { pointerId: 1, pointerType: "mouse" });
+
+    const model = useOfficeTabs.getState().tabs.find((tab) => tab.id === id)!.model as Deck;
+    expect(model.slides.map((slide) => slide.id)).toEqual([slides[1].id, slides[2].id, slides[0].id]);
+  });
+});
+
+describe("connectors", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+  });
+
+  it("creates a connector between two shapes and follows a moved shape", () => {
+    const deck = newDeck("Connect");
+    deck.slides[0].objects = [rect("a", 100, 100, 200, 100, 1), rect("b", 500, 100, 200, 100, 2)];
+    const id = useOfficeTabs.getState().create("impress", "Connect", deck);
+    render(<Harness id={id} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Connector" }));
+    const objects = () => document.querySelectorAll<HTMLElement>(".slide-object:not(.is-inherited)");
+    fireEvent.pointerDown(objects()[0], { pointerId: 1, pointerType: "mouse", button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(window, { pointerId: 1, pointerType: "mouse" });
+    fireEvent.pointerDown(objects()[1], { pointerId: 2, pointerType: "mouse", button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(window, { pointerId: 2, pointerType: "mouse" });
+
+    const modelObjects = () =>
+      (useOfficeTabs.getState().tabs.find((tab) => tab.id === id)!.model as Deck).slides[0].objects;
+    const line = modelObjects().find((object) => object.kind === "line")!;
+    expect(line.line).toMatchObject({ beginObject: "a", endObject: "b" });
+
+    // Drag the first shape; the connector is recomputed with it. Both ends
+    // anchor on the facing edges, so the box starts at the moved shape's edge.
+    fireEvent.pointerDown(objects()[0], { pointerId: 3, pointerType: "mouse", button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(window, { pointerId: 3, pointerType: "mouse", clientX: 10, clientY: 0 });
+    fireEvent.pointerUp(window, { pointerId: 3, pointerType: "mouse" });
+    const moved = modelObjects().find((object) => object.kind === "line")!;
+    expect(moved).toMatchObject({ x: 350, y: 150, w: 150, h: 1 });
+  });
+});
+
+describe("image crop", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+  });
+
+  it("applies a crop from the properties panel and previews it", () => {
+    const deck = newDeck("Crop");
+    const image = { ...newSlideObject("image", 100, 100, 200, 100), id: "img1", z: 1 };
+    image.image = { name: "a.png", mime: "image/png", dataBase64: "aGk=", alt: "" };
+    deck.slides[0].objects = [image];
+    useOfficeTabs.getState().create("impress", "Crop", deck);
+    render(<Harness id={useOfficeTabs.getState().tabs[0].id} />);
+
+    fireEvent.pointerDown(document.querySelector(".slide-object:not(.is-inherited)")!, {
+      pointerId: 1,
+      pointerType: "mouse",
+      button: 0,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerUp(window, { pointerId: 1, pointerType: "mouse" });
+    fireEvent.click(screen.getByRole("button", { name: "Crop" }));
+
+    const handle = document.querySelector<HTMLElement>('[data-crop-handle="left"]')!;
+    expect(handle).not.toBeNull();
+    fireEvent.pointerDown(handle, { pointerId: 2, pointerType: "mouse", button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(window, { pointerId: 2, pointerType: "mouse", clientX: 10, clientY: 0 });
+    fireEvent.pointerUp(window, { pointerId: 2, pointerType: "mouse" });
+
+    const crop = (useOfficeTabs.getState().tabs[0].model as Deck).slides[0].objects[0].image!.crop!;
+    // 10 screen px at the 0.2 jsdom scale over a 200-point image.
+    expect(crop.left).toBeCloseTo(0.25, 5);
+    expect(crop.left + crop.right).toBeLessThan(1);
+
+    const preview = document.querySelector<HTMLImageElement>(".slide-image-crop img")!;
+    expect(preview.style.width).toContain("133.3");
+  });
+});
+
+describe("slideshow ink tools", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+  });
+
+  it("draws a pen stroke, keeps the click from advancing and erases the stroke", () => {
+    const deck = newDeck("Ink");
+    deck.slides = [newSlide(), newSlide()];
+    useOfficeTabs.getState().create("impress", "Ink", deck);
+    render(<Harness id={useOfficeTabs.getState().tabs[0].id} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start show" }));
+    fireEvent.click(screen.getByTitle("Pen"));
+    const area = document.querySelector<HTMLElement>(".slideshow-slide")!;
+    fireEvent.pointerDown(area, { pointerId: 1, pointerType: "mouse", button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(area, { pointerId: 1, pointerType: "mouse", clientX: 60, clientY: 40 });
+    fireEvent.pointerUp(area, { pointerId: 1, pointerType: "mouse", clientX: 60, clientY: 40 });
+    expect(document.querySelectorAll(".slideshow-ink path")).toHaveLength(1);
+
+    // With a tool active a click must not advance the show.
+    fireEvent.click(document.querySelector(".slideshow")!);
+    expect(document.querySelector(".slideshow-nav span")!.textContent).toContain("1 / 2");
+
+    fireEvent.click(screen.getByTitle("Laser pointer"));
+    fireEvent.pointerMove(area, { pointerId: 2, pointerType: "mouse", clientX: 30, clientY: 30 });
+    expect(document.querySelector(".slideshow-laser")).not.toBeNull();
+
+    // The eraser removes the stroke under the pointer.
+    fireEvent.click(screen.getByTitle("Eraser"));
+    fireEvent.pointerDown(area, { pointerId: 3, pointerType: "mouse", button: 0, clientX: 60, clientY: 40 });
+    expect(document.querySelectorAll(".slideshow-ink path")).toHaveLength(0);
   });
 });
