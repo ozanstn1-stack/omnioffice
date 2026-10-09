@@ -565,6 +565,14 @@ impl<'a> Canvas<'a> {
         true
     }
 
+    /// Restricts drawing to a rectangle until [`Canvas::restore`] closes the
+    /// graphics state this pushes. Used to show only the visible part of a
+    /// cropped image.
+    pub fn clip_rect(&mut self, x: f64, y: f64, w: f64, h: f64) {
+        self.page.ops.push_str("q\n");
+        self.page.ops.push_str(&format!("{:.2} {:.2} {:.2} {:.2} re\nW n\n", x, self.flip(y + h), w, h));
+    }
+
     pub fn link(&mut self, x: f64, y: f64, w: f64, h: f64, url: &str) {
         self.page.links.push(LinkAnnot { x, y, w, h, url: url.to_string() });
     }

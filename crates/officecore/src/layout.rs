@@ -194,14 +194,25 @@ struct LaidLine {
     ascent: f64,
 }
 
-fn break_line(fonts: &FontSet, words: &[(String, TextStyle, bool)], width: f64, align: &str) -> Vec<LaidLine> {
+/// Default distance between automatic tab stops when a paragraph has no custom
+/// stops, matching Word's 0.5 inch default.
+const DEFAULT_TAB_STEP_PT: f64 = 36.0;
+
+fn break_line(
+    fonts: &FontSet,
+    words: &[(String, TextStyle, bool)],
+    width: f64,
+    align: &str,
+    tabs: &[TabStop],
+) -> Vec<LaidLine> {
     let mut lines: Vec<LaidLine> = Vec::new();
     let mut current: Vec<(String, TextStyle, bool)> = Vec::new();
     let mut current_width = 0.0;
     let space_width = |fonts: &FontSet, style: &TextStyle| fonts.pick(style.bold).advance_pt(" ", style.size_pt);
 
     for (word, style, is_space) in words {
-        let word_width = fonts.pick(style.bold).advance_pt(word, style.size_pt);
+        // A tab marker is zero-width; it only moves the cursor when drawn.
+        let word_width = if word == "\t" { 0.0 } else { fonts.pick(style.bold).advance_pt(word, style.size_pt) };
         if *is_space {
             if current.is_empty() {
                 continue;
@@ -211,7 +222,7 @@ fn break_line(fonts: &FontSet, words: &[(String, TextStyle, bool)], width: f64, 
             continue;
         }
         if current_width + word_width > width && !current.is_empty() {
-            lines.push(finalize_line(fonts, &current, current_width, width, align));
+            lines.push(finalize_line(fonts, &current, current_width, width, align, tabs));
             current.clear();
             current_width = 0.0;
         }
@@ -219,7 +230,7 @@ fn break_line(fonts: &FontSet, words: &[(String, TextStyle, bool)], width: f64, 
         current_width += word_width;
     }
     if !current.is_empty() {
-        lines.push(finalize_line(fonts, &current, current_width, width, align));
+        lines.push(finalize_line(fonts, &current, current_width, width, align, tabs));
     }
     if lines.is_empty() {
         let style = words.first().map(|(_, style, _)| *style).unwrap_or_default();
@@ -231,19 +242,47 @@ fn break_line(fonts: &FontSet, words: &[(String, TextStyle, bool)], width: f64, 
     lines
 }
 
+/// The next tab position after `cursor`: the closest custom stop to its right,
+/// or the next multiple of the default step when no custom stop is left.
+fn next_tab_stop(cursor: f64, tabs: &[TabStop]) -> f64 {
+    let epsilon = 0.01;
+    if let Some(pos) = tabs.iter().map(|tab| tab.pos_pt).filter(|pos| *pos > cursor + epsilon).reduce(f64::min) {
+        return pos;
+    }
+    ((cursor + epsilon) / DEFAULT_TAB_STEP_PT).floor() * DEFAULT_TAB_STEP_PT + DEFAULT_TAB_STEP_PT
+}
+
 fn finalize_line(
     fonts: &FontSet,
     items: &[(String, TextStyle, bool)],
     natural_width: f64,
     width: f64,
     align: &str,
+    tabs: &[TabStop],
 ) -> LaidLine {
     let mut trimmed: Vec<(String, TextStyle, bool)> = items.to_vec();
     while trimmed.last().map(|(_, _, is_space)| *is_space).unwrap_or(false) {
         trimmed.pop();
     }
-    let line_width =
-        trimmed.iter().map(|(text, style, _)| fonts.pick(style.bold).advance_pt(text, style.size_pt)).sum::<f64>();
+    // Tabs advance the cursor to the next stop, measured from the start of the
+    // line (not from the paragraph indent). The text after a stop is drawn
+    // left-aligned at it, so center/right/decimal stops are approximations:
+    // they only change where the following text begins, not how it is aligned
+    // on the stop.
+    let mut placed: Vec<(f64, String, TextStyle, bool)> = Vec::new();
+    let mut cursor = 0.0f64;
+    for (text, style, is_space) in &trimmed {
+        if text == "\t" {
+            cursor = next_tab_stop(cursor, tabs);
+            continue;
+        }
+        placed.push((cursor, text.clone(), *style, *is_space));
+        cursor += fonts.pick(style.bold).advance_pt(text, style.size_pt);
+    }
+    let line_width = placed
+        .last()
+        .map(|(offset, text, style, _)| offset + fonts.pick(style.bold).advance_pt(text, style.size_pt))
+        .unwrap_or(0.0);
     let mut height: f64 = 0.0;
     let mut ascent: f64 = 0.0;
     for (_, style, _) in &trimmed {
@@ -258,7 +297,7 @@ fn finalize_line(
     // A line that already wrapped needs no justification.
     let natural = natural_width.min(line_width + 0.001);
     let extra = (width - line_width).max(0.0);
-    let gap_count = trimmed.iter().filter(|(_, _, is_space)| *is_space).count().max(1);
+    let gap_count = placed.iter().filter(|(_, _, _, is_space)| *is_space).count().max(1);
     let mut dx = match align {
         "center" => extra / 2.0,
         "right" => extra,
@@ -267,10 +306,9 @@ fn finalize_line(
     let mut laid_items = Vec::new();
     let justify = align == "justify" && natural > width - 1.0 && gap_count > 1;
     let gap_extra = if justify { (width - line_width) / gap_count as f64 } else { 0.0 };
-    for (text, style, is_space) in &trimmed {
-        laid_items.push(LineItem { dx, text: text.clone(), style: *style });
-        dx += fonts.pick(style.bold).advance_pt(text, style.size_pt);
-        if *is_space {
+    for (offset, text, style, is_space) in placed {
+        laid_items.push(LineItem { dx: dx + offset, text, style });
+        if is_space {
             dx += gap_extra;
         }
     }
@@ -322,7 +360,9 @@ fn paragraph_words(
             match ch {
                 ' ' | '\t' | '\u{a0}' => {
                     push_buffer(&mut words, &mut buffer, &style, false);
-                    words.push((if ch == '\t' { "    ".into() } else { " ".into() }, style, true));
+                    // A tab is kept as its own zero-width marker; the line
+                    // layout advances the cursor to the next stop.
+                    words.push((if ch == '\t' { "\t".into() } else { " ".into() }, style, ch != '\t'));
                 }
                 '\n' => {
                     push_buffer(&mut words, &mut buffer, &style, false);
@@ -563,7 +603,7 @@ impl<'a> Renderer<'a> {
                     let substituted = self.substitute_runs(runs, page_number);
                     let (words, _) = paragraph_words(self.document, props, &substituted);
                     for segment in split_on_newlines(words) {
-                        let lines = break_line(self.fonts, &segment, content_width, &props.align);
+                        let lines = break_line(self.fonts, &segment, content_width, &props.align, &props.tabs);
                         for line in lines {
                             let x = match props.align.as_str() {
                                 "center" => left + (content_width - line.width) / 2.0,
@@ -685,7 +725,7 @@ impl<'a> Renderer<'a> {
                 ParaProps { style: "Normal".into(), space_after_pt: 2.0, line_spacing: 1.0, ..Default::default() };
             let (words, base) = paragraph_words(self.document, &props, &all_runs);
             for segment in split_on_newlines(words) {
-                let lines = break_line(self.fonts, &segment, width, "left");
+                let lines = break_line(self.fonts, &segment, width, "left", &props.tabs);
                 for line in lines {
                     if y + line.height > page.height_pt - page.margin_bottom_pt + 4.0 {
                         break;
@@ -763,7 +803,7 @@ impl<'a> Renderer<'a> {
         }
 
         for (segment_index, segment) in segments.iter().enumerate() {
-            let lines = break_line(self.fonts, segment, available, &base.align);
+            let lines = break_line(self.fonts, segment, available, &base.align, &props.tabs);
             for line in lines {
                 let marker_width = list_marker
                     .as_ref()
@@ -813,25 +853,14 @@ impl<'a> Renderer<'a> {
     }
 
     fn draw_table(&mut self, table: &TableData) {
-        let columns = table.rows.iter().map(|row| row.cells.len()).max().unwrap_or(1).max(1);
-        let mut widths: Vec<f64> = if table.column_widths_pt.len() >= columns {
-            table.column_widths_pt[..columns].to_vec()
-        } else {
-            vec![self.column_width / columns as f64; columns]
-        };
-        let total: f64 = widths.iter().sum();
-        if total > 0.0 && (total - self.column_width).abs() > 1.0 {
-            let scale = self.column_width / total;
-            for width in widths.iter_mut() {
-                *width *= scale;
-            }
-        }
+        let columns = table_grid_columns(table);
+        let widths = table_column_widths(table, columns, self.column_width);
+        let layout = table_cell_layout(table, &widths);
         let padding = 4.0;
-        for row in &table.rows {
+        for (row, cells) in table.rows.iter().zip(layout.iter()) {
             // Measure the row height without drawing.
             let mut row_height: f64 = 12.0;
-            for (index, cell) in row.cells.iter().enumerate() {
-                let width = widths.get(index).copied().unwrap_or(self.column_width / columns as f64);
+            for (_, width, cell) in cells {
                 let height = measure_blocks(self.fonts, self.document, &cell.blocks, (width - padding * 2.0).max(12.0));
                 row_height = row_height.max(height + padding * 2.0);
             }
@@ -841,13 +870,13 @@ impl<'a> Renderer<'a> {
             if self.remaining() < row_height {
                 self.next_column();
             }
-            let mut x = self.column_x(self.column);
+            let base_x = self.column_x(self.column);
             let top = self.y;
-            for (index, cell) in row.cells.iter().enumerate() {
-                let width = widths.get(index).copied().unwrap_or(self.column_width / columns as f64);
+            for (offset, width, cell) in cells {
+                let x = base_x + offset;
                 if let Some(background) = cell.background.as_deref().and_then(parse_hex) {
                     let canvas = self.canvas();
-                    canvas.fill_rect(x, top, width, row_height, background, 1.0);
+                    canvas.fill_rect(x, top, *width, row_height, background, 1.0);
                 }
                 let content_height = draw_blocks_in_cell(
                     self,
@@ -857,16 +886,12 @@ impl<'a> Renderer<'a> {
                     (width - padding * 2.0).max(12.0),
                 );
                 let _ = content_height;
-                x += width;
             }
             if table.borders {
                 let color = parse_hex(&table.border_color).unwrap_or(Rgb(148, 163, 184));
-                let mut x = self.column_x(self.column);
-                for (index, _) in row.cells.iter().enumerate() {
-                    let width = widths.get(index).copied().unwrap_or(self.column_width / columns as f64);
+                for (offset, width, _) in cells {
                     let canvas = self.canvas();
-                    canvas.stroke_rect(x, top, width, row_height, color, 0.6);
-                    x += width;
+                    canvas.stroke_rect(base_x + offset, top, *width, row_height, color, 0.6);
                 }
             }
             self.y = top + row_height;
@@ -951,6 +976,104 @@ impl<'a> Renderer<'a> {
     }
 }
 
+/// The number of grid columns a table needs, counting colspans and the
+/// columns an open rowspan keeps covered in the rows below. `TableRow.cells`
+/// holds only the cells that start in a row, so the plain `cells.len()`
+/// undercounts merged tables.
+fn table_grid_columns(table: &TableData) -> usize {
+    let mut open: Vec<usize> = Vec::new();
+    let mut columns = 0usize;
+    for row in &table.rows {
+        // `open` counts the rows still covered after the current one.
+        for remaining in open.iter_mut() {
+            *remaining = remaining.saturating_sub(1);
+        }
+        let mut column = 0usize;
+        for cell in &row.cells {
+            while column < open.len() && open[column] > 0 {
+                column += 1;
+            }
+            let span = cell.colspan.max(1) as usize;
+            while open.len() < column + span {
+                open.push(0);
+            }
+            if cell.rowspan > 1 {
+                for slot in open.iter_mut().skip(column).take(span) {
+                    *slot = cell.rowspan as usize;
+                }
+            }
+            column += span;
+        }
+        while column < open.len() && open[column] > 0 {
+            column += 1;
+        }
+        columns = columns.max(column);
+    }
+    columns.max(1)
+}
+
+/// Column widths for the grid: `column_widths_pt` when it covers the grid
+/// (padded with the average of what it provides otherwise), scaled to the
+/// available width.
+fn table_column_widths(table: &TableData, columns: usize, available: f64) -> Vec<f64> {
+    let mut widths: Vec<f64> = table.column_widths_pt.clone();
+    let fallback =
+        if widths.is_empty() { available / columns as f64 } else { widths.iter().sum::<f64>() / widths.len() as f64 };
+    while widths.len() < columns {
+        widths.push(fallback);
+    }
+    widths.truncate(columns);
+    for width in widths.iter_mut() {
+        if !width.is_finite() || *width < 1.0 {
+            *width = 1.0;
+        }
+    }
+    let total: f64 = widths.iter().sum();
+    if total > 0.0 && (total - available).abs() > 1.0 {
+        let scale = available / total;
+        for width in widths.iter_mut() {
+            *width *= scale;
+        }
+    }
+    widths
+}
+
+/// Lays out every row's origin cells on the table grid: each cell gets its
+/// starting x (relative to the table's left edge) and its combined width, so a
+/// colspan/rowspan cell covers exactly the grid columns it spans. Covered grid
+/// positions have no cell of their own in the model, so they are skipped.
+fn table_cell_layout<'a>(table: &'a TableData, widths: &[f64]) -> Vec<Vec<(f64, f64, &'a TableCell)>> {
+    let mut open: Vec<usize> = Vec::new();
+    let mut rows = Vec::with_capacity(table.rows.len());
+    for row in &table.rows {
+        for remaining in open.iter_mut() {
+            *remaining = remaining.saturating_sub(1);
+        }
+        let mut column = 0usize;
+        let mut cells = Vec::with_capacity(row.cells.len());
+        for cell in &row.cells {
+            while column < open.len() && open[column] > 0 {
+                column += 1;
+            }
+            let span = cell.colspan.max(1) as usize;
+            while open.len() < column + span {
+                open.push(0);
+            }
+            if cell.rowspan > 1 {
+                for slot in open.iter_mut().skip(column).take(span) {
+                    *slot = cell.rowspan as usize;
+                }
+            }
+            let x: f64 = widths.iter().take(column).sum();
+            let width: f64 = widths.iter().skip(column).take(span).sum();
+            cells.push((x, width, cell));
+            column += span;
+        }
+        rows.push(cells);
+    }
+    rows
+}
+
 /// Current UTC date and time as `(yyyy-mm-dd, hh:mm:ss)` without a date crate.
 fn utc_now() -> (String, String) {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1001,7 +1124,7 @@ fn measure_blocks(fonts: &FontSet, document: &TextDocument, blocks: &[Block], wi
                 let spacing = if base.line_spacing > 0.0 { base.line_spacing } else { 1.15 };
                 let mut block_height = base.space_before_pt;
                 for segment in split_on_newlines(words) {
-                    let lines = break_line(fonts, &segment, available, &base.align);
+                    let lines = break_line(fonts, &segment, available, &base.align, &props.tabs);
                     for line in lines {
                         block_height += line.height * spacing;
                     }
@@ -1029,7 +1152,7 @@ fn measure_blocks(fonts: &FontSet, document: &TextDocument, blocks: &[Block], wi
                     let spacing = if base.line_spacing > 0.0 { base.line_spacing } else { 1.15 };
                     height += base.space_before_pt;
                     for segment in split_on_newlines(words) {
-                        for line in break_line(fonts, &segment, available, &base.align) {
+                        for line in break_line(fonts, &segment, available, &base.align, &props.tabs) {
                             height += line.height * spacing;
                         }
                     }
@@ -1037,13 +1160,13 @@ fn measure_blocks(fonts: &FontSet, document: &TextDocument, blocks: &[Block], wi
                 }
             }
             Block::Table { table } => {
-                let columns = table.rows.iter().map(|row| row.cells.len()).max().unwrap_or(1).max(1);
-                let column_width = width / columns as f64;
-                for row in &table.rows {
+                let columns = table_grid_columns(table);
+                let widths = table_column_widths(table, columns, width);
+                for cells in table_cell_layout(table, &widths) {
                     let mut row_height: f64 = 12.0;
-                    for cell in &row.cells {
+                    for (_, cell_width, cell) in cells {
                         row_height = row_height
-                            .max(measure_blocks(fonts, document, &cell.blocks, (column_width - 10.0).max(12.0)) + 8.0);
+                            .max(measure_blocks(fonts, document, &cell.blocks, (cell_width - 10.0).max(12.0)) + 8.0);
                     }
                     height += row_height;
                 }
@@ -1064,7 +1187,7 @@ fn draw_blocks_in_cell(renderer: &mut Renderer<'_>, blocks: &[Block], x: f64, y:
                 let spacing = if base.line_spacing > 0.0 { base.line_spacing } else { 1.15 };
                 cursor += base.space_before_pt;
                 for segment in split_on_newlines(words) {
-                    let lines = break_line(renderer.fonts, &segment, available, &base.align);
+                    let lines = break_line(renderer.fonts, &segment, available, &base.align, &props.tabs);
                     for line in lines {
                         let left = x + base.indent_left_pt;
                         let line_x = match base.align.as_str() {
@@ -1360,15 +1483,38 @@ pub fn deck_to_pdf(deck: &Deck) -> Vec<u8> {
     let width = deck.size.width_pt.max(200.0);
     let height = deck.size.height_pt.max(150.0);
     let mut pages = Vec::new();
-    for slide in &deck.slides {
+    for (index, slide) in deck.slides.iter().enumerate() {
+        // Hidden slides stay in the file but are skipped by the export.
+        if slide.hidden {
+            continue;
+        }
         let mut canvas = Canvas::new(width, height, &fonts);
         let background =
             slide.background.as_deref().and_then(parse_hex).unwrap_or_else(|| theme_background(deck, slide));
         canvas.fill_rect(0.0, 0.0, width, height, background, 1.0);
-        let mut objects: Vec<&SlideObject> = slide.objects.iter().collect();
-        objects.sort_by_key(|object| object.z);
+        let context = SlideRenderContext { slide_number: index as u32 + 1, footer: deck.footer.as_ref() };
+        // Master objects first, then layout objects, then the slide's own
+        // objects; a placeholder role the slide fills itself hides the
+        // inherited one.
+        let slide_roles: Vec<&str> = slide.objects.iter().filter_map(|object| object.placeholder.as_deref()).collect();
+        let mut inherited = deck.inherited_objects(slide);
+        inherited.retain(|object| match object.placeholder.as_deref() {
+            Some(role) => !slide_roles.contains(&role),
+            None => true,
+        });
+        let mut master: Vec<&SlideObject> =
+            inherited.iter().filter(|object| object.id.starts_with("master:")).collect();
+        let mut layout: Vec<&SlideObject> =
+            inherited.iter().filter(|object| object.id.starts_with("layout:")).collect();
+        master.sort_by_key(|object| object.z);
+        layout.sort_by_key(|object| object.z);
+        let mut objects: Vec<&SlideObject> = master;
+        objects.extend(layout);
+        let mut own: Vec<&SlideObject> = slide.objects.iter().collect();
+        own.sort_by_key(|object| object.z);
+        objects.extend(own);
         for object in objects {
-            draw_slide_object(&mut canvas, object, height, &fonts);
+            draw_slide_object(&mut canvas, object, height, &fonts, &context);
         }
         pages.push(canvas.finish());
     }
@@ -1391,7 +1537,50 @@ fn theme_background(deck: &Deck, slide: &Slide) -> Rgb {
     }
 }
 
-fn draw_slide_object(canvas: &mut Canvas<'_>, object: &SlideObject, slide_height: f64, fonts: &FontSet) {
+/// Per-slide values the master/layout placeholders resolve to.
+struct SlideRenderContext<'a> {
+    /// The slide's position in the deck (hidden slides included), 1-based.
+    slide_number: u32,
+    footer: Option<&'a SlideFooter>,
+}
+
+/// The text a footer, date or slide-number placeholder shows, or `None` when
+/// the deck has no enabled footer (the placeholder then keeps whatever the
+/// master wrote, which is usually empty).
+fn placeholder_text(placeholder: &str, context: &SlideRenderContext<'_>) -> Option<String> {
+    let footer = context.footer.filter(|footer| footer.enabled)?;
+    match placeholder {
+        "slideNumber" => Some(context.slide_number.to_string()),
+        "footer" if footer.show_text => Some(footer.text.clone()),
+        "date" if footer.show_date => Some(footer.date_text.clone()),
+        _ => None,
+    }
+}
+
+/// A placeholder frame with its text replaced by the resolved value.
+fn frame_with_value(frame: &TextFrame, value: &str) -> TextFrame {
+    let mut resolved = frame.clone();
+    match resolved.paragraphs.first_mut() {
+        Some(first) => {
+            first.text = value.to_string();
+            first.runs.clear();
+            for extra in resolved.paragraphs.iter_mut().skip(1) {
+                extra.text.clear();
+                extra.runs.clear();
+            }
+        }
+        None => resolved.paragraphs.push(TextParagraph { text: value.to_string(), ..Default::default() }),
+    }
+    resolved
+}
+
+fn draw_slide_object(
+    canvas: &mut Canvas<'_>,
+    object: &SlideObject,
+    slide_height: f64,
+    fonts: &FontSet,
+    context: &SlideRenderContext<'_>,
+) {
     let style = object.style.clone().unwrap_or_default();
     let fill = style.fill.as_deref().and_then(parse_hex);
     let stroke = style.stroke.as_deref().and_then(parse_hex).map(|color| (color, style.stroke_width_pt.max(0.5)));
@@ -1445,7 +1634,34 @@ fn draw_slide_object(canvas: &mut Canvas<'_>, object: &SlideObject, slide_height
             if let Some(image) = &object.image {
                 let bytes = image.bytes();
                 if !bytes.is_empty() {
-                    canvas.image(object.x, object.y, object.w, object.h, &bytes, &image.mime);
+                    let crop = image
+                        .crop
+                        .as_ref()
+                        .filter(|crop| crop.left > 0.0 || crop.top > 0.0 || crop.right > 0.0 || crop.bottom > 0.0);
+                    match crop {
+                        Some(crop) => {
+                            // The object rectangle shows only the visible part;
+                            // the full picture is scaled up and shifted so that
+                            // part lands exactly on the rectangle, then clipped.
+                            let visible_w = (1.0 - crop.left - crop.right).max(0.02);
+                            let visible_h = (1.0 - crop.top - crop.bottom).max(0.02);
+                            let full_w = object.w / visible_w;
+                            let full_h = object.h / visible_h;
+                            canvas.clip_rect(object.x, object.y, object.w, object.h);
+                            canvas.image(
+                                object.x - crop.left * full_w,
+                                object.y - crop.top * full_h,
+                                full_w,
+                                full_h,
+                                &bytes,
+                                &image.mime,
+                            );
+                            canvas.restore();
+                        }
+                        None => {
+                            canvas.image(object.x, object.y, object.w, object.h, &bytes, &image.mime);
+                        }
+                    }
                 }
             }
         }
@@ -1461,8 +1677,21 @@ fn draw_slide_object(canvas: &mut Canvas<'_>, object: &SlideObject, slide_height
         }
         _ => {}
     }
+    let resolved = object.placeholder.as_deref().and_then(|role| placeholder_text(role, context));
     if let Some(frame) = &object.text {
-        draw_text_frame(canvas, object, frame, fonts);
+        match &resolved {
+            Some(value) => {
+                let frame = frame_with_value(frame, value);
+                draw_text_frame(canvas, object, &frame, fonts);
+            }
+            None => draw_text_frame(canvas, object, frame, fonts),
+        }
+    } else if let Some(value) = &resolved {
+        let frame = TextFrame {
+            paragraphs: vec![TextParagraph { text: value.clone(), ..Default::default() }],
+            ..Default::default()
+        };
+        draw_text_frame(canvas, object, &frame, fonts);
     }
     if object.rotation.abs() > 0.01 {
         canvas.page.ops.push_str("Q\n");
@@ -1479,79 +1708,137 @@ fn draw_arrow_head(canvas: &mut Canvas<'_>, x1: f64, y1: f64, x2: f64, y2: f64, 
     canvas.polygon(&[(x2, y2), left, right], Some(color), None);
 }
 
+/// One laid-out line of a text frame: its words with their own styles, the
+/// line height and the left indent of the paragraph it belongs to.
+struct SlideLine {
+    words: Vec<(String, TextStyle)>,
+    height: f64,
+    indent: f64,
+}
+
+/// The paragraph-level style, before per-run overrides.
+fn slide_paragraph_style(paragraph: &TextParagraph, frame: &TextFrame) -> TextStyle {
+    let size = paragraph.size_pt.or(frame.size_pt).unwrap_or(16.0);
+    let color = paragraph
+        .color
+        .as_deref()
+        .and_then(parse_hex)
+        .or_else(|| frame.color.as_deref().and_then(parse_hex))
+        .unwrap_or(Rgb::BLACK);
+    TextStyle {
+        size_pt: size,
+        bold: paragraph.bold,
+        italic: paragraph.italic,
+        underline: paragraph.underline,
+        color,
+        ..Default::default()
+    }
+}
+
+/// One run's style: the run's own values where set, the paragraph's otherwise.
+fn slide_run_style(run: &Run, paragraph: &TextParagraph, frame: &TextFrame) -> TextStyle {
+    let mut style = slide_paragraph_style(paragraph, frame);
+    style.bold = style.bold || run.bold;
+    style.italic = style.italic || run.italic;
+    style.underline = style.underline || run.underline;
+    style.strike = run.strike;
+    style.highlight = run.highlight.as_deref().and_then(parse_hex);
+    if let Some(size) = run.size_pt {
+        style.size_pt = size;
+    }
+    if let Some(color) = run.color.as_deref().and_then(parse_hex) {
+        style.color = color;
+    }
+    style
+}
+
+fn slide_line_width(fonts: &FontSet, words: &[(String, TextStyle)]) -> f64 {
+    let mut width = 0.0;
+    for (index, (word, style)) in words.iter().enumerate() {
+        if index > 0 {
+            width += fonts.pick(style.bold).advance_pt(" ", style.size_pt);
+        }
+        width += fonts.pick(style.bold).advance_pt(word, style.size_pt);
+    }
+    width
+}
+
+fn slide_line_height(fonts: &FontSet, words: &[(String, TextStyle)], fallback: f64) -> f64 {
+    words.iter().map(|(_, style)| fonts.pick(style.bold).line_height_pt(style.size_pt, 1.2)).fold(fallback, f64::max)
+}
+
 fn draw_text_frame(canvas: &mut Canvas<'_>, object: &SlideObject, frame: &TextFrame, fonts: &FontSet) {
     let padding = 6.0;
     let align = if frame.align.is_empty() { "left" } else { frame.align.as_str() };
     let valign = if frame.valign.is_empty() { "top" } else { frame.valign.as_str() };
-    let mut lines: Vec<(String, TextStyle, f64)> = Vec::new();
+    let mut lines: Vec<SlideLine> = Vec::new();
     for paragraph in &frame.paragraphs {
-        let size = paragraph.size_pt.or(frame.size_pt).unwrap_or(16.0);
-        let bold = paragraph.bold;
-        let color = paragraph
-            .color
-            .as_deref()
-            .and_then(parse_hex)
-            .or_else(|| frame.color.as_deref().and_then(parse_hex))
-            .unwrap_or(Rgb::BLACK);
-        let style = TextStyle {
-            size_pt: size,
-            bold,
-            italic: paragraph.italic,
-            underline: paragraph.underline,
-            color,
-            ..Default::default()
-        };
-        let face = fonts.pick(bold);
-        let bullet = if paragraph.bullet {
-            if paragraph.bullet && !paragraph.text.starts_with('•') {
-                "• "
-            } else {
-                ""
+        // A list level indents the paragraph; bullets keep their marker.
+        let indent = paragraph.level as f64 * 18.0;
+        let base = slide_paragraph_style(paragraph, frame);
+        let fallback_height = fonts.pick(base.bold).line_height_pt(base.size_pt, 1.2);
+        let available = (object.w - padding * 2.0 - indent).max(20.0);
+        let bullet = if paragraph.bullet && !paragraph.text.starts_with('•') { "• " } else { "" };
+        let mut words: Vec<(String, TextStyle)> = Vec::new();
+        if !bullet.is_empty() {
+            words.push((bullet.to_string(), base));
+        }
+        if paragraph.runs.is_empty() {
+            for word in paragraph.text.split_whitespace() {
+                words.push((word.to_string(), base));
             }
         } else {
-            ""
-        };
-        let text = format!("{bullet}{}", paragraph.text);
-        let line_height = face.line_height_pt(size, 1.2);
-        if text.is_empty() {
-            lines.push((String::new(), style, line_height));
-            continue;
+            for run in &paragraph.runs {
+                let style = slide_run_style(run, paragraph, frame);
+                for word in run.text.split_whitespace() {
+                    words.push((word.to_string(), style));
+                }
+            }
         }
-        let available = (object.w - padding * 2.0).max(20.0);
-        let mut current = String::new();
+        let mut current: Vec<(String, TextStyle)> = Vec::new();
         let mut current_width = 0.0;
-        for word in text.split_whitespace() {
-            let word_width = face.advance_pt(word, size) + face.advance_pt(" ", size);
+        for (word, style) in words {
+            let word_width = fonts.pick(style.bold).advance_pt(&word, style.size_pt)
+                + fonts.pick(style.bold).advance_pt(" ", style.size_pt);
             if current_width + word_width > available && !current.is_empty() {
-                lines.push((std::mem::take(&mut current), style, line_height));
+                let height = slide_line_height(fonts, &current, fallback_height);
+                lines.push(SlideLine { words: std::mem::take(&mut current), height, indent });
                 current_width = 0.0;
             }
-            current.push_str(word);
-            current.push(' ');
             current_width += word_width;
+            current.push((word, style));
         }
-        lines.push((current.trim_end().to_string(), style, line_height));
+        let height = slide_line_height(fonts, &current, fallback_height);
+        lines.push(SlideLine { words: current, height, indent });
     }
-    let total_height: f64 = lines.iter().map(|(_, _, height)| *height).sum();
+    let total_height: f64 = lines.iter().map(|line| line.height).sum();
     let start_y = match valign {
         "middle" => object.y + (object.h - total_height) / 2.0,
         "bottom" => object.y + object.h - total_height - padding,
         _ => object.y + padding,
     };
     let mut y = start_y;
-    for (text, style, line_height) in lines {
-        if text.is_empty() {
-            y += line_height;
+    for line in lines {
+        if line.words.is_empty() {
+            y += line.height;
             continue;
         }
-        let width = fonts.pick(style.bold).advance_pt(&text, style.size_pt);
+        let width = slide_line_width(fonts, &line.words);
+        let available = (object.w - padding * 2.0 - line.indent).max(20.0);
         let x = match align {
-            "center" => object.x + (object.w - width) / 2.0,
-            "right" => object.x + object.w - width - padding,
-            _ => object.x + padding,
+            "center" => object.x + padding + line.indent + (available - width) / 2.0,
+            "right" => object.x + padding + line.indent + available - width,
+            _ => object.x + padding + line.indent,
         };
-        canvas.text(x, y + style.size_pt, &text, &style);
-        y += line_height;
+        let mut cursor = x;
+        for (index, (word, style)) in line.words.iter().enumerate() {
+            if index > 0 {
+                cursor += fonts.pick(style.bold).advance_pt(" ", style.size_pt);
+            }
+            canvas.text(cursor, y + style.size_pt, word, style);
+            cursor += fonts.pick(style.bold).advance_pt(word, style.size_pt);
+        }
+        y += line.height;
     }
 }
 
@@ -1679,6 +1966,182 @@ mod tests {
         slide.objects = vec![object, text];
         deck.slides = vec![slide];
         let bytes = deck_to_pdf(&deck);
+        assert!(bytes.starts_with(b"%PDF"));
+    }
+
+    fn pdf_page_count(bytes: &[u8]) -> usize {
+        lopdf::Document::load_mem(bytes).expect("the export must be a loadable PDF").get_pages().len()
+    }
+
+    #[test]
+    fn hidden_slides_are_skipped_by_the_export() {
+        let mut deck = Deck::new_blank("Hidden");
+        deck.slides[0].hidden = true;
+        let mut visible = Slide::default();
+        let mut text = SlideObject::new("text", 40.0, 40.0, 400.0, 100.0);
+        text.text = Some(TextFrame {
+            paragraphs: vec![TextParagraph { text: "Second".into(), ..Default::default() }],
+            ..Default::default()
+        });
+        visible.objects.push(text);
+        deck.slides.push(visible);
+        let bytes = deck_to_pdf(&deck);
+        assert_eq!(pdf_page_count(&bytes), 1, "only the visible slide is exported");
+    }
+
+    #[test]
+    fn a_deck_with_every_slide_hidden_still_produces_one_page() {
+        let mut deck = Deck::new_blank("All hidden");
+        deck.slides[0].hidden = true;
+        let bytes = deck_to_pdf(&deck);
+        assert!(bytes.starts_with(b"%PDF"));
+        assert_eq!(pdf_page_count(&bytes), 1);
+    }
+
+    #[test]
+    fn footer_placeholders_resolve_to_the_deck_values() {
+        let footer = SlideFooter {
+            enabled: true,
+            text: "Acme".into(),
+            show_text: true,
+            show_slide_number: true,
+            show_date: true,
+            date_text: "2026-01-01".into(),
+        };
+        let context = SlideRenderContext { slide_number: 3, footer: Some(&footer) };
+        assert_eq!(placeholder_text("slideNumber", &context).as_deref(), Some("3"));
+        assert_eq!(placeholder_text("footer", &context).as_deref(), Some("Acme"));
+        assert_eq!(placeholder_text("date", &context).as_deref(), Some("2026-01-01"));
+
+        // A disabled footer leaves the placeholders as they are (empty).
+        let disabled = SlideFooter { enabled: false, ..footer.clone() };
+        let context = SlideRenderContext { slide_number: 3, footer: Some(&disabled) };
+        assert_eq!(placeholder_text("footer", &context), None);
+        let context = SlideRenderContext { slide_number: 3, footer: None };
+        assert_eq!(placeholder_text("date", &context), None);
+    }
+
+    /// Counts the text-showing operators in every page's decompressed content
+    /// stream, so a test can tell whether a placeholder actually drew text.
+    fn pdf_text_ops(bytes: &[u8]) -> usize {
+        let doc = lopdf::Document::load_mem(bytes).expect("the export must be a loadable PDF");
+        let mut ops = 0;
+        for (_, page_id) in doc.get_pages() {
+            let content = doc.get_page_content(page_id);
+            ops += content.windows(2).filter(|window| window == b"Tj").count();
+        }
+        ops
+    }
+
+    #[test]
+    fn inherited_placeholders_and_footer_render_in_a_deck_export() {
+        let mut deck = Deck::new_blank("Master");
+        deck.footer = Some(SlideFooter {
+            enabled: true,
+            text: "Footer text".into(),
+            show_text: true,
+            show_slide_number: true,
+            show_date: true,
+            date_text: "2026-01-01".into(),
+        });
+        let mut master = SlideMaster::default();
+        let mut footer_placeholder = SlideObject::new("text", 40.0, 500.0, 300.0, 30.0);
+        footer_placeholder.placeholder = Some("footer".into());
+        let mut number_placeholder = SlideObject::new("text", 800.0, 500.0, 100.0, 30.0);
+        number_placeholder.placeholder = Some("slideNumber".into());
+        let mut date_placeholder = SlideObject::new("text", 40.0, 460.0, 200.0, 30.0);
+        date_placeholder.placeholder = Some("date".into());
+        master.objects = vec![footer_placeholder, number_placeholder, date_placeholder];
+        deck.masters = vec![master];
+        let mut second = Slide::default();
+        second.objects.push(SlideObject::new("rect", 10.0, 10.0, 50.0, 50.0));
+        deck.slides.push(second);
+
+        let bytes = deck_to_pdf(&deck);
+        assert_eq!(pdf_page_count(&bytes), 2);
+
+        // Without an enabled footer the same placeholders stay empty, so the
+        // export must show strictly fewer text runs.
+        let mut bare = deck.clone();
+        bare.footer = None;
+        let bare_bytes = deck_to_pdf(&bare);
+        assert!(
+            pdf_text_ops(&bytes) > pdf_text_ops(&bare_bytes),
+            "the resolved footer/date/slide-number placeholders must draw text"
+        );
+    }
+
+    #[test]
+    fn cropped_slide_images_clip_and_scale() {
+        // A 4x4 PNG cropped to its middle half: the visible region must still
+        // cover the object rectangle.
+        let mut image = image::RgbaImage::new(4, 4);
+        for pixel in image.pixels_mut() {
+            *pixel = image::Rgba([200, 30, 30, 255]);
+        }
+        let mut png = Vec::new();
+        image.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+        let mut object = SlideObject::new("image", 100.0, 100.0, 200.0, 100.0);
+        let mut data = ImageData::from_bytes("crop.png", &png);
+        data.crop = Some(ImageCrop { left: 0.25, top: 0.25, right: 0.25, bottom: 0.25 });
+        object.image = Some(data);
+        let mut deck = Deck::new_blank("Crop");
+        deck.slides[0].objects.push(object);
+        let bytes = deck_to_pdf(&deck);
+        assert!(bytes.starts_with(b"%PDF"));
+    }
+
+    #[test]
+    fn tab_stops_advance_the_cursor_to_the_next_stop() {
+        let fonts = FontSet::new();
+        let style = TextStyle { size_pt: 12.0, ..Default::default() };
+        let items =
+            vec![("A".to_string(), style, false), ("\t".to_string(), style, false), ("B".to_string(), style, false)];
+        let tabs = vec![TabStop { pos_pt: 100.0, align: "left".into() }];
+        let line = finalize_line(&fonts, &items, 0.0, 500.0, "left", &tabs);
+        assert_eq!(line.items.len(), 2, "the tab marker itself is not drawn");
+        let b_offset = line.items[1].dx;
+        assert!((b_offset - 100.0).abs() < 0.01, "B must start at the custom stop, was {b_offset}");
+
+        // Without a custom stop the default step (36 pt) is used.
+        let line = finalize_line(&fonts, &items, 0.0, 500.0, "left", &[]);
+        assert!((line.items[1].dx - DEFAULT_TAB_STEP_PT).abs() < 0.01, "dx was {}", line.items[1].dx);
+    }
+
+    #[test]
+    fn writer_table_spans_lay_out_on_the_grid() {
+        let mut table = TableData::simple(3, 3, 300.0);
+        table.rows[0].cells = vec![TableCell { colspan: 2, ..Default::default() }, TableCell::default()];
+        table.rows[1].cells =
+            vec![TableCell { rowspan: 2, ..Default::default() }, TableCell { colspan: 2, ..Default::default() }];
+        table.rows[2].cells = vec![TableCell::default()];
+        assert_eq!(table_grid_columns(&table), 3);
+
+        let widths = table_column_widths(&table, 3, 300.0);
+        let layout = table_cell_layout(&table, &widths);
+        assert!((layout[0][0].0 - 0.0).abs() < 0.01);
+        assert!((layout[0][0].1 - 200.0).abs() < 0.01, "the 2-column span is 200 pt wide");
+        assert!((layout[0][1].0 - 200.0).abs() < 0.01);
+        assert!((layout[1][0].0 - 0.0).abs() < 0.01, "the rowspan origin starts at column 0");
+        assert!((layout[1][1].0 - 100.0).abs() < 0.01);
+        assert!((layout[1][1].1 - 200.0).abs() < 0.01);
+        assert!((layout[2][0].0 - 100.0).abs() < 0.01, "column 0 is covered by the rowspan");
+
+        let mut document = TextDocument::new_blank("Spans");
+        document.blocks = vec![Block::Table { table }];
+        let bytes = document_to_pdf(&document);
+        assert!(bytes.starts_with(b"%PDF"));
+        assert!(bytes.windows(5).any(|window| window == b"%%EOF"));
+    }
+
+    #[test]
+    fn paragraphs_with_tab_stops_export() {
+        let mut document = TextDocument::new_blank("Tabs");
+        document.blocks = vec![Block::Paragraph {
+            props: ParaProps { tabs: vec![TabStop { pos_pt: 200.0, align: "right".into() }], ..Default::default() },
+            runs: vec![Run { text: "Left\tRight".into(), ..Default::default() }],
+        }];
+        let bytes = document_to_pdf(&document);
         assert!(bytes.starts_with(b"%PDF"));
     }
 }
