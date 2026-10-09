@@ -19,12 +19,22 @@ const NS: &str = concat!(
     "xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\""
 );
 
+/// Fixed field ids keep footer, date and slide-number fields deterministic, so
+/// re-exporting the same deck produces the same bytes.
+const SLIDE_NUMBER_FIELD_ID: &str = "{5F2F7F04-8F5A-4D1C-9A9E-2B4C6D8E0A11}";
+const DATE_FIELD_ID: &str = "{8B1D4C6E-3A2F-4E7B-B5C1-0D9F3A7E5B42}";
+
 fn emu(points: f64) -> i64 {
     (points * 12700.0).round() as i64
 }
 
 fn pt_from_emu(value: f64) -> f64 {
     value / 12700.0
+}
+
+/// A crop fraction as the 0..100000 DrawingML percentage units.
+fn crop_percent(fraction: f64) -> i64 {
+    (fraction.clamp(0.0, 1.0) * 100000.0).round() as i64
 }
 
 #[derive(Debug, Clone)]
@@ -193,7 +203,11 @@ fn presentation_xml(deck: &Deck, master_ids: &[String], slide_ids: &[String]) ->
     out.push_str("</p:sldMasterIdLst><p:sldIdLst>");
     for (offset, rid) in slide_ids.iter().enumerate() {
         let next_id = 256u32 + offset as u32;
-        out.push_str(&format!("<p:sldId id=\"{next_id}\" r:id=\"{rid}\"/>"));
+        if deck.slides.get(offset).map(|slide| slide.hidden).unwrap_or(false) {
+            out.push_str(&format!("<p:sldId id=\"{next_id}\" r:id=\"{rid}\" show=\"0\"/>"));
+        } else {
+            out.push_str(&format!("<p:sldId id=\"{next_id}\" r:id=\"{rid}\"/>"));
+        }
     }
     out.push_str("</p:sldIdLst>");
     out.push_str(&format!(
@@ -209,10 +223,28 @@ fn presentation_xml(deck: &Deck, master_ids: &[String], slide_ids: &[String]) ->
     out
 }
 
-fn master_xml(theme: &Theme, background: &str) -> String {
+fn master_xml(
+    theme: &Theme,
+    background: &str,
+    footer: Option<&SlideFooter>,
+    width: f64,
+    height: f64,
+    export: &mut ExportContext,
+) -> String {
     let _ = theme;
+    let mut shapes = String::new();
+    if let Some(footer) = footer.filter(|footer| footer.enabled) {
+        let mut writer = SlideWriter::new();
+        for (role, x, y, w, h) in default_footer_placeholders(width, height) {
+            let mut shape = placeholder_object(role, x, y, w, h);
+            shape.text = footer_placeholder_text(role, footer);
+            if let Some(xml) = object_xml(&shape, theme, &mut writer, export) {
+                shapes.push_str(&xml);
+            }
+        }
+    }
     format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<p:sldMaster {NS}><p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"{background}\"/></a:solidFill><a:effectLst/></p:bgPr></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld><p:clrMap bg1=\"lt1\" tx1=\"dk1\" bg2=\"lt2\" tx2=\"dk2\" accent1=\"accent1\" accent2=\"accent2\" accent3=\"accent3\" accent4=\"accent4\" accent5=\"accent5\" accent6=\"accent6\" hlink=\"hlink\" folHlink=\"folHlink\"/><p:sldLayoutIdLst><p:sldLayoutId id=\"2147483649\" r:id=\"rId1\"/></p:sldLayoutIdLst><p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles></p:sldMaster>"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<p:sldMaster {NS}><p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"{background}\"/></a:solidFill><a:effectLst/></p:bgPr></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>{shapes}</p:spTree></p:cSld><p:clrMap bg1=\"lt1\" tx1=\"dk1\" bg2=\"lt2\" tx2=\"dk2\" accent1=\"accent1\" accent2=\"accent2\" accent3=\"accent3\" accent4=\"accent4\" accent5=\"accent5\" accent6=\"accent6\" hlink=\"hlink\" folHlink=\"folHlink\"/><p:sldLayoutIdLst><p:sldLayoutId id=\"2147483649\" r:id=\"rId1\"/></p:sldLayoutIdLst><p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles></p:sldMaster>"
     )
 }
 
@@ -383,11 +415,12 @@ struct SlideWriter {
     rels: RelSet,
     next_shape: usize,
     shape_ids: HashMap<String, usize>,
+    planned_ids: HashMap<String, usize>,
 }
 
 impl SlideWriter {
     fn new() -> Self {
-        Self { rels: RelSet::new(), next_shape: 1, shape_ids: HashMap::new() }
+        Self { rels: RelSet::new(), next_shape: 1, shape_ids: HashMap::new(), planned_ids: HashMap::new() }
     }
 
     fn shape_id(&mut self) -> usize {
@@ -478,6 +511,12 @@ impl SlideWriter {
                 ));
             } else {
                 for run in &paragraph.runs {
+                    // Slide-number and date placeholders are real fields with a
+                    // cached value instead of plain text.
+                    if let Some(field) = run.field.as_ref().and_then(field_xml) {
+                        out.push_str(&field);
+                        continue;
+                    }
                     let mut attributes = format!(
                         "{} sz=\"{}\"",
                         lang_attr(run.lang.as_deref().or(paragraph.lang.as_deref()).or(deck_lang)),
@@ -492,6 +531,14 @@ impl SlideWriter {
                     if run.underline || paragraph.underline {
                         attributes.push_str(" u=\"sng\"");
                     }
+                    if run.strike {
+                        attributes.push_str(" strike=\"sngStrike\"");
+                    }
+                    if run.superscript {
+                        attributes.push_str(" baseline=\"30000\"");
+                    } else if run.subscript {
+                        attributes.push_str(" baseline=\"-25000\"");
+                    }
                     if let Some(color) = run.color.as_deref().or(paragraph.color.as_deref()).or(text.color.as_deref()) {
                         attributes.push_str(&format!(
                             "><a:solidFill><a:srgbClr val=\"{}\"/></a:solidFill>",
@@ -499,6 +546,12 @@ impl SlideWriter {
                         ));
                     } else {
                         attributes.push('>');
+                    }
+                    if let Some(highlight) = run.highlight.as_deref() {
+                        attributes.push_str(&format!(
+                            "<a:highlight><a:srgbClr val=\"{}\"/></a:highlight>",
+                            escape_attr(highlight.trim_start_matches('#'))
+                        ));
                     }
                     out.push_str(&format!("<a:r><a:rPr{attributes}<a:latin typeface=\"{}\"/><a:cs typeface=\"{}\"/></a:rPr><a:t>{}</a:t></a:r>", escape_attr(run.font.as_deref().or(text.font.as_deref()).unwrap_or(theme.body_font)), escape_attr(theme.body_font), escape_text(&run.text)));
                 }
@@ -804,6 +857,101 @@ fn group_transform(x: f64, y: f64, w: f64, h: f64, rotation: f64, inner: (f64, f
     )
 }
 
+/// Maps every object of a slide (or master/layout) to the OOXML shape id the
+/// writer will assign it. The traversal mirrors `object_xml` exactly (objects
+/// in z-order, group children in z-order), so connectors can point at objects
+/// that are written later. Ids are deterministic for the same deck.
+fn planned_shape_ids(objects: &[&SlideObject]) -> HashMap<String, usize> {
+    let mut map = HashMap::new();
+    let mut next = 1usize;
+    for object in objects {
+        plan_shape_id(object, &mut next, &mut map);
+    }
+    map
+}
+
+fn plan_shape_id(object: &SlideObject, next: &mut usize, map: &mut HashMap<String, usize>) {
+    *next += 1;
+    if !object.id.is_empty() {
+        map.insert(object.id.clone(), *next);
+    }
+    if object.kind == "group" {
+        let mut children: Vec<&SlideObject> = object.children.iter().collect();
+        children.sort_by_key(|child| child.z);
+        for child in children {
+            plan_shape_id(child, next, map);
+        }
+    }
+}
+
+/// Default master positions for the footer, date and slide-number
+/// placeholders, matching the slots the writer has always used.
+fn default_footer_placeholders(width: f64, height: f64) -> [(&'static str, f64, f64, f64, f64); 3] {
+    let bottom = (height - 44.0).max(0.0);
+    [
+        ("date", 40.0, bottom, 200.0, 28.0),
+        ("footer", (width * 0.25).max(40.0), bottom, (width * 0.5).max(160.0), 28.0),
+        ("slideNumber", (width - 120.0).max(40.0), bottom, 80.0, 28.0),
+    ]
+}
+
+/// The placeholder content for a footer slot, or `None` when the deck turned
+/// the slot off. The date and slide-number slots become real DrawingML fields
+/// with a cached value so every viewer shows the same text.
+fn footer_placeholder_text(role: &str, footer: &SlideFooter) -> Option<TextFrame> {
+    match role {
+        "footer" if footer.show_text => Some(TextFrame {
+            paragraphs: vec![TextParagraph { text: footer.text.clone(), ..Default::default() }],
+            ..Default::default()
+        }),
+        "slideNumber" if footer.show_slide_number => Some(TextFrame {
+            paragraphs: vec![TextParagraph {
+                text: "1".into(),
+                runs: vec![Run {
+                    text: "1".into(),
+                    field: Some(FieldRef { kind: "slideNumber".into(), cached: "1".into(), ..Default::default() }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        "date" if footer.show_date => Some(TextFrame {
+            paragraphs: vec![TextParagraph {
+                text: footer.date_text.clone(),
+                runs: vec![Run {
+                    text: footer.date_text.clone(),
+                    field: Some(FieldRef {
+                        kind: "date".into(),
+                        cached: footer.date_text.clone(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        _ => None,
+    }
+}
+
+/// `<a:fld>` rendering for the fields the writer knows; fixed ids and cached
+/// text make the output deterministic.
+fn field_xml(field: &FieldRef) -> Option<String> {
+    match field.kind.as_str() {
+        "slideNumber" => Some(format!(
+            "<a:fld id=\"{SLIDE_NUMBER_FIELD_ID}\" type=\"slidenum\"><a:rPr lang=\"en-US\" sz=\"1200\"/><a:t>{}</a:t></a:fld>",
+            escape_text(&field.cached)
+        )),
+        "date" => Some(format!(
+            "<a:fld id=\"{DATE_FIELD_ID}\" type=\"datetime1\"><a:t>{}</a:t></a:fld>",
+            escape_text(&field.cached)
+        )),
+        _ => None,
+    }
+}
+
 fn object_xml(
     object: &SlideObject,
     theme: &Theme,
@@ -837,8 +985,22 @@ fn object_xml(
                 part
             });
             let rid = writer.rels.add(REL_IMAGE, &format!("../media/{part_name}"));
+            let src_rect = image
+                .crop
+                .as_ref()
+                .filter(|crop| crop.left > 0.0 || crop.top > 0.0 || crop.right > 0.0 || crop.bottom > 0.0)
+                .map(|crop| {
+                    format!(
+                        "<a:srcRect l=\"{}\" t=\"{}\" r=\"{}\" b=\"{}\"/>",
+                        crop_percent(crop.left),
+                        crop_percent(crop.top),
+                        crop_percent(crop.right),
+                        crop_percent(crop.bottom)
+                    )
+                })
+                .unwrap_or_default();
             format!(
-                "<p:pic><p:nvPicPr><p:cNvPr id=\"{id}\" name=\"{}\"/><p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed=\"{rid}\"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>{}</p:spPr></p:pic>",
+                "<p:pic><p:nvPicPr><p:cNvPr id=\"{id}\" name=\"{}\"/><p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed=\"{rid}\"/>{src_rect}<a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>{}</p:spPr></p:pic>",
                 escape_attr(&name),
                 SlideWriter::transform(object.x, object.y, object.w, object.h, object.rotation)
             )
@@ -931,8 +1093,18 @@ fn object_xml(
             let off_y = if dy >= 0.0 { object.y } else { object.y + dy };
             let flips =
                 format!("{}{}", if dx < 0.0 { " flipH=\"1\"" } else { "" }, if dy < 0.0 { " flipV=\"1\"" } else { "" });
+            // Endpoints glued to other slide objects become stCxn/endCxn
+            // references; the site index is the OOXML rect connection site
+            // (0 = top, 1 = left, 2 = bottom, 3 = right).
+            let mut connections = String::new();
+            if let Some(begin) = line.begin_object.as_deref().and_then(|target| writer.planned_ids.get(target)) {
+                connections.push_str(&format!("<a:stCxn id=\"{begin}\" idx=\"{}\"/>", line.begin_site));
+            }
+            if let Some(end) = line.end_object.as_deref().and_then(|target| writer.planned_ids.get(target)) {
+                connections.push_str(&format!("<a:endCxn id=\"{end}\" idx=\"{}\"/>", line.end_site));
+            }
             format!(
-                "<p:cxnSp><p:nvCxnSpPr><p:cNvPr id=\"{id}\" name=\"{}\"/><p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr><p:spPr><a:xfrm{flips}><a:off x=\"{}\" y=\"{}\"/><a:ext cx=\"{}\" cy=\"{}\"/></a:xfrm><a:prstGeom prst=\"line\"><a:avLst/></a:prstGeom><a:ln w=\"{}\"><a:solidFill><a:srgbClr val=\"{}\"/></a:solidFill><a:prstDash val=\"{}\"/>{ends}</a:ln></p:spPr></p:cxnSp>",
+                "<p:cxnSp><p:nvCxnSpPr><p:cNvPr id=\"{id}\" name=\"{}\"/><p:cNvCxnSpPr>{connections}</p:cNvCxnSpPr><p:nvPr/></p:nvCxnSpPr><p:spPr><a:xfrm{flips}><a:off x=\"{}\" y=\"{}\"/><a:ext cx=\"{}\" cy=\"{}\"/></a:xfrm><a:prstGeom prst=\"line\"><a:avLst/></a:prstGeom><a:ln w=\"{}\"><a:solidFill><a:srgbClr val=\"{}\"/></a:solidFill><a:prstDash val=\"{}\"/>{ends}</a:ln></p:spPr></p:cxnSp>",
                 escape_attr(&name),
                 emu(off_x),
                 emu(off_y),
@@ -1130,13 +1302,25 @@ fn master_xml_planned(
     layout_rids: &[String],
     width: f64,
     height: f64,
+    footer: Option<&SlideFooter>,
     export: &mut ExportContext,
 ) -> String {
     let theme = theme_for(&planned.theme_name);
     let mut writer = SlideWriter::new();
     let mut shapes = String::new();
-    let objects: Vec<&SlideObject> =
-        planned.master.as_ref().map(|master| master.objects.iter().collect()).unwrap_or_default();
+    let mut objects: Vec<SlideObject> =
+        planned.master.as_ref().map(|master| master.objects.clone()).unwrap_or_default();
+    // An enabled deck footer takes over the content of the footer, date and
+    // slide-number placeholders; the placeholders themselves are created below
+    // when the master does not carry them yet.
+    let enabled_footer = footer.filter(|footer| footer.enabled);
+    if let Some(footer) = enabled_footer {
+        for object in &mut objects {
+            if let Some(role @ ("footer" | "slideNumber" | "date")) = object.placeholder.as_deref() {
+                object.text = footer_placeholder_text(role, footer);
+            }
+        }
+    }
     let mut has_footer = false;
     let mut has_slide_number = false;
     let mut has_date = false;
@@ -1148,29 +1332,28 @@ fn master_xml_planned(
             _ => {}
         }
     }
-    let mut sorted = objects;
+    let mut sorted: Vec<&SlideObject> = objects.iter().collect();
     sorted.sort_by_key(|object| object.z);
+    writer.planned_ids = planned_shape_ids(&sorted);
     for object in &sorted {
         if let Some(xml) = object_xml(object, &theme, &mut writer, export) {
             shapes.push_str(&xml);
         }
     }
     let mut footer_shapes = String::new();
-    let bottom = (height - 44.0).max(0.0);
-    if !has_date {
-        let shape = placeholder_object("date", 40.0, bottom, 200.0, 28.0);
-        if let Some(xml) = object_xml(&shape, &theme, &mut writer, export) {
-            footer_shapes.push_str(&xml);
+    for (role, x, y, w, h) in default_footer_placeholders(width, height) {
+        let present = match role {
+            "date" => has_date,
+            "footer" => has_footer,
+            _ => has_slide_number,
+        };
+        if present {
+            continue;
         }
-    }
-    if !has_footer {
-        let shape = placeholder_object("footer", (width * 0.25).max(40.0), bottom, (width * 0.5).max(160.0), 28.0);
-        if let Some(xml) = object_xml(&shape, &theme, &mut writer, export) {
-            footer_shapes.push_str(&xml);
+        let mut shape = placeholder_object(role, x, y, w, h);
+        if let Some(footer) = enabled_footer {
+            shape.text = footer_placeholder_text(role, footer);
         }
-    }
-    if !has_slide_number {
-        let shape = placeholder_object("slideNumber", (width - 120.0).max(40.0), bottom, 80.0, 28.0);
         if let Some(xml) = object_xml(&shape, &theme, &mut writer, export) {
             footer_shapes.push_str(&xml);
         }
@@ -1198,6 +1381,7 @@ fn layout_xml_planned(layout: &SlideLayout, theme_name: &str, export: &mut Expor
     let mut shapes = String::new();
     let mut objects: Vec<&SlideObject> = layout.objects.iter().collect();
     objects.sort_by_key(|object| object.z);
+    writer.planned_ids = planned_shape_ids(&objects);
     for object in &objects {
         if let Some(xml) = object_xml(object, &theme, &mut writer, export) {
             shapes.push_str(&xml);
@@ -1215,6 +1399,7 @@ fn slide_xml(slide: &Slide, theme: &Theme, writer: &mut SlideWriter, export: &mu
     let mut shapes = String::new();
     let mut objects: Vec<&SlideObject> = slide.objects.iter().collect();
     objects.sort_by_key(|object| object.z);
+    writer.planned_ids = planned_shape_ids(&objects);
     for object in objects {
         if let Some(xml) = object_xml(object, theme, writer, export) {
             shapes.push_str(&xml);
@@ -1283,8 +1468,22 @@ pub fn write_pptx_package(deck: &Deck) -> OfficeResult<DeckWrite> {
         }
         rels.add(REL_THEME, &format!("../theme/{}", file_name(&planned.theme_part)));
         let master_content = match (&planned.master, empty_masters) {
-            (None, true) => master_xml(&theme, background),
-            _ => master_xml_planned(planned, &layout_rids, deck.size.width_pt, deck.size.height_pt, &mut export),
+            (None, true) => master_xml(
+                &theme,
+                background,
+                deck.footer.as_ref(),
+                deck.size.width_pt,
+                deck.size.height_pt,
+                &mut export,
+            ),
+            _ => master_xml_planned(
+                planned,
+                &layout_rids,
+                deck.size.width_pt,
+                deck.size.height_pt,
+                deck.footer.as_ref(),
+                &mut export,
+            ),
         };
         master_parts.push((planned.part.clone(), master_content, rels.xml()));
         for layout in &planned.layouts {
@@ -1766,7 +1965,21 @@ fn read_shape(
             let mut object = SlideObject::new("image", x, y, w, h);
             object.z = z;
             object.rotation = rotation;
-            object.image = Some(ImageData::from_bytes(&name, &data));
+            let mut image = ImageData::from_bytes(&name, &data);
+            if let Some(rect) = node.find_descendant("srcRect") {
+                let fraction =
+                    |side: &str| rect.attr(side).and_then(|value| value.parse::<f64>().ok()).unwrap_or(0.0) / 100000.0;
+                let crop = ImageCrop {
+                    left: fraction("l").clamp(0.0, 0.95),
+                    top: fraction("t").clamp(0.0, 0.95),
+                    right: fraction("r").clamp(0.0, 0.95),
+                    bottom: fraction("b").clamp(0.0, 0.95),
+                };
+                if crop.left > 0.0 || crop.top > 0.0 || crop.right > 0.0 || crop.bottom > 0.0 {
+                    image.crop = Some(crop);
+                }
+            }
+            object.image = Some(image);
             object
         }
         "cxnSp" => {
@@ -1775,13 +1988,25 @@ fn read_shape(
             let (x, y, w, h, _) = read_transform(transform);
             let mut object = SlideObject::new("line", x, y, w, h);
             object.z = z;
+            // An endpoint's `id` is the OOXML shape id of the object it is
+            // glued to; `read_shape` gives every imported shape the
+            // deterministic model id `shape{id}`, so the reference maps back
+            // one-to-one without a second pass over the slide.
+            let begin = node.find_descendant("stCxn");
+            let end = node.find_descendant("endCxn");
             object.line = Some(LineSpec {
                 x2: w,
                 y2: h,
                 end_arrow: node.find_descendant("tailEnd").is_some(),
                 begin_arrow: node.find_descendant("headEnd").is_some(),
                 dash: String::new(),
-                ..Default::default()
+                begin_object: begin.and_then(|cxn| cxn.attr("id")).map(|id| format!("shape{id}")),
+                end_object: end.and_then(|cxn| cxn.attr("id")).map(|id| format!("shape{id}")),
+                begin_site: begin
+                    .and_then(|cxn| cxn.attr("idx"))
+                    .and_then(|value| value.parse::<u32>().ok())
+                    .unwrap_or(0),
+                end_site: end.and_then(|cxn| cxn.attr("idx")).and_then(|value| value.parse::<u32>().ok()).unwrap_or(0),
             });
             let color = node
                 .find_descendant("ln")
@@ -1927,6 +2152,17 @@ fn known_lang(tag: &str) -> Option<String> {
     }
 }
 
+/// Reads a run toggle that OOXML stores either as an `a:rPr` attribute
+/// (`u="sng"`, `strike="sngStrike"`) or, in some producers, as an element;
+/// `present` is the value to assume for a valueless element.
+fn run_toggle_value(properties: Option<&XmlNode>, attribute: &str, element: &str, present: &str) -> Option<String> {
+    properties.and_then(|node| {
+        node.attr(attribute)
+            .map(str::to_string)
+            .or_else(|| node.child(element).map(|child| child.attr("val").unwrap_or(present).to_string()))
+    })
+}
+
 fn read_paragraphs(text_body: &XmlNode) -> Vec<TextParagraph> {
     let mut paragraphs = Vec::new();
     for paragraph in text_body.children_named("p") {
@@ -1949,6 +2185,7 @@ fn read_paragraphs(text_body: &XmlNode) -> Vec<TextParagraph> {
         let mut runs = Vec::new();
         let mut bold = false;
         let mut italic = false;
+        let mut underline = false;
         let mut size: Option<f64> = None;
         let mut color: Option<String> = None;
         for child in &paragraph.children {
@@ -1958,17 +2195,42 @@ fn read_paragraphs(text_body: &XmlNode) -> Vec<TextParagraph> {
             let run_properties = child.child("rPr");
             let run_bold = run_properties.and_then(|node| node.attr("b")).map(|value| value == "1").unwrap_or(false);
             let run_italic = run_properties.and_then(|node| node.attr("i")).map(|value| value == "1").unwrap_or(false);
+            let run_underline = run_toggle_value(run_properties, "u", "u", "sng")
+                .map(|value| !value.eq_ignore_ascii_case("none"))
+                .unwrap_or(false);
+            let run_strike = run_toggle_value(run_properties, "strike", "strike", "sngStrike")
+                .map(|value| !value.eq_ignore_ascii_case("noStrike"))
+                .unwrap_or(false);
+            let run_baseline = run_properties
+                .and_then(|node| node.attr("baseline"))
+                .and_then(|value| value.parse::<f64>().ok())
+                .unwrap_or(0.0);
             let run_size = run_properties
                 .and_then(|node| node.attr("sz"))
                 .and_then(|value| value.parse::<f64>().ok())
                 .map(|value| value / 100.0);
+            // A run fill is a direct child; looking only there keeps the
+            // highlight color from being mistaken for the text color.
             let run_color = run_properties
-                .and_then(|node| node.find_descendant("srgbClr"))
+                .and_then(|node| node.child("solidFill"))
+                .and_then(|fill| fill.find_descendant("srgbClr"))
                 .and_then(|color| color.attr("val"))
                 .map(|value| format!("#{value}"));
+            let run_highlight = run_properties
+                .and_then(|node| node.child("highlight"))
+                .and_then(|highlight| highlight.find_descendant("srgbClr"))
+                .and_then(|color| color.attr("val"))
+                .map(|value| format!("#{value}"));
+            let run_font = run_properties
+                .and_then(|node| node.child("latin"))
+                .and_then(|latin| latin.attr("typeface"))
+                .map(str::trim)
+                .filter(|face| !face.is_empty())
+                .map(str::to_string);
             let run_lang = run_properties.and_then(|node| node.attr("lang")).and_then(known_lang);
             bold |= run_bold;
             italic |= run_italic;
+            underline |= run_underline;
             if size.is_none() {
                 size = run_size;
             }
@@ -1984,8 +2246,14 @@ fn read_paragraphs(text_body: &XmlNode) -> Vec<TextParagraph> {
                 text: run_text,
                 bold: run_bold,
                 italic: run_italic,
+                underline: run_underline,
+                strike: run_strike,
                 color: run_color,
+                highlight: run_highlight,
+                font: run_font,
                 size_pt: run_size,
+                superscript: run_baseline > 0.0,
+                subscript: run_baseline < 0.0,
                 lang: run_lang,
                 ..Default::default()
             });
@@ -2000,7 +2268,7 @@ fn read_paragraphs(text_body: &XmlNode) -> Vec<TextParagraph> {
             level,
             bold,
             italic,
-            underline: false,
+            underline,
             size_pt: size,
             color,
             align,
@@ -2161,14 +2429,85 @@ fn theme_key(name: &str) -> Option<&'static str> {
     }
 }
 
+/// Placeholder role of a master/layout shape, when it declares one.
+fn shape_placeholder_role(shape: &XmlNode) -> Option<&'static str> {
+    shape
+        .child("nvSpPr")
+        .and_then(|props| props.child("nvPr"))
+        .and_then(|props| props.child("ph"))
+        .and_then(|placeholder| placeholder.attr("type"))
+        .and_then(placeholder_role)
+}
+
+/// Finds the first DrawingML field with the given type below a shape.
+fn shape_field<'a>(shape: &'a XmlNode, field_type: &str) -> Option<&'a XmlNode> {
+    let mut fields = Vec::new();
+    shape.find_all("fld", &mut fields);
+    fields.into_iter().find(|field| field.attr("type") == Some(field_type))
+}
+
+/// Finds the first datetime field below a shape (`datetime1`, `datetime2`, ...).
+fn shape_datetime_field(shape: &XmlNode) -> Option<&XmlNode> {
+    let mut fields = Vec::new();
+    shape.find_all("fld", &mut fields);
+    fields.into_iter().find(|field| field.attr("type").map(|value| value.starts_with("datetime")).unwrap_or(false))
+}
+
+/// Reads the footer, date and slide-number content of a master or layout
+/// shape into the deck-wide footer settings. An empty placeholder (the writer
+/// injects those into masters by default) does not turn anything on.
+fn scan_footer_shape(shape: &XmlNode, footer: &mut SlideFooter) -> bool {
+    let Some(role) = shape_placeholder_role(shape) else { return false };
+    match role {
+        "footer" => {
+            let text = shape
+                .find_descendant("txBody")
+                .map(|body| {
+                    read_paragraphs(body).iter().map(|paragraph| paragraph.text.clone()).collect::<Vec<_>>().join("\n")
+                })
+                .unwrap_or_default();
+            let text = text.trim();
+            if text.is_empty() {
+                return false;
+            }
+            footer.enabled = true;
+            footer.show_text = true;
+            if footer.text.is_empty() {
+                footer.text = text.to_string();
+            }
+            true
+        }
+        "slideNumber" => {
+            if shape_field(shape, "slidenum").is_none() {
+                return false;
+            }
+            footer.enabled = true;
+            footer.show_slide_number = true;
+            true
+        }
+        "date" => {
+            let Some(field) = shape_datetime_field(shape) else { return false };
+            footer.enabled = true;
+            footer.show_date = true;
+            if footer.date_text.is_empty() {
+                footer.date_text = field.find_descendant("t").map(XmlNode::deep_text).unwrap_or_default();
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
 fn read_masters(
     reader: &ZipReader,
     presentation_rels: &[(String, String, String)],
     warnings: &mut Vec<String>,
-) -> (Vec<SlideMaster>, HashMap<String, (usize, String)>) {
+) -> (Vec<SlideMaster>, HashMap<String, (usize, String)>, Option<SlideFooter>) {
     let mut masters: Vec<SlideMaster> = Vec::new();
     let mut layout_index: HashMap<String, (usize, String)> = HashMap::new();
     let mut failed = false;
+    let mut footer = SlideFooter::default();
+    let mut footer_found = false;
     for (_, kind, target) in presentation_rels {
         if !kind.ends_with("slideMaster") {
             continue;
@@ -2221,6 +2560,7 @@ fn read_masters(
                 .iter()
                 .filter(|child| child.local_name() != "nvGrpSpPr" && child.local_name() != "grpSpPr")
             {
+                footer_found |= scan_footer_shape(shape, &mut footer);
                 if let Some(object) = read_shape(shape, reader, &rels, &master_part, z, warnings) {
                     master.objects.push(object);
                     z += 1;
@@ -2259,6 +2599,7 @@ fn read_masters(
                     .iter()
                     .filter(|child| child.local_name() != "nvGrpSpPr" && child.local_name() != "grpSpPr")
                 {
+                    footer_found |= scan_footer_shape(shape, &mut footer);
                     if let Some(object) = read_shape(shape, reader, &rels, &layout_part, z, warnings) {
                         layout.objects.push(object);
                         z += 1;
@@ -2272,9 +2613,9 @@ fn read_masters(
     }
     if failed {
         warnings.push("Slide masters or layouts could not be read; the deck opens without master inheritance.".into());
-        return (Vec::new(), HashMap::new());
+        return (Vec::new(), HashMap::new(), None);
     }
-    (masters, layout_index)
+    (masters, layout_index, if footer_found { Some(footer) } else { None })
 }
 
 pub fn read_pptx(bytes: &[u8]) -> OfficeResult<DeckRead> {
@@ -2301,24 +2642,28 @@ pub fn read_pptx(bytes: &[u8]) -> OfficeResult<DeckRead> {
         defaults.find_all("defRPr", &mut default_runs);
         deck.lang = default_runs.iter().find_map(|node| node.attr("lang").and_then(known_lang));
     }
-    let (masters, layout_index) = read_masters(&reader, &typed_rels, &mut warnings);
+    let (masters, layout_index, footer) = read_masters(&reader, &typed_rels, &mut warnings);
     deck.masters = masters;
+    deck.footer = footer;
     deck.slides.clear();
-    let mut slide_parts: Vec<String> = Vec::new();
+    let mut slide_parts: Vec<(String, bool)> = Vec::new();
     let mut slide_ids = Vec::new();
     root.find_all("sldId", &mut slide_ids);
     for node in slide_ids {
         if let Some(rid) = node.attr("r:id").or_else(|| node.attr_any_ns("id")) {
             if let Some(target) = rels.get(rid) {
-                slide_parts.push(resolve_part("ppt/presentation.xml", target));
+                let hidden =
+                    node.attr("show").map(|value| value == "0" || value.eq_ignore_ascii_case("false")).unwrap_or(false);
+                slide_parts.push((resolve_part("ppt/presentation.xml", target), hidden));
             }
         }
     }
-    for part in &slide_parts {
+    for (part, hidden) in &slide_parts {
         let Ok(text) = reader.read_text(part) else { continue };
         let Ok(slide_root) = parse_xml(&text) else { continue };
         let mut slide = Slide::default();
         slide.objects.clear();
+        slide.hidden = *hidden;
         if let Some(background) = slide_root.find_descendant("bgPr") {
             if let Some(color) = background.find_descendant("srgbClr").and_then(|color| color.attr("val")) {
                 slide.background = Some(format!("#{color}"));
@@ -2675,6 +3020,247 @@ mod tests {
         let read = read_pptx(&bytes).unwrap();
         let image = read.deck.slides[0].objects.iter().find_map(|object| object.image.clone());
         assert!(image.map(|image| !image.data_base64.is_empty()).unwrap_or(false));
+    }
+
+    #[test]
+    fn pptx_run_formatting_roundtrips() {
+        let mut deck = Deck::new_blank("Runs");
+        let mut slide = Slide::default();
+        let mut body = SlideObject::new("text", 60.0, 60.0, 600.0, 300.0);
+        body.text = Some(TextFrame {
+            paragraphs: vec![TextParagraph {
+                text: "AlphaBetaGammaDelta".into(),
+                runs: vec![
+                    Run { text: "Alpha".into(), strike: true, ..Default::default() },
+                    Run { text: "Beta".into(), highlight: Some("#ffff00".into()), ..Default::default() },
+                    Run { text: "Gamma".into(), superscript: true, ..Default::default() },
+                    Run {
+                        text: "Delta".into(),
+                        underline: true,
+                        subscript: true,
+                        font: Some("Georgia".into()),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+        slide.objects = vec![body];
+        deck.slides = vec![slide];
+
+        let bytes = write_pptx(&deck).unwrap();
+        let slide_xml = ZipReader::open(bytes.clone()).unwrap().read_text("ppt/slides/slide1.xml").unwrap();
+        assert!(slide_xml.contains("strike=\"sngStrike\""), "slide: {slide_xml}");
+        assert!(slide_xml.contains("<a:highlight><a:srgbClr val=\"ffff00\"/></a:highlight>"), "slide: {slide_xml}");
+        assert!(slide_xml.contains("baseline=\"30000\""), "slide: {slide_xml}");
+        assert!(slide_xml.contains("baseline=\"-25000\""), "slide: {slide_xml}");
+
+        let read = read_pptx(&bytes).unwrap();
+        let paragraphs = &read.deck.slides[0].objects[0].text.as_ref().unwrap().paragraphs;
+        assert_eq!(paragraphs.len(), 1);
+        let paragraph = &paragraphs[0];
+        assert!(paragraph.underline, "run underline unions into the paragraph");
+        assert_eq!(paragraph.runs.len(), 4);
+        assert!(paragraph.runs[0].strike);
+        assert!(paragraph.runs[0].color.is_none(), "strike must not invent a color");
+        assert_eq!(paragraph.runs[1].highlight.as_deref(), Some("#ffff00"));
+        assert!(paragraph.runs[1].color.is_none(), "a highlight is not the run color");
+        assert!(paragraph.runs[2].superscript && !paragraph.runs[2].subscript);
+        assert!(paragraph.runs[3].subscript && !paragraph.runs[3].superscript && paragraph.runs[3].underline);
+        assert_eq!(paragraph.runs[3].font.as_deref(), Some("Georgia"));
+        assert!(!paragraph.runs[0].superscript && !paragraph.runs[0].subscript);
+    }
+
+    #[test]
+    fn pptx_hidden_slides_roundtrip() {
+        let mut deck = Deck::new_blank("Hidden");
+        let first = Slide { hidden: true, ..Default::default() };
+        let second = Slide::default();
+        deck.slides = vec![first, second];
+
+        let bytes = write_pptx(&deck).unwrap();
+        let presentation = ZipReader::open(bytes.clone()).unwrap().read_text("ppt/presentation.xml").unwrap();
+        assert_eq!(presentation.matches("show=\"0\"").count(), 1, "presentation: {presentation}");
+
+        let read = read_pptx(&bytes).unwrap();
+        assert_eq!(read.deck.slides.len(), 2);
+        assert!(read.deck.slides[0].hidden);
+        assert!(!read.deck.slides[1].hidden);
+    }
+
+    #[test]
+    fn pptx_footer_uses_the_simple_master_and_roundtrips() {
+        let mut deck = Deck::new_blank("Footer");
+        deck.footer = Some(SlideFooter {
+            enabled: true,
+            text: "Confidential".into(),
+            show_text: true,
+            show_slide_number: true,
+            show_date: true,
+            date_text: "2026-10-09".into(),
+        });
+        let bytes = write_pptx(&deck).unwrap();
+        let master = ZipReader::open(bytes.clone()).unwrap().read_text("ppt/slideMasters/slideMaster1.xml").unwrap();
+        assert!(
+            master.contains("type=\"slidenum\"><a:rPr lang=\"en-US\" sz=\"1200\"/><a:t>1</a:t></a:fld>"),
+            "master: {master}"
+        );
+        assert!(master.contains("type=\"datetime1\"><a:t>2026-10-09</a:t></a:fld>"), "master: {master}");
+        assert!(master.contains("<a:t>Confidential</a:t>"), "master: {master}");
+
+        let read = read_pptx(&bytes).unwrap();
+        let footer = read.deck.footer.expect("footer must be rebuilt from the master");
+        assert!(footer.enabled && footer.show_text && footer.show_slide_number && footer.show_date);
+        assert_eq!(footer.text, "Confidential");
+        assert_eq!(footer.date_text, "2026-10-09");
+    }
+
+    #[test]
+    fn pptx_footer_flags_roundtrip_and_absent_footer_stays_absent() {
+        let deck = Deck::new_blank("No footer");
+        let read = read_pptx(&write_pptx(&deck).unwrap()).unwrap();
+        assert_eq!(read.deck.footer, None, "an empty master must not invent footer settings");
+
+        let mut deck = Deck::new_blank("Footer flags");
+        deck.footer = Some(SlideFooter {
+            enabled: true,
+            text: "Not shown".into(),
+            show_text: false,
+            show_slide_number: true,
+            show_date: false,
+            date_text: "ignored".into(),
+        });
+        let bytes = write_pptx(&deck).unwrap();
+        let master = ZipReader::open(bytes.clone()).unwrap().read_text("ppt/slideMasters/slideMaster1.xml").unwrap();
+        assert!(master.contains("type=\"slidenum\""), "master: {master}");
+        assert!(!master.contains("type=\"datetime1\""), "master: {master}");
+        assert!(!master.contains("Not shown"), "master: {master}");
+
+        let read = read_pptx(&bytes).unwrap();
+        let footer = read.deck.footer.expect("the slide number must rebuild the footer");
+        assert!(footer.enabled && footer.show_slide_number);
+        assert!(!footer.show_text && !footer.show_date);
+        assert!(footer.text.is_empty());
+        assert!(footer.date_text.is_empty());
+    }
+
+    #[test]
+    fn pptx_footer_roundtrips_through_planned_masters() {
+        let mut deck = Deck::new_blank("Footer masters");
+        deck.masters = vec![SlideMaster {
+            id: "master-1".into(),
+            name: "Master".into(),
+            theme: "business".into(),
+            background: Some("#FFFFFF".into()),
+            objects: Vec::new(),
+            layouts: Vec::new(),
+        }];
+        deck.footer = Some(SlideFooter {
+            enabled: true,
+            text: "Planned footer".into(),
+            show_text: true,
+            show_slide_number: true,
+            show_date: true,
+            date_text: "2026-10-09".into(),
+        });
+        let bytes = write_pptx(&deck).unwrap();
+        let master = ZipReader::open(bytes.clone()).unwrap().read_text("ppt/slideMasters/slideMaster1.xml").unwrap();
+        assert!(master.contains("<a:t>Planned footer</a:t>"), "master: {master}");
+        assert!(master.contains("type=\"slidenum\""), "master: {master}");
+        assert!(master.contains("type=\"datetime1\""), "master: {master}");
+
+        let read = read_pptx(&bytes).unwrap();
+        assert_eq!(read.deck.masters.len(), 1);
+        let footer = read.deck.footer.expect("footer must be rebuilt from the master");
+        assert!(footer.enabled && footer.show_text && footer.show_slide_number && footer.show_date);
+        assert_eq!(footer.text, "Planned footer");
+        assert_eq!(footer.date_text, "2026-10-09");
+    }
+
+    #[test]
+    fn pptx_connectors_reference_their_objects_and_roundtrip() {
+        let mut deck = Deck::new_blank("Connectors");
+        let mut slide = Slide::default();
+        let mut from = SlideObject::new("rect", 60.0, 60.0, 120.0, 80.0);
+        from.id = "from-rect".into();
+        from.z = 1;
+        let mut to = SlideObject::new("ellipse", 400.0, 260.0, 120.0, 80.0);
+        to.id = "to-ellipse".into();
+        to.z = 2;
+        let mut connector = SlideObject::new("arrow", 180.0, 100.0, 220.0, 160.0);
+        connector.id = "connector".into();
+        connector.z = 3;
+        connector.line = Some(LineSpec {
+            x2: 220.0,
+            y2: 160.0,
+            end_arrow: true,
+            begin_object: Some("from-rect".into()),
+            end_object: Some("to-ellipse".into()),
+            begin_site: 3,
+            end_site: 1,
+            ..Default::default()
+        });
+        slide.objects = vec![from, to, connector];
+        deck.slides = vec![slide];
+
+        let bytes = write_pptx(&deck).unwrap();
+        let slide_xml = ZipReader::open(bytes.clone()).unwrap().read_text("ppt/slides/slide1.xml").unwrap();
+        assert!(slide_xml.contains("<a:stCxn id=\"2\" idx=\"3\"/>"), "slide: {slide_xml}");
+        assert!(slide_xml.contains("<a:endCxn id=\"3\" idx=\"1\"/>"), "slide: {slide_xml}");
+
+        let read = read_pptx(&bytes).unwrap();
+        let objects = &read.deck.slides[0].objects;
+        let connector = objects.iter().find(|object| object.kind == "line").expect("connector");
+        let line = connector.line.as_ref().unwrap();
+        assert_eq!(line.begin_site, 3);
+        assert_eq!(line.end_site, 1);
+        let begin = line.begin_object.clone().expect("begin target");
+        let begin_object = objects.iter().find(|object| object.id == begin).expect("begin object");
+        assert_eq!(begin_object.kind, "rect");
+        let end = line.end_object.clone().expect("end target");
+        let end_object = objects.iter().find(|object| object.id == end).expect("end object");
+        assert_eq!(end_object.kind, "ellipse");
+    }
+
+    #[test]
+    fn pptx_image_crop_roundtrips() {
+        let mut buffer = image::RgbaImage::new(4, 4);
+        for pixel in buffer.pixels_mut() {
+            *pixel = image::Rgba([10, 200, 90, 255]);
+        }
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(buffer).write_to(&mut png, image::ImageFormat::Png).unwrap();
+        let png = png.into_inner();
+
+        let mut deck = Deck::new_blank("Crop");
+        let mut slide = Slide::default();
+        let mut object = SlideObject::new("image", 40.0, 40.0, 200.0, 150.0);
+        let mut image = ImageData::from_bytes("pic.png", &png);
+        image.crop = Some(ImageCrop { left: 0.1, top: 0.2, right: 0.3, bottom: 0.05 });
+        object.image = Some(image);
+        slide.objects = vec![object];
+        deck.slides = vec![slide];
+
+        let bytes = write_pptx(&deck).unwrap();
+        let slide_xml = ZipReader::open(bytes.clone()).unwrap().read_text("ppt/slides/slide1.xml").unwrap();
+        assert!(
+            slide_xml.contains("<a:srcRect l=\"10000\" t=\"20000\" r=\"30000\" b=\"5000\"/>"),
+            "slide: {slide_xml}"
+        );
+
+        let read = read_pptx(&bytes).unwrap();
+        let image = read.deck.slides[0].objects.iter().find_map(|object| object.image.clone()).expect("image");
+        let crop = image.crop.expect("crop");
+        assert!((crop.left - 0.1).abs() < 1e-9);
+        assert!((crop.top - 0.2).abs() < 1e-9);
+        assert!((crop.right - 0.3).abs() < 1e-9);
+        assert!((crop.bottom - 0.05).abs() < 1e-9);
+
+        let mut zero = deck.clone();
+        zero.slides[0].objects[0].image.as_mut().unwrap().crop = Some(ImageCrop::default());
+        let zero_xml = ZipReader::open(write_pptx(&zero).unwrap()).unwrap().read_text("ppt/slides/slide1.xml").unwrap();
+        assert!(!zero_xml.contains("srcRect"), "an all-zero crop writes nothing: {zero_xml}");
     }
 
     #[test]
