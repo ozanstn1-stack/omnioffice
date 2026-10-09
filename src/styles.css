@@ -1821,6 +1821,138 @@ body {
   top: 0;
   pointer-events: none;
 }
+/* Writer v4.5: ruler with tab stops, watermark preview, table selection and
+   column grips, image resize handles. Keep this anchored block together. */
+.writer-ruler {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  height: 22px;
+  min-height: 22px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  box-sizing: border-box;
+  user-select: none;
+  cursor: text;
+}
+.writer-ruler-content {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--surface) 82%, #ffffff);
+  border-left: 1px solid var(--border-strong);
+  border-right: 1px solid var(--border-strong);
+}
+.writer-ruler-tab {
+  position: absolute;
+  top: 0;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 8px solid var(--accent);
+  transform: translateX(-5px);
+  cursor: grab;
+  touch-action: none;
+}
+.writer-ruler-tab.is-right {
+  border-bottom-color: var(--danger);
+}
+.writer-ruler-tab.is-center {
+  border-bottom-color: #d97706;
+}
+.writer-ruler-tab.is-decimal {
+  border-bottom-color: #7c3aed;
+}
+.writer-ruler-indent {
+  position: absolute;
+  bottom: 1px;
+  width: 8px;
+  height: 5px;
+  background: var(--accent);
+  border-radius: 1px;
+  pointer-events: none;
+  transform: translateX(-4px);
+}
+.writer-table td {
+  position: relative;
+}
+.writer-table td.is-selected {
+  background: rgba(37, 99, 235, 0.14);
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.writer-col-resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 3;
+  touch-action: none;
+}
+.writer-col-resize:hover {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.writer-image-frame {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+.writer-image-handle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  background: var(--accent);
+  border: 1px solid #ffffff;
+  border-radius: 2px;
+  z-index: 3;
+  touch-action: none;
+}
+.writer-image-handle.is-nw {
+  left: -5px;
+  top: -5px;
+  cursor: nwse-resize;
+}
+.writer-image-handle.is-ne {
+  right: -5px;
+  top: -5px;
+  cursor: nesw-resize;
+}
+.writer-image-handle.is-sw {
+  left: -5px;
+  bottom: -5px;
+  cursor: nesw-resize;
+}
+.writer-image-handle.is-se {
+  right: -5px;
+  bottom: -5px;
+  cursor: nwse-resize;
+}
+.writer-page {
+  position: relative;
+}
+.writer-page-sheet,
+.writer-page {
+  isolation: isolate;
+}
+.writer-watermark-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: -1;
+}
+.writer-watermark {
+  white-space: nowrap;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
 .writer-toc {
   border: 1px dashed var(--border-strong);
   border-radius: 8px;

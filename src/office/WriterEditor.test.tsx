@@ -23,6 +23,23 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefi
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(async () => null), save: vi.fn(async () => null) }));
 vi.mock("@tauri-apps/plugin-fs", () => ({ readFile: vi.fn(async () => new Uint8Array()) }));
 
+// jsdom has no PointerEvent, so testing-library would fall back to a plain
+// Event and drop button/clientX/pointerId. A MouseEvent subclass carries those
+// fields plus pointerId, which the table grip, image handle and ruler gestures
+// branch on.
+if (typeof window.PointerEvent === "undefined") {
+  class TestPointerEvent extends MouseEvent {
+    readonly pointerId: number;
+    readonly pointerType: string;
+    constructor(type: string, init: PointerEventInit = {}) {
+      super(type, init);
+      this.pointerId = init.pointerId ?? 0;
+      this.pointerType = init.pointerType ?? "";
+    }
+  }
+  window.PointerEvent = TestPointerEvent as unknown as typeof PointerEvent;
+}
+
 import { WriterEditor } from "./WriterEditor";
 import { PROBE_TIMEOUT_MS } from "./writer/regex-probe";
 import { useOfficeTabs, type OfficeTab } from "../lib/office-store";
@@ -732,5 +749,274 @@ describe("Writer table cell menu", () => {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
     }
     expect(screen.queryByRole("button", { name: "Add row below" })).toBeNull();
+  });
+
+  it("merges two selected cells and splits them back", async () => {
+    const user = userEvent.setup();
+    render(<Harness id={seedTable()} />);
+    await openTable(user);
+
+    const cells = document.querySelectorAll<HTMLElement>(".writer-table td");
+    // A drag or a shift-click builds the rectangle; the menu then offers Merge.
+    fireEvent.pointerDown(cells[0], { button: 0 });
+    fireEvent.pointerDown(cells[1], { button: 0, shiftKey: true });
+    fireEvent.contextMenu(cells[1]);
+    await user.click(screen.getByRole("button", { name: "Merge cells" }));
+
+    let saved = documentOf().blocks[0];
+    if (saved.type !== "table") throw new Error("table missing");
+    expect(saved.table.rows[0].cells).toHaveLength(1);
+    expect(saved.table.rows[0].cells[0].colspan).toBe(2);
+    expect(saved.table.rows[0].cells[0].rowspan).toBe(1);
+    expect(
+      saved.table.rows[0].cells[0].blocks.map((block) => (block.type === "paragraph" ? block.runs[0].text : "")),
+    ).toEqual(["A1", "", "B1"]);
+
+    // Split puts the covered cell back; the model is 1x1 again.
+    fireEvent.contextMenu(document.querySelector(".writer-table td") as HTMLElement);
+    await user.click(screen.getByRole("button", { name: "Split cell" }));
+    saved = documentOf().blocks[0];
+    if (saved.type !== "table") throw new Error("table missing");
+    expect(saved.table.rows[0].cells).toHaveLength(2);
+    expect(saved.table.rows[0].cells.map((cell) => cell.colspan)).toEqual([1, 1]);
+  });
+
+  it("resizes a table column from its grip in one undoable drag", async () => {
+    const user = userEvent.setup();
+    render(<Harness id={seedTable()} />);
+    await openTable(user);
+
+    const grip = document.querySelector<HTMLElement>('[data-col-resize="0"]');
+    expect(grip).not.toBeNull();
+    fireEvent.pointerDown(grip as HTMLElement, { button: 0, pointerId: 11, clientX: 100 });
+    fireEvent.pointerMove(window, { pointerId: 11, clientX: 148 });
+    fireEvent.pointerUp(window, { pointerId: 11 });
+
+    const saved = documentOf().blocks[0];
+    if (saved.type !== "table") throw new Error("table missing");
+    // 48px at 100% zoom is 36pt on top of the seeded 200pt column.
+    expect(saved.table.columnWidthsPt[0]).toBeCloseTo(236);
+    expect(saved.table.columnWidthsPt[1]).toBe(200);
+  });
+});
+
+describe("Writer format painter", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+    useSettings.setState({ settings: DEFAULT_SETTINGS });
+  });
+
+  function seedParagraphs(): string {
+    const id = useOfficeTabs.getState().create("writer", "Untitled");
+    const model = useOfficeTabs.getState().tabs[0].model as TextDocument;
+    const first = model.blocks.find((block) => block.type === "paragraph") as Extract<Block, { type: "paragraph" }>;
+    const make = (run: Partial<Run>) => ({
+      type: "paragraph" as const,
+      props: { ...first.props },
+      runs: [{ ...first.runs[0], ...run }],
+    });
+    useOfficeTabs.setState((state) => ({
+      tabs: state.tabs.map((entry) =>
+        entry.id === id
+          ? {
+              ...entry,
+              model: {
+                ...model,
+                blocks: [make({ text: "A", bold: true, color: "#ff0000" }), make({ text: "B" })],
+              },
+            }
+          : entry,
+      ),
+    }));
+    return id;
+  }
+
+  it("paints the source formatting onto the next clicked paragraph and turns off", async () => {
+    const user = userEvent.setup();
+    render(<Harness id={seedParagraphs()} />);
+
+    // Focus the source paragraph: its props/runs become the selection state.
+    await openPageEditor(user, 0);
+    const painter = screen.getByRole("button", { name: "Format painter" });
+    await user.click(painter);
+    expect(painter).toHaveAttribute("aria-pressed", "true");
+
+    // One-shot policy: the painter applies to the next paragraph and disarms.
+    await user.click(pageFragments()[1]);
+    const blocks = documentOf().blocks;
+    const target = blocks[1];
+    expect(target.type === "paragraph" ? target.runs[0].bold : false).toBe(true);
+    // The DOM round-trip through the editable normalises `#ff0000`, so accept
+    // the computed form too.
+    const color = target.type === "paragraph" ? target.runs[0].color : null;
+    expect(color === "#ff0000" || color === "rgb(255, 0, 0)").toBe(true);
+    expect(screen.getByRole("button", { name: "Format painter" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("disarms with Escape without changing anything", async () => {
+    const user = userEvent.setup();
+    render(<Harness id={seedParagraphs()} />);
+    await openPageEditor(user, 0);
+
+    await user.click(screen.getByRole("button", { name: "Format painter" }));
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("button", { name: "Format painter" })).toHaveAttribute("aria-pressed", "false");
+    await user.click(pageFragments()[1]);
+    const target = documentOf().blocks[1];
+    expect(target.type === "paragraph" ? target.runs[0].bold : true).toBe(false);
+  });
+});
+
+describe("Writer ruler tab stops", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+    useSettings.setState({ settings: DEFAULT_SETTINGS });
+  });
+
+  it("adds a tab stop by clicking the ruler and removes it on double-click", async () => {
+    const user = userEvent.setup();
+    const id = useOfficeTabs.getState().create("writer", "Untitled");
+    render(<Harness id={id} />);
+    await openPageEditor(user, 0);
+
+    const ruler = document.querySelector<HTMLElement>(".writer-ruler");
+    expect(ruler).not.toBeNull();
+    // 200px from the sheet edge at 100% zoom: 78pt past the 72pt left margin.
+    fireEvent.click(ruler as HTMLElement, { clientX: 200 });
+    const withStop = documentOf().blocks[0];
+    expect(withStop.type === "paragraph" ? withStop.props.tabs : []).toEqual([{ posPt: 78, align: "left" }]);
+
+    const marker = document.querySelector<HTMLElement>('[data-tab-index="0"]');
+    expect(marker).not.toBeNull();
+    fireEvent.doubleClick(marker as HTMLElement);
+    const removed = documentOf().blocks[0];
+    expect(removed.type === "paragraph" ? (removed.props.tabs ?? []) : []).toEqual([]);
+  });
+});
+
+describe("Writer image options and handles", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+    useSettings.setState({ settings: DEFAULT_SETTINGS });
+  });
+
+  function seedImage(): string {
+    const id = useOfficeTabs.getState().create("writer", "Untitled");
+    const model = useOfficeTabs.getState().tabs[0].model as TextDocument;
+    const image: Block = {
+      type: "image",
+      image: { name: "pic.png", mime: "image/png", dataBase64: "", alt: "pic" },
+      widthPt: 320,
+      heightPt: 220,
+      align: "center",
+      caption: "Figure",
+      wrap: "inline",
+    };
+    useOfficeTabs.setState((state) => ({
+      tabs: state.tabs.map((entry) => (entry.id === id ? { ...entry, model: { ...model, blocks: [image] } } : entry)),
+    }));
+    return id;
+  }
+
+  async function openImageOptions(user: ReturnType<typeof userEvent.setup>) {
+    // Images are static in the page view: clicking one opens the continuous
+    // surface, where the selectable figure and its dialog live.
+    await user.click(document.querySelector(".writer-fragment") as HTMLElement);
+    await user.click(document.querySelector(".writer-image img") as HTMLElement);
+  }
+
+  it("persists the text wrapping choice in the model", async () => {
+    const user = userEvent.setup();
+    render(<Harness id={seedImage()} />);
+    await openImageOptions(user);
+    await user.selectOptions(screen.getByLabelText("Text wrapping"), "square");
+    const saved = documentOf().blocks[0];
+    expect(saved.type === "image" ? saved.wrap : "").toBe("square");
+  });
+
+  it("resizes from a corner handle preserving the aspect ratio", async () => {
+    const user = userEvent.setup();
+    render(<Harness id={seedImage()} />);
+    await openImageOptions(user);
+
+    const handle = document.querySelector<HTMLElement>('[data-image-handle="se"]');
+    expect(handle).not.toBeNull();
+    fireEvent.pointerDown(handle as HTMLElement, { button: 0, pointerId: 21, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { pointerId: 21, clientX: 148, clientY: 130 });
+    fireEvent.pointerUp(window, { pointerId: 21 });
+
+    const saved = documentOf().blocks[0];
+    if (saved.type !== "image") throw new Error("image missing");
+    // +48px is +36pt; the height follows the 320:220 aspect.
+    expect(Math.round(saved.widthPt)).toBe(356);
+    expect(Math.round(saved.heightPt)).toBe(Math.round((356 * 220) / 320));
+  });
+});
+
+describe("Writer watermark", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+    useSettings.setState({ settings: DEFAULT_SETTINGS });
+  });
+
+  it("applies a TASLAK preset, previews it and removes it again", async () => {
+    const user = userEvent.setup();
+    const id = useOfficeTabs.getState().create("writer", "Untitled");
+    render(<Harness id={id} />);
+
+    await user.click(screen.getByRole("button", { name: "Layout" }));
+    await user.click(screen.getByRole("button", { name: "Watermark" }));
+    await user.click(screen.getByRole("button", { name: "TASLAK" }));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    const watermark = documentOf().watermark;
+    expect(watermark?.text).toBe("TASLAK");
+    expect(document.querySelector(".writer-watermark")?.textContent).toBe("TASLAK");
+
+    await user.click(screen.getByRole("button", { name: "Watermark" }));
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+    expect(documentOf().watermark ?? null).toBeNull();
+    expect(document.querySelector(".writer-watermark")).toBeNull();
+  });
+});
+
+describe("Writer incremental pagination", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+    useSettings.setState({ settings: DEFAULT_SETTINGS });
+  });
+
+  it("typing in the last paragraph keeps earlier pages identical", async () => {
+    const user = userEvent.setup();
+    const id = useOfficeTabs.getState().create("writer", "Untitled");
+    const model = useOfficeTabs.getState().tabs[0].model as TextDocument;
+    const first = model.blocks.find((block) => block.type === "paragraph") as Extract<Block, { type: "paragraph" }>;
+    const make = (text: string) => ({
+      type: "paragraph" as const,
+      props: { ...first.props },
+      runs: [{ ...first.runs[0], text }],
+    });
+    useOfficeTabs.setState((state) => ({
+      tabs: state.tabs.map((entry) =>
+        entry.id === id ? { ...entry, model: { ...model, blocks: [make("A"), make("B"), make("C")] } } : entry,
+      ),
+    }));
+    render(<Harness id={id} />);
+
+    const firstSheet = document.querySelector(".writer-page-sheet");
+    const firstParagraph = firstSheet?.querySelector(".para");
+    expect(firstParagraph?.textContent).toBe("A");
+
+    await openPageEditor(user, 2);
+    await user.keyboard("X");
+
+    // The caret opens at the start of the clicked fragment, so the edit lands
+    // at offset 0; the point is that only the last block's metrics changed.
+    expect(blockTexts()).toEqual(["A", "B", "XC"]);
+    // The first sheet and its paragraph are the same DOM nodes: the dirty
+    // measurement did not rebuild (or even reconcile) the untouched page.
+    expect(document.querySelectorAll(".writer-page-sheet")[0]).toBe(firstSheet);
+    expect(document.querySelectorAll(".writer-page-sheet")[0].querySelector(".para")).toBe(firstParagraph);
+    expect(firstParagraph?.textContent).toBe("A");
   });
 });
