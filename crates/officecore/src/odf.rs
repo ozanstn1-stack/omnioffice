@@ -1173,6 +1173,7 @@ fn read_blocks(
                                         height_pt: height,
                                         align: "center".into(),
                                         caption: String::new(),
+                                        wrap: "inline".into(),
                                     });
                                 }
                                 Err(_) => warnings.push("An embedded image could not be read from the package.".into()),

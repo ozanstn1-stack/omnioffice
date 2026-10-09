@@ -21,6 +21,16 @@ export interface ImageData {
   mime: string;
   dataBase64: string;
   alt: string;
+  /** Source-image crop; undefined shows the full picture. */
+  crop?: ImageCrop | null;
+}
+
+/** Fractions of the source image trimmed from each side (0..1). */
+export interface ImageCrop {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +85,14 @@ export interface ListInfo {
   marker: string;
 }
 
+/** One custom tab stop on a paragraph ruler. */
+export interface TabStop {
+  /** Distance from the left margin, in points. */
+  posPt: number;
+  /** `left`, `center`, `right` or `decimal`. */
+  align: string;
+}
+
 export interface ParaProps {
   style: string;
   align: string;
@@ -92,6 +110,8 @@ export interface ParaProps {
    */
   keepWithNext?: boolean;
   keepTogether?: boolean;
+  /** Custom tab stops, written to DOCX `w:tabs` and ODF `style:tab-stops`. */
+  tabs?: TabStop[];
 }
 
 /** One line of a table of contents. */
@@ -230,7 +250,16 @@ export interface SectionProps {
 export type Block =
   | { type: "paragraph"; props: ParaProps; runs: Run[] }
   | { type: "table"; table: TableData }
-  | { type: "image"; image: ImageData; widthPt: number; heightPt: number; align: string; caption: string }
+  | {
+      type: "image";
+      image: ImageData;
+      widthPt: number;
+      heightPt: number;
+      align: string;
+      caption: string;
+      /** Text wrapping: `inline`, `square` or `topBottom`. */
+      wrap?: string;
+    }
   | { type: "pageBreak" }
   | { type: "rule" }
   | { type: "toc"; entries: TocEntry[] }
@@ -266,6 +295,18 @@ export interface DocComment {
   replies?: CommentReply[];
 }
 
+/** A document watermark drawn behind the page content and in the PDF export. */
+export interface Watermark {
+  text: string;
+  color: string | null;
+  /** Ink opacity, 0..1. */
+  opacity: number;
+  /** Rotation in degrees. */
+  rotation: number;
+  fontPt: number;
+  bold: boolean;
+}
+
 export interface TextDocument {
   id: string;
   title: string;
@@ -282,6 +323,8 @@ export interface TextDocument {
   bookmarks?: Bookmark[];
   trackChanges?: boolean;
   showRevisions?: boolean;
+  /** Page watermark; null/undefined means none. */
+  watermark?: Watermark | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -769,6 +812,13 @@ export interface LineSpec {
   beginArrow: boolean;
   endArrow: boolean;
   dash: string;
+  /** Object the start point is glued to; the connector follows it. */
+  beginObject?: string | null;
+  /** Object the end point is glued to. */
+  endObject?: string | null;
+  /** Connection site index on the begin object (0/1/2/3 for OOXML). */
+  beginSite?: number;
+  endSite?: number;
 }
 
 export interface SlideObject {
@@ -835,6 +885,19 @@ export interface Slide {
   objects: SlideObject[];
   animations?: Animation[];
   notes: string;
+  /** Hidden slides stay in the file but are skipped by the slideshow/PDF. */
+  hidden?: boolean;
+}
+
+/** Deck-wide footer, date and slide-number settings. */
+export interface SlideFooter {
+  enabled: boolean;
+  text: string;
+  showText: boolean;
+  showSlideNumber: boolean;
+  showDate: boolean;
+  /** Literal date text, so exports stay deterministic. */
+  dateText: string;
 }
 
 export interface Deck {
@@ -848,6 +911,8 @@ export interface Deck {
   metadata: DocMetadata;
   /** Default text language (BCP 47), when known. */
   lang?: string | null;
+  /** Footer/date/slide-number settings; null/undefined means all off. */
+  footer?: SlideFooter | null;
 }
 
 // ---------------------------------------------------------------------------

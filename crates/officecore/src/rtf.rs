@@ -1393,6 +1393,7 @@ fn decode_pict(reader: &mut Reader) {
         mime: mime.into(),
         data_base64: base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes),
         alt: String::new(),
+        crop: None,
     };
     reader.flush_run();
     reader.push_block(Block::Image {
@@ -1401,6 +1402,7 @@ fn decode_pict(reader: &mut Reader) {
         height_pt: if pict.height_goal_pt > 1.0 { pict.height_goal_pt } else { 200.0 },
         align: "center".into(),
         caption: String::new(),
+        wrap: "inline".into(),
     });
 }
 

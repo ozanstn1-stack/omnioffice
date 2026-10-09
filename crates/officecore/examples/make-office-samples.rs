@@ -85,6 +85,7 @@ fn writer_document() -> TextDocument {
             height_pt: 135.0,
             align: "center".into(),
             caption: "Generated sample image".into(),
+            wrap: "inline".into(),
         },
         Block::PageBreak,
         Block::heading("Second page", 2),

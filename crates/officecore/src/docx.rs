@@ -1621,7 +1621,14 @@ fn read_image_block(
             height_pt = cy / 12700.0;
         }
     }
-    Some(Block::Image { image, width_pt, height_pt, align: "center".into(), caption: String::new() })
+    Some(Block::Image {
+        image,
+        width_pt,
+        height_pt,
+        align: "center".into(),
+        caption: String::new(),
+        wrap: "inline".into(),
+    })
 }
 
 /// Maps a Word field instruction onto the model field kinds we understand.
@@ -2469,6 +2476,7 @@ mod tests {
                 height_pt: 90.0,
                 align: "center".into(),
                 caption: String::new(),
+                wrap: "inline".into(),
             },
         ];
         document.header = vec![Block::paragraph("Header text")];

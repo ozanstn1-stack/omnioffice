@@ -1781,6 +1781,7 @@ fn read_shape(
                 end_arrow: node.find_descendant("tailEnd").is_some(),
                 begin_arrow: node.find_descendant("headEnd").is_some(),
                 dash: String::new(),
+                ..Default::default()
             });
             let color = node
                 .find_descendant("ln")
