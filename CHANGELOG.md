@@ -4,6 +4,50 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.5.0] - Writer and Impress, deeper editing
+
+### Added
+
+- **Writer tables**: merge and split cells (rectangular selection, context
+  menu) and drag column borders to resize. Colspan and rowspan now survive
+  DOCX and ODT (complete `vMerge` continuations and covered cells on write,
+  rowspan rebuilt on read) and lay out correctly in the PDF export.
+- **Writer images**: text wrapping (inline, square, top and bottom) written as
+  DOCX `wp:anchor` and ODT graphic wrap styles, corner size handles in the
+  editor, and ODT images are no longer dropped when they sit inside a
+  paragraph.
+- **Format painter** and a **ruler with tab stops** (click to add, drag to
+  move, double-click to remove). Tab stops are written to DOCX `w:tabs` and
+  ODF `style:tab-stops` and position the PDF export.
+- **Watermark** ("TASLAK", "GİZLİ" or custom, with opacity, rotation and
+  size): shown behind the page in the editor, written to DOCX (header VML)
+  and ODT (run-through frame plus lossless meta), and stamped into the PDF
+  export.
+- **Impress rich text**: a paragraph and run based editor with bold, italic,
+  underline, color, size and bullet toggles and Tab/Shift+Tab levels. Runs
+  survive editing and the PPTX/ODP exports, and the PDF export draws
+  run-level formatting.
+- **Impress editing**: align to selection and distribute, glued connectors
+  that follow their shapes, image crop, hidden slides, footer/date/slide
+  number settings, a slide sorter grid, laser pointer and pen during the
+  show, and keyboard shortcuts (Delete, arrows scroll, Ctrl+Z/Y, Ctrl+C/V/D).
+- **ODP presentations** now embed real chart documents instead of drawn
+  placeholder shapes, round-trip footer/slide-number fields, hidden slides
+  and connectors, and keep paragraph runs.
+
+### Fixed
+
+- **ODT import** no longer loses bold and italic on spans with named
+  character styles, and named paragraph styles (alignment, indents, spacing)
+  are applied again.
+- **RTF import** keeps one paragraph per paragraph instead of starting a new
+  paragraph at every formatting group.
+- **PPTX run fidelity**: underline, strike, highlight, superscript and
+  subscript round-trip, and footer/slide-number/date placeholders carry real
+  fields.
+- Writer paginated view measures only the blocks that changed while typing
+  instead of re-measuring the whole document.
+
 ## [4.4.0] - Calc, closer to Excel
 
 ### Added

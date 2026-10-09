@@ -375,6 +375,7 @@
           }
         ],
         "background": null,
+        "hidden": false,
         "id": "slide-1",
         "layout": "titleContent",
         "layoutId": "layout-a-title",
@@ -623,6 +624,7 @@
       {
         "animations": [],
         "background": null,
+        "hidden": false,
         "id": "slide-2",
         "layout": "titleContent",
         "layoutId": "layout-b-title",
