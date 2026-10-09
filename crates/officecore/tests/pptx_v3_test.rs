@@ -468,18 +468,81 @@ fn charts_without_caches_stay_range_only() {
 }
 
 #[test]
-fn odp_keeps_groups_and_animations_and_degrades_charts_with_a_warning() {
+fn hidden_slides_roundtrip() {
+    let mut deck = sample_deck();
+    deck.slides[1].hidden = true;
+    let write = pptx::write_pptx_package(&deck).unwrap();
+    assert!(write.warnings.is_empty(), "unexpected warnings: {:?}", write.warnings);
+    let reader = ZipReader::open(write.bytes.clone()).unwrap();
+    let presentation = reader.read_text("ppt/presentation.xml").unwrap();
+    assert_eq!(presentation.matches("show=\"0\"").count(), 1, "presentation: {presentation}");
+
+    let read = pptx::read_pptx(&write.bytes).unwrap();
+    assert_eq!(read.deck.slides.len(), 2);
+    assert!(!read.deck.slides[0].hidden);
+    assert!(read.deck.slides[1].hidden);
+}
+
+#[test]
+fn footer_settings_rewrite_every_master_and_roundtrip() {
+    let mut deck = sample_deck();
+    deck.footer = Some(SlideFooter {
+        enabled: true,
+        text: "Deck footer".into(),
+        show_text: true,
+        show_slide_number: true,
+        show_date: true,
+        date_text: "2026-10-09".into(),
+    });
+    let write = pptx::write_pptx_package(&deck).unwrap();
+    assert!(write.warnings.is_empty(), "unexpected warnings: {:?}", write.warnings);
+    let reader = ZipReader::open(write.bytes.clone()).unwrap();
+    for part in ["ppt/slideMasters/slideMaster1.xml", "ppt/slideMasters/slideMaster2.xml"] {
+        let master = reader.read_text(part).unwrap();
+        assert!(master.contains("type=\"slidenum\""), "{part}: {master}");
+        assert!(master.contains("type=\"datetime1\""), "{part}: {master}");
+        assert!(master.contains("<a:t>Deck footer</a:t>"), "{part}: {master}");
+        assert!(master.contains("<a:t>2026-10-09</a:t>"), "{part}: {master}");
+    }
+
+    let read = pptx::read_pptx(&write.bytes).unwrap();
+    let footer = read.deck.footer.clone().expect("footer must be rebuilt from the masters");
+    assert!(footer.enabled && footer.show_text && footer.show_slide_number && footer.show_date);
+    assert_eq!(footer.text, "Deck footer");
+    assert_eq!(footer.date_text, "2026-10-09");
+
+    // Re-export must not duplicate the master placeholders.
+    let second = pptx::read_pptx(&pptx::write_pptx(&read.deck).unwrap()).unwrap();
+    let mut roles: Vec<String> =
+        second.deck.masters[0].objects.iter().filter_map(|object| object.placeholder.clone()).collect();
+    let total = roles.len();
+    roles.sort();
+    roles.dedup();
+    assert_eq!(roles.len(), total, "footer placeholders must not be duplicated on re-export");
+    assert_eq!(second.deck.footer.expect("footer stays").text, "Deck footer");
+}
+
+#[test]
+fn odp_writes_real_charts_and_keeps_groups_and_animations() {
     let write = odf::write_odp_package(&sample_deck()).unwrap();
     assert!(
         !write.warnings.iter().any(|warning| warning.contains("individual shapes")),
         "warnings: {:?}",
         write.warnings
     );
-    assert!(write.warnings.iter().any(|warning| warning.contains("Chart data is kept in the native .oswk file")));
+    assert!(
+        !write.warnings.iter().any(|warning| warning.contains("Chart data is kept in the native .oswk file")),
+        "charts are real chart documents now: {:?}",
+        write.warnings
+    );
     assert!(!write.warnings.iter().any(|warning| warning.contains("Animations are kept in the native .oswk file")));
     let reader = ZipReader::open(write.bytes).unwrap();
     let content = reader.read_text("content.xml").unwrap();
-    assert!(content.contains("Sales"), "the chart placeholder must not be dropped silently");
+    assert!(content.contains("draw:object"), "the chart is embedded as a chart sub-document");
+    let manifest = reader.read_text("META-INF/manifest.xml").unwrap();
+    assert!(manifest.contains("Object 1/"), "the chart sub-document is listed in the manifest");
+    let chart = reader.read_text("Object 1/content.xml").unwrap();
+    assert!(chart.contains("Sales"), "the chart title lives in the sub-document");
     assert!(content.contains("Badge"));
     assert!(content.contains("<draw:g "), "groups are written as draw:g");
     assert!(content.contains("smil:targetElement=\"chart-1\""), "animations are written as SMIL timing");

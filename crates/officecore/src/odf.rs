@@ -58,9 +58,11 @@ struct AutoStyles {
     paragraphs: Vec<(String, String)>,
     texts: Vec<(String, String)>,
     cells: Vec<(String, String)>,
+    graphics: Vec<(String, String)>,
     paragraph_keys: HashMap<String, String>,
     text_keys: HashMap<String, String>,
     cell_keys: HashMap<String, String>,
+    graphic_keys: HashMap<String, String>,
 }
 
 impl AutoStyles {
@@ -94,6 +96,16 @@ impl AutoStyles {
         name
     }
 
+    fn graphic(&mut self, xml: String) -> String {
+        if let Some(name) = self.graphic_keys.get(&xml) {
+            return name.clone();
+        }
+        let name = format!("G{}", self.graphics.len() + 1);
+        self.graphics.push((name.clone(), xml.clone()));
+        self.graphic_keys.insert(xml, name.clone());
+        name
+    }
+
     fn xml(&self) -> String {
         let mut out = String::from("<office:automatic-styles>");
         for (name, xml) in &self.paragraphs {
@@ -106,6 +118,9 @@ impl AutoStyles {
             out.push_str(&format!(
                 "<style:style style:name=\"{name}\" style:family=\"table-cell\">{xml}</style:style>"
             ));
+        }
+        for (name, xml) in &self.graphics {
+            out.push_str(&format!("<style:style style:name=\"{name}\" style:family=\"graphic\">{xml}</style:style>"));
         }
         out.push_str("</office:automatic-styles>");
         out
@@ -347,7 +362,27 @@ fn paragraph_style_xml(props: &ParaProps, page_break: bool) -> String {
     if page_break {
         properties.push_str(" fo:break-before=\"page\"");
     }
-    format!("<style:paragraph-properties{properties}/>")
+    if props.tabs.is_empty() {
+        return format!("<style:paragraph-properties{properties}/>");
+    }
+    // Tab stops are child elements, so the properties element cannot
+    // self-close when they are present.
+    let mut tab_stops = String::from("<style:tab-stops>");
+    for tab in &props.tabs {
+        let kind = match tab.align.as_str() {
+            "center" => "center",
+            "right" => "right",
+            "decimal" => "char",
+            _ => "left",
+        };
+        let character = if tab.align == "decimal" { " style:char=\".\"" } else { "" };
+        tab_stops.push_str(&format!(
+            "<style:tab-stop style:position=\"{}\" style:type=\"{kind}\"{character}/>",
+            cm(tab.pos_pt)
+        ));
+    }
+    tab_stops.push_str("</style:tab-stops>");
+    format!("<style:paragraph-properties{properties}>{tab_stops}</style:paragraph-properties>")
 }
 
 fn run_style_xml(run: &Run) -> String {
@@ -478,13 +513,22 @@ fn write_blocks(
                 }
             }
             Block::Table { table } => write_table(writer, table, styles, media, notes),
-            Block::Image { image, width_pt, height_pt, .. } => {
+            Block::Image { image, width_pt, height_pt, wrap, .. } => {
                 let Some(name) = media.add(image) else {
                     index += 1;
                     continue;
                 };
+                // Inline images keep the plain paragraph-anchored frame; square
+                // and top/bottom wrapping need a graphic style that says how the
+                // text flows around the frame.
+                let style = match wrap.as_str() {
+                    "square" => Some(styles.graphic("<style:graphic-properties style:wrap=\"parallel\"/>".into())),
+                    "topBottom" => Some(styles.graphic("<style:graphic-properties style:wrap=\"none\"/>".into())),
+                    _ => None,
+                };
+                let style_attr = style.map(|name| format!(" draw:style-name=\"{name}\"")).unwrap_or_default();
                 writer.raw(&format!(
-                    "<text:p text:style-name=\"{}\"><draw:frame draw:name=\"{}\" text:anchor-type=\"paragraph\" svg:width=\"{}\" svg:height=\"{}\"><draw:image xlink:href=\"Pictures/{}\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/></draw:frame></text:p>",
+                    "<text:p text:style-name=\"{}\"><draw:frame draw:name=\"{}\"{style_attr} text:anchor-type=\"paragraph\" svg:width=\"{}\" svg:height=\"{}\"><draw:image xlink:href=\"Pictures/{}\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/></draw:frame></text:p>",
                     styles.paragraph(paragraph_style_xml(&ParaProps { align: "center".into(), ..Default::default() }, false)),
                     escape(&image.name),
                     cm(width_pt.max(24.0)),
@@ -518,6 +562,42 @@ fn write_blocks(
     let _ = list_depth;
 }
 
+/// How many grid columns a table spans, counting colspans and the columns a
+/// rowspan keeps covered in the rows below it. `TableRow.cells` holds only the
+/// cells that start in a row, so the plain `cells.len()` undercounts merged
+/// tables.
+fn table_grid_columns(table: &TableData) -> usize {
+    let mut open: Vec<usize> = Vec::new();
+    let mut columns = 0usize;
+    for row in &table.rows {
+        // `open` counts the rows still covered after the current one.
+        for remaining in open.iter_mut() {
+            *remaining = remaining.saturating_sub(1);
+        }
+        let mut column = 0usize;
+        for cell in &row.cells {
+            while column < open.len() && open[column] > 0 {
+                column += 1;
+            }
+            let span = cell.colspan.max(1) as usize;
+            while open.len() < column + span {
+                open.push(0);
+            }
+            if cell.rowspan > 1 {
+                for slot in open.iter_mut().skip(column).take(span) {
+                    *slot = cell.rowspan as usize;
+                }
+            }
+            column += span;
+        }
+        while column < open.len() && open[column] > 0 {
+            column += 1;
+        }
+        columns = columns.max(column);
+    }
+    columns
+}
+
 fn write_table(
     writer: &mut XmlWriter,
     table: &TableData,
@@ -525,33 +605,64 @@ fn write_table(
     media: &mut Media,
     notes: &NoteContext,
 ) {
-    let columns = table.rows.iter().map(|row| row.cells.len()).max().unwrap_or(1).max(1);
+    let columns = table_grid_columns(table).max(table.column_widths_pt.len()).max(1);
+    let mut widths = table.column_widths_pt.clone();
+    let fallback = if widths.is_empty() { 90.0 } else { widths.iter().sum::<f64>() / widths.len() as f64 };
+    while widths.len() < columns {
+        widths.push(fallback);
+    }
+    widths.truncate(columns);
     writer.raw("<table:table>");
-    for index in 0..columns {
-        let width = table.column_widths_pt.get(index).copied().unwrap_or(90.0);
+    for (index, width) in widths.iter().enumerate() {
         writer.raw(&format!(
             "<table:table-column table:style-name=\"co{}\" style:column-width=\"{}\"/>",
             index,
-            cm(width)
+            cm(*width)
         ));
     }
+    // Rows the model stores contain only the cells that start in them; every
+    // grid position a span covers gets a `table:covered-table-cell` placeholder.
+    let mut open: Vec<usize> = Vec::new();
     for row in &table.rows {
+        // `open` counts the rows still covered after the current one.
+        for remaining in open.iter_mut() {
+            *remaining = remaining.saturating_sub(1);
+        }
         writer.raw("<table:table-row>");
+        let mut column = 0usize;
         for cell in &row.cells {
-            writer.raw(&format!(
-                "<table:table-cell office:value-type=\"string\"{}>",
-                if cell.colspan > 1 {
-                    format!(" table:number-columns-spanned=\"{}\"", cell.colspan)
-                } else {
-                    String::new()
-                }
-            ));
+            while column < open.len() && open[column] > 0 {
+                writer.raw("<table:covered-table-cell/>");
+                column += 1;
+            }
+            let span = cell.colspan.max(1) as usize;
+            while open.len() < column + span {
+                open.push(0);
+            }
+            let mut attributes = String::new();
+            if cell.colspan > 1 {
+                attributes.push_str(&format!(" table:number-columns-spanned=\"{}\"", cell.colspan));
+            }
+            if cell.rowspan > 1 {
+                attributes.push_str(&format!(" table:number-rows-spanned=\"{}\"", cell.rowspan));
+            }
+            writer.raw(&format!("<table:table-cell office:value-type=\"string\"{attributes}>"));
             if cell.blocks.is_empty() {
                 writer.raw("<text:p/>");
             } else {
                 write_blocks(writer, &cell.blocks, styles, media, notes, 0);
             }
             writer.raw("</table:table-cell>");
+            if cell.rowspan > 1 {
+                for slot in open.iter_mut().skip(column).take(span) {
+                    *slot = cell.rowspan as usize;
+                }
+            }
+            column += span;
+        }
+        while column < open.len() && open[column] > 0 {
+            writer.raw("<table:covered-table-cell/>");
+            column += 1;
         }
         writer.raw("</table:table-row>");
     }
@@ -626,6 +737,44 @@ fn named_styles_xml(document: &TextDocument) -> String {
     out
 }
 
+/// The automatic styles the watermark frame needs, declared in styles.xml.
+fn watermark_styles_xml(watermark: &Watermark) -> String {
+    let color = watermark.color.as_deref().and_then(crate::io::normalize_hex).unwrap_or_else(|| "#C0C0C0".into());
+    let opacity = watermark.opacity.clamp(0.0, 1.0);
+    let weight = if watermark.bold { "bold" } else { "normal" };
+    format!(
+        concat!(
+            "<style:style style:name=\"WatermarkG\" style:family=\"graphic\">",
+            "<style:graphic-properties style:wrap=\"run-through\" style:run-through=\"background\" draw:opacity=\"{}\"/>",
+            "</style:style>",
+            "<style:style style:name=\"WatermarkP\" style:family=\"paragraph\">",
+            "<style:paragraph-properties fo:text-align=\"center\"/></style:style>",
+            "<style:style style:name=\"WatermarkT\" style:family=\"text\">",
+            "<style:text-properties fo:color=\"{}\" fo:font-size=\"{}pt\" fo:font-weight=\"{}\"/></style:style>"
+        ),
+        opacity,
+        escape(&color),
+        watermark.font_pt.max(1.0),
+        weight,
+    )
+}
+
+/// The visible watermark: a run-through frame with a rotated text box, written
+/// into the default master page's header so LibreOffice draws it behind the
+/// page content.
+fn watermark_frame_xml(watermark: &Watermark) -> String {
+    format!(
+        concat!(
+            "<draw:frame draw:name=\"Watermark\" text:anchor-type=\"page\" draw:style-name=\"WatermarkG\" draw:z-index=\"0\" ",
+            "svg:width=\"16cm\" svg:height=\"6cm\" draw:transform=\"rotate({rotation})\">",
+            "<draw:text-box><text:p text:style-name=\"WatermarkP\"><text:span text:style-name=\"WatermarkT\">{text}</text:span></text:p></draw:text-box>",
+            "</draw:frame>"
+        ),
+        rotation = watermark.rotation,
+        text = crate::xml::escape_text(&watermark.text),
+    )
+}
+
 fn master_styles_xml(document: &TextDocument) -> String {
     let page = &document.page;
     let landscape = page.orientation == "landscape";
@@ -644,13 +793,20 @@ fn master_styles_xml(document: &TextDocument) -> String {
     } else {
         layout.push_str("/></style:page-layout>");
     }
+    let mut automatic = String::new();
+    let mut watermark = String::new();
+    if let Some(value) = &document.watermark {
+        automatic = format!("<office:automatic-styles>{}</office:automatic-styles>", watermark_styles_xml(value));
+        watermark = watermark_frame_xml(value);
+    }
     let mut header_footer = String::new();
     let mut media = Media::default();
     let notes = NoteContext::for_document(document);
-    if !document.header.is_empty() {
+    if !document.header.is_empty() || !watermark.is_empty() {
         let mut writer = XmlWriter::new();
         let mut styles = AutoStyles::default();
         write_blocks(&mut writer, &document.header, &mut styles, &mut media, &notes, 0);
+        writer.raw(&watermark);
         header_footer.push_str(&format!("<style:header>{}</style:header>", writer.finish()));
     }
     if !document.footer.is_empty() {
@@ -660,7 +816,7 @@ fn master_styles_xml(document: &TextDocument) -> String {
         header_footer.push_str(&format!("<style:footer>{}</style:footer>", writer.finish()));
     }
     format!(
-        "<office:master-styles>{layout}<style:master-page style:name=\"Standard\" style:page-layout-name=\"pm1\">{header_footer}</style:master-page></office:master-styles>"
+        "{automatic}<office:master-styles>{layout}<style:master-page style:name=\"Standard\" style:page-layout-name=\"pm1\">{header_footer}</style:master-page></office:master-styles>"
     )
 }
 
@@ -679,9 +835,29 @@ fn manifest_for(mime: &str) -> String {
     manifest().replace("application/vnd.oasis.opendocument.text", mime)
 }
 
-fn meta_xml(title: &str, generator: &str) -> String {
+/// The `meta:user-defined` entries that carry a watermark losslessly; the
+/// visible run-through frame is only the fallback for foreign files.
+fn watermark_meta_xml(watermark: &Watermark) -> String {
+    let entries = [
+        ("OSAK:Watermark:Text", watermark.text.clone()),
+        ("OSAK:Watermark:Color", watermark.color.clone().unwrap_or_default()),
+        ("OSAK:Watermark:Opacity", watermark.opacity.to_string()),
+        ("OSAK:Watermark:Rotation", watermark.rotation.to_string()),
+        ("OSAK:Watermark:FontPt", watermark.font_pt.to_string()),
+        ("OSAK:Watermark:Bold", watermark.bold.to_string()),
+    ];
+    entries
+        .iter()
+        .map(|(name, value)| {
+            format!("<meta:user-defined meta:name=\"{}\" meta:value=\"{}\"/>", escape(name), escape(value))
+        })
+        .collect()
+}
+
+fn meta_xml(title: &str, generator: &str, watermark: Option<&Watermark>) -> String {
+    let user_defined = watermark.map(watermark_meta_xml).unwrap_or_default();
     format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-meta {NS} office:version=\"1.2\"><office:meta><meta:generator>{}</meta:generator><dc:title>{}</dc:title></office:meta></office:document-meta>",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-meta {NS} office:version=\"1.2\"><office:meta><meta:generator>{}</meta:generator><dc:title>{}</dc:title>{user_defined}</office:meta></office:document-meta>",
         crate::xml::escape_text(generator),
         crate::xml::escape_text(title)
     )
@@ -727,7 +903,7 @@ pub fn write_odt(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     zip.add_text("META-INF/manifest.xml", &manifest());
     zip.add_text("content.xml", &content);
     zip.add_text("styles.xml", &styles_xml);
-    zip.add_text("meta.xml", &meta_xml(&document.title, "OmniOffice"));
+    zip.add_text("meta.xml", &meta_xml(&document.title, "OmniOffice", document.watermark.as_ref()));
     zip.add_text("settings.xml", &settings_xml());
     for (name, data) in &media.items {
         zip.add(&format!("Pictures/{name}"), data);
@@ -743,19 +919,46 @@ pub fn write_odt_file(path: &Path, document: &TextDocument) -> OfficeResult<()> 
 // ODT import
 // ---------------------------------------------------------------------------
 
-fn read_span_style(node: &XmlNode) -> Run {
-    let mut run = Run::default();
-    let mut properties = Vec::new();
-    node.find_all("style:text-properties", &mut properties);
-    let Some(properties) = properties.first() else { return run };
-    if properties.attr_any_ns("font-weight") == Some("bold") {
-        run.bold = true;
+/// A named style's graphic formatting, resolved from `style:graphic-properties`
+/// so frames can report their text wrapping and the watermark can be detected.
+#[derive(Default, Clone)]
+struct GraphicStyle {
+    /// The `style:wrap` value (`parallel`, `none`, `run-through`, ...).
+    wrap: String,
+    /// Whether the style puts the frame behind the text.
+    run_through: bool,
+    /// `draw:opacity`, 0..1.
+    opacity: f64,
+}
+
+/// Named styles resolved from content.xml's automatic styles and styles.xml:
+/// paragraph formatting, run formatting and graphic styles.
+#[derive(Default)]
+struct ReadStyles {
+    paragraphs: HashMap<String, ParaProps>,
+    texts: HashMap<String, Run>,
+    graphics: HashMap<String, GraphicStyle>,
+}
+
+/// Overlays the attributes of one `style:text-properties` element onto `run`.
+/// Attributes that are absent leave the inherited value alone.
+fn apply_text_properties(run: &mut Run, properties: &XmlNode) {
+    if let Some(weight) = properties.attr_any_ns("font-weight") {
+        if weight == "bold" {
+            run.bold = true;
+        } else if weight == "normal" {
+            run.bold = false;
+        }
     }
-    if properties.attr_any_ns("font-style") == Some("italic") {
-        run.italic = true;
+    if let Some(style) = properties.attr_any_ns("font-style") {
+        if style == "italic" || style == "oblique" {
+            run.italic = true;
+        } else if style == "normal" {
+            run.italic = false;
+        }
     }
-    if properties.attr_any_ns("font-family").is_some() {
-        run.font = properties.attr_any_ns("font-family").map(str::to_string);
+    if let Some(font) = properties.attr_any_ns("font-family") {
+        run.font = Some(font.to_string());
     }
     if let Some(size) = properties.attr_any_ns("font-size").and_then(parse_cm) {
         run.size_pt = Some(size);
@@ -777,10 +980,23 @@ fn read_span_style(node: &XmlNode) -> Run {
     if let Some(position) = properties.attr_any_ns("text-position") {
         if position.starts_with("super") {
             run.superscript = true;
+            run.subscript = false;
         } else if position.starts_with("sub") {
             run.subscript = true;
+            run.superscript = false;
         }
     }
+}
+
+/// The formatting of one span: the named text style first, then any direct
+/// `style:text-properties` on the span itself. Spans without a style name keep
+/// the plain inline-properties behavior.
+fn read_span_style(node: &XmlNode, text_styles: &HashMap<String, Run>) -> Run {
+    let mut run = node.attr_any_ns("style-name").and_then(|name| text_styles.get(name)).cloned().unwrap_or_default();
+    let mut properties = Vec::new();
+    node.find_all("style:text-properties", &mut properties);
+    let Some(properties) = properties.first() else { return run };
+    apply_text_properties(&mut run, properties);
     run
 }
 
@@ -875,11 +1091,11 @@ fn anchor_comments(
 
 /// Plain text of one annotation paragraph (spaces, tabs and line breaks
 /// included).
-fn annotation_paragraph_text(paragraph: &XmlNode) -> String {
+fn annotation_paragraph_text(paragraph: &XmlNode, styles: &ReadStyles) -> String {
     let mut runs = Vec::new();
     let mut scratch = NoteReadState::default();
     for inner in &paragraph.children {
-        node_text_runs(inner, &mut runs, &mut scratch);
+        node_text_runs(inner, &mut runs, &mut scratch, styles);
     }
     let mut text = paragraph.text.clone();
     for run in runs {
@@ -893,7 +1109,7 @@ fn annotation_paragraph_text(paragraph: &XmlNode) -> String {
 /// paragraph text. `office:name` is the comment id (our writer stores the id
 /// there); replies written as "Re: author: text" paragraphs become `replies`
 /// again, as in DOCX import, and `loext:resolved` is LibreOffice's flag.
-fn read_annotation(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState) {
+fn read_annotation(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState, styles: &ReadStyles) {
     let name = node.attr_any_ns("name").filter(|name| !name.is_empty());
     let id = match name {
         Some(name) if !notes.comment_ids.contains(name) => name.to_string(),
@@ -922,7 +1138,7 @@ fn read_annotation(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadStat
     node.find_all("p", &mut paragraphs);
     let mut lines = Vec::new();
     for paragraph in paragraphs {
-        let text = annotation_paragraph_text(paragraph);
+        let text = annotation_paragraph_text(paragraph, styles);
         match text.strip_prefix("Re: ").and_then(|rest| rest.split_once(": ")) {
             Some((author, reply)) => comment.replies.push(CommentReply {
                 author: author.to_string(),
@@ -940,7 +1156,7 @@ fn read_annotation(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadStat
 /// Reads one inline `text:note`: a reference run goes into `runs` at this
 /// position while the body goes to `notes`, so note text never leaks into the
 /// surrounding paragraph.
-fn read_note(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState) {
+fn read_note(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState, styles: &ReadStyles) {
     let endnote = node.attr_any_ns("note-class") == Some("endnote");
     notes.sequence += 1;
     let id = node
@@ -968,7 +1184,7 @@ fn read_note(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState) {
                 body_runs.push(Run { text: paragraph.text.clone(), ..Default::default() });
             }
             for inner in &paragraph.children {
-                node_text_runs(inner, &mut body_runs, notes);
+                node_text_runs(inner, &mut body_runs, notes, styles);
             }
         }
     }
@@ -988,10 +1204,10 @@ fn read_note(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState) {
     }
 }
 
-fn node_text_runs(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState) {
+fn node_text_runs(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState, styles: &ReadStyles) {
     match node.local_name() {
         "span" => {
-            let base = read_span_style(node);
+            let base = read_span_style(node, &styles.texts);
             if !node.text.is_empty() {
                 runs.push(Run { text: node.text.clone(), ..base.clone() });
             }
@@ -1003,8 +1219,8 @@ fn node_text_runs(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState
                     }
                     "tab" => runs.push(Run { text: "\t".into(), ..base.clone() }),
                     "line-break" => runs.push(Run { text: "\n".into(), ..base.clone() }),
-                    "note" => read_note(child, runs, notes),
-                    "annotation" | "annotation-end" => node_text_runs(child, runs, notes),
+                    "note" => read_note(child, runs, notes, styles),
+                    "annotation" | "annotation-end" => node_text_runs(child, runs, notes, styles),
                     _ => {
                         let text = child.deep_text();
                         if !text.is_empty() {
@@ -1021,7 +1237,7 @@ fn node_text_runs(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState
             }
             for child in &node.children {
                 let mut inner = Vec::new();
-                node_text_runs(child, &mut inner, notes);
+                node_text_runs(child, &mut inner, notes, styles);
                 for mut run in inner {
                     if run.link.is_none() {
                         run.link = link.clone();
@@ -1030,10 +1246,10 @@ fn node_text_runs(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState
                 }
             }
         }
-        "note" => read_note(node, runs, notes),
+        "note" => read_note(node, runs, notes, styles),
         // Comments must not reach the catch-all below, which would fold their
         // author, date and text into the paragraph.
-        "annotation" => read_annotation(node, runs, notes),
+        "annotation" => read_annotation(node, runs, notes, styles),
         "annotation-end" => runs.push(annotation_marker(ANNOTATION_END, node.attr_any_ns("name").unwrap_or_default())),
         "s" => {
             let count = node.attr_any_ns("c").and_then(|value| value.parse::<usize>().ok()).unwrap_or(1);
@@ -1048,24 +1264,82 @@ fn node_text_runs(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut NoteReadState
                 runs.push(Run { text, ..Default::default() });
             }
             for child in &node.children {
-                node_text_runs(child, runs, notes);
+                node_text_runs(child, runs, notes, styles);
             }
         }
     }
 }
 
-fn paragraph_props(node: &XmlNode, style_map: &HashMap<String, ParaProps>) -> ParaProps {
-    let props = if let Some(name) = node.attr("style-name").or_else(|| node.attr_any_ns("style-name")) {
-        style_map.get(name).cloned().unwrap_or_default()
+fn paragraph_props(node: &XmlNode, styles: &ReadStyles) -> ParaProps {
+    if let Some(name) = node.attr_any_ns("style-name") {
+        styles.paragraphs.get(name).cloned().unwrap_or_default()
     } else {
         ParaProps::default()
+    }
+}
+
+/// The wrapping of a frame's graphic style, mapped to the model's `inline` /
+/// `square` / `topBottom`.
+fn frame_wrap(frame: &XmlNode, styles: &ReadStyles) -> String {
+    let wrap = frame
+        .attr_any_ns("style-name")
+        .and_then(|name| styles.graphics.get(name))
+        .map(|style| style.wrap.as_str())
+        .unwrap_or_default();
+    match wrap {
+        "parallel" | "dynamic" | "left" | "right" | "biggest" => "square".into(),
+        "none" | "run-through" => "topBottom".into(),
+        _ => "inline".into(),
+    }
+}
+
+/// Whether a frame's graphic style puts it behind the text (a watermark or
+/// another decoration that is not document content).
+fn frame_run_through(frame: &XmlNode, styles: &ReadStyles) -> bool {
+    let styled = frame
+        .attr_any_ns("style-name")
+        .and_then(|name| styles.graphics.get(name))
+        .map(|style| style.run_through)
+        .unwrap_or(false);
+    styled || frame.attr_any_ns("run-through") == Some("background")
+}
+
+/// Reads a `draw:frame` (or a bare `draw:image`) into a `Block::Image`. `None`
+/// when the node holds no image or its bytes are missing from the package.
+fn read_image_block(
+    node: &XmlNode,
+    styles: &ReadStyles,
+    reader: &ZipReader,
+    warnings: &mut Vec<String>,
+) -> Option<Block> {
+    let mut images = Vec::new();
+    node.find_all("image", &mut images);
+    let image_node = images.first()?;
+    let href = image_node.attr_any_ns("href")?;
+    let width = node.attr_any_ns("width").and_then(parse_cm).unwrap_or(320.0);
+    let height = node.attr_any_ns("height").and_then(parse_cm).unwrap_or(200.0);
+    let path = href.trim_start_matches("./");
+    let data = match reader.read(path) {
+        Ok(data) => data,
+        Err(_) => {
+            warnings.push("An embedded image could not be read from the package.".into());
+            return None;
+        }
     };
-    props
+    let name = path.rsplit('/').next().unwrap_or("image.png").to_string();
+    Some(Block::Image {
+        image: ImageData::from_bytes(&name, &data),
+        width_pt: width,
+        height_pt: height,
+        align: "center".into(),
+        caption: String::new(),
+        wrap: frame_wrap(node, styles),
+    })
 }
 
 fn read_blocks(
     node: &XmlNode,
-    style_map: &HashMap<String, ParaProps>,
+    styles: &ReadStyles,
     reader: &ZipReader,
     warnings: &mut Vec<String>,
     notes: &mut NoteReadState,
@@ -1078,17 +1352,40 @@ fn read_blocks(
                 if !child.text.is_empty() {
                     runs.push(Run { text: child.text.clone(), ..Default::default() });
                 }
+                // Images written inside a paragraph (`<text:p><draw:frame>`)
+                // used to be dropped: the frame walker only produced text. A
+                // frame with an image becomes a block of its own, and the
+                // paragraph is kept when it still has text.
+                let mut images = Vec::new();
                 for inner in &child.children {
-                    node_text_runs(inner, &mut runs, notes);
+                    if matches!(inner.local_name(), "frame" | "image") {
+                        if frame_run_through(inner, styles) {
+                            // Behind-text decoration (the watermark), read
+                            // separately from meta.xml or the frame itself.
+                            continue;
+                        }
+                        if let Some(image) = read_image_block(inner, styles, reader, warnings) {
+                            images.push(image);
+                            continue;
+                        }
+                    }
+                    node_text_runs(inner, &mut runs, notes, styles);
                 }
                 notes.anchor_paragraph(&mut runs);
-                let mut props = paragraph_props(child, style_map);
+                let mut props = paragraph_props(child, styles);
                 if child.local_name() == "h" {
                     let level =
                         child.attr_any_ns("outline-level").and_then(|value| value.parse::<u32>().ok()).unwrap_or(1);
                     props.style = format!("Heading{level}");
                 }
-                blocks.push(Block::Paragraph { props, runs });
+                let has_text = runs
+                    .iter()
+                    .any(|run| !run.text.trim().is_empty() || run.footnote.is_some() || run.endnote.is_some());
+                let has_images = !images.is_empty();
+                blocks.extend(images);
+                if !has_images || has_text {
+                    blocks.push(Block::Paragraph { props, runs });
+                }
             }
             "list" => {
                 for item in child.children_named("list-item") {
@@ -1099,10 +1396,10 @@ fn read_blocks(
                                 runs.push(Run { text: inner.text.clone(), ..Default::default() });
                             }
                             for part in &inner.children {
-                                node_text_runs(part, &mut runs, notes);
+                                node_text_runs(part, &mut runs, notes, styles);
                             }
                             notes.anchor_paragraph(&mut runs);
-                            let mut props = paragraph_props(inner, style_map);
+                            let mut props = paragraph_props(inner, styles);
                             let level =
                                 inner.attr_any_ns("level").and_then(|value| value.parse::<u32>().ok()).unwrap_or(0);
                             props.list =
@@ -1115,30 +1412,94 @@ fn read_blocks(
             "list-header" => {}
             "table" => {
                 let mut widths = Vec::new();
-                let mut rows = Vec::new();
+                for column in child.children_named("table-column") {
+                    let width = column.attr_any_ns("column-width").and_then(parse_cm).unwrap_or(90.0);
+                    let repeat = column
+                        .attr_any_ns("number-columns-repeated")
+                        .and_then(|value| value.parse::<usize>().ok())
+                        .unwrap_or(1)
+                        .clamp(1, 1024);
+                    for _ in 0..repeat {
+                        widths.push(width);
+                    }
+                }
+                let mut rows: Vec<TableRow> = Vec::new();
+                // Per grid column, the origin cell an open rowspan continues
+                // (row index in `rows`, cell index in that row).
+                let mut open_origins: Vec<Option<(usize, usize)>> = Vec::new();
+                let mut max_column = 0usize;
                 for row_node in child.children_named("table-row") {
                     let mut row = TableRow::default();
-                    for cell_node in row_node.children_named("table-cell") {
+                    let previous_origins = std::mem::take(&mut open_origins);
+                    // Origins started in this row, applied once the row is stored.
+                    let mut pending_origins: Vec<(usize, usize, usize)> = Vec::new();
+                    let mut column = 0usize;
+                    for cell_node in row_node
+                        .children
+                        .iter()
+                        .filter(|node| matches!(node.local_name(), "table-cell" | "covered-table-cell"))
+                    {
                         let mut cell = TableCell::default();
                         if let Some(span) =
                             cell_node.attr_any_ns("number-columns-spanned").and_then(|value| value.parse::<u32>().ok())
                         {
                             cell.colspan = span.max(1);
                         }
+                        if let Some(span) =
+                            cell_node.attr_any_ns("number-rows-spanned").and_then(|value| value.parse::<u32>().ok())
+                        {
+                            cell.rowspan = span.max(1);
+                        }
+                        let span = cell.colspan.max(1) as usize;
+                        if cell_node.local_name() == "covered-table-cell" {
+                            // A covered position continues the origin from the
+                            // row above. `number-rows-spanned` already counts
+                            // every row, so the origin only grows when the
+                            // count is missing (defensive) or too small. One
+                            // with no origin at all is malformed and skipped.
+                            if let Some(origin) = previous_origins.get(column).copied().flatten() {
+                                let spanned = (rows.len() - origin.0 + 1) as u32;
+                                if let Some(target) =
+                                    rows.get_mut(origin.0).and_then(|origin_row| origin_row.cells.get_mut(origin.1))
+                                {
+                                    target.rowspan = target.rowspan.max(spanned);
+                                }
+                                while open_origins.len() < column + span {
+                                    open_origins.push(None);
+                                }
+                                for slot in open_origins.iter_mut().skip(column).take(span) {
+                                    *slot = Some(origin);
+                                }
+                            }
+                            column += span;
+                            continue;
+                        }
                         let mut nested_warnings = Vec::new();
-                        cell.blocks = read_blocks(cell_node, style_map, reader, &mut nested_warnings, notes);
+                        cell.blocks = read_blocks(cell_node, styles, reader, &mut nested_warnings, notes);
                         if cell.blocks.is_empty() {
                             cell.blocks.push(Block::paragraph(""));
                         }
+                        let cell_index = row.cells.len();
                         row.cells.push(cell);
+                        pending_origins.push((column, span, cell_index));
+                        column += span;
                     }
-                    if row.cells.is_empty() {
-                        continue;
+                    if !row.cells.is_empty() {
+                        let row_index = rows.len();
+                        rows.push(row);
+                        for (column, span, cell_index) in pending_origins {
+                            while open_origins.len() < column + span {
+                                open_origins.push(None);
+                            }
+                            for slot in open_origins.iter_mut().skip(column).take(span) {
+                                *slot = Some((row_index, cell_index));
+                            }
+                        }
                     }
-                    if widths.is_empty() {
-                        widths = vec![90.0; row.cells.len()];
-                    }
-                    rows.push(row);
+                    max_column = max_column.max(column);
+                }
+                while widths.len() < max_column.max(1) {
+                    widths.push(90.0);
                 }
                 blocks.push(Block::Table {
                     table: TableData {
@@ -1151,40 +1512,29 @@ fn read_blocks(
                 });
             }
             "section" => {
-                blocks.extend(read_blocks(child, style_map, reader, warnings, notes));
+                blocks.extend(read_blocks(child, styles, reader, warnings, notes));
             }
             // Not valid ODF outside a paragraph: keep the comment, unanchored.
-            "annotation" => read_annotation(child, &mut Vec::new(), notes),
+            "annotation" => read_annotation(child, &mut Vec::new(), notes, styles),
             _ => {
                 if child.local_name() == "frame" {
+                    if frame_run_through(child, styles) {
+                        // The watermark (or another behind-text decoration) is
+                        // not document content.
+                        continue;
+                    }
                     let mut images = Vec::new();
                     child.find_all("image", &mut images);
-                    if let Some(image_node) = images.first() {
-                        if let Some(href) = image_node.attr("href") {
-                            let width = child.attr("width").and_then(parse_cm).unwrap_or(320.0);
-                            let height = child.attr("height").and_then(parse_cm).unwrap_or(200.0);
-                            let path = href.trim_start_matches("./");
-                            match reader.read(path) {
-                                Ok(data) => {
-                                    let name = path.rsplit('/').next().unwrap_or("image.png").to_string();
-                                    blocks.push(Block::Image {
-                                        image: ImageData::from_bytes(&name, &data),
-                                        width_pt: width,
-                                        height_pt: height,
-                                        align: "center".into(),
-                                        caption: String::new(),
-                                        wrap: "inline".into(),
-                                    });
-                                }
-                                Err(_) => warnings.push("An embedded image could not be read from the package.".into()),
-                            }
+                    if !images.is_empty() {
+                        if let Some(image) = read_image_block(child, styles, reader, warnings) {
+                            blocks.push(image);
                         }
                     } else {
                         warnings.push("Text boxes and embedded objects are imported as plain content.".into());
                         let mut inner = Vec::new();
                         for part in &child.children {
                             if part.local_name() == "text-box" {
-                                inner.extend(read_blocks(part, style_map, reader, warnings, notes));
+                                inner.extend(read_blocks(part, styles, reader, warnings, notes));
                             }
                         }
                         blocks.extend(inner);
@@ -1196,11 +1546,13 @@ fn read_blocks(
     blocks
 }
 
-fn collect_styles(root: &XmlNode, style_map: &mut HashMap<String, ParaProps>) {
-    let mut styles = Vec::new();
-    root.find_all("style", &mut styles);
-    for style in styles {
-        let Some(name) = style.attr("name") else { continue };
+fn collect_styles(root: &XmlNode, styles: &mut ReadStyles) {
+    let mut nodes = Vec::new();
+    root.find_all("style", &mut nodes);
+    for style in nodes {
+        // `style:name` is the real attribute; `name` never exists and used to
+        // make every named style resolve to the default.
+        let Some(name) = style.attr_any_ns("name") else { continue };
         let mut props = ParaProps::default();
         let mut properties = Vec::new();
         style.find_all("paragraph-properties", &mut properties);
@@ -1233,9 +1585,123 @@ fn collect_styles(root: &XmlNode, style_map: &mut HashMap<String, ParaProps>) {
             if properties.attr_any_ns("break-before") == Some("page") {
                 props.page_break_before = true;
             }
+            if let Some(tab_stops) = properties.child("tab-stops") {
+                for tab in tab_stops.children_named("tab-stop") {
+                    let pos_pt = tab.attr_any_ns("position").and_then(parse_cm).unwrap_or(0.0);
+                    let align = match tab.attr_any_ns("type") {
+                        Some("center") => "center",
+                        Some("right") => "right",
+                        Some("char") => "decimal",
+                        _ => "left",
+                    };
+                    props.tabs.push(TabStop { pos_pt, align: align.into() });
+                }
+            }
         }
-        style_map.insert(name.to_string(), props);
+        styles.paragraphs.insert(name.to_string(), props);
+        let mut text_properties = Vec::new();
+        style.find_all("text-properties", &mut text_properties);
+        if let Some(properties) = text_properties.first() {
+            let mut run = Run::default();
+            apply_text_properties(&mut run, properties);
+            styles.texts.insert(name.to_string(), run);
+        }
+        let mut graphic_properties = Vec::new();
+        style.find_all("graphic-properties", &mut graphic_properties);
+        if let Some(properties) = graphic_properties.first() {
+            let wrap = properties.attr_any_ns("wrap").unwrap_or_default().to_string();
+            let run_through = properties.attr_any_ns("run-through") == Some("background");
+            let opacity = properties.attr_any_ns("opacity").and_then(parse_opacity).unwrap_or(1.0);
+            styles.graphics.insert(name.to_string(), GraphicStyle { wrap, run_through, opacity });
+        }
     }
+}
+
+/// A `draw:opacity` value, which may be a fraction (`0.18`) or a percentage
+/// (`18%`).
+fn parse_opacity(value: &str) -> Option<f64> {
+    let value = value.trim();
+    if let Some(percent) = value.strip_suffix('%') {
+        return percent.trim().parse::<f64>().ok().map(|part| (part / 100.0).clamp(0.0, 1.0));
+    }
+    value.parse::<f64>().ok().map(|part| if part > 1.0 { (part / 100.0).clamp(0.0, 1.0) } else { part.clamp(0.0, 1.0) })
+}
+
+/// `draw:transform="rotate(45)"` -> 45.0. Transforms may list several
+/// operations; the angle is in degrees.
+fn parse_rotate(transform: &str) -> Option<f64> {
+    let start = transform.find("rotate(")? + "rotate(".len();
+    let rest = &transform[start..];
+    let end = rest.find(')')?;
+    rest[..end].trim().trim_end_matches("deg").trim().parse::<f64>().ok()
+}
+
+/// The watermark our writer persisted in `meta:user-defined` entries. The
+/// values are preferred over the visible frame because they are lossless.
+fn watermark_from_meta(root: &XmlNode) -> Option<Watermark> {
+    let mut values = HashMap::new();
+    let mut nodes = Vec::new();
+    root.find_all("user-defined", &mut nodes);
+    for node in nodes {
+        if let (Some(name), Some(value)) = (node.attr_any_ns("name"), node.attr_any_ns("value")) {
+            values.insert(name.to_string(), value.to_string());
+        }
+    }
+    let text = values.get("OSAK:Watermark:Text")?.clone();
+    Some(Watermark {
+        text,
+        color: values.get("OSAK:Watermark:Color").filter(|color| !color.is_empty()).cloned(),
+        opacity: values
+            .get("OSAK:Watermark:Opacity")
+            .and_then(|value| value.parse::<f64>().ok())
+            .unwrap_or_else(|| Watermark::default().opacity),
+        rotation: values
+            .get("OSAK:Watermark:Rotation")
+            .and_then(|value| value.parse::<f64>().ok())
+            .unwrap_or_else(|| Watermark::default().rotation),
+        font_pt: values
+            .get("OSAK:Watermark:FontPt")
+            .and_then(|value| value.parse::<f64>().ok())
+            .unwrap_or_else(|| Watermark::default().font_pt),
+        bold: values.get("OSAK:Watermark:Bold").map(|value| value == "true").unwrap_or(true),
+    })
+}
+
+/// Fallback for foreign packages: the first run-through frame in the master
+/// styles whose text is not empty is the watermark.
+fn watermark_from_frame(root: &XmlNode, styles: &ReadStyles) -> Option<Watermark> {
+    let mut frames = Vec::new();
+    root.find_all("frame", &mut frames);
+    for frame in frames {
+        if !frame_run_through(frame, styles) {
+            continue;
+        }
+        let graphic = frame.attr_any_ns("style-name").and_then(|name| styles.graphics.get(name));
+        let text = frame.deep_text().trim().to_string();
+        if text.is_empty() {
+            continue;
+        }
+        let mut spans = Vec::new();
+        frame.find_all("span", &mut spans);
+        let text_style = spans
+            .first()
+            .and_then(|span| span.attr_any_ns("style-name"))
+            .and_then(|name| styles.texts.get(name))
+            .cloned()
+            .unwrap_or_default();
+        return Some(Watermark {
+            text,
+            color: text_style.color,
+            opacity: graphic.map(|style| style.opacity).unwrap_or(1.0).clamp(0.0, 1.0),
+            rotation: frame
+                .attr_any_ns("transform")
+                .and_then(parse_rotate)
+                .unwrap_or_else(|| Watermark::default().rotation),
+            font_pt: text_style.size_pt.unwrap_or_else(|| Watermark::default().font_pt),
+            bold: text_style.bold,
+        });
+    }
+    None
 }
 
 /// `parse_xml` appends text that follows a child element to the parent's
@@ -1304,20 +1770,20 @@ pub fn read_odt(bytes: &[u8]) -> OfficeResult<TextRead> {
         return Err(OfficeError::corrupt("The package does not contain content.xml (not an ODF document)."));
     }
     let mut warnings = Vec::new();
-    let mut style_map = HashMap::new();
+    let mut read_styles = ReadStyles::default();
     if let Ok(text) = reader.read_text("styles.xml") {
         if let Ok(root) = parse_xml(&text) {
-            collect_styles(&root, &mut style_map);
+            collect_styles(&root, &mut read_styles);
         }
     }
     let text = reader.read_text("content.xml")?;
     let root = parse_xml(&wrap_trailing_text(&text))?;
-    collect_styles(&root, &mut style_map);
+    collect_styles(&root, &mut read_styles);
     let mut document = TextDocument::new_blank("Imported document");
     let mut note_state = NoteReadState::default();
     note_state.start_comment_part(&root);
     let container = root.child("body").and_then(|body| body.child("text")).unwrap_or(&root);
-    document.blocks = read_blocks(container, &style_map, &reader, &mut warnings, &mut note_state);
+    document.blocks = read_blocks(container, &read_styles, &reader, &mut warnings, &mut note_state);
     if document.blocks.is_empty() {
         document.blocks.push(Block::paragraph(""));
     }
@@ -1331,6 +1797,9 @@ pub fn read_odt(bytes: &[u8]) -> OfficeResult<TextRead> {
             }
             if let Some(author) = root.child("dc:creator").map(XmlNode::deep_text) {
                 document.metadata.author = author;
+            }
+            if let Some(watermark) = watermark_from_meta(&root) {
+                document.watermark = Some(watermark);
             }
         }
     }
@@ -1370,12 +1839,17 @@ pub fn read_odt(bytes: &[u8]) -> OfficeResult<TextRead> {
             let mut headers = Vec::new();
             root.find_all("header", &mut headers);
             if let Some(header) = headers.first() {
-                document.header = read_blocks(header, &style_map, &reader, &mut warnings, &mut note_state);
+                document.header = read_blocks(header, &read_styles, &reader, &mut warnings, &mut note_state);
             }
             let mut footers = Vec::new();
             root.find_all("footer", &mut footers);
             if let Some(footer) = footers.first() {
-                document.footer = read_blocks(footer, &style_map, &reader, &mut warnings, &mut note_state);
+                document.footer = read_blocks(footer, &read_styles, &reader, &mut warnings, &mut note_state);
+            }
+            // Foreign packages carry no meta watermark entries; the visible
+            // run-through frame in the master styles is the fallback.
+            if document.watermark.is_none() {
+                document.watermark = watermark_from_frame(&root, &read_styles);
             }
         }
     }
@@ -2455,7 +2929,7 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
             )
         },
     );
-    zip.add_text("meta.xml", &meta_xml(&workbook.title, "OmniOffice"));
+    zip.add_text("meta.xml", &meta_xml(&workbook.title, "OmniOffice", None));
     for object in &chart_objects {
         zip.add_text(&format!("{}/content.xml", object.name), &object.content);
         zip.add_text(
@@ -3428,11 +3902,15 @@ struct OdpShapeIds {
     used: std::collections::HashSet<String>,
     /// Model object id -> written id, for the slide being written.
     slide: HashMap<String, String>,
+    /// Model ids whose planned id has already been handed out on this slide.
+    written: std::collections::HashSet<String>,
     next: usize,
 }
 
 impl OdpShapeIds {
-    fn assign(&mut self, object: &SlideObject) -> String {
+    /// A fresh id that is unique in the whole content.xml, preferring an NCName
+    /// model id that is still free.
+    fn unique(&mut self, object: &SlideObject) -> String {
         let id = if is_ncname(&object.id) && !self.used.contains(&object.id) {
             object.id.clone()
         } else {
@@ -3445,10 +3923,42 @@ impl OdpShapeIds {
             }
         };
         self.used.insert(id.clone());
+        id
+    }
+
+    /// Plans the id of one shape without consuming it, so a connector written
+    /// before its target already knows the target's id. The first object with a
+    /// given model id owns the mapping.
+    fn plan(&mut self, object: &SlideObject) -> String {
+        let id = self.unique(object);
         if !object.id.is_empty() {
-            self.slide.insert(object.id.clone(), id.clone());
+            self.slide.entry(object.id.clone()).or_insert_with(|| id.clone());
         }
         id
+    }
+
+    /// The id to write for `object`: its planned id when there is one, otherwise
+    /// a fresh one. A repeated model id falls back to a fresh id so every shape
+    /// stays addressable.
+    fn assign(&mut self, object: &SlideObject) -> String {
+        if !object.id.is_empty() {
+            if let Some(planned) = self.slide.get(&object.id).cloned() {
+                if self.written.insert(object.id.clone()) {
+                    return planned;
+                }
+            }
+        }
+        let id = self.unique(object);
+        if !object.id.is_empty() {
+            self.slide.entry(object.id.clone()).or_insert_with(|| id.clone());
+        }
+        id
+    }
+
+    /// Starts a new slide; the planned and written maps are per page.
+    fn reset_slide(&mut self) {
+        self.slide.clear();
+        self.written.clear();
     }
 }
 
@@ -3674,7 +4184,98 @@ fn odp_timing_xml(slide: &Slide, ids: &HashMap<String, String>, warnings: &mut V
     out
 }
 
-fn slide_object_xml(object: &SlideObject, ids: &mut OdpShapeIds) -> String {
+/// Writes a `draw:text-box`'s paragraphs the way the ODT writer writes body
+/// text: automatic paragraph and text styles shared through `AutoStyles`,
+/// bullets collected into `text:list` elements, and `Standard` for a plain
+/// paragraph. Runs that no longer add up to `paragraph.text` fall back to the
+/// paragraph text itself, so an edit can never lose content.
+fn write_odp_text_frame(writer: &mut XmlWriter, text: &TextFrame, styles: &mut AutoStyles) {
+    let mut index = 0usize;
+    while index < text.paragraphs.len() {
+        let paragraph = &text.paragraphs[index];
+        if !paragraph.bullet {
+            write_odp_paragraph(writer, paragraph, styles);
+            index += 1;
+            continue;
+        }
+        // A run of consecutive bullets becomes one list, nested by level.
+        let start = index;
+        while index < text.paragraphs.len() && text.paragraphs[index].bullet {
+            index += 1;
+        }
+        write_odp_list(writer, &text.paragraphs[start..index], styles, 0);
+    }
+    if text.paragraphs.is_empty() {
+        writer.raw("<text:p/>");
+    }
+}
+
+/// One `text:list` of a bullet run at `level`; items deeper than `level` become
+/// nested lists inside their item, so the reader can recover the level.
+fn write_odp_list(writer: &mut XmlWriter, items: &[TextParagraph], styles: &mut AutoStyles, level: u32) {
+    writer.raw("<text:list text:style-name=\"LB\">");
+    let mut index = 0usize;
+    while index < items.len() {
+        writer.raw("<text:list-item>");
+        write_odp_paragraph(writer, &items[index], styles);
+        let mut end = index + 1;
+        while end < items.len() && items[end].level > level {
+            end += 1;
+        }
+        if end > index + 1 {
+            write_odp_list(writer, &items[index + 1..end], styles, level + 1);
+        }
+        writer.raw("</text:list-item>");
+        index = end;
+    }
+    writer.raw("</text:list>");
+}
+
+fn write_odp_paragraph(writer: &mut XmlWriter, paragraph: &TextParagraph, styles: &mut AutoStyles) {
+    let props = ParaProps {
+        align: paragraph.align.clone(),
+        list: paragraph.bullet.then(|| ListInfo {
+            kind: "bullet".into(),
+            level: paragraph.level,
+            start: 1,
+            marker: "•".into(),
+        }),
+        ..Default::default()
+    };
+    let properties = paragraph_style_xml(&props, false);
+    let name = if properties == "<style:paragraph-properties/>" {
+        "Standard".to_string()
+    } else {
+        styles.paragraph(properties)
+    };
+    writer.raw(&format!("<text:p text:style-name=\"{name}\">"));
+    let runs_match = paragraph.runs.iter().map(|run| run.text.as_str()).collect::<String>() == paragraph.text;
+    if paragraph.runs.is_empty() || !runs_match {
+        let fallback = Run {
+            text: paragraph.text.clone(),
+            bold: paragraph.bold,
+            italic: paragraph.italic,
+            underline: paragraph.underline,
+            size_pt: paragraph.size_pt,
+            color: paragraph.color.clone(),
+            lang: paragraph.lang.clone(),
+            ..Default::default()
+        };
+        write_runs(writer, &[fallback], styles, &NoteContext::default());
+    } else {
+        write_runs(writer, &paragraph.runs, styles, &NoteContext::default());
+    }
+    writer.raw("</text:p>");
+}
+
+/// One shape of a slide as `draw:*` XML. `charts` maps a chart object's model
+/// id to the `Object N` sub-document the writer stored for it.
+fn slide_object_xml(
+    object: &SlideObject,
+    ids: &mut OdpShapeIds,
+    styles: &mut AutoStyles,
+    charts: &HashMap<String, String>,
+) -> String {
     let id = ids.assign(object);
     let id_attrs = format!(" draw:id=\"{0}\" xml:id=\"{0}\"", escape(&id));
     if object.kind == "group" {
@@ -3682,7 +4283,7 @@ fn slide_object_xml(object: &SlideObject, ids: &mut OdpShapeIds) -> String {
         // its own, which matches the editor's group = bounding box of children.
         let mut children: Vec<&SlideObject> = object.children.iter().collect();
         children.sort_by_key(|child| child.z);
-        let inner: String = children.into_iter().map(|child| slide_object_xml(child, ids)).collect();
+        let inner: String = children.into_iter().map(|child| slide_object_xml(child, ids, styles, charts)).collect();
         return format!(
             "<draw:g draw:name=\"{}\"{id_attrs} draw:z-index=\"{}\">{inner}</draw:g>",
             escape(&object.name),
@@ -3695,18 +4296,71 @@ fn slide_object_xml(object: &SlideObject, ids: &mut OdpShapeIds) -> String {
     match object.kind.as_str() {
         "image" => {
             if let Some(image) = &object.image {
-                inner.push_str(&format!("<draw:image xlink:href=\"Pictures/{}\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/>", escape(&image.name)));
+                // `fo:clip` trims the rendered frame; the fractions are of the
+                // rendered size, spelled in cm with the same precision as every
+                // other length in this writer.
+                let clip = image
+                    .crop
+                    .as_ref()
+                    .filter(|crop| crop.left > 0.0 || crop.top > 0.0 || crop.right > 0.0 || crop.bottom > 0.0)
+                    .map(|crop| {
+                        format!(
+                            " fo:clip=\"rect({} {} {} {})\"",
+                            cm(crop.top * object.h.max(1.0)),
+                            cm(crop.right * object.w.max(1.0)),
+                            cm(crop.bottom * object.h.max(1.0)),
+                            cm(crop.left * object.w.max(1.0))
+                        )
+                    })
+                    .unwrap_or_default();
+                inner.push_str(&format!("<draw:image xlink:href=\"Pictures/{}\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"{clip}/>", escape(&image.name)));
             }
         }
         "line" | "arrow" => {
             let line = object.line.clone().unwrap_or_default();
-            inner.push_str(&format!(
-                "<draw:line svg:x1=\"{}\" svg:y1=\"{}\" svg:x2=\"{}\" svg:y2=\"{}\" draw:style-name=\"gr1\"/>",
-                cm(object.x),
-                cm(object.y),
-                cm(object.x + line.x2),
-                cm(object.y + line.y2)
-            ));
+            let (x1, y1, x2, y2) = (object.x, object.y, object.x + line.x2, object.y + line.y2);
+            if line.begin_object.is_some() || line.end_object.is_some() {
+                // A glued line is a real connector: LibreOffice needs the
+                // written shape ids (planned before writing) and glue points.
+                let mut glue = String::new();
+                if let Some(target) = line.begin_object.as_deref().and_then(|target| ids.slide.get(target)) {
+                    glue.push_str(&format!(
+                        " draw:start-shape=\"{}\" draw:start-glue-point=\"{}\"",
+                        escape(target),
+                        line.begin_site
+                    ));
+                }
+                if let Some(target) = line.end_object.as_deref().and_then(|target| ids.slide.get(target)) {
+                    glue.push_str(&format!(
+                        " draw:end-shape=\"{}\" draw:end-glue-point=\"{}\"",
+                        escape(target),
+                        line.end_site
+                    ));
+                }
+                let stroke = object.style.as_ref().and_then(|style| style.stroke.clone());
+                let width = object.style.as_ref().map(|style| style.stroke_width_pt).unwrap_or(2.0).max(0.5);
+                let properties = format!(
+                    "<style:graphic-properties draw:stroke=\"solid\" svg:stroke-width=\"{}\"{} draw:fill=\"none\"/>",
+                    cm(width),
+                    stroke.map(|color| format!(" svg:stroke-color=\"{}\"", escape(&color))).unwrap_or_default()
+                );
+                let style_name = styles.graphic(properties);
+                inner.push_str(&format!(
+                    "<draw:connector svg:x1=\"{}\" svg:y1=\"{}\" svg:x2=\"{}\" svg:y2=\"{}\"{glue} draw:style-name=\"{style_name}\"/>",
+                    cm(x1),
+                    cm(y1),
+                    cm(x2),
+                    cm(y2)
+                ));
+            } else {
+                inner.push_str(&format!(
+                    "<draw:line svg:x1=\"{}\" svg:y1=\"{}\" svg:x2=\"{}\" svg:y2=\"{}\" draw:style-name=\"gr1\"/>",
+                    cm(x1),
+                    cm(y1),
+                    cm(x2),
+                    cm(y2)
+                ));
+            }
         }
         "table" => {
             if let Some(table) = &object.table {
@@ -3717,31 +4371,29 @@ fn slide_object_xml(object: &SlideObject, ids: &mut OdpShapeIds) -> String {
                 inner.push_str(&writer.finish());
             }
         }
-        "chart" => {
-            if let Some(chart) = &object.chart {
-                let title =
-                    if chart.title.trim().is_empty() { format!("{} chart", chart.kind) } else { chart.title.clone() };
-                inner.push_str(&format!(
-                    "<draw:text-box><text:p text:style-name=\"Standard\">{}</text:p></draw:text-box>",
-                    crate::xml::escape_text(&title)
-                ));
+        "chart" => match charts.get(&object.id) {
+            Some(name) => inner.push_str(&format!(
+                "<draw:object xlink:href=\"./{}\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/>",
+                escape(name)
+            )),
+            None => {
+                // A chart this writer cannot export keeps the old title
+                // placeholder so nothing is dropped silently.
+                if let Some(chart) = &object.chart {
+                    let title =
+                        if chart.title.trim().is_empty() { format!("{} chart", chart.kind) } else { chart.title.clone() };
+                    inner.push_str(&format!(
+                        "<draw:text-box><text:p text:style-name=\"Standard\">{}</text:p></draw:text-box>",
+                        crate::xml::escape_text(&title)
+                    ));
+                }
             }
-        }
+        },
         _ => {
             if let Some(text) = &object.text {
                 let mut writer = XmlWriter::new();
                 writer.raw("<draw:text-box>");
-                for paragraph in &text.paragraphs {
-                    let level = paragraph.level;
-                    writer.raw(&format!(
-                        "<text:p text:style-name=\"Standard\">{}</text:p>",
-                        crate::xml::escape_text(&paragraph.text)
-                    ));
-                    let _ = level;
-                }
-                if text.paragraphs.is_empty() {
-                    writer.raw("<text:p/>");
-                }
+                write_odp_text_frame(&mut writer, text, styles);
                 writer.raw("</draw:text-box>");
                 inner.push_str(&writer.finish());
             }
@@ -3788,9 +4440,29 @@ pub struct DeckWrite {
     pub warnings: Vec<String>,
 }
 
-/// Charts anywhere on the slide, including inside groups.
-fn count_odp_charts(objects: &[SlideObject]) -> usize {
-    objects.iter().map(|object| usize::from(object.chart.is_some()) + count_odp_charts(&object.children)).sum()
+/// Assigns ids to the shapes of one slide in the order `slide_object_xml`
+/// visits them, so a connector can name a shape written later in the z order.
+fn plan_odp_ids(objects: &[SlideObject], ids: &mut OdpShapeIds) {
+    let mut ordered: Vec<&SlideObject> = objects.iter().collect();
+    ordered.sort_by_key(|object| object.z);
+    for object in ordered {
+        if !object.id.is_empty() {
+            ids.plan(object);
+        }
+        plan_odp_ids(&object.children, ids);
+    }
+}
+
+/// The chart objects anywhere on a slide, in the order the writer visits them.
+fn collect_odp_charts<'a>(objects: &'a [SlideObject], charts: &mut Vec<&'a SlideObject>) {
+    let mut ordered: Vec<&SlideObject> = objects.iter().collect();
+    ordered.sort_by_key(|object| object.z);
+    for object in ordered {
+        if object.chart.is_some() {
+            charts.push(object);
+        }
+        collect_odp_charts(&object.children, charts);
+    }
 }
 
 fn collect_odp_pictures(objects: &[SlideObject], pictures: &mut Vec<(String, Vec<u8>)>) {
@@ -3807,10 +4479,6 @@ fn collect_odp_pictures(objects: &[SlideObject], pictures: &mut Vec<(String, Vec
 pub fn write_odp_package(deck: &Deck) -> OfficeResult<DeckWrite> {
     let mut warnings = Vec::new();
     let bytes = write_odp_bytes(deck, &mut warnings)?;
-    let charts: usize = deck.slides.iter().map(|slide| count_odp_charts(&slide.objects)).sum();
-    if charts > 0 {
-        warnings.push("Chart data is kept in the native .oswk file; ODP gets drawn placeholder shapes.".into());
-    }
     let mut seen = std::collections::HashSet::new();
     warnings.retain(|warning| seen.insert(warning.clone()));
     Ok(DeckWrite { bytes, warnings })
@@ -3820,18 +4488,114 @@ pub fn write_odp(deck: &Deck) -> OfficeResult<Vec<u8>> {
     Ok(write_odp_package(deck)?.bytes)
 }
 
+/// The `text:list` style the ODP content declares for the bullet lists the
+/// writer emits (`LB`, the same name the ODT writer uses).
+fn odp_list_style_xml() -> String {
+    let mut out = String::from("<text:list-style style:name=\"LB\">");
+    for level in 1..=9 {
+        out.push_str(&format!("<text:list-level-style-bullet text:level=\"{level}\" text:bullet-char=\"•\"><style:list-level-properties text:space-before=\"{}cm\" text:min-label-width=\"0.6cm\"/></text:list-level-style-bullet>", (level as f64 - 1.0) * 0.6));
+    }
+    out.push_str("</text:list-style>");
+    out
+}
+
+/// One placeholder frame of the ODF master page for the footer, date and slide
+/// number; `body` is already escaped (or a field element).
+fn odp_master_frame(class: &str, x: f64, y: f64, w: f64, h: f64, body: &str) -> String {
+    format!(
+        "<draw:frame presentation:class=\"{class}\" svg:x=\"{}\" svg:y=\"{}\" svg:width=\"{}\" svg:height=\"{}\"><draw:text-box><text:p>{body}</text:p></draw:text-box></draw:frame>",
+        cm(x),
+        cm(y),
+        cm(w),
+        cm(h)
+    )
+}
+
+/// The placeholder frames of the default master page for an enabled footer,
+/// laid out along the bottom of the slide like the PPTX writer lays them out.
+fn odp_footer_shapes(deck: &Deck, footer: &SlideFooter) -> String {
+    let width = deck.size.width_pt;
+    let bottom = (deck.size.height_pt - 34.0).max(0.0);
+    let mut out = String::new();
+    if footer.show_date {
+        out.push_str(&odp_master_frame(
+            "date-time",
+            width * 0.06,
+            bottom,
+            width * 0.25,
+            24.0,
+            &crate::xml::escape_text(&footer.date_text),
+        ));
+    }
+    if footer.show_text {
+        out.push_str(&odp_master_frame(
+            "footer",
+            width * 0.35,
+            bottom,
+            width * 0.30,
+            24.0,
+            &crate::xml::escape_text(&footer.text),
+        ));
+    }
+    if footer.show_slide_number {
+        out.push_str(&odp_master_frame(
+            "page-number",
+            width * 0.88,
+            bottom,
+            width * 0.06,
+            24.0,
+            "<text:page-number>1</text:page-number>",
+        ));
+    }
+    out
+}
+
 fn write_odp_bytes(deck: &Deck, warnings: &mut Vec<String>) -> OfficeResult<Vec<u8>> {
     let mut body = String::new();
     let mut pictures: Vec<(String, Vec<u8>)> = Vec::new();
     let mut ids = OdpShapeIds::default();
+    // Charts become `Object N` sub-documents numbered across the deck.
+    let mut chart_objects: Vec<OdsChartObject> = Vec::new();
+    let mut auto = AutoStyles::default();
     for (index, slide) in deck.slides.iter().enumerate() {
-        body.push_str(&format!("<draw:page draw:name=\"Slide{}\" draw:master-page-name=\"Default\">", index + 1));
-        ids.slide.clear();
+        let style_attr = if slide.hidden { " draw:style-name=\"dp-hidden\"" } else { "" };
+        body.push_str(&format!(
+            "<draw:page draw:name=\"Slide{}\" draw:master-page-name=\"Default\"{style_attr}>",
+            index + 1
+        ));
+        ids.reset_slide();
+        plan_odp_ids(&slide.objects, &mut ids);
         collect_odp_pictures(&slide.objects, &mut pictures);
+        let mut chart_map: HashMap<String, String> = HashMap::new();
+        let mut charts = Vec::new();
+        collect_odp_charts(&slide.objects, &mut charts);
+        for chart_object in charts {
+            let Some(chart) = &chart_object.chart else { continue };
+            match ods_chart_problem(chart) {
+                Some(reason) => warnings.push(format!("Chart data is kept in the native .oswk file: {reason}.")),
+                None => {
+                    let name = format!("Object {}", chart_objects.len() + 1);
+                    let placement = ChartPlacement {
+                        id: chart_object.id.clone(),
+                        chart: chart.clone(),
+                        anchor: String::new(),
+                        width_px: chart_object.w.max(48.0) / 0.75,
+                        height_px: chart_object.h.max(48.0) / 0.75,
+                    };
+                    chart_objects.push(OdsChartObject {
+                        content: ods_chart_content(&placement, "Sheet1", &BTreeMap::new()),
+                        name: name.clone(),
+                    });
+                    if !chart_object.id.is_empty() {
+                        chart_map.insert(chart_object.id.clone(), name);
+                    }
+                }
+            }
+        }
         let mut objects: Vec<&SlideObject> = slide.objects.iter().collect();
         objects.sort_by_key(|object| object.z);
         for object in objects {
-            body.push_str(&slide_object_xml(object, &mut ids));
+            body.push_str(&slide_object_xml(object, &mut ids, &mut auto, &chart_map));
         }
         // draw:page content order: shapes, then the timing root, then notes.
         body.push_str(&odp_timing_xml(slide, &ids.slide, warnings));
@@ -3845,8 +4609,19 @@ fn write_odp_bytes(deck: &Deck, warnings: &mut Vec<String>) -> OfficeResult<Vec<
         cm(deck.size.width_pt),
         cm(deck.size.height_pt)
     );
+    // A hidden slide is a drawing-page style with `visibility="hidden"`
+    // (LibreOffice's convention); visible-only output stays exactly as before.
+    let hidden_style = if deck.slides.iter().any(|slide| slide.hidden) {
+        "<style:style style:name=\"dp-hidden\" style:family=\"drawing-page\"><style:drawing-page-properties presentation:visibility=\"hidden\"/></style:style>"
+    } else {
+        ""
+    };
+    let automatic = auto.xml();
+    let automatic =
+        automatic.trim_start_matches("<office:automatic-styles>").trim_end_matches("</office:automatic-styles>");
     let content = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content {NS} {ANIM_NS} office:version=\"1.2\"><office:automatic-styles>{page_layout}</office:automatic-styles><office:body><office:presentation>{body}</office:presentation></office:body></office:document-content>"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content {NS} {ANIM_NS} office:version=\"1.2\"><office:styles>{}</office:styles><office:automatic-styles>{page_layout}{hidden_style}{automatic}</office:automatic-styles><office:body><office:presentation>{body}</office:presentation></office:body></office:document-content>",
+        odp_list_style_xml()
     );
     let background = match deck.theme.as_str() {
         "dark" => "#0F172A",
@@ -3855,15 +4630,48 @@ fn write_odp_bytes(deck: &Deck, warnings: &mut Vec<String>) -> OfficeResult<Vec<
         "modern" => "#FFFFFF",
         _ => "#FFFFFF",
     };
+    let mut drawing_props = format!("draw:fill=\"solid\" draw:fill-color=\"{background}\"");
+    let mut master_shapes = String::new();
+    if let Some(footer) = deck.footer.as_ref().filter(|footer| footer.enabled) {
+        if footer.show_text {
+            drawing_props.push_str(" presentation:display-footer=\"true\"");
+        }
+        if footer.show_slide_number {
+            drawing_props.push_str(" presentation:display-page-number=\"true\"");
+        }
+        if footer.show_date {
+            drawing_props.push_str(" presentation:display-date-time=\"true\"");
+        }
+        master_shapes = odp_footer_shapes(deck, footer);
+    }
     let styles = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles {NS} office:version=\"1.2\"><office:styles/><office:automatic-styles>{page_layout}</office:automatic-styles><office:master-styles><style:master-page style:name=\"Default\" style:page-layout-name=\"pl1\"><style:drawing-page-properties draw:fill=\"solid\" draw:fill-color=\"{background}\"/></style:master-page></office:master-styles></office:document-styles>"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles {NS} office:version=\"1.2\"><office:styles/><office:automatic-styles>{page_layout}</office:automatic-styles><office:master-styles><style:master-page style:name=\"Default\" style:page-layout-name=\"pl1\"><style:drawing-page-properties {drawing_props}/>{master_shapes}</style:master-page></office:master-styles></office:document-styles>"
     );
+    // Every chart object is a sub-document with its own manifest entries.
+    let mut object_entries = String::new();
+    for object in &chart_objects {
+        let name = escape(&object.name);
+        object_entries.push_str(&format!(
+            "<manifest:file-entry manifest:full-path=\"{name}/\" manifest:version=\"1.2\" manifest:media-type=\"application/vnd.oasis.opendocument.chart\"/><manifest:file-entry manifest:full-path=\"{name}/content.xml\" manifest:media-type=\"text/xml\"/><manifest:file-entry manifest:full-path=\"{name}/styles.xml\" manifest:media-type=\"text/xml\"/>"
+        ));
+    }
+    let manifest = manifest_for("application/vnd.oasis.opendocument.presentation")
+        .replace("</manifest:manifest>", &format!("{object_entries}</manifest:manifest>"));
     let mut zip = ZipWriter::new();
     zip.add_text("mimetype", "application/vnd.oasis.opendocument.presentation");
-    zip.add_text("META-INF/manifest.xml", &manifest_for("application/vnd.oasis.opendocument.presentation"));
+    zip.add_text("META-INF/manifest.xml", &manifest);
     zip.add_text("content.xml", &content);
     zip.add_text("styles.xml", &styles);
-    zip.add_text("meta.xml", &meta_xml(&deck.title, "OmniOffice"));
+    zip.add_text("meta.xml", &meta_xml(&deck.title, "OmniOffice", None));
+    for object in &chart_objects {
+        zip.add_text(&format!("{}/content.xml", object.name), &object.content);
+        zip.add_text(
+            &format!("{}/styles.xml", object.name),
+            &format!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles {NS} {CHART_NS} office:version=\"1.2\"><office:styles/></office:document-styles>"
+            ),
+        );
+    }
     for (name, data) in &pictures {
         zip.add(&format!("Pictures/{name}"), data);
     }
@@ -3874,9 +4682,152 @@ pub fn write_odp_file(path: &Path, deck: &Deck) -> OfficeResult<()> {
     crate::io::write_atomic(path, &write_odp(deck)?)
 }
 
-/// One `draw:frame` of a slide or group: picture, text box, table, or a plain
-/// shape kept as a rectangle. Frames without a size (lines) are skipped.
-fn read_odp_frame(frame: &XmlNode, reader: &ZipReader, warnings: &mut Vec<String>) -> Option<SlideObject> {
+/// Read-side state of one ODP package: named styles, crops declared by graphic
+/// styles and the embedded objects already read.
+#[derive(Default)]
+struct OdpImport {
+    styles: ReadStyles,
+    clips: HashMap<String, String>,
+    seen_objects: HashSet<String>,
+}
+
+/// `style:graphic-properties/fo:clip` by style name, for images that carry
+/// their crop on a graphic style instead of the `draw:image` element.
+fn odp_graphic_clips(roots: &[&XmlNode]) -> HashMap<String, String> {
+    let mut clips = HashMap::new();
+    for root in roots {
+        let mut styles = Vec::new();
+        root.find_all("style", &mut styles);
+        for style in styles {
+            let Some(name) = style.attr_any_ns("name") else { continue };
+            let mut properties = Vec::new();
+            style.find_all("graphic-properties", &mut properties);
+            if let Some(clip) = properties.iter().find_map(|node| node.attr_any_ns("clip")) {
+                clips.insert(name.to_string(), clip.to_string());
+            }
+        }
+    }
+    clips
+}
+
+/// The crop of an ODP image, read from `fo:clip="rect(top right bottom left)"`
+/// on the `draw:image`, the frame or its graphic style. The lengths are the
+/// trims of the rendered frame and become fractions of the frame size. Clip
+/// lengths round-trip through the writer's three-decimal cm spelling, so the
+/// fractions are accurate to roughly a thousandth of the frame size; the tests
+/// allow 0.01.
+fn read_odp_crop(image: &XmlNode, frame: &XmlNode, import: &OdpImport, w: f64, h: f64) -> Option<ImageCrop> {
+    let clip = image
+        .attr_any_ns("clip")
+        .or_else(|| frame.attr_any_ns("clip"))
+        .map(str::to_string)
+        .or_else(|| frame.attr_any_ns("style-name").and_then(|name| import.clips.get(name)).cloned())?;
+    let lengths = clip.trim().strip_prefix("rect(")?.strip_suffix(')')?;
+    let lengths: Option<Vec<f64>> = lengths
+        .split(|ch: char| ch.is_whitespace() || ch == ',')
+        .filter(|part| !part.is_empty())
+        .map(parse_cm)
+        .collect();
+    let lengths = lengths?;
+    let [top, right, bottom, left] = lengths.as_slice() else { return None };
+    if w <= 0.0 || h <= 0.0 {
+        return None;
+    }
+    let crop = ImageCrop {
+        left: (left / w).abs().clamp(0.0, 0.95),
+        top: (top / h).abs().clamp(0.0, 0.95),
+        right: (right / w).abs().clamp(0.0, 0.95),
+        bottom: (bottom / h).abs().clamp(0.0, 0.95),
+    };
+    (crop.left > 0.0 || crop.top > 0.0 || crop.right > 0.0 || crop.bottom > 0.0).then_some(crop)
+}
+
+/// A `draw:line` or `draw:connector` shape: geometry from the svg endpoints and
+/// the glue references (`draw:start-shape` and friends) of a connector.
+fn read_odp_line(node: &XmlNode) -> Option<SlideObject> {
+    let x1 = node.attr_any_ns("x1").and_then(parse_cm)?;
+    let y1 = node.attr_any_ns("y1").and_then(parse_cm)?;
+    let x2 = node.attr_any_ns("x2").and_then(parse_cm).unwrap_or(x1);
+    let y2 = node.attr_any_ns("y2").and_then(parse_cm).unwrap_or(y1);
+    let mut object = SlideObject::new("line", x1, y1, (x2 - x1).abs(), (y2 - y1).abs());
+    object.line = Some(LineSpec {
+        x2: x2 - x1,
+        y2: y2 - y1,
+        begin_arrow: node.attr_any_ns("marker-start").is_some(),
+        end_arrow: node.attr_any_ns("marker-end").is_some(),
+        dash: String::new(),
+        begin_object: node.attr_any_ns("start-shape").map(str::to_string),
+        end_object: node.attr_any_ns("end-shape").map(str::to_string),
+        begin_site: node.attr_any_ns("start-glue-point").and_then(|value| value.parse::<u32>().ok()).unwrap_or(0),
+        end_site: node.attr_any_ns("end-glue-point").and_then(|value| value.parse::<u32>().ok()).unwrap_or(0),
+    });
+    Some(object)
+}
+
+/// One `text:p` of a shape: runs with named styles resolved, alignment from
+/// the paragraph style, and paragraph-level formatting aggregated from the
+/// runs like the PPTX import does.
+fn read_odp_paragraph(paragraph: &XmlNode, level: u32, bullet: bool, styles: &ReadStyles) -> TextParagraph {
+    let mut runs = Vec::new();
+    let mut notes = NoteReadState::default();
+    if !paragraph.text.is_empty() {
+        runs.push(Run { text: paragraph.text.clone(), ..Default::default() });
+    }
+    for child in &paragraph.children {
+        node_text_runs(child, &mut runs, &mut notes, styles);
+    }
+    let props = paragraph_props(paragraph, styles);
+    let mut model = TextParagraph { level, bullet, align: props.align, ..Default::default() };
+    for run in &runs {
+        model.text.push_str(&run.text);
+        model.bold |= run.bold;
+        model.italic |= run.italic;
+        model.underline |= run.underline;
+        if model.size_pt.is_none() {
+            model.size_pt = run.size_pt;
+        }
+        if model.color.is_none() {
+            model.color = run.color.clone();
+        }
+    }
+    model.lang = runs.iter().find_map(|run| run.lang.clone());
+    model.runs = runs;
+    model
+}
+
+/// The paragraphs of a `draw:text-box`: plain paragraphs and lists, the latter
+/// nested so the nesting depth is the bullet level.
+fn read_odp_paragraphs(text_box: &XmlNode, styles: &ReadStyles) -> Vec<TextParagraph> {
+    fn walk(node: &XmlNode, depth: u32, styles: &ReadStyles, out: &mut Vec<TextParagraph>) {
+        for child in &node.children {
+            match child.local_name() {
+                "p" | "h" => out.push(read_odp_paragraph(child, depth.saturating_sub(1), depth > 0, styles)),
+                "list" => {
+                    for item in child.children_named("list-item") {
+                        walk(item, depth + 1, styles, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut paragraphs = Vec::new();
+    walk(text_box, 0, styles, &mut paragraphs);
+    if paragraphs.is_empty() {
+        paragraphs.push(TextParagraph::default());
+    }
+    paragraphs
+}
+
+/// One `draw:frame` of a slide or group: picture, embedded chart, text box,
+/// table, connector, or a plain shape kept as a rectangle. Frames without a
+/// size (lines) are skipped.
+fn read_odp_frame(
+    frame: &XmlNode,
+    zip: &ZipReader,
+    import: &mut OdpImport,
+    warnings: &mut Vec<String>,
+) -> Option<SlideObject> {
     let x = frame.attr_any_ns("x").and_then(parse_cm).unwrap_or(40.0);
     let y = frame.attr_any_ns("y").and_then(parse_cm).unwrap_or(40.0);
     let w = frame.attr_any_ns("width").and_then(parse_cm).unwrap_or(320.0);
@@ -3886,28 +4837,43 @@ fn read_odp_frame(frame: &XmlNode, reader: &ZipReader, warnings: &mut Vec<String
     if let Some(image_node) = images.first() {
         if let Some(href) = image_node.attr_any_ns("href") {
             let path = href.trim_start_matches("./");
-            if let Ok(data) = reader.read(path) {
+            if let Ok(data) = zip.read(path) {
                 let name = path.rsplit('/').next().unwrap_or("image.png").to_string();
                 let mut object = SlideObject::new("image", x, y, w, h);
-                object.image = Some(ImageData::from_bytes(&name, &data));
+                let mut image = ImageData::from_bytes(&name, &data);
+                image.crop = read_odp_crop(image_node, frame, import, w, h);
+                object.image = Some(image);
                 return Some(object);
             }
         }
     }
+    // An embedded object is a chart when its sub-document parses as one; an
+    // unrecognized one falls through to the rectangle fallback below.
+    if frame.child("object").is_some() {
+        let sheet = Sheet::new("Sheet1");
+        if let Some(placement) = read_ods_chart(zip, frame, String::new(), &sheet, &mut import.seen_objects, warnings) {
+            let mut object = SlideObject::new("chart", x, y, w, h);
+            object.chart = Some(placement.chart);
+            return Some(object);
+        }
+    }
+    if let Some(line) = frame
+        .children_of("connector")
+        .into_iter()
+        .next()
+        .or_else(|| frame.children_of("line").into_iter().next())
+        .and_then(read_odp_line)
+    {
+        return Some(line);
+    }
     let mut text_boxes = Vec::new();
     frame.find_all("text-box", &mut text_boxes);
     if let Some(text_box) = text_boxes.first() {
-        let mut paragraphs = Vec::new();
-        let mut paragraph_nodes = Vec::new();
-        text_box.find_all("p", &mut paragraph_nodes);
-        for paragraph in &paragraph_nodes {
-            paragraphs.push(TextParagraph { text: paragraph.deep_text(), ..Default::default() });
-        }
-        if paragraph_nodes.is_empty() {
-            paragraphs.push(TextParagraph::default());
-        }
+        let paragraphs = read_odp_paragraphs(text_box, &import.styles);
         let mut object = SlideObject::new("text", x, y, w, h);
-        object.text = Some(TextFrame { paragraphs, ..Default::default() });
+        if paragraphs.iter().any(|paragraph| !paragraph.text.trim().is_empty()) {
+            object.text = Some(TextFrame { paragraphs, ..Default::default() });
+        }
         return Some(object);
     }
     let mut tables = Vec::new();
@@ -3947,13 +4913,21 @@ fn read_odp_frame(frame: &XmlNode, reader: &ZipReader, warnings: &mut Vec<String
 /// bounding box of its children, as the editor sizes groups; children keep
 /// their absolute coordinates. Shape ids come from `xml:id`/`draw:id` so the
 /// slide timing can find its targets.
-fn read_odp_shapes(parent: &XmlNode, reader: &ZipReader, warnings: &mut Vec<String>) -> Vec<SlideObject> {
+fn read_odp_shapes(
+    parent: &XmlNode,
+    zip: &ZipReader,
+    import: &mut OdpImport,
+    warnings: &mut Vec<String>,
+) -> Vec<SlideObject> {
     let mut objects = Vec::new();
     for node in &parent.children {
         let object = match node.local_name() {
-            "frame" => read_odp_frame(node, reader, warnings),
+            "frame" => read_odp_frame(node, zip, import, warnings),
+            // A line or connector may be a direct child of the page as well as
+            // wrapped in a frame, as some producers write it.
+            "line" | "connector" => read_odp_line(node),
             "g" => {
-                let children = read_odp_shapes(node, reader, warnings);
+                let children = read_odp_shapes(node, zip, import, warnings);
                 if children.is_empty() {
                     warnings.push("A group without importable shapes was skipped.".into());
                     None
@@ -4109,37 +5083,130 @@ fn read_odp_timing(page: &XmlNode, objects: &[SlideObject], warnings: &mut Vec<S
     animations
 }
 
+/// The names of the drawing-page styles that mark a slide hidden
+/// (`presentation:visibility="hidden"` on their properties), LibreOffice's
+/// convention for a hidden slide.
+fn odp_hidden_page_styles(root: &XmlNode) -> HashSet<String> {
+    let mut hidden = HashSet::new();
+    let mut styles = Vec::new();
+    root.find_all("style", &mut styles);
+    for style in styles {
+        if style.attr_any_ns("family") != Some("drawing-page") {
+            continue;
+        }
+        let Some(name) = style.attr_any_ns("name") else { continue };
+        let mut properties = Vec::new();
+        style.find_all("drawing-page-properties", &mut properties);
+        if properties.iter().any(|node| node.attr_any_ns("visibility") == Some("hidden")) {
+            hidden.insert(name.to_string());
+        }
+    }
+    hidden
+}
+
+/// The deck footer settings a master page declares: the
+/// `presentation:display-*` flags on its drawing-page properties, plus the
+/// placeholder frames (`presentation:class`) carrying the footer and date
+/// text. `None` when the master page says nothing about a footer.
+fn read_odp_footer(root: &XmlNode) -> Option<SlideFooter> {
+    let mut footer = SlideFooter::default();
+    let mut found = false;
+    let mut properties = Vec::new();
+    root.find_all("drawing-page-properties", &mut properties);
+    for node in properties {
+        if node.attr_any_ns("display-footer") == Some("true") {
+            footer.show_text = true;
+            found = true;
+        }
+        if node.attr_any_ns("display-page-number") == Some("true") {
+            footer.show_slide_number = true;
+            found = true;
+        }
+        if node.attr_any_ns("display-date-time") == Some("true") {
+            footer.show_date = true;
+            found = true;
+        }
+    }
+    let mut frames = Vec::new();
+    root.find_all("frame", &mut frames);
+    for frame in frames {
+        match frame.attr_any_ns("class") {
+            Some("footer") => {
+                footer.show_text = true;
+                found = true;
+                let text = frame.deep_text().trim().to_string();
+                if footer.text.is_empty() {
+                    footer.text = text;
+                }
+            }
+            Some("page-number") => {
+                footer.show_slide_number = true;
+                found = true;
+            }
+            Some("date-time") => {
+                footer.show_date = true;
+                found = true;
+                let text = frame.deep_text().trim().to_string();
+                if footer.date_text.is_empty() {
+                    footer.date_text = text;
+                }
+            }
+            _ => {}
+        }
+    }
+    found.then(|| {
+        footer.enabled = true;
+        footer
+    })
+}
+
 pub fn read_odp(bytes: &[u8]) -> OfficeResult<DeckRead> {
     let reader = ZipReader::open(bytes.to_vec())?;
     if !reader.contains("content.xml") {
         return Err(OfficeError::corrupt("The package does not contain content.xml."));
     }
     let text = reader.read_text("content.xml")?;
-    let root = parse_xml(&text)?;
+    // Trailing text after an inline element is wrapped, so run order survives
+    // the parse exactly like the ODT reader's parts.
+    let root = parse_xml(&wrap_trailing_text(&text))?;
     let mut deck = Deck::new_blank("Imported presentation");
     deck.slides.clear();
     let mut warnings = Vec::new();
-    // Slide size from styles.xml when available.
-    if let Ok(styles) = reader.read_text("styles.xml") {
-        if let Ok(styles_root) = parse_xml(&styles) {
-            let mut layouts = Vec::new();
-            styles_root.find_all("page-layout-properties", &mut layouts);
-            if let Some(properties) = layouts.first() {
-                if let Some(width) = properties.attr_any_ns("page-width").and_then(parse_cm) {
-                    deck.size.width_pt = width;
-                }
-                if let Some(height) = properties.attr_any_ns("page-height").and_then(parse_cm) {
-                    deck.size.height_pt = height;
-                }
+    // Slide size and master page (footer flags) from styles.xml when available.
+    let styles_root =
+        reader.read_text("styles.xml").ok().and_then(|styles| parse_xml(&wrap_trailing_text(&styles)).ok());
+    if let Some(styles_root) = &styles_root {
+        let mut layouts = Vec::new();
+        styles_root.find_all("page-layout-properties", &mut layouts);
+        if let Some(properties) = layouts.first() {
+            if let Some(width) = properties.attr_any_ns("page-width").and_then(parse_cm) {
+                deck.size.width_pt = width;
+            }
+            if let Some(height) = properties.attr_any_ns("page-height").and_then(parse_cm) {
+                deck.size.height_pt = height;
             }
         }
+        if let Some(footer) = read_odp_footer(styles_root) {
+            deck.footer = Some(footer);
+        }
     }
+    let mut import = OdpImport::default();
+    collect_styles(&root, &mut import.styles);
+    let mut roots = vec![&root];
+    if let Some(styles_root) = &styles_root {
+        collect_styles(styles_root, &mut import.styles);
+        roots.push(styles_root);
+    }
+    import.clips = odp_graphic_clips(&roots);
+    let hidden_pages = odp_hidden_page_styles(&root);
     let mut pages = Vec::new();
     root.find_all("page", &mut pages);
     for page in pages {
-        let objects = read_odp_shapes(page, &reader, &mut warnings);
+        let objects = read_odp_shapes(page, &reader, &mut import, &mut warnings);
         let animations = read_odp_timing(page, &objects, &mut warnings);
-        let mut slide = Slide { objects, animations, ..Default::default() };
+        let hidden = page.attr_any_ns("visibility") == Some("hidden")
+            || page.attr_any_ns("style-name").map(|name| hidden_pages.contains(name)).unwrap_or(false);
+        let mut slide = Slide { objects, animations, hidden, ..Default::default() };
         let mut notes = Vec::new();
         page.find_all("notes", &mut notes);
         if let Some(notes) = notes.first() {
@@ -4188,6 +5255,37 @@ mod tests {
         ];
         document.footer = vec![Block::paragraph("Alt bilgi")];
         document
+    }
+
+    fn sample_png() -> Vec<u8> {
+        let mut buffer = image::RgbaImage::new(4, 4);
+        for pixel in buffer.pixels_mut() {
+            *pixel = image::Rgba([200, 30, 60, 255]);
+        }
+        let mut out = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(buffer).write_to(&mut out, image::ImageFormat::Png).unwrap();
+        out.into_inner()
+    }
+
+    fn package_with(content: &str, styles: Option<&str>) -> Vec<u8> {
+        let mut zip = ZipWriter::new();
+        zip.add_text("mimetype", "application/vnd.oasis.opendocument.text");
+        zip.add_text("content.xml", content);
+        if let Some(styles) = styles {
+            zip.add_text("styles.xml", styles);
+        }
+        zip.finish()
+    }
+
+    fn first_table(document: &TextDocument) -> &TableData {
+        document
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                Block::Table { table } => Some(table),
+                _ => None,
+            })
+            .expect("the document must contain a table")
     }
 
     #[test]
@@ -4296,6 +5394,316 @@ mod tests {
     }
 
     #[test]
+    fn odt_table_spans_roundtrip() {
+        let mut document = TextDocument::new_blank("Spans");
+        let mut table = TableData::simple(3, 3, 450.0);
+        table.rows[0].cells = vec![
+            TableCell { blocks: vec![Block::paragraph("Span")], colspan: 2, rowspan: 2, ..Default::default() },
+            TableCell { blocks: vec![Block::paragraph("B")], ..Default::default() },
+        ];
+        table.rows[1].cells = vec![TableCell { blocks: vec![Block::paragraph("C")], ..Default::default() }];
+        document.blocks = vec![Block::Table { table }];
+
+        let bytes = write_odt(&document).unwrap();
+        let content = ZipReader::open(bytes.clone()).unwrap().read_text("content.xml").unwrap();
+        assert!(content.contains("table:number-columns-spanned=\"2\""), "content: {content}");
+        assert!(content.contains("table:number-rows-spanned=\"2\""), "content: {content}");
+        // The two grid positions below the origin are covered placeholders, and
+        // the table still has three grid columns even though no row lists three
+        // origin cells.
+        assert_eq!(content.matches("<table:covered-table-cell/>").count(), 2, "content: {content}");
+        assert_eq!(content.matches("<table:table-column ").count(), 3, "content: {content}");
+
+        let read = read_odt(&bytes).unwrap();
+        let table = first_table(&read.document);
+        assert_eq!(table.rows.len(), 3, "warnings: {:?}", read.warnings);
+        assert_eq!(table.rows[0].cells.len(), 2);
+        assert_eq!(table.rows[0].cells[0].colspan, 2);
+        assert_eq!(table.rows[0].cells[0].rowspan, 2);
+        assert_eq!(table.rows[0].cells[0].blocks[0].plain_text(), "Span");
+        assert_eq!(table.rows[0].cells[1].blocks[0].plain_text(), "B");
+        assert_eq!(table.rows[1].cells.len(), 1);
+        assert_eq!(table.rows[1].cells[0].blocks[0].plain_text(), "C");
+        assert_eq!(table.rows[2].cells.len(), 3);
+        assert_eq!(table.column_widths_pt.len(), 3);
+        assert!((table.column_widths_pt[0] - 150.0).abs() < 0.1, "widths: {:?}", table.column_widths_pt);
+    }
+
+    #[test]
+    fn odt_table_import_absorbs_repeated_covered_cells() {
+        let content = concat!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+            "<office:document-content xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" ",
+            "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" ",
+            "xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\" office:version=\"1.2\">",
+            "<office:body><office:text><table:table>",
+            "<table:table-column table:number-columns-repeated=\"3\"/>",
+            // A covered cell with no origin at all is malformed; it is skipped
+            // instead of panicking and A/B start at the first grid columns.
+            "<table:table-row><table:covered-table-cell/>",
+            "<table:table-cell office:value-type=\"string\"><text:p>A</text:p></table:table-cell>",
+            "<table:table-cell office:value-type=\"string\"><text:p>B</text:p></table:table-cell></table:table-row>",
+            "<table:table-row>",
+            "<table:table-cell office:value-type=\"string\" table:number-columns-spanned=\"2\" ",
+            "table:number-rows-spanned=\"2\"><text:p>Span</text:p></table:table-cell>",
+            "<table:table-cell office:value-type=\"string\"><text:p>C</text:p></table:table-cell>",
+            "</table:table-row>",
+            // The repeated covered cells absorb into the declared rowspan,
+            // which stays 2 because number-rows-spanned already counts them.
+            "<table:table-row><table:covered-table-cell table:number-columns-repeated=\"2\"/>",
+            "<table:table-cell office:value-type=\"string\"><text:p>D</text:p></table:table-cell></table:table-row>",
+            "<table:table-row><table:table-cell office:value-type=\"string\"><text:p>E</text:p></table:table-cell>",
+            "<table:table-cell office:value-type=\"string\"><text:p>F</text:p></table:table-cell>",
+            "<table:table-cell office:value-type=\"string\"><text:p>G</text:p></table:table-cell></table:table-row>",
+            "</table:table></office:text></office:body></office:document-content>"
+        );
+        let read = read_odt(&package_with(content, None)).unwrap();
+        let table = first_table(&read.document);
+        assert_eq!(table.rows.len(), 4, "warnings: {:?}", read.warnings);
+        assert_eq!(table.rows[0].cells.len(), 2);
+        assert_eq!(table.rows[0].cells[0].blocks[0].plain_text(), "A");
+        assert_eq!(table.rows[0].cells[1].blocks[0].plain_text(), "B");
+        assert_eq!(table.rows[1].cells.len(), 2);
+        assert_eq!(table.rows[1].cells[0].colspan, 2);
+        assert_eq!(table.rows[1].cells[0].rowspan, 2);
+        assert_eq!(table.rows[2].cells.len(), 1);
+        assert_eq!(table.rows[2].cells[0].blocks[0].plain_text(), "D");
+        assert_eq!(table.rows[3].cells.len(), 3);
+        assert_eq!(table.column_widths_pt.len(), 3);
+    }
+
+    #[test]
+    fn odt_image_wrapping_roundtrip() {
+        let mut document = TextDocument::new_blank("Wrap");
+        document.blocks = vec![
+            Block::Image {
+                image: ImageData::from_bytes("a.png", &sample_png()),
+                width_pt: 120.0,
+                height_pt: 90.0,
+                align: "right".into(),
+                caption: String::new(),
+                wrap: "square".into(),
+            },
+            Block::Image {
+                image: ImageData::from_bytes("b.png", &sample_png()),
+                width_pt: 100.0,
+                height_pt: 80.0,
+                align: "left".into(),
+                caption: String::new(),
+                wrap: "topBottom".into(),
+            },
+            Block::Image {
+                image: ImageData::from_bytes("c.png", &sample_png()),
+                width_pt: 80.0,
+                height_pt: 60.0,
+                align: "center".into(),
+                caption: String::new(),
+                wrap: "inline".into(),
+            },
+        ];
+        let bytes = write_odt(&document).unwrap();
+        let content = ZipReader::open(bytes.clone()).unwrap().read_text("content.xml").unwrap();
+        assert!(content.contains("style:family=\"graphic\""), "content: {content}");
+        assert!(content.contains("style:wrap=\"parallel\""), "content: {content}");
+        assert!(content.contains("style:wrap=\"none\""), "content: {content}");
+        // Only the wrapped frames reference a graphic style; the inline one
+        // keeps the plain paragraph-anchored frame.
+        assert_eq!(content.matches("draw:style-name").count(), 2, "content: {content}");
+
+        let read = read_odt(&bytes).unwrap();
+        let images: Vec<(&String, f64, f64, &String)> = read
+            .document
+            .blocks
+            .iter()
+            .filter_map(|block| match block {
+                Block::Image { image, width_pt, height_pt, wrap, .. } => {
+                    Some((&image.name, *width_pt, *height_pt, wrap))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(images.len(), 3, "warnings: {:?}", read.warnings);
+        assert_eq!(images[0].3, "square");
+        assert_eq!(images[1].3, "topBottom");
+        assert_eq!(images[2].3, "inline");
+        assert!((images[0].1 - 120.0).abs() < 0.1, "widths: {images:?}");
+        assert!((images[0].2 - 90.0).abs() < 0.1, "heights: {images:?}");
+        assert_eq!(images[0].0, "image1.png");
+    }
+
+    #[test]
+    fn odt_tab_stops_roundtrip() {
+        let mut document = TextDocument::new_blank("Tabs");
+        document.blocks = vec![Block::Paragraph {
+            props: ParaProps {
+                align: "right".into(),
+                tabs: vec![
+                    TabStop { pos_pt: 72.0, align: "left".into() },
+                    TabStop { pos_pt: 144.0, align: "center".into() },
+                    TabStop { pos_pt: 216.0, align: "right".into() },
+                    TabStop { pos_pt: 288.0, align: "decimal".into() },
+                ],
+                ..Default::default()
+            },
+            runs: vec![Run { text: "a\tb".into(), ..Default::default() }],
+        }];
+        let bytes = write_odt(&document).unwrap();
+        let content = ZipReader::open(bytes.clone()).unwrap().read_text("content.xml").unwrap();
+        assert!(content.contains("style:position=\"2.540cm\""), "content: {content}");
+        assert!(content.contains("style:type=\"char\" style:char=\".\""), "content: {content}");
+        assert!(content.contains("style:type=\"center\""), "content: {content}");
+
+        let read = read_odt(&bytes).unwrap();
+        let props = match &read.document.blocks[0] {
+            Block::Paragraph { props, .. } => props,
+            _ => panic!("first block should be a paragraph"),
+        };
+        assert_eq!(props.align, "right");
+        assert_eq!(props.tabs.len(), 4, "tabs: {:?}", props.tabs);
+        assert!((props.tabs[0].pos_pt - 72.0).abs() < 0.01, "tabs: {:?}", props.tabs);
+        assert!((props.tabs[1].pos_pt - 144.0).abs() < 0.01, "tabs: {:?}", props.tabs);
+        assert_eq!(props.tabs[1].align, "center");
+        assert_eq!(props.tabs[3].align, "decimal");
+    }
+
+    #[test]
+    fn odt_named_paragraph_style_and_text_style_import() {
+        let styles = concat!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+            "<office:document-styles xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" ",
+            "xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\" ",
+            "xmlns:fo=\"urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0\" office:version=\"1.2\">",
+            "<office:styles><style:style style:name=\"Fancy\" style:family=\"paragraph\">",
+            "<style:paragraph-properties fo:text-align=\"center\" fo:margin-left=\"1.27cm\" ",
+            "fo:break-before=\"page\"><style:tab-stops>",
+            "<style:tab-stop style:position=\"2.54cm\" style:type=\"left\"/>",
+            "</style:tab-stops></style:paragraph-properties></style:style>",
+            "<style:style style:name=\"Bold\" style:family=\"text\">",
+            "<style:text-properties fo:font-weight=\"bold\" fo:color=\"#ff0000\"/>",
+            "</style:style></office:styles></office:document-styles>"
+        );
+        let content = concat!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+            "<office:document-content xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" ",
+            "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" office:version=\"1.2\">",
+            "<office:body><office:text><text:p text:style-name=\"Fancy\">",
+            "plain <text:span text:style-name=\"Bold\">kalın</text:span></text:p>",
+            "</office:text></office:body></office:document-content>"
+        );
+        let read = read_odt(&package_with(content, Some(styles))).unwrap();
+        let props = match &read.document.blocks[0] {
+            Block::Paragraph { props, runs } => {
+                let bold = runs.iter().find(|run| run.text == "kalın").expect("the span run");
+                assert!(bold.bold, "the named text style must resolve bold: {runs:?}");
+                assert_eq!(bold.color.as_deref(), Some("#FF0000"));
+                props
+            }
+            _ => panic!("first block should be a paragraph"),
+        };
+        assert_eq!(props.align, "center");
+        assert!(props.page_break_before);
+        assert!((props.indent_left_pt - 36.0).abs() < 0.1, "indent: {}", props.indent_left_pt);
+        assert_eq!(props.tabs.len(), 1);
+        assert!((props.tabs[0].pos_pt - 72.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn odt_watermark_roundtrip() {
+        let mut document = TextDocument::new_blank("WM");
+        document.blocks = vec![Block::paragraph("Body")];
+        document.watermark = Some(Watermark {
+            text: "GİZLİ <taslak> & \"x\"".into(),
+            color: Some("#FF0000".into()),
+            opacity: 0.25,
+            rotation: -45.0,
+            font_pt: 48.0,
+            bold: false,
+        });
+        let bytes = write_odt(&document).unwrap();
+        let reader = ZipReader::open(bytes.clone()).unwrap();
+        let styles = reader.read_text("styles.xml").unwrap();
+        assert!(styles.contains("style:wrap=\"run-through\" style:run-through=\"background\""), "styles: {styles}");
+        assert!(styles.contains("draw:opacity=\"0.25\""), "styles: {styles}");
+        assert!(styles.contains("draw:transform=\"rotate(-45)\""), "styles: {styles}");
+        assert!(styles.contains("fo:color=\"#FF0000\""), "styles: {styles}");
+        assert!(styles.contains("<style:header>"), "styles: {styles}");
+        let meta = reader.read_text("meta.xml").unwrap();
+        assert!(
+            meta.contains("meta:name=\"OSAK:Watermark:Text\" meta:value=\"GİZLİ &lt;taslak&gt; &amp; &quot;x&quot;\""),
+            "meta: {meta}"
+        );
+        assert!(meta.contains("OSAK:Watermark:Opacity"), "meta: {meta}");
+        assert!(meta.contains("OSAK:Watermark:Bold"), "meta: {meta}");
+
+        let read = read_odt(&bytes).unwrap();
+        assert_eq!(read.document.watermark, document.watermark, "warnings: {:?}", read.warnings);
+        // The visible frame is not imported as header content.
+        assert!(read.document.header.is_empty(), "header: {:?}", read.document.header);
+        assert!(read.document.plain_text().contains("Body"));
+        assert!(!read.document.plain_text().contains("GİZLİ"));
+    }
+
+    #[test]
+    fn odt_watermark_color_none_roundtrips_and_defaults_visibly() {
+        let mut document = TextDocument::new_blank("WM");
+        document.watermark = Some(Watermark { color: None, ..Watermark::default() });
+        let bytes = write_odt(&document).unwrap();
+        let styles = ZipReader::open(bytes.clone()).unwrap().read_text("styles.xml").unwrap();
+        // The frame still needs a visible color even when the model has none.
+        assert!(styles.contains("fo:color=\"#C0C0C0\""), "styles: {styles}");
+        let read = read_odt(&bytes).unwrap();
+        let watermark = read.document.watermark.expect("watermark missing");
+        assert_eq!(watermark.color, None);
+        assert_eq!(watermark.text, "TASLAK");
+        assert!(watermark.bold);
+    }
+
+    #[test]
+    fn odt_watermark_falls_back_to_a_run_through_frame() {
+        let styles = concat!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+            "<office:document-styles xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" ",
+            "xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\" ",
+            "xmlns:fo=\"urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0\" ",
+            "xmlns:draw=\"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0\" ",
+            "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" office:version=\"1.2\">",
+            "<office:automatic-styles>",
+            "<style:style style:name=\"WMG\" style:family=\"graphic\"><style:graphic-properties ",
+            "style:wrap=\"run-through\" style:run-through=\"background\" draw:opacity=\"0.3\"/></style:style>",
+            "<style:style style:name=\"WMT\" style:family=\"text\"><style:text-properties ",
+            "fo:color=\"#FF0000\" fo:font-size=\"36pt\" fo:font-weight=\"bold\"/></style:style>",
+            "</office:automatic-styles><office:master-styles>",
+            "<style:master-page style:name=\"Standard\"><style:header>",
+            "<draw:frame draw:name=\"Watermark\" draw:style-name=\"WMG\" draw:transform=\"rotate(-45)\">",
+            "<draw:text-box><text:p><text:span text:style-name=\"WMT\">GIZLI</text:span></text:p>",
+            "</draw:text-box></draw:frame></style:header></style:master-page></office:master-styles>",
+            "</office:document-styles>"
+        );
+        let content = concat!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+            "<office:document-content xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" ",
+            "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" office:version=\"1.2\">",
+            "<office:body><office:text><text:p>Body</text:p></office:text></office:body>",
+            "</office:document-content>"
+        );
+        let read = read_odt(&package_with(content, Some(styles))).unwrap();
+        let watermark = read.document.watermark.expect("watermark missing");
+        assert_eq!(watermark.text, "GIZLI");
+        assert_eq!(watermark.color.as_deref(), Some("#FF0000"));
+        assert!((watermark.opacity - 0.3).abs() < 1e-9);
+        assert!((watermark.rotation + 45.0).abs() < 1e-9);
+        assert!((watermark.font_pt - 36.0).abs() < 1e-9);
+        assert!(watermark.bold);
+        assert!(read.document.header.is_empty(), "header: {:?}", read.document.header);
+    }
+
+    #[test]
+    fn odt_without_a_watermark_has_none() {
+        let read = read_odt(&write_odt(&sample_document()).unwrap()).unwrap();
+        assert!(read.document.watermark.is_none());
+    }
+
+    #[test]
     fn odt_hand_written_note_fixture_parses() {
         let content = concat!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
@@ -4383,6 +5791,289 @@ mod tests {
             .collect();
         assert!(texts.iter().any(|text| text.contains("Slayt metni")));
         assert!(read.deck.slides[0].notes.contains("konuşmacı"));
+    }
+
+    #[test]
+    fn odp_rich_text_runs_bullets_and_alignment_round_trip() {
+        let mut deck = Deck::new_blank("Rich");
+        let mut text = SlideObject::new("text", 60.0, 60.0, 500.0, 300.0);
+        text.text = Some(TextFrame {
+            paragraphs: vec![
+                TextParagraph {
+                    text: "Center".into(),
+                    align: "center".into(),
+                    runs: vec![Run { text: "Center".into(), ..Default::default() }],
+                    ..Default::default()
+                },
+                TextParagraph {
+                    text: "Bold red 24".into(),
+                    runs: vec![
+                        Run { text: "Bold".into(), bold: true, ..Default::default() },
+                        Run { text: " red ".into(), color: Some("#FF0000".into()), ..Default::default() },
+                        Run { text: "24".into(), size_pt: Some(24.0), ..Default::default() },
+                    ],
+                    ..Default::default()
+                },
+                TextParagraph { text: "Top".into(), bullet: true, ..Default::default() },
+                TextParagraph { text: "Nested".into(), bullet: true, level: 1, ..Default::default() },
+            ],
+            ..Default::default()
+        });
+        deck.slides = vec![Slide { objects: vec![text], ..Default::default() }];
+
+        let bytes = write_odp(&deck).unwrap();
+        let content = ZipReader::open(bytes.clone()).unwrap().read_text("content.xml").unwrap();
+        assert!(content.contains("<text:span "), "content: {content}");
+        assert!(content.contains("<text:list text:style-name=\"LB\">"), "content: {content}");
+        assert_eq!(content.matches("<text:list-item>").count(), 2, "content: {content}");
+        assert!(content.contains("fo:text-align=\"center\""), "content: {content}");
+        assert!(content.contains("<text:list-style style:name=\"LB\">"), "content: {content}");
+
+        let read = read_odp(&bytes).unwrap();
+        let frame = read.deck.slides[0].objects[0].text.clone().expect("text frame");
+        let paragraphs = &frame.paragraphs;
+        assert_eq!(paragraphs.len(), 4, "warnings: {:?}", read.warnings);
+        assert_eq!(paragraphs[0].text, "Center");
+        assert_eq!(paragraphs[0].align, "center");
+        assert_eq!(paragraphs[1].text, "Bold red 24");
+        let bold = paragraphs[1].runs.iter().find(|run| run.text == "Bold").expect("bold run");
+        assert!(bold.bold);
+        let red = paragraphs[1].runs.iter().find(|run| run.text.contains("red")).expect("red run");
+        assert_eq!(red.color.as_deref(), Some("#FF0000"));
+        let sized = paragraphs[1].runs.iter().find(|run| run.text == "24").expect("sized run");
+        assert_eq!(sized.size_pt, Some(24.0));
+        assert!(paragraphs[2].bullet && paragraphs[2].level == 0, "{:?}", paragraphs[2]);
+        assert!(paragraphs[3].bullet && paragraphs[3].level == 1, "{:?}", paragraphs[3]);
+
+        // A second cycle is stable.
+        let again = read_odp(&write_odp(&read.deck).unwrap()).unwrap();
+        assert_eq!(again.deck.slides[0].objects[0].text, read.deck.slides[0].objects[0].text);
+    }
+
+    #[test]
+    fn odp_hidden_slides_round_trip() {
+        let mut deck = Deck::new_blank("Hidden");
+        deck.slides = vec![Slide::default(), Slide { hidden: true, ..Default::default() }];
+        let bytes = write_odp(&deck).unwrap();
+        let content = ZipReader::open(bytes.clone()).unwrap().read_text("content.xml").unwrap();
+        assert!(content.contains("presentation:visibility=\"hidden\""), "content: {content}");
+        assert_eq!(
+            content.matches("draw:style-name=\"dp-hidden\"").count(),
+            1,
+            "only the hidden slide references the style: {content}"
+        );
+
+        let read = read_odp(&bytes).unwrap();
+        assert!(!read.deck.slides[0].hidden);
+        assert!(read.deck.slides[1].hidden);
+
+        // A deck without hidden slides does not declare the style at all.
+        let visible = write_odp(&Deck::new_blank("Visible")).unwrap();
+        let content = ZipReader::open(visible).unwrap().read_text("content.xml").unwrap();
+        assert!(!content.contains("dp-hidden"), "content: {content}");
+    }
+
+    fn odp_chart_deck() -> Deck {
+        let mut column = SlideObject::new("chart", 60.0, 60.0, 480.0, 288.0);
+        column.id = "chart-column".into();
+        column.chart = Some(ChartData {
+            kind: "column".into(),
+            title: "Sales".into(),
+            categories: "A2:A4".into(),
+            series: vec![ChartSeries { name: "North".into(), range: "B2:B4".into(), color: Some("#1D4ED8".into()) }],
+            legend: true,
+            x_title: "Quarter".into(),
+            y_title: "Units".into(),
+            show_labels: true,
+            categories_cache: vec!["Q1".into(), "Q2".into(), "Q3".into()],
+            series_values_cache: vec![vec![10.0, 20.5, 31.0]],
+            ..Default::default()
+        });
+        let mut pie = SlideObject::new("chart", 60.0, 380.0, 320.0, 240.0);
+        pie.id = "chart-pie".into();
+        pie.chart = Some(ChartData {
+            kind: "pie".into(),
+            title: "Share".into(),
+            categories: "A2:A4".into(),
+            series: vec![ChartSeries { name: "North".into(), range: "B2:B4".into(), color: None }],
+            categories_cache: vec!["Q1".into(), "Q2".into(), "Q3".into()],
+            series_values_cache: vec![vec![10.0, 20.5, 31.0]],
+            ..Default::default()
+        });
+        let mut deck = Deck::new_blank("Charts");
+        deck.slides = vec![Slide { objects: vec![column, pie], ..Default::default() }];
+        deck
+    }
+
+    #[test]
+    fn odp_charts_are_written_as_objects_and_round_trip() {
+        let deck = odp_chart_deck();
+        let write = write_odp_package(&deck).unwrap();
+        assert!(write.warnings.is_empty(), "supported charts need no warning: {:?}", write.warnings);
+        let reader = ZipReader::open(write.bytes.clone()).unwrap();
+        let manifest = reader.read_text("META-INF/manifest.xml").unwrap();
+        assert!(manifest.contains(
+            "manifest:full-path=\"Object 1/\" manifest:version=\"1.2\" manifest:media-type=\"application/vnd.oasis.opendocument.chart\""
+        ), "manifest: {manifest}");
+        for object in ["Object 1", "Object 2"] {
+            for part in ["content.xml", "styles.xml"] {
+                let path = format!("{object}/{part}");
+                assert!(manifest.contains(&format!("manifest:full-path=\"{path}\"")), "{path} is missing");
+                assert!(reader.contains(&path), "{path} is present");
+            }
+        }
+        let content = reader.read_text("content.xml").unwrap();
+        assert!(content.contains("xlink:href=\"./Object 1\""));
+        assert!(content.contains("xlink:href=\"./Object 2\""));
+        let chart = reader.read_text("Object 1/content.xml").unwrap();
+        assert!(chart.contains("chart:class=\"chart:bar\""));
+        assert!(chart.contains("<table:table table:name=\"local-table\">"));
+        assert!(reader.read_text("Object 2/content.xml").unwrap().contains("chart:class=\"chart:circle\""));
+
+        let read = read_odp(&write.bytes).unwrap();
+        let objects = &read.deck.slides[0].objects;
+        let column = objects.iter().find(|object| object.id == "chart-column").expect("column chart");
+        assert_eq!(column.kind, "chart");
+        assert_eq!(column.chart.as_ref(), deck.slides[0].objects[0].chart.as_ref());
+        let pie = objects.iter().find(|object| object.id == "chart-pie").expect("pie chart");
+        assert_eq!(pie.chart.as_ref(), deck.slides[0].objects[1].chart.as_ref());
+
+        // A second cycle keeps the charts unchanged.
+        let again = read_odp(&write_odp(&read.deck).unwrap()).unwrap();
+        let charts: Vec<&ChartData> =
+            again.deck.slides[0].objects.iter().filter_map(|object| object.chart.as_ref()).collect();
+        assert_eq!(charts, objects.iter().filter_map(|object| object.chart.as_ref()).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn odp_unsupported_charts_warn_and_keep_a_placeholder() {
+        let mut deck = odp_chart_deck();
+        deck.slides[0].objects[1].chart.as_mut().unwrap().kind = "radar".into();
+        let write = write_odp_package(&deck).unwrap();
+        assert!(
+            write
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("Chart data is kept in the native .oswk file")
+                    && warning.contains("radar")),
+            "warnings: {:?}",
+            write.warnings
+        );
+        let content = ZipReader::open(write.bytes.clone()).unwrap().read_text("content.xml").unwrap();
+        assert!(!content.contains("xlink:href=\"./Object 2\""));
+        assert!(content.contains("Share"), "the unsupported chart keeps its title placeholder: {content}");
+        // The placeholder comes back as a text shape; the chart object itself
+        // stays in the native .oswk file, which is what the warning says.
+        let read = read_odp(&write.bytes).unwrap();
+        let placeholder = read.deck.slides[0]
+            .objects
+            .iter()
+            .find(|object| object.text.as_ref().map(TextFrame::plain).as_deref() == Some("Share"))
+            .expect("chart placeholder");
+        assert!(placeholder.chart.is_none());
+    }
+
+    #[test]
+    fn odp_connectors_round_trip_with_glue_points() {
+        let mut deck = Deck::new_blank("Connectors");
+        let mut source = SlideObject::new("rect", 100.0, 100.0, 120.0, 80.0);
+        source.id = "from-rect".into();
+        source.z = 1;
+        let mut connector = SlideObject::new("line", 220.0, 140.0, 180.0, 160.0);
+        connector.id = "conn".into();
+        connector.z = 2;
+        connector.line = Some(LineSpec {
+            x2: 180.0,
+            y2: 160.0,
+            begin_object: Some("from-rect".into()),
+            end_object: Some("to-rect".into()),
+            begin_site: 3,
+            end_site: 1,
+            ..Default::default()
+        });
+        let mut target = SlideObject::new("rect", 400.0, 300.0, 120.0, 80.0);
+        target.id = "to-rect".into();
+        target.z = 3;
+        deck.slides = vec![Slide { objects: vec![source, connector, target], ..Default::default() }];
+
+        let bytes = write_odp(&deck).unwrap();
+        let content = ZipReader::open(bytes.clone()).unwrap().read_text("content.xml").unwrap();
+        assert!(content.contains("<draw:connector "), "content: {content}");
+        assert!(content.contains("draw:start-shape=\"from-rect\" draw:start-glue-point=\"3\""), "content: {content}");
+        assert!(content.contains("draw:end-shape=\"to-rect\" draw:end-glue-point=\"1\""), "content: {content}");
+
+        let read = read_odp(&bytes).unwrap();
+        let connector = read.deck.slides[0].objects.iter().find(|object| object.id == "conn").expect("connector");
+        assert_eq!(connector.kind, "line");
+        let line = connector.line.clone().expect("line spec");
+        assert_eq!(line.begin_object.as_deref(), Some("from-rect"));
+        assert_eq!(line.end_object.as_deref(), Some("to-rect"));
+        assert_eq!(line.begin_site, 3);
+        assert_eq!(line.end_site, 1);
+        assert!((connector.x - 220.0).abs() < 0.05 && (connector.y - 140.0).abs() < 0.05, "{connector:?}");
+        assert!((line.x2 - 180.0).abs() < 0.05 && (line.y2 - 160.0).abs() < 0.05, "{line:?}");
+    }
+
+    #[test]
+    fn odp_image_crop_round_trips_within_tolerance() {
+        let mut deck = Deck::new_blank("Crop");
+        let mut object = SlideObject::new("image", 60.0, 60.0, 400.0, 300.0);
+        let mut image = ImageData::from_bytes("crop.png", &sample_png());
+        image.crop = Some(ImageCrop { left: 0.1, top: 0.2, right: 0.05, bottom: 0.15 });
+        object.image = Some(image);
+        deck.slides = vec![Slide { objects: vec![object], ..Default::default() }];
+
+        let bytes = write_odp(&deck).unwrap();
+        let content = ZipReader::open(bytes.clone()).unwrap().read_text("content.xml").unwrap();
+        assert!(content.contains("fo:clip=\"rect("), "content: {content}");
+
+        let read = read_odp(&bytes).unwrap();
+        let crop = read.deck.slides[0].objects[0].image.as_ref().unwrap().crop.clone().expect("crop");
+        assert!((crop.left - 0.1).abs() < 0.01, "{crop:?}");
+        assert!((crop.top - 0.2).abs() < 0.01, "{crop:?}");
+        assert!((crop.right - 0.05).abs() < 0.01, "{crop:?}");
+        assert!((crop.bottom - 0.15).abs() < 0.01, "{crop:?}");
+
+        // An uncropped image writes no clip at all.
+        let mut plain = deck.clone();
+        plain.slides[0].objects[0].image.as_mut().unwrap().crop = None;
+        let content = ZipReader::open(write_odp(&plain).unwrap()).unwrap().read_text("content.xml").unwrap();
+        assert!(!content.contains("fo:clip"), "content: {content}");
+    }
+
+    #[test]
+    fn odp_footer_slide_number_and_date_round_trip() {
+        let mut deck = Deck::new_blank("Footer");
+        deck.footer = Some(SlideFooter {
+            enabled: true,
+            text: "Alt bilgi".into(),
+            show_text: true,
+            show_slide_number: true,
+            show_date: true,
+            date_text: "2026-10-10".into(),
+        });
+        let bytes = write_odp(&deck).unwrap();
+        let styles = ZipReader::open(bytes.clone()).unwrap().read_text("styles.xml").unwrap();
+        assert!(styles.contains("presentation:display-footer=\"true\""), "styles: {styles}");
+        assert!(styles.contains("presentation:display-page-number=\"true\""), "styles: {styles}");
+        assert!(styles.contains("presentation:display-date-time=\"true\""), "styles: {styles}");
+        assert!(styles.contains("presentation:class=\"footer\""), "styles: {styles}");
+        assert!(styles.contains("presentation:class=\"page-number\""), "styles: {styles}");
+        assert!(styles.contains("<text:page-number>"), "styles: {styles}");
+        assert!(styles.contains("2026-10-10"), "styles: {styles}");
+
+        let read = read_odp(&bytes).unwrap();
+        let footer = read.deck.footer.clone().expect("footer");
+        assert!(footer.enabled && footer.show_text && footer.show_slide_number && footer.show_date);
+        assert_eq!(footer.text, "Alt bilgi");
+        assert_eq!(footer.date_text, "2026-10-10");
+
+        // A second cycle keeps the footer.
+        assert_eq!(read_odp(&write_odp(&read.deck).unwrap()).unwrap().deck.footer, read.deck.footer);
+
+        // A deck without a footer reads back without one.
+        let plain = read_odp(&write_odp(&Deck::new_blank("No footer")).unwrap()).unwrap();
+        assert!(plain.deck.footer.is_none());
     }
 
     #[test]

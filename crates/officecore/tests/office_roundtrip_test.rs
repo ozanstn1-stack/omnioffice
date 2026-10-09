@@ -3,7 +3,10 @@
 //! These cover the workflow the user performs by hand:
 //!   open a file -> verify content -> save it again -> reopen -> verify again.
 
-use officecore::model::{Block, CellValue, ChartData, ChartSeries, Footnote, RevisionMark, Run, SlideObject};
+use officecore::model::{
+    Block, CellValue, ChartData, ChartSeries, Deck, Footnote, ParaProps, RevisionMark, Run, SlideObject, TabStop,
+    TableCell, TextFrame, Watermark,
+};
 use officecore::{docx, odf, pptx, rtf, xlsx};
 use std::path::{Path, PathBuf};
 
@@ -152,6 +155,65 @@ fn odt_and_rtf_roundtrip() {
     );
 }
 
+/// The v4.5 Writer features survive an ODT write -> read cycle: table spans,
+/// tab stops and the watermark (meta entries plus the run-through frame).
+#[test]
+fn odt_roundtrip_keeps_spans_tabs_and_watermark() {
+    use officecore::model::TableData;
+    let mut document = officecore::model::TextDocument::new_blank("Writer v4.5");
+    let mut table = TableData::simple(2, 2, 300.0);
+    table.rows[0].cells =
+        vec![TableCell { blocks: vec![Block::paragraph("A")], colspan: 2, rowspan: 2, ..Default::default() }];
+    table.rows[1].cells = vec![TableCell { blocks: vec![Block::paragraph("B")], ..Default::default() }];
+    document.blocks = vec![
+        Block::Paragraph {
+            props: ParaProps { tabs: vec![TabStop { pos_pt: 72.0, align: "decimal".into() }], ..Default::default() },
+            runs: vec![Run { text: "one\ttwo".into(), ..Default::default() }],
+        },
+        Block::Table { table },
+    ];
+    document.watermark = Some(Watermark {
+        text: "ROUND TRIP".into(),
+        color: Some("#123456".into()),
+        opacity: 0.4,
+        rotation: 30.0,
+        font_pt: 60.0,
+        bold: true,
+    });
+
+    let target = temp("roundtrip-writer-v45.odt");
+    std::fs::write(&target, odf::write_odt(&document).unwrap()).unwrap();
+    let again = odf::read_odt_file(&target).unwrap();
+    assert_eq!(again.document.watermark, document.watermark, "warnings: {:?}", again.warnings);
+    let table = again
+        .document
+        .blocks
+        .iter()
+        .find_map(|block| match block {
+            Block::Table { table } => Some(table),
+            _ => None,
+        })
+        .expect("table missing");
+    assert_eq!(table.rows.len(), 2);
+    assert_eq!(table.rows[0].cells.len(), 1);
+    assert_eq!(table.rows[0].cells[0].colspan, 2);
+    assert_eq!(table.rows[0].cells[0].rowspan, 2);
+    assert_eq!(table.rows[1].cells.len(), 1);
+    assert_eq!(table.rows[1].cells[0].blocks[0].plain_text(), "B");
+    let props = again
+        .document
+        .blocks
+        .iter()
+        .find_map(|block| match block {
+            Block::Paragraph { props, .. } => Some(props),
+            _ => None,
+        })
+        .expect("paragraph missing");
+    assert_eq!(props.tabs.len(), 1);
+    assert_eq!(props.tabs[0].align, "decimal");
+    assert!((props.tabs[0].pos_pt - 72.0).abs() < 0.01);
+}
+
 #[test]
 fn xlsx_open_edit_save_reopen() {
     let source = require(&samples_dir().join("test-spreadsheet.xlsx"));
@@ -270,15 +332,36 @@ fn pptx_open_edit_save_reopen() {
     assert_eq!(workbook.workbook.sheets[0].get("B2").map(|cell| cell.value.clone()), Some(CellValue::Number(1.5)));
 }
 
+fn odp_text_frames(deck: &Deck) -> Vec<TextFrame> {
+    deck.slides.iter().flat_map(|slide| slide.objects.iter()).filter_map(|object| object.text.clone()).collect()
+}
+
 #[test]
 fn odp_roundtrip() {
     let source = require(&samples_dir().join("test-presentation.odp"));
     let first = odf::read_odp_file(&source).unwrap();
     assert_eq!(first.deck.slides.len(), 5);
+    // Text frames import with their text and runs, not just as slide counts.
+    let text = odp_text_frames(&first.deck).iter().map(TextFrame::plain).collect::<Vec<_>>().join("\n");
+    assert!(text.contains("Slide 1 title"), "text was {text}");
+    assert!(text.contains("First point"), "text was {text}");
+    assert!(first
+        .deck
+        .slides
+        .iter()
+        .flat_map(|slide| slide.objects.iter())
+        .filter_map(|object| object.text.as_ref())
+        .flat_map(|frame| frame.paragraphs.iter())
+        .any(|paragraph| !paragraph.runs.is_empty()));
+    assert!(first.deck.footer.is_none(), "the sample declares no footer");
+
     let target = temp("roundtrip-presentation.odp");
     std::fs::write(&target, odf::write_odp(&first.deck).unwrap()).unwrap();
     let second = odf::read_odp_file(&target).unwrap();
     assert_eq!(second.deck.slides.len(), 5);
+    assert_eq!(odp_text_frames(&second.deck), odp_text_frames(&first.deck), "the round trip keeps text and runs");
+    assert_eq!(second.deck.footer, first.deck.footer);
+    assert_eq!(second.deck.slides[0].notes, first.deck.slides[0].notes);
 }
 
 #[test]
