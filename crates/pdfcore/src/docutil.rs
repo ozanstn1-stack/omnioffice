@@ -353,28 +353,39 @@ pub fn pages_root_id(doc: &Document) -> PdfResult<ObjectId> {
         .map_err(|_| PdfError::CorruptPdf("catalog /Pages is not a reference".into()))
 }
 
-/// Rewrites the page tree to contain exactly `order`, in order. Duplicated
+/// A4 portrait in points, the fallback size for synthesized blank pages.
+pub const A4_MEDIA_BOX: [f64; 4] = [0.0, 0.0, 595.28, 841.89];
+
+/// Rewrites the page tree to contain exactly `plan`, in order. Duplicated
 /// entries are cloned so per-instance edits (e.g. rotation) stay independent.
 /// All pages must already be direct children materialized onto themselves.
+///
+/// Plan entries with `blank` set are not looked up in the source document;
+/// they become brand-new empty page objects instead (see [`PagePlanItem`]).
 pub fn rebuild_page_tree(doc: &mut Document, plan: &[PagePlanItem]) -> PdfResult<()> {
     let root_id = pages_root_id(doc)?;
     let mut counts: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
-    for item in plan {
+    for item in plan.iter().filter(|item| !item.blank) {
         *counts.entry(item.source_page).or_insert(0) += 1;
     }
     // Snapshot the original rotation of every referenced page *before* any
     // edits, so duplicated instances each start from the original rotation.
     let mut rotation_snapshot: std::collections::HashMap<u32, i32> = std::collections::HashMap::new();
     let current_pages = doc.get_pages();
-    for item in plan {
+    for item in plan.iter().filter(|item| !item.blank) {
         if let std::collections::hash_map::Entry::Vacant(e) = rotation_snapshot.entry(item.source_page) {
             let page_id = current_pages.get(&item.source_page).copied().ok_or(PdfError::RangeOutOfBounds)?;
             e.insert(page_rotation(doc, page_id)?);
         }
     }
+    let reference_box = blank_reference_box(doc, plan);
     let mut used: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
     let mut new_kids: Vec<Object> = Vec::with_capacity(plan.len());
     for item in plan {
+        if item.blank {
+            new_kids.push(Object::Reference(add_blank_page(doc, reference_box, item)));
+            continue;
+        }
         let page_id = doc.get_pages().get(&item.source_page).copied().ok_or(PdfError::RangeOutOfBounds)?;
         let seen = used.entry(item.source_page).or_insert(0);
         let object_id = if *seen == 0 && counts[&item.source_page] == 1 {
@@ -413,11 +424,61 @@ pub fn rebuild_page_tree(doc: &mut Document, plan: &[PagePlanItem]) -> PdfResult
 
 /// A single entry of a pages plan: source page number (1-based, referring to
 /// the input document) plus a rotation delta applied to that instance.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+///
+/// When `blank` is true the entry inserts a brand-new empty page instead of
+/// copying a source page: `source_page` is ignored, the page carries no
+/// `/Contents`, and its size comes from `width_pt`/`height_pt` when given,
+/// otherwise from the first non-blank plan page's MediaBox (A4 as a last
+/// resort).
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct PagePlanItem {
     pub source_page: u32,
     #[serde(default)]
     pub rotation_delta: i32,
+    /// Insert a blank page instead of copying a source page.
+    #[serde(default)]
+    pub blank: bool,
+    /// Blank page width in points; `None` inherits the reference page width.
+    #[serde(default)]
+    pub width_pt: Option<f64>,
+    /// Blank page height in points; `None` inherits the reference page height.
+    #[serde(default)]
+    pub height_pt: Option<f64>,
+}
+
+/// The size a blank plan page inherits when `width_pt`/`height_pt` are absent:
+/// the MediaBox of the first non-blank page in the plan, else A4.
+fn blank_reference_box(doc: &Document, plan: &[PagePlanItem]) -> [f64; 4] {
+    let pages = doc.get_pages();
+    for item in plan.iter().filter(|item| !item.blank) {
+        if let Some(page_id) = pages.get(&item.source_page).copied() {
+            if let Ok(media_box) = page_mediabox(doc, page_id) {
+                return media_box;
+            }
+        }
+    }
+    A4_MEDIA_BOX
+}
+
+/// Creates the brand-new page object for a `blank` plan item: size from
+/// `width_pt`/`height_pt` when given, else the plan's reference MediaBox,
+/// empty `/Resources`, no `/Contents` and `/Rotate` = 0 + the item's delta.
+fn add_blank_page(doc: &mut Document, reference: [f64; 4], item: &PagePlanItem) -> ObjectId {
+    let reference_width = (reference[2] - reference[0]).abs().max(1.0);
+    let reference_height = (reference[3] - reference[1]).abs().max(1.0);
+    let valid = |value: f64| value.is_finite() && value > 0.0;
+    let width = item.width_pt.filter(|value| valid(*value)).unwrap_or(reference_width);
+    let height = item.height_pt.filter(|value| valid(*value)).unwrap_or(reference_height);
+    // Without an explicit size the whole reference box (including a non-zero
+    // origin) is copied; an explicit size produces a plain [0 0 w h] box.
+    let media_box =
+        if item.width_pt.is_none() && item.height_pt.is_none() { reference } else { [0.0, 0.0, width, height] };
+    let mut page = Dictionary::new();
+    page.set("Type", Object::Name(b"Page".to_vec()));
+    page.set("MediaBox", Object::Array(media_box.iter().map(|value| Object::Real(*value as f32)).collect()));
+    page.set("Resources", Object::Dictionary(Dictionary::new()));
+    page.set("Rotate", Object::Integer(item.rotation_delta.rem_euclid(360) as i64));
+    doc.add_object(Object::Dictionary(page))
 }
 
 /// Deep-ish copy of a page dictionary (one level, references shared) used for
