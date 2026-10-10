@@ -1129,6 +1129,16 @@ These are real and honest:
   without qpdf report it as unavailable. Repair uses qpdf when present and
   otherwise the built-in rebuild (so it works on Android too); encrypted
   documents need the password first, and the result says which engine ran.
+- **PDF annotations** are real annotation objects (editable, listed, movable,
+  deletable) and can also be flattened into the page as before. Deleting an
+  annotation removes it from the page but leaves the unreferenced object in the
+  file, so signed documents stay byte-stable. Keyword matching folds case
+  character-by-character (Turkish `İ` maps to `i`); regex matches are capped at
+  10,000 per document and patterns over 2,000 characters are refused.
+- **N-up and booklets** rebuild the page tree from the selected pages, so
+  links, named destinations and outlines that pointed at the old pages are
+  dropped, and source annotations are not repainted onto the sheets. The old
+  page objects are left unreferenced.
 - **PPTX**: programmatic animations are simplified to what the model
   represents; ODP keeps groups, animations, real charts, footer/date/
   slide-number frames, hidden slides, connectors and image crops (since

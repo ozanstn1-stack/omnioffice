@@ -4,6 +4,42 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.6.0] - PDF tools
+
+### Added
+
+- **Editable annotations**: sticky notes, highlights, underline, strikethrough,
+  freehand ink, text boxes and image/signature stamps are written into the
+  PDF's annotation layer (`/Annots`). Existing annotations are loaded, listed,
+  moved, resized, edited and deleted, and the old "flatten into the page"
+  behavior stays as a toggle.
+- **Fill and sign**: draw a signature with a finger or mouse, or pick a
+  PNG/JPG, and place it on the page. The signature is a plain annotation,
+  separate from certified PAdES signing. Digital signing on Android accepts a
+  `.p12`/`.pfx` file (the Windows certificate store stays desktop-only).
+- **Keyword and regex redaction** next to the automatic detector: search the
+  whole document, preview the matches, confirm and redact. Matching uses the
+  Rust `regex` engine (linear time, size-limited), so a slow pattern cannot
+  freeze the app.
+- **Organize**: insert blank pages, and edit the document outline (bookmarks)
+  with titles, target pages and levels.
+- **Header, footer and Bates stamps**: six template slots with `{page}` and
+  `{pages}` tokens, plus Bates numbering with prefix/suffix, start and
+  zero-padded digits; both append a new revision so signatures survive.
+- **N-up and booklet**: two or four pages per sheet with margins, gutter and
+  optional borders, and saddle-stitch booklet ordering.
+- **PDF to Word**: password-protected PDFs convert with a password prompt,
+  simple tables are recovered as real Word tables, and numbered lists restart
+  at their own start instead of continuing the previous list.
+
+### Fixed
+
+- Numbered lists in DOCX no longer share one numbering definition: every list
+  run gets its own `startOverride`, the PDF export increments numbers per item,
+  and the Writer editor restarts a list whose start differs.
+- PDF to Word surfaces the real `password_required`/`wrong_password` error
+  instead of writing an empty document.
+
 ## [4.5.0] - Writer and Impress, deeper editing
 
 ### Added
