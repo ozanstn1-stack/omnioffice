@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.6.2] - Android update installer fix
+
+### Fixed
+
+- **Android release build**: the new update-installer plugin's comment
+  contained `/*`, which Kotlin's nested block comments turn into an
+  unterminated comment; the release build failed and v4.6.1 shipped Windows
+  assets only. The comment is fixed and v4.6.2 is the complete release
+  (Windows installer/ZIP and both APK/AAB ABIs).
+
 ## [4.6.1] - Hygiene and in-app updates
 
 ### Added

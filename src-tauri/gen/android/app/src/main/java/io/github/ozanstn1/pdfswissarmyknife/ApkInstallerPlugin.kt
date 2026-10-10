@@ -13,7 +13,7 @@ import java.io.File
 
 @InvokeArg
 class ApkInstallerArgs {
-  /** Absolute path of the APK; the Rust side only accepts cacheDir/updates/*.apk. */
+  /** Absolute path of the APK; the Rust side only accepts APKs under cacheDir/updates. */
   var path: String = ""
 }
 
