@@ -37,10 +37,47 @@ jobs:
           npx tsc --noEmit
           npm test
           cargo test --workspace
+      # The signing key turns on the updater artifacts (with
+      # createUpdaterArtifacts: true the NSIS installer itself is signed:
+      # `*_x64-setup.exe` + `.sig`), which scripts/make-latest-json.mjs turns
+      # into latest.json below. `createUpdaterArtifacts` fails the build when
+      # no key is provided, so without the secret the flag is switched off via
+      # a merged config and no updater artifacts are produced (the release
+      # then has no latest.json and the in-app check falls back to the release
+      # page).
       - name: Tauri release build
-        run: npm run tauri build
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          $pubkey = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).plugins.updater.pubkey
+          $updaterOff = $false
+          if ([string]::IsNullOrEmpty($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            Write-Host "::warning::TAURI_SIGNING_PRIVATE_KEY is not set; updater artifacts were skipped."
+            $updaterOff = $true
+          } elseif ($pubkey -eq "PLACEHOLDER_UPDATER_PUBKEY") {
+            # tauri-cli decodes the configured pubkey while signing, so with
+            # the placeholder still in place a signed build would fail; the
+            # release ships without an updater manifest until the owner sets
+            # the real public key.
+            Write-Host "::warning::plugins.updater.pubkey is still the placeholder; updater artifacts were skipped. Replace it with the real public key."
+            $updaterOff = $true
+          }
+          if ($updaterOff) {
+            Set-Content -Path updater-off.json -Encoding ascii -Value '{"bundle":{"createUpdaterArtifacts":false}}'
+            npx tauri build --config updater-off.json
+          } else {
+            npm run tauri build
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Package installer and portable ZIP
         run: npm run package
+      # Updater manifest (`release-artifacts/latest.json`) plus the signed
+      # updater artifact it points at. Exits 0 without writing anything when
+      # the build produced no updater artifacts (no signing key).
+      - name: Update manifest (latest.json)
+        run: node scripts/make-latest-json.mjs
       - name: Build info
         run: npm run build:info
 

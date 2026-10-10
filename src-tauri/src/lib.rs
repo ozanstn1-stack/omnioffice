@@ -9,6 +9,11 @@ mod android_background;
 mod android_intent;
 #[cfg(target_os = "android")]
 mod android_keystore;
+// Android in-app update (APK download + system installer). Host tests compile
+// the module too so the URL/checksum helpers are covered by `cargo test` on
+// any platform; see android_update.rs.
+#[cfg(any(target_os = "android", test))]
+mod android_update;
 #[cfg(any(target_os = "android", test))]
 mod background_work;
 mod commands;
@@ -108,6 +113,15 @@ pub fn run() {
     // background; see android_background.rs.
     #[cfg(target_os = "android")]
     let builder = builder.plugin(android_background::init());
+    // Android in-app update: downloads the release APK and opens the system
+    // package installer; see android_update.rs.
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(android_update::init());
+    // Desktop auto-update plus the `relaunch` used after installing one. The
+    // updater plugin has no Android support (updates there run through
+    // android_update.rs), so both plugins are desktop only.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build()).plugin(tauri_plugin_process::init());
 
     builder
         .setup(|app| {
@@ -200,6 +214,10 @@ pub fn run() {
             commands::app_info,
             update::update_check,
             update::update_open,
+            #[cfg(target_os = "android")]
+            android_update::update_download_apk,
+            #[cfg(target_os = "android")]
+            android_update::update_install_apk,
             links::open_external_link,
             diagnostics::diagnostics_report,
             commands::engine_status,
@@ -354,6 +372,7 @@ pub fn run() {
             sync::sync_list,
             sync::sync_resolve,
             sync::sync_forget,
+            sync::sync_delete_remote,
             sync::sync_capabilities,
             oauth::oauth_status,
             oauth::oauth_save_client,

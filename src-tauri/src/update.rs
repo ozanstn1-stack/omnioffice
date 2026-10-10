@@ -27,6 +27,10 @@ pub struct UpdateInfo {
     /// Installer/APK for this platform and CPU, when the release has one.
     pub download_url: Option<String>,
     pub download_name: Option<String>,
+    /// SHA-256 of the chosen asset when the GitHub API reports one
+    /// (`digest: "sha256:..."`). The Android updater verifies the download
+    /// against it before opening the installer.
+    pub sha256: Option<String>,
     /// Release notes (Markdown), shortened.
     pub notes: String,
 }
@@ -92,6 +96,12 @@ pub fn evaluate_release(
         .and_then(|asset| asset.get("name"))
         .and_then(|name| name.as_str())
         .map(str::to_string);
+    let sha256 = asset
+        .and_then(|asset| asset.get("digest"))
+        .and_then(|digest| digest.as_str())
+        .and_then(|digest| digest.strip_prefix("sha256:"))
+        .filter(|hex| hex.len() == 64 && hex.chars().all(|c| c.is_ascii_hexdigit()))
+        .map(|hex| hex.to_ascii_lowercase());
     let notes: String =
         release.get("body").and_then(|body| body.as_str()).unwrap_or("").chars().take(MAX_NOTES_CHARS).collect();
     Ok(UpdateInfo {
@@ -101,6 +111,7 @@ pub fn evaluate_release(
         release_url,
         download_url,
         download_name,
+        sha256,
         notes,
     })
 }
@@ -151,16 +162,17 @@ mod tests {
 
     fn release(tag: &str) -> serde_json::Value {
         let base = "https://github.com/ozanstn1-stack/omnioffice/releases/download";
+        let digest = format!("sha256:{}", "ab".repeat(32));
         json!({
             "tag_name": tag,
             "html_url": format!("https://github.com/ozanstn1-stack/omnioffice/releases/tag/{tag}"),
             "body": "notes",
             "assets": [
                 { "name": "OmniOffice-Portable-3.9.0.zip", "browser_download_url": format!("{base}/{tag}/OmniOffice-Portable-3.9.0.zip") },
-                { "name": "OmniOffice_3.9.0_x64-setup.exe", "browser_download_url": format!("{base}/{tag}/OmniOffice_3.9.0_x64-setup.exe") },
-                { "name": "OmniOffice-Setup-3.9.0.exe", "browser_download_url": format!("{base}/{tag}/OmniOffice-Setup-3.9.0.exe") },
-                { "name": "OmniOffice-Android-3.9.0-arm64-v8a.apk", "browser_download_url": format!("{base}/{tag}/OmniOffice-Android-3.9.0-arm64-v8a.apk") },
-                { "name": "OmniOffice-Android-3.9.0-armeabi-v7a.apk", "browser_download_url": format!("{base}/{tag}/OmniOffice-Android-3.9.0-armeabi-v7a.apk") },
+                { "name": "OmniOffice_3.9.0_x64-setup.exe", "browser_download_url": format!("{base}/{tag}/OmniOffice_3.9.0_x64-setup.exe"), "digest": digest },
+                { "name": "OmniOffice-Setup-3.9.0.exe", "browser_download_url": format!("{base}/{tag}/OmniOffice-Setup-3.9.0.exe"), "digest": digest },
+                { "name": "OmniOffice-Android-3.9.0-arm64-v8a.apk", "browser_download_url": format!("{base}/{tag}/OmniOffice-Android-3.9.0-arm64-v8a.apk"), "digest": digest },
+                { "name": "OmniOffice-Android-3.9.0-armeabi-v7a.apk", "browser_download_url": format!("{base}/{tag}/OmniOffice-Android-3.9.0-armeabi-v7a.apk"), "digest": digest },
                 { "name": "OmniOffice-Android-3.9.0-arm64-v8a.aab", "browser_download_url": format!("{base}/{tag}/OmniOffice-Android-3.9.0-arm64-v8a.aab") }
             ]
         })
@@ -178,19 +190,42 @@ mod tests {
 
     #[test]
     fn picks_the_installer_and_the_matching_apk() {
+        let expected_digest = "ab".repeat(32);
         let windows = evaluate_release(&release("v3.9.0"), "3.8.3", "windows", "x86_64").unwrap();
         assert!(windows.newer);
         assert_eq!(windows.latest, "3.9.0");
         assert_eq!(windows.download_name.as_deref(), Some("OmniOffice-Setup-3.9.0.exe"));
+        assert_eq!(windows.sha256.as_deref(), Some(expected_digest.as_str()));
 
         let phone = evaluate_release(&release("v3.9.0"), "3.8.3", "android", "aarch64").unwrap();
         assert_eq!(phone.download_name.as_deref(), Some("OmniOffice-Android-3.9.0-arm64-v8a.apk"));
+        assert!(phone.sha256.is_some(), "the APK digest must reach the updater");
         let old_phone = evaluate_release(&release("v3.9.0"), "3.8.3", "android", "arm").unwrap();
         assert_eq!(old_phone.download_name.as_deref(), Some("OmniOffice-Android-3.9.0-armeabi-v7a.apk"));
 
         let linux = evaluate_release(&release("v3.9.0"), "3.8.3", "linux", "x86_64").unwrap();
         assert_eq!(linux.download_url, None);
+        assert_eq!(linux.sha256, None);
         assert!(linux.release_url.ends_with("/releases/tag/v3.9.0"));
+    }
+
+    #[test]
+    fn malformed_digests_are_ignored() {
+        let expected_digest = "ab".repeat(32);
+        let mut doc = release("v3.9.0");
+        doc["assets"][2]["digest"] = json!("sha256:not-a-hash");
+        let info = evaluate_release(&doc, "3.8.3", "windows", "x86_64").unwrap();
+        assert_eq!(info.sha256, None);
+
+        doc["assets"][2]["digest"] = json!("md5:abcd");
+        assert_eq!(evaluate_release(&doc, "3.8.3", "windows", "x86_64").unwrap().sha256, None);
+
+        doc["assets"][2]["digest"] = json!(format!("sha256:{}", "AB".repeat(32)));
+        assert_eq!(
+            evaluate_release(&doc, "3.8.3", "windows", "x86_64").unwrap().sha256.as_deref(),
+            Some(expected_digest.as_str()),
+            "hex digests are normalised to lower case"
+        );
     }
 
     #[test]
