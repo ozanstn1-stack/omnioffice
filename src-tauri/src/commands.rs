@@ -1265,6 +1265,120 @@ pub async fn annotate_pdf(
 }
 
 // ---------------------------------------------------------------------------
+// Editable annotations (real /Annots dictionaries)
+// ---------------------------------------------------------------------------
+
+/// Lists a document's annotations in display space (top-left origin).
+#[tauri::command]
+pub async fn pdf_list_annotations(
+    path: String,
+    password: Option<String>,
+) -> Result<Vec<pdfcore::annotate::EditableAnnotation>, PdfError> {
+    let path = crate::paths::input_file(&path)?.into_path_buf();
+    run_blocking(move || pdfcore::annotate::list_annotations_in_file(&path, password.as_deref())).await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotateEditableRequest {
+    pub input: String,
+    pub output: OutputSpec,
+    pub annotations: Vec<pdfcore::annotate::Annotation>,
+    /// Keep existing signatures by appending the annotations as a new revision
+    /// (default on).
+    #[serde(default = "default_true")]
+    pub keep_signatures: bool,
+    #[serde(default)]
+    pub password: Option<String>,
+    pub job_id: Option<String>,
+}
+
+#[tauri::command]
+pub async fn pdf_annotate_editable(
+    app: AppHandle,
+    registry: State<'_, JobRegistry>,
+    request: AnnotateEditableRequest,
+) -> Result<OpResult, PdfError> {
+    operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
+        let (output, policy) = request.output.resolve()?;
+        let input = crate::paths::input_file(&request.input)?;
+        let bytes = crate::paths::read_input_file(&request.input, 2u64 * 1024 * 1024 * 1024)?;
+        let signatures = pdfcore::incremental::signature_count(&bytes);
+
+        // Real annotations are additive: appending them as a new revision
+        // keeps every existing signature valid and visible as "what was signed".
+        if signatures > 0 && request.keep_signatures {
+            let updated = pdfcore::annotate::annotate_editable_pdf_incremental(&bytes, &request.annotations)?;
+            let path = pdfcore::docutil::resolve_output_path(&output, policy)?;
+            pdfcore::docutil::write_bytes_atomic(&path, &updated)?;
+            return Ok(OpResult {
+                path: path.display().to_string(),
+                page_count: None,
+                original_bytes: Some(bytes.len() as u64),
+                output_bytes: Some(updated.len() as u64),
+                reduction: None,
+                message: Some(format!(
+                    "{signatures} signature(s) preserved - the annotations were appended as a new revision"
+                )),
+            });
+        }
+
+        let path = pdfcore::annotate::annotate_editable_pdf(
+            input.as_path(),
+            &output,
+            &request.annotations,
+            policy,
+            request.password.as_deref(),
+            progress,
+            cancel,
+        )?;
+        Ok(OpResult {
+            path: path.display().to_string(),
+            page_count: None,
+            original_bytes: None,
+            output_bytes: std::fs::metadata(&path).ok().map(|m| m.len()),
+            reduction: None,
+            message: if signatures > 0 {
+                Some(format!("{signatures} signature(s) invalidated - this change rewrites the document"))
+            } else {
+                None
+            },
+        })
+    })
+    .await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditAnnotationsRequest {
+    pub input: String,
+    pub output: OutputSpec,
+    pub edits: Vec<pdfcore::annotate::AnnotationEditItem>,
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
+/// Moves, resizes, updates or deletes existing annotations by index. The edits
+/// are appended as a new revision, so existing signatures stay valid.
+#[tauri::command]
+pub async fn pdf_edit_annotations(
+    request: EditAnnotationsRequest,
+) -> Result<pdfcore::annotate::AnnotationEditReport, PdfError> {
+    run_blocking(move || {
+        let (output, policy) = request.output.resolve()?;
+        let bytes = crate::paths::read_input_file(&request.input, 2u64 * 1024 * 1024 * 1024)?;
+        let (updated, report) = pdfcore::annotate::edit_annotations(&bytes, &request.edits)?;
+        let path = pdfcore::docutil::resolve_output_path(&output, policy)?;
+        pdfcore::docutil::write_bytes_atomic(&path, &updated)?;
+        // Encrypted input is refused by the core (`PasswordRequired`); a
+        // password would have to be applied before the bytes are re-encoded.
+        let _ = request.password;
+        Ok(report)
+    })
+    .await
+}
+
+// ---------------------------------------------------------------------------
 // Redaction
 // ---------------------------------------------------------------------------
 
@@ -1343,6 +1457,240 @@ pub async fn detect_sensitive_text(
         let chars =
             pages.get(&page).ok_or_else(|| PdfError::Internal(format!("page {page} has no extractable text")))?;
         Ok(pdfcore::redact::detect_sensitive(chars))
+    })
+    .await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DetectRedactionMatchesRequest {
+    pub path: String,
+    #[serde(default)]
+    pub keywords: Vec<String>,
+    #[serde(default)]
+    pub pattern: Option<String>,
+    #[serde(default)]
+    pub case_sensitive: Option<bool>,
+    /// 1-based pages; `None` or empty scans the whole document.
+    #[serde(default)]
+    pub pages: Option<Vec<u32>>,
+    #[serde(default)]
+    pub password: Option<String>,
+    pub job_id: Option<String>,
+}
+
+/// Upper bound on the pages one detection scan walks. An explicit page list is
+/// capped the same way, so a huge selection cannot pin the UI.
+const MAX_REDACT_SCAN_PAGES: u32 = 5000;
+
+/// Keyword and regular-expression matches for redaction, in page order. The
+/// single-page [`detect_sensitive_text`] built-in detector stays separate.
+#[tauri::command]
+pub async fn detect_redaction_matches(
+    app: AppHandle,
+    registry: State<'_, JobRegistry>,
+    request: DetectRedactionMatchesRequest,
+) -> Result<Vec<pdfcore::redact::RedactionMatch>, PdfError> {
+    operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
+        let path = crate::paths::input_file(&request.path)?;
+        let requested: Vec<u32> = request.pages.unwrap_or_default().into_iter().filter(|page| *page >= 1).collect();
+        let pages: Vec<u32> = if requested.is_empty() {
+            // Every page: the cheap geometry pass only reports page count.
+            let total = pdfcore::render::page_geometries(path.as_path(), request.password.as_deref())?.len() as u32;
+            (1..=total.min(MAX_REDACT_SCAN_PAGES)).collect()
+        } else {
+            requested.into_iter().take(MAX_REDACT_SCAN_PAGES as usize).collect()
+        };
+        let options = pdfcore::redact::PatternOptions {
+            keywords: request.keywords,
+            pattern: request.pattern,
+            case_sensitive: request.case_sensitive.unwrap_or(false),
+        };
+        let on_page =
+            |page: u32, total: u32| emit_progress_simple(progress, "redact.patterns", page as u64, total as u64);
+        let (pages_chars, _) = pdfcore::textbox::page_chars(
+            path.as_path(),
+            request.password.as_deref(),
+            &pages,
+            MAX_REDACT_SCAN_PAGES,
+            cancel,
+            &on_page,
+        )?;
+        let mut matches = Vec::new();
+        for chars in pages_chars.values() {
+            cancel.check()?;
+            // Invalid regex patterns surface here as `InvalidInput`.
+            matches.extend(pdfcore::redact::detect_patterns(chars, &options)?);
+        }
+        Ok(matches)
+    })
+    .await
+}
+
+// ---------------------------------------------------------------------------
+// Document finishing (outline, stamps, N-up)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetOutlineRequest {
+    pub input: String,
+    pub output: OutputSpec,
+    pub entries: Vec<pdfcore::inspect::OutlineEntry>,
+    #[serde(default)]
+    pub password: Option<String>,
+    pub job_id: Option<String>,
+}
+
+/// Writes the document outline (bookmarks) as a new revision, so existing
+/// signatures stay valid. An empty entry list removes the outline.
+#[tauri::command]
+pub async fn pdf_set_outline(
+    app: AppHandle,
+    registry: State<'_, JobRegistry>,
+    request: SetOutlineRequest,
+) -> Result<OpResult, PdfError> {
+    operation_with_progress(app, registry, request.job_id.clone(), move |_progress, _cancel| {
+        let (output, policy) = request.output.resolve()?;
+        let bytes = crate::paths::read_input_file(&request.input, 2u64 * 1024 * 1024 * 1024)?;
+        let updated = pdfcore::inspect::write_outline(&bytes, &request.entries)?;
+        let path = pdfcore::docutil::resolve_output_path(&output, policy)?;
+        pdfcore::docutil::write_bytes_atomic(&path, &updated)?;
+        // Encrypted input is refused by the core (`PasswordRequired`); a
+        // password would have to be applied before the bytes are re-encoded.
+        let _ = request.password;
+        Ok(OpResult {
+            path: path.display().to_string(),
+            page_count: None,
+            original_bytes: Some(bytes.len() as u64),
+            output_bytes: Some(updated.len() as u64),
+            reduction: None,
+            message: Some(match request.entries.len() {
+                0 => "the outline was removed".to_string(),
+                1 => "1 outline entry written".to_string(),
+                count => format!("{count} outline entries written"),
+            }),
+        })
+    })
+    .await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StampRequest {
+    pub input: String,
+    pub output: OutputSpec,
+    #[serde(default)]
+    pub header_footer: Option<pdfcore::stamp::HeaderFooterOptions>,
+    #[serde(default)]
+    pub bates: Option<pdfcore::stamp::BatesOptions>,
+    #[serde(default)]
+    pub password: Option<String>,
+    pub job_id: Option<String>,
+    /// Keep existing signatures by appending the stamps as a new revision
+    /// (default on).
+    #[serde(default = "default_true")]
+    pub keep_signatures: bool,
+}
+
+#[tauri::command]
+pub async fn stamp_pdf(
+    app: AppHandle,
+    registry: State<'_, JobRegistry>,
+    request: StampRequest,
+) -> Result<OpResult, PdfError> {
+    operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
+        let (output, policy) = request.output.resolve()?;
+        let input = crate::paths::input_file(&request.input)?;
+        let bytes = crate::paths::read_input_file(&request.input, 2u64 * 1024 * 1024 * 1024)?;
+        let signatures = pdfcore::incremental::signature_count(&bytes);
+
+        // A stamp is additive: appending it as a new revision keeps every
+        // existing signature valid and visible as "what was signed".
+        if signatures > 0 && request.keep_signatures {
+            let updated =
+                pdfcore::stamp::stamp_pdf_incremental(&bytes, request.header_footer.as_ref(), request.bates.as_ref())?;
+            let path = pdfcore::docutil::resolve_output_path(&output, policy)?;
+            pdfcore::docutil::write_bytes_atomic(&path, &updated)?;
+            return Ok(OpResult {
+                path: path.display().to_string(),
+                page_count: None,
+                original_bytes: Some(bytes.len() as u64),
+                output_bytes: Some(updated.len() as u64),
+                reduction: None,
+                message: Some(format!(
+                    "{signatures} signature(s) preserved - the stamps were appended as a new revision"
+                )),
+            });
+        }
+
+        let path = pdfcore::stamp::stamp_pdf(
+            input.as_path(),
+            &output,
+            request.header_footer.as_ref(),
+            request.bates.as_ref(),
+            policy,
+            request.password.as_deref(),
+            progress,
+            cancel,
+        )?;
+        Ok(OpResult {
+            path: path.display().to_string(),
+            page_count: None,
+            original_bytes: None,
+            output_bytes: std::fs::metadata(&path).ok().map(|m| m.len()),
+            reduction: None,
+            message: if signatures > 0 {
+                Some(format!("{signatures} signature(s) invalidated - this change rewrites the document"))
+            } else {
+                None
+            },
+        })
+    })
+    .await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NupRequest {
+    pub input: String,
+    pub output: OutputSpec,
+    pub options: pdfcore::nup::NupOptions,
+    #[serde(default)]
+    pub password: Option<String>,
+    pub job_id: Option<String>,
+}
+
+/// N-up sheets and saddle-stitch booklets.
+#[tauri::command]
+pub async fn nup_pdf(
+    app: AppHandle,
+    registry: State<'_, JobRegistry>,
+    request: NupRequest,
+) -> Result<OpResult, PdfError> {
+    operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
+        let (output, policy) = request.output.resolve()?;
+        let input = crate::paths::input_file(&request.input)?;
+        let original_bytes = std::fs::metadata(input.as_path()).ok().map(|m| m.len());
+        let path = pdfcore::nup::nup_pdf(
+            input.as_path(),
+            &output,
+            &request.options,
+            policy,
+            request.password.as_deref(),
+            progress,
+            cancel,
+        )?;
+        cancel.check()?;
+        let page_count = pdfcore::info::pdf_info(&path, None).map(|info| info.page_count).unwrap_or(0);
+        Ok(OpResult {
+            path: path.display().to_string(),
+            page_count: Some(page_count),
+            original_bytes,
+            output_bytes: std::fs::metadata(&path).ok().map(|m| m.len()),
+            reduction: None,
+            message: None,
+        })
     })
     .await
 }
@@ -1858,4 +2206,211 @@ where
     .await;
     registry.complete(&job_id, result.is_ok());
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn annotate_editable_request_defaults_keep_signatures_and_round_trips() {
+        let request: AnnotateEditableRequest = serde_json::from_value(serde_json::json!({
+            "input": "in.pdf",
+            "output": { "path": "out.pdf", "overwrite": "replace" },
+            "annotations": [{ "kind": "rect", "page": 1, "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0 }],
+            "password": null,
+            "jobId": "job-1"
+        }))
+        .expect("wire shape");
+        assert!(request.keep_signatures);
+        assert_eq!(request.job_id.as_deref(), Some("job-1"));
+        assert_eq!(request.annotations.len(), 1);
+        assert_eq!(request.annotations[0].page, 1);
+
+        let encoded = serde_json::to_value(&request).expect("serialize");
+        assert_eq!(encoded["keepSignatures"], serde_json::json!(true));
+        assert!(encoded.get("jobId").is_some());
+        // `Annotation` is deliberately snake_case on the wire.
+        assert!(encoded["annotations"][0].get("font_size_pt").is_some());
+        assert!(encoded["annotations"][0].get("fontSizePt").is_none());
+        let decoded: AnnotateEditableRequest = serde_json::from_value(encoded).expect("round trip");
+        assert!(decoded.keep_signatures);
+    }
+
+    #[test]
+    fn annotate_editable_request_reads_explicit_keep_signatures() {
+        let request: AnnotateEditableRequest = serde_json::from_value(serde_json::json!({
+            "input": "in.pdf",
+            "output": { "path": "out.pdf" },
+            "annotations": [],
+            "keepSignatures": false
+        }))
+        .expect("wire shape");
+        assert!(!request.keep_signatures);
+    }
+
+    #[test]
+    fn edit_annotations_request_deserializes_flattened_actions() {
+        let request: EditAnnotationsRequest = serde_json::from_value(serde_json::json!({
+            "input": "in.pdf",
+            "output": { "path": "out.pdf", "overwrite": "unique_name" },
+            "password": null,
+            "edits": [
+                { "page": 3, "index": 1, "action": "move", "dx": 10.5, "dy": -4.0 },
+                { "page": 1, "index": 0, "action": "delete" },
+                { "page": 2, "index": 2, "action": "update", "text": "hi", "lineWidthPt": 1.5 }
+            ]
+        }))
+        .expect("wire shape");
+        assert_eq!(request.edits.len(), 3);
+        match &request.edits[0].action {
+            pdfcore::annotate::AnnotationAction::Move { dx, dy } => assert_eq!((*dx, *dy), (10.5, -4.0)),
+            other => panic!("unexpected action: {other:?}"),
+        }
+        assert!(matches!(request.edits[1].action, pdfcore::annotate::AnnotationAction::Delete));
+        match &request.edits[2].action {
+            pdfcore::annotate::AnnotationAction::Update { text, line_width_pt, .. } => {
+                assert_eq!(text.as_deref(), Some("hi"));
+                assert_eq!(*line_width_pt, Some(1.5));
+            }
+            other => panic!("unexpected action: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn detect_redaction_matches_request_wire_shape() {
+        let request: DetectRedactionMatchesRequest = serde_json::from_value(serde_json::json!({
+            "path": "in.pdf",
+            "keywords": ["secret", "iban"],
+            "pattern": "\\d{4}",
+            "caseSensitive": true,
+            "pages": [1, 3],
+            "password": null,
+            "jobId": "job-9"
+        }))
+        .expect("wire shape");
+        assert_eq!(request.keywords, vec!["secret", "iban"]);
+        assert_eq!(request.case_sensitive, Some(true));
+        assert_eq!(request.pages.as_deref(), Some(&[1u32, 3][..]));
+        assert_eq!(request.job_id.as_deref(), Some("job-9"));
+
+        let request: DetectRedactionMatchesRequest = serde_json::from_value(serde_json::json!({
+            "path": "in.pdf",
+            "keywords": [],
+            "pattern": null,
+            "caseSensitive": false,
+            "pages": null
+        }))
+        .expect("wire shape");
+        assert!(request.pattern.is_none());
+        assert_eq!(request.case_sensitive, Some(false));
+        assert!(request.pages.is_none());
+    }
+
+    #[test]
+    fn stamp_request_reads_camel_case_header_footer_and_defaults_keep_signatures() {
+        let request: StampRequest = serde_json::from_value(serde_json::json!({
+            "input": "in.pdf",
+            "output": { "path": "out.pdf" },
+            "headerFooter": {
+                "headerLeft": "Draft",
+                "headerCenter": "",
+                "headerRight": "",
+                "footerLeft": "",
+                "footerCenter": "Page {page} of {pages}",
+                "footerRight": "",
+                "fontSizePt": 8.0,
+                "color": "#334155",
+                "marginPt": 24.0,
+                "pages": [1, 2],
+                "startNumber": 1,
+                "countFromStart": true
+            },
+            "bates": {
+                "prefix": "ABC-",
+                "suffix": "",
+                "start": 1,
+                "digits": 6,
+                "position": "bottomRight",
+                "fontSizePt": 8.0,
+                "color": "#334155",
+                "marginPt": 24.0,
+                "pages": []
+            },
+            "password": null,
+            "jobId": "job-3"
+        }))
+        .expect("wire shape");
+        assert!(request.keep_signatures);
+        let header_footer = request.header_footer.as_ref().expect("headerFooter");
+        assert_eq!(header_footer.font_size_pt, 8.0);
+        assert_eq!(header_footer.start_number, 1);
+        assert!(header_footer.count_from_start);
+        assert_eq!(header_footer.footer_center, "Page {page} of {pages}");
+        assert_eq!(request.bates.as_ref().expect("bates").prefix, "ABC-");
+
+        let encoded = serde_json::to_value(&request).expect("serialize");
+        assert!(encoded.get("keepSignatures").is_some());
+        assert!(encoded.get("headerFooter").is_some());
+    }
+
+    #[test]
+    fn stamp_request_reads_explicit_keep_signatures() {
+        let request: StampRequest = serde_json::from_value(serde_json::json!({
+            "input": "in.pdf",
+            "output": { "path": "out.pdf" },
+            "headerFooter": null,
+            "bates": null,
+            "keepSignatures": false
+        }))
+        .expect("wire shape");
+        assert!(!request.keep_signatures);
+        assert!(request.header_footer.is_none());
+        assert!(request.bates.is_none());
+    }
+
+    #[test]
+    fn nup_request_reads_camel_case_options() {
+        let request: NupRequest = serde_json::from_value(serde_json::json!({
+            "input": "in.pdf",
+            "output": { "path": "out.pdf", "overwrite": "replace" },
+            "options": {
+                "perSheet": 4,
+                "booklet": true,
+                "orientation": "landscape",
+                "pageSize": "a4",
+                "marginPt": 18.0,
+                "gutterPt": 12.0,
+                "border": true,
+                "pages": [1, 2, 3, 4]
+            },
+            "password": null,
+            "jobId": "job-4"
+        }))
+        .expect("wire shape");
+        assert_eq!(request.options.per_sheet, 4);
+        assert!(request.options.booklet);
+        assert_eq!(request.options.page_size, "a4");
+        assert!(request.options.border);
+        assert_eq!(request.job_id.as_deref(), Some("job-4"));
+    }
+
+    #[test]
+    fn set_outline_request_wire_shape() {
+        let request: SetOutlineRequest = serde_json::from_value(serde_json::json!({
+            "input": "in.pdf",
+            "output": { "path": "out.pdf" },
+            "entries": [
+                { "title": "Chapter 1", "page": 1, "depth": 0 },
+                { "title": "Section 1.1", "page": 2, "depth": 1 }
+            ],
+            "password": null,
+            "jobId": "job-5"
+        }))
+        .expect("wire shape");
+        assert_eq!(request.entries.len(), 2);
+        assert_eq!(request.entries[1].title, "Section 1.1");
+        assert_eq!(request.entries[1].depth, 1);
+        assert_eq!(request.entries[1].page, 2);
+    }
 }
