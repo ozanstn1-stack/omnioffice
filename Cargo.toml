@@ -6,7 +6,7 @@ exclude = ["fuzz"]
 resolver = "2"
 
 [workspace.package]
-version = "4.6.0"
+version = "4.6.1"
 edition = "2021"
 # Declared MSRV, in one place for every crate.
 #
@@ -17,7 +17,9 @@ edition = "2021"
 # used to say 1.82, which had not built for a long time; CI never noticed
 # because every job used the stable toolchain. `cargo +1.89.0 check` passes and
 # 1.88 does not, so the `msrv` job in .github/workflows/desktop.yml pins 1.89.0
-# and fails when this line and the pin disagree.
+# and fails when this line and the pin disagree. The app crate (src-tauri) is
+# outside that check: tauri-plugin-updater and tauri-plugin-process need Rust
+# 1.90, and the msrv job only checks the library crates listed below.
 rust-version = "1.89"
 license = "MIT"
 repository = "https://github.com/ozanstn1-stack/omnioffice"

@@ -50,14 +50,14 @@ powershell -File scripts/build-android.ps1 -AndroidHome D:\Sdk -NdkHome D:\Sdk\n
 ```
 
 The app version comes from `src-tauri/tauri.conf.json`; the build script
-writes `app/tauri.properties` (`versionName=3.7.0`,
-`versionCode=3007000` — `major*1e6 + minor*1e3 + patch`, monotonically
+writes it into `src-tauri/gen/android/app/tauri.properties` as `versionName`
+and `versionCode` (`major*1e6 + minor*1e3 + patch`, monotonically
 increasing).
 
 Install on a device or emulator:
 
 ```powershell
-adb install -r release-artifacts\OmniOffice-Android-3.7.0-arm64-v8a.apk
+adb install -r release-artifacts\OmniOffice-Android-<version>-arm64-v8a.apk
 ```
 
 > **Why not `tauri android build`?** The Tauri CLI prepares `jniLibs` with
@@ -79,8 +79,8 @@ adb install -r release-artifacts\OmniOffice-Android-3.7.0-arm64-v8a.apk
 (native libraries) and `src-tauri/resources/android-assets/tessdata` (models);
 both directories are ignored by git, exactly like the desktop engines.
 
-The APK is self-contained: no network permission is used for anything except
-the optional AI assistant (which needs `INTERNET`).
+The APK is self-contained: the network permission is used only for the
+optional AI assistant, cloud sync and the update check.
 
 ## File handling
 
@@ -137,6 +137,18 @@ users can update over an existing install:
 Keep a copy of the keystore and its passwords somewhere safe: losing them
 means users have to uninstall the app before installing an update.
 
+## Updates
+
+The app checks the project's GitHub releases for a newer version and can
+update in place on Android: it downloads the APK for the device's ABI from
+the release, checks its SHA-256 against the release checksum, and opens the
+system installer (`REQUEST_INSTALL_PACKAGES` permission). Android asks the
+user to allow "install unknown apps" for OmniOffice the first time; every
+release is signed with the same project keystore, so the update installs over
+the existing app and keeps user data. When the release has no signed
+manifest/checksum, the app falls back to opening the release page in the
+browser.
+
 ## CI
 
 `.github/workflows/android.yml` builds signed APKs **and AABs** for both ABIs on
@@ -155,8 +167,10 @@ Android version metadata against `tauri.conf.json` and the tag.
   through a SAF destination or published to Downloads; `content://` URIs are
   never passed to the Rust backend.
 * **Vault**: imports copies into app-private storage and indexes them.
-* **Jobs**: persisted to `jobs.json`; jobs that were running when the process
-  died come back as `interrupted` (no foreground service in V3.1).
+* **Jobs**: persisted to `jobs.json`; long jobs keep running through a
+  `dataSync` foreground service (since 4.3.0; it shows a notification and
+  Android 13+ asks for the notification permission once), and a job whose
+  process does die comes back as `interrupted` to retry.
 * **Back navigation**: `handleBackNavigation = true` plus an in-app history so
   Back closes overlays/navigates before exiting.
 * **Security**: `allowBackup=false`, data-extraction rules, narrowed

@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "updater",
+  "description": "Desktop auto-update permissions. `tauri-plugin-updater` and `tauri-plugin-process` are compiled for desktop targets only (they have no Android support), and the ACL validator rejects their permission identifiers when the plugins are absent. The `platforms` filter keeps this capability out of the Android build; updates on Android run through the native bridge in src/android_update.rs, which uses only app commands.",
+  "platforms": ["windows", "macOS", "linux"],
+  "windows": ["main"],
+  "permissions": ["updater:default", "process:default"]
+}

@@ -61,5 +61,12 @@ keyring = "4"
 # arguments to the running instance instead of starting another app. Desktop
 # only (Android activities are already singleTask); it has no npm counterpart,
 # so scripts/check-tauri-plugin-versions.mjs has nothing to pair it with.
+#
+# Auto-update is desktop only as well: `tauri-plugin-updater` has no Android
+# support (Android updates run through `android_update.rs` and the system
+# package installer). `tauri-plugin-process` provides the `relaunch` used
+# after a desktop update installs.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bot, CheckCircle2, KeyRound, ShieldAlert, ShieldCheck, Trash2, Zap } from "lucide-react";
+import { Bot, CheckCircle2, KeyRound, ShieldAlert, ShieldCheck, Sparkles, Trash2, Zap } from "lucide-react";
 import { Badge, Button, Card, Checkbox, Field, Segmented, Slider, Spinner, TextInput } from "./ui";
 import { useSettings } from "../lib/store";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -9,6 +9,7 @@ import { useT } from "../lib/i18n";
 import { PROVIDER_PRESETS, parseProviderId, type ProviderCapabilities } from "../lib/ai-providers";
 import {
   aiClearKey,
+  aiDiscoverModels,
   aiGetSettings,
   aiLibraryDefaultDir,
   aiModels,
@@ -62,6 +63,8 @@ export function AiSettings() {
   const [maxOutputTokens, setMaxOutputTokens] = useState(384_000);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverError, setDiscoverError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<AiTestResult | null>(null);
 
@@ -178,6 +181,30 @@ export function AiSettings() {
       setTestResult(result);
     } finally {
       setTesting(false);
+    }
+  };
+
+  /**
+   * Asks the provider for its live model list. Discovery runs against the
+   * stored config, so the on-screen provider/base URL/key are saved first
+   * (same flow as Test connection); a failed save aborts the lookup.
+   */
+  const discover = async () => {
+    setDiscovering(true);
+    setDiscoverError(null);
+    try {
+      if (!(await save())) return;
+      const result = await aiDiscoverModels();
+      if (result.discovered && result.models.length) {
+        setModels(result.models);
+        if (!result.models.some((option) => option.id === model)) setModel(result.models[0].id);
+      } else {
+        setDiscoverError(t("ai.discoverModelsFailed", { error: result.message }));
+      }
+    } catch (error) {
+      setDiscoverError(t("ai.discoverModelsFailed", { error: toAppError(error).message }));
+    } finally {
+      setDiscovering(false);
     }
   };
 
@@ -311,6 +338,23 @@ export function AiSettings() {
                 spellCheck={false}
                 placeholder="deepseek-v4-flash"
               />
+            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={discovering ? <Spinner size={14} /> : <Sparkles size={14} />}
+                onClick={() => void discover()}
+                disabled={discovering || saving}
+              >
+                {t("ai.discoverModels")}
+              </Button>
+              <span className="text-xs muted">{t("ai.discoverModelsHint")}</span>
+            </div>
+            {discoverError ? (
+              <p className="text-xs" style={{ color: "var(--danger, #b91c1c)" }}>
+                {discoverError}
+              </p>
             ) : null}
           </div>
         </Field>

@@ -126,6 +126,20 @@ export const aiSaveOutput = (path: string, text: string, overwrite?: string) =>
 export const aiExamplePrompts = () => invoke<AiExamplePrompts>("ai_example_prompts");
 export const aiModels = (provider?: string) => invoke<AiModelOption[]>("ai_models", { provider: provider ?? null });
 
+/**
+ * Live model list straight from the configured provider. The command takes no
+ * arguments: it reads the saved provider, base URL and key itself, so the
+ * settings must be saved before calling it. Never throws for a provider that
+ * does not answer - `discovered` is false and `message` explains why.
+ */
+export interface AiDiscoveredModels {
+  models: AiModelOption[];
+  discovered: boolean;
+  message: string;
+}
+
+export const aiDiscoverModels = () => invoke<AiDiscoveredModels>("ai_discover_models");
+
 // ---------------------------------------------------------------------------
 // AI library (saved results) and the operation log
 // ---------------------------------------------------------------------------
@@ -792,6 +806,8 @@ export const syncList = () => invoke<SyncListEntry[]>("sync_list");
 export const syncResolve = (localPath: string, resolution: SyncResolutionId) =>
   invoke<SyncStatusView>("sync_resolve", { localPath, resolution });
 export const syncForget = (localPath: string) => invoke<void>("sync_forget", { localPath });
+/** Deletes the cloud copy of a tracked document; the local file is untouched. */
+export const syncDeleteRemote = (localPath: string) => invoke<SyncStatusView>("sync_delete_remote", { localPath });
 export const syncCapabilities = () => invoke<SyncCapabilities>("sync_capabilities");
 
 export interface OAuthProviderStatus {

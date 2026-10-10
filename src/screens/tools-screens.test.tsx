@@ -50,6 +50,29 @@ const invoke = vi.fn(async (command: string, _payload?: unknown) => {
           outputBytes: 2048,
           ok: true,
         },
+        {
+          id: "op-2",
+          createdAt: 1_700_000_100,
+          operation: "watermark",
+          inputPath: "C:/docs/in,voice.pdf",
+          outputPath: 'C:/docs/in "final"\n.pdf',
+          pageCount: 1,
+          inputBytes: 100,
+          outputBytes: 120,
+          ok: false,
+          detail: 'failed, "please retry"',
+        },
+        {
+          id: "op-3",
+          createdAt: 1_700_000_200,
+          operation: "compressed",
+          inputPath: "C:/docs/big.pdf",
+          outputPath: "C:/docs/small.pdf",
+          pageCount: 10,
+          inputBytes: 900,
+          outputBytes: 300,
+          ok: true,
+        },
       ];
     case "clear_operations":
       return null;
@@ -176,7 +199,7 @@ import { Security } from "./Security";
 import { Watermark } from "./Watermark";
 import { Metadata } from "./Metadata";
 import { InfoScreen } from "./Info";
-import { History } from "./History";
+import { History, csvField, filterOperations, operationsToCsv } from "./History";
 import { Home } from "./Home";
 import { Settings } from "./Settings";
 import { useToasts } from "../lib/store";
@@ -310,6 +333,51 @@ describe("History, Home and Settings act on the local stores", () => {
     await waitFor(() => expect(invoke.mock.calls.some(([name]) => name === "clear_operations")).toBe(true));
   });
 
+  it("filters the operation log and exports only the matching rows as CSV", async () => {
+    const user = userEvent.setup();
+    render(<History onNavigate={vi.fn()} />);
+    await user.click(screen.getByRole("tab", { name: "Operations" }));
+    expect(await screen.findByText("merged")).toBeInTheDocument();
+    expect(screen.getByText("compressed")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Filter"), "water");
+    expect(screen.queryByText("merged")).toBeNull();
+    expect(screen.getByText("watermark")).toBeInTheDocument();
+
+    writeFile.mockClear();
+    await user.click(screen.getByRole("button", { name: "Export CSV" }));
+    await waitFor(() => expect(writeFile).toHaveBeenCalledTimes(1));
+    const [target, bytes] = writeFile.mock.calls[0];
+    expect(target).toBe("C:/docs/out.pdf");
+    const csv = new TextDecoder().decode(bytes);
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe("operation,input,output,pages,bytesIn,bytesOut,ok,detail");
+    expect(lines).toHaveLength(2);
+    expect(csv).toContain('"C:/docs/in,voice.pdf"');
+    expect(csv).toContain('"C:/docs/in ""final""\n.pdf"');
+    expect(csv).toContain('"failed, ""please retry"""');
+    expect(csv).not.toContain("C:/docs/out.pdf");
+    await waitFor(() =>
+      expect(useToasts.getState().toasts.some((toast) => toast.title === "Operation log exported")).toBe(true),
+    );
+  });
+
+  it("reports an empty export instead of writing a file", async () => {
+    const user = userEvent.setup();
+    render(<History onNavigate={vi.fn()} />);
+    await user.click(screen.getByRole("tab", { name: "Operations" }));
+    await screen.findByText("merged");
+    await user.type(screen.getByLabelText("Filter"), "no-such-operation");
+    expect(await screen.findByText("Nothing to export yet")).toBeInTheDocument();
+
+    writeFile.mockClear();
+    await user.click(screen.getByRole("button", { name: "Export CSV" }));
+    expect(writeFile).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(useToasts.getState().toasts.some((toast) => toast.title === "Nothing to export yet")).toBe(true),
+    );
+  });
+
   it("filters the Home tool directory and opens a recent file in the Reader", async () => {
     const user = userEvent.setup();
     const onNavigate = vi.fn();
@@ -384,5 +452,42 @@ describe("History, Home and Settings act on the local stores", () => {
       "C:/docs/out.pdf",
       new TextEncoder().encode("OmniOffice diagnostics\nVersion: 3.9.0\n"),
     );
+  });
+});
+
+describe("operation log CSV helpers", () => {
+  it("escapes commas, quotes and newlines per RFC 4180", () => {
+    expect(csvField("plain")).toBe("plain");
+    expect(csvField("a,b")).toBe('"a,b"');
+    expect(csvField('say "hi"')).toBe('"say ""hi"""');
+    expect(csvField("line1\r\nline2")).toBe('"line1\r\nline2"');
+  });
+
+  it("serializes the header and leaves absent optional fields empty", () => {
+    const csv = operationsToCsv([
+      {
+        id: "x",
+        createdAt: 0,
+        operation: "merged",
+        inputPath: "C:/a.pdf",
+        outputPath: "C:/b.pdf",
+        ok: true,
+      },
+    ]);
+    expect(csv).toBe("operation,input,output,pages,bytesIn,bytesOut,ok,detail\r\nmerged,C:/a.pdf,C:/b.pdf,,,,true,");
+  });
+
+  it("filters case-insensitively by operation or either path", () => {
+    const base = { createdAt: 0, pageCount: 1, inputBytes: 10, outputBytes: 10, ok: true };
+    const entries = [
+      { ...base, id: "1", operation: "merged", inputPath: "C:/docs/a.pdf", outputPath: "C:/docs/out.pdf" },
+      { ...base, id: "2", operation: "watermark", inputPath: "C:/docs/b.pdf", outputPath: "C:/docs/b_wm.pdf" },
+      { ...base, id: "3", operation: "compressed", inputPath: "D:/other/c.pdf", outputPath: "D:/other/c2.pdf" },
+    ];
+    expect(filterOperations(entries, "WATER").map((entry) => entry.id)).toEqual(["2"]);
+    expect(filterOperations(entries, "d:/other").map((entry) => entry.id)).toEqual(["3"]);
+    expect(filterOperations(entries, "compressed").map((entry) => entry.id)).toEqual(["3"]);
+    // A blank filter returns every row.
+    expect(filterOperations(entries, "  ")).toHaveLength(3);
   });
 });

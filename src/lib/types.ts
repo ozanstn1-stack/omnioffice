@@ -27,6 +27,8 @@ export interface UpdateInfo {
   downloadUrl: string | null;
   downloadName: string | null;
   notes: string;
+  /** SHA-256 of the release download, when the backend resolved one. */
+  sha256?: string | null;
 }
 
 export interface AppInfo {

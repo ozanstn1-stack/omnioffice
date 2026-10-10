@@ -10,9 +10,28 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 4.4.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 4.6.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 4.6.0 and 4.5.0
+
+The v4.5 and v4.6 highlights are Writer/Impress depth and the PDF tools pass.
+
+- **Writer and Impress, deeper editing (4.5.0):** merge/split table cells and
+  drag column widths; image wrap with corner size handles; a format painter;
+  a ruler with custom tab stops; a watermark with an on-page preview.
+  Impress gains paragraph/run rich text, glued connectors, image crop,
+  footer/date/slide-number fields, hidden slides, a slide sorter and a
+  laser/pen during the show, and ODP writes real chart objects.
+- **The PDF tools pass (4.6.0):** real editable annotations (notes,
+  highlights, ink, text boxes, image/signature stamps) and a canvas signature
+  pad; keyword and regex redaction with preview; blank pages and an outline
+  editor; header/footer and Bates stamps as new revisions; N-up and
+  saddle-stitch booklets; PDF to Word with passwords, simple-table recovery
+  and per-list numbering.
+- **Fixes:** DOCX numbered lists restart at their own start, and the Writer
+  PDF export lays out merged table cells on the grid.
 
 ## What's new in 4.4.0
 
@@ -797,7 +816,9 @@ pdf and `.oswk`.
 
 **APK architectures.** `arm64-v8a` and `armeabi-v7a` release APKs are built
 and signed with the project release keystore; AABs are produced for both.
-minSdk 24, targetSdk 36, `versionName 3.3.1`, `versionCode 3003001`.
+minSdk 24, targetSdk 36. The version name and code are generated from
+`tauri.conf.json` into `src-tauri/gen/android/app/tauri.properties` on every
+build (`versionCode = major*1e6 + minor*1e3 + patch`).
 
 **Storage behavior.** Documents opened from other apps are copied into app
 cache (extension and size validated) before parsing. Exports go to a SAF
@@ -814,11 +835,12 @@ Cleartext HTTP from the WebView is restricted to localhost/emulator hosts;
 the Rust client can still reach a local-network model server (e.g. Ollama on
 your LAN) because it uses its own TLS stack.
 
-**Limitations.** No foreground service: a job keeps running only while the
-process lives (state survives death and is marked interrupted). Android
-cannot index arbitrary SAF folders; imports are the supported path. The
-launcher label is "OmniOffice"; the package id is unchanged for upgrade
-continuity.
+**Limitations.** Long jobs keep running through a `dataSync` foreground
+service (a notification is shown; Android 13+ asks for the notification
+permission once), and a process death still brings a job back as
+`interrupted` to retry. Android cannot index arbitrary SAF folders; imports
+are the supported path. The launcher label is "OmniOffice"; the package id is
+unchanged for upgrade continuity.
 
 ## Sample documents
 
@@ -1161,22 +1183,29 @@ These are real and honest:
   sign-in needs a browser and internet. There is no background polling, no
   auto-merge and no delete propagation. Conflict resolution is manual by
   design.
+- **In-app updates**: the desktop updater verifies signed update manifests
+  from the project's GitHub releases (Windows; the installer still warns
+  because the app is not Authenticode-signed). Android downloads the APK from
+  the release, checks its SHA-256 and opens the system installer. When no
+  signed manifest/keys are configured the app falls back to opening the
+  release page.
 - **Plugins**: a Web Worker is not an OS/WASM sandbox - it protects documents
   and user data through the capability boundary, not against a WebView
   engine escape. Installation is folder-based (no zip), and `doc.applyEdits`
   works on whole runs/cells.
-- **Android**: no foreground service (long jobs run only while the process
-  lives; state survives death as `interrupted`), the intent pipeline has JVM
-  unit tests (`./gradlew :app:testUniversalDebugUnitTest`) and on-device
+- **Android**: long jobs keep running via a `dataSync` foreground service
+  (since 4.3.0), and a process death still resumes them as `interrupted`; the
+  intent pipeline has JVM unit tests
+  (`./gradlew :app:testUniversalDebugUnitTest`) and on-device
   instrumentation tests (`./gradlew :app:connectedUniversalDebugAndroidTest`,
   real Android I/O on an emulator), both run by the Android release workflow;
   the picker UI itself (`ACTION_OPEN_DOCUMENT`) is still not automated,
   `osed/ospr/osdt` are accepted by the intent filter but the engine does not
   understand them yet, and the launcher label is "OmniOffice".
 - **Reader zoom**: page previews are rasterized up to 3000 px wide (backend
-  cap 4000) and cached per page (24 entries); zooming past what the bitmap
-  covers on very high-density screens still upscales until tiled rendering is
-  implemented.
+  cap 4000) and cached per page (24 entries); past what one bitmap covers the
+  visible region is drawn as tiles at full resolution (since 4.1.0), so text
+  stays sharp up to 400 %.
 - Interoperability with Microsoft Office/LibreOffice was validated
   structurally (package parts, content types, relationships, independent
   readers) plus headless LibreOffice conversion during development, not by
@@ -1220,7 +1249,6 @@ Next (architecture prepared, not implemented):
 - CID remapping for PDF/A-2/3 Type0 fonts without a ToUnicode map (embedded
   fonts are already subset)
 - Background sync for the OAuth cloud providers (OneDrive/Google Drive)
-- Android foreground service for long-running jobs and share-sheet polish
 - SmartArt and advanced PPTX effect import
 
 ## License

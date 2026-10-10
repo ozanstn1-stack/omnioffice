@@ -320,6 +320,14 @@ impl SyncClient {
             SyncClient::Microsoft(provider) => provider.put_file(path, local, if_match),
         }
     }
+
+    fn delete(&self, path: &str) -> Result<(), SyncError> {
+        match self {
+            SyncClient::WebDav(provider) => provider.delete(path),
+            SyncClient::GoogleDrive(provider) => provider.delete(path),
+            SyncClient::Microsoft(provider) => provider.delete(path),
+        }
+    }
 }
 
 struct SyncContext {
@@ -407,6 +415,17 @@ fn remote_path_for(remote_dir: &str, file_name: &str) -> String {
     } else {
         format!("{dir}/{file_name}")
     }
+}
+
+/// File name under which a tracked local document lives on the server. Pure
+/// (only the path shape is inspected); existence is validated separately by
+/// [`crate::paths::input_file`].
+fn tracked_remote_name(local_path: &Path) -> Result<String, PdfError> {
+    let name = metadata::file_name_of(local_path).map_err(sync_error)?;
+    if !name.to_ascii_lowercase().ends_with(".oswk") {
+        return Err(PdfError::coded(ErrorCode::InvalidInput, "Cloud sync tracks OmniOffice (.oswk) documents only."));
+    }
+    Ok(name)
 }
 
 // ---------------------------------------------------------------------------
@@ -879,6 +898,49 @@ pub async fn sync_download(
     run_blocking(move || download_core(&app, &remote_name, &target, false)).await
 }
 
+/// Deletes the tracked document's remote copy and removes the local sidecar,
+/// so the file is reported as `LocalOnly` afterwards. The local document is
+/// never touched; this is the only destructive cloud action besides the
+/// explicit conflict resolutions.
+#[tauri::command]
+pub async fn sync_delete_remote(app: AppHandle, local_path: String) -> Result<SyncStatusView, PdfError> {
+    let path = crate::paths::input_file(&local_path)?.into_path_buf();
+    run_blocking(move || {
+        let context = sync_context(&app)?;
+        let file_name = tracked_remote_name(&path)?;
+        let remote_path = remote_path_for(&context.config.remote_dir, &file_name);
+        match context.provider.delete(&remote_path) {
+            // An already deleted cloud copy ends in the desired state; a
+            // "delete from cloud" click is idempotent.
+            Ok(()) | Err(SyncError::NotFound(_)) => {}
+            Err(error) => return Err(sync_error(error)),
+        }
+        // Without a common ancestor the state machine reports "Local only"
+        // instead of a phantom "Synced" row.
+        let config_dir = config_dir(&app)?;
+        metadata::delete_meta(&config_dir, &path).map_err(sync_error)?;
+        let (local_sha256, local_size) = metadata::hash_file(&path).map_err(sync_error)?;
+        let evaluated = Evaluated {
+            local_path: path,
+            file_name,
+            remote_path,
+            local_sha256,
+            local_size,
+            meta: None,
+            entry: None,
+            cloud_sha256: None,
+            cloud_etag: None,
+            conflict_note: None,
+        };
+        Ok(status_view(
+            &evaluated,
+            SyncState::LocalOnly,
+            Some("Deleted from the cloud; the local file is unchanged.".to_string()),
+        ))
+    })
+    .await
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncListEntry {
@@ -1006,5 +1068,34 @@ pub fn sync_capabilities() -> SyncCapabilities {
                     .to_string(),
             },
         ],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tracked_remote_name_accepts_only_oswk_documents() {
+        assert_eq!(tracked_remote_name(Path::new("C:\\docs\\report.oswk")).unwrap(), "report.oswk");
+        // Case-insensitive extension, like `validate_local_file`.
+        assert_eq!(tracked_remote_name(Path::new("C:\\docs\\REPORT.OSWK")).unwrap(), "REPORT.OSWK");
+        assert!(tracked_remote_name(Path::new("C:\\docs\\report.pdf")).is_err());
+        assert!(tracked_remote_name(Path::new("C:\\docs\\")).is_err());
+    }
+
+    #[test]
+    fn remote_delete_path_is_joined_from_the_remote_dir() {
+        assert_eq!(remote_path_for("/", "a.oswk"), "a.oswk");
+        assert_eq!(remote_path_for("OmniOffice", "a.oswk"), "OmniOffice/a.oswk");
+        assert_eq!(remote_path_for("/Team/Docs/", "a.oswk"), "Team/Docs/a.oswk");
+    }
+
+    #[test]
+    fn dropping_the_sidecar_reports_local_only() {
+        // After `sync_delete_remote` removes the sidecar, the same local file
+        // has no cloud copy and no base: LocalOnly, never a stale Synced.
+        let local_sha = metadata::hash_bytes(b"document bytes");
+        assert_eq!(metadata::detect_state(Some(&local_sha), None, None), SyncState::LocalOnly);
     }
 }
