@@ -4,6 +4,37 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.6.1] - Hygiene and in-app updates
+
+### Added
+
+- **In-app updates**: the desktop app reads signed update manifests from the
+  project's GitHub releases and installs a new version with one click
+  (Windows; the installer still warns because the app is not
+  Authenticode-signed). Android downloads the release APK, verifies its
+  SHA-256 (from the GitHub asset digest) and opens the system installer. When
+  no signed manifest is configured, the app keeps the browser fallback.
+- **Operation log**: an "Export CSV" button (filtered rows, RFC 4180
+  escaping) and a text filter in History; the `keepOperationLog` setting now
+  really controls whether operations are recorded.
+- **AI settings**: a "Discover models" button asks the configured provider for
+  its live model list and fills the dropdown.
+- **Sync**: a manual "Delete from cloud" action removes the cloud copy of a
+  tracked document after confirmation; the local file is never touched.
+
+### Fixed
+
+- **Documentation told the wrong story in places**: the README still said
+  4.4.0, the Android section claimed there is no foreground service (it
+  shipped in 4.3.0) and that tiled rendering was pending (4.1.0), and the
+  release-readiness file contradicted itself about Windows E2E. All corrected,
+  and the missing 4.5.0 readiness section was added.
+
+### Changed
+
+- The desktop update check uses the signed updater manifest first; the GitHub
+  releases API check remains as the fallback.
+
 ## [4.6.0] - PDF tools
 
 ### Added
