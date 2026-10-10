@@ -210,7 +210,8 @@ export interface CropItem {
   h: number;
 }
 
-export type AnnotationKind = "text" | "image" | "rect" | "highlight" | "line";
+export type AnnotationKind =
+  "text" | "image" | "rect" | "highlight" | "line" | "note" | "underline" | "strike" | "ink" | "textbox" | "signature";
 
 export interface Annotation {
   kind: AnnotationKind;
@@ -228,6 +229,43 @@ export interface Annotation {
   line_width_pt: number;
   x2: number | null;
   y2: number | null;
+  /** Freehand strokes in display space (top-left origin), absolute on page. */
+  strokes?: number[][][];
+  /** Image/signature bytes as base64 (PNG); preferred over `image_path`. */
+  image_base64?: string | null;
+}
+
+/** An annotation read back from a document, in display space (top-left). */
+export interface EditableAnnotation {
+  page: number;
+  /** Index among the page's annotations, stable for edit/delete. */
+  index: number;
+  kind: AnnotationKind;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text: string;
+  color: string;
+  opacity: number;
+  lineWidthPt: number;
+  fontSizePt: number;
+  bold: boolean;
+  strokes: number[][][];
+}
+
+export type AnnotationEditAction =
+  | { action: "move"; dx: number; dy: number }
+  | { action: "resize"; x: number; y: number; w: number; h: number }
+  | { action: "delete" }
+  | { action: "update"; text?: string; color?: string; opacity?: number; lineWidthPt?: number };
+
+export type AnnotationEditItem = { page: number; index: number } & AnnotationEditAction;
+
+export interface AnnotationEditReport {
+  edited: number;
+  deleted: number;
+  warnings: string[];
 }
 
 export interface ImageToPdfOptions {
@@ -249,6 +287,57 @@ export interface ImageItem {
 export interface PagePlanItem {
   source_page: number;
   rotation_delta: number;
+  /** Insert a blank page instead of copying a source page. */
+  blank?: boolean;
+  /** Blank page size in points; defaults to the first source page size. */
+  width_pt?: number | null;
+  height_pt?: number | null;
+}
+
+/** Header/footer templates; `{page}` and `{pages}` are substituted. */
+export interface HeaderFooterOptions {
+  headerLeft: string;
+  headerCenter: string;
+  headerRight: string;
+  footerLeft: string;
+  footerCenter: string;
+  footerRight: string;
+  fontSizePt: number;
+  color: string;
+  marginPt: number;
+  /** 1-based pages; empty means every page. */
+  pages: number[];
+  /** Visible number of the first selected page. */
+  startNumber: number;
+  countFromStart: boolean;
+}
+
+/** Bates numbering: `{prefix}{number}{suffix}` with zero padding. */
+export interface BatesOptions {
+  prefix: string;
+  suffix: string;
+  start: number;
+  /** Zero-padded digit count for the number part. */
+  digits: number;
+  position: "bottomLeft" | "bottomCenter" | "bottomRight" | "topLeft" | "topCenter" | "topRight";
+  fontSizePt: number;
+  color: string;
+  marginPt: number;
+  pages: number[];
+}
+
+/** N-up sheets and booklet imposition. */
+export interface NupOptions {
+  /** Pages per sheet: 2 or 4. */
+  perSheet: number;
+  booklet: boolean;
+  orientation: "portrait" | "landscape";
+  pageSize: "source" | "a4" | "letter";
+  marginPt: number;
+  gutterPt: number;
+  border: boolean;
+  /** 1-based pages; empty means every page. */
+  pages: number[];
 }
 
 export interface ProtectOptions {
@@ -596,7 +685,7 @@ export interface RedactionMatch {
   bottom: number;
   right: number;
   top: number;
-  /** "email" | "iban" | "card" | "phone" | "passport". */
+  /** "email" | "iban" | "card" | "phone" | "passport" | "keyword" | "regex". */
   kind: string;
 }
 

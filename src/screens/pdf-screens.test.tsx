@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * These render the real screens against a mocked backend. The mock payloads
@@ -11,6 +11,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * `PageGeometry` interface in types.ts merged with the real one and hid it
  * from the type checker.
  */
+
+/**
+ * Keyword/regex scan control for the redact tests: the mock answers with
+ * matches, with a pending promise (for the scanning state) or rejects with an
+ * invalid-input error, exactly like the backend.
+ */
+let redactionScanResult: unknown[] = [];
+let redactionScanError: unknown = null;
+let redactionScanPending: Promise<unknown> | null = null;
+
 const invoke = vi.fn(async (command: string) => {
   switch (command) {
     case "app_info":
@@ -59,6 +69,10 @@ const invoke = vi.fn(async (command: string) => {
       return inspectionFixture;
     case "detect_sensitive_text":
       return [{ page: 1, text: "jane@example.com", left: 60, bottom: 700, right: 200, top: 714, kind: "email" }];
+    case "detect_redaction_matches":
+      if (redactionScanError) throw redactionScanError;
+      if (redactionScanPending) return redactionScanPending;
+      return redactionScanResult;
     case "page_preview":
       return { dataUrl: "data:image/png;base64,iVBORw0KGgo=", width: 595, height: 842 };
     case "page_tile":
@@ -99,6 +113,20 @@ const invoke = vi.fn(async (command: string) => {
       ];
     case "pdf_edit_text_runs":
       return { edited: 1, warnings: [] };
+    case "pdf_list_signing_certificates":
+      return [
+        {
+          index: 0,
+          subject: "CN=Test Signer",
+          issuer: "CN=Test CA",
+          serialHex: "01",
+          notBefore: "2026-01-01",
+          notAfter: "2027-01-01",
+          expired: false,
+          hasPrivateKey: true,
+          sha256Fingerprint: "AA",
+        },
+      ];
     default:
       return null;
   }
@@ -172,7 +200,7 @@ const formFieldsFixture = [
 import inspectionFixture from "../../crates/pdfcore/tests/fixtures/inspection-sample-2.pdf.json";
 import { Inspect } from "./Inspect";
 import { Compare } from "./Compare";
-import { Redact } from "./Redact";
+import { Redact, splitKeywords } from "./Redact";
 import {
   Reader,
   clampReaderZoom,
@@ -183,7 +211,8 @@ import {
   MAX_PREVIEW_CACHE_ENTRIES,
 } from "./Reader";
 import { previewRasterWidth } from "../lib/format";
-import { useDrop } from "../lib/store";
+import { useDrop, useSettings } from "../lib/store";
+import { DEFAULT_SETTINGS } from "../lib/types";
 import { PdfStudio, displayDeltaToPage, displayRectToPageRect, pageRectToDisplayRect } from "./PdfStudio";
 
 // jsdom has no PointerEvent; MouseEvent carries button/clientX/pointerId, which
@@ -621,5 +650,238 @@ describe("Reader bookmarks", () => {
     render(<Reader {...props} />);
     expect(await screen.findByText("Bookmarks")).toBeInTheDocument();
     expect(await screen.findByText(/Intro/)).toBeInTheDocument();
+  });
+});
+
+describe("Redact keyword and pattern search", () => {
+  beforeEach(() => {
+    invoke.mockClear();
+    redactionScanResult = [];
+    redactionScanError = null;
+    redactionScanPending = null;
+    useSettings.setState({ settings: { ...DEFAULT_SETTINGS, language: "en" } });
+  });
+
+  const openRedact = async () => {
+    render(<Redact {...props} />);
+    await waitFor(() => expect(screen.getByText(/drag over anything to redact/i)).toBeInTheDocument());
+  };
+
+  const findButton = () => screen.getByRole("button", { name: /find keywords \/ pattern/i });
+
+  it("splits keywords on commas, semicolons and new lines, keeping order and deduping", () => {
+    expect(splitKeywords(" secret, confidential\nsecret; iban ")).toEqual(["secret", "confidential", "iban"]);
+    expect(splitKeywords(" , ; \n ")).toEqual([]);
+  });
+
+  it("sends keywords, pattern and case sensitivity as the exact scan request", async () => {
+    const user = userEvent.setup();
+    await openRedact();
+
+    await user.type(screen.getByLabelText("Keywords"), "secret, confidential\n secret");
+    await user.type(screen.getByLabelText("Regular expression"), "AK-\\d+");
+    await user.click(screen.getByLabelText("Match case"));
+    await user.click(findButton());
+
+    await waitFor(() => {
+      const calls = invoke.mock.calls.filter(([name]) => name === "detect_redaction_matches") as unknown as [
+        string,
+        { request: Record<string, unknown> },
+      ][];
+      expect(calls).toHaveLength(1);
+      // The whole document is scanned, so `pages` is explicit null.
+      expect(Object.keys(calls[0][1].request).sort()).toEqual([
+        "caseSensitive",
+        "jobId",
+        "keywords",
+        "pages",
+        "password",
+        "path",
+        "pattern",
+      ]);
+      expect(calls[0][1].request).toEqual({
+        path: "C:/a.pdf",
+        keywords: ["secret", "confidential"],
+        pattern: "AK-\\d+",
+        caseSensitive: true,
+        pages: null,
+        password: undefined,
+        jobId: expect.any(String),
+      });
+    });
+  });
+
+  it("renders keyword and regex matches with their localized kind labels", async () => {
+    redactionScanResult = [
+      { page: 1, text: "top secret", left: 60, bottom: 700, right: 200, top: 714, kind: "keyword" },
+      { page: 1, text: "AK-1234", left: 60, bottom: 660, right: 200, top: 674, kind: "regex" },
+    ];
+    const user = userEvent.setup();
+    await openRedact();
+
+    await user.type(screen.getByLabelText("Keywords"), "secret");
+    await user.click(findButton());
+    expect(await screen.findByText("Keyword")).toBeInTheDocument();
+    expect(screen.getByText("Pattern")).toBeInTheDocument();
+    expect(screen.getByText("top secret")).toBeInTheDocument();
+    expect(screen.getByText("AK-1234")).toBeInTheDocument();
+
+    act(() => {
+      useSettings.setState({ settings: { ...DEFAULT_SETTINGS, language: "tr" } });
+    });
+    expect(await screen.findByText("Anahtar kelime")).toBeInTheDocument();
+    expect(screen.getByText("Desen")).toBeInTheDocument();
+    expect(screen.queryByText("Keyword")).not.toBeInTheDocument();
+  });
+
+  it("reports an empty keyword/pattern result", async () => {
+    const user = userEvent.setup();
+    await openRedact();
+
+    await user.type(screen.getByLabelText("Keywords"), "nothing-here");
+    await user.click(findButton());
+
+    expect(await screen.findByText("No keyword or pattern matches were found.")).toBeInTheDocument();
+  });
+
+  it("surfaces an invalid pattern and stays usable", async () => {
+    redactionScanError = { code: "invalid_input", message: "pattern uses an unsupported construct" };
+    const user = userEvent.setup();
+    await openRedact();
+
+    await user.type(screen.getByLabelText("Regular expression"), "(");
+    await user.click(findButton());
+
+    expect(await screen.findByText("pattern uses an unsupported construct")).toBeInTheDocument();
+    expect(findButton()).toBeEnabled();
+
+    // Correcting the input runs the scan again and clears the error.
+    redactionScanError = null;
+    redactionScanResult = [
+      { page: 1, text: "top secret", left: 60, bottom: 700, right: 200, top: 714, kind: "keyword" },
+    ];
+    await user.clear(screen.getByLabelText("Regular expression"));
+    await user.type(screen.getByLabelText("Keywords"), "secret");
+    await user.click(findButton());
+
+    expect(await screen.findByText("Keyword")).toBeInTheDocument();
+    expect(screen.queryByText("pattern uses an unsupported construct")).not.toBeInTheDocument();
+  });
+
+  it("keeps detector findings next to pattern matches and auto-adds both boxes", async () => {
+    redactionScanResult = [
+      { page: 1, text: "top secret", left: 60, bottom: 600, right: 200, top: 614, kind: "keyword" },
+    ];
+    const user = userEvent.setup();
+    await openRedact();
+
+    await user.click(screen.getAllByRole("button", { name: /find sensitive data/i })[0]);
+    await screen.findByText("jane@example.com");
+    await user.type(screen.getByLabelText("Keywords"), "secret");
+    await user.click(findButton());
+    await screen.findByText("top secret");
+
+    // Both result sets stay listed…
+    expect(screen.getByText("jane@example.com")).toBeInTheDocument();
+    expect(screen.getByText("E-mail")).toBeInTheDocument();
+    expect(screen.getByText("Keyword")).toBeInTheDocument();
+    // … and both were drawn on the page by the automatic add.
+    expect(await screen.findByRole("button", { name: "E-mail" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Keyword" })).toBeInTheDocument();
+  });
+
+  it("shows the scanning status and cancels the dedicated scan job", async () => {
+    let resolveScan: (value: unknown) => void = () => undefined;
+    redactionScanPending = new Promise((resolve) => {
+      resolveScan = resolve;
+    });
+    const user = userEvent.setup();
+    await openRedact();
+
+    await user.type(screen.getByLabelText("Keywords"), "secret");
+    await user.click(findButton());
+    expect(await screen.findByText(/scanning pages/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^cancel$/i }));
+    const cancelled = invoke.mock.calls.filter(([name]) => name === "cancel_job") as unknown as [
+      string,
+      { jobId: string },
+    ][];
+    const scans = invoke.mock.calls.filter(([name]) => name === "detect_redaction_matches") as unknown as [
+      string,
+      { request: { jobId: string } },
+    ][];
+    expect(cancelled).toHaveLength(1);
+    expect(cancelled[0][1].jobId).toBe(scans[0][1].request.jobId);
+
+    await act(async () => {
+      resolveScan([]);
+    });
+    await waitFor(() => expect(screen.queryByText(/scanning pages/i)).not.toBeInTheDocument());
+  });
+
+  it("still sends the selected areas and options to redact_pdf", async () => {
+    const user = userEvent.setup();
+    await openRedact();
+
+    await user.click(screen.getAllByRole("button", { name: /find sensitive data/i })[0]);
+    await screen.findByText("jane@example.com");
+    await user.click(screen.getByRole("button", { name: /^redact$/i }));
+
+    await waitFor(() => {
+      const calls = invoke.mock.calls.filter(([name]) => name === "redact_pdf") as unknown as [
+        string,
+        { request: { input: string; areas: unknown[]; options: unknown } },
+      ][];
+      expect(calls).toHaveLength(1);
+      expect(calls[0][1].request.input).toBe("C:/a.pdf");
+      expect(calls[0][1].request.areas).toEqual([{ page: 1, left: 60, bottom: 700, right: 200, top: 714 }]);
+      expect(calls[0][1].request.options).toEqual({
+        fill: "#000000",
+        images: "obscure",
+        paddingPt: 1,
+        removeMetadata: true,
+      });
+    });
+  });
+});
+
+describe("PDF Studio signature certificate sources", () => {
+  const originalUserAgent = navigator.userAgent;
+
+  afterEach(() => {
+    Object.defineProperty(navigator, "userAgent", { value: originalUserAgent, configurable: true });
+    vi.resetModules();
+  });
+
+  it("offers the PFX picker and the Android note instead of the store list on Android", async () => {
+    Object.defineProperty(navigator, "userAgent", { value: "Mozilla/5.0 (Linux; Android 14)", configurable: true });
+    // `isAndroid()` caches its answer per module instance, so the UA must be
+    // in place before the component's module graph is loaded.
+    vi.resetModules();
+    const { PdfStudio: AndroidPdfStudio } = await import("./PdfStudio");
+    const user = userEvent.setup();
+    render(<AndroidPdfStudio {...props} />);
+    await user.click(screen.getByRole("button", { name: /^signatures$/i }));
+
+    expect(await screen.findByText(/the windows certificate store is not available/i)).toBeInTheDocument();
+    expect(screen.getByText(/no certificate selected yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/windows certificate store \(currentuser/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /choose pfx/i })).toBeInTheDocument();
+  });
+
+  it("keeps the Windows certificate store on Windows", async () => {
+    Object.defineProperty(navigator, "userAgent", {
+      value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      configurable: true,
+    });
+    const user = userEvent.setup();
+    render(<PdfStudio {...props} />);
+    await user.click(screen.getByRole("button", { name: /^signatures$/i }));
+
+    expect(await screen.findByText(/windows certificate store \(currentuser/i)).toBeInTheDocument();
+    expect(await screen.findByText("CN=Test Signer")).toBeInTheDocument();
+    expect(screen.queryByText(/the windows certificate store is not available/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /choose pfx/i })).toBeInTheDocument();
   });
 });

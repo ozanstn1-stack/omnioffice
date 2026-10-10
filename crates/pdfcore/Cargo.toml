@@ -36,6 +36,9 @@ pkcs8 = "0.10"
 # pkcs5 intentionally refuses PBES1 decryption. `sha1-insecure` is needed to
 # accept the SHA-1 based PBKDF2 parameters Windows still writes by default.
 pkcs5 = { version = "0.7", features = ["pbes2", "3des", "sha1-insecure", "alloc"] }
+# Keyword/regex redaction detection (crates/pdfcore/src/redact.rs). The Rust
+# regex engine is linear-time, so a user-supplied pattern cannot backtrack.
+regex = "1"
 rsa = { version = "0.9", features = ["sha2"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"

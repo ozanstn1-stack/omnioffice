@@ -1,9 +1,44 @@
-# Release Readiness — OmniOffice 4.4.0
+# Release Readiness — OmniOffice 4.6.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
+
+## Implemented (this cycle, 4.6.0) - PDF tools (plan 2, phase 8)
+
+- pdfcore: real `/Annots` annotations (note, highlight, underline, strike,
+  ink, text box, image/signature) with listing, move/resize/update/delete;
+  keyword and regex detection (`regex` 1.x, size- and count-limited); blank
+  page insertion and outline writing; header/footer and Bates stamps as
+  incremental revisions; N-up and saddle-stitch booklet imposition; pdf2doc
+  simple-table recovery, password threading and list-numbering restart;
+  officecore per-list numbering (own numId + startOverride).
+- Tauri: seven new commands registered (`pdf_list_annotations`,
+  `pdf_annotate_editable`, `pdf_edit_annotations`,
+  `detect_redaction_matches`, `pdf_set_outline`, `stamp_pdf`, `nup_pdf`),
+  job-tracked with unique retry kinds.
+- Frontend: reworked Annotate screen with a dependency-free signature pad,
+  Redact keyword/pattern search with preview, Organize blank pages and a
+  bookmark editor, PageTools header/footer/Bates and N-up tabs, converter
+  password field, platform-aware signing certificate section.
+- Tests: workspace Rust suites and the frontend suite green locally
+  (frontend 1863; pdfcore, officecore and the app crate include the new
+  round-trip, incremental and wire-shape tests).
+
+### Not done in this pass (honest)
+
+- N-up rebuilds the page tree: source links, outlines and named destinations
+  are dropped and source annotations are not repainted onto the sheets (also
+  declared in the README). Old page objects stay unreferenced.
+- Deleting an annotation leaves the orphan object in the file (incremental
+  updates cannot remove objects), which is what keeps signed documents
+  byte-stable.
+- The signature pad is raster (PNG) based; vector or typed signatures are not
+  offered. Android `.p12` signing is covered by unit tests and CI builds, not
+  by a physical device here.
+- Regex/keyword matches follow each page's reading order; matches that span a
+  page break are not found.
 
 ## Implemented (this cycle, 4.4.0) - Calc to Excel level (plan 2, phase 6)
 

@@ -1,12 +1,25 @@
 import { useCallback, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Eye, Eraser, ShieldCheck, Trash2 } from "lucide-react";
-import { Badge, Card, Field, Segmented, Slider, Spinner, Toggle } from "../components/ui";
+import { ChevronLeft, ChevronRight, Eye, Eraser, Search, ShieldCheck, Trash2 } from "lucide-react";
+import {
+  Badge,
+  Card,
+  Checkbox,
+  Field,
+  Segmented,
+  Slider,
+  Spinner,
+  TextArea,
+  TextInput,
+  Toggle,
+} from "../components/ui";
 import { DropZone, FileList, InfoStrip, OutputBar, ResultCard } from "../components/files";
 import { PageCanvas, type Rect } from "../components/pages";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
+import { uid } from "../lib/format";
+import { useJobProgress } from "../lib/store";
 import { useTool } from "../lib/useTool";
-import { detectSensitiveText, redactPdf, toAppError } from "../lib/api";
+import { cancelJob, detectRedactionMatches, detectSensitiveText, redactPdf, toAppError } from "../lib/api";
 import { normalizePageSize, rectToUserSpace, userSpaceToRect } from "../lib/redact-geometry";
 import type { ImageRedactionMode, RedactionArea, RedactionMatch, RedactionOptions } from "../lib/types";
 
@@ -15,6 +28,42 @@ interface DrawnBox extends RedactionArea {
   id: string;
   /** Set for boxes the detector proposed, so they can be labelled. */
   kind?: string;
+}
+
+/** A detected match plus the id that links its checkbox to its box. */
+interface MatchRow {
+  id: string;
+  match: RedactionMatch;
+}
+
+/** Comma/semicolon/newline separated keywords: trimmed, order kept, deduped. */
+export function splitKeywords(raw: string): string[] {
+  const seen = new Set<string>();
+  const keywords: string[] = [];
+  for (const part of raw.split(/[,;\n]/)) {
+    const keyword = part.trim();
+    if (!keyword || seen.has(keyword)) continue;
+    seen.add(keyword);
+    keywords.push(keyword);
+  }
+  return keywords;
+}
+
+/** The row id is page-scoped so a match keeps its identity off the shown page. */
+function matchRow(source: "auto" | "pattern", match: RedactionMatch, index: number): MatchRow {
+  return { id: `${source}-${match.page}-${index}`, match };
+}
+
+function matchBox(row: MatchRow): DrawnBox {
+  return {
+    id: row.id,
+    page: row.match.page,
+    left: row.match.left,
+    bottom: row.match.bottom,
+    right: row.match.right,
+    top: row.match.top,
+    kind: row.match.kind,
+  };
 }
 
 function kindLabel(t: (key: string) => string, kind?: string): string {
@@ -35,11 +84,22 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
   });
   const [page, setPage] = useState(1);
   const [boxes, setBoxes] = useState<DrawnBox[]>([]);
-  const [matches, setMatches] = useState<RedactionMatch[]>([]);
+  const [matches, setMatches] = useState<MatchRow[]>([]);
   const [detecting, setDetecting] = useState(false);
   const [detected, setDetected] = useState(false);
   const [autoAdd, setAutoAdd] = useState(true);
   const [scanError, setScanError] = useState<string | null>(null);
+  // Keyword/regex scan state: its own controls, its own job (progress +
+  // cancel), and the outcome so an empty result can be reported.
+  const [keywordsText, setKeywordsText] = useState("");
+  const [pattern, setPattern] = useState("");
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [scanningPatterns, setScanningPatterns] = useState(false);
+  const [patternCount, setPatternCount] = useState<number | null>(null);
+  const [scanJobId, setScanJobId] = useState("");
+  const scanProgress = useJobProgress(scanJobId);
+  const keywords = useMemo(() => splitKeywords(keywordsText), [keywordsText]);
+  const canFindPatterns = keywords.length > 0 || pattern.trim().length > 0;
 
   const patch = (values: Partial<RedactionOptions>) => setOptions((previous) => ({ ...previous, ...values }));
   const pageCount = session.info?.pageCount ?? 0;
@@ -61,6 +121,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
     setMatches([]);
     setDetected(false);
     setScanError(null);
+    setPatternCount(null);
   }
 
   // Keep the current page inside the (possibly shrunken) document instead of
@@ -119,48 +180,59 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
     setScanError(null);
     try {
       const found = await detectSensitiveText(session.primary.path, page, session.password || undefined);
-      setMatches(found);
+      const rows = found.map((match, index) => matchRow("auto", match, index));
+      // The detector replaces only its own rows/boxes; keyword/pattern results
+      // and the boxes the user drew stay.
+      setMatches((previous) => [...previous.filter((row) => !row.id.startsWith("auto-")), ...rows]);
       if (autoAdd) {
-        setBoxes((previous) => [
-          ...previous.filter((box) => box.page !== page),
-          ...found.map((match, index) => ({
-            id: `auto-${shownPage}-${index}`,
-            page: match.page,
-            left: match.left,
-            bottom: match.bottom,
-            right: match.right,
-            top: match.top,
-            kind: match.kind,
-          })),
-        ]);
+        setBoxes((previous) => [...previous.filter((box) => !box.id.startsWith("auto-")), ...rows.map(matchBox)]);
       }
       setDetected(true);
     } catch (error) {
       const appError = toAppError(error);
       setScanError(appError.message);
-      setMatches([]);
+      setMatches((previous) => previous.filter((row) => !row.id.startsWith("auto-")));
     } finally {
       setDetecting(false);
     }
   };
 
-  const toggleMatch = (match: RedactionMatch, index: number) => {
-    const id = `auto-${shownPage}-${index}`;
+  const findPatterns = async () => {
+    if (!session.primary || !canFindPatterns) return;
+    const jobId = uid("redact-scan");
+    setScanJobId(jobId);
+    setScanningPatterns(true);
+    setScanError(null);
+    setPatternCount(null);
+    try {
+      const found = await detectRedactionMatches(
+        session.primary.path,
+        keywords,
+        pattern.trim() ? pattern.trim() : null,
+        caseSensitive,
+        null,
+        jobId,
+        session.password || undefined,
+      );
+      const rows = found.map((match, index) => matchRow("pattern", match, index));
+      setMatches((previous) => [...previous.filter((row) => !row.id.startsWith("pattern-")), ...rows]);
+      if (autoAdd) {
+        setBoxes((previous) => [...previous.filter((box) => !box.id.startsWith("pattern-")), ...rows.map(matchBox)]);
+      }
+      setPatternCount(found.length);
+    } catch (error) {
+      const appError = toAppError(error);
+      if (appError.code !== "cancelled") setScanError(appError.message);
+    } finally {
+      setScanningPatterns(false);
+    }
+  };
+
+  const toggleMatch = (row: MatchRow) => {
     setBoxes((previous) => {
-      const existing = previous.find((box) => box.id === id);
-      if (existing) return previous.filter((box) => box.id !== id);
-      return [
-        ...previous,
-        {
-          id,
-          page: match.page,
-          left: match.left,
-          bottom: match.bottom,
-          right: match.right,
-          top: match.top,
-          kind: match.kind,
-        },
-      ];
+      const existing = previous.find((box) => box.id === row.id);
+      if (existing) return previous.filter((box) => box.id !== row.id);
+      return [...previous, matchBox(row)];
     });
   };
 
@@ -257,7 +329,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
                   />
                 </div>
               </Card>
-              {detecting || matches.length || detected ? (
+              {detecting || scanningPatterns || matches.length || detected || patternCount !== null || scanError ? (
                 <OptionCard
                   title={t("redact.detected")}
                   action={
@@ -271,28 +343,26 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
                       {scanError}
                     </p>
                   ) : null}
-                  {matches.length === 0 ? (
+                  {patternCount === 0 ? <p className="text-xs muted">{t("redact.patternNone")}</p> : null}
+                  {matches.length === 0 && patternCount !== 0 ? (
                     <p className="text-xs muted">{detected ? t("redact.noneFound") : t("redact.scanHint")}</p>
-                  ) : (
+                  ) : null}
+                  {matches.length ? (
                     <div className="flex flex-col gap-1.5 max-h-64 overflow-auto">
-                      {matches.map((match, index) => {
-                        const included = pageBoxes.some((box) => box.id === `auto-${shownPage}-${index}`);
+                      {matches.map((row) => {
+                        const included = boxes.some((box) => box.id === row.id);
                         return (
-                          <label
-                            key={`${match.kind}-${index}`}
-                            className="flex items-center gap-2 text-xs"
-                            style={{ cursor: "pointer" }}
-                          >
-                            <input type="checkbox" checked={included} onChange={() => toggleMatch(match, index)} />
-                            <Badge>{kindLabel(t, match.kind)}</Badge>
+                          <label key={row.id} className="flex items-center gap-2 text-xs" style={{ cursor: "pointer" }}>
+                            <input type="checkbox" checked={included} onChange={() => toggleMatch(row)} />
+                            <Badge>{kindLabel(t, row.match.kind)}</Badge>
                             <span className="truncate" style={{ color: "var(--text-1)" }}>
-                              {match.text}
+                              {row.match.text}
                             </span>
                           </label>
                         );
                       })}
                     </div>
-                  )}
+                  ) : null}
                 </OptionCard>
               ) : null}
             </>
@@ -373,6 +443,47 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
                     <Trash2 size={13} /> {t("common.clearAll")}
                   </button>
                 </div>
+              ) : null}
+            </OptionCard>
+            <OptionCard title={t("redact.findPatterns")}>
+              <Field label={t("redact.keywords")} hint={t("redact.keywordsHint")}>
+                <TextArea
+                  aria-label={t("redact.keywords")}
+                  value={keywordsText}
+                  rows={3}
+                  spellCheck={false}
+                  onChange={(event) => setKeywordsText(event.target.value)}
+                />
+              </Field>
+              <Field label={t("redact.pattern")} hint={t("redact.patternHint")}>
+                <TextInput
+                  aria-label={t("redact.pattern")}
+                  value={pattern}
+                  spellCheck={false}
+                  onChange={(event) => setPattern(event.target.value)}
+                />
+              </Field>
+              <Checkbox checked={caseSensitive} onChange={setCaseSensitive} label={t("redact.caseSensitive")} />
+              <div className="flex items-center gap-2">
+                <button
+                  className="btn btn-sm self-start"
+                  type="button"
+                  onClick={() => void findPatterns()}
+                  disabled={!session.primary || !canFindPatterns || scanningPatterns}
+                >
+                  {scanningPatterns ? <Spinner size={13} /> : <Search size={13} />} {t("redact.findPatterns")}
+                </button>
+                {scanningPatterns && scanJobId ? (
+                  <button className="btn btn-sm" type="button" onClick={() => void cancelJob(scanJobId)}>
+                    {t("progress.cancel")}
+                  </button>
+                ) : null}
+              </div>
+              {scanningPatterns ? (
+                <p className="text-xs muted">
+                  {t("redact.scanningAll")}
+                  {scanProgress && scanProgress.total > 0 ? ` · ${scanProgress.current} / ${scanProgress.total}` : ""}
+                </p>
               ) : null}
             </OptionCard>
             {session.result ? <ResultCard result={session.result} onReset={session.resetResult} /> : null}

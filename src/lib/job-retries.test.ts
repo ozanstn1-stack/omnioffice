@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.fn(async (_command: string, _args?: unknown) => null as unknown);
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invokeMock(...(args as [string])) }));
 
-import { installJobRetryHandlers, sanitizeRetryPayload, trackJobInvocation } from "./job-retries";
+import { installJobRetryHandlers, sanitizeRetryPayload, trackJobInvocation, TRACKED_JOB_COMMANDS } from "./job-retries";
 import { useJobs, type JobRecord } from "./jobs";
 
 const persistedRecord: JobRecord = {
@@ -50,6 +50,54 @@ describe("tracked job invocations", () => {
     trackJobInvocation("app_info", {});
     trackJobInvocation("compress_pdf", { request: { input: "C:/docs/a.pdf" } });
     expect(useJobs.getState().jobs).toHaveLength(0);
+  });
+
+  it("registers the new PDF job commands", () => {
+    const expected: Record<string, string> = {
+      pdf_annotate_editable: "annotate-editable",
+      detect_redaction_matches: "redact-patterns",
+      pdf_set_outline: "outline",
+      stamp_pdf: "stamp",
+      nup_pdf: "nup",
+    };
+    for (const [command, kind] of Object.entries(expected)) {
+      expect(TRACKED_JOB_COMMANDS[command]).toEqual({ kind, command });
+    }
+  });
+
+  it("tracks a new PDF command and re-runs it with its persisted payload", async () => {
+    const payload = {
+      request: { input: "C:/docs/a.pdf", options: { rows: 2, columns: 2 }, jobId: "job-nup" },
+    };
+    trackJobInvocation("nup_pdf", payload);
+    const tracked = useJobs.getState().jobs.find((entry) => entry.id === "job-nup");
+    expect(tracked?.kind).toBe("nup");
+    expect(tracked?.title).toBe("a.pdf · nup");
+    // Persisting is fire-and-forget through a dynamic import; wait for it so
+    // the retry below resolves the mocked invoke module.
+    await vi.waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("jobs_register", expect.objectContaining({ id: "job-nup" })),
+    );
+
+    const record: JobRecord = {
+      ...persistedRecord,
+      id: "job-nup",
+      kind: "nup",
+      title: "a.pdf · nup",
+      payload,
+    };
+    invokeMock.mockImplementation(async (command: string) => (command === "jobs_retry" ? record : null));
+    const uninstall = installJobRetryHandlers();
+    try {
+      useJobs.setState({ jobs: [] });
+      useJobs.getState().hydrate([record]);
+      invokeMock.mockClear();
+      expect(await useJobs.getState().retry("job-nup")).toBe("started");
+      expect(invokeMock).toHaveBeenCalledWith("nup_pdf", payload);
+      expect(useJobs.getState().jobs.find((entry) => entry.id === "job-nup")?.status).toBe("running");
+    } finally {
+      uninstall();
+    }
   });
 
   it("blanks credential fields at every nesting depth", () => {

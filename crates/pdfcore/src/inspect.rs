@@ -10,7 +10,7 @@
 //! explanation, because "this document fails WCAG" without saying which check
 //! failed and why is not something anyone can act on.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 use lopdf::{Dictionary, Document, Object, ObjectId};
@@ -298,7 +298,7 @@ fn collect_name_tree(doc: &Document, names: &Dictionary, key: &[u8], out: &mut V
 }
 
 /// Reads the document outline (bookmarks) with a bounded depth.
-pub(crate) fn read_outline(doc: &Document, catalog: &Dictionary) -> PdfResult<Vec<OutlineEntry>> {
+pub fn read_outline(doc: &Document, catalog: &Dictionary) -> PdfResult<Vec<OutlineEntry>> {
     let root = match deref(doc, catalog.get(b"Outlines").ok()).cloned() {
         Some(Object::Dictionary(root)) => root,
         _ => return Ok(Vec::new()),
@@ -364,13 +364,112 @@ fn destination_page(doc: &Document, value: &Object) -> Option<u32> {
         },
         _ => return None,
     };
-    let page_id = array.get(1)?.as_reference().ok()?;
+    // ISO 32000-1 destinations put the page reference first (`[page /XYZ ...]`);
+    // some producers keep a leading `null`, so a second lookup covers them.
+    let page_id = [0usize, 1].into_iter().find_map(|index| array.get(index)?.as_reference().ok())?;
     for (number, candidate) in doc.get_pages() {
         if candidate == page_id {
             return Some(number);
         }
     }
     None
+}
+
+/// Rewrites the document outline (bookmarks) as an incremental update.
+///
+/// `entries` are in reading order; each 0-based `depth` nests the entry one
+/// level below the nearest preceding entry with a smaller depth (a depth jump
+/// is clamped to one level). Pages are 1-based; an entry outside the document
+/// is rejected with `PdfError::InvalidInput`. Every byte of `pdf` is preserved,
+/// so a document that is already signed keeps its signatures.
+///
+/// An empty `entries` removes `/Outlines` and `/PageMode` from the catalog.
+pub fn write_outline(pdf: &[u8], entries: &[OutlineEntry]) -> PdfResult<Vec<u8>> {
+    let mut doc = Document::load_mem(pdf).map_err(|error| PdfError::from_lopdf(error, None))?;
+    if doc.is_encrypted() || doc.was_encrypted() {
+        return Err(PdfError::PasswordRequired);
+    }
+    let catalog_id = root_id(&doc)?;
+    let pages = doc.get_pages();
+    let total = pages.len() as u32;
+    for entry in entries {
+        if entry.page == 0 || entry.page > total {
+            return Err(PdfError::InvalidInput(format!(
+                "outline entry \"{}\" points at page {}, outside the 1-{} range",
+                entry.title, entry.page, total
+            )));
+        }
+    }
+    if entries.is_empty() {
+        let catalog = doc.get_object_mut(catalog_id)?.as_dict_mut()?;
+        catalog.remove(b"Outlines");
+        catalog.remove(b"PageMode");
+        return crate::incremental::apply_difference(pdf, &doc);
+    }
+
+    // Build the item tree with an explicit parent chain. The outline root is
+    // created first so top-level items have a `/Parent` to point at.
+    let outlines_id = doc.add_object(Object::Dictionary(Dictionary::new()));
+    // (declared depth, effective depth, id): a depth jump is clamped to one
+    // level below the nearest preceding entry with a smaller depth.
+    let mut stack: Vec<(u32, u32, ObjectId)> = Vec::new();
+    let mut first_child: HashMap<ObjectId, ObjectId> = HashMap::new();
+    let mut last_child: HashMap<ObjectId, ObjectId> = HashMap::new();
+    let mut descendant_count: HashMap<ObjectId, u32> = HashMap::new();
+    for entry in entries {
+        while matches!(stack.last(), Some((declared, _, _)) if *declared >= entry.depth) {
+            stack.pop();
+        }
+        let depth = stack.last().map_or(0, |(_, effective, _)| effective + 1);
+        let parent = stack.last().map(|(_, _, id)| *id).unwrap_or(outlines_id);
+        let page_id = pages.get(&entry.page).copied().ok_or(PdfError::RangeOutOfBounds)?;
+        let previous = last_child.get(&parent).copied();
+        let mut item = Dictionary::new();
+        item.set("Title", docutil::pdf_text_object(&entry.title));
+        item.set("Parent", Object::Reference(parent));
+        item.set(
+            "Dest",
+            Object::Array(vec![
+                Object::Reference(page_id),
+                Object::Name(b"XYZ".to_vec()),
+                Object::Null,
+                Object::Null,
+                Object::Null,
+            ]),
+        );
+        if let Some(previous_id) = previous {
+            item.set("Prev", Object::Reference(previous_id));
+        }
+        let item_id = doc.add_object(Object::Dictionary(item));
+        if let Some(previous_id) = previous {
+            doc.get_object_mut(previous_id)?.as_dict_mut()?.set("Next", Object::Reference(item_id));
+        }
+        first_child.entry(parent).or_insert(item_id);
+        last_child.insert(parent, item_id);
+        // Every ancestor's visible count includes the new item.
+        *descendant_count.entry(outlines_id).or_insert(0) += 1;
+        for (_, _, ancestor) in &stack {
+            *descendant_count.entry(*ancestor).or_insert(0) += 1;
+        }
+        stack.push((entry.depth, depth, item_id));
+    }
+    // A parent (the root or an item with children) owns the First/Last links
+    // and a Count of its visible descendants.
+    let parents: Vec<ObjectId> = last_child.keys().copied().collect();
+    for parent in parents {
+        let count = descendant_count.get(&parent).copied().unwrap_or(0) as i64;
+        let dictionary = doc.get_object_mut(parent)?.as_dict_mut()?;
+        dictionary.set("First", Object::Reference(first_child[&parent]));
+        dictionary.set("Last", Object::Reference(last_child[&parent]));
+        dictionary.set("Count", Object::Integer(count));
+    }
+    doc.get_object_mut(outlines_id)?.as_dict_mut()?.set("Type", Object::Name(b"Outlines".to_vec()));
+    {
+        let catalog = doc.get_object_mut(catalog_id)?.as_dict_mut()?;
+        catalog.set("Outlines", Object::Reference(outlines_id));
+        catalog.set("PageMode", Object::Name(b"UseOutlines".to_vec()));
+    }
+    crate::incremental::apply_difference(pdf, &doc)
 }
 
 /// The font-program keys a reader needs in order to render without

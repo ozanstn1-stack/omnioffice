@@ -129,10 +129,10 @@ fn deleting_every_page_is_rejected() {
 fn reorder_duplicate_and_rotate_via_plan() {
     let (dir, input) = setup("plan", 4);
     let plan = vec![
-        PagePlanItem { source_page: 3, rotation_delta: 0 },
-        PagePlanItem { source_page: 1, rotation_delta: 90 },
-        PagePlanItem { source_page: 1, rotation_delta: 180 },
-        PagePlanItem { source_page: 4, rotation_delta: 0 },
+        PagePlanItem { source_page: 3, rotation_delta: 0, ..Default::default() },
+        PagePlanItem { source_page: 1, rotation_delta: 90, ..Default::default() },
+        PagePlanItem { source_page: 1, rotation_delta: 180, ..Default::default() },
+        PagePlanItem { source_page: 4, rotation_delta: 0, ..Default::default() },
     ];
     let out = dir.path("plan.pdf");
     apply_page_plan(&input, &plan, &out, OverwritePolicy::Replace, None).unwrap();

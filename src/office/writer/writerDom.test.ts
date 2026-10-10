@@ -33,6 +33,31 @@ describe("ordered list numbering", () => {
     ]);
   });
 
+  it("restarts a level when an adjacent list uses a different start", () => {
+    const blocks: Block[] = [
+      paragraph("one", numbered(0, 1)),
+      paragraph("two", numbered(0)),
+      paragraph("three", numbered(0, 5)),
+      paragraph("four", numbered(0, 5)),
+    ];
+    const numbers = orderedListNumbers(blocks);
+    expect([...numbers.entries()]).toEqual([
+      [0, 1],
+      [1, 2],
+      [2, 5],
+      [3, 6],
+    ]);
+  });
+
+  it("continues when the item carries the running list's start", () => {
+    const blocks: Block[] = [paragraph("a", numbered(0, 3)), paragraph("b", numbered(0, 3))];
+    const numbers = orderedListNumbers(blocks);
+    expect([...numbers.entries()]).toEqual([
+      [0, 3],
+      [1, 4],
+    ]);
+  });
+
   it("keeps a counter per level and continues it after returning", () => {
     const blocks: Block[] = [
       paragraph("a", numbered(0)),

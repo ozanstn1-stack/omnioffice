@@ -20,11 +20,13 @@
 //! the text is hidden. A redaction that quietly fails is worse than one that
 //! admits it did not work.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
+use std::ops::Range;
 use std::path::Path;
 
 use lopdf::content::{Content, Operation};
 use lopdf::{Dictionary, Document, Object, ObjectId, Stream};
+use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
 
 use crate::docutil::{self, OverwritePolicy};
@@ -340,6 +342,225 @@ pub fn looks_like_passport(compact: &str) -> bool {
     }
     let rest = &characters[2..];
     rest.len() >= 6 && rest.iter().all(|c| c.is_ascii_digit())
+}
+
+// ---------------------------------------------------------------------------
+// Keyword and regular-expression detection
+// ---------------------------------------------------------------------------
+
+/// How keyword and regex detection should run. Plain keywords are matched
+/// case-insensitively unless `case_sensitive` says otherwise.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PatternOptions {
+    /// Plain keywords; matched case-insensitively unless `case_sensitive`.
+    pub keywords: Vec<String>,
+    /// Optional regular expression.
+    pub pattern: Option<String>,
+    pub case_sensitive: bool,
+}
+
+/// Upper bound on the matches returned for one page. Ten thousand rectangles
+/// is already far more than a person can review; the rest are dropped.
+const MAX_PATTERN_MATCHES: usize = 10_000;
+
+/// A pattern longer than this is refused before the regex engine sees it:
+/// `size_limit` bounds the compiled program, but parsing a pathological
+/// pattern still costs time.
+const MAX_PATTERN_CHARS: usize = 2000;
+
+/// The page text, with the maps needed to turn a match offset back into the
+/// characters that produced it.
+///
+/// Characters pdfium could not map to Unicode are left out of the text, so a
+/// position in the text and the position of its box in `page.chars` are
+/// different numbers. `boundaries` records the byte offset of every text
+/// character and `source` the index of its `TextChar`; together they keep both
+/// string slicing and the geometry lookup correct for multi-byte text and for
+/// skipped unmapped glyphs.
+struct PageText {
+    text: String,
+    boundaries: Vec<usize>,
+    source: Vec<usize>,
+}
+
+impl PageText {
+    fn build(page: &PageChars) -> Self {
+        let mut text = String::with_capacity(page.chars.len());
+        let mut boundaries = Vec::with_capacity(page.chars.len());
+        let mut source = Vec::with_capacity(page.chars.len());
+        for (position, entry) in page.chars.iter().enumerate() {
+            let Some(value) = entry.as_char() else {
+                continue;
+            };
+            boundaries.push(text.len());
+            text.push(value);
+            source.push(position);
+        }
+        Self { text, boundaries, source }
+    }
+
+    /// The byte range of the text characters `[from, to)`.
+    fn byte_range(&self, from: usize, to: usize) -> Option<Range<usize>> {
+        let start = *self.boundaries.get(from)?;
+        let end = match self.boundaries.get(to) {
+            Some(offset) => *offset,
+            None if to == self.boundaries.len() => self.text.len(),
+            None => return None,
+        };
+        Some(start..end)
+    }
+
+    /// The character range covering the byte range `[start, end)`. Regex
+    /// matches always fall on character boundaries, so both lookups land
+    /// exactly and no byte is ever split.
+    fn char_range(&self, start: usize, end: usize) -> Option<(usize, usize)> {
+        let from = self.boundaries.partition_point(|offset| *offset < start);
+        let to = self.boundaries.partition_point(|offset| *offset < end);
+        if from < to {
+            Some((from, to))
+        } else {
+            None
+        }
+    }
+
+    /// The tightest box over the text characters `[from, to)`, or `None` when
+    /// nothing covered by them can be painted.
+    fn bounds(&self, page: &PageChars, from: usize, to: usize) -> Option<CharBox> {
+        let mut left = f64::INFINITY;
+        let mut bottom = f64::INFINITY;
+        let mut right = f64::NEG_INFINITY;
+        let mut top = f64::NEG_INFINITY;
+        for &position in self.source.get(from..to)? {
+            let entry = page.chars.get(position)?;
+            if entry.box_rect.width() <= 0.0 && entry.box_rect.height() <= 0.0 {
+                continue;
+            }
+            left = left.min(entry.box_rect.left);
+            bottom = bottom.min(entry.box_rect.bottom);
+            right = right.max(entry.box_rect.right);
+            top = top.max(entry.box_rect.top);
+        }
+        if !left.is_finite() || !right.is_finite() || right <= left || top <= bottom {
+            return None;
+        }
+        Some(CharBox { left, bottom, right, top })
+    }
+}
+
+/// Collects matches for one page, dropping character ranges already seen and
+/// stopping at [`MAX_PATTERN_MATCHES`]. Keywords run before the regex, so on a
+/// tie the keyword entry is the one kept.
+#[derive(Default)]
+struct MatchCollector {
+    ranges: HashSet<(usize, usize)>,
+    matches: Vec<RedactionMatch>,
+}
+
+impl MatchCollector {
+    fn push(&mut self, from: usize, to: usize, entry: Option<RedactionMatch>) {
+        if self.matches.len() >= MAX_PATTERN_MATCHES {
+            return;
+        }
+        if let Some(entry) = entry {
+            if self.ranges.insert((from, to)) {
+                self.matches.push(entry);
+            }
+        }
+    }
+
+    fn is_full(&self) -> bool {
+        self.matches.len() >= MAX_PATTERN_MATCHES
+    }
+}
+
+/// Finds keyword and regular-expression matches in one page's character boxes.
+///
+/// `kind` is `"keyword"` or `"regex"`. A keyword is matched as plain text
+/// (case-insensitively unless `case_sensitive`); a pattern is compiled by the
+/// linear-time Rust regex engine, so no timeout is needed. An invalid or
+/// over-long pattern returns [`PdfError::InvalidInput`]. Duplicate character
+/// ranges are dropped (keywords first), matches are capped at
+/// [`MAX_PATTERN_MATCHES`], and matches that cover only whitespace or have no
+/// paintable box are skipped.
+pub fn detect_patterns(page: &PageChars, options: &PatternOptions) -> PdfResult<Vec<RedactionMatch>> {
+    let text = PageText::build(page);
+    let mut collector = MatchCollector::default();
+
+    let compare: Vec<char> =
+        if options.case_sensitive { text.text.chars().collect() } else { text.text.chars().map(lower_first).collect() };
+    for keyword in &options.keywords {
+        if keyword.is_empty() || collector.is_full() {
+            continue;
+        }
+        let needle: Vec<char> =
+            if options.case_sensitive { keyword.chars().collect() } else { keyword.chars().map(lower_first).collect() };
+        if needle.len() > compare.len() {
+            continue;
+        }
+        for start in 0..=compare.len() - needle.len() {
+            if collector.is_full() {
+                break;
+            }
+            if compare[start..start + needle.len()] != needle[..] {
+                continue;
+            }
+            let entry = pattern_entry(page, &text, start, start + needle.len(), "keyword");
+            collector.push(start, start + needle.len(), entry);
+        }
+    }
+
+    if let Some(pattern) = options.pattern.as_deref().filter(|value| !value.is_empty()) {
+        if pattern.chars().count() > MAX_PATTERN_CHARS {
+            return Err(PdfError::InvalidInput(format!(
+                "the search pattern is longer than {MAX_PATTERN_CHARS} characters"
+            )));
+        }
+        let compiled = RegexBuilder::new(pattern)
+            .case_insensitive(!options.case_sensitive)
+            .size_limit(1 << 20)
+            .build()
+            .map_err(|error| PdfError::InvalidInput(format!("invalid search pattern: {error}")))?;
+        for found in compiled.find_iter(&text.text) {
+            if collector.is_full() {
+                break;
+            }
+            // A pattern like `a*` also matches the empty string between
+            // characters; an empty rectangle is not a redaction.
+            if found.start() == found.end() {
+                continue;
+            }
+            if let Some((from, to)) = text.char_range(found.start(), found.end()) {
+                let entry = pattern_entry(page, &text, from, to, "regex");
+                collector.push(from, to, entry);
+            }
+        }
+    }
+
+    Ok(collector.matches)
+}
+
+/// Lowercases a character to exactly one character.
+///
+/// `char::to_lowercase` can expand (`İ` becomes `i` plus a combining dot), and
+/// an expansion would shift the index mapping that points a match back at its
+/// character boxes. Taking the first result keeps one input character to one
+/// comparison character; `İ` folds to `i` and `ı` stays `ı`, which is what a
+/// case-insensitive search over Turkish text wants.
+fn lower_first(value: char) -> char {
+    value.to_lowercase().next().unwrap_or(value)
+}
+
+/// Builds a match when the character range covers paintable, non-whitespace
+/// text, and `None` otherwise.
+fn pattern_entry(page: &PageChars, text: &PageText, from: usize, to: usize, kind: &str) -> Option<RedactionMatch> {
+    let bytes = text.byte_range(from, to)?;
+    let value = text.text.get(bytes)?;
+    if value.trim().is_empty() {
+        return None;
+    }
+    let rect = text.bounds(page, from, to)?;
+    Some(match_entry(page.page, value, &rect, kind))
 }
 
 // ---------------------------------------------------------------------------
@@ -1119,6 +1340,170 @@ mod tests {
     #[test]
     fn detect_on_an_empty_page_is_empty() {
         assert!(detect_sensitive(&PageChars { page: 1, chars: Vec::new() }).is_empty());
+    }
+
+    fn keyword_options(keywords: &[&str]) -> PatternOptions {
+        PatternOptions {
+            keywords: keywords.iter().map(|value| value.to_string()).collect(),
+            pattern: None,
+            case_sensitive: false,
+        }
+    }
+
+    fn regex_options(pattern: &str) -> PatternOptions {
+        PatternOptions { keywords: Vec::new(), pattern: Some(pattern.to_string()), case_sensitive: false }
+    }
+
+    #[test]
+    fn keyword_matches_are_case_insensitive_with_correct_boxes() {
+        let page = page_from("the SECRET value");
+        let found = detect_patterns(&page, &keyword_options(&["secret"])).expect("detection must run");
+        assert_eq!(found.len(), 1);
+        let entry = &found[0];
+        assert_eq!(entry.page, 1);
+        assert_eq!(entry.text, "SECRET");
+        assert_eq!(entry.kind, "keyword");
+        assert_eq!(entry.left, 24.0);
+        assert_eq!(entry.right, 59.0);
+        assert_eq!(entry.bottom, 0.0);
+        assert_eq!(entry.top, 10.0);
+    }
+
+    #[test]
+    fn case_sensitive_mode_matches_only_the_exact_case() {
+        let page = page_from("Secret SECRET secret");
+        let mut options = keyword_options(&["Secret"]);
+        options.case_sensitive = true;
+        let found = detect_patterns(&page, &options).expect("detection must run");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].text, "Secret");
+        options.keywords = vec!["SeCre".to_string()];
+        assert!(detect_patterns(&page, &options).expect("detection must run").is_empty());
+    }
+
+    #[test]
+    fn overlapping_keywords_are_all_reported() {
+        let page = page_from("aaaa");
+        let found = detect_patterns(&page, &keyword_options(&["aa"])).expect("detection must run");
+        let texts: Vec<&str> = found.iter().map(|entry| entry.text.as_str()).collect();
+        assert_eq!(texts, ["aa", "aa", "aa"]);
+        assert_eq!(found[0].left, 0.0);
+        assert_eq!(found[1].left, 6.0);
+        assert_eq!(found[2].left, 12.0);
+    }
+
+    #[test]
+    fn turkish_text_keeps_the_index_mapping() {
+        let page = page_from("İstanbul ığü");
+        let found = detect_patterns(&page, &keyword_options(&["istanbul", "ığü"])).expect("detection must run");
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].text, "İstanbul");
+        assert_eq!(found[0].left, 0.0);
+        assert_eq!(found[0].right, 47.0);
+        assert_eq!(found[1].text, "ığü");
+        // 'ı' is the tenth character; `İ` is two bytes but one box.
+        assert_eq!(found[1].left, 54.0);
+        assert_eq!(found[1].right, 71.0);
+
+        let found = detect_patterns(&page, &keyword_options(&["stanbul"])).expect("detection must run");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].text, "stanbul");
+        // `s` is the second character, so byte offsets are not used as boxes.
+        assert_eq!(found[0].left, 6.0);
+    }
+
+    #[test]
+    fn multibyte_characters_map_to_the_right_boxes() {
+        let page = page_from("ş😀 gizli😀");
+        let found = detect_patterns(&page, &keyword_options(&["gizli"])).expect("detection must run");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].text, "gizli");
+        assert_eq!(found[0].left, 18.0);
+        assert_eq!(found[0].right, 47.0);
+    }
+
+    #[test]
+    fn regex_groups_and_alternation_find_every_variant() {
+        let page = page_from("cat bat car");
+        let found = detect_patterns(&page, &regex_options("(c|b)at")).expect("detection must run");
+        let texts: Vec<&str> = found.iter().map(|entry| entry.text.as_str()).collect();
+        assert_eq!(texts, ["cat", "bat"]);
+        assert!(found.iter().all(|entry| entry.kind == "regex"));
+        assert_eq!(found[0].left, 0.0);
+        assert_eq!(found[1].left, 24.0);
+    }
+
+    #[test]
+    fn regex_case_insensitivity_follows_the_option() {
+        let page = page_from("Token token");
+        let mut options = regex_options("token");
+        assert_eq!(detect_patterns(&page, &options).expect("detection must run").len(), 2);
+        options.case_sensitive = true;
+        let found = detect_patterns(&page, &options).expect("detection must run");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].text, "token");
+    }
+
+    #[test]
+    fn an_invalid_regex_is_an_invalid_input_error() {
+        let page = page_from("anything");
+        let error = detect_patterns(&page, &regex_options("(")).expect_err("an unbalanced group must fail");
+        assert!(matches!(&error, PdfError::InvalidInput(_)));
+        assert_eq!(error.code(), crate::error::ErrorCode::InvalidInput);
+    }
+
+    #[test]
+    fn a_pattern_that_can_match_empty_text_skips_empty_matches() {
+        let page = page_from("bbb");
+        assert!(detect_patterns(&page, &regex_options("a*")).expect("detection must run").is_empty());
+        let page = page_from("ba");
+        let found = detect_patterns(&page, &regex_options("a*")).expect("detection must run");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].text, "a");
+    }
+
+    #[test]
+    fn an_over_long_pattern_is_rejected() {
+        let page = page_from("short");
+        let error = detect_patterns(&page, &regex_options(&"a".repeat(2001))).expect_err("must be refused");
+        assert!(matches!(&error, PdfError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn the_match_cap_is_respected() {
+        let page = page_from(&"a".repeat(12_000));
+        let found = detect_patterns(&page, &keyword_options(&["a"])).expect("detection must run");
+        assert_eq!(found.len(), 10_000);
+        let found = detect_patterns(&page, &regex_options("a")).expect("detection must run");
+        assert_eq!(found.len(), 10_000);
+    }
+
+    #[test]
+    fn whitespace_only_matches_are_skipped() {
+        let page = page_from("a   b");
+        assert!(detect_patterns(&page, &keyword_options(&[" "])).expect("detection must run").is_empty());
+        assert!(detect_patterns(&page, &regex_options(r"\s+")).expect("detection must run").is_empty());
+    }
+
+    #[test]
+    fn a_keyword_wins_over_a_regex_on_the_same_span() {
+        let page = page_from("secret secret");
+        let options = PatternOptions {
+            keywords: vec!["secret".to_string()],
+            pattern: Some("secret".to_string()),
+            case_sensitive: false,
+        };
+        let found = detect_patterns(&page, &options).expect("detection must run");
+        assert_eq!(found.len(), 2);
+        assert!(found.iter().all(|entry| entry.kind == "keyword"));
+    }
+
+    #[test]
+    fn detect_patterns_on_an_empty_page_is_empty() {
+        let page = PageChars { page: 1, chars: Vec::new() };
+        let options =
+            PatternOptions { keywords: vec!["a".to_string()], pattern: Some("a".to_string()), case_sensitive: false };
+        assert!(detect_patterns(&page, &options).expect("detection must run").is_empty());
     }
 
     #[test]

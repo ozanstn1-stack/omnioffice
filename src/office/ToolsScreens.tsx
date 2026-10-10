@@ -12,6 +12,8 @@ import {
   ArrowLeft,
   Check,
   Download,
+  Eye,
+  EyeOff,
   FileDown,
   FilePlus2,
   FileSpreadsheet,
@@ -30,6 +32,7 @@ import {
 } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { errorMessage, reportError, useSettings, useToasts } from "../lib/store";
+import { toAppError } from "../lib/api";
 import {
   isAndroid,
   pickAndroidFiles,
@@ -47,6 +50,7 @@ import { uid } from "../lib/office-types";
 import { useDataSheets, useDraw, useNotes, useOfficeTabs, usePlanner, type DrawDocument } from "../lib/office-store";
 import * as api from "../lib/office-api";
 import { Screen } from "../components/layout";
+import { Field } from "../components/ui";
 import { compatibilityReport, gatingLossItems } from "../components/compatibility";
 import { useDataLossPrompt } from "../components/data-loss-dialog";
 import { orderTemplates, TEMPLATES, templatesFor } from "./templates";
@@ -1101,6 +1105,40 @@ export function TemplatesScreen({ onOpen }: { onOpen?: () => void } = {}) {
 // Universal converter
 // ---------------------------------------------------------------------------
 
+function PasswordField({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        className="input pr-10"
+        type={visible ? "text" : "password"}
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+        autoComplete="off"
+        spellCheck={false}
+      />
+      <button
+        type="button"
+        className="absolute right-1 top-1/2 -translate-y-1/2 icon-btn"
+        onClick={() => setVisible((previous) => !previous)}
+        aria-label={visible ? "Hide" : "Show"}
+        tabIndex={-1}
+      >
+        {visible ? <EyeOff size={15} /> : <Eye size={15} />}
+      </button>
+    </div>
+  );
+}
+
 export function ConverterScreen() {
   const t = useT();
   const [files, setFiles] = useState<string[]>([]);
@@ -1119,8 +1157,12 @@ export function ConverterScreen() {
   ]);
   const [outputDir, setOutputDir] = useState("");
   const [androidDir, setAndroidDir] = useState<AndroidTarget | null>(null);
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<Array<{ input: string; output: string; ok: boolean; detail: string }>>([]);
+
+  const hasPdfInput = files.some((file) => /\.pdf$/i.test(file));
+  const showTablesHint = hasPdfInput && target === "docx";
 
   const pickFiles = async () => {
     let list: string[] = [];
@@ -1231,7 +1273,7 @@ export function ConverterScreen() {
         `${directory}/`,
       );
       try {
-        const info = await api.convertFile(input, output);
+        const info = await api.convertFile(input, output, password ? { password } : undefined);
         if (isAndroid()) {
           const failures = await publishOutputs([info.output], androidDir ? { dir: androidDir } : undefined);
           if (failures.length > 0) {
@@ -1243,7 +1285,14 @@ export function ConverterScreen() {
           converted.push({ input, output: info.output, ok: true, detail: info.warnings.join(" ") });
         }
       } catch (error) {
-        converted.push({ input, output: directory, ok: false, detail: errorMessage(error, t) });
+        const appError = toAppError(error);
+        const passwordFailure = appError.code === "password_required" || appError.code === "wrong_password";
+        converted.push({
+          input,
+          output: directory,
+          ok: false,
+          detail: passwordFailure ? appError.message : errorMessage(error, t),
+        });
       }
     }
     setResults(converted);
@@ -1300,6 +1349,14 @@ export function ConverterScreen() {
             )}
           </label>
         </div>
+        {hasPdfInput ? (
+          <div className="row" style={{ marginTop: 10 }}>
+            <Field label={t("converter.password")} hint={t("converter.passwordHint")} className="grow">
+              <PasswordField value={password} onChange={setPassword} placeholder={t("converter.password")} />
+            </Field>
+          </div>
+        ) : null}
+        {showTablesHint ? <p className="muted small">{t("converter.tablesHint")}</p> : null}
         <ul className="file-pick-list">
           {files.map((file) => (
             <li key={file}>{file}</li>

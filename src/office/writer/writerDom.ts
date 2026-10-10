@@ -128,13 +128,16 @@ export function fieldValuesFor(context: DocumentFieldContext = {}): Record<strin
  * Numbers ordered-list paragraphs the way a word processor does: consecutive
  * numbered paragraphs at the same level increment, a deeper level starts its
  * own counter at the paragraph's `start`, and returning to a shallower level
- * continues that level's counter. Any non-numbered block ends the series, so a
- * numbered list separated by body text restarts at its `start` (audit M16:
- * ordered lists used to render every item as "1").
+ * continues that level's counter. Any non-numbered block ends the series, and
+ * a numbered item whose `start` differs from the running list restarts its
+ * level at that `start`, so two adjacent lists with different starts do not
+ * continue each other (audit M16: ordered lists used to render every item as
+ * "1"). A level's counter remembers the start it belongs to; an item with the
+ * same start continues, one with a different start restarts.
  */
 export function orderedListNumbers(blocks: Block[]): Map<number, number> {
   const numbers = new Map<number, number>();
-  const counters: number[] = [];
+  const counters: ({ value: number; start: number } | undefined)[] = [];
   blocks.forEach((block, index) => {
     if (block.type !== "paragraph" || !block.props.list || block.props.list.kind !== "number") {
       counters.length = 0;
@@ -143,8 +146,9 @@ export function orderedListNumbers(blocks: Block[]): Map<number, number> {
     const level = Math.max(0, Math.min(8, block.props.list.level));
     counters.length = level + 1;
     const start = Math.max(1, Math.round(block.props.list.start) || 1);
-    const next = counters[level] === undefined ? start : counters[level] + 1;
-    counters[level] = next;
+    const counter = counters[level];
+    const next = counter && counter.start === start ? counter.value + 1 : start;
+    counters[level] = { value: next, start };
     numbers.set(index, next);
   });
   return numbers;

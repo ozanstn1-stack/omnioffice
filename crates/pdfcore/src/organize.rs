@@ -25,6 +25,9 @@ pub fn apply_page_plan(
         return Err(PdfError::InvalidPdf("document has no pages".into()));
     }
     for item in plan {
+        if item.blank {
+            continue;
+        }
         if item.source_page == 0 || item.source_page > total {
             return Err(PdfError::RangeOutOfBounds);
         }
@@ -43,7 +46,8 @@ pub fn extract_pages(
     policy: OverwritePolicy,
     password: Option<&str>,
 ) -> PdfResult<PathBuf> {
-    let plan: Vec<PagePlanItem> = pages.iter().map(|p| PagePlanItem { source_page: *p, rotation_delta: 0 }).collect();
+    let plan: Vec<PagePlanItem> =
+        pages.iter().map(|p| PagePlanItem { source_page: *p, ..Default::default() }).collect();
     apply_page_plan(input, &plan, output, policy, password)
 }
 
@@ -65,7 +69,7 @@ pub fn delete_pages(
     }
     let plan: Vec<PagePlanItem> = (1..=total)
         .filter(|p| !delete.contains(p))
-        .map(|p| PagePlanItem { source_page: p, rotation_delta: 0 })
+        .map(|p| PagePlanItem { source_page: p, ..Default::default() })
         .collect();
     materialize_all_pages(&mut doc)?;
     rebuild_page_tree(&mut doc, &plan)?;
@@ -95,7 +99,11 @@ pub fn rotate_pages(
         }
     }
     let plan: Vec<PagePlanItem> = (1..=total)
-        .map(|p| PagePlanItem { source_page: p, rotation_delta: if target.contains(&p) { degrees } else { 0 } })
+        .map(|p| PagePlanItem {
+            source_page: p,
+            rotation_delta: if target.contains(&p) { degrees } else { 0 },
+            ..Default::default()
+        })
         .collect();
     materialize_all_pages(&mut doc)?;
     rebuild_page_tree(&mut doc, &plan)?;
@@ -135,7 +143,8 @@ pub fn split_pdf(
         progress(ProgressEvent::new("split.part", (index + 1) as u64, groups.len() as u64));
         let mut working = doc.clone();
         materialize_all_pages(&mut working)?;
-        let plan: Vec<PagePlanItem> = (*a..=*b).map(|p| PagePlanItem { source_page: p, rotation_delta: 0 }).collect();
+        let plan: Vec<PagePlanItem> =
+            (*a..=*b).map(|p| PagePlanItem { source_page: p, ..Default::default() }).collect();
         rebuild_page_tree(&mut working, &plan)?;
         let name = if groups.len() == 1 || a == b && groups.len() > 50 {
             format!("{stem}_page_{a:04}.pdf")

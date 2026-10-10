@@ -11,8 +11,8 @@
 //!    most lines, and the left column is read before the right one;
 //! 4. lines are merged into paragraphs from line spacing, indentation and
 //!    sentence-ending punctuation, joining "exam-" + "ple" across the break;
-//! 5. headings (larger or bold-only short lines) and bulleted or numbered
-//!    list items are marked.
+//! 5. headings (larger or bold-only short lines), bulleted or numbered list
+//!    items and simple tables (aligned rows of multi-cell lines) are marked.
 //!
 //! The result is plain data: pdfcore does not depend on the office model, so
 //! the app maps [`RecoveredDocument`] onto its own document type. Text comes
@@ -24,6 +24,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 
 use lopdf::{Dictionary, Document, ObjectId};
+use serde::{Deserialize, Serialize};
 
 use crate::content::TextRunInfo;
 use crate::docutil::object_to_f64;
@@ -89,20 +90,37 @@ pub struct ListItem {
     pub marker: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BlockKind {
     Paragraph,
     /// Heading level 1-3, ranked by font size across the document.
     Heading(u32),
     ListItem(ListItem),
+    /// A simple table recovered from aligned cell rows.
+    Table(TableLayout),
 }
 
 /// Text with one style.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Span {
     pub text: String,
     pub bold: bool,
     pub italic: bool,
+}
+
+/// One recovered table cell: its text with the original styling.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TableCellLayout {
+    pub spans: Vec<Span>,
+    /// Left edge of the cell in page points, used to size the Word columns.
+    #[serde(default)]
+    pub x: f64,
+}
+
+/// A simple table recovered from consecutive rows of aligned cells.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TableLayout {
+    pub rows: Vec<Vec<TableCellLayout>>,
 }
 
 /// A paragraph, heading or list item.
@@ -423,7 +441,8 @@ pub fn recover_pages(pages: &[PageText]) -> Vec<LayoutPage> {
             // size; fall back to the whole document.
             let body = if chars >= 200 { body_size(page_lines.iter()) } else { document_body };
             let bold: usize = page_lines.iter().filter(|line| line.bold()).map(Line::chars).sum();
-            page_drafts(&reading_flows(page_lines), body, bold * 2 > chars)
+            let space = median_space_width(&page_lines);
+            page_drafts(&reading_flows(page_lines), body, bold * 2 > chars, space)
         })
         .collect();
     // Heading levels rank the distinct heading sizes of the whole document.
@@ -883,6 +902,107 @@ fn find_gutter(lines: &[Line]) -> Option<(f64, f64)> {
 }
 
 // ---------------------------------------------------------------------------
+// Tables
+// ---------------------------------------------------------------------------
+
+/// A gap wider than this between two fragments opens a new table cell.
+const TABLE_X_JUMP_PT: f64 = 18.0;
+
+/// Cell starts of consecutive rows must line up within this many points.
+const TABLE_ALIGN_PT: f64 = 6.0;
+
+/// The fewest rows a run of cell lines needs to become a table.
+const TABLE_MIN_ROWS: usize = 2;
+
+/// The gap most word pairs are separated by: a proxy for the width of a space.
+/// Table column gaps are far wider, so they are left out of the estimate.
+fn median_space_width(lines: &[Line]) -> f64 {
+    let mut gaps: Vec<f64> = Vec::new();
+    for line in lines {
+        for pair in line.fragments.windows(2) {
+            let gap = pair[1].x - (pair[0].x + pair[0].width);
+            if gap.is_finite() && gap > 0.0 && gap < TABLE_X_JUMP_PT {
+                gaps.push(gap);
+            }
+        }
+    }
+    percentile(&mut gaps, 0.5).unwrap_or(3.0)
+}
+
+/// Finds table runs in top-to-bottom lines: each start maps to the end of the
+/// run (exclusive) and the recovered table. The check is conservative: every
+/// row needs at least two cells, consecutive rows must agree on the cell count
+/// and their cell starts must line up, so an ordinary sentence never turns
+/// into a table.
+fn table_starts(lines: &[Line], space: f64) -> HashMap<usize, (usize, TableLayout)> {
+    let mut tables = HashMap::new();
+    let mut index = 0;
+    while index < lines.len() {
+        let Some(first) = split_cells(&lines[index], space) else {
+            index += 1;
+            continue;
+        };
+        let starts: Vec<f64> = first.iter().map(|cell| cell[0].x).collect();
+        let mut rows = vec![cells_to_layout(first)];
+        let mut end = index + 1;
+        while end < lines.len() {
+            let Some(cells) = split_cells(&lines[end], space) else { break };
+            if cells.len() != starts.len() {
+                break;
+            }
+            if !cells.iter().zip(&starts).all(|(cell, start)| (cell[0].x - start).abs() <= TABLE_ALIGN_PT) {
+                break;
+            }
+            rows.push(cells_to_layout(cells));
+            end += 1;
+        }
+        if rows.len() >= TABLE_MIN_ROWS {
+            tables.insert(index, (end, TableLayout { rows }));
+            index = end;
+        } else {
+            index += 1;
+        }
+    }
+    tables
+}
+
+/// Splits a line into table cells: a gap wider than 2.5 spaces (or above
+/// [`TABLE_X_JUMP_PT`]) opens the next cell. A line that does not split into
+/// at least two cells is never a table row.
+fn split_cells(line: &Line, space: f64) -> Option<Vec<&[TextFragment]>> {
+    if line.fragments.len() < 2 {
+        return None;
+    }
+    let limit = (2.5 * space).max(1.0);
+    let mut cells: Vec<&[TextFragment]> = Vec::new();
+    let mut start = 0;
+    for index in 1..line.fragments.len() {
+        let before = &line.fragments[index - 1];
+        let gap = line.fragments[index].x - (before.x + before.width);
+        if gap > limit || gap > TABLE_X_JUMP_PT {
+            cells.push(&line.fragments[start..index]);
+            start = index;
+        }
+    }
+    cells.push(&line.fragments[start..]);
+    (cells.len() >= 2).then_some(cells)
+}
+
+/// Builds a row of cells from fragment slices, joining each cell's fragments
+/// into styled spans and trimming the result.
+fn cells_to_layout(cells: Vec<&[TextFragment]>) -> Vec<TableCellLayout> {
+    cells
+        .into_iter()
+        .map(|fragments| {
+            let x = fragments.first().map_or(0.0, |fragment| fragment.x);
+            let mut spans = assemble([fragments]);
+            trim_spans(&mut spans);
+            TableCellLayout { spans, x }
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
 // Paragraphs
 // ---------------------------------------------------------------------------
 
@@ -915,6 +1035,8 @@ struct Draft {
     lines: Vec<Line>,
     class: Class,
     marker: Option<Marker>,
+    /// Set for a table block: its lines were consumed by the table rows.
+    table: Option<TableLayout>,
 }
 
 impl Draft {
@@ -965,7 +1087,7 @@ fn line_pitch<'a>(pairs: impl Iterator<Item = &'a [Line]>, body: f64) -> Option<
 }
 
 /// Splits a page's flows into paragraph drafts.
-fn page_drafts(flows: &[Flow], body: f64, bold_body: bool) -> Vec<Draft> {
+fn page_drafts(flows: &[Flow], body: f64, bold_body: bool, space: f64) -> Vec<Draft> {
     let page_pitch = line_pitch(flows.iter().flat_map(|flow| flow.lines.windows(2)), body).unwrap_or(1.2 * body);
     let geometry_of = |column: Column| {
         let members: Vec<&Flow> = flows.iter().filter(|flow| flow.column == column).collect();
@@ -981,7 +1103,17 @@ fn page_drafts(flows: &[Flow], body: f64, bold_body: bool) -> Vec<Draft> {
             Column::Right => right.as_ref(),
         };
         let Some(geometry) = geometry else { continue };
-        for (index, line) in flow.lines.iter().enumerate() {
+        // Rows of a table are consumed as one block; the remaining lines run
+        // through the paragraph logic below.
+        let tables = table_starts(&flow.lines, space);
+        let mut index = 0;
+        while index < flow.lines.len() {
+            if let Some((end, table)) = tables.get(&index) {
+                drafts.push(Draft { lines: Vec::new(), class: Class::Body, marker: None, table: Some(table.clone()) });
+                index = *end;
+                continue;
+            }
+            let line = &flow.lines[index];
             let class = classify(line, body, bold_body);
             let mut marker = if class == Class::Large { None } else { parse_marker(&line.text) };
             let boundary = match drafts.last() {
@@ -1010,8 +1142,9 @@ fn page_drafts(flows: &[Flow], body: f64, bold_body: bool) -> Vec<Draft> {
             }
             match drafts.last_mut() {
                 Some(current) if !boundary && marker.is_none() => current.lines.push(line.clone()),
-                _ => drafts.push(Draft { lines: vec![line.clone()], class, marker }),
+                _ => drafts.push(Draft { lines: vec![line.clone()], class, marker, table: None }),
             }
+            index += 1;
         }
         previous_column = Some(flow.column);
     }
@@ -1294,8 +1427,13 @@ fn heading_kind(draft: &Draft) -> Option<HeadingKind> {
 fn finish_blocks(drafts: Vec<Draft>, heading_sizes: &[i64]) -> Vec<LayoutBlock> {
     let mut lists = ListTracker::default();
     let mut blocks = Vec::new();
-    for draft in drafts {
+    for mut draft in drafts {
         let size = draft.size();
+        if let Some(table) = draft.table.take() {
+            lists.reset();
+            blocks.push(LayoutBlock { kind: BlockKind::Table(table), spans: Vec::new(), size });
+            continue;
+        }
         let mut spans = assemble(draft.lines.iter().map(|line| line.fragments.as_slice()));
         let kind = match &draft.marker {
             Some(marker) => {
@@ -1784,6 +1922,79 @@ mod tests {
         assert_eq!(font_style("MinionPro-It"), (false, true));
         assert_eq!(font_style("CMBX10"), (true, false));
         assert_eq!(font_style("Helvetica"), (false, false));
+    }
+
+    /// A table row: the words of a left and a right cell on one baseline.
+    fn row(left: &str, x: f64, right: &str, rx: f64, y: f64, bold_left: bool) -> Vec<TextFragment> {
+        let mut fragments: Vec<TextFragment> = line(left, x, y, 11.0);
+        if bold_left {
+            fragments = fragments.into_iter().map(bold).collect();
+        }
+        fragments.extend(line(right, rx, y, 11.0));
+        fragments
+    }
+
+    #[test]
+    fn recovers_a_two_column_table_from_aligned_rows() {
+        let pages = vec![page(
+            1,
+            vec![
+                row("Station", 72.0, "Flow rate", 300.0, 700.0, true),
+                row("North bridge", 72.0, "12", 300.0, 686.0, false),
+                row("Old mill", 72.0, "9", 300.0, 672.0, false),
+            ],
+        )];
+        let recovered = recover_pages(&pages);
+        assert_eq!(recovered[0].blocks.len(), 1, "{:#?}", recovered[0].blocks);
+        let BlockKind::Table(table) = &recovered[0].blocks[0].kind else {
+            panic!("a table block, got {:?}", recovered[0].blocks[0].kind);
+        };
+        assert_eq!(table.rows.len(), 3);
+        let cell = |row: usize, column: usize| {
+            table.rows[row][column].spans.iter().map(|span| span.text.as_str()).collect::<String>()
+        };
+        assert_eq!(cell(0, 0), "Station");
+        assert_eq!(cell(0, 1), "Flow rate");
+        assert_eq!(cell(1, 0), "North bridge");
+        assert_eq!(cell(1, 1), "12");
+        assert_eq!(cell(2, 0), "Old mill");
+        assert_eq!(cell(2, 1), "9");
+        assert!(table.rows[0][0].spans.iter().all(|span| span.bold));
+        assert!(!table.rows[1][0].spans.iter().any(|span| span.bold));
+    }
+
+    #[test]
+    fn doubled_spaces_in_prose_do_not_make_a_table() {
+        let pages = vec![page(
+            1,
+            vec![
+                line("The gauges were read twice a day and the readings were", 72.0, 700.0, 11.0),
+                line("checked against a reference stick  before every run at noon", 72.0, 686.0, 11.0),
+            ],
+        )];
+        let recovered = recover_pages(&pages);
+        assert!(
+            recovered[0].blocks.iter().all(|block| block.kind == BlockKind::Paragraph),
+            "{:#?}",
+            recovered[0].blocks
+        );
+    }
+
+    #[test]
+    fn rows_whose_cells_do_not_line_up_stay_prose() {
+        let pages = vec![page(
+            1,
+            vec![
+                row("Alpha", 72.0, "first value", 300.0, 700.0, false),
+                row("Beta", 140.0, "second value", 360.0, 686.0, false),
+            ],
+        )];
+        let recovered = recover_pages(&pages);
+        assert!(
+            recovered[0].blocks.iter().all(|block| block.kind == BlockKind::Paragraph),
+            "{:#?}",
+            recovered[0].blocks
+        );
     }
 
     #[test]

@@ -257,3 +257,27 @@ Effort estimates assume a single developer.
   DOCX/ODT merged tables, tab stops, image wrap and watermarks and the RTF /
   text-format losses; `unit.rs` feature manifests report the writer watermark,
   impress hidden slides / footer and slide-object charts.
+
+## 4.6.0 — PDF tools (plan 2, phase 8) (delivered)
+
+- **Editable annotations**: `pdfcore::annotate` writes real `/Annots`
+  dictionaries (note, highlight, underline, strike, ink, text box,
+  image/signature stamp) and lists, moves, resizes, updates and deletes
+  existing annotations; the flatten path stays as a toggle.
+- **Fill and sign**: the Annotate screen has a canvas signature pad (draw or
+  pick an image) that places a stamp annotation, separate from PAdES signing;
+  the PDF Studio certificate section is platform-aware and Android signs with
+  a picked `.p12`/`.pfx`.
+- **Keyword/regex redaction**: `redact::detect_patterns` finds keyword and
+  pattern matches per page on the safe Rust regex engine; the Redact screen
+  previews and confirms them next to the built-in detector.
+- **Organize**: blank page insertion through the page plan, an outline
+  (bookmark) editor writing `/Outlines` incrementally.
+- **Stamps**: header/footer templates with `{page}`/`{pages}` tokens and Bates
+  numbering, appended as new revisions so signatures survive.
+- **N-up/booklet**: `pdfcore::nup` turns source pages into Form XObjects and
+  paints 2-up/4-up sheets or saddle-stitch booklets.
+- **PDF to Word**: password-protected PDFs, simple table recovery mapped to
+  real Word tables, and per-list numbering (`startOverride`) so adjacent
+  numbered lists no longer continue each other; the Writer editor and the PDF
+  export follow the same restart rule.

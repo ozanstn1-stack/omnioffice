@@ -100,6 +100,26 @@ fn texts(page: &LayoutPage) -> Vec<String> {
     page.blocks.iter().map(|block| block.text()).collect()
 }
 
+/// The words of a line, each positioned after the previous one plus a space;
+/// an empty word stands for a second space.
+fn prose(words: &[&'static str], x: f64, y: f64, size: f64) -> Vec<Row> {
+    let space = pdfcore::numbering::helvetica_text_width(" ", size);
+    let mut cursor = x;
+    words
+        .iter()
+        .map(|word| {
+            let row = ("F1", size, cursor, y, *word);
+            cursor += pdfcore::numbering::helvetica_text_width(word, size) + space;
+            row
+        })
+        .collect()
+}
+
+/// A table row: the left and the right cell on one baseline.
+fn table_row(y: f64, left: &'static str, right: &'static str) -> Vec<Row> {
+    vec![("F1", 11.0, 72.0, y, left), ("F1", 11.0, 320.0, y, right)]
+}
+
 fn check_structure(pages: &[LayoutPage]) {
     assert_eq!(pages.len(), 2);
 
@@ -168,6 +188,59 @@ fn recover_file_returns_the_same_structure() {
         assert_eq!(recovered.source, TextSource::ContentStream);
     }
     check_structure(&recovered.pages);
+}
+
+#[test]
+fn recovers_a_two_column_three_row_table() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("table.pdf");
+    let mut rows = vec![("F1", 11.0, 72.0, 700.0, "Measurements")];
+    rows.extend(table_row(660.0, "Station", "Flow rate"));
+    rows.extend(table_row(646.0, "North bridge", "12"));
+    rows.extend(table_row(632.0, "Old mill", "9"));
+    build_pdf(&path, &[rows]);
+
+    let positioned = content_stream_pages(&path, None).expect("content stream pages");
+    let recovered = recover_pages(&positioned);
+    let table = recovered[0]
+        .blocks
+        .iter()
+        .find_map(|block| match &block.kind {
+            BlockKind::Table(table) => Some(table),
+            _ => None,
+        })
+        .expect("a Table block");
+    assert_eq!(table.rows.len(), 3);
+    let cell = |row: usize, column: usize| {
+        table.rows[row][column].spans.iter().map(|span| span.text.as_str()).collect::<String>()
+    };
+    assert_eq!(cell(0, 0), "Station");
+    assert_eq!(cell(0, 1), "Flow rate");
+    assert_eq!(cell(1, 0), "North bridge");
+    assert_eq!(cell(1, 1), "12");
+    assert_eq!(cell(2, 0), "Old mill");
+    assert_eq!(cell(2, 1), "9");
+    // The line above the table stays a paragraph.
+    assert!(recovered[0].blocks.iter().any(|block| block.kind == BlockKind::Paragraph));
+}
+
+#[test]
+fn a_paragraph_with_two_spaces_stays_a_paragraph() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("prose.pdf");
+    let mut rows =
+        prose(&["The", "survey", "recorded", "a", "steady", "rise", "at", "every", "station"], 72.0, 700.0, 11.0);
+    rows.extend(prose(
+        &["and", "", "the", "team", "checked", "the", "gauges", "against", "the", "reference", "stick", "daily"],
+        72.0,
+        686.0,
+        11.0,
+    ));
+    build_pdf(&path, &[rows]);
+
+    let positioned = content_stream_pages(&path, None).expect("content stream pages");
+    let recovered = recover_pages(&positioned);
+    assert!(recovered[0].blocks.iter().all(|block| block.kind == BlockKind::Paragraph), "{:#?}", recovered[0].blocks);
 }
 
 #[test]

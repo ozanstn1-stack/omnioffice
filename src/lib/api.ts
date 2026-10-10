@@ -17,21 +17,28 @@ import type {
   AiTextResult,
   AiTranslateRequest,
   Annotation,
+  AnnotationEditItem,
+  AnnotationEditReport,
   AppInfo,
+  BatesOptions,
   CompressEstimate,
   CompareOptions,
   CompareReport,
   CompressOptions,
   CropItem,
   DocumentInspection,
+  EditableAnnotation,
   EngineStatus,
+  HeaderFooterOptions,
   ImageItem,
   ImageToPdfOptions,
   NumberingOptions,
+  NupOptions,
   OcrLanguage,
   OcrOptions,
   OperationEntry,
   OpResult,
+  OutlineEntry,
   OutputSpec,
   PagePlanItem,
   PdfInfo,
@@ -436,6 +443,75 @@ export const annotatePdf = (
 ) =>
   invokeTracked<OpResult>("annotate_pdf", {
     request: { input, output, annotations, password, jobId, keepSignatures },
+  });
+
+/** Real (editable) annotations written into the page's `/Annots` array. */
+export const pdfAnnotateEditable = (
+  input: string,
+  output: OutputSpec,
+  annotations: Annotation[],
+  jobId: string,
+  password?: string,
+  keepSignatures = true,
+) =>
+  invokeTracked<OpResult>("pdf_annotate_editable", {
+    request: { input, output, annotations, password, jobId, keepSignatures },
+  });
+
+/** Lists the document's annotations in display space (top-left origin). */
+export const pdfListAnnotations = (path: string, password?: string) =>
+  invoke<EditableAnnotation[]>("pdf_list_annotations", { path, password: password || null });
+
+/** Moves, resizes, updates or deletes existing annotations by index. */
+export const pdfEditAnnotations = (input: string, output: OutputSpec, edits: AnnotationEditItem[], password?: string) =>
+  invoke<AnnotationEditReport>("pdf_edit_annotations", {
+    request: { input, output, edits, password },
+  });
+
+/** Keyword/regex matches for redaction, next to the built-in detector. */
+export const detectRedactionMatches = (
+  path: string,
+  keywords: string[],
+  pattern: string | null,
+  caseSensitive: boolean,
+  pages: number[] | null,
+  jobId: string,
+  password?: string,
+) =>
+  invokeTracked<RedactionMatch[]>("detect_redaction_matches", {
+    request: { path, keywords, pattern, caseSensitive, pages, password, jobId },
+  });
+
+/** Writes the document outline (bookmarks) as a new revision. */
+export const pdfSetOutline = (
+  input: string,
+  output: OutputSpec,
+  entries: OutlineEntry[],
+  jobId: string,
+  password?: string,
+) =>
+  invokeTracked<OpResult>("pdf_set_outline", {
+    request: { input, output, entries, password, jobId },
+  });
+
+/** Header/footer text and Bates numbering stamps in one revision. */
+export const stampPdf = (
+  input: string,
+  output: OutputSpec,
+  headerFooter: HeaderFooterOptions | null,
+  bates: BatesOptions | null,
+  jobId: string,
+  password?: string,
+  keepSignatures = true,
+) =>
+  invokeTracked<OpResult>("stamp_pdf", {
+    request: { input, output, headerFooter, bates, password, jobId, keepSignatures },
+  });
+
+/** N-up sheets and saddle-stitch booklets. */
+export const nupPdf = (input: string, output: OutputSpec, options: NupOptions, jobId: string, password?: string) =>
+  invokeTracked<OpResult>("nup_pdf", {
+    request: { input, output, options, password, jobId },
   });
 
 export const redactPdf = (
