@@ -87,6 +87,12 @@ pub struct ConvertOptions {
     pub page_size: Option<String>,
     pub orientation: Option<String>,
     pub margin_pt: Option<f64>,
+    /// Password for an encrypted PDF input. `office_convert` keeps its
+    /// `{ input, output, options }` request shape; the frontend carries this
+    /// inside the options bag. It is only ever passed to pdfcore and never
+    /// persisted or logged.
+    #[serde(default)]
+    pub password: Option<String>,
 }
 
 fn extension(path: &Path) -> String {
@@ -751,9 +757,23 @@ pub struct ConversionInfo {
     pub warnings: Vec<String>,
 }
 
+/// Maps a pdfcore failure onto the office payload, keeping the stable
+/// password codes the frontend already translates.
+fn pdfcore_payload(error: pdfcore::error::PdfError) -> OfficeErrorPayload {
+    let code = match &error {
+        pdfcore::error::PdfError::PasswordRequired => Some("password_required"),
+        pdfcore::error::PdfError::WrongPassword => Some("wrong_password"),
+        _ => None,
+    };
+    match code {
+        Some(code) => OfficeErrorPayload { code: code.to_string(), message: error.to_string() },
+        None => payload(OfficeError::internal(error.to_string())),
+    }
+}
+
 /// Maps the layout pdfcore recovered onto the Writer model: headings use the
-/// Heading1-3 styles, list items carry their list level, and every page after
-/// the first starts with a page break.
+/// Heading1-3 styles, list items carry their list level, tables become real
+/// Word tables, and every page after the first starts with a page break.
 fn pdf_layout_to_document(title: &str, recovered: &pdfcore::pdf2doc::RecoveredDocument) -> TextDocument {
     use pdfcore::pdf2doc::{BlockKind, ListKind};
 
@@ -774,6 +794,17 @@ fn pdf_layout_to_document(title: &str, recovered: &pdfcore::pdf2doc::RecoveredDo
     let mut page_break = false;
     for page in &recovered.pages {
         for (index, block) in page.blocks.iter().enumerate() {
+            let starts_page = page_break && index == 0;
+            if let BlockKind::Table(layout) = &block.kind {
+                if starts_page {
+                    // A table cannot carry a page break, so the break becomes
+                    // its own block just before the table.
+                    document.blocks.push(Block::PageBreak);
+                }
+                page_break = false;
+                document.blocks.push(Block::Table { table: pdf_table_to_model(layout, page.width) });
+                continue;
+            }
             let mut props = ParaProps::default();
             match &block.kind {
                 BlockKind::Paragraph => {}
@@ -788,10 +819,12 @@ fn pdf_layout_to_document(title: &str, recovered: &pdfcore::pdf2doc::RecoveredDo
                         marker: item.marker.clone(),
                     });
                 }
+                // Tables are mapped above.
+                BlockKind::Table(_) => {}
             }
             // The break goes on the first block of the page, not into a
             // paragraph of its own that could spill onto an extra page.
-            props.page_break_before = page_break && index == 0;
+            props.page_break_before = starts_page;
             page_break = false;
             let runs = block
                 .spans
@@ -809,14 +842,76 @@ fn pdf_layout_to_document(title: &str, recovered: &pdfcore::pdf2doc::RecoveredDo
     document
 }
 
+/// A recovered table as a Writer table: one paragraph per cell with the
+/// recovered styling. Column widths follow the cells' left edges; the last
+/// column reaches the page's right margin.
+fn pdf_table_to_model(layout: &pdfcore::pdf2doc::TableLayout, page_width: f64) -> TableData {
+    let rows = layout
+        .rows
+        .iter()
+        .map(|row| TableRow {
+            cells: row
+                .iter()
+                .map(|cell| TableCell {
+                    blocks: vec![Block::Paragraph {
+                        props: ParaProps::default(),
+                        runs: cell
+                            .spans
+                            .iter()
+                            .map(|span| Run {
+                                text: span.text.clone(),
+                                bold: span.bold,
+                                italic: span.italic,
+                                ..Default::default()
+                            })
+                            .collect(),
+                    }],
+                    colspan: 1,
+                    rowspan: 1,
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        })
+        .collect();
+    TableData {
+        rows,
+        column_widths_pt: pdf_column_widths(layout, page_width),
+        borders: true,
+        border_color: "#94a3b8".into(),
+        align: "left".into(),
+    }
+}
+
+/// Column widths from the first row's cell starts: each column runs to the
+/// next cell's left edge, and the last one to the page's right margin. A
+/// minimum keeps a degenerate table legible.
+fn pdf_column_widths(layout: &pdfcore::pdf2doc::TableLayout, page_width: f64) -> Vec<f64> {
+    let Some(first) = layout.rows.first() else { return Vec::new() };
+    let left = first.first().map_or(0.0, |cell| cell.x);
+    first
+        .iter()
+        .enumerate()
+        .map(|(index, cell)| {
+            let width = match first.get(index + 1) {
+                Some(next) => next.x - cell.x,
+                None => page_width - left - cell.x,
+            };
+            width.max(12.0)
+        })
+        .collect()
+}
+
 /// The earlier conversion: one paragraph per text line pdfium extracts.
-fn pdf_plain_text_document(input: &Path, title: &str) -> Result<TextDocument, OfficeErrorPayload> {
-    let pages =
-        pdfcore::render::page_geometries(input, None).map_err(|e| payload(OfficeError::internal(e.to_string())))?;
+fn pdf_plain_text_document(
+    input: &Path,
+    title: &str,
+    password: Option<&str>,
+) -> Result<TextDocument, OfficeErrorPayload> {
+    let pages = pdfcore::render::page_geometries(input, password).map_err(pdfcore_payload)?;
     let mut document = TextDocument { title: title.to_string(), ..Default::default() };
     for page in &pages {
-        let content = pdfcore::render::extract_page_text(input, None, page.page)
-            .map_err(|e| payload(OfficeError::internal(e.to_string())))?;
+        let content = pdfcore::render::extract_page_text(input, password, page.page).map_err(pdfcore_payload)?;
         for line in content.lines() {
             let trimmed = line.trim();
             if !trimmed.is_empty() {
@@ -830,9 +925,10 @@ fn pdf_plain_text_document(input: &Path, title: &str) -> Result<TextDocument, Of
     Ok(document)
 }
 
-pub fn convert(input: &Path, output: &Path, _options: &ConvertOptions) -> Result<ConversionInfo, OfficeErrorPayload> {
+pub fn convert(input: &Path, output: &Path, options: &ConvertOptions) -> Result<ConversionInfo, OfficeErrorPayload> {
     let input_extension = extension(input);
     let output_extension = extension(output);
+    let password = options.password.as_deref();
     let mut warnings = Vec::new();
 
     // 1. PDF input conversions (images, text, Word document)
@@ -856,11 +952,11 @@ pub fn convert(input: &Path, output: &Path, _options: &ConvertOptions) -> Result
                 &prefix,
                 &[],
                 pdfcore::docutil::OverwritePolicy::Replace,
-                None,
+                password,
                 &silent,
                 &cancel,
             )
-            .map_err(|e| payload(OfficeError::internal(e.to_string())))?;
+            .map_err(pdfcore_payload)?;
             return Ok(ConversionInfo {
                 input: input.to_string_lossy().to_string(),
                 output: result
@@ -872,12 +968,11 @@ pub fn convert(input: &Path, output: &Path, _options: &ConvertOptions) -> Result
                 warnings: vec![format!("Extracted {} page(s) to images.", result.files.len())],
             });
         } else if output_extension == "txt" {
-            let pages = pdfcore::render::page_geometries(input, None)
-                .map_err(|e| payload(OfficeError::internal(e.to_string())))?;
+            let pages = pdfcore::render::page_geometries(input, password).map_err(pdfcore_payload)?;
             let mut text = String::new();
             for page in &pages {
-                let content = pdfcore::render::extract_page_text(input, None, page.page)
-                    .map_err(|e| payload(OfficeError::internal(e.to_string())))?;
+                let content =
+                    pdfcore::render::extract_page_text(input, password, page.page).map_err(pdfcore_payload)?;
                 text.push_str(&content);
                 text.push_str("\n\n");
             }
@@ -889,18 +984,32 @@ pub fn convert(input: &Path, output: &Path, _options: &ConvertOptions) -> Result
                 warnings: vec![],
             });
         } else if output_extension == "docx" {
-            // Layout recovery keeps paragraphs, headings, lists and pages; a
-            // file it cannot read (or one without a text layer) falls back to
-            // one paragraph per extracted line.
+            // Layout recovery keeps paragraphs, headings, lists, tables and
+            // pages; a file it cannot read (or one without a text layer) falls
+            // back to one paragraph per extracted line. A missing or wrong
+            // password, however, must surface as the real error instead of a
+            // silent empty document.
             let title = officecore::io::file_stem(input);
-            let recovered = pdfcore::pdf2doc::recover_file(input, None).ok().filter(|found| found.has_text());
+            let recovered = match pdfcore::pdf2doc::recover_file(input, password) {
+                Ok(found) if found.has_text() => Some(found),
+                Ok(_) => None,
+                Err(error) => {
+                    if matches!(
+                        error,
+                        pdfcore::error::PdfError::PasswordRequired | pdfcore::error::PdfError::WrongPassword
+                    ) {
+                        return Err(pdfcore_payload(error));
+                    }
+                    None
+                }
+            };
             let (document, message) = match recovered {
                 Some(found) => (
                     pdf_layout_to_document(&title, &found),
-                    "Paragraphs, headings, lists and page breaks recovered from the PDF into a Word DOCX document.",
+                    "Paragraphs, headings, lists, tables and page breaks recovered from the PDF into a Word DOCX document.",
                 ),
                 None => (
-                    pdf_plain_text_document(input, &title)?,
+                    pdf_plain_text_document(input, &title, password)?,
                     "Text content extracted from PDF into Word DOCX document.",
                 ),
             };
@@ -1427,6 +1536,104 @@ mod tests {
         assert!(paragraphs[4].0.page_break_before);
         assert!(!paragraphs[0].0.page_break_before);
         assert!(!paragraphs[5].0.page_break_before);
+    }
+
+    /// A one-page PDF with a two-column, three-row table and a short line
+    /// above it; every cell is its own text-positioning run.
+    fn write_table_pdf(path: &Path) {
+        use lopdf::{dictionary, Document, Object, Stream};
+        let mut doc = Document::new();
+        let regular = doc.add_object(Object::Dictionary(dictionary! {
+            "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica", "Encoding" => "WinAnsiEncoding",
+        }));
+        let resources = doc.add_object(Object::Dictionary(dictionary! { "Font" => dictionary! { "F1" => regular } }));
+        let rows = [(640.0, "Station", "Flow rate"), (626.0, "North bridge", "12"), (612.0, "Old mill", "9")];
+        let mut content = String::from("BT\n/F1 11 Tf\n72 700 Td\n(Measurements) Tj\nET\n");
+        for (y, left, right) in rows {
+            content.push_str(&format!(
+                "BT\n/F1 11 Tf\n72 {y} Td\n({left}) Tj\nET\nBT\n/F1 11 Tf\n320 {y} Td\n({right}) Tj\nET\n"
+            ));
+        }
+        let content_id = doc.add_object(Object::Stream(Stream::new(dictionary! {}, content.into_bytes())));
+        let page_id = doc.add_object(Object::Dictionary(dictionary! {
+            "Type" => "Page",
+            "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
+            "Resources" => resources,
+            "Contents" => content_id,
+        }));
+        let pages_id = doc.add_object(Object::Dictionary(dictionary! {
+            "Type" => "Pages",
+            "Kids" => vec![Object::Reference(page_id)],
+            "Count" => 1,
+        }));
+        doc.get_object_mut(page_id).unwrap().as_dict_mut().unwrap().set("Parent", Object::Reference(pages_id));
+        let catalog = doc.add_object(Object::Dictionary(dictionary! { "Type" => "Catalog", "Pages" => pages_id }));
+        doc.trailer.set("Root", Object::Reference(catalog));
+        doc.save(path).expect("save pdf");
+    }
+
+    #[test]
+    fn pdf_to_docx_recovers_simple_tables() {
+        let dir = tempfile::tempdir().unwrap();
+        let (input, output) = (dir.path().join("table.pdf"), dir.path().join("table.docx"));
+        write_table_pdf(&input);
+        convert(&input, &output, &ConvertOptions::default()).expect("convert");
+
+        let read = docx::read_docx_file(&output).expect("read docx");
+        let table = read
+            .document
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                Block::Table { table } => Some(table),
+                _ => None,
+            })
+            .expect("the recovered document must contain a table");
+        assert_eq!(table.rows.len(), 3);
+        assert_eq!(table.rows[0].cells.len(), 2);
+        assert_eq!(table.rows[0].cells[0].blocks[0].plain_text().trim(), "Station");
+        assert_eq!(table.rows[0].cells[1].blocks[0].plain_text().trim(), "Flow rate");
+        assert!(table.rows[1].cells[0].blocks[0].plain_text().contains("North bridge"));
+        assert!(table.rows[2].cells[1].blocks[0].plain_text().contains("9"));
+        assert!(table.borders);
+        assert!(table.column_widths_pt.iter().all(|width| *width > 0.0));
+        assert!(read.document.blocks.iter().any(|block| matches!(block, Block::Paragraph { .. })));
+    }
+
+    #[test]
+    fn protected_pdf_needs_its_password_to_convert() {
+        use pdfcore::docutil::OverwritePolicy;
+        use pdfcore::security::{protect_pdf, ProtectOptions};
+
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("notes.pdf");
+        let protected = dir.path().join("notes-locked.pdf");
+        let output = dir.path().join("notes.docx");
+        write_sample_pdf(&input);
+        let options = ProtectOptions {
+            user_password: "s3cret".into(),
+            owner_password: "s3cret".into(),
+            allow_printing: true,
+            allow_copying: true,
+            allow_editing: true,
+            allow_commenting: true,
+        };
+        protect_pdf(&input, &protected, &options, OverwritePolicy::Replace, None).expect("protect");
+
+        // No password: the real PasswordRequired error, not an empty document.
+        let error = convert(&protected, &output, &ConvertOptions::default()).expect_err("password required");
+        assert_eq!((error.code.as_str(), output.exists()), ("password_required", false));
+
+        // A wrong password is reported as such.
+        let wrong = ConvertOptions { password: Some("guess".into()), ..Default::default() };
+        let error = convert(&protected, &output, &wrong).expect_err("wrong password");
+        assert_eq!(error.code, "wrong_password");
+
+        // The right password converts.
+        let right = ConvertOptions { password: Some("s3cret".into()), ..Default::default() };
+        convert(&protected, &output, &right).expect("convert with password");
+        let read = docx::read_docx_file(&output).expect("read docx");
+        assert!(read.document.plain_text().contains("Quarterly Notes"));
     }
 
     #[test]

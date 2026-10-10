@@ -432,6 +432,42 @@ struct Renderer<'a> {
     pending_notes: Vec<(String, Vec<Run>)>,
     /// Space reserved for the pending notes on the current page.
     note_reserve: f64,
+    /// Running ordered-list counters for the block being drawn.
+    numbering: ListNumbering,
+}
+
+/// Ordered-list counters across consecutive blocks: every level keeps the
+/// number it showed last and the start of the list it belongs to. A numbered
+/// item continues its level when it shares the list's start and restarts when
+/// the start changes; any non-numbered block clears every counter, exactly
+/// like the DOCX writer's numbering runs.
+#[derive(Default)]
+struct ListNumbering {
+    /// `(last number, list start)` per level; `None` for a level not yet seen
+    /// in the current run.
+    levels: Vec<Option<(u32, u32)>>,
+}
+
+impl ListNumbering {
+    fn reset(&mut self) {
+        self.levels.clear();
+    }
+
+    /// The number an item of `list` shows, advancing its level.
+    fn advance(&mut self, list: &ListInfo) -> u32 {
+        let level = list.level.min(8) as usize;
+        let start = list.start.max(1);
+        self.levels.truncate(level + 1);
+        if self.levels.len() <= level {
+            self.levels.resize(level + 1, None);
+        }
+        let value = match self.levels[level] {
+            Some((value, run_start)) if run_start == start => value + 1,
+            _ => start,
+        };
+        self.levels[level] = Some((value, start));
+        value
+    }
 }
 
 impl<'a> Renderer<'a> {
@@ -471,6 +507,7 @@ impl<'a> Renderer<'a> {
             known_bookmark_pages,
             pending_notes: Vec::new(),
             note_reserve: 0.0,
+            numbering: ListNumbering::default(),
         }
     }
 
@@ -752,7 +789,7 @@ impl<'a> Renderer<'a> {
         }
     }
 
-    fn draw_paragraph(&mut self, props: &ParaProps, runs: &[Run]) {
+    fn draw_paragraph(&mut self, props: &ParaProps, runs: &[Run], list_number: Option<u32>) {
         if self.current.is_none() {
             self.start_page();
         }
@@ -785,7 +822,8 @@ impl<'a> Renderer<'a> {
         let mut first_line = true;
         let list_marker = props.list.as_ref().map(|list| {
             if list.kind == "number" {
-                format!("{}.", list.start)
+                // The running number the list reached, not every item's start.
+                format!("{}.", list_number.unwrap_or(list.start))
             } else {
                 match list.level % 3 {
                     0 => "•".to_string(),
@@ -935,14 +973,30 @@ impl<'a> Renderer<'a> {
                 if props.page_break_before {
                     self.next_column();
                 }
-                self.draw_paragraph(props, runs);
+                let list_number = match props.list.as_ref() {
+                    Some(list) if list.kind == "number" => Some(self.numbering.advance(list)),
+                    _ => {
+                        // A bullet or a plain paragraph ends the numbered run.
+                        self.numbering.reset();
+                        None
+                    }
+                };
+                self.draw_paragraph(props, runs, list_number);
             }
-            Block::Table { table } => self.draw_table(table),
+            Block::Table { table } => {
+                self.numbering.reset();
+                self.draw_table(table);
+            }
             Block::Image { image, width_pt, height_pt, align, .. } => {
+                self.numbering.reset();
                 self.draw_image(image, *width_pt, *height_pt, align)
             }
-            Block::PageBreak => self.next_column(),
+            Block::PageBreak => {
+                self.numbering.reset();
+                self.next_column();
+            }
             Block::Rule => {
+                self.numbering.reset();
                 if self.remaining() < 18.0 {
                     self.next_column();
                 }
@@ -954,24 +1008,28 @@ impl<'a> Renderer<'a> {
                 self.y += 14.0;
             }
             Block::Toc { entries } => {
+                self.numbering.reset();
                 for entry in entries {
                     let (props, runs) = toc_entry_line(entry);
-                    self.draw_paragraph(&props, &runs);
+                    self.draw_paragraph(&props, &runs, None);
                 }
             }
-            Block::SectionBreak { section } => match section.start.as_str() {
-                "continuous" => self.set_section(section.clone(), false),
-                "oddPage" | "evenPage" => {
-                    self.finish_page();
-                    let want_odd = section.start == "oddPage";
-                    while (self.pages.len() + 1) % 2 == if want_odd { 0 } else { 1 } {
-                        self.start_page_with(section.clone());
+            Block::SectionBreak { section } => {
+                self.numbering.reset();
+                match section.start.as_str() {
+                    "continuous" => self.set_section(section.clone(), false),
+                    "oddPage" | "evenPage" => {
                         self.finish_page();
+                        let want_odd = section.start == "oddPage";
+                        while (self.pages.len() + 1) % 2 == if want_odd { 0 } else { 1 } {
+                            self.start_page_with(section.clone());
+                            self.finish_page();
+                        }
+                        self.start_page_with(section.clone());
                     }
-                    self.start_page_with(section.clone());
+                    _ => self.set_section(section.clone(), true),
                 }
-                _ => self.set_section(section.clone(), true),
-            },
+            }
         }
     }
 }
@@ -1922,6 +1980,25 @@ mod tests {
         assert!(bytes.starts_with(b"%PDF"));
         assert!(bytes.windows(5).any(|window| window == b"%%EOF"));
         assert!(bytes.len() > 3000);
+    }
+
+    #[test]
+    fn ordered_list_markers_increment_within_a_run() {
+        let list = |level: u32, start: u32| ListInfo { kind: "number".into(), level, start, marker: "1.".into() };
+        let mut numbering = ListNumbering::default();
+        assert_eq!(numbering.advance(&list(0, 1)), 1);
+        assert_eq!(numbering.advance(&list(0, 1)), 2);
+        // A deeper level counts on its own.
+        assert_eq!(numbering.advance(&list(1, 1)), 1);
+        assert_eq!(numbering.advance(&list(1, 1)), 2);
+        // Returning to the outer level continues its count.
+        assert_eq!(numbering.advance(&list(0, 1)), 3);
+        // A non-numbered block clears every counter.
+        numbering.reset();
+        assert_eq!(numbering.advance(&list(0, 1)), 1);
+        // A different start restarts the level instead of continuing it.
+        assert_eq!(numbering.advance(&list(0, 5)), 5);
+        assert_eq!(numbering.advance(&list(0, 5)), 6);
     }
 
     #[test]

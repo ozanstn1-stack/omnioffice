@@ -256,7 +256,7 @@ fn app_properties(document: &TextDocument) -> String {
     writer.finish()
 }
 
-fn write_paragraph_properties(writer: &mut XmlWriter, props: &ParaProps, sect: Option<&str>) {
+fn write_paragraph_properties(writer: &mut XmlWriter, props: &ParaProps, sect: Option<&str>, num_id: Option<u32>) {
     let mut children: Vec<String> = Vec::new();
     if !props.style.is_empty() && props.style != "Normal" {
         children.push(format!("<w:pStyle w:val=\"{}\"/>", crate::xml::escape_attr(&props.style)));
@@ -318,11 +318,13 @@ fn write_paragraph_properties(writer: &mut XmlWriter, props: &ParaProps, sect: O
         children.push(format!("<w:tabs>{}</w:tabs>", tabs.concat()));
     }
     if let Some(list) = &props.list {
-        let num_id = if list.kind == "number" { 2 } else { 1 };
+        // Bullets share one numbering; every numbered run gets its own
+        // `w:num` so Word restarts it at the list's start.
+        let resolved = if list.kind == "number" { num_id.unwrap_or(2) } else { 1 };
         children.push(format!(
             "<w:numPr><w:ilvl w:val=\"{}\"/><w:numId w:val=\"{}\"/></w:numPr>",
             list.level.min(8),
-            num_id
+            resolved
         ));
     }
     if let Some(sect) = sect {
@@ -388,6 +390,9 @@ struct DocxState {
     comment_ids: HashMap<String, u32>,
     revision_ids: HashMap<String, u32>,
     revision_seq: u32,
+    /// `w:numId` of the numbered-list run each paragraph belongs to, keyed by
+    /// the address of its properties (see [`plan_list_numbering`]).
+    list_num_ids: HashMap<usize, u32>,
 }
 
 impl DocxState {
@@ -644,8 +649,9 @@ fn write_field_run(state: &mut DocxState, writer: &mut XmlWriter, run: &Run, fie
 }
 
 fn write_paragraph(state: &mut DocxState, writer: &mut XmlWriter, props: &ParaProps, runs: &[Run], sect: Option<&str>) {
+    let num_id = state.list_num_ids.get(&(props as *const ParaProps as usize)).copied();
     writer.raw("<w:p>");
-    write_paragraph_properties(writer, props, sect);
+    write_paragraph_properties(writer, props, sect, num_id);
     for run in runs {
         let comment = run.comment.as_deref().and_then(|id| state.comment_id(id));
         if let Some(comment) = comment {
@@ -1177,7 +1183,7 @@ fn write_styles(document: &TextDocument) -> String {
     writer.finish()
 }
 
-fn write_numbering() -> String {
+fn write_numbering(runs: &[u32]) -> String {
     let mut writer = XmlWriter::new();
     writer.declaration();
     writer.raw(&format!("<w:numbering {NS_DECL}>"));
@@ -1206,8 +1212,69 @@ fn write_numbering() -> String {
     writer.raw("</w:abstractNum>");
     writer.raw("<w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num>");
     writer.raw("<w:num w:numId=\"2\"><w:abstractNumId w:val=\"1\"/></w:num>");
+    // One `w:num` per numbered-list run, each restarting level 0 at the
+    // list's own start so a list never continues the previous one.
+    for (index, start) in runs.iter().enumerate() {
+        writer.raw(&format!(
+            "<w:num w:numId=\"{}\"><w:abstractNumId w:val=\"1\"/><w:lvlOverride w:ilvl=\"0\"><w:startOverride w:val=\"{}\"/></w:lvlOverride></w:num>",
+            3 + index as u32,
+            start
+        ));
+    }
     writer.raw("</w:numbering>");
     writer.finish()
+}
+
+/// Plans the numbered-list runs of the document body.
+///
+/// A run is a contiguous sequence of numbered paragraphs; any other paragraph
+/// or block ends it, and a numbered paragraph whose `start` differs from the
+/// run's starts a new run. Every run gets its own numbering id, so Word
+/// restarts it at the list's start. The walk descends into table cells so a
+/// list inside a table participates in the surrounding sequence. Returns each
+/// run's start (in order; run `index` uses `numId` `3 + index`) and the id of
+/// each paragraph, keyed by its address.
+fn plan_list_numbering(document: &TextDocument) -> (Vec<u32>, HashMap<usize, u32>) {
+    let mut sequence: Vec<Option<&ParaProps>> = Vec::new();
+    collect_list_properties(&document.blocks, &mut sequence);
+    let mut starts: Vec<u32> = Vec::new();
+    let mut ids: HashMap<usize, u32> = HashMap::new();
+    let mut active: Option<usize> = None;
+    for props in sequence.into_iter().flatten() {
+        let Some(list) = props.list.as_ref().filter(|list| list.kind == "number") else {
+            active = None;
+            continue;
+        };
+        let start = list.start.max(1);
+        let index = match active {
+            Some(index) if starts[index] == start => index,
+            _ => {
+                starts.push(start);
+                active = Some(starts.len() - 1);
+                starts.len() - 1
+            }
+        };
+        ids.insert(props as *const ParaProps as usize, 3 + index as u32);
+    }
+    (starts, ids)
+}
+
+/// Collects every paragraph in document order; non-paragraph blocks push
+/// `None` so they break a list run.
+fn collect_list_properties<'a>(blocks: &'a [Block], out: &mut Vec<Option<&'a ParaProps>>) {
+    for block in blocks {
+        match block {
+            Block::Paragraph { props, .. } => out.push(Some(props)),
+            Block::Table { table } => {
+                for row in &table.rows {
+                    for cell in &row.cells {
+                        collect_list_properties(&cell.blocks, out);
+                    }
+                }
+            }
+            _ => out.push(None),
+        }
+    }
 }
 
 fn write_settings(even_and_odd_headers: bool, track_revisions: bool) -> String {
@@ -1317,6 +1384,8 @@ fn initials(author: &str) -> String {
 
 pub fn write_docx(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     let mut state = DocxState::new();
+    let (list_starts, list_num_ids) = plan_list_numbering(document);
+    state.list_num_ids = list_num_ids;
 
     // Comments are exported only when they exist in the model; the id map also
     // decides which `w:commentReference` runs are written.
@@ -1370,7 +1439,7 @@ pub fn write_docx(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     let document_xml = format!("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:document {NS_DECL}><w:body>{}</w:body></w:document>", body.finish());
 
     let styles_xml = write_styles(document);
-    let numbering_xml = write_numbering();
+    let numbering_xml = write_numbering(&list_starts);
     let settings_xml = write_settings(parts.even_odd, document.track_changes);
 
     // Notes and comments parts are written after the body so every referenced
@@ -2859,6 +2928,50 @@ mod tests {
             .collect();
         assert!(lists.iter().any(|list| list.kind == "bullet"));
         assert!(lists.iter().any(|list| list.kind == "number"));
+    }
+
+    #[test]
+    fn adjacent_numbered_lists_get_their_own_numbering() {
+        let numbered = |text: &str, start: u32| Block::Paragraph {
+            props: ParaProps {
+                list: Some(ListInfo { kind: "number".into(), level: 0, start, marker: "1.".into() }),
+                ..Default::default()
+            },
+            runs: vec![Run { text: text.into(), ..Default::default() }],
+        };
+        let mut document = TextDocument::new_blank("Lists");
+        document.blocks = vec![numbered("one", 1), numbered("two", 1), numbered("three", 5), numbered("four", 5)];
+        let bytes = write_docx(&document).unwrap();
+
+        // Each list owns a `w:num` with its own start, so Word restarts the
+        // second list instead of continuing the first at 3.
+        let reader = ZipReader::open(bytes.clone()).unwrap();
+        let numbering = reader.read_text("word/numbering.xml").unwrap();
+        assert!(
+            numbering.contains("<w:num w:numId=\"3\"><w:abstractNumId w:val=\"1\"/><w:lvlOverride w:ilvl=\"0\"><w:startOverride w:val=\"1\"/></w:lvlOverride></w:num>"),
+            "{numbering}"
+        );
+        assert!(
+            numbering.contains("<w:num w:numId=\"4\"><w:abstractNumId w:val=\"1\"/><w:lvlOverride w:ilvl=\"0\"><w:startOverride w:val=\"5\"/></w:lvlOverride></w:num>"),
+            "{numbering}"
+        );
+        let body = reader.read_text("word/document.xml").unwrap();
+        assert!(body.contains("<w:numId w:val=\"3\"/>"), "{body}");
+        assert!(body.contains("<w:numId w:val=\"4\"/>"), "{body}");
+
+        let read = read_docx(&bytes).unwrap();
+        let items: Vec<&ParaProps> = read
+            .document
+            .blocks
+            .iter()
+            .filter_map(|block| match block {
+                Block::Paragraph { props, .. } => {
+                    props.list.as_ref().filter(|list| list.kind == "number").map(|_| props)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(items.len(), 4, "warnings: {:?}", read.warnings);
     }
 
     #[test]
