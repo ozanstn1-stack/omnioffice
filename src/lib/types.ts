@@ -211,17 +211,7 @@ export interface CropItem {
 }
 
 export type AnnotationKind =
-  | "text"
-  | "image"
-  | "rect"
-  | "highlight"
-  | "line"
-  | "note"
-  | "underline"
-  | "strike"
-  | "ink"
-  | "textbox"
-  | "signature";
+  "text" | "image" | "rect" | "highlight" | "line" | "note" | "underline" | "strike" | "ink" | "textbox" | "signature";
 
 export interface Annotation {
   kind: AnnotationKind;
@@ -329,13 +319,7 @@ export interface BatesOptions {
   start: number;
   /** Zero-padded digit count for the number part. */
   digits: number;
-  position:
-    | "bottomLeft"
-    | "bottomCenter"
-    | "bottomRight"
-    | "topLeft"
-    | "topCenter"
-    | "topRight";
+  position: "bottomLeft" | "bottomCenter" | "bottomRight" | "topLeft" | "topCenter" | "topRight";
   fontSizePt: number;
   color: string;
   marginPt: number;

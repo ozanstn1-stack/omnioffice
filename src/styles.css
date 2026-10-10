@@ -495,6 +495,31 @@ body {
   box-shadow: -3px 0 0 0 var(--accent);
 }
 
+/* v4.6 Organize: blank-page placeholder tile + bookmark (outline) editor rows. */
+.organize-blank {
+  position: absolute;
+  inset: 9px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.thumb:hover .organize-blank {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.organize-outline-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px 56px 32px 32px 32px;
+  gap: 6px;
+  align-items: center;
+}
+
 .progress-track {
   height: 8px;
   border-radius: 999px;
@@ -3175,4 +3200,117 @@ body {
   .ai-dlg-compare {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Annotate v4.6: signature pad, page overlay boxes and selection.
+   --------------------------------------------------------------------------- */
+
+.annotate-draw-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  cursor: crosshair;
+}
+
+.annotate-box {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.annotate-box-selected {
+  outline: 1.5px dashed var(--accent);
+  outline-offset: 1px;
+  cursor: move;
+  pointer-events: auto;
+}
+
+.annotate-note {
+  border: 1px solid;
+  border-radius: 6px;
+  padding: 2px 5px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.annotate-underline {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 2px;
+}
+
+.annotate-strike {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 100%;
+  height: 2px;
+  transform: translateY(-50%);
+}
+
+.annotate-strokes {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.annotate-hit {
+  pointer-events: stroke;
+  cursor: move;
+}
+
+.annotate-drag-preview {
+  position: absolute;
+  border: 1.5px dashed;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  pointer-events: none;
+}
+
+.annotate-signature-pad {
+  display: block;
+  width: 100%;
+  height: 220px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-2);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.annotate-signature-preview {
+  max-width: 180px;
+  max-height: 64px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  object-fit: contain;
+}
+
+.annotate-existing-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.annotate-existing-item:hover {
+  border-color: var(--border-strong);
+}
+
+.annotate-existing-item-active {
+  border-color: var(--accent);
+  background: var(--accent-weak);
 }

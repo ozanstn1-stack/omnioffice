@@ -51,7 +51,7 @@ import { useDev, useDrop, useIsDarkTheme, useJobs, useRecent, useSettings, useTo
 import packageJson from "../package.json";
 import { devLaunchContext } from "./lib/api";
 import { watchLaunchFiles } from "./lib/launch-files";
-import type { Navigate, ScreenId } from "./lib/nav";
+import type { Navigate, PageToolsTab, ScreenId } from "./lib/nav";
 // Route-level code splitting: every screen is loaded when it is first opened,
 // so the startup bundle only carries the shell, the navigation and the shared
 // UI primitives. The lazy import maps the named export to the default export
@@ -131,7 +131,7 @@ import { openIntoWorkspace } from "./office/useOfficeSession";
 import { isOfficePath, openOfficePath, useOfficeTabs } from "./lib/office-store";
 import { routeForPath } from "./lib/open-route";
 
-type PageToolTab = "extract" | "delete" | "rotate" | "resize" | "crop" | "numbering";
+type PageToolTab = PageToolsTab["tab"];
 
 /** Shown while a lazily imported screen chunk is being fetched. */
 function ScreenLoading() {

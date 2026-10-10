@@ -1,15 +1,33 @@
 import { useState } from "react";
-import { Crop, FileOutput, Hash, RotateCw, Scaling, Trash2 } from "lucide-react";
-import { Button, Card, Field, Segmented, Slider, TextInput, Toggle } from "../components/ui";
+import { Crop, FileOutput, Hash, RotateCw, Scaling, Stamp, Trash2 } from "lucide-react";
+import { Button, Card, ColorInput, Field, Segmented, Slider, TextInput, Toggle } from "../components/ui";
 import { DropZone, FileList, InfoStrip, OutputBar, ResultCard } from "../components/files";
 import { PageCanvas, Pager } from "../components/pages";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
-import { addPageNumbers, cropPages, deletePages, extractPages, resizePages, rotatePages } from "../lib/api";
-import type { CropItem, NumberingOptions, ResizeOptions, WatermarkPosition } from "../lib/types";
+import { parsePageList } from "../lib/format";
+import {
+  addPageNumbers,
+  cropPages,
+  deletePages,
+  extractPages,
+  nupPdf,
+  resizePages,
+  rotatePages,
+  stampPdf,
+} from "../lib/api";
+import type {
+  BatesOptions,
+  CropItem,
+  HeaderFooterOptions,
+  NumberingOptions,
+  NupOptions,
+  ResizeOptions,
+  WatermarkPosition,
+} from "../lib/types";
 
-type Tab = "extract" | "delete" | "rotate" | "resize" | "crop" | "numbering";
+type Tab = "extract" | "delete" | "rotate" | "resize" | "crop" | "numbering" | "stamp" | "nup";
 
 export function PageTools({
   tab: initialTab = "extract",
@@ -29,6 +47,8 @@ export function PageTools({
     resize: t("pageTools.resizeTitle"),
     crop: t("pageTools.cropTitle"),
     numbering: t("pageTools.numberingTitle"),
+    stamp: t("pageTools.stampTitle"),
+    nup: t("pageTools.nupTitle"),
   };
   const subtitles: Record<Tab, string> = {
     extract: t("pageTools.extractSubtitle"),
@@ -37,6 +57,8 @@ export function PageTools({
     resize: t("pageTools.resizeSubtitle"),
     crop: t("pageTools.cropSubtitle"),
     numbering: t("pageTools.numberingSubtitle"),
+    stamp: t("pageTools.stampSubtitle"),
+    nup: t("pageTools.nupSubtitle"),
   };
 
   return (
@@ -54,6 +76,8 @@ export function PageTools({
             { value: "resize", label: t("common.size") },
             { value: "crop", label: t("common.crop") },
             { value: "numbering", label: t("pageTools.numberingTitle") },
+            { value: "stamp", label: t("pageTools.stampTitle") },
+            { value: "nup", label: t("pageTools.nupTitle") },
           ]}
         />
       }
@@ -64,6 +88,8 @@ export function PageTools({
       {tab === "resize" ? <Resize initialFiles={initialFiles} dragging={dragging} /> : null}
       {tab === "crop" ? <CropTool initialFiles={initialFiles} dragging={dragging} /> : null}
       {tab === "numbering" ? <Numbering initialFiles={initialFiles} dragging={dragging} /> : null}
+      {tab === "stamp" ? <StampTool initialFiles={initialFiles} dragging={dragging} /> : null}
+      {tab === "nup" ? <NupTool initialFiles={initialFiles} dragging={dragging} /> : null}
     </Screen>
   );
 }
@@ -489,6 +515,335 @@ const POSITIONS: WatermarkPosition[] = [
   "bottom_center",
   "bottom_right",
 ];
+
+const BATES_POSITIONS: BatesOptions["position"][] = [
+  "topLeft",
+  "topCenter",
+  "topRight",
+  "bottomLeft",
+  "bottomCenter",
+  "bottomRight",
+];
+
+function batesPositionLabel(position: BatesOptions["position"]): string {
+  return position.replace(/([A-Z])/g, " $1").replace(/^./, (character) => character.toUpperCase());
+}
+
+function StampTool({ initialFiles, dragging }: { initialFiles?: string[]; dragging: boolean }) {
+  const t = useT();
+  const session = useTool({ suffix: "_stamped", accept: "pdf", initialPaths: initialFiles });
+  const [keepSignatures, setKeepSignatures] = useState(true);
+  const [options, setOptions] = useState<HeaderFooterOptions>({
+    headerLeft: "",
+    headerCenter: "",
+    headerRight: "",
+    footerLeft: "",
+    footerCenter: "",
+    footerRight: "",
+    fontSizePt: 10,
+    color: "#333333",
+    marginPt: 28,
+    pages: [],
+    startNumber: 1,
+    countFromStart: true,
+  });
+  const [bates, setBates] = useState<BatesOptions>({
+    prefix: "",
+    suffix: "",
+    start: 1,
+    digits: 6,
+    position: "bottomRight",
+    fontSizePt: 10,
+    color: "#333333",
+    marginPt: 28,
+    pages: [],
+  });
+  const [selection, setSelection] = useState("");
+
+  const patch = (values: Partial<HeaderFooterOptions>) => setOptions((previous) => ({ ...previous, ...values }));
+  const patchBates = (values: Partial<BatesOptions>) => setBates((previous) => ({ ...previous, ...values }));
+  // One style for both stamps: the shared controls update header/footer and Bates.
+  const patchStyle = (values: Partial<Pick<HeaderFooterOptions, "fontSizePt" | "color" | "marginPt">>) => {
+    setOptions((previous) => ({ ...previous, ...values }));
+    setBates((previous) => ({ ...previous, ...values }));
+  };
+
+  const headerFilled = [
+    options.headerLeft,
+    options.headerCenter,
+    options.headerRight,
+    options.footerLeft,
+    options.footerCenter,
+    options.footerRight,
+  ].some((value) => value.trim() !== "");
+  const batesFilled = bates.prefix.trim() !== "" || bates.suffix.trim() !== "";
+
+  const apply = () =>
+    session.run(async (jobId, overwrite) => {
+      const pages = parsePageList(selection, session.info?.pageCount ?? 0) ?? [];
+      return stampPdf(
+        session.primary?.path ?? "",
+        session.outputSpec(overwrite),
+        headerFilled ? { ...options, pages } : null,
+        batesFilled ? { ...bates, pages } : null,
+        jobId,
+        session.password || undefined,
+        keepSignatures,
+      );
+    });
+
+  const templates: [keyof HeaderFooterOptions, string][] = [
+    ["headerLeft", t("pageTools.headerLeft")],
+    ["headerCenter", t("pageTools.headerCenter")],
+    ["headerRight", t("pageTools.headerRight")],
+    ["footerLeft", t("pageTools.footerLeft")],
+    ["footerCenter", t("pageTools.footerCenter")],
+    ["footerRight", t("pageTools.footerRight")],
+  ];
+
+  return (
+    <TwoColumn
+      main={
+        <>
+          <InputColumn session={session} dragging={dragging} />
+          <Card className="p-4 flex flex-col gap-3">
+            <p className="text-xs muted flex items-center gap-1.5">
+              <Stamp size={12} /> {t("pageTools.tokensHint")}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {templates.map(([key, label]) => (
+                <Field key={key} label={label}>
+                  <TextInput
+                    className="input-sm"
+                    value={String(options[key] ?? "")}
+                    aria-label={label}
+                    spellCheck={false}
+                    onChange={(event) => patch({ [key]: event.target.value })}
+                  />
+                </Field>
+              ))}
+            </div>
+          </Card>
+        </>
+      }
+      side={
+        <>
+          <OutputBar
+            session={session}
+            runLabel={t("pageTools.applyStamp")}
+            disabled={!session.primary || !(headerFilled || batesFilled)}
+            onRun={() => void apply()}
+          />
+          <OptionCard title={t("pageTools.stampTitle")}>
+            <Field label={t("annotate.fontSize")}>
+              <Slider
+                value={options.fontSizePt}
+                min={6}
+                max={24}
+                onChange={(value) => patchStyle({ fontSizePt: value })}
+              />
+            </Field>
+            <Field label={t("common.color")}>
+              <ColorInput value={options.color} onChange={(value) => patchStyle({ color: value })} />
+            </Field>
+            <Field label={t("convert.margin")}>
+              <Slider value={options.marginPt} min={6} max={90} onChange={(value) => patchStyle({ marginPt: value })} />
+            </Field>
+            <Field label={t("pageTools.startNumber")}>
+              <TextInput
+                type="number"
+                value={options.startNumber}
+                onChange={(event) => patch({ startNumber: Math.max(1, Number(event.target.value) || 1) })}
+              />
+            </Field>
+            <Toggle
+              checked={options.countFromStart}
+              onChange={(value) => patch({ countFromStart: value })}
+              label={t("pageTools.countFromStart")}
+            />
+            <SelectionField
+              value={selection}
+              onChange={setSelection}
+              pageCount={session.info?.pageCount ?? 0}
+              disabled
+            />
+          </OptionCard>
+          <OptionCard title="Bates">
+            <div className="grid grid-cols-2 gap-2">
+              <Field label={t("pageTools.batesPrefix")}>
+                <TextInput
+                  className="input-sm"
+                  value={bates.prefix}
+                  aria-label={t("pageTools.batesPrefix")}
+                  spellCheck={false}
+                  onChange={(event) => patchBates({ prefix: event.target.value })}
+                />
+              </Field>
+              <Field label={t("pageTools.batesSuffix")}>
+                <TextInput
+                  className="input-sm"
+                  value={bates.suffix}
+                  aria-label={t("pageTools.batesSuffix")}
+                  spellCheck={false}
+                  onChange={(event) => patchBates({ suffix: event.target.value })}
+                />
+              </Field>
+              <Field label={t("pageTools.batesStart")}>
+                <TextInput
+                  type="number"
+                  className="input-sm"
+                  value={bates.start}
+                  onChange={(event) => patchBates({ start: Math.max(1, Number(event.target.value) || 1) })}
+                />
+              </Field>
+              <Field label={t("pageTools.batesDigits")}>
+                <TextInput
+                  type="number"
+                  className="input-sm"
+                  value={bates.digits}
+                  onChange={(event) => patchBates({ digits: Math.max(1, Number(event.target.value) || 1) })}
+                />
+              </Field>
+            </div>
+            <Field label={t("pageTools.numberingPosition")}>
+              <select
+                className="select"
+                value={bates.position}
+                onChange={(event) => patchBates({ position: event.target.value as BatesOptions["position"] })}
+              >
+                {BATES_POSITIONS.map((position) => (
+                  <option key={position} value={position}>
+                    {batesPositionLabel(position)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </OptionCard>
+          <OptionCard title={t("metadata.signatures")}>
+            <Toggle checked={keepSignatures} onChange={setKeepSignatures} label={t("metadata.keepSignatures")} />
+            <p className="muted small">{t("annotate.keepSignaturesHint")}</p>
+          </OptionCard>
+          {session.result ? <ResultCard result={session.result} onReset={session.resetResult} /> : null}
+        </>
+      }
+    />
+  );
+}
+
+function NupTool({ initialFiles, dragging }: { initialFiles?: string[]; dragging: boolean }) {
+  const t = useT();
+  const session = useTool({ suffix: "_nup", accept: "pdf", initialPaths: initialFiles });
+  const [options, setOptions] = useState<NupOptions>({
+    perSheet: 2,
+    booklet: false,
+    orientation: "portrait",
+    pageSize: "source",
+    marginPt: 18,
+    gutterPt: 0,
+    border: false,
+    pages: [],
+  });
+  const [selection, setSelection] = useState("");
+
+  const patch = (values: Partial<NupOptions>) => setOptions((previous) => ({ ...previous, ...values }));
+
+  const apply = () =>
+    session.run(async (jobId, overwrite) =>
+      nupPdf(
+        session.primary?.path ?? "",
+        session.outputSpec(overwrite),
+        {
+          ...options,
+          booklet: options.perSheet === 4 ? false : options.booklet,
+          pages: parsePageList(selection, session.info?.pageCount ?? 0) ?? [],
+        },
+        jobId,
+        session.password || undefined,
+      ),
+    );
+
+  return (
+    <TwoColumn
+      main={<InputColumn session={session} dragging={dragging} />}
+      side={
+        <>
+          <OutputBar
+            session={session}
+            runLabel={t("pageTools.applyNup")}
+            disabled={!session.primary}
+            onRun={() => void apply()}
+          />
+          <OptionCard title={t("pageTools.nupTitle")}>
+            <Field label={t("pageTools.nupPerSheet")}>
+              <Segmented<"2" | "4">
+                value={options.perSheet === 4 ? "4" : "2"}
+                onChange={(value) =>
+                  patch({ perSheet: Number(value), booklet: value === "4" ? false : options.booklet })
+                }
+                options={[
+                  { value: "2", label: "2" },
+                  { value: "4", label: "4" },
+                ]}
+              />
+            </Field>
+            <div
+              aria-disabled={options.perSheet === 4}
+              className={options.perSheet === 4 ? "opacity-50 cursor-not-allowed" : undefined}
+            >
+              <Toggle
+                checked={options.booklet}
+                onChange={(value) => {
+                  if (options.perSheet === 4) return;
+                  patch({ booklet: value });
+                }}
+                label={t("pageTools.nupBooklet")}
+              />
+            </div>
+            <Field label={t("convert.orientation")}>
+              <Segmented<NupOptions["orientation"]>
+                value={options.orientation}
+                onChange={(value) => patch({ orientation: value })}
+                options={[
+                  { value: "portrait", label: t("convert.portrait") },
+                  { value: "landscape", label: t("convert.landscape") },
+                ]}
+              />
+            </Field>
+            <Field label={t("pageTools.nupPageSize")}>
+              <select
+                className="select"
+                value={options.pageSize}
+                onChange={(event) => patch({ pageSize: event.target.value as NupOptions["pageSize"] })}
+              >
+                <option value="source">{t("pageTools.nupSource")}</option>
+                <option value="a4">A4</option>
+                <option value="letter">Letter</option>
+              </select>
+            </Field>
+            <Field label={t("pageTools.nupMargin")}>
+              <Slider value={options.marginPt} min={0} max={72} onChange={(value) => patch({ marginPt: value })} />
+            </Field>
+            <Field label={t("pageTools.nupGutter")}>
+              <Slider value={options.gutterPt} min={0} max={48} onChange={(value) => patch({ gutterPt: value })} />
+            </Field>
+            <Toggle
+              checked={options.border}
+              onChange={(value) => patch({ border: value })}
+              label={t("pageTools.nupBorder")}
+            />
+            <SelectionField
+              value={selection}
+              onChange={setSelection}
+              pageCount={session.info?.pageCount ?? 0}
+              disabled
+            />
+          </OptionCard>
+          {session.result ? <ResultCard result={session.result} onReset={session.resetResult} /> : null}
+        </>
+      }
+    />
+  );
+}
 
 function Numbering({ initialFiles, dragging }: { initialFiles?: string[]; dragging: boolean }) {
   const t = useT();

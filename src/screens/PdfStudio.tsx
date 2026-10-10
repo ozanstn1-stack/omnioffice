@@ -1413,7 +1413,12 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                   )}
                   <p className="muted small">{t("studio.storeSigningNote")}</p>
                 </div>
-              ) : null}
+              ) : (
+                <div className="stack">
+                  <p className="muted small">{t("studio.androidPfxNote")}</p>
+                  {pfxPath ? null : <p className="muted small">{t("studio.noPfxSelected")}</p>}
+                </div>
+              )}
 
               <div className="row">
                 <button type="button" className="btn btn-soft" onClick={() => void choosePfx()}>

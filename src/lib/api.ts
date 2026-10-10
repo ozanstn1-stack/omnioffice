@@ -463,12 +463,7 @@ export const pdfListAnnotations = (path: string, password?: string) =>
   invoke<EditableAnnotation[]>("pdf_list_annotations", { path, password: password || null });
 
 /** Moves, resizes, updates or deletes existing annotations by index. */
-export const pdfEditAnnotations = (
-  input: string,
-  output: OutputSpec,
-  edits: AnnotationEditItem[],
-  password?: string,
-) =>
+export const pdfEditAnnotations = (input: string, output: OutputSpec, edits: AnnotationEditItem[], password?: string) =>
   invoke<AnnotationEditReport>("pdf_edit_annotations", {
     request: { input, output, edits, password },
   });
@@ -514,13 +509,7 @@ export const stampPdf = (
   });
 
 /** N-up sheets and saddle-stitch booklets. */
-export const nupPdf = (
-  input: string,
-  output: OutputSpec,
-  options: NupOptions,
-  jobId: string,
-  password?: string,
-) =>
+export const nupPdf = (input: string, output: OutputSpec, options: NupOptions, jobId: string, password?: string) =>
   invokeTracked<OpResult>("nup_pdf", {
     request: { input, output, options, password, jobId },
   });
