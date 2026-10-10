@@ -31,7 +31,7 @@ lopdf = "0.45.0"
 p256 = { version = "0.13", features = ["ecdsa", "pkcs8", "std"] }
 pdfium-render = "0.9.4"
 pkcs12 = { version = "0.1", features = ["kdf"] }
-pkcs8 = "0.10"
+pkcs8 = "0.11"
 # PBES2 only; the PKCS#12 PBES1 (3DES) path is implemented in sign.rs because
 # pkcs5 intentionally refuses PBES1 decryption. `sha1-insecure` is needed to
 # accept the SHA-1 based PBKDF2 parameters Windows still writes by default.
