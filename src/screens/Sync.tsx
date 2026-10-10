@@ -14,6 +14,7 @@ import {
   Plus,
   RefreshCw,
   ShieldCheck,
+  Trash2,
   UploadCloud,
   X,
 } from "lucide-react";
@@ -25,6 +26,7 @@ import {
   EmptyState,
   Field,
   IconButton,
+  Modal,
   Spinner,
   TextInput,
   Toggle,
@@ -39,6 +41,7 @@ import {
   oauthSaveClient,
   oauthStatus,
   syncCapabilities,
+  syncDeleteRemote,
   syncDownload,
   syncForget,
   syncGetConfig,
@@ -125,6 +128,8 @@ export function Sync() {
   const [rows, setRows] = useState<Record<string, RowState>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  /** Local path whose "delete from cloud" confirmation is open. */
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const [remote, setRemote] = useState<SyncListEntry[] | null>(null);
   const [remoteError, setRemoteError] = useState<string | null>(null);
@@ -270,6 +275,26 @@ export function Sync() {
       }
     },
     [pushToast, selected, t],
+  );
+
+  /** Runs only after the confirmation dialog was accepted. */
+  const runDeleteRemote = useCallback(
+    async (path: string) => {
+      if (!requireEnabled()) return;
+      setBusy(path);
+      try {
+        const view = await syncDeleteRemote(path);
+        setRow(path, { kind: "ready", view });
+        pushToast({ kind: "success", title: t("sync.deleteRemoteDone"), detail: view.file });
+      } catch (error) {
+        const message = syncMessage(error, t("sync.errorTitle"));
+        setRow(path, { kind: "error", message });
+        pushToast({ kind: "error", title: t("sync.errorTitle"), detail: message });
+      } finally {
+        setBusy(null);
+      }
+    },
+    [pushToast, requireEnabled, setRow, t],
   );
 
   const addDocuments = useCallback(async () => {
@@ -846,6 +871,16 @@ export function Sync() {
                               <GitMerge size={13} />
                             </IconButton>
                           ) : null}
+                          <IconButton
+                            label={t("sync.deleteRemote")}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setDeleteTarget(path);
+                            }}
+                            disabled={!enabled || busy === path}
+                          >
+                            <Trash2 size={13} />
+                          </IconButton>
                           <span className="ml-auto">
                             <IconButton
                               label={t("sync.forget")}
@@ -933,6 +968,35 @@ export function Sync() {
           </>
         }
       />
+
+      {deleteTarget ? (
+        <Modal
+          title={t("sync.deleteRemote")}
+          onClose={() => setDeleteTarget(null)}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
+                {t("common.cancel")}
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => {
+                  const path = deleteTarget;
+                  setDeleteTarget(null);
+                  void runDeleteRemote(path);
+                }}
+              >
+                {t("common.delete")}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-[13.5px] mb-2">
+            {t("sync.deleteRemoteConfirm", { file: deleteTarget.split(/[\\/]/).pop() ?? deleteTarget })}
+          </p>
+          <p className="text-xs muted">{t("sync.deleteRemoteHint")}</p>
+        </Modal>
+      ) : null}
     </Screen>
   );
 }

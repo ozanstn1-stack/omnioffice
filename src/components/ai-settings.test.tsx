@@ -36,6 +36,9 @@ const invoke = vi.fn(async (command: string, payload?: unknown) => {
           ]
         : [{ id: "deepseek-flash", label: "DeepSeek V4.1 Flash", recommended: true }];
     }
+    case "ai_discover_models":
+      if (discoverFailure) throw discoverFailure;
+      return discoverResult;
     case "ai_library_default_dir":
       return "C:/docs/AI";
     case "ai_save_settings":
@@ -46,6 +49,16 @@ const invoke = vi.fn(async (command: string, payload?: unknown) => {
       return null;
   }
 });
+
+let discoverResult: unknown = {
+  models: [
+    { id: "deepseek-v4-pro", label: "DeepSeek V4.1 Pro", recommended: false },
+    { id: "deepseek-v4-flash", label: "DeepSeek V4.1 Flash", recommended: false },
+  ],
+  discovered: true,
+  message: "",
+};
+let discoverFailure: unknown = null;
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invoke(...(args as [string])) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
@@ -58,6 +71,7 @@ import { DEFAULT_SETTINGS } from "../lib/types";
 describe("AI provider settings", () => {
   beforeEach(() => {
     invoke.mockClear();
+    discoverFailure = null;
     useSettings.setState({ settings: { ...DEFAULT_SETTINGS }, loaded: true });
   });
 
@@ -134,5 +148,45 @@ describe("AI provider settings", () => {
     expect(screen.getByPlaceholderText("sk-d••••1234")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Remove key" }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("ai_clear_key", { provider: "deepseek" }));
+  });
+
+  it("discovers models from the provider and fills the dropdown", async () => {
+    const user = userEvent.setup();
+    render(<AiSettings />);
+    const modelSelect = (await screen.findAllByRole("combobox"))[1] as HTMLSelectElement;
+    // The static fallback list is there before discovery.
+    await waitFor(() => expect(modelSelect.value).toBe("deepseek-flash"));
+
+    await user.click(screen.getByRole("button", { name: "Discover models" }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("ai_discover_models"));
+    // The live list replaces the static options and the first entry is selected
+    // because the previously saved model is not in the discovered list.
+    expect(await screen.findByRole("option", { name: /deepseek-v4-pro/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /deepseek-v4-flash — DeepSeek V4\.1 Flash/ })).toBeInTheDocument();
+    await waitFor(() => expect(modelSelect.value).toBe("deepseek-v4-pro"));
+  });
+
+  it("shows the discovery failure message", async () => {
+    discoverFailure = { code: "internal", message: "connection refused" };
+    const user = userEvent.setup();
+    render(<AiSettings />);
+    await user.click(await screen.findByRole("button", { name: "Discover models" }));
+    expect(await screen.findByText("The model list could not be read: connection refused")).toBeInTheDocument();
+  });
+
+  it("reports a provider that lists no models", async () => {
+    discoverResult = {
+      models: [],
+      discovered: false,
+      message: "The provider did not list any models; using the built-in suggestions.",
+    };
+    const user = userEvent.setup();
+    render(<AiSettings />);
+    await user.click(await screen.findByRole("button", { name: "Discover models" }));
+    expect(
+      await screen.findByText(
+        "The model list could not be read: The provider did not list any models; using the built-in suggestions.",
+      ),
+    ).toBeInTheDocument();
   });
 });

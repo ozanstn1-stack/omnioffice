@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -25,6 +26,8 @@ vi.mock("@tauri-apps/api/path", () => ({
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(async () => null) }));
 
 import { useTool } from "./useTool";
+import { useSettings } from "./store";
+import { DEFAULT_SETTINGS } from "./types";
 
 function Harness({
   multiOutput,
@@ -52,11 +55,41 @@ function Harness({
   );
 }
 
+function RunHarness() {
+  const session = useTool({
+    suffix: "_merged",
+    accept: "pdf",
+    loadInfo: false,
+    initialPaths: ["C:/docs/sample-1.pdf"],
+  });
+  return (
+    <div>
+      <span data-testid="count">{session.files.length}</span>
+      <span data-testid="result">{session.result?.path ?? ""}</span>
+      <button
+        data-testid="run"
+        onClick={() =>
+          void session.run(async () => ({
+            path: "C:/docs/sample-1_merged.pdf",
+            pageCount: 1,
+            originalBytes: 100,
+            outputBytes: 90,
+            message: "ok",
+          }))
+        }
+      >
+        run
+      </button>
+    </div>
+  );
+}
+
 describe("useTool output suggestions", () => {
   beforeEach(() => {
     invoke.mockClear();
     appDataDir.mockClear();
     join.mockClear();
+    useSettings.setState({ settings: { ...DEFAULT_SETTINGS } });
   });
 
   it("puts multi-output results in a per-document folder and creates it", async () => {
@@ -119,5 +152,24 @@ describe("useTool output suggestions", () => {
       Object.defineProperty(navigator, "userAgent", { value: userAgent, configurable: true });
       vi.resetModules();
     }
+  });
+
+  it("writes the operation log only while keepOperationLog is on", async () => {
+    const user = userEvent.setup();
+    act(() => {
+      useSettings.setState({ settings: { ...DEFAULT_SETTINGS, keepOperationLog: false } });
+    });
+    render(<RunHarness />);
+    await waitFor(() => expect(screen.getByTestId("count").textContent).toBe("1"));
+
+    await user.click(screen.getByTestId("run"));
+    await waitFor(() => expect(screen.getByTestId("result").textContent).toBe("C:/docs/sample-1_merged.pdf"));
+    expect(invoke.mock.calls.some(([command]) => command === "log_operation")).toBe(false);
+
+    act(() => {
+      useSettings.setState({ settings: { ...DEFAULT_SETTINGS, keepOperationLog: true } });
+    });
+    await user.click(screen.getByTestId("run"));
+    await waitFor(() => expect(invoke.mock.calls.some(([command]) => command === "log_operation")).toBe(true));
   });
 });

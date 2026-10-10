@@ -424,16 +424,21 @@ export function useTool(options: ToolOptions): ToolSession {
             }
             setResult(outcome);
             // Persistent operation log (paths and sizes only - never content).
-            void logOperation({
-              operation: suffix.replace(/^_/, ""),
-              inputPath: filesRef.current.length ? filesRef.current[0].path : outcome.path,
-              outputPath: outcome.path,
-              pageCount: outcome.pageCount,
-              inputBytes: outcome.originalBytes,
-              outputBytes: outcome.outputBytes,
-              ok: true,
-              detail: outcome.message,
-            });
+            // Read the setting from the store outside the render cycle so a
+            // toggle takes effect for the very next operation; when it is off
+            // no `log_operation` call is made at all.
+            if (useSettings.getState().settings.keepOperationLog) {
+              void logOperation({
+                operation: suffix.replace(/^_/, ""),
+                inputPath: filesRef.current.length ? filesRef.current[0].path : outcome.path,
+                outputPath: outcome.path,
+                pageCount: outcome.pageCount,
+                inputBytes: outcome.originalBytes,
+                outputBytes: outcome.outputBytes,
+                ok: true,
+                detail: outcome.message,
+              });
+            }
             if (outcome.path) {
               void addRecentEntry({
                 path: outcome.path,

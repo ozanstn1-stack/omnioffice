@@ -1,14 +1,51 @@
-import { useEffect, useState } from "react";
-import { CheckCircle2, FilePlus2, FolderOpen, ScrollText, Trash2, XCircle } from "lucide-react";
-import { openAnyFile, revealAnyFile } from "../lib/mobile";
-import { Badge, Button, Card, EmptyState, Segmented } from "../components/ui";
+import { useEffect, useMemo, useState } from "react";
+import { CheckCircle2, Download, FilePlus2, FolderOpen, ScrollText, Trash2, XCircle } from "lucide-react";
+import { openAnyFile, revealAnyFile, saveFileBytes } from "../lib/mobile";
+import { Badge, Button, Card, EmptyState, Segmented, TextInput } from "../components/ui";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
-import { useRecent, useToasts } from "../lib/store";
+import { reportError, useRecent, useToasts } from "../lib/store";
 import { clearOperations, loadOperations } from "../lib/api";
 import type { OperationEntry } from "../lib/types";
 import { formatBytes, formatDate, isPdf } from "../lib/format";
 import type { Navigate } from "../lib/nav";
+
+/** RFC 4180 field: commas, quotes and line breaks force double quotes. */
+export function csvField(value: string): string {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+/** Case-insensitive match on the operation name or either path. */
+export function filterOperations(entries: OperationEntry[], filter: string): OperationEntry[] {
+  const needle = filter.trim().toLowerCase();
+  if (!needle) return entries;
+  return entries.filter(
+    (entry) =>
+      entry.operation.toLowerCase().includes(needle) ||
+      entry.inputPath.toLowerCase().includes(needle) ||
+      entry.outputPath.toLowerCase().includes(needle),
+  );
+}
+
+/** Serializes the (already filtered) rows with a stable header row. */
+export function operationsToCsv(entries: OperationEntry[]): string {
+  const header = ["operation", "input", "output", "pages", "bytesIn", "bytesOut", "ok", "detail"];
+  const rows = entries.map((entry) =>
+    [
+      entry.operation,
+      entry.inputPath,
+      entry.outputPath,
+      entry.pageCount ?? "",
+      entry.inputBytes ?? "",
+      entry.outputBytes ?? "",
+      entry.ok ? "true" : "false",
+      entry.detail ?? "",
+    ]
+      .map((cell) => csvField(String(cell)))
+      .join(","),
+  );
+  return [header.join(","), ...rows].join("\r\n");
+}
 
 export function History({ onNavigate }: { onNavigate: Navigate }) {
   const t = useT();
@@ -19,6 +56,9 @@ export function History({ onNavigate }: { onNavigate: Navigate }) {
 
   const [tab, setTab] = useState<"files" | "operations">("files");
   const [operations, setOperations] = useState<OperationEntry[] | null>(null);
+  const [filter, setFilter] = useState("");
+
+  const filtered = useMemo(() => filterOperations(operations ?? [], filter), [operations, filter]);
 
   useEffect(() => {
     void refresh();
@@ -31,6 +71,25 @@ export function History({ onNavigate }: { onNavigate: Navigate }) {
         .catch(() => setOperations([]));
     }
   }, [tab, operations]);
+
+  const exportCsv = async () => {
+    if (!filtered.length) {
+      pushToast({ kind: "info", title: t("history.exportEmpty") });
+      return;
+    }
+    try {
+      // Desktop save dialog or Android SAF: the same helper the diagnostics
+      // export uses, so no platform branching is needed here.
+      const saved = await saveFileBytes(
+        new TextEncoder().encode(operationsToCsv(filtered)),
+        "omnioffice-operations.csv",
+        { name: "CSV", extensions: ["csv"] },
+      );
+      if (saved) pushToast({ kind: "success", title: t("history.exported") });
+    } catch (error) {
+      reportError(error, t);
+    }
+  };
 
   return (
     <Screen
@@ -62,26 +121,45 @@ export function History({ onNavigate }: { onNavigate: Navigate }) {
 
       {tab === "operations" ? (
         <>
-          <div className="flex items-center justify-between">
-            <p className="text-xs muted">{operations ? `${operations.length}` : t("common.loading")}</p>
-            <Button
-              size="sm"
-              variant="danger"
-              icon={<Trash2 size={14} />}
-              disabled={!operations?.length}
-              onClick={() => {
-                void clearOperations().then(() => {
-                  setOperations([]);
-                  pushToast({ kind: "success", title: t("history.operationsCleared") });
-                });
-              }}
-            >
-              {t("history.clearOperations")}
-            </Button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs muted">
+              {operations ? `${filtered.length}/${operations.length}` : t("common.loading")}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <TextInput
+                value={filter}
+                aria-label={t("history.filter")}
+                placeholder={t("history.filterPlaceholder")}
+                spellCheck={false}
+                className="w-56"
+                onChange={(event) => setFilter(event.target.value)}
+              />
+              <Button size="sm" icon={<Download size={14} />} onClick={() => void exportCsv()}>
+                {t("history.export")}
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                icon={<Trash2 size={14} />}
+                disabled={!operations?.length}
+                onClick={() => {
+                  void clearOperations().then(() => {
+                    setOperations([]);
+                    pushToast({ kind: "success", title: t("history.operationsCleared") });
+                  });
+                }}
+              >
+                {t("history.clearOperations")}
+              </Button>
+            </div>
           </div>
           {operations && operations.length === 0 ? (
             <Card>
               <EmptyState icon={<ScrollText size={22} />} title={t("history.operationsEmpty")} />
+            </Card>
+          ) : filtered.length === 0 ? (
+            <Card>
+              <EmptyState icon={<ScrollText size={22} />} title={t("history.exportEmpty")} />
             </Card>
           ) : (
             <Card className="p-2">
@@ -96,7 +174,7 @@ export function History({ onNavigate }: { onNavigate: Navigate }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {(operations ?? []).map((entry) => {
+                  {filtered.map((entry) => {
                     const delta =
                       entry.inputBytes && entry.outputBytes
                         ? `${formatBytes(entry.inputBytes)} → ${formatBytes(entry.outputBytes)}`
