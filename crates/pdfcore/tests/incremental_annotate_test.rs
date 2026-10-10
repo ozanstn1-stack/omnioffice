@@ -57,6 +57,8 @@ fn rectangle() -> Annotation {
         line_width_pt: 2.0,
         x2: None,
         y2: None,
+        strokes: Vec::new(),
+        image_base64: None,
     }
 }
 

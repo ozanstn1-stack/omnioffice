@@ -129,7 +129,7 @@ fn options_keep_snake_case() {
 #[test]
 fn plans_annotations_and_results_keep_their_shapes() {
     assert_keys(
-        &serde_json::to_value(PagePlanItem { source_page: 2, rotation_delta: 90 }).unwrap(),
+        &serde_json::to_value(PagePlanItem { source_page: 2, rotation_delta: 90, ..Default::default() }).unwrap(),
         &["source_page", "rotation_delta"],
     );
 
@@ -149,6 +149,8 @@ fn plans_annotations_and_results_keep_their_shapes() {
         line_width_pt: 1.0,
         x2: None,
         y2: None,
+        strokes: Vec::new(),
+        image_base64: None,
     };
     assert_keys(
         &serde_json::to_value(&annotation).unwrap(),

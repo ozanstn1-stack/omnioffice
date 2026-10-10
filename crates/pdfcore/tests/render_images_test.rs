@@ -323,6 +323,8 @@ fn annotations_are_flattened_into_pages() {
             line_width_pt: 3.0,
             x2: None,
             y2: None,
+            strokes: Vec::new(),
+            image_base64: None,
         },
         Annotation {
             kind: "highlight".into(),
@@ -340,6 +342,8 @@ fn annotations_are_flattened_into_pages() {
             line_width_pt: 2.0,
             x2: None,
             y2: None,
+            strokes: Vec::new(),
+            image_base64: None,
         },
         Annotation {
             kind: "line".into(),
@@ -357,6 +361,8 @@ fn annotations_are_flattened_into_pages() {
             line_width_pt: 2.0,
             x2: Some(340.0),
             y2: Some(360.0),
+            strokes: Vec::new(),
+            image_base64: None,
         },
         Annotation {
             kind: "text".into(),
@@ -374,6 +380,8 @@ fn annotations_are_flattened_into_pages() {
             line_width_pt: 1.0,
             x2: None,
             y2: None,
+            strokes: Vec::new(),
+            image_base64: None,
         },
         Annotation {
             kind: "image".into(),
@@ -391,6 +399,8 @@ fn annotations_are_flattened_into_pages() {
             line_width_pt: 1.0,
             x2: None,
             y2: None,
+            strokes: Vec::new(),
+            image_base64: None,
         },
     ];
     annotate_pdf(&input, &out, &annotations, OverwritePolicy::Replace, None, &no_progress, &CancelToken::new())
