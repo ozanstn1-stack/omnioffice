@@ -28,6 +28,8 @@
 //! * `flatten`   - annotation and form flattening
 //! * `forms`     - AcroForm fields (list/fill/validate) and page object editing
 //! * `pdf2doc`   - layout recovery (paragraphs, headings, lists) for PDF to Word
+//! * `nup`       - N-up sheets and booklet imposition
+//! * `stamp`     - header/footer text and Bates numbering stamps
 
 pub mod annotate;
 pub mod compare;
@@ -49,6 +51,7 @@ pub mod ltv;
 pub mod merge;
 pub mod metadata;
 pub mod numbering;
+pub mod nup;
 pub mod ocr;
 pub mod organize;
 pub mod pagelayout;
@@ -64,6 +67,7 @@ pub mod revocation;
 pub mod sanitize;
 pub mod security;
 pub mod sign;
+pub mod stamp;
 pub mod textbox;
 pub mod textimg;
 pub mod timestamp;
