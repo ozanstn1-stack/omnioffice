@@ -1,9 +1,36 @@
-# Release Readiness — OmniOffice 4.6.0
+# Release Readiness — OmniOffice 4.6.1
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
+
+## Implemented (this cycle, 4.6.1) - hygiene and in-app updates
+
+- Docs hygiene: the README, this file, `docs/android.md` and `docs/roadmap.md`
+  no longer claim the Android foreground service is missing, no longer pin
+  old Android version numbers, and no longer describe tiled rendering as
+  pending (it shipped in 4.1.0).
+- `keepOperationLog` is enforced where the operation log is written, and the
+  log can be filtered and exported as CSV from Settings.
+- AI settings discover the configured provider's models live instead of
+  showing a static list; the free-text custom entry stays.
+- Sync gains a manual "delete from cloud" action for one document, leaving
+  the local file untouched.
+- In-app updates: the desktop updater verifies signed update manifests from
+  the project's GitHub releases and installs in place; Android downloads the
+  release APK, checks its SHA-256 and opens the system installer. Without a
+  signed manifest/keys the app falls back to opening the release page.
+
+### Not done in this pass (honest)
+
+- The updater's public key and release secrets are configured by the project
+  owner; until then the app uses the browser fallback, and the Windows
+  installer still warns because the app is not Authenticode-signed.
+- Android in-app install needs the user to allow "install unknown apps" for
+  OmniOffice on the device.
+- macOS/Linux packaging stays out of scope: CI builds and tests those
+  platforms, only Windows packaging is produced.
 
 ## Implemented (this cycle, 4.6.0) - PDF tools (plan 2, phase 8)
 
@@ -39,6 +66,37 @@ by CI.
   by a physical device here.
 - Regex/keyword matches follow each page's reading order; matches that span a
   page break are not found.
+
+## Implemented (4.5.0) - Writer and Impress, deeper editing (plan 2, phase 7)
+
+- Writer: table cell merge/split and column-width drag, image wrap options
+  (inline, square, top and bottom) with corner size handles, a format
+  painter, a ruler with custom tab stops, and a watermark dialog with an
+  on-page preview; ODT span/named-style import fixes and the RTF
+  single-paragraph fix; only dirty blocks are re-measured during pagination.
+- Impress: paragraph/run rich-text editing (bold, italic, underline, color,
+  size, bullet levels), align/distribute, glued connectors, image crop,
+  footer/date/slide-number settings, hidden slides, a slide sorter grid and
+  laser/pen during the show.
+- ODP writes real chart documents and keeps runs, footer/slide-number fields,
+  hidden slides and connectors.
+- PDF export: Writer merged table cells lay out on the grid and `\t` advances
+  to custom tab stops; Impress skips hidden slides and draws per-run text
+  formatting, master/layout objects and cropped images. Writer watermarks are
+  stamped into the PDF as an incremental revision, so signatures survive.
+- Tests: golden fixtures and round trips cover merged tables, tab stops,
+  image wrap and watermarks, next to the ODP chart/run tests.
+
+### Not done in this pass (honest)
+
+- The slideshow laser trail is a simple dot, not a fading line.
+- Writer image wrap is block-level in the PDF export; square and
+  top-and-bottom wrap round-trip in DOCX and ODT.
+- Center/right/decimal tab stops are approximated in the PDF export by
+  advancing to the stop; RTF keeps no merged cells, custom tab stops or
+  watermarks.
+- ODP still writes a single default master page (declared in the
+  compatibility matrix and gated by Data Loss Protection).
 
 ## Implemented (this cycle, 4.4.0) - Calc to Excel level (plan 2, phase 6)
 
@@ -505,9 +563,10 @@ mocked, and the APK/EXE are built by the tag workflows.
 - **eslint 10, TypeScript 7, der 0.8 and rand 0.10 are blocked upstream**
   (jsx-a11y peer range, typescript-eslint `<6.1.0`, cms/x509-cert pin der 0.7,
   rsa uses rand_core 0.6) and documented in `.github/dependabot.yml`.
-- **E2E still runs on Linux only in CI.** The Windows flows were run locally;
-  the Windows CI matrix does not have the WebDriver wiring, and the Reader
-  step needs the native engines.
+- **E2E runs on Linux and Windows in CI.** Linux runs the engine-free smoke
+  through tauri-driver (WebKitWebDriver); the Windows `e2e-windows` job runs
+  smoke, Reader and deep flows through msedgedriver against the WebView2
+  runtime with the native engines fetched.
 - **The repair UI is desktop-only** (qpdf is not shipped on Android) and
   encrypted documents must be decrypted before qpdf can rewrite them.
 
@@ -517,7 +576,8 @@ mocked, and the APK/EXE are built by the tag workflows.
   `npm run release:local` or CI, with SBOMs, checksums and provenance.
 - **Android**: built by CI and by `npm run release:local`; artifacts are named
   `OmniOffice-Android-<version>-<abi>.apk` (and `.aab`).
-- **Linux/macOS desktop**: built and tested by CI; the E2E job runs on Linux.
+- **Linux/macOS desktop**: built and tested by CI; the E2E jobs run on Linux
+  and Windows.
 - **Chrome extension**: unchanged.
 
 ## Security status

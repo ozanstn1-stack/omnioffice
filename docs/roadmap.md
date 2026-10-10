@@ -13,7 +13,7 @@ Effort estimates assume a single developer.
 | 2 (v3.5) | Quality infrastructure: coverage thresholds, screen tests, desktop E2E, fuzzing, benchmark trends, CI hardening | Done in 3.5.0-3.5.5 (coverage gate + screen tests in 3.5.0; E2E, fuzzing, benchmark trends in 3.5.4; regression gate + deep flows + repo-wide format in 3.5.5) |
 | 3 (v3.6) | PDF depth: content-stream object editing, render cache, Reader, Studio UX, PDF/A subsetting, signature chain (RFC 3161/OCSP) | Done in 3.6.0-4.1.0: content-stream **text** editing, Reader bookmarks and RFC 3161 timestamps in 3.6.0; tiled rendering, PDF/A font subsetting and the optional OCSP/CRL check in 4.1.0. Vector-object editing stays read-only |
 | 4 (v3.7) | Office depth: Writer fields/revisions, Calc data tools + chart UI, Impress timeline + media, format fidelity | Partly delivered: Writer fields and run-preserving revisions (3.5.3, 3.5.5), Calc data tools and ODF fidelity - comments, groups, animations, charts (4.0.0). Chart UI, Impress media and further format fidelity are open |
-| 5 (v4.x) | Platform: auto-update, macOS/Linux packaging, stores, Android foreground service + Keystore, sync OAuth, Vault 2.0, plugins, AI | Partly delivered: sync OAuth (3.5.7), update notice (3.9.0, it opens the installer, it does not install in place), Android Keystore and AI (Claude, in-editor AI) in 4.2.0. Store packaging, the Android foreground service and Vault 2.0 are open |
+| 5 (v4.x) | Platform: auto-update, macOS/Linux packaging, stores, Android foreground service + Keystore, sync OAuth, Vault 2.0, plugins, AI | Partly delivered: sync OAuth (3.5.7), the Android foreground service (4.3.0), in-place update infrastructure (4.6.1: signed desktop updater with a browser fallback; Android APK download + SHA-256 check + system installer), Android Keystore and AI (Claude, in-editor AI) in 4.2.0. Store packaging, macOS/Linux packaging and Vault 2.0 are open |
 
 ## 3.4.0 — Quick wins (delivered)
 
@@ -223,8 +223,9 @@ Effort estimates assume a single developer.
 - Fixed: answers cut off by the token limit are reported, keys are never sent
   after a redirect to another host, and suggested formulas that reach the
   network or other programs are refused.
-- Still open across 3.9-4.2: the Android foreground service, background sync
-  for the cloud providers, and vector-object editing in PDFs.
+- Still open across 3.9-4.2: background sync for the cloud providers and
+  vector-object editing in PDFs (the Android foreground service shipped in
+  4.3.0).
 
 ## 4.5.0 — Writer and Impress, deeper editing (plan 2, phase 7) (delivered)
 
@@ -281,3 +282,20 @@ Effort estimates assume a single developer.
   real Word tables, and per-list numbering (`startOverride`) so adjacent
   numbered lists no longer continue each other; the Writer editor and the PDF
   export follow the same restart rule.
+
+## 4.6.1 — Hygiene and in-app updates (delivered)
+
+- Docs hygiene: README, RELEASE_READINESS, `docs/android.md` and this file
+  drop the stale Android foreground-service claim, the pinned Android version
+  numbers and the "tiled rendering pending" note (it shipped in 4.1.0).
+- `keepOperationLog` is enforced where the operation log is written, and the
+  log can be filtered and exported as CSV from Settings.
+- AI settings discover the configured provider's models live; the free-text
+  custom entry stays.
+- Sync: a manual "delete from cloud" action removes one document's cloud copy
+  and leaves the local file untouched.
+- In-app updates: the desktop updater verifies signed update manifests from
+  the project's GitHub releases and installs in place (browser fallback until
+  the owner configures the keys); Android downloads the release APK, checks
+  its SHA-256 and opens the system installer (`REQUEST_INSTALL_PACKAGES`,
+  which needs "install unknown apps" on the device).
