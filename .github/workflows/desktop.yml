@@ -127,6 +127,78 @@ jobs:
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$BIN/aarch64-linux-android24-clang"
           cargo check -p pdf-swiss-army-knife --target aarch64-linux-android
 
+  # Kotlin sources under src-tauri/gen/android (the open-with pipeline, plugins,
+  # manifest filters) only compile in the Android toolchain; android.yml would
+  # catch a break at release time. When a change touches that directory, build
+  # the single x86_64 flavor (Kotlin compile + Rust library) and run the JVM
+  # unit tests here. App sources are not generated, so the build compiles
+  # exactly the sources under review.
+  android-kotlin:
+    name: Android Kotlin (Gradle compile + unit tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Detect changes under src-tauri/gen/android
+        id: changed
+        run: |
+          set -e
+          base="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$base" ]; then base="${{ github.event.before }}"; fi
+          if [ -z "$base" ] || ! git rev-parse --verify --quiet "$base^{commit}" > /dev/null; then
+            echo "run=1" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only "$base" HEAD -- src-tauri/gen/android | grep -q .; then
+            echo "run=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=0" >> "$GITHUB_OUTPUT"
+            echo "No changes under src-tauri/gen/android; skipping the Kotlin gate."
+          fi
+      - name: Set up JDK
+        if: steps.changed.outputs.run == '1'
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Set up Node
+        if: steps.changed.outputs.run == '1'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Set up Rust (for the Android build)
+        if: steps.changed.outputs.run == '1'
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
+      - name: Install Android NDK and platform
+        if: steps.changed.outputs.run == '1'
+        run: |
+          set -e
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          export PATH="$SDK/cmdline-tools/latest/bin:$PATH"
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install "ndk;27.3.13750724" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$SDK/ndk/27.3.13750724" >> "$GITHUB_ENV"
+      - name: Install frontend dependencies
+        if: steps.changed.outputs.run == '1'
+        run: npm ci
+      # The Kotlin compile needs the Gradle project wiring in the gitignored
+      # tauri.settings.gradle, which only a real Tauri Android build writes
+      # (`tauri android init` alone does not). Building the single x86_64
+      # flavor also compiles the Kotlin sources, so it stands in for a bare
+      # compileDebugKotlin. The engines directory is only a source dir for the
+      # APK; an empty stub keeps the merge task happy.
+      - name: Build the x86_64 flavor (Kotlin compile + Rust library)
+        if: steps.changed.outputs.run == '1'
+        run: |
+          mkdir -p src-tauri/resources/engines-android
+          npm run tauri android build -- --apk --ci --target x86_64
+      - name: Android unit tests
+        if: steps.changed.outputs.run == '1'
+        working-directory: src-tauri/gen/android
+        run: sh gradlew :app:testUniversalDebugUnitTest --no-daemon -PabiList=x86_64 -ParchList=x86_64 -PtargetList=x86_64
+
   rust:
     name: Rust (${{ matrix.os }})
     strategy:

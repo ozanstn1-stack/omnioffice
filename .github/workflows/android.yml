@@ -16,6 +16,9 @@ jobs:
   build:
     name: Build APKs and AAB
     runs-on: ubuntu-latest
+    # Do not burn a 30-minute Android build on a commit whose version files
+    # disagree (see release.yml for the same gate).
+    needs: version-consistency
     env:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
     steps:
@@ -213,7 +216,10 @@ jobs:
             echo "waiting for release $tag ($i/30)"; sleep 20
           done
           if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" --title "OmniOffice $tag" --notes-file CHANGELOG.md
+            version=$(node -p "require('./package.json').version")
+            # Only this version's CHANGELOG section becomes the release body.
+            node scripts/changelog-section.mjs "$version" > release-notes.md
+            gh release create "$tag" --title "OmniOffice $tag" --notes-file release-notes.md
           fi
           gh release upload "$tag" \
             release-artifacts/*.apk release-artifacts/*.aab \

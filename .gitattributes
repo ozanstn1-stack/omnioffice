@@ -5,3 +5,9 @@ src/lib/i18n.ts text eol=lf
 # Golden fixtures are byte contracts: a CRLF checkout on a Windows runner used
 # to make the reproducibility test fail even though the model had not changed.
 crates/officecore/tests/fixtures/*.oswk binary
+
+# The Gradle shell wrapper must be LF: the committed copy was CRLF, which fails
+# under `sh` on Linux. android.yml never noticed because `tauri android init`
+# regenerates the wrapper there; desktop.yml's Kotlin job restores the
+# committed files and then runs the wrapper directly.
+src-tauri/gen/android/gradlew text eol=lf

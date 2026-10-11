@@ -15,6 +15,10 @@ jobs:
   windows:
     name: Windows installer and portable package
     runs-on: windows-latest
+    # The build must not start before every version file agrees; a mismatched
+    # package.json/tauri.conf.json/Cargo.toml/tauri.properties pair used to be
+    # discovered by `tauri build` halfway through the release.
+    needs: version-consistency
     permissions:
       contents: write
       # Needed by actions/attest-build-provenance below.
@@ -37,6 +41,16 @@ jobs:
           npx tsc --noEmit
           npm test
           cargo test --workspace
+      # The same gates desktop.yml runs on pull requests, repeated here because
+      # a tag build must not publish an artifact that never passed lint, the
+      # i18n audit, the bundle budget or clippy.
+      - name: Quality gates (lint, i18n, bundle budget, clippy)
+        run: |
+          npm run lint
+          npm run i18n:audit -- --check
+          npm run build
+          npm run bundle:check
+          cargo clippy --workspace --all-targets -- -D warnings
       # The signing key turns on the updater artifacts (with
       # createUpdaterArtifacts: true the NSIS installer itself is signed:
       # `*_x64-setup.exe` + `.sig`), which scripts/make-latest-json.mjs turns
@@ -140,8 +154,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = "${{ github.ref_name }}"
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          # Release notes are only this version's CHANGELOG section; a missing
+          # section fails the job instead of publishing the whole file.
+          node scripts/changelog-section.mjs $version > release-notes.md
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           gh release view $tag 2>$null
-          if ($LASTEXITCODE -ne 0) { gh release create $tag --title "OmniOffice $tag" --notes-file CHANGELOG.md }
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title "OmniOffice $tag" --notes-file release-notes.md
+          } else {
+            gh release edit $tag --notes-file release-notes.md
+          }
           Get-ChildItem release-artifacts -File | ForEach-Object { gh release upload $tag $_.FullName --clobber }
 
   version-consistency:
