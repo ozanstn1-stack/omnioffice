@@ -2,17 +2,24 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AiAskRequest,
+  AiBatchRequest,
+  AiBatchResult,
+  AiChatRequest,
+  AiChatResult,
   AiCleanupRequest,
   AiEditRequest,
   AiEditResult,
   AiExamplePrompts,
-  AiMetadataSuggestion,
+  AiExtractRequest,
   AiLibraryEntry,
+  AiMetadataSuggestion,
   AiModelOption,
   AiPreview,
   AiSettingsInput,
   AiSettingsView,
   AiSummarizeRequest,
+  AiTableResult,
+  SavedChatThread,
   AiTestResult,
   AiTextResult,
   AiTranslateRequest,
@@ -113,6 +120,14 @@ export const aiDocumentPreview = (path: string, pages: number[] | undefined, pas
 export const aiSummarize = (request: AiSummarizeRequest) => invokeTracked<AiTextResult>("ai_summarize", { request });
 export const aiTranslate = (request: AiTranslateRequest) => invokeTracked<AiTextResult>("ai_translate", { request });
 export const aiAsk = (request: AiAskRequest) => invokeTracked<AiTextResult>("ai_ask", { request });
+export const aiChat = (request: AiChatRequest) => invokeTracked<AiChatResult>("ai_chat", { request });
+export const aiChatSave = (thread: SavedChatThread) => invoke<void>("ai_chat_save", { thread });
+export const aiChatList = () => invoke<SavedChatThread[]>("ai_chat_list");
+export const aiChatLoad = (id: string) => invoke<SavedChatThread>("ai_chat_load", { id });
+export const aiChatDelete = (id: string) => invoke<void>("ai_chat_delete", { id });
+export const aiExtractTable = (request: AiExtractRequest) =>
+  invokeTracked<AiTableResult>("ai_extract_table", { request });
+export const aiBatchRun = (request: AiBatchRequest) => invokeTracked<AiBatchResult>("ai_batch_run", { request });
 export const aiCleanupText = (request: AiCleanupRequest) => invokeTracked<AiTextResult>("ai_cleanup_text", { request });
 /**
  * In-editor AI action. Deliberately NOT `invokeTracked`: the retry store
@@ -189,6 +204,10 @@ export const onAiChunk = (
 export const onAiProgress = (
   handler: (payload: { jobId: string; stage: string; current: number; total: number }) => void,
 ): Promise<UnlistenFn> => listen("ai:progress", (event) => handler(event.payload as never));
+
+export const onAiBatchProgress = (
+  handler: (payload: { jobId: string; index: number; total: number; path: string; action: string }) => void,
+): Promise<UnlistenFn> => listen("ai:batch_progress", (event) => handler(event.payload as never));
 
 // ---------------------------------------------------------------------------
 // Inspection

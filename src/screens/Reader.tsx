@@ -445,7 +445,15 @@ const ReaderPage = memo(function ReaderPage({
   );
 });
 
-export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dragging: boolean }) {
+export function Reader({
+  initialFiles,
+  dragging,
+  initialPage,
+}: {
+  initialFiles?: string[];
+  dragging: boolean;
+  initialPage?: number;
+}) {
   const t = useT();
   const session = useTool({ suffix: "_reader", accept: "pdf", loadInfo: true, initialPaths: initialFiles });
   const pushToast = useToasts((s) => s.push);
@@ -581,6 +589,15 @@ export function Reader({ initialFiles, dragging }: { initialFiles?: string[]; dr
       setCurrentPage(page);
     }
   }, []);
+
+  useEffect(() => {
+    if (initialPage && initialPage >= 1 && geometries.length > 0) {
+      const timer = setTimeout(() => {
+        scrollToPage(initialPage);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [initialPage, scrollToPage, geometries.length]);
 
   const applyZoom = (next: number | "fit") => setZoom(next);
   const zoomBy = (factor: number) => {

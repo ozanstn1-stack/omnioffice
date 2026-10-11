@@ -3,6 +3,8 @@
 //! Keeping prompts here makes them reviewable in one place and lets the UI
 //! show the user exactly what kind of instruction will be sent.
 
+use serde::{Deserialize, Serialize};
+
 use crate::{AiError, AiResult, ChatMessage};
 
 /// Default character budget per request when the caller does not derive one
@@ -389,7 +391,7 @@ pub fn doc_chat_messages(question: &str, context: &[(u32, String)], history: &[D
     messages.push(ChatMessage::system(DOC_CHAT_SYSTEM));
     messages.push(ChatMessage::user(format!("Document context:\n\n{context_text}")));
     for item in history {
-        messages.push(ChatMessage { role: item.role.clone(), content: item.content.clone() });
+        messages.push(ChatMessage { role: item.role.clone(), content: item.content.clone(), image: None });
     }
     messages.push(ChatMessage::user(question));
     messages
@@ -569,4 +571,131 @@ pub fn summarize_selection_prompt(text: &str, language: &str) -> Vec<ChatMessage
             language_instruction(language)
         )),
     ]
+}
+
+// ---------------------------------------------------------------------------
+// Invoice & receipt extraction
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct InvoiceTableRow {
+    pub page: u32,
+    #[serde(default)]
+    pub vendor: String,
+    #[serde(default)]
+    pub date: String,
+    #[serde(default)]
+    pub invoice_number: String,
+    #[serde(default)]
+    pub currency: String,
+    #[serde(default)]
+    pub subtotal: Option<f64>,
+    #[serde(default)]
+    pub tax: Option<f64>,
+    #[serde(default)]
+    pub total: Option<f64>,
+    #[serde(default)]
+    pub line_items: String,
+    #[serde(default)]
+    pub custom_fields: std::collections::BTreeMap<String, String>,
+}
+
+pub const INVOICE_EXTRACT_SYSTEM: &str =
+    "You are an expert at structured data extraction from financial documents (invoices, receipts, bills). \
+Extract all invoice/receipt data from the provided document pages and output strictly valid JSON with no markdown formatting and no extra text. \
+The JSON must be an object with a \"rows\" array of objects containing: \
+page (number), vendor (string), date (string), invoice_number (string), currency (string), subtotal (number or null), tax (number or null), total (number or null), line_items (string summary), custom_fields (key-value object of strings).";
+
+pub fn invoice_extract_prompt(pages: &[(u32, String)], extra_fields: &[String]) -> Vec<ChatMessage> {
+    let pages_text = format_pages(pages, false);
+    let mut prompt = format!("Document pages:\n\n{pages_text}\n\nExtract all invoice and receipt rows as JSON.");
+    if !extra_fields.is_empty() {
+        prompt.push_str(&format!(
+            "\nPlease also extract these additional fields into custom_fields: {}",
+            extra_fields.join(", ")
+        ));
+    }
+    vec![ChatMessage::system(INVOICE_EXTRACT_SYSTEM), ChatMessage::user(prompt)]
+}
+
+pub fn parse_invoice_extract_reply(reply: &str) -> Vec<InvoiceTableRow> {
+    let cleaned = reply.trim();
+    let json_str = if let Some(start) = cleaned.find("```json") {
+        let after = &cleaned[start + 7..];
+        if let Some(end) = after.find("```") {
+            &after[..end]
+        } else {
+            after
+        }
+    } else if let Some(start) = cleaned.find("```") {
+        let after = &cleaned[start + 3..];
+        if let Some(end) = after.find("```") {
+            &after[..end]
+        } else {
+            after
+        }
+    } else {
+        cleaned
+    };
+
+    #[derive(Deserialize)]
+    struct Wrapper {
+        #[serde(default)]
+        rows: Vec<InvoiceTableRow>,
+    }
+
+    if let Ok(w) = serde_json::from_str::<Wrapper>(json_str.trim()) {
+        return w.rows;
+    }
+    if let Ok(rows) = serde_json::from_str::<Vec<InvoiceTableRow>>(json_str.trim()) {
+        return rows;
+    }
+    Vec::new()
+}
+
+// ---------------------------------------------------------------------------
+// Document classification
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ClassificationResult {
+    pub label: String,
+    pub reason: String,
+}
+
+pub const CLASSIFY_SYSTEM: &str =
+    "You are a document classification assistant. Classify the provided text into exactly one of the given candidate labels. \
+Reply strictly with a JSON object: {\"label\": \"<chosen_label>\", \"reason\": \"<brief_justification>\"} with no markdown formatting and no other text.";
+
+pub fn classify_document_prompt(text: &str, labels: &[String]) -> Vec<ChatMessage> {
+    let sample = if text.len() > 16_000 {
+        let mut boundary = 16_000;
+        while boundary > 0 && !text.is_char_boundary(boundary) {
+            boundary -= 1;
+        }
+        &text[..boundary]
+    } else {
+        text
+    };
+    let prompt = format!("Candidate labels: {}\n\nDocument text:\n\n{}", labels.join(", "), sample);
+    vec![ChatMessage::system(CLASSIFY_SYSTEM), ChatMessage::user(prompt)]
+}
+
+pub fn parse_classification_reply(reply: &str, fallback_label: &str) -> ClassificationResult {
+    let cleaned = reply.trim();
+    let json_str = if let Some(start) = cleaned.find('{') {
+        if let Some(end) = cleaned.rfind('}') {
+            &cleaned[start..=end]
+        } else {
+            cleaned
+        }
+    } else {
+        cleaned
+    };
+    if let Ok(res) = serde_json::from_str::<ClassificationResult>(json_str) {
+        return res;
+    }
+    ClassificationResult { label: fallback_label.to_string(), reason: reply.trim().to_string() }
 }

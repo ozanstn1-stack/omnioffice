@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.0] - Belge Asistanı 2.0 (Document Assistant 2.0)
+
+### Added
+
+- **Multi-turn document chat with verifiable citations**: contextual conversation with document grounding. Every claim emits clickable `[page N]` citation cards that deep-link directly into the PDF Reader, auto-scrolling to the exact cited page.
+- **Vault-wide Q&A with hybrid semantic search**: query all documents across the vault using hybrid semantic retrieval (vector embeddings via Ollama, OpenAI, or Gemini) combined with BM25 keyword matching and cosine similarity scoring.
+- **Structured invoice & receipt table extraction**: extract invoice line items, dates, vendor names, numbers, amounts, taxes, and custom fields into an interactive tabular preview with RFC 4180 CSV export.
+- **Batch AI queue**: process multiple documents simultaneously for summarization, translation, classification, or table extraction with real-time progress tracking and per-file result inspection.
+- **Vision model support**: render document pages as images and send them directly to vision-capable models for multi-modal analysis.
+- **Local provider presets**: quick one-click configuration for local models in Ollama (`http://localhost:11434`) and LM Studio (`http://localhost:1234/v1`).
+- **Chat thread persistence**: locally persist, list, reload, and delete document conversation threads.
+- **Offline-first privacy & consent**: transparent data flow with provider-specific consent notices and zero telemetry.
+
 ## [4.6.2] - Android update installer fix
 
 ### Fixed

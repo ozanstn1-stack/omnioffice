@@ -241,6 +241,8 @@ pub struct VaultSearchResponse {
     pub took_ms: u64,
     /// True when there is no usable index yet; the UI should offer a scan.
     pub index_missing: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retrieval_mode: Option<String>,
 }
 
 /// Result of a pure folder scan. `index` is written to disk by `scan_folders`
@@ -1835,6 +1837,7 @@ pub fn search_index(index: &VaultIndex, request: &VaultSearchRequest) -> VaultSe
             total: 0,
             took_ms: started.elapsed().as_millis() as u64,
             index_missing: false,
+            retrieval_mode: None,
         };
     }
     let terms_raw = query_terms(query);
@@ -1905,13 +1908,25 @@ pub fn search_index(index: &VaultIndex, request: &VaultSearchRequest) -> VaultSe
         })
         .collect();
 
-    VaultSearchResponse { hits, total, took_ms: started.elapsed().as_millis() as u64, index_missing: false }
+    VaultSearchResponse {
+        hits,
+        total,
+        took_ms: started.elapsed().as_millis() as u64,
+        index_missing: false,
+        retrieval_mode: None,
+    }
 }
 
 /// Search on disk: `index_missing` is true when there is no usable index.
 pub fn search_at(root: &Path, request: &VaultSearchRequest) -> VaultSearchResponse {
     if !index_path(root).exists() {
-        return VaultSearchResponse { hits: Vec::new(), total: 0, took_ms: 0, index_missing: true };
+        return VaultSearchResponse {
+            hits: Vec::new(),
+            total: 0,
+            took_ms: 0,
+            index_missing: true,
+            retrieval_mode: None,
+        };
     }
     let (index, warnings) = load_index(root);
     let mut response = search_index(&index, request);
@@ -2029,6 +2044,45 @@ pub async fn vault_import_files(app: AppHandle, paths: Vec<String>) -> Result<Va
 pub async fn vault_search(app: AppHandle, request: VaultSearchRequest) -> Result<VaultSearchResponse, PdfError> {
     let root = config_dir(&app)?;
     run_blocking(move || Ok(search_at(&root, &request))).await
+}
+
+#[tauri::command]
+pub async fn vault_search_hybrid(app: AppHandle, request: VaultSearchRequest) -> Result<VaultSearchResponse, PdfError> {
+    let root = config_dir(&app)?;
+    let request_clone = request.clone();
+    let root_clone = root.clone();
+    let mut response = run_blocking(move || Ok(search_at(&root_clone, &request_clone))).await?;
+
+    if let Ok(config) = crate::ai::build_config(&app) {
+        if (aicore::ProviderCapabilities::for_kind(config.provider).embeddings || config.embedding_model.is_some())
+            && !request.query.trim().is_empty()
+        {
+            if let Ok(client) = aicore::DeepSeekClient::new(config) {
+                if let Ok(query_vec) = client.embed(request.query.trim()).await {
+                    let (index, _) = load_index(&root);
+                    for hit in &mut response.hits {
+                        if let Some(doc) = index.documents.iter().find(|d| d.id == hit.document_id) {
+                            let excerpt: String = doc.text.chars().take(500).collect();
+                            if !excerpt.trim().is_empty() {
+                                if let Ok(doc_vec) = client.embed(&excerpt).await {
+                                    let sim = aicore::cosine_similarity(&query_vec, &doc_vec);
+                                    if sim > 0.0 {
+                                        hit.score += (sim as f64) * 40.0;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    response.hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+                    response.retrieval_mode = Some("hybrid".to_string());
+                    return Ok(response);
+                }
+            }
+        }
+    }
+
+    response.retrieval_mode = Some("keyword".to_string());
+    Ok(response)
 }
 
 /// Full cached text of one indexed document (for preview panes).

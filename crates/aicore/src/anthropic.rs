@@ -42,7 +42,7 @@ const EFFORT_LEVELS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 #[derive(Debug, Serialize, PartialEq)]
 pub(crate) struct AnthropicMessage {
     pub role: &'static str,
-    pub content: String,
+    pub content: serde_json::Value,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -101,19 +101,42 @@ pub(crate) fn build_request<'a>(
             "assistant" => "assistant",
             _ => "user",
         };
+        let new_content = match &message.image {
+            None => serde_json::Value::String(content.to_string()),
+            Some(img) => serde_json::json!([
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": img.media_type,
+                        "data": img.base64_data,
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": content,
+                }
+            ]),
+        };
         match merged.last_mut() {
             Some(last) if last.role == role => {
-                last.content.push_str("\n\n");
-                last.content.push_str(content);
+                if let (serde_json::Value::String(s), serde_json::Value::String(new_s)) =
+                    (&mut last.content, &new_content)
+                {
+                    s.push_str("\n\n");
+                    s.push_str(new_s);
+                } else {
+                    merged.push(AnthropicMessage { role, content: new_content });
+                }
             }
-            _ => merged.push(AnthropicMessage { role, content: content.to_string() }),
+            _ => merged.push(AnthropicMessage { role, content: new_content }),
         }
     }
     let mut system = (!system_parts.is_empty()).then(|| system_parts.join("\n\n"));
     if merged.is_empty() {
         // A request needs at least one user turn; a lone system prompt becomes it.
         if let Some(text) = system.take() {
-            merged.push(AnthropicMessage { role: "user", content: text });
+            merged.push(AnthropicMessage { role: "user", content: serde_json::Value::String(text) });
         }
     }
     let max_tokens =
@@ -497,9 +520,9 @@ mod tests {
             ChatMessage::system("First rule."),
             ChatMessage::user("a"),
             ChatMessage::user("b"),
-            ChatMessage { role: "assistant".into(), content: "c".into() },
+            ChatMessage { role: "assistant".into(), content: "c".into(), image: None },
             ChatMessage::system("Second rule."),
-            ChatMessage { role: "assistant".into(), content: "d".into() },
+            ChatMessage { role: "assistant".into(), content: "d".into(), image: None },
             ChatMessage::user("   "),
             ChatMessage::user("e"),
         ];

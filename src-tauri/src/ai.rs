@@ -180,7 +180,7 @@ pub struct AiSettingsInput {
     pub embedding_model: Option<String>,
 }
 
-fn config_dir(app: &AppHandle) -> Result<PathBuf, PdfError> {
+pub(crate) fn config_dir(app: &AppHandle) -> Result<PathBuf, PdfError> {
     let dir =
         app.path().app_config_dir().map_err(|error| PdfError::Internal(format!("config dir unavailable: {error}")))?;
     std::fs::create_dir_all(&dir).map_err(PdfError::from_io)?;
@@ -327,7 +327,7 @@ fn provider_kind(value: &str) -> aicore::ProviderKind {
     aicore::ProviderKind::parse(value).unwrap_or_default()
 }
 
-fn build_config(app: &AppHandle) -> Result<AiConfig, PdfError> {
+pub(crate) fn build_config(app: &AppHandle) -> Result<AiConfig, PdfError> {
     let settings = load_settings_file(app);
     let kind = provider_kind(&settings.provider);
     // A stored key that cannot be decrypted (lost Keystore key) is reported as
@@ -967,6 +967,601 @@ pub async fn ai_ask(
     })
 }
 
+// ---------------------------------------------------------------------------
+// Document Chat with Citations & Multi-Turn History
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiChatRequest {
+    pub path: Option<String>,
+    pub question: String,
+    #[serde(default)]
+    pub history: Vec<prompts::DocChatMessage>,
+    #[serde(default = "default_chat_scope")]
+    pub scope: String, // "document" | "page" | "selection" | "vault"
+    pub page: Option<u32>,
+    pub selection: Option<String>,
+    #[serde(default)]
+    pub send_image: bool,
+    pub password: Option<String>,
+    pub job_id: String,
+}
+
+fn default_chat_scope() -> String {
+    "document".to_string()
+}
+
+impl std::fmt::Debug for AiChatRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AiChatRequest")
+            .field("path", &self.path)
+            .field("question", &self.question)
+            .field("history_len", &self.history.len())
+            .field("scope", &self.scope)
+            .field("page", &self.page)
+            .field("send_image", &self.send_image)
+            .field("password", &self.password.as_ref().map(|_| "**REDACTED**"))
+            .field("job_id", &self.job_id)
+            .finish()
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AiCitation {
+    pub page: u32,
+    pub snippet: String,
+    pub score: f32,
+    pub cited: bool,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AiChatResult {
+    pub answer: String,
+    pub citations: Vec<AiCitation>,
+    pub retrieval_mode: String, // "hybrid" | "keyword"
+    pub model: String,
+    pub elapsed_ms: u64,
+}
+
+fn extract_cited_pages(text: &str) -> Vec<u32> {
+    let mut pages = Vec::new();
+    let lower = text.to_lowercase();
+    let mut cursor = 0;
+    while let Some(pos) = lower[cursor..].find("[page ") {
+        let start = cursor + pos + 6;
+        if let Some(end) = lower[start..].find(']') {
+            let num_str = lower[start..start + end].trim();
+            if let Ok(n) = num_str.parse::<u32>() {
+                if !pages.contains(&n) {
+                    pages.push(n);
+                }
+            }
+            cursor = start + end + 1;
+        } else {
+            break;
+        }
+    }
+    pages
+}
+
+#[tauri::command]
+pub async fn ai_chat(
+    app: AppHandle,
+    registry: State<'_, JobRegistry>,
+    request: AiChatRequest,
+) -> Result<AiChatResult, PdfError> {
+    let started = std::time::Instant::now();
+    let (cancel, mut job_guard) = registry.register_ai_managed(&request.job_id);
+    if request.question.trim().is_empty() {
+        return Err(PdfError::InvalidInput("Enter a question.".into()));
+    }
+    let config = build_config(&app)?;
+    let model = config.model.clone();
+    let client = DeepSeekClient::new(config).map_err(ai_error)?;
+
+    let mut citations = Vec::new();
+    let mut retrieval_mode = "keyword".to_string();
+    let messages;
+    let mut retrieved_pages: Vec<(u32, String)> = Vec::new();
+
+    match request.scope.as_str() {
+        "page" => {
+            let page_num = request.page.unwrap_or(1);
+            if let Some(path_str) = &request.path {
+                let path = crate::paths::input_file(path_str)?;
+                let extracted = extract_pages(
+                    &app,
+                    &request.job_id,
+                    path.as_path(),
+                    request.password.as_deref(),
+                    Some(&[page_num]),
+                    &cancel,
+                )?;
+                retrieved_pages = extracted;
+                let mut wire_msgs = prompts::doc_chat_messages(&request.question, &retrieved_pages, &request.history);
+
+                if request.send_image {
+                    let extension = path.as_path().extension().map(|v| v.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+                    if extension == "pdf" {
+                        let render_opts = pdfcore::render::RenderOptions {
+                            dpi: 150.0,
+                            max_width: Some(1600),
+                            max_height: None,
+                        };
+                        if let Ok(rendered) = pdfcore::render::render_page(path.as_path(), request.password.as_deref(), page_num, &render_opts) {
+                            if let Ok(bytes) = pdfcore::images::encode_image(&rendered, pdfcore::images::ImageFormat::Jpeg, 80, false) {
+                                use base64::Engine;
+                                let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                                if let Some(last_msg) = wire_msgs.last_mut() {
+                                    if last_msg.role == "user" {
+                                        last_msg.image = Some(aicore::ImageAttachment {
+                                            media_type: "image/jpeg".to_string(),
+                                            base64_data: b64,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                messages = wire_msgs;
+            } else {
+                return Err(PdfError::InvalidInput("No document specified for page scope.".into()));
+            }
+        }
+        "selection" => {
+            let sel = request.selection.unwrap_or_default();
+            let page_num = request.page.unwrap_or(1);
+            retrieved_pages.push((page_num, sel));
+            messages = prompts::doc_chat_messages(&request.question, &retrieved_pages, &request.history);
+        }
+        "vault" => {
+            let root = config_dir(&app)?;
+            let search_req = crate::vault::VaultSearchRequest {
+                query: request.question.clone(),
+                exact: false,
+                fuzzy: true,
+                phrase: false,
+                extensions: Vec::new(),
+                modified_after: None,
+                modified_before: None,
+                folder: None,
+                limit: 5,
+                offset: 0,
+            };
+            let search_res = crate::vault::search_at(&root, &search_req);
+            for (idx, hit) in search_res.hits.iter().enumerate() {
+                let pseudo_page = (idx + 1) as u32;
+                retrieved_pages.push((pseudo_page, format!("{} ({}): {}", hit.file_name, hit.match_label, hit.snippet)));
+            }
+            messages = prompts::doc_chat_messages(&request.question, &retrieved_pages, &request.history);
+        }
+        _ /* "document" or default */ => {
+            if let Some(path_str) = &request.path {
+                let path = crate::paths::input_file(path_str)?;
+                let extracted = extract_pages(
+                    &app,
+                    &request.job_id,
+                    path.as_path(),
+                    request.password.as_deref(),
+                    None,
+                    &cancel,
+                )?;
+                if aicore::ProviderCapabilities::for_kind(client.config().provider).embeddings || client.config().embedding_model.is_some() {
+                    if let Ok(query_vec) = client.embed(&request.question).await {
+                        let mut scored: Vec<((u32, String), f32)> = Vec::new();
+                        for (page_num, page_text) in &extracted {
+                            let excerpt: String = page_text.chars().take(600).collect();
+                            if let Ok(page_vec) = client.embed(&excerpt).await {
+                                let sim = aicore::cosine_similarity(&query_vec, &page_vec);
+                                scored.push(((*page_num, page_text.clone()), sim));
+                            } else {
+                                scored.push(((*page_num, page_text.clone()), 0.0));
+                            }
+                        }
+                        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                        retrieved_pages = scored.into_iter().take(8).map(|(p, _)| p).collect();
+                        retrieval_mode = "hybrid".to_string();
+                    } else {
+                        retrieved_pages = prompts::select_relevant_pages(&extracted, &request.question, client.config().chunk_chars())
+                            .into_iter()
+                            .map(|(p, t)| (p, t.to_string()))
+                            .collect();
+                    }
+                } else {
+                    retrieved_pages = prompts::select_relevant_pages(&extracted, &request.question, client.config().chunk_chars())
+                        .into_iter()
+                        .map(|(p, t)| (p, t.to_string()))
+                        .collect();
+                }
+
+                messages = prompts::doc_chat_messages(&request.question, &retrieved_pages, &request.history);
+            } else {
+                return Err(PdfError::InvalidInput("No document specified for chat.".into()));
+            }
+        }
+    }
+
+    emit_progress(&app, &request.job_id, "generate", 0, 1);
+    let mut on_delta = |delta: &str| emit_chunk(&app, &request.job_id, delta);
+    let mut on_reasoning = |delta: &str| emit_reasoning(&app, &request.job_id, delta);
+    let answer = client
+        .chat_stream(&messages, ChatOptions::default(), &cancel, &mut on_delta, &mut on_reasoning)
+        .await
+        .map_err(ai_error)?;
+
+    let cited_numbers = extract_cited_pages(&answer);
+
+    for (page, text) in &retrieved_pages {
+        let is_cited = cited_numbers.contains(page);
+        let snippet: String = text.chars().take(220).collect();
+        citations.push(AiCitation { page: *page, snippet, score: if is_cited { 1.0 } else { 0.5 }, cited: is_cited });
+    }
+    citations.sort_by(|a, b| b.cited.cmp(&a.cited).then_with(|| a.page.cmp(&b.page)));
+
+    job_guard.succeed();
+    Ok(AiChatResult { answer, citations, retrieval_mode, model, elapsed_ms: started.elapsed().as_millis() as u64 })
+}
+
+// ---------------------------------------------------------------------------
+// Chat Persistence
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedChatThread {
+    pub id: String,
+    pub title: String,
+    pub document_path: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub messages: Vec<prompts::DocChatMessage>,
+}
+
+fn chats_dir(app: &AppHandle) -> Result<PathBuf, PdfError> {
+    let dir = config_dir(app)?.join("ai-chats");
+    std::fs::create_dir_all(&dir).map_err(PdfError::from_io)?;
+    Ok(dir)
+}
+
+fn sanitize_thread_id(id: &str) -> String {
+    id.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').take(64).collect()
+}
+
+#[tauri::command]
+pub fn ai_chat_save(app: AppHandle, thread: SavedChatThread) -> Result<(), PdfError> {
+    let dir = chats_dir(&app)?;
+    let safe_id = sanitize_thread_id(&thread.id);
+    if safe_id.is_empty() {
+        return Err(PdfError::InvalidInput("Invalid thread id".into()));
+    }
+    let file_path = dir.join(format!("{safe_id}.json"));
+    let json =
+        serde_json::to_string_pretty(&thread).map_err(|e| PdfError::Internal(format!("serialize chat thread: {e}")))?;
+    crate::commands::write_atomic(&file_path, json.as_bytes())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn ai_chat_list(app: AppHandle) -> Result<Vec<SavedChatThread>, PdfError> {
+    let dir = chats_dir(&app)?;
+    let mut threads = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
+                if let Ok(bytes) = std::fs::read(&path) {
+                    if let Ok(thread) = serde_json::from_slice::<SavedChatThread>(&bytes) {
+                        threads.push(thread);
+                    }
+                }
+            }
+        }
+    }
+    threads.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    Ok(threads)
+}
+
+#[tauri::command]
+pub fn ai_chat_load(app: AppHandle, id: String) -> Result<SavedChatThread, PdfError> {
+    let dir = chats_dir(&app)?;
+    let safe_id = sanitize_thread_id(&id);
+    let file_path = dir.join(format!("{safe_id}.json"));
+    if !file_path.exists() {
+        return Err(PdfError::NotFound(format!("chat thread {id}")));
+    }
+    let bytes = std::fs::read(&file_path).map_err(PdfError::from_io)?;
+    serde_json::from_slice(&bytes).map_err(|e| PdfError::Internal(format!("deserialize thread: {e}")))
+}
+
+#[tauri::command]
+pub fn ai_chat_delete(app: AppHandle, id: String) -> Result<(), PdfError> {
+    let dir = chats_dir(&app)?;
+    let safe_id = sanitize_thread_id(&id);
+    let file_path = dir.join(format!("{safe_id}.json"));
+    if file_path.exists() {
+        let _ = std::fs::remove_file(file_path);
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Structured Invoice & Table Extraction
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiExtractRequest {
+    pub path: String,
+    #[serde(default)]
+    pub pages: Option<Vec<u32>>,
+    #[serde(default)]
+    pub extra_fields: Vec<String>,
+    pub password: Option<String>,
+    pub job_id: String,
+}
+
+impl std::fmt::Debug for AiExtractRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AiExtractRequest")
+            .field("path", &self.path)
+            .field("pages", &self.pages)
+            .field("extra_fields", &self.extra_fields)
+            .field("password", &self.password.as_ref().map(|_| "**REDACTED**"))
+            .field("job_id", &self.job_id)
+            .finish()
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AiTableResult {
+    pub rows: Vec<prompts::InvoiceTableRow>,
+    pub columns: Vec<String>,
+    pub pages: u32,
+    pub elapsed_ms: u64,
+}
+
+#[tauri::command]
+pub async fn ai_extract_table(
+    app: AppHandle,
+    registry: State<'_, JobRegistry>,
+    request: AiExtractRequest,
+) -> Result<AiTableResult, PdfError> {
+    let started = std::time::Instant::now();
+    let (cancel, mut job_guard) = registry.register_ai_managed(&request.job_id);
+    let config = build_config(&app)?;
+    let path = crate::paths::input_file(&request.path)?;
+    let extracted = extract_pages(
+        &app,
+        &request.job_id,
+        path.as_path(),
+        request.password.as_deref(),
+        request.pages.as_deref(),
+        &cancel,
+    )?;
+    let client = DeepSeekClient::new(config).map_err(ai_error)?;
+    let messages = prompts::invoice_extract_prompt(&extracted, &request.extra_fields);
+    emit_progress(&app, &request.job_id, "extract_table", 0, 1);
+    let mut on_delta = |delta: &str| emit_chunk(&app, &request.job_id, delta);
+    let mut on_reasoning = |delta: &str| emit_reasoning(&app, &request.job_id, delta);
+    let reply = client
+        .chat_stream(&messages, ChatOptions::default(), &cancel, &mut on_delta, &mut on_reasoning)
+        .await
+        .map_err(ai_error)?;
+    let rows = prompts::parse_invoice_extract_reply(&reply);
+
+    let mut columns = vec![
+        "page".to_string(),
+        "vendor".to_string(),
+        "date".to_string(),
+        "invoiceNumber".to_string(),
+        "currency".to_string(),
+        "subtotal".to_string(),
+        "tax".to_string(),
+        "total".to_string(),
+        "lineItems".to_string(),
+    ];
+    for row in &rows {
+        for key in row.custom_fields.keys() {
+            if !columns.contains(key) {
+                columns.push(key.clone());
+            }
+        }
+    }
+    job_guard.succeed();
+    Ok(AiTableResult { rows, columns, pages: extracted.len() as u32, elapsed_ms: started.elapsed().as_millis() as u64 })
+}
+
+// ---------------------------------------------------------------------------
+// Batch AI Processing Queue
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiBatchItemRequest {
+    pub path: String,
+    pub action: String, // "summarize" | "translate" | "classify" | "extract"
+    pub target_lang: Option<String>,
+    pub labels: Option<Vec<String>>,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiBatchRequest {
+    pub items: Vec<AiBatchItemRequest>,
+    pub job_id: String,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AiBatchItemResult {
+    pub path: String,
+    pub action: String,
+    pub success: bool,
+    pub output: Option<String>,
+    pub error: Option<String>,
+    pub elapsed_ms: u64,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AiBatchResult {
+    pub results: Vec<AiBatchItemResult>,
+    pub total_elapsed_ms: u64,
+}
+
+#[tauri::command]
+pub async fn ai_batch_run(
+    app: AppHandle,
+    registry: State<'_, JobRegistry>,
+    request: AiBatchRequest,
+) -> Result<AiBatchResult, PdfError> {
+    let started = std::time::Instant::now();
+    let (cancel, mut job_guard) = registry.register_ai_managed(&request.job_id);
+    let config = build_config(&app)?;
+    let client = DeepSeekClient::new(config).map_err(ai_error)?;
+    let total_items = request.items.len();
+    let mut results = Vec::with_capacity(total_items);
+
+    for (index, item) in request.items.iter().enumerate() {
+        if cancel.is_cancelled() {
+            break;
+        }
+        let item_start = std::time::Instant::now();
+        let stage_label = format!("{}/{}: {}", index + 1, total_items, item.action);
+        emit_progress(&app, &request.job_id, &stage_label, index as u64, total_items as u64);
+        let _ = app.emit(
+            "ai:batch_progress",
+            serde_json::json!({
+                "jobId": &request.job_id,
+                "index": index,
+                "total": total_items,
+                "path": &item.path,
+                "action": &item.action
+            }),
+        );
+
+        let input_res = crate::paths::input_file(&item.path);
+        let mut item_success = false;
+        let mut item_output = None;
+        let mut item_error = None;
+
+        match input_res {
+            Err(e) => {
+                item_error = Some(e.to_string());
+            }
+            Ok(path) => {
+                let extract_res = extract_pages(&app, &request.job_id, path.as_path(), None, None, &cancel);
+                match extract_res {
+                    Err(e) => {
+                        item_error = Some(e.to_string());
+                    }
+                    Ok(extracted) => {
+                        let text = join_text(&extracted);
+                        match item.action.as_str() {
+                            "summarize" => {
+                                let plan = prompts::summarize_prompt_with_budget(
+                                    &text,
+                                    &SummaryOptions::default(),
+                                    client.config().chunk_chars(),
+                                );
+                                let mut dummy_p = |_: &str, _: usize, _: usize| {};
+                                let mut dummy_d = |_: &str| {};
+                                let mut dummy_r = |_: &str| {};
+                                match aicore::run_plan(
+                                    &client,
+                                    &plan,
+                                    &cancel,
+                                    &mut dummy_p,
+                                    &mut dummy_d,
+                                    &mut dummy_r,
+                                )
+                                .await
+                                {
+                                    Ok(summary) => {
+                                        item_success = true;
+                                        item_output = Some(summary);
+                                    }
+                                    Err(e) => item_error = Some(ai_error(e).to_string()),
+                                }
+                            }
+                            "translate" => {
+                                let target_lang = item.target_lang.clone().unwrap_or_else(|| "tr".into());
+                                let opts = TranslateOptions { target_language: target_lang, bilingual: false };
+                                let messages = prompts::translate_page_prompt("Document", &text, &opts);
+                                match client.chat(&messages, ChatOptions::default()).await {
+                                    Ok(trans) => {
+                                        item_success = true;
+                                        item_output = Some(trans);
+                                    }
+                                    Err(e) => item_error = Some(ai_error(e).to_string()),
+                                }
+                            }
+                            "classify" => {
+                                let default_labels = vec![
+                                    "Invoice".into(),
+                                    "Contract".into(),
+                                    "Report".into(),
+                                    "Form".into(),
+                                    "Letter".into(),
+                                    "Other".into(),
+                                ];
+                                let labels = item.labels.as_ref().unwrap_or(&default_labels);
+                                let messages = prompts::classify_document_prompt(&text, labels);
+                                match client
+                                    .chat(&messages, ChatOptions { temperature: Some(0.0), max_tokens: Some(256) })
+                                    .await
+                                {
+                                    Ok(reply) => {
+                                        let parsed = prompts::parse_classification_reply(&reply, "Other");
+                                        item_success = true;
+                                        item_output = Some(format!("{}: {}", parsed.label, parsed.reason));
+                                    }
+                                    Err(e) => item_error = Some(ai_error(e).to_string()),
+                                }
+                            }
+                            "extract" => {
+                                let messages = prompts::invoice_extract_prompt(&extracted, &[]);
+                                match client
+                                    .chat(&messages, ChatOptions { temperature: Some(0.0), max_tokens: Some(2048) })
+                                    .await
+                                {
+                                    Ok(reply) => {
+                                        let rows = prompts::parse_invoice_extract_reply(&reply);
+                                        item_success = true;
+                                        item_output = Some(serde_json::to_string(&rows).unwrap_or(reply));
+                                    }
+                                    Err(e) => item_error = Some(ai_error(e).to_string()),
+                                }
+                            }
+                            other => {
+                                item_error = Some(format!("Unknown batch action: {other}"));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        results.push(AiBatchItemResult {
+            path: item.path.clone(),
+            action: item.action.clone(),
+            success: item_success,
+            output: item_output,
+            error: item_error,
+            elapsed_ms: item_start.elapsed().as_millis() as u64,
+        });
+    }
+
+    emit_progress(&app, &request.job_id, "done", total_items as u64, total_items as u64);
+    job_guard.succeed();
+    Ok(AiBatchResult { results, total_elapsed_ms: started.elapsed().as_millis() as u64 })
+}
+
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiCleanupRequest {
@@ -1247,6 +1842,24 @@ mod tests {
             password: Some(password.into()),
             job_id: "job-5".into(),
         };
+        let chat = AiChatRequest {
+            path: Some("C:/docs/report.pdf".into()),
+            question: "query".into(),
+            history: Vec::new(),
+            scope: "document".into(),
+            page: None,
+            selection: None,
+            send_image: false,
+            password: Some(password.into()),
+            job_id: "job-chat".into(),
+        };
+        let extract = AiExtractRequest {
+            path: "C:/docs/report.pdf".into(),
+            pages: None,
+            extra_fields: Vec::new(),
+            password: Some(password.into()),
+            job_id: "job-extract".into(),
+        };
 
         for formatted in [
             format!("{summarize:?}"),
@@ -1254,6 +1867,8 @@ mod tests {
             format!("{ask:?}"),
             format!("{cleanup:?}"),
             format!("{metadata:?}"),
+            format!("{chat:?}"),
+            format!("{extract:?}"),
         ] {
             assert!(!formatted.contains(password), "password leaked: {formatted}");
             assert!(formatted.contains("REDACTED"), "redaction marker missing: {formatted}");
