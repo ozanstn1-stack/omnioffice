@@ -953,11 +953,82 @@ fn invoice_extract_prompt_and_reply_parser() {
       ]
     }
     ```"#;
-    let rows = prompts::parse_invoice_extract_reply(reply);
+    let rows = prompts::parse_invoice_extract_reply(reply).expect("parse rows");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].vendor, "Acme Corp");
     assert_eq!(rows[0].total, Some(120.0));
     assert_eq!(rows[0].custom_fields.get("tax_id").map(|s| s.as_str()), Some("DE12345"));
+}
+
+#[test]
+fn invoice_parser_accepts_snake_case_and_defaults_page() {
+    let reply = r#"{"rows": [{"vendor": "Acme", "invoice_number": "7", "line_items": "A, B", "custom_fields": {"tax_id": "DE1"}}]}"#;
+    let rows = prompts::parse_invoice_extract_reply(reply).expect("parse rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].page, 0);
+    assert_eq!(rows[0].invoice_number, "7");
+    assert_eq!(rows[0].line_items, "A, B");
+    assert_eq!(rows[0].custom_fields.get("tax_id").map(|s| s.as_str()), Some("DE1"));
+}
+
+#[test]
+fn invoice_parser_reads_turkish_and_plain_amounts() {
+    let reply = r#"{"rows": [
+      {"page": 1, "subtotal": "1.250,00", "tax": "250 TL", "total": "1,250.00"},
+      {"page": "2", "subtotal": "₺1.500", "tax": 99.5, "total": null},
+      {"page": 3, "subtotal": "1250", "tax": "-25,50", "total": "(1.234,56)"}
+    ]}"#;
+    let rows = prompts::parse_invoice_extract_reply(reply).expect("parse rows");
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[0].subtotal, Some(1250.0));
+    assert_eq!(rows[0].tax, Some(250.0));
+    assert_eq!(rows[0].total, Some(1250.0));
+    assert_eq!(rows[1].page, 2);
+    assert_eq!(rows[1].subtotal, Some(1500.0));
+    assert_eq!(rows[1].tax, Some(99.5));
+    assert_eq!(rows[1].total, None);
+    assert_eq!(rows[2].subtotal, Some(1250.0));
+    assert_eq!(rows[2].tax, Some(-25.5));
+    assert_eq!(rows[2].total, Some(-1234.56));
+}
+
+#[test]
+fn invoice_parser_keeps_good_rows_when_one_is_broken() {
+    let reply = r#"{"rows": [
+      {"page": 1, "vendor": "Good"},
+      {"page": 2, "custom_fields": ["not", "a", "map"]}
+    ]}"#;
+    let rows = prompts::parse_invoice_extract_reply(reply).expect("parse rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].vendor, "Good");
+}
+
+#[test]
+fn invoice_parser_broken_reply_returns_error_with_raw_text() {
+    let reply = "Sorry, I cannot read this invoice.";
+    let err = prompts::parse_invoice_extract_reply(reply).expect_err("must fail");
+    assert_eq!(err.raw_reply, reply);
+    assert!(err.to_string().contains("Sorry, I cannot read this invoice."));
+}
+
+#[test]
+fn invoice_parser_empty_rows_is_success() {
+    let rows = prompts::parse_invoice_extract_reply(r#"{"rows": []}"#).expect("parse rows");
+    assert!(rows.is_empty());
+}
+
+#[test]
+fn invoice_parser_rejects_rows_that_are_not_an_array() {
+    let err = prompts::parse_invoice_extract_reply(r#"{"rows": "none"}"#).expect_err("must fail");
+    assert!(err.to_string().contains("rows"));
+}
+
+#[test]
+fn invoice_parser_accepts_numeric_custom_fields_and_string_numbers() {
+    let reply = r#"{"rows": [{"page": 1, "customFields": {"tax_id": 12345, "po": "PO-1"}, "invoiceNumber": 1001}]}"#;
+    let rows = prompts::parse_invoice_extract_reply(reply).expect("parse rows");
+    assert_eq!(rows[0].custom_fields.get("tax_id").map(|s| s.as_str()), Some("12345"));
+    assert_eq!(rows[0].invoice_number, "1001");
 }
 
 #[test]
