@@ -3,7 +3,10 @@
 //! Keeping prompts here makes them reviewable in one place and lets the UI
 //! show the user exactly what kind of instruction will be sent.
 
+use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::fmt;
 
 use crate::{AiError, AiResult, ChatMessage};
 
@@ -580,78 +583,323 @@ pub fn summarize_selection_prompt(text: &str, language: &str) -> Vec<ChatMessage
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct InvoiceTableRow {
+    #[serde(default, deserialize_with = "de_lenient_page")]
     pub page: u32,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_lenient_string")]
     pub vendor: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_lenient_string")]
     pub date: String,
-    #[serde(default)]
+    #[serde(default, alias = "invoice_number", deserialize_with = "de_lenient_string")]
     pub invoice_number: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_lenient_string")]
     pub currency: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_lenient_money")]
     pub subtotal: Option<f64>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_lenient_money")]
     pub tax: Option<f64>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_lenient_money")]
     pub total: Option<f64>,
-    #[serde(default)]
+    #[serde(default, alias = "line_items", deserialize_with = "de_lenient_string")]
     pub line_items: String,
-    #[serde(default)]
-    pub custom_fields: std::collections::BTreeMap<String, String>,
+    #[serde(default, alias = "custom_fields", deserialize_with = "de_lenient_custom_fields")]
+    pub custom_fields: BTreeMap<String, String>,
 }
+
+/// Accepts a page number as a JSON number or a numeric string; anything else
+/// falls back to 0 so a single odd field does not drop the whole row.
+fn de_lenient_page<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct PageVisitor;
+    impl<'de> Visitor<'de> for PageVisitor {
+        type Value = u32;
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("a page number or a numeric string")
+        }
+        fn visit_u64<E: de::Error>(self, v: u64) -> Result<u32, E> {
+            Ok(u32::try_from(v).unwrap_or(0))
+        }
+        fn visit_i64<E: de::Error>(self, v: i64) -> Result<u32, E> {
+            Ok(u32::try_from(v).unwrap_or(0))
+        }
+        fn visit_f64<E: de::Error>(self, v: f64) -> Result<u32, E> {
+            Ok(if v.is_finite() && v >= 0.0 && v.fract() == 0.0 { v as u32 } else { 0 })
+        }
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<u32, E> {
+            Ok(v.trim().parse().unwrap_or(0))
+        }
+        fn visit_unit<E: de::Error>(self) -> Result<u32, E> {
+            Ok(0)
+        }
+        fn visit_none<E: de::Error>(self) -> Result<u32, E> {
+            Ok(0)
+        }
+    }
+    deserializer.deserialize_any(PageVisitor)
+}
+
+/// Accepts strings, numbers and booleans and normalises them to a string.
+fn de_lenient_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct StringVisitor;
+    impl<'de> Visitor<'de> for StringVisitor {
+        type Value = String;
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("a string or scalar value")
+        }
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<String, E> {
+            Ok(v.to_string())
+        }
+        fn visit_string<E: de::Error>(self, v: String) -> Result<String, E> {
+            Ok(v)
+        }
+        fn visit_u64<E: de::Error>(self, v: u64) -> Result<String, E> {
+            Ok(v.to_string())
+        }
+        fn visit_i64<E: de::Error>(self, v: i64) -> Result<String, E> {
+            Ok(v.to_string())
+        }
+        fn visit_f64<E: de::Error>(self, v: f64) -> Result<String, E> {
+            Ok(v.to_string())
+        }
+        fn visit_bool<E: de::Error>(self, v: bool) -> Result<String, E> {
+            Ok(v.to_string())
+        }
+        fn visit_unit<E: de::Error>(self) -> Result<String, E> {
+            Ok(String::new())
+        }
+        fn visit_none<E: de::Error>(self) -> Result<String, E> {
+            Ok(String::new())
+        }
+    }
+    deserializer.deserialize_any(StringVisitor)
+}
+
+/// Accepts amounts as JSON numbers, numeric strings with Turkish or English
+/// separators (`1.250,00`, `1,250.00`, `1250 TL`, `₺1.500`) or null.
+fn de_lenient_money<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct MoneyVisitor;
+    impl<'de> Visitor<'de> for MoneyVisitor {
+        type Value = Option<f64>;
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("an amount as a number, a numeric string or null")
+        }
+        fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+        fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+        fn visit_some<D2: Deserializer<'de>>(self, inner: D2) -> Result<Self::Value, D2::Error> {
+            inner.deserialize_any(self)
+        }
+        fn visit_f64<E: de::Error>(self, v: f64) -> Result<Self::Value, E> {
+            Ok(v.is_finite().then_some(v))
+        }
+        fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+            Ok(Some(v as f64))
+        }
+        fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+            Ok(Some(v as f64))
+        }
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+            Ok(parse_money_str(v))
+        }
+        fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+            Ok(parse_money_str(&v))
+        }
+    }
+    deserializer.deserialize_option(MoneyVisitor)
+}
+
+/// Normalises an amount written with Turkish or English separators. The last
+/// separator in the string is treated as the decimal separator; a lone
+/// separator followed by exactly three digits is treated as grouping
+/// (`1.250` -> 1250), matching Turkish invoices. `None` when no digits remain.
+fn parse_money_str(raw: &str) -> Option<f64> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let negative = (trimmed.starts_with('(') && trimmed.ends_with(')')) || trimmed.starts_with('-');
+    let digits: String = trimmed.chars().filter(|c| c.is_ascii_digit() || *c == '.' || *c == ',').collect();
+    if digits.is_empty() {
+        return None;
+    }
+    let dot = digits.rfind('.');
+    let comma = digits.rfind(',');
+    let normalized = match (dot, comma) {
+        (Some(d), Some(c)) => {
+            if d > c {
+                digits.replace(',', "")
+            } else {
+                digits.replace('.', "").replacen(',', ".", 1)
+            }
+        }
+        (Some(d), None) => {
+            let after = digits.len() - d - 1;
+            let before = &digits[..d];
+            if digits.matches('.').count() > 1 || (after == 3 && before != "0" && !before.is_empty()) {
+                digits.replace('.', "")
+            } else {
+                digits.clone()
+            }
+        }
+        (None, Some(c)) => {
+            let after = digits.len() - c - 1;
+            let before = &digits[..c];
+            if digits.matches(',').count() > 1 || (after == 3 && before != "0" && !before.is_empty()) {
+                digits.replace(',', "")
+            } else {
+                digits.replacen(',', ".", 1)
+            }
+        }
+        (None, None) => digits.clone(),
+    };
+    let value: f64 = normalized.parse().ok()?;
+    Some(if negative { -value } else { value })
+}
+
+/// Accepts a JSON object whose values may be strings, numbers or booleans;
+/// values are normalised to strings. `null` becomes an empty map.
+fn de_lenient_custom_fields<'de, D>(deserializer: D) -> Result<BTreeMap<String, String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw = Option::<BTreeMap<String, serde_json::Value>>::deserialize(deserializer)?;
+    Ok(raw.unwrap_or_default().into_iter().map(|(key, value)| (key, json_scalar_to_string(value))).collect())
+}
+
+fn json_scalar_to_string(value: serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(s) => s,
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Bool(b) => b.to_string(),
+        serde_json::Value::Null => String::new(),
+        other => other.to_string(),
+    }
+}
+
+/// The model reply could not be turned into invoice rows. Carries the raw
+/// reply so the caller can show exactly what the model sent instead of
+/// silently reporting zero rows.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InvoiceParseError {
+    pub detail: String,
+    pub raw_reply: String,
+}
+
+impl InvoiceParseError {
+    fn new(detail: impl Into<String>, raw_reply: &str) -> Self {
+        Self { detail: detail.into(), raw_reply: raw_reply.to_string() }
+    }
+}
+
+impl fmt::Display for InvoiceParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "could not parse the invoice extraction reply ({}). Raw model reply:\n{}",
+            self.detail, self.raw_reply
+        )
+    }
+}
+
+impl std::error::Error for InvoiceParseError {}
 
 pub const INVOICE_EXTRACT_SYSTEM: &str =
     "You are an expert at structured data extraction from financial documents (invoices, receipts, bills). \
 Extract all invoice/receipt data from the provided document pages and output strictly valid JSON with no markdown formatting and no extra text. \
 The JSON must be an object with a \"rows\" array of objects containing: \
-page (number), vendor (string), date (string), invoice_number (string), currency (string), subtotal (number or null), tax (number or null), total (number or null), line_items (string summary), custom_fields (key-value object of strings).";
+page (number), vendor (string), date (string), invoiceNumber (string), currency (string), subtotal (number or null), tax (number or null), total (number or null), lineItems (string summary), customFields (key-value object of strings).";
 
 pub fn invoice_extract_prompt(pages: &[(u32, String)], extra_fields: &[String]) -> Vec<ChatMessage> {
     let pages_text = format_pages(pages, false);
     let mut prompt = format!("Document pages:\n\n{pages_text}\n\nExtract all invoice and receipt rows as JSON.");
     if !extra_fields.is_empty() {
         prompt.push_str(&format!(
-            "\nPlease also extract these additional fields into custom_fields: {}",
+            "\nPlease also extract these additional fields into customFields: {}",
             extra_fields.join(", ")
         ));
     }
     vec![ChatMessage::system(INVOICE_EXTRACT_SYSTEM), ChatMessage::user(prompt)]
 }
 
-pub fn parse_invoice_extract_reply(reply: &str) -> Vec<InvoiceTableRow> {
-    let cleaned = reply.trim();
-    let json_str = if let Some(start) = cleaned.find("```json") {
-        let after = &cleaned[start + 7..];
-        if let Some(end) = after.find("```") {
-            &after[..end]
-        } else {
-            after
+/// Parses the model reply into invoice rows. Rows are parsed one by one: a
+/// single malformed row does not drop the others. A reply that yields no rows
+/// at all (no JSON, wrong shape, or only unparsable rows) returns
+/// [`InvoiceParseError`] carrying the raw reply, so the UI can surface it
+/// instead of silently showing an empty table.
+pub fn parse_invoice_extract_reply(reply: &str) -> Result<Vec<InvoiceTableRow>, InvoiceParseError> {
+    let json_str = strip_json_fence(reply).trim();
+    if json_str.is_empty() {
+        return Err(InvoiceParseError::new("the reply was empty", reply));
+    }
+    let value: serde_json::Value =
+        serde_json::from_str(json_str).map_err(|e| InvoiceParseError::new(format!("invalid JSON: {e}"), reply))?;
+    let items = match value {
+        serde_json::Value::Array(items) => items,
+        serde_json::Value::Object(mut map) => match map.remove("rows") {
+            Some(serde_json::Value::Array(items)) => items,
+            Some(other) => {
+                return Err(InvoiceParseError::new(
+                    format!("\"rows\" must be an array, got {}", json_kind(&other)),
+                    reply,
+                ))
+            }
+            None => return Err(InvoiceParseError::new("the JSON has no \"rows\" array", reply)),
+        },
+        other => {
+            return Err(InvoiceParseError::new(
+                format!("the reply must be a JSON object or array, got {}", json_kind(&other)),
+                reply,
+            ))
         }
-    } else if let Some(start) = cleaned.find("```") {
-        let after = &cleaned[start + 3..];
-        if let Some(end) = after.find("```") {
-            &after[..end]
-        } else {
-            after
-        }
-    } else {
-        cleaned
     };
 
-    #[derive(Deserialize)]
-    struct Wrapper {
-        #[serde(default)]
-        rows: Vec<InvoiceTableRow>,
+    let mut rows = Vec::with_capacity(items.len());
+    let mut failures: Vec<String> = Vec::new();
+    for (index, item) in items.into_iter().enumerate() {
+        match serde_json::from_value::<InvoiceTableRow>(item) {
+            Ok(row) => rows.push(row),
+            Err(err) => failures.push(format!("#{}: {err}", index + 1)),
+        }
     }
+    if rows.is_empty() && !failures.is_empty() {
+        return Err(InvoiceParseError::new(format!("no row could be parsed ({})", failures.join("; ")), reply));
+    }
+    Ok(rows)
+}
 
-    if let Ok(w) = serde_json::from_str::<Wrapper>(json_str.trim()) {
-        return w.rows;
+/// Returns the body of the first ``` / ```json fenced block, or the input.
+fn strip_json_fence(reply: &str) -> &str {
+    let cleaned = reply.trim();
+    if let Some(start) = cleaned.find("```json") {
+        let after = &cleaned[start + 7..];
+        return after.find("```").map_or(after, |end| &after[..end]);
     }
-    if let Ok(rows) = serde_json::from_str::<Vec<InvoiceTableRow>>(json_str.trim()) {
-        return rows;
+    if let Some(start) = cleaned.find("```") {
+        let after = &cleaned[start + 3..];
+        return after.find("```").map_or(after, |end| &after[..end]);
     }
-    Vec::new()
+    cleaned
+}
+
+fn json_kind(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "a boolean",
+        serde_json::Value::Number(_) => "a number",
+        serde_json::Value::String(_) => "a string",
+        serde_json::Value::Array(_) => "an array",
+        serde_json::Value::Object(_) => "an object",
+    }
 }
 
 // ---------------------------------------------------------------------------

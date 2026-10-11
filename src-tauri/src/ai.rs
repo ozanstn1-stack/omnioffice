@@ -1352,7 +1352,7 @@ pub async fn ai_extract_table(
         .chat_stream(&messages, ChatOptions::default(), &cancel, &mut on_delta, &mut on_reasoning)
         .await
         .map_err(ai_error)?;
-    let rows = prompts::parse_invoice_extract_reply(&reply);
+    let rows = prompts::parse_invoice_extract_reply(&reply).map_err(|e| PdfError::Internal(e.to_string()))?;
 
     let mut columns = vec![
         "page".to_string(),
@@ -1530,11 +1530,13 @@ pub async fn ai_batch_run(
                                     .chat(&messages, ChatOptions { temperature: Some(0.0), max_tokens: Some(2048) })
                                     .await
                                 {
-                                    Ok(reply) => {
-                                        let rows = prompts::parse_invoice_extract_reply(&reply);
-                                        item_success = true;
-                                        item_output = Some(serde_json::to_string(&rows).unwrap_or(reply));
-                                    }
+                                    Ok(reply) => match prompts::parse_invoice_extract_reply(&reply) {
+                                        Ok(rows) => {
+                                            item_success = true;
+                                            item_output = Some(serde_json::to_string(&rows).unwrap_or(reply));
+                                        }
+                                        Err(parse_error) => item_error = Some(parse_error.to_string()),
+                                    },
                                     Err(e) => item_error = Some(ai_error(e).to_string()),
                                 }
                             }
