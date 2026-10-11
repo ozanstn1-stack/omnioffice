@@ -127,6 +127,68 @@ jobs:
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$BIN/aarch64-linux-android24-clang"
           cargo check -p pdf-swiss-army-knife --target aarch64-linux-android
 
+  # Kotlin sources under src-tauri/gen/android (the open-with pipeline, plugins,
+  # manifest filters) only compile in the Android toolchain; android.yml would
+  # catch a break at release time. When a change touches that directory,
+  # compile the Kotlin sources and run the JVM unit tests here instead. The
+  # Tauri Gradle settings file is generated and gitignored, so `tauri android
+  # init` writes it and the committed files are restored right after: the job
+  # must compile exactly the sources under review.
+  android-kotlin:
+    name: Android Kotlin (Gradle compile + unit tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Detect changes under src-tauri/gen/android
+        id: changed
+        run: |
+          set -e
+          base="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$base" ]; then base="${{ github.event.before }}"; fi
+          if [ -z "$base" ] || ! git rev-parse --verify --quiet "$base^{commit}" > /dev/null; then
+            echo "run=1" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only "$base" HEAD -- src-tauri/gen/android | grep -q .; then
+            echo "run=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=0" >> "$GITHUB_OUTPUT"
+            echo "No changes under src-tauri/gen/android; skipping the Kotlin gate."
+          fi
+      - name: Set up JDK
+        if: steps.changed.outputs.run == '1'
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Set up Node
+        if: steps.changed.outputs.run == '1'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Set up Rust (for `tauri android init`)
+        if: steps.changed.outputs.run == '1'
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
+      - name: Install frontend dependencies
+        if: steps.changed.outputs.run == '1'
+        run: npm ci
+      - name: Generate the Tauri Gradle settings
+        if: steps.changed.outputs.run == '1'
+        run: |
+          npx tauri android init
+          # init also rewrites generated build files; the committed ones are
+          # the sources under review.
+          git checkout -- src-tauri/gen/android
+      - name: Kotlin compile
+        if: steps.changed.outputs.run == '1'
+        working-directory: src-tauri/gen/android
+        run: sh gradlew :app:compileUniversalDebugKotlin --no-daemon
+      - name: Android unit tests
+        if: steps.changed.outputs.run == '1'
+        working-directory: src-tauri/gen/android
+        run: sh gradlew :app:testUniversalDebugUnitTest --no-daemon
+
   rust:
     name: Rust (${{ matrix.os }})
     strategy:

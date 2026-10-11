@@ -44,6 +44,15 @@ jobs:
             echo "::error::version mismatch: package.json=$version tauri.conf.json=$tauri Cargo.toml=$cargo"
             exit 1
           fi
+          props="src-tauri/gen/android/app/tauri.properties"
+          android_name=$(sed -n 's/^.*versionName=//p' "$props" | head -n1 | tr -d '\r')
+          android_code=$(sed -n 's/^.*versionCode=//p' "$props" | head -n1 | tr -d '\r')
+          IFS='.' read -r major minor patch <<< "$version"
+          expected_code=$((major * 1000000 + minor * 1000 + patch))
+          if [ "$version" != "$android_name" ] || [ "$android_code" != "$expected_code" ]; then
+            echo "::error::Android metadata mismatch: tauri.properties has versionName=$android_name versionCode=$android_code, expected $version / $expected_code"
+            exit 1
+          fi
           tag="v$version"
           if gh api "repos/$REPO/git/ref/tags/$tag" > /dev/null 2>&1; then
             echo "$tag already exists; nothing to do."
