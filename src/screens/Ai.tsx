@@ -542,7 +542,7 @@ export function Ai({
                 onNavigate?.("reader", { files: [session.primary.path], targetPage: pageNum });
               }
             }}
-            title={label("ai.jumpToPage", `Jump to page ${pageNum} in Reader`)}
+            title={t("ai.jumpToPage", { page: pageNum })}
           >
             <BookOpenCheck size={11} /> {label("ai.citationPage", "page")} {pageNum}
           </button>
