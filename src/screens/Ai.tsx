@@ -5,24 +5,38 @@ import {
   Check,
   Brain,
   Copy,
+  ExternalLink,
   Languages,
+  Layers,
   ListChecks,
   MessageCircleQuestion,
   MessageSquare,
+  Plus,
+  RefreshCw,
   Save,
   Send,
   Sparkles,
   Square,
+  Table,
   Tags,
+  Trash2,
   Wand2,
+  X,
 } from "lucide-react";
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { isAndroid, pickAndroidSaveTarget, publishOutputs, saveTextOnAndroid, type PublishTarget } from "../lib/mobile";
 import {
   aiAsk,
+  aiBatchRun,
+  aiChat,
+  aiChatDelete,
+  aiChatList,
+  aiChatLoad,
+  aiChatSave,
   aiCleanupText,
   aiDocumentPreview,
   aiExamplePrompts,
+  aiExtractTable,
   aiLibrarySave,
   aiSaveOutput,
   aiSuggestMetadata,
@@ -30,6 +44,8 @@ import {
   aiTranslate,
   cancelJob,
   editMetadata,
+  logFrontend,
+  onAiBatchProgress,
   onAiChunk,
   onAiProgress,
 } from "../lib/api";
@@ -38,25 +54,30 @@ import { DropZone, InfoStrip, ResultCard } from "../components/files";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { consentKeys, isLocalProvider, plainProviderName, providerDisplayName } from "../lib/ai-providers";
-import { logFrontend } from "../lib/api";
 import { useTool } from "../lib/useTool";
 import { useDev, useSettings, useToasts } from "../lib/store";
 import { clamp, fileBaseName, formatBytes, isPdf, uid } from "../lib/format";
 import type {
+  AiBatchItemRequest,
+  AiBatchResult,
+  AiChatScope,
+  AiCitation,
   AiExamplePrompts,
   AiLibraryEntry,
   AiMetadataSuggestion,
   AiPreview,
   AiSettingsView,
+  AiTableResult,
   AiTextResult,
+  DocChatMessage,
   OpResult,
+  SavedChatThread,
   SummaryLength,
   SummaryStyle,
 } from "../lib/types";
+import type { Navigate } from "../lib/nav";
 
-type AiTab = "summary" | "translate" | "ask" | "chat" | "cleanup" | "metadata";
-
-type ChatScope = "document" | "page" | "selection";
+type AiTab = "chat" | "summary" | "translate" | "extract" | "batch" | "ask" | "cleanup" | "metadata";
 
 interface ProviderCapabilities {
   chat: boolean;
@@ -75,13 +96,22 @@ type AiSettingsViewExt = AiSettingsView & {
 };
 
 interface ChatEntry {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
+  citations?: AiCitation[];
 }
 
 const CITATION_PATTERN = /(\[page\s+\d+\])/gi;
 
-export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; dragging: boolean }) {
+export function Ai({
+  initialFiles,
+  dragging,
+  onNavigate,
+}: {
+  initialFiles?: string[];
+  dragging: boolean;
+  onNavigate?: Navigate;
+}) {
   const t = useT();
   const label = useCallback(
     (key: string, fallback: string) => {
@@ -96,7 +126,11 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
   const pushToast = useToasts((s) => s.push);
   const [aiSettings, setAiSettings] = useState<AiSettingsViewExt | null>(null);
   const devTab = useDev((s) => s.tab) as AiTab | null;
-  const [tab, setTab] = useState<AiTab>("summary");
+  const [tab, setTab] = useState<AiTab>(() =>
+    devTab && ["chat", "summary", "translate", "extract", "batch", "ask", "cleanup", "metadata"].includes(devTab)
+      ? devTab
+      : "chat",
+  );
   const [examples, setExamples] = useState<AiExamplePrompts | null>(null);
   const [preview, setPreview] = useState<AiPreview | null>(null);
   const [consent, setConsent] = useState(false);
@@ -110,30 +144,53 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
   const [lastResult, setLastResult] = useState<{ kind: string; result: AiTextResult; options: string } | null>(null);
   const [savedEntry, setSavedEntry] = useState<AiLibraryEntry | null>(null);
   const [showReasoning, setShowReasoning] = useState(false);
+
+  // Summary state
   const [summaryOptions, setSummaryOptions] = useState({
     language: "auto",
     length: "medium" as SummaryLength,
     style: "paragraph" as SummaryStyle,
     focus: "",
   });
+
+  // Translate state
   const [targetLanguage, setTargetLanguage] = useState("tr");
   const [bilingual, setBilingual] = useState(false);
+
+  // Ask state
   const [question, setQuestion] = useState("");
+
+  // Document Chat state
   const [chatMessages, setChatMessages] = useState<ChatEntry[]>([]);
   const [chatInput, setChatInput] = useState("");
-  const [chatScope, setChatScope] = useState<ChatScope>("document");
+  const [chatScope, setChatScope] = useState<AiChatScope>("document");
   const [chatPage, setChatPage] = useState(1);
   const [chatSelection, setChatSelection] = useState("");
+  const [sendImage, setSendImage] = useState(false);
+  const [savedThreads, setSavedThreads] = useState<SavedChatThread[]>([]);
+  const [showThreadsList, setShowThreadsList] = useState(false);
+
+  // Table Extraction state
+  const [extractPages, setExtractPages] = useState("");
+  const [extractExtraFields, setExtractExtraFields] = useState("");
+  const [tableResult, setTableResult] = useState<AiTableResult | null>(null);
+
+  // Batch AI Queue state
+  const [batchFiles, setBatchFiles] = useState<string[]>([]);
+  const [batchAction, setBatchAction] = useState<"summarize" | "translate" | "classify" | "extract">("summarize");
+  const [batchLang, setBatchLang] = useState("tr");
+  const [batchProgress, setBatchProgress] = useState<{
+    index: number;
+    total: number;
+    path: string;
+    action: string;
+  } | null>(null);
+  const [batchResult, setBatchResult] = useState<AiBatchResult | null>(null);
+
   const jobId = useRef(uid("ai"));
   const outputRef = useRef<HTMLDivElement>(null);
   const chatRef = useRef<HTMLDivElement>(null);
   const chatActiveRef = useRef(false);
-
-  // Development hook: start on a specific tab for screenshots.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- dev/screenshot-only initial tab
-    if (devTab && ["summary", "translate", "ask", "chat", "cleanup", "metadata"].includes(devTab)) setTab(devTab);
-  }, [devTab]);
 
   // Load AI settings and example prompts once.
   useEffect(() => {
@@ -149,6 +206,8 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
   useEffect(() => {
     let unlistenChunk: (() => void) | undefined;
     let unlistenProgress: (() => void) | undefined;
+    let unlistenBatch: (() => void) | undefined;
+
     void onAiChunk((payload) => {
       if (payload.jobId !== jobId.current) return;
       if (payload.kind === "reasoning") {
@@ -168,15 +227,25 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
     }).then((fn) => {
       unlistenChunk = fn;
     });
+
     void onAiProgress((payload) => {
       if (payload.jobId !== jobId.current) return;
       setStage({ stage: payload.stage, current: payload.current, total: payload.total });
     }).then((fn) => {
       unlistenProgress = fn;
     });
+
+    void onAiBatchProgress((payload) => {
+      if (payload.jobId !== jobId.current) return;
+      setBatchProgress(payload);
+    }).then((fn) => {
+      unlistenBatch = fn;
+    });
+
     return () => {
       unlistenChunk?.();
       unlistenProgress?.();
+      unlistenBatch?.();
     };
   }, []);
 
@@ -191,8 +260,6 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
     if (element) element.scrollTop = element.scrollHeight;
   }, [chatMessages]);
 
-  // `fail` is declared later; the ref indirection lets `refreshPreview` call
-  // the current implementation without referencing a not-yet-declared binding.
   const failRef = useRef<(message: string) => void>(() => undefined);
 
   const refreshPreview = useCallback(async () => {
@@ -210,13 +277,12 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
   }, [session.password, session.primary]);
 
   useEffect(() => {
-    // Resetting the per-document run state when the document changes is the
-    // point of this effect; `refreshPreview` depends on the active file.
     /* eslint-disable react-hooks/set-state-in-effect */
     setOutput("");
     setError(null);
     setMetadataSuggestion(null);
     setMetadataResult(null);
+    setTableResult(null);
     setConsent(false);
     setChatMessages([]);
     setChatPage(1);
@@ -254,7 +320,15 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
   };
 
   const configured = aiSettings?.configured ?? false;
-  const canRun = configured && consent && Boolean(session.primary) && !running;
+  const canRun =
+    configured &&
+    consent &&
+    !running &&
+    (tab === "batch"
+      ? batchFiles.length > 0
+      : tab === "chat" && chatScope === "vault"
+        ? true
+        : Boolean(session.primary));
 
   const providerLabel = providerDisplayName(aiSettings?.provider, aiSettings?.providerLabel);
   const notice = consentKeys(aiSettings?.provider);
@@ -270,14 +344,13 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
 
   const fail = (message: string) => {
     setError(message);
-    // A provider (or a compromised endpoint) can echo the request back in its
-    // error body; bound what is persisted to the local log.
     void logFrontend("ai-error", message.slice(0, 500));
     console.warn("[ai]", message);
   };
   useEffect(() => {
     failRef.current = fail;
   });
+
   const resetJob = () => {
     jobId.current = uid("ai");
     setStage(null);
@@ -285,8 +358,6 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
   };
 
   // Development automation (PDFSAK_DEV_RUN=1) runs the active tab once ready.
-  // `registerAutoRun` stores the handler in a ref (no behavior change); the
-  // assignment happens inside useTool's callback, not here.
   // eslint-disable-next-line react-hooks/refs -- registering the dev auto-run handler
   session.registerAutoRun(() => {
     setConsent(true);
@@ -298,12 +369,15 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
         ? runAsk("What is the total amount?")
         : tab === "chat"
           ? runChat("What is the total amount?")
-          : tab === "cleanup"
-            ? runCleanup()
-            : tab === "metadata"
-              ? runMetadata()
-              : runSummary());
+          : tab === "extract"
+            ? runExtractTable()
+            : tab === "cleanup"
+              ? runCleanup()
+              : tab === "metadata"
+                ? runMetadata()
+                : runSummary());
   });
+
   const runSummary = async () => {
     if (!session.primary) return;
     resetJob();
@@ -326,7 +400,7 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
       setLastResult({
         kind: "summary",
         result,
-        options: `${summaryOptions.length}/${summaryOptions.style}${summaryOptions.language !== "auto" ? ` � ${summaryOptions.language}` : ""}`,
+        options: `${summaryOptions.length}/${summaryOptions.style}${summaryOptions.language !== "auto" ? ` · ${summaryOptions.language}` : ""}`,
       });
     } catch (runError) {
       fail(String((runError as { message?: string })?.message ?? runError));
@@ -383,40 +457,61 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
     }
   };
 
-  const scopedChatQuestion = (asked: string) => {
-    if (chatScope === "page") {
-      return `Scope: answer from page ${chatPage} only.\n\nQuestion: ${asked}`;
-    }
-    if (chatScope === "selection") {
-      return `Scope: answer from the selected text below only.\n\nSelected text:\n${chatSelection.trim()}\n\nQuestion: ${asked}`;
-    }
-    return asked;
-  };
-
   const runChat = async (questionOverride?: string) => {
     const asked = (questionOverride ?? chatInput).trim();
-    if (!session.primary || !asked || running) return;
+    if (chatScope !== "vault" && !session.primary) return;
+    if (!asked || running) return;
     if (chatScope === "selection" && !chatSelection.trim()) return;
+
     setChatMessages((previous) => [...previous, { role: "user", content: asked }, { role: "assistant", content: "" }]);
     setChatInput("");
     resetJob();
     chatActiveRef.current = true;
     setRunning(true);
     setError(null);
+
     try {
-      const result = await aiAsk({
-        path: session.primary.path,
-        question: scopedChatQuestion(asked),
+      const historyPayload: DocChatMessage[] = chatMessages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      const result = await aiChat({
+        path: chatScope === "vault" ? undefined : session.primary?.path,
+        question: asked,
+        history: historyPayload,
+        scope: chatScope,
+        page: chatScope === "page" ? chatPage : undefined,
+        selection: chatScope === "selection" ? chatSelection : undefined,
+        sendImage,
         password: session.password || undefined,
         jobId: jobId.current,
       });
+
       setChatMessages((previous) => {
         const next = [...previous];
         const last = next[next.length - 1];
-        if (last && last.role === "assistant") next[next.length - 1] = { ...last, content: result.text };
+        if (last && last.role === "assistant") {
+          next[next.length - 1] = {
+            role: "assistant",
+            content: result.answer || last.content,
+            citations: result.citations,
+          };
+        }
         return next;
       });
-      setLastResult({ kind: "ask", result, options: asked });
+
+      setLastResult({
+        kind: "chat",
+        result: {
+          text: result.answer,
+          pages: (result.citations || []).length,
+          characters: result.answer.length,
+          model: result.model,
+          elapsedMs: result.elapsedMs,
+        },
+        options: asked,
+      });
     } catch (runError) {
       setChatMessages((previous) => {
         const last = previous[previous.length - 1];
@@ -435,14 +530,219 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
     content.split(CITATION_PATTERN).map((part, index) => {
       const match = /^\[page\s+(\d+)\]$/i.exec(part);
       if (match) {
+        const pageNum = parseInt(match[1], 10);
         return (
-          <Badge key={index} tone="accent">
-            {label("ai.citationPage", "page")} {match[1]}
-          </Badge>
+          <button
+            key={index}
+            type="button"
+            className="badge inline-flex items-center gap-1 cursor-pointer hover:underline mx-0.5 text-xs"
+            style={{ background: "var(--accent-subtle)", color: "var(--accent)" }}
+            onClick={() => {
+              if (session.primary?.path) {
+                onNavigate?.("reader", { files: [session.primary.path], targetPage: pageNum });
+              }
+            }}
+            title={label("ai.jumpToPage", `Jump to page ${pageNum} in Reader`)}
+          >
+            <BookOpenCheck size={11} /> {label("ai.citationPage", "page")} {pageNum}
+          </button>
         );
       }
       return <span key={index}>{part}</span>;
     });
+
+  const loadSavedThreads = async () => {
+    try {
+      const list = await aiChatList();
+      setSavedThreads(list);
+      setShowThreadsList(true);
+    } catch (err) {
+      fail(String((err as { message?: string })?.message ?? err));
+    }
+  };
+
+  const handleSaveThread = async () => {
+    if (chatMessages.length === 0) return;
+    const firstUser = chatMessages.find((m) => m.role === "user");
+    const defaultTitle = firstUser ? firstUser.content.slice(0, 40) : "Document Chat";
+    const title = window.prompt(label("ai.saveThreadPrompt", "Chat thread title:"), defaultTitle) || defaultTitle;
+    const thread: SavedChatThread = {
+      id: uid("chat_thread"),
+      title,
+      documentPath: session.primary?.path,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      messages: chatMessages.map((m) => ({ role: m.role, content: m.content })),
+    };
+    try {
+      await aiChatSave(thread);
+      pushToast({ kind: "success", title: label("ai.threadSaved", "Chat thread saved") });
+    } catch (err) {
+      fail(String((err as { message?: string })?.message ?? err));
+    }
+  };
+
+  const handleLoadThread = async (id: string) => {
+    try {
+      const thread = await aiChatLoad(id);
+      setChatMessages(thread.messages.map((m) => ({ role: m.role, content: m.content })));
+      setShowThreadsList(false);
+      pushToast({ kind: "info", title: label("ai.threadLoaded", "Loaded thread"), detail: thread.title });
+    } catch (err) {
+      fail(String((err as { message?: string })?.message ?? err));
+    }
+  };
+
+  const handleDeleteThread = async (id: string) => {
+    try {
+      await aiChatDelete(id);
+      setSavedThreads((prev) => prev.filter((t) => t.id !== id));
+      pushToast({ kind: "info", title: label("ai.threadDeleted", "Thread deleted") });
+    } catch (err) {
+      fail(String((err as { message?: string })?.message ?? err));
+    }
+  };
+
+  const runExtractTable = async () => {
+    if (!session.primary) return;
+    resetJob();
+    setRunning(true);
+    setError(null);
+    setTableResult(null);
+    try {
+      const pagesArr = extractPages
+        .split(/[,\s]+/)
+        .map((p) => parseInt(p.trim(), 10))
+        .filter((n) => !isNaN(n) && n > 0);
+      const extraFieldsArr = extractExtraFields
+        .split(/[,\n]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const result = await aiExtractTable({
+        path: session.primary.path,
+        pages: pagesArr.length > 0 ? pagesArr : undefined,
+        extraFields: extraFieldsArr.length > 0 ? extraFieldsArr : undefined,
+        password: session.password || undefined,
+        jobId: jobId.current,
+      });
+      setTableResult(result);
+    } catch (runError) {
+      fail(String((runError as { message?: string })?.message ?? runError));
+    } finally {
+      setRunning(false);
+      setStage(null);
+    }
+  };
+
+  const exportTableCsv = async () => {
+    if (!tableResult || tableResult.rows.length === 0) return;
+    const cols = tableResult.columns;
+    const escapeCsv = (val: unknown) => {
+      const str = String(val ?? "");
+      if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+    const headerLine = cols.map(escapeCsv).join(",");
+    const rowLines = tableResult.rows.map((row) => {
+      return cols
+        .map((col) => {
+          const lower = col.toLowerCase();
+          if (lower.includes("page")) return escapeCsv(row.page);
+          if (lower.includes("vendor") || lower.includes("supplier")) return escapeCsv(row.vendor);
+          if (lower.includes("date")) return escapeCsv(row.date);
+          if (lower.includes("invoice") || lower.includes("number")) return escapeCsv(row.invoiceNumber);
+          if (lower.includes("currency")) return escapeCsv(row.currency);
+          if (lower.includes("subtotal")) return escapeCsv(row.subtotal ?? "");
+          if (lower.includes("tax") || lower.includes("vat")) return escapeCsv(row.tax ?? "");
+          if (lower.includes("total")) return escapeCsv(row.total ?? "");
+          if (lower.includes("item") || lower.includes("line")) return escapeCsv(row.lineItems);
+          return escapeCsv(row.customFields?.[col] ?? "");
+        })
+        .join(",");
+    });
+    const csvContent = [headerLine, ...rowLines].join("\r\n");
+
+    const base = session.primary ? session.primary.path.replace(/\.[^.\\/]+$/, "") : "table_extract";
+    const defaultName = `${base}_table.csv`;
+
+    if (isAndroid()) {
+      try {
+        const saved = await saveTextOnAndroid(csvContent, fileBaseName(defaultName));
+        if (saved) {
+          pushToast({ kind: "success", title: label("ai.csvExportSuccess", "Table exported to CSV") });
+        }
+      } catch (saveError) {
+        fail(String((saveError as { message?: string })?.message ?? saveError));
+      }
+      return;
+    }
+
+    const picked = await saveDialog({
+      title: t("common.save"),
+      defaultPath: defaultName,
+      filters: [{ name: "CSV", extensions: ["csv"] }],
+    });
+    if (!picked) return;
+    try {
+      await aiSaveOutput(String(picked), csvContent, "unique_name");
+      pushToast({
+        kind: "success",
+        title: label("ai.csvExportSuccess", "Table exported to CSV"),
+        detail: String(picked),
+      });
+    } catch (saveError) {
+      fail(String((saveError as { message?: string })?.message ?? saveError));
+    }
+  };
+
+  const handlePickBatchFiles = async () => {
+    try {
+      const picked = await openDialog({
+        multiple: true,
+        filters: [{ name: "Documents", extensions: ["pdf", "docx", "xlsx", "pptx", "txt", "md"] }],
+      });
+      if (picked) {
+        const paths = Array.isArray(picked) ? picked : [picked];
+        setBatchFiles((prev) => Array.from(new Set([...prev, ...paths])));
+      }
+    } catch {
+      /* open canceled */
+    }
+  };
+
+  const runBatchQueue = async () => {
+    if (batchFiles.length === 0 || running) return;
+    resetJob();
+    setRunning(true);
+    setError(null);
+    setBatchProgress(null);
+    setBatchResult(null);
+    try {
+      const items: AiBatchItemRequest[] = batchFiles.map((p) => ({
+        path: p,
+        action: batchAction,
+        targetLang: batchAction === "translate" ? batchLang : undefined,
+      }));
+      const res = await aiBatchRun({
+        items,
+        jobId: jobId.current,
+      });
+      setBatchResult(res);
+      pushToast({
+        kind: "success",
+        title: label("ai.batchDone", "Batch processing completed"),
+        detail: `${res.results.length} items (${(res.totalElapsedMs / 1000).toFixed(1)}s)`,
+      });
+    } catch (err) {
+      fail(String((err as { message?: string })?.message ?? err));
+    } finally {
+      setRunning(false);
+      setBatchProgress(null);
+    }
+  };
 
   const runCleanup = async () => {
     if (!session.primary) return;
@@ -505,7 +805,6 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
     try {
       const result = await editMetadata(
         session.primary.path,
-        // The save dialog already confirmed replacing an existing file.
         { path: targetPath, overwrite: "replace" },
         {
           title: metadataSuggestion.title,
@@ -539,7 +838,7 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
 
   const saveOutput = async () => {
     if (!output.trim()) return;
-    const extension = tab === "summary" || tab === "ask" || tab === "metadata" ? "md" : "md";
+    const extension = "md";
     const base = session.primary ? session.primary.path.replace(/\.[^.\\/]+$/, "") : "ai-output";
     const defaultName = `${base}${tab === "translate" ? "_translated" : tab === "cleanup" ? "_clean" : "_ai"}.${extension}`;
     if (isAndroid()) {
@@ -584,10 +883,12 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
 
   const tabs: { id: AiTab; label: string; icon: React.ReactNode }[] = useMemo(
     () => [
+      { id: "chat", label: label("ai.tabChat", "Document chat"), icon: <MessageSquare size={14} /> },
       { id: "summary", label: t("ai.tabSummary"), icon: <Sparkles size={14} /> },
       { id: "translate", label: t("ai.tabTranslate"), icon: <Languages size={14} /> },
+      { id: "extract", label: t("ai.tabExtract"), icon: <Table size={14} /> },
+      { id: "batch", label: t("ai.tabBatch"), icon: <Layers size={14} /> },
       { id: "ask", label: t("ai.tabAsk"), icon: <MessageCircleQuestion size={14} /> },
-      { id: "chat", label: label("ai.tabChat", "Document chat"), icon: <MessageSquare size={14} /> },
       { id: "cleanup", label: t("ai.tabCleanup"), icon: <Wand2 size={14} /> },
       { id: "metadata", label: t("ai.tabMetadata"), icon: <Tags size={14} /> },
     ],
@@ -596,14 +897,18 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
 
   const activeRun = () => {
     switch (tab) {
+      case "chat":
+        return runChat;
       case "summary":
         return runSummary;
       case "translate":
         return runTranslate;
+      case "extract":
+        return runExtractTable;
+      case "batch":
+        return runBatchQueue;
       case "ask":
         return runAsk;
-      case "chat":
-        return runChat;
       case "cleanup":
         return runCleanup;
       default:
@@ -636,18 +941,41 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
               </Card>
             ) : null}
 
-            {!session.primary ? (
+            <Card className="p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {tabs.map((entry) => (
+                  <Button
+                    key={entry.id}
+                    size="sm"
+                    variant={tab === entry.id ? "primary" : "default"}
+                    icon={entry.icon}
+                    onClick={() => {
+                      setTab(entry.id);
+                      setOutput("");
+                      setError(null);
+                      setMetadataSuggestion(null);
+                    }}
+                  >
+                    {entry.label}
+                  </Button>
+                ))}
+              </div>
+            </Card>
+
+            {tab !== "batch" && !session.primary && (tab !== "chat" || chatScope !== "vault") ? (
               <DropZone onPaths={(paths) => void session.addPaths(paths)} dragging={dragging} accept="any" />
             ) : (
               <>
-                <OptionCard>
-                  <div className="flex items-center justify-between gap-3">
-                    <InfoStrip info={session.info} error={session.infoError} />
-                    <Button size="sm" variant="ghost" onClick={() => void session.pickFiles()}>
-                      {t("common.selectFile")}
-                    </Button>
-                  </div>
-                </OptionCard>
+                {session.primary ? (
+                  <OptionCard>
+                    <div className="flex items-center justify-between gap-3">
+                      <InfoStrip info={session.info} error={session.infoError} />
+                      <Button size="sm" variant="ghost" onClick={() => void session.pickFiles()}>
+                        {t("common.selectFile")}
+                      </Button>
+                    </div>
+                  </OptionCard>
+                ) : null}
 
                 <Card className="p-4 flex flex-col gap-3">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -677,24 +1005,217 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                 </Card>
 
                 <Card className="p-4">
-                  <div className="flex flex-wrap items-center gap-2 mb-3">
-                    {tabs.map((entry) => (
-                      <Button
-                        key={entry.id}
-                        size="sm"
-                        variant={tab === entry.id ? "primary" : "default"}
-                        icon={entry.icon}
-                        onClick={() => {
-                          setTab(entry.id);
-                          setOutput("");
-                          setError(null);
-                          setMetadataSuggestion(null);
-                        }}
-                      >
-                        {entry.label}
-                      </Button>
-                    ))}
-                  </div>
+                  {tab === "chat" ? (
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <Field
+                          label={label("ai.sendScope", "Send scope")}
+                          hint={label("ai.sendScopeHint", "What the question is restricted to")}
+                        >
+                          <Segmented<AiChatScope>
+                            value={chatScope}
+                            onChange={setChatScope}
+                            options={[
+                              { value: "document", label: label("ai.scopeDocument", "Document") },
+                              { value: "page", label: label("ai.scopePage", "Current page") },
+                              { value: "selection", label: label("ai.scopeSelection", "Selected text") },
+                              { value: "vault", label: label("ai.scopeVault", "Vault (All)") },
+                            ]}
+                          />
+                        </Field>
+
+                        <div className="flex items-center gap-2 mt-auto">
+                          <Button size="sm" variant="ghost" icon={<RefreshCw size={13} />} onClick={loadSavedThreads}>
+                            {label("ai.savedThreads", "Threads")}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon={<Save size={13} />}
+                            disabled={chatMessages.length === 0}
+                            onClick={handleSaveThread}
+                          >
+                            {label("ai.saveThread", "Save")}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon={<Plus size={13} />}
+                            onClick={() => setChatMessages([])}
+                          >
+                            {label("ai.newThread", "New")}
+                          </Button>
+                        </div>
+                      </div>
+
+                      {showThreadsList ? (
+                        <div className="card-soft p-3 flex flex-col gap-2 max-h-[160px] overflow-y-auto">
+                          <div className="flex items-center justify-between text-xs font-semibold">
+                            <span>{label("ai.savedThreadsList", "Saved Chat Threads")}</span>
+                            <Button size="sm" variant="ghost" onClick={() => setShowThreadsList(false)}>
+                              <X size={12} />
+                            </Button>
+                          </div>
+                          {savedThreads.length === 0 ? (
+                            <p className="text-xs muted">{label("ai.noSavedThreads", "No saved threads yet.")}</p>
+                          ) : (
+                            savedThreads.map((thread) => (
+                              <div
+                                key={thread.id}
+                                className="flex items-center justify-between gap-2 text-xs p-1.5 rounded hover:bg-[var(--surface-3)]"
+                              >
+                                <button
+                                  type="button"
+                                  className="text-left flex-1 truncate font-medium hover:underline cursor-pointer"
+                                  onClick={() => handleLoadThread(thread.id)}
+                                >
+                                  {thread.title} ({thread.messages.length} msgs)
+                                </button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  icon={<Trash2 size={12} />}
+                                  onClick={() => handleDeleteThread(thread.id)}
+                                />
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      ) : null}
+
+                      {chatScope === "page" ? (
+                        <Field label={label("ai.scopePageNumber", "Page")}>
+                          <TextInput
+                            type="number"
+                            min={1}
+                            max={preview?.pages ?? undefined}
+                            value={chatPage}
+                            onChange={(event) =>
+                              setChatPage(clamp(Number(event.target.value) || 1, 1, preview?.pages || 1))
+                            }
+                          />
+                        </Field>
+                      ) : null}
+
+                      {chatScope === "selection" ? (
+                        <Field label={label("ai.scopeSelectionText", "Selected text")}>
+                          <TextArea
+                            value={chatSelection}
+                            rows={3}
+                            onChange={(event) => setChatSelection(event.target.value)}
+                            placeholder={label(
+                              "ai.scopeSelectionPlaceholder",
+                              "Paste the text you selected in the document",
+                            )}
+                          />
+                        </Field>
+                      ) : null}
+
+                      {chatScope === "vault" ? (
+                        <p className="text-xs muted">
+                          {label(
+                            "ai.scopeVaultNote",
+                            "Vault mode queries all documents in your library with hybrid semantic embeddings and keyword matching.",
+                          )}
+                        </p>
+                      ) : null}
+
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          checked={sendImage}
+                          onChange={setSendImage}
+                          label={label("ai.sendImageVision", "Send rendered page as image (Vision)")}
+                        />
+                      </div>
+
+                      <div ref={chatRef} className="card-soft p-3 max-h-[420px] overflow-y-auto flex flex-col gap-2">
+                        {chatMessages.length === 0 ? (
+                          <p className="text-xs muted">
+                            {label("ai.chatEmpty", "Ask a question about this document.")}
+                          </p>
+                        ) : (
+                          chatMessages.map((message, index) => (
+                            <div
+                              key={index}
+                              className="rounded-xl px-3 py-2 text-[13px]"
+                              style={{
+                                alignSelf: message.role === "user" ? "flex-end" : "flex-start",
+                                maxWidth: "85%",
+                                background: message.role === "user" ? "var(--accent)" : "var(--surface-2)",
+                                color: message.role === "user" ? "var(--accent-text)" : "var(--text)",
+                              }}
+                            >
+                              {message.role === "assistant" ? (
+                                <div className="whitespace-pre-wrap leading-relaxed">
+                                  {message.content ? (
+                                    renderChatContent(message.content)
+                                  ) : running ? (
+                                    <Spinner size={13} />
+                                  ) : null}
+
+                                  {message.citations && message.citations.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-[var(--border)]">
+                                      <span className="text-[11px] muted w-full font-medium">
+                                        {label("ai.sources", "Cited Sources")}:
+                                      </span>
+                                      {message.citations.map((c, ci) => (
+                                        <button
+                                          key={ci}
+                                          type="button"
+                                          className="badge hover:opacity-80 transition cursor-pointer flex items-center gap-1.5 p-1 px-2 text-xs bg-[var(--surface-3)] rounded border border-[var(--border)]"
+                                          onClick={() => {
+                                            if (session.primary?.path) {
+                                              onNavigate?.("reader", {
+                                                files: [session.primary.path],
+                                                targetPage: c.page,
+                                              });
+                                            }
+                                          }}
+                                          title={c.snippet || `Jump to page ${c.page}`}
+                                        >
+                                          <BookOpenCheck size={11} style={{ color: "var(--accent)" }} />
+                                          <span>
+                                            {label("ai.citationPage", "page")} {c.page}
+                                          </span>
+                                          {c.snippet ? (
+                                            <span className="opacity-70 max-w-[140px] truncate">({c.snippet})</span>
+                                          ) : null}
+                                          <ExternalLink size={10} className="opacity-50" />
+                                        </button>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <TextInput
+                          value={chatInput}
+                          onChange={(event) => setChatInput(event.target.value)}
+                          placeholder={label("ai.chatPlaceholder", "Ask about this document…")}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && canRun) void runChat();
+                          }}
+                        />
+                        <Button
+                          variant="primary"
+                          icon={running ? <Spinner size={14} /> : <Send size={14} />}
+                          disabled={
+                            !canRun || !chatInput.trim() || (chatScope === "selection" && !chatSelection.trim())
+                          }
+                          onClick={() => void runChat()}
+                        >
+                          {label("ai.chatSend", "Send")}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {tab === "summary" ? (
                     <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
@@ -742,6 +1263,7 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                         {(examples?.translateTargets ?? ["tr", "en", "de", "fr", "es"]).map((code) => (
                           <button
                             key={code}
+                            type="button"
                             className="badge"
                             style={{
                               cursor: "pointer",
@@ -767,6 +1289,235 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                     </div>
                   ) : null}
 
+                  {tab === "extract" ? (
+                    <div className="flex flex-col gap-3">
+                      <p className="text-[13px] muted">
+                        {label(
+                          "ai.extractIntro",
+                          "Extract structured invoice, receipt, and purchase order line items into a table preview and CSV format.",
+                        )}
+                      </p>
+                      <div
+                        className="grid gap-3"
+                        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}
+                      >
+                        <Field
+                          label={label("ai.extractPages", "Pages filter")}
+                          hint={label("ai.extractPagesHint", "Optional: e.g. 1, 1-3 (leave empty for all)")}
+                        >
+                          <TextInput
+                            value={extractPages}
+                            onChange={(e) => setExtractPages(e.target.value)}
+                            placeholder="1, 2"
+                          />
+                        </Field>
+                        <Field
+                          label={label("ai.extractExtraFields", "Extra fields")}
+                          hint={label("ai.extractExtraFieldsHint", "Comma-separated: e.g. Tax ID, PO, IBAN")}
+                        >
+                          <TextInput
+                            value={extractExtraFields}
+                            onChange={(e) => setExtractExtraFields(e.target.value)}
+                            placeholder="tax_id, iban, payment_due"
+                          />
+                        </Field>
+                      </div>
+
+                      {tableResult ? (
+                        <div className="flex flex-col gap-2 mt-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold">
+                              {label("ai.extractedRows", "Extracted Table Rows")} ({tableResult.rows.length})
+                            </span>
+                            <Button size="sm" icon={<Save size={14} />} onClick={() => void exportTableCsv()}>
+                              {label("ai.exportCsv", "Export CSV")}
+                            </Button>
+                          </div>
+                          <div className="card-soft overflow-x-auto max-h-[360px]">
+                            <table className="w-full text-xs text-left border-collapse">
+                              <thead>
+                                <tr className="border-b border-[var(--border)] bg-[var(--surface-3)]">
+                                  {tableResult.columns.map((col) => (
+                                    <th key={col} className="p-2 font-semibold">
+                                      {col}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {tableResult.rows.map((row, ri) => (
+                                  <tr key={ri} className="border-b border-[var(--border)] hover:bg-[var(--surface-2)]">
+                                    <td className="p-2">{row.page}</td>
+                                    <td className="p-2 font-medium">{row.vendor || "—"}</td>
+                                    <td className="p-2">{row.date || "—"}</td>
+                                    <td className="p-2">{row.invoiceNumber || "—"}</td>
+                                    <td className="p-2">{row.currency || "—"}</td>
+                                    <td className="p-2">{row.subtotal != null ? row.subtotal : "—"}</td>
+                                    <td className="p-2">{row.tax != null ? row.tax : "—"}</td>
+                                    <td className="p-2 font-semibold">{row.total != null ? row.total : "—"}</td>
+                                    <td className="p-2 max-w-[200px] truncate" title={row.lineItems}>
+                                      {row.lineItems || "—"}
+                                    </td>
+                                    {tableResult.columns.slice(9).map((extraCol) => (
+                                      <td key={extraCol} className="p-2">
+                                        {row.customFields?.[extraCol] || "—"}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {tab === "batch" ? (
+                    <div className="flex flex-col gap-3">
+                      <p className="text-[13px] muted">
+                        {label(
+                          "ai.batchIntro",
+                          "Queue multiple documents for batch summarization, translation, classification, or extraction.",
+                        )}
+                      </p>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Button size="sm" icon={<Plus size={14} />} onClick={handlePickBatchFiles}>
+                          {label("ai.addBatchFiles", "Add Files")}
+                        </Button>
+                        {session.primary && !batchFiles.includes(session.primary.path) ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const activePath = session.primary?.path;
+                              if (activePath) setBatchFiles((prev) => [...prev, activePath]);
+                            }}
+                          >
+                            + {label("ai.addCurrentFile", "Add Active File")}
+                          </Button>
+                        ) : null}
+                        {batchFiles.length > 0 ? (
+                          <Button size="sm" variant="ghost" onClick={() => setBatchFiles([])}>
+                            {label("ai.clearBatch", "Clear All")}
+                          </Button>
+                        ) : null}
+                      </div>
+
+                      <div
+                        className="grid gap-3"
+                        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}
+                      >
+                        <Field label={label("ai.batchAction", "Batch Action")}>
+                          <Segmented<"summarize" | "translate" | "classify" | "extract">
+                            value={batchAction}
+                            onChange={setBatchAction}
+                            options={[
+                              { value: "summarize", label: label("ai.actionSummarize", "Summarize") },
+                              { value: "translate", label: label("ai.actionTranslate", "Translate") },
+                              { value: "classify", label: label("ai.actionClassify", "Classify") },
+                              { value: "extract", label: label("ai.actionExtract", "Extract") },
+                            ]}
+                          />
+                        </Field>
+
+                        {batchAction === "translate" ? (
+                          <Field label={label("ai.batchTargetLang", "Target Language")}>
+                            <TextInput
+                              value={batchLang}
+                              onChange={(e) => setBatchLang(e.target.value)}
+                              placeholder="tr, en, de"
+                            />
+                          </Field>
+                        ) : null}
+                      </div>
+
+                      <div className="card-soft p-3 flex flex-col gap-1.5 max-h-[180px] overflow-y-auto">
+                        <span className="text-xs font-semibold">
+                          {label("ai.queuedFiles", "Queued Files")} ({batchFiles.length}):
+                        </span>
+                        {batchFiles.length === 0 ? (
+                          <p className="text-xs muted">{label("ai.noFilesQueued", "No files in the batch queue.")}</p>
+                        ) : (
+                          batchFiles.map((file, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center justify-between gap-2 text-xs p-1 rounded bg-[var(--surface-2)]"
+                            >
+                              <span className="truncate flex-1" title={file}>
+                                {fileBaseName(file)}
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setBatchFiles((prev) => prev.filter((_, i) => i !== idx))}
+                              >
+                                <X size={12} />
+                              </Button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      {batchProgress ? (
+                        <div className="card-soft p-2 flex flex-col gap-1 text-xs">
+                          <div className="flex justify-between">
+                            <span>
+                              {label("ai.batchProgress", "Processing file")} {batchProgress.index} /{" "}
+                              {batchProgress.total}
+                            </span>
+                            <span className="font-medium">{fileBaseName(batchProgress.path)}</span>
+                          </div>
+                          <div className="progress-track">
+                            <div
+                              className="progress-fill"
+                              style={{
+                                width: `${Math.round((batchProgress.index / batchProgress.total) * 100)}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {batchResult ? (
+                        <div className="card-soft p-3 flex flex-col gap-2 max-h-[280px] overflow-y-auto">
+                          <span className="text-xs font-semibold">
+                            {label("ai.batchResults", "Queue Results")} ({batchResult.results.length}):
+                          </span>
+                          {batchResult.results.map((res, i) => (
+                            <div
+                              key={i}
+                              className="flex flex-col gap-1 p-2 rounded text-xs bg-[var(--surface-2)] border border-[var(--border)]"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-semibold">{fileBaseName(res.path)}</span>
+                                <Badge tone={res.success ? "ok" : "danger"}>
+                                  {res.success
+                                    ? label("ai.statusSuccess", "Success")
+                                    : label("ai.statusFailed", "Failed")}
+                                </Badge>
+                              </div>
+                              {res.output ? (
+                                <p className="text-[12px] muted whitespace-pre-wrap max-h-[80px] overflow-y-auto">
+                                  {res.output}
+                                </p>
+                              ) : null}
+                              {res.error ? (
+                                <p className="text-[12px]" style={{ color: "var(--danger)" }}>
+                                  {res.error}
+                                </p>
+                              ) : null}
+                              <span className="text-[10px] muted">
+                                {(res.elapsedMs / 1000).toFixed(2)}s · {res.action}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   {tab === "ask" ? (
                     <div className="flex flex-col gap-3">
                       <Field label={t("ai.question")}>
@@ -785,114 +1536,6 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                             {example}
                           </Button>
                         ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {tab === "chat" ? (
-                    <div className="flex flex-col gap-3">
-                      <Field
-                        label={label("ai.sendScope", "Send scope")}
-                        hint={label("ai.sendScopeHint", "What the question is restricted to")}
-                      >
-                        <Segmented<ChatScope>
-                          value={chatScope}
-                          onChange={setChatScope}
-                          options={[
-                            { value: "document", label: label("ai.scopeDocument", "Whole document") },
-                            { value: "page", label: label("ai.scopePage", "Current page") },
-                            { value: "selection", label: label("ai.scopeSelection", "Selected text only") },
-                          ]}
-                        />
-                      </Field>
-
-                      {chatScope === "page" ? (
-                        <Field label={label("ai.scopePageNumber", "Page")}>
-                          <TextInput
-                            type="number"
-                            min={1}
-                            max={preview?.pages ?? undefined}
-                            value={chatPage}
-                            onChange={(event) =>
-                              setChatPage(clamp(Number(event.target.value) || 1, 1, preview?.pages || 1))
-                            }
-                          />
-                        </Field>
-                      ) : null}
-
-                      {chatScope === "selection" ? (
-                        <Field label={label("ai.scopeSelectionText", "Selected text")}>
-                          <TextArea
-                            value={chatSelection}
-                            rows={4}
-                            onChange={(event) => setChatSelection(event.target.value)}
-                            placeholder={label(
-                              "ai.scopeSelectionPlaceholder",
-                              "Paste the text you selected in the document",
-                            )}
-                          />
-                        </Field>
-                      ) : null}
-
-                      <p className="text-xs muted">
-                        {label(
-                          "ai.scopeNote",
-                          "Document chat calls ai_ask, which has no page or selection filter: the scope only narrows the question context sent to the model, and the retriever may still attach other pages.",
-                        )}
-                      </p>
-
-                      <div ref={chatRef} className="card-soft p-3 max-h-[380px] overflow-y-auto flex flex-col gap-2">
-                        {chatMessages.length === 0 ? (
-                          <p className="text-xs muted">
-                            {label("ai.chatEmpty", "Ask a question about this document.")}
-                          </p>
-                        ) : (
-                          chatMessages.map((message, index) => (
-                            <div
-                              key={index}
-                              className="rounded-xl px-3 py-2 text-[13px]"
-                              style={{
-                                alignSelf: message.role === "user" ? "flex-end" : "flex-start",
-                                maxWidth: "85%",
-                                background: message.role === "user" ? "var(--accent)" : "var(--surface-2)",
-                                color: message.role === "user" ? "var(--accent-text)" : "var(--text)",
-                              }}
-                            >
-                              {message.role === "assistant" ? (
-                                <div className="whitespace-pre-wrap leading-relaxed">
-                                  {message.content ? (
-                                    renderChatContent(message.content)
-                                  ) : running ? (
-                                    <Spinner size={13} />
-                                  ) : null}
-                                </div>
-                              ) : (
-                                <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
-                              )}
-                            </div>
-                          ))
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <TextInput
-                          value={chatInput}
-                          onChange={(event) => setChatInput(event.target.value)}
-                          placeholder={label("ai.chatPlaceholder", "Ask about this document…")}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" && canRun) void runChat();
-                          }}
-                        />
-                        <Button
-                          variant="primary"
-                          icon={running ? <Spinner size={14} /> : <Send size={14} />}
-                          disabled={
-                            !canRun || !chatInput.trim() || (chatScope === "selection" && !chatSelection.trim())
-                          }
-                          onClick={() => void runChat()}
-                        >
-                          {label("ai.chatSend", "Send")}
-                        </Button>
                       </div>
                     </div>
                   ) : null}
@@ -1064,6 +1707,9 @@ export function Ai({ initialFiles, dragging }: { initialFiles?: string[]; draggi
               ) : null}
               {tab === "chat" && !chatInput.trim() ? (
                 <p className="text-xs muted">{label("ai.chatPlaceholder", "Ask about this document…")}</p>
+              ) : null}
+              {tab === "batch" && batchFiles.length === 0 ? (
+                <p className="text-xs muted">{label("ai.addFilesPrompt", "Add files to run batch queue")}</p>
               ) : null}
               {settings.aiAutoSave ? <p className="text-xs muted">{t("ai.autoSaveOn")}</p> : null}
               {lastResult && !settings.aiAutoSave ? (

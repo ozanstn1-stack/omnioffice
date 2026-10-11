@@ -173,6 +173,7 @@ export default function App() {
 
   const [screen, setScreen] = useState<ScreenId>("home");
   const [files, setFiles] = useState<string[]>([]);
+  const [readerPage, setReaderPage] = useState<number | undefined>(undefined);
   const [pageToolTab, setPageToolTab] = useState<PageToolTab>("extract");
   const [convertTab, setConvertTab] = useState<"pdfToImages" | "imagesToPdf">("pdfToImages");
   const [securityTab, setSecurityTab] = useState<"protect" | "unlock">("protect");
@@ -200,6 +201,8 @@ export default function App() {
   const navigate = useCallback<Navigate>((next, options) => {
     setFiles(options?.files ?? []);
     if (options?.pageToolsTab) setPageToolTab(options.pageToolsTab);
+    if (options?.targetPage) setReaderPage(options.targetPage);
+    else setReaderPage(undefined);
     if (next === "pdfToImages") {
       setConvertTab("pdfToImages");
       setScreen("pdfToImages");
@@ -682,8 +685,8 @@ export default function App() {
   const screens: Record<ScreenId, React.ReactElement> = useMemo(
     () => ({
       home: <HomeScreen onNavigate={navigate} onDropFiles={homeDrop} dragging={dragging} onFileList={setFiles} />,
-      reader: <Reader initialFiles={files} dragging={dragging} />,
-      ai: <Ai initialFiles={files} dragging={dragging} />,
+      reader: <Reader initialFiles={files} dragging={dragging} initialPage={readerPage} />,
+      ai: <Ai initialFiles={files} dragging={dragging} onNavigate={navigate} />,
       aiLibrary: <AiLibrary onOpenAi={() => navigate("ai")} />,
       merge: <Merge initialFiles={files} dragging={dragging} />,
       organize: <Organize initialFiles={files} dragging={dragging} />,
@@ -724,7 +727,7 @@ export default function App() {
       sync: <Sync />,
       plugins: <Plugins />,
     }),
-    [convertTab, dragging, files, homeDrop, navigate, pageToolTab, securityTab],
+    [convertTab, dragging, files, homeDrop, navigate, pageToolTab, readerPage, securityTab],
   );
 
   const navGroups: { label?: string; items: { id: ScreenId; label: string; icon: React.ReactElement }[] }[] = [

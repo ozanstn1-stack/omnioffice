@@ -1,9 +1,42 @@
-# Release Readiness — OmniOffice 4.6.1
+# Release Readiness — OmniOffice 4.7.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
+
+## Implemented (this cycle, 4.7.0) — Belge Asistanı 2.0 (Document Assistant 2.0)
+
+- **Document Chat 2.0 & Citations**: Grounded multi-turn document conversations
+  persisting conversation history. Inline `[page N]` citation cards parsed from
+  model responses and deep-linked into the PDF Reader (`onNavigate('reader', { files: [path], targetPage: page })`),
+  which automatically scrolls to the specified page on load.
+- **Local Thread Persistence**: Chat threads can be named and saved locally
+  with full conversation histories, listed, reloaded, and deleted (`ai_chat_save`,
+  `ai_chat_list`, `ai_chat_load`, `ai_chat_delete`).
+- **Vision Model Support**: Optional toggle to render active document pages
+  as images and send base64 image attachments to vision-capable models
+  (Claude 3.5 Sonnet, GPT-4o, Ollama LLaVA/minicpm-v, LM Studio).
+- **LM Studio Local Preset**: First-class support for LM Studio local inference
+  server (`http://localhost:1234/v1`) with zero telemetry and offline privacy.
+- **Vault Hybrid Semantic Search**: `vault_search_hybrid` Tauri command combining
+  BM25 keyword search with provider embedding vectors and cosine similarity
+  reranking across vault documents.
+- **Invoice & Receipt Table Extraction**: `ai_extract_table` prompt parser
+  extracting structured line items (`InvoiceTableRow`: description, quantity,
+  unit_price, vat_rate, line_total, currency) into an interactive preview table
+  with RFC 4180 CSV export.
+- **Batch AI Queue**: Multi-file batch processing (`ai_batch_run`) supporting
+  summarize, translate, classify, and extract operations with real-time
+  `ai-batch-progress` Tauri event stream and per-file result cards.
+- **Privacy & Telemetry**: Zero telemetry maintained; explicit opt-in consent
+  dialogs for external providers; all data stays on device unless local or cloud
+  API explicitly requested by the user.
+- **Automated Tests**: Unit and integration tests in `crates/aicore` (multi-modal
+  chat, image payloads, embeddings, prompts, parsers), `src-tauri` (AI commands,
+  vault hybrid search), and Vitest screen suite (`src/screens/Ai.test.tsx`).
+- **Translations**: 73 new translation keys added in English and Turkish;
+  100% parity verified (2,148 keys each).
 
 ## Implemented (this cycle, 4.6.1) - hygiene and in-app updates
 

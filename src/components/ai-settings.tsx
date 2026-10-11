@@ -228,6 +228,33 @@ export function AiSettings() {
         <span>{t("settings.aiWarning")}</span>
       </div>
 
+      <div className="flex items-center gap-2 flex-wrap mb-1">
+        <span className="text-xs muted font-medium">{t("ai.localPresets")}:</span>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            changeProvider("ollama");
+            setBaseUrl("http://localhost:11434");
+            setModel("llama3.2");
+          }}
+        >
+          Ollama (11434)
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            changeProvider("openai_compatible");
+            setBaseUrl("http://localhost:1234/v1");
+            setModel("");
+          }}
+          title={t("ai.lmStudioHint")}
+        >
+          {t("ai.lmStudio")} (1234)
+        </Button>
+      </div>
+
       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
         <Field
           label={label("ai.provider", "Provider")}

@@ -10,9 +10,33 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 4.6.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 4.7.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 4.7.0 (Belge Asistanı 2.0)
+
+Version 4.7.0 modernizes the document assistant into a local-first, multi-modal intelligence hub:
+
+- **Document Chat 2.0 & Citations:** Grounded multi-turn document conversations
+  with verifiable `[page N]` citation cards. Clicking any citation jumps
+  directly to the corresponding page in the PDF Reader with automatic scrolling.
+  Conversations can be named, saved locally, listed, reloaded, and deleted.
+- **Vision Model Support:** Optionally send rendered high-resolution page
+  images to multi-modal models (Claude 3.5 Sonnet, GPT-4o, Ollama LLaVA/minicpm-v,
+  LM Studio) for analyzing complex diagrams, charts, and scanned documents.
+- **LM Studio Local Preset:** Seamless zero-telemetry local inference via LM
+  Studio (`http://localhost:1234/v1`) alongside existing Ollama support.
+- **Vault Hybrid Semantic Search:** Combine text embeddings with cosine
+  similarity and BM25 keyword matching for context-aware Q&A across the
+  entire Document Vault.
+- **Invoice & Receipt Table Extraction:** One-click structured extraction of
+  invoice line items, quantities, unit prices, VAT, and totals into an
+  interactive preview table with RFC 4180 CSV export.
+- **Batch AI Queue:** Queue multiple documents for background summarization,
+  translation, classification, and extraction with real-time per-file progress.
+- **Zero-Telemetry Guarantee:** Strictly local-first; document contents are
+  never shared without explicit user opt-in and provider configuration.
 
 ## What's new in 4.6.0 and 4.5.0
 

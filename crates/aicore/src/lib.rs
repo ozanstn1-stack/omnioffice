@@ -534,18 +534,40 @@ impl AiConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ImageAttachment {
+    pub media_type: String,
+    pub base64_data: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<ImageAttachment>,
 }
 
 impl ChatMessage {
     pub fn system(content: impl Into<String>) -> Self {
-        Self { role: "system".into(), content: content.into() }
+        Self { role: "system".into(), content: content.into(), image: None }
     }
     pub fn user(content: impl Into<String>) -> Self {
-        Self { role: "user".into(), content: content.into() }
+        Self { role: "user".into(), content: content.into(), image: None }
+    }
+    pub fn assistant(content: impl Into<String>) -> Self {
+        Self { role: "assistant".into(), content: content.into(), image: None }
+    }
+    pub fn user_with_image(
+        content: impl Into<String>,
+        media_type: impl Into<String>,
+        base64_data: impl Into<String>,
+    ) -> Self {
+        Self {
+            role: "user".into(),
+            content: content.into(),
+            image: Some(ImageAttachment { media_type: media_type.into(), base64_data: base64_data.into() }),
+        }
     }
 }
 
@@ -623,9 +645,31 @@ struct ThinkingSetting {
 }
 
 #[derive(Debug, Serialize)]
+struct OpenAiWireMessage<'a> {
+    role: &'a str,
+    content: serde_json::Value,
+}
+
+impl<'a> From<&'a ChatMessage> for OpenAiWireMessage<'a> {
+    fn from(msg: &'a ChatMessage) -> Self {
+        let content = match &msg.image {
+            None => serde_json::Value::String(msg.content.clone()),
+            Some(img) => {
+                let data_url = format!("data:{};base64,{}", img.media_type, img.base64_data);
+                serde_json::json!([
+                    { "type": "text", "text": msg.content },
+                    { "type": "image_url", "image_url": { "url": data_url } }
+                ])
+            }
+        };
+        Self { role: &msg.role, content }
+    }
+}
+
+#[derive(Debug, Serialize)]
 struct ChatRequestBody<'a> {
     model: &'a str,
-    messages: &'a [ChatMessage],
+    messages: Vec<OpenAiWireMessage<'a>>,
     temperature: f32,
     max_tokens: u32,
     stream: bool,
@@ -640,7 +684,7 @@ impl<'a> ChatRequestBody<'a> {
         let enable_thinking = config.provider == ProviderKind::DeepSeek && supports_thinking(&config.model);
         Self {
             model: &config.model,
-            messages,
+            messages: messages.iter().map(OpenAiWireMessage::from).collect(),
             temperature: options.temperature.unwrap_or(config.temperature),
             max_tokens: clamp_output_tokens(options.max_tokens.unwrap_or(config.max_tokens)),
             stream,
@@ -730,9 +774,17 @@ struct ApiErrorDetail {
 }
 
 #[derive(Debug, Serialize)]
+struct OllamaWireMessage<'a> {
+    role: &'a str,
+    content: &'a str,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    images: Vec<&'a str>,
+}
+
+#[derive(Debug, Serialize)]
 struct OllamaChatRequestBody<'a> {
     model: &'a str,
-    messages: &'a [ChatMessage],
+    messages: Vec<OllamaWireMessage<'a>>,
     stream: bool,
     options: OllamaChatOptions,
 }
@@ -745,9 +797,19 @@ struct OllamaChatOptions {
 
 impl<'a> OllamaChatRequestBody<'a> {
     fn new(config: &'a AiConfig, messages: &'a [ChatMessage], options: &ChatOptions, stream: bool) -> Self {
+        let wire_messages = messages
+            .iter()
+            .map(|msg| {
+                let mut images = Vec::new();
+                if let Some(img) = &msg.image {
+                    images.push(img.base64_data.as_str());
+                }
+                OllamaWireMessage { role: &msg.role, content: &msg.content, images }
+            })
+            .collect();
         Self {
             model: &config.model,
-            messages,
+            messages: wire_messages,
             stream,
             options: OllamaChatOptions {
                 temperature: options.temperature.unwrap_or(config.temperature),
@@ -1286,6 +1348,70 @@ impl DeepSeekClient {
         Ok(full)
     }
 
+    /// Endpoint for embeddings computation.
+    fn embeddings_endpoint(&self) -> String {
+        let base = self.config.base_url.trim().trim_end_matches('/');
+        match self.provider() {
+            ProviderKind::Ollama => format!("{base}/api/embeddings"),
+            ProviderKind::Gemini => format!("{base}/openai/embeddings"),
+            _ => format!("{base}/embeddings"),
+        }
+    }
+
+    /// Computes embeddings vector for the provided text.
+    pub async fn embed(&self, text: &str) -> AiResult<Vec<f32>> {
+        let model = self.config.embedding_model.as_deref().unwrap_or("nomic-embed-text");
+        let endpoint = self.embeddings_endpoint();
+        let request = match self.provider() {
+            ProviderKind::Ollama => {
+                #[derive(Serialize)]
+                struct OllamaEmbedReq<'a> {
+                    model: &'a str,
+                    prompt: &'a str,
+                }
+                self.authorize(self.http.post(&endpoint)).json(&OllamaEmbedReq { model, prompt: text })
+            }
+            _ => {
+                #[derive(Serialize)]
+                struct OpenAiEmbedReq<'a> {
+                    model: &'a str,
+                    input: &'a str,
+                }
+                self.authorize(self.http.post(&endpoint)).json(&OpenAiEmbedReq { model, input: text })
+            }
+        };
+
+        let response = request.send().await.map_err(|error| self.unreachable(error))?;
+        let status = response.status();
+        let body = self.response_text(response).await?;
+        if !status.is_success() {
+            return Err(map_http_error(status.as_u16(), &body, &self.provider_name()));
+        }
+
+        #[derive(Deserialize)]
+        struct OllamaEmbedResp {
+            embedding: Vec<f32>,
+        }
+        #[derive(Deserialize)]
+        struct OpenAiData {
+            embedding: Vec<f32>,
+        }
+        #[derive(Deserialize)]
+        struct OpenAiEmbedResp {
+            data: Vec<OpenAiData>,
+        }
+
+        if let Ok(resp) = serde_json::from_str::<OllamaEmbedResp>(&body) {
+            return Ok(resp.embedding);
+        }
+        if let Ok(mut resp) = serde_json::from_str::<OpenAiEmbedResp>(&body) {
+            if let Some(first) = resp.data.pop() {
+                return Ok(first.embedding);
+            }
+        }
+        Err(AiError::InvalidResponse(self.provider_name()))
+    }
+
     /// Cheap connectivity/credentials check for the settings screen.
     pub async fn test_connection(&self) -> AiResult<String> {
         let messages = vec![ChatMessage::user("Reply with the single word: ready")];
@@ -1296,6 +1422,23 @@ impl DeepSeekClient {
             Err(error) => Err(error),
         }
     }
+}
+
+/// Cosine similarity between two float vectors. Returns 0.0 if empty or length mismatch.
+pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+    let mut dot = 0.0f32;
+    let mut norm_a = 0.0f32;
+    let mut norm_b = 0.0f32;
+    for (x, y) in a.iter().zip(b.iter()) {
+        dot += x * y;
+        norm_a += x * x;
+        norm_b += y * y;
+    }
+    let norm = (norm_a.sqrt() * norm_b.sqrt()).max(1e-9);
+    dot / norm
 }
 
 fn map_http_error(status: u16, body: &str, provider: &str) -> AiError {

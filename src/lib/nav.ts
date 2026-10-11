@@ -46,4 +46,7 @@ export interface PageToolsTab {
   tab: "extract" | "delete" | "rotate" | "resize" | "crop" | "numbering" | "stamp" | "nup";
 }
 
-export type Navigate = (screen: ScreenId, options?: { files?: string[]; pageToolsTab?: PageToolsTab["tab"] }) => void;
+export type Navigate = (
+  screen: ScreenId,
+  options?: { files?: string[]; pageToolsTab?: PageToolsTab["tab"]; targetPage?: number },
+) => void;

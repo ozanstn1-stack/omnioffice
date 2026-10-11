@@ -13,7 +13,7 @@ Effort estimates assume a single developer.
 | 2 (v3.5) | Quality infrastructure: coverage thresholds, screen tests, desktop E2E, fuzzing, benchmark trends, CI hardening | Done in 3.5.0-3.5.5 (coverage gate + screen tests in 3.5.0; E2E, fuzzing, benchmark trends in 3.5.4; regression gate + deep flows + repo-wide format in 3.5.5) |
 | 3 (v3.6) | PDF depth: content-stream object editing, render cache, Reader, Studio UX, PDF/A subsetting, signature chain (RFC 3161/OCSP) | Done in 3.6.0-4.1.0: content-stream **text** editing, Reader bookmarks and RFC 3161 timestamps in 3.6.0; tiled rendering, PDF/A font subsetting and the optional OCSP/CRL check in 4.1.0. Vector-object editing stays read-only |
 | 4 (v3.7) | Office depth: Writer fields/revisions, Calc data tools + chart UI, Impress timeline + media, format fidelity | Partly delivered: Writer fields and run-preserving revisions (3.5.3, 3.5.5), Calc data tools and ODF fidelity - comments, groups, animations, charts (4.0.0). Chart UI, Impress media and further format fidelity are open |
-| 5 (v4.x) | Platform: auto-update, macOS/Linux packaging, stores, Android foreground service + Keystore, sync OAuth, Vault 2.0, plugins, AI | Partly delivered: sync OAuth (3.5.7), the Android foreground service (4.3.0), in-place update infrastructure (4.6.1: signed desktop updater with a browser fallback; Android APK download + SHA-256 check + system installer), Android Keystore and AI (Claude, in-editor AI) in 4.2.0. Store packaging, macOS/Linux packaging and Vault 2.0 are open |
+| 5 (v4.x) | Platform: auto-update, macOS/Linux packaging, stores, Android foreground service + Keystore, sync OAuth, Vault 2.0, plugins, AI | Substantially delivered: sync OAuth (3.5.7), Android foreground service (4.3.0), in-place updates (4.6.1), Android Keystore and in-editor AI (4.2.0), Belge Asistanı 2.0 multi-modal AI & Vault hybrid search (4.7.0). Store packaging and macOS/Linux packaging are open |
 
 ## 3.4.0 — Quick wins (delivered)
 
@@ -299,3 +299,26 @@ Effort estimates assume a single developer.
   the owner configures the keys); Android downloads the release APK, checks
   its SHA-256 and opens the system installer (`REQUEST_INSTALL_PACKAGES`,
   which needs "install unknown apps" on the device).
+
+## 4.7.0 — Belge Asistanı 2.0 (Document Assistant 2.0) (delivered)
+
+- **Multi-turn Document Chat & Grounded Citations**: Rich conversation history
+  with `[page N]` citation cards parsed and linked directly into the PDF Reader
+  via `initialPage` navigation and auto-scrolling.
+- **Local Thread Persistence**: Chat threads can be named and saved locally
+  with full conversation histories, reloaded, and deleted (`ai_chat_save`,
+  `ai_chat_list`, `ai_chat_load`, `ai_chat_delete`).
+- **Vision Model Support**: Support for multi-modal base64 page image attachments
+  across Claude 3.5 Sonnet, OpenAI GPT-4o, Ollama vision models, and LM Studio.
+- **LM Studio Local Preset**: Preset configuration for LM Studio local inference
+  (`http://localhost:1234/v1`) with zero telemetry.
+- **Vault Hybrid Semantic Search**: Combine BM25 keyword matching with provider
+  embedding cosine similarity (`vault_search_hybrid`) for context-aware multi-document Q&A.
+- **Invoice & Receipt Table Extraction**: Automatic extraction of structured line
+  items (`InvoiceTableRow`) with interactive preview table and RFC 4180 CSV export.
+- **Batch AI Queue**: Background batch processing (`ai_batch_run`) supporting
+  summarize, translate, classify, and extract operations with real-time
+  `ai-batch-progress` events.
+- **Strict Local-First & Zero-Telemetry**: Explicit opt-in consent; no data
+  sent without user action; 100% Turkish and English translation coverage (2,148 keys).
+

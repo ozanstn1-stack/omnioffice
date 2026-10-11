@@ -607,6 +607,103 @@ export interface AiAskRequest {
   jobId: string;
 }
 
+export type AiChatScope = "document" | "page" | "selection" | "vault";
+
+export interface DocChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+export interface AiChatRequest {
+  path?: string;
+  question: string;
+  history?: DocChatMessage[];
+  scope?: AiChatScope;
+  page?: number;
+  selection?: string;
+  sendImage?: boolean;
+  password?: string;
+  jobId: string;
+}
+
+export interface AiCitation {
+  page: number;
+  snippet: string;
+  score: number;
+  cited: boolean;
+}
+
+export interface AiChatResult {
+  answer: string;
+  citations: AiCitation[];
+  retrievalMode: "hybrid" | "keyword" | string;
+  model: string;
+  elapsedMs: number;
+}
+
+export interface SavedChatThread {
+  id: string;
+  title: string;
+  documentPath?: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: DocChatMessage[];
+}
+
+export interface AiExtractRequest {
+  path: string;
+  pages?: number[];
+  extraFields?: string[];
+  password?: string;
+  jobId: string;
+}
+
+export interface AiTableRow {
+  page: number;
+  vendor: string;
+  date: string;
+  invoiceNumber: string;
+  currency: string;
+  subtotal?: number | null;
+  tax?: number | null;
+  total?: number | null;
+  lineItems: string;
+  customFields?: Record<string, string>;
+}
+
+export interface AiTableResult {
+  rows: AiTableRow[];
+  columns: string[];
+  pages: number;
+  elapsedMs: number;
+}
+
+export interface AiBatchItemRequest {
+  path: string;
+  action: "summarize" | "translate" | "classify" | "extract";
+  targetLang?: string;
+  labels?: string[];
+}
+
+export interface AiBatchRequest {
+  items: AiBatchItemRequest[];
+  jobId: string;
+}
+
+export interface AiBatchItemResult {
+  path: string;
+  action: string;
+  success: boolean;
+  output?: string;
+  error?: string;
+  elapsedMs: number;
+}
+
+export interface AiBatchResult {
+  results: AiBatchItemResult[];
+  totalElapsedMs: number;
+}
+
 export interface AiCleanupRequest {
   path: string;
   pages?: number[];

@@ -2,14 +2,14 @@
 //! build/chunk/retrieval checks. No real network access is used.
 
 use aicore::prompts::{
-    ask_prompt, calc_action_prompt, chunk_text, doc_action_prompt, doc_chat_focus, doc_chat_messages, metadata_prompt,
-    parse_formula_reply, parse_metadata_reply, select_relevant_pages, summarize_prompt, summarize_prompt_with_budget,
-    summarize_selection_prompt, translate_page_prompt, writer_action_prompt, DocChatMessage, Plan, SummaryLength,
-    SummaryOptions, SummaryStyle, TranslateOptions,
+    self, ask_prompt, calc_action_prompt, chunk_text, doc_action_prompt, doc_chat_focus, doc_chat_messages,
+    metadata_prompt, parse_formula_reply, parse_metadata_reply, select_relevant_pages, summarize_prompt,
+    summarize_prompt_with_budget, summarize_selection_prompt, translate_page_prompt, writer_action_prompt,
+    DocChatMessage, Plan, SummaryLength, SummaryOptions, SummaryStyle, TranslateOptions,
 };
 use aicore::{
-    provider_notes, AiConfig, AiError, CancelToken, ChatMessage, ChatOptions, DeepSeekClient, ProviderCapabilities,
-    ProviderKind,
+    cosine_similarity, provider_notes, AiConfig, AiError, CancelToken, ChatMessage, ChatOptions, DeepSeekClient,
+    ProviderCapabilities, ProviderKind,
 };
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -895,4 +895,79 @@ async fn ollama_length_done_reason_is_a_truncation_error() {
         .unwrap_err();
     assert!(matches!(error, AiError::Truncated(_)), "{error:?}");
     handle.join().unwrap();
+}
+
+#[test]
+fn cosine_similarity_computes_expected_values() {
+    let a = vec![1.0, 0.0, 0.0];
+    let b = vec![1.0, 0.0, 0.0];
+    assert!((cosine_similarity(&a, &b) - 1.0).abs() < 1e-5);
+
+    let c = vec![0.0, 1.0, 0.0];
+    assert!(cosine_similarity(&a, &c).abs() < 1e-5);
+
+    let empty: Vec<f32> = vec![];
+    assert_eq!(cosine_similarity(&empty, &empty), 0.0);
+}
+
+#[tokio::test]
+async fn ollama_embed_parses_response() {
+    let body = r#"{"embedding": [0.1, 0.2, 0.3]}"#;
+    let (url, handle) = mock_server(200, "application/json", body.to_string(), false);
+    let client = provider_client(url, ProviderKind::Ollama, "");
+    let vec = client.embed("test text").await.expect("embed");
+    assert_eq!(vec, vec![0.1, 0.2, 0.3]);
+    handle.join().unwrap();
+}
+
+#[tokio::test]
+async fn openai_embed_parses_response() {
+    let body = r#"{"data": [{"embedding": [0.5, 0.6, 0.7]}]}"#;
+    let (url, handle) = mock_server(200, "application/json", body.to_string(), false);
+    let client = provider_client(url, ProviderKind::OpenAiCompatible, "test-key");
+    let vec = client.embed("test text").await.expect("embed");
+    assert_eq!(vec, vec![0.5, 0.6, 0.7]);
+    handle.join().unwrap();
+}
+
+#[test]
+fn invoice_extract_prompt_and_reply_parser() {
+    let pages = vec![(1, "Invoice #1001 from Acme Corp on 2026-10-10. Total: $120".to_string())];
+    let prompt = prompts::invoice_extract_prompt(&pages, &["tax_id".to_string()]);
+    assert_eq!(prompt[0].role, "system");
+    assert!(prompt[1].content.contains("tax_id"));
+
+    let reply = r#"```json
+    {
+      "rows": [
+        {
+          "page": 1,
+          "vendor": "Acme Corp",
+          "date": "2026-10-10",
+          "invoiceNumber": "1001",
+          "currency": "USD",
+          "total": 120.0,
+          "lineItems": "Items",
+          "customFields": {"tax_id": "DE12345"}
+        }
+      ]
+    }
+    ```"#;
+    let rows = prompts::parse_invoice_extract_reply(reply);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].vendor, "Acme Corp");
+    assert_eq!(rows[0].total, Some(120.0));
+    assert_eq!(rows[0].custom_fields.get("tax_id").map(|s| s.as_str()), Some("DE12345"));
+}
+
+#[test]
+fn classify_document_prompt_and_reply_parser() {
+    let prompt = prompts::classify_document_prompt("Financial statement 2026...", &["Finance".into(), "Legal".into()]);
+    assert_eq!(prompt[0].role, "system");
+    assert!(prompt[1].content.contains("Finance, Legal"));
+
+    let reply = r#"{"label": "Finance", "reason": "Mentions statement"}"#;
+    let res = prompts::parse_classification_reply(reply, "Other");
+    assert_eq!(res.label, "Finance");
+    assert_eq!(res.reason, "Mentions statement");
 }

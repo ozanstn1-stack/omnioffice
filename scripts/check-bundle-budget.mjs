@@ -38,7 +38,9 @@ const ENTRY_BUDGET_KB = 180;
 const CHUNK_BUDGET_KB = 100;
 // Raised from 450 in 4.5.0: the Writer ruler/table tools and the Impress
 // rich-text, connectors, crop and sorter features add real UI to the chunks.
-const TOTAL_BUDGET_KB = 470;
+// Raised to 485 in 4.7.0 for Belge Asistanı 2.0 (Document Assistant 2.0:
+// document chat with citations, invoice extraction, and batch queue).
+const TOTAL_BUDGET_KB = 485;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);

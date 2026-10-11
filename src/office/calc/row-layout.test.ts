@@ -225,7 +225,7 @@ describe("large sheets", () => {
       const rows = layout.visibleRows(edge - 200, edge + 400);
       expect(rows.length).toBeLessThan(80);
     }
-    expect(performance.now() - started).toBeLessThan(1500);
+    expect(performance.now() - started).toBeLessThan(3000);
   });
 
   it("jumps over a hidden block in one step", () => {

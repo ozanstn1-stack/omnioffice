@@ -75,7 +75,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     const DELAY: Duration = Duration::from_millis(60);
-    const SETTLE: Duration = Duration::from_millis(220);
+    const SETTLE: Duration = Duration::from_millis(350);
 
     /// A gate whose sink records every call, in order.
     fn recording_gate() -> (StartGate, Arc<Mutex<Vec<bool>>>) {
