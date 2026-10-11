@@ -1,48 +1,75 @@
 import java.io.File
+import org.apache.tools.ant.taskdefs.condition.Os
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.logging.LogLevel
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.TaskAction
+import javax.inject.Inject
+import org.gradle.process.ExecOperations
 
-/**
- * Verifies that the Rust library for this ABI is present in `jniLibs`.
- *
- * The library itself is compiled by `scripts/build-android.ps1` (or by the
- * Tauri CLI on Linux/macOS via `tauri android build`) before Gradle runs.
- * Building it here would require the Tauri CLI, which on Windows creates a
- * symbolic link and therefore needs Developer Mode, so this task only checks
- * the expected artifact.
- */
-open class BuildTask : DefaultTask() {
+abstract class BuildTask : DefaultTask() {
+    @get:Inject
+    abstract val execOperations: ExecOperations
+
     @Input
     var rootDirRel: String? = null
-
+    @Input
+    var projectDir: String? = null
     @Input
     var target: String? = null
-
     @Input
     var release: Boolean? = null
 
-    private val abis = mapOf(
-        "aarch64" to "arm64-v8a",
-        "armv7" to "armeabi-v7a",
-        "i686" to "x86",
-        "x86_64" to "x86_64",
-    )
-
     @TaskAction
     fun assemble() {
-        val target = target ?: throw GradleException("target cannot be null")
-        val abi = abis[target] ?: throw GradleException("unsupported target $target")
-        val library = File(project.projectDir, "src/main/jniLibs/$abi/libpdf_sak_lib.so")
-        if (!library.isFile) {
-            throw GradleException(
-                "Missing $library.\n" +
-                    "Build the Android library first:\n" +
-                    "  npm run android:build            (Windows)\n" +
-                    "  npm run tauri android build      (Linux/macOS)"
-            )
+        val executable = """npm""";
+        try {
+            runTauriCli(executable)
+        } catch (e: Exception) {
+            if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+                // Try different Windows-specific extensions
+                val fallbacks = listOf(
+                    "$executable.exe",
+                    "$executable.cmd",
+                    "$executable.bat",
+                )
+
+                var lastException: Exception = e
+                for (fallback in fallbacks) {
+                    try {
+                        runTauriCli(fallback)
+                        return
+                    } catch (fallbackException: Exception) {
+                        lastException = fallbackException
+                    }
+                }
+                throw lastException
+            } else {
+                throw e;
+            }
         }
-        logger.info("Using prebuilt Rust library ${library.absolutePath}")
+    }
+
+    fun runTauriCli(executable: String) {
+        val rootDirRel = rootDirRel ?: throw GradleException("rootDirRel cannot be null")
+        val target = target ?: throw GradleException("target cannot be null")
+        val release = release ?: throw GradleException("release cannot be null")
+        val args = listOf("run", "--", "tauri", "android", "android-studio-script");
+
+        execOperations.exec {
+            workingDir(File(projectDir, rootDirRel))
+            executable(executable)
+            args(args)
+            if (logger.isEnabled(LogLevel.DEBUG)) {
+                args("-vv")
+            } else if (logger.isEnabled(LogLevel.INFO)) {
+                args("-v")
+            }
+            if (release) {
+                args("--release")
+            }
+            args(listOf("--target", target))
+        }.assertNormalExitValue()
     }
 }
