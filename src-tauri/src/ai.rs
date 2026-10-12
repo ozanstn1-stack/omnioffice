@@ -1048,7 +1048,15 @@ pub struct AiChatResult {
     pub retrieval_mode: String, // "hybrid" | "keyword"
     pub model: String,
     pub elapsed_ms: u64,
+    /// Set when a requested page image could not be rendered, encoded or sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
 }
+
+/// Largest page-image width sent to a vision model.
+const VISION_MAX_WIDTH: u32 = 1600;
+/// Largest encoded page image (JPEG bytes) sent to a vision model.
+const VISION_MAX_BYTES: usize = 4 * 1024 * 1024;
 
 /// The page number inside a vault location label (`page 3` -> 3); 0 when the
 /// location is not a page (a paragraph, a sheet range, a slide).
@@ -1081,6 +1089,7 @@ pub async fn ai_chat(
 
     let mut citations = Vec::new();
     let mut retrieval_mode = "keyword".to_string();
+    let mut vision_warning: Option<String> = None;
     let messages;
     let mut retrieved_pages: Vec<(u32, String)> = Vec::new();
     let mut sources: Vec<CitationSource> = Vec::new();
@@ -1111,25 +1120,57 @@ pub async fn ai_chat(
 
                 if request.send_image {
                     let extension = path.as_path().extension().map(|v| v.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
-                    if extension == "pdf" {
-                        let render_opts = pdfcore::render::RenderOptions {
-                            dpi: 150.0,
-                            max_width: Some(1600),
-                            max_height: None,
-                        };
-                        if let Ok(rendered) = pdfcore::render::render_page(path.as_path(), request.password.as_deref(), page_num, &render_opts) {
-                            if let Ok(bytes) = pdfcore::images::encode_image(&rendered, pdfcore::images::ImageFormat::Jpeg, 80, false) {
-                                use base64::Engine;
-                                let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                                if let Some(last_msg) = wire_msgs.last_mut() {
-                                    if last_msg.role == "user" {
-                                        last_msg.image = Some(aicore::ImageAttachment {
-                                            media_type: "image/jpeg".to_string(),
-                                            base64_data: b64,
-                                        });
+                    if extension != "pdf" {
+                        vision_warning = Some("Image input is only available for PDF pages.".to_string());
+                    } else {
+                        // Render at a bounded width and retry smaller when the
+                        // encoded image would exceed the byte cap.
+                        let mut attached = false;
+                        for dpi in [150.0_f32, 110.0, 80.0] {
+                            let render_opts = pdfcore::render::RenderOptions {
+                                dpi,
+                                max_width: Some(VISION_MAX_WIDTH),
+                                max_height: None,
+                            };
+                            let rendered =
+                                match pdfcore::render::render_page(path.as_path(), request.password.as_deref(), page_num, &render_opts)
+                                {
+                                    Ok(rendered) => rendered,
+                                    Err(error) => {
+                                        vision_warning = Some(format!("The page image could not be rendered: {error}"));
+                                        break;
                                     }
+                                };
+                            let bytes =
+                                match pdfcore::images::encode_image(&rendered, pdfcore::images::ImageFormat::Jpeg, 80, false) {
+                                    Ok(bytes) => bytes,
+                                    Err(error) => {
+                                        vision_warning = Some(format!("The page image could not be encoded: {error}"));
+                                        break;
+                                    }
+                                };
+                            if bytes.len() > VISION_MAX_BYTES {
+                                vision_warning = Some(format!(
+                                    "The page image is larger than the {} MB limit.",
+                                    VISION_MAX_BYTES / (1024 * 1024)
+                                ));
+                                continue;
+                            }
+                            use base64::Engine;
+                            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                            if let Some(last_msg) = wire_msgs.last_mut() {
+                                if last_msg.role == "user" {
+                                    last_msg.image = Some(aicore::ImageAttachment {
+                                        media_type: "image/jpeg".to_string(),
+                                        base64_data: b64,
+                                    });
+                                    attached = true;
                                 }
                             }
+                            break;
+                        }
+                        if !attached && vision_warning.is_none() {
+                            vision_warning = Some("The page image could not be attached to the request.".to_string());
                         }
                     }
                 }
@@ -1282,7 +1323,14 @@ pub async fn ai_chat(
     citations.sort_by(|a, b| b.cited.cmp(&a.cited).then_with(|| a.page.cmp(&b.page)));
 
     job_guard.succeed();
-    Ok(AiChatResult { answer, citations, retrieval_mode, model, elapsed_ms: started.elapsed().as_millis() as u64 })
+    Ok(AiChatResult {
+        answer,
+        citations,
+        retrieval_mode,
+        model,
+        elapsed_ms: started.elapsed().as_millis() as u64,
+        warning: vision_warning,
+    })
 }
 
 // ---------------------------------------------------------------------------

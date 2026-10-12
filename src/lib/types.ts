@@ -656,6 +656,8 @@ export interface AiChatResult {
   retrievalMode: "hybrid" | "keyword" | string;
   model: string;
   elapsedMs: number;
+  /** Set when a requested page image could not be rendered or sent. */
+  warning?: string;
 }
 
 export interface SavedChatThread {

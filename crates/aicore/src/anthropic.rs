@@ -872,3 +872,25 @@ mod tests {
         assert_eq!(parse_models_page(r#"{"error":{}}"#), (Vec::new(), None));
     }
 }
+
+#[cfg(test)]
+mod vision_contract_tests {
+    use super::*;
+    use crate::{AiConfig, ChatMessage, ChatOptions, ProviderKind};
+
+    /// Anthropic carries an image as a base64 `source` block before the text.
+    #[test]
+    fn anthropic_image_is_a_base64_source_block() {
+        let config = AiConfig { provider: ProviderKind::Anthropic, ..Default::default() };
+        let messages = vec![ChatMessage::user_with_image("Describe", "image/png", "AAAA")];
+        let request = build_request(&config, &messages, &ChatOptions::default(), false);
+        let value = serde_json::to_value(&request).expect("serialize");
+        let content = &value["messages"][0]["content"];
+        let parts = content.as_array().expect("an image message has content parts");
+        assert_eq!(parts[0]["type"], "image");
+        assert_eq!(parts[0]["source"]["type"], "base64");
+        assert_eq!(parts[0]["source"]["media_type"], "image/png");
+        assert_eq!(parts[0]["source"]["data"], "AAAA");
+        assert_eq!(parts[1]["type"], "text");
+    }
+}
