@@ -9,7 +9,7 @@ use officecore::cleaner::{self, CleanOptions, CleanResult};
 use officecore::csvio::{self, CsvOptions};
 use officecore::error::{OfficeError, OfficeResult};
 use officecore::model::*;
-use officecore::{docx, layout, odf, pptx, rtf, textio, xlsx};
+use officecore::{docx, layout, odf, pptx, rtf, textio, udf, xlsx};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -101,9 +101,8 @@ fn extension(path: &Path) -> String {
 
 fn kind_for_extension(extension: &str) -> Option<&'static str> {
     match extension {
-        "docx" | "docm" | "dotx" | "odt" | "rtf" | "txt" | "md" | "markdown" | "html" | "htm" | "oswk-writer" => {
-            Some("writer")
-        }
+        "docx" | "docm" | "dotx" | "odt" | "udf" | "rtf" | "txt" | "md" | "markdown" | "html" | "htm"
+        | "oswk-writer" => Some("writer"),
         "xlsx" | "xlsm" | "xls" | "ods" | "csv" | "tsv" | "oswk-calc" => Some("calc"),
         "pptx" | "pptm" | "odp" | "oswk-impress" => Some("impress"),
         _ => None,
@@ -192,6 +191,12 @@ pub fn open_path(path: &Path) -> Result<OpenDocument, OfficeErrorPayload> {
         }
         "odt" => {
             let read = odf::read_odt_file(path).map_err(payload)?;
+            ("writer".to_string(), read.document.title.clone(), to_value(read.document)?, read.warnings)
+        }
+        // UYAP `.udf`: a ZIP whose `content.xml` carries the text. Closed
+        // format; see `officecore::udf` for what is modelled.
+        "udf" => {
+            let read = udf::read_udf_file(path).map_err(payload)?;
             ("writer".to_string(), read.document.title.clone(), to_value(read.document)?, read.warnings)
         }
         "rtf" => {
@@ -445,6 +450,10 @@ pub fn save_model(kind: &str, model: Value, path: &Path) -> Result<SaveDocument,
                 }
                 "odt" => {
                     let bytes = odf::write_odt(&document).map_err(payload)?;
+                    officecore::io::write_atomic(path, &bytes).map_err(payload)?;
+                }
+                "udf" => {
+                    let bytes = udf::write_udf(&document).map_err(payload)?;
                     officecore::io::write_atomic(path, &bytes).map_err(payload)?;
                 }
                 "rtf" => {
@@ -1099,10 +1108,28 @@ pub async fn office_convert(
 pub fn office_conversion_targets(extension: String) -> Vec<String> {
     match extension.trim_start_matches('.').to_ascii_lowercase().as_str() {
         "docx" | "docm" | "dotx" | "doc" | "dot" => {
-            vec!["pdf".into(), "docx".into(), "odt".into(), "rtf".into(), "txt".into(), "html".into(), "oswk".into()]
+            vec![
+                "pdf".into(),
+                "docx".into(),
+                "odt".into(),
+                "udf".into(),
+                "rtf".into(),
+                "txt".into(),
+                "html".into(),
+                "oswk".into(),
+            ]
         }
-        "odt" | "rtf" | "txt" | "md" => {
-            vec!["pdf".into(), "docx".into(), "odt".into(), "rtf".into(), "txt".into(), "html".into(), "oswk".into()]
+        "odt" | "udf" | "rtf" | "txt" | "md" => {
+            vec![
+                "pdf".into(),
+                "docx".into(),
+                "odt".into(),
+                "udf".into(),
+                "rtf".into(),
+                "txt".into(),
+                "html".into(),
+                "oswk".into(),
+            ]
         }
         "xlsx" | "ods" | "csv" | "tsv" | "xls" => {
             vec!["pdf".into(), "xlsx".into(), "ods".into(), "csv".into(), "oswk".into()]
@@ -1425,6 +1452,7 @@ mod tests {
     fn extension_detection() {
         assert_eq!(kind_for_extension("docx"), Some("writer"));
         assert_eq!(kind_for_extension("doc"), None);
+        assert_eq!(kind_for_extension("udf"), Some("writer"));
         assert_eq!(kind_for_extension("xlsx"), Some("calc"));
         assert_eq!(kind_for_extension("pptx"), Some("impress"));
         assert_eq!(kind_for_extension("pdf"), None);
@@ -1441,6 +1469,54 @@ mod tests {
         let doc_targets = office_conversion_targets("doc".into());
         assert!(doc_targets.contains(&"pdf".into()));
         assert!(doc_targets.contains(&"docx".into()));
+
+        // A UDF opens as a Writer document and converts to DOCX, ODT and PDF.
+        let udf_targets = office_conversion_targets("udf".into());
+        assert!(udf_targets.contains(&"pdf".into()));
+        assert!(udf_targets.contains(&"docx".into()));
+        assert!(udf_targets.contains(&"odt".into()));
+        assert!(office_conversion_targets("docx".into()).contains(&"udf".into()));
+    }
+
+    #[test]
+    fn udf_opens_saves_and_converts() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("karar.udf");
+        let mut document = officecore::model::TextDocument::new_blank("Karar");
+        document.blocks = vec![
+            officecore::model::Block::Paragraph {
+                props: officecore::model::ParaProps { align: "center".into(), ..Default::default() },
+                runs: vec![officecore::model::Run {
+                    text: "Türkçe karar metni".into(),
+                    bold: true,
+                    ..Default::default()
+                }],
+            },
+            officecore::model::Block::Paragraph {
+                props: Default::default(),
+                runs: vec![officecore::model::Run { text: "Gerekçe".into(), ..Default::default() }],
+            },
+        ];
+        let model = serde_json::to_value(&document).unwrap();
+        save_model("writer", model, &path).unwrap();
+        assert!(std::fs::read(&path).unwrap().starts_with(b"PK"), "the UDF is a ZIP");
+
+        let opened = open_path(&path).unwrap();
+        assert_eq!(opened.kind, "writer");
+        assert_eq!(opened.title, "Karar");
+        assert!(opened.warnings.is_empty(), "warnings: {:?}", opened.warnings);
+        let reopened: officecore::model::TextDocument = serde_json::from_value(opened.model).unwrap();
+        assert!(reopened.plain_text().contains("Türkçe karar metni"));
+
+        // Both conversions the format promises must work.
+        let docx = dir.path().join("karar.docx");
+        convert(&path, &docx, &Default::default()).unwrap();
+        let back = officecore::docx::read_docx_file(&docx).unwrap();
+        assert!(back.document.plain_text().contains("Türkçe karar metni"));
+
+        let pdf = dir.path().join("karar.pdf");
+        convert(&path, &pdf, &Default::default()).unwrap();
+        assert!(std::fs::read(&pdf).unwrap().starts_with(b"%PDF"));
     }
 
     /// A two-page PDF: heading, paragraph and bullets, then a heading and a

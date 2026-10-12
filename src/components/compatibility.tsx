@@ -33,7 +33,7 @@ export interface FormatCapabilities {
 }
 
 const TARGETS: Record<string, string[]> = {
-  writer: ["docx", "odt", "rtf", "txt", "md", "html", "pdf"],
+  writer: ["docx", "odt", "udf", "rtf", "txt", "md", "html", "pdf"],
   calc: ["xlsx", "ods", "csv", "pdf"],
   impress: ["pptx", "odp", "pdf"],
 };

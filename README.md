@@ -842,6 +842,7 @@ Only combinations that actually work are marked. “–” means not supported.
 | DOCM / DOTX / XLSM / PPTM | ✓ | ✓ | ✓ | ✓ (macros are detected, never executed and dropped on save) |
 | DOC / DOT | ✓ (text import; save as .docx/.oswk) | ✓ (in memory) | – | ✓ (via Writer) |
 | ODT | ✓ | ✓ | ✓ | ✓ |
+| UDF | ✓ | ✓ | ✓ | ✓ |
 | RTF | ✓ | ✓ | ✓ (basic formatting, tables, images, notes) | ✓ |
 | TXT / Markdown / HTML | ✓ | ✓ | ✓ | ✓ (via Writer) |
 | XLSX | ✓ | ✓ | ✓ | ✓ |

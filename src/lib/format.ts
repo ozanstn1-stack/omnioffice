@@ -70,6 +70,7 @@ export const OFFICE_DOCUMENT_EXTENSIONS: readonly string[] = [
   "doc",
   "dot",
   "odt",
+  "udf",
   "rtf",
   "txt",
   "md",
