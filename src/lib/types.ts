@@ -640,6 +640,10 @@ export interface AiCitation {
   snippet: string;
   score: number;
   cited: boolean;
+  /** The source document's path; a click opens this file (not the current one). */
+  path?: string;
+  /** Where inside the document: `page 3`, `paragraph 12`, `Sheet1!A1:B7`, `slide 4`. */
+  location?: string;
 }
 
 export interface AiChatResult {
