@@ -42,6 +42,9 @@ lopdf = "0.45.0"
 pdfcore = { path = "../crates/pdfcore" }
 time = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+# Release URLs are parsed and normalised (dot-segment escapes) before they are
+# compared against the allow-list; the crate is already in the tree via reqwest.
+url = "2"
 synccore = { path = "../crates/synccore" }
 
 [target.'cfg(windows)'.dependencies]

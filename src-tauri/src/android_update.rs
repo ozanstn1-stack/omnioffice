@@ -4,8 +4,9 @@
 //! `tauri-plugin-updater` does not support Android, so the phone runs its own
 //! native flow. The GitHub-releases check in [`crate::update`] stays the
 //! source of the release and its `OmniOffice-Android-<version>-<abi>.apk`
-//! asset (URL plus, once the release publishes checksums, the SHA-256); the
-//! webview then calls [`update_download_apk`] and [`update_install_apk`].
+//! asset (URL plus the SHA-256 the release publishes; a download without a
+//! checksum is deleted and never reaches the installer); the webview then
+//! calls [`update_download_apk`] and [`update_install_apk`].
 //!
 //! The download is restricted to this project's GitHub release downloads, is
 //! streamed into `<cache>/updates/` while its SHA-256 is computed, and is
@@ -30,8 +31,6 @@ use std::io::Write;
 #[cfg(target_os = "android")]
 use std::time::Duration;
 
-/// Only downloads under this prefix are accepted (mirrors `update.rs`).
-const DOWNLOAD_PREFIX: &str = "https://github.com/ozanstn1-stack/omnioffice/releases/download/";
 /// Hard cap for an APK; the largest release file is far below this.
 #[cfg(target_os = "android")]
 const MAX_APK_BYTES: u64 = 256 * 1024 * 1024;
@@ -45,9 +44,11 @@ const PROGRESS_EVENT: &str = "update:progress";
 #[cfg(target_os = "android")]
 const PROGRESS_STEP: u64 = 256 * 1024;
 
-/// True when `url` is a download of this project's GitHub releases.
+/// True when `url` is a download of this project's GitHub releases. The URL is
+/// parsed and normalised by [`crate::update::is_allowed_release_url`], so `..`
+/// and `%2e` escapes are rejected.
 pub fn is_allowed_url(url: &str) -> bool {
-    url.starts_with(DOWNLOAD_PREFIX) && !url.chars().any(|c| c.is_whitespace() || c.is_control())
+    crate::update::is_allowed_release_url(url)
 }
 
 /// Storage name for the APK behind `url`: `OmniOffice-Android-4.6.1-arm64-v8a.apk`
@@ -74,17 +75,23 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-/// Compares the computed digest with `expected` (when the release provided
-/// one). A mismatch deletes the downloaded file - it must never reach the
-/// installer - and reports a retryable error.
+/// Compares the computed digest with `expected`. The release must publish a
+/// SHA-256: without one the file is deleted and the install is refused - an
+/// unverified APK never reaches the system installer. A mismatch deletes the
+/// downloaded file as well and reports a retryable error.
 pub fn verify_digest_or_discard(path: &Path, computed: &str, expected: Option<&str>) -> Result<(), String> {
-    match expected {
-        Some(expected) if !computed.eq_ignore_ascii_case(expected.trim()) => {
-            let _ = std::fs::remove_file(path);
-            Err("The downloaded update failed its checksum and was deleted. Please try again.".to_string())
-        }
-        _ => Ok(()),
+    let Some(expected) = expected else {
+        let _ = std::fs::remove_file(path);
+        return Err(
+            "The release does not publish a SHA-256 for this download; the file was deleted and will not be installed."
+                .to_string(),
+        );
+    };
+    if !computed.eq_ignore_ascii_case(expected.trim()) {
+        let _ = std::fs::remove_file(path);
+        return Err("The downloaded update failed its checksum and was deleted. Please try again.".to_string());
     }
+    Ok(())
 }
 
 /// Accepts only an existing `.apk` inside `<cache>/updates`, so a compromised
@@ -260,6 +267,8 @@ mod tests {
         assert!(!is_allowed_url("https://github.com/other/repo/releases/download/v4.6.1/app.apk"));
         assert!(!is_allowed_url("http://github.com/ozanstn1-stack/omnioffice/releases/download/v4.6.1/app.apk"));
         assert!(!is_allowed_url(&format!("{base}/v4.6.1/app.apk\n")));
+        assert!(!is_allowed_url("https://github.com/ozanstn1-stack/omnioffice/releases/download/../../evil.apk"));
+        assert!(!is_allowed_url("https://github.com/ozanstn1-stack/omnioffice/releases/download/%2e%2e/evil.apk"));
     }
 
     #[test]
@@ -294,8 +303,18 @@ mod tests {
         std::fs::write(&file, b"apk bytes").expect("rewrite apk");
         assert!(verify_digest_or_discard(&file, &digest, Some(&format!("  {}  ", digest.to_uppercase()))).is_ok());
         assert!(file.exists());
-        assert!(verify_digest_or_discard(&file, &digest, None).is_ok());
-        assert!(file.exists());
+    }
+
+    #[test]
+    fn a_missing_checksum_refuses_the_install() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let file = dir.path().join("OmniOffice-4.6.1.apk");
+        std::fs::write(&file, b"apk bytes").expect("write apk");
+        let digest = sha256_hex(b"apk bytes");
+
+        let error = verify_digest_or_discard(&file, &digest, None).expect_err("no checksum must fail");
+        assert!(error.contains("SHA-256"), "the error names the missing checksum: {error}");
+        assert!(!file.exists(), "the unverified file is deleted");
     }
 
     #[test]
