@@ -3287,8 +3287,10 @@ mod tests {
         let read = read_docx(&bytes).unwrap();
         assert_eq!(read.document.comments.len(), 1, "warnings: {:?}", read.warnings);
         assert!(read.document.comments[0].text.contains("verify"));
+        assert_eq!(read.document.comments[0].author, "Ada", "comment author survives the round trip");
         assert_eq!(read.document.comments[0].replies.len(), 1);
         assert!(read.document.comments[0].replies[0].text.contains("Checked"));
+        assert_eq!(read.document.comments[0].replies[0].author, "Grace", "reply author survives the round trip");
         let anchored = read.document.blocks.iter().find_map(|block| match block {
             Block::Paragraph { runs, .. } => runs.iter().find_map(|run| run.comment.clone()),
             _ => None,
