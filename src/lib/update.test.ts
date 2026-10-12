@@ -73,7 +73,15 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockResolvedValue(null);
   useSettings.setState({ settings: { ...DEFAULT_SETTINGS }, loaded: true });
-  useUpdate.setState({ info: null, checking: false, error: null, phase: "idle", progress: 0, mode: null });
+  useUpdate.setState({
+    info: null,
+    checking: false,
+    error: null,
+    errorKind: null,
+    phase: "idle",
+    progress: 0,
+    mode: null,
+  });
 });
 
 describe("update check", () => {
@@ -184,7 +192,7 @@ describe("in-app install", () => {
 
   it("downloads and installs the APK on Android, tracking update:progress", async () => {
     android.value = true;
-    useUpdate.setState({ info: NEWER });
+    useUpdate.setState({ info: { ...NEWER, sha256: "abc123" } });
     let midway = 0;
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "update_download_apk") {
@@ -200,7 +208,7 @@ describe("in-app install", () => {
 
     expect(invokeMock).toHaveBeenCalledWith("update_download_apk", {
       url: NEWER.downloadUrl,
-      expectedSha256: null,
+      expectedSha256: "abc123",
     });
     expect(invokeMock).toHaveBeenCalledWith("update_install_apk", { path: "/cache/update.apk" });
     expect(midway).toBe(50);
@@ -227,7 +235,7 @@ describe("in-app install", () => {
 
   it("reports an Android download failure without opening the browser", async () => {
     android.value = true;
-    useUpdate.setState({ info: NEWER });
+    useUpdate.setState({ info: { ...NEWER, sha256: "abc123" } });
     invokeMock.mockRejectedValue("checksum mismatch");
 
     await useUpdate.getState().install();
@@ -235,7 +243,37 @@ describe("in-app install", () => {
     const state = useUpdate.getState();
     expect(state.phase).toBe("error");
     expect(state.error).toBe("checksum mismatch");
+    expect(state.errorKind).toBe("other");
     expect(updateOpen).not.toHaveBeenCalled();
+  });
+
+  it("refuses an Android install when the release publishes no checksum", async () => {
+    android.value = true;
+    useUpdate.setState({ info: NEWER });
+
+    await useUpdate.getState().install();
+
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(updateOpen).not.toHaveBeenCalled();
+    const state = useUpdate.getState();
+    expect(state.phase).toBe("error");
+    expect(state.errorKind).toBe("digest");
+  });
+
+  it("never falls back to the browser silently when the signature is rejected", async () => {
+    useUpdate.setState({ info: NEWER });
+    const downloadAndInstall = vi.fn(async () => {
+      throw new Error("signature verification failed");
+    });
+    updaterCheckMock.mockResolvedValue({ downloadAndInstall, close: vi.fn(async () => undefined) });
+
+    await useUpdate.getState().install();
+
+    expect(updateOpen).not.toHaveBeenCalled();
+    const state = useUpdate.getState();
+    expect(state.phase).toBe("error");
+    expect(state.errorKind).toBe("verification");
+    expect(state.mode).toBe("auto");
   });
 
   it("relaunches on desktop only", async () => {

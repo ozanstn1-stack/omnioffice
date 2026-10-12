@@ -9,11 +9,13 @@
 //! or the installer link in the browser.
 
 use serde::Serialize;
+use std::cmp::Ordering;
+use std::fmt;
 use std::time::Duration;
 
 const LATEST_RELEASE_API: &str = "https://api.github.com/repos/ozanstn1-stack/omnioffice/releases/latest";
-/// Only links under this prefix may be opened by [`update_open`].
-const RELEASES_PREFIX: &str = "https://github.com/ozanstn1-stack/omnioffice/releases/";
+/// Path half of the release URLs, checked against the parsed URL.
+const RELEASES_PATH_PREFIX: &str = "/ozanstn1-stack/omnioffice/releases/";
 const MAX_NOTES_CHARS: usize = 4000;
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -35,11 +37,90 @@ pub struct UpdateInfo {
     pub notes: String,
 }
 
-/// Parses `v1.2.3`, `1.2.3` or `1.2.3-beta` into a comparable triple. A
-/// pre-release suffix is ignored; anything else is `None`.
-pub fn parse_version(text: &str) -> Option<(u64, u64, u64)> {
-    let core = text.trim().trim_start_matches(['v', 'V']);
-    let core = core.split(['-', '+']).next()?;
+/// One identifier of a SemVer pre-release part (`beta`, `1`, `rc-2`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PreId {
+    Numeric(u64),
+    Alpha(String),
+}
+
+/// A semantic version with an optional pre-release part (`4.8.0-beta.1`).
+/// Ordering follows SemVer: a pre-release sorts before its release, numeric
+/// identifiers compare numerically and rank below alphanumeric ones.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Version {
+    pub major: u64,
+    pub minor: u64,
+    pub patch: u64,
+    pub pre: Vec<PreId>,
+}
+
+fn compare_pre(a: &[PreId], b: &[PreId]) -> Ordering {
+    match (a.is_empty(), b.is_empty()) {
+        (true, true) => Ordering::Equal,
+        // A stable release outranks any pre-release of the same core.
+        (true, false) => Ordering::Greater,
+        (false, true) => Ordering::Less,
+        (false, false) => {
+            for (left, right) in a.iter().zip(b.iter()) {
+                let ord = match (left, right) {
+                    (PreId::Numeric(x), PreId::Numeric(y)) => x.cmp(y),
+                    (PreId::Numeric(_), PreId::Alpha(_)) => Ordering::Less,
+                    (PreId::Alpha(_), PreId::Numeric(_)) => Ordering::Greater,
+                    (PreId::Alpha(x), PreId::Alpha(y)) => x.cmp(y),
+                };
+                if ord != Ordering::Equal {
+                    return ord;
+                }
+            }
+            a.len().cmp(&b.len())
+        }
+    }
+}
+
+impl Ord for Version {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.major
+            .cmp(&other.major)
+            .then_with(|| self.minor.cmp(&other.minor))
+            .then_with(|| self.patch.cmp(&other.patch))
+            .then_with(|| compare_pre(&self.pre, &other.pre))
+    }
+}
+
+impl PartialOrd for Version {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl fmt::Display for Version {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)?;
+        if !self.pre.is_empty() {
+            let ids: Vec<String> = self
+                .pre
+                .iter()
+                .map(|id| match id {
+                    PreId::Numeric(number) => number.to_string(),
+                    PreId::Alpha(text) => text.clone(),
+                })
+                .collect();
+            write!(f, "-{}", ids.join("."))?;
+        }
+        Ok(())
+    }
+}
+
+/// Parses `v1.2.3`, `1.2.3` or `1.2.3-beta.1` into a comparable [`Version`]
+/// (build metadata after `+` is ignored); anything else is `None`.
+pub fn parse_version(text: &str) -> Option<Version> {
+    let trimmed = text.trim().trim_start_matches(['v', 'V']);
+    let core_and_pre = trimmed.split('+').next()?;
+    let (core, pre_text) = match core_and_pre.split_once('-') {
+        Some((core, pre)) => (core, Some(pre)),
+        None => (core_and_pre, None),
+    };
     let mut parts = core.split('.');
     let major = parts.next()?.parse().ok()?;
     let minor = parts.next().unwrap_or("0").parse().ok()?;
@@ -47,7 +128,46 @@ pub fn parse_version(text: &str) -> Option<(u64, u64, u64)> {
     if parts.next().is_some() {
         return None;
     }
-    Some((major, minor, patch))
+    let mut pre = Vec::new();
+    if let Some(pre_text) = pre_text {
+        if pre_text.is_empty() {
+            return None;
+        }
+        for id in pre_text.split('.') {
+            if id.is_empty() {
+                return None;
+            }
+            if id.chars().all(|c| c.is_ascii_digit()) {
+                pre.push(PreId::Numeric(id.parse().ok()?));
+            } else if id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+                pre.push(PreId::Alpha(id.to_string()));
+            } else {
+                return None;
+            }
+        }
+    }
+    Some(Version { major, minor, patch, pre })
+}
+
+/// True when `url` is an https link under this project's GitHub releases.
+/// The URL is parsed and normalised before the check, so `..` and `%2e`
+/// dot-segment escapes are resolved (and then rejected) instead of matching a
+/// raw string prefix.
+pub(crate) fn is_allowed_release_url(url: &str) -> bool {
+    if url.chars().any(|c| c.is_whitespace() || c.is_control()) || url.contains('\\') {
+        return false;
+    }
+    // The WHATWG parser resolves literal dot segments; an encoded `%2e` is
+    // rejected outright so no downstream resolver can turn it into `..`.
+    if url.to_ascii_lowercase().contains("%2e") {
+        return false;
+    }
+    let Ok(parsed) = url::Url::parse(url) else {
+        return false;
+    };
+    parsed.scheme() == "https"
+        && parsed.host_str() == Some("github.com")
+        && parsed.path().starts_with(RELEASES_PATH_PREFIX)
 }
 
 /// Picks the release asset for `os`/`arch` (values of `std::env::consts`).
@@ -80,7 +200,7 @@ pub fn evaluate_release(
     let release_url = release
         .get("html_url")
         .and_then(|url| url.as_str())
-        .filter(|url| url.starts_with(RELEASES_PREFIX))
+        .filter(|url| is_allowed_release_url(url))
         .unwrap_or("https://github.com/ozanstn1-stack/omnioffice/releases/latest")
         .to_string();
     let assets = release.get("assets").and_then(|assets| assets.as_array()).cloned().unwrap_or_default();
@@ -88,7 +208,7 @@ pub fn evaluate_release(
     let download_url = asset
         .and_then(|asset| asset.get("browser_download_url"))
         .and_then(|url| url.as_str())
-        .filter(|url| url.starts_with(RELEASES_PREFIX))
+        .filter(|url| is_allowed_release_url(url))
         .map(str::to_string);
     let download_name = download_url
         .as_ref()
@@ -106,7 +226,7 @@ pub fn evaluate_release(
         release.get("body").and_then(|body| body.as_str()).unwrap_or("").chars().take(MAX_NOTES_CHARS).collect();
     Ok(UpdateInfo {
         current: current.to_string(),
-        latest: format!("{}.{}.{}", latest.0, latest.1, latest.2),
+        latest: latest.to_string(),
         newer: latest > running,
         release_url,
         download_url,
@@ -146,10 +266,11 @@ pub async fn update_check() -> Result<UpdateInfo, String> {
 }
 
 /// Opens a release page or download in the system browser. Only links to
-/// this project's GitHub releases are accepted.
+/// this project's GitHub releases are accepted (parsed and normalised; see
+/// [`is_allowed_release_url`]).
 #[tauri::command]
 pub fn update_open(url: String) -> Result<(), String> {
-    if !url.starts_with(RELEASES_PREFIX) || url.chars().any(|c| c.is_whitespace() || c.is_control()) {
+    if !is_allowed_release_url(&url) {
         return Err("Only OmniOffice release links can be opened.".to_string());
     }
     tauri_plugin_opener::open_url(url, None::<&str>).map_err(|error| error.to_string())
@@ -180,12 +301,47 @@ mod tests {
 
     #[test]
     fn versions_parse_and_compare() {
-        assert_eq!(parse_version("v3.8.2"), Some((3, 8, 2)));
-        assert_eq!(parse_version("3.10"), Some((3, 10, 0)));
-        assert_eq!(parse_version("4.0.0-beta.1"), Some((4, 0, 0)));
+        assert_eq!(parse_version("v3.8.2").unwrap().to_string(), "3.8.2");
+        assert_eq!(parse_version("3.10").unwrap().to_string(), "3.10.0");
+        assert_eq!(parse_version("4.0.0-beta.1").unwrap().to_string(), "4.0.0-beta.1");
         assert_eq!(parse_version("latest"), None);
         assert_eq!(parse_version("1.2.3.4"), None);
         assert!(parse_version("3.10.0") > parse_version("3.9.9"));
+    }
+
+    #[test]
+    fn prerelease_versions_follow_semver() {
+        assert!(parse_version("4.8.0") > parse_version("4.8.0-beta.2"), "a release outranks its pre-releases");
+        assert!(parse_version("4.8.0-beta.2") > parse_version("4.8.0-beta.1"));
+        assert!(parse_version("4.8.0-beta.1") > parse_version("4.7.9"));
+        assert!(parse_version("4.8.0-rc.1") > parse_version("4.8.0-beta.9"), "alpha identifiers compare as text");
+        assert!(parse_version("4.8.0-alpha") < parse_version("4.8.0-alpha.1"), "a shorter identifier list is smaller");
+        assert!(parse_version("4.8.0-1") < parse_version("4.8.0-alpha"), "numeric identifiers rank below text");
+        assert_eq!(parse_version("4.8.0+build.5").unwrap().to_string(), "4.8.0");
+        assert_eq!(parse_version("4.8.0-"), None);
+        assert_eq!(parse_version("4.8.0-beta..1"), None);
+    }
+
+    #[test]
+    fn a_prerelease_of_the_running_version_is_not_newer() {
+        let beta = evaluate_release(&release("v3.9.0-beta.1"), "3.9.0", "windows", "x86_64").unwrap();
+        assert!(!beta.newer);
+        assert_eq!(beta.latest, "3.9.0-beta.1");
+        let stable = evaluate_release(&release("v3.9.0"), "3.9.0-beta.1", "windows", "x86_64").unwrap();
+        assert!(stable.newer, "a user on the beta must be offered the stable release");
+    }
+
+    #[test]
+    fn url_escapes_are_rejected() {
+        assert!(is_allowed_release_url("https://github.com/ozanstn1-stack/omnioffice/releases/tag/v4.7.0"));
+        assert!(is_allowed_release_url("https://github.com/ozanstn1-stack/omnioffice/releases/download/v4.7.0/a.exe"));
+        assert!(!is_allowed_release_url("https://github.com/ozanstn1-stack/omnioffice/releases/../evil"));
+        assert!(!is_allowed_release_url("https://github.com/ozanstn1-stack/omnioffice/releases/%2e%2e/evil"));
+        assert!(!is_allowed_release_url("https://github.com/ozanstn1-stack/omnioffice/releases/%2E%2E/evil"));
+        assert!(!is_allowed_release_url("https://github.com/ozanstn1-stack/omnioffice/releases/download/../../evil"));
+        assert!(!is_allowed_release_url("https://github.com/ozanstn1-stack/omnioffice/releases\\@evil.example/"));
+        assert!(!is_allowed_release_url("https://evil.example/ozanstn1-stack/omnioffice/releases/x"));
+        assert!(!is_allowed_release_url("http://github.com/ozanstn1-stack/omnioffice/releases/x"));
     }
 
     #[test]
@@ -255,5 +411,7 @@ mod tests {
     fn only_release_links_may_be_opened() {
         assert!(update_open("https://evil.example/x".into()).is_err());
         assert!(update_open("https://github.com/ozanstn1-stack/omnioffice/releases/ x".into()).is_err());
+        assert!(update_open("https://github.com/ozanstn1-stack/omnioffice/releases/../x".into()).is_err());
+        assert!(update_open("https://github.com/ozanstn1-stack/omnioffice/releases/%2e%2e/x".into()).is_err());
     }
 }

@@ -27,6 +27,7 @@ export function UpdateBanner() {
   const phase = useUpdate((state) => state.phase);
   const progress = useUpdate((state) => state.progress);
   const mode = useUpdate((state) => state.mode);
+  const errorKind = useUpdate((state) => state.errorKind);
 
   useEffect(() => {
     if (loaded) void check(false);
@@ -85,6 +86,17 @@ export function UpdateBanner() {
         ? t("update.autoHint")
         : null;
 
+  // A failed install used to be silent; a rejected signature or a missing
+  // checksum has to be visible.
+  const failure =
+    phase === "error"
+      ? errorKind === "verification"
+        ? t("update.verifyFailed")
+        : errorKind === "digest"
+          ? t("update.digestMissing")
+          : t("update.installFailed")
+      : null;
+
   return (
     <Card className="p-4 fade-in">
       <div className="flex items-center gap-3 flex-wrap" role="status">
@@ -104,6 +116,11 @@ export function UpdateBanner() {
         </IconButton>
       </div>
       {hint ? <p className="text-xs muted mt-2">{hint}</p> : null}
+      {failure ? (
+        <p className="text-xs mt-2" style={{ color: "var(--danger)" }} role="alert">
+          {failure}
+        </p>
+      ) : null}
     </Card>
   );
 }

@@ -26,6 +26,22 @@ export type UpdatePhase = "idle" | "checking" | "downloading" | "installing" | "
 /** How the update is delivered: the native updater, or the browser fallback. */
 export type UpdateMode = "auto" | "fallback" | null;
 
+/**
+ * Why the last install failed: "verification" (the updater rejected the
+ * signature - never falls back to the browser silently), "digest" (the release
+ * has no checksum, so Android refuses the install), "other", or no failure.
+ */
+export type UpdateErrorKind = "verification" | "digest" | "other" | null;
+
+/**
+ * True when an updater error looks like a signature/verification failure.
+ * The updater plugin serialises its errors as plain strings, so the check is
+ * text based; anything it does not recognise stays a "fallback allowed" error.
+ */
+export function isVerificationError(message: string): boolean {
+  return /signature|minisign|verif|trusted comment|signed for version/i.test(message);
+}
+
 /** Payload of the Android downloader's `update:progress` events. */
 interface UpdateProgress {
   received: number;
@@ -36,6 +52,8 @@ interface UpdateState {
   info: UpdateInfo | null;
   checking: boolean;
   error: string | null;
+  /** Classified reason for the last install failure; see [`UpdateErrorKind`]. */
+  errorKind: UpdateErrorKind;
   /** Install pipeline state; "idle" until `install` runs. */
   phase: UpdatePhase;
   /** Download percent, 0-100. */
@@ -121,6 +139,7 @@ export const useUpdate = create<UpdateState>((set, get) => ({
   info: null,
   checking: false,
   error: null,
+  errorKind: null,
   phase: "idle",
   progress: 0,
   mode: null,
@@ -147,13 +166,19 @@ export const useUpdate = create<UpdateState>((set, get) => ({
     const info = get().info;
     const { phase } = get();
     if (!info?.newer || phase === "downloading" || phase === "installing") return;
-    set({ phase: "downloading", progress: 0, mode: "auto", error: null });
+    set({ phase: "downloading", progress: 0, mode: "auto", error: null, errorKind: null });
     if (isAndroid()) {
+      // The native side refuses a download without a checksum; stopping here
+      // keeps the message translated and skips a pointless download.
+      if (!info.sha256) {
+        set({ phase: "error", errorKind: "digest", error: "the release does not publish a checksum for the APK" });
+        return;
+      }
       try {
         await installOnAndroid(info, set);
         set({ phase: "ready", progress: 100 });
       } catch (error) {
-        set({ phase: "error", error: String(error) });
+        set({ phase: "error", errorKind: "other", error: String(error) });
       }
       return;
     }
@@ -161,6 +186,13 @@ export const useUpdate = create<UpdateState>((set, get) => ({
       await installOnDesktop(set);
       set({ phase: "ready", progress: 100 });
     } catch (error) {
+      const message = String(error);
+      if (isVerificationError(message)) {
+        // A signature failure must never fall back to the browser silently:
+        // the user has to know the downloaded file was not trusted.
+        set({ phase: "error", errorKind: "verification", error: message });
+        return;
+      }
       // Missing pubkey or manifest, no update for this target or no network:
       // the browser download is the fallback every build has.
       set({ mode: "fallback", progress: 0 });
@@ -168,7 +200,7 @@ export const useUpdate = create<UpdateState>((set, get) => ({
         await updateOpen(info.downloadUrl ?? info.releaseUrl);
         set({ phase: "idle" });
       } catch (openError) {
-        set({ phase: "error", error: String(openError ?? error) });
+        set({ phase: "error", errorKind: "other", error: String(openError ?? error) });
       }
     }
   },
