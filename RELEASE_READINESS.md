@@ -1,9 +1,63 @@
-# Release Readiness — OmniOffice 4.7.0
+# Release Readiness — OmniOffice 4.8.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
+
+## Implemented (this cycle, 4.8.0) — Türkçe Doğru (Turkish correctness)
+
+- **Turkish text in generated PDFs** (issue #88): `crates/pdfcore/src/textfont.rs`
+  loads a Type0/CID font and stamps, page numbering and form fields draw with
+  it, so `ı İ ğ ş ç ö ü` survive. Covered by a pdfium text-extraction test in
+  `crates/pdfcore/src/textfont.rs` (runs locally because the pdfium engine is
+  fetched by `npm run engines:fetch`). The remaining over-page text paths
+  (annotate, flatten, sign) still use the built-in fonts and are tracked in
+  issue #137.
+- **Calc Turkish locale** (issue #89): `src/office/calc/locale.ts`,
+  `numberFormat.ts` and `cells.ts` parse `1.250,15` on input and format numbers
+  and dates with the Turkish locale. Tests in `src/office/calc/*.test.ts`.
+- **Turkish formulas and validation** (issue #90):
+  `src/office/calc/functions/turkish.ts` (`YAZIYLA`, `TCKNDOGRULA`,
+  `VKNDOGRULA`, `IBANDOGRULA`) and `tr-holidays.ts` (Diyanet table, 2020–2029)
+  wired into `NETWORKDAYS`/`WORKDAY` through the `"TR"` argument
+  (`datetime.ts`). Tests in the same folder and `tr-holidays.test.ts`.
+- **Turkish first run and search folding** (issue #91): `src/lib/store.ts`
+  follows the OS language on first run; `src/lib/search-fold.ts`,
+  `crates/synccore` and `src-tauri/src/vault.rs` fold Turkish case so `İ/ı`
+  match. Tests in `search-fold.test.ts` and the vault tests.
+- **KVKK redaction** (issue #92): `crates/pdfcore/src/redact.rs` detects TCKN,
+  VKN, TR IBAN, plates and TR phone numbers with a false-positive test set, and
+  `src/screens/Batch.tsx` redacts them across a batch. Tests in `redact.rs` and
+  `Batch.test.tsx`.
+- **Turkish hyphenation** (issue #93): `crates/officecore/src/hyphen_tr.rs`
+  breaks words at syllable boundaries, and justified Writer PDF export uses it
+  (`layout.rs`). A 500-word golden list
+  (`crates/officecore/tests/fixtures/hyphen-tr-golden.txt`) is shared with the
+  TypeScript twin `src/office/writer/hyphen-tr.ts`, and the two are compared
+  word by word in `hyphen-tr.test.ts`.
+- **Author name** (issue #94): `Settings.authorName` marks new Writer comments
+  and tracked changes (`src/office/writer/identity.ts`, `WriterEditor.tsx`).
+  Tests in `identity.test.ts`, `Settings.test.tsx`; the DOCX round trip of a
+  comment and reply author is asserted in `docx.rs`.
+- **Seven Turkish templates** (issue #95): Resmî Yazı, İhtarname, Kira
+  Sözleşmesi, İzin Dilekçesi, İstifa Dilekçesi, Bordro and İrsaliye added to
+  `src/office/templates.ts` (12 Turkish templates in total). `templates.test.ts`
+  checks the `{{alan}}` placeholders, scans every template for a valid TCKN,
+  IBAN, `+90 5xx` phone and personal e-mail (none found), evaluates the Bordro
+  formulas and hands each template to `office_export_pdf`.
+
+### Not done in this pass (honest)
+
+- Hyphenation drives the PDF export only; the **editor view** still uses the
+  browser's hyphenation (soft-hyphen integration not implemented).
+- Turkish public holidays cover **2020–2029** only; 2030+ is omitted because
+  2030 has two Ramazans.
+- Annotate, flatten and sign still draw their text with the built-in fonts
+  (issue #137).
+- Calc formulas keep `,`/`;` as argument separators, so a decimal **inside a
+  formula** uses a dot (`YAZIYLA(1250.15)`); cell input accepts `1.250,15`.
+- The Chrome-extension dependency update is tracked in issue #129.
 
 ## Implemented (this cycle, 4.7.1) - repairs and honesty
 
