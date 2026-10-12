@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 pub mod anthropic;
+pub mod citations;
 pub mod prompts;
 
 pub use anthropic::{ANTHROPIC_BASE_URL, ANTHROPIC_DEFAULT_MODEL, ANTHROPIC_MODELS};

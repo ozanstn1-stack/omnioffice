@@ -1226,12 +1226,24 @@ export function Ai({
                                               void openOfficePath(target.path).then(() => onNavigate?.("office"));
                                             }
                                           }}
-                                          title={c.snippet || `Jump to page ${c.page}`}
+                                          title={c.quote || c.snippet || `Jump to page ${c.page}`}
                                         >
                                           <BookOpenCheck size={11} style={{ color: "var(--accent)" }} />
                                           <span>
                                             {label("ai.citationPage", "page")} {c.page}
                                           </span>
+                                          {c.verified === false ? (
+                                            <span
+                                              className="badge"
+                                              style={{
+                                                background: "var(--danger-subtle, #fee2e2)",
+                                                color: "var(--danger, #dc2626)",
+                                              }}
+                                              title={c.quote ? `“${c.quote}”` : undefined}
+                                            >
+                                              {label("ai.unverified", "unverified")}
+                                            </span>
+                                          ) : null}
                                           {c.snippet ? (
                                             <span className="opacity-70 max-w-[140px] truncate">({c.snippet})</span>
                                           ) : null}

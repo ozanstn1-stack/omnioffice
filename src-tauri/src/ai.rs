@@ -1014,6 +1014,12 @@ pub struct AiCitation {
     pub snippet: String,
     pub score: f32,
     pub cited: bool,
+    /// The page was retrieved **and** the model's quote matches its text.
+    #[serde(default)]
+    pub verified: bool,
+    /// The short quote the model attached to this citation.
+    #[serde(default)]
+    pub quote: String,
     /// The source document's path, so a click opens the right file (empty for
     /// an older saved thread).
     #[serde(default)]
@@ -1052,27 +1058,6 @@ fn page_from_location(location: &str) -> u32 {
         .and_then(|rest| rest.split_whitespace().next())
         .and_then(|number| number.parse::<u32>().ok())
         .unwrap_or(0)
-}
-
-fn extract_cited_pages(text: &str) -> Vec<u32> {
-    let mut pages = Vec::new();
-    let lower = text.to_lowercase();
-    let mut cursor = 0;
-    while let Some(pos) = lower[cursor..].find("[page ") {
-        let start = cursor + pos + 6;
-        if let Some(end) = lower[start..].find(']') {
-            let num_str = lower[start..start + end].trim();
-            if let Ok(n) = num_str.parse::<u32>() {
-                if !pages.contains(&n) {
-                    pages.push(n);
-                }
-            }
-            cursor = start + end + 1;
-        } else {
-            break;
-        }
-    }
-    pages
 }
 
 #[tauri::command]
@@ -1258,10 +1243,17 @@ pub async fn ai_chat(
         .await
         .map_err(ai_error)?;
 
-    let cited_numbers = extract_cited_pages(&answer);
+    let parsed_citations = aicore::citations::parse_citations(&answer);
 
     for (index, (page, text)) in retrieved_pages.iter().enumerate() {
-        let is_cited = cited_numbers.contains(page);
+        // A citation to a page that was not retrieved is simply not matched, so
+        // a hallucinated page number never becomes a citation.
+        let citation = parsed_citations.iter().find(|citation| citation.page == *page);
+        let is_cited = citation.is_some();
+        let quote = citation.map(|citation| citation.quote.clone()).unwrap_or_default();
+        // Verified requires both a retrieved page and a quote that matches its
+        // text; a marker without a quote stays unverified.
+        let verified = is_cited && !quote.trim().is_empty() && aicore::citations::quote_matches(&quote, text);
         let snippet: String = text.chars().take(220).collect();
         let source = sources.get(index);
         let real_page = source.map(|source| source.page).unwrap_or(0);
@@ -1269,8 +1261,16 @@ pub async fn ai_chat(
             // Prefer the document's real page over the context's pseudo-page.
             page: if real_page > 0 { real_page } else { *page },
             snippet,
-            score: if is_cited { 1.0 } else { 0.5 },
+            score: if verified {
+                1.0
+            } else if is_cited {
+                0.6
+            } else {
+                0.5
+            },
             cited: is_cited,
+            verified,
+            quote,
             path: source.map(|source| source.path.clone()).unwrap_or_default(),
             location: source.map(|source| source.location.clone()).unwrap_or_default(),
         });

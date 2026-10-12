@@ -37,6 +37,20 @@ const invoke = vi.fn(async (command: string, _payload?: unknown) => {
             snippet: "Total Amount: $1,250.00",
             score: 0.95,
             cited: true,
+            verified: true,
+            quote: "Total Amount: $1,250.00",
+            path: "C:/docs/invoice.pdf",
+            location: "page 2",
+          },
+          {
+            page: 9,
+            snippet: "Unrelated line",
+            score: 0.4,
+            cited: true,
+            verified: false,
+            quote: "uydurma alıntı",
+            path: "C:/docs/other.pdf",
+            location: "page 9",
           },
         ],
         retrievalMode: "hybrid",
@@ -231,6 +245,9 @@ describe("Ai Screen - Belge Asistanı 2.0", () => {
       files: ["C:/docs/invoice.pdf"],
       targetPage: 2,
     });
+
+    // A citation whose quote does not match its source is flagged.
+    expect(screen.getByText(/unverified/i)).toBeInTheDocument();
   });
 
   it("saves and loads chat threads", async () => {
