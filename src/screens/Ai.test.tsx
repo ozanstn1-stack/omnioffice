@@ -253,6 +253,7 @@ describe("Ai Screen - Belge Asistanı 2.0", () => {
           request: expect.objectContaining({
             question: "What is the total amount?",
             path: "C:/docs/invoice.pdf",
+            consent: true,
           }),
         }),
       );
@@ -389,6 +390,7 @@ describe("Ai Screen - Belge Asistanı 2.0", () => {
         "ai_batch_run",
         expect.objectContaining({
           request: expect.objectContaining({
+            consent: true,
             items: expect.arrayContaining([
               expect.objectContaining({ path: "C:/docs/invoice1.pdf", action: "summarize", password: "gizli" }),
               expect.objectContaining({ path: "C:/docs/invoice2.pdf", action: "summarize" }),

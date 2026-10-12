@@ -2280,7 +2280,15 @@ pub async fn vault_search_hybrid(app: AppHandle, request: VaultSearchRequest) ->
 /// are grouped in small batches with a progress event between them, and the
 /// job can be cancelled; an unchanged chunk is never re-embedded.
 #[tauri::command]
-pub async fn vault_index_build(app: AppHandle, registry: State<'_, JobRegistry>) -> Result<VaultIndexReport, PdfError> {
+pub async fn vault_index_build(
+    app: AppHandle,
+    registry: State<'_, JobRegistry>,
+    consent: Option<bool>,
+) -> Result<VaultIndexReport, PdfError> {
+    // Embedding text sends it to the provider, so consent is required.
+    if !consent.unwrap_or(false) {
+        return Err(PdfError::InvalidInput("Consent is required before embedding document text.".into()));
+    }
     let job_id = "vault-index".to_string();
     let cancel = registry.register(&job_id);
     let root = config_dir(&app)?;

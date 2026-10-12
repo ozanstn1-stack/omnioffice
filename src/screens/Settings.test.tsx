@@ -8,6 +8,8 @@ const invoke = vi.fn(async (command: string, _payload?: unknown) => {
       return { appVersion: "3.9.0", coreVersion: "3.9.0", platform: "test" };
     case "load_settings":
       return {};
+    case "ai_clear_data":
+      return { chatsDeleted: 2, indexDeleted: true };
     default:
       return null;
   }
@@ -74,5 +76,26 @@ describe("author name setting", () => {
         expect.objectContaining({ settings: expect.objectContaining({ authorName: "Ayşe Yılmaz" }) }),
       ),
     );
+  });
+});
+
+describe("AI data controls", () => {
+  beforeEach(() => {
+    invoke.mockClear();
+    useSettings.setState({ settings: { ...DEFAULT_SETTINGS }, loaded: true });
+  });
+
+  it("clears AI data and saves the retention period", async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await screen.findByText(/v3\.9\.0/);
+
+    await user.click(screen.getByRole("button", { name: /Clear AI data/i }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("ai_clear_data", { olderThanDays: null }));
+
+    // The retention field persists a day count.
+    const retention = screen.getByRole("spinbutton");
+    await user.type(retention, "30");
+    expect(useSettings.getState().settings.aiRetentionDays).toBe(30);
   });
 });

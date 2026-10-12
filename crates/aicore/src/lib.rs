@@ -228,6 +228,8 @@ impl ProviderKind {
             "deepseek" | "deep_seek" => Some(Self::DeepSeek),
             "openai_compatible" | "openai" | "open_ai" | "compatible" => Some(Self::OpenAiCompatible),
             "ollama" | "local" => Some(Self::Ollama),
+            // LM Studio serves an OpenAI-compatible API on localhost.
+            "lmstudio" | "lm_studio" => Some(Self::OpenAiCompatible),
             "gemini" | "google" | "google_gemini" => Some(Self::Gemini),
             "anthropic" | "claude" | "anthropic_claude" => Some(Self::Anthropic),
             "custom" | "other" => Some(Self::Custom),
@@ -1682,5 +1684,19 @@ mod vision_contract_tests {
         let client = DeepSeekClient::new(config).expect("client");
         let endpoint = client.endpoint();
         assert!(endpoint.ends_with("/openai/chat/completions"), "{endpoint}");
+    }
+}
+
+#[cfg(test)]
+mod provider_parse_tests {
+    use super::*;
+
+    #[test]
+    fn lm_studio_is_an_openai_compatible_provider_with_vision() {
+        assert_eq!(ProviderKind::parse("lmstudio"), Some(ProviderKind::OpenAiCompatible));
+        assert_eq!(ProviderKind::parse("LM Studio"), Some(ProviderKind::OpenAiCompatible));
+        assert_eq!(ProviderKind::parse("lm_studio"), Some(ProviderKind::OpenAiCompatible));
+        // LM Studio serves the OpenAI-compatible body and supports vision models.
+        assert!(ProviderCapabilities::for_kind(ProviderKind::OpenAiCompatible).vision);
     }
 }

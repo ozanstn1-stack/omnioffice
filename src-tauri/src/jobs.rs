@@ -1102,3 +1102,26 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 }
+
+#[cfg(test)]
+mod privacy_tests {
+    use super::*;
+
+    /// AI commands register their job through `ensure_tracked`, which never
+    /// captures the request, so a chat question or history can never reach
+    /// `jobs.json`.
+    #[test]
+    fn ai_jobs_persist_no_payload() {
+        let path = std::env::temp_dir().join(format!("pdfsak-jobs-ai-{}.json", uuid::Uuid::new_v4()));
+        let store = JobStore::default();
+        store.attach_path(path.clone());
+        store.ensure_tracked("ai-1", "ai");
+        store.set_status("ai-1", JobStatus::Done, None);
+        store.finish("ai-1");
+        let persisted: Vec<JobRecord> =
+            serde_json::from_slice(&std::fs::read(&path).expect("jobs file")).expect("valid jobs json");
+        assert_eq!(persisted.len(), 1);
+        assert!(persisted[0].payload.is_none(), "AI jobs must not persist their input");
+        let _ = std::fs::remove_file(&path);
+    }
+}

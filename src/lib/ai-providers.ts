@@ -61,6 +61,15 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     capabilities: { chat: true, embeddings: true, vision: true, structured_output: true, streaming: true },
   },
   {
+    id: "lmstudio",
+    label: "LM Studio (local)",
+    baseUrl: "http://localhost:1234/v1",
+    model: "local-model",
+    note: "Local models. LM Studio runs on your computer and the document text never leaves the computer.",
+    keyPlaceholder: "",
+    capabilities: { chat: true, embeddings: true, vision: true, structured_output: true, streaming: true },
+  },
+  {
     id: "gemini",
     label: "Google Gemini",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
@@ -86,20 +95,29 @@ export function parseProviderId(value?: string): string {
   if (normalized === "deepseek" || normalized === "deep_seek") return "deepseek";
   if (["openai_compatible", "openai", "open_ai", "compatible"].includes(normalized)) return "openai_compatible";
   if (normalized === "ollama" || normalized === "local") return "ollama";
+  if (["lmstudio", "lm_studio", "lmstudio_local", "lmstudio_openai"].includes(normalized)) return "lmstudio";
   if (["gemini", "google", "google_gemini"].includes(normalized)) return "gemini";
   if (["anthropic", "claude", "anthropic_claude"].includes(normalized)) return "anthropic";
   if (normalized === "custom" || normalized === "other") return "custom";
   return "deepseek";
 }
 
-/** True for providers that run on this computer / local network (nothing is sent to the internet). */
-export function isLocalProvider(value?: string): boolean {
-  return parseProviderId(value) === "ollama";
+/**
+ * True for providers that run on this computer / local network (nothing is sent
+ * to the internet). A local base URL (localhost / 127.0.0.1 / ::1) also counts,
+ * so a custom endpoint pointing at LM Studio or Ollama is treated as local.
+ */
+export function isLocalProvider(value?: string, baseUrl?: string): boolean {
+  const id = parseProviderId(value);
+  if (id === "ollama" || id === "lmstudio") return true;
+  const url = (baseUrl ?? "").trim().toLowerCase();
+  if (!url) return false;
+  return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)([:/]|$)/.test(url);
 }
 
 /** i18n keys for the data notice shown before a document's text is processed. */
-export function consentKeys(value?: string): { consent: string; privacyBody: string } {
-  return isLocalProvider(value)
+export function consentKeys(value?: string, baseUrl?: string): { consent: string; privacyBody: string } {
+  return isLocalProvider(value, baseUrl)
     ? { consent: "ai.consentLocal", privacyBody: "ai.privacyBodyLocal" }
     : { consent: "ai.consent", privacyBody: "ai.privacyBody" };
 }

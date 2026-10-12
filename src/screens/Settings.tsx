@@ -15,7 +15,7 @@ import { useT } from "../lib/i18n";
 import { reportError, useSettings, useToasts } from "../lib/store";
 import { useUpdate } from "../lib/update";
 import { AiSettings } from "../components/ai-settings";
-import { appInfo, diagnosticsReport, updateOpen } from "../lib/api";
+import { appInfo, aiClearData, diagnosticsReport, updateOpen } from "../lib/api";
 import { saveFileBytes } from "../lib/mobile";
 
 function VersionLine() {
@@ -149,6 +149,54 @@ function DiagnosticsExport() {
   );
 }
 
+/** Retention for saved AI chats plus a "clear AI data" action. */
+function AiPrivacyControls() {
+  const t = useT();
+  const settings = useSettings((s) => s.settings);
+  const update = useSettings((s) => s.update);
+  const [busy, setBusy] = useState(false);
+  const clear = async () => {
+    setBusy(true);
+    try {
+      const report = await aiClearData();
+      useToasts.getState().push({
+        kind: "success",
+        title: t("settings.aiClearDone", { chats: report.chatsDeleted }),
+        detail: report.indexDeleted ? t("settings.aiIndexCleared") : undefined,
+      });
+    } catch (error) {
+      reportError(error, t);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card className="p-5 flex flex-col gap-4">
+      <h3 className="font-semibold flex items-center gap-2">
+        <ShieldCheck size={16} style={{ color: "var(--accent)" }} /> {t("settings.aiPrivacy")}
+      </h3>
+      <div>
+        <label className="label">{t("settings.aiRetention")}</label>
+        <input
+          className="input"
+          type="number"
+          min={0}
+          max={3650}
+          value={settings.aiRetentionDays ?? 0}
+          onChange={(event) => void update({ aiRetentionDays: Math.max(0, Number(event.target.value) || 0) })}
+        />
+        <p className="text-xs muted">{t("settings.aiRetentionHint")}</p>
+      </div>
+      <div>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void clear()}>
+          {t("settings.aiDataClear")}
+        </Button>
+        <p className="text-xs muted">{t("settings.aiClearHint")}</p>
+      </div>
+    </Card>
+  );
+}
+
 export function Settings() {
   const t = useT();
   const settings = useSettings((s) => s.settings);
@@ -231,6 +279,8 @@ export function Settings() {
             <p className="text-xs muted">{t("settings.authorNameHint")}</p>
           </div>
         </Card>
+
+        <AiPrivacyControls />
 
         <Card className="p-5 flex flex-col gap-4">
           <h3 className="font-semibold flex items-center gap-2">

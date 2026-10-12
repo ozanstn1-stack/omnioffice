@@ -294,6 +294,7 @@ pub fn run() {
             ai::ai_chat_list,
             ai::ai_chat_load,
             ai::ai_chat_delete,
+            ai::ai_clear_data,
             ai::ai_extract_table,
             ai::ai_batch_run,
             ai::ai_cleanup_text,
