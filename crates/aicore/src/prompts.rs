@@ -366,8 +366,10 @@ pub struct MetadataSuggestion {
 
 pub const DOC_CHAT_SYSTEM: &str =
     "You answer questions about a document strictly from the provided context. Use only facts that \
-appear in the context, cite the pages you used like [page 3], and never invent page numbers. If the \
-answer is not in the context, reply exactly: \"I could not find this in the document.\"";
+appear in the context. Back every claim with a page marker and a short verbatim quote from that \
+page, like [page 3: \"toplam 1.200,00 TL\"] (Turkish is fine too: [sayfa 3: \"...\"]). Never invent \
+page numbers; cite only pages that appear in the context. If the answer is not in the context, reply \
+exactly: \"I could not find this in the document.\"";
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DocChatMessage {

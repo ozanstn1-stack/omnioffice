@@ -644,6 +644,10 @@ export interface AiCitation {
   path?: string;
   /** Where inside the document: `page 3`, `paragraph 12`, `Sheet1!A1:B7`, `slide 4`. */
   location?: string;
+  /** The page was retrieved and the model's quote matches its text. */
+  verified?: boolean;
+  /** The short quote the model attached to this citation. */
+  quote?: string;
 }
 
 export interface AiChatResult {
