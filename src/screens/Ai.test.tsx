@@ -123,6 +123,7 @@ const invoke = vi.fn(async (command: string, _payload?: unknown) => {
           },
         ],
         totalElapsedMs: 650,
+        status: "completed",
       };
     case "ai_save_output":
       return "C:/docs/invoice_table.csv";
@@ -158,9 +159,22 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   save: vi.fn(async () => "C:/docs/invoice_table.csv"),
 }));
 
+const { pickOfficeFilesMock, androidState } = vi.hoisted(() => ({
+  pickOfficeFilesMock: vi.fn(async (_multiple?: boolean) => [] as string[]),
+  androidState: { value: false },
+}));
+
+vi.mock("../lib/mobile", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/mobile")>()),
+  isAndroid: () => androidState.value,
+  pickOfficeFiles: (multiple?: boolean) => pickOfficeFilesMock(multiple),
+}));
+
 describe("Ai Screen - Belge Asistanı 2.0", () => {
   beforeEach(() => {
     invoke.mockClear();
+    pickOfficeFilesMock.mockClear();
+    androidState.value = false;
   });
 
   it("handles document chat with clickable citations jumping to Reader", async () => {
@@ -317,5 +331,23 @@ describe("Ai Screen - Belge Asistanı 2.0", () => {
     // Results rendered
     expect(await screen.findByText("Summary of invoice 1")).toBeInTheDocument();
     expect(await screen.findByText("Summary of invoice 2")).toBeInTheDocument();
+  });
+
+  it("picks batch files through the Android SAF bridge", async () => {
+    androidState.value = true;
+    pickOfficeFilesMock.mockResolvedValue(["/cache/imports/a.pdf", "/cache/imports/b.docx"]);
+    const user = userEvent.setup();
+    render(<Ai dragging={false} />);
+
+    const batchTabButton = await screen.findByRole("button", { name: /Batch AI/i });
+    await user.click(batchTabButton);
+    const consentBoxes = await screen.findAllByRole("checkbox");
+    await user.click(consentBoxes[0]);
+    const addFilesButton = await screen.findByRole("button", { name: /Add Files/i });
+    await user.click(addFilesButton);
+
+    expect(pickOfficeFilesMock).toHaveBeenCalledWith(true);
+    expect(await screen.findByText("a.pdf")).toBeInTheDocument();
+    expect(await screen.findByText("b.docx")).toBeInTheDocument();
   });
 });

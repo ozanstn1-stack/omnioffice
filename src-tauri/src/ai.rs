@@ -1412,6 +1412,9 @@ pub struct AiBatchItemResult {
 pub struct AiBatchResult {
     pub results: Vec<AiBatchItemResult>,
     pub total_elapsed_ms: u64,
+    /// "completed", "cancelled" or "failed": a run the user stopped, or one
+    /// where every item failed, must not look like a completed batch.
+    pub status: String,
 }
 
 #[tauri::command]
@@ -1559,9 +1562,25 @@ pub async fn ai_batch_run(
         });
     }
 
-    emit_progress(&app, &request.job_id, "done", total_items as u64, total_items as u64);
-    job_guard.succeed();
-    Ok(AiBatchResult { results, total_elapsed_ms: started.elapsed().as_millis() as u64 })
+    // A cancelled run or one where every item failed must not report
+    // "completed": the guard only succeeds when the batch actually finished.
+    let any_success = results.iter().any(|result| result.success);
+    let status = if cancel.is_cancelled() {
+        "cancelled"
+    } else if !results.is_empty() && !any_success {
+        "failed"
+    } else {
+        "completed"
+    };
+    if status == "completed" {
+        emit_progress(&app, &request.job_id, "done", total_items as u64, total_items as u64);
+        job_guard.succeed();
+    } else {
+        // Dropping the guard without succeed marks the job failed; a job that
+        // was cancelled keeps its sticky Cancelled state.
+        emit_progress(&app, &request.job_id, status, results.len() as u64, total_items as u64);
+    }
+    Ok(AiBatchResult { results, total_elapsed_ms: started.elapsed().as_millis() as u64, status: status.to_string() })
 }
 
 #[derive(Clone, Deserialize)]

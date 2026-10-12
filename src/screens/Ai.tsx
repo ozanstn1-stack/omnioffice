@@ -24,7 +24,14 @@ import {
   X,
 } from "lucide-react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { isAndroid, pickAndroidSaveTarget, publishOutputs, saveTextOnAndroid, type PublishTarget } from "../lib/mobile";
+import {
+  isAndroid,
+  pickAndroidSaveTarget,
+  pickOfficeFiles,
+  publishOutputs,
+  saveTextOnAndroid,
+  type PublishTarget,
+} from "../lib/mobile";
 import {
   aiAsk,
   aiBatchRun,
@@ -700,12 +707,19 @@ export function Ai({
 
   const handlePickBatchFiles = async () => {
     try {
-      const picked = await openDialog({
-        multiple: true,
-        filters: [{ name: "Documents", extensions: ["pdf", "docx", "xlsx", "pptx", "txt", "md"] }],
-      });
-      if (picked) {
-        const paths = Array.isArray(picked) ? picked : [picked];
+      // Android does not hand out paths for picked files: the SAF bridge in
+      // mobile.ts copies them into the cache and returns real paths.
+      const paths = isAndroid()
+        ? await pickOfficeFiles(true)
+        : await (async () => {
+            const picked = await openDialog({
+              multiple: true,
+              filters: [{ name: "Documents", extensions: ["pdf", "docx", "xlsx", "pptx", "txt", "md"] }],
+            });
+            if (!picked) return [];
+            return Array.isArray(picked) ? picked : [picked];
+          })();
+      if (paths.length) {
         setBatchFiles((prev) => Array.from(new Set([...prev, ...paths])));
       }
     } catch {
@@ -731,9 +745,15 @@ export function Ai({
         jobId: jobId.current,
       });
       setBatchResult(res);
+      const title =
+        res.status === "cancelled"
+          ? label("ai.batchCancelled", "Batch stopped before every file was processed")
+          : res.status === "failed"
+            ? label("ai.batchFailed", "Batch failed: every file reported an error")
+            : label("ai.batchDone", "Batch processing completed");
       pushToast({
-        kind: "success",
-        title: label("ai.batchDone", "Batch processing completed"),
+        kind: res.status === "completed" ? "success" : "info",
+        title,
         detail: `${res.results.length} items (${(res.totalElapsedMs / 1000).toFixed(1)}s)`,
       });
     } catch (err) {
