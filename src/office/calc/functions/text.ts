@@ -3,6 +3,7 @@
  */
 import { registerFunction } from "../registry";
 import { formatNumber } from "../numberFormat";
+import { lowerLocale, properLocale, upperLocale } from "../locale";
 import { ERR, FormulaError, flatten, isError, optionalBool, toNumber, toText, type Scalar } from "../scalars";
 
 function textArg(args: Scalar[][][], index: number): string {
@@ -28,22 +29,18 @@ registerFunction("CLEAN", (args) => textArg(args, 0).replace(/[\x00-\x1f]/g, "")
   signature: "CLEAN(text)",
   category: "Text",
 });
-registerFunction("UPPER", (args) => textArg(args, 0).toUpperCase(), 1, 1, false, {
+registerFunction("UPPER", (args) => upperLocale(textArg(args, 0)), 1, 1, false, {
   signature: "UPPER(text)",
   category: "Text",
 });
-registerFunction("LOWER", (args) => textArg(args, 0).toLowerCase(), 1, 1, false, {
+registerFunction("LOWER", (args) => lowerLocale(textArg(args, 0)), 1, 1, false, {
   signature: "LOWER(text)",
   category: "Text",
 });
-registerFunction(
-  "PROPER",
-  (args) => textArg(args, 0).replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()),
-  1,
-  1,
-  false,
-  { signature: "PROPER(text)", category: "Text" },
-);
+registerFunction("PROPER", (args) => properLocale(textArg(args, 0)), 1, 1, false, {
+  signature: "PROPER(text)",
+  category: "Text",
+});
 registerFunction(
   "LEFT",
   (args) => {

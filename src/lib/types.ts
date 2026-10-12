@@ -360,6 +360,8 @@ export type SplitMode =
 export interface Settings {
   theme: "dark" | "light" | "system" | "midnight" | "paper";
   language: "en" | "tr";
+  /** Calc number/date locale; "auto" follows the interface language. */
+  calcNumberLocale: "auto" | "tr" | "en";
   defaultOutputDir: string;
   defaultCompression: "low" | "medium" | "high";
   defaultImageDpi: number;
@@ -404,6 +406,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   theme: "dark",
   language: "en",
+  calcNumberLocale: "auto",
   defaultOutputDir: "",
   defaultCompression: "medium",
   defaultImageDpi: 150,

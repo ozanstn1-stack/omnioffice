@@ -9,7 +9,8 @@ import { isAndroid } from "../lib/mobile";
 import type { OfficeTab, Workbook } from "../lib/office-store";
 import { useOfficeTabs } from "../lib/office-store";
 import { useT } from "../lib/i18n";
-import { useToasts } from "../lib/store";
+import { useSettings, useToasts } from "../lib/store";
+import { resolveCalcLocale, setCalcLocale } from "./calc/locale";
 import {
   cellText,
   defaultCellStyle,
@@ -199,6 +200,13 @@ interface PinchGesture {
 
 export function CalcEditor({ tab }: { tab: CalcTab }) {
   const t = useT();
+  // The locale the text functions, typed input and the formatter use; "auto"
+  // follows the interface language (see `./calc/locale`).
+  const calcLocaleSetting = useSettings((state) => state.settings.calcNumberLocale);
+  const uiLanguage = useSettings((state) => state.settings.language);
+  useEffect(() => {
+    setCalcLocale(resolveCalcLocale(calcLocaleSetting, uiLanguage));
+  }, [calcLocaleSetting, uiLanguage]);
   const workbook = tab.model;
   const edit = useOfficeTabs((state) => state.edit);
   const session = useOfficeSession(tab);

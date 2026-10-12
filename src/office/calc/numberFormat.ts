@@ -4,8 +4,11 @@
  * Handles the subset of Excel number-format codes the ribbon exposes (General,
  * fixed decimals, percent, currency, thousands separators, accounting
  * parentheses and date/time patterns) plus the serial-date conversion the
- * financial and date functions share.
+ * financial and date functions share. The active locale (see `./locale`)
+ * decides the separators: Turkish renders `1.234,56`.
  */
+
+import { getCalcLocale } from "./locale";
 
 /** Days between the 1899-12-30 epoch and 1970-01-01, per the Excel spec. */
 export const SERIAL_EPOCH_OFFSET = 25_569;
@@ -48,6 +51,10 @@ export function formatNumber(value: number, format: string): string {
   if (grouped) {
     const [whole, fraction] = text.split(".");
     text = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (fraction ? `.${fraction}` : "");
+  }
+  if (getCalcLocale() === "tr") {
+    // Turkish writes 1.234,56; swap the separators of the numeric text.
+    text = text.replaceAll(",", "\u0000").replaceAll(".", ",").replaceAll("\u0000", ".");
   }
   const negativePattern = trimmed.includes("(") && trimmed.includes(")");
   const suffix = percent ? "%" : "";
