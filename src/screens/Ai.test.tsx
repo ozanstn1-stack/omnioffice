@@ -2,6 +2,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Ai } from "./Ai";
+import { useToasts } from "../lib/store";
+
+// Toggled by the vision-gate test; every other test keeps vision enabled.
+let visionCapability = true;
 
 const invoke = vi.fn(async (command: string, _payload?: unknown) => {
   switch (command) {
@@ -15,6 +19,13 @@ const invoke = vi.fn(async (command: string, _payload?: unknown) => {
         model: "deepseek-chat",
         maskedKey: "sk-••••••••",
         keyStorage: "dpapi",
+        capabilities: {
+          chat: true,
+          embeddings: false,
+          vision: visionCapability,
+          structured_output: true,
+          streaming: true,
+        },
       };
     case "ai_example_prompts":
       return {
@@ -31,6 +42,7 @@ const invoke = vi.fn(async (command: string, _payload?: unknown) => {
     case "ai_chat":
       return {
         answer: "The total invoiced amount is $1,250.00 as indicated on [page 2].",
+        warning: "The page image could not be rendered: no pdfium.",
         citations: [
           {
             page: 2,
@@ -203,6 +215,16 @@ describe("Ai Screen - Belge Asistanı 2.0", () => {
     invoke.mockClear();
     pickOfficeFilesMock.mockClear();
     androidState.value = false;
+    visionCapability = true;
+    useToasts.setState({ toasts: [] });
+  });
+
+  it("disables the vision toggle when the provider cannot receive images", async () => {
+    visionCapability = false;
+    render(<Ai initialFiles={["C:/docs/invoice.pdf"]} dragging={false} />);
+    const toggle = await screen.findByRole("checkbox", { name: /Send rendered page as image/i });
+    expect(toggle).toBeDisabled();
+    expect(screen.getByText(/cannot receive images/i)).toBeInTheDocument();
   });
 
   it("handles document chat with clickable citations jumping to Reader", async () => {
@@ -238,6 +260,10 @@ describe("Ai Screen - Belge Asistanı 2.0", () => {
 
     // Citations rendered
     expect(await screen.findByText(/The total invoiced amount is \$1,250\.00/i)).toBeInTheDocument();
+    // A vision warning is surfaced as a toast instead of being swallowed.
+    await waitFor(() =>
+      expect(useToasts.getState().toasts.some((toast) => /Image input was not sent/i.test(toast.title))).toBe(true),
+    );
     const citationButtons = await screen.findAllByRole("button", { name: /page 2/i });
     expect(citationButtons.length).toBeGreaterThan(0);
 

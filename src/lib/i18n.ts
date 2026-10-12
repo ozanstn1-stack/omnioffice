@@ -363,6 +363,7 @@ const en: Dict = {
   "ai.scopeVaultNote":
     "Vault mode queries all documents in your library with hybrid semantic embeddings and keyword matching.",
   "ai.sendImageVision": "Send rendered page as image (Vision)",
+  "ai.visionWarning": "Image input was not sent",
   "ai.sendScope": "Send scope",
   "ai.sendScopeHint": "What the question is restricted to",
   "ai.statusFailed": "Failed",
@@ -2781,6 +2782,7 @@ const tr: Dict = {
   "ai.scopeVaultNote":
     "Kasa modu, kitaplığınızdaki tüm belgeleri anlamsal gömme ve anahtar kelime eşlemesiyle hibrit olarak arar.",
   "ai.sendImageVision": "Sayfa görüntüsünü resim olarak gönder (Görsel)",
+  "ai.visionWarning": "Görsel girdi gönderilemedi",
   "ai.sendScope": "Gönderim kapsamı",
   "ai.sendScopeHint": "Sorunun sınırlandırıldığı alan",
   "ai.statusFailed": "Başarısız",

@@ -1648,3 +1648,39 @@ mod tests {
         assert_eq!(client.config().base_url, "https://api.deepseek.com");
     }
 }
+
+#[cfg(test)]
+mod vision_contract_tests {
+    use super::*;
+
+    /// The OpenAI-compatible wire format (DeepSeek, OpenAI, Ollama, custom and
+    /// Gemini, which all share this body): an image is a `data:` URL part.
+    #[test]
+    fn openai_compatible_image_is_a_data_url_part() {
+        let message = ChatMessage::user_with_image("Describe", "image/jpeg", "AAAA");
+        let wire = OpenAiWireMessage::from(&message);
+        let content = serde_json::to_value(&wire.content).expect("serialize");
+        let parts = content.as_array().expect("an image message has content parts");
+        assert_eq!(parts[0]["type"], "text");
+        assert_eq!(parts[0]["text"], "Describe");
+        assert_eq!(parts[1]["type"], "image_url");
+        assert!(parts[1]["image_url"]["url"].as_str().unwrap().starts_with("data:image/jpeg;base64,"));
+    }
+
+    #[test]
+    fn a_text_only_message_stays_a_plain_string() {
+        let message = ChatMessage::user("hi");
+        let wire = OpenAiWireMessage::from(&message);
+        assert!(serde_json::to_value(&wire.content).expect("serialize").is_string());
+    }
+
+    /// Gemini routes through the OpenAI-compatible endpoint, so its image
+    /// format is the same `image_url` part.
+    #[test]
+    fn gemini_uses_the_openai_compatible_chat_endpoint() {
+        let config = AiConfig { provider: ProviderKind::Gemini, api_key: "test".into(), ..Default::default() };
+        let client = DeepSeekClient::new(config).expect("client");
+        let endpoint = client.endpoint();
+        assert!(endpoint.ends_with("/openai/chat/completions"), "{endpoint}");
+    }
+}

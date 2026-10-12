@@ -331,6 +331,10 @@ export function Ai({
   };
 
   const configured = aiSettings?.configured ?? false;
+  // Vision is only offered when the configured provider accepts image input;
+  // an unsupported provider can never send an image, whatever the toggle says.
+  const visionSupported = aiSettings?.capabilities?.vision ?? false;
+  const effectiveSendImage = sendImage && visionSupported;
   const canRun =
     configured &&
     consent &&
@@ -494,7 +498,7 @@ export function Ai({
         scope: chatScope,
         page: chatScope === "page" ? chatPage : undefined,
         selection: chatScope === "selection" ? chatSelection : undefined,
-        sendImage,
+        sendImage: effectiveSendImage,
         password: session.password || undefined,
         jobId: jobId.current,
       });
@@ -511,6 +515,16 @@ export function Ai({
         }
         return next;
       });
+
+      // A vision request that could not render a page image is reported instead
+      // of silently answering without the image.
+      if (result.warning) {
+        pushToast({
+          kind: "info",
+          title: label("ai.visionWarning", "Image input was not sent"),
+          detail: result.warning,
+        });
+      }
 
       setLastResult({
         kind: "chat",
@@ -1171,10 +1185,16 @@ export function Ai({
 
                       <div className="flex items-center gap-2">
                         <Checkbox
-                          checked={sendImage}
+                          checked={effectiveSendImage}
+                          disabled={!visionSupported}
                           onChange={setSendImage}
                           label={label("ai.sendImageVision", "Send rendered page as image (Vision)")}
                         />
+                        {!visionSupported ? (
+                          <span className="text-xs muted">
+                            {label("ai.visionUnsupported", "This provider does not accept image input.")}
+                          </span>
+                        ) : null}
                       </div>
 
                       <div ref={chatRef} className="card-soft p-3 max-h-[420px] overflow-y-auto flex flex-col gap-2">
