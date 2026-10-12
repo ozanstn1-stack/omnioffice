@@ -371,6 +371,8 @@ export interface Settings {
   defaultExportFormat: "jpg" | "png";
   /** Automatically store every AI result in the library. */
   aiAutoSave: boolean;
+  /** Retention for saved AI chats in days; 0 keeps them forever. */
+  aiRetentionDays: number;
   /** AI library folder; empty means Documents/OmniOffice AI. */
   aiLibraryDir: string;
   /** Keep an operation log (paths and sizes only). */
@@ -420,6 +422,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showRecentFiles: true,
   defaultExportFormat: "jpg",
   aiAutoSave: true,
+  aiRetentionDays: 0,
   aiLibraryDir: "",
   keepOperationLog: true,
   autosaveSeconds: 30,
@@ -633,6 +636,14 @@ export interface AiChatRequest {
   sendImage?: boolean;
   password?: string;
   jobId: string;
+  /** The base consent (document text leaves the app). */
+  consent?: boolean;
+  /** Consent for the vault scope (all library documents are queried). */
+  vaultConsent?: boolean;
+  /** Consent for embedding document text. */
+  embeddingConsent?: boolean;
+  /** Consent for sending a rendered page image. */
+  imageConsent?: boolean;
 }
 
 export interface AiCitation {
@@ -709,6 +720,8 @@ export interface AiBatchItemRequest {
 export interface AiBatchRequest {
   items: AiBatchItemRequest[];
   jobId: string;
+  /** The user accepted that the queued documents are sent to the provider. */
+  consent?: boolean;
 }
 
 export interface AiBatchItemResult {

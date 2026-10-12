@@ -30,7 +30,7 @@ describe("AI provider presets", () => {
 
   it("keeps the other presets and gives every preset a unique id", () => {
     const ids = PROVIDER_PRESETS.map((entry) => entry.id);
-    expect(ids).toEqual(["deepseek", "anthropic", "openai_compatible", "ollama", "gemini", "custom"]);
+    expect(ids).toEqual(["deepseek", "anthropic", "openai_compatible", "ollama", "lmstudio", "gemini", "custom"]);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
@@ -39,6 +39,8 @@ describe("AI provider presets", () => {
     expect(parseProviderId("Claude")).toBe("anthropic");
     expect(parseProviderId("Anthropic Claude")).toBe("anthropic");
     expect(parseProviderId("local")).toBe("ollama");
+    expect(parseProviderId("lmstudio")).toBe("lmstudio");
+    expect(parseProviderId("LM Studio")).toBe("lmstudio");
     expect(parseProviderId("google")).toBe("gemini");
     expect(parseProviderId(undefined)).toBe("deepseek");
     expect(parseProviderId("nonsense")).toBe("deepseek");
@@ -82,6 +84,19 @@ describe("provider-aware consent text", () => {
     expect(en(keys.privacyBody, { provider })).toContain("nothing goes to the internet");
     expect(tr(keys.consent, { provider })).toContain("yerel ağda");
     expect(tr(keys.consent, { provider })).toContain("Ollama");
+  });
+
+  it("treats LM Studio and a localhost endpoint as local", () => {
+    expect(isLocalProvider("lmstudio")).toBe(true);
+    expect(isLocalProvider("lm_studio")).toBe(true);
+    // A custom or OpenAI-compatible endpoint pointing at localhost is local.
+    expect(isLocalProvider("openai_compatible", "http://localhost:1234/v1")).toBe(true);
+    expect(isLocalProvider("custom", "http://127.0.0.1:8080")).toBe(true);
+    expect(isLocalProvider("custom", "https://api.example.com")).toBe(false);
+    expect(isLocalProvider("anthropic", "https://api.anthropic.com")).toBe(false);
+    expect(consentKeys("lmstudio").consent).toBe("ai.consentLocal");
+    expect(consentKeys("custom", "http://localhost:1234/v1").consent).toBe("ai.consentLocal");
+    expect(consentKeys("custom", "https://api.example.com").consent).toBe("ai.consent");
   });
 
   it("uses the backend label when present and the preset label otherwise", () => {

@@ -125,6 +125,9 @@ export const aiChatSave = (thread: SavedChatThread) => invoke<void>("ai_chat_sav
 export const aiChatList = () => invoke<SavedChatThread[]>("ai_chat_list");
 export const aiChatLoad = (id: string) => invoke<SavedChatThread>("ai_chat_load", { id });
 export const aiChatDelete = (id: string) => invoke<void>("ai_chat_delete", { id });
+/** Deletes AI data: saved chats (all, or older than the retention) and the derived vault index. */
+export const aiClearData = (olderThanDays?: number) =>
+  invoke<{ chatsDeleted: number; indexDeleted: boolean }>("ai_clear_data", { olderThanDays: olderThanDays ?? null });
 export const aiExtractTable = (request: AiExtractRequest) =>
   invokeTracked<AiTableResult>("ai_extract_table", { request });
 export const aiBatchRun = (request: AiBatchRequest) => invokeTracked<AiBatchResult>("ai_batch_run", { request });

@@ -987,6 +987,29 @@ pub struct AiChatRequest {
     pub send_image: bool,
     pub password: Option<String>,
     pub job_id: String,
+    /// The user accepted that the document text leaves the app. The backend
+    /// refuses to run without it, so the consent is enforced on both sides.
+    #[serde(default)]
+    pub consent: bool,
+    /// The user accepted the vault scope (all library documents are queried).
+    #[serde(default)]
+    pub vault_consent: bool,
+    /// The user accepted that text is embedded (a third-party embedding model).
+    #[serde(default)]
+    pub embedding_consent: bool,
+    /// The user accepted that a rendered page image is sent.
+    #[serde(default)]
+    pub image_consent: bool,
+}
+
+/// The backend half of the consent gate: the frontend already disables the
+/// action, and this makes the refusal authoritative.
+fn require_consent(value: bool, what: &str) -> Result<(), PdfError> {
+    if value {
+        Ok(())
+    } else {
+        Err(PdfError::InvalidInput(format!("Consent is required before {what}.")))
+    }
 }
 
 fn default_chat_scope() -> String {
@@ -1079,6 +1102,15 @@ pub async fn ai_chat(
     let (cancel, mut job_guard) = registry.register_ai_managed(&request.job_id);
     if request.question.trim().is_empty() {
         return Err(PdfError::InvalidInput("Enter a question.".into()));
+    }
+    // Consent is enforced here as well as in the UI.
+    require_consent(request.consent, "sending document text to the provider")?;
+    if request.scope == "vault" {
+        require_consent(request.vault_consent, "querying the whole vault")?;
+        require_consent(request.embedding_consent, "embedding document text")?;
+    }
+    if request.send_image {
+        require_consent(request.image_consent, "sending a rendered page image")?;
     }
     let config = build_config(&app)?;
     let model = config.model.clone();
@@ -1415,6 +1447,57 @@ pub fn ai_chat_delete(app: AppHandle, id: String) -> Result<(), PdfError> {
     Ok(())
 }
 
+/// True when a saved thread is older than the retention cutoff. `updated_at`
+/// and `cutoff` are RFC 3339 strings, which compare correctly as text.
+fn thread_is_expired(updated_at: &str, cutoff: &str) -> bool {
+    !updated_at.is_empty() && updated_at < cutoff
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiClearReport {
+    pub chats_deleted: usize,
+    pub index_deleted: bool,
+}
+
+/// Deletes AI data. With `older_than_days` the saved chats older than that are
+/// pruned (retention); without it every chat is deleted. The derived vault
+/// index (embeddings) is always removed so it is rebuilt on demand.
+#[tauri::command]
+pub fn ai_clear_data(app: AppHandle, older_than_days: Option<u32>) -> Result<AiClearReport, PdfError> {
+    let root = config_dir(&app)?;
+    let dir = chats_dir(&app)?;
+    let cutoff = older_than_days.map(|days| {
+        let now = time::OffsetDateTime::now_utc();
+        (now - time::Duration::days(days as i64))
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap_or_default()
+    });
+    let mut chats_deleted = 0usize;
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+                continue;
+            }
+            let keep = match &cutoff {
+                None => false,
+                Some(cutoff) => std::fs::read(&path)
+                    .ok()
+                    .and_then(|bytes| serde_json::from_slice::<SavedChatThread>(&bytes).ok())
+                    .map(|thread| !thread_is_expired(&thread.updated_at, cutoff))
+                    .unwrap_or(false),
+            };
+            if !keep && std::fs::remove_file(&path).is_ok() {
+                chats_deleted += 1;
+            }
+        }
+    }
+    let index = crate::vault_index::VaultSearchIndex::directory(&root);
+    let index_deleted = index.exists() && std::fs::remove_dir_all(&index).is_ok();
+    Ok(AiClearReport { chats_deleted, index_deleted })
+}
+
 // ---------------------------------------------------------------------------
 // Structured Invoice & Table Extraction
 // ---------------------------------------------------------------------------
@@ -1524,6 +1607,9 @@ pub struct AiBatchItemRequest {
 pub struct AiBatchRequest {
     pub items: Vec<AiBatchItemRequest>,
     pub job_id: String,
+    /// The user accepted that the queued documents are sent to the provider.
+    #[serde(default)]
+    pub consent: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -1747,6 +1833,7 @@ pub async fn ai_batch_run(
 ) -> Result<AiBatchResult, PdfError> {
     let started = std::time::Instant::now();
     let (cancel, mut job_guard) = registry.register_ai_managed(&request.job_id);
+    require_consent(request.consent, "sending document text to the provider")?;
     let config = build_config(&app)?;
     let client = Arc::new(DeepSeekClient::new(config).map_err(ai_error)?);
     let total_items = request.items.len();
@@ -2134,6 +2221,10 @@ mod tests {
             send_image: false,
             password: Some(password.into()),
             job_id: "job-chat".into(),
+            consent: true,
+            vault_consent: false,
+            embedding_consent: false,
+            image_consent: false,
         };
         let extract = AiExtractRequest {
             path: "C:/docs/report.pdf".into(),
@@ -2297,5 +2388,26 @@ mod tests {
             resolve_base_url(ProviderKind::Custom, " https://llm.example/v1/ ").unwrap(),
             "https://llm.example/v1"
         );
+    }
+}
+
+#[cfg(test)]
+mod privacy_tests {
+    use super::*;
+
+    #[test]
+    fn consent_is_required_and_enforced() {
+        assert!(require_consent(true, "sending text").is_ok());
+        let error = require_consent(false, "sending text").unwrap_err();
+        assert!(error.to_string().contains("Consent is required"), "{error}");
+    }
+
+    #[test]
+    fn retention_expires_only_older_threads() {
+        let cutoff = "2026-10-01T00:00:00Z";
+        assert!(thread_is_expired("2026-09-30T12:00:00Z", cutoff));
+        assert!(!thread_is_expired("2026-10-02T00:00:00Z", cutoff));
+        // A thread with no timestamp is never treated as expired.
+        assert!(!thread_is_expired("", cutoff));
     }
 }

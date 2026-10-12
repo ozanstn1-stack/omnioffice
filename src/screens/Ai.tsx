@@ -38,6 +38,7 @@ import {
   aiChat,
   aiChatDelete,
   aiChatList,
+  aiClearData,
   aiChatLoad,
   aiChatSave,
   aiCleanupText,
@@ -143,6 +144,10 @@ export function Ai({
   const [examples, setExamples] = useState<AiExamplePrompts | null>(null);
   const [preview, setPreview] = useState<AiPreview | null>(null);
   const [consent, setConsent] = useState(false);
+  // Separate consents for the vault scope, embeddings and a page image.
+  const [vaultConsent, setVaultConsent] = useState(false);
+  const [embeddingConsent, setEmbeddingConsent] = useState(false);
+  const [imageConsent, setImageConsent] = useState(false);
   const [output, setOutput] = useState("");
   const [reasoning, setReasoning] = useState("");
   const [running, setRunning] = useState(false);
@@ -331,6 +336,11 @@ export function Ai({
   };
 
   const configured = aiSettings?.configured ?? false;
+  // Saved AI chats older than the retention are pruned when it is set.
+  const retentionDays = useSettings((s) => s.settings.aiRetentionDays ?? 0);
+  useEffect(() => {
+    if (retentionDays > 0) void aiClearData(retentionDays).catch(() => undefined);
+  }, [retentionDays]);
   // Vision is only offered when the configured provider accepts image input;
   // an unsupported provider can never send an image, whatever the toggle says.
   const visionSupported = aiSettings?.capabilities?.vision ?? false;
@@ -339,6 +349,9 @@ export function Ai({
     configured &&
     consent &&
     !running &&
+    // The vault scope and a page image each need their own consent.
+    (chatScope !== "vault" || (vaultConsent && embeddingConsent)) &&
+    (!effectiveSendImage || imageConsent) &&
     (tab === "batch"
       ? batchFiles.length > 0
       : tab === "chat" && chatScope === "vault"
@@ -346,9 +359,11 @@ export function Ai({
         : Boolean(session.primary));
 
   const providerLabel = providerDisplayName(aiSettings?.provider, aiSettings?.providerLabel);
-  const notice = consentKeys(aiSettings?.provider);
+  const notice = consentKeys(aiSettings?.provider, aiSettings?.baseUrl);
   const noticeParams = {
-    provider: isLocalProvider(aiSettings?.provider) ? plainProviderName(providerLabel) : providerLabel,
+    provider: isLocalProvider(aiSettings?.provider, aiSettings?.baseUrl)
+      ? plainProviderName(providerLabel)
+      : providerLabel,
   };
   const networkActivityKey = "ai.networkActivity";
   const networkActivityText = t(networkActivityKey, { chars: preview?.characters ?? 0, provider: providerLabel });
@@ -501,6 +516,10 @@ export function Ai({
         sendImage: effectiveSendImage,
         password: session.password || undefined,
         jobId: jobId.current,
+        consent,
+        vaultConsent,
+        embeddingConsent,
+        imageConsent,
       });
 
       setChatMessages((previous) => {
@@ -786,6 +805,7 @@ export function Ai({
       const res = await aiBatchRun({
         items,
         jobId: jobId.current,
+        consent,
       });
       setBatchResult(res);
       const title =
@@ -1175,12 +1195,24 @@ export function Ai({
                       ) : null}
 
                       {chatScope === "vault" ? (
-                        <p className="text-xs muted">
-                          {label(
-                            "ai.scopeVaultNote",
-                            "Vault mode queries all documents in your library with hybrid semantic embeddings and keyword matching.",
-                          )}
-                        </p>
+                        <div className="flex flex-col gap-1">
+                          <p className="text-xs muted">
+                            {label(
+                              "ai.scopeVaultNote",
+                              "Vault mode queries all documents in your library with hybrid semantic embeddings and keyword matching.",
+                            )}
+                          </p>
+                          <Checkbox
+                            checked={vaultConsent}
+                            onChange={setVaultConsent}
+                            label={label("ai.consentVault", "Query the whole vault (all library documents)")}
+                          />
+                          <Checkbox
+                            checked={embeddingConsent}
+                            onChange={setEmbeddingConsent}
+                            label={label("ai.consentEmbedding", "Embed document text for semantic search")}
+                          />
+                        </div>
                       ) : null}
 
                       <div className="flex items-center gap-2">
@@ -1196,6 +1228,14 @@ export function Ai({
                           </span>
                         ) : null}
                       </div>
+
+                      {effectiveSendImage ? (
+                        <Checkbox
+                          checked={imageConsent}
+                          onChange={setImageConsent}
+                          label={label("ai.consentImage", "Send the rendered page image")}
+                        />
+                      ) : null}
 
                       <div ref={chatRef} className="card-soft p-3 max-h-[420px] overflow-y-auto flex flex-col gap-2">
                         {chatMessages.length === 0 ? (
