@@ -60,6 +60,19 @@ const TYPES: Record<string, string[]> = {
   odp: ["application/vnd.oasis.opendocument.presentation"],
   pdf: ["application/pdf"],
   oswk: ["application/x-oswk"],
+  txt: ["text/plain"],
+  md: ["text/markdown"],
+  html: ["text/html"],
+  csv: ["text/csv"],
+  tsv: ["text/tab-separated-values"],
+  jpg: ["image/jpeg"],
+  jpeg: ["image/jpeg"],
+  png: ["image/png"],
+  webp: ["image/webp"],
+  bmp: ["image/bmp"],
+  gif: ["image/gif"],
+  tif: ["image/tiff"],
+  tiff: ["image/tiff"],
 };
 
 describe("Android intent filters", () => {

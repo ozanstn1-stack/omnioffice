@@ -5,4 +5,11 @@
     <string name="background_work_channel_description">Keeps long tasks such as OCR, compression and conversions running while OmniOffice is in the background.</string>
     <string name="background_work_title">OmniOffice is working</string>
     <string name="background_work_text">Processing your documents on this device</string>
+    <!-- App shortcuts (long-press the launcher icon). -->
+    <string name="shortcut_scan_short">Scan</string>
+    <string name="shortcut_scan_long">Scan a document</string>
+    <string name="shortcut_new_short">New document</string>
+    <string name="shortcut_new_long">Start a new Writer document</string>
+    <string name="shortcut_recent_short">Recent files</string>
+    <string name="shortcut_recent_long">Open a recent file</string>
 </resources>

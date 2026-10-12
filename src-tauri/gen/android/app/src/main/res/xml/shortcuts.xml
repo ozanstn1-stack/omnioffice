@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Static app shortcuts (long-press the launcher icon): Scan, New document and
+  Recent files. Each carries a custom action so MainActivity can route it; the
+  action is read on launch and passed to the webview.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutId="scan"
+        android:shortcutLongLabel="@string/shortcut_scan_long"
+        android:shortcutShortLabel="@string/shortcut_scan_short">
+        <intent
+            android:action="io.github.ozanstn1.pdfswissarmyknife.SCAN"
+            android:targetClass="io.github.ozanstn1.pdfswissarmyknife.MainActivity"
+            android:targetPackage="io.github.ozanstn1.pdfswissarmyknife" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutId="new_document"
+        android:shortcutLongLabel="@string/shortcut_new_long"
+        android:shortcutShortLabel="@string/shortcut_new_short">
+        <intent
+            android:action="io.github.ozanstn1.pdfswissarmyknife.NEW_DOCUMENT"
+            android:targetClass="io.github.ozanstn1.pdfswissarmyknife.MainActivity"
+            android:targetPackage="io.github.ozanstn1.pdfswissarmyknife" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutId="recent_files"
+        android:shortcutLongLabel="@string/shortcut_recent_long"
+        android:shortcutShortLabel="@string/shortcut_recent_short">
+        <intent
+            android:action="io.github.ozanstn1.pdfswissarmyknife.RECENT_FILES"
+            android:targetClass="io.github.ozanstn1.pdfswissarmyknife.MainActivity"
+            android:targetPackage="io.github.ozanstn1.pdfswissarmyknife" />
+    </shortcut>
+</shortcuts>
