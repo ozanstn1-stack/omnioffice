@@ -37,6 +37,10 @@
             android:name=".MainActivity"
             android:exported="true"
             android:grantUriPermissions="true">
+            <!-- Long-press launcher shortcuts: Scan, New document, Recent files. -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -94,6 +98,19 @@
                 <data android:mimeType="application/pdf" />
                 <!-- OmniOffice document (oswk, no registered type) -->
                 <data android:mimeType="application/x-oswk" />
+                <!-- Images and plain text shared from another app -->
+                <data android:mimeType="image/*" />
+                <data android:mimeType="image/jpeg" />
+                <data android:mimeType="image/png" />
+                <data android:mimeType="image/webp" />
+                <data android:mimeType="image/bmp" />
+                <data android:mimeType="image/gif" />
+                <data android:mimeType="image/tiff" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="text/markdown" />
+                <data android:mimeType="text/html" />
+                <data android:mimeType="text/csv" />
+                <data android:mimeType="text/tab-separated-values" />
             </intent-filter>
             <!-- Fallback with a generic type (typically application/octet-stream): match the file name. -->
             <intent-filter>
@@ -154,6 +171,71 @@
                 <data android:pathPattern=".*\\..*\\.udf" />
                 <data android:pathPattern=".*\\..*\\..*\\.udf" />
                 <data android:pathPattern=".*\\..*\\..*\\..*\\.udf" />
+                <data android:pathSuffix=".txt" />
+                <data android:pathPattern=".*\\.txt" />
+                <data android:pathPattern=".*\\..*\\.txt" />
+                <data android:pathPattern=".*\\..*\\..*\\.txt" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.txt" />
+                <data android:pathSuffix=".md" />
+                <data android:pathPattern=".*\\.md" />
+                <data android:pathPattern=".*\\..*\\.md" />
+                <data android:pathPattern=".*\\..*\\..*\\.md" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.md" />
+                <data android:pathSuffix=".html" />
+                <data android:pathPattern=".*\\.html" />
+                <data android:pathPattern=".*\\..*\\.html" />
+                <data android:pathPattern=".*\\..*\\..*\\.html" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.html" />
+                <data android:pathSuffix=".csv" />
+                <data android:pathPattern=".*\\.csv" />
+                <data android:pathPattern=".*\\..*\\.csv" />
+                <data android:pathPattern=".*\\..*\\..*\\.csv" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.csv" />
+                <data android:pathSuffix=".tsv" />
+                <data android:pathPattern=".*\\.tsv" />
+                <data android:pathPattern=".*\\..*\\.tsv" />
+                <data android:pathPattern=".*\\..*\\..*\\.tsv" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.tsv" />
+                <data android:pathSuffix=".jpg" />
+                <data android:pathPattern=".*\\.jpg" />
+                <data android:pathPattern=".*\\..*\\.jpg" />
+                <data android:pathPattern=".*\\..*\\..*\\.jpg" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.jpg" />
+                <data android:pathSuffix=".jpeg" />
+                <data android:pathPattern=".*\\.jpeg" />
+                <data android:pathPattern=".*\\..*\\.jpeg" />
+                <data android:pathPattern=".*\\..*\\..*\\.jpeg" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.jpeg" />
+                <data android:pathSuffix=".png" />
+                <data android:pathPattern=".*\\.png" />
+                <data android:pathPattern=".*\\..*\\.png" />
+                <data android:pathPattern=".*\\..*\\..*\\.png" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.png" />
+                <data android:pathSuffix=".webp" />
+                <data android:pathPattern=".*\\.webp" />
+                <data android:pathPattern=".*\\..*\\.webp" />
+                <data android:pathPattern=".*\\..*\\..*\\.webp" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.webp" />
+                <data android:pathSuffix=".bmp" />
+                <data android:pathPattern=".*\\.bmp" />
+                <data android:pathPattern=".*\\..*\\.bmp" />
+                <data android:pathPattern=".*\\..*\\..*\\.bmp" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.bmp" />
+                <data android:pathSuffix=".gif" />
+                <data android:pathPattern=".*\\.gif" />
+                <data android:pathPattern=".*\\..*\\.gif" />
+                <data android:pathPattern=".*\\..*\\..*\\.gif" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.gif" />
+                <data android:pathSuffix=".tif" />
+                <data android:pathPattern=".*\\.tif" />
+                <data android:pathPattern=".*\\..*\\.tif" />
+                <data android:pathPattern=".*\\..*\\..*\\.tif" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.tif" />
+                <data android:pathSuffix=".tiff" />
+                <data android:pathPattern=".*\\.tiff" />
+                <data android:pathPattern=".*\\..*\\.tiff" />
+                <data android:pathPattern=".*\\..*\\..*\\.tiff" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.tiff" />
             </intent-filter>
             <!-- Fallback without a type (provider could not tell, or file:// from older managers): match the file name. -->
             <intent-filter>
@@ -213,6 +295,71 @@
                 <data android:pathPattern=".*\\..*\\.udf" />
                 <data android:pathPattern=".*\\..*\\..*\\.udf" />
                 <data android:pathPattern=".*\\..*\\..*\\..*\\.udf" />
+                <data android:pathSuffix=".txt" />
+                <data android:pathPattern=".*\\.txt" />
+                <data android:pathPattern=".*\\..*\\.txt" />
+                <data android:pathPattern=".*\\..*\\..*\\.txt" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.txt" />
+                <data android:pathSuffix=".md" />
+                <data android:pathPattern=".*\\.md" />
+                <data android:pathPattern=".*\\..*\\.md" />
+                <data android:pathPattern=".*\\..*\\..*\\.md" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.md" />
+                <data android:pathSuffix=".html" />
+                <data android:pathPattern=".*\\.html" />
+                <data android:pathPattern=".*\\..*\\.html" />
+                <data android:pathPattern=".*\\..*\\..*\\.html" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.html" />
+                <data android:pathSuffix=".csv" />
+                <data android:pathPattern=".*\\.csv" />
+                <data android:pathPattern=".*\\..*\\.csv" />
+                <data android:pathPattern=".*\\..*\\..*\\.csv" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.csv" />
+                <data android:pathSuffix=".tsv" />
+                <data android:pathPattern=".*\\.tsv" />
+                <data android:pathPattern=".*\\..*\\.tsv" />
+                <data android:pathPattern=".*\\..*\\..*\\.tsv" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.tsv" />
+                <data android:pathSuffix=".jpg" />
+                <data android:pathPattern=".*\\.jpg" />
+                <data android:pathPattern=".*\\..*\\.jpg" />
+                <data android:pathPattern=".*\\..*\\..*\\.jpg" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.jpg" />
+                <data android:pathSuffix=".jpeg" />
+                <data android:pathPattern=".*\\.jpeg" />
+                <data android:pathPattern=".*\\..*\\.jpeg" />
+                <data android:pathPattern=".*\\..*\\..*\\.jpeg" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.jpeg" />
+                <data android:pathSuffix=".png" />
+                <data android:pathPattern=".*\\.png" />
+                <data android:pathPattern=".*\\..*\\.png" />
+                <data android:pathPattern=".*\\..*\\..*\\.png" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.png" />
+                <data android:pathSuffix=".webp" />
+                <data android:pathPattern=".*\\.webp" />
+                <data android:pathPattern=".*\\..*\\.webp" />
+                <data android:pathPattern=".*\\..*\\..*\\.webp" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.webp" />
+                <data android:pathSuffix=".bmp" />
+                <data android:pathPattern=".*\\.bmp" />
+                <data android:pathPattern=".*\\..*\\.bmp" />
+                <data android:pathPattern=".*\\..*\\..*\\.bmp" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.bmp" />
+                <data android:pathSuffix=".gif" />
+                <data android:pathPattern=".*\\.gif" />
+                <data android:pathPattern=".*\\..*\\.gif" />
+                <data android:pathPattern=".*\\..*\\..*\\.gif" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.gif" />
+                <data android:pathSuffix=".tif" />
+                <data android:pathPattern=".*\\.tif" />
+                <data android:pathPattern=".*\\..*\\.tif" />
+                <data android:pathPattern=".*\\..*\\..*\\.tif" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.tif" />
+                <data android:pathSuffix=".tiff" />
+                <data android:pathPattern=".*\\.tiff" />
+                <data android:pathPattern=".*\\..*\\.tiff" />
+                <data android:pathPattern=".*\\..*\\..*\\.tiff" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.tiff" />
             </intent-filter>
         </activity>
 

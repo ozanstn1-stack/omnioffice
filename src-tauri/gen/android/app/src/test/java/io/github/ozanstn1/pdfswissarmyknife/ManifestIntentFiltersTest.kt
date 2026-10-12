@@ -91,6 +91,19 @@ class ManifestIntentFiltersTest {
     "odp" to listOf("application/vnd.oasis.opendocument.presentation"),
     "pdf" to listOf("application/pdf"),
     "oswk" to listOf("application/x-oswk"),
+    "txt" to listOf("text/plain"),
+    "md" to listOf("text/markdown"),
+    "html" to listOf("text/html"),
+    "csv" to listOf("text/csv"),
+    "tsv" to listOf("text/tab-separated-values"),
+    "jpg" to listOf("image/jpeg"),
+    "jpeg" to listOf("image/jpeg"),
+    "png" to listOf("image/png"),
+    "webp" to listOf("image/webp"),
+    "bmp" to listOf("image/bmp"),
+    "gif" to listOf("image/gif"),
+    "tif" to listOf("image/tiff"),
+    "tiff" to listOf("image/tiff"),
   )
 
   @Test
