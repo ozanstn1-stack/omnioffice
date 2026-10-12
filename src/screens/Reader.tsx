@@ -1,6 +1,19 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, ChevronLeft, ChevronRight, Copy, ExternalLink, Search, X, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  ExternalLink,
+  Search,
+  ShieldCheck,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { openAnyFile } from "../lib/mobile";
+import { detectEdevletVerification, type EdevletVerification } from "../lib/edevlet";
+import { openExternalLink } from "../office/calc/open-link";
 import { Badge, Button, IconButton, Spinner, useDebounced } from "../components/ui";
 import { DropZone, InfoStrip } from "../components/files";
 import { Screen } from "../components/layout";
@@ -487,6 +500,35 @@ export function Reader({
   const debouncedZoom = useDebounced(zoom, 180);
   const geometries = session.info?.pageGeometries ?? [];
   const pageCount = geometries.length;
+  const [verification, setVerification] = useState<EdevletVerification | null>(null);
+
+  // e-Devlet "barkodlu belge" detection: scan the last page (where the block
+  // usually is) and the first page. State is only set after the awaits, so this
+  // never cascades a render synchronously.
+  useEffect(() => {
+    const path = session.primary?.path;
+    if (!path || pageCount === 0) return;
+    let cancelled = false;
+    const candidates = [...new Set([pageCount, 1, Math.min(2, pageCount)])].filter((page) => page >= 1);
+    void (async () => {
+      for (const page of candidates) {
+        try {
+          const text = await pageText(path, page, session.password || undefined);
+          const found = detectEdevletVerification(text);
+          if (found) {
+            if (!cancelled) setVerification(found);
+            return;
+          }
+        } catch {
+          // A page without a text layer is fine; try the next candidate.
+        }
+      }
+      if (!cancelled) setVerification(null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session.primary?.path, session.password, pageCount]);
 
   const renderWidth = useMemo(() => {
     const available = Math.max(320, containerWidth - 72);
@@ -960,6 +1002,16 @@ export function Reader({
           <Button size="sm" onClick={() => void runSearch()} disabled={!query.trim() || searchJobId !== null}>
             {t("reader.search")}
           </Button>
+          {verification ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              title={verification.code ? t("reader.verifyHint", { code: verification.code }) : t("reader.verify")}
+              onClick={() => void openExternalLink(verification.url)}
+            >
+              <ShieldCheck size={15} /> {t("reader.verify")}
+            </Button>
+          ) : null}
           <div className="flex items-center gap-1 ml-auto">
             <IconButton label={t("reader.copyText")} onClick={() => void copyPage()}>
               <Copy size={15} />

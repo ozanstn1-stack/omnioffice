@@ -40,7 +40,11 @@ const CHUNK_BUDGET_KB = 100;
 // rich-text, connectors, crop and sorter features add real UI to the chunks.
 // Raised to 485 in 4.7.0 for Belge Asistanı 2.0 (Document Assistant 2.0:
 // document chat with citations, invoice extraction, and batch queue).
-const TOTAL_BUDGET_KB = 485;
+// Raised to 500 in 4.9.0 for "Resmî Belgeler": the UYAP `.udf` reader/writer,
+// the UBL-TR e-Fatura screen with its VAT summary and GİB karekod panel, and
+// the Reader's e-Devlet verification button. Each is a lazy route; the total
+// moves because they all ship, not because one chunk lost its split.
+const TOTAL_BUDGET_KB = 500;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);

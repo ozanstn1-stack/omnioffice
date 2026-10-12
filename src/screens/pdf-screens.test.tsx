@@ -21,7 +21,7 @@ let redactionScanResult: unknown[] = [];
 let redactionScanError: unknown = null;
 let redactionScanPending: Promise<unknown> | null = null;
 
-const invoke = vi.fn(async (command: string) => {
+const invoke = vi.fn(async (command: string, payload?: { path?: string }) => {
   switch (command) {
     case "app_info":
       return { version: "2.2.0", name: "test" };
@@ -127,11 +127,15 @@ const invoke = vi.fn(async (command: string) => {
           sha256Fingerprint: "AA",
         },
       ];
+    case "page_text":
+      // Only the verification fixture carries a text layer in these tests.
+      return payload?.path === "C:/verify.pdf"
+        ? "Belge Doğrulama Kodu: 4F2A9C13 https://www.turkiye.gov.tr/belge-dogrulama"
+        : "";
     default:
       return null;
   }
 });
-
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invoke(...(args as [string])) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 vi.mock("@tauri-apps/api/path", () => ({
@@ -885,5 +889,27 @@ describe("PDF Studio signature certificate sources", () => {
     expect(await screen.findByText("CN=Test Signer")).toBeInTheDocument();
     expect(screen.queryByText(/the windows certificate store is not available/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /choose pfx/i })).toBeInTheDocument();
+  });
+});
+
+describe("Reader e-Devlet verification", () => {
+  beforeEach(() => {
+    invoke.mockClear();
+  });
+
+  it("offers a verify button and opens the official page when the document carries a block", async () => {
+    const user = userEvent.setup();
+    render(<Reader initialFiles={["C:/verify.pdf"]} dragging={false} />);
+    const button = await screen.findByRole("button", { name: /verify document/i });
+    await user.click(button);
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("open_external_link", { url: "https://www.turkiye.gov.tr/belge-dogrulama" }),
+    );
+  });
+
+  it("shows no verify button on an ordinary document", async () => {
+    render(<Reader initialFiles={["C:/a.pdf"]} dragging={false} />);
+    await waitFor(() => expect(document.querySelector(".reader-scroll")).not.toBeNull());
+    expect(screen.queryByRole("button", { name: /verify document/i })).not.toBeInTheDocument();
   });
 });

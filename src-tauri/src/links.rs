@@ -32,6 +32,18 @@ mod tests {
     }
 
     #[test]
+    fn the_edevlet_verification_page_is_allowed() {
+        // The Reader's "Verify document" button opens the official page; it is
+        // https, so the allow-list accepts it (the host itself is not restricted,
+        // only the scheme: web and mail links, never a local path or script).
+        assert_eq!(
+            external_link_target("https://www.turkiye.gov.tr/belge-dogrulama").unwrap(),
+            "https://www.turkiye.gov.tr/belge-dogrulama"
+        );
+        assert!(external_link_target("https://dogrulama.turkiye.gov.tr/x").is_ok());
+    }
+
+    #[test]
     fn everything_else_is_refused() {
         for bad in [
             "",
