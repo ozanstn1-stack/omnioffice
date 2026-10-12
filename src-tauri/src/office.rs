@@ -1224,6 +1224,95 @@ pub fn office_vat_rates() -> Vec<ubl::VatRate> {
     ubl::vat_rates()
 }
 
+// ---------------------------------------------------------------------------
+// Document scanner (Android camera path)
+// ---------------------------------------------------------------------------
+
+/// One captured page: an image file plus the four page corners the user tapped
+/// (in source pixels). Without corners the image is used as it is.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanPage {
+    pub path: String,
+    #[serde(default)]
+    pub corners: Option<Vec<[f32; 2]>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanRequest {
+    pub pages: Vec<ScanPage>,
+    pub output: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanResult {
+    pub output: String,
+    pub pages: usize,
+    pub corrected: usize,
+    pub warnings: Vec<String>,
+}
+
+/// Corrects the perspective of each captured page and assembles a multi-page
+/// PDF, reusing the existing image-to-PDF writer. The camera capture itself
+/// happens on the Android side; this is the Rust half of the CameraX path.
+#[tauri::command]
+pub async fn office_scan_pages(request: ScanRequest) -> Result<ScanResult, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
+    let task = tauri::async_runtime::spawn_blocking(move || scan_pages(request));
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+}
+
+fn scan_pages(request: ScanRequest) -> Result<ScanResult, OfficeErrorPayload> {
+    if request.pages.is_empty() {
+        return Err(payload(OfficeError::invalid("Select at least one page image.")));
+    }
+    let output = output_path(&request.output)?;
+    let temp = tempfile::tempdir().map_err(|error| payload(OfficeError::internal(error.to_string())))?;
+    let mut items = Vec::with_capacity(request.pages.len());
+    let mut warnings = Vec::new();
+    let mut corrected = 0usize;
+    for (index, page) in request.pages.iter().enumerate() {
+        let source = input_path(&page.path)?;
+        let target = match &page.corners {
+            Some(corners) if corners.len() == 4 => {
+                let quad = [
+                    [corners[0][0], corners[0][1]],
+                    [corners[1][0], corners[1][1]],
+                    [corners[2][0], corners[2][1]],
+                    [corners[3][0], corners[3][1]],
+                ];
+                let path = temp.path().join(format!("page-{index}.png"));
+                match pdfcore::scan::correct_file(&source, quad, &path) {
+                    Ok(()) => {
+                        corrected += 1;
+                        path
+                    }
+                    Err(error) => {
+                        warnings.push(format!("Page {} was used uncorrected: {error}", index + 1));
+                        source.clone()
+                    }
+                }
+            }
+            _ => source.clone(),
+        };
+        items.push(pdfcore::images::ImageItem { path: target.to_string_lossy().to_string(), rotation_delta: 0 });
+    }
+    let silent = |_| ();
+    let cancel = pdfcore::CancelToken::new();
+    pdfcore::images::images_to_pdf(
+        &items,
+        &Default::default(),
+        &output,
+        pdfcore::docutil::OverwritePolicy::Replace,
+        &silent,
+        &cancel,
+    )
+    .map_err(|error| payload(OfficeError::internal(error.to_string())))?;
+    Ok(ScanResult { output: output.to_string_lossy().to_string(), pages: items.len(), corrected, warnings })
+}
+
 /// Opens a KEP `.eml` message (read-only): headers, body and attachments. Each
 /// attachment is written to a temp directory so the UI can open it; the message
 /// itself is never modified and nothing is sent anywhere.
@@ -1998,4 +2087,56 @@ mod tests {
 #[tauri::command]
 pub fn office_startup_files() -> Vec<String> {
     crate::launch::launch_files(std::env::args(), None)
+}
+
+#[cfg(test)]
+mod scan_tests {
+    use super::*;
+
+    fn write_page(path: &Path, width: u32, height: u32) {
+        let mut image = image::RgbaImage::new(width, height);
+        for y in 0..height {
+            for x in 0..width {
+                let value = if (x / 8 + y / 8) % 2 == 0 { 40 } else { 220 };
+                image.put_pixel(x, y, image::Rgba([value, value, value, 255]));
+            }
+        }
+        image.save(path).expect("write page");
+    }
+
+    #[test]
+    fn scan_corrects_corners_and_assembles_a_pdf() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("page1.png");
+        let second = dir.path().join("page2.png");
+        write_page(&first, 60, 80);
+        write_page(&second, 60, 80);
+        let output = dir.path().join("scan.pdf");
+
+        // The first page is corrected from an offset quad, the second is used
+        // as it is (no corners).
+        let request = ScanRequest {
+            pages: vec![
+                ScanPage {
+                    path: first.to_string_lossy().to_string(),
+                    corners: Some(vec![[10.0, 10.0], [50.0, 10.0], [50.0, 70.0], [10.0, 70.0]]),
+                },
+                ScanPage { path: second.to_string_lossy().to_string(), corners: None },
+            ],
+            output: output.to_string_lossy().to_string(),
+        };
+        let result = scan_pages(request).expect("scan");
+        assert_eq!(result.pages, 2);
+        assert_eq!(result.corrected, 1, "one page had corners");
+        assert!(result.warnings.is_empty(), "warnings: {:?}", result.warnings);
+        let bytes = std::fs::read(&output).expect("pdf written");
+        assert!(bytes.starts_with(b"%PDF"));
+    }
+
+    #[test]
+    fn scan_rejects_an_empty_page_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let request = ScanRequest { pages: Vec::new(), output: dir.path().join("x.pdf").to_string_lossy().to_string() };
+        assert!(scan_pages(request).is_err());
+    }
 }

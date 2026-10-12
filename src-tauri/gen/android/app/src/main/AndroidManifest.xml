@@ -12,9 +12,14 @@
          package installer for it (ApkInstallerPlugin). The user still
          confirms every installation in the system UI. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Document scanner: the camera permission is requested at runtime, only
+         when the user starts a scan. The feature is optional (required=false),
+         so a device without a camera can still install the app. -->
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
         android:icon="@mipmap/ic_launcher"

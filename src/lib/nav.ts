@@ -32,6 +32,7 @@ export type ScreenId =
   | "converter"
   | "invoices"
   | "eml"
+  | "scanner"
   | "cleaner"
   | "draw"
   | "planner"
