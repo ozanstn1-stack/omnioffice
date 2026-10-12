@@ -247,7 +247,7 @@ impl FontSet {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TextStyle {
     pub bold: bool,
     pub italic: bool,
@@ -256,6 +256,9 @@ pub struct TextStyle {
     pub underline: bool,
     pub strike: bool,
     pub highlight: Option<Rgb>,
+    /// BCP 47 language tag of the text, when known. Justified Turkish text
+    /// hyphenates with the rule table in `hyphen_tr`.
+    pub lang: Option<String>,
 }
 
 impl Default for TextStyle {
@@ -268,6 +271,7 @@ impl Default for TextStyle {
             underline: false,
             strike: false,
             highlight: None,
+            lang: None,
         }
     }
 }
