@@ -1,8 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Block, Sheet, TextDocument, Workbook } from "../lib/office-types";
 import { computeWorkbookValues } from "./calc/cells";
 import { isError } from "./calc/scalars";
 import { orderTemplates, TEMPLATES, templatesFor, type OfficeTemplate } from "./templates";
+
+const invoke = vi.fn(async (command: string, args?: { kind?: string; model?: unknown; path?: string }) => {
+  if (command === "office_export_pdf") return { path: String(args?.path ?? ""), warnings: [] };
+  return null;
+});
+vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invoke(...(args as [string])) }));
+
+import { exportPdf } from "../lib/office-api";
 
 /**
  * The built-in templates seed real documents, so their contents are part of
@@ -102,6 +110,30 @@ function sheetOf(id: string): { workbook: Workbook; sheet: Sheet } {
   return { workbook, sheet: workbook.sheets[0] };
 }
 
+/** The official TCKN checksum, so a placeholder scan can prove none is real. */
+function tcknIsValid(value: string): boolean {
+  if (!/^[1-9]\d{10}$/.test(value)) return false;
+  const digits = [...value].map(Number);
+  const odd = digits[0] + digits[2] + digits[4] + digits[6] + digits[8];
+  const even = digits[1] + digits[3] + digits[5] + digits[7];
+  const tenth = (odd * 7 - even) % 10;
+  const eleventh = digits.slice(0, 10).reduce((total, digit) => total + digit, 0) % 10;
+  return digits[9] === tenth && digits[10] === eleventh;
+}
+
+/** The IBAN mod-97 check, so a placeholder scan can prove none is real. */
+function ibanIsValid(value: string): boolean {
+  const raw = value.replace(/\s/g, "").toUpperCase();
+  if (!/^TR\d{24}$/.test(raw)) return false;
+  const rearranged = raw.slice(4) + raw.slice(0, 4);
+  const numeric = [...rearranged]
+    .map((character) => (character >= "A" && character <= "Z" ? String(character.charCodeAt(0) - 55) : character))
+    .join("");
+  let remainder = 0;
+  for (const character of numeric) remainder = (remainder * 10 + Number(character)) % 97;
+  return remainder === 1;
+}
+
 function setNumber(sheet: Sheet, address: string, value: number) {
   const cell = sheet.cells[address];
   if (!cell || cell.formula) throw new Error(`${address} is not an input cell`);
@@ -111,19 +143,78 @@ function setNumber(sheet: Sheet, address: string, value: number) {
 describe("Turkish templates", () => {
   const turkish = TEMPLATES.filter((candidate) => candidate.language === "tr");
 
-  it("ships five Turkish templates with Turkish names and the right kinds", () => {
-    expect(turkish.map((candidate) => [candidate.name, candidate.kind])).toEqual([
-      ["Dilekçe", "writer"],
-      ["Özgeçmiş", "writer"],
-      ["Toplantı Tutanağı", "writer"],
-      ["Fatura", "calc"],
-      ["Bütçe Tablosu", "calc"],
-    ]);
+  it("ships the original five Turkish templates plus the roadmap's seven", () => {
+    expect(turkish.map((candidate) => candidate.name)).toEqual(
+      expect.arrayContaining([
+        "Dilekçe",
+        "Özgeçmiş",
+        "Toplantı Tutanağı",
+        "Fatura",
+        "Bütçe Tablosu",
+        "Resmî Yazı",
+        "İhtarname",
+        "Kira Sözleşmesi",
+        "İzin Dilekçesi",
+        "İstifa Dilekçesi",
+        "Bordro",
+        "İrsaliye",
+      ]),
+    );
+    expect(turkish).toHaveLength(12);
+    expect(turkish.map((candidate) => [candidate.name, candidate.kind])).toEqual(
+      expect.arrayContaining([
+        ["Resmî Yazı", "writer"],
+        ["İhtarname", "writer"],
+        ["Kira Sözleşmesi", "writer"],
+        ["İzin Dilekçesi", "writer"],
+        ["İstifa Dilekçesi", "writer"],
+        ["Bordro", "calc"],
+        ["İrsaliye", "writer"],
+      ]),
+    );
     for (const candidate of turkish) {
       expect(candidate.description, candidate.id).toMatch(/[çğıöşüİ]/);
       const model = candidate.build();
       expect(model.title).toBe(candidate.name);
       expect(candidate.kind === "writer" ? "blocks" in model : "sheets" in model).toBe(true);
+    }
+  });
+
+  const ROADMAP_IDS = [
+    "trOfficialLetter",
+    "trNotice",
+    "trRentContract",
+    "trLeaveRequest",
+    "trResignation",
+    "trPayroll",
+    "trDeliveryNote",
+  ];
+
+  it("uses {{alan}} placeholders in every roadmap template", () => {
+    for (const id of ROADMAP_IDS) {
+      const model = template(id).build();
+      expect(model.title.trim().length, id).toBeGreaterThan(0);
+      expect(JSON.stringify(model), id).toMatch(/\{\{[a-z_]+\}\}/);
+    }
+  });
+
+  it("carries no real personal data: no valid TCKN, IBAN, phone or personal e-mail", () => {
+    for (const candidate of TEMPLATES) {
+      const json = JSON.stringify(candidate.build());
+      for (const match of json.match(/\d{11}/g) ?? []) {
+        expect(tcknIsValid(match), `${candidate.id} looks like a real TCKN: ${match}`).toBe(false);
+      }
+      for (const match of json.match(/TR\d{24}/gi) ?? []) {
+        expect(ibanIsValid(match), `${candidate.id} looks like a real IBAN: ${match}`).toBe(false);
+      }
+      expect(json, candidate.id).not.toMatch(/\+90\s?5\d{2}/);
+      for (const match of json.match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) ?? []) {
+        const domain = match.split("@")[1].toLowerCase();
+        expect(
+          /(^|\.)(example|ornek)\.(com|org|net)$/.test(domain) || domain.endsWith(".example"),
+          `${candidate.id} uses a real e-mail domain: ${match}`,
+        ).toBe(true);
+      }
     }
   });
 
@@ -158,7 +249,7 @@ describe("Turkish templates", () => {
   });
 
   it("only references cells that exist and evaluates every formula without an error", () => {
-    for (const id of ["trInvoice", "trBudget"]) {
+    for (const id of ["trInvoice", "trBudget", "trPayroll"]) {
       const { workbook, sheet } = sheetOf(id);
       const formulas = Object.entries(sheet.cells).filter(([, cell]) => cell.formula);
       expect(formulas.length, id).toBeGreaterThan(0);
@@ -225,6 +316,39 @@ describe("Turkish templates", () => {
     expect(values.get(`Bütçe!N${expenses}`)).toBe(20000);
     expect(values.get(`Bütçe!N${expenses + 2}`)).toBe(45000);
     expect(sheet.cells[`N${income}`].style.numberFormat).toContain("₺");
+  });
+
+  it("computes the payroll gross, deductions and net", () => {
+    const { workbook, sheet } = sheetOf("trPayroll");
+    setNumber(sheet, "B10", 30000);
+    setNumber(sheet, "B11", 2000);
+    setNumber(sheet, "B12", 1000);
+    setNumber(sheet, "B13", 500);
+    setNumber(sheet, "B14", 500);
+    const values = computeWorkbookValues(workbook);
+    expect(values.get("Bordro!B15")).toBe(34000);
+    expect(values.get("Bordro!B19")).toBeCloseTo(4760);
+    expect(values.get("Bordro!B20")).toBeCloseTo(340);
+    expect(values.get("Bordro!B21")).toBeCloseTo(28900);
+    expect(values.get("Bordro!B22")).toBeCloseTo(4335);
+    expect(values.get("Bordro!B23")).toBeCloseTo(258.06);
+    expect(values.get("Bordro!B24")).toBeCloseTo(9693.06);
+    expect(values.get("Bordro!B26")).toBeCloseTo(24306.94);
+    expect(sheet.cells.B26.style.numberFormat).toContain("₺");
+  });
+
+  it("hands every roadmap template to the PDF exporter as a plain model", async () => {
+    for (const id of ROADMAP_IDS) {
+      const candidate = template(id);
+      const model = candidate.build();
+      // The exporter receives JSON over the IPC boundary: it must be lossless.
+      expect(JSON.parse(JSON.stringify(model)), id).toEqual(model);
+      await exportPdf(candidate.kind, model, `C:/out/${id}.pdf`);
+      expect(invoke).toHaveBeenLastCalledWith(
+        "office_export_pdf",
+        expect.objectContaining({ kind: candidate.kind, path: `C:/out/${id}.pdf` }),
+      );
+    }
   });
 
   it("lists Turkish templates first only for a Turkish interface", () => {
