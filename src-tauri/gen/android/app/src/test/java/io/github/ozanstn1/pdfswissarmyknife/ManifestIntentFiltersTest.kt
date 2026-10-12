@@ -83,6 +83,7 @@ class ManifestIntentFiltersTest {
   private val typesByExtension = mapOf(
     "docx" to listOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
     "odt" to listOf("application/vnd.oasis.opendocument.text"),
+    "udf" to listOf("application/x-udf"),
     "rtf" to listOf("application/rtf", "text/rtf"),
     "xlsx" to listOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
     "ods" to listOf("application/vnd.oasis.opendocument.spreadsheet"),

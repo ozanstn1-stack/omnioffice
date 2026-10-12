@@ -438,6 +438,7 @@ export default function App() {
             "tiff",
             "docx",
             "odt",
+            "udf",
             "rtf",
             "txt",
             "md",
@@ -1029,7 +1030,7 @@ interface OfficeLauncherProps {
 }
 
 const OFFICE_EXTENSIONS: Record<OfficeLauncherProps["kind"], string[]> = {
-  writer: ["docx", "odt", "rtf", "txt", "md"],
+  writer: ["docx", "odt", "udf", "rtf", "txt", "md"],
   calc: ["xlsx", "xls", "ods", "csv", "tsv"],
   impress: ["pptx", "odp"],
 };

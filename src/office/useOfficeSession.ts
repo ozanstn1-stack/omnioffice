@@ -59,6 +59,7 @@ const FILTERS: Record<OfficeKind, { name: string; extensions: string[] }[]> = {
   writer: [
     { name: "Word document", extensions: ["docx"] },
     { name: "OpenDocument text", extensions: ["odt"] },
+    { name: "UYAP document", extensions: ["udf"] },
     { name: "Rich text", extensions: ["rtf"] },
     { name: "Plain text", extensions: ["txt"] },
     { name: "Markdown", extensions: ["md"] },
@@ -452,7 +453,7 @@ export function useOfficeSession(tab: OfficeTab) {
       filters: [
         {
           name: "Office documents",
-          extensions: ["docx", "odt", "rtf", "txt", "md", "html", "xlsx", "ods", "csv", "pptx", "odp", "oswk"],
+          extensions: ["docx", "odt", "udf", "rtf", "txt", "md", "html", "xlsx", "ods", "csv", "pptx", "odp", "oswk"],
         },
       ],
     });
@@ -526,7 +527,7 @@ export async function openIntoWorkspace(): Promise<string | null> {
       filters: [
         {
           name: "Documents",
-          extensions: ["docx", "odt", "rtf", "txt", "md", "html", "xlsx", "ods", "csv", "pptx", "odp", "oswk"],
+          extensions: ["docx", "odt", "udf", "rtf", "txt", "md", "html", "xlsx", "ods", "csv", "pptx", "odp", "oswk"],
         },
         { name: "All files", extensions: ["*"] },
       ],

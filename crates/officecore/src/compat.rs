@@ -137,6 +137,23 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
                 feature("watermark", SupportLevel::Full, "The watermark is written as a run-through frame and kept losslessly in meta:user-defined."),
             ],
         ),
+        "udf" => (
+            true,
+            true,
+            true,
+            true,
+            vec![
+                feature("paragraphs", SupportLevel::Full, "Paragraphs, headings and lists round-trip as UDF paragraphs."),
+                feature("characterFormatting", SupportLevel::Full, "Bold, italic, underline, strikethrough, font, size, colour and super/subscript round-trip per segment."),
+                feature("alignment", SupportLevel::Full, "Left, centre, right and justified alignment, indents, spacing and line height round-trip."),
+                feature("tables", SupportLevel::Partial, "Tables, header rows, spans and cell backgrounds round-trip; nested tables are not written."),
+                feature("images", SupportLevel::Unsupported, "Embedded images are kept verbatim and reported, but are not shown in the editor."),
+                feature("rtfFragments", SupportLevel::Partial, "An embedded base64 RTF fragment is imported as plain text and reported."),
+                feature("unknownElements", SupportLevel::Partial, "Elements this build does not model are preserved verbatim and reported, so a round trip does not drop them."),
+                feature("pageSetup", SupportLevel::Partial, "Page size, margins and orientation round-trip; columns and header/footer distance do not."),
+                feature("signature", SupportLevel::Unsupported, "A PKCS#7 signature block in the package is left untouched but not verified; editing the document invalidates it."),
+            ],
+        ),
         "rtf" => (
             true,
             true,
@@ -687,8 +704,8 @@ pub fn deck_feature_report(deck: &Deck, format: &str) -> CompatibilityReport {
 /// Every extension this build can open.
 pub fn supported_open_extensions() -> Vec<&'static str> {
     vec![
-        "docx", "docm", "dotx", "odt", "rtf", "txt", "md", "markdown", "html", "htm", "xlsx", "xlsm", "xls", "ods",
-        "csv", "tsv", "pptx", "pptm", "odp", "oswk",
+        "docx", "docm", "dotx", "odt", "udf", "rtf", "txt", "md", "markdown", "html", "htm", "xlsx", "xlsm", "xls",
+        "ods", "csv", "tsv", "pptx", "pptm", "odp", "oswk",
     ]
 }
 

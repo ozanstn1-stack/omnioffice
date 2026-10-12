@@ -79,7 +79,7 @@ export function sanitizeRetryPayload(value: unknown): unknown {
 /** First string that looks like a document path, for a human-readable title. */
 function firstDocumentPath(value: unknown): string | null {
   if (typeof value === "string") {
-    return /\.(pdf|oswk|docx|odt|xlsx|ods|pptx|odp|csv|rtf|txt|md|html|jpe?g|png|webp|bmp|tiff?)$/i.test(value)
+    return /\.(pdf|oswk|docx|odt|udf|xlsx|ods|pptx|odp|csv|rtf|txt|md|html|jpe?g|png|webp|bmp|tiff?)$/i.test(value)
       ? value
       : null;
   }

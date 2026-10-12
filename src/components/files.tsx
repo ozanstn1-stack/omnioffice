@@ -67,6 +67,7 @@ export function DropZone({
                 "docm",
                 "dotx",
                 "odt",
+                "udf",
                 "rtf",
                 "txt",
                 "md",

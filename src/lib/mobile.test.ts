@@ -10,6 +10,7 @@ describe("mobile helpers", () => {
     for (const extension of [
       "docx",
       "odt",
+      "udf",
       "rtf",
       "txt",
       "md",

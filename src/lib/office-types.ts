@@ -325,6 +325,17 @@ export interface TextDocument {
   showRevisions?: boolean;
   /** Page watermark; null/undefined means none. */
   watermark?: Watermark | null;
+  /** UDF elements the importer did not model, kept so an export writes them back. */
+  preservedUdf?: PreservedUdf[];
+}
+
+/**
+ * One UDF element the importer did not understand, kept verbatim (name plus raw
+ * XML) so a round trip through the same format does not silently lose it.
+ */
+export interface PreservedUdf {
+  name: string;
+  xml: string;
 }
 
 // ---------------------------------------------------------------------------

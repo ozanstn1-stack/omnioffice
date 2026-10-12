@@ -45,6 +45,7 @@
     "fileAssociations": [
       { "ext": ["docx"], "name": "OmniOffice Word document", "role": "Editor" },
       { "ext": ["odt"], "name": "OmniOffice OpenDocument text", "role": "Editor" },
+      { "ext": ["udf"], "name": "OmniOffice UYAP document", "role": "Editor" },
       { "ext": ["rtf"], "name": "OmniOffice Rich text document", "role": "Editor" },
       { "ext": ["xlsx"], "name": "OmniOffice Excel workbook", "role": "Editor" },
       { "ext": ["ods"], "name": "OmniOffice OpenDocument spreadsheet", "role": "Editor" },

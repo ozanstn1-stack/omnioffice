@@ -867,6 +867,22 @@ pub struct TextDocument {
     /// Page watermark; `None` means none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watermark: Option<Watermark>,
+    /// UDF elements the importer did not understand, kept so exporting the
+    /// document as `.udf` writes them back instead of dropping them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub preserved_udf: Vec<PreservedUdf>,
+}
+
+/// One UDF element the importer did not model, kept verbatim (name plus raw
+/// XML) so a round trip through the same format does not silently lose it.
+/// The same idea as [`PreservedPivot`], which keeps unknown Excel pivot parts.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PreservedUdf {
+    /// Local name of the element, e.g. `ozelEtiket`.
+    pub name: String,
+    /// The element and its children, as XML.
+    pub xml: String,
 }
 
 fn default_true() -> bool {
@@ -891,6 +907,7 @@ impl Default for TextDocument {
             track_changes: false,
             show_revisions: true,
             watermark: None,
+            preserved_udf: Vec::new(),
         }
     }
 }

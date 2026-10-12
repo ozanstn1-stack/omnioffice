@@ -52,6 +52,7 @@ const SEND_MULTIPLE = "android.intent.action.SEND_MULTIPLE";
 const TYPES: Record<string, string[]> = {
   docx: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
   odt: ["application/vnd.oasis.opendocument.text"],
+  udf: ["application/x-udf"],
   rtf: ["application/rtf", "text/rtf"],
   xlsx: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
   ods: ["application/vnd.oasis.opendocument.spreadsheet"],

@@ -85,6 +85,7 @@ export function mimeForName(name: string): string {
   if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   if (lower.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
   if (lower.endsWith(".odt")) return "application/vnd.oasis.opendocument.text";
+  if (lower.endsWith(".udf")) return "application/x-udf";
   if (lower.endsWith(".ods")) return "application/vnd.oasis.opendocument.spreadsheet";
   if (lower.endsWith(".odp")) return "application/vnd.oasis.opendocument.presentation";
   if (lower.endsWith(".doc")) return "application/msword";
@@ -113,6 +114,7 @@ export const OFFICE_EXTENSIONS: readonly string[] = [
   "doc",
   "dot",
   "odt",
+  "udf",
   "rtf",
   "txt",
   "md",
@@ -142,6 +144,7 @@ const OFFICE_MIME_TYPES: readonly string[] = [
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.oasis.opendocument.text",
+  "application/x-udf",
   "application/rtf",
   "application/msword",
   "application/vnd.ms-powerpoint",

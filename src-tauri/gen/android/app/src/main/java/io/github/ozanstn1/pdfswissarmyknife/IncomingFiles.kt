@@ -20,7 +20,7 @@ import java.util.UUID
 object IncomingFiles {
   /** Extensions the frontend can route. Anything else is logged and skipped. */
   val openableExtensions: Set<String> = setOf(
-    "docx", "odt", "rtf", "txt", "md", "html",
+    "docx", "odt", "udf", "rtf", "txt", "md", "html",
     "xlsx", "ods", "csv", "tsv",
     "pptx", "odp",
     "pdf", "osed", "ospr", "osdt", "oswk",
