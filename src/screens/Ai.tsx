@@ -646,7 +646,12 @@ export function Ai({
     if (!tableResult || tableResult.rows.length === 0) return;
     const cols = tableResult.columns;
     const escapeCsv = (val: unknown) => {
-      const str = String(val ?? "");
+      let str = String(val ?? "");
+      // Spreadsheet formula injection: a leading = + - @ (or tab/CR) turns the
+      // cell into a formula in Excel/Calc; the apostrophe keeps it text.
+      if (/^[=+\-@\t\r]/.test(str)) {
+        str = `'${str}`;
+      }
       if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
         return `"${str.replace(/"/g, '""')}"`;
       }
@@ -656,17 +661,30 @@ export function Ai({
     const rowLines = tableResult.rows.map((row) => {
       return cols
         .map((col) => {
-          const lower = col.toLowerCase();
-          if (lower.includes("page")) return escapeCsv(row.page);
-          if (lower.includes("vendor") || lower.includes("supplier")) return escapeCsv(row.vendor);
-          if (lower.includes("date")) return escapeCsv(row.date);
-          if (lower.includes("invoice") || lower.includes("number")) return escapeCsv(row.invoiceNumber);
-          if (lower.includes("currency")) return escapeCsv(row.currency);
-          if (lower.includes("subtotal")) return escapeCsv(row.subtotal ?? "");
-          if (lower.includes("tax") || lower.includes("vat")) return escapeCsv(row.tax ?? "");
-          if (lower.includes("total")) return escapeCsv(row.total ?? "");
-          if (lower.includes("item") || lower.includes("line")) return escapeCsv(row.lineItems);
-          return escapeCsv(row.customFields?.[col] ?? "");
+          // Exact field names, as produced by the backend; anything else is a
+          // custom field. Substring matching used to cross-map similar names.
+          switch (col) {
+            case "page":
+              return escapeCsv(row.page);
+            case "vendor":
+              return escapeCsv(row.vendor);
+            case "date":
+              return escapeCsv(row.date);
+            case "invoiceNumber":
+              return escapeCsv(row.invoiceNumber);
+            case "currency":
+              return escapeCsv(row.currency);
+            case "subtotal":
+              return escapeCsv(row.subtotal ?? "");
+            case "tax":
+              return escapeCsv(row.tax ?? "");
+            case "total":
+              return escapeCsv(row.total ?? "");
+            case "lineItems":
+              return escapeCsv(row.lineItems);
+            default:
+              return escapeCsv(row.customFields?.[col] ?? "");
+          }
         })
         .join(",");
     });

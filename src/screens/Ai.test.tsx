@@ -88,20 +88,32 @@ const invoke = vi.fn(async (command: string, _payload?: unknown) => {
             lineItems: "Consulting Services (10h)",
             customFields: { tax_id: "XX-12345" },
           },
+          {
+            page: 2,
+            vendor: "=cmd|' /C calc'!A0",
+            date: "2026-10-02",
+            invoiceNumber: "INV-1002",
+            currency: "TRY",
+            subtotal: 100.0,
+            tax: 20.0,
+            total: 120.0,
+            lineItems: "-dangerous",
+            customFields: { tax_id: "=SUM(A1:A9)" },
+          },
         ],
         columns: [
-          "Page",
-          "Vendor",
-          "Date",
-          "Invoice #",
-          "Currency",
-          "Subtotal",
-          "Tax",
-          "Total",
-          "Line Items",
+          "page",
+          "vendor",
+          "date",
+          "invoiceNumber",
+          "currency",
+          "subtotal",
+          "tax",
+          "total",
+          "lineItems",
           "tax_id",
         ],
-        pages: 1,
+        pages: 2,
         elapsedMs: 400,
       };
     case "ai_batch_run":
@@ -289,6 +301,15 @@ describe("Ai Screen - Belge Asistanı 2.0", () => {
         }),
       );
     });
+
+    // The exported CSV keeps exact field columns and neutralises formulas.
+    const saveCall = invoke.mock.calls.find((call) => call[0] === "ai_save_output") as
+      [string, { text?: string }] | undefined;
+    const csv = saveCall?.[1]?.text ?? "";
+    expect(csv.startsWith("page,vendor,date,invoiceNumber")).toBe(true);
+    expect(csv).toContain("'=cmd");
+    expect(csv).toContain("'=SUM(A1:A9)");
+    expect(csv).toContain("'-dangerous");
   });
 
   it("queues and executes batch operations across multiple files", async () => {
