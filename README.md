@@ -10,9 +10,24 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 4.8.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 4.9.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 4.9.0 (Resmî Belgeler)
+
+- UYAP `.udf` documents open in Writer and save back, with Windows and Android
+  file associations; an element the importer does not model is kept and
+  re-exported.
+- The new **Invoices** screen reads e-Fatura / e-Arşiv UBL-TR files (XML or
+  ZIP), checks the totals and VAT against a dated rate table, prints a
+  deterministic PDF and builds a **VAT summary** XLSX.
+- The **GİB karekod** on a printed invoice is decoded locally and compared with
+  the UBL document, with any disagreement shown in red.
+- The Reader offers a **"Verify document"** button when a PDF carries an
+  e-Devlet barcode block, opening the official page (nothing is sent).
+- A read-only **KEP `.eml`** viewer shows headers, body and attachments; a PDF
+  attachment opens in the Reader and an executable one is never launched.
 
 ## What's new in 4.8.0 (Türkçe Doğru)
 

@@ -1,9 +1,61 @@
-# Release Readiness — OmniOffice 4.8.0
+# Release Readiness — OmniOffice 4.9.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
+
+## Implemented (this cycle, 4.9.0) — Resmî Belgeler (Official documents)
+
+- **UYAP `.udf`** (issue #96): `crates/officecore/src/udf.rs` reads and writes
+  the ZIP + `content.xml` container (paragraphs, headings, lists, character
+  formatting, alignment, indents, spacing, tables with spans, page setup,
+  headers/footers). Unknown elements are kept verbatim in
+  `TextDocument.preservedUdf` and re-exported. Windows `fileAssociations` and the
+  Android intent filters + `IncomingFiles.openableExtensions` include `.udf`.
+  Tests: 8 unit tests plus `tests/udf_fixture_test.rs` over a hand-authored
+  `tests/fixtures/uyap-ornek.udf`; a `src-tauri` open/save/convert test.
+- **e-Fatura / e-Arşiv UBL-TR** (issue #97): `crates/officecore/src/ubl.rs`
+  parses XML and ZIP invoices, validates the line totals, VAT, tax-exclusive/
+  inclusive and payable amounts against the dated reference rate table,
+  renders a deterministic Writer document and aggregates a VAT summary
+  workbook. Commands `office_open_invoice`, `office_invoice_summary`,
+  `office_vat_rates`; the **Invoices** screen (`src/screens/Invoices.tsx`).
+  Tests: 8 unit tests (including a withholding example and an unknown rate) and
+  a `src-tauri` open → PDF → XLSX test.
+- **GİB karekod** (issue #98): `crates/pdfcore/src/gibqr.rs` decodes the QR from
+  a rendered PDF page with `rxing` (QR only), parses the JSON payload and
+  checks the VKN/TCKN. `office_read_invoice_qr`; the Invoices screen reads a
+  PDF's karekod and compares it with the UBL document, showing disagreements in
+  red (`src/lib/invoice-qr.ts`). Tests: 7 unit tests (encode→decode at three
+  resolutions), 7 comparison tests, and a screen test.
+- **e-Devlet verification** (issue #99): `src/lib/edevlet.ts` detects a
+  "barkodlu belge" block; the Reader shows a "Verify document" button that
+  opens `https://www.turkiye.gov.tr/belge-dogrulama` through
+  `open_external_link`. Tests: 7 detector tests, a `links.rs` allow-list test,
+  and a Reader screen test.
+- **KEP `.eml` viewer** (issue #100): `crates/officecore/src/eml.rs` parses
+  RFC 822 / MIME (multipart mixed/alternative, base64, quoted-printable,
+  RFC 2047 encoded-words, ISO-8859-9) read-only and extracts attachments
+  safely. `office_open_eml`; the **E-mail (.eml)** screen. Tests: 7 unit tests,
+  a fixture test over `tests/fixtures/kep-ornek.eml`, and a screen test.
+
+### Not done in this pass (honest)
+
+- UDF is a **closed format** implemented from its documented container and the
+  module's own files; **no open-licensed third-party `.udf` sample was
+  available in this environment**, so compatibility with the official editor is
+  not proven. Unknown elements keep their bytes, not their formatting.
+- The **invoice XSLT is never executed** (the app always uses its own template).
+- GİB karekod verification is against the **UBL document**, not the AI
+  extraction cards; the AI screen is not wired to it.
+- A **password-protected or encrypted KEP message is not decrypted**; the
+  S/MIME part is kept as an attachment and reported.
+- An HTML mail body is shown as **plain text**; no remote resource is loaded.
+- The **LibreOffice two-way conversion check** for UDF/UBL was not run (UDF is
+  closed; the UBL→XLSX path is covered by the XLSX import/export tests).
+- The total JS bundle budget moved from 485 to **500 KB**; the justification is
+  in `scripts/check-bundle-budget.mjs`.
 
 ## Implemented (this cycle, 4.8.0) — Türkçe Doğru (Turkish correctness)
 

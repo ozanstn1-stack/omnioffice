@@ -4,6 +4,57 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.9.0] - Resmî Belgeler (Official documents)
+
+### Added
+
+- **UYAP `.udf` documents** (issue #96): the Turkish judicial document format
+  opens in Writer (paragraphs, headings, lists, bold/italic/underline, font,
+  size, colour, alignment, indents, spacing, tables with spans and a page
+  setup) and saves back as `.udf`. An element the importer does not model is
+  kept verbatim and re-exported, so a round trip never drops it, and every such
+  element is reported. `.udf` is associated on Windows (`fileAssociations`) and
+  on Android (intent filters + the incoming-file whitelist).
+- **e-Fatura / e-Arşiv (UBL-TR) invoices** (issue #97): the new **Invoices**
+  screen reads a `.xml` or `.zip` invoice — supplier and customer with their
+  VKN/TCKN, ETTN, lines, VAT rates and bases, withholding (tevkifat) and the
+  payable amount — checks the arithmetic and the dated VAT-rate table, renders
+  the invoice with the app's own deterministic template (never the invoice's
+  XSLT), exports it to PDF and aggregates a **VAT summary** (by month, supplier
+  and rate) into an XLSX workbook.
+- **GİB karekod reading** (issue #98): the QR code on a printed invoice is
+  decoded locally with a pure-Rust QR reader, its JSON payload is parsed and its
+  sender VKN/TCKN is checksummed. When the invoice's UBL document is open too,
+  the karekod is compared with it field by field and any disagreement is shown
+  in red.
+- **e-Devlet document verification** (issue #99): when a PDF carries an
+  e-Devlet "barkodlu belge" block, the Reader shows a "Verify document" button
+  that opens the official page (`turkiye.gov.tr/belge-dogrulama`). The code is
+  shown so the user types it there; nothing is sent automatically.
+- **KEP `.eml` viewer** (issue #100): a read-only screen opens a KEP e-mail
+  message — headers (RFC 2047 decoded), text/HTML body and attachments. A PDF
+  attachment opens in the Reader; an executable attachment is never launched.
+  An encrypted S/MIME body is kept as an attachment and reported, never
+  decrypted.
+
+### Known limitations
+
+- UDF is a **closed format**: the reader/writer implement the documented
+  container (ZIP + `content.xml`) and the module's own files; no open-licensed
+  third-party `.udf` sample was available to test against. Unknown elements keep
+  their bytes but not their formatting.
+- An invoice's own **XSLT is never executed**; the app always uses its
+  deterministic template.
+- GİB karekod verification compares against the **UBL document**, not the AI
+  extraction cards (deterministic and stronger). A low-resolution scan may not
+  decode; the UI says so.
+- A **password-protected or encrypted KEP message is not decrypted**; the
+  S/MIME part is kept as an attachment.
+- An HTML mail body is shown as **plain text** so no remote resource is loaded.
+- The total JS bundle budget moved from 485 to 500 KB for this cycle (all new
+  screens are lazy routes); the reason is recorded in
+  `scripts/check-bundle-budget.mjs`.
+
 ## [4.8.0] - Türkçe Doğru (Turkish correctness)
 
 ### Added
