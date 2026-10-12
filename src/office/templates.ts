@@ -1123,6 +1123,307 @@ export const TEMPLATES: OfficeTemplate[] = [
       },
     ),
   ),
+  // Roadmap v4.8.0 item 8: the Turkish documents the roadmap names. Fields are
+  // `{{alan}}` placeholders so no real person's data ever ships.
+  turkish(
+    writer(
+      "trOfficialLetter",
+      "Resmî Yazı",
+      "Resmî Yazışma Yönetmeliği'ne uygun resmî yazı: başlık, sayı/konu, muhatap, ilgi, metin, imza ve ekler.",
+      (document) => {
+        document.blocks = [
+          paragraph("T.C.", "Normal", { align: "center" }, { bold: true }),
+          paragraph("{{kurum_adi}}", "Normal", { align: "center" }, { bold: true }),
+          paragraph("Sayı: {{sayi}}", "Normal", { spaceBeforePt: 24 }),
+          paragraph("Konu: {{konu}}", "Normal"),
+          paragraph("{{tarih}}", "Normal", { align: "right", spaceBeforePt: 12 }),
+          paragraph(
+            "{{muhatap_makami}}",
+            "Normal",
+            { align: "center", spaceBeforePt: 24, spaceAfterPt: 24 },
+            { bold: true },
+          ),
+          paragraph("İlgi: {{ilgi}}", "Normal", { spaceAfterPt: 12 }),
+          paragraph("{{metin}}", "Normal", { align: "justify", firstLinePt: 36 }),
+          paragraph("Gereğini arz ederim.", "Normal", { align: "right", spaceBeforePt: 24 }),
+          paragraph("{{imza_tarihi}}", "Normal", { align: "right" }),
+          paragraph("{{ad_soyad}}\n{{unvan}}", "Normal", { align: "right" }, { bold: true }),
+          paragraph("Ekler:", "Normal", { spaceBeforePt: 24, spaceAfterPt: 4 }, { bold: true }),
+          paragraph("{{ek}}", "Normal", numbered()),
+          paragraph("Dağıtım:", "Normal", { spaceBeforePt: 12, spaceAfterPt: 4 }, { bold: true }),
+          paragraph("Gereği: {{geregi}}", "Normal"),
+          paragraph("Bilgi: {{bilgi}}", "Normal"),
+          paragraph(
+            "Adres: {{kurum_adresi}}\nTelefon: {{telefon}}\nE-posta: {{e_posta}}\nKEP adresi: {{kep}}",
+            "Normal",
+            {
+              spaceBeforePt: 24,
+            },
+          ),
+        ];
+      },
+    ),
+  ),
+  turkish(
+    writer(
+      "trNotice",
+      "İhtarname",
+      "İhtar eden ve muhatap bilgileri, konu, numaralı talepler, süre ve sonuç bölümüyle ihtarname.",
+      (document) => {
+        document.blocks = [
+          paragraph("İHTARNAME", "Title", { align: "center" }),
+          paragraph("{{tarih}}", "Normal", { align: "right" }),
+          paragraph("İHTAR EDEN", "Heading3"),
+          paragraph(
+            "Ad Soyad / Firma Unvanı: {{ihtar_eden}}\nT.C. Kimlik No / VKN: {{ihtar_eden_kimlik}}\nAdres: {{ihtar_eden_adres}}\nTelefon: {{ihtar_eden_telefon}}",
+          ),
+          paragraph("MUHATAP", "Heading3"),
+          paragraph(
+            "Ad Soyad / Firma Unvanı: {{muhatap}}\nT.C. Kimlik No / VKN: {{muhatap_kimlik}}\nAdres: {{muhatap_adres}}",
+          ),
+          paragraph("KONU: {{konu}}", "Normal", { spaceBeforePt: 12, spaceAfterPt: 12 }, { bold: true }),
+          paragraph("1. {{talep_bir}}", "Normal", numbered()),
+          paragraph("2. {{talep_iki}}", "Normal", numbered()),
+          paragraph("3. {{talep_uc}}", "Normal", numbered()),
+          paragraph(
+            "İşbu ihtarnamenin tebliğinden itibaren {{sure}} gün içinde yukarıda belirtilen taleplerin yerine getirilmesini, aksi hâlde alacağın tahsili ve sair haklarımız için yasal yollara başvurulacağını ihtar ederim.",
+            "Normal",
+            { align: "justify", firstLinePt: 36, spaceBeforePt: 12 },
+          ),
+          paragraph("İhtarname olunur.", "Normal", { spaceBeforePt: 12 }),
+          paragraph("{{ihtar_eden}}\nİmza", "Normal", { align: "right", spaceBeforePt: 24 }),
+          paragraph("Ekler: {{ekler}}", "Normal", { spaceBeforePt: 12 }),
+        ];
+      },
+    ),
+  ),
+  turkish(
+    writer(
+      "trRentContract",
+      "Kira Sözleşmesi",
+      "Kiraya veren ve kiracı bilgileri, madde madde süre, bedel, depozito, gider ve fesih koşullarıyla kira sözleşmesi.",
+      (document) => {
+        document.blocks = [
+          paragraph("KİRA SÖZLEŞMESİ", "Title", { align: "center" }),
+          paragraph(
+            "İşbu sözleşme, aşağıda kimlik bilgileri yazılı kiraya veren ile kiracı arasında, belirtilen taşınmazın kiralanması amacıyla düzenlenmiştir.",
+            "Normal",
+            { align: "justify" },
+          ),
+          paragraph("TARAFLAR", "Heading3"),
+          paragraph(
+            "KİRAYA VEREN\nAd Soyad: {{kira_veren}}\nT.C. Kimlik No: {{kv_kimlik}}\nAdres: {{kv_adres}}\nTelefon: {{kv_telefon}}",
+          ),
+          paragraph(
+            "KİRACI\nAd Soyad: {{kiraci}}\nT.C. Kimlik No: {{k_kimlik}}\nAdres: {{k_adres}}\nTelefon: {{k_telefon}}",
+          ),
+          paragraph("MADDE 1 – KONU", "Heading3"),
+          paragraph("Sözleşmenin konusu, {{tasinmaz_adresi}} adresindeki taşınmazın kiralanmasıdır."),
+          paragraph("MADDE 2 – SÜRE", "Heading3"),
+          paragraph(
+            "Kira süresi {{baslangic}} tarihinde başlar ve {{bitis}} tarihinde sona erer. Taraflar, sürenin bitiminden en az bir ay önce yazılı bildirimde bulunmadıkça sözleşme aynı koşullarla bir yıl uzar.",
+          ),
+          paragraph("MADDE 3 – KİRA BEDELİ", "Heading3"),
+          paragraph(
+            "Aylık kira bedeli {{kira_bedeli}} Türk lirasıdır. Kira bedeli, yasal düzenlemeler çerçevesinde yıllık olarak güncellenir.",
+          ),
+          paragraph("MADDE 4 – ÖDEME", "Heading3"),
+          paragraph("Kira bedeli her ayın {{odeme_gunu}}. günü, {{odeme_sekli}} yoluyla kiraya verene ödenir."),
+          paragraph("MADDE 5 – DEPOZİTO", "Heading3"),
+          paragraph(
+            "Kiracı, kiraya verene {{depozito}} Türk lirası güvence bedeli vermiştir. Bu bedel, sözleşmenin sona ermesi ve taşınmazın hasarsız teslimi hâlinde iade edilir.",
+          ),
+          paragraph("MADDE 6 – AİDAT VE GİDERLER", "Heading3"),
+          paragraph(
+            "Elektrik, su, doğalgaz, internet ve aidat gibi kullanıma bağlı giderler kiracıya; taşınmaza ilişkin vergi ve benzeri yükümlülükler kiraya verene aittir.",
+          ),
+          paragraph("MADDE 7 – KULLANIM", "Heading3"),
+          paragraph(
+            "Kiracı, taşınmazı yalnızca {{kullanim_amaci}} amacıyla kullanır; kiraya verenin yazılı izni olmadan taşınmazı üçüncü kişilere devredemez veya alt kiraya veremez.",
+          ),
+          paragraph("MADDE 8 – BAKIM VE ONARIM", "Heading3"),
+          paragraph(
+            "Olağan kullanımdan doğan küçük onarımlar kiracıya, taşınmazın esaslı onarımı kiraya verene aittir.",
+          ),
+          paragraph("MADDE 9 – CEZAİ ŞARTLAR", "Heading3"),
+          paragraph(
+            "Kira bedelinin ödenmesinde gecikme olması hâlinde, gecikilen her gün için {{gecikme_faizi}} oranında temerrüt faizi uygulanır.",
+          ),
+          paragraph("MADDE 10 – FESİH", "Heading3"),
+          paragraph(
+            "Taraflardan biri sözleşmeye aykırı davranır ve {{ihtar_suresi}} gün içinde aykırılığı gidermezse, diğer taraf sözleşmeyi tek taraflı olarak feshedebilir.",
+          ),
+          paragraph("MADDE 11 – YETKİLİ MAHKEME", "Heading3"),
+          paragraph(
+            "İşbu sözleşmeden doğan uyuşmazlıklarda {{yetkili_mahkeme}} mahkemeleri ve icra daireleri yetkilidir.",
+          ),
+          paragraph("MADDE 12 – YÜRÜRLÜK", "Heading3"),
+          paragraph(
+            "İşbu sözleşme {{madde_sayisi}} maddeden oluşur, taraflarca okunarak iki nüsha hâlinde imzalanmıştır.",
+          ),
+          paragraph("KİRAYA VEREN\nAd Soyad: {{kira_veren}}\nİmza:", "Normal", { spaceBeforePt: 24 }),
+          paragraph("KİRACI\nAd Soyad: {{kiraci}}\nİmza:", "Normal", { spaceBeforePt: 12 }),
+        ];
+      },
+    ),
+  ),
+  turkish(
+    writer(
+      "trLeaveRequest",
+      "İzin Dilekçesi",
+      "Tarih, muhatap, izin türü ve tarih aralığı, imza ve iletişim bilgileriyle izin dilekçesi.",
+      (document) => {
+        document.blocks = [
+          paragraph("{{tarih}}", "Normal", { align: "right" }),
+          paragraph(
+            "{{muhatap_makami}}",
+            "Normal",
+            { align: "center", spaceBeforePt: 24, spaceAfterPt: 24 },
+            { bold: true },
+          ),
+          paragraph(
+            "{{kurum_adi}} bünyesinde {{gorev}} olarak görev yapmaktayım. {{baslangic}} – {{bitis}} tarihleri arasında {{izin_turu}} kullanmak istiyorum. İzin süresince görevlerimin yürütülmesi için gerekli önlemler alınmıştır.",
+            "Normal",
+            { align: "justify", firstLinePt: 36 },
+          ),
+          paragraph("Gereğini arz ederim.", "Normal", { firstLinePt: 36 }),
+          paragraph("{{imza_tarihi}}", "Normal", { align: "right", spaceBeforePt: 24 }),
+          paragraph("{{ad_soyad}}\n{{unvan}}\nİmza", "Normal", { align: "right" }, { bold: true }),
+          paragraph("Ekler:", "Normal", { spaceBeforePt: 24, spaceAfterPt: 4 }, { bold: true }),
+          paragraph("İzin talep formu", "Normal", numbered()),
+          paragraph("Adres: {{adres}}\nTelefon: {{telefon}}", "Normal", { spaceBeforePt: 12 }),
+        ];
+      },
+    ),
+  ),
+  turkish(
+    writer(
+      "trResignation",
+      "İstifa Dilekçesi",
+      "Tarih, muhatap, ihbar süresi ve son çalışma tarihi, imza ve iletişim bilgileriyle istifa dilekçesi.",
+      (document) => {
+        document.blocks = [
+          paragraph("{{tarih}}", "Normal", { align: "right" }),
+          paragraph(
+            "{{muhatap_makami}}",
+            "Normal",
+            { align: "center", spaceBeforePt: 24, spaceAfterPt: 24 },
+            { bold: true },
+          ),
+          paragraph(
+            "{{kurum_adi}} bünyesinde {{gorev}} olarak yürütmekte olduğum görevimden, {{ihbar_suresi}} ihbar süresine uyarak {{son_calisma_tarihi}} tarihi itibarıyla istifa ediyorum. Bu süre içinde görevlerimin devri için gerekli çalışmaları yapacağımı bildirir, bugüne kadar sağlanan iş birliği için teşekkür ederim.",
+            "Normal",
+            { align: "justify", firstLinePt: 36 },
+          ),
+          paragraph("Gereğini arz ederim.", "Normal", { firstLinePt: 36 }),
+          paragraph("{{imza_tarihi}}", "Normal", { align: "right", spaceBeforePt: 24 }),
+          paragraph("{{ad_soyad}}\n{{unvan}}\nİmza", "Normal", { align: "right" }, { bold: true }),
+          paragraph("Adres: {{adres}}\nTelefon: {{telefon}}", "Normal", { spaceBeforePt: 24 }),
+        ];
+      },
+    ),
+  ),
+  turkish(
+    calc(
+      "trPayroll",
+      "Bordro",
+      "Kazanç ve kesinti kalemleri formülle hesaplanan, net ücreti gösteren bordro.",
+      (workbook) => {
+        const sheet = workbook.sheets[0];
+        sheet.name = "Bordro";
+        const header = { bold: true, fill: "#EEF2FF" };
+        const money = { numberFormat: TRY_FORMAT };
+        const label = { bold: true };
+        sheet.cells.A1 = sheetCell("BORDRO", { bold: true, sizePt: 18 });
+        sheet.cells.A2 = sheetCell("Dönem:", label);
+        sheet.cells.B2 = sheetCell("{{donem}}");
+        sheet.cells.A3 = sheetCell("Ad Soyad:", label);
+        sheet.cells.B3 = sheetCell("{{ad_soyad}}");
+        sheet.cells.A4 = sheetCell("T.C. Kimlik No:", label);
+        sheet.cells.B4 = sheetCell("{{tckn}}");
+        sheet.cells.A5 = sheetCell("Sicil No:", label);
+        sheet.cells.B5 = sheetCell("{{sicil_no}}");
+        sheet.cells.A6 = sheetCell("İşe Giriş Tarihi:", label);
+        sheet.cells.B6 = sheetCell("{{ise_giris}}");
+        sheet.cells.A8 = sheetCell("KAZANÇLAR", header);
+        sheet.cells.A9 = sheetCell("Açıklama", header);
+        sheet.cells.B9 = sheetCell("Tutar", header);
+        const earnings: [string, string][] = [
+          ["Temel Ücret", "B10"],
+          ["Fazla Mesai", "B11"],
+          ["Prim", "B12"],
+          ["Yol", "B13"],
+          ["Yemek", "B14"],
+        ];
+        earnings.forEach(([title, address], index) => {
+          sheet.cells[`A${10 + index}`] = sheetCell(title);
+          sheet.cells[address] = sheetCell(0, money);
+        });
+        sheet.cells.A15 = sheetCell("Brüt Kazanç", label);
+        sheet.cells.B15 = sheetCell("=SUM(B10:B14)", { ...money, bold: true });
+        sheet.cells.A17 = sheetCell("KESİNTİLER", header);
+        sheet.cells.A18 = sheetCell("Açıklama", header);
+        sheet.cells.B18 = sheetCell("Tutar", header);
+        sheet.cells.A19 = sheetCell("SGK İşçi Payı (%14)");
+        sheet.cells.B19 = sheetCell("=B15*0.14", money);
+        sheet.cells.A20 = sheetCell("İşsizlik Sigortası İşçi Payı (%1)");
+        sheet.cells.B20 = sheetCell("=B15*0.01", money);
+        sheet.cells.A21 = sheetCell("Gelir Vergisi Matrahı");
+        sheet.cells.B21 = sheetCell("=B15-B19-B20", money);
+        sheet.cells.A22 = sheetCell("Gelir Vergisi (%15)");
+        sheet.cells.B22 = sheetCell("=B21*0.15", money);
+        sheet.cells.A23 = sheetCell("Damga Vergisi (%0,759)");
+        sheet.cells.B23 = sheetCell("=B15*0.00759", money);
+        sheet.cells.A24 = sheetCell("Kesintiler Toplamı", label);
+        sheet.cells.B24 = sheetCell("=B19+B20+B22+B23", { ...money, bold: true });
+        sheet.cells.A26 = sheetCell("NET ÜCRET", { bold: true, sizePt: 14 });
+        sheet.cells.B26 = sheetCell("=B15-B24", { ...money, bold: true, sizePt: 14 });
+        sheet.cells.A28 = sheetCell(
+          "Not: Tutarlar {{para_birimi}} cinsindendir; oranlar örnektir, güncel mevzuata göre güncelleyin.",
+          {
+            italic: true,
+          },
+        );
+        sheet.colWidths = Object.fromEntries([
+          ["0", 220],
+          ["1", 120],
+        ]);
+      },
+    ),
+  ),
+  turkish(
+    writer(
+      "trDeliveryNote",
+      "İrsaliye",
+      "Satıcı ve alıcı bilgileri, teslim edilen kalemler ve teslim eden/alan imza bölümüyle irsaliye.",
+      (document) => {
+        document.blocks = [
+          paragraph("İRSALİYE", "Title", { align: "center" }),
+          paragraph("İrsaliye No: {{irsaliye_no}} · Tarih: {{tarih}}", "Subtitle", { align: "center" }),
+          paragraph("SATICI", "Heading3"),
+          paragraph(
+            "Firma Unvanı: {{satici_unvani}}\nAdres: {{satici_adres}}\nVergi Dairesi / VKN: {{satici_vkn}}\nTelefon: {{satici_telefon}}",
+          ),
+          paragraph("ALICI", "Heading3"),
+          paragraph(
+            "Firma Unvanı: {{alici_unvani}}\nAdres: {{alici_adres}}\nVergi Dairesi / VKN: {{alici_vkn}}\nTelefon: {{alici_telefon}}",
+          ),
+          table([
+            ["Sıra", "Mal / Hizmet", "Miktar", "Birim", "Açıklama"],
+            ["1", "{{mal_hizmet}}", "{{miktar}}", "{{birim}}", "{{aciklama}}"],
+            ["2", "", "", "", ""],
+            ["3", "", "", "", ""],
+            ["4", "", "", "", ""],
+          ]),
+          paragraph("Teslim Eden: {{teslim_eden}}\nİmza:", "Normal", { spaceBeforePt: 24 }),
+          paragraph("Teslim Alan: {{teslim_alan}}\nİmza:", "Normal", { spaceBeforePt: 12 }),
+          paragraph("Bu irsaliye fatura yerine geçmez; mal/hizmet bedeli ayrıca faturalandırılır.", "Caption", {
+            spaceBeforePt: 12,
+          }),
+        ];
+      },
+    ),
+  ),
 ];
 
 export function templatesFor(kind: "writer" | "calc" | "impress"): OfficeTemplate[] {
