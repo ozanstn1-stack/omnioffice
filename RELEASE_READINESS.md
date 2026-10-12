@@ -1,9 +1,62 @@
-# Release Readiness — OmniOffice 4.9.0
+# Release Readiness — OmniOffice 4.10.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
+
+## Implemented (this cycle, 4.10.0) — Belge Asistanı 2.1 (Document Assistant 2.1)
+
+- **Persistent hybrid index** (issue #101): `src-tauri/src/vault_index.rs` —
+  real BM25 (inverted index, IDF, length normalisation), a per-chunk embedding
+  store (`embeddings.bin` + `index.json`, key `model + sha256(chunk)`), and RRF.
+  `vault_search_hybrid` and the chat vault scope use it; `vault_index_build`
+  embeds the pending chunks with a progress event and cancellation. Tests: 9
+  unit tests including a **5.000-chunk query under 300 ms**, plus a vault test
+  that the index persists and is not rebuilt when unchanged.
+- **UI wiring and citation targets** (issue #102): the Vault screen calls
+  `vault_search_hybrid`; `src/lib/citation-target.ts` resolves a citation to the
+  right file (PDF page in the Reader, office file in the workspace). Tests: 6.
+- **Verified citations** (issue #103): `crates/aicore/src/citations.rs` parses
+  `[page N]` / `[sayfa N]` / `[pages 3-4]` / `(p. 4)` and fuzzy-matches the
+  quote (Turkish-folded). The backend marks each citation `verified`; a page
+  that was not retrieved is rejected; the UI shows an "unverified" badge.
+  Tests: 5 unit + a screen test.
+- **Prompt-injection hardening** (issue #104): `doc_chat_messages` delimits the
+  context; the system prompt states it is data; `sanitize_history` refuses a
+  `system` role and trims to `HISTORY_BUDGET_CHARS`. Tests: 3.
+- **Bounded batch queue** (issue #105): `ai_batch_run` uses a `JoinSet` +
+  `Semaphore(3)`; `chat_with_retry` retries a `429` after the provider's
+  `Retry-After`; `chat_cancellable` aborts an in-flight call; per-item password;
+  approximate tokens/cost. Tests: cost, retry delay, concurrency bound (Rust)
+  and a screen test (password + cost).
+- **Vision gate** (issue #106): the toggle is disabled without `vision`; the
+  image has a width and 4 MB limit with a smaller-dpi retry; a failure sets
+  `AiChatResult.warning`. Contract tests cover the OpenAI-compatible (incl.
+  Gemini) `image_url` format and the Anthropic base64 `source` format.
+- **Consent and privacy** (issue #107): separate consents (base/vault/embedding/
+  image) enforced by `require_consent` in the backend; LM Studio (and a
+  localhost base URL) is local; AI jobs persist no payload in `jobs.json`;
+  `ai_clear_data` deletes chats (all or older than the retention) and the vault
+  index; Settings has the retention field and the clear button. Tests: consent,
+  retention expiry, jobs payload, LM Studio, and screen tests.
+
+### Not done in this pass (honest)
+
+- Embeddings are requested **one chunk at a time**; no provider batch endpoint
+  is used.
+- The **token/cost** figure is an estimate (characters / 4 and a per-model price
+  table), shown with a `~`.
+- **Cancelling a non-streaming call** takes effect on the next poll tick.
+- An **office** citation opens the file but does not scroll to the paragraph,
+  sheet or slide.
+- The **consents are per session**; they are not remembered across restarts.
+- `vault_search_hybrid` (the Vault screen) does not itself gate embeddings; it
+  falls back to BM25 when they are not configured. Only the AI chat vault scope
+  and `vault_index_build` require the embedding consent.
+- The **retention** applies to saved chats only; documents and the vault
+  metadata are not deleted, only the derived index.
+- The total JS bundle budget stays at 500 KB.
 
 ## Implemented (this cycle, 4.9.0) — Resmî Belgeler (Official documents)
 

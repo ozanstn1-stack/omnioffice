@@ -4,6 +4,56 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.10.0] - Belge Asistanı 2.1: Gerçek arama, doğrulanmış atıf (Document Assistant 2.1)
+
+### Added
+
+- **Real hybrid search** (issue #101): a persistent index with **BM25** (inverted
+  index, IDF, length normalisation), **per-chunk embeddings** stored in
+  `embeddings.bin` + `index.json` (keyed by `model + hash(chunk text)`, so an
+  unchanged chunk is never re-embedded) and **Reciprocal Rank Fusion**. A
+  5.000-chunk query runs in well under 300 ms.
+- **Wired into the app** (issue #102): the Vault screen and the chat's vault
+  scope use the hybrid search, and a citation now targets **`(document,
+  location)`** — clicking it opens the right file at the right page instead of
+  pages 1–5 of the current document.
+- **Verified citations** (issue #103): the model must back each claim with a
+  short quote; the quote is fuzzy-matched against the source page (Turkish
+  letters folded) and an unverifiable one is shown with an **"unverified"**
+  badge. `[page N]`, `[sayfa N]`, `[pages 3-4]`, `[sayfalar 3-4]` and `(p. 4)`
+  are all parsed; a page that was not retrieved is rejected.
+- **Prompt-injection hardening** (issue #104): the document text is wrapped in
+  `<document_context>` and the system prompt says it is data, not instructions;
+  a `system` role in the client history is refused; the history is trimmed to a
+  context budget.
+- **Bounded batch queue** (issue #105): at most 3 items run at once, a `429` is
+  retried after the provider's `Retry-After`, a non-streaming call can be
+  cancelled, each item may carry its own password, and the result shows the
+  approximate token use and cost.
+- **Vision capability gate** (issue #106): the "send page image" option is
+  disabled when the provider cannot receive images, the image has a width and a
+  4 MB size limit, and a render/encode failure is reported instead of being
+  swallowed.
+- **Consent and privacy** (issue #107): separate consents for the vault scope,
+  embedding and page images (enforced in the backend too), **LM Studio** is
+  treated as local, AI jobs no longer write their input to `jobs.json`, and
+  Settings has **"Clear AI data"** plus a **retention period** for saved chats.
+
+### Known limitations
+
+- Embeddings are sent one chunk at a time (providers expose no batch endpoint);
+  "batching" is the bounded concurrency, not a single grouped request.
+- The token/cost figure is an **estimate** (characters / 4 and a per-model price
+  table), shown with a `~`.
+- Cancelling a non-streaming call takes effect on the next poll tick, not
+  instantly.
+- An **office** citation opens the file in the workspace; a paragraph/sheet/slide
+  anchor is not scrolled to yet.
+- Consents are **per session** (asked again after a restart).
+- `vault_search_hybrid` falls back to BM25 when embeddings are not configured or
+  not consented.
+- The total JS bundle budget stays at 500 KB.
+
 ## [4.9.0] - Resmî Belgeler (Official documents)
 
 ### Added
