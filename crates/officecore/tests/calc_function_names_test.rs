@@ -5,7 +5,7 @@
 //! the plain name; ODF writes the same functions as `COM.MICROSOFT.*` or under
 //! its own name. The editor keeps plain names, so the prefix is added on export
 //! and stripped on import. The lists below are the Calc function catalogue
-//! (`src/office/calc/functions/*.ts`, 274 functions) split by what the file
+//! (`src/office/calc/functions/*.ts`, 278 functions) split by what the file
 //! must say; `every_registered_function_is_classified_once` fails when the
 //! catalogue grows, so a new function cannot ship without being classified.
 //!
@@ -47,7 +47,7 @@ const PLAIN: &[&str] = &[
     "CRITBINOM", "CUMIPMT", "CUMPRINC", "DATE", "DATEDIF", "DATEVALUE", "DAY", "DB", "DDB", "DEGREES", "DEVSQ",
     "DOLLAR", "EDATE", "EFFECT", "EOMONTH", "EVEN", "EXACT", "EXP", "EXPONDIST", "FACT", "FACTDOUBLE", "FALSE",
     "FIND", "FIXED", "FLOOR", "FORECAST", "FV", "GCD", "GEOMEAN", "GROWTH", "HARMEAN", "HLOOKUP", "HOUR",
-    "HYPERLINK", "IF", "IFERROR", "INDEX", "INDIRECT", "INFO", "INT", "INTERCEPT", "IRR", "ISBLANK", "ISERR",
+    "HYPERLINK", "IBANDOGRULA", "IF", "IFERROR", "INDEX", "INDIRECT", "INFO", "INT", "INTERCEPT", "IRR", "ISBLANK", "ISERR",
     "ISERROR", "ISEVEN", "ISLOGICAL", "ISNA", "ISNONTEXT", "ISNUMBER", "ISO.CEILING", "ISODD", "ISTEXT", "LARGE",
     "LCM", "LEFT", "LEN", "LN", "LOG", "LOG10", "LOOKUP", "LOWER", "MATCH", "MAX", "MEDIAN", "MID", "MIN", "MINUTE",
     "MIRR", "MOD", "MODE", "MONTH", "MROUND", "MULTINOMIAL", "N", "NA", "NETWORKDAYS", "NOMINAL", "NORMDIST",
@@ -56,9 +56,9 @@ const PLAIN: &[&str] = &[
     "RADIANS", "RAND", "RANDBETWEEN", "RANK", "RATE", "REPLACE", "REPT", "RIGHT", "ROUND", "ROUNDDOWN", "ROUNDUP",
     "ROW", "ROWS", "RSQ", "SEARCH", "SECOND", "SIGN", "SIN", "SLN", "SLOPE", "SMALL", "SQRT", "STANDARDIZE",
     "STDEV", "STDEVP", "STEYX", "SUBSTITUTE", "SUBTOTAL", "SUM", "SUMIF", "SUMIFS", "SUMPRODUCT", "SUMSQ",
-    "SUMX2MY2", "SUMX2PY2", "SUMXMY2", "SYD", "T", "TAN", "TDIST", "TEXT", "TIME", "TIMEVALUE", "TINV", "TODAY",
-    "TRANSPOSE", "TREND", "TRIM", "TRUE", "TRUNC", "UPPER", "VALUE", "VAR", "VARP", "VLOOKUP", "WEEKDAY", "WEEKNUM",
-    "WORKDAY", "XIRR", "XNPV", "YEAR",
+    "SUMX2MY2", "SUMX2PY2", "SUMXMY2", "SYD", "T", "TAN", "TCKNDOGRULA", "TDIST", "TEXT", "TIME", "TIMEVALUE", "TINV", "TODAY",
+    "TRANSPOSE", "TREND", "TRIM", "TRUE", "TRUNC", "UPPER", "VALUE", "VAR", "VARP", "VKNDOGRULA", "VLOOKUP", "WEEKDAY",
+    "WEEKNUM", "WORKDAY", "XIRR", "XNPV", "YAZIYLA", "YEAR",
 ];
 
 fn registered() -> BTreeSet<&'static str> {
@@ -68,7 +68,7 @@ fn registered() -> BTreeSet<&'static str> {
 #[test]
 fn every_registered_function_is_classified_once() {
     let total = PREFIXED.len() + WORKSHEET_NAMESPACE.len() + PLAIN.len();
-    assert_eq!(total, 274, "the catalogue has 274 functions; update the lists and the README count together");
+    assert_eq!(total, 278, "the catalogue has 278 functions; update the lists and the README count together");
     assert_eq!(registered().len(), total, "a function is listed in two groups");
 }
 

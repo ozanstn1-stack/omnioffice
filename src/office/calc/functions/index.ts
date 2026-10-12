@@ -18,6 +18,7 @@ import "./reference";
 import "./regression";
 import "./statistics";
 import "./text";
+import "./turkish";
 
 let loaded = false;
 

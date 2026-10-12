@@ -8,6 +8,7 @@
 import { dateToSerial, serialDay, serialToDate } from "../numberFormat";
 import { registerFunction } from "../registry";
 import { ERR, FormulaError, flatten, isError, toNumber, type Scalar } from "../scalars";
+import { turkishHolidaySerialsBetween } from "../tr-holidays";
 
 /** A date argument that may be a serial number or an ISO-8601 string. */
 function dateArg(args: Scalar[][][], index: number): Date | FormulaError {
@@ -333,11 +334,26 @@ registerFunction(
   { signature: "EOMONTH(start, months)", category: "Date" },
 );
 
-function holidaySet(args: Scalar[][][]): Set<number> {
+/**
+ * Holidays from the extra arguments: numbers (serial days or dates) plus, when
+ * any argument is the text `"TR"`, the built-in Turkish official holidays that
+ * fall inside `[from, to]`.
+ */
+function holidaySet(args: Scalar[][][], from: number, to: number): Set<number> {
   const out = new Set<number>();
-  for (const value of flatten([args[0] ?? []])) {
-    const number = toNumber(value);
-    if (!isError(number)) out.add(serialDay(number));
+  let includeTurkish = false;
+  for (const arg of args) {
+    for (const value of flatten([arg])) {
+      if (typeof value === "string" && value.trim().toUpperCase() === "TR") {
+        includeTurkish = true;
+        continue;
+      }
+      const number = toNumber(value);
+      if (!isError(number)) out.add(serialDay(number));
+    }
+  }
+  if (includeTurkish) {
+    for (const serial of turkishHolidaySerialsBetween(from, to)) out.add(serial);
   }
   return out;
 }
@@ -349,7 +365,9 @@ registerFunction(
     if (isError(start)) return start;
     const end = dateArg(args, 1);
     if (isError(end)) return end;
-    const holidays = holidaySet(args.slice(2));
+    const startSerial = dateToSerial(start);
+    const endSerial = dateToSerial(end);
+    const holidays = holidaySet(args.slice(2), Math.min(startSerial, endSerial), Math.max(startSerial, endSerial));
     let from = utc(start);
     let to = utc(end);
     let sign = 1;
@@ -369,9 +387,9 @@ registerFunction(
     return count * sign;
   },
   2,
-  3,
+  4,
   false,
-  { signature: "NETWORKDAYS(start, end, [holidays])", category: "Date" },
+  { signature: 'NETWORKDAYS(start, end, [holidays], ["TR"])', category: "Date" },
 );
 registerFunction(
   "WORKDAY",
@@ -380,7 +398,10 @@ registerFunction(
     if (isError(start)) return start;
     const days = numberArg(args, 1, 0);
     if (isError(days)) return days;
-    const holidays = holidaySet(args.slice(2));
+    // The walk needs holidays over the whole span it can cover.
+    const startSerial = dateToSerial(start);
+    const reach = Math.abs(Math.trunc(days)) + 40;
+    const holidays = holidaySet(args.slice(2), startSerial - reach, startSerial + reach);
     const step = days >= 0 ? 1 : -1;
     let remaining = Math.abs(Math.trunc(days));
     let cursor = utc(start);
@@ -393,9 +414,9 @@ registerFunction(
     return dateToSerial(cursor);
   },
   2,
-  3,
+  4,
   false,
-  { signature: "WORKDAY(start, days, [holidays])", category: "Date" },
+  { signature: 'WORKDAY(start, days, [holidays], ["TR"])', category: "Date" },
 );
 
 /** Converts a date argument straight to a serial number. */
