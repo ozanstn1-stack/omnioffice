@@ -52,7 +52,7 @@ import {
 } from "lucide-react";
 import type { OfficeTab, TextDocument } from "../lib/office-store";
 import { useOfficeTabs } from "../lib/office-store";
-import { useToasts, reportError } from "../lib/store";
+import { useToasts, reportError, useSettings } from "../lib/store";
 import { useT } from "../lib/i18n";
 import {
   uid,
@@ -137,6 +137,7 @@ import {
   wrapCellRuns,
 } from "./writer/writerDom";
 import { emptyRun as emptyWriterRun } from "./writer/runs";
+import { commentAuthor, revisionAuthor } from "./writer/identity";
 import {
   compileSearch,
   documentMatches,
@@ -311,7 +312,10 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   const [activeBlockIndex, setActiveBlockIndex] = useState<number | null>(null);
 
   const document = tab.model;
-  const revisionAuthor = document.metadata.author.trim() || "You";
+  // New comments and tracked changes carry the name from Settings when it is
+  // set; an empty setting keeps the historical defaults ("Me" / "You").
+  const settingsAuthor = useSettings((state) => state.settings.authorName ?? "").trim();
+  const revisionAuthorName = revisionAuthor(document.metadata.author, settingsAuthor);
   // Ordered-list numbering and live field values (page/pages/date/time/
   // title/author) are derived at render time instead of freezing at insertion
   // (audit M16: every ordered item showed "1" and PAGE never refreshed).
@@ -735,7 +739,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
       return;
     }
     let runs = applyAiText(current.runs, job.from, job.to, result.text);
-    if (document.trackChanges) runs = trackRunChanges(current.runs, runs, revisionAuthor);
+    if (document.trackChanges) runs = trackRunChanges(current.runs, runs, revisionAuthorName);
     const after: Block = { ...current, runs };
     const blocks = document.blocks.map((block, position) => (position === job.index ? after : block));
     const model: TextDocument = { ...document, blocks };
@@ -810,7 +814,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         // treats them as invisible to the diff and carries them through, so
         // typing with "show revisions" off can no longer silently accept a
         // pending deletion.
-        runs = trackRunChanges(block.runs, runs, revisionAuthor);
+        runs = trackRunChanges(block.runs, runs, revisionAuthorName);
       }
       const nextRuns = runs.length > 0 ? runs : [emptyRun()];
       // A blur that changed nothing must not push an undo step: it would sit
@@ -1345,7 +1349,13 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   const addComment = () => {
     const text = window.prompt(t("writer.commentPrompt"));
     if (!text) return;
-    const comment: DocComment = { id: uid(), author: "Me", text, created: new Date().toISOString(), resolved: false };
+    const comment: DocComment = {
+      id: uid(),
+      author: commentAuthor(settingsAuthor),
+      text,
+      created: new Date().toISOString(),
+      resolved: false,
+    };
     const active = window.document.activeElement as HTMLElement | null;
     const index = active?.dataset?.blockIndex ? Number(active.dataset.blockIndex) : null;
     update((doc) => {
@@ -2706,7 +2716,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                             ...entry,
                             replies: [
                               ...(entry.replies ?? []),
-                              { author: revisionAuthor, text, created: new Date().toISOString() },
+                              { author: revisionAuthorName, text, created: new Date().toISOString() },
                             ],
                           }
                         : entry,

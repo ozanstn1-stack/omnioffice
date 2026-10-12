@@ -50,3 +50,29 @@ describe("online revocation setting", () => {
     );
   });
 });
+
+describe("author name setting", () => {
+  beforeEach(() => {
+    invoke.mockClear();
+    useSettings.setState({ settings: { ...DEFAULT_SETTINGS }, loaded: true });
+  });
+
+  it("is empty by default", () => {
+    expect(DEFAULT_SETTINGS.authorName).toBe("");
+  });
+
+  it("saves the typed name", async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await screen.findByText(/v3\.9\.0/);
+    const field = screen.getByPlaceholderText("Me");
+    await user.type(field, "Ayşe Yılmaz");
+    expect(useSettings.getState().settings.authorName).toBe("Ayşe Yılmaz");
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "save_settings",
+        expect.objectContaining({ settings: expect.objectContaining({ authorName: "Ayşe Yılmaz" }) }),
+      ),
+    );
+  });
+});

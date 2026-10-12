@@ -396,6 +396,11 @@ export interface Settings {
   /** The first-run welcome card on Home was closed. */
   onboardingDone: boolean;
   /**
+   * Your name. New Writer comments and tracked changes are marked with it;
+   * empty keeps the previous defaults ("Me" / "You").
+   */
+  authorName: string;
+  /**
    * Ask the certificate authority (OCSP, then CRL) whether a signer
    * certificate was revoked when signatures are verified. Off by default:
    * it is the one signature feature that contacts a server.
@@ -427,6 +432,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lastUpdateCheck: 0,
   dismissedUpdate: "",
   onboardingDone: false,
+  authorName: "",
   onlineRevocationCheck: false,
 };
 

@@ -219,6 +219,17 @@ export function Settings() {
               ))}
             </div>
           </div>
+          <div>
+            <label className="label">{t("settings.authorName")}</label>
+            <input
+              className="input"
+              value={settings.authorName ?? ""}
+              maxLength={80}
+              placeholder={t("settings.authorNamePlaceholder")}
+              onChange={(event) => void update({ authorName: event.target.value })}
+            />
+            <p className="text-xs muted">{t("settings.authorNameHint")}</p>
+          </div>
         </Card>
 
         <Card className="p-5 flex flex-col gap-4">
