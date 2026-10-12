@@ -10,9 +10,28 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 4.9.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 4.10.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 4.10.0 (Belge Asistanı 2.1)
+
+- The document vault now has a **real hybrid search**: a persistent BM25 index
+  plus per-chunk embeddings fused with Reciprocal Rank Fusion, wired into the
+  Vault screen and the chat's vault scope.
+- **Citations point at the right place**: a source opens the exact document and
+  page, and each claim carries a short quote that is verified against the page
+  (an unverifiable one is marked "unverified").
+- **Prompt-injection hardening**: document text is passed as delimited data, a
+  `system` role in the chat history is refused, and the history is bounded.
+- The **batch queue** runs at most three items at once, retries a rate limit
+  after the provider's `Retry-After`, can be cancelled, takes a per-item
+  password and shows an approximate token/cost figure.
+- **Vision** is offered only when the provider accepts images, with size limits
+  and a visible error when a page image cannot be rendered.
+- **Privacy controls**: separate consents for the vault, embeddings and page
+  images (enforced on the backend), LM Studio counted as local, chat input kept
+  out of `jobs.json`, and Settings gains "Clear AI data" and a retention period.
 
 ## What's new in 4.9.0 (Resmî Belgeler)
 
