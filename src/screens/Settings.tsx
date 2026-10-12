@@ -201,6 +201,24 @@ export function Settings() {
               </button>
             </div>
           </div>
+          <div>
+            <label className="label">{t("settings.calcLocale")}</label>
+            <div className="seg">
+              {(["auto", "tr", "en"] as const).map((value) => (
+                <button
+                  key={value}
+                  data-active={(settings.calcNumberLocale ?? "auto") === value}
+                  onClick={() => void update({ calcNumberLocale: value })}
+                >
+                  {value === "auto"
+                    ? t("settings.calcLocaleAuto")
+                    : value === "tr"
+                      ? "Türkçe (1.234,56)"
+                      : "English (1,234.56)"}
+                </button>
+              ))}
+            </div>
+          </div>
         </Card>
 
         <Card className="p-5 flex flex-col gap-4">

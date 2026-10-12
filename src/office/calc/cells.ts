@@ -34,6 +34,8 @@ import {
   type FormulaContext,
   type Scalar,
 } from "./formula";
+import { dateToSerial } from "./numberFormat";
+import { parseLocalizedDateParts, parseLocalizedNumber } from "./locale";
 import { structuredReferenceRanges } from "./structured";
 
 export function cellValueToScalar(value: CellValue): Scalar {
@@ -62,10 +64,8 @@ export function scalarToCellValue(value: Scalar): CellValue {
 export function parseInputValue(text: string): CellValue {
   const trimmed = text.trim();
   if (trimmed === "") return { kind: "empty" };
-  if (/^-?\d+([.,]\d+)?$/.test(trimmed)) {
-    const numeric = Number(trimmed.replace(",", "."));
-    if (Number.isFinite(numeric)) return { kind: "number", value: numeric };
-  }
+  const numeric = parseLocalizedNumber(trimmed);
+  if (numeric !== null) return { kind: "number", value: numeric };
   if (/^(true|false)$/i.test(trimmed)) return { kind: "bool", value: trimmed.toLowerCase() === "true" };
   if (/^#(REF|VALUE|NAME|DIV\/0|N\/A|NUM|CALC)/i.test(trimmed)) return { kind: "error", value: trimmed.toUpperCase() };
   return { kind: "text", value: text };
@@ -138,9 +138,20 @@ export function applyCellEdit(
   const address = formatAddress(row, col);
   const current = target.cells[address] ?? emptyCell();
   const isFormula = rawValue.startsWith("=");
+  const typedDate = isFormula ? null : parseLocalizedDateParts(rawValue);
   const staged: Cell = isFormula
     ? { ...current, formula: rawValue, value: { kind: "empty" } }
-    : { ...current, formula: null, value: parseInputValue(rawValue) };
+    : typedDate
+      ? {
+          ...current,
+          formula: null,
+          value: {
+            kind: "number",
+            value: dateToSerial(new Date(Date.UTC(typedDate.year, typedDate.month - 1, typedDate.day))),
+          },
+          style: { ...current.style, numberFormat: typedDate.numberFormat },
+        }
+      : { ...current, formula: null, value: parseInputValue(rawValue) };
 
   const cells = { ...target.cells };
   if (isBlankCell(staged)) delete cells[address];
