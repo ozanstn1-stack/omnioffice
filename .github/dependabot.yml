@@ -82,6 +82,17 @@ updates:
       # sees in the tree belongs to lopdf and is not ours to bump.
       - dependency-name: rand
         versions: [">=0.9.0"]
+      # pkcs8 0.11 is blocked by elliptic-curve 0.13 / p256 0.13, which
+      # pdfcore uses for P-256 signatures; that family pins pkcs8 0.10 and
+      # must move together.
+      - dependency-name: pkcs8
+        versions: [">=0.11.0"]
+      # hmac 0.13 is blocked by pbkdf2 0.12 / pkcs5 0.7 (pdfcore's PDF
+      # encryption path); the RustCrypto family moves together. A second,
+      # target-specific hmac 0.13 already exists in the lock, so a root bump
+      # would only fork the version.
+      - dependency-name: hmac
+        versions: [">=0.13.0"]
 
   - package-ecosystem: github-actions
     directory: /
