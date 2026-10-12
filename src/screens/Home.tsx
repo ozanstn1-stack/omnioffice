@@ -48,6 +48,7 @@ import { useT } from "../lib/i18n";
 import { useRecent, useSettings, useToasts } from "../lib/store";
 import { isOfficePath, isPresentationPath, isSpreadsheetPath, openOfficePath } from "../lib/office-store";
 import { fileBaseName, formatDate, isPdf } from "../lib/format";
+import { foldSearch } from "../lib/search-fold";
 import { isAndroid, openAnyFile, revealAnyFile } from "../lib/mobile";
 import type { Navigate, ScreenId } from "../lib/nav";
 import { fileStem } from "../lib/format";
@@ -243,7 +244,7 @@ const QUICK_ACTIONS: { id: ScreenId; icon: typeof Combine }[] = [
 ];
 
 function fold(text: string): string {
-  return text.toLowerCase();
+  return foldSearch(text);
 }
 
 export function Home({

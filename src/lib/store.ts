@@ -45,6 +45,15 @@ export const useSettings = create<SettingsState>((set, get) => ({
       // first run, so upgraders do not get the welcome card.
       const upgraded = Object.keys(stored).length > 0;
       const settings: Settings = { ...DEFAULT_SETTINGS, onboardingDone: upgraded, ...stored };
+      if (!upgraded) {
+        // First run: follow the operating system language, so a Turkish
+        // Windows starts with the Turkish interface and Turkish OCR.
+        const osLanguage = typeof navigator !== "undefined" ? navigator.language : "";
+        if (/^tr\b/i.test(osLanguage)) {
+          settings.language = "tr";
+          settings.ocrLanguages = ["tur", "eng"];
+        }
+      }
       set({ settings, engine, languages, loaded: true });
       applyTheme(settings.theme);
       void import("./api").then(({ logFrontend }) => logFrontend("info", `engines: ${JSON.stringify(engine)}`));
