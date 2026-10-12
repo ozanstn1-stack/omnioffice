@@ -1440,9 +1440,24 @@ fn import_files_capped(root: &Path, paths: &[String], max_bytes: u64) -> VaultIm
 // Search
 // ---------------------------------------------------------------------------
 
+/// Folds one character for case- and diacritic-insensitive Turkish matching.
+/// 1:1 so snippet offsets stay aligned; the four i/I/ı/İ letters collapse to
+/// `i` and ş/ğ/ç/ö/ü fold to their ASCII bases.
+fn fold_char(ch: char) -> char {
+    match ch {
+        'İ' | 'I' | 'ı' | 'i' => 'i',
+        'Ş' | 'ş' => 's',
+        'Ğ' | 'ğ' => 'g',
+        'Ç' | 'ç' => 'c',
+        'Ö' | 'ö' => 'o',
+        'Ü' | 'ü' => 'u',
+        _ => ch.to_lowercase().next().unwrap_or(ch),
+    }
+}
+
 fn fold(text: &str) -> Vec<char> {
     // 1:1 char mapping (first lowercase char) so snippet offsets stay aligned.
-    text.chars().map(|ch| ch.to_lowercase().next().unwrap_or(ch)).collect()
+    text.chars().map(fold_char).collect()
 }
 
 fn find_subsequence(hay: &[char], needle: &[char]) -> Option<usize> {
@@ -2379,6 +2394,18 @@ mod tests {
         assert_eq!(outcome.index.documents.len(), 1);
         assert!(load_index(&root).0.documents.len() == 1, "index is usable again");
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn fold_matches_turkish_letters() {
+        let folded = |text: &str| fold(text).into_iter().collect::<String>();
+        assert_eq!(folded("Şişli Güneş İĞDIR ı"), "sisli gunes igdir i");
+        // Every i/I/ı/İ spelling folds to the same needle.
+        for spelling in ["sisli", "SİSLİ", "sısli", "Şişli", "ŞİŞLİ"] {
+            assert!(folded(spelling).contains("sisli"), "{spelling}");
+        }
+        // The mapping stays 1:1 so snippet offsets keep lining up.
+        assert_eq!(fold("Şişli").len(), "Şişli".chars().count());
     }
 
     #[test]
