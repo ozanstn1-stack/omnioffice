@@ -32,7 +32,17 @@ import { PageCanvas, Pager } from "../components/pages";
 import { OptionCard, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
-import { annotatePdf, pdfAnnotateEditable, pdfEditAnnotations, pdfListAnnotations, toAppError } from "../lib/api";
+import {
+  annotatePdf,
+  pdfAnnotateEditable,
+  pdfEditAnnotations,
+  pdfListAnnotations,
+  signatureDelete,
+  signatureList,
+  signatureSave,
+  toAppError,
+} from "../lib/api";
+import { useToasts } from "../lib/store";
 import { fileStem, joinPath, uid } from "../lib/format";
 import type { Annotation, AnnotationEditItem, AnnotationKind, EditableAnnotation } from "../lib/types";
 import { pointToDisplay, strokesToPaths } from "./annotate/geometry";
@@ -115,6 +125,32 @@ export function Annotate({ initialFiles, dragging }: { initialFiles?: string[]; 
   const [lineWidth, setLineWidth] = useState(2);
   const [imagePath, setImagePath] = useState<string | null>(null);
   const [signatureBase64, setSignatureBase64] = useState<string | null>(null);
+  // Locally saved signatures/paraphes and the name being saved.
+  const [savedSignatures, setSavedSignatures] = useState<{ name: string; imageBase64: string }[]>([]);
+  const [signatureName, setSignatureName] = useState("");
+
+  const refreshSignatures = useCallback(async () => {
+    try {
+      setSavedSignatures((await signatureList()) ?? []);
+    } catch {
+      // A missing signature directory is fine; the list stays empty.
+    }
+  }, []);
+  // Load once on mount; state is set after the await so no render cascades.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = (await signatureList()) ?? [];
+        if (!cancelled) setSavedSignatures(list);
+      } catch {
+        // A missing signature directory is fine; the list stays empty.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [padOpen, setPadOpen] = useState(false);
   const [editable, setEditable] = useState(true);
   const [keepSignatures, setKeepSignatures] = useState(true);
@@ -218,6 +254,87 @@ export function Annotate({ initialFiles, dragging }: { initialFiles?: string[]; 
       y2: box?.y2 ?? (tool === "line" ? y + H * 0.1 : null),
       image_base64: tool === "signature" ? signatureBase64 : null,
     };
+  };
+
+  const notify = (kind: "success" | "error" | "info", title: string, detail?: string) =>
+    useToasts.getState().push({ kind, title, detail });
+
+  const saveSignature = async () => {
+    if (!signatureBase64) return;
+    try {
+      await signatureSave(signatureName.trim() || t("annotate.signatureDefaultName"), signatureBase64);
+      setSignatureName("");
+      await refreshSignatures();
+      notify("success", t("annotate.signatureSaved"));
+    } catch (error) {
+      notify("error", t("errors.title"), toAppError(error).message);
+    }
+  };
+
+  const removeSignature = async (name: string) => {
+    try {
+      await signatureDelete(name);
+      await refreshSignatures();
+    } catch (error) {
+      notify("error", t("errors.title"), toAppError(error).message);
+    }
+  };
+
+  /// Ready, dated text stamps written as a real /Annots text box.
+  const addReadyStamp = (label: string) => {
+    if (!geometry) return;
+    const date = new Date().toLocaleDateString("tr-TR");
+    setAnnotations((previous) => [
+      ...previous,
+      {
+        kind: "textbox",
+        page,
+        x: geometry.display_width_pt * 0.08,
+        y: geometry.display_height_pt * 0.08,
+        w: geometry.display_width_pt * 0.5,
+        h: 24,
+        text: `${label} · ${date}`,
+        font_size_pt: 12,
+        bold: true,
+        color: "#dc2626",
+        opacity: 1,
+        image_path: null,
+        line_width_pt: 1,
+        x2: null,
+        y2: null,
+        image_base64: null,
+      },
+    ]);
+  };
+
+  /// Applies the current signature/paraphe to every page in one action.
+  const parafEveryPage = () => {
+    if (!geometry || !signatureBase64) return;
+    const w = geometry.display_width_pt * 0.18;
+    const h = geometry.display_height_pt * 0.06;
+    const created: Annotation[] = [];
+    for (let index = 1; index <= (pageCount || 1); index += 1) {
+      created.push({
+        kind: "signature",
+        page: index,
+        x: geometry.display_width_pt - w - 24,
+        y: geometry.display_height_pt - h - 24,
+        w,
+        h,
+        text: "",
+        font_size_pt: 12,
+        bold: false,
+        color: "#111111",
+        opacity: 1,
+        image_path: null,
+        line_width_pt: 1,
+        x2: null,
+        y2: null,
+        image_base64: signatureBase64,
+      });
+    }
+    setAnnotations((previous) => [...previous, ...created]);
+    notify("success", t("annotate.parafApplied", { pages: created.length }));
   };
 
   const pushEdit = (edit: AnnotationEditItem) => {
@@ -851,11 +968,52 @@ export function Annotate({ initialFiles, dragging }: { initialFiles?: string[]; 
                     {t("annotate.signaturePad")}
                   </Button>
                   {signatureBase64 ? (
-                    <img
-                      className="annotate-signature-preview"
-                      src={dataUrlForBase64(signatureBase64)}
-                      alt={t("annotate.signatureTool")}
-                    />
+                    <>
+                      <img
+                        className="annotate-signature-preview"
+                        src={dataUrlForBase64(signatureBase64)}
+                        alt={t("annotate.signatureTool")}
+                      />
+                      <div className="flex items-center gap-1">
+                        <input
+                          className="input input-sm"
+                          placeholder={t("annotate.signatureName")}
+                          value={signatureName}
+                          onChange={(event) => setSignatureName(event.target.value)}
+                        />
+                        <Button size="sm" variant="ghost" onClick={() => void saveSignature()}>
+                          {t("common.save")}
+                        </Button>
+                      </div>
+                      <Button size="sm" variant="ghost" onClick={parafEveryPage}>
+                        {t("annotate.parafEveryPage")}
+                      </Button>
+                    </>
+                  ) : null}
+                  {savedSignatures.length ? (
+                    <div className="flex flex-col gap-1">
+                      <span className="label">{t("annotate.savedSignatures")}</span>
+                      {savedSignatures.map((entry) => (
+                        <div key={entry.name} className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            title={entry.name}
+                            onClick={() => setSignatureBase64(entry.imageBase64)}
+                          >
+                            <img
+                              className="annotate-signature-preview"
+                              style={{ maxWidth: 90 }}
+                              src={dataUrlForBase64(entry.imageBase64)}
+                              alt={entry.name}
+                            />
+                          </button>
+                          <span className="text-xs">{entry.name}</span>
+                          <Button size="sm" variant="ghost" onClick={() => void removeSignature(entry.name)}>
+                            ×
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
                   ) : null}
                 </>
               ) : null}
@@ -867,6 +1025,16 @@ export function Annotate({ initialFiles, dragging }: { initialFiles?: string[]; 
               <Field label={t("common.color")}>
                 <ColorInput value={color} onChange={setColor} />
               </Field>
+              <div className="flex flex-col gap-1">
+                <span className="label">{t("annotate.readyStamps")}</span>
+                <div className="flex flex-wrap gap-1">
+                  {["ASLI GİBİDİR", "ONAYLANDI", "GÖRÜLDÜ"].map((label) => (
+                    <Button key={label} size="sm" variant="ghost" onClick={() => addReadyStamp(label)}>
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
               {kind === "highlight" ? (
                 <Field label="Opacity">
                   <Slider

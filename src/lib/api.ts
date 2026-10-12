@@ -504,6 +504,25 @@ export const pdfEditAnnotations = (input: string, output: OutputSpec, edits: Ann
     request: { input, output, edits, password },
   });
 
+// ---------------------------------------------------------------------------
+// Signature / paraphe library
+// ---------------------------------------------------------------------------
+
+export interface SignatureEntry {
+  name: string;
+  imageBase64: string;
+}
+
+/** Stores a drawn signature/paraphe PNG locally under a name. */
+export const signatureSave = (name: string, imageBase64: string) =>
+  invoke<void>("signature_save", { name, imageBase64 });
+
+/** Lists the locally saved signatures. */
+export const signatureList = () => invoke<SignatureEntry[]>("signature_list");
+
+/** Deletes a saved signature. */
+export const signatureDelete = (name: string) => invoke<void>("signature_delete", { name });
+
 /** Keyword/regex matches for redaction, next to the built-in detector. */
 export const detectRedactionMatches = (
   path: string,

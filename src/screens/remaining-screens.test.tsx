@@ -177,6 +177,21 @@ describe("organize, annotate and batch screens", () => {
     }
   });
 
+  it("adds a dated ready stamp as a real /Annots text box", async () => {
+    const user = userEvent.setup();
+    render(<Annotate {...props} />);
+    await waitFor(() => expect(document.querySelector(".canvas-wrap")).not.toBeNull());
+    await user.click(screen.getByRole("button", { name: "ASLI GİBİDİR" }));
+    await user.click(screen.getByRole("button", { name: "Save annotations" }));
+    await waitFor(() => expect(invoke.mock.calls.some(([name]) => name === "pdf_annotate_editable")).toBe(true));
+    const call = (
+      invoke.mock.calls as unknown as [string, { request: { annotations: { kind: string; text: string }[] } }][]
+    ).find(([name]) => name === "pdf_annotate_editable");
+    expect(call?.[1].request.annotations).toHaveLength(1);
+    expect(call?.[1].request.annotations[0].kind).toBe("textbox");
+    expect(call?.[1].request.annotations[0].text).toContain("ASLI GİBİDİR");
+  });
+
   it("runs the batch operation once per selected file", async () => {
     const user = userEvent.setup();
     render(<Batch initialFiles={["C:/docs/a.pdf", "C:/docs/b.pdf"]} dragging={false} />);
