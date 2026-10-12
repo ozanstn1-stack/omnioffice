@@ -5,11 +5,21 @@ import { DropZone, FileList, ResultCard } from "../components/files";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
-import { cancelJob, compressPdf, ocrPdf, pdfToImages, protectPdf, rotatePages, watermarkPdf } from "../lib/api";
+import {
+  cancelJob,
+  compressPdf,
+  detectRedactionMatches,
+  ocrPdf,
+  pdfToImages,
+  protectPdf,
+  redactPdf,
+  rotatePages,
+  watermarkPdf,
+} from "../lib/api";
 import { fileBaseName, formatBytes, joinPath } from "../lib/format";
 import { errorMessage, useSettings } from "../lib/store";
 
-type Operation = "compress" | "watermark" | "ocr" | "protect" | "rotate" | "images";
+type Operation = "compress" | "watermark" | "ocr" | "protect" | "rotate" | "images" | "redact";
 
 type Status = "pending" | "processing" | "completed" | "failed" | "cancelled";
 
@@ -92,6 +102,29 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
     const spec = { path: target, overwrite: (skipExisting ? "unique_name" : "replace") as "unique_name" | "replace" };
 
     switch (operation) {
+      case "redact": {
+        // KVKK: run the built-in detector across the document and redact every
+        // match. A file with nothing to hide is reported, not rewritten.
+        const matches = await detectRedactionMatches(path, [], null, false, null, jobId, undefined, true);
+        if (matches.length === 0) {
+          throw { code: "invalid_input", message: t("redact.batchNoMatches") };
+        }
+        const areas = matches.map((match) => ({
+          page: match.page,
+          left: match.left,
+          bottom: match.bottom,
+          right: match.right,
+          top: match.top,
+        }));
+        const res = await redactPdf(
+          path,
+          spec,
+          areas,
+          { fill: "#000000", images: "removePixels", paddingPt: 1, removeMetadata: false },
+          jobId,
+        );
+        return res.path;
+      }
       case "compress": {
         const res = await compressPdf(
           path,
@@ -286,6 +319,7 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
                     { value: "protect", label: t("nav.protect") },
                     { value: "rotate", label: t("common.rotate") },
                     { value: "images", label: t("nav.pdfToImages") },
+                    { value: "redact", label: t("redact.scan") },
                   ]}
                 />
               </Field>

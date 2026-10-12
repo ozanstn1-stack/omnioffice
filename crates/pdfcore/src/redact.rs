@@ -172,7 +172,7 @@ pub fn detect_sensitive(page: &PageChars) -> Vec<RedactionMatch> {
             }
             let joined: String = slice.iter().map(|entry| entry.text.clone()).collect::<Vec<_>>().join(" ");
             let kind = match classify(&joined) {
-                Some(value) if value == "phone" || value == "iban" || value == "card" => value,
+                Some(value) if matches!(value, "phone" | "iban" | "card" | "tckn" | "vkn" | "plate") => value,
                 _ => continue,
             };
             let left = slice.iter().map(|entry| entry.box_rect.left).fold(f64::INFINITY, f64::min);
@@ -213,21 +213,117 @@ pub fn classify(token: &str) -> Option<&'static str> {
     if looks_like_email(token) {
         return Some("email");
     }
-    if looks_like_iban(&compact) {
+    // Turkish identifiers first: their check digits are stronger evidence than
+    // the generic length-based rules below.
+    if looks_like_tckn(&compact) {
+        return Some("tckn");
+    }
+    if looks_like_vkn(&compact) {
+        return Some("vkn");
+    }
+    if looks_like_tr_iban(&compact) || looks_like_iban(&compact) {
         return Some("iban");
     }
     if looks_like_card(&compact) {
         return Some("card");
     }
+    if looks_like_tr_plate(&compact) {
+        return Some("plate");
+    }
     // The spaces between words are exactly the separators a phone number needs,
     // so test the original token before compacting it.
-    if looks_like_phone(token) || looks_like_phone(&compact) {
+    if looks_like_tr_phone(&compact) || looks_like_phone(token) || looks_like_phone(&compact) {
         return Some("phone");
     }
     if looks_like_passport(&compact) {
         return Some("passport");
     }
     None
+}
+
+/// 11 digits that pass the TCKN check digits (first digit non-zero).
+pub fn looks_like_tckn(compact: &str) -> bool {
+    if compact.len() != 11 || !compact.chars().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    let digits: Vec<i64> = compact.chars().map(|c| c.to_digit(10).unwrap_or(0) as i64).collect();
+    if digits[0] == 0 {
+        return false;
+    }
+    let odd = digits[0] + digits[2] + digits[4] + digits[6] + digits[8];
+    let even = digits[1] + digits[3] + digits[5] + digits[7];
+    if (odd * 7 - even).rem_euclid(10) != digits[9] {
+        return false;
+    }
+    digits[..10].iter().sum::<i64>() % 10 == digits[10]
+}
+
+/// 10 digits that pass the weighted VKN check digit. The all-same number
+/// `4444444444` passes the checksum but is not a valid VKN.
+pub fn looks_like_vkn(compact: &str) -> bool {
+    if compact.len() != 10 || !compact.chars().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    let digits: Vec<u32> = compact.chars().map(|c| c.to_digit(10).unwrap_or(0)).collect();
+    if digits.iter().all(|digit| *digit == digits[0]) {
+        return false;
+    }
+    let mut total = 0u32;
+    for (index, digit) in digits.iter().enumerate().take(9) {
+        let tmp = (*digit + (9 - index as u32)) % 10;
+        let mut contribution = (tmp * 2u32.pow(9 - index as u32)) % 9;
+        if tmp != 0 && contribution == 0 {
+            contribution = 9;
+        }
+        total += contribution;
+    }
+    (10 - (total % 10)) % 10 == digits[9]
+}
+
+/// A Turkish IBAN: `TR` + 24 digits that pass the ISO 13616 modulo-97 check.
+pub fn looks_like_tr_iban(compact: &str) -> bool {
+    compact.len() == 26 && compact.starts_with("TR") && looks_like_iban(compact)
+}
+
+/// Turkish plate: province 01-81, 1-3 letters, 2-4 digits (`34ABC123`).
+pub fn looks_like_tr_plate(compact: &str) -> bool {
+    let characters: Vec<char> = compact.chars().collect();
+    if characters.len() < 5 || characters.len() > 9 {
+        return false;
+    }
+    let province: String = characters[..2].iter().collect();
+    let Ok(province) = province.parse::<u32>() else {
+        return false;
+    };
+    if !(1..=81).contains(&province) {
+        return false;
+    }
+    let mut index = 2;
+    let mut letters = 0;
+    while index < characters.len() && characters[index].is_ascii_uppercase() {
+        letters += 1;
+        index += 1;
+        if letters > 3 {
+            return false;
+        }
+    }
+    if letters == 0 {
+        return false;
+    }
+    let tail = &characters[index..];
+    (2..=4).contains(&tail.len()) && tail.iter().all(|c| c.is_ascii_digit())
+}
+
+/// Turkish phone number: `5XX XXX XX XX`, with an optional `0` or `+90`
+/// prefix. A bare 10-digit number that starts with 5 is accepted.
+pub fn looks_like_tr_phone(compact: &str) -> bool {
+    if compact.chars().any(|c| !c.is_ascii_digit() && !" -+()./".contains(c)) {
+        return false;
+    }
+    let digits: String = compact.chars().filter(|c| c.is_ascii_digit()).collect();
+    let national = digits.strip_prefix("90").unwrap_or(&digits);
+    let national = national.strip_prefix('0').unwrap_or(national);
+    national.len() == 10 && national.starts_with('5')
 }
 
 /// `name@host.tld` with a plausible local part and a dotted host.
@@ -323,6 +419,11 @@ pub fn looks_like_phone(compact: &str) -> bool {
         return false;
     }
     if separators == 0 {
+        return false;
+    }
+    // Dots alone are thousands or date separators (`1.234.567`,
+    // `11.10.2026`), not phone separators.
+    if compact.chars().all(|c| c.is_ascii_digit() || c == '.') {
         return false;
     }
     if !compact.starts_with("+") && separators > 5 {
@@ -1301,6 +1402,84 @@ mod tests {
         assert!(!looks_like_passport("T1234567"));
         assert!(!looks_like_passport("TR12345"));
         assert!(!looks_like_passport("12345678"));
+    }
+
+    #[test]
+    fn tckn_and_vkn_check_digits_are_enforced() {
+        assert!(looks_like_tckn("10000000146"));
+        assert!(!looks_like_tckn("10000000148"));
+        assert!(!looks_like_tckn("00000000000"));
+        assert!(!looks_like_tckn("1234567890"));
+        // The worked example from the VKN algorithm description.
+        assert!(looks_like_vkn("1000036109"));
+        assert!(!looks_like_vkn("1000036108"));
+        assert!(!looks_like_vkn("4444444444"));
+        assert!(!looks_like_vkn("123456789"));
+    }
+
+    #[test]
+    fn tr_iban_requires_the_country_prefix_and_mod_97() {
+        assert!(looks_like_tr_iban("TR330006100519786457841326"));
+        assert!(!looks_like_tr_iban("TR340006100519786457841326"));
+        assert!(!looks_like_tr_iban("GB82WEST12345698765432"));
+        assert!(!looks_like_tr_iban("TR33000610051978645784132"));
+    }
+
+    #[test]
+    fn plates_need_a_valid_province_and_shape() {
+        assert!(looks_like_tr_plate("34ABC123"));
+        assert!(looks_like_tr_plate("06AB1234"));
+        assert!(looks_like_tr_plate("81A1234"));
+        assert!(!looks_like_tr_plate("82ABC123"), "province 82 does not exist");
+        assert!(!looks_like_tr_plate("00ABC123"));
+        assert!(!looks_like_tr_plate("34ABCD123"), "four letters");
+        assert!(!looks_like_tr_plate("34ABC1"), "one digit");
+    }
+
+    #[test]
+    fn tr_phones_accept_the_national_shapes() {
+        assert!(looks_like_tr_phone("+90 532 123 45 67"));
+        assert!(looks_like_tr_phone("0532 123 45 67"));
+        assert!(looks_like_tr_phone("5321234567"));
+        assert!(!looks_like_tr_phone("0212 123 45 67"), "landline, not 5xx");
+        assert!(!looks_like_tr_phone("1234567890"));
+    }
+
+    #[test]
+    fn classify_labels_the_turkish_identifiers() {
+        assert_eq!(classify("10000000146"), Some("tckn"));
+        assert_eq!(classify("1000036109"), Some("vkn"));
+        assert_eq!(classify("TR33 0006 1005 1978 6457 8413 26"), Some("iban"));
+        assert_eq!(classify("34 ABC 123"), Some("plate"));
+        assert_eq!(classify("0532 123 45 67"), Some("phone"));
+    }
+
+    /// Ordinary text and near-misses that must never be auto-redacted; a
+    /// detector that fires here would silently destroy content.
+    #[test]
+    fn the_false_positive_corpus_stays_clean() {
+        let corpus = [
+            "İstanbul",
+            "Şişli",
+            "Güneş",
+            "11.10.2026", // a date, not a phone
+            "1.250,00",
+            "1.234.567", // thousands separators
+            "2026",
+            "12345",
+            "1234567890123", // 13 digits that fail Luhn
+            "1234567891",    // 10 digits that fail the VKN check
+            "1000000014",    // 10 digits, invalid VKN
+            "12345678901",   // 11 digits, invalid TCKN
+            "TR12345",       // two letters, too short for a passport
+            "ABC123",
+            "34ABC",                  // plate with no digits
+            "821ABC12",               // province 821 -> not 01-81
+            "GB82WEST12345698765433", // IBAN with a broken check digit
+        ];
+        for token in corpus {
+            assert_eq!(classify(token), None, "{token} must not be flagged");
+        }
     }
 
     #[test]

@@ -691,6 +691,7 @@ describe("Redact keyword and pattern search", () => {
       expect(calls).toHaveLength(1);
       // The whole document is scanned, so `pages` is explicit null.
       expect(Object.keys(calls[0][1].request).sort()).toEqual([
+        "auto",
         "caseSensitive",
         "jobId",
         "keywords",
@@ -705,6 +706,7 @@ describe("Redact keyword and pattern search", () => {
         pattern: "AK-\\d+",
         caseSensitive: true,
         pages: null,
+        auto: false,
         password: undefined,
         jobId: expect.any(String),
       });
