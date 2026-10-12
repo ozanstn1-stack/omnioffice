@@ -1074,6 +1074,9 @@ pub async fn ai_chat(
     let config = build_config(&app)?;
     let model = config.model.clone();
     let client = DeepSeekClient::new(config).map_err(ai_error)?;
+    // A `system` role in the client history is never accepted, and the history
+    // is trimmed to the context budget before it is sent.
+    let history = aicore::prompts::sanitize_history(&request.history, aicore::prompts::HISTORY_BUDGET_CHARS);
 
     let mut citations = Vec::new();
     let mut retrieval_mode = "keyword".to_string();
@@ -1103,7 +1106,7 @@ pub async fn ai_chat(
                         page: *page,
                     })
                     .collect();
-                let mut wire_msgs = prompts::doc_chat_messages(&request.question, &retrieved_pages, &request.history);
+                let mut wire_msgs = prompts::doc_chat_messages(&request.question, &retrieved_pages, &history);
 
                 if request.send_image {
                     let extension = path.as_path().extension().map(|v| v.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
@@ -1143,7 +1146,7 @@ pub async fn ai_chat(
                 location: format!("page {page_num}"),
                 page: page_num,
             });
-            messages = prompts::doc_chat_messages(&request.question, &retrieved_pages, &request.history);
+            messages = prompts::doc_chat_messages(&request.question, &retrieved_pages, &history);
         }
         "vault" => {
             let root = config_dir(&app)?;
@@ -1179,7 +1182,7 @@ pub async fn ai_chat(
                     page: page_from_location(&hit.match_label),
                 });
             }
-            messages = prompts::doc_chat_messages(&request.question, &retrieved_pages, &request.history);
+            messages = prompts::doc_chat_messages(&request.question, &retrieved_pages, &history);
         }
         _ /* "document" or default */ => {
             if let Some(path_str) = &request.path {
@@ -1228,7 +1231,7 @@ pub async fn ai_chat(
                         page: *page,
                     })
                     .collect();
-                messages = prompts::doc_chat_messages(&request.question, &retrieved_pages, &request.history);
+                messages = prompts::doc_chat_messages(&request.question, &retrieved_pages, &history);
             } else {
                 return Err(PdfError::InvalidInput("No document specified for chat.".into()));
             }
