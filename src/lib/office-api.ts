@@ -301,3 +301,24 @@ export interface EmlMessage {
 
 /** Opens a KEP `.eml` message read-only and extracts its attachments. */
 export const openEml = (path: string) => invoke<EmlMessage>("office_open_eml", { path });
+
+// ---------------------------------------------------------------------------
+// Document scanner (Android camera path)
+// ---------------------------------------------------------------------------
+
+export interface ScanPage {
+  path: string;
+  /** The four page corners the user tapped, in source pixels; omitted to use the image as it is. */
+  corners?: [number, number][];
+}
+
+export interface ScanResult {
+  output: string;
+  pages: number;
+  corrected: number;
+  warnings: string[];
+}
+
+/** Corrects the perspective of each captured page and assembles a multi-page PDF. */
+export const scanPages = (pages: ScanPage[], output: string) =>
+  invoke<ScanResult>("office_scan_pages", { request: { pages, output } });
