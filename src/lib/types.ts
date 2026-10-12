@@ -702,6 +702,8 @@ export interface AiBatchItemResult {
 export interface AiBatchResult {
   results: AiBatchItemResult[];
   totalElapsedMs: number;
+  /** A cancelled or all-failed run must not be presented as completed. */
+  status: "completed" | "cancelled" | "failed";
 }
 
 export interface AiCleanupRequest {

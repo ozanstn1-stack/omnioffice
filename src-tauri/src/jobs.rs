@@ -1071,4 +1071,34 @@ mod tests {
         assert_eq!(store.record("job").unwrap().status, JobStatus::Done);
         let _ = std::fs::remove_file(&path);
     }
+
+    #[test]
+    fn the_managed_guard_only_reports_done_when_the_worker_succeeded() {
+        let path = temp_path("guard-outcomes");
+        let store = JobStore::shared();
+        store.attach_path(path.clone());
+        let registry = JobRegistry::new(store.clone());
+
+        // Dropped without `succeed`: the command never finished its work.
+        {
+            let (_cancel, _guard) = registry.register_ai_managed("job-failed");
+        }
+        assert_eq!(store.record("job-failed").unwrap().status, JobStatus::Failed);
+
+        // Cancelled through the registry (the UI path): the sticky Cancelled
+        // state survives the guard's failure report.
+        {
+            let (_cancel, _guard) = registry.register_ai_managed("job-cancelled");
+            registry.cancel("job-cancelled");
+        }
+        assert_eq!(store.record("job-cancelled").unwrap().status, JobStatus::Cancelled);
+
+        // A succeeded guard reports Done.
+        {
+            let (_cancel, mut guard) = registry.register_ai_managed("job-done");
+            guard.succeed();
+        }
+        assert_eq!(store.record("job-done").unwrap().status, JobStatus::Done);
+        let _ = std::fs::remove_file(&path);
+    }
 }
