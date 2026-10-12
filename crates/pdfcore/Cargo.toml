@@ -39,6 +39,10 @@ pkcs5 = { version = "0.7", features = ["pbes2", "3des", "sha1-insecure", "alloc"
 # Keyword/regex redaction detection (crates/pdfcore/src/redact.rs). The Rust
 # regex engine is linear-time, so a user-supplied pattern cannot backtrack.
 regex = "1"
+# GİB karekod (e-Fatura QR) decoding in crates/pdfcore/src/gibqr.rs. Only the
+# QR decoder/encoder is compiled in; the other barcode formats stay out to keep
+# the binary small.
+rxing = { version = "0.9", default-features = false, features = ["qrcode", "encoders", "encoding_rs", "multi_barcode_readers"] }
 rsa = { version = "0.9", features = ["sha2"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"

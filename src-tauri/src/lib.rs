@@ -325,6 +325,7 @@ pub fn run() {
             office::office_open_invoice,
             office::office_invoice_summary,
             office::office_vat_rates,
+            office::office_read_invoice_qr,
             office::office_clean,
             office::office_image_footprint,
             office::store_load,
