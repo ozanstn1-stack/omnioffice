@@ -794,8 +794,9 @@ toolbar.
   Android)
 - Document chat with `[page N]` citations, summaries, translation, text
   cleanup, metadata suggestions
-- API keys use Windows DPAPI when available; the Android build reports its
-  plaintext fallback and excludes app data from device backups. Keys are
+- API keys use Windows DPAPI on desktop and the Android Keystore (AES-256-GCM)
+  on Android; if no platform cipher is available the app reports that keys are
+  stored unprotected. Android excludes app data from device backups. Keys are
   never logged, never written into documents, versions or crash reports.
 
 ## Supported formats

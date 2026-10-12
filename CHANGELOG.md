@@ -9,9 +9,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **Multi-turn document chat with verifiable citations**: contextual conversation with document grounding. Every claim emits clickable `[page N]` citation cards that deep-link directly into the PDF Reader, auto-scrolling to the exact cited page.
-- **Vault-wide Q&A with hybrid semantic search**: query all documents across the vault using hybrid semantic retrieval (vector embeddings via Ollama, OpenAI, or Gemini) combined with BM25 keyword matching and cosine similarity scoring.
-- **Structured invoice & receipt table extraction**: extract invoice line items, dates, vendor names, numbers, amounts, taxes, and custom fields into an interactive tabular preview with RFC 4180 CSV export.
-- **Batch AI queue**: process multiple documents simultaneously for summarization, translation, classification, or table extraction with real-time progress tracking and per-file result inspection.
+- **Vault-wide Q&A**: query the document vault from the chat scope; excerpts
+  are ranked by keyword matching and, when an embedding model is configured,
+  by embedding cosine similarity. BM25 is not implemented and the dedicated
+  hybrid command is not wired into the UI yet (planned for 4.10.0).
+- **Structured invoice & receipt table extraction**: extract page, vendor,
+  date, invoiceNumber, currency, subtotal, tax, total, a lineItems summary and
+  requested custom fields into an interactive tabular preview with RFC 4180 CSV
+  export. (The 4.7.0 parser lost snake_case replies and rows without a page;
+  4.7.1 fixed it.)
+- **Batch AI queue**: process multiple documents one at a time for
+  summarization, translation, classification, or table extraction with
+  real-time progress (`ai:batch_progress`) and per-file result inspection.
 - **Vision model support**: render document pages as images and send them directly to vision-capable models for multi-modal analysis.
 - **Local provider presets**: quick one-click configuration for local models in Ollama (`http://localhost:11434`) and LM Studio (`http://localhost:1234/v1`).
 - **Chat thread persistence**: locally persist, list, reload, and delete document conversation threads.

@@ -10,12 +10,20 @@ Legend: **FIXED** = corrected in this pass · **MITIGATED** = concrete
 protection added, residual risk documented · **REMAINING** = verified issue
 left for the next phase with a recommendation (not silently ignored).
 
-**Status as of 4.2.0.** This report describes 3.2.1; the entries below keep
+**Status as of 4.7.0.** This report describes 3.2.1; the entries below keep
 their original wording as the audit record. `CHANGELOG.md` shows these items
 were fixed afterwards: C11 and M12 (3.5.5), M7, M16 and L6 (3.5.3), and
-M8-M11, M13 and M14 (3.3.0); M15 (partly) and L7 follow in 4.3.0. Each entry
-carries a **Status** line with the release. Items not named here were not re-audited for 4.2.0 and stand as
-written (the remaining L-items are informational).
+M8-M11, M13 and M14 (3.3.0); M15 (partly fixed) and L7 were closed in 4.3.0.
+Each entry carries a **Status** line with the release.
+
+4.3.0-4.7.0 did not re-audit the entries below; those cycles added the PDF
+tools, office editors, updater and AI work recorded in `CHANGELOG.md`. As of
+4.7.0 the open items are the remaining L-items - L1 (best-effort fsync), L2
+(plugin symlink re-checks), L3 (plugin manifest strictness), L4 (streamed
+"keep both"), L5 (AI save path scope) - plus the unfinished PDF
+adversarial-input pass and the AI extraction concurrency note below. An
+independent audit of 4.3-4.7, including L2-L5, is planned for 5.0.0
+(`docs/plan/ROADMAP-3.md`).
 
 ---
 
