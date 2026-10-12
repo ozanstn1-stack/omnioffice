@@ -20,6 +20,7 @@ pub mod docx;
 pub mod encoding;
 pub mod error;
 pub mod formula;
+pub mod hyphen_tr;
 pub mod io;
 pub mod layout;
 pub mod legacy;

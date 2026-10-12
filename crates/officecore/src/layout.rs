@@ -44,6 +44,7 @@ struct EffectiveStyle {
     indent_left_pt: f64,
     indent_right_pt: f64,
     first_line_pt: f64,
+    lang: Option<String>,
 }
 
 fn effective_style(document: &TextDocument, props: &ParaProps, run: Option<&Run>) -> EffectiveStyle {
@@ -66,6 +67,7 @@ fn effective_style(document: &TextDocument, props: &ParaProps, run: Option<&Run>
         indent_left_pt: 0.0,
         indent_right_pt: 0.0,
         first_line_pt: 0.0,
+        lang: None,
     };
     for entry in chain {
         if let Some(font) = &entry.font {
@@ -161,6 +163,9 @@ fn effective_style(document: &TextDocument, props: &ParaProps, run: Option<&Run>
         if let Some(highlight) = &run.highlight {
             style.highlight = Some(highlight.clone());
         }
+        if let Some(lang) = &run.lang {
+            style.lang = Some(lang.clone());
+        }
     }
     style
 }
@@ -174,6 +179,7 @@ fn text_style(effective: &EffectiveStyle) -> TextStyle {
         underline: effective.underline,
         strike: effective.strike,
         highlight: effective.highlight.as_deref().and_then(parse_hex),
+        lang: effective.lang.clone(),
     }
 }
 
@@ -218,28 +224,60 @@ fn break_line(
                 continue;
             }
             current_width += word_width;
-            current.push((word.clone(), *style, true));
+            current.push((word.clone(), style.clone(), true));
             continue;
         }
         if current_width + word_width > width && !current.is_empty() {
+            // Justified Turkish text hyphenates an overflowing word at a
+            // syllable boundary instead of pushing it whole to the next line.
+            if align == "justify" {
+                if let Some((prefix, rest)) = hyphen_break(fonts, word, style, width - current_width) {
+                    let prefix_width = fonts.pick(style.bold).advance_pt(&prefix, style.size_pt);
+                    current.push((prefix, style.clone(), false));
+                    lines.push(finalize_line(fonts, &current, current_width + prefix_width, width, align, tabs));
+                    current = vec![(rest.clone(), style.clone(), false)];
+                    current_width = fonts.pick(style.bold).advance_pt(&rest, style.size_pt);
+                    continue;
+                }
+            }
             lines.push(finalize_line(fonts, &current, current_width, width, align, tabs));
             current.clear();
             current_width = 0.0;
         }
-        current.push((word.clone(), *style, false));
+        current.push((word.clone(), style.clone(), false));
         current_width += word_width;
     }
     if !current.is_empty() {
         lines.push(finalize_line(fonts, &current, current_width, width, align, tabs));
     }
     if lines.is_empty() {
-        let style = words.first().map(|(_, style, _)| *style).unwrap_or_default();
+        let style = words.first().map(|(_, style, _)| style.clone()).unwrap_or_default();
         let height = fonts.pick(style.bold).line_height_pt(style.size_pt, 1.15);
         let ascent = fonts.pick(style.bold).ascent_pt(style.size_pt);
         lines.push(LaidLine { items: Vec::new(), width: 0.0, height, ascent });
     }
     let _ = space_width;
     lines
+}
+
+/// The longest syllable-prefix of `word` (plus a hyphen) that fits `available`,
+/// for a Turkish run in a justified paragraph; `None` otherwise.
+fn hyphen_break(fonts: &FontSet, word: &str, style: &TextStyle, available: f64) -> Option<(String, String)> {
+    let turkish = style.lang.as_deref().is_some_and(|tag| tag.to_ascii_lowercase().starts_with("tr"));
+    if !turkish || word.chars().count() < 5 {
+        return None;
+    }
+    let mut best: Option<(usize, String)> = None;
+    for offset in crate::hyphen_tr::break_offsets(word) {
+        let prefix = format!("{}-", &word[..offset]);
+        let prefix_width = fonts.pick(style.bold).advance_pt(&prefix, style.size_pt);
+        if prefix_width <= available {
+            best = Some((offset, prefix));
+        }
+    }
+    let (offset, prefix) = best?;
+    let rest = word[offset..].to_string();
+    Some((prefix, rest))
 }
 
 /// The next tab position after `cursor`: the closest custom stop to its right,
@@ -276,7 +314,7 @@ fn finalize_line(
             cursor = next_tab_stop(cursor, tabs);
             continue;
         }
-        placed.push((cursor, text.clone(), *style, *is_space));
+        placed.push((cursor, text.clone(), style.clone(), *is_space));
         cursor += fonts.pick(style.bold).advance_pt(text, style.size_pt);
     }
     let line_width = placed
@@ -353,7 +391,7 @@ fn paragraph_words(
         let push_buffer =
             |words: &mut Vec<(String, TextStyle, bool)>, buffer: &mut String, style: &TextStyle, is_space: bool| {
                 if !buffer.is_empty() {
-                    words.push((std::mem::take(buffer), *style, is_space));
+                    words.push((std::mem::take(buffer), style.clone(), is_space));
                 }
             };
         for ch in run.text.chars() {
@@ -362,11 +400,11 @@ fn paragraph_words(
                     push_buffer(&mut words, &mut buffer, &style, false);
                     // A tab is kept as its own zero-width marker; the line
                     // layout advances the cursor to the next stop.
-                    words.push((if ch == '\t' { "\t".into() } else { " ".into() }, style, ch != '\t'));
+                    words.push((if ch == '\t' { "\t".into() } else { " ".into() }, style.clone(), ch != '\t'));
                 }
                 '\n' => {
                     push_buffer(&mut words, &mut buffer, &style, false);
-                    words.push(("\n".into(), style, false));
+                    words.push(("\n".into(), style.clone(), false));
                 }
                 other => buffer.push(other),
             }
@@ -648,7 +686,7 @@ impl<'a> Renderer<'a> {
                                 _ => left,
                             };
                             for item in &line.items {
-                                commands.push((x + item.dx, y + line.ascent, item.text.clone(), item.style));
+                                commands.push((x + item.dx, y + line.ascent, item.text.clone(), item.style.clone()));
                             }
                             y += line.height;
                         }
@@ -1839,17 +1877,17 @@ fn draw_text_frame(canvas: &mut Canvas<'_>, object: &SlideObject, frame: &TextFr
         let bullet = if paragraph.bullet && !paragraph.text.starts_with('•') { "• " } else { "" };
         let mut words: Vec<(String, TextStyle)> = Vec::new();
         if !bullet.is_empty() {
-            words.push((bullet.to_string(), base));
+            words.push((bullet.to_string(), base.clone()));
         }
         if paragraph.runs.is_empty() {
             for word in paragraph.text.split_whitespace() {
-                words.push((word.to_string(), base));
+                words.push((word.to_string(), base.clone()));
             }
         } else {
             for run in &paragraph.runs {
                 let style = slide_run_style(run, paragraph, frame);
                 for word in run.text.split_whitespace() {
-                    words.push((word.to_string(), style));
+                    words.push((word.to_string(), style.clone()));
                 }
             }
         }
@@ -2172,8 +2210,11 @@ mod tests {
     fn tab_stops_advance_the_cursor_to_the_next_stop() {
         let fonts = FontSet::new();
         let style = TextStyle { size_pt: 12.0, ..Default::default() };
-        let items =
-            vec![("A".to_string(), style, false), ("\t".to_string(), style, false), ("B".to_string(), style, false)];
+        let items = vec![
+            ("A".to_string(), style.clone(), false),
+            ("\t".to_string(), style.clone(), false),
+            ("B".to_string(), style.clone(), false),
+        ];
         let tabs = vec![TabStop { pos_pt: 100.0, align: "left".into() }];
         let line = finalize_line(&fonts, &items, 0.0, 500.0, "left", &tabs);
         assert_eq!(line.items.len(), 2, "the tab marker itself is not drawn");
@@ -2220,5 +2261,24 @@ mod tests {
         }];
         let bytes = document_to_pdf(&document);
         assert!(bytes.starts_with(b"%PDF"));
+    }
+
+    #[test]
+    fn justified_turkish_text_hyphenates_an_overflowing_word() {
+        let fonts = FontSet::new();
+        let mut style = TextStyle { size_pt: 12.0, ..Default::default() };
+        style.lang = Some("tr-TR".into());
+        let word = "bilgisayarlar";
+        let available = fonts.pick(false).advance_pt("bilgi-", 12.0) + 0.5;
+        let (prefix, rest) = hyphen_break(&fonts, word, &style, available).expect("must break");
+        assert!(prefix.ends_with('-'));
+        assert_eq!(format!("{}{rest}", prefix.trim_end_matches('-')), word);
+        assert!(rest.chars().count() >= 2, "no single-letter remainder");
+        // An English run never hyphenates, however tight the line is.
+        style.lang = Some("en-US".into());
+        assert!(hyphen_break(&fonts, word, &style, available).is_none());
+        // A run with no language is left alone too.
+        style.lang = None;
+        assert!(hyphen_break(&fonts, word, &style, available).is_none());
     }
 }
