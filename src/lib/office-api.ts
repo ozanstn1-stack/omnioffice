@@ -141,3 +141,98 @@ export const pdfListForm = (input: string) => invoke<PdfFormField[]>("office_pdf
 export const asWriterModel = (model: unknown) => model as TextDocument;
 export const asCalcModel = (model: unknown) => model as Workbook;
 export const asDeckModel = (model: unknown) => model as Deck;
+
+// ---------------------------------------------------------------------------
+// e-Fatura / e-Arşiv (UBL-TR)
+// ---------------------------------------------------------------------------
+
+export interface UblParty {
+  name: string;
+  taxId: string;
+  taxIdScheme: string;
+  taxOffice: string;
+  address: string;
+  city: string;
+}
+
+export interface UblTaxSubtotal {
+  rate: number;
+  taxable: number;
+  tax: number;
+  name: string;
+  exemptionReason: string;
+}
+
+export interface UblLine {
+  id: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  lineTotal: number;
+  vatRate: number;
+  vatAmount: number;
+  withholdingRate: number;
+  withholdingAmount: number;
+}
+
+export interface UblInvoice {
+  number: string;
+  ettn: string;
+  issueDate: string;
+  issueTime: string;
+  typeCode: string;
+  profile: string;
+  currency: string;
+  supplier: UblParty;
+  customer: UblParty;
+  lines: UblLine[];
+  taxSubtotals: UblTaxSubtotal[];
+  withholdingSubtotals: UblTaxSubtotal[];
+  lineExtensionAmount: number;
+  taxExclusiveAmount: number;
+  taxInclusiveAmount: number;
+  allowanceTotal: number;
+  taxAmount: number;
+  withholdingAmount: number;
+  payableAmount: number;
+  notes: string[];
+}
+
+export interface UblIssue {
+  field: string;
+  expected: number;
+  found: number;
+  message: string;
+}
+
+export interface InvoiceDocument {
+  kind: OfficeKind;
+  title: string;
+  model: unknown;
+  invoice: UblInvoice;
+  warnings: string[];
+  issues: UblIssue[];
+}
+
+export interface InvoiceSummary {
+  workbook: Workbook;
+  warnings: string[];
+  count: number;
+}
+
+export interface VatRate {
+  rate: number;
+  label: string;
+  since: string;
+  until: string;
+}
+
+/** Opens a `.xml`/`.zip` UBL-TR invoice as a Writer document plus its fields. */
+export const openInvoice = (path: string) => invoke<InvoiceDocument>("office_open_invoice", { path });
+
+/** Reads every invoice in the selection and builds the VAT summary workbook. */
+export const invoiceSummary = (paths: string[]) => invoke<InvoiceSummary>("office_invoice_summary", { paths });
+
+/** The dated reference VAT-rate table. */
+export const vatRates = () => invoke<VatRate[]>("office_vat_rates");

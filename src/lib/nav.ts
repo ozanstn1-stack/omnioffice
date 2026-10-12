@@ -30,6 +30,7 @@ export type ScreenId =
   | "notes"
   | "templates"
   | "converter"
+  | "invoices"
   | "cleaner"
   | "draw"
   | "planner"
