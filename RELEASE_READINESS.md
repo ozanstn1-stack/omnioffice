@@ -19,16 +19,21 @@ by CI.
   (Claude 3.5 Sonnet, GPT-4o, Ollama LLaVA/minicpm-v, LM Studio).
 - **LM Studio Local Preset**: First-class support for LM Studio local inference
   server (`http://localhost:1234/v1`) with zero telemetry and offline privacy.
-- **Vault Hybrid Semantic Search**: `vault_search_hybrid` Tauri command combining
-  BM25 keyword search with provider embedding vectors and cosine similarity
-  reranking across vault documents.
-- **Invoice & Receipt Table Extraction**: `ai_extract_table` prompt parser
-  extracting structured line items (`InvoiceTableRow`: description, quantity,
-  unit_price, vat_rate, line_total, currency) into an interactive preview table
-  with RFC 4180 CSV export.
-- **Batch AI Queue**: Multi-file batch processing (`ai_batch_run`) supporting
-  summarize, translate, classify, and extract operations with real-time
-  `ai-batch-progress` Tauri event stream and per-file result cards.
+- **Vault-scoped chat retrieval**: the chat's vault scope ranks excerpts by
+  keyword matching and, when an embedding model is configured, by embedding
+  cosine similarity (`retrievalMode` reports `keyword` or `hybrid`). The
+  `vault_search_hybrid` command exists but is not called from the UI yet, and
+  BM25 is not implemented; both are planned for 4.10.0.
+- **Invoice & Receipt Table Extraction**: `ai_extract_table` fills
+  `InvoiceTableRow` rows with page, vendor, date, invoiceNumber, currency,
+  subtotal, tax, total and a lineItems summary string, plus any requested
+  custom fields, into an interactive preview table with RFC 4180 CSV export.
+  (The 4.7.0 build lost snake_case replies and rows without a page; 4.7.1
+  fixed the parser and reports unparseable replies instead of zero rows.)
+- **Batch AI Queue**: multi-file batch processing (`ai_batch_run`, one file at
+  a time) for summarize, translate, classify and extract, with the
+  `ai:batch_progress` Tauri event and per-file result cards. (4.7.1 adds an
+  honest `status`: cancelled or all-failed runs no longer report completed.)
 - **Privacy & Telemetry**: Zero telemetry maintained; explicit opt-in consent
   dialogs for external providers; all data stays on device unless local or cloud
   API explicitly requested by the user.
@@ -36,7 +41,37 @@ by CI.
   chat, image payloads, embeddings, prompts, parsers), `src-tauri` (AI commands,
   vault hybrid search), and Vitest screen suite (`src/screens/Ai.test.tsx`).
 - **Translations**: 73 new translation keys added in English and Turkish;
-  100% parity verified (2,148 keys each).
+  en/tr parity verified at release time (2,148 keys each).
+
+### Not done in this pass (honest)
+
+- BM25 keyword search is not implemented; vault retrieval is keyword matching
+  plus embedding cosine similarity, and `vault_search_hybrid` is not called
+  from the UI (planned for 4.10.0).
+- The 4.7.0 invoice extractor dropped snake_case replies and rows without a
+  page number, and reported zero rows without an error when parsing failed;
+  4.7.1 fixed the parser.
+- The AI screen used English fallbacks for 50 keys missing from the translation
+  table (the parity check could not see them); 4.7.1 added the keys and made
+  the i18n audit scan source usage.
+- The `v4.7.0` tag points at the post-release `tauri.properties` sync merge
+  (`b7c4e5c`), not at the release PR merge: the tag was moved after publishing.
+- Batch items run in sequence, not simultaneously (the CHANGELOG wording was
+  corrected).
+
+## Implemented (this cycle, 4.6.2) - Android update installer fix
+
+- The 4.6.1 Android build failed: the new update-installer plugin's comment
+  contained `/*`, which Kotlin's nested block comments turn into an
+  unterminated comment. The comment is fixed and the release ships the Windows
+  installer/ZIP and both APK/AAB ABIs again.
+
+### Not done in this pass (honest)
+
+- 4.6.1 was a Windows-only release because of that Android build failure;
+  4.6.2 is the first complete release of the in-app update feature.
+- Kotlin nested block comments remain a footgun; the coding rule (never write
+  `/*` inside a comment) is recorded in `docs/plan/AI-HANDOFF.md`.
 
 ## Implemented (this cycle, 4.6.1) - hygiene and in-app updates
 
