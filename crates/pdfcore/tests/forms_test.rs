@@ -374,21 +374,72 @@ fn field_ref(doc: &Document, name: &str) -> Option<lopdf::ObjectId> {
     })
 }
 
-/// Decompressed generated `/AP /N` content of a merged field+widget.
-fn appearance_content(doc: &Document, name: &str) -> String {
+/// Decodes the `<hex>` glyph ids an appearance draws back to text through the
+/// embedded font's ToUnicode CMap (the appearance no longer stores the literal
+/// string, which is the point of the embedded font).
+fn drawn_text(doc: &Document, name: &str) -> String {
     let widget_id = field_ref(doc, name).expect("field");
     let widget = doc.get_dictionary(widget_id).unwrap();
     let ap = widget.get(b"AP").unwrap().as_dict().unwrap();
     let stream_id = ap.get(b"N").unwrap().as_reference().unwrap();
-    match doc.get_object(stream_id).unwrap() {
-        Object::Stream(stream) => String::from_utf8_lossy(&stream.decompressed_content().unwrap()).to_string(),
+    let stream = match doc.get_object(stream_id).unwrap() {
+        Object::Stream(stream) => stream,
         other => panic!("AP /N is not a stream: {other:?}"),
+    };
+    let resources = stream.dict.get(b"Resources").and_then(|value| value.as_dict()).unwrap();
+    let fonts = resources.get(b"Font").and_then(|value| value.as_dict()).unwrap();
+    let font_id = fonts.get(b"OmniTr").unwrap().as_reference().unwrap();
+    let font = doc.get_dictionary(font_id).unwrap();
+    let to_unicode_id = font.get(b"ToUnicode").unwrap().as_reference().unwrap();
+    let to_unicode = match doc.get_object(to_unicode_id).unwrap() {
+        Object::Stream(stream) => stream.decompressed_content().unwrap(),
+        other => panic!("ToUnicode is not a stream: {other:?}"),
+    };
+    let cmap = String::from_utf8_lossy(&to_unicode).to_string();
+    let mut mapping: std::collections::HashMap<u16, String> = std::collections::HashMap::new();
+    for line in cmap.lines() {
+        let line = line.trim();
+        if !line.starts_with('<') {
+            continue;
+        }
+        let mut parts = line.split("> <");
+        let cid = parts.next().map(|part| part.trim_start_matches('<'));
+        let unicode = parts.next().map(|part| part.trim_end_matches('>'));
+        if let (Some(cid), Some(unicode)) = (cid, unicode) {
+            if let Ok(cid) = u16::from_str_radix(cid, 16) {
+                let text: String = unicode
+                    .as_bytes()
+                    .chunks(4)
+                    .filter_map(|chunk| std::str::from_utf8(chunk).ok())
+                    .filter_map(|chunk| u16::from_str_radix(chunk, 16).ok())
+                    .filter_map(|unit| char::from_u32(u32::from(unit)))
+                    .collect();
+                mapping.insert(cid, text);
+            }
+        }
     }
+    let content = String::from_utf8_lossy(&stream.decompressed_content().unwrap()).to_string();
+    let mut out = String::new();
+    for chunk in content.split('<').skip(1) {
+        let hex = chunk.split('>').next().unwrap_or("");
+        if hex.is_empty() || hex.len() % 4 != 0 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+            continue;
+        }
+        for pair in hex.as_bytes().chunks(4) {
+            if let Ok(cid) = u16::from_str_radix(std::str::from_utf8(pair).unwrap(), 16) {
+                if let Some(text) = mapping.get(&cid) {
+                    out.push_str(text);
+                }
+            }
+        }
+    }
+    out
 }
 
 fn value_of(dict: &Dictionary) -> Vec<String> {
     match dict.get(b"V").ok() {
-        Some(Object::String(bytes, _)) => vec![String::from_utf8_lossy(bytes).to_string()],
+        // `pdf_text_value` decodes UTF-16BE (with BOM) and PDFDocEncoding.
+        Some(object @ Object::String(_, _)) => pdfcore::docutil::pdf_text_value(object).into_iter().collect(),
         Some(Object::Name(bytes)) => vec![String::from_utf8_lossy(bytes).to_string()],
         Some(Object::Array(items)) => items.iter().filter_map(pdfcore::docutil::pdf_text_value).collect(),
         _ => Vec::new(),
@@ -476,14 +527,14 @@ fn forms_fill_sets_values_and_regenerates_appearances() {
     assert!(text.get(b"DV").is_err(), "/DV is left untouched");
 
     // The widget appearance must have been regenerated with the new value.
-    let content = appearance_content(&filled, "full_name");
-    assert!(content.contains("Ada Lovelace"), "appearance must draw the value: {content}");
+    let drawn = drawn_text(&filled, "full_name");
+    assert_eq!(drawn, "Ada Lovelace", "appearance must draw the value");
 
     // Password field: real value in /V, masked appearance.
     assert_eq!(value_of(&field_dict(&filled, "pin").unwrap()), vec!["1234"]);
-    let pin_appearance = appearance_content(&filled, "pin");
-    assert!(pin_appearance.contains("****"), "password must be masked: {pin_appearance}");
-    assert!(!pin_appearance.contains("1234"), "the password must not be drawn: {pin_appearance}");
+    let pin_drawn = drawn_text(&filled, "pin");
+    assert_eq!(pin_drawn, "****", "password must be masked");
+    assert!(!pin_drawn.contains("1234"), "the password must not be drawn");
 
     // Inherited field: the value moves onto the terminal child.
     assert_eq!(value_of(&field_dict(&filled, "name").unwrap()), vec!["Grace Hopper"]);
@@ -528,6 +579,19 @@ fn forms_fill_sets_values_and_regenerates_appearances() {
     // /NeedAppearances is the compatibility safety net.
     let acro = filled.catalog().unwrap().get(b"AcroForm").unwrap().as_reference().unwrap();
     assert!(filled.get_dictionary(acro).unwrap().get(b"NeedAppearances").unwrap().as_bool().unwrap());
+}
+
+#[test]
+fn turkish_field_values_are_drawn_with_the_embedded_font() {
+    let (_dir, input) = doc_bytes("turkish-in.pdf", form_doc());
+    let output = fill_fields(
+        &input,
+        &[FieldValue { name: "full_name".into(), value: "Şişli Güneş İĞDIR ı".into(), values: vec![] }],
+    )
+    .expect("fill");
+    let filled = Document::load_mem(&output).expect("reopen");
+    assert_eq!(value_of(&field_dict(&filled, "full_name").unwrap()), vec!["Şişli Güneş İĞDIR ı"]);
+    assert_eq!(drawn_text(&filled, "full_name"), "Şişli Güneş İĞDIR ı");
 }
 
 #[test]

@@ -8,7 +8,8 @@
 //!    down a `/Parent` chain and through intermediate `/Kids` nodes, so a field
 //!    whose `/FT` lives on an ancestor is still reported correctly.
 //!    `apply_field_values` writes `/V` (leaving `/DV` untouched) and rebuilds
-//!    the widget appearance streams with a Base14 Helvetica font, and
+//!    the widget appearance streams with an embedded subset of the bundled
+//!    Liberation Sans (see [`crate::textfont`]), and
 //!    `validate_fields` performs the checks that are provable from the file
 //!    contents alone. PDF JavaScript is **never** executed: a field whose
 //!    format/validation lives in an `/AA` action is reported as "scripted
@@ -35,17 +36,17 @@
 //!      works on the one construct that can be located unambiguously from the
 //!      bytes: the `cm` + `/Name Do` sequence of an image placement. Anything
 //!      else in a stream is reported as untouched rather than guessed at.
-//!    * Form values that use characters outside WinAnsi cannot be drawn by a
-//!      Base14 Helvetica appearance; they are transliterated to `?` in the
-//!      generated appearance while `/V` keeps the full Unicode string and the
-//!      form is marked `/NeedAppearances`, so a viewer with font support can
-//!      re-render it.
+//!    * Form values with Turkish or other non-WinAnsi characters are drawn in
+//!      the generated appearance through the embedded subset font, and the
+//!      font is registered in the AcroForm `/DR` as `/Helv` too, so viewers
+//!      that replay `/DA` still find a capable font; `/V` keeps the full
+//!      Unicode string and the form is marked `/NeedAppearances`.
 //!    * `validate_fields` cannot check JavaScript-format masks. It checks
 //!      required/read-only, `/MaxLen`, choice membership, and - only when the
 //!      field name or tooltip suggests it - common date/number shapes. Those
 //!      heuristic checks are reported with severity `warning`.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::Path;
 
 use lopdf::{dictionary, Dictionary, Document, Object, ObjectId, Stream};
@@ -53,6 +54,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::docutil::{self, Matrix};
 use crate::error::{PdfError, PdfResult};
+use crate::textfont::{TextFont, RESOURCE_NAME};
 
 // ---------------------------------------------------------------------------
 // Field flags (PDF 1.7, table 226 / 228 / 230)
@@ -747,39 +749,20 @@ fn ensure_dict_entry(doc: &mut Document, owner: ObjectId, key: &[u8]) -> PdfResu
     }
 }
 
-/// Finds or creates the Helvetica font used by generated appearances. It is
-/// registered in the AcroForm `/DR` (`/Font /Helv`) so unimplemented viewers
-/// that ignore per-stream resources still find it.
-fn ensure_appearance_font(doc: &mut Document) -> PdfResult<ObjectId> {
+/// Registers the embedded appearance font in the AcroForm `/DR` (`/Font`).
+/// `/DA` strings viewers replay say `/Helv`, so the Turkish-capable font is
+/// registered under that name too; the generated appearance streams refer to
+/// it as `/OmniTr` through their own resources.
+fn register_appearance_font(doc: &mut Document, font: &TextFont) -> PdfResult<()> {
     let acro = ensure_acroform(doc)?;
     let dr = ensure_dict_entry(doc, acro, b"DR")?;
     let fonts = ensure_dict_entry(doc, dr, b"Font")?;
-    let existing = doc.get_dictionary(fonts).map_err(PdfError::from)?.get(b"Helv").ok().cloned();
-    match existing {
-        Some(Object::Reference(id)) => {
-            if let Ok(Object::Dictionary(_)) = doc.get_object(id) {
-                return Ok(id);
-            }
-        }
-        Some(Object::Dictionary(dict)) => {
-            let id = doc.add_object(Object::Dictionary(dict));
-            set_dict_entry(doc, fonts, b"Helv", Object::Reference(id))?;
-            return Ok(id);
-        }
-        _ => {}
-    }
-    let font_id = doc.add_object(Object::Dictionary(dictionary! {
-        "Type" => "Font",
-        "Subtype" => "Type1",
-        "BaseFont" => "Helvetica",
-        "Encoding" => "WinAnsiEncoding",
-    }));
-    set_dict_entry(doc, fonts, b"Helv", Object::Reference(font_id))?;
-    Ok(font_id)
+    set_dict_entry(doc, fonts, b"Helv", font.reference())?;
+    set_dict_entry(doc, fonts, RESOURCE_NAME.as_bytes(), font.reference())
 }
 
 /// Adds a form XObject carrying a generated appearance.
-fn add_appearance_stream(doc: &mut Document, width: f64, height: f64, content: String, font_id: ObjectId) -> ObjectId {
+fn add_appearance_stream(doc: &mut Document, width: f64, height: f64, content: String, font: &TextFont) -> ObjectId {
     let stream = Stream::new(
         dictionary! {
             "Type" => "XObject",
@@ -787,7 +770,7 @@ fn add_appearance_stream(doc: &mut Document, width: f64, height: f64, content: S
             "FormType" => 1i64,
             "BBox" => vec![0.into(), 0.into(), width.into(), height.into()],
             "Resources" => dictionary! {
-                "Font" => dictionary! { "Helv" => Object::Reference(font_id) },
+                "Font" => dictionary! { RESOURCE_NAME => font.reference() },
             },
         },
         content.into_bytes(),
@@ -812,17 +795,6 @@ fn parse_da_size(da: &Option<String>) -> f64 {
         }
     }
     11.0
-}
-
-/// ASCII + WinAnsi-safe literal for a Base14 Helvetica appearance.
-///
-/// Characters outside ASCII are replaced with `?` **only in the generated
-/// appearance**; `/V` always carries the full Unicode string. Replacing them
-/// keeps the content stream encodable with the WinAnsi font the appearance
-/// declares instead of emitting bytes no Base14 font can render.
-fn appearance_text(text: &str) -> String {
-    let mapped: String = text.chars().map(|c| if c.is_ascii() && c != '\r' && c != '\n' { c } else { '?' }).collect();
-    docutil::escape_pdf_literal(&mapped)
 }
 
 fn format_pt(value: f64) -> String {
@@ -851,12 +823,12 @@ fn wrap_lines(text: &str, per_line: usize) -> Vec<String> {
 
 /// Text field appearance: borderless text for single-line fields, wrapped
 /// lines from the top for multiline fields.
-fn text_appearance_content(text: &str, width: f64, height: f64, size: f64, multiline: bool) -> String {
+fn text_appearance_content(text: &str, width: f64, height: f64, size: f64, multiline: bool, font: &TextFont) -> String {
     let size = size.max(4.0);
     let usable = (width - 4.0).max(4.0);
     let per_line = (usable / (size * 0.5)).floor().max(1.0) as usize;
     let mut out = String::from("q\nBT\n");
-    out.push_str(&format!("/Helv {} Tf\n0 g\n", format_pt(size)));
+    out.push_str(&format!("/{RESOURCE_NAME} {} Tf\n0 g\n", format_pt(size)));
     if multiline {
         let max_lines = (((height - 4.0).max(1.0)) / (size * 1.15)).floor().max(1.0) as usize;
         let start_y = (height - size - 2.0).max(2.0);
@@ -865,13 +837,13 @@ fn text_appearance_content(text: &str, width: f64, height: f64, size: f64, multi
             if index > 0 {
                 out.push_str("T*\n");
             }
-            out.push_str(&format!("({}) Tj\n", appearance_text(line)));
+            out.push_str(&format!("{} Tj\n", font.encode(line)));
         }
     } else {
         let single = text.replace(['\r', '\n'], " ");
         let shown: String = single.chars().take(per_line).collect();
         let baseline = ((height - size) / 2.0 + size * 0.2).max(1.0);
-        out.push_str(&format!("2 {} Td\n({}) Tj\n", format_pt(baseline), appearance_text(&shown)));
+        out.push_str(&format!("2 {} Td\n{} Tj\n", format_pt(baseline), font.encode(&shown)));
     }
     out.push_str("ET\nQ\n");
     out
@@ -886,6 +858,7 @@ fn choice_appearance_content(
     width: f64,
     height: f64,
     size: f64,
+    font: &TextFont,
 ) -> String {
     let size = size.max(4.0);
     let mut out = String::from("q\n");
@@ -905,10 +878,10 @@ fn choice_appearance_content(
         let shown: String = text.chars().take(per_line).collect();
         let baseline = ((height - size) / 2.0 + size * 0.2).max(1.0);
         out.push_str(&format!(
-            "BT\n/Helv {} Tf\n0 g\n2 {} Td\n({}) Tj\nET\n",
+            "BT\n/{RESOURCE_NAME} {} Tf\n0 g\n2 {} Td\n{} Tj\nET\n",
             format_pt(size),
             format_pt(baseline),
-            appearance_text(&shown)
+            font.encode(&shown)
         ));
         out.push_str(&format!(
             "0.3 0.35 0.45 rg\n{} {} m\n{} {} l\n{} {} l\nf\n",
@@ -940,10 +913,10 @@ fn choice_appearance_content(
                 .take((((width - 8.0).max(4.0)) / (size * 0.5)).floor().max(1.0) as usize)
                 .collect();
             out.push_str(&format!(
-                "BT\n/Helv {} Tf\n0 g\n3 {} Td\n({}) Tj\nET\n",
+                "BT\n/{RESOURCE_NAME} {} Tf\n0 g\n3 {} Td\n{} Tj\nET\n",
                 format_pt(size),
                 format_pt(y),
-                appearance_text(&shown)
+                font.encode(&shown)
             ));
             y -= line_height;
         }
@@ -1053,11 +1026,11 @@ fn regenerate_value_appearance(
     doc: &mut Document,
     widget_id: ObjectId,
     content: String,
-    font_id: ObjectId,
+    font: &TextFont,
 ) -> PdfResult<()> {
     let rect = widget_rect(doc, widget_id).unwrap_or([0.0, 0.0, 120.0, 20.0]);
     let (width, height) = rect_dims(rect);
-    let stream_id = add_appearance_stream(doc, width, height, content, font_id);
+    let stream_id = add_appearance_stream(doc, width, height, content, font);
     set_widget_ap(doc, widget_id, Object::Dictionary(dictionary! { "N" => Object::Reference(stream_id) }))
 }
 
@@ -1069,14 +1042,13 @@ fn regenerate_button_appearance(
     on_states: &[String],
     on_state: Option<&str>,
     round: bool,
-    font_id: ObjectId,
+    font: &TextFont,
 ) -> PdfResult<()> {
     let rect = widget_rect(doc, widget_id).unwrap_or([0.0, 0.0, 14.0, 14.0]);
     let (width, height) = rect_dims(rect);
     let off_id =
-        add_appearance_stream(doc, width, height, button_appearance_content(width, height, false, round), font_id);
-    let on_id =
-        add_appearance_stream(doc, width, height, button_appearance_content(width, height, true, round), font_id);
+        add_appearance_stream(doc, width, height, button_appearance_content(width, height, false, round), font);
+    let on_id = add_appearance_stream(doc, width, height, button_appearance_content(width, height, true, round), font);
     let mut states = Dictionary::new();
     states.set(b"Off".to_vec(), Object::Reference(off_id));
     if on_states.is_empty() {
@@ -1119,7 +1091,39 @@ pub fn apply_field_values(doc: &mut Document, values: &[FieldValue]) -> PdfResul
             return Err(PdfError::InvalidInput(format!("unknown form field: {}", value.name)));
         }
     }
-    let font_id = ensure_appearance_font(doc)?;
+
+    // The subset font must cover every string the appearances will draw.
+    let mut chars: BTreeSet<char> = BTreeSet::new();
+    for value in values {
+        let node = &nodes[by_name[value.name.as_str()]];
+        if node.ff & FLAG_READ_ONLY != 0 {
+            continue;
+        }
+        match node.ft.as_slice() {
+            b"Tx" => {
+                if node.ff & FLAG_PASSWORD != 0 {
+                    chars.extend("*".chars());
+                } else {
+                    chars.extend(value.value.chars());
+                }
+            }
+            b"Ch" => {
+                for option in &node.options {
+                    chars.extend(option.label.chars());
+                }
+                chars.extend(value.value.chars());
+                for entry in &value.values {
+                    chars.extend(entry.chars());
+                }
+            }
+            _ => {}
+        }
+    }
+    if chars.is_empty() {
+        chars.insert(' ');
+    }
+    let font = TextFont::create(doc, &chars)?;
+    register_appearance_font(doc, &font)?;
 
     for value in values {
         let node_index = by_name[value.name.as_str()];
@@ -1155,9 +1159,15 @@ pub fn apply_field_values(doc: &mut Document, values: &[FieldValue]) -> PdfResul
                 for widget_id in &widget_ids {
                     let rect = widget_rect(doc, *widget_id).unwrap_or([0.0, 0.0, 120.0, 20.0]);
                     let (width, height) = rect_dims(rect);
-                    let content =
-                        text_appearance_content(&shown, width, height, parse_da_size(&da), ff & FLAG_MULTILINE != 0);
-                    regenerate_value_appearance(doc, *widget_id, content, font_id)?;
+                    let content = text_appearance_content(
+                        &shown,
+                        width,
+                        height,
+                        parse_da_size(&da),
+                        ff & FLAG_MULTILINE != 0,
+                        &font,
+                    );
+                    regenerate_value_appearance(doc, *widget_id, content, &font)?;
                 }
                 report.filled += 1;
             }
@@ -1167,9 +1177,9 @@ pub fn apply_field_values(doc: &mut Document, values: &[FieldValue]) -> PdfResul
                     continue;
                 }
                 if ff & FLAG_RADIO != 0 {
-                    fill_radio(doc, node, value, &widget_ids, font_id, &mut report)?;
+                    fill_radio(doc, node, value, &widget_ids, &font, &mut report)?;
                 } else {
-                    fill_checkbox(doc, node, value, &widget_ids, font_id, &mut report)?;
+                    fill_checkbox(doc, node, value, &widget_ids, &font, &mut report)?;
                 }
                 report.filled += 1;
             }
@@ -1210,8 +1220,9 @@ pub fn apply_field_values(doc: &mut Document, values: &[FieldValue]) -> PdfResul
                         width,
                         height,
                         parse_da_size(&da),
+                        &font,
                     );
-                    regenerate_value_appearance(doc, *widget_id, content, font_id)?;
+                    regenerate_value_appearance(doc, *widget_id, content, &font)?;
                 }
                 report.filled += 1;
             }
@@ -1236,7 +1247,7 @@ fn fill_checkbox(
     node: &FieldNode,
     value: &FieldValue,
     widget_ids: &[ObjectId],
-    font_id: ObjectId,
+    font: &TextFont,
     report: &mut FillReport,
 ) -> PdfResult<()> {
     let states = checkbox_states(doc, node);
@@ -1254,7 +1265,7 @@ fn fill_checkbox(
     };
     set_dict_entry(doc, node.id, b"V", Object::Name(chosen.as_bytes().to_vec()))?;
     for widget_id in widget_ids {
-        regenerate_button_appearance(doc, *widget_id, &states, Some(&chosen), false, font_id)?;
+        regenerate_button_appearance(doc, *widget_id, &states, Some(&chosen), false, font)?;
     }
     Ok(())
 }
@@ -1264,7 +1275,7 @@ fn fill_radio(
     node: &FieldNode,
     value: &FieldValue,
     widget_ids: &[ObjectId],
-    font_id: ObjectId,
+    font: &TextFont,
     report: &mut FillReport,
 ) -> PdfResult<()> {
     // Collect per-widget states first: each widget owns one export value.
@@ -1304,7 +1315,7 @@ fn fill_radio(
             }
         }
         let on_state = if is_chosen { chosen.as_deref() } else { None };
-        regenerate_button_appearance(doc, *widget_id, &states, on_state, true, font_id)?;
+        regenerate_button_appearance(doc, *widget_id, &states, on_state, true, font)?;
     }
     Ok(())
 }
