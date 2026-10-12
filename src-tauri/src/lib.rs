@@ -33,6 +33,7 @@ mod pdf_v3;
 mod plugin;
 mod secret;
 mod sign;
+mod signatures;
 mod sync;
 mod update;
 mod vault;
@@ -330,6 +331,9 @@ pub fn run() {
             office::office_read_invoice_qr,
             office::office_open_eml,
             office::office_scan_pages,
+            signatures::signature_save,
+            signatures::signature_list,
+            signatures::signature_delete,
             office::office_clean,
             office::office_image_footprint,
             office::store_load,
