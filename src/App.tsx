@@ -22,6 +22,7 @@ import {
   Database,
   PenTool,
   Repeat,
+  Receipt,
   Sparkles,
   ClipboardList,
   Home,
@@ -95,6 +96,7 @@ const CleanerScreen = React.lazy(() =>
 const ConverterScreen = React.lazy(() =>
   import("./office/ToolsScreens").then((module) => ({ default: module.ConverterScreen })),
 );
+const InvoicesScreen = React.lazy(() => import("./screens/Invoices").then((module) => ({ default: module.Invoices })));
 const DataScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.DataScreen })));
 const DrawScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.DrawScreen })));
 const NotesScreen = React.lazy(() =>
@@ -716,6 +718,7 @@ export default function App() {
       notes: <NotesScreen />,
       templates: <TemplatesScreen onOpen={() => navigate("office")} />,
       converter: <ConverterScreen />,
+      invoices: <InvoicesScreen initialFiles={files} />,
       cleaner: <CleanerScreen />,
       draw: <DrawScreen />,
       planner: <PlannerScreen />,
@@ -762,6 +765,7 @@ export default function App() {
       label: t("nav.convert"),
       items: [
         { id: "converter", label: t("nav.converter"), icon: <Repeat size={16} /> },
+        { id: "invoices", label: t("nav.invoices"), icon: <Receipt size={16} /> },
         { id: "cleaner", label: t("nav.cleaner"), icon: <Sparkles size={16} /> },
         { id: "pdfForms", label: t("nav.pdfForms"), icon: <ClipboardList size={16} /> },
       ],

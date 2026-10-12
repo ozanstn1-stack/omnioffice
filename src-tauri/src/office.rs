@@ -9,7 +9,7 @@ use officecore::cleaner::{self, CleanOptions, CleanResult};
 use officecore::csvio::{self, CsvOptions};
 use officecore::error::{OfficeError, OfficeResult};
 use officecore::model::*;
-use officecore::{docx, layout, odf, pptx, rtf, textio, udf, xlsx};
+use officecore::{docx, layout, odf, pptx, rtf, textio, ubl, udf, xlsx};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -1145,6 +1145,86 @@ pub fn office_conversion_targets(extension: String) -> Vec<String> {
 }
 
 // ---------------------------------------------------------------------------
+// e-Fatura / e-Arşiv (UBL-TR)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InvoiceDocument {
+    pub kind: String,
+    pub title: String,
+    /// The Writer model rendered with the app's own deterministic template.
+    pub model: Value,
+    pub invoice: ubl::UblInvoice,
+    pub warnings: Vec<String>,
+    pub issues: Vec<ubl::UblIssue>,
+}
+
+/// Opens a `.xml`/`.zip` UBL-TR invoice and returns both the parsed fields and
+/// the Writer model the app renders (never the invoice's own XSLT).
+#[tauri::command]
+pub async fn office_open_invoice(path: String) -> Result<InvoiceDocument, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let source = input_path(&path)?;
+        let read = ubl::read_ubl_file(&source).map_err(payload)?;
+        let document = ubl::invoice_to_document(&read.invoice);
+        Ok::<_, OfficeErrorPayload>(InvoiceDocument {
+            kind: "writer".into(),
+            title: document.title.clone(),
+            model: to_value(document)?,
+            invoice: read.invoice,
+            warnings: read.warnings,
+            issues: read.issues,
+        })
+    });
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InvoiceSummary {
+    /// A Calc workbook model for the VAT summary; save it as `.xlsx`/`.ods`.
+    pub workbook: Value,
+    pub warnings: Vec<String>,
+    pub count: usize,
+}
+
+/// Reads every invoice in the selection and builds the VAT summary workbook.
+#[tauri::command]
+pub async fn office_invoice_summary(paths: Vec<String>) -> Result<InvoiceSummary, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let mut invoices = Vec::new();
+        let mut warnings = Vec::new();
+        for path in &paths {
+            let source = input_path(path)?;
+            match ubl::read_ubl_package_file(&source) {
+                Ok(reads) => {
+                    for read in reads {
+                        warnings.extend(read.warnings);
+                        warnings.extend(read.issues.iter().map(|issue| issue.message.clone()));
+                        invoices.push(read.invoice);
+                    }
+                }
+                Err(error) => warnings.push(format!("{path}: {error}")),
+            }
+        }
+        if invoices.is_empty() {
+            return Err(payload(OfficeError::invalid("No UBL invoice could be read from the selection.")));
+        }
+        let count = invoices.len();
+        let workbook = ubl::vat_summary_workbook(&invoices);
+        Ok::<_, OfficeErrorPayload>(InvoiceSummary { workbook: to_value(workbook)?, warnings, count })
+    });
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+}
+
+/// The dated reference VAT-rate table shown next to the validation results.
+#[tauri::command]
+pub fn office_vat_rates() -> Vec<ubl::VatRate> {
+    ubl::vat_rates()
+}
+
+// ---------------------------------------------------------------------------
 // Cleaner
 // ---------------------------------------------------------------------------
 
@@ -1517,6 +1597,51 @@ mod tests {
         let pdf = dir.path().join("karar.pdf");
         convert(&path, &pdf, &Default::default()).unwrap();
         assert!(std::fs::read(&pdf).unwrap().starts_with(b"%PDF"));
+    }
+
+    #[test]
+    fn invoice_opens_and_builds_a_vat_summary() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fatura.xml");
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+  <cbc:ID>GIB2026000000009</cbc:ID>
+  <cbc:UUID>ettn-9</cbc:UUID>
+  <cbc:IssueDate>2026-05-06</cbc:IssueDate>
+  <cbc:DocumentCurrencyCode>TRY</cbc:DocumentCurrencyCode>
+  <cac:AccountingSupplierParty><cac:Party><cac:PartyName><cbc:Name>Satıcı A.Ş.</cbc:Name></cac:PartyName></cac:Party></cac:AccountingSupplierParty>
+  <cac:TaxTotal><cbc:TaxAmount>200.00</cbc:TaxAmount>
+    <cac:TaxSubtotal><cbc:TaxableAmount>1000.00</cbc:TaxableAmount><cbc:TaxAmount>200.00</cbc:TaxAmount><cbc:Percent>20.00</cbc:Percent></cac:TaxSubtotal>
+  </cac:TaxTotal>
+  <cac:LegalMonetaryTotal>
+    <cbc:LineExtensionAmount>1000.00</cbc:LineExtensionAmount>
+    <cbc:TaxExclusiveAmount>1000.00</cbc:TaxExclusiveAmount>
+    <cbc:TaxInclusiveAmount>1200.00</cbc:TaxInclusiveAmount>
+    <cbc:PayableAmount>1200.00</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+  <cac:InvoiceLine>
+    <cbc:ID>1</cbc:ID>
+    <cbc:InvoicedQuantity>10</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount>1000.00</cbc:LineExtensionAmount>
+    <cac:TaxTotal><cbc:TaxAmount>200.00</cbc:TaxAmount><cac:TaxSubtotal><cbc:TaxableAmount>1000.00</cbc:TaxableAmount><cbc:TaxAmount>200.00</cbc:TaxAmount><cbc:Percent>20.00</cbc:Percent></cac:TaxSubtotal></cac:TaxTotal>
+    <cac:Item><cbc:Name>Hizmet</cbc:Name></cac:Item>
+    <cac:Price><cbc:PriceAmount>100.00</cbc:PriceAmount></cac:Price>
+  </cac:InvoiceLine>
+</Invoice>"#;
+        std::fs::write(&path, xml).unwrap();
+
+        // The reader returns the fields and a Writer model that exports to PDF.
+        let read = officecore::ubl::read_ubl_file(&path).unwrap();
+        assert_eq!(read.invoice.number, "GIB2026000000009");
+        assert!(read.issues.is_empty(), "issues: {:?}", read.issues);
+        let document = officecore::ubl::invoice_to_document(&read.invoice);
+        assert!(officecore::layout::document_to_pdf(&document).starts_with(b"%PDF"));
+
+        // The VAT summary aggregates the invoice into a Calc workbook.
+        let workbook = officecore::ubl::vat_summary_workbook(&[read.invoice]);
+        assert_eq!(workbook.sheets[0].name, "KDV Özeti");
+        let package = officecore::xlsx::write_xlsx_package(&workbook).unwrap();
+        assert!(package.bytes.starts_with(b"PK"));
     }
 
     /// A two-page PDF: heading, paragraph and bullets, then a heading and a
