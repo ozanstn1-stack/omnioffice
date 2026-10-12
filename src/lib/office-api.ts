@@ -266,3 +266,38 @@ export interface InvoiceQr {
 /** Reads the GİB karekod from a PDF (first pages, or a specific page). */
 export const readInvoiceQr = (path: string, page?: number) =>
   invoke<InvoiceQr | null>("office_read_invoice_qr", { path, page: page ?? null });
+
+// ---------------------------------------------------------------------------
+// KEP .eml (read-only)
+// ---------------------------------------------------------------------------
+
+export interface EmlHeader {
+  name: string;
+  value: string;
+}
+
+export interface EmlAttachment {
+  name: string;
+  contentType: string;
+  size: number;
+  /** Where the attachment was extracted, when it was written to disk. */
+  path?: string;
+  dataBase64?: string;
+}
+
+export interface EmlMessage {
+  subject: string;
+  from: string;
+  to: string;
+  cc: string;
+  date: string;
+  messageId: string;
+  headers: EmlHeader[];
+  bodyText: string;
+  bodyHtml: string;
+  attachments: EmlAttachment[];
+  warnings: string[];
+}
+
+/** Opens a KEP `.eml` message read-only and extracts its attachments. */
+export const openEml = (path: string) => invoke<EmlMessage>("office_open_eml", { path });

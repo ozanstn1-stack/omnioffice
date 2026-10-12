@@ -23,6 +23,7 @@ import {
   PenTool,
   Repeat,
   Receipt,
+  Mail,
   Sparkles,
   ClipboardList,
   Home,
@@ -97,6 +98,7 @@ const ConverterScreen = React.lazy(() =>
   import("./office/ToolsScreens").then((module) => ({ default: module.ConverterScreen })),
 );
 const InvoicesScreen = React.lazy(() => import("./screens/Invoices").then((module) => ({ default: module.Invoices })));
+const EmlScreen = React.lazy(() => import("./screens/Eml").then((module) => ({ default: module.Eml })));
 const DataScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.DataScreen })));
 const DrawScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.DrawScreen })));
 const NotesScreen = React.lazy(() =>
@@ -719,6 +721,7 @@ export default function App() {
       templates: <TemplatesScreen onOpen={() => navigate("office")} />,
       converter: <ConverterScreen />,
       invoices: <InvoicesScreen initialFiles={files} />,
+      eml: <EmlScreen initialFiles={files} onNavigate={navigate} />,
       cleaner: <CleanerScreen />,
       draw: <DrawScreen />,
       planner: <PlannerScreen />,
@@ -766,6 +769,7 @@ export default function App() {
       items: [
         { id: "converter", label: t("nav.converter"), icon: <Repeat size={16} /> },
         { id: "invoices", label: t("nav.invoices"), icon: <Receipt size={16} /> },
+        { id: "eml", label: t("nav.eml"), icon: <Mail size={16} /> },
         { id: "cleaner", label: t("nav.cleaner"), icon: <Sparkles size={16} /> },
         { id: "pdfForms", label: t("nav.pdfForms"), icon: <ClipboardList size={16} /> },
       ],

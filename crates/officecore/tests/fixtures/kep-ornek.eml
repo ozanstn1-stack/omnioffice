@@ -1,0 +1,30 @@
+From: =?UTF-8?B?S0VQIEfDtm5kZXJpY2k=?= <kep@example.org>
+To: avukat@example.org
+Cc: muvekkil@example.org
+Subject: =?UTF-8?Q?Tebligat_=C3=B6rne=C4=9Fi?=
+Date: Mon, 12 Oct 2026 09:30:00 +0300
+Message-ID: <abc123@kep.example.org>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="BOUND"
+
+--BOUND
+Content-Type: multipart/alternative; boundary="ALT"
+
+--ALT
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Say=C4=B1n Avukat,
+Tebligat ekte g=C3=B6nderilmi=C5=9Ftir. Gere=C4=9Fini bilgilerinize arz ederim.
+--ALT
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>Sayın Avukat,</p><p>Tebligat ekte gönderilmiştir.</p></body></html>
+--ALT--
+--BOUND
+Content-Type: application/pdf; name="tebligat.pdf"
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="tebligat.pdf"
+
+JVBERi0xLjQKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZy9QYWdlcyAyIDAgUj4+ZW5kb2JqCjIgMCBvYmo8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PmVuZG9iagozIDAgb2JqPDwvVHlwZS9QYWdlL1BhcmVudCAyIDAgUi9NZWRpYUJveFswIDAgMjAwIDIwMF0+PmVuZG9iagp0cmFpbGVyPDwvUm9vdCAxIDAgUj4+CiUlRU9G
+--BOUND--

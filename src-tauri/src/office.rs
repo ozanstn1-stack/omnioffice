@@ -1224,6 +1224,19 @@ pub fn office_vat_rates() -> Vec<ubl::VatRate> {
     ubl::vat_rates()
 }
 
+/// Opens a KEP `.eml` message (read-only): headers, body and attachments. Each
+/// attachment is written to a temp directory so the UI can open it; the message
+/// itself is never modified and nothing is sent anywhere.
+#[tauri::command]
+pub async fn office_open_eml(path: String) -> Result<officecore::eml::EmlMessage, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let source = input_path(&path)?;
+        officecore::eml::read_eml_file(&source, &officecore::eml::default_cache_dir()).map_err(payload)
+    });
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct InvoiceQr {
     pub payload: pdfcore::gibqr::GibQr,
