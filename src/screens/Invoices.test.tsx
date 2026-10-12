@@ -65,6 +65,28 @@ const invoke = vi.fn(async (command: string, payload?: { paths?: string[]; path?
       return [{ rate: 20, label: "Genel oran", since: "2023-07-10", until: "" }];
     case "office_open_invoice":
       return invoice;
+    case "office_read_invoice_qr":
+      return {
+        payload: {
+          vknTckn: "1234567890",
+          avknTckn: "9876543210",
+          senaryo: "TICARIFATURA",
+          tip: "SATIS",
+          tarih: "2026-03-15",
+          no: "GIB2026000000001",
+          ettn: "7f4e1c2a-0000-4000-8000-000000000001",
+          paraBirimi: "TRY",
+          malHizmetToplam: "1500.00",
+          vergiDahil: "1800.00",
+          odenecek: "1800.00",
+          kdvMatrah: { "20": "1500.00" },
+          hesaplananKdv: { "20": "300.00" },
+        },
+        raw: "{}",
+        page: 1,
+        taxIdValid: true,
+        warnings: [],
+      };
     case "office_invoice_summary":
       return {
         workbook: { id: "wb", title: "KDV Özeti", sheets: [] },
@@ -105,6 +127,17 @@ describe("invoice screen", () => {
     expect(screen.getByText(/totals, VAT and payable amount match/i)).toBeInTheDocument();
     // The dated rate table is fetched and shown.
     expect(await screen.findByText("Genel oran")).toBeInTheDocument();
+  });
+
+  it("reads a PDF's karekod and shows the mismatch with the UBL invoice in red", async () => {
+    const user = userEvent.setup();
+    render(<Invoices initialFiles={["C:/invoices/fatura.xml", "C:/invoices/fatura.pdf"]} />);
+    await screen.findByText("GIB2026000000001");
+    await user.click(screen.getByRole("button", { name: /Read karekod/i }));
+    // The karekod says 2026-03-15 while the invoice says 2026-03-14.
+    expect(await screen.findByText(/The karekod disagrees/i)).toBeInTheDocument();
+    const mismatch = screen.getByText(/tarih:/i);
+    expect(mismatch).toHaveStyle({ color: "var(--danger, #dc2626)" });
   });
 
   it("builds the VAT summary workbook and saves it as XLSX", async () => {

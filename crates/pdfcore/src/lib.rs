@@ -43,6 +43,7 @@ pub mod flatten;
 pub mod fontembed;
 mod fontusage;
 pub mod forms;
+pub mod gibqr;
 pub mod images;
 pub mod incremental;
 pub mod info;

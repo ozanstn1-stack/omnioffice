@@ -236,3 +236,33 @@ export const invoiceSummary = (paths: string[]) => invoke<InvoiceSummary>("offic
 
 /** The dated reference VAT-rate table. */
 export const vatRates = () => invoke<VatRate[]>("office_vat_rates");
+
+/** The GİB karekod (e-Fatura QR) payload. */
+export interface GibQr {
+  vknTckn: string;
+  avknTckn: string;
+  senaryo: string;
+  tip: string;
+  tarih: string;
+  no: string;
+  ettn: string;
+  paraBirimi: string;
+  malHizmetToplam: string;
+  vergiDahil: string;
+  odenecek: string;
+  kdvMatrah: Record<string, string>;
+  hesaplananKdv: Record<string, string>;
+}
+
+export interface InvoiceQr {
+  payload: GibQr;
+  raw: string;
+  page: number;
+  /** The payload's sender VKN/TCKN passed its checksum. */
+  taxIdValid: boolean;
+  warnings: string[];
+}
+
+/** Reads the GİB karekod from a PDF (first pages, or a specific page). */
+export const readInvoiceQr = (path: string, page?: number) =>
+  invoke<InvoiceQr | null>("office_read_invoice_qr", { path, page: page ?? null });

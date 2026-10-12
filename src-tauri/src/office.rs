@@ -1224,6 +1224,44 @@ pub fn office_vat_rates() -> Vec<ubl::VatRate> {
     ubl::vat_rates()
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct InvoiceQr {
+    pub payload: pdfcore::gibqr::GibQr,
+    pub raw: String,
+    pub page: u32,
+    /// Whether the payload's sender VKN/TCKN passes its checksum.
+    pub tax_id_valid: bool,
+    pub warnings: Vec<String>,
+}
+
+/// Reads the GİB karekod (e-Fatura QR) from a PDF's first pages (or a given
+/// page). Returns `None` when no QR is found, so the UI can say so plainly.
+#[tauri::command]
+pub async fn office_read_invoice_qr(path: String, page: Option<u32>) -> Result<Option<InvoiceQr>, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let source = input_path(&path)?;
+        let found = match page {
+            Some(page) => pdfcore::gibqr::decode_page(&source, None, page)
+                .map_err(pdfcore_payload)?
+                .map(|(qr, raw)| (qr, raw, page)),
+            None => pdfcore::gibqr::decode_document(&source, None, 5).map_err(pdfcore_payload)?,
+        };
+        Ok::<_, OfficeErrorPayload>(found.map(|(payload, raw, page)| {
+            let tax_id_valid = pdfcore::gibqr::tax_id_valid(&payload.vkn_tckn);
+            let mut warnings = Vec::new();
+            if payload.no.is_empty() {
+                warnings.push("The QR payload carries no invoice number.".into());
+            }
+            if !payload.vkn_tckn.is_empty() && !tax_id_valid {
+                warnings.push("The QR sender VKN/TCKN does not pass its checksum.".into());
+            }
+            InvoiceQr { payload, raw, page, tax_id_valid, warnings }
+        }))
+    });
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+}
+
 // ---------------------------------------------------------------------------
 // Cleaner
 // ---------------------------------------------------------------------------
