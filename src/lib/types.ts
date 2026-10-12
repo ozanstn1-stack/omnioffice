@@ -700,6 +700,8 @@ export interface AiBatchItemRequest {
   action: "summarize" | "translate" | "classify" | "extract";
   targetLang?: string;
   labels?: string[];
+  /** Password for this item's encrypted source document. */
+  password?: string;
 }
 
 export interface AiBatchRequest {
@@ -714,6 +716,10 @@ export interface AiBatchItemResult {
   output?: string;
   error?: string;
   elapsedMs: number;
+  /** Approximate tokens used (input + output). */
+  estimatedTokens?: number;
+  /** Approximate cost in USD; 0 when the model's price is unknown. */
+  estimatedCostUsd?: number;
 }
 
 export interface AiBatchResult {

@@ -139,6 +139,8 @@ const invoke = vi.fn(async (command: string, _payload?: unknown) => {
             success: true,
             output: "Summary of invoice 1",
             elapsedMs: 300,
+            estimatedTokens: 1200,
+            estimatedCostUsd: 0.0021,
           },
           {
             path: "C:/docs/invoice2.pdf",
@@ -348,6 +350,10 @@ describe("Ai Screen - Belge Asistanı 2.0", () => {
     expect(await screen.findByText("invoice1.pdf")).toBeInTheDocument();
     expect(await screen.findByText("invoice2.pdf")).toBeInTheDocument();
 
+    // A per-item password is typed for the first queued file.
+    const passwordInputs = screen.getAllByPlaceholderText("password");
+    await user.type(passwordInputs[0], "gizli");
+
     // Run batch queue
     const runButton = screen.getByRole("button", { name: /Run/i });
     await user.click(runButton);
@@ -358,7 +364,7 @@ describe("Ai Screen - Belge Asistanı 2.0", () => {
         expect.objectContaining({
           request: expect.objectContaining({
             items: expect.arrayContaining([
-              expect.objectContaining({ path: "C:/docs/invoice1.pdf", action: "summarize" }),
+              expect.objectContaining({ path: "C:/docs/invoice1.pdf", action: "summarize", password: "gizli" }),
               expect.objectContaining({ path: "C:/docs/invoice2.pdf", action: "summarize" }),
             ]),
           }),
@@ -366,9 +372,10 @@ describe("Ai Screen - Belge Asistanı 2.0", () => {
       );
     });
 
-    // Results rendered
+    // Results rendered, with the approximate cost.
     expect(await screen.findByText("Summary of invoice 1")).toBeInTheDocument();
     expect(await screen.findByText("Summary of invoice 2")).toBeInTheDocument();
+    expect(screen.getByText(/~\$0\.0021/)).toBeInTheDocument();
   });
 
   it("picks batch files through the Android SAF bridge", async () => {
