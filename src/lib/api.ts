@@ -510,9 +510,10 @@ export const detectRedactionMatches = (
   pages: number[] | null,
   jobId: string,
   password?: string,
+  auto = false,
 ) =>
   invokeTracked<RedactionMatch[]>("detect_redaction_matches", {
-    request: { path, keywords, pattern, caseSensitive, pages, password, jobId },
+    request: { path, keywords, pattern, caseSensitive, pages, auto, password, jobId },
   });
 
 /** Writes the document outline (bookmarks) as a new revision. */

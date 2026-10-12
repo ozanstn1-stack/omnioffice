@@ -1474,6 +1474,10 @@ pub struct DetectRedactionMatchesRequest {
     /// 1-based pages; `None` or empty scans the whole document.
     #[serde(default)]
     pub pages: Option<Vec<u32>>,
+    /// Also run the built-in sensitive-data detector (KVKK patterns) on every
+    /// scanned page, next to the keywords and the regular expression.
+    #[serde(default)]
+    pub auto: bool,
     #[serde(default)]
     pub password: Option<String>,
     pub job_id: Option<String>,
@@ -1519,6 +1523,9 @@ pub async fn detect_redaction_matches(
         let mut matches = Vec::new();
         for chars in pages_chars.values() {
             cancel.check()?;
+            if request.auto {
+                matches.extend(pdfcore::redact::detect_sensitive(chars));
+            }
             // Invalid regex patterns surface here as `InvalidInput`.
             matches.extend(pdfcore::redact::detect_patterns(chars, &options)?);
         }
@@ -2285,6 +2292,7 @@ mod tests {
             "pattern": "\\d{4}",
             "caseSensitive": true,
             "pages": [1, 3],
+            "auto": true,
             "password": null,
             "jobId": "job-9"
         }))
@@ -2292,6 +2300,7 @@ mod tests {
         assert_eq!(request.keywords, vec!["secret", "iban"]);
         assert_eq!(request.case_sensitive, Some(true));
         assert_eq!(request.pages.as_deref(), Some(&[1u32, 3][..]));
+        assert!(request.auto);
         assert_eq!(request.job_id.as_deref(), Some("job-9"));
 
         let request: DetectRedactionMatchesRequest = serde_json::from_value(serde_json::json!({
@@ -2305,6 +2314,7 @@ mod tests {
         assert!(request.pattern.is_none());
         assert_eq!(request.case_sensitive, Some(false));
         assert!(request.pages.is_none());
+        assert!(!request.auto, "the built-in detector is opt-in");
     }
 
     #[test]
