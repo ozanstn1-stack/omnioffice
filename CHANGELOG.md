@@ -4,6 +4,55 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.8.0] - Türkçe Doğru (Turkish correctness)
+
+### Added
+
+- **Turkish text in generated PDFs**: stamps, page numbering and form fields
+  are drawn with an embedded Type0/CID font, so `ı İ ğ ş ç ö ü` render instead
+  of blank boxes (`crates/pdfcore/src/textfont.rs`, `stamp.rs`, `numbering.rs`,
+  `forms.rs`; verified with a pdfium text-extraction test).
+- **Calc with Turkish numbers**: typing `1.250,15` in a cell stores `1250.15`,
+  and the sheet's default number and date format follows the Turkish locale
+  (`src/office/calc/locale.ts`, `numberFormat.ts`, `cells.ts`).
+- **Turkish formulas and validation**: `YAZIYLA()` writes a number in Turkish
+  words; `TCKNDOGRULA()`, `VKNDOGRULA()` and `IBANDOGRULA()` validate a Turkish
+  ID, tax number and IBAN; `NETWORKDAYS()`/`WORKDAY()` accept a `"TR"` argument
+  that includes the built-in Turkish public holidays for 2020–2029
+  (`src/office/calc/functions/turkish.ts`, `tr-holidays.ts`, `datetime.ts`).
+- **Turkish search that finds İ/i and I/ı**: the file search and the document
+  vault fold Turkish case correctly, and a Turkish Windows starts with the
+  Turkish interface and OCR languages on first run (`src/lib/search-fold.ts`,
+  `crates/synccore`, `src-tauri/src/vault.rs`).
+- **KVKK redaction**: the redaction screen detects Turkish national IDs, tax
+  numbers, IBANs, plates and phone numbers, with a false-positive test set, and
+  the Batch screen can redact them across many PDFs at once
+  (`crates/pdfcore/src/redact.rs`, `src/screens/Batch.tsx`).
+- **Turkish hyphenation**: justified Writer PDF export breaks long Turkish
+  words at real syllable boundaries from a rule table, with a 500-word golden
+  list shared by the Rust and TypeScript implementations
+  (`crates/officecore/src/hyphen_tr.rs`, `src/office/writer/hyphen-tr.ts`).
+- **Your name on comments and changes**: Settings has a "Your name" field, and
+  new Writer comments and tracked changes are marked with it
+  (`src/office/writer/identity.ts`, `WriterEditor.tsx`).
+- **Seven Turkish templates**: Resmî Yazı (per the Resmî Yazışma Yönetmeliği),
+  İhtarname, Kira Sözleşmesi, İzin Dilekçesi, İstifa Dilekçesi, Bordro (with
+  SGK/vergi formulas) and İrsaliye; every field is a `{{alan}}` placeholder and
+  no template contains a real person's data (`src/office/templates.ts`).
+
+### Known limitations
+
+- Hyphenation drives the **PDF export**; the editor view still relies on the
+  browser's own hyphenation (soft-hyphen integration is not done).
+- Turkish public holidays are tabulated for **2020–2029 only** (Diyanet data);
+  2030 and later are deliberately omitted because 2030 has two Ramazans.
+- Some PDF text paths that draw over existing pages (annotate, flatten, sign)
+  still use the built-in fonts; the remaining ones are tracked in issue #137.
+- Calc formulas keep `,`/`;` as argument separators, so a decimal **inside a
+  formula** is written with a dot (`YAZIYLA(1250.15)`); only cell input accepts
+  `1.250,15`.
+- The Chrome-extension dependency update is still tracked in issue #129.
+
 ## [4.7.1] - Onarım ve dürüstlük (Repairs and honesty)
 
 ### Fixed

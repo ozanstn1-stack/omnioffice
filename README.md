@@ -10,9 +10,25 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 4.7.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 4.8.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 4.8.0 (Türkçe Doğru)
+
+- Turkish characters (`ı İ ğ ş ç ö ü`) now render in generated PDFs: stamps,
+  page numbers and form fields use an embedded Type0/CID font.
+- Calc understands Turkish numbers and dates: typing `1.250,15` stores
+  `1250.15`, and `YAZIYLA`, `TCKNDOGRULA`, `VKNDOGRULA`, `IBANDOGRULA` and the
+  `"TR"` holiday argument on `NETWORKDAYS`/`WORKDAY` cover Turkish documents.
+- Turkish search matches İ/i and I/ı, and a Turkish Windows starts with the
+  Turkish interface and OCR languages.
+- KVKK redaction detects national IDs, tax numbers, IBANs, plates and phone
+  numbers, and the Batch screen can redact them across many PDFs at once.
+- Justified Writer PDFs hyphenate long Turkish words at real syllable
+  boundaries; Settings has a "Your name" field for comments and tracked
+  changes; seven Turkish templates (resmî yazı, ihtarname, kira sözleşmesi,
+  izin/istifa dilekçesi, bordro, irsaliye) ship with `{{alan}}` placeholders.
 
 ## What's new in 4.7.1 (repairs and honesty)
 
