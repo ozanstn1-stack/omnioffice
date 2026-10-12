@@ -5,6 +5,41 @@ what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
 
+## Implemented (this cycle, 4.7.1) - repairs and honesty
+
+- Invoice extraction: snake_case/camelCase aliases, default page, tolerant
+  amount parsing (`1.250,00`, `1,250.00`, `1250 TL`, `(1.234,56)`), per-row
+  parsing, and `InvoiceParseError` carrying the raw reply (no silent zero
+  rows). Tests in `crates/aicore/tests/client_test.rs`.
+- i18n: 50 missing keys added (en+tr) and `scripts/i18n-audit.mjs` now scans
+  `t()`/`label()`/`tr()` usage and fails `--check` on unknown keys.
+- Update security: verification failures surface a translated error instead of
+  the browser fallback; the URL allow-list parses and normalises URLs (rejects
+  `..`/`%2e`); Android requires the release SHA-256 (frontend pre-check and
+  backend refusal); pre-release versions compare per SemVer. Tests in
+  `update.rs`, `android_update.rs` and `src/lib/update.test.ts`.
+- Batch AI: Android SAF picking (`pickOfficeFiles`) and `AiBatchResult.status`
+  (`completed`/`cancelled`/`failed`) with the job guard succeeding only on a
+  real completion. Tests in `jobs.rs` and `Ai.test.tsx`.
+- CSV export: formula-injection neutralisation and exact column mapping.
+- Release pipeline: version consistency gates both builds, `auto-tag` checks
+  `tauri.properties`, release notes carry only the version's CHANGELOG
+  section, `desktop.yml` compiles the Kotlin sources and runs the Android unit
+  tests when `src-tauri/gen/android/**` changes, and the Gradle shell wrapper
+  is stored LF.
+- Docs: the 4.7.0 claims corrected; 4.6.2 and 4.7.0 readiness sections added;
+  the README key-storage note fixed; the audit status note updated to 4.7.0.
+
+### Not done in this pass (honest)
+
+- Invoice line items remain a summary string; itemised rows are not extracted.
+- BM25, the hybrid-search UI wiring and the bounded batch queue are 4.10.0
+  work.
+- The Windows installer is not Authenticode-signed (SmartScreen warning) and
+  Android in-app install needs the "install unknown apps" permission.
+- macOS/Linux packaging stays out of scope; the Chrome-extension dependency
+  update is tracked in its own issue.
+
 ## Implemented (this cycle, 4.7.0) — Belge Asistanı 2.0 (Document Assistant 2.0)
 
 - **Document Chat 2.0 & Citations**: Grounded multi-turn document conversations
