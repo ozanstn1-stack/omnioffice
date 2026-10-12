@@ -4,6 +4,53 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.1] - Onarım ve dürüstlük (Repairs and honesty)
+
+### Fixed
+
+- **Invoice extraction keeps every field**: the parser accepts snake_case and
+  camelCase replies (`invoice_number`, `line_items`, `custom_fields` aliases),
+  defaults a missing `page`, reads amounts written as `1.250,00`, `1,250.00`,
+  `1250 TL` or `(1.234,56)`, parses rows one by one and reports an
+  unparseable reply with the raw model answer instead of silently returning
+  zero rows.
+- **The AI screen is fully translated**: 50 keys used through `label(...)`
+  were missing from both tables (the parity audit could not see them); they
+  are added, `ai.jumpToPage` interpolates the page number, and the i18n audit
+  now scans source usage and fails CI on unknown keys.
+- **Update security**: a rejected signature no longer falls back to the
+  browser silently (the banner reports that the download could not be
+  verified); the release URL allow-list parses and normalises URLs and rejects
+  `..`/`%2e` escapes; Android refuses to install an APK without the published
+  SHA-256; pre-release tags compare per SemVer.
+- **Batch AI honesty**: file picking goes through the Android SAF bridge, and
+  cancelled or all-failed batches report `cancelled`/`failed` instead of
+  looking completed.
+- **CSV export**: cells starting with `=`, `+`, `-`, `@`, tab or CR get a
+  leading apostrophe (formula-injection neutralisation) and columns map by
+  exact field name.
+- **Release pipeline**: version-consistency jobs gate the Windows and Android
+  builds, `auto-tag` also checks `tauri.properties`, release notes contain
+  only the version's CHANGELOG section, and `desktop.yml` compiles the Kotlin
+  sources and runs the Android unit tests when `src-tauri/gen/android/**`
+  changes. The Gradle shell wrapper is stored LF so it runs under `sh`.
+- **Documentation honesty**: the 4.7.0 claims (BM25, invoice fields, batch
+  parallelism, `ai-batch-progress`) are corrected to what the code does, and
+  the missing 4.6.2/4.7.0 readiness sections were added.
+- **Dependabot**: the actions, frontend and rust groups were merged; the
+  `pkcs8`/`hmac` majors are deferred with their real blockers, and the
+  Chrome-extension updates are tracked in a separate issue.
+
+### Known limitations
+
+- Invoice extraction still depends on the model: line items are a summary
+  string, not itemised rows.
+- Vault retrieval is keyword matching plus optional embedding similarity;
+  BM25 and the UI wiring of `vault_search_hybrid` arrive in 4.10.0.
+- Batch items run sequentially; the bounded queue arrives in 4.10.0.
+- The Windows installer is not Authenticode-signed (SmartScreen warning) and
+  Android in-app install needs the "install unknown apps" permission.
+
 ## [4.7.0] - Belge Asistanı 2.0 (Document Assistant 2.0)
 
 ### Added

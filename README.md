@@ -14,6 +14,23 @@ and embedded scripts in office files are never executed.
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
 
+## What's new in 4.7.1 (repairs and honesty)
+
+- Invoice extraction keeps its fields again (snake_case replies, a missing
+  page, Turkish amounts) and reports a broken reply instead of an empty table.
+- The AI screen is fully translated; the i18n audit now fails CI when code
+  uses a key that is not in the table.
+- Updates: a rejected signature is reported instead of silently opening the
+  browser, release links are parsed and normalised, Android needs the published
+  SHA-256, and pre-releases compare per SemVer.
+- Batch AI picks files through the Android system picker and no longer calls a
+  stopped or all-failed run "completed".
+- CSV export neutralises spreadsheet formulas and maps columns by exact field
+  name.
+- Release builds are gated on version consistency, Android Kotlin code is
+  compiled on pull requests that touch it, and release notes carry only that
+  version's changelog.
+
 ## What's new in 4.7.0 (Belge Asistanı 2.0)
 
 Version 4.7.0 modernizes the document assistant into a local-first, multi-modal intelligence hub:
