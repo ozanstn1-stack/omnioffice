@@ -699,7 +699,7 @@ These were exercised on the built application and with automated tests:
 ### Calc (spreadsheet)
 - XLSX, ODS, CSV/TSV import/export · XLS import (read-only) · PDF export
 - Virtualised grid, name box and formula bar, multi-sheet workbooks
-- Formula engine with 274 functions, `LET`, named ranges, inline arrays,
+- Formula engine with 278 functions, `LET`, named ranges, inline arrays,
   dynamic arrays with spill, explicit errors and circular-reference detection
 - Dependency graph with incremental recalculation
 - Formula autocomplete (functions, names, sheets, tables, columns, argument

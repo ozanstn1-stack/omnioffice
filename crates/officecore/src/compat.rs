@@ -13,6 +13,7 @@
 
 use crate::model::{Block, Deck, TextDocument, Workbook};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 /// How well a format supports one feature.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -291,6 +292,29 @@ fn item(feature: &str, status: &str, message: &str) -> FeatureLoss {
     FeatureLoss { feature: feature.to_string(), status: status.to_string(), message: message.to_string() }
 }
 
+/// Functions this build adds that Excel and OpenFormula do not know. A saved
+/// workbook keeps the cached value (XLSX `<v>`, ODS `office:value`), so the
+/// file still shows the right text, but the live formula shows `#NAME?` in
+/// other applications - the report says so instead of staying silent.
+const TR_ONLY_FUNCTIONS: [&str; 4] = ["YAZIYLA", "TCKNDOGRULA", "VKNDOGRULA", "IBANDOGRULA"];
+
+/// Names of the TR-only functions used anywhere in the workbook, sorted.
+fn tr_only_function_uses(workbook: &Workbook) -> Vec<String> {
+    let mut found: BTreeSet<&'static str> = BTreeSet::new();
+    for sheet in &workbook.sheets {
+        for cell in sheet.cells.values() {
+            let Some(formula) = cell.formula.as_ref() else { continue };
+            let upper = formula.to_ascii_uppercase();
+            for name in TR_ONLY_FUNCTIONS {
+                if upper.contains(name) {
+                    found.insert(name);
+                }
+            }
+        }
+    }
+    found.into_iter().map(str::to_string).collect()
+}
+
 fn has_revisions(document: &TextDocument) -> bool {
     crate::revisions::revision_count(document) > 0
 }
@@ -505,6 +529,18 @@ pub fn workbook_feature_report(workbook: &Workbook, format: &str) -> Compatibili
             if format != "oswk" && format != "xlsx" && format != "xlsm" {
                 items.push(item("format", "lost", "Unsupported target."));
             }
+            let tr_only = tr_only_function_uses(workbook);
+            if !tr_only.is_empty() && format != "oswk" {
+                items.push(item(
+                    "formulas",
+                    "transformed",
+                    &format!(
+                        "{} function(s) are not known to Excel ({}); the cached value is saved and shown, but the live formula reads #NAME? in other applications.",
+                        tr_only.len(),
+                        tr_only.join(", ")
+                    ),
+                ));
+            }
         }
         "ods" => {
             if tables > 0 {
@@ -561,6 +597,18 @@ pub fn workbook_feature_report(workbook: &Workbook, format: &str) -> Compatibili
                         ),
                     ));
                 }
+            }
+            let tr_only = tr_only_function_uses(workbook);
+            if !tr_only.is_empty() {
+                items.push(item(
+                    "formulas",
+                    "transformed",
+                    &format!(
+                        "{} function(s) are not known to OpenFormula ({}); the cached value is saved and shown, but the live formula reads #NAME? in other applications.",
+                        tr_only.len(),
+                        tr_only.join(", ")
+                    ),
+                ));
             }
         }
         "csv" | "tsv" => {
@@ -812,6 +860,22 @@ mod tests {
         workbook.sheets[0].charts[0].chart.kind = "radar".into();
         let ods = workbook_feature_report(&workbook, "ods");
         assert!(ods.items.iter().any(|item| item.feature == "charts" && item.status == "lost"));
+    }
+
+    #[test]
+    fn calc_report_names_the_tr_only_functions() {
+        let mut workbook = Workbook::new_blank("TR");
+        let cell = crate::model::Cell { formula: Some("=YAZIYLA(B1)".into()), ..Default::default() };
+        workbook.sheets[0].cells.insert("A1".to_string(), cell);
+        let xlsx = workbook_feature_report(&workbook, "xlsx");
+        assert!(xlsx.items.iter().any(|item| {
+            item.feature == "formulas" && item.status == "transformed" && item.message.contains("YAZIYLA")
+        }));
+        let ods = workbook_feature_report(&workbook, "ods");
+        assert!(ods.items.iter().any(|item| item.feature == "formulas" && item.message.contains("YAZIYLA")));
+        // The native format keeps the live formula, so it is not reported.
+        let oswk = workbook_feature_report(&workbook, "oswk");
+        assert!(!oswk.items.iter().any(|item| item.feature == "formulas"));
     }
 
     #[test]
