@@ -34,6 +34,8 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, State};
 
 use crate::jobs::{emit_progress, JobRegistry};
+use crate::vault_index::{self, Chunk, VaultSearchIndex};
+use sha2::{Digest, Sha256};
 
 // ---------------------------------------------------------------------------
 // Limits
@@ -1950,6 +1952,173 @@ pub fn search_at(root: &Path, request: &VaultSearchRequest) -> VaultSearchRespon
 }
 
 // ---------------------------------------------------------------------------
+// Persistent hybrid index
+// ---------------------------------------------------------------------------
+
+/// The chunks the hybrid index ranks: each document's cached text, split.
+fn vault_chunks(index: &VaultIndex) -> Vec<Chunk> {
+    let mut chunks = Vec::new();
+    for document in &index.documents {
+        for (position, text) in vault_index::chunk_text(&document.text).into_iter().enumerate() {
+            chunks.push(Chunk { document_id: document.id.clone(), chunk: position as u32, text });
+        }
+    }
+    chunks
+}
+
+/// A stable hash of the indexed document set + model, so an unchanged vault is
+/// never re-indexed.
+fn documents_fingerprint(index: &VaultIndex, model: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(model.as_bytes());
+    for document in &index.documents {
+        hasher.update(document.id.as_bytes());
+        hasher.update(b":");
+        hasher.update(document.modified.as_bytes());
+        hasher.update(b";");
+    }
+    hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// Loads the persistent hybrid index, rebuilding it only when the document set
+/// or the model changed. A rebuild never re-embeds an unchanged chunk (the
+/// vector key is `model + hash(chunk text)`).
+fn ensure_search_index(root: &Path, model: &str, dim: Option<usize>) -> VaultSearchIndex {
+    let (vault, _) = load_index(root);
+    let fingerprint = documents_fingerprint(&vault, model);
+    let directory = VaultSearchIndex::directory(root);
+    let existing = VaultSearchIndex::load(&directory);
+    if let Some(current) = &existing {
+        if current.fingerprint == fingerprint
+            && current.vectors.model == model
+            && dim.map(|dim| dim == current.vectors.dim).unwrap_or(true)
+        {
+            return current.clone();
+        }
+    }
+    let dim = dim.or_else(|| existing.as_ref().map(|index| index.vectors.dim)).unwrap_or(0);
+    let mut index = VaultSearchIndex::build(vault_chunks(&vault), model, dim);
+    index.fingerprint = fingerprint;
+    index.prune_vectors(model);
+    let _ = index.save(&directory);
+    index
+}
+
+/// A short snippet around the first query term in `text`, or the text's start.
+fn chunk_snippet(text: &str, terms: &[String]) -> String {
+    let folded: Vec<char> = text.chars().flat_map(|ch| ch.to_lowercase()).collect();
+    let folded: String = folded.into_iter().collect();
+    let chars: Vec<char> = text.chars().collect();
+    for term in terms {
+        if let Some(position) = folded.find(term.as_str()) {
+            // `find` returns a byte index; convert it to a character index.
+            let char_start = folded[..position].chars().count();
+            let start = char_start.saturating_sub(60);
+            let end = (char_start + 180).min(chars.len());
+            return chars[start..end].iter().collect::<String>().trim().to_string();
+        }
+    }
+    chars.iter().take(240).collect::<String>().trim().to_string()
+}
+
+/// Ranks the vault with BM25 and, when a query vector is given, the stored
+/// chunk vectors, fused with RRF. Returns document-level hits.
+fn hybrid_search_at(
+    root: &Path,
+    request: &VaultSearchRequest,
+    model: &str,
+    query_vector: Option<&[f32]>,
+) -> VaultSearchResponse {
+    let started = Instant::now();
+    let query = request.query.trim();
+    let (vault, _) = load_index(root);
+    if vault.documents.is_empty() {
+        return VaultSearchResponse {
+            hits: Vec::new(),
+            total: 0,
+            took_ms: started.elapsed().as_millis() as u64,
+            index_missing: true,
+            retrieval_mode: Some("keyword".to_string()),
+        };
+    }
+    if query.is_empty() {
+        return VaultSearchResponse {
+            hits: Vec::new(),
+            total: 0,
+            took_ms: started.elapsed().as_millis() as u64,
+            index_missing: false,
+            retrieval_mode: Some("keyword".to_string()),
+        };
+    }
+    let limit = if request.limit == 0 { DEFAULT_LIMIT } else { request.limit.min(MAX_LIMIT) };
+    let index = ensure_search_index(root, model, query_vector.map(|vector| vector.len()));
+    // BM25 and, when the query was embedded, the stored chunk vectors, fused
+    // with RRF by the index itself.
+    let has_semantic = query_vector.is_some() && !index.vectors.keys.is_empty();
+    let fused = index.hybrid_search(query, query_vector, (limit * 2).max(40));
+    let terms = vault_index::tokenize(query);
+    let extensions: HashSet<String> = request
+        .extensions
+        .iter()
+        .map(|extension| extension.trim().trim_start_matches('.').to_ascii_lowercase())
+        .filter(|extension| !extension.is_empty())
+        .collect();
+    let folder = request.folder.as_deref().map(normalize_path_key).filter(|folder| !folder.is_empty());
+
+    // Keep the best chunk per document, preserving the fused order.
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut hits: Vec<VaultSearchHit> = Vec::new();
+    for (chunk_index, score) in fused {
+        let Some(chunk) = index.chunks.get(chunk_index as usize) else { continue };
+        if !seen.insert(chunk.document_id.clone()) {
+            continue;
+        }
+        let Some(document) = vault.documents.iter().find(|document| document.id == chunk.document_id) else { continue };
+        if !extensions.is_empty() && !extensions.contains(&document.extension) {
+            continue;
+        }
+        if let Some(folder_key) = &folder {
+            if !path_is_under(&normalize_path_key(&document.path), folder_key) {
+                continue;
+            }
+        }
+        if let Some(after) = &request.modified_after {
+            if document.modified.as_str() < after.as_str() {
+                continue;
+            }
+        }
+        if let Some(before) = &request.modified_before {
+            if document.modified.as_str() >= before.as_str() {
+                continue;
+            }
+        }
+        let matched: Vec<String> =
+            terms.iter().filter(|term| chunk.text.to_lowercase().contains(term.as_str())).cloned().collect();
+        hits.push(VaultSearchHit {
+            document_id: document.id.clone(),
+            path: document.path.clone(),
+            file_name: document.file_name.clone(),
+            extension: document.extension.clone(),
+            size: document.size,
+            modified: document.modified.clone(),
+            score,
+            match_label: "hybrid".to_string(),
+            snippet: chunk_snippet(&chunk.text, &terms),
+            matched_terms: matched,
+        });
+    }
+    let total = hits.len();
+    let hits: Vec<VaultSearchHit> = hits.into_iter().skip(request.offset).take(limit).collect();
+    VaultSearchResponse {
+        hits,
+        total,
+        took_ms: started.elapsed().as_millis() as u64,
+        index_missing: false,
+        retrieval_mode: Some(if has_semantic { "hybrid" } else { "keyword" }.to_string()),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tauri commands
 // ---------------------------------------------------------------------------
 
@@ -2061,43 +2230,111 @@ pub async fn vault_search(app: AppHandle, request: VaultSearchRequest) -> Result
     run_blocking(move || Ok(search_at(&root, &request))).await
 }
 
+/// The embedding model and whether the configured provider supports embeddings.
+fn hybrid_settings(app: &AppHandle) -> (String, bool, Option<aicore::DeepSeekClient>) {
+    match crate::ai::build_config(app) {
+        Ok(config) => {
+            let enabled =
+                aicore::ProviderCapabilities::for_kind(config.provider).embeddings || config.embedding_model.is_some();
+            let model = config.embedding_model.clone().unwrap_or_else(|| "nomic-embed-text".to_string());
+            let client = aicore::DeepSeekClient::new(config).ok();
+            (model, enabled, client)
+        }
+        Err(_) => (String::new(), false, None),
+    }
+}
+
+/// Result of `vault_index_build`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultIndexReport {
+    pub documents: usize,
+    pub chunks: usize,
+    /// Chunks embedded in this run.
+    pub embedded: usize,
+    /// Vectors already cached (unchanged chunks).
+    pub reused: usize,
+    pub cancelled: bool,
+    pub took_ms: u64,
+}
+
 #[tauri::command]
 pub async fn vault_search_hybrid(app: AppHandle, request: VaultSearchRequest) -> Result<VaultSearchResponse, PdfError> {
     let root = config_dir(&app)?;
-    let request_clone = request.clone();
+    let (model, enabled, client) = hybrid_settings(&app);
+    let mut query_vector: Option<Vec<f32>> = None;
+    if enabled && !request.query.trim().is_empty() {
+        if let Some(client) = &client {
+            if let Ok(vector) = client.embed(request.query.trim()).await {
+                query_vector = Some(vector);
+            }
+        }
+    }
     let root_clone = root.clone();
-    let mut response = run_blocking(move || Ok(search_at(&root_clone, &request_clone))).await?;
+    let request_clone = request.clone();
+    let model_clone = model.clone();
+    run_blocking(move || Ok(hybrid_search_at(&root_clone, &request_clone, &model_clone, query_vector.as_deref()))).await
+}
 
-    if let Ok(config) = crate::ai::build_config(&app) {
-        if (aicore::ProviderCapabilities::for_kind(config.provider).embeddings || config.embedding_model.is_some())
-            && !request.query.trim().is_empty()
-        {
-            if let Ok(client) = aicore::DeepSeekClient::new(config) {
-                if let Ok(query_vec) = client.embed(request.query.trim()).await {
-                    let (index, _) = load_index(&root);
-                    for hit in &mut response.hits {
-                        if let Some(doc) = index.documents.iter().find(|d| d.id == hit.document_id) {
-                            let excerpt: String = doc.text.chars().take(500).collect();
-                            if !excerpt.trim().is_empty() {
-                                if let Ok(doc_vec) = client.embed(&excerpt).await {
-                                    let sim = aicore::cosine_similarity(&query_vec, &doc_vec);
-                                    if sim > 0.0 {
-                                        hit.score += (sim as f64) * 40.0;
-                                    }
-                                }
-                            }
-                        }
+/// Embeds the pending vault chunks into the persistent vector store. Requests
+/// are grouped in small batches with a progress event between them, and the
+/// job can be cancelled; an unchanged chunk is never re-embedded.
+#[tauri::command]
+pub async fn vault_index_build(app: AppHandle, registry: State<'_, JobRegistry>) -> Result<VaultIndexReport, PdfError> {
+    let job_id = "vault-index".to_string();
+    let cancel = registry.register(&job_id);
+    let root = config_dir(&app)?;
+    let (model, enabled, client) = hybrid_settings(&app);
+    let started = Instant::now();
+
+    let root_for_load = root.clone();
+    let model_for_load = model.clone();
+    let mut index = run_blocking(move || Ok(ensure_search_index(&root_for_load, &model_for_load, None))).await?;
+    let documents = {
+        let (vault, _) = load_index(&root);
+        vault.documents.len()
+    };
+    let reused = index.vectors.keys.len();
+    let pending = if enabled { index.pending(&model) } else { Vec::new() };
+    let total = pending.len();
+    let mut embedded = 0usize;
+    let mut cancelled = false;
+
+    if enabled {
+        if let Some(client) = client {
+            emit_progress(&app, &job_id, &ProgressEvent::new("index", 0, total as u64));
+            for (position, (key, chunk_index, text)) in pending.iter().enumerate() {
+                if cancel.is_cancelled() {
+                    cancelled = true;
+                    break;
+                }
+                match client.embed(text).await {
+                    Ok(vector) => {
+                        index.set_embedding(key, *chunk_index, &vector);
+                        embedded += 1;
                     }
-                    response.hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-                    response.retrieval_mode = Some("hybrid".to_string());
-                    return Ok(response);
+                    // A provider error stops the run but keeps what is cached.
+                    Err(_) => break,
+                }
+                if position % 8 == 7 || position + 1 == total {
+                    emit_progress(&app, &job_id, &ProgressEvent::new("index", (position + 1) as u64, total as u64));
                 }
             }
         }
     }
 
-    response.retrieval_mode = Some("keyword".to_string());
-    Ok(response)
+    let root_for_save = root.clone();
+    let chunk_count = index.chunks.len();
+    run_blocking(move || index.save(&VaultSearchIndex::directory(&root_for_save)).map_err(PdfError::from_io)).await?;
+
+    Ok(VaultIndexReport {
+        documents,
+        chunks: chunk_count,
+        embedded,
+        reused,
+        cancelled,
+        took_ms: started.elapsed().as_millis() as u64,
+    })
 }
 
 /// Full cached text of one indexed document (for preview panes).
@@ -2146,6 +2383,41 @@ mod tests {
 
     fn test_config(folders: Vec<String>) -> VaultConfig {
         VaultConfig { folders, include_pdf: false, include_office: true, max_file_mb: 8, updated_at: String::new() }
+    }
+
+    #[test]
+    fn hybrid_index_is_persistent_and_ranks_with_bm25() {
+        let root = temp_root("hybrid");
+        let mut index = VaultIndex::default();
+        index.documents.push(VaultDocument {
+            id: "d1".into(),
+            path: "C:/a.pdf".into(),
+            file_name: "a.pdf".into(),
+            extension: "pdf".into(),
+            size: 1,
+            modified: "2026-01-01".into(),
+            title: String::new(),
+            headings: Vec::new(),
+            text: "vergi beyannamesi kdv hesaplama".into(),
+            locations: Vec::new(),
+            tags: Vec::new(),
+            indexed_at: String::new(),
+        });
+        save_index(&root, &index).unwrap();
+        let request = VaultSearchRequest { query: "vergi beyannamesi".into(), ..Default::default() };
+        let response = hybrid_search_at(&root, &request, "test-model", None);
+        assert_eq!(response.hits.len(), 1, "hits: {:?}", response.hits);
+        assert_eq!(response.hits[0].document_id, "d1");
+        assert_eq!(response.retrieval_mode.as_deref(), Some("keyword"));
+        assert!(response.hits[0].snippet.contains("vergi"));
+
+        // The index is written and reused: an unchanged vault is not re-indexed.
+        let directory = VaultSearchIndex::directory(&root);
+        let first = std::fs::read(directory.join("index.json")).expect("index written");
+        let _ = hybrid_search_at(&root, &request, "test-model", None);
+        let second = std::fs::read(directory.join("index.json")).expect("index still there");
+        assert_eq!(first, second, "an unchanged vault must not be re-indexed");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     fn scan_request() -> VaultScanRequest {

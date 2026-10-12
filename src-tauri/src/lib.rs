@@ -36,6 +36,7 @@ mod sign;
 mod sync;
 mod update;
 mod vault;
+mod vault_index;
 
 use jobs::{JobRegistry, JobStore};
 use tauri::Manager;
@@ -374,6 +375,7 @@ pub fn run() {
             vault::vault_import_files,
             vault::vault_search,
             vault::vault_search_hybrid,
+            vault::vault_index_build,
             vault::vault_document_text,
             vault::vault_clear,
             sync::sync_get_config,
