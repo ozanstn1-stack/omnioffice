@@ -1,14 +1,18 @@
-//! Page numbering using the standard Helvetica Type1 font (always available
-//! in PDF viewers, no embedding required, crisp vector output).
+//! Page numbering. The drawn labels use the embedded subset font from
+//! [`crate::textfont`] (Turkish-safe); [`helvetica_text_width`] remains as the
+//! fallback width estimator for PDF→DOCX layout recovery.
 
 use crate::docutil::*;
 use crate::error::{PdfError, PdfResult};
 use crate::progress::{CancelToken, ProgressCallback, ProgressEvent};
-use lopdf::{dictionary, Document, Object};
+use crate::textfont::{ensure_page_font, TextFont, RESOURCE_NAME};
+use lopdf::Document;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-/// Helvetica AFM widths (units/1000) for ASCII 32..126.
+/// Helvetica AFM widths (units/1000) for ASCII 32..126. Used by `pdf2doc`
+/// to estimate the advance of a base14 text run during layout recovery.
 #[rustfmt::skip]
 const HELVETICA_WIDTHS: [u16; 95] = [
     278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
@@ -99,36 +103,6 @@ fn label_for(options: &NumberingOptions, page_number: u32, total: u32) -> String
     }
 }
 
-/// `ensure_helvetica_font` adds a Type1 Helvetica font object to the page.
-fn ensure_helvetica_font(doc: &mut Document, page_id: lopdf::ObjectId) -> PdfResult<()> {
-    let existing = {
-        let resources = doc.get_dictionary(page_id)?.get(b"Resources").ok();
-        resources
-            .and_then(|r| match r {
-                Object::Reference(id) => doc.get_dictionary(*id).ok(),
-                Object::Dictionary(d) => Some(d),
-                _ => None,
-            })
-            .and_then(|d| d.get(b"Font").ok())
-            .cloned()
-    };
-    let has_helv = match &existing {
-        Some(Object::Reference(id)) => doc.get_dictionary(*id).map(|d| d.has(b"Helv")).unwrap_or(false),
-        Some(Object::Dictionary(d)) => d.has(b"Helv"),
-        _ => false,
-    };
-    if has_helv {
-        return Ok(());
-    }
-    let font_id = doc.add_object(Object::Dictionary(dictionary! {
-        "Type" => "Font",
-        "Subtype" => "Type1",
-        "BaseFont" => "Helvetica",
-        "Encoding" => "WinAnsiEncoding",
-    }));
-    add_resource_entry(doc, page_id, b"Font", "Helv", Object::Reference(font_id))
-}
-
 /// Draws the page numbers into the document.
 ///
 /// Shared by the rewrite path and the incremental one; it only appends content
@@ -156,18 +130,27 @@ fn apply_page_numbers(
         options.pages.clone()
     };
 
+    // First pass: the labels decide which glyphs the subset font needs.
+    let mut labels: Vec<(u32, String)> = Vec::with_capacity(target.len());
+    let mut chars: BTreeSet<char> = BTreeSet::new();
     for (index, page_number) in target.iter().enumerate() {
         cancel.check()?;
         progress(ProgressEvent::new("numbering.page", index as u64, target.len() as u64));
-        let page_id = doc.get_pages().get(page_number).copied().ok_or(PdfError::RangeOutOfBounds)?;
         let label = label_for(options, *page_number, total);
+        chars.extend(label.chars());
+        labels.push((*page_number, label));
+    }
+    let font = TextFont::create(doc, &chars)?;
+
+    for (page_number, label) in labels {
+        let page_id = doc.get_pages().get(&page_number).copied().ok_or(PdfError::RangeOutOfBounds)?;
         let rotation = page_rotation(doc, page_id)?;
         let media = page_mediabox(doc, page_id)?;
         let (page_w, page_h) = (media[2] - media[0], media[3] - media[1]);
         let (display_w, display_h) = Matrix::displayed_size(rotation, page_w, page_h);
         let to_page = Matrix::display_to_page(rotation, page_w, page_h);
 
-        let text_w = helvetica_text_width(&label, options.font_size_pt);
+        let text_w = font.measure(&label, options.font_size_pt);
         let margin = options.margin_pt;
         let baseline_offset = options.font_size_pt * 0.25;
         let (x, y) = match options.position.as_str() {
@@ -179,19 +162,20 @@ fn apply_page_numbers(
             _ => ((display_w - text_w) / 2.0, margin + baseline_offset),
         };
 
-        ensure_helvetica_font(&mut *doc, page_id)?;
+        ensure_page_font(doc, page_id, &font)?;
         let content = format!(
-            "q\n{}\nBT\n{r} {g} {b} rg\n/Helv {size:.2} Tf\n{x:.2} {y:.2} Td\n({text}) Tj\nET\nQ\n",
+            "q\n{}\nBT\n{r} {g} {b} rg\n/{resource} {size:.2} Tf\n{x:.2} {y:.2} Td\n{text} Tj\nET\nQ\n",
             to_page.to_cm(),
             r = color[0] as f64 / 255.0,
             g = color[1] as f64 / 255.0,
             b = color[2] as f64 / 255.0,
+            resource = RESOURCE_NAME,
             size = options.font_size_pt,
             x = x,
             y = y,
-            text = escape_pdf_literal(&label),
+            text = font.encode(&label),
         );
-        append_page_content(&mut *doc, page_id, content.into_bytes())?;
+        append_page_content(doc, page_id, content.into_bytes())?;
     }
 
     Ok(())

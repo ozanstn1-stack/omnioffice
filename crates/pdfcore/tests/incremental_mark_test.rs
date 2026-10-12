@@ -86,10 +86,14 @@ fn a_signed_document_survives_page_numbers() {
     let updated = numbering_pdf_incremental(&signed, &numbering_options()).expect("numbering");
     assert_signature_survived(&updated, &signed);
 
-    // The label is written as a real text operator, so it can be asserted.
-    let content = first_page_content(&updated);
-    let text = String::from_utf8_lossy(&content);
-    assert!(text.contains("1 / 1"), "the page label must be in the content: {text}");
+    // The label is drawn with the embedded subset font; extract it back.
+    let doc = Document::load_mem(&updated).expect("reload");
+    let text = doc.extract_text(&[1]).unwrap_or_default();
+    assert!(text.contains("1 / 1"), "the page label must be extractable: {text:?}");
+    assert!(
+        first_page_content(&updated).windows(9).any(|window| window == b"/OmniTr 1"),
+        "the embedded font must be referenced"
+    );
 }
 
 #[test]

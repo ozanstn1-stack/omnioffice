@@ -1,18 +1,21 @@
 //! Header/footer text and Bates numbering stamps.
 //!
 //! Both stamps append a new content revision to every selected page, so
-//! signed documents keep their signatures. Text is drawn with base14
-//! Helvetica; `{page}` and `{pages}` placeholders are substituted per page.
+//! signed documents keep their signatures. Text is drawn with a subset of the
+//! bundled Liberation Sans as a Type0/CID font (see [`crate::textfont`]), so
+//! Turkish and other non-WinAnsi characters survive; `{page}` and `{pages}`
+//! placeholders are substituted per page.
 
 use crate::docutil::{
-    add_resource_entry, append_page_content, load_document, materialize_all_pages, page_mediabox, page_rotation,
-    resolve_output_path, save_document, Matrix, OverwritePolicy,
+    append_page_content, load_document, materialize_all_pages, page_mediabox, page_rotation, resolve_output_path,
+    save_document, Matrix, OverwritePolicy,
 };
 use crate::error::{PdfError, PdfResult};
 use crate::progress::{CancelToken, ProgressCallback, ProgressEvent};
-use lopdf::{dictionary, Document, Object, ObjectId};
+use crate::textfont::{ensure_page_font, TextFont, RESOURCE_NAME};
+use lopdf::{Document, ObjectId};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 /// Header and footer templates; empty strings skip that slot.
@@ -90,62 +93,6 @@ impl Default for BatesOptions {
 }
 
 // ---------------------------------------------------------------------------
-// Base14 Helvetica text (same metrics as `numbering.rs`, kept local so the
-// numbering module stays untouched)
-// ---------------------------------------------------------------------------
-
-/// Helvetica AFM widths (units/1000) for ASCII 32..126.
-#[rustfmt::skip]
-const HELVETICA_WIDTHS: [u16; 95] = [
-    278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
-    556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
-    1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778,
-    667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
-    333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556,
-    556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
-];
-
-fn helvetica_text_width(text: &str, size_pt: f64) -> f64 {
-    let mut width = 0.0;
-    for ch in text.chars() {
-        let code = ch as u32;
-        let w = if (32..=126).contains(&code) { HELVETICA_WIDTHS[(code - 32) as usize] as f64 } else { 556.0 };
-        width += w;
-    }
-    width / 1000.0 * size_pt
-}
-
-/// Adds the base14 Helvetica font to the page resources under `/Helv`.
-fn ensure_helvetica_font(doc: &mut Document, page_id: ObjectId) -> PdfResult<()> {
-    let existing = {
-        let resources = doc.get_dictionary(page_id)?.get(b"Resources").ok();
-        resources
-            .and_then(|r| match r {
-                Object::Reference(id) => doc.get_dictionary(*id).ok(),
-                Object::Dictionary(d) => Some(d),
-                _ => None,
-            })
-            .and_then(|d| d.get(b"Font").ok())
-            .cloned()
-    };
-    let has_helv = match &existing {
-        Some(Object::Reference(id)) => doc.get_dictionary(*id).map(|d| d.has(b"Helv")).unwrap_or(false),
-        Some(Object::Dictionary(d)) => d.has(b"Helv"),
-        _ => false,
-    };
-    if has_helv {
-        return Ok(());
-    }
-    let font_id = doc.add_object(Object::Dictionary(dictionary! {
-        "Type" => "Font",
-        "Subtype" => "Type1",
-        "BaseFont" => "Helvetica",
-        "Encoding" => "WinAnsiEncoding",
-    }));
-    add_resource_entry(doc, page_id, b"Font", "Helv", Object::Reference(font_id))
-}
-
-// ---------------------------------------------------------------------------
 // Placement
 // ---------------------------------------------------------------------------
 
@@ -196,6 +143,7 @@ fn draw_text(
     canvas: &PageCanvas,
     slot: Slot,
     text: &str,
+    font: &TextFont,
     font_size_pt: f64,
     color: [u8; 4],
     margin_pt: f64,
@@ -203,7 +151,7 @@ fn draw_text(
     if text.is_empty() {
         return;
     }
-    let width = helvetica_text_width(text, font_size_pt);
+    let width = font.measure(text, font_size_pt);
     let baseline = font_size_pt * 0.25;
     let top = canvas.display_height - margin_pt - font_size_pt;
     let bottom = margin_pt + baseline;
@@ -216,15 +164,16 @@ fn draw_text(
         Slot::BottomRight => (canvas.display_width - margin_pt - width, bottom),
     };
     out.push_str(&format!(
-        "q\n{}\nBT\n{r:.3} {g:.3} {b:.3} rg\n/Helv {size:.2} Tf\n{x:.2} {y:.2} Td\n({text}) Tj\nET\nQ\n",
+        "q\n{}\nBT\n{r:.3} {g:.3} {b:.3} rg\n/{resource} {size:.2} Tf\n{x:.2} {y:.2} Td\n{text} Tj\nET\nQ\n",
         canvas.to_page.to_cm(),
         r = color[0] as f64 / 255.0,
         g = color[1] as f64 / 255.0,
         b = color[2] as f64 / 255.0,
+        resource = RESOURCE_NAME,
         size = font_size_pt,
         x = x,
         y = y,
-        text = crate::docutil::escape_pdf_literal(text),
+        text = font.encode(text),
     ));
 }
 
@@ -265,22 +214,20 @@ fn substitute_template(template: &str, page: u64, pages: u64) -> String {
     template.replace("{page}", &page.to_string()).replace("{pages}", &pages.to_string())
 }
 
-/// Draws the six templates of one page. `position_in_selection` is 1-based.
-fn header_footer_content(
-    out: &mut String,
-    canvas: &PageCanvas,
+/// The six templates of one page as (slot, text) pairs. `position_in_selection`
+/// is 1-based.
+fn header_footer_texts(
     options: &HeaderFooterOptions,
     page_number: u32,
     total_pages: u32,
     position_in_selection: u32,
     selected_total: u32,
-) {
+) -> Vec<(Slot, String)> {
     // `{page}` is the visible number: the selection position when counting
     // from the start, otherwise the document page number, plus the offset.
     let base = if options.count_from_start { u64::from(position_in_selection) } else { u64::from(page_number) };
     let visible = base + u64::from(options.start_number.saturating_sub(1));
     let pages = if options.count_from_start { u64::from(selected_total) } else { u64::from(total_pages) };
-    let color = crate::watermark::parse_hex_color(&options.color);
     let slots = [
         (&options.header_left, Slot::TopLeft),
         (&options.header_center, Slot::TopCenter),
@@ -289,10 +236,11 @@ fn header_footer_content(
         (&options.footer_center, Slot::BottomCenter),
         (&options.footer_right, Slot::BottomRight),
     ];
-    for (template, slot) in slots {
-        let text = substitute_template(template, visible, pages);
-        draw_text(out, canvas, slot, &text, options.font_size_pt, color, options.margin_pt);
-    }
+    slots
+        .into_iter()
+        .filter(|(template, _)| !template.is_empty())
+        .map(|(template, slot)| (slot, substitute_template(template, visible, pages)))
+        .collect()
 }
 
 /// `{prefix}{number}{suffix}` where number = start + position in selection,
@@ -354,44 +302,61 @@ fn apply_stamps(
     targets.sort_unstable();
     targets.dedup();
 
+    struct PagePlan {
+        page_id: ObjectId,
+        canvas: PageCanvas,
+        draws: Vec<(Slot, String, f64, [u8; 4], f64)>,
+    }
+
+    // First pass: collect every string that will be drawn so the subset font
+    // covers all of them in one go.
+    let mut plans: Vec<PagePlan> = Vec::new();
+    let mut chars: BTreeSet<char> = BTreeSet::new();
     for (index, page_number) in targets.iter().enumerate() {
         cancel.check()?;
         progress(ProgressEvent::new("stamp.page", index as u64, targets.len() as u64));
         let page_id = doc.get_pages().get(page_number).copied().ok_or(PdfError::RangeOutOfBounds)?;
         let canvas = PageCanvas::new(page_rotation(doc, page_id)?, page_mediabox(doc, page_id)?);
-        let mut content = String::new();
+        let mut draws: Vec<(Slot, String, f64, [u8; 4], f64)> = Vec::new();
         if let Some(options) = header_footer {
             if let Some(position) = header_positions.get(page_number) {
-                header_footer_content(
-                    &mut content,
-                    &canvas,
-                    options,
-                    *page_number,
-                    total,
-                    *position,
-                    header_pages.len() as u32,
-                );
+                let color = crate::watermark::parse_hex_color(&options.color);
+                for (slot, text) in
+                    header_footer_texts(options, *page_number, total, *position, header_pages.len() as u32)
+                {
+                    chars.extend(text.chars());
+                    draws.push((slot, text, options.font_size_pt, color, options.margin_pt));
+                }
             }
         }
         if let Some(options) = bates {
             if let Some(position) = bates_positions.get(page_number) {
                 let color = crate::watermark::parse_hex_color(&options.color);
                 let text = bates_text(options, *position);
-                draw_text(
-                    &mut content,
-                    &canvas,
+                chars.extend(text.chars());
+                draws.push((
                     Slot::from_position(&options.position),
-                    &text,
+                    text,
                     options.font_size_pt,
                     color,
                     options.margin_pt,
-                );
+                ));
             }
         }
-        if !content.is_empty() {
-            ensure_helvetica_font(doc, page_id)?;
-            append_page_content(doc, page_id, content.into_bytes())?;
+        if !draws.is_empty() {
+            plans.push(PagePlan { page_id, canvas, draws });
         }
+    }
+
+    // Second pass: one embedded font for the whole stamp, then the content.
+    let font = TextFont::create(doc, &chars)?;
+    for plan in plans {
+        let mut content = String::new();
+        for (slot, text, size, color, margin) in &plan.draws {
+            draw_text(&mut content, &plan.canvas, *slot, text, &font, *size, *color, *margin);
+        }
+        ensure_page_font(doc, plan.page_id, &font)?;
+        append_page_content(doc, plan.page_id, content.into_bytes())?;
     }
     Ok(())
 }
@@ -460,7 +425,12 @@ mod tests {
     }
 
     #[test]
-    fn helvetica_widths_match_the_numbering_table() {
-        assert!((helvetica_text_width("12345", 12.0) - 12.0 * 5.0 * 0.556).abs() < 0.01);
+    fn embedded_font_measures_ascii_like_helvetica() {
+        // Liberation Sans is metric-compatible with Helvetica: five digits are
+        // 5 x 0.556 em wide, the same figure `numbering.rs` used.
+        let mut doc = Document::with_version("1.7");
+        let chars: BTreeSet<char> = "0123456789".chars().collect();
+        let font = TextFont::create(&mut doc, &chars).expect("font");
+        assert!((font.measure("12345", 12.0) - 12.0 * 5.0 * 0.556).abs() < 0.01);
     }
 }

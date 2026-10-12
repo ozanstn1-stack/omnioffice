@@ -25,6 +25,12 @@ fn page_content(pdf: &[u8], page: u32) -> String {
     String::from_utf8_lossy(&doc.get_page_content(page_id)).to_string()
 }
 
+/// Extracted text of one page of an in-memory PDF (via the font's ToUnicode).
+fn page_text_of(pdf: &[u8], page: u32) -> String {
+    let doc = Document::load_mem(pdf).expect("reload");
+    doc.extract_text(&[page]).unwrap_or_default()
+}
+
 fn identity() -> &'static (Vec<u8>, Vec<u8>) {
     static IDENTITY: OnceLock<(Vec<u8>, Vec<u8>)> = OnceLock::new();
     IDENTITY.get_or_init(|| {
@@ -47,10 +53,39 @@ fn header_footer_text_is_drawn_and_placeholders_are_substituted() {
 
     assert!(stamped.starts_with(&bytes), "the original revision must be preserved");
     for page in 1..=3u32 {
+        let text = page_text_of(&stamped, page);
+        assert!(text.contains(&format!("Sayfa {page} / 3")), "page {page} text: {text:?}");
         let content = page_content(&stamped, page);
-        assert!(content.contains(&format!("Sayfa {page} / 3")), "page {page} content: {content}");
-        assert!(content.contains("/Helv"), "the Helvetica resource must be wired in");
+        assert!(content.contains("/OmniTr"), "the embedded font resource must be wired in");
     }
+}
+
+#[test]
+fn turkish_text_survives_stamping() {
+    let bytes = sample_bytes(1);
+    let options = HeaderFooterOptions { footer_center: "Şişli Güneş İĞDIR ı".into(), ..Default::default() };
+    let stamped = stamp_pdf_incremental(&bytes, Some(&options), None).expect("stamp");
+    let text = page_text_of(&stamped, 1);
+    assert!(text.contains("Şişli Güneş İĞDIR ı"), "extracted: {text:?}");
+}
+
+/// The plan's acceptance test: pdfium must read the Turkish stamp back
+/// character for character. Skipped when pdfium is not available (Linux CI).
+#[test]
+fn pdfium_reads_the_turkish_stamp_back() {
+    if !pdfcore::render::is_available() {
+        eprintln!("pdfium is not available; skipping the extraction check");
+        return;
+    }
+    let dir = TestDir::new();
+    let input = dir.path("turkish.pdf");
+    write_doc(&mut build_text_doc(1, "TR", "Turkish stamp"), &input);
+    let output = dir.path("turkish-stamped.pdf");
+    let options = HeaderFooterOptions { footer_center: "Şişli Güneş İĞDIR ı".into(), ..Default::default() };
+    stamp_pdf(&input, &output, Some(&options), None, OverwritePolicy::Replace, None, &no_progress, &CancelToken::new())
+        .expect("stamp");
+    let text = pdfcore::render::extract_page_text(&output, None, 1).expect("pdfium text");
+    assert!(text.contains("Şişli Güneş İĞDIR ı"), "pdfium extracted: {text:?}");
 }
 
 #[test]
@@ -65,8 +100,8 @@ fn count_from_start_offsets_the_visible_number() {
     };
     let stamped = stamp_pdf_incremental(&bytes, Some(&options), None).expect("stamp");
     // Counting from the document, not the selection: page 2 shows "11 / 3".
-    assert!(page_content(&stamped, 2).contains("11 / 3"));
-    assert!(page_content(&stamped, 3).contains("12 / 3"));
+    assert!(page_text_of(&stamped, 2).contains("11 / 3"));
+    assert!(page_text_of(&stamped, 3).contains("12 / 3"));
 
     let selection_counted = HeaderFooterOptions {
         footer_right: "{page} / {pages}".into(),
@@ -77,8 +112,8 @@ fn count_from_start_offsets_the_visible_number() {
     };
     let stamped = stamp_pdf_incremental(&bytes, Some(&selection_counted), None).expect("stamp");
     // Counting from the start: first selected page shows "10 / 2".
-    assert!(page_content(&stamped, 2).contains("10 / 2"));
-    assert!(page_content(&stamped, 3).contains("11 / 2"));
+    assert!(page_text_of(&stamped, 2).contains("10 / 2"));
+    assert!(page_text_of(&stamped, 3).contains("11 / 2"));
 }
 
 #[test]
@@ -86,9 +121,9 @@ fn a_page_selection_limits_the_header_footer() {
     let bytes = sample_bytes(3);
     let options = HeaderFooterOptions { header_left: "ONLY-SELECTED".into(), pages: vec![2], ..Default::default() };
     let stamped = stamp_pdf_incremental(&bytes, Some(&options), None).expect("stamp");
-    assert!(!page_content(&stamped, 1).contains("ONLY-SELECTED"));
-    assert!(page_content(&stamped, 2).contains("ONLY-SELECTED"));
-    assert!(!page_content(&stamped, 3).contains("ONLY-SELECTED"));
+    assert!(!page_text_of(&stamped, 1).contains("ONLY-SELECTED"));
+    assert!(page_text_of(&stamped, 2).contains("ONLY-SELECTED"));
+    assert!(!page_text_of(&stamped, 3).contains("ONLY-SELECTED"));
 }
 
 #[test]
@@ -103,9 +138,9 @@ fn bates_numbers_pad_prefix_and_continue_over_the_selection() {
         ..Default::default()
     };
     let stamped = stamp_pdf_incremental(&bytes, None, Some(&options)).expect("stamp");
-    assert!(page_content(&stamped, 1).contains("ACME-0007-B"));
-    assert!(!page_content(&stamped, 2).contains("ACME-"));
-    assert!(page_content(&stamped, 3).contains("ACME-0008-B"));
+    assert!(page_text_of(&stamped, 1).contains("ACME-0007-B"));
+    assert!(!page_text_of(&stamped, 2).contains("ACME-"));
+    assert!(page_text_of(&stamped, 3).contains("ACME-0008-B"));
 }
 
 #[test]
@@ -166,6 +201,6 @@ fn a_signed_document_survives_a_stamp() {
     assert!(info.signature_valid, "signature: {:?}", info.notes);
     assert!(!info.modified_after_signing, "an appended revision is not a modification: {:?}", info.notes);
     assert!(info.superseded_by_later_revision);
-    assert!(page_content(&updated, 1).contains("CONFIDENTIAL"));
-    assert!(page_content(&updated, 1).contains("B-001"));
+    assert!(page_text_of(&updated, 1).contains("CONFIDENTIAL"));
+    assert!(page_text_of(&updated, 1).contains("B-001"));
 }

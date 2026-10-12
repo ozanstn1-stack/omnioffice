@@ -69,6 +69,7 @@ pub mod security;
 pub mod sign;
 pub mod stamp;
 pub mod textbox;
+pub mod textfont;
 pub mod textimg;
 pub mod timestamp;
 pub mod ttfsubset;
