@@ -2023,7 +2023,7 @@ fn chunk_snippet(text: &str, terms: &[String]) -> String {
 
 /// Ranks the vault with BM25 and, when a query vector is given, the stored
 /// chunk vectors, fused with RRF. Returns document-level hits.
-fn hybrid_search_at(
+pub(crate) fn hybrid_search_at(
     root: &Path,
     request: &VaultSearchRequest,
     model: &str,

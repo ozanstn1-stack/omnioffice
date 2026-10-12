@@ -49,7 +49,7 @@ const invoke = vi.fn(async (command: string) => {
       return statusFixture;
     case "vault_scan":
       return statusFixture;
-    case "vault_search":
+    case "vault_search_hybrid":
       return searchFixture;
     case "vault_document_text":
       return "Full preview text of the indexed document.";
@@ -129,7 +129,9 @@ describe("the vault screen renders against the real wire format", () => {
 
     await waitFor(() => expect(screen.getByText("alpha.txt")).toBeInTheDocument());
     expect(screen.getByText("beta.md")).toBeInTheDocument();
-    expect(invoke).toHaveBeenCalledWith("vault_search", { request: expect.objectContaining({ query: "vault" }) });
+    expect(invoke).toHaveBeenCalledWith("vault_search_hybrid", {
+      request: expect.objectContaining({ query: "vault" }),
+    });
 
     const marks = Array.from(container.querySelectorAll("mark"));
     expect(marks.map((mark) => mark.textContent)).toEqual(["vault", "vault"]);

@@ -1014,6 +1014,23 @@ pub struct AiCitation {
     pub snippet: String,
     pub score: f32,
     pub cited: bool,
+    /// The source document's path, so a click opens the right file (empty for
+    /// an older saved thread).
+    #[serde(default)]
+    pub path: String,
+    /// Where inside the document the source is: `page 3`, `paragraph 12`,
+    /// `Sheet1!A1:B7`, `slide 4`.
+    #[serde(default)]
+    pub location: String,
+}
+
+/// The source behind one retrieved context block, aligned with
+/// `retrieved_pages` so a citation can point at the right document.
+#[derive(Clone, Default)]
+struct CitationSource {
+    path: String,
+    location: String,
+    page: u32,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -1024,6 +1041,17 @@ pub struct AiChatResult {
     pub retrieval_mode: String, // "hybrid" | "keyword"
     pub model: String,
     pub elapsed_ms: u64,
+}
+
+/// The page number inside a vault location label (`page 3` -> 3); 0 when the
+/// location is not a page (a paragraph, a sheet range, a slide).
+fn page_from_location(location: &str) -> u32 {
+    let lower = location.to_ascii_lowercase();
+    lower
+        .strip_prefix("page ")
+        .and_then(|rest| rest.split_whitespace().next())
+        .and_then(|number| number.parse::<u32>().ok())
+        .unwrap_or(0)
 }
 
 fn extract_cited_pages(text: &str) -> Vec<u32> {
@@ -1066,6 +1094,7 @@ pub async fn ai_chat(
     let mut retrieval_mode = "keyword".to_string();
     let messages;
     let mut retrieved_pages: Vec<(u32, String)> = Vec::new();
+    let mut sources: Vec<CitationSource> = Vec::new();
 
     match request.scope.as_str() {
         "page" => {
@@ -1081,6 +1110,14 @@ pub async fn ai_chat(
                     &cancel,
                 )?;
                 retrieved_pages = extracted;
+                sources = retrieved_pages
+                    .iter()
+                    .map(|(page, _)| CitationSource {
+                        path: path.as_path().to_string_lossy().to_string(),
+                        location: format!("page {page}"),
+                        page: *page,
+                    })
+                    .collect();
                 let mut wire_msgs = prompts::doc_chat_messages(&request.question, &retrieved_pages, &request.history);
 
                 if request.send_image {
@@ -1116,6 +1153,11 @@ pub async fn ai_chat(
             let sel = request.selection.unwrap_or_default();
             let page_num = request.page.unwrap_or(1);
             retrieved_pages.push((page_num, sel));
+            sources.push(CitationSource {
+                path: request.path.clone().unwrap_or_default(),
+                location: format!("page {page_num}"),
+                page: page_num,
+            });
             messages = prompts::doc_chat_messages(&request.question, &retrieved_pages, &request.history);
         }
         "vault" => {
@@ -1132,10 +1174,25 @@ pub async fn ai_chat(
                 limit: 5,
                 offset: 0,
             };
-            let search_res = crate::vault::search_at(&root, &search_req);
+            // Hybrid: BM25 over the persistent index plus the stored chunk
+            // vectors, fused with RRF. The query vector is only computed when
+            // the provider supports embeddings.
+            let embeddings = aicore::ProviderCapabilities::for_kind(client.config().provider).embeddings
+                || client.config().embedding_model.is_some();
+            let model = client.config().embedding_model.clone().unwrap_or_else(|| "nomic-embed-text".to_string());
+            let query_vector = if embeddings { client.embed(&request.question).await.ok() } else { None };
+            let search_res = crate::vault::hybrid_search_at(&root, &search_req, &model, query_vector.as_deref());
+            if let Some(mode) = &search_res.retrieval_mode {
+                retrieval_mode = mode.clone();
+            }
             for (idx, hit) in search_res.hits.iter().enumerate() {
                 let pseudo_page = (idx + 1) as u32;
                 retrieved_pages.push((pseudo_page, format!("{} ({}): {}", hit.file_name, hit.match_label, hit.snippet)));
+                sources.push(CitationSource {
+                    path: hit.path.clone(),
+                    location: hit.match_label.clone(),
+                    page: page_from_location(&hit.match_label),
+                });
             }
             messages = prompts::doc_chat_messages(&request.question, &retrieved_pages, &request.history);
         }
@@ -1178,6 +1235,14 @@ pub async fn ai_chat(
                         .collect();
                 }
 
+                sources = retrieved_pages
+                    .iter()
+                    .map(|(page, _)| CitationSource {
+                        path: request.path.clone().unwrap_or_default(),
+                        location: format!("page {page}"),
+                        page: *page,
+                    })
+                    .collect();
                 messages = prompts::doc_chat_messages(&request.question, &retrieved_pages, &request.history);
             } else {
                 return Err(PdfError::InvalidInput("No document specified for chat.".into()));
@@ -1195,10 +1260,20 @@ pub async fn ai_chat(
 
     let cited_numbers = extract_cited_pages(&answer);
 
-    for (page, text) in &retrieved_pages {
+    for (index, (page, text)) in retrieved_pages.iter().enumerate() {
         let is_cited = cited_numbers.contains(page);
         let snippet: String = text.chars().take(220).collect();
-        citations.push(AiCitation { page: *page, snippet, score: if is_cited { 1.0 } else { 0.5 }, cited: is_cited });
+        let source = sources.get(index);
+        let real_page = source.map(|source| source.page).unwrap_or(0);
+        citations.push(AiCitation {
+            // Prefer the document's real page over the context's pseudo-page.
+            page: if real_page > 0 { real_page } else { *page },
+            snippet,
+            score: if is_cited { 1.0 } else { 0.5 },
+            cited: is_cited,
+            path: source.map(|source| source.path.clone()).unwrap_or_default(),
+            location: source.map(|source| source.location.clone()).unwrap_or_default(),
+        });
     }
     citations.sort_by(|a, b| b.cited.cmp(&a.cited).then_with(|| a.page.cmp(&b.page)));
 

@@ -60,6 +60,8 @@ import { Badge, Button, Card, Checkbox, Field, Segmented, Spinner, TextArea, Tex
 import { DropZone, InfoStrip, ResultCard } from "../components/files";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
+import { resolveCitationTarget } from "../lib/citation-target";
+import { openOfficePath } from "../lib/office-store";
 import { consentKeys, isLocalProvider, plainProviderName, providerDisplayName } from "../lib/ai-providers";
 import { useTool } from "../lib/useTool";
 import { useDev, useSettings, useToasts } from "../lib/store";
@@ -545,8 +547,14 @@ export function Ai({
             className="badge inline-flex items-center gap-1 cursor-pointer hover:underline mx-0.5 text-xs"
             style={{ background: "var(--accent-subtle)", color: "var(--accent)" }}
             onClick={() => {
-              if (session.primary?.path) {
-                onNavigate?.("reader", { files: [session.primary.path], targetPage: pageNum });
+              // The citation may point at another document (the vault scope);
+              // open that file, not the one currently loaded.
+              const target = resolveCitationTarget(session.primary?.path, pageNum, undefined, session.primary?.path);
+              if (!target) return;
+              if (target.kind === "pdf") {
+                onNavigate?.("reader", { files: [target.path], targetPage: target.page });
+              } else {
+                void openOfficePath(target.path).then(() => onNavigate?.("office"));
               }
             }}
             title={t("ai.jumpToPage", { page: pageNum })}
@@ -1202,11 +1210,20 @@ export function Ai({
                                           type="button"
                                           className="badge hover:opacity-80 transition cursor-pointer flex items-center gap-1.5 p-1 px-2 text-xs bg-[var(--surface-3)] rounded border border-[var(--border)]"
                                           onClick={() => {
-                                            if (session.primary?.path) {
+                                            const target = resolveCitationTarget(
+                                              c.path,
+                                              c.page,
+                                              c.location,
+                                              session.primary?.path,
+                                            );
+                                            if (!target) return;
+                                            if (target.kind === "pdf") {
                                               onNavigate?.("reader", {
-                                                files: [session.primary.path],
-                                                targetPage: c.page,
+                                                files: [target.path],
+                                                targetPage: target.page > 0 ? target.page : undefined,
                                               });
+                                            } else {
+                                              void openOfficePath(target.path).then(() => onNavigate?.("office"));
                                             }
                                           }}
                                           title={c.snippet || `Jump to page ${c.page}`}

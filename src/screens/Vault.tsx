@@ -114,6 +114,8 @@ export interface VaultSearchResponse {
   total: number;
   tookMs: number;
   indexMissing: boolean;
+  /** "hybrid" when BM25 and the stored vectors were fused with RRF. */
+  retrievalMode?: string | null;
 }
 
 const DEFAULT_CONFIG: VaultConfig = {
@@ -403,7 +405,10 @@ export function Vault() {
         limit,
         offset,
       };
-      const response = await invoke<VaultSearchResponse>("vault_search", { request });
+      // Hybrid search: BM25 plus, when embeddings are configured, the stored
+      // chunk vectors fused with RRF. It falls back to keyword-only when the
+      // provider has no embeddings.
+      const response = await invoke<VaultSearchResponse>("vault_search_hybrid", { request });
       setResult(response);
     } catch (err) {
       setSearchError(errorMessage(err, t));
