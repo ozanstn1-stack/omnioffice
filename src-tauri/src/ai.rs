@@ -19,6 +19,7 @@ use officecore::{csvio, docx, legacy, odf, pptx, rtf, textio, xlsx};
 use pdfcore::error::{ErrorCode, PdfError};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 /// Safety cap for pathological documents; the real limit is the configured
@@ -30,7 +31,7 @@ fn ai_error(error: AiError) -> PdfError {
     let code = match error {
         AiError::MissingApiKey => ErrorCode::AiNotConfigured,
         AiError::InvalidApiKey(_) => ErrorCode::AiInvalidKey,
-        AiError::RateLimited(_) => ErrorCode::AiRateLimited,
+        AiError::RateLimited(..) => ErrorCode::AiRateLimited,
         AiError::InsufficientBalance(_) => ErrorCode::AiInsufficientBalance,
         AiError::Network(_) => ErrorCode::AiNetwork,
         AiError::Cancelled => ErrorCode::Cancelled,
@@ -1465,6 +1466,9 @@ pub struct AiBatchItemRequest {
     pub action: String, // "summarize" | "translate" | "classify" | "extract"
     pub target_lang: Option<String>,
     pub labels: Option<Vec<String>>,
+    /// Password for this item's encrypted source document.
+    #[serde(default)]
+    pub password: Option<String>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -1483,6 +1487,12 @@ pub struct AiBatchItemResult {
     pub output: Option<String>,
     pub error: Option<String>,
     pub elapsed_ms: u64,
+    /// Approximate tokens used (input + output), from character counts.
+    #[serde(default)]
+    pub estimated_tokens: u64,
+    /// Approximate cost in USD; 0 when the model's price is unknown.
+    #[serde(default)]
+    pub estimated_cost_usd: f64,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -1495,6 +1505,192 @@ pub struct AiBatchResult {
     pub status: String,
 }
 
+/// How many batch items run at once; a small cap keeps the provider happy and
+/// the progress readable.
+const BATCH_CONCURRENCY: usize = 3;
+/// How many times a rate-limited call is retried before it fails.
+const BATCH_MAX_RETRIES: u32 = 3;
+
+/// Approximate price per 1M tokens (input, output) for the models we know.
+fn price_per_million(model: &str) -> Option<(f64, f64)> {
+    let model = model.to_lowercase();
+    if model.contains("deepseek") {
+        Some((0.27, 1.10))
+    } else if model.contains("gpt-4o-mini") {
+        Some((0.15, 0.60))
+    } else if model.contains("gpt-4o") {
+        Some((2.50, 10.0))
+    } else if model.contains("claude") {
+        Some((3.0, 15.0))
+    } else {
+        None
+    }
+}
+
+/// Approximate tokens (chars / 4) and cost in USD. The cost is 0 when the
+/// model's price is unknown, so the UI shows only the token estimate.
+fn estimate_cost(model: &str, input_chars: usize, output_chars: usize) -> (u64, f64) {
+    let tokens = ((input_chars + output_chars) as f64 / 4.0).round() as u64;
+    let cost = price_per_million(model)
+        .map(|(input, output)| {
+            (input_chars as f64 / 4.0) / 1_000_000.0 * input + (output_chars as f64 / 4.0) / 1_000_000.0 * output
+        })
+        .unwrap_or(0.0);
+    (tokens, cost)
+}
+
+/// The delay before a rate-limited retry: the provider's `Retry-After` when it
+/// gave one, otherwise an exponential backoff, capped at a minute.
+fn retry_delay(retry_after: Option<u64>, attempt: u32) -> u64 {
+    retry_after.unwrap_or(2u64.pow(attempt)).min(60)
+}
+
+/// Runs a non-streaming completion, retrying a rate limit after the delay the
+/// provider asked for (`Retry-After`) or an exponential backoff when it did
+/// not say. The cancel token aborts an in-flight request.
+async fn chat_with_retry(
+    client: &DeepSeekClient,
+    messages: &[ChatMessage],
+    options: ChatOptions,
+    cancel: &CancelToken,
+) -> Result<String, AiError> {
+    let mut attempt = 0u32;
+    loop {
+        match client.chat_cancellable(messages, options.clone(), cancel).await {
+            Ok(text) => return Ok(text),
+            Err(AiError::RateLimited(_, retry_after)) if attempt < BATCH_MAX_RETRIES => {
+                tokio::time::sleep(std::time::Duration::from_secs(retry_delay(retry_after, attempt))).await;
+                attempt += 1;
+            }
+            Err(other) => return Err(other),
+        }
+    }
+}
+
+/// Runs one batch item and returns its result.
+async fn run_batch_item(
+    client: Arc<DeepSeekClient>,
+    app: AppHandle,
+    job_id: String,
+    item: AiBatchItemRequest,
+    cancel: CancelToken,
+) -> AiBatchItemResult {
+    let item_start = std::time::Instant::now();
+    let mut item_success = false;
+    let mut item_output = None;
+    let mut item_error = None;
+    let mut input_chars = 0usize;
+    let model = client.config().model.clone();
+
+    match crate::paths::input_file(&item.path) {
+        Err(error) => item_error = Some(error.to_string()),
+        Ok(path) => {
+            // The per-item password lets an encrypted source in the queue open.
+            match extract_pages(&app, &job_id, path.as_path(), item.password.as_deref(), None, &cancel) {
+                Err(error) => item_error = Some(error.to_string()),
+                Ok(extracted) => {
+                    let text = join_text(&extracted);
+                    input_chars = text.chars().count();
+                    match item.action.as_str() {
+                        "summarize" => {
+                            let plan = prompts::summarize_prompt_with_budget(
+                                &text,
+                                &SummaryOptions::default(),
+                                client.config().chunk_chars(),
+                            );
+                            let mut dummy_p = |_: &str, _: usize, _: usize| {};
+                            let mut dummy_d = |_: &str| {};
+                            let mut dummy_r = |_: &str| {};
+                            match aicore::run_plan(&client, &plan, &cancel, &mut dummy_p, &mut dummy_d, &mut dummy_r)
+                                .await
+                            {
+                                Ok(summary) => {
+                                    item_success = true;
+                                    item_output = Some(summary);
+                                }
+                                Err(error) => item_error = Some(ai_error(error).to_string()),
+                            }
+                        }
+                        "translate" => {
+                            let target_lang = item.target_lang.clone().unwrap_or_else(|| "tr".into());
+                            let opts = TranslateOptions { target_language: target_lang, bilingual: false };
+                            let messages = prompts::translate_page_prompt("Document", &text, &opts);
+                            match chat_with_retry(&client, &messages, ChatOptions::default(), &cancel).await {
+                                Ok(translation) => {
+                                    item_success = true;
+                                    item_output = Some(translation);
+                                }
+                                Err(error) => item_error = Some(ai_error(error).to_string()),
+                            }
+                        }
+                        "classify" => {
+                            let default_labels = vec![
+                                "Invoice".into(),
+                                "Contract".into(),
+                                "Report".into(),
+                                "Form".into(),
+                                "Letter".into(),
+                                "Other".into(),
+                            ];
+                            let labels = item.labels.as_ref().unwrap_or(&default_labels);
+                            let messages = prompts::classify_document_prompt(&text, labels);
+                            match chat_with_retry(
+                                &client,
+                                &messages,
+                                ChatOptions { temperature: Some(0.0), max_tokens: Some(256) },
+                                &cancel,
+                            )
+                            .await
+                            {
+                                Ok(reply) => {
+                                    let parsed = prompts::parse_classification_reply(&reply, "Other");
+                                    item_success = true;
+                                    item_output = Some(format!("{}: {}", parsed.label, parsed.reason));
+                                }
+                                Err(error) => item_error = Some(ai_error(error).to_string()),
+                            }
+                        }
+                        "extract" => {
+                            let messages = prompts::invoice_extract_prompt(&extracted, &[]);
+                            match chat_with_retry(
+                                &client,
+                                &messages,
+                                ChatOptions { temperature: Some(0.0), max_tokens: Some(2048) },
+                                &cancel,
+                            )
+                            .await
+                            {
+                                Ok(reply) => match prompts::parse_invoice_extract_reply(&reply) {
+                                    Ok(rows) => {
+                                        item_success = true;
+                                        item_output = Some(serde_json::to_string(&rows).unwrap_or(reply));
+                                    }
+                                    Err(parse_error) => item_error = Some(parse_error.to_string()),
+                                },
+                                Err(error) => item_error = Some(ai_error(error).to_string()),
+                            }
+                        }
+                        other => item_error = Some(format!("Unknown batch action: {other}")),
+                    }
+                }
+            }
+        }
+    }
+
+    let output_chars = item_output.as_deref().map(|output| output.chars().count()).unwrap_or(0);
+    let (estimated_tokens, estimated_cost_usd) = estimate_cost(&model, input_chars, output_chars);
+    AiBatchItemResult {
+        path: item.path,
+        action: item.action,
+        success: item_success,
+        output: item_output,
+        error: item_error,
+        elapsed_ms: item_start.elapsed().as_millis() as u64,
+        estimated_tokens,
+        estimated_cost_usd,
+    }
+}
+
 #[tauri::command]
 pub async fn ai_batch_run(
     app: AppHandle,
@@ -1504,141 +1700,55 @@ pub async fn ai_batch_run(
     let started = std::time::Instant::now();
     let (cancel, mut job_guard) = registry.register_ai_managed(&request.job_id);
     let config = build_config(&app)?;
-    let client = DeepSeekClient::new(config).map_err(ai_error)?;
+    let client = Arc::new(DeepSeekClient::new(config).map_err(ai_error)?);
     let total_items = request.items.len();
-    let mut results = Vec::with_capacity(total_items);
-
-    for (index, item) in request.items.iter().enumerate() {
+    // A bounded pool: at most BATCH_CONCURRENCY items run at once.
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(BATCH_CONCURRENCY));
+    let mut set = tokio::task::JoinSet::new();
+    for (index, item) in request.items.iter().cloned().enumerate() {
         if cancel.is_cancelled() {
             break;
         }
-        let item_start = std::time::Instant::now();
-        let stage_label = format!("{}/{}: {}", index + 1, total_items, item.action);
-        emit_progress(&app, &request.job_id, &stage_label, index as u64, total_items as u64);
-        let _ = app.emit(
-            "ai:batch_progress",
-            serde_json::json!({
-                "jobId": &request.job_id,
-                "index": index,
-                "total": total_items,
-                "path": &item.path,
-                "action": &item.action
-            }),
-        );
-
-        let input_res = crate::paths::input_file(&item.path);
-        let mut item_success = false;
-        let mut item_output = None;
-        let mut item_error = None;
-
-        match input_res {
-            Err(e) => {
-                item_error = Some(e.to_string());
-            }
-            Ok(path) => {
-                let extract_res = extract_pages(&app, &request.job_id, path.as_path(), None, None, &cancel);
-                match extract_res {
-                    Err(e) => {
-                        item_error = Some(e.to_string());
-                    }
-                    Ok(extracted) => {
-                        let text = join_text(&extracted);
-                        match item.action.as_str() {
-                            "summarize" => {
-                                let plan = prompts::summarize_prompt_with_budget(
-                                    &text,
-                                    &SummaryOptions::default(),
-                                    client.config().chunk_chars(),
-                                );
-                                let mut dummy_p = |_: &str, _: usize, _: usize| {};
-                                let mut dummy_d = |_: &str| {};
-                                let mut dummy_r = |_: &str| {};
-                                match aicore::run_plan(
-                                    &client,
-                                    &plan,
-                                    &cancel,
-                                    &mut dummy_p,
-                                    &mut dummy_d,
-                                    &mut dummy_r,
-                                )
-                                .await
-                                {
-                                    Ok(summary) => {
-                                        item_success = true;
-                                        item_output = Some(summary);
-                                    }
-                                    Err(e) => item_error = Some(ai_error(e).to_string()),
-                                }
-                            }
-                            "translate" => {
-                                let target_lang = item.target_lang.clone().unwrap_or_else(|| "tr".into());
-                                let opts = TranslateOptions { target_language: target_lang, bilingual: false };
-                                let messages = prompts::translate_page_prompt("Document", &text, &opts);
-                                match client.chat(&messages, ChatOptions::default()).await {
-                                    Ok(trans) => {
-                                        item_success = true;
-                                        item_output = Some(trans);
-                                    }
-                                    Err(e) => item_error = Some(ai_error(e).to_string()),
-                                }
-                            }
-                            "classify" => {
-                                let default_labels = vec![
-                                    "Invoice".into(),
-                                    "Contract".into(),
-                                    "Report".into(),
-                                    "Form".into(),
-                                    "Letter".into(),
-                                    "Other".into(),
-                                ];
-                                let labels = item.labels.as_ref().unwrap_or(&default_labels);
-                                let messages = prompts::classify_document_prompt(&text, labels);
-                                match client
-                                    .chat(&messages, ChatOptions { temperature: Some(0.0), max_tokens: Some(256) })
-                                    .await
-                                {
-                                    Ok(reply) => {
-                                        let parsed = prompts::parse_classification_reply(&reply, "Other");
-                                        item_success = true;
-                                        item_output = Some(format!("{}: {}", parsed.label, parsed.reason));
-                                    }
-                                    Err(e) => item_error = Some(ai_error(e).to_string()),
-                                }
-                            }
-                            "extract" => {
-                                let messages = prompts::invoice_extract_prompt(&extracted, &[]);
-                                match client
-                                    .chat(&messages, ChatOptions { temperature: Some(0.0), max_tokens: Some(2048) })
-                                    .await
-                                {
-                                    Ok(reply) => match prompts::parse_invoice_extract_reply(&reply) {
-                                        Ok(rows) => {
-                                            item_success = true;
-                                            item_output = Some(serde_json::to_string(&rows).unwrap_or(reply));
-                                        }
-                                        Err(parse_error) => item_error = Some(parse_error.to_string()),
-                                    },
-                                    Err(e) => item_error = Some(ai_error(e).to_string()),
-                                }
-                            }
-                            other => {
-                                item_error = Some(format!("Unknown batch action: {other}"));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        results.push(AiBatchItemResult {
-            path: item.path.clone(),
-            action: item.action.clone(),
-            success: item_success,
-            output: item_output,
-            error: item_error,
-            elapsed_ms: item_start.elapsed().as_millis() as u64,
+        let client = client.clone();
+        let app_for_task = app.clone();
+        let job_id = request.job_id.clone();
+        let cancel_for_task = cancel.clone();
+        let semaphore = semaphore.clone();
+        let stage = format!("{}/{}: {}", index + 1, total_items, item.action);
+        let path = item.path.clone();
+        let action = item.action.clone();
+        set.spawn(async move {
+            let _permit = semaphore.acquire_owned().await.ok();
+            emit_progress(&app_for_task, &job_id, &stage, index as u64, total_items as u64);
+            let _ = app_for_task.emit(
+                "ai:batch_progress",
+                serde_json::json!({ "jobId": &job_id, "index": index, "total": total_items, "path": &path, "action": &action }),
+            );
+            (index, run_batch_item(client, app_for_task, job_id, item, cancel_for_task).await)
         });
     }
+    let mut collected: Vec<(usize, AiBatchItemResult)> = Vec::with_capacity(total_items);
+    while let Some(joined) = set.join_next().await {
+        match joined {
+            Ok(entry) => collected.push(entry),
+            Err(error) => collected.push((
+                usize::MAX,
+                AiBatchItemResult {
+                    path: String::new(),
+                    action: String::new(),
+                    success: false,
+                    output: None,
+                    error: Some(format!("batch task failed: {error}")),
+                    elapsed_ms: 0,
+                    estimated_tokens: 0,
+                    estimated_cost_usd: 0.0,
+                },
+            )),
+        }
+    }
+    // Completion order varies with the pool; report the original order.
+    collected.sort_by_key(|(index, _)| *index);
+    let results: Vec<AiBatchItemResult> = collected.into_iter().map(|(_, result)| result).collect();
 
     // A cancelled run or one where every item failed must not report
     // "completed": the guard only succeeds when the batch actually finished.
@@ -1903,6 +2013,31 @@ pub mod edit;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn batch_cost_is_estimated_from_character_counts() {
+        let (tokens, cost) = estimate_cost("deepseek-chat", 4000, 4000);
+        assert_eq!(tokens, 2000);
+        assert!(cost > 0.0, "a known model has a price");
+        // An unknown model still reports tokens, but no cost.
+        let (tokens, cost) = estimate_cost("mystery-model", 4000, 0);
+        assert_eq!(tokens, 1000);
+        assert_eq!(cost, 0.0);
+    }
+
+    #[test]
+    fn retry_delay_prefers_retry_after_and_backs_off() {
+        assert_eq!(retry_delay(Some(7), 0), 7);
+        assert_eq!(retry_delay(None, 0), 1);
+        assert_eq!(retry_delay(None, 3), 8);
+        assert_eq!(retry_delay(Some(9999), 0), 60, "the delay is capped at a minute");
+    }
+
+    #[test]
+    fn the_batch_concurrency_is_bounded() {
+        // The roadmap asks for 2-3 concurrent items.
+        assert!((2..=3).contains(&BATCH_CONCURRENCY), "concurrency {BATCH_CONCURRENCY}");
+    }
 
     /// Every request type that carries a document password must redact it in
     /// its `Debug` output; a derived `Debug` would print it into any log line

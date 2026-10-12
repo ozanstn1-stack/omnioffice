@@ -195,6 +195,8 @@ export function Ai({
     action: string;
   } | null>(null);
   const [batchResult, setBatchResult] = useState<AiBatchResult | null>(null);
+  // Per-item password for an encrypted source in the queue.
+  const [batchPasswords, setBatchPasswords] = useState<Record<string, string>>({});
 
   const jobId = useRef(uid("ai"));
   const outputRef = useRef<HTMLDivElement>(null);
@@ -765,6 +767,7 @@ export function Ai({
         path: p,
         action: batchAction,
         targetLang: batchAction === "translate" ? batchLang : undefined,
+        password: batchPasswords[p]?.trim() ? batchPasswords[p] : undefined,
       }));
       const res = await aiBatchRun({
         items,
@@ -1515,6 +1518,16 @@ export function Ai({
                               <span className="truncate flex-1" title={file}>
                                 {fileBaseName(file)}
                               </span>
+                              <input
+                                type="password"
+                                className="input input-sm"
+                                style={{ width: 110 }}
+                                placeholder={label("ai.itemPassword", "password")}
+                                value={batchPasswords[file] ?? ""}
+                                onChange={(event) =>
+                                  setBatchPasswords((prev) => ({ ...prev, [file]: event.target.value }))
+                                }
+                              />
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -1577,6 +1590,8 @@ export function Ai({
                               ) : null}
                               <span className="text-[10px] muted">
                                 {(res.elapsedMs / 1000).toFixed(2)}s · {res.action}
+                                {res.estimatedTokens ? ` · ~${res.estimatedTokens} tok` : ""}
+                                {res.estimatedCostUsd ? ` · ~$${res.estimatedCostUsd.toFixed(4)}` : ""}
                               </span>
                             </div>
                           ))}

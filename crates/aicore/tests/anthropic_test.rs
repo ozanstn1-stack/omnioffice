@@ -196,7 +196,7 @@ async fn stream_error_event_fails_and_cancellation_stops() {
         .chat_stream(&[ChatMessage::user("hi")], ChatOptions::default(), &CancelToken::new(), &mut |_| {}, &mut |_| {})
         .await
         .expect_err("error event must fail the call");
-    assert!(matches!(error, AiError::RateLimited(_)), "{error:?}");
+    assert!(matches!(error, AiError::RateLimited(..)), "{error:?}");
     handle.join().unwrap();
 
     // Stop pressed while the answer streams: the next read returns Cancelled.
@@ -240,7 +240,7 @@ async fn http_errors_use_the_error_body_type() {
                 assert_eq!(provider, "Anthropic (Claude)");
                 "invalid_api_key"
             }
-            AiError::RateLimited(_) => "rate_limited",
+            AiError::RateLimited(..) => "rate_limited",
             AiError::Server(_, _) => "server",
             other => panic!("unexpected error {other:?}"),
         };

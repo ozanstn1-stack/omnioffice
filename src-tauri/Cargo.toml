@@ -29,8 +29,9 @@ tauri-plugin-fs = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-os = "2"
 tauri-plugin-android-fs = "29"
-# Only for the heavy-work semaphore (already in the tree through Tauri).
-tokio = { version = "1", features = ["rt", "sync"] }
+# Only for the heavy-work semaphore and the batch queue's retry sleep
+# (already in the tree through Tauri).
+tokio = { version = "1", features = ["rt", "sync", "time"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

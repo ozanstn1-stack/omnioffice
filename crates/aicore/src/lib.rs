@@ -581,7 +581,7 @@ pub enum AiError {
     #[error("the API key was rejected by {0}")]
     InvalidApiKey(String),
     #[error("{0} rate limit reached, try again in a moment")]
-    RateLimited(String),
+    RateLimited(String, Option<u64>),
     #[error("the {0} account has insufficient balance")]
     InsufficientBalance(String),
     #[error("could not reach {0}")]
@@ -977,9 +977,10 @@ impl DeepSeekClient {
         let builder = self.authorize(self.http.get(self.models_endpoint()));
         let response = builder.send().await.map_err(|error| self.unreachable(error))?;
         let status = response.status();
+        let retry_after = retry_after_seconds(&response);
         let body = self.response_text(response).await?;
         if !status.is_success() {
-            return Err(map_http_error(status.as_u16(), &body, &self.provider_name()));
+            return Err(map_http_error(status.as_u16(), &body, &self.provider_name(), retry_after));
         }
         Ok(match self.provider() {
             ProviderKind::Ollama => parse_ollama_models(&body),
@@ -1006,9 +1007,10 @@ impl DeepSeekClient {
                 .await
                 .map_err(|error| self.unreachable(error))?;
             let status = response.status();
+            let retry_after = retry_after_seconds(&response);
             let body = self.response_text(response).await?;
             if !status.is_success() {
-                return Err(anthropic::map_http_error(status.as_u16(), &body, &self.provider_name()));
+                return Err(anthropic::map_http_error(status.as_u16(), &body, &self.provider_name(), retry_after));
             }
             let (page, next) = anthropic::parse_models_page(&body);
             models.extend(page);
@@ -1077,14 +1079,26 @@ impl DeepSeekClient {
         }
     }
 
+    /// Like [`chat`](Self::chat), but the cancel token aborts the in-flight
+    /// request instead of waiting for it to finish.
+    pub async fn chat_cancellable(
+        &self,
+        messages: &[ChatMessage],
+        options: ChatOptions,
+        cancel: &CancelToken,
+    ) -> AiResult<String> {
+        until_cancelled(cancel, self.chat(messages, options)).await?
+    }
+
     async fn chat_openai_compatible(&self, messages: &[ChatMessage], options: &ChatOptions) -> AiResult<String> {
         let body = ChatRequestBody::new(&self.config, messages, options, false);
         let response = self.request().json(&body).send().await.map_err(|error| self.unreachable(error))?;
 
         let status = response.status();
+        let retry_after = retry_after_seconds(&response);
         let text = self.response_text(response).await?;
         if !status.is_success() {
-            return Err(map_http_error(status.as_u16(), &text, &self.provider_name()));
+            return Err(map_http_error(status.as_u16(), &text, &self.provider_name(), retry_after));
         }
         let parsed: ChatResponseBody =
             serde_json::from_str(&text).map_err(|_| AiError::InvalidResponse(self.provider_name()))?;
@@ -1099,9 +1113,10 @@ impl DeepSeekClient {
         let body = anthropic::build_request(&self.config, messages, options, false);
         let response = self.request().json(&body).send().await.map_err(|error| self.unreachable(error))?;
         let status = response.status();
+        let retry_after = retry_after_seconds(&response);
         let text = self.response_text(response).await?;
         if !status.is_success() {
-            return Err(anthropic::map_http_error(status.as_u16(), &text, &self.provider_name()));
+            return Err(anthropic::map_http_error(status.as_u16(), &text, &self.provider_name(), retry_after));
         }
         anthropic::parse_message_response(&text, &self.provider_name())
     }
@@ -1119,9 +1134,10 @@ impl DeepSeekClient {
             .await?
             .map_err(|error| self.unreachable(error))?;
         let status = response.status();
+        let retry_after = retry_after_seconds(&response);
         if !status.is_success() {
             let text = self.response_text(response).await.unwrap_or_default();
-            return Err(anthropic::map_http_error(status.as_u16(), &text, &self.provider_name()));
+            return Err(anthropic::map_http_error(status.as_u16(), &text, &self.provider_name(), retry_after));
         }
         let provider = self.provider_name();
         let mut parser = anthropic::StreamParser::default();
@@ -1146,9 +1162,10 @@ impl DeepSeekClient {
         let response = self.request().json(&body).send().await.map_err(|error| self.unreachable(error))?;
 
         let status = response.status();
+        let retry_after = retry_after_seconds(&response);
         let text = self.response_text(response).await?;
         if !status.is_success() {
-            return Err(map_http_error(status.as_u16(), &text, &self.provider_name()));
+            return Err(map_http_error(status.as_u16(), &text, &self.provider_name(), retry_after));
         }
         let parsed: OllamaChatResponse =
             serde_json::from_str(&text).map_err(|_| AiError::InvalidResponse(self.provider_name()))?;
@@ -1200,9 +1217,10 @@ impl DeepSeekClient {
             .await?
             .map_err(|error| self.unreachable(error))?;
         let status = response.status();
+        let retry_after = retry_after_seconds(&response);
         if !status.is_success() {
             let text = self.response_text(response).await.unwrap_or_default();
-            return Err(map_http_error(status.as_u16(), &text, &self.provider_name()));
+            return Err(map_http_error(status.as_u16(), &text, &self.provider_name(), retry_after));
         }
 
         let mut stream = response.bytes_stream();
@@ -1279,9 +1297,10 @@ impl DeepSeekClient {
             .await?
             .map_err(|error| self.unreachable(error))?;
         let status = response.status();
+        let retry_after = retry_after_seconds(&response);
         if !status.is_success() {
             let text = self.response_text(response).await.unwrap_or_default();
-            return Err(map_http_error(status.as_u16(), &text, &self.provider_name()));
+            return Err(map_http_error(status.as_u16(), &text, &self.provider_name(), retry_after));
         }
 
         // Ollama streams newline-delimited JSON objects, one per line:
@@ -1384,9 +1403,10 @@ impl DeepSeekClient {
 
         let response = request.send().await.map_err(|error| self.unreachable(error))?;
         let status = response.status();
+        let retry_after = retry_after_seconds(&response);
         let body = self.response_text(response).await?;
         if !status.is_success() {
-            return Err(map_http_error(status.as_u16(), &body, &self.provider_name()));
+            return Err(map_http_error(status.as_u16(), &body, &self.provider_name(), retry_after));
         }
 
         #[derive(Deserialize)]
@@ -1442,7 +1462,17 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     dot / norm
 }
 
-fn map_http_error(status: u16, body: &str, provider: &str) -> AiError {
+/// The `Retry-After` delay a provider asked for, in seconds. Only the
+/// delta-seconds form is used; an HTTP-date is ignored.
+fn retry_after_seconds(response: &reqwest::Response) -> Option<u64> {
+    response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse::<u64>().ok())
+}
+
+fn map_http_error(status: u16, body: &str, provider: &str, retry_after: Option<u64>) -> AiError {
     let detail = serde_json::from_str::<ApiErrorBody>(body).ok().map(|parsed| parsed.error).or_else(|| {
         // Ollama reports errors as {"error": "text"}.
         let value: serde_json::Value = serde_json::from_str(body).ok()?;
@@ -1458,7 +1488,7 @@ fn map_http_error(status: u16, body: &str, provider: &str) -> AiError {
     match status {
         401 | 403 => AiError::InvalidApiKey(provider.to_string()),
         402 => AiError::InsufficientBalance(provider.to_string()),
-        429 => AiError::RateLimited(provider.to_string()),
+        429 => AiError::RateLimited(provider.to_string(), retry_after),
         400 if code.contains("context") || message.to_lowercase().contains("context") => AiError::TooLarge,
         _ => {
             let summary =

@@ -246,7 +246,7 @@ pub(crate) fn map_error_kind(kind: &str, message: &str, provider: &str) -> AiErr
     let lowered = message.to_lowercase();
     match kind {
         "authentication_error" | "permission_error" => AiError::InvalidApiKey(provider.to_string()),
-        "rate_limit_error" => AiError::RateLimited(provider.to_string()),
+        "rate_limit_error" => AiError::RateLimited(provider.to_string(), None),
         "billing_error" => AiError::InsufficientBalance(provider.to_string()),
         "request_too_large" => AiError::TooLarge,
         "overloaded_error" => AiError::Server(
@@ -271,7 +271,7 @@ pub(crate) fn map_error_kind(kind: &str, message: &str, provider: &str) -> AiErr
 
 /// Maps a non-2xx response. A recognised Anthropic error body wins; otherwise
 /// the status code decides.
-pub(crate) fn map_http_error(status: u16, body: &str, provider: &str) -> AiError {
+pub(crate) fn map_http_error(status: u16, body: &str, provider: &str, retry_after: Option<u64>) -> AiError {
     if let Ok(envelope) = serde_json::from_str::<ErrorEnvelope>(body) {
         if !envelope.error.kind.is_empty() {
             return map_error_kind(&envelope.error.kind, &envelope.error.message, provider);
@@ -281,8 +281,8 @@ pub(crate) fn map_http_error(status: u16, body: &str, provider: &str) -> AiError
         401 | 403 => AiError::InvalidApiKey(provider.to_string()),
         402 => AiError::InsufficientBalance(provider.to_string()),
         413 => AiError::TooLarge,
-        429 => AiError::RateLimited(provider.to_string()),
-        _ => crate::map_http_error(status, body, provider),
+        429 => AiError::RateLimited(provider.to_string(), retry_after),
+        _ => crate::map_http_error(status, body, provider, retry_after),
     }
 }
 
@@ -752,7 +752,7 @@ mod tests {
             "data: {\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"bad key\"}}\n\n";
         assert!(matches!(run_stream(&[auth.as_bytes()]).0, Err(AiError::InvalidApiKey(_))));
         let rate = "data: {\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"slow down\"}}\n\n";
-        assert!(matches!(run_stream(&[rate.as_bytes()]).0, Err(AiError::RateLimited(_))));
+        assert!(matches!(run_stream(&[rate.as_bytes()]).0, Err(AiError::RateLimited(..))));
     }
 
     #[test]
@@ -774,14 +774,14 @@ mod tests {
 
     fn http_error(status: u16, kind: &str, message: &str) -> AiError {
         let body = json!({"type": "error", "error": {"type": kind, "message": message}}).to_string();
-        map_http_error(status, &body, "Anthropic (Claude)")
+        map_http_error(status, &body, "Anthropic (Claude)", None)
     }
 
     #[test]
     fn error_bodies_map_to_the_shared_error_types() {
         assert!(matches!(http_error(401, "authentication_error", "invalid x-api-key"), AiError::InvalidApiKey(_)));
         assert!(matches!(http_error(403, "permission_error", "not allowed"), AiError::InvalidApiKey(_)));
-        assert!(matches!(http_error(429, "rate_limit_error", "slow"), AiError::RateLimited(_)));
+        assert!(matches!(http_error(429, "rate_limit_error", "slow"), AiError::RateLimited(..)));
         assert!(matches!(http_error(402, "billing_error", "billing"), AiError::InsufficientBalance(_)));
         assert!(matches!(
             http_error(400, "invalid_request_error", "Your credit balance is too low to access the API"),
@@ -826,9 +826,9 @@ mod tests {
             AiError::Server(_, message) => assert_eq!(message.chars().count(), MAX_ERROR_MESSAGE_CHARS),
             other => panic!("unexpected: {other:?}"),
         }
-        assert!(matches!(map_http_error(401, "<html>nope</html>", "A"), AiError::InvalidApiKey(_)));
-        assert!(matches!(map_http_error(429, "", "A"), AiError::RateLimited(_)));
-        match map_http_error(502, "bad gateway", "A") {
+        assert!(matches!(map_http_error(401, "<html>nope</html>", "A", None), AiError::InvalidApiKey(_)));
+        assert!(matches!(map_http_error(429, "", "A", None), AiError::RateLimited(..)));
+        match map_http_error(502, "bad gateway", "A", None) {
             AiError::Server(_, message) => assert_eq!(message, "HTTP 502"),
             other => panic!("unexpected: {other:?}"),
         }
