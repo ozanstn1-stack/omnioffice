@@ -9,6 +9,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import sampleManifest from "../../plugins/sample/manifest.json";
 import sampleSource from "../../plugins/sample/main.js?raw";
+import pdfStatsManifest from "../../plugins/examples/pdf-stats/manifest.json";
+import textNormalizerManifest from "../../plugins/examples/text-normalizer/manifest.json";
 import { getCommand, runCommand } from "./commands";
 import { newTextDocument, type TextDocument } from "./office-types";
 import { useOfficeTabs } from "./office-store";
@@ -24,8 +26,10 @@ import {
   officeModelText,
   parseSemver,
   pluginCommandId,
+  pluginBatchSteps,
   pluginRuntimeStatus,
   registerPluginCommands,
+  runPluginBatchStep,
   safePluginFileName,
   satisfiesAppRange,
   setPluginTransport,
@@ -127,8 +131,9 @@ describe("manifest validation", () => {
     expect(validateManifest(manifestJson({ id: "" })).ok).toBe(false);
   });
 
-  it("rejects a wrong plugin API version", () => {
-    expect(validateManifest(manifestJson({ apiVersion: 2 })).ok).toBe(false);
+  it("rejects an unsupported plugin API version", () => {
+    expect(validateManifest(manifestJson({ apiVersion: 3 })).ok).toBe(false);
+    expect(validateManifest(manifestJson({ apiVersion: 0 })).ok).toBe(false);
     expect(validateManifest(manifestJson({ apiVersion: "1" })).ok).toBe(false);
   });
 
@@ -165,6 +170,88 @@ describe("manifest validation", () => {
     expect(sampleSource).toContain("self.host.ui.notify");
     expect(sampleSource).not.toContain("applyEdits");
     expect(sampleSource).not.toContain("files.write");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// API v2: pdf + batch-step
+// ---------------------------------------------------------------------------
+
+describe("plugin API v2", () => {
+  it("accepts a v2 manifest with the pdf and batch-step capabilities", () => {
+    const result = validateManifest(
+      manifestJson({
+        apiVersion: 2,
+        permissions: ["read_pdf", "batch_steps"],
+        capabilities: ["command", "pdf", "batch-step"],
+        batchSteps: [{ id: "normalize", title: "Normalize" }],
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.manifest.batchSteps).toEqual([{ id: "normalize", title: "Normalize" }]);
+  });
+
+  it("requires the read_pdf permission for the pdf capability", () => {
+    const result = validateManifest(manifestJson({ apiVersion: 2, capabilities: ["command", "pdf"] }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("read_pdf");
+  });
+
+  it("requires the batch-step capability for batchSteps", () => {
+    const result = validateManifest(
+      manifestJson({ apiVersion: 2, permissions: ["batch_steps"], batchSteps: [{ id: "step", title: "Step" }] }),
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("batch-step");
+  });
+
+  it("validates both bundled example plugins", () => {
+    const pdf = validateManifest(pdfStatsManifest);
+    expect(pdf.ok).toBe(true);
+    if (pdf.ok) expect(pdf.manifest.apiVersion).toBe(2);
+
+    const normalizer = validateManifest(textNormalizerManifest);
+    expect(normalizer.ok).toBe(true);
+    if (normalizer.ok) expect(pluginBatchSteps(normalizer.manifest)).toHaveLength(1);
+  });
+
+  it("gates pdf.read on the read_pdf permission", async () => {
+    const transport = fakeTransport();
+    transport.readPdf = vi.fn(async () => ({ pageCount: 3, hasTextLayer: true, text: "hello world" }));
+
+    const denied = new PluginHost(parsedManifest({ apiVersion: 2 }), { transport });
+    await expect(denied.handle("pdf.read", { name: "report.pdf" })).rejects.toThrow(/Permission denied/);
+
+    const allowed = new PluginHost(
+      parsedManifest({ apiVersion: 2, permissions: ["read_pdf"], capabilities: ["command", "pdf"] }),
+      { transport },
+    );
+    await expect(allowed.handle("pdf.read", { name: "report.pdf" })).resolves.toEqual({
+      pageCount: 3,
+      hasTextLayer: true,
+      text: "hello world",
+    });
+    expect(transport.readPdf).toHaveBeenCalledWith("test.tool", "report.pdf");
+  });
+
+  it("rejects unknown batch steps when running one", async () => {
+    const runtime = new PluginRuntime({
+      manifest: parsedManifest({
+        apiVersion: 2,
+        permissions: ["batch_steps"],
+        capabilities: ["command", "batch-step"],
+        batchSteps: [{ id: "normalize", title: "Normalize" }],
+      }),
+      source: "self.onPluginMessage = () => 'ok';",
+      host: makeHost(),
+      workerFactory: () => new FakeWorker(),
+    });
+    await expect(runPluginBatchStep(runtime, "missing", { name: "a.txt", text: "" })).rejects.toThrow(
+      /Unknown batch step/,
+    );
   });
 });
 

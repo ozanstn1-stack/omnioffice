@@ -419,6 +419,7 @@ pub fn run() {
             plugin::plugin_delete,
             plugin::plugin_file_read,
             plugin::plugin_file_write,
+            plugin::plugin_pdf_read,
             plugin::plugin_http_request,
         ])
         .run(tauri::generate_context!())

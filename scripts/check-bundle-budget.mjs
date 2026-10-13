@@ -44,13 +44,19 @@ const CHUNK_BUDGET_KB = 100;
 // the UBL-TR e-Fatura screen with its VAT summary and GİB karekod panel, and
 // the Reader's e-Devlet verification button. Each is a lazy route; the total
 // moves because they all ship, not because one chunk lost its split.
-const TOTAL_BUDGET_KB = 500;
+// Raised to 505 in 5.0.0 for the plugin API v2 (the pdf capability and the
+// batch-step manifest surface) and the Writer document comparison; both ride
+// the existing lazy routes, so the per-chunk budgets are unchanged.
+const TOTAL_BUDGET_KB = 505;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);
-if (entryKb > ENTRY_BUDGET_KB) failures.push(`entry ${entry} is ${entryKb.toFixed(1)} KB gzip (budget ${ENTRY_BUDGET_KB} KB)`);
-if (largestKb > CHUNK_BUDGET_KB) failures.push(`largest chunk ${largestName} is ${largestKb.toFixed(1)} KB gzip (budget ${CHUNK_BUDGET_KB} KB)`);
-if (totalKb > TOTAL_BUDGET_KB) failures.push(`total JS is ${totalKb.toFixed(1)} KB gzip (budget ${TOTAL_BUDGET_KB} KB)`);
+if (entryKb > ENTRY_BUDGET_KB)
+  failures.push(`entry ${entry} is ${entryKb.toFixed(1)} KB gzip (budget ${ENTRY_BUDGET_KB} KB)`);
+if (largestKb > CHUNK_BUDGET_KB)
+  failures.push(`largest chunk ${largestName} is ${largestKb.toFixed(1)} KB gzip (budget ${CHUNK_BUDGET_KB} KB)`);
+if (totalKb > TOTAL_BUDGET_KB)
+  failures.push(`total JS is ${totalKb.toFixed(1)} KB gzip (budget ${TOTAL_BUDGET_KB} KB)`);
 
 if (failures.length > 0) {
   for (const failure of failures) console.error(`bundle budget: ${failure}`);

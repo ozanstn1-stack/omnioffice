@@ -1,0 +1,23 @@
+{
+  "id": "example.text-normalizer",
+  "name": "Text Normalizer",
+  "version": "2.0.0",
+  "apiVersion": 2,
+  "compatibility": { "app": ">=4.12.0" },
+  "permissions": ["batch_steps"],
+  "capabilities": ["command", "batch-step", "ui", "log"],
+  "commands": [
+    {
+      "id": "normalize",
+      "title": "Normalize whitespace",
+      "description": "Collapses runs of spaces and blank lines in the given text."
+    }
+  ],
+  "batchSteps": [
+    {
+      "id": "normalize",
+      "title": "Normalize whitespace",
+      "description": "Collapses runs of spaces and blank lines. Usable as a recipe step."
+    }
+  ]
+}

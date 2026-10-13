@@ -30,7 +30,9 @@ import {
 } from "./office-types";
 import { useSettings, useToasts } from "./store";
 
-export const PLUGIN_API_VERSION = 1;
+export const PLUGIN_API_VERSION = 2;
+/** API v1 plugins keep loading; new capabilities need a v2 manifest. */
+export const MIN_PLUGIN_API_VERSION = 1;
 export const PLUGIN_APP_VERSION = packageJson.version;
 export const SAMPLE_PLUGIN_ID = "sample.word-counter";
 export const MAX_PLUGIN_SOURCE_BYTES = 512 * 1024;
@@ -50,6 +52,8 @@ export const PLUGIN_PERMISSIONS = [
   "write_files",
   "clipboard",
   "network",
+  "read_pdf",
+  "batch_steps",
 ] as const;
 export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number];
 
@@ -62,10 +66,19 @@ export const PLUGIN_CAPABILITIES = [
   "network",
   "ui",
   "log",
+  "pdf",
+  "batch-step",
 ] as const;
 export type PluginCapability = (typeof PLUGIN_CAPABILITIES)[number];
 
 export interface PluginCommandSpec {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+/** A batch step a plugin exposes to the recipe engine (API v2). */
+export interface PluginBatchStep {
   id: string;
   title: string;
   description?: string;
@@ -80,6 +93,8 @@ export interface PluginManifest {
   permissions: PluginPermission[];
   capabilities: PluginCapability[];
   commands: PluginCommandSpec[];
+  /** Present only when the manifest declares the `batch-step` capability. */
+  batchSteps?: PluginBatchStep[];
 }
 
 export type ManifestResult = { ok: true; manifest: PluginManifest } | { ok: false; error: string };
@@ -151,10 +166,32 @@ function validateCommands(value: unknown): PluginCommandSpec[] | string {
   return commands;
 }
 
+function validateBatchSteps(value: unknown): PluginBatchStep[] | string {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return "batchSteps must be an array.";
+  if (value.length > 16) return "a plugin may declare at most 16 batch steps.";
+  const steps: PluginBatchStep[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (!isRecord(entry)) return "each batch step must be an object.";
+    const id = entry.id;
+    const title = entry.title;
+    if (typeof id !== "string" || !PLUGIN_ID_PATTERN.test(id)) return "a batch step id is invalid.";
+    if (typeof title !== "string" || !title.trim() || title.length > 120) return "a batch step title is invalid.";
+    if (entry.description !== undefined && (typeof entry.description !== "string" || entry.description.length > 400)) {
+      return "a batch step description is invalid.";
+    }
+    if (seen.has(id)) return `duplicate batch step id: ${id}.`;
+    seen.add(id);
+    steps.push({ id, title, ...(entry.description !== undefined ? { description: entry.description } : {}) });
+  }
+  return steps;
+}
+
 /** Strict manifest validation: anything unknown is rejected, never ignored. */
 export function validateManifest(value: unknown): ManifestResult {
   if (!isRecord(value)) return { ok: false, error: "The manifest must be a JSON object." };
-  const { id, name, version, apiVersion, compatibility, permissions, capabilities, commands } = value;
+  const { id, name, version, apiVersion, compatibility, permissions, capabilities, commands, batchSteps } = value;
   if (typeof id !== "string" || !PLUGIN_ID_PATTERN.test(id)) {
     return { ok: false, error: "The plugin id must be lowercase letters, digits, dots, dashes or underscores." };
   }
@@ -164,8 +201,16 @@ export function validateManifest(value: unknown): ManifestResult {
   if (typeof version !== "string" || !parseSemver(version)) {
     return { ok: false, error: "The plugin version must be semver (x.y.z)." };
   }
-  if (apiVersion !== PLUGIN_API_VERSION) {
-    return { ok: false, error: `Unsupported plugin API version (this app speaks ${PLUGIN_API_VERSION}).` };
+  if (
+    typeof apiVersion !== "number" ||
+    !Number.isInteger(apiVersion) ||
+    apiVersion < MIN_PLUGIN_API_VERSION ||
+    apiVersion > PLUGIN_API_VERSION
+  ) {
+    return {
+      ok: false,
+      error: `Unsupported plugin API version (this app speaks ${MIN_PLUGIN_API_VERSION}-${PLUGIN_API_VERSION}).`,
+    };
   }
   if (!isRecord(compatibility) || typeof compatibility.app !== "string" || !compatibility.app.trim()) {
     return { ok: false, error: "compatibility.app must be a version range." };
@@ -199,6 +244,17 @@ export function validateManifest(value: unknown): ManifestResult {
   if (declared.includes("command") && parsedCommands.length === 0) {
     return { ok: false, error: "A plugin that declares the command capability needs at least one command." };
   }
+  const parsedBatchSteps = validateBatchSteps(batchSteps);
+  if (typeof parsedBatchSteps === "string") return { ok: false, error: parsedBatchSteps };
+  if (parsedBatchSteps.length > 0 && !declared.includes("batch-step")) {
+    return { ok: false, error: "batchSteps require the batch-step capability." };
+  }
+  if (declared.includes("pdf") && !granted.includes("read_pdf")) {
+    return { ok: false, error: "The pdf capability requires the read_pdf permission." };
+  }
+  if (declared.includes("batch-step") && !granted.includes("batch_steps")) {
+    return { ok: false, error: "The batch-step capability requires the batch_steps permission." };
+  }
   return {
     ok: true,
     manifest: {
@@ -210,6 +266,7 @@ export function validateManifest(value: unknown): ManifestResult {
       permissions: granted,
       capabilities: declared,
       commands: parsedCommands,
+      ...(parsedBatchSteps.length > 0 ? { batchSteps: parsedBatchSteps } : {}),
     },
   };
 }
@@ -244,6 +301,12 @@ export interface PluginHttpResponse {
   truncated: boolean;
 }
 
+export interface PluginPdfRead {
+  pageCount: number;
+  hasTextLayer: boolean;
+  text: string;
+}
+
 export interface PluginTransport {
   list: () => Promise<PluginArchivedRecord[]>;
   readSource: (id: string) => Promise<string>;
@@ -254,6 +317,8 @@ export interface PluginTransport {
   remove: (id: string) => Promise<void>;
   readFile: (pluginId: string, name: string) => Promise<string>;
   writeFile: (pluginId: string, name: string, text: string) => Promise<void>;
+  /** Reads page count + text from a PDF inside the plugin's own sandbox. */
+  readPdf?: (pluginId: string, name: string) => Promise<PluginPdfRead>;
   httpRequest: (pluginId: string, request: PluginHttpRequest) => Promise<PluginHttpResponse>;
 }
 
@@ -271,6 +336,7 @@ export const tauriPluginTransport: PluginTransport = {
   remove: (id) => invoke<void>("plugin_delete", { id }),
   readFile: (pluginId, name) => invoke<string>("plugin_file_read", { pluginId, name }),
   writeFile: (pluginId, name, text) => invoke<void>("plugin_file_write", { pluginId, name, text }),
+  readPdf: (pluginId, name) => invoke<PluginPdfRead>("plugin_pdf_read", { pluginId, name }),
   httpRequest: (pluginId, request) => invoke<PluginHttpResponse>("plugin_http_request", { pluginId, request }),
 };
 
@@ -506,6 +572,7 @@ export const PLUGIN_HOST_METHODS: Readonly<Record<string, PluginPermission | nul
   "clipboard.read": "clipboard",
   "clipboard.write": "clipboard",
   "net.request": "network",
+  "pdf.read": "read_pdf",
   "ui.notify": null,
   log: null,
 });
@@ -610,6 +677,13 @@ export class PluginHost {
         if (typeof text !== "string") throw new Error("Clipboard content must be text.");
         await clipboard.write(text);
         return null;
+      }
+      case "pdf.read": {
+        const name = safePluginFileName(params.name);
+        if (!name) throw new Error("Invalid file name.");
+        const readPdf = this.options.transport.readPdf;
+        if (!readPdf) throw new Error("The PDF capability is not available.");
+        return readPdf(this.manifest.id, name);
       }
       case "net.request": {
         const request = this.parseHttpRequest(params.request);
@@ -753,6 +827,7 @@ export const PLUGIN_WORKER_BOOTSTRAP = `"use strict";
       write: (text) => callHost("clipboard.write", { text: text })
     },
     net: { request: (request) => callHost("net.request", { request: request }) },
+    pdf: { read: (name) => callHost("pdf.read", { name: name }) },
     ui: { notify: (message) => callHost("ui.notify", { message: message }) },
     log: (message) => callHost("log", { message: message })
   };
@@ -1007,6 +1082,35 @@ export function registerPluginCommands(
 
 export function unregisterPluginCommands(manifest: PluginManifest): void {
   for (const command of manifest.commands) unregisterCommand(pluginCommandId(manifest.id, command.id));
+}
+
+export interface PluginBatchInput {
+  /** Sandbox file name the step receives. */
+  name: string;
+  /** File content (text) the step receives. */
+  text: string;
+}
+
+/** The batch steps a manifest exposes to the recipe engine. */
+export function pluginBatchSteps(manifest: PluginManifest): PluginBatchStep[] {
+  return manifest.batchSteps ?? [];
+}
+
+/**
+ * Runs one manifest-declared batch step against a single input. The step id
+ * doubles as the command id, so the plugin handles it in `onPluginMessage`
+ * with `params = { step, input }`. The recipe engine (Rust) reaches this
+ * through the batch-step capability; a plugin without it cannot be selected.
+ */
+export async function runPluginBatchStep(
+  runtime: PluginRuntime,
+  stepId: string,
+  input: PluginBatchInput,
+): Promise<unknown> {
+  if (!runtime.manifest.batchSteps?.some((step) => step.id === stepId)) {
+    throw new Error(`Unknown batch step: ${stepId}.`);
+  }
+  return runtime.run("command.run", { command: stepId, params: { step: stepId, input } });
 }
 
 // ---------------------------------------------------------------------------
