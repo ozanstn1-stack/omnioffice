@@ -138,6 +138,8 @@ pub struct DocumentInspection {
     pub has_struct_tree: bool,
     pub marked: bool,
     pub struct_tree: bool,
+    /// `Figure` structure elements without `/Alt` text.
+    pub figures_missing_alt: u32,
     pub language: String,
     pub viewer_preferences: String,
     pub fonts: Vec<FontInfo>,
@@ -189,6 +191,9 @@ pub fn inspect_document(path: &Path, password: Option<&str>) -> PdfResult<Docume
     out.struct_tree = catalog.get(b"StructTreeRoot").is_ok();
     out.marked = catalog.get(b"MarkInfo").is_ok();
     out.language = text_of(&catalog, b"Lang").unwrap_or_default();
+    if let Ok(root) = catalog.get(b"StructTreeRoot") {
+        out.figures_missing_alt = count_figures_missing_alt(&doc, root);
+    }
     if let Some(Object::Dictionary(preferences)) = deref(&doc, catalog.get(b"ViewerPreferences").ok()) {
         out.viewer_preferences =
             preferences.iter().map(|(key, _)| String::from_utf8_lossy(key).to_string()).collect::<Vec<_>>().join(", ");
@@ -259,6 +264,49 @@ fn deref<'a>(doc: &'a Document, value: Option<&'a Object>) -> Option<&'a Object>
 
 fn text_of(dictionary: &Dictionary, key: &[u8]) -> Option<String> {
     docutil::pdf_text_value(dictionary.get(key).ok()?)
+}
+
+/// Counts `Figure` structure elements without usable `/Alt` text. Walks the
+/// structure tree from `root`, following references and `/K` children.
+fn count_figures_missing_alt(doc: &Document, root: &Object) -> u32 {
+    let mut missing = 0u32;
+    let mut stack: Vec<Object> = vec![root.clone()];
+    let mut visited = 0u32;
+    while let Some(node) = stack.pop() {
+        visited += 1;
+        if visited > 20_000 {
+            break;
+        }
+        let object = match node {
+            Object::Reference(id) => doc.get_object(id).cloned().unwrap_or(Object::Null),
+            other => other,
+        };
+        match object {
+            Object::Dictionary(dict) => {
+                let is_figure = dict.get(b"S").and_then(Object::as_name).map(|name| name == b"Figure").unwrap_or(false);
+                if is_figure {
+                    let has_alt = dict
+                        .get(b"Alt")
+                        .ok()
+                        .and_then(docutil::pdf_text_value)
+                        .map(|text| !text.trim().is_empty())
+                        .unwrap_or(false);
+                    if !has_alt {
+                        missing += 1;
+                    }
+                }
+                if let Ok(kids) = dict.get(b"K") {
+                    match kids {
+                        Object::Array(items) => stack.extend(items.iter().cloned()),
+                        other => stack.push(other.clone()),
+                    }
+                }
+            }
+            Object::Array(items) => stack.extend(items.iter().cloned()),
+            _ => {}
+        }
+    }
+    missing
 }
 
 /// Walks a `/Names` subtree collecting the string value of each name.
@@ -743,6 +791,17 @@ pub fn evaluate_findings(inspection: &mut DocumentInspection) {
             "The structure tree exists but /MarkInfo is missing.",
         );
     }
+    if inspection.figures_missing_alt > 0 {
+        add(
+            Severity::Error,
+            "a11y.figure-alt",
+            "An image has no alternate text",
+            &format!(
+                "{} figure(s) in the structure tree have no /Alt text, so a screen reader cannot describe them.",
+                inspection.figures_missing_alt
+            ),
+        );
+    }
     if !inspection.outline.is_empty() {
         let mut previous: i32 = -1;
         let mut skipped = false;
@@ -868,6 +927,19 @@ mod tests {
         let codes: Vec<&str> = inspection.findings.iter().map(|entry| entry.code.as_str()).collect();
         assert!(codes.contains(&"a11y.missing-title"), "unexpected findings: {codes:?}");
         assert!(inspection.findings.iter().any(|entry| entry.severity == Severity::Error));
+        assert_eq!(inspection.accessibility_conformance, "fails");
+    }
+
+    #[test]
+    fn figures_without_alt_text_are_an_error() {
+        let mut inspection = base();
+        inspection.language = "tr-TR".into();
+        inspection.struct_tree = true;
+        inspection.marked = true;
+        inspection.figures_missing_alt = 2;
+        evaluate_findings(&mut inspection);
+        let codes: Vec<&str> = inspection.findings.iter().map(|entry| entry.code.as_str()).collect();
+        assert!(codes.contains(&"a11y.figure-alt"), "unexpected findings: {codes:?}");
         assert_eq!(inspection.accessibility_conformance, "fails");
     }
 

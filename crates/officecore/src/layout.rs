@@ -183,6 +183,20 @@ fn text_style(effective: &EffectiveStyle) -> TextStyle {
     }
 }
 
+/// The tagged-PDF structure tag for a paragraph: `H1`..`H6` for heading styles,
+/// `P` otherwise. Screen readers use it to announce the document outline.
+fn paragraph_struct_tag(props: &ParaProps) -> String {
+    let style = props.style.trim();
+    let rest = style
+        .strip_prefix("Heading")
+        .or_else(|| style.strip_prefix("heading"))
+        .or_else(|| style.strip_prefix("Baslik"));
+    match rest.and_then(|rest| rest.trim().parse::<u32>().ok()) {
+        Some(level) => format!("H{}", level.clamp(1, 6)),
+        None => "P".to_string(),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Line layout
 // ---------------------------------------------------------------------------
@@ -898,26 +912,19 @@ impl<'a> Renderer<'a> {
                     _ => left,
                 };
                 let baseline = self.y + (line.height * (line_spacing - 1.0)) / 2.0 + line.ascent;
+                let struct_tag = paragraph_struct_tag(props);
+                let marker_x = self.column_x(self.column) + indent_left - marker_width;
+                let canvas = self.canvas();
+                canvas.begin_marked(&struct_tag, None);
                 if first_line && segment_index == 0 && list_marker.is_some() {
                     let marker = list_marker.clone().unwrap();
                     let style = text_style(&base);
-                    let marker_x = self.column_x(self.column) + indent_left - marker_width;
-                    let canvas = self.canvas();
                     canvas.text(marker_x, baseline, &marker, &style);
                 }
-                let mut link_target = None;
                 for item in &line.items {
-                    let canvas = self.canvas();
                     canvas.text(x + item.dx, baseline, &item.text, &item.style);
                 }
-                // Register hyperlink annotations for runs in this line.
-                if let Some(run_link) = segment.iter().find_map(|_| None::<String>) {
-                    link_target = Some(run_link);
-                }
-                if let Some(url) = link_target {
-                    let canvas = self.canvas();
-                    canvas.link(x, baseline - line.ascent, line.width, line.height, &url);
-                }
+                canvas.end_marked();
                 self.y += line_height;
                 first_line = false;
             }
@@ -1000,8 +1007,11 @@ impl<'a> Renderer<'a> {
             _ => self.column_x(self.column),
         };
         let y = self.y;
+        let alt = if image.alt.trim().is_empty() { None } else { Some(image.alt.as_str()) };
         let canvas = self.canvas();
+        canvas.begin_marked("Figure", alt);
         canvas.image(x, y, width, height, &bytes, &image.mime);
+        canvas.end_marked();
         self.y += height + 6.0;
     }
 
@@ -1361,7 +1371,7 @@ pub fn document_to_pdf(document: &TextDocument) -> Vec<u8> {
         let (stable, _) = render_pass(&fonts, document, pages.len(), bookmark_pages);
         pages = stable;
     }
-    write_pdf(&pages, &fonts)
+    write_pdf(&pages, &fonts, &document.title, "tr-TR")
 }
 
 // ---------------------------------------------------------------------------
@@ -1407,7 +1417,7 @@ pub fn workbook_to_pdf(workbook: &Workbook, sheet_limit: usize) -> Vec<u8> {
         canvas.text(40.0, 60.0, "Empty workbook", &TextStyle { size_pt: 16.0, ..Default::default() });
         pages.push(canvas.finish());
     }
-    write_pdf(&pages, &fonts)
+    write_pdf(&pages, &fonts, &workbook.title, "tr-TR")
 }
 
 fn render_sheet(fonts: &FontSet, sheet: &Sheet, workbook: &Workbook) -> Vec<BuiltPage> {
@@ -1619,7 +1629,7 @@ pub fn deck_to_pdf(deck: &Deck) -> Vec<u8> {
         canvas.text(40.0, 60.0, "Empty presentation", &TextStyle { size_pt: 18.0, ..Default::default() });
         pages.push(canvas.finish());
     }
-    write_pdf(&pages, &fonts)
+    write_pdf(&pages, &fonts, &deck.title, "tr-TR")
 }
 
 fn theme_background(deck: &Deck, slide: &Slide) -> Rgb {
@@ -1730,6 +1740,8 @@ fn draw_slide_object(
             if let Some(image) = &object.image {
                 let bytes = image.bytes();
                 if !bytes.is_empty() {
+                    let alt = if image.alt.trim().is_empty() { None } else { Some(image.alt.as_str()) };
+                    canvas.begin_marked("Figure", alt);
                     let crop = image
                         .crop
                         .as_ref()
@@ -1758,6 +1770,7 @@ fn draw_slide_object(
                             canvas.image(object.x, object.y, object.w, object.h, &bytes, &image.mime);
                         }
                     }
+                    canvas.end_marked();
                 }
             }
         }
@@ -1775,6 +1788,7 @@ fn draw_slide_object(
     }
     let resolved = object.placeholder.as_deref().and_then(|role| placeholder_text(role, context));
     if let Some(frame) = &object.text {
+        canvas.begin_marked("P", None);
         match &resolved {
             Some(value) => {
                 let frame = frame_with_value(frame, value);
@@ -1782,12 +1796,15 @@ fn draw_slide_object(
             }
             None => draw_text_frame(canvas, object, frame, fonts),
         }
+        canvas.end_marked();
     } else if let Some(value) = &resolved {
         let frame = TextFrame {
             paragraphs: vec![TextParagraph { text: value.clone(), ..Default::default() }],
             ..Default::default()
         };
+        canvas.begin_marked("P", None);
         draw_text_frame(canvas, object, &frame, fonts);
+        canvas.end_marked();
     }
     if object.rotation.abs() > 0.01 {
         canvas.page.ops.push_str("Q\n");
@@ -2018,6 +2035,28 @@ mod tests {
         assert!(bytes.starts_with(b"%PDF"));
         assert!(bytes.windows(5).any(|window| window == b"%%EOF"));
         assert!(bytes.len() > 3000);
+    }
+
+    #[test]
+    fn document_pdf_is_tagged_and_localized() {
+        let bytes = document_to_pdf(&sample_document());
+        let doc = lopdf::Document::load_mem(&bytes).expect("the tagged PDF loads");
+        let catalog = doc.catalog().expect("catalog");
+        assert!(catalog.get(b"StructTreeRoot").is_ok(), "export carries a structure tree");
+        assert!(catalog.get(b"MarkInfo").is_ok(), "export is marked as tagged");
+        let lang = catalog.get(b"Lang").and_then(lopdf::Object::as_str).map(String::from_utf8_lossy).unwrap();
+        assert_eq!(lang, "tr-TR");
+        // The Heading 1 paragraph became an /H1 structure element.
+        let has_h1 = doc.objects.values().any(|object| {
+            object
+                .as_dict()
+                .ok()
+                .and_then(|dict| dict.get(b"S").ok())
+                .and_then(|value| value.as_name().ok())
+                .map(|name| name == b"H1")
+                .unwrap_or(false)
+        });
+        assert!(has_h1, "the heading is tagged as H1");
     }
 
     #[test]

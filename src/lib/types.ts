@@ -951,6 +951,8 @@ export interface DocumentInspection {
   marked: boolean;
   /** The structure tree itself parsed. */
   structTree: boolean;
+  /** `Figure` structure elements without `/Alt` text. */
+  figuresMissingAlt: number;
   language: string;
   viewerPreferences: string;
   fonts: FontInfo[];

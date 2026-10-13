@@ -307,6 +307,18 @@ pub struct BuiltPage {
     pub ops: String,
     pub images: Vec<PageImage>,
     pub links: Vec<LinkAnnot>,
+    /// Tagged-PDF structure items, in the order their marked content appears.
+    /// The MCID of an item is its index in this list.
+    pub struct_items: Vec<StructItem>,
+}
+
+/// One tagged-PDF structure element (PDF/UA). `tag` is the structure type
+/// (`P`, `H1`..`H6`, `Figure`, ...); `alt` carries the alternate text a
+/// `Figure` needs so screen readers can describe it.
+#[derive(Debug, Clone, Default)]
+pub struct StructItem {
+    pub tag: String,
+    pub alt: Option<String>,
 }
 
 /// Drawing surface for one page (top-left origin, y grows downwards).
@@ -323,6 +335,20 @@ impl<'a> Canvas<'a> {
 
     pub fn finish(self) -> BuiltPage {
         self.page
+    }
+
+    /// Opens a marked-content sequence and records the structure element.
+    /// Returns the MCID assigned to the item. The caller must close it with
+    /// [`Canvas::end_marked`].
+    pub fn begin_marked(&mut self, tag: &str, alt: Option<&str>) -> u32 {
+        let mcid = self.page.struct_items.len() as u32;
+        self.page.ops.push_str(&format!("/{tag} <</MCID {mcid}>> BDC\n"));
+        self.page.struct_items.push(StructItem { tag: tag.to_string(), alt: alt.map(|value| value.to_string()) });
+        mcid
+    }
+
+    pub fn end_marked(&mut self) {
+        self.page.ops.push_str("EMC\n");
     }
 
     fn flip(&self, y: f64) -> f64 {
@@ -664,8 +690,14 @@ fn jpeg_info(bytes: &[u8]) -> Option<(u32, u32, u8)> {
     None
 }
 
-/// Serializes the built pages into a PDF document.
-pub fn write_pdf(pages: &[BuiltPage], fonts: &FontSet) -> Vec<u8> {
+/// Serializes the built pages into a tagged (PDF/UA-oriented) PDF document.
+///
+/// Every page's [`StructItem`]s become a structure tree: a `Document` root
+/// whose children are `StructElem`s (`P`, `H1`..`H6`, `Figure`...) linked to
+/// their marked content through the `ParentTree`. The catalog carries
+/// `/Lang`, `/MarkInfo` and `/ViewerPreferences`, and the document title lands
+/// in the info dictionary so `DisplayDocTitle` has something to show.
+pub fn write_pdf(pages: &[BuiltPage], fonts: &FontSet, title: &str, lang: &str) -> Vec<u8> {
     let mut doc = Document::with_version("1.7");
     let pages_id = doc.new_object_id();
 
@@ -676,7 +708,7 @@ pub fn write_pdf(pages: &[BuiltPage], fonts: &FontSet) -> Vec<u8> {
     let bold_ref = Object::Reference(bold_id);
 
     let mut page_ids = Vec::new();
-    for page in pages {
+    for (page_index, page) in pages.iter().enumerate() {
         let mut font_dict = lopdf::Dictionary::new();
         font_dict.set("F1", regular_ref.clone());
         font_dict.set("F2", bold_ref.clone());
@@ -760,6 +792,9 @@ pub fn write_pdf(pages: &[BuiltPage], fonts: &FontSet) -> Vec<u8> {
             "Resources" => Object::Dictionary(resources),
             "Contents" => Object::Reference(content_id),
         };
+        if !page.struct_items.is_empty() {
+            page_dict.set("StructParents", page_index as i64);
+        }
         if !page.links.is_empty() {
             let mut annots = Vec::new();
             for link in &page.links {
@@ -789,11 +824,77 @@ pub fn write_pdf(pages: &[BuiltPage], fonts: &FontSet) -> Vec<u8> {
             "Count" => page_ids.len() as i64,
         }),
     );
+
+    // Tagged-PDF structure: one StructElem per marked item, all children of a
+    // Document root, linked to their pages through the ParentTree.
+    let struct_root_id = doc.new_object_id();
+    let document_elem_id = doc.new_object_id();
+    let mut document_kids: Vec<Object> = Vec::new();
+    let mut parent_tree_nums: Vec<Object> = Vec::new();
+    for (page_index, page) in pages.iter().enumerate() {
+        if page.struct_items.is_empty() {
+            continue;
+        }
+        let mut page_elems: Vec<Object> = Vec::new();
+        for (mcid, item) in page.struct_items.iter().enumerate() {
+            let elem_id = doc.new_object_id();
+            let mut elem = dictionary! {
+                "Type" => "StructElem",
+                "S" => Object::Name(item.tag.clone().into_bytes()),
+                "P" => Object::Reference(document_elem_id),
+                "Pg" => Object::Reference(page_ids[page_index]),
+                "K" => Object::Dictionary(dictionary! {
+                    "Type" => "MCR",
+                    "Pg" => Object::Reference(page_ids[page_index]),
+                    "MCID" => mcid as i64,
+                }),
+            };
+            if let Some(alt) = &item.alt {
+                if !alt.trim().is_empty() {
+                    elem.set("Alt", Object::string_literal(alt.clone()));
+                }
+            }
+            doc.objects.insert(elem_id, Object::Dictionary(elem));
+            page_elems.push(Object::Reference(elem_id));
+            document_kids.push(Object::Reference(elem_id));
+        }
+        parent_tree_nums.push((page_index as i64).into());
+        parent_tree_nums.push(Object::Array(page_elems));
+    }
+    let parent_tree_id = doc.add_object(dictionary! { "Nums" => Object::Array(parent_tree_nums) });
+    doc.objects.insert(
+        document_elem_id,
+        Object::Dictionary(dictionary! {
+            "Type" => "StructElem",
+            "S" => "Document",
+            "P" => Object::Reference(struct_root_id),
+            "K" => Object::Array(document_kids),
+        }),
+    );
+    doc.objects.insert(
+        struct_root_id,
+        Object::Dictionary(dictionary! {
+            "Type" => "StructTreeRoot",
+            "K" => vec![Object::Reference(document_elem_id)],
+            "ParentTree" => Object::Reference(parent_tree_id),
+            "ParentTreeNextKey" => pages.len() as i64,
+        }),
+    );
+
     let catalog_id = doc.add_object(dictionary! {
         "Type" => "Catalog",
         "Pages" => Object::Reference(pages_id),
+        "StructTreeRoot" => Object::Reference(struct_root_id),
+        "Lang" => Object::string_literal(lang.to_string()),
+        "MarkInfo" => Object::Dictionary(dictionary! { "Marked" => Object::Boolean(true) }),
+        "ViewerPreferences" => Object::Dictionary(dictionary! { "DisplayDocTitle" => Object::Boolean(true) }),
     });
     doc.trailer.set("Root", Object::Reference(catalog_id));
+    let info_id = doc.add_object(dictionary! {
+        "Title" => Object::string_literal(title.to_string()),
+        "Producer" => Object::string_literal("OmniOffice".to_string()),
+    });
+    doc.trailer.set("Info", Object::Reference(info_id));
     let mut bytes = Vec::new();
     let _ = doc.save_to(&mut bytes);
     bytes
@@ -828,8 +929,40 @@ mod tests {
         canvas.text(72.0, 100.0, "Merhaba dünya", &TextStyle { size_pt: 14.0, ..Default::default() });
         canvas.fill_rect(72.0, 120.0, 100.0, 20.0, Rgb(30, 90, 200), 1.0);
         let page = canvas.finish();
-        let bytes = write_pdf(&[page], &fonts);
+        let bytes = write_pdf(&[page], &fonts, "Test", "tr-TR");
         assert!(bytes.starts_with(b"%PDF"));
         assert!(bytes.windows(5).any(|w| w == b"%%EOF"));
+    }
+
+    #[test]
+    fn tagged_structure_language_and_alt_text() {
+        let fonts = FontSet::new();
+        let mut canvas = Canvas::new(595.28, 841.89, &fonts);
+        canvas.begin_marked("H1", None);
+        canvas.text(72.0, 100.0, "Başlık", &TextStyle { size_pt: 18.0, ..Default::default() });
+        canvas.end_marked();
+        canvas.begin_marked("Figure", Some("Kedi resmi"));
+        canvas.fill_rect(72.0, 130.0, 40.0, 40.0, Rgb(10, 20, 30), 1.0);
+        canvas.end_marked();
+        let page = canvas.finish();
+        assert_eq!(page.struct_items.len(), 2);
+
+        let bytes = write_pdf(&[page], &fonts, "Belge", "tr-TR");
+        let doc = Document::load_mem(&bytes).expect("the tagged PDF loads");
+        let catalog = doc.catalog().expect("catalog");
+        assert!(catalog.get(b"StructTreeRoot").is_ok(), "catalog carries StructTreeRoot");
+        assert!(catalog.get(b"MarkInfo").is_ok(), "catalog marks the document as tagged");
+        let lang = catalog.get(b"Lang").and_then(Object::as_str).map(String::from_utf8_lossy).unwrap();
+        assert_eq!(lang, "tr-TR");
+        // The alt text is present in the structure tree.
+        assert!(doc.objects.values().any(|object| {
+            object
+                .as_dict()
+                .ok()
+                .and_then(|dict| dict.get(b"Alt").ok())
+                .and_then(|value| value.as_str().ok())
+                .map(|value| String::from_utf8_lossy(value) == "Kedi resmi")
+                .unwrap_or(false)
+        }));
     }
 }
