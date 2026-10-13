@@ -159,7 +159,10 @@ import { measureBlocks } from "./writer/measure";
 import { paginate, pageOfBlock, type BlockMetrics, type Fragment, type PageLayout } from "./writer/pagination";
 import { cellStartColumns, isRectangular, mergeCells, splitCell, type CellRange } from "./writer/table-ops";
 import { WriterRuler } from "./writer/WriterRuler";
-import { LayoutList, ListTree, ListOrdered as TocIcon, RefreshCw } from "lucide-react";
+import { LayoutList, ListTree, ListOrdered as TocIcon, RefreshCw, FileDiff } from "lucide-react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { openDocument } from "../lib/office-api";
+import { diffDocuments } from "./writer/compare";
 
 export { runsToHtml, domToRuns };
 
@@ -453,6 +456,26 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     },
     [applyModel, document],
   );
+
+  // Compares the current document against a picked version and turns the
+  // differences into tracked changes on this document.
+  const compareWithFile = useCallback(async () => {
+    const picked = await openDialog({
+      multiple: false,
+      filters: [{ name: t("writer.compareFilter"), extensions: ["docx", "docm", "dotx", "odt"] }],
+    });
+    if (typeof picked !== "string") return;
+    try {
+      const opened = await openDocument(picked);
+      const base = opened.model as TextDocument;
+      // The comparison author is the configured name, or a neutral default.
+      const author = useSettings.getState().settings.authorName?.trim() || t("writer.compareAuthor");
+      update((current) => diffDocuments(base, current, author));
+      useToasts.getState().push({ kind: "success", title: t("writer.compareDone") });
+    } catch (error) {
+      reportError(error, t);
+    }
+  }, [update, t]);
 
   const undoEdit = useCallback(() => {
     const result = undoHistory(historyRef.current);
@@ -2027,6 +2050,13 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
             <RibbonGroup label={t("writer.tableOfContents")}>
               <ToolButton icon={<TocIcon size={16} />} label={t("writer.insertToc")} onClick={insertToc} />
               <ToolButton icon={<RefreshCw size={16} />} label={t("writer.updateToc")} onClick={updateToc} />
+            </RibbonGroup>
+            <RibbonGroup label={t("writer.review")}>
+              <ToolButton
+                icon={<FileDiff size={16} />}
+                label={t("writer.compare")}
+                onClick={() => void compareWithFile()}
+              />
             </RibbonGroup>
             <RibbonGroup label={t("writer.headerFooter")}>
               <ToolButton
