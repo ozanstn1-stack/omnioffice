@@ -1,0 +1,16 @@
+{
+  "id": "example.pdf-stats",
+  "name": "PDF Stats",
+  "version": "2.0.0",
+  "apiVersion": 2,
+  "compatibility": { "app": ">=4.12.0" },
+  "permissions": ["read_pdf"],
+  "capabilities": ["command", "pdf", "ui", "log"],
+  "commands": [
+    {
+      "id": "stats",
+      "title": "PDF Stats: pages and words",
+      "description": "Reads a PDF from the plugin sandbox and reports its page count and word count."
+    }
+  ]
+}

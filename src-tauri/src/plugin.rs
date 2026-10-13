@@ -32,6 +32,7 @@ const MAX_FILE_BYTES: usize = 512 * 1024;
 const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
 const MAX_REQUEST_BYTES: usize = 512 * 1024;
 const MAX_HEADER_COUNT: usize = 32;
+const MAX_PDF_TEXT_BYTES: usize = 256 * 1024;
 const HTTP_TIMEOUT_SECS: u64 = 15;
 
 const SAMPLE_MANIFEST: &str = include_str!("../../plugins/sample/manifest.json");
@@ -81,6 +82,16 @@ pub struct PluginEntry {
     /// The raw manifest as stored on disk; the frontend validates it strictly.
     pub manifest: Value,
     pub source_bytes: u64,
+}
+
+/// Read-only result of the `pdf` capability: page count, whether a text layer
+/// exists, and the extracted text (bounded).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginPdfRead {
+    pub page_count: u32,
+    pub has_text_layer: bool,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -569,6 +580,27 @@ pub fn plugin_file_write(app: AppHandle, plugin_id: String, name: String, text: 
         return Err(PluginErrorPayload::too_large(format!("The file is larger than {} KB.", MAX_FILE_BYTES / 1024)));
     }
     write_text(&path, &text, "The file")
+}
+
+/// Read-only PDF capability. The file name is resolved inside the plugin's own
+/// sandbox directory (the same guard as the file commands), and the manifest
+/// must declare the `read_pdf` permission. The extracted text is bounded so a
+/// huge PDF cannot exhaust memory in the worker.
+#[tauri::command]
+pub fn plugin_pdf_read(app: AppHandle, plugin_id: String, name: String) -> PluginResult<PluginPdfRead> {
+    let root = plugins_root(&app)?;
+    let dir = plugin_dir(&root, &plugin_id)?;
+    require_permission(&dir, "read_pdf")?;
+    let path = sandbox_file(&root, &plugin_id, &name)?;
+    let info = pdfcore::info::pdf_info(&path, None)
+        .map_err(|error| PluginErrorPayload::invalid(format!("The PDF could not be read: {error}")))?;
+    let runs = pdfcore::content::list_text_runs_in_file(&path, None)
+        .map_err(|error| PluginErrorPayload::invalid(format!("The PDF text could not be read: {error}")))?;
+    let mut text = runs.into_iter().map(|run| run.text).collect::<Vec<_>>().join(" ");
+    if text.len() > MAX_PDF_TEXT_BYTES {
+        text.truncate(MAX_PDF_TEXT_BYTES);
+    }
+    Ok(PluginPdfRead { page_count: info.page_count, has_text_layer: info.has_text_layer, text })
 }
 
 #[tauri::command]
