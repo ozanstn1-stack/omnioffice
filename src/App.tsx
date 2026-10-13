@@ -102,6 +102,9 @@ const InvoicesScreen = React.lazy(() => import("./screens/Invoices").then((modul
 const EmlScreen = React.lazy(() => import("./screens/Eml").then((module) => ({ default: module.Eml })));
 const ScannerScreen = React.lazy(() => import("./screens/Scanner").then((module) => ({ default: module.Scanner })));
 const RecipesScreen = React.lazy(() => import("./screens/Recipes").then((module) => ({ default: module.Recipes })));
+const MailMergeScreen = React.lazy(() =>
+  import("./screens/MailMerge").then((module) => ({ default: module.MailMerge })),
+);
 const DataScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.DataScreen })));
 const DrawScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.DrawScreen })));
 const NotesScreen = React.lazy(() =>
@@ -727,6 +730,7 @@ export default function App() {
       eml: <EmlScreen initialFiles={files} onNavigate={navigate} />,
       scanner: <ScannerScreen />,
       recipes: <RecipesScreen />,
+      mailMerge: <MailMergeScreen />,
       cleaner: <CleanerScreen />,
       draw: <DrawScreen />,
       planner: <PlannerScreen />,
@@ -777,6 +781,7 @@ export default function App() {
         { id: "eml", label: t("nav.eml"), icon: <Mail size={16} /> },
         { id: "scanner", label: t("nav.scanner"), icon: <Camera size={16} /> },
         { id: "recipes", label: t("nav.recipes"), icon: <ListChecks size={16} /> },
+        { id: "mailMerge", label: t("nav.mailMerge"), icon: <Mail size={16} /> },
         { id: "cleaner", label: t("nav.cleaner"), icon: <Sparkles size={16} /> },
         { id: "pdfForms", label: t("nav.pdfForms"), icon: <ClipboardList size={16} /> },
       ],

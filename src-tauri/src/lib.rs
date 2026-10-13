@@ -333,6 +333,7 @@ pub fn run() {
             office::office_read_invoice_qr,
             office::office_open_eml,
             office::office_scan_pages,
+            office::office_mail_merge,
             signatures::signature_save,
             signatures::signature_list,
             signatures::signature_delete,
