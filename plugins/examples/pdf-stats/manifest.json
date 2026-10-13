@@ -3,7 +3,7 @@
   "name": "PDF Stats",
   "version": "2.0.0",
   "apiVersion": 2,
-  "compatibility": { "app": ">=4.12.0" },
+  "compatibility": { "app": ">=5.0.0" },
   "permissions": ["read_pdf"],
   "capabilities": ["command", "pdf", "ui", "log"],
   "commands": [

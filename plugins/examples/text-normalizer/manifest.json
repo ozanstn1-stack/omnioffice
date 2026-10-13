@@ -3,7 +3,7 @@
   "name": "Text Normalizer",
   "version": "2.0.0",
   "apiVersion": 2,
-  "compatibility": { "app": ">=4.12.0" },
+  "compatibility": { "app": ">=5.0.0" },
   "permissions": ["batch_steps"],
   "capabilities": ["command", "batch-step", "ui", "log"],
   "commands": [

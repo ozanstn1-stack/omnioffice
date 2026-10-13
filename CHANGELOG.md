@@ -4,6 +4,59 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.0] - Erişilebilir ve hızlı (Accessible and fast)
+
+### Added
+
+- **Mail merge** (issue #114): a Writer document's `{{placeholders}}` are filled
+  from a CSV/TSV table, producing one document per row (or a single preview),
+  with a missing-field report before anything is written.
+- **Document comparison** (issue #115): the Writer "Compare with…" action diffs
+  the open document against a picked version and turns the differences into
+  **tracked changes** (word-level insert/delete), reusing the revision engine.
+- **Plugin API v2** (issue #116): a read-only **`pdf` capability**
+  (`host.pdf.read` → page count, text layer, bounded text) and a **`batch-step`
+  capability** that exposes recipe steps from a plugin manifest. API v1 plugins
+  keep loading. See `docs/plugins.md` and the two example plugins.
+- **Tagged PDF export** (issue #117): Writer and Impress PDFs now carry a
+  `StructTreeRoot` (`H1`..`H6`/`P`/`Figure` with `/Alt`), `/Lang (tr-TR)`,
+  `/MarkInfo` and a document title, so screen readers can read the structure.
+  The Inspector reports PDF/UA gaps (`a11y.figure-alt` included).
+- **Reader selectable text + read-aloud** (issue #118): a transparent text
+  layer over the page bitmap makes text selectable/copyable, and a Web Speech
+  (tr-TR) control reads the current page with rate and pause/resume. Scanned
+  pages show the OCR hint.
+
+### Changed
+
+- **Performance** (issue #119): office images move out of the model JSON into a
+  content-addressed blob store, so autosave only sends images that changed
+  (measured reduction). The Turkish dictionary is a **lazy chunk**, dropping the
+  entry bundle from ~123 KB to ~87 KB gzip.
+
+### Security
+
+- **Audit closure** (issue #120): L2 (plugin sandbox reparse-point re-checks),
+  L3 (strict manifest validation), L4 (streamed "keep both" download) and L5
+  (AI save-path scope documented) are closed; H5 (AI page extraction) is now
+  bounded by the heavy-work semaphore and a 4 MB text cap. A new `pdf_parse`
+  fuzz target runs in CI. `AUDIT_REPORT.md` records the evidence.
+
+### Known limitations
+
+- Comparison diffs at the **word level** and aligns paragraphs by position;
+  tables are carried over from the revised document, not diffed.
+- Tagged export covers Writer paragraphs/images and Impress text/images;
+  **table cells, headers/footers** and XMP metadata are not tagged, so it is a
+  PDF/UA-oriented output, not a certified one.
+- Read-aloud depends on the platform's Web Speech voice; it may not be fully
+  offline, and a scanned PDF (no text layer) cannot be read.
+- The blob store applies to the **autosave/recovery** path; a normal Save still
+  writes the full model. Blob GC is available (`recovery_gc_blobs`) but not yet
+  scheduled.
+- The plugin `batch-step` hook is exposed to the recipe UI; the Rust recipe
+  engine does not yet auto-register plugin steps.
+
 ## [4.12.0] - Otomasyon (Automation)
 
 ### Added
