@@ -1,9 +1,41 @@
-# Release Readiness — OmniOffice 4.11.0
+# Release Readiness — OmniOffice 4.12.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
+
+## Implemented (this cycle, 4.12.0) — Otomasyon (Automation)
+
+- **Recipe engine** (issue #112): `src-tauri/src/recipes.rs` defines a `Recipe`
+  of `RecipeStep`s (compress, stamp, pdfa, ocr, redact); `run_recipe` chains
+  each step's output into the next and writes the result atomically.
+  `recipe_save/list/delete` persist recipes. Tests: a **stamp → compress chain**
+  produces a PDF, an empty recipe is refused, id sanitisation.
+- **Watched folder** (issue #112): `WatchedFolder` config plus `scan_once`
+  (dedup across passes), `watched_folder_scan` (one pass) and
+  `watched_folder_start/stop` (polling loop that carries the seen set).
+  Tests: a pass processes a new file once and skips it on the second pass.
+  The **Recipes** screen builds/saves/runs recipes and configures the folder.
+- **CLI** (issue #113): `src-tauri/src/cli.rs` parses `--cli merge/compress/ocr`
+  with `-o`/`--lang` and returns 0/1/2. On Windows `AttachConsole` binds the
+  parent console and output goes to `CONOUT$`/`CONERR$`. Tests: parsing (GUI
+  pass-through, merge, OCR languages, usage errors) and a merge that produces a
+  `%PDF`.
+- **Explorer "Send to"** (issue #113): `src-tauri/windows/hooks.nsh` creates and
+  removes a `$SENDTO` shortcut, wired through `installerHooks`.
+
+### Not done in this pass (honest)
+
+- The watched folder is **polling**, not notification-based; the long-running
+  loop is not unit-tested.
+- The recipe UI adds steps with **defaults** (OCR `tur+eng`, stamp
+  `Sayfa {page}`); the detailed options are set in the dedicated tools.
+- The CLI covers **merge/compress/ocr** only.
+- The **NSIS hook and the "Send to" menu were not verified by a local install**;
+  the hook is compiled by the Windows release build.
+- Recipe steps bypass `JobRegistry` (direct pdfcore calls + a `recipe:progress`
+  event).
 
 ## Implemented (this cycle, 4.11.0) — Cepte Ofis (Office in your pocket)
 

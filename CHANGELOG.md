@@ -4,6 +4,39 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.12.0] - Otomasyon (Automation)
+
+### Added
+
+- **Chainable batch recipes** (issue #112): a recipe is an ordered list of
+  steps — compress, stamp, PDF/A, OCR, redact — run over one PDF with each
+  step's output chained into the next and written atomically. Recipes are saved
+  as JSON and reloaded, so a chain is built once and reused.
+- **Watched folder** (issue #112): a folder paired with a recipe processes new
+  PDFs into an output folder, with a per-pass dedup set and a `watched:file`
+  event. A background polling loop can run it continuously. The **Recipes**
+  screen builds, saves and runs recipes and configures the watched folder.
+- **Command-line interface** (issue #113): `OmniOffice.exe --cli merge a.pdf
+  b.pdf -o out.pdf` (also `compress` and `ocr`, with `--lang`), returning 0/1/2
+  exit codes. On Windows the process attaches to the parent console so the
+  output is visible.
+- **Explorer "Send to"** (issue #113): the NSIS installer creates a
+  `Send to → OmniOffice` shortcut; sent files arrive through the launch-file
+  queue.
+
+### Known limitations
+
+- The watched folder uses a **polling** loop (no filesystem-notification
+  dependency); a single pass is unit-tested, the long-running loop is not.
+- The recipe UI adds steps with **sensible defaults**; detailed options live in
+  the dedicated tools.
+- The CLI covers **merge/compress/ocr** only; other tools can be added to the
+  same skeleton.
+- The **NSIS "Send to" hook was not verified by a local install**; the hook is
+  compiled by the Windows release build.
+- Recipe steps call the pdfcore functions directly rather than through
+  `JobRegistry`; progress is reported with a `recipe:progress` event.
+
 ## [4.11.0] - Cepte Ofis (Office in your pocket)
 
 ### Added
