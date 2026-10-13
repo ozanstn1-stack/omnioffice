@@ -168,6 +168,10 @@ pub fn input_file(raw: &str) -> Result<ValidatedPath, PdfError> {
 
 /// Validates an output path coming from the webview. The parent directory must
 /// already exist: commands never create arbitrary directory chains from IPC.
+/// This is a lexical check plus an existence/permission probe, **not a
+/// sandbox**: the webview may name any existing directory, because the human
+/// chooses the destination through an OS dialog. Do not read this as a
+/// confinement guarantee.
 pub fn output_file(raw: &str) -> Result<ValidatedPath, PdfError> {
     let path = normalize(raw)?;
     if path.is_dir() {

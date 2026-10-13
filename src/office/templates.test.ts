@@ -201,7 +201,10 @@ describe("Turkish templates", () => {
   it("carries no real personal data: no valid TCKN, IBAN, phone or personal e-mail", () => {
     for (const candidate of TEMPLATES) {
       const json = JSON.stringify(candidate.build());
-      for (const match of json.match(/\d{11}/g) ?? []) {
+      // Whole 11-digit tokens only: a substring of a longer number (a ms
+      // timestamp is 13 digits) is not a TCKN and must not be scanned, or the
+      // check flakes when that slice happens to satisfy the checksum.
+      for (const match of json.match(/\b\d{11}\b/g) ?? []) {
         expect(tcknIsValid(match), `${candidate.id} looks like a real TCKN: ${match}`).toBe(false);
       }
       for (const match of json.match(/TR\d{24}/gi) ?? []) {

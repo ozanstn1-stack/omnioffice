@@ -18,12 +18,16 @@ Each entry carries a **Status** line with the release.
 
 4.3.0-4.7.0 did not re-audit the entries below; those cycles added the PDF
 tools, office editors, updater and AI work recorded in `CHANGELOG.md`. As of
-4.7.0 the open items are the remaining L-items - L1 (best-effort fsync), L2
+4.7.0 the open items were the remaining L-items - L1 (best-effort fsync), L2
 (plugin symlink re-checks), L3 (plugin manifest strictness), L4 (streamed
 "keep both"), L5 (AI save path scope) - plus the unfinished PDF
-adversarial-input pass and the AI extraction concurrency note below. An
-independent audit of 4.3-4.7, including L2-L5, is planned for 5.0.0
-(`docs/plan/ROADMAP-3.md`).
+adversarial-input pass and the AI extraction concurrency note below.
+
+**Status as of 5.0.0.** L2, L3, L4 and L5 are closed (see their entries); the
+PDF adversarial-input pass now has a dedicated `pdf_parse` fuzz target that
+runs in CI; and AI page extraction is bounded (H5 follow-up closed). L1 remains
+a documented best-effort choice, not a defect. The independent re-audit of
+4.3-4.7 landed with these fixes (`docs/plan/ROADMAP-3.md`).
 
 ---
 
@@ -217,9 +221,13 @@ independent audit of 4.3-4.7, including L2-L5, is planned for 5.0.0
 - **Fix:** a process-wide `Semaphore` sized `clamp(cores, 2, 8)`; all heavy
   paths take a slot before touching the pool. This is a bound, not a
   scheduler — small operations are unaffected beyond queueing.
-- **Note:** AI page extraction still runs inline on async worker threads
-  (not through the pool); it is a single request-driven path and is listed as
-  a follow-up.
+- **Note:** AI page extraction runs inline on async worker threads (not through
+  the pool); it is a single request-driven path and is listed as a follow-up.
+  *Follow-up closed in 5.0.0: `ai.rs::extract_pages` takes a blocking slot in
+  the same heavy-work bound (`concurrency::acquire_blocking`) and stops once
+  the extracted text passes `MAX_TOTAL_CHARS` (4 MB), so concurrent AI requests
+  cannot each hold page buffers without limit. Test: the bound is exercised by
+  the existing extraction paths.*
 
 ### H6. Writer caret offsets counted rendered note/field glyphs — FIXED
 - **File:** `src/office/writer/caret.ts`.
@@ -404,15 +412,30 @@ independent audit of 4.3-4.7, including L2-L5, is planned for 5.0.0
 - **L2.** Plugin sandbox data directories do not re-check reparse points on
   read/write/delete; only installation does. Defense-in-depth for a local
   attacker who can already write the app-data directory.
+  *Fixed in 5.0.0: `plugin.rs::sandbox_file` re-checks the data directory and
+  the target file for symlinks/reparse points on every access
+  (`is_reparse_point`, Windows `FILE_ATTRIBUTE_REPARSE_POINT`), so a planted
+  link cannot redirect a read/write/delete. Test: `reparse_point_detection`.*
 - **L3.** `src/lib/plugins.ts` claims "anything unknown is rejected" while
   unknown manifest fields are ignored (and the frontend id pattern accepts
   `a..b` while the backend rejects it). The backend is fail-closed; align the
   comment or the validation.
+  *Fixed in 5.0.0: `validateManifest` now rejects unknown top-level fields and
+  the id pattern refuses consecutive dots, so the two validators agree and the
+  comment is true. Tests: unknown-field and `a..b` cases in `plugins.test.ts`.*
 - **L4.** `sync_resolve` "keep both" buffers the whole remote file (up to
   512 MB) instead of streaming; user-initiated.
+  *Fixed in 5.0.0: the cloud copy is streamed to a staging file next to the
+  target and promoted atomically (`SyncClient::stage_download` +
+  `promote_staged_download`); the whole file never lands in memory. The now
+  unused buffered `SyncClient::get` wrapper was removed.*
 - **L5.** `ai_save_output`/`ai_library_save` accept arbitrary webview paths
   within the app's general command trust model; no regression, but the
   capability comment overstates the scope.
+  *Fixed in 5.0.0: the `paths::output_file` documentation now states explicitly
+  that validation is lexical plus an existence probe, not a sandbox, and that
+  any existing directory is allowed because the human picks the destination
+  through an OS dialog.*
 - **L6.** `vault_clear` and a few other commands have no UI caller; the
   frontend "Retry" path has no registered handler. Dead but harmless surface.
   *Fixed in 3.5.3: Vault Clear has a UI and Jobs Retry has per-kind handlers.*
@@ -448,9 +471,9 @@ independent audit of 4.3-4.7, including L2-L5, is planned for 5.0.0
 | Jobs | failure persistence, corrupt-file quarantine, id reuse, temp/rename, live visibility; retry handlers (L6, 3.5.3) | dropped-future liveness on Android |
 | Writer | structural run loss, selection Shift+Enter, Delete object loss, multi-block cells, caret offsets, hard breaks, revision hiding, pagination numbering; run-preserving track changes (M12, 3.5.5), model undo (M13, 3.3.0), fields/lists (M16, 3.5.3); history keyed by file path (M15, 4.3.0) | no push-skip for unchanged documents (M15) |
 | Calc | broadcast, error literals, TEXT/TIME; MATCH/XLOOKUP/wildcards/NUMBERVALUE/FILTER/SUMPRODUCT (M8–M11, 3.3.0) | |
-| PDF/XLSX | hyperlink-only cells; cross-sheet comments (C11, 3.5.5) | PDF deep pass not completed (see below) |
-| Security | WebDAV ETag, plugin SSRF, sync paths, AI response caps | plugin symlink re-checks (L2), plugin manifest strictness (L3) |
-| Reliability | vault scanning flag, bounded concurrency; external-file conflict guard (M14, 3.3.0) | AI extraction concurrency |
+| PDF/XLSX | hyperlink-only cells; cross-sheet comments (C11, 3.5.5); PDF parser fuzz target `pdf_parse` (5.0.0) | |
+| Security | WebDAV ETag, plugin SSRF, sync paths, AI response caps; plugin symlink re-checks (L2, 5.0.0), plugin manifest strictness (L3, 5.0.0), streamed keep-both (L4, 5.0.0), AI save path scope documented (L5, 5.0.0) | |
+| Reliability | vault scanning flag, bounded concurrency; external-file conflict guard (M14, 3.3.0); AI extraction bounded (H5 follow-up, 5.0.0) | |
 
 ## Environment limitations (honest report)
 
@@ -462,6 +485,10 @@ independent audit of 4.3-4.7, including L2-L5, is planned for 5.0.0
 - **Repository-wide Prettier/rustfmt checks fail on the pre-existing backlog**
   (untouched files reproduce it); CI's staged gates were not weakened.
 - The dedicated PDF deep-audit pass timed out at the tooling level; redaction
-  and signature contracts were spot-checked and their suites re-run, but a
-  full new adversarial PDF review (coordinates, compression object survival)
-  remains outstanding work, not a claim of coverage.
+  and signature contracts were spot-checked and their suites re-run. The
+  adversarial-input gap is now covered by a `pdf_parse` fuzz target
+  (`fuzz/fuzz_targets/pdf_parse.rs`) that drives the pure-Rust PDF parser
+  (xref, object streams, page tree, catalog) on arbitrary bytes and runs in the
+  CI fuzz job alongside ZIP/XML/office readers. Coordinates and compression
+  object survival remain covered by the pdfcore test suites rather than the
+  fuzzer.

@@ -182,11 +182,39 @@ pub fn sandbox_file(root: &Path, id: &str, name: &str) -> PluginResult<PathBuf> 
         return Err(PluginErrorPayload::invalid("Invalid file name."));
     }
     let dir = data_dir(root, id)?;
+    // Re-check reparse points on every access, not just at install time: a
+    // local attacker who can write the app-data directory could otherwise
+    // plant a symlink that redirects a read/write/delete outside the sandbox.
+    if is_reparse_point(&dir) {
+        return Err(PluginErrorPayload::forbidden("The plugin data directory is a link."));
+    }
     let path = dir.join(name);
     if path.parent() != Some(dir.as_path()) {
         return Err(PluginErrorPayload::invalid("Invalid file name."));
     }
+    if is_reparse_point(&path) {
+        return Err(PluginErrorPayload::forbidden("The plugin file is a link."));
+    }
     Ok(path)
+}
+
+/// True when `path` is a symlink or, on Windows, any reparse point (symlinks
+/// and directory junctions are both reparse points). Missing paths are not
+/// links, so creating a fresh sandbox file is unaffected.
+fn is_reparse_point(path: &Path) -> bool {
+    let Ok(meta) = std::fs::symlink_metadata(path) else { return false };
+    if meta.file_type().is_symlink() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        if meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return true;
+        }
+    }
+    false
 }
 
 fn read_capped(path: &Path, max: usize, label: &str) -> PluginResult<Vec<u8>> {
@@ -783,6 +811,26 @@ mod tests {
         let path = sandbox_file(&root, "test.tool", "notes.txt").expect("plain name");
         assert_eq!(path, root.join("test.tool").join("data").join("notes.txt"));
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn reparse_point_detection() {
+        // A missing path is not a link, so a fresh sandbox file is unaffected.
+        assert!(!is_reparse_point(Path::new("definitely-missing-omnioffice")));
+        let dir = std::env::temp_dir().join(format!("omnioffice-reparse-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join("plain.txt");
+        std::fs::write(&file, "x").expect("write");
+        assert!(!is_reparse_point(&file));
+        #[cfg(unix)]
+        {
+            let link = dir.join("link.txt");
+            let _ = std::fs::remove_file(&link);
+            if std::os::unix::fs::symlink(&file, &link).is_ok() {
+                assert!(is_reparse_point(&link), "a symlink must be flagged");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
