@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   PROVIDER_PRESETS,
   consentKeys,
@@ -7,7 +7,7 @@ import {
   plainProviderName,
   providerDisplayName,
 } from "./ai-providers";
-import { makeTranslate } from "./i18n";
+import { ensureLanguage, makeTranslate } from "./i18n";
 
 describe("AI provider presets", () => {
   it("offers an Anthropic (Claude) preset with the API defaults", () => {
@@ -49,7 +49,11 @@ describe("AI provider presets", () => {
 
 describe("provider-aware consent text", () => {
   const en = makeTranslate("en");
-  const tr = makeTranslate("tr");
+  let tr: ReturnType<typeof makeTranslate>;
+  beforeAll(async () => {
+    await ensureLanguage("tr");
+    tr = makeTranslate("tr");
+  });
 
   it("names the selected cloud provider in the consent and the privacy notice", () => {
     for (const provider of ["Anthropic (Claude)", "DeepSeek", "Google Gemini"]) {

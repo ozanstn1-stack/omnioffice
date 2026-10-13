@@ -356,6 +356,8 @@ pub fn run() {
             office::history_load,
             office::history_clear,
             office::recovery_save,
+            office::recovery_save_blobs,
+            office::recovery_gc_blobs,
             office::recovery_list,
             office::recovery_load,
             office::recovery_discard,

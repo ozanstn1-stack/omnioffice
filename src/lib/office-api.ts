@@ -118,6 +118,19 @@ export const historyClear = (documentId: string) => invoke<void>("history_clear"
 export const recoverySave = (documentId: string, kind: string, title: string, path: string | null, model: unknown) =>
   invoke<void>("recovery_save", { documentId, kind, title, path, model });
 
+/** Autosave with images moved to the content-addressed blob store. */
+export const recoverySaveBlobs = (
+  documentId: string,
+  kind: string,
+  title: string,
+  path: string | null,
+  model: unknown,
+  blobs: Record<string, string>,
+) => invoke<void>("recovery_save_blobs", { documentId, kind, title, path, model, blobs });
+
+/** Deletes image blobs no recovery snapshot references any more. */
+export const recoveryGcBlobs = () => invoke<number>("recovery_gc_blobs");
+
 export const recoveryList = () => invoke<RecoveryEntry[]>("recovery_list");
 
 export const recoveryLoad = (documentId: string) => invoke<unknown>("recovery_load", { documentId });

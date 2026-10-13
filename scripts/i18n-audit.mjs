@@ -21,19 +21,23 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const sourcePath = fileURLToPath(new URL("../src/lib/i18n.ts", import.meta.url));
-const source = readFileSync(sourcePath, "utf8");
+const enPath = fileURLToPath(new URL("../src/lib/i18n.ts", import.meta.url));
+const trPath = fileURLToPath(new URL("../src/lib/i18n-tr.ts", import.meta.url));
+const enSource = readFileSync(enPath, "utf8");
+const trSource = readFileSync(trPath, "utf8");
 
-const enStart = source.indexOf("const en: Dict = {");
-const trStart = source.indexOf("const tr: Dict = {");
-const dictStart = source.indexOf("const dictionaries");
-if (enStart < 0 || trStart < 0 || dictStart < 0) {
-  console.error("i18n-audit: could not find the en/tr dictionary blocks in " + sourcePath);
+// English lives in i18n.ts; Turkish is a lazily loaded chunk of its own.
+const enStart = enSource.indexOf("const en: Dict = {");
+const enEnd = enSource.indexOf("\n};", enStart);
+const trStart = trSource.indexOf("export const tr: Record<string, string> = {");
+const trEnd = trSource.indexOf("\n};", trStart);
+if (enStart < 0 || enEnd < 0 || trStart < 0 || trEnd < 0) {
+  console.error("i18n-audit: could not find the en/tr dictionary blocks");
   process.exit(2);
 }
 
-const enBody = source.slice(enStart, trStart);
-const trBody = source.slice(trStart, dictStart);
+const enBody = enSource.slice(enStart, enEnd);
+const trBody = trSource.slice(trStart, trEnd);
 
 const keysOf = (body) => [...body.matchAll(/^\s*"([^"]+)":/gm)].map((match) => match[1]);
 
@@ -69,7 +73,8 @@ function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) walk(full, out);
-    else if (/\.(ts|tsx)$/.test(entry) && !/\.test\./.test(entry) && entry !== "i18n.ts") out.push(full);
+    else if (/\.(ts|tsx)$/.test(entry) && !/\.test\./.test(entry) && entry !== "i18n.ts" && entry !== "i18n-tr.ts")
+      out.push(full);
   }
   return out;
 }

@@ -12,6 +12,7 @@ import * as api from "./office-api";
 import { toAppError } from "./api";
 import { makeTranslate } from "./i18n";
 import { describeImportLimit, splitImportWarnings } from "./importWarnings";
+import { BlobSendCache, stripImageBlobs } from "./blob-store";
 import { OFFICE_DOCUMENT_EXTENSIONS, fileBaseName, isOfficeDocument } from "./format";
 import { useRecent, useSettings, useToasts } from "./store";
 
@@ -145,6 +146,9 @@ interface RecoveryState {
   restore: (documentId: string) => Promise<{ kind: OfficeKind; model: unknown } | null>;
 }
 
+// Images already sent this session; the backend keeps them content-addressed.
+const blobSendCache = new BlobSendCache();
+
 export const useRecovery = create<RecoveryState>((set) => ({
   records: [],
   busy: false,
@@ -161,7 +165,12 @@ export const useRecovery = create<RecoveryState>((set) => ({
   save: async (tab) => {
     if (!tab.dirty) return;
     try {
-      await api.recoverySave(tab.id, tab.kind, tab.title, tab.path, tab.model);
+      // Images travel once: the model goes out with `blobRef` digests and only
+      // never-sent blobs are attached, so autosave of an unchanged document
+      // moves no image data over IPC.
+      const { model, blobs } = stripImageBlobs(tab.model);
+      const fresh = blobSendCache.pending(blobs);
+      await api.recoverySaveBlobs(tab.id, tab.kind, tab.title, tab.path, model, Object.fromEntries(fresh));
     } catch {
       // Autosave failures are silent by design; the undo history in the editor
       // and the previous save remain valid.

@@ -1,8 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { makeTranslate } from "./i18n";
+import { beforeAll, describe, expect, it } from "vitest";
+import { ensureLanguage, makeTranslate } from "./i18n";
 
 const en = makeTranslate("en");
-const tr = makeTranslate("tr");
+// Turkish is a lazily loaded chunk, so load it before resolving its keys.
+let tr: ReturnType<typeof makeTranslate>;
+beforeAll(async () => {
+  await ensureLanguage("tr");
+  tr = makeTranslate("tr");
+});
 
 describe("i18n dictionaries", () => {
   it("resolves a known English key", () => {

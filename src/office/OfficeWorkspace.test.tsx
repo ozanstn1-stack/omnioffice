@@ -62,9 +62,11 @@ describe("Office workspace crash isolation", () => {
     useOfficeTabs.getState().edit(id, (model) => model);
     render(<OfficeWorkspace />);
 
-    await waitFor(() => expect(calls("recovery_save")).toHaveLength(1));
-    const [saved] = calls("recovery_save");
+    await waitFor(() => expect(calls("recovery_save_blobs")).toHaveLength(1));
+    const [saved] = calls("recovery_save_blobs");
     expect(saved).toMatchObject({ documentId: id, kind: "writer", title: "Draft" });
+    // Images are lifted into the content-addressed store, not the model.
+    expect(saved.blobs).toBeDefined();
     // The tab keeps its data: the crash does not touch the store.
     expect(useOfficeTabs.getState().tabs[0].dirty).toBe(true);
     const logged = calls("log_frontend").map((args) => String(args.message));
@@ -78,7 +80,7 @@ describe("Office workspace crash isolation", () => {
     render(<OfficeWorkspace />);
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     await waitFor(() => expect(calls("log_frontend")).toHaveLength(1));
-    expect(calls("recovery_save")).toHaveLength(0);
+    expect(calls("recovery_save_blobs")).toHaveLength(0);
   });
 
   it("reopens the editor with Try again once the problem is gone", async () => {
