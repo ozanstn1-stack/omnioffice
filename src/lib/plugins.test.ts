@@ -129,6 +129,15 @@ describe("manifest validation", () => {
     expect(validateManifest(manifestJson({ id: "../evil" })).ok).toBe(false);
     expect(validateManifest(manifestJson({ id: "Test.Tool" })).ok).toBe(false);
     expect(validateManifest(manifestJson({ id: "" })).ok).toBe(false);
+    // Consecutive dots are rejected here as well as in Rust.
+    expect(validateManifest(manifestJson({ id: "a..b" })).ok).toBe(false);
+  });
+
+  it("rejects unknown top-level manifest fields", () => {
+    const result = validateManifest(manifestJson({ extra: true, another: 1 }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("Unknown manifest field");
   });
 
   it("rejects an unsupported plugin API version", () => {

@@ -99,7 +99,9 @@ export interface PluginManifest {
 
 export type ManifestResult = { ok: true; manifest: PluginManifest } | { ok: false; error: string };
 
-const PLUGIN_ID_PATTERN = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
+// No consecutive dots, so an id like `a..b` (which the Rust side rejects) is
+// refused here too: the two validators must agree.
+const PLUGIN_ID_PATTERN = /^(?!.*\.\.)[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
 const SEMVER_PATTERN = /^(\d+)\.(\d+)\.(\d+)$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -191,6 +193,21 @@ function validateBatchSteps(value: unknown): PluginBatchStep[] | string {
 /** Strict manifest validation: anything unknown is rejected, never ignored. */
 export function validateManifest(value: unknown): ManifestResult {
   if (!isRecord(value)) return { ok: false, error: "The manifest must be a JSON object." };
+  const allowedFields = new Set([
+    "id",
+    "name",
+    "version",
+    "apiVersion",
+    "compatibility",
+    "permissions",
+    "capabilities",
+    "commands",
+    "batchSteps",
+  ]);
+  const unknownFields = Object.keys(value).filter((key) => !allowedFields.has(key));
+  if (unknownFields.length > 0) {
+    return { ok: false, error: `Unknown manifest field(s): ${unknownFields.join(", ")}.` };
+  }
   const { id, name, version, apiVersion, compatibility, permissions, capabilities, commands, batchSteps } = value;
   if (typeof id !== "string" || !PLUGIN_ID_PATTERN.test(id)) {
     return { ok: false, error: "The plugin id must be lowercase letters, digits, dots, dashes or underscores." };

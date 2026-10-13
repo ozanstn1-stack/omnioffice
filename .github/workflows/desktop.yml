@@ -538,6 +538,9 @@ jobs:
       - name: Office readers
         working-directory: fuzz
         run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu office_readers -- -max_total_time=60
+      - name: PDF parser
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu pdf_parse -- -max_total_time=60
 
   # Criterion trend benchmarks with a regression gate. The previous master
   # run's means are cached; a benchmark >15 % slower than the others moved

@@ -26,6 +26,9 @@ use tauri::{AppHandle, Emitter, Manager, State};
 /// context budget (up to 1M tokens).
 const MAX_PAGES_FOR_CONTEXT: u32 = 2_000;
 const MIN_TEXT_CHARS: usize = 20;
+/// Upper bound on the text held in memory for one AI request. A pathological
+/// document cannot make extraction allocate without limit.
+const MAX_TOTAL_CHARS: usize = 4_000_000;
 
 fn ai_error(error: AiError) -> PdfError {
     let code = match error {
@@ -671,6 +674,9 @@ fn extract_pages(
     pages: Option<&[u32]>,
     cancel: &CancelToken,
 ) -> Result<Vec<(u32, String)>, PdfError> {
+    // Bound concurrent extraction through the shared heavy-work limit so many
+    // AI requests cannot each hold page buffers at once.
+    let _permit = crate::concurrency::acquire_blocking();
     let extension = path.extension().map(|value| value.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
     if extension != "pdf" {
         return extract_office_pages(path, pages, cancel);
@@ -692,14 +698,19 @@ fn extract_pages(
         _ => (1..=total.min(MAX_PAGES_FOR_CONTEXT)).collect(),
     };
     let mut out = Vec::with_capacity(selected.len());
+    let mut total_chars = 0usize;
     for (index, page) in selected.iter().enumerate() {
         if cancel.is_cancelled() {
             return Err(ai_error(AiError::Cancelled));
+        }
+        if total_chars >= MAX_TOTAL_CHARS {
+            break;
         }
         emit_progress(app, job_id, "extract", index as u64, selected.len() as u64);
         let text = pdfcore::render::extract_page_text(path, password, *page).unwrap_or_default();
         let cleaned = text.split_whitespace().collect::<Vec<_>>().join(" ");
         if !cleaned.is_empty() {
+            total_chars += cleaned.len();
             out.push((*page, cleaned));
         }
     }

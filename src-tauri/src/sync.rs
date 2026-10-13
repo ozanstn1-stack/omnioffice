@@ -276,14 +276,6 @@ impl SyncClient {
         }
     }
 
-    fn get(&self, path: &str) -> Result<(Vec<u8>, Option<String>), SyncError> {
-        match self {
-            SyncClient::WebDav(provider) => provider.get(path),
-            SyncClient::GoogleDrive(provider) => provider.get(path),
-            SyncClient::Microsoft(provider) => provider.get(path),
-        }
-    }
-
     fn get_to_writer(&self, path: &str, writer: &mut dyn Write) -> Result<(String, u64, Option<String>), SyncError> {
         match self {
             SyncClient::WebDav(provider) => provider.get_to_writer(path, writer),
@@ -995,17 +987,20 @@ pub async fn sync_resolve(app: AppHandle, local_path: String, resolution: String
             MergeAction::DownloadCloud => download_core(&app, &evaluated.file_name, &path, true),
             MergeAction::DownloadCloudCopy => {
                 let context = sync_context(&app)?;
-                let (bytes, _etag) = context
-                    .provider
-                    .get(&evaluated.remote_path)
-                    .map_err(sync_error)?;
                 let stamp = metadata::stamp_for_name(SystemTime::now());
                 let directory = path.parent().map(Path::to_path_buf).unwrap_or_default();
                 let copy_name = merge::unique_cloud_copy_name(&evaluated.file_name, &stamp, |candidate| {
                     directory.join(candidate).exists()
                 });
                 let copy_path = directory.join(&copy_name);
-                metadata::write_atomic(&copy_path, &bytes).map_err(sync_error)?;
+                // Stream the remote file to a staging file next to the target
+                // and promote it atomically: a large cloud copy (the limit is
+                // 512 MB) never lands in memory.
+                let (staged, _sha256, _size, _etag) = context
+                    .provider
+                    .stage_download(&evaluated.remote_path, &copy_path)
+                    .map_err(sync_error)?;
+                promote_staged_download(&staged, &copy_path).map_err(sync_error)?;
                 let note = format!(
                     "The cloud version was saved as \"{copy_name}\". The local file is unchanged; resolve it when you are ready."
                 );
