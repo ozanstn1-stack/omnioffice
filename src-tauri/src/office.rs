@@ -1740,11 +1740,16 @@ pub fn recovery_list(app: AppHandle) -> Result<Vec<RecoveryEntry>, OfficeErrorPa
 #[tauri::command]
 pub fn recovery_load(app: AppHandle, document_id: String) -> Result<Value, OfficeErrorPayload> {
     let id = sanitize_key(&document_id)?;
-    let path = recovery_dir(&app)?.join(format!("{id}.json"));
+    let dir = recovery_dir(&app)?;
+    let path = dir.join(format!("{id}.json"));
     let bytes = officecore::io::read_bytes(&path).map_err(payload)?;
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|error| payload(OfficeError::corrupt(format!("The recovery snapshot is damaged: {error}"))))?;
-    Ok(value.get("model").cloned().unwrap_or(Value::Null))
+    let mut model = value.get("model").cloned().unwrap_or(Value::Null);
+    // Images live in the content-addressed blob store; put them back so callers
+    // always receive a complete model.
+    rehydrate_blobs(&mut model, &dir.join("blobs")).map_err(|error| payload(OfficeError::corrupt(error)))?;
+    Ok(model)
 }
 
 #[tauri::command]
@@ -1766,6 +1771,145 @@ pub fn recovery_discard_all(app: AppHandle) -> Result<(), OfficeErrorPayload> {
     Ok(())
 }
 
+/// A blob reference is a hex digest; anything else must never reach a join.
+fn sanitize_blob_hash(hash: &str) -> Result<String, OfficeErrorPayload> {
+    if hash.is_empty() || hash.len() > 64 || !hash.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return Err(payload(OfficeError::invalid("Invalid image blob reference.")));
+    }
+    Ok(hash.to_ascii_lowercase())
+}
+
+/// Autosave that stores images separately. `model` already has each image's
+/// `dataBase64` replaced by a `blobRef` digest; `blobs` carries only the blobs
+/// the session has not sent yet, so an autosave of a document with unchanged
+/// images moves no image data over IPC at all.
+#[tauri::command]
+pub fn recovery_save_blobs(
+    app: AppHandle,
+    document_id: String,
+    kind: String,
+    title: String,
+    path: Option<String>,
+    model: Value,
+    blobs: std::collections::HashMap<String, String>,
+) -> Result<(), OfficeErrorPayload> {
+    let id = sanitize_key(&document_id)?;
+    let dir = recovery_dir(&app)?;
+    std::fs::create_dir_all(&dir).map_err(|error| payload(OfficeError::from_io(error, &dir)))?;
+    if !blobs.is_empty() {
+        let blob_dir = dir.join("blobs");
+        std::fs::create_dir_all(&blob_dir).map_err(|error| payload(OfficeError::from_io(error, &blob_dir)))?;
+        for (hash, data) in &blobs {
+            let name = sanitize_blob_hash(hash)?;
+            let target = blob_dir.join(&name);
+            // Content-addressed: an existing blob is identical, so skip the write.
+            if !target.exists() {
+                std::fs::write(&target, data.as_bytes())
+                    .map_err(|error| payload(OfficeError::from_io(error, &target)))?;
+            }
+        }
+    }
+    let payload_json = serde_json::json!({
+        "documentId": id,
+        "kind": kind,
+        "title": title,
+        "path": path,
+        "savedAt": timestamp(),
+        "model": model,
+    });
+    let bytes = serde_json::to_vec(&payload_json)
+        .map_err(|error| payload(OfficeError::internal(format!("Could not encode the recovery snapshot: {error}"))))?;
+    officecore::io::write_atomic(&dir.join(format!("{id}.json")), &bytes).map_err(payload)
+}
+
+/// Restores `dataBase64` from `blobRef` in place. A missing blob is a hard
+/// error: dropping an image silently would be data loss.
+fn rehydrate_blobs(value: &mut Value, blobs: &Path) -> Result<(), String> {
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                rehydrate_blobs(item, blobs)?;
+            }
+        }
+        Value::Object(map) => {
+            let reference = map.get("blobRef").and_then(Value::as_str).map(str::to_string);
+            for (_, child) in map.iter_mut() {
+                rehydrate_blobs(child, blobs)?;
+            }
+            if let Some(reference) = reference {
+                let name =
+                    sanitize_blob_hash(&reference).map_err(|_| format!("Invalid blob reference: {reference}"))?;
+                let path = blobs.join(&name);
+                let bytes = std::fs::read(&path).map_err(|_| {
+                    format!("The recovery snapshot references an image that is no longer stored ({reference}).")
+                })?;
+                let data =
+                    String::from_utf8(bytes).map_err(|_| format!("The stored image {reference} is not valid text."))?;
+                map.remove("blobRef");
+                map.insert("dataBase64".to_string(), Value::String(data));
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn collect_blob_refs(value: &Value, out: &mut std::collections::HashSet<String>) {
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                collect_blob_refs(item, out);
+            }
+        }
+        Value::Object(map) => {
+            if let Some(reference) = map.get("blobRef").and_then(Value::as_str) {
+                out.insert(reference.to_ascii_lowercase());
+            }
+            for (_, child) in map {
+                collect_blob_refs(child, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Deletes blobs no snapshot references any more (one blob can back many
+/// snapshots, so this is a mark-and-sweep, never a per-snapshot delete).
+/// Returns how many files were removed.
+#[tauri::command]
+pub fn recovery_gc_blobs(app: AppHandle) -> Result<u64, OfficeErrorPayload> {
+    let dir = recovery_dir(&app)?;
+    let blob_dir = dir.join("blobs");
+    if !blob_dir.exists() {
+        return Ok(0);
+    }
+    let mut referenced = std::collections::HashSet::new();
+    if let Ok(read_dir) = std::fs::read_dir(&dir) {
+        for entry in read_dir.flatten() {
+            let path = entry.path();
+            if extension(&path) != "json" {
+                continue;
+            }
+            let Ok(bytes) = std::fs::read(&path) else { continue };
+            let Ok(value) = serde_json::from_slice::<Value>(&bytes) else { continue };
+            if let Some(model) = value.get("model") {
+                collect_blob_refs(model, &mut referenced);
+            }
+        }
+    }
+    let mut removed = 0u64;
+    if let Ok(read_dir) = std::fs::read_dir(&blob_dir) {
+        for entry in read_dir.flatten() {
+            let path = entry.path();
+            let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default().to_string();
+            if !referenced.contains(&name) && std::fs::remove_file(&path).is_ok() {
+                removed += 1;
+            }
+        }
+    }
+    Ok(removed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1776,6 +1920,31 @@ mod tests {
         assert!(sanitize_key("notes").is_ok());
         assert!(sanitize_key("").is_err());
         assert!(sanitize_key("a/b").is_err());
+    }
+
+    #[test]
+    fn blob_reference_validation() {
+        assert!(sanitize_blob_hash("../x").is_err());
+        assert!(sanitize_blob_hash("").is_err());
+        assert!(sanitize_blob_hash("zz").is_err());
+        assert_eq!(sanitize_blob_hash("A1B2").unwrap(), "a1b2");
+    }
+
+    #[test]
+    fn rehydrate_restores_images_and_fails_loudly_on_a_missing_blob() {
+        let dir = std::env::temp_dir().join(format!("omnioffice-blob-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(dir.join("abcd"), "IMAGEDATA").unwrap();
+
+        let mut model = serde_json::json!({ "blocks": [ { "blobRef": "abcd", "name": "a.png" } ] });
+        rehydrate_blobs(&mut model, &dir).unwrap();
+        assert_eq!(model["blocks"][0]["dataBase64"], "IMAGEDATA");
+        assert!(model["blocks"][0].get("blobRef").is_none());
+
+        let mut missing = serde_json::json!({ "blobRef": "deadbeef" });
+        assert!(rehydrate_blobs(&mut missing, &dir).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import enSource from "./i18n.ts?raw";
+import trSource from "./i18n-tr.ts?raw";
 
 /**
  * A bulk insert once ran the Turkish strings through
@@ -17,9 +18,13 @@ import enSource from "./i18n.ts?raw";
 const MOJIBAKE = /[Â-ÿ][-¿]/;
 
 function table(name: "en" | "tr"): string {
-  const start = enSource.indexOf(`const ${name}: Dict = {`);
-  const end = enSource.indexOf("\n};", start);
-  return enSource.slice(start, end);
+  // English is in `i18n.ts`; Turkish is a lazily loaded chunk of its own.
+  const source = name === "tr" ? trSource : enSource;
+  const start = source.indexOf(
+    name === "tr" ? "export const tr: Record<string, string> = {" : `const ${name}: Dict = {`,
+  );
+  const end = source.indexOf("\n};", start);
+  return source.slice(start, end);
 }
 
 function entries(body: string): { key: string; value: string }[] {
