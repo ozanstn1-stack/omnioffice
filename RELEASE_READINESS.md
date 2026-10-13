@@ -1,9 +1,57 @@
-# Release Readiness — OmniOffice 4.10.0
+# Release Readiness — OmniOffice 4.11.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
+
+## Implemented (this cycle, 4.11.0) — Cepte Ofis (Office in your pocket)
+
+- **Perspective correction** (issue #108): `crates/pdfcore/src/scan.rs` orders
+  four corners, derives the output size and resamples with a homography;
+  `correct_file` reads an image and writes a corrected PNG. Tests: 6 unit tests
+  (ordering, identity, offset, size, degenerate quad reported not panicked,
+  shuffled corners).
+- **Scanner command and screen** (issue #108): `office_scan_pages` corrects the
+  pages that carry corners and assembles a multi-page PDF through the existing
+  image writer; the **Scan** screen picks page photos and calls it. Tests: 2
+  `office.rs` tests (PDF produced, empty list refused) and 2 screen tests.
+- **Android CAMERA permission** (issue #108): declared, with the camera feature
+  `required="false"`.
+- **Share filters** (issue #109): the typed filter accepts `image/*`, the
+  specific image types, `text/plain`, `text/markdown`, `text/html`, `text/csv`
+  and `text/tab-separated-values`; both name fallbacks cover every image/text
+  extension. The TS and Kotlin contract tests pin all of it.
+- **Launcher shortcuts** (issue #109): `res/xml/shortcuts.xml` with Scan, New
+  document and Recent files, plus the `android.app.shortcuts` metadata and the
+  label strings.
+- **Signature library** (issue #110): `src-tauri/src/signatures.rs` saves/lists/
+  deletes PNGs with a sanitised name and a 2 MB cap. The Annotate screen saves,
+  lists and reuses a signature, adds dated ready stamps as `/Annots` text boxes
+  and applies a paraphe to every page. Tests: name/base64 unit tests and a
+  screen test that a stamp reaches `pdf_annotate_editable` as a `textbox`.
+- **Home recommendations and pinning** (issue #111): `src/lib/recommend.ts`
+  maps an extension family to the tools that fit it; the Home screen uses it and
+  lets tools be pinned (persisted in `settings.pinnedTools`); the duplicated
+  sidebar group label is fixed with `nav.productivity`. Tests: 6 recommendation
+  tests and a Home pinning test.
+
+### Not done in this pass (honest)
+
+- **The Android camera capture is not implemented.** The ML Kit document scanner
+  / CameraX capture, the manual four-corner pick and the runtime CAMERA
+  permission request are the remaining part of issue #108. The Scan screen
+  states this; the Rust half and the screen scaffolding are complete.
+- **Shortcut routing is not wired**: the shortcuts appear and open the app, but
+  the action is not routed to the target screen.
+- **No device/emulator verification** of the share, shortcut or scanner flows
+  was possible in this environment; the CI Android job compiles the Kotlin tests
+  (including the manifest contract test) but the on-device flows are untested.
+- The perspective correction is implemented directly rather than with
+  `imageproc` (same projection, no extra dependency).
+- **Signatures are stored unencrypted** in the app data directory.
+- The scanner does not run OCR; the OCR tool is used on the result.
+- Tool pins are stored in the given order; there is no manual reordering.
 
 ## Implemented (this cycle, 4.10.0) — Belge Asistanı 2.1 (Document Assistant 2.1)
 
