@@ -10,9 +10,18 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 4.11.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 4.12.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 4.12.0 (Otomasyon)
+
+- **Batch recipes**: chain steps (compress, stamp, PDF/A, OCR, redact) into a
+  saved recipe and run it over a PDF; a **watched folder** runs the recipe on
+  new files automatically.
+- A **command-line interface**: `OmniOffice.exe --cli merge a.pdf b.pdf -o
+  out.pdf` (plus `compress` and `ocr`), with proper exit codes.
+- An Explorer **"Send to → OmniOffice"** entry created by the installer.
 
 ## What's new in 4.11.0 (Cepte Ofis)
 
