@@ -241,6 +241,10 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
                       value={report.structTree ? t("inspect.yes") : t("inspect.no")}
                     />
                     <Row label={t("inspect.marked")} value={report.marked ? t("inspect.yes") : t("inspect.no")} />
+                    <Row
+                      label={t("inspect.figuresMissingAlt")}
+                      value={report.figuresMissingAlt > 0 ? String(report.figuresMissingAlt) : t("inspect.none")}
+                    />
                     <Row label={t("inspect.language")} value={report.language || t("inspect.none")} />
                     <Row label={t("inspect.title")} value={report.titleOverride || t("inspect.none")} />
                     <Row label={t("inspect.author")} value={report.authorOverride || t("inspect.none")} />
