@@ -61,7 +61,8 @@
       "nsis": {
         "installMode": "both",
         "languages": ["English", "Turkish"],
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "installerHooks": "./windows/hooks.nsh"
       }
     }
   },
