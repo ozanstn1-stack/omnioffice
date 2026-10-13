@@ -31,6 +31,7 @@ mod office_tools;
 mod paths;
 mod pdf_v3;
 mod plugin;
+mod recipes;
 mod secret;
 mod sign;
 mod signatures;
@@ -334,6 +335,15 @@ pub fn run() {
             signatures::signature_save,
             signatures::signature_list,
             signatures::signature_delete,
+            recipes::recipe_save,
+            recipes::recipe_list,
+            recipes::recipe_delete,
+            recipes::recipe_run,
+            recipes::watched_folder_get,
+            recipes::watched_folder_set,
+            recipes::watched_folder_scan,
+            recipes::watched_folder_start,
+            recipes::watched_folder_stop,
             office::office_clean,
             office::office_image_footprint,
             office::store_load,

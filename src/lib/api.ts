@@ -523,6 +523,52 @@ export const signatureList = () => invoke<SignatureEntry[]>("signature_list");
 /** Deletes a saved signature. */
 export const signatureDelete = (name: string) => invoke<void>("signature_delete", { name });
 
+// ---------------------------------------------------------------------------
+// Batch recipes and watched folder
+// ---------------------------------------------------------------------------
+
+export type RecipeStep =
+  | { kind: "compress"; options: Record<string, unknown> }
+  | { kind: "stamp"; headerFooter?: Record<string, unknown>; bates?: Record<string, unknown> }
+  | { kind: "pdfa"; level: string }
+  | { kind: "ocr"; options: Record<string, unknown> }
+  | { kind: "redact"; areas?: unknown[]; options: Record<string, unknown> };
+
+export interface Recipe {
+  id: string;
+  name: string;
+  steps: RecipeStep[];
+}
+
+export interface WatchedFolder {
+  folder: string;
+  outputDir: string;
+  recipeId: string;
+  password?: string | null;
+}
+
+export interface WatchedResult {
+  input: string;
+  output: string;
+  ok: boolean;
+  detail: string;
+}
+
+export const recipeSave = (recipe: Recipe) => invoke<void>("recipe_save", { recipe });
+export const recipeList = () => invoke<Recipe[]>("recipe_list");
+export const recipeDelete = (id: string) => invoke<void>("recipe_delete", { id });
+export const recipeRun = (input: string, output: string, recipe: Recipe, password?: string) =>
+  invoke<{ output: string; applied: string[] }>("recipe_run", {
+    request: { input, output, recipe, password: password || null },
+  });
+export const watchedFolderGet = () => invoke<WatchedFolder>("watched_folder_get");
+export const watchedFolderSet = (config: WatchedFolder) => invoke<void>("watched_folder_set", { config });
+export const watchedFolderScan = (seen?: string[]) =>
+  invoke<WatchedResult[]>("watched_folder_scan", { seen: seen ?? null });
+export const watchedFolderStart = (intervalSeconds?: number) =>
+  invoke<void>("watched_folder_start", { intervalSeconds: intervalSeconds ?? null });
+export const watchedFolderStop = () => invoke<void>("watched_folder_stop");
+
 /** Keyword/regex matches for redaction, next to the built-in detector. */
 export const detectRedactionMatches = (
   path: string,
