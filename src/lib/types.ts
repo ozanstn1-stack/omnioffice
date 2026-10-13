@@ -397,6 +397,8 @@ export interface Settings {
   dismissedUpdate: string;
   /** The first-run welcome card on Home was closed. */
   onboardingDone: boolean;
+  /** Tool ids pinned on the Home screen; they lead the list and persist. */
+  pinnedTools: string[];
   /**
    * Your name. New Writer comments and tracked changes are marked with it;
    * empty keeps the previous defaults ("Me" / "You").
@@ -435,6 +437,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lastUpdateCheck: 0,
   dismissedUpdate: "",
   onboardingDone: false,
+  pinnedTools: [],
   authorName: "",
   onlineRevocationCheck: false,
 };
