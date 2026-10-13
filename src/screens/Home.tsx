@@ -17,6 +17,7 @@ import {
   FolderOpen,
   Images,
   KeyRound,
+  Pin,
   LayoutGrid,
   LayoutTemplate,
   Layers,
@@ -49,6 +50,7 @@ import { useRecent, useSettings, useToasts } from "../lib/store";
 import { isOfficePath, isPresentationPath, isSpreadsheetPath, openOfficePath } from "../lib/office-store";
 import { fileBaseName, formatDate, isPdf } from "../lib/format";
 import { foldSearch } from "../lib/search-fold";
+import { recommendTools } from "../lib/recommend";
 import { isAndroid, openAnyFile, revealAnyFile } from "../lib/mobile";
 import type { Navigate, ScreenId } from "../lib/nav";
 import { fileStem } from "../lib/format";
@@ -243,6 +245,9 @@ const QUICK_ACTIONS: { id: ScreenId; icon: typeof Combine }[] = [
   { id: "protect", icon: Lock },
 ];
 
+/** Icon lookup so a recommended tool renders with the card's own icon. */
+const ICON_BY_ID: Map<ScreenId, React.ReactNode> = new Map(CARDS.map((card) => [card.id, card.icon]));
+
 function fold(text: string): string {
   return foldSearch(text);
 }
@@ -262,9 +267,17 @@ export function Home({
   const recent = useRecent((s) => s.entries);
   const refreshRecent = useRecent((s) => s.refresh);
   const settings = useSettings((s) => s.settings);
+  const updateSettings = useSettings((s) => s.update);
   const pushToast = useToasts((s) => s.push);
   const [suggestion, setSuggestion] = useState<string[] | null>(null);
   const [query, setQuery] = useState("");
+
+  const pinned = useMemo(() => settings.pinnedTools ?? [], [settings.pinnedTools]);
+  const pinnedCards = useMemo(() => CARDS.filter((card) => pinned.includes(card.id)), [pinned]);
+  const togglePin = (id: ScreenId) => {
+    const next = pinned.includes(id) ? pinned.filter((entry) => entry !== id) : [...pinned, id];
+    void updateSettings({ pinnedTools: next });
+  };
 
   useEffect(() => {
     void refreshRecent();
@@ -343,16 +356,20 @@ export function Home({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {QUICK_ACTIONS.map(({ id, icon: IconComponent }) => (
-              <Button
-                key={id}
-                size="sm"
-                icon={<IconComponent size={14} />}
-                onClick={() => onNavigate(id, { files: suggestion })}
-              >
-                {t(`nav.${id}`)}
-              </Button>
-            ))}
+            {(() => {
+              const recommended = recommendTools(suggestion);
+              const ids = recommended.length ? recommended : QUICK_ACTIONS.map((action) => action.id);
+              return ids.map((id) => (
+                <Button
+                  key={id}
+                  size="sm"
+                  icon={(ICON_BY_ID.get(id) ?? <Sparkles size={14} />) as React.ReactElement}
+                  onClick={() => onNavigate(id, { files: suggestion })}
+                >
+                  {t(`nav.${id}`)}
+                </Button>
+              ));
+            })()}
             <Button
               size="sm"
               variant="ghost"
@@ -392,12 +409,36 @@ export function Home({
           </div>
         ) : (
           <div className="flex flex-col gap-5">
+            {pinnedCards.length ? (
+              <div>
+                <h3 className="text-[11px] font-bold uppercase tracking-wider muted mb-2">{t("home.pinned")}</h3>
+                <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}>
+                  {pinnedCards.map((card) => (
+                    <ToolCard
+                      key={card.id}
+                      card={card}
+                      onOpen={() => onNavigate(card.id)}
+                      pinned
+                      onTogglePin={() => togglePin(card.id)}
+                      t={t}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {grouped.map((group) => (
               <div key={group.key}>
                 <h3 className="text-[11px] font-bold uppercase tracking-wider muted mb-2">{t(group.labelKey)}</h3>
                 <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}>
                   {group.items.map((card) => (
-                    <ToolCard key={card.id} card={card} onOpen={() => onNavigate(card.id)} t={t} />
+                    <ToolCard
+                      key={card.id}
+                      card={card}
+                      onOpen={() => onNavigate(card.id)}
+                      pinned={pinned.includes(card.id)}
+                      onTogglePin={() => togglePin(card.id)}
+                      t={t}
+                    />
                   ))}
                 </div>
               </div>
@@ -480,19 +521,48 @@ function RecentIcon({ path }: { path: string }) {
   return <FileImage size={15} />;
 }
 
-function ToolCard({ card, onOpen, t }: { card: ToolCardSpec; onOpen: () => void; t: (key: string) => string }) {
+function ToolCard({
+  card,
+  onOpen,
+  pinned = false,
+  onTogglePin,
+  t,
+}: {
+  card: ToolCardSpec;
+  onOpen: () => void;
+  pinned?: boolean;
+  onTogglePin?: () => void;
+  t: (key: string) => string;
+}) {
   return (
-    <button className="tool-card" onClick={onOpen}>
-      <span
-        className="tool-icon"
-        style={card.accent ? { background: "var(--accent)", color: "var(--accent-text)" } : undefined}
-      >
-        {card.icon}
-      </span>
-      <span>
-        <span className="block font-semibold text-[14.5px]">{t(card.titleKey)}</span>
-        {card.descKey ? <span className="block text-xs muted mt-1 leading-relaxed">{t(card.descKey)}</span> : null}
-      </span>
-    </button>
+    <div style={{ position: "relative" }}>
+      <button className="tool-card" onClick={onOpen}>
+        <span
+          className="tool-icon"
+          style={card.accent ? { background: "var(--accent)", color: "var(--accent-text)" } : undefined}
+        >
+          {card.icon}
+        </span>
+        <span>
+          <span className="block font-semibold text-[14.5px]">{t(card.titleKey)}</span>
+          {card.descKey ? <span className="block text-xs muted mt-1 leading-relaxed">{t(card.descKey)}</span> : null}
+        </span>
+      </button>
+      {onTogglePin ? (
+        <button
+          type="button"
+          className="icon-btn"
+          style={{ position: "absolute", top: 6, right: 6 }}
+          aria-label={pinned ? t("home.unpinTool") : t("home.pinTool")}
+          title={pinned ? t("home.unpinTool") : t("home.pinTool")}
+          onClick={(event) => {
+            event.stopPropagation();
+            onTogglePin();
+          }}
+        >
+          <Pin size={13} fill={pinned ? "currentColor" : "none"} />
+        </button>
+      ) : null}
+    </div>
   );
 }

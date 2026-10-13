@@ -758,7 +758,7 @@ export default function App() {
       ],
     },
     {
-      label: t("nav.office"),
+      label: t("nav.productivity"),
       items: [
         { id: "notes", label: t("nav.notes"), icon: <NotebookPen size={16} /> },
         { id: "planner", label: t("nav.planner"), icon: <CalendarDays size={16} /> },
