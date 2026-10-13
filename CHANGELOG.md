@@ -4,6 +4,49 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.11.0] - Cepte Ofis (Office in your pocket)
+
+### Added
+
+- **Document scanner** (issue #108): a new `pdfcore::scan` module corrects the
+  perspective of a photographed page (order the four corners, derive the output
+  size, resample with a homography) and `office_scan_pages` assembles the
+  corrected pages into a multi-page PDF, reusing the existing image writer and
+  OCR preprocessing. The Android `CAMERA` permission is declared and a
+  **Scan** screen lets page photos be assembled today.
+- **Share filters** (issue #109): images (`image/*`, jpeg/png/webp/bmp/gif/tiff)
+  and plain text (`text/plain`, `text/markdown`, `text/html`, `text/csv`,
+  `text/tab-separated-values`) are accepted through the Android share sheet,
+  with matching name fallbacks; the contract tests cover every extension.
+- **Launcher shortcuts** (issue #109): Scan, New document and Recent files are
+  declared as static app shortcuts.
+- **Signature and paraphe library** (issue #110): a drawn signature/paraphe is
+  saved locally (`signature_save/list/delete`), listed with previews, and
+  reused. Ready dated stamps (**ASLI GİBİDİR**, **ONAYLANDI**, **GÖRÜLDÜ**) are
+  written as real `/Annots` text boxes, and **"Paraphe every page"** applies the
+  chosen signature to every page in one action.
+- **File-type-aware Home** (issue #111): the Home screen recommends tools from
+  the dropped file's type (PDF, Word/ODT/UDF, spreadsheet, presentation, image)
+  instead of always showing the same PDF tools; tools can be **pinned** and the
+  choice persists; the duplicated sidebar group label is fixed.
+
+### Known limitations
+
+- The **Android camera capture is not implemented**: the ML Kit / CameraX flow,
+  the manual four-corner pick and the runtime camera permission request are the
+  remaining part of the scanner. The Scan screen says so; page photos can be
+  picked and corrected today.
+- **Shortcut routing is not wired**: the shortcuts appear and open the app, but
+  the action is not yet routed to the Scan/New document/Recent files screen.
+- The share, shortcut and scanner flows were **not tested on a device or
+  emulator** in this environment; only the Rust geometry, the manifest contract
+  tests and the screen wiring are covered.
+- The perspective correction is implemented directly instead of `imageproc`
+  (same projection, no extra dependency).
+- Signatures are stored **unencrypted** in the app data directory (OS-account
+  access only).
+- The scanner does not run OCR itself; the OCR tool is used on the result.
+
 ## [4.10.0] - Belge Asistanı 2.1: Gerçek arama, doğrulanmış atıf (Document Assistant 2.1)
 
 ### Added

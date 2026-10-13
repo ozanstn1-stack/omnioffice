@@ -10,9 +10,21 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 4.10.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 4.11.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 4.11.0 (Cepte Ofis)
+
+- A **document scanner**: page photos are perspective-corrected and assembled
+  into a multi-page PDF (the Android camera capture is the next step).
+- Images and plain text can be **shared into the app** from other apps, and the
+  launcher gains **Scan / New document / Recent files** shortcuts.
+- A **signature and paraphe library**: save a drawn signature, reuse it, add
+  dated ready stamps (ASLI GİBİDİR, ONAYLANDI, GÖRÜLDÜ) as real PDF
+  annotations, and apply a paraphe to every page at once.
+- The **Home screen recommends tools by file type** and lets you **pin** the
+  ones you use most.
 
 ## What's new in 4.10.0 (Belge Asistanı 2.1)
 
