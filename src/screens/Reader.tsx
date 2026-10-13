@@ -5,8 +5,14 @@ import {
   ChevronRight,
   Copy,
   ExternalLink,
+  Eye,
+  EyeOff,
+  Pause,
+  Play,
   Search,
   ShieldCheck,
+  Square,
+  Volume2,
   X,
   ZoomIn,
   ZoomOut,
@@ -19,7 +25,10 @@ import { DropZone, InfoStrip } from "../components/files";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
-import { pagePreview, pageText, pageTile, searchDocument, toAppError } from "../lib/api";
+import { pagePreview, pageText, pageTile, pdfListTextRuns, searchDocument, toAppError } from "../lib/api";
+import type { TextRunInfo } from "../lib/api";
+import { clampSpeechRate, pageTextFromRuns, speechSupported, textLayerItems } from "../lib/reader-text";
+import type { SpeechWindow } from "../lib/reader-text";
 import { clamp, fileBaseName, previewPixelRatio, previewRasterWidth, uid } from "../lib/format";
 import { reportError, useJobProgress, useToasts } from "../lib/store";
 import {
@@ -314,6 +323,45 @@ function ReaderTiles({
   );
 }
 
+const ReaderTextLayer = memo(function ReaderTextLayer({
+  runs,
+  geometry,
+  width,
+}: {
+  runs: readonly TextRunInfo[];
+  geometry: PageGeometry;
+  width: number;
+}) {
+  const items = useMemo(() => textLayerItems(runs, geometry, width), [runs, geometry, width]);
+  if (items.length === 0) return null;
+  return (
+    <div
+      className="absolute inset-0 overflow-hidden"
+      style={{ lineHeight: 1, userSelect: "text", WebkitUserSelect: "text" }}
+    >
+      {items.map((item, index) => (
+        <span
+          key={index}
+          style={{
+            position: "absolute",
+            left: item.left,
+            top: item.top,
+            width: item.width,
+            height: item.height,
+            fontSize: item.fontSize,
+            lineHeight: `${item.height}px`,
+            color: "transparent",
+            whiteSpace: "pre",
+            cursor: "text",
+          }}
+        >
+          {item.text}
+        </span>
+      ))}
+    </div>
+  );
+});
+
 const ReaderPage = memo(function ReaderPage({
   docId,
   path,
@@ -326,6 +374,8 @@ const ReaderPage = memo(function ReaderPage({
   tileQueue,
   register,
   highlight,
+  runs,
+  showTextLayer,
 }: {
   docId: string;
   path: string;
@@ -339,6 +389,9 @@ const ReaderPage = memo(function ReaderPage({
   tileQueue: TileRequestQueue<Thumbnail>;
   register: (page: number, element: HTMLDivElement | null) => void;
   highlight?: string;
+  /** PDF text runs for this page, for the selectable overlay. */
+  runs?: readonly TextRunInfo[];
+  showTextLayer?: boolean;
 }) {
   // Render at the display's pixel density: requesting CSS pixels made zoomed
   // pages visibly blurry on Android (the bitmap was upscaled by the browser).
@@ -415,7 +468,7 @@ const ReaderPage = memo(function ReaderPage({
       }}
       data-page={page}
       className="card overflow-hidden shrink-0"
-      style={{ width, minHeight: height, background: "white", position: grid ? "relative" : undefined }}
+      style={{ width, minHeight: height, background: "white", position: "relative" }}
     >
       {src ? (
         <img
@@ -445,6 +498,9 @@ const ReaderPage = memo(function ReaderPage({
           cache={tileCache}
           queue={tileQueue}
         />
+      ) : null}
+      {showTextLayer && runs && runs.length > 0 ? (
+        <ReaderTextLayer runs={runs} geometry={geometry} width={width} />
       ) : null}
       {highlight ? (
         <div
@@ -480,6 +536,12 @@ export function Reader({
   // renders, shared by every page.
   const [tileCacheMap] = useState(() => new Map<string, string>());
   const [tileQueue] = useState(() => new TileRequestQueue<Thumbnail>());
+  // PDF text runs per page, for the selectable overlay. Best-effort: a scanned
+  // PDF has none, and that is not an error.
+  const [runsByPage, setRunsByPage] = useState<Map<number, TextRunInfo[]>>(() => new Map());
+  const [showTextLayer, setShowTextLayer] = useState(true);
+  const [speechRate, setSpeechRate] = useState(1);
+  const [speechState, setSpeechState] = useState<"idle" | "speaking" | "paused">("idle");
   const currentPageRef = useRef(1);
   const framePending = useRef(false);
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
@@ -860,6 +922,79 @@ export function Reader({
     }
   };
 
+  // The text layer is loaded once per document. A scanned PDF simply has no
+  // runs, which is not an error: the Reader then offers the OCR hint instead.
+  useEffect(() => {
+    const primary = session.primary;
+    let cancelled = false;
+    const load = async () => {
+      if (!primary) {
+        if (!cancelled) setRunsByPage(new Map());
+        return;
+      }
+      try {
+        const runs = await pdfListTextRuns(primary.path, session.password || undefined);
+        if (cancelled) return;
+        const grouped = new Map<number, TextRunInfo[]>();
+        for (const run of runs) {
+          const list = grouped.get(run.page);
+          if (list) list.push(run);
+          else grouped.set(run.page, [run]);
+        }
+        setRunsByPage(grouped);
+      } catch {
+        if (!cancelled) setRunsByPage(new Map());
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [session.primary, session.password]);
+
+  const canSpeak = useMemo(
+    () => speechSupported(typeof window === "undefined" ? undefined : (window as unknown as SpeechWindow)),
+    [],
+  );
+  const currentRuns = runsByPage.get(currentPage);
+  const hasTextLayer = Boolean(currentRuns && currentRuns.length > 0);
+
+  const stopSpeaking = useCallback(() => {
+    if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+    setSpeechState("idle");
+  }, []);
+
+  const speakPage = useCallback(() => {
+    if (typeof window === "undefined" || !speechSupported(window as unknown as SpeechWindow)) return;
+    const text = currentRuns ? pageTextFromRuns(currentRuns) : "";
+    if (!text.trim()) {
+      pushToast({ kind: "info", title: t("reader.noTextLayerShort") });
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "tr-TR";
+    utterance.rate = clampSpeechRate(speechRate);
+    utterance.onend = () => setSpeechState("idle");
+    utterance.onerror = () => setSpeechState("idle");
+    setSpeechState("speaking");
+    window.speechSynthesis.speak(utterance);
+  }, [currentRuns, pushToast, speechRate, t]);
+
+  const togglePause = useCallback(() => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+      setSpeechState("speaking");
+    } else {
+      window.speechSynthesis.pause();
+      setSpeechState("paused");
+    }
+  }, []);
+
+  // Stop speech when the document changes or the screen unmounts.
+  useEffect(() => () => stopSpeaking(), [stopSpeaking]);
+
   // Reading keyboard shortcuts.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -1013,6 +1148,46 @@ export function Reader({
             </Button>
           ) : null}
           <div className="flex items-center gap-1 ml-auto">
+            <IconButton
+              label={showTextLayer ? t("reader.hideTextLayer") : t("reader.showTextLayer")}
+              onClick={() => setShowTextLayer((value) => !value)}
+              disabled={!hasTextLayer}
+            >
+              {showTextLayer ? <Eye size={15} /> : <EyeOff size={15} />}
+            </IconButton>
+            {canSpeak ? (
+              <>
+                <select
+                  className="text-xs rounded border bg-transparent px-1 py-0.5"
+                  style={{ borderColor: "var(--border)" }}
+                  value={speechRate}
+                  onChange={(event) => setSpeechRate(clampSpeechRate(Number(event.target.value)))}
+                  title={t("reader.speechRate")}
+                  aria-label={t("reader.speechRate")}
+                >
+                  {[0.5, 0.75, 1, 1.25, 1.5, 2].map((rate) => (
+                    <option key={rate} value={rate}>{`${rate}\u00d7`}</option>
+                  ))}
+                </select>
+                {speechState === "idle" ? (
+                  <IconButton label={t("reader.readAloud")} onClick={() => speakPage()}>
+                    <Volume2 size={15} />
+                  </IconButton>
+                ) : (
+                  <>
+                    <IconButton
+                      label={speechState === "paused" ? t("reader.resume") : t("reader.pause")}
+                      onClick={() => togglePause()}
+                    >
+                      {speechState === "paused" ? <Play size={15} /> : <Pause size={15} />}
+                    </IconButton>
+                    <IconButton label={t("reader.stopReading")} onClick={() => stopSpeaking()}>
+                      <Square size={15} />
+                    </IconButton>
+                  </>
+                )}
+              </>
+            ) : null}
             <IconButton label={t("reader.copyText")} onClick={() => void copyPage()}>
               <Copy size={15} />
             </IconButton>
@@ -1083,6 +1258,8 @@ export function Reader({
                 tileCache={tileCacheMap}
                 tileQueue={tileQueue}
                 register={register}
+                runs={runsByPage.get(geometry.page)}
+                showTextLayer={showTextLayer}
                 highlight={
                   matchesByPage.get(geometry.page)?.[0]?.snippet
                     ? `${matchesByPage.get(geometry.page)!.length}× ${matchesByPage.get(geometry.page)![0].snippet}`
