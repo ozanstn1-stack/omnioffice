@@ -1225,6 +1225,116 @@ pub fn office_vat_rates() -> Vec<ubl::VatRate> {
 }
 
 // ---------------------------------------------------------------------------
+// Address mail merge
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MailMergeRequest {
+    pub template: String,
+    pub data: String,
+    pub output_dir: String,
+    /// "pdf" or "docx".
+    pub format: String,
+    /// A data field used as the output file name; otherwise `<template>-<n>`.
+    #[serde(default)]
+    pub name_field: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MailMergeError {
+    pub row: usize,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MailMergeReport {
+    pub produced: Vec<String>,
+    pub errors: Vec<MailMergeError>,
+}
+
+fn safe_file_stem(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| {
+            if matches!(ch, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || ch.is_control() {
+                '_'
+            } else {
+                ch
+            }
+        })
+        .collect::<String>()
+        .trim()
+        .trim_matches('.')
+        .chars()
+        .take(64)
+        .collect()
+}
+
+/// Fills a Writer template's `{{alan}}` placeholders from a CSV file and writes
+/// one document per row. A row that misses a placeholder is reported, not
+/// written.
+#[tauri::command]
+pub async fn office_mail_merge(request: MailMergeRequest) -> Result<MailMergeReport, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
+    let task = tauri::async_runtime::spawn_blocking(move || mail_merge(request));
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+}
+
+fn mail_merge(request: MailMergeRequest) -> Result<MailMergeReport, OfficeErrorPayload> {
+    let format = request.format.trim().to_ascii_lowercase();
+    if format != "pdf" && format != "docx" {
+        return Err(payload(OfficeError::invalid("The output format must be pdf or docx.")));
+    }
+    let template_path = input_path(&request.template)?;
+    let opened = open_path(&template_path)?;
+    let template: officecore::model::TextDocument = serde_json::from_value(opened.model)
+        .map_err(|error| payload(OfficeError::invalid(format!("The template is not a Writer document: {error}"))))?;
+    let data_path = input_path(&request.data)?;
+    let data_bytes = std::fs::read(data_path.as_path())
+        .map_err(|error| payload(OfficeError::from_io(error, data_path.as_path())))?;
+    let rows = officecore::mailmerge::parse_rows(&data_bytes);
+    if rows.is_empty() {
+        return Err(payload(OfficeError::invalid("The data file has no data rows.")));
+    }
+    let out_dir = output_path(&request.output_dir)?;
+    std::fs::create_dir_all(out_dir.as_path())
+        .map_err(|error| payload(OfficeError::from_io(error, out_dir.as_path())))?;
+    let stem = officecore::io::file_stem(&template_path);
+    let mut produced = Vec::new();
+    let mut errors = Vec::new();
+    for (index, row) in rows.iter().enumerate() {
+        let missing = officecore::mailmerge::missing_fields(&template, row);
+        if !missing.is_empty() {
+            errors
+                .push(MailMergeError { row: index + 1, message: format!("missing field(s): {}", missing.join(", ")) });
+            continue;
+        }
+        let document = officecore::mailmerge::merge_document(&template, row);
+        let name = request
+            .name_field
+            .as_deref()
+            .and_then(|field| row.get(field))
+            .map(|value| safe_file_stem(value))
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| format!("{stem}-{}", index + 1));
+        let path = out_dir.as_path().join(format!("{name}.{format}"));
+        let written = if format == "pdf" {
+            officecore::io::write_atomic(&path, &officecore::layout::document_to_pdf(&document))
+        } else {
+            officecore::docx::write_docx(&document).and_then(|bytes| officecore::io::write_atomic(&path, &bytes))
+        };
+        match written {
+            Ok(()) => produced.push(path.to_string_lossy().to_string()),
+            Err(error) => errors.push(MailMergeError { row: index + 1, message: error.to_string() }),
+        }
+    }
+    Ok(MailMergeReport { produced, errors })
+}
+
+// ---------------------------------------------------------------------------
 // Document scanner (Android camera path)
 // ---------------------------------------------------------------------------
 
@@ -2138,5 +2248,63 @@ mod scan_tests {
         let dir = tempfile::tempdir().unwrap();
         let request = ScanRequest { pages: Vec::new(), output: dir.path().join("x.pdf").to_string_lossy().to_string() };
         assert!(scan_pages(request).is_err());
+    }
+}
+
+#[cfg(test)]
+mod mailmerge_tests {
+    use super::*;
+
+    #[test]
+    fn mail_merge_produces_one_document_per_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut template = officecore::model::TextDocument::new_blank("Mektup");
+        template.blocks = vec![officecore::model::Block::Paragraph {
+            props: Default::default(),
+            runs: vec![officecore::model::Run { text: "Sayın {{ad}},".into(), ..Default::default() }],
+        }];
+        let template_path = dir.path().join("mektup.docx");
+        officecore::docx::write_docx_file(&template_path, &template).unwrap();
+        let data_path = dir.path().join("veri.csv");
+        std::fs::write(&data_path, "ad\nAyşe\nMehmet\n").unwrap();
+        let out_dir = dir.path().join("cikti");
+
+        let report = mail_merge(MailMergeRequest {
+            template: template_path.to_string_lossy().to_string(),
+            data: data_path.to_string_lossy().to_string(),
+            output_dir: out_dir.to_string_lossy().to_string(),
+            format: "pdf".into(),
+            name_field: Some("ad".into()),
+        })
+        .expect("merge");
+        assert_eq!(report.produced.len(), 2, "errors: {:?}", report.errors);
+        assert!(report.errors.is_empty());
+        assert!(out_dir.join("Ayşe.pdf").exists());
+        assert!(out_dir.join("Mehmet.pdf").exists());
+    }
+
+    #[test]
+    fn mail_merge_reports_a_missing_field() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut template = officecore::model::TextDocument::new_blank("Mektup");
+        template.blocks = vec![officecore::model::Block::Paragraph {
+            props: Default::default(),
+            runs: vec![officecore::model::Run { text: "{{ad}} {{soyad}}".into(), ..Default::default() }],
+        }];
+        let template_path = dir.path().join("m.docx");
+        officecore::docx::write_docx_file(&template_path, &template).unwrap();
+        let data_path = dir.path().join("v.csv");
+        std::fs::write(&data_path, "ad\nAyşe\n").unwrap();
+        let report = mail_merge(MailMergeRequest {
+            template: template_path.to_string_lossy().to_string(),
+            data: data_path.to_string_lossy().to_string(),
+            output_dir: dir.path().join("out").to_string_lossy().to_string(),
+            format: "docx".into(),
+            name_field: None,
+        })
+        .unwrap();
+        assert!(report.produced.is_empty());
+        assert_eq!(report.errors.len(), 1);
+        assert!(report.errors[0].message.contains("soyad"), "{}", report.errors[0].message);
     }
 }

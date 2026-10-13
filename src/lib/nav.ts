@@ -34,6 +34,7 @@ export type ScreenId =
   | "eml"
   | "scanner"
   | "recipes"
+  | "mailMerge"
   | "cleaner"
   | "draw"
   | "planner"

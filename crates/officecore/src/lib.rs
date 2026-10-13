@@ -25,6 +25,7 @@ pub mod hyphen_tr;
 pub mod io;
 pub mod layout;
 pub mod legacy;
+pub mod mailmerge;
 pub mod model;
 pub mod odf;
 pub mod pdfcanvas;

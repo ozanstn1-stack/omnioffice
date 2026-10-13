@@ -322,3 +322,26 @@ export interface ScanResult {
 /** Corrects the perspective of each captured page and assembles a multi-page PDF. */
 export const scanPages = (pages: ScanPage[], output: string) =>
   invoke<ScanResult>("office_scan_pages", { request: { pages, output } });
+
+// ---------------------------------------------------------------------------
+// Address mail merge
+// ---------------------------------------------------------------------------
+
+export interface MailMergeError {
+  row: number;
+  message: string;
+}
+
+export interface MailMergeReport {
+  produced: string[];
+  errors: MailMergeError[];
+}
+
+/** Fills a Writer template's {{alan}} placeholders from a CSV and writes one document per row. */
+export const mailMerge = (request: {
+  template: string;
+  data: string;
+  outputDir: string;
+  format: "pdf" | "docx";
+  nameField?: string;
+}) => invoke<MailMergeReport>("office_mail_merge", { request: { ...request, nameField: request.nameField || null } });
