@@ -19,7 +19,7 @@ that.
 | Version | Introduced | Highlights |
 | --- | --- | --- |
 | 1 | 3.1.0 | Commands, document read/write, sandboxed files, clipboard, network, UI, log. |
-| 2 | 4.12.0 | `pdf` capability (read-only PDF text/stats), `batch-step` capability (recipe steps). |
+| 2 | 5.0.0 | `pdf` capability (read-only PDF text/stats), `batch-step` capability (recipe steps). |
 
 A manifest declares the API it was written for with `apiVersion`. This build
 speaks **1–2**: existing v1 plugins keep loading unchanged, and new
@@ -33,7 +33,7 @@ capabilities require `apiVersion: 2`.
   "name": "PDF Stats",
   "version": "2.0.0",
   "apiVersion": 2,
-  "compatibility": { "app": ">=4.12.0" },
+  "compatibility": { "app": ">=5.0.0" },
   "permissions": ["read_pdf"],
   "capabilities": ["command", "pdf", "ui", "log"],
   "commands": [

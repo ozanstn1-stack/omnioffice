@@ -10,9 +10,23 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 4.12.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 5.0.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 5.0.0 (Erişilebilir ve hızlı)
+
+- **Tagged PDF export** (Writer/Impress) with a structure tree, `/Lang tr-TR`
+  and image alt text, so screen readers read headings and paragraphs.
+- **Reader selectable text and read-aloud** (tr-TR), plus an OCR hint for
+  scanned pages.
+- **Document comparison** in Writer: diff against a version and get tracked
+  changes; **mail merge** fills `{{placeholders}}` from a CSV.
+- **Plugin API v2**: a read-only PDF capability and recipe batch steps, with
+  docs and example plugins.
+- **Faster**: office images live in a content-addressed blob store (autosave
+  sends only changed images) and the Turkish dictionary is a lazy chunk
+  (entry bundle ~123 KB → ~87 KB gzip).
 
 ## What's new in 4.12.0 (Otomasyon)
 

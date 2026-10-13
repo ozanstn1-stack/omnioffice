@@ -1,9 +1,43 @@
-# Release Readiness — OmniOffice 4.12.0
+# Release Readiness — OmniOffice 5.0.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
+
+## Implemented (this cycle, 5.0.0) — Erişilebilir ve hızlı (Accessible and fast)
+
+- **Mail merge** (issue #114): `crates/officecore/src/mailmerge.rs` finds
+  `{{placeholders}}`, parses CSV/TSV rows and fills the document; the
+  `MailMerge` screen previews and reports missing fields.
+- **Document comparison** (issue #115): `src/office/writer/compare.ts` diffs two
+  documents word-level and emits tracked changes through the revision engine;
+  the Writer "Compare with…" action loads a version and applies them.
+- **Plugin API v2** (issue #116): `pdf` capability (`plugin_pdf_read`,
+  sandbox-scoped) and `batch-step` manifest surface; `docs/plugins.md` and two
+  example plugins (`plugins/examples/*`). Tests: capability/permission gating.
+- **Tagged PDF export** (issue #117): `pdfcanvas.rs` emits `StructTreeRoot`,
+  `/Lang`, `/MarkInfo`, `/ParentTree` and `/Alt`; the Inspector reports
+  `a11y.figure-alt`. Tests: structure tree, `/H1`, `/Lang`, missing-alt finding.
+- **Reader text layer + read-aloud** (issue #118): `src/lib/reader-text.ts`
+  (pure geometry/speech helpers) plus a transparent overlay and Web Speech
+  controls. Tests: geometry, text join, speech detection.
+- **Performance** (issue #119): `src/lib/blob-store.ts` content-addressed image
+  store wired into autosave (`recovery_save_blobs`/`recovery_load`/
+  `recovery_gc_blobs`), and the Turkish dictionary split into a lazy chunk.
+- **Audit closure** (issue #120): L2–L5 and the H5 follow-up closed with tests;
+  new `pdf_parse` fuzz target in CI.
+
+### Not done in this pass (honest)
+
+- Tagged export does not tag table cells, headers/footers or XMP metadata, and
+  is PDF/UA-oriented, not certified.
+- Comparison is word-level and position-aligned; tables are carried over.
+- Read-aloud depends on the platform's Web Speech voice and needs a text layer.
+- The blob store covers autosave/recovery; normal Save writes the full model and
+  blob GC is available but not scheduled.
+- The plugin batch-step hook is exposed to the recipe UI but not auto-registered
+  by the Rust recipe engine.
 
 ## Implemented (this cycle, 4.12.0) — Otomasyon (Automation)
 
