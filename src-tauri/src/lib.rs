@@ -16,6 +16,7 @@ mod android_keystore;
 mod android_update;
 #[cfg(any(target_os = "android", test))]
 mod background_work;
+pub mod cli;
 mod commands;
 mod concurrency;
 mod crash_log;
