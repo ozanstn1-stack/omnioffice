@@ -57,7 +57,7 @@ dependencies = [
 
 [[package]]
 name = "aicore"
-version = "5.0.0"
+version = "5.0.1"
 dependencies = [
  "futures-util",
  "reqwest 0.12.28",
@@ -3494,7 +3494,7 @@ dependencies = [
 
 [[package]]
 name = "officecore"
-version = "5.0.0"
+version = "5.0.1"
 dependencies = [
  "ab_glyph",
  "base64 0.23.1",
@@ -3686,7 +3686,7 @@ dependencies = [
 
 [[package]]
 name = "pdf-swiss-army-knife"
-version = "5.0.0"
+version = "5.0.1"
 dependencies = [
  "aicore",
  "base64 0.23.1",
@@ -3720,7 +3720,7 @@ dependencies = [
 
 [[package]]
 name = "pdfcore"
-version = "5.0.0"
+version = "5.0.1"
 dependencies = [
  "ab_glyph",
  "cbc 0.2.1",
@@ -5339,7 +5339,7 @@ dependencies = [
 
 [[package]]
 name = "synccore"
-version = "5.0.0"
+version = "5.0.1"
 dependencies = [
  "base64 0.23.1",
  "percent-encoding",

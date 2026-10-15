@@ -10,9 +10,25 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 5.0.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 5.0.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 5.0.1 (Kanama durdurma)
+
+A patch release that closes every P0 from the v5.0.0 audit:
+
+- **Security:** the e-Devlet verify button only accepts the real
+  `turkiye.gov.tr` host over https.
+- **Crashes fixed:** a malicious nested `.eml` no longer closes the app, and
+  three UTF-8 panics are gone.
+- **Data loss fixed:** Turkish cell editing keeps `1.234` as `1.234`, `18%` is
+  `0.18`, a second stamp keeps the first one visible, filling a form keeps the
+  document's font, comparison keeps removed blocks, and a failed autosave no
+  longer loses images.
+- **Watched folder:** no self-overwrite, a single loop, and the password in the
+  platform secret store.
+- **Dependencies:** `rustls` 0.23.46 (four RUSTSEC advisories cleared).
 
 ## What's new in 5.0.0 (Erişilebilir ve hızlı)
 

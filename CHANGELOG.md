@@ -4,6 +4,39 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.1] - Kanama durdurma (Stopping the bleeding)
+
+A patch release that closes every **P0** from the independent v5.0.0 audit
+(`docs/plan/DENETIM-v5.0.md`, PR #180). No new features.
+
+### Fixed
+
+- **Security:** the e-Devlet "verify" button now requires an https URL whose
+  host is `turkiye.gov.tr` (or a subdomain), so a document can no longer point
+  it at a lookalike (#187).
+- **Crashes:** a nested `message/rfc822` `.eml` overflowed the stack and closed
+  the app; the nesting depth now carries across the whole chain (#185). Three
+  UTF-8 panics (plugin PDF text truncation, vault snippets with Turkish `İ`,
+  a truncated `embeddings.bin`) no longer panic (#183).
+- **Data loss:** editing a cell no longer turns `1.234` into `1234` in Turkish,
+  and `18%` is `0.18` (#189); a second stamp no longer overwrites the first
+  stamp's font, and filling a form keeps the document's own `/Helv` (#191);
+  document comparison keeps removed blocks and per-run formatting (#193); a
+  failed autosave no longer loses image blobs permanently (#195).
+- **Watched folder:** a folder that overlaps its output is refused and never
+  overwrites its input, stop/start can no longer run two loops, and the
+  document password lives in the platform secret store instead of the config
+  file (#197).
+- **Dependencies:** `rustls` 0.23.45 → 0.23.46, clearing four RUSTSEC
+  advisories and the red `Dependency audit` CI gate (#181).
+
+### Known limitations
+
+- The UDF reader/writer is still unverified against a real UYAP sample (tracked
+  for the v5.2 file corpus).
+- Comparison shows a removed table as delete-marked text (the model has no
+  block-level revision mark); a matched table is taken from the revised side.
+
 ## [5.0.0] - Erişilebilir ve hızlı (Accessible and fast)
 
 ### Added
