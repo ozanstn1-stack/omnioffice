@@ -153,6 +153,9 @@ export const useRecovery = create<RecoveryState>((set) => ({
   records: [],
   busy: false,
   refresh: async () => {
+    // Reclaim image blobs no snapshot references any more. Best-effort: a
+    // failure must never stop the recovery list from loading.
+    void api.recoveryGcBlobs().catch(() => undefined);
     try {
       const list = await api.recoveryList();
       set({ records: list });
@@ -167,10 +170,12 @@ export const useRecovery = create<RecoveryState>((set) => ({
     try {
       // Images travel once: the model goes out with `blobRef` digests and only
       // never-sent blobs are attached, so autosave of an unchanged document
-      // moves no image data over IPC.
+      // moves no image data over IPC. The cache is only updated after the
+      // backend confirms the write, so a failed save resends them next time.
       const { model, blobs } = stripImageBlobs(tab.model);
       const fresh = blobSendCache.pending(blobs);
       await api.recoverySaveBlobs(tab.id, tab.kind, tab.title, tab.path, model, Object.fromEntries(fresh));
+      blobSendCache.commit(fresh.keys());
     } catch {
       // Autosave failures are silent by design; the undo history in the editor
       // and the previous save remain valid.

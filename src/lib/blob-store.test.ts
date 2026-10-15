@@ -69,17 +69,28 @@ describe("image blob store", () => {
     expect(contentHash("AAAA")).toMatch(/^[0-9a-f]{32}$/);
   });
 
-  it("sends each blob only once per session", () => {
+  it("sends each blob only once per session, after the backend confirms it", () => {
     const cache = new BlobSendCache();
     const { blobs } = stripImageBlobs(modelWithImages());
     const first = cache.pending(blobs);
     expect(first.size).toBe(2);
-    const second = cache.pending(blobs);
-    expect(second.size).toBe(0);
+    // Nothing is marked until the backend confirms the write.
+    expect(cache.pending(blobs).size).toBe(2);
+    cache.commit(first.keys());
+    expect(cache.pending(blobs).size).toBe(0);
     // A new image is still sent.
     const extra = new Map([...blobs, [contentHash("CCCC"), "CCCC"]]);
     expect(cache.pending(extra).size).toBe(1);
     cache.reset();
+    expect(cache.pending(blobs).size).toBe(2);
+  });
+
+  it("resends the blobs after a failed save", () => {
+    const cache = new BlobSendCache();
+    const { blobs } = stripImageBlobs(modelWithImages());
+    // The save read `pending` and then failed, so nothing was committed.
+    expect(cache.pending(blobs).size).toBe(2);
+    // The retry must still carry every blob, or recovery would lose them.
     expect(cache.pending(blobs).size).toBe(2);
   });
 });
