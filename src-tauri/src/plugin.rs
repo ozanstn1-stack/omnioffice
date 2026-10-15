@@ -625,10 +625,22 @@ pub fn plugin_pdf_read(app: AppHandle, plugin_id: String, name: String) -> Plugi
     let runs = pdfcore::content::list_text_runs_in_file(&path, None)
         .map_err(|error| PluginErrorPayload::invalid(format!("The PDF text could not be read: {error}")))?;
     let mut text = runs.into_iter().map(|run| run.text).collect::<Vec<_>>().join(" ");
-    if text.len() > MAX_PDF_TEXT_BYTES {
-        text.truncate(MAX_PDF_TEXT_BYTES);
-    }
+    truncate_at_char_boundary(&mut text, MAX_PDF_TEXT_BYTES);
     Ok(PluginPdfRead { page_count: info.page_count, has_text_layer: info.has_text_layer, text })
+}
+
+/// Truncates `text` to at most `max` bytes without splitting a character.
+/// `String::truncate` panics when the index lands inside a multi-byte
+/// character, which a PDF's text layer (Turkish, emoji, CJK) can easily do.
+fn truncate_at_char_boundary(text: &mut String, max: usize) {
+    if text.len() <= max {
+        return;
+    }
+    let mut end = max;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text.truncate(end);
 }
 
 #[tauri::command]
@@ -925,5 +937,18 @@ mod tests {
         assert!(ensure_public_destination(&loopback).is_ok());
         let metadata = reqwest::Url::parse("http://169.254.169.254/latest/meta-data/").expect("url");
         assert!(ensure_public_destination(&metadata).is_err());
+    }
+
+    #[test]
+    fn truncating_to_the_byte_limit_never_splits_a_character() {
+        const MAX: usize = 256 * 1024;
+        let mut text = "a".repeat(MAX - 1);
+        text.push('ğ'); // two bytes straddling the limit
+        text.push_str("tail");
+        truncate_at_char_boundary(&mut text, MAX);
+        assert!(text.len() <= MAX);
+        assert!(text.is_char_boundary(text.len()));
+        // The truncation stops before the character that would be split.
+        assert!(text.chars().all(|ch| ch == 'a'));
     }
 }
