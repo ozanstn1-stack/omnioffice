@@ -60,6 +60,13 @@ pub struct EmlHeader {
 
 /// Parses a `.eml` message.
 pub fn parse_eml(bytes: &[u8]) -> OfficeResult<EmlMessage> {
+    parse_eml_with_depth(bytes, 0)
+}
+
+/// Parses a message, carrying the nesting depth across `message/rfc822`
+/// boundaries. A forwarded message used to restart the depth at zero, so a
+/// chain of nested messages recursed without bound and overflowed the stack.
+fn parse_eml_with_depth(bytes: &[u8], depth: usize) -> OfficeResult<EmlMessage> {
     let (header_block, body) = split_headers(bytes);
     let headers = parse_headers(&header_block);
     if headers.is_empty() {
@@ -85,7 +92,7 @@ pub fn parse_eml(bytes: &[u8]) -> OfficeResult<EmlMessage> {
         .collect();
 
     let (content_type, params) = content_type_of(&headers);
-    walk_part(&content_type, &params, &headers, body, &mut message, 0);
+    walk_part(&content_type, &params, &headers, body, &mut message, depth);
     if message.body_text.trim().is_empty() && message.body_html.trim().is_empty() && message.attachments.is_empty() {
         message.warnings.push("The message has no readable body or attachment.".into());
     }
@@ -316,8 +323,9 @@ fn walk_part(
             }
         }
         "message/rfc822" => {
-            // A forwarded message: recurse into it.
-            if let Ok(nested) = parse_eml(&decoded) {
+            // A forwarded message: recurse into it, carrying the depth so the
+            // walk_part guard bounds the whole chain.
+            if let Ok(nested) = parse_eml_with_depth(&decoded, depth + 1) {
                 if message.body_text.trim().is_empty() {
                     message.body_text = nested.body_text;
                 }
@@ -611,5 +619,31 @@ mod tests {
         assert_eq!(safe_file_name("../../etc/passwd", 0), "passwd");
         assert_eq!(safe_file_name("C:\\Windows\\evil.exe", 0), "evil.exe");
         assert_eq!(safe_file_name("", 2), "ek-3");
+    }
+
+    fn nested_eml(depth: usize) -> String {
+        let mut out = String::new();
+        for _ in 0..depth {
+            out.push_str("From: a@example.com\r\nContent-Type: message/rfc822\r\n\r\n");
+        }
+        out.push_str("From: a@example.com\r\nContent-Type: text/plain\r\n\r\nhello\r\n");
+        out
+    }
+
+    #[test]
+    fn nested_messages_are_depth_limited_not_stack_overflowing() {
+        // A chain of message/rfc822 parts used to restart the depth counter and
+        // overflow the stack; the whole chain must now stay bounded.
+        for depth in [1usize, 12, 13, 50, 20_000] {
+            let message = parse_eml(nested_eml(depth).as_bytes())
+                .unwrap_or_else(|error| panic!("depth {depth} must parse: {error}"));
+            if depth > 12 {
+                assert!(
+                    message.warnings.iter().any(|warning| warning.contains("deeper than the safe limit")),
+                    "depth {depth} must warn: {:?}",
+                    message.warnings
+                );
+            }
+        }
     }
 }
