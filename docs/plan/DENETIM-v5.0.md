@@ -279,12 +279,12 @@ listelenir; bir sonraki ajanın öncelikli doğrulama listesidir:
 
 ## Çalıştırarak eklenen gözlemler
 
-- **YENİ (CI): `Dependency audit` işi kırmızı.** Bu PR'da `npm audit --audit-level=high` şu yeni
-  uyarıyı buldu: `@vitest/mocker` / `vitest` ≤ 4.1.10 — **GHSA-82fw-gwwq-j7x9** (Path Traversal /
-  Arbitrary File Read, moderate; düzeltme `vitest@5`, kırıcı). v5.0.0 yayınında aynı iş yeşildi →
-  **aradan geçen sürede yayımlanmış yeni bir uyarı**; dev bağımlılığı olsa da CI kapısı kırık.
-  İş, npm adımında durduğu için **Rust (`cargo audit`) adımı hiç çalışmadı**; P0-11'deki `rustls`
-  uyarıları da o adımı kıracaktır.
+- **YENİ (CI): `Dependency audit` işi kırmızı — neden `cargo audit` / `rustls 0.23.45`.**
+  İş `npm audit`'i **geçti** (3 moderate, dev bağımlılığı `@vitest/mocker` ≤4.1.10,
+  GHSA-82fw-gwwq-j7x9; bloklamıyor) ve **`cargo audit` adımında durdu**: `Crate: rustls`,
+  `Version: 0.23.45`, **4 vulnerabilities found** (RUSTSEC-2026-0347, RUSTSEC-2026-0348 + 2),
+  `Solution: Upgrade to >=0.23.46`. Bu, P0-11'i **CI kanıtıyla** doğrular. `deny.toml` yalnız
+  RUSTSEC-2023-0071'i (rsa) muaf tutuyor; rustls güncellenmeden **hiçbir PR 12/12 yeşil olamaz**.
 - **Paket bütçesi marjı çok dar:** toplam 502,7 KB (sınır 505). Her yeni ekran risklidir;
   v5.0.1'de bütçe ya düşürülmeli ya da ölçüm gerekçelendirilmeli.
 - **`OmniOffice.exe` (debug) bayat:** depoda eski sürümden kalan bir ikili, CLI testlerini
