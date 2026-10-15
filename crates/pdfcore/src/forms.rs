@@ -757,7 +757,12 @@ fn register_appearance_font(doc: &mut Document, font: &TextFont) -> PdfResult<()
     let acro = ensure_acroform(doc)?;
     let dr = ensure_dict_entry(doc, acro, b"DR")?;
     let fonts = ensure_dict_entry(doc, dr, b"Font")?;
-    set_dict_entry(doc, fonts, b"Helv", font.reference())?;
+    // Only add the /Helv alias when the document has none. Overwriting the
+    // document's own Helvetica with a subset that covers only the field just
+    // filled would blank every other field whose /DA says /Helv.
+    if doc.get_dictionary(fonts).map_err(PdfError::from)?.get(b"Helv").is_err() {
+        set_dict_entry(doc, fonts, b"Helv", font.reference())?;
+    }
     set_dict_entry(doc, fonts, RESOURCE_NAME.as_bytes(), font.reference())
 }
 

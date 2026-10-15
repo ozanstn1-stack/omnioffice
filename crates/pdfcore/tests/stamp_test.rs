@@ -19,6 +19,29 @@ fn sample_bytes(pages: u32) -> Vec<u8> {
     bytes
 }
 
+#[test]
+fn a_second_stamp_keeps_the_first_stamps_glyphs() {
+    // The second stamp used to overwrite the page's /OmniTr font resource, so
+    // the first stamp's glyph ids resolved against the second subset and its
+    // text turned into the second stamp's characters.
+    let base = sample_bytes(1);
+    let first = stamp_pdf_incremental(
+        &base,
+        Some(&HeaderFooterOptions { header_left: "AAAA".into(), ..Default::default() }),
+        None,
+    )
+    .expect("stamp 1");
+    let second = stamp_pdf_incremental(
+        &first,
+        Some(&HeaderFooterOptions { header_left: "BBBB".into(), ..Default::default() }),
+        None,
+    )
+    .expect("stamp 2");
+    let text = page_text_of(&second, 1);
+    assert!(text.contains("AAAA"), "the first stamp must survive: {text}");
+    assert!(text.contains("BBBB"), "the second stamp must be present: {text}");
+}
+
 fn page_content(pdf: &[u8], page: u32) -> String {
     let doc = Document::load_mem(pdf).expect("reload");
     let page_id = *doc.get_pages().get(&page).expect("page exists");

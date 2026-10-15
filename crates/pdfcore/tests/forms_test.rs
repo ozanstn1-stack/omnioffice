@@ -595,6 +595,41 @@ fn turkish_field_values_are_drawn_with_the_embedded_font() {
 }
 
 #[test]
+fn filling_a_field_keeps_the_documents_own_helvetica() {
+    // The document's /DR /Helv is a base-14 Type1 font. Filling a field used to
+    // replace it with the appearance subset, which blanked every other field
+    // whose /DA says /Helv.
+    let (_dir, input) = doc_bytes("helv-kept.pdf", form_doc());
+    let before = helv_reference(&input);
+    assert!(before.is_some(), "the fixture must have a /DR /Helv");
+    let output = fill_fields(&input, &[FieldValue { name: "full_name".into(), value: "Ayşe".into(), values: vec![] }])
+        .expect("fill");
+    assert_eq!(helv_reference(&output), before, "/DR /Font /Helv must not be replaced by a subset");
+}
+
+/// The `/DR /Font /Helv` reference of a form PDF, if any.
+fn helv_reference(pdf: &[u8]) -> Option<lopdf::ObjectId> {
+    let doc = Document::load_mem(pdf).ok()?;
+    let catalog = doc.catalog().ok()?;
+    let acro = match catalog.get(b"AcroForm").ok()? {
+        Object::Reference(id) => doc.get_dictionary(*id).ok()?,
+        Object::Dictionary(dict) => dict,
+        _ => return None,
+    };
+    let dr = match acro.get(b"DR").ok()? {
+        Object::Reference(id) => doc.get_dictionary(*id).ok()?,
+        Object::Dictionary(dict) => dict,
+        _ => return None,
+    };
+    let fonts = match dr.get(b"Font").ok()? {
+        Object::Reference(id) => doc.get_dictionary(*id).ok()?,
+        Object::Dictionary(dict) => dict,
+        _ => return None,
+    };
+    fonts.get(b"Helv").ok()?.as_reference().ok()
+}
+
+#[test]
 fn forms_fill_reports_skips_and_warnings_without_faking() {
     let (_dir, input) = doc_bytes("fill-skip.pdf", form_doc());
     let values = vec![
