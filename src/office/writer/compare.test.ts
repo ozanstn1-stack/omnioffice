@@ -29,6 +29,40 @@ function text(runs: Run[]): string {
   return runs.map((entry) => entry.text).join("");
 }
 
+function tableBlock(cell: string): Block {
+  return {
+    type: "table",
+    table: {
+      rows: [
+        {
+          cells: [
+            {
+              blocks: [{ type: "paragraph", props: {} as never, runs: [run(cell)] }],
+              colspan: 1,
+              rowspan: 1,
+              background: null,
+              align: "left",
+              valign: "top",
+              widthPt: null,
+            },
+          ],
+          heightPt: null,
+          header: false,
+        },
+      ],
+      columnWidthsPt: [100],
+      borders: true,
+      borderColor: "#000000",
+      align: "left",
+    },
+  };
+}
+
+function withTable(cell: string): TextDocument {
+  const doc = document(["Başlık"]);
+  return { ...doc, blocks: [tableBlock(cell), ...doc.blocks] };
+}
+
 describe("document comparison", () => {
   it("marks an inserted word", () => {
     const runs = diffRuns([run("Merhaba dünya")], [run("Merhaba güzel dünya")], "A");
@@ -67,5 +101,46 @@ describe("document comparison", () => {
     const result = diffDocuments(document(["Aynı metin"]), document(["Aynı metin"]), "A");
     const first = result.blocks[0];
     expect(first.type === "paragraph" ? first.runs.every((entry) => !entry.revision) : false).toBe(true);
+  });
+
+  it("shows a removed table as a deletion instead of dropping it", () => {
+    // The first version aligned by index and silently discarded a base block
+    // with no revised counterpart, so a removed table vanished from the diff.
+    const result = diffDocuments(withTable("hücre içeriği"), document(["Başlık"]), "A");
+    const deleted = result.blocks.find(
+      (block) => block.type === "paragraph" && block.runs.some((entry) => entry.revision?.kind === "delete"),
+    );
+    expect(deleted, "the removed table must appear as deleted text").toBeDefined();
+    if (deleted?.type === "paragraph") {
+      expect(text(deleted.runs)).toContain("hücre içeriği");
+    }
+  });
+
+  it("keeps each run's own formatting", () => {
+    // Every run used to inherit the first run's style, so a plain word next to
+    // a bold one came back bold after a diff.
+    const base = [
+      { ...emptyRun(), text: "bold", bold: true },
+      { ...emptyRun(), text: " plain", bold: false },
+    ];
+    const revised = [
+      { ...emptyRun(), text: "bold", bold: true },
+      { ...emptyRun(), text: " changed", bold: false },
+    ];
+    const runs = diffRuns(base, revised, "A");
+    const inserted = runs.find((entry) => entry.revision?.kind === "insert");
+    expect(inserted?.bold).toBe(false);
+    const unchanged = runs.find((entry) => !entry.revision && entry.text.includes("bold"));
+    expect(unchanged?.bold).toBe(true);
+  });
+
+  it("diffs a very long paragraph without a quadratic table", () => {
+    const words = Array.from({ length: 5000 }, (_, index) => `w${index}`);
+    const base = [run(words.join(" "))];
+    const revised = [run(words.map((word, index) => (index === 2500 ? "CHANGED" : word)).join(" "))];
+    const runs = diffRuns(base, revised, "A");
+    expect(kinds(runs)).toContain("delete");
+    expect(kinds(runs)).toContain("insert");
+    expect(text(runs)).toContain("CHANGED");
   });
 });
