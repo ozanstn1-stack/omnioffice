@@ -39,8 +39,31 @@ const PHRASES = [
 /** A code that mixes letters and digits (a bare number is too weak on its own). */
 const CODE = /(?=[A-Z0-9-]{6,24}\b)(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*[0-9])[A-Z0-9-]{6,24}/g;
 
-/** A turkiye.gov.tr link inside the document, if any. */
-const TURKIYE_URL = /https?:\/\/[^\s"<>()]*turkiye\.gov\.tr[^\s"<>()]*/i;
+/** Any absolute web URL in the document, so each candidate can be parsed. */
+const WEB_URL = /https?:\/\/[^\s"<>()]+/gi;
+
+/**
+ * The document's own turkiye.gov.tr link, if any. The **host** must be exactly
+ * `turkiye.gov.tr` or a subdomain of it, and the scheme must be https: a URL
+ * whose path merely contains the name (`https://evil.example/x?u=turkiye.gov.tr`)
+ * is not the official portal, and plain http is refused.
+ */
+function officialTurkiyeUrl(text: string): string | null {
+  for (const candidate of text.match(WEB_URL) ?? []) {
+    let parsed: URL;
+    try {
+      parsed = new URL(candidate);
+    } catch {
+      continue;
+    }
+    if (parsed.protocol !== "https:") continue;
+    const host = parsed.hostname.toLowerCase();
+    if (host === "turkiye.gov.tr" || host.endsWith(".turkiye.gov.tr")) {
+      return parsed.toString();
+    }
+  }
+  return null;
+}
 
 function nearby(text: string, index: number, before: number, after: number): string {
   return text.slice(Math.max(0, index - before), Math.min(text.length, index + after));
@@ -64,14 +87,14 @@ export function detectEdevletVerification(text: string): EdevletVerification | n
   }
   if (phraseIndex === -1) return null;
 
-  const urlMatch = normalized.match(TURKIYE_URL);
+  const url = officialTurkiyeUrl(normalized);
   const window = nearby(normalized, phraseIndex, 80, 220).toUpperCase();
   const codeMatch = window.match(CODE);
   const code = codeMatch ? codeMatch[0] : "";
 
-  // Require a real signal: either the document's own turkiye.gov.tr link or a
-  // mixed code next to the phrase.
-  if (!urlMatch && !code) return null;
+  // Require a real signal: either the document's own official link or a mixed
+  // code next to the phrase.
+  if (!url && !code) return null;
 
-  return { code, url: urlMatch ? urlMatch[0] : EDEVLET_VERIFICATION_URL };
+  return { code, url: url ?? EDEVLET_VERIFICATION_URL };
 }
