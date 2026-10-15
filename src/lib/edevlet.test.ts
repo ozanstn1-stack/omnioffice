@@ -42,4 +42,27 @@ describe("detectEdevletVerification", () => {
     const found = detectEdevletVerification("Belge doğrulama: https://www.turkiye.gov.tr/belge-dogrulama");
     expect(found?.url).toContain("turkiye.gov.tr");
   });
+
+  it("refuses a URL whose host merely contains the name (phishing)", () => {
+    const text = "Belge Doğrulama Kodu: AB12CD34 https://evil.example.com/x?u=turkiye.gov.tr";
+    const found = detectEdevletVerification(text);
+    expect(found?.url).toBe(EDEVLET_VERIFICATION_URL);
+    expect(found?.url).not.toContain("evil.example.com");
+  });
+
+  it("refuses a plain http turkiye.gov.tr link", () => {
+    const text = "Belge Doğrulama Kodu: AB12CD34 http://turkiye.gov.tr/belge-dogrulama";
+    const found = detectEdevletVerification(text);
+    expect(found?.url).toBe(EDEVLET_VERIFICATION_URL);
+  });
+
+  it("accepts an https subdomain of turkiye.gov.tr", () => {
+    const text = "Belge Doğrulama Kodu: AB12CD34 https://dogrulama.turkiye.gov.tr/belge";
+    expect(detectEdevletVerification(text)?.url).toContain("dogrulama.turkiye.gov.tr");
+  });
+
+  it("does not accept a lookalike domain that ends in turkiye.gov.tr.example", () => {
+    const text = "Belge Doğrulama Kodu: AB12CD34 https://turkiye.gov.tr.example.com/x";
+    expect(detectEdevletVerification(text)?.url).toBe(EDEVLET_VERIFICATION_URL);
+  });
 });
