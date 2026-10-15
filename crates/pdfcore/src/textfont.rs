@@ -84,9 +84,14 @@ impl TextFont {
     }
 }
 
+/// Adds the font to a page's `/Font` resource dictionary under `name`.
+pub fn ensure_page_font_named(doc: &mut Document, page_id: ObjectId, font: &TextFont, name: &str) -> PdfResult<()> {
+    crate::docutil::add_resource_entry(doc, page_id, b"Font", name, font.reference())
+}
+
 /// Adds the font to a page's `/Font` resource dictionary (idempotent per page).
 pub fn ensure_page_font(doc: &mut Document, page_id: ObjectId, font: &TextFont) -> PdfResult<()> {
-    crate::docutil::add_resource_entry(doc, page_id, b"Font", RESOURCE_NAME, font.reference())
+    ensure_page_font_named(doc, page_id, font, RESOURCE_NAME)
 }
 
 // ---------------------------------------------------------------------------

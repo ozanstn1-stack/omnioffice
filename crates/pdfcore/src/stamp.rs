@@ -12,8 +12,8 @@ use crate::docutil::{
 };
 use crate::error::{PdfError, PdfResult};
 use crate::progress::{CancelToken, ProgressCallback, ProgressEvent};
-use crate::textfont::{ensure_page_font, TextFont, RESOURCE_NAME};
-use lopdf::{Document, ObjectId};
+use crate::textfont::{ensure_page_font_named, TextFont, RESOURCE_NAME};
+use lopdf::{Document, Object, ObjectId};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -147,6 +147,7 @@ fn draw_text(
     font_size_pt: f64,
     color: [u8; 4],
     margin_pt: f64,
+    resource: &str,
 ) {
     if text.is_empty() {
         return;
@@ -169,7 +170,7 @@ fn draw_text(
         r = color[0] as f64 / 255.0,
         g = color[1] as f64 / 255.0,
         b = color[2] as f64 / 255.0,
-        resource = RESOURCE_NAME,
+        resource = resource,
         size = font_size_pt,
         x = x,
         y = y,
@@ -351,14 +352,55 @@ fn apply_stamps(
     // Second pass: one embedded font for the whole stamp, then the content.
     let font = TextFont::create(doc, &chars)?;
     for plan in plans {
+        // A page that already carries a stamp keeps its own font resource; this
+        // stamp registers under the next free name instead of overwriting it.
+        let resource = free_font_resource_name(doc, plan.page_id, &font);
         let mut content = String::new();
         for (slot, text, size, color, margin) in &plan.draws {
-            draw_text(&mut content, &plan.canvas, *slot, text, &font, *size, *color, *margin);
+            draw_text(&mut content, &plan.canvas, *slot, text, &font, *size, *color, *margin, &resource);
         }
-        ensure_page_font(doc, plan.page_id, &font)?;
+        ensure_page_font_named(doc, plan.page_id, &font, &resource)?;
         append_page_content(doc, plan.page_id, content.into_bytes())?;
     }
     Ok(())
+}
+
+/// A `/Font` resource name that is free on this page (or already this font), so
+/// a new stamp never overwrites the font an earlier stamp still draws with.
+fn free_font_resource_name(doc: &Document, page_id: ObjectId, font: &TextFont) -> String {
+    let reference = font.reference();
+    let entries = page_font_entries(doc, page_id);
+    let taken = |name: &str| -> bool {
+        match entries.as_ref().and_then(|fonts| fonts.get(name.as_bytes()).ok()) {
+            Some(existing) => *existing != reference,
+            None => false,
+        }
+    };
+    if !taken(RESOURCE_NAME) {
+        return RESOURCE_NAME.to_string();
+    }
+    for index in 2..10_000 {
+        let name = format!("{RESOURCE_NAME}{index}");
+        if !taken(&name) {
+            return name;
+        }
+    }
+    format!("{RESOURCE_NAME}X")
+}
+
+/// The page's `/Font` resource dictionary, if it has one.
+fn page_font_entries(doc: &Document, page_id: ObjectId) -> Option<lopdf::Dictionary> {
+    let page = doc.get_dictionary(page_id).ok()?;
+    let resources = match page.get(b"Resources").ok()? {
+        Object::Reference(id) => doc.get_dictionary(*id).ok()?,
+        Object::Dictionary(dict) => dict,
+        _ => return None,
+    };
+    match resources.get(b"Font").ok()? {
+        Object::Reference(id) => doc.get_dictionary(*id).ok().cloned(),
+        Object::Dictionary(dict) => Some(dict.clone()),
+        _ => None,
+    }
 }
 
 /// Adds the stamps as an appended revision instead of rewriting the file.
