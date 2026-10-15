@@ -63,6 +63,9 @@ export function properLocale(text: string, locale: CalcLocale = active): string 
 export function parseLocalizedNumber(input: string, locale: CalcLocale = active): number | null {
   let text = input.trim();
   if (text === "") return null;
+  // A percent sign means "per hundred": "18%" and "%18" are 0.18, as in every
+  // spreadsheet. The sign used to be stripped and the value left as 18.
+  const percent = text.startsWith("%") || text.endsWith("%");
   if (text.startsWith("%")) text = text.slice(1).trim();
   if (text.endsWith("%")) text = text.slice(0, -1).trim();
   text = text
@@ -104,7 +107,8 @@ export function parseLocalizedNumber(input: string, locale: CalcLocale = active)
   }
   const value = Number(normalized);
   if (!Number.isFinite(value)) return null;
-  return negative ? -value : value;
+  const amount = negative ? -value : value;
+  return percent ? amount / 100 : amount;
 }
 
 /** A date a user typed, before it becomes a serial number. */

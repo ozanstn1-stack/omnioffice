@@ -7,6 +7,7 @@
  * the commit path (inline editor, formula bar, paste, fill) testable at all.
  */
 import {
+  cellText,
   defaultCellStyle,
   emptyCell,
   type Cell,
@@ -35,7 +36,7 @@ import {
   type Scalar,
 } from "./formula";
 import { dateToSerial } from "./numberFormat";
-import { parseLocalizedDateParts, parseLocalizedNumber } from "./locale";
+import { getCalcLocale, parseLocalizedDateParts, parseLocalizedNumber, type CalcLocale } from "./locale";
 import { structuredReferenceRanges } from "./structured";
 
 export function cellValueToScalar(value: CellValue): Scalar {
@@ -69,6 +70,22 @@ export function parseInputValue(text: string): CellValue {
   if (/^(true|false)$/i.test(trimmed)) return { kind: "bool", value: trimmed.toLowerCase() === "true" };
   if (/^#(REF|VALUE|NAME|DIV\/0|N\/A|NUM|CALC)/i.test(trimmed)) return { kind: "error", value: trimmed.toUpperCase() };
   return { kind: "text", value: text };
+}
+
+/**
+ * The cell's text for the editor. A number is written with the active locale's
+ * decimal separator, so `parseInputValue` reads it back unchanged: the
+ * canonical `cellText` ("1.234") would otherwise be read as 1234 in Turkish,
+ * silently multiplying the value by a thousand on every edit.
+ */
+export function cellEditText(cell: Cell | undefined, locale: CalcLocale = getCalcLocale()): string {
+  if (!cell) return "";
+  if (!cell.formula && cell.value.kind === "number") {
+    const canonical = String(cell.value.value);
+    // Only the decimal point differs between the two locales.
+    return locale === "tr" ? canonical.replace(".", ",") : canonical;
+  }
+  return cellText(cell);
 }
 
 export function isDefaultCellStyle(style: CellStyle): boolean {
