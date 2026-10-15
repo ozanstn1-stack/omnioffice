@@ -57,6 +57,7 @@ import {
   applyCellEdits,
   applyCellTextEdits,
   applySheetCells,
+  cellEditText,
   computeSheetValues,
   computeWorkbookValues,
   formatCellDisplay,
@@ -455,7 +456,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     };
   }, [android]);
 
-  const formulaDraftValue = activeCell?.formula ?? cellText(activeCell);
+  const formulaDraftValue = activeCell?.formula ?? cellEditText(activeCell);
   const draftKey = `${selection.focus.row}:${selection.focus.col}|${formulaDraftValue}`;
   const [lastDraftKey, setLastDraftKey] = useState<string | null>(null);
   if (lastDraftKey !== draftKey) {
@@ -997,7 +998,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       if (previous && now - previous.time < 350 && previous.row === tapped.row && previous.col === tapped.col) {
         lastTapRef.current = null;
         const cell = sheet.cells[formatAddress(tapped.row, tapped.col)];
-        setEditing({ row: tapped.row, col: tapped.col, value: cell?.formula ?? cellText(cell) });
+        setEditing({ row: tapped.row, col: tapped.col, value: cell?.formula ?? cellEditText(cell) });
       } else {
         lastTapRef.current = { row: tapped.row, col: tapped.col, time: now };
       }
@@ -1159,7 +1160,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     };
     const openEditor = (value?: string) => {
       event.preventDefault();
-      setEditing({ row, col, value: value ?? activeCell?.formula ?? cellText(activeCell) });
+      setEditing({ row, col, value: value ?? activeCell?.formula ?? cellEditText(activeCell) });
     };
     // Read through the ref, not the state: a keystroke that lands right after
     // `Enter` commits the cell is handled by the previous render's closure,

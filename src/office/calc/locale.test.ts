@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { newWorkbook, type Workbook } from "../../lib/office-types";
-import { applyCellEdit, parseInputValue } from "./cells";
+import { newWorkbook, emptyCell, type Workbook } from "../../lib/office-types";
+import { applyCellEdit, cellEditText, parseInputValue } from "./cells";
 import {
   getCalcLocale,
   lowerLocale,
@@ -71,8 +71,8 @@ describe("localized number input", () => {
     ["1,5", 1.5],
     ["₺1.250", 1250],
     ["1.250 TL", 1250],
-    ["%18", 18],
-    ["18%", 18],
+    ["%18", 0.18],
+    ["18%", 0.18],
     ["-25,50", -25.5],
     ["(1.234,56)", -1234.56],
     ["1 250,00", 1250],
@@ -109,6 +109,18 @@ describe("localized number input", () => {
     setCalcLocale("en");
     expect(parseInputValue("1.234")).toEqual({ kind: "number", value: 1.234 });
     expect(parseInputValue("1,234")).toEqual({ kind: "number", value: 1234 });
+  });
+
+  it("round-trips a number through the editor text in both locales", () => {
+    // Editing a cell used to show the canonical "1.234", which Turkish reads as
+    // 1234: the value silently grew by a thousand on every edit.
+    const cell = { ...emptyCell(), value: { kind: "number" as const, value: 1.234 } };
+    setCalcLocale("tr");
+    expect(cellEditText(cell)).toBe("1,234");
+    expect(parseInputValue(cellEditText(cell))).toEqual({ kind: "number", value: 1.234 });
+    setCalcLocale("en");
+    expect(cellEditText(cell)).toBe("1.234");
+    expect(parseInputValue(cellEditText(cell))).toEqual({ kind: "number", value: 1.234 });
   });
 });
 
