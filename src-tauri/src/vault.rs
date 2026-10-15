@@ -2006,15 +2006,19 @@ fn ensure_search_index(root: &Path, model: &str, dim: Option<usize>) -> VaultSea
 
 /// A short snippet around the first query term in `text`, or the text's start.
 fn chunk_snippet(text: &str, terms: &[String]) -> String {
-    let folded: Vec<char> = text.chars().flat_map(|ch| ch.to_lowercase()).collect();
-    let folded: String = folded.into_iter().collect();
     let chars: Vec<char> = text.chars().collect();
+    // `fold` is a 1:1 character mapping, so an offset in `folded` is the same
+    // offset in `chars`. The previous version used `to_lowercase`, which
+    // expands 'İ' to two characters and pushed the index out of range.
+    let folded: Vec<char> = fold(text);
     for term in terms {
-        if let Some(position) = folded.find(term.as_str()) {
-            // `find` returns a byte index; convert it to a character index.
-            let char_start = folded[..position].chars().count();
-            let start = char_start.saturating_sub(60);
-            let end = (char_start + 180).min(chars.len());
+        let needle: Vec<char> = fold(term);
+        if needle.is_empty() {
+            continue;
+        }
+        if let Some(position) = folded.windows(needle.len()).position(|window| window == needle.as_slice()) {
+            let start = position.saturating_sub(60);
+            let end = (position + needle.len() + 180).min(chars.len());
             return chars[start..end].iter().collect::<String>().trim().to_string();
         }
     }
@@ -3127,5 +3131,20 @@ mod tests {
         assert!(report.imported.is_empty());
         assert!(report.skipped[0].reason.contains("not a regular file"), "{:?}", report.skipped);
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn chunk_snippet_survives_turkish_case_folding() {
+        // 'İ'.to_lowercase() expands to two chars; the snippet window used to
+        // slice the original text with the folded index and panic.
+        let text = format!("{}{}", "İ".repeat(100), "needle");
+        let snippet = chunk_snippet(&text, &["needle".to_string()]);
+        assert!(snippet.contains("needle"), "snippet was: {snippet}");
+    }
+
+    #[test]
+    fn chunk_snippet_returns_the_start_when_no_term_matches() {
+        let snippet = chunk_snippet("kısa bir metin", &["yok".to_string()]);
+        assert!(snippet.starts_with("kısa"));
     }
 }

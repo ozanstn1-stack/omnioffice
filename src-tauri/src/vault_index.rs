@@ -179,8 +179,12 @@ impl VectorStore {
         }
         if let Some(position) = self.position(&key) {
             let start = position * self.dim;
-            self.vectors[start..start + self.dim].copy_from_slice(vector);
-            return;
+            if let Some(slice) = self.vectors.get_mut(start..start + self.dim) {
+                slice.copy_from_slice(vector);
+                return;
+            }
+            // The stored vector is missing (short/corrupt file): append it so
+            // the key gets a vector again instead of leaving a hole.
         }
         self.keys.push(VectorKey { key, document_id: document_id.to_string(), chunk });
         self.vectors.extend_from_slice(vector);
@@ -194,9 +198,13 @@ impl VectorStore {
             if !keep.contains(&entry.key) {
                 continue;
             }
-            keys.push(entry.clone());
             let start = position * self.dim;
-            vectors.extend_from_slice(&self.vectors[start..start + self.dim]);
+            let Some(slice) = self.vectors.get(start..start + self.dim) else {
+                // No vector for this key: drop it so it is re-embedded.
+                continue;
+            };
+            keys.push(entry.clone());
+            vectors.extend_from_slice(slice);
         }
         self.keys = keys;
         self.vectors = vectors;
@@ -214,7 +222,10 @@ impl VectorStore {
         let mut scored: Vec<(usize, f64)> = Vec::with_capacity(self.keys.len());
         for position in 0..self.keys.len() {
             let start = position * self.dim;
-            let vector = &self.vectors[start..start + self.dim];
+            let Some(vector) = self.vectors.get(start..start + self.dim) else {
+                // A missing vector (short file) is skipped, never a panic.
+                continue;
+            };
             let mut dot = 0.0f64;
             let mut norm = 0.0f64;
             for (a, b) in query.iter().zip(vector) {
@@ -379,6 +390,12 @@ impl VaultSearchIndex {
             // A truncated file would misalign the keys; drop the tail.
             let expected = vectors.keys.len() * meta.dim;
             vectors.vectors.truncate(expected);
+            if vectors.vectors.len() != expected {
+                // The file is shorter than the keys need: the index is corrupt,
+                // and a partial store would panic on the first key-indexed
+                // slice. Rebuild instead of loading it.
+                return None;
+            }
         }
         Some(Self { chunks: meta.chunks, bm25, vectors, fingerprint: meta.fingerprint })
     }
@@ -523,5 +540,30 @@ mod tests {
         let elapsed = started.elapsed();
         assert!(!ranked.is_empty());
         assert!(elapsed.as_millis() < 300, "5000-chunk query took {} ms", elapsed.as_millis());
+    }
+
+    #[test]
+    fn a_truncated_embeddings_file_is_rejected_not_panicked_on() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("vault_index");
+        let mut index = VaultSearchIndex::build(chunks(&["bir", "iki"]), "m", 2);
+        index.set_embedding(&vector_key("m", "bir"), 0, &[1.0, 0.0]);
+        index.set_embedding(&vector_key("m", "iki"), 1, &[0.0, 1.0]);
+        index.save(&path).unwrap();
+        // Drop one vector's worth of bytes: keys * dim no longer fits.
+        std::fs::write(path.join("embeddings.bin"), [0u8; 4]).unwrap();
+        assert!(VaultSearchIndex::load(&path).is_none(), "a short file must not load");
+    }
+
+    #[test]
+    fn vector_search_skips_missing_vectors_instead_of_panicking() {
+        let mut store = VectorStore::new("m", 4);
+        store.keys = vec![
+            VectorKey { key: "a".into(), document_id: "d".into(), chunk: 0 },
+            VectorKey { key: "b".into(), document_id: "d".into(), chunk: 1 },
+        ];
+        store.vectors = vec![1.0, 0.0, 0.0, 0.0];
+        let scored = store.search(&[1.0, 0.0, 0.0, 0.0], 5);
+        assert_eq!(scored.len(), 1, "only the key with a vector is scored");
     }
 }
