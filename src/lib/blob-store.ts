@@ -89,19 +89,26 @@ export function hydrateImageBlobs(model: unknown, store: ReadonlyMap<string, str
  * Tracks which blobs a session has already sent, so an autosave only ships the
  * images it has never sent before. Purely in-memory: the backend owns the
  * durable, content-addressed store.
+ *
+ * A blob is only recorded once the backend **confirmed** it (`commit`): the
+ * first version marked blobs on `pending`, so a single failed save left them
+ * permanently unsent and broke that document's recovery.
  */
 export class BlobSendCache {
   private readonly sent = new Set<string>();
 
-  /** The subset of `blobs` not sent yet, marking them sent. */
+  /** The subset of `blobs` not sent yet, without marking anything. */
   pending(blobs: ReadonlyMap<string, string>): Map<string, string> {
     const fresh = new Map<string, string>();
     for (const [digest, data] of blobs) {
-      if (this.sent.has(digest)) continue;
-      this.sent.add(digest);
-      fresh.set(digest, data);
+      if (!this.sent.has(digest)) fresh.set(digest, data);
     }
     return fresh;
+  }
+
+  /** Records blobs the backend has stored, so they are not sent again. */
+  commit(digests: Iterable<string>): void {
+    for (const digest of digests) this.sent.add(digest);
   }
 
   /** Forgets the sent set (a new document/session). */

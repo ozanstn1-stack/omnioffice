@@ -1931,6 +1931,23 @@ mod tests {
     }
 
     #[test]
+    fn blob_refs_are_collected_for_gc() {
+        let model = serde_json::json!({
+            "blocks": [
+                { "image": { "blobRef": "AABB" } },
+                { "image": { "blobRef": "ccdd" } },
+                { "note": "no blob here" }
+            ]
+        });
+        let mut refs = std::collections::HashSet::new();
+        collect_blob_refs(&model, &mut refs);
+        // Lower-cased, and only real references are kept.
+        assert!(refs.contains("aabb"));
+        assert!(refs.contains("ccdd"));
+        assert_eq!(refs.len(), 2);
+    }
+
+    #[test]
     fn rehydrate_restores_images_and_fails_loudly_on_a_missing_blob() {
         let dir = std::env::temp_dir().join(format!("omnioffice-blob-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
