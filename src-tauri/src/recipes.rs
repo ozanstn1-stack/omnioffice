@@ -15,7 +15,7 @@ use pdfcore::progress::{CancelToken, ProgressCallback, ProgressEvent};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -268,6 +268,11 @@ pub fn scan_once(
     password: Option<&str>,
     seen: &mut HashSet<String>,
 ) -> Vec<WatchedResult> {
+    // Never process a folder into itself (or a nested folder): the output path
+    // would be the input path, and the recipe would overwrite the source file.
+    if folders_overlap(folder, output_dir) {
+        return Vec::new();
+    }
     let mut results = Vec::new();
     let Ok(read) = std::fs::read_dir(folder) else { return results };
     let silent = |_| ();
@@ -309,19 +314,58 @@ fn watched_config_path(app: &AppHandle) -> Result<PathBuf, PdfError> {
     Ok(dir.join("watched-folder.json"))
 }
 
-#[tauri::command]
-pub fn watched_folder_get(app: AppHandle) -> Result<WatchedFolder, PdfError> {
-    let path = watched_config_path(&app)?;
-    if !path.exists() {
-        return Ok(WatchedFolder::default());
-    }
-    let bytes = std::fs::read(&path).map_err(PdfError::from_io)?;
-    Ok(serde_json::from_slice(&bytes).unwrap_or_default())
+/// True when the folders are the same or one contains the other.
+fn folders_overlap(folder: &Path, output: &Path) -> bool {
+    let folder = folder.canonicalize().unwrap_or_else(|_| folder.to_path_buf());
+    let output = output.canonicalize().unwrap_or_else(|_| output.to_path_buf());
+    folder == output || folder.starts_with(&output) || output.starts_with(&folder)
+}
+
+/// The platform secret store file for the watched folder's document password.
+fn watched_secret_path(app: &AppHandle) -> Result<PathBuf, PdfError> {
+    Ok(watched_config_path(app)?.with_file_name("watched-folder.secret"))
 }
 
 #[tauri::command]
-pub fn watched_folder_set(app: AppHandle, config: WatchedFolder) -> Result<(), PdfError> {
+pub fn watched_folder_get(app: AppHandle) -> Result<WatchedFolder, PdfError> {
     let path = watched_config_path(&app)?;
+    let mut config = if path.exists() {
+        let bytes = std::fs::read(&path).map_err(PdfError::from_io)?;
+        serde_json::from_slice(&bytes).unwrap_or_default()
+    } else {
+        WatchedFolder::default()
+    };
+    // The password lives in the platform secret store, not the config JSON.
+    let password = crate::secret::load_api_key(&watched_secret_path(&app)?).unwrap_or_default();
+    if !password.is_empty() {
+        config.password = Some(password);
+    }
+    Ok(config)
+}
+
+#[tauri::command]
+pub fn watched_folder_set(app: AppHandle, mut config: WatchedFolder) -> Result<(), PdfError> {
+    let path = watched_config_path(&app)?;
+    if !config.folder.trim().is_empty()
+        && !config.output_dir.trim().is_empty()
+        && folders_overlap(Path::new(config.folder.trim()), Path::new(config.output_dir.trim()))
+    {
+        return Err(PdfError::InvalidInput(
+            "The watched folder and the output folder must be different, separate folders.".into(),
+        ));
+    }
+    // The document password goes to the platform secret store (DPAPI/keystore),
+    // never into the config file.
+    let secret = watched_secret_path(&app)?;
+    match config.password.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+        Some(password) => {
+            crate::secret::save_api_key(&secret, password)?;
+        }
+        None => {
+            crate::secret::delete_api_key(&secret).ok();
+        }
+    }
+    config.password = None;
     let json = serde_json::to_vec_pretty(&config).map_err(|error| PdfError::Internal(format!("{error}")))?;
     crate::commands::write_atomic(&path, &json)?;
     Ok(())
@@ -352,23 +396,38 @@ pub async fn watched_folder_scan(app: AppHandle, seen: Option<Vec<String>>) -> R
     task.await.map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
 }
 
-/// Background polling loop state, so `watched_folder_start` is idempotent.
-static WATCH_RUNNING: AtomicBool = AtomicBool::new(false);
+/// True while a watch loop is live, so `watched_folder_start` is idempotent.
+static WATCH_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// Bumped on every start/stop: a loop whose generation no longer matches exits
+/// before its next pass, so a stop → start cannot leave two loops running.
+static WATCH_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+fn watch_wake() -> &'static tokio::sync::Notify {
+    static WAKE: std::sync::OnceLock<tokio::sync::Notify> = std::sync::OnceLock::new();
+    WAKE.get_or_init(tokio::sync::Notify::new)
+}
 
 /// Starts a polling loop that runs a watch pass every few seconds until
 /// `watched_folder_stop` is called. Best-effort: a pass error is logged and the
 /// loop keeps running.
 #[tauri::command]
 pub async fn watched_folder_start(app: AppHandle, interval_seconds: Option<u64>) -> Result<(), PdfError> {
-    if WATCH_RUNNING.swap(true, Ordering::SeqCst) {
+    if WATCH_ACTIVE.swap(true, Ordering::SeqCst) {
         return Ok(());
     }
     let seconds = interval_seconds.unwrap_or(5).clamp(2, 3600);
+    let generation = WATCH_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     let app = Arc::new(app);
+    let wake = watch_wake();
     tauri::async_runtime::spawn(async move {
         let mut seen: HashSet<String> = HashSet::new();
-        while WATCH_RUNNING.load(Ordering::SeqCst) {
-            tokio::time::sleep(std::time::Duration::from_secs(seconds)).await;
+        loop {
+            // Sleep, but wake immediately on stop/start so a stale loop exits
+            // before running another pass.
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(seconds), wake.notified()).await;
+            if WATCH_GENERATION.load(Ordering::SeqCst) != generation {
+                break;
+            }
             let app_for_pass = app.clone();
             let seen_for_pass = seen.clone();
             let pass = tauri::async_runtime::spawn_blocking(move || {
@@ -405,7 +464,9 @@ pub async fn watched_folder_start(app: AppHandle, interval_seconds: Option<u64>)
 
 #[tauri::command]
 pub fn watched_folder_stop() -> Result<(), PdfError> {
-    WATCH_RUNNING.store(false, Ordering::SeqCst);
+    WATCH_ACTIVE.store(false, Ordering::SeqCst);
+    WATCH_GENERATION.fetch_add(1, Ordering::SeqCst);
+    watch_wake().notify_waiters();
     Ok(())
 }
 
@@ -492,5 +553,37 @@ mod tests {
         assert_eq!(sanitize_id("../../etc/passwd"), "etcpasswd");
         assert_eq!(sanitize_id("Rapor 1"), "Rapor 1");
         assert_eq!(sanitize_id(""), "");
+    }
+
+    #[test]
+    fn overlapping_folders_are_detected() {
+        let base = tempfile::tempdir().unwrap();
+        let inbox = base.path().join("inbox");
+        let nested = inbox.join("done");
+        std::fs::create_dir_all(&nested).unwrap();
+        assert!(folders_overlap(&inbox, &inbox), "the same folder overlaps");
+        assert!(folders_overlap(&inbox, &nested), "a nested folder overlaps");
+        assert!(folders_overlap(&nested, &inbox), "the parent overlaps too");
+        assert!(!folders_overlap(&inbox, &base.path().join("other")));
+    }
+
+    #[test]
+    fn a_watch_pass_never_writes_into_its_own_input_folder() {
+        // folder == output_dir used to overwrite the input file in place.
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("both");
+        std::fs::create_dir_all(&folder).unwrap();
+        let input = folder.join("a.pdf");
+        blank_pdf(&input);
+        let before = std::fs::read(&input).unwrap();
+        let recipe = Recipe {
+            id: "r".into(),
+            name: "compress".into(),
+            steps: vec![RecipeStep::Compress { options: pdfcore::compress::CompressOptions::default() }],
+        };
+        let mut seen = HashSet::new();
+        let results = scan_once(&folder, &folder, &recipe, None, &mut seen);
+        assert!(results.is_empty(), "an overlapping folder must be skipped");
+        assert_eq!(std::fs::read(&input).unwrap(), before, "the input must not change");
     }
 }
