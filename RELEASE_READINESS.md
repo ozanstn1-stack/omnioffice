@@ -1,9 +1,50 @@
-# Release Readiness — OmniOffice 5.0.0
+# Release Readiness — OmniOffice 5.0.1
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
+
+## Implemented (this cycle, 5.0.1) — Kanama durdurma (Stopping the bleeding)
+
+Every P0 from the v5.0.0 audit (`docs/plan/DENETIM-v5.0.md`, PR #180), each
+with a regression test that failed before the fix:
+
+- **rustls 0.23.46** (issue #181): clears RUSTSEC-2026-0347/-0348 and two more;
+  the `Dependency audit` CI gate is green again.
+- **UTF-8 panic safety** (issue #183): `truncate_at_char_boundary` in the plugin
+  PDF reader; `chunk_snippet` folds 1:1 (`fold_char`); `VectorStore::load`
+  rejects a short `embeddings.bin` and `set/retain/search` skip missing vectors.
+  Tests: the three reproductions (panics) are now passing tests.
+- **`.eml` nesting** (issue #185): `parse_eml_with_depth` carries the depth
+  across `message/rfc822`; a 20,000-deep bomb parses with a warning instead of
+  overflowing the stack.
+- **e-Devlet host** (issue #187): `officialTurkiyeUrl` requires an https
+  `turkiye.gov.tr` (or subdomain) host; lookalike hosts and http are refused.
+- **Calc numbers** (issue #189): `cellEditText` writes numbers with the active
+  locale's separator so edits round-trip; `%18`/`18%` are `0.18`.
+- **Font integrity** (issue #191): a stamp picks a free `/OmniTrN` resource
+  name instead of overwriting an earlier stamp's font; form filling keeps the
+  document's own `/Helv`.
+- **Comparison** (issue #193): blocks align by type (removed blocks are shown),
+  runs keep their own formatting, and the LCS trims prefix/suffix with a cell
+  cap for memory.
+- **Blob store** (issue #195): blobs are marked sent only after the backend
+  confirms the write; `recovery_gc_blobs` runs on refresh.
+- **Watched folder** (issue #197): overlapping folders are refused and never
+  scanned, a generation counter plus `Notify` prevents two loops, and the
+  password is stored via `secret::save_api_key` (DPAPI/keystore).
+
+### Not done in this pass (honest)
+
+- The UDF reader/writer is still **unverified against a real UYAP sample**; the
+  v5.2 file corpus is required to close that.
+- Comparison renders a removed table as delete-marked text (no block-level
+  revision in the model) and carries a matched table over from the revised side.
+- The remaining P1 audit items (vault Turkish folding, invoice badge, tracked
+  change author, e-Fatura validation, KVKK detector, hyphenation, Android
+  shortcuts, plugin batch-step wiring, mail-merge encodings, i18n gaps) are not
+  in this release.
 
 ## Implemented (this cycle, 5.0.0) — Erişilebilir ve hızlı (Accessible and fast)
 
