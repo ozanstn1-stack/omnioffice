@@ -1437,6 +1437,7 @@ pub async fn office_open_eml(path: String) -> Result<officecore::eml::EmlMessage
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InvoiceQr {
     pub payload: pdfcore::gibqr::GibQr,
     pub raw: String,
@@ -1928,6 +1929,22 @@ mod tests {
         assert!(sanitize_blob_hash("").is_err());
         assert!(sanitize_blob_hash("zz").is_err());
         assert_eq!(sanitize_blob_hash("A1B2").unwrap(), "a1b2");
+    }
+
+    #[test]
+    fn invoice_qr_serializes_camel_case() {
+        // The Invoices screen reads `qr.taxIdValid`; a snake_case key arrived as
+        // undefined and left the tax-id badge red for every valid document.
+        let qr = InvoiceQr {
+            payload: pdfcore::gibqr::GibQr::default(),
+            raw: String::new(),
+            page: 1,
+            tax_id_valid: true,
+            warnings: Vec::new(),
+        };
+        let json = serde_json::to_value(&qr).expect("serialize");
+        assert!(json.get("taxIdValid").is_some(), "the UI reads camelCase: {json}");
+        assert!(json.get("tax_id_valid").is_none(), "snake_case must not leak: {json}");
     }
 
     #[test]
