@@ -86,7 +86,9 @@ export function tcknValid(input: string): boolean {
   const values = [...digits].map(Number);
   const odd = values[0] + values[2] + values[4] + values[6] + values[8];
   const even = values[1] + values[3] + values[5] + values[7];
-  if ((odd * 7 - even) % 10 !== values[9]) return false;
+  // JS `%` keeps the sign: `-1 % 10` is `-1`, so a valid TCKN whose sum is
+  // negative (e.g. 35 - 36) was reported invalid.
+  if ((((odd * 7 - even) % 10) + 10) % 10 !== values[9]) return false;
   return values.slice(0, 10).reduce((sum, value) => sum + value, 0) % 10 === values[10];
 }
 

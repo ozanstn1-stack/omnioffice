@@ -116,7 +116,8 @@ function tcknIsValid(value: string): boolean {
   const digits = [...value].map(Number);
   const odd = digits[0] + digits[2] + digits[4] + digits[6] + digits[8];
   const even = digits[1] + digits[3] + digits[5] + digits[7];
-  const tenth = (odd * 7 - even) % 10;
+  // JS `%` keeps the sign, so normalize the negative case (see tcknValid).
+  const tenth = (((odd * 7 - even) % 10) + 10) % 10;
   const eleventh = digits.slice(0, 10).reduce((total, digit) => total + digit, 0) % 10;
   return digits[9] === tenth && digits[10] === eleventh;
 }
