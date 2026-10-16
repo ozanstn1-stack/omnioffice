@@ -10,6 +10,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import "./polyfills";
 import * as pdfjs from "pdfjs-dist";
 
 import {
@@ -48,13 +49,15 @@ async function samplePdf(pages: number, label = "Sample"): Promise<Uint8Array> {
 
 /** Extracts the text of one page using pdf.js (verifies real content). */
 async function pageText(bytes: Uint8Array, pageNumber: number): Promise<string> {
-  const doc = await pdfjs.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
+  // pdf.js 6 removed `PDFDocumentProxy.destroy`; the loading task owns teardown.
+  const task = pdfjs.getDocument({ data: bytes.slice() });
+  const doc = await task.promise;
   try {
     const page = await doc.getPage(pageNumber);
     const content = await page.getTextContent();
     return content.items.map((item) => ("str" in item ? item.str : "")).join(" ");
   } finally {
-    await doc.destroy();
+    await task.destroy();
   }
 }
 

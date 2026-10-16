@@ -106,6 +106,9 @@ const namespaceAllowList = [
   "http://example.com",
   "https://example.invalid",
   "http://example.invalid",
+  // pdf.js 6's URL parser falls back to `new URL(value, "https://foo.bar")`
+  // when a link is relative; it is a base for parsing, never a request.
+  "https://foo.bar",
 ];
 const remoteFetchPatterns = [
   /\bfetch\(\s*["'`]https?:\/\//i,
