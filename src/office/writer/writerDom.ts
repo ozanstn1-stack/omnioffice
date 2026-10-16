@@ -9,6 +9,7 @@
 import type { Block, ParaProps, Run } from "../../lib/office-types";
 import { defaultParaProps } from "../../lib/office-types";
 import { emptyRun, normalizeParagraphRuns } from "./runs";
+import { hyphenBreakOffsets } from "./hyphen-tr";
 
 export function escapeHtml(value: string): string {
   return value
@@ -168,6 +169,31 @@ function revisionAttributes(run: Run): string {
 }
 
 /** Writes runs as the inner HTML of a contentEditable paragraph. */
+/** True for a Turkish BCP 47 tag (`tr`, `tr-TR`, `tr_TR`). */
+function isTurkish(lang: string | null | undefined): boolean {
+  return typeof lang === "string" && /^tr([-_]|$)/i.test(lang.trim());
+}
+
+/**
+ * Soft hyphens (U+00AD) at the syllable boundaries of Turkish words, so the
+ * browser can break a long word when a line is too narrow. `domToRuns` strips
+ * them again, so they never reach the model (or an export).
+ */
+function hyphenateTurkish(text: string): string {
+  return text.replace(/[\p{L}]+/gu, (word) => {
+    const offsets = hyphenBreakOffsets(word);
+    if (offsets.length === 0) return word;
+    const characters = [...word];
+    let out = "";
+    let previous = 0;
+    for (const offset of offsets) {
+      out += characters.slice(previous, offset).join("") + "\u00ad";
+      previous = offset;
+    }
+    return out + characters.slice(previous).join("");
+  });
+}
+
 export function runsToHtml(runs: Run[], options: RunRenderOptions = {}): string {
   const showRevisions = options.showRevisions !== false;
   return runs
@@ -189,7 +215,8 @@ export function runsToHtml(runs: Run[], options: RunRenderOptions = {}): string 
       }
       // Hard line breaks (Shift+Enter stores "\n") must render as <br>, or HTML
       // collapses them to a space and the page preview disagrees with the model.
-      const text = escapeHtml(run.text).replace(/\t/g, "&emsp;").replace(/\n/g, "<br>");
+      const hyphenated = isTurkish(run.lang) ? hyphenateTurkish(run.text) : run.text;
+      const text = escapeHtml(hyphenated).replace(/\t/g, "&emsp;").replace(/\n/g, "<br>");
       if (text === "") return "";
       let html = text;
       if (run.bold) html = `<strong>${html}</strong>`;
@@ -262,7 +289,7 @@ export function domToRuns(element: HTMLElement): Run[] {
   const runs: Run[] = [];
   const walk = (node: Node, inherited: Partial<Run>) => {
     if (node.nodeType === Node.TEXT_NODE) {
-      const text = node.textContent ?? "";
+      const text = (node.textContent ?? "").replace(/\u00ad/g, "");
       if (text) runs.push({ ...emptyRun(text), ...inherited });
       return;
     }

@@ -494,3 +494,23 @@ describe("structural run preservation", () => {
     expect(runsToHtml([deleted, kept], { showRevisions: true })).toContain("old");
   });
 });
+
+describe("Turkish hyphenation in the rendered runs", () => {
+  function toDom(html: string): HTMLElement {
+    const element = document.createElement("div");
+    element.innerHTML = html;
+    return element;
+  }
+
+  it("adds soft hyphens to a Turkish run and strips them on read-back", () => {
+    // The engine (`hyphen-tr`) was never wired; a Turkish run now renders with
+    // soft hyphens so the browser can break long words.
+    const html = runsToHtml([run("danışmanlık", { lang: "tr-TR" })]);
+    expect(html).toContain("\u00ad");
+    // Nothing is added for another language.
+    expect(runsToHtml([run("consultancy", { lang: "en-US" })])).not.toContain("\u00ad");
+    expect(runsToHtml([run("danışmanlık")])).not.toContain("\u00ad");
+    // The editor strips the soft hyphens, so the model stays clean.
+    expect(runsText(domToRuns(toDom(html)))).toBe("danışmanlık");
+  });
+});
