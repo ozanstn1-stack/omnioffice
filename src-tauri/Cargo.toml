@@ -42,6 +42,9 @@ aicore = { path = "../crates/aicore" }
 officecore = { path = "../crates/officecore" }
 lopdf = "0.45.0"
 pdfcore = { path = "../crates/pdfcore" }
+# TypeScript bindings for the IPC DTOs (v5.1). Optional: only the `ts` feature
+# pulls it in, so shipped builds are unchanged.
+ts-rs = { version = "12", optional = true }
 time = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 # Release URLs are parsed and normalised (dot-segment escapes) before they are
@@ -53,6 +56,11 @@ synccore = { path = "../crates/synccore" }
 windows = { version = "0.61", features = ["Win32_Security_Cryptography", "Win32_Foundation", "Win32_System_Console"] }
 
 # The AI extraction test writes real DOCX/XLSX/PPTX fixtures with the engines.
+[features]
+# Generates the TypeScript bindings for the IPC DTOs (`cargo test export_bindings`).
+# Enabling it also turns on pdfcore's `ts` feature, so its DTOs export too.
+ts = ["dep:ts-rs", "pdfcore/ts"]
+
 [dev-dependencies]
 tempfile = "3"
 # The scanner test writes small PNG pages to correct and assemble.

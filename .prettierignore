@@ -6,6 +6,9 @@ release-artifacts/
 src-tauri/
 chrome-extension/
 crates/
+# Generated from the Rust structs by `npm run types:gen`; formatting them would
+# trip the drift check.
+src/lib/generated/
 
 # Documents and fixtures are not source code
 samples/

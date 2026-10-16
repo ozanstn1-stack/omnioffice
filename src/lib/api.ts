@@ -527,12 +527,18 @@ export const signatureDelete = (name: string) => invoke<void>("signature_delete"
 // Batch recipes and watched folder
 // ---------------------------------------------------------------------------
 
+/**
+ * Batch recipes. The step shapes are locked to the Rust enum by
+ * `src/lib/generated/contract.test.ts` (`npm run types:gen` regenerates the
+ * bindings). The option objects stay partial because the Rust structs carry
+ * `#[serde(default)]`, so a step only names the fields it sets.
+ */
 export type RecipeStep =
-  | { kind: "compress"; options: Record<string, unknown> }
-  | { kind: "stamp"; headerFooter?: Record<string, unknown>; bates?: Record<string, unknown> }
+  | { kind: "compress"; options: Partial<CompressOptions> }
+  | { kind: "stamp"; headerFooter?: Partial<HeaderFooterOptions>; bates?: Partial<BatesOptions> }
   | { kind: "pdfa"; level: string }
-  | { kind: "ocr"; options: Record<string, unknown> }
-  | { kind: "redact"; areas?: unknown[]; options: Record<string, unknown> };
+  | { kind: "ocr"; options: Partial<OcrOptions> }
+  | { kind: "redact"; areas?: RedactionArea[]; options?: Partial<RedactionOptions> };
 
 export interface Recipe {
   id: string;

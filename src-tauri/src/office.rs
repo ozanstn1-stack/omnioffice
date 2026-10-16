@@ -1461,6 +1461,8 @@ pub async fn office_open_eml(path: String) -> Result<officecore::eml::EmlMessage
     task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
 
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InvoiceQr {
