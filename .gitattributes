@@ -2,6 +2,10 @@
 # a CRLF checkout used to break the Turkish-character check on Windows runners.
 src/lib/i18n.ts text eol=lf
 
+# TypeScript bindings are written with LF by ts-rs (`npm run types:gen`); a CRLF
+# checkout would make the drift check report a change that is not there.
+src/lib/generated/*.ts text eol=lf
+
 # Golden fixtures are byte contracts: a CRLF checkout on a Windows runner used
 # to make the reproducibility test fail even though the model had not changed.
 crates/officecore/tests/fixtures/*.oswk binary
