@@ -59,7 +59,7 @@ thiserror = "2.0.20"
 ts-rs = { version = "12", optional = true }
 time = "0.3"
 getrandom = "0.2"
-x509-cert = { version = "0.2", default-features = false, features = ["std"] }
+x509-cert = { version = "0.3", default-features = false, features = ["std"] }
 # OCSP request/response types only (no `builder` feature), on the same der /
 # spki / x509-cert versions as above. revocation.rs builds the request and
 # verifies the answer; the HTTP exchange happens in the app, never here.
