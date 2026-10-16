@@ -58,7 +58,9 @@ pub fn chunk_text(text: &str) -> Vec<String> {
 pub fn tokenize(text: &str) -> Vec<String> {
     text.split(|ch: char| !ch.is_alphanumeric())
         .filter(|token| !token.is_empty())
-        .map(|token| token.to_lowercase())
+        // 1:1 Turkish-aware folding: `to_lowercase` expands 'İ' to two
+        // characters, so "istanbul" never matched "İstanbul".
+        .map(|token| token.chars().map(crate::vault::fold_char).collect())
         .collect()
 }
 
@@ -451,6 +453,15 @@ mod tests {
         let fused = reciprocal_rank_fusion(&[keyword, semantic], 3);
         assert_eq!(fused[0].0, 0, "the item in both lists wins: {fused:?}");
         assert_eq!(fused.len(), 3);
+    }
+
+    #[test]
+    fn bm25_folds_turkish_letters() {
+        // `to_lowercase` expands 'İ' to two chars, so "istanbul" used to miss
+        // "İstanbul"; the tokenizer now folds 1:1 like the snippet search.
+        let index = Bm25Index::build(&chunks(&["İstanbul Büyükşehir Belediyesi", "Ankara kedi köpek"]));
+        let ranked = index.search("istanbul", 3);
+        assert_eq!(ranked.first().map(|(position, _)| *position), Some(0), "ranked: {ranked:?}");
     }
 
     #[test]

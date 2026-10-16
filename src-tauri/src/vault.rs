@@ -1445,7 +1445,7 @@ fn import_files_capped(root: &Path, paths: &[String], max_bytes: u64) -> VaultIm
 /// Folds one character for case- and diacritic-insensitive Turkish matching.
 /// 1:1 so snippet offsets stay aligned; the four i/I/ı/İ letters collapse to
 /// `i` and ş/ğ/ç/ö/ü fold to their ASCII bases.
-fn fold_char(ch: char) -> char {
+pub(crate) fn fold_char(ch: char) -> char {
     match ch {
         'İ' | 'I' | 'ı' | 'i' => 'i',
         'Ş' | 'ş' => 's',
@@ -1457,7 +1457,7 @@ fn fold_char(ch: char) -> char {
     }
 }
 
-fn fold(text: &str) -> Vec<char> {
+pub(crate) fn fold(text: &str) -> Vec<char> {
     // 1:1 char mapping (first lowercase char) so snippet offsets stay aligned.
     text.chars().map(fold_char).collect()
 }
