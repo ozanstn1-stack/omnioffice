@@ -3,6 +3,7 @@
 // (the worker and the optional wasm module are bundled with the extension).
 
 import * as pdfjs from "pdfjs-dist";
+import type { PDFDocumentProxy } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { fileStem } from "./format";
 import { PdfOpError } from "./pdf";
@@ -25,31 +26,43 @@ export interface RenderedPage {
   heightPt: number;
 }
 
-export async function openDocument(bytes: Uint8Array) {
+/**
+ * Runs `work` with an open document and tears the loading task down afterwards.
+ *
+ * pdf.js 6 removed `PDFDocumentProxy.destroy`; the loading task owns teardown,
+ * so every call site goes through here instead of destroying the proxy.
+ */
+export async function withDocument<T>(bytes: Uint8Array, work: (doc: PDFDocumentProxy) => Promise<T>): Promise<T> {
   // pdf.js takes ownership of the buffer, so hand it a copy.
   const data = bytes.slice();
   const base = assetBase();
+  const task = pdfjs.getDocument({
+    data,
+    useSystemFonts: true,
+    cMapUrl: `${base}vendor/cmaps/`,
+    cMapPacked: true,
+    standardFontDataUrl: `${base}vendor/standard_fonts/`,
+  });
+  let doc: PDFDocumentProxy;
   try {
-    return await pdfjs.getDocument({
-      data,
-      isEvalSupported: false,
-      useSystemFonts: true,
-      cMapUrl: `${base}vendor/cmaps/`,
-      cMapPacked: true,
-      standardFontDataUrl: `${base}vendor/standard_fonts/`,
-    }).promise;
+    doc = await task.promise;
   } catch (error) {
+    await task.destroy().catch(() => undefined);
     const name = (error as { name?: string })?.name;
     if (name === "PasswordException") {
       throw new PdfOpError("password_required", "This PDF is password protected.");
     }
     throw new PdfOpError("invalid_pdf", "This file could not be read as a PDF. It may be damaged.");
   }
+  try {
+    return await work(doc);
+  } finally {
+    await task.destroy().catch(() => undefined);
+  }
 }
 
 export async function renderPage(bytes: Uint8Array, pageNumber: number, dpi: number): Promise<RenderedPage> {
-  const doc = await openDocument(bytes);
-  try {
+  return withDocument(bytes, async (doc) => {
     const page = await doc.getPage(pageNumber);
     const base = page.getViewport({ scale: 1 });
     const scale = dpi / 72;
@@ -61,7 +74,8 @@ export async function renderPage(bytes: Uint8Array, pageNumber: number, dpi: num
     if (!context) throw new PdfOpError("internal", "Canvas 2D is not available in this browser.");
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, canvas.width, canvas.height);
-    await page.render({ canvasContext: context, viewport }).promise;
+    // pdf.js 6 requires the canvas itself alongside the context.
+    await page.render({ canvas, canvasContext: context, viewport }).promise;
     return {
       canvas,
       width: canvas.width,
@@ -69,9 +83,7 @@ export async function renderPage(bytes: Uint8Array, pageNumber: number, dpi: num
       widthPt: base.width,
       heightPt: base.height,
     };
-  } finally {
-    await doc.destroy();
-  }
+  });
 }
 
 function canvasToBytes(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Uint8Array> {
@@ -115,8 +127,7 @@ export interface PageText {
 }
 
 export async function extractPageText(bytes: Uint8Array, pageNumber: number): Promise<string> {
-  const doc = await openDocument(bytes);
-  try {
+  return withDocument(bytes, async (doc) => {
     const page = await doc.getPage(pageNumber);
     const content = await page.getTextContent();
     return content.items
@@ -124,14 +135,11 @@ export async function extractPageText(bytes: Uint8Array, pageNumber: number): Pr
       .join(" ")
       .replace(/\s+/g, " ")
       .trim();
-  } finally {
-    await doc.destroy();
-  }
+  });
 }
 
 export async function documentHasText(bytes: Uint8Array, samplePages = 4): Promise<boolean> {
-  const doc = await openDocument(bytes);
-  try {
+  return withDocument(bytes, async (doc) => {
     const total = doc.numPages;
     const step = Math.max(1, Math.floor(total / samplePages));
     for (let pageNumber = 1; pageNumber <= total; pageNumber += step) {
@@ -141,9 +149,7 @@ export async function documentHasText(bytes: Uint8Array, samplePages = 4): Promi
       if (text.trim().length > 3) return true;
     }
     return false;
-  } finally {
-    await doc.destroy();
-  }
+  });
 }
 
 export interface PdfSearchMatch {
@@ -169,12 +175,11 @@ export async function searchDocument(
 ): Promise<PdfSearchResult> {
   const needle = query.trim().toLowerCase();
   if (!needle) throw new PdfOpError("invalid_input", "Enter the text to search for.");
-  const doc = await openDocument(bytes);
-  const matches: PdfSearchMatch[] = [];
-  let pagesWithMatches = 0;
-  let hasTextLayer = false;
-  let truncated = false;
-  try {
+  return withDocument(bytes, async (doc) => {
+    const matches: PdfSearchMatch[] = [];
+    let pagesWithMatches = 0;
+    let hasTextLayer = false;
+    let truncated = false;
     for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
       if (cancelled?.()) throw new PdfOpError("cancelled", "Search cancelled.");
       onProgress?.(pageNumber, doc.numPages);
@@ -208,10 +213,8 @@ export async function searchDocument(
       if (pageMatches > 0) pagesWithMatches += 1;
       if (truncated) break;
     }
-  } finally {
-    await doc.destroy();
-  }
-  return { matches, pagesWithMatches, totalMatches: matches.length, truncated, hasTextLayer };
+    return { matches, pagesWithMatches, totalMatches: matches.length, truncated, hasTextLayer };
+  });
 }
 
 export function suggestImageFileName(pdfName: string, page: number, format: "png" | "jpeg"): string {
