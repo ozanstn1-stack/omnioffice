@@ -1758,6 +1758,13 @@ fn read_run_properties(node: Option<&XmlNode>) -> Run {
             run.font = Some(font.to_string());
         }
     }
+    // `w:lang w:val="tr-TR"` carries the run's language; the Writer uses it to
+    // hyphenate Turkish text.
+    if let Some(lang) = properties.child("lang").and_then(|node| node.attr_any_ns("val")) {
+        if !lang.is_empty() {
+            run.lang = Some(lang.to_string());
+        }
+    }
     run.bold = parse_bool_flag(properties.child("b"));
     run.italic = parse_bool_flag(properties.child("i"));
     run.underline = properties.child("u").is_some();
@@ -3599,5 +3606,16 @@ mod tests {
         assert_eq!(table_again.rows[0].cells.len(), 2);
         assert_eq!(table_again.rows[0].cells[0].rowspan, 2);
         assert_eq!(table_again.rows[1].cells.len(), 1);
+    }
+
+    #[test]
+    fn reads_the_run_language_for_hyphenation() {
+        // `w:lang` carries the run's language; without it the Writer cannot
+        // hyphenate Turkish text (the hyphenation engine was never wired).
+        let text = r#"<w:rPr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:lang w:val="tr-TR"/><w:b/></w:rPr>"#;
+        let root = parse_xml(text).expect("xml");
+        let run = read_run_properties(Some(&root));
+        assert_eq!(run.lang.as_deref(), Some("tr-TR"));
+        assert!(run.bold, "the other properties still parse");
     }
 }
