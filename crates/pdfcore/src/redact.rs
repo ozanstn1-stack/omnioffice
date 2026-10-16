@@ -66,7 +66,7 @@ pub enum ImageRedaction {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct RedactionOptions {
     /// `#RRGGBB` fill drawn over the redacted area.
     pub fill: String,

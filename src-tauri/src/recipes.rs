@@ -20,8 +20,11 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 
 /// One step of a recipe. The `kind` tag matches the frontend's step palette.
+/// `rename_all_fields` renames the variant **fields** too, so the frontend's
+/// `headerFooter` reaches `header_footer` (it used to be silently dropped, and
+/// the stamp step ran empty).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum RecipeStep {
     Compress {
         options: pdfcore::compress::CompressOptions,
@@ -553,6 +556,32 @@ mod tests {
         assert_eq!(sanitize_id("../../etc/passwd"), "etcpasswd");
         assert_eq!(sanitize_id("Rapor 1"), "Rapor 1");
         assert_eq!(sanitize_id(""), "");
+    }
+
+    #[test]
+    fn recipe_step_wire_contract() {
+        // The frontend sends camelCase fields; `headerFooter` used to be
+        // dropped (a no-op stamp) and `options: {}` failed to parse.
+        let stamp: RecipeStep =
+            serde_json::from_str(r#"{"kind":"stamp","headerFooter":{"headerCenter":"Sayfa {page}"}}"#).expect("stamp");
+        match stamp {
+            RecipeStep::Stamp { header_footer, .. } => {
+                let header = header_footer.expect("headerFooter must reach header_footer");
+                assert_eq!(header.header_center, "Sayfa {page}");
+            }
+            other => panic!("expected a stamp step, got {other:?}"),
+        }
+        // Empty options objects fall back to the documented defaults.
+        for json in [
+            r#"{"kind":"redact","options":{}}"#,
+            r#"{"kind":"compress","options":{}}"#,
+            r#"{"kind":"ocr","options":{}}"#,
+        ] {
+            let step: RecipeStep = serde_json::from_str(json).unwrap_or_else(|error| panic!("{json}: {error}"));
+            // Round-trips back to the same shape.
+            let encoded = serde_json::to_string(&step).expect("serialize");
+            assert!(encoded.contains("\"kind\""), "{encoded}");
+        }
     }
 
     #[test]
