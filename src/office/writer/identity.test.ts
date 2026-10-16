@@ -14,13 +14,16 @@ describe("commentAuthor", () => {
 });
 
 describe("revisionAuthor", () => {
-  it("prefers the document author, then the setting, then the default", () => {
-    expect(revisionAuthor("Ada", "Ayşe")).toBe("Ada");
-    expect(revisionAuthor("  ", "Ayşe")).toBe("Ayşe");
+  it("prefers the configured name, then the document author, then the default", () => {
+    // The user is the one making the change, so their name wins over the
+    // document's own author.
+    expect(revisionAuthor("Ada", "Ayşe")).toBe("Ayşe");
+    expect(revisionAuthor("Ada", "  ")).toBe("Ada");
     expect(revisionAuthor("", "")).toBe("You");
   });
 
-  it("trims the document author", () => {
-    expect(revisionAuthor("  Ada  ", "Ayşe")).toBe("Ada");
+  it("trims the name it uses", () => {
+    expect(revisionAuthor("Ada", "  Ayşe  ")).toBe("Ayşe");
+    expect(revisionAuthor("  Ada  ", "")).toBe("Ada");
   });
 });
