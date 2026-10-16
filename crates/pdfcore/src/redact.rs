@@ -213,21 +213,32 @@ pub fn classify(token: &str) -> Option<&'static str> {
     if looks_like_email(token) {
         return Some("email");
     }
+    // Numbers are often glued to punctuation or a label ("(12345678901)",
+    // "VKN:1000036109"), which the length checks would miss. The numeric
+    // identifiers use the digit run; IBAN, plate and passport need the letters.
+    let alnum: String = token.chars().filter(|c| c.is_alphanumeric()).collect();
+    let digits: String = token.chars().filter(|c| c.is_ascii_digit()).collect();
+    if alnum.is_empty() {
+        return None;
+    }
     // Turkish identifiers first: their check digits are stronger evidence than
     // the generic length-based rules below.
-    if looks_like_tckn(&compact) {
+    if looks_like_tckn(&digits) {
         return Some("tckn");
     }
-    if looks_like_vkn(&compact) {
+    if looks_like_vkn(&digits) {
         return Some("vkn");
     }
-    if looks_like_tr_iban(&compact) || looks_like_iban(&compact) {
+    if looks_like_tr_iban(&alnum) || looks_like_iban(&alnum) {
         return Some("iban");
     }
-    if looks_like_card(&compact) {
+    if looks_like_card(&digits) {
         return Some("card");
     }
-    if looks_like_tr_plate(&compact) {
+    // A single-letter plate is ambiguous ("15W40" is an oil grade, not a plate),
+    // so require two letters unless the token is written with a separator.
+    let plate_letters = alnum.chars().filter(|c| c.is_ascii_uppercase()).count();
+    if looks_like_tr_plate(&alnum) && (token.contains(' ') || plate_letters >= 2) {
         return Some("plate");
     }
     // The spaces between words are exactly the separators a phone number needs,
@@ -235,7 +246,7 @@ pub fn classify(token: &str) -> Option<&'static str> {
     if looks_like_tr_phone(&compact) || looks_like_phone(token) || looks_like_phone(&compact) {
         return Some("phone");
     }
-    if looks_like_passport(&compact) {
+    if looks_like_passport(&alnum) {
         return Some("passport");
     }
     None
@@ -266,6 +277,14 @@ pub fn looks_like_vkn(compact: &str) -> bool {
     }
     let digits: Vec<u32> = compact.chars().map(|c| c.to_digit(10).unwrap_or(0)).collect();
     if digits.iter().all(|digit| *digit == digits[0]) {
+        return false;
+    }
+    // A strictly sequential number (1234567890, 9876543210) is a placeholder,
+    // not a tax number, even though it can pass the checksum. The modulo covers
+    // the wrap at nine (…9, 0).
+    let ascending = digits.windows(2).all(|pair| (pair[0] + 1) % 10 == pair[1]);
+    let descending = digits.windows(2).all(|pair| (pair[1] + 1) % 10 == pair[0]);
+    if ascending || descending {
         return false;
     }
     let mut total = 0u32;
@@ -1452,6 +1471,19 @@ mod tests {
         assert_eq!(classify("TR33 0006 1005 1978 6457 8413 26"), Some("iban"));
         assert_eq!(classify("34 ABC 123"), Some("plate"));
         assert_eq!(classify("0532 123 45 67"), Some("phone"));
+    }
+
+    #[test]
+    fn classify_handles_punctuation_and_rejects_placeholders() {
+        // Punctuation or a label glued to the number must not hide it.
+        assert_eq!(classify("(10000000146)"), Some("tckn"));
+        assert_eq!(classify("VKN:1000036109"), Some("vkn"));
+        // Placeholders and oil grades are not personal data.
+        assert_eq!(classify("1234567890"), None);
+        assert_eq!(classify("15W40"), None);
+        // Real plates still match, with or without a separator.
+        assert_eq!(classify("34 AB 123"), Some("plate"));
+        assert_eq!(classify("34AB123"), Some("plate"));
     }
 
     /// Ordinary text and near-misses that must never be auto-redacted; a
