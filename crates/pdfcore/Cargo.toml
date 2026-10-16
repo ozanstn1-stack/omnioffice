@@ -15,6 +15,10 @@ description = "Local-first PDF processing core for OmniOffice"
 name = "pdfcore"
 path = "src/lib.rs"
 
+[features]
+# Generates the TypeScript bindings for the IPC DTOs (`cargo test export_bindings`).
+ts = ["dep:ts-rs"]
+
 [dependencies]
 # Real digital signatures (crates/pdfcore/src/sign.rs). Every crypto crate here
 # is pure Rust so the same code compiles for Windows and Android: no OpenSSL,
@@ -50,6 +54,9 @@ sha1 = { version = "0.10", features = ["oid"] }
 sha2 = "0.10"
 tempfile = "3.27.0"
 thiserror = "2.0.20"
+# TypeScript bindings for the DTOs that cross the IPC boundary (v5.1). Optional:
+# only the `ts` feature pulls it in, so shipped builds are unchanged.
+ts-rs = { version = "12", optional = true }
 time = "0.3"
 getrandom = "0.2"
 x509-cert = { version = "0.2", default-features = false, features = ["std"] }

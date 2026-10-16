@@ -261,6 +261,13 @@ jobs:
       - name: Workspace compile
         if: runner.os != 'Windows'
         run: cargo build --workspace
+      # The IPC DTOs are generated from the Rust structs; a hand-written copy
+      # that drifts fails here instead of shipping as `undefined` (the v5.0.0
+      # audit's `headerFooter`/`taxIdValid` failures). One platform is enough:
+      # the bindings do not depend on the OS.
+      - name: Generated TypeScript bindings
+        if: runner.os == 'Linux'
+        run: npm run types:check
       - name: Release build (library crates)
         run: cargo build --release -p officecore -p pdfcore -p aicore
 

@@ -146,13 +146,14 @@ export interface CompressOptions {
   remove_metadata: boolean;
 }
 
+/** Every field carries `#[serde(default)]` on the Rust side, so a caller may set only what it needs. */
 export interface OcrPreprocess {
-  auto_rotate: boolean;
-  deskew: boolean;
-  contrast: boolean;
-  denoise: boolean;
-  binarize: boolean;
-  grayscale: boolean;
+  auto_rotate?: boolean;
+  deskew?: boolean;
+  contrast?: boolean;
+  denoise?: boolean;
+  binarize?: boolean;
+  grayscale?: boolean;
 }
 
 export interface OcrOptions {

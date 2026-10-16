@@ -23,7 +23,9 @@ export function Ocr({ initialFiles, dragging }: { initialFiles?: string[]; dragg
   const [outputMode, setOutputMode] = useState<OcrOptions["output_mode"]>("searchable_pdf");
   const [dpi, setDpi] = useState(300);
   const [skipText, setSkipText] = useState(true);
-  const [preprocess, setPreprocess] = useState<OcrPreprocess>({
+  // The wire type marks every field optional (`#[serde(default)]`); the screen
+  // starts from a complete set and always sends all of them.
+  const [preprocess, setPreprocess] = useState<Required<OcrPreprocess>>({
     auto_rotate: true,
     deskew: true,
     contrast: true,

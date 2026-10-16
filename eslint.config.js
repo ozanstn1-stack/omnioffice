@@ -60,6 +60,8 @@ export default [
       "src-tauri/**",
       "chrome-extension/**",
       "crates/**",
+      // Generated from the Rust structs by `npm run types:gen`.
+      "src/lib/generated/**",
     ],
   },
   js.configs.recommended,
