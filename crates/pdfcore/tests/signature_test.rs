@@ -515,6 +515,38 @@ fn signature_appearance_stream_is_present() {
 }
 
 #[test]
+fn signature_appearance_writes_turkish_with_the_embedded_font() {
+    // The appearance used base-14 Helvetica + WinAnsi, which wrote Turkish
+    // names, reasons and locations as '?'.
+    let identity = ecdsa_identity();
+    let options = SignOptions {
+        signer_name: Some("Şişli Güneş İĞDIR ı".to_string()),
+        reason: "Onay".to_string(),
+        location: "İstanbul".to_string(),
+        ..sign_options()
+    };
+    let signed = sign_with(identity, &[], &options);
+    let doc = Document::load_mem(&signed).unwrap();
+    let stream = doc
+        .objects
+        .values()
+        .filter_map(|object| object.as_stream().ok())
+        .find(|stream| stream.dict.get(b"Subtype").and_then(Object::as_name).ok() == Some(b"Form".as_slice()))
+        .expect("appearance stream");
+    let fonts = stream.dict.get(b"Resources").unwrap().as_dict().unwrap().get(b"Font").unwrap().as_dict().unwrap();
+    let font = fonts.iter().next().expect("one font").1.as_reference().unwrap();
+    let font_dict = doc.get_dictionary(font).unwrap();
+    assert_eq!(
+        font_dict.get(b"Subtype").and_then(Object::as_name).unwrap(),
+        b"Type0",
+        "the appearance must use the embedded font"
+    );
+    assert!(font_dict.get(b"ToUnicode").is_ok(), "the appearance text stays extractable");
+    let content = String::from_utf8_lossy(&stream.decompressed_content().unwrap()).to_string();
+    assert!(!content.contains('?'), "no '?' replacement: {content}");
+}
+
+#[test]
 fn signature_pkcs12_roundtrip_and_wrong_password() {
     let identity = ecdsa_identity();
     let pfx = build_pfx(identity, "correct horse battery staple", true, true);

@@ -186,13 +186,18 @@ fn generated_appearance(doc: &mut Document, annot_id: ObjectId, annot: &Dictiona
     let rect = rect_of(doc, annot)?;
     let width = (rect[2] - rect[0]).abs().max(1.0);
     let height = (rect[3] - rect[1]).abs().max(1.0);
-    let font = doc.add_object(Object::Dictionary(dictionary! {
-        "Type" => "Font",
-        "Subtype" => "Type1",
-        "BaseFont" => "Helvetica",
-        "Encoding" => "WinAnsiEncoding",
-    }));
-    let content = format!("q\nBT\n/Helv 10 Tf\n2 2 Td\n({}) Tj\nET\nQ\n", docutil::escape_pdf_literal(&text));
+    // The appearance text is drawn with the embedded Type0 font: a base-14
+    // Helvetica with WinAnsi cannot represent Turkish letters and wrote them
+    // as replacement characters.
+    let mut font_resources = lopdf::Dictionary::new();
+    let content = if text.trim().is_empty() {
+        String::new()
+    } else {
+        let chars: BTreeSet<char> = text.chars().collect();
+        let font = crate::textfont::TextFont::create(doc, &chars).ok()?;
+        font_resources.set(crate::textfont::RESOURCE_NAME, font.reference());
+        format!("q\nBT\n/{} 10 Tf\n2 2 Td\n{} Tj\nET\nQ\n", crate::textfont::RESOURCE_NAME, font.encode(&text))
+    };
     let stream_id = doc.add_object(Object::Stream(Stream::new(
         dictionary! {
             "Type" => "XObject",
@@ -205,9 +210,7 @@ fn generated_appearance(doc: &mut Document, annot_id: ObjectId, annot: &Dictiona
                 Object::Real(height as f32),
             ],
             "Resources" => Object::Dictionary(dictionary! {
-                "Font" => Object::Dictionary(dictionary! {
-                    "Helv" => Object::Reference(font),
-                }),
+                "Font" => Object::Dictionary(font_resources),
             }),
         },
         content.into_bytes(),

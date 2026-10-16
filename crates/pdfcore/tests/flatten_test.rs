@@ -171,3 +171,61 @@ fn appearances_only_generates_a_missing_text_field_appearance() {
         "/NeedAppearances must be off once appearances are generated"
     );
 }
+
+/// A `/V` string in the PDF's own UTF-16BE form, the way a real form stores
+/// non-ASCII text.
+fn utf16_string(text: &str) -> Object {
+    let mut bytes = vec![0xFE, 0xFF];
+    for unit in text.encode_utf16() {
+        bytes.extend_from_slice(&unit.to_be_bytes());
+    }
+    Object::String(bytes, StringFormat::Literal)
+}
+
+#[test]
+fn a_generated_appearance_writes_turkish_with_the_embedded_font() {
+    // The generated appearance used base-14 Helvetica + WinAnsi, which cannot
+    // represent Turkish letters: it wrote them as '?'.
+    let dir = TestDir::new();
+    let mut doc = widget_doc();
+    let widget = widget_id(&doc);
+    {
+        let dict = doc.get_object_mut(widget).unwrap().as_dict_mut().unwrap();
+        dict.remove(b"AP");
+        dict.set("V", utf16_string("Şişli Güneş İĞDIR ı"));
+    }
+    let source = dir.path("turkish-no-ap.pdf");
+    write_doc(&mut doc, &source);
+    let output = dir.path("turkish-generated.pdf");
+    let options = FlattenOptions { annotations: false, forms: false, appearances: true };
+    flatten_pdf(&source, &output, &options, &no_progress, &CancelToken::new()).expect("appearances");
+
+    let result = Document::load(&output).expect("reopen");
+    let widget = widget_id(&result);
+    let widget_dict = result.get_dictionary(widget).expect("widget");
+    let appearance = widget_dict.get(b"AP").unwrap().as_dict().unwrap().get(b"N").unwrap().as_reference().unwrap();
+    let stream = result.get_object(appearance).unwrap().as_stream().unwrap();
+    // The appearance draws with an embedded Type0/CID font, not WinAnsi text.
+    let fonts = stream.dict.get(b"Resources").unwrap().as_dict().unwrap().get(b"Font").unwrap().as_dict().unwrap();
+    let font = fonts.iter().next().expect("one font resource").1.as_reference().unwrap();
+    let font_dict = result.get_dictionary(font).unwrap();
+    assert_eq!(
+        font_dict.get(b"Subtype").and_then(Object::as_name).unwrap(),
+        b"Type0",
+        "the appearance must use the embedded font"
+    );
+    let content = String::from_utf8_lossy(&stream.decompressed_content().unwrap()).to_string();
+    assert!(content.contains(" Tj"), "content: {content}");
+    assert!(!content.contains("Şişli"), "the text must be CID-encoded, not literal bytes");
+
+    // Burn the appearance into the page and read the text back through ToUnicode.
+    let burned = dir.path("turkish-burned.pdf");
+    let burn = FlattenOptions::default();
+    flatten_pdf(&output, &burned, &burn, &no_progress, &CancelToken::new()).expect("flatten");
+    // pdfium descends into the burned-in XObject; lopdf's `extract_text` does
+    // not, which is why the shared `page_text` helper sees only the page text.
+    if pdfcore::render::is_available() {
+        let text = pdfcore::render::extract_page_text(&burned, None, 1).unwrap_or_default();
+        assert!(text.contains("Şişli Güneş İĞDIR ı"), "extracted: {text}");
+    }
+}
