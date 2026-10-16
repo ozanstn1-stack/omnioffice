@@ -328,6 +328,7 @@ pub fn run() {
             office::office_convert,
             office::office_conversion_targets,
             office::office_open_invoice,
+            office::office_open_invoice_package,
             office::office_invoice_summary,
             office::office_vat_rates,
             office::office_read_invoice_qr,

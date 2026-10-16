@@ -244,6 +244,9 @@ export interface VatRate {
 /** Opens a `.xml`/`.zip` UBL-TR invoice as a Writer document plus its fields. */
 export const openInvoice = (path: string) => invoke<InvoiceDocument>("office_open_invoice", { path });
 
+/** Every invoice in one `.xml`/`.zip` file (a zip can hold several). */
+export const openInvoicePackage = (path: string) => invoke<InvoiceDocument[]>("office_open_invoice_package", { path });
+
 /** Reads every invoice in the selection and builds the VAT summary workbook. */
 export const invoiceSummary = (paths: string[]) => invoke<InvoiceSummary>("office_invoice_summary", { paths });
 

@@ -63,6 +63,8 @@ pub struct UblLine {
     pub quantity: f64,
     pub unit: String,
     pub unit_price: f64,
+    /// Line-level discount (`cac:AllowanceCharge`, indicator false).
+    pub allowance: f64,
     pub line_total: f64,
     pub vat_rate: f64,
     pub vat_amount: f64,
@@ -135,6 +137,8 @@ pub struct VatRate {
 pub fn vat_rates() -> Vec<VatRate> {
     vec![
         VatRate { rate: 20.0, label: "Genel oran".into(), since: "2023-07-10".into(), until: String::new() },
+        // A zero rate is normal: exemptions and exports are invoiced at 0%.
+        VatRate { rate: 0.0, label: "Sıfır oran / istisna".into(), since: "2007-01-01".into(), until: String::new() },
         VatRate {
             rate: 18.0,
             label: "Genel oran (eski)".into(),
@@ -260,6 +264,16 @@ fn parse_tax_subtotals(node: &XmlNode) -> Vec<UblTaxSubtotal> {
     out
 }
 
+/// The line's discounts: `cac:AllowanceCharge` entries whose
+/// `cbc:ChargeIndicator` is not true (true would be a surcharge).
+fn line_allowance(node: &XmlNode) -> f64 {
+    node.children_of("AllowanceCharge")
+        .iter()
+        .filter(|charge| !child_text(charge, "ChargeIndicator").eq_ignore_ascii_case("true"))
+        .map(|charge| child_number(charge, "Amount"))
+        .sum()
+}
+
 fn parse_line(node: &XmlNode) -> UblLine {
     let (quantity, unit) = node
         .child("InvoicedQuantity")
@@ -296,6 +310,7 @@ fn parse_line(node: &XmlNode) -> UblLine {
         quantity,
         unit,
         unit_price,
+        allowance: line_allowance(node),
         line_total: child_number(node, "LineExtensionAmount"),
         vat_rate,
         vat_amount,
@@ -374,13 +389,13 @@ pub fn validate(invoice: &UblInvoice) -> Vec<UblIssue> {
     for line in &invoice.lines {
         line_sum += line.line_total;
         line_vat += line.vat_amount;
-        let expected_total = line.quantity * line.unit_price;
+        let expected_total = line.quantity * line.unit_price - line.allowance;
         check(
             &mut issues,
             &format!("line:{}.total", line.id),
             expected_total,
             line.line_total,
-            format!("Satır {} toplamı miktar × birim fiyata eşit değil.", line.id),
+            format!("Satır {} toplamı miktar × birim fiyat − iskonto'ya eşit değil.", line.id),
         );
         let expected_vat = line.line_total * line.vat_rate / 100.0;
         check(
@@ -411,7 +426,30 @@ pub fn validate(invoice: &UblInvoice) -> Vec<UblIssue> {
             "Satır toplamları ile mal/hizmet toplam tutarı uyuşmuyor.".into(),
         );
     }
-    check(&mut issues, "taxAmount", line_vat, invoice.tax_amount, "Satır KDV'leri ile toplam KDV uyuşmuyor.".into());
+    // The document TaxTotal can also carry ÖTV, so compare the line VAT with
+    // the KDV subtotals when they exist instead of the whole tax total (which
+    // made every ÖTV invoice look wrong).
+    let is_kdv = |name: &str| {
+        let upper = name.to_uppercase();
+        upper.contains("KDV") && !upper.contains("TEVKIFAT")
+    };
+    let has_kdv_subtotal = invoice.tax_subtotals.iter().any(|subtotal| is_kdv(&subtotal.name));
+    let kdv_total: f64 =
+        invoice.tax_subtotals.iter().filter(|subtotal| is_kdv(&subtotal.name)).map(|subtotal| subtotal.tax).sum();
+    let expected_tax = if has_kdv_subtotal { kdv_total } else { invoice.tax_amount };
+    check(&mut issues, "taxAmount", line_vat, expected_tax, "Satır KDV'leri ile toplam KDV uyuşmuyor.".into());
+    if !invoice.tax_subtotals.is_empty() {
+        // The document TaxTotal's amount must equal its own subtotals (KDV +
+        // ÖTV + ...), which catches a TaxAmount that disagrees with its parts.
+        let subtotal_sum: f64 = invoice.tax_subtotals.iter().map(|subtotal| subtotal.tax).sum();
+        check(
+            &mut issues,
+            "taxAmount",
+            subtotal_sum,
+            invoice.tax_amount,
+            "Vergi toplamı, alt toplamların toplamına eşit değil.".into(),
+        );
+    }
     check(
         &mut issues,
         "taxExclusiveAmount",
@@ -823,6 +861,58 @@ mod tests {
   </cac:InvoiceLine>
 </Invoice>"#
             .to_string()
+    }
+
+    #[test]
+    fn a_zero_rate_line_is_not_reported_as_unknown() {
+        // Exempt/zero-rated lines are normal; the reference table had no 0%.
+        let xml = invoice_20()
+            .replace("<cbc:Percent>20.00</cbc:Percent>", "<cbc:Percent>0.00</cbc:Percent>")
+            .replace(">300.00<", ">0.00<")
+            .replace(">1800.00<", ">1500.00<");
+        let read = read_ubl(xml.as_bytes()).unwrap();
+        assert!(!read.issues.iter().any(|issue| issue.field.contains(".rate")), "issues: {:?}", read.issues);
+    }
+
+    #[test]
+    fn a_line_discount_is_not_reported_as_a_mismatch() {
+        // 10 x 150 - 100 discount = 1400; the line total check used to ignore it.
+        let xml = invoice_20()
+            .replace(">1500.00<", ">1400.00<")
+            .replace(">1800.00<", ">1680.00<")
+            .replace(
+                "<cbc:TaxAmount currencyID=\"TRY\">300.00</cbc:TaxAmount>",
+                "<cbc:TaxAmount currencyID=\"TRY\">280.00</cbc:TaxAmount>",
+            )
+            .replace("<cbc:TaxAmount>300.00</cbc:TaxAmount>", "<cbc:TaxAmount>280.00</cbc:TaxAmount>")
+            .replace(
+                "<cac:Item>",
+                "<cac:AllowanceCharge><cbc:ChargeIndicator>false</cbc:ChargeIndicator><cbc:Amount currencyID=\"TRY\">100.00</cbc:Amount></cac:AllowanceCharge><cac:Item>",
+            );
+        let read = read_ubl(xml.as_bytes()).unwrap();
+        assert!(!read.issues.iter().any(|issue| issue.field.ends_with(".total")), "issues: {:?}", read.issues);
+    }
+
+    #[test]
+    fn an_excise_tax_subtotal_does_not_break_the_vat_check() {
+        // The document TaxTotal carries KDV (300) + ÖTV (200); the line VAT must
+        // be compared with the KDV subtotal, not with the 500 total.
+        let xml = invoice_20()
+            .replace(
+                "<cac:TaxTotal>\n    <cbc:TaxAmount currencyID=\"TRY\">300.00</cbc:TaxAmount>",
+                "<cac:TaxTotal>\n    <cbc:TaxAmount currencyID=\"TRY\">500.00</cbc:TaxAmount>",
+            )
+            .replace(">1800.00<", ">2000.00<")
+            .replace(
+                "<cbc:Name>KDV</cbc:Name></cac:TaxScheme></cac:TaxCategory></cac:TaxSubtotal>",
+                "<cbc:Name>KDV</cbc:Name></cac:TaxScheme></cac:TaxCategory></cac:TaxSubtotal><cac:TaxSubtotal><cbc:TaxableAmount currencyID=\"TRY\">1500.00</cbc:TaxableAmount><cbc:TaxAmount currencyID=\"TRY\">200.00</cbc:TaxAmount><cbc:Percent>20.00</cbc:Percent><cac:TaxCategory><cac:TaxScheme><cbc:Name>ÖTV</cbc:Name></cac:TaxScheme></cac:TaxCategory></cac:TaxSubtotal>",
+            );
+        let read = read_ubl(xml.as_bytes()).unwrap();
+        assert!(
+            !read.issues.iter().any(|issue| issue.field == "taxAmount"),
+            "the line VAT must match the KDV subtotal: {:?}",
+            read.issues
+        );
     }
 
     #[test]
