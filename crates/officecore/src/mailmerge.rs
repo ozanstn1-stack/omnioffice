@@ -7,7 +7,7 @@
 //! not fill, and [`merge_document`] substitutes them. Turkish characters are
 //! plain UTF-8 text, so `{{ad}}` -> `Ayşe Yılmaz` needs no special handling.
 
-use crate::model::{Block, TextDocument};
+use crate::model::{Block, Run, TextDocument};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Field names are `[A-Za-z0-9_]` between double braces.
@@ -28,9 +28,10 @@ fn collect_in_blocks(blocks: &[Block], found: &mut BTreeSet<String>) {
     for block in blocks {
         match block {
             Block::Paragraph { runs, .. } => {
-                for run in runs {
-                    scan_text(&run.text, found);
-                }
+                // Scan the joined paragraph text so a placeholder split across
+                // runs is still found (and reported as missing when unfilled).
+                let joined: String = runs.iter().map(|run| run.text.as_str()).collect();
+                scan_text(&joined, found);
             }
             Block::Table { table } => {
                 for row in &table.rows {
@@ -103,12 +104,38 @@ fn substitute(text: &str, values: &BTreeMap<String, String>) -> String {
     out
 }
 
+/// True when a known placeholder in the paragraph is split across runs, so a
+/// per-run substitution would miss it.
+fn runs_span_placeholder(runs: &[Run], values: &BTreeMap<String, String>) -> bool {
+    let joined: String = runs.iter().map(|run| run.text.as_str()).collect();
+    let mut in_joined = BTreeSet::new();
+    scan_text(&joined, &mut in_joined);
+    if in_joined.is_empty() {
+        return false;
+    }
+    let mut in_runs = BTreeSet::new();
+    for run in runs {
+        scan_text(&run.text, &mut in_runs);
+    }
+    in_joined.iter().any(|name| values.contains_key(name) && !in_runs.contains(name))
+}
+
 fn merge_blocks(blocks: &mut [Block], values: &BTreeMap<String, String>) {
     for block in blocks {
         match block {
             Block::Paragraph { runs, .. } => {
-                for run in runs {
-                    run.text = substitute(&run.text, values);
+                if runs_span_placeholder(runs, values) {
+                    // The placeholder is split across runs: merge the paragraph
+                    // so it can be filled (formatting follows the first run,
+                    // like any generated mail-merge output).
+                    let joined: String = runs.iter().map(|run| run.text.as_str()).collect();
+                    let filled = substitute(&joined, values);
+                    let template = runs.first().cloned().unwrap_or_default();
+                    *runs = vec![Run { text: filled, ..template }];
+                } else {
+                    for run in runs {
+                        run.text = substitute(&run.text, values);
+                    }
                 }
             }
             Block::Table { table } => {
@@ -132,11 +159,42 @@ pub fn merge_document(template: &TextDocument, values: &BTreeMap<String, String>
     document
 }
 
+/// Decodes a CSV/TSV byte buffer: a UTF-8 BOM is stripped, valid UTF-8 is kept
+/// as-is, and anything else is read as Windows-1254 (the Turkish Excel default)
+/// so names like "Şişli" survive instead of turning into replacement marks.
+fn decode_csv(bytes: &[u8]) -> String {
+    let bytes = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
+    match std::str::from_utf8(bytes) {
+        Ok(text) => text.to_string(),
+        Err(_) => bytes.iter().map(|byte| cp1254_char(*byte)).collect(),
+    }
+}
+
+/// One Windows-1254 byte to a character. The Turkish letters are the only ones
+/// that differ from Latin-1; 0x80-0x9F carries the usual cp1252 punctuation.
+fn cp1254_char(byte: u8) -> char {
+    match byte {
+        0xD0 => 'Ğ',
+        0xDD => 'İ',
+        0xDE => 'Ş',
+        0xF0 => 'ğ',
+        0xFD => 'ı',
+        0xFE => 'ş',
+        0x80 => '€',
+        0x85 => '…',
+        0x91 | 0x92 => '\'',
+        0x93 | 0x94 => '"',
+        0x96 => '–',
+        0x97 => '—',
+        other => other as char,
+    }
+}
+
 /// Parses CSV (RFC-4180 style: quoted fields, `""` escapes, CRLF or LF) into
 /// one map per data row. The first row is the header. A semicolon delimiter is
 /// detected when the header line has more semicolons than commas.
 pub fn parse_rows(bytes: &[u8]) -> Vec<BTreeMap<String, String>> {
-    let text = String::from_utf8_lossy(bytes);
+    let text = decode_csv(bytes);
     let delimiter = detect_delimiter(&text);
     let records = parse_records(&text, delimiter);
     let Some(header) = records.first() else { return Vec::new() };
@@ -287,5 +345,39 @@ mod tests {
     fn blank_lines_are_skipped() {
         let rows = parse_rows(b"ad,soyad\nAyse,Yilmaz\n\n,\n");
         assert_eq!(rows.len(), 1);
+    }
+
+    #[test]
+    fn strips_a_utf8_bom_from_the_header() {
+        // Excel writes a BOM; it used to become part of the first header name,
+        // so `{{ad}}` never matched the column.
+        let rows = parse_rows(b"\xEF\xBB\xBFad,soyad\nAyse,Yilmaz\n");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].get("ad").map(String::as_str), Some("Ayse"), "row: {:?}", rows[0]);
+    }
+
+    #[test]
+    fn decodes_windows_1254_bytes() {
+        // Turkish Excel saves CSV as Windows-1254: Ş=0xDE, ş=0xFE.
+        let rows = parse_rows(b"ad\n\xDEi\xFEli\n");
+        assert_eq!(rows[0].get("ad").map(String::as_str), Some("Şişli"), "row: {:?}", rows[0]);
+    }
+
+    #[test]
+    fn fills_a_placeholder_split_across_runs() {
+        let mut document = TextDocument::new_blank("Bolunmus");
+        document.blocks = vec![Block::Paragraph {
+            props: ParaProps::default(),
+            runs: vec![
+                Run { text: "Sayın {{ad".into(), ..Default::default() },
+                Run { text: "}},".into(), ..Default::default() },
+            ],
+        }];
+        // Detection sees it even though no single run contains it.
+        assert!(placeholders(&document).contains("ad"), "placeholders: {:?}", placeholders(&document));
+        let mut values = BTreeMap::new();
+        values.insert("ad".to_string(), "Ayşe".to_string());
+        let merged = merge_document(&document, &values);
+        assert!(merged.plain_text().contains("Sayın Ayşe,"), "merged: {}", merged.plain_text());
     }
 }
