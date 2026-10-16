@@ -56,3 +56,21 @@ if (typeof constructor.fromBase64 !== "function") {
     return out;
   });
 }
+
+/**
+ * pdf.js 6 also calls `Promise.try` (used by its cancellation/promise helpers).
+ * Chrome has it; Node 22 does not, so the Node test runner would fail on the
+ * first document operation.
+ */
+type PromiseTry = {
+  try?: (callback: (...args: unknown[]) => unknown, ...args: unknown[]) => Promise<unknown>;
+};
+
+const promiseConstructor = Promise as unknown as PromiseTry;
+if (typeof promiseConstructor.try !== "function") {
+  define(Promise, "try", function promiseTry(callback: (...args: unknown[]) => unknown, ...args: unknown[]) {
+    // Calling inside the executor captures a synchronous throw as a rejection,
+    // which is what `Promise.try` promises.
+    return new Promise((resolve) => resolve(callback(...args)));
+  });
+}
