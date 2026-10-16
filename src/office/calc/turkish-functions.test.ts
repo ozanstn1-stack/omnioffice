@@ -74,6 +74,10 @@ describe("TCKNDOGRULA", () => {
     expect(tcknValid("00000000000")).toBe(false);
     expect(tcknValid("1234567890")).toBe(false);
     expect(tcknValid("123456789012")).toBe(false);
+    // `odd * 7 - even` is negative here (35 - 36); JS `%` keeps the sign, so
+    // this used to be reported invalid.
+    expect(tcknValid("19191919190")).toBe(true);
+    expect(tcknValid("19191919191")).toBe(false);
     expect(evalValue("=TCKNDOGRULA(10000000146)")).toBe(true);
     expect(evalValue("=TCKNDOGRULA(10000000148)")).toBe(false);
   });

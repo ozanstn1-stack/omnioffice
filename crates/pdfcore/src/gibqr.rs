@@ -183,7 +183,9 @@ pub fn tckn_valid(value: &str) -> bool {
     }
     let odd = digits[0] + digits[2] + digits[4] + digits[6] + digits[8];
     let even = digits[1] + digits[3] + digits[5] + digits[7];
-    let tenth = (odd * 7 - even) % 10;
+    // `odd * 7 - even` can be negative (e.g. 35 - 36), which underflows u32;
+    // adding ten before the modulo keeps the result identical and safe.
+    let tenth = (odd * 7 + 10 - (even % 10)) % 10;
     let eleventh = digits.iter().take(10).sum::<u32>() % 10;
     digits[9] == tenth && digits[10] == eleventh
 }
@@ -283,6 +285,10 @@ mod tests {
         assert!(tckn_valid("10000000146"));
         assert!(!tckn_valid("10000000147"));
         assert!(!tckn_valid("00000000000"));
+        // `odd * 7 - even` is negative here (5 * 7 - 36), which used to panic in
+        // debug and wrap in release.
+        assert!(tckn_valid("19191919190"));
+        assert!(!tckn_valid("19191919191"));
         assert!(tax_id_valid("1000036109"));
     }
 }
