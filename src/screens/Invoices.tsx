@@ -7,7 +7,15 @@ import { useT } from "../lib/i18n";
 import { reportError, useToasts } from "../lib/store";
 import { isAndroid, pickOfficeFiles } from "../lib/mobile";
 import { compareQrWithInvoice } from "../lib/invoice-qr";
-import { exportPdf, openInvoice, invoiceSummary, readInvoiceQr, saveDocument, vatRates } from "../lib/office-api";
+import {
+  exportPdf,
+  openInvoice,
+  openInvoicePackage,
+  invoiceSummary,
+  readInvoiceQr,
+  saveDocument,
+  vatRates,
+} from "../lib/office-api";
 import type { InvoiceDocument, InvoiceQr, UblInvoice, VatRate } from "../lib/office-api";
 
 type Entry =
@@ -21,6 +29,15 @@ function money(value: number, currency: string) {
 
 function extensionOf(path: string) {
   return (path.split(".").pop() ?? "").toLowerCase();
+}
+
+/** Reads a UBL file: a `.zip` can hold several invoices, so all of them load. */
+async function loadUblEntries(path: string): Promise<Entry[]> {
+  if (extensionOf(path) === "zip") {
+    const documents = await openInvoicePackage(path);
+    return documents.map((document) => ({ path, kind: "ubl" as const, document }));
+  }
+  return [{ path, kind: "ubl", document: await openInvoice(path) }];
 }
 
 /**
@@ -49,7 +66,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
           const extension = extensionOf(path);
           if (extension === "xml" || extension === "zip") {
             try {
-              loaded.push({ path, kind: "ubl", document: await openInvoice(path) });
+              loaded.push(...(await loadUblEntries(path)));
             } catch (error) {
               reportError(error, t);
             }
@@ -83,7 +100,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
         const extension = extensionOf(path);
         if (extension === "xml" || extension === "zip") {
           try {
-            loaded.push({ path, kind: "ubl", document: await openInvoice(path) });
+            loaded.push(...(await loadUblEntries(path)));
           } catch (error) {
             reportError(error, t);
           }

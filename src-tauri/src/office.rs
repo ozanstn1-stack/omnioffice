@@ -1188,6 +1188,31 @@ pub struct InvoiceSummary {
     pub count: usize,
 }
 
+/// Reads every invoice in one `.xml`/`.zip` file. A zip can hold several
+/// invoices; the single-invoice command returns only the first.
+#[tauri::command]
+pub async fn office_open_invoice_package(path: String) -> Result<Vec<InvoiceDocument>, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let source = input_path(&path)?;
+        let reads = ubl::read_ubl_package_file(&source).map_err(payload)?;
+        let mut documents = Vec::with_capacity(reads.len());
+        for read in reads {
+            let document = ubl::invoice_to_document(&read.invoice);
+            documents.push(InvoiceDocument {
+                kind: "writer".into(),
+                title: document.title.clone(),
+                model: to_value(document)?,
+                invoice: read.invoice,
+                warnings: read.warnings,
+                issues: read.issues,
+            });
+        }
+        Ok::<_, OfficeErrorPayload>(documents)
+    });
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+}
+
 /// Reads every invoice in the selection and builds the VAT summary workbook.
 #[tauri::command]
 pub async fn office_invoice_summary(paths: Vec<String>) -> Result<InvoiceSummary, OfficeErrorPayload> {
