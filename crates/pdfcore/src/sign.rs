@@ -61,7 +61,7 @@ use rsa::{RsaPrivateKey, RsaPublicKey};
 use serde::{Deserialize, Serialize};
 use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha384, Sha512};
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use x509_cert::Certificate;
 
@@ -1148,14 +1148,9 @@ const CONTENTS_DER_CAPACITY: usize = 8192;
 /// array is space padded to the same length so every offset stays stable.
 const BYTE_RANGE_SLOT: usize = 64;
 
-/// Builds the text shown inside the widget appearance stream. Only Base14
-/// Helvetica is used, so no font embedding is required.
-fn appearance_stream_text(name: &str, moment: &SigningMoment, options: &SignOptions) -> String {
-    fn winansi(text: &str) -> String {
-        // Helvetica without an embedded font is limited to WinAnsi; anything
-        // outside ASCII is shown as '?' rather than producing mojibake.
-        text.chars().map(|c| if c.is_ascii() { c } else { '?' }).collect()
-    }
+/// The lines shown inside the widget appearance stream. The text is kept intact
+/// (Turkish letters included) and drawn with the embedded Type0 font.
+fn appearance_lines(name: &str, moment: &SigningMoment, options: &SignOptions) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     let signer = if name.trim().is_empty() {
         "Digitally signed".to_string()
@@ -1170,23 +1165,22 @@ fn appearance_stream_text(name: &str, moment: &SigningMoment, options: &SignOpti
     if !options.location.trim().is_empty() {
         lines.push(format!("Location: {}", options.location.trim()));
     }
-    let escaped: Vec<String> = lines.iter().map(|line| crate::docutil::escape_pdf_literal(&winansi(line))).collect();
-    escaped.join("\n")
+    lines
 }
 
-fn appearance_content(name: &str, moment: &SigningMoment, options: &SignOptions, width: f32, height: f32) -> Vec<u8> {
-    let lines = appearance_stream_text(name, moment, options);
+fn appearance_content(lines: &[String], font: &crate::textfont::TextFont, width: f32, height: f32) -> Vec<u8> {
     let mut out = String::new();
     out.push_str("q\n");
     out.push_str("0.6 0.6 0.6 RG\n0.5 w\n");
     out.push_str(&format!("0.25 0.25 {:.2} {:.2} re S\n", (width - 0.5).max(0.0), (height - 0.5).max(0.0)));
-    out.push_str("0 0 0 rg\nBT\n/SigFont 8 Tf\n");
+    out.push_str("0 0 0 rg\nBT\n");
+    out.push_str(&format!("/{} 8 Tf\n", crate::textfont::RESOURCE_NAME));
     let mut y = height - 12.0;
-    for line in lines.split('\n') {
+    for line in lines {
         if y < 4.0 {
             break;
         }
-        out.push_str(&format!("1 0 0 1 8 {y:.2} Tm\n({line}) Tj\n"));
+        out.push_str(&format!("1 0 0 1 8 {y:.2} Tm\n{} Tj\n", font.encode(line)));
         y -= 11.0;
     }
     out.push_str("ET\nQ\n");
@@ -1235,7 +1229,7 @@ fn attach_signature_field(
     inc: &mut IncrementalDocument,
     catalog_id: lopdf::ObjectId,
     field_id: lopdf::ObjectId,
-    font_id: lopdf::ObjectId,
+    appearance_font: Option<&crate::textfont::TextFont>,
 ) -> PdfResult<()> {
     let acroform = inc.new_document.get_dictionary(catalog_id)?.get(b"AcroForm").ok().cloned();
     let acroform_id = clone_reference(inc, acroform.as_ref())?;
@@ -1263,13 +1257,23 @@ fn attach_signature_field(
     // SignaturesExist | AppendOnly.
     form.set("SigFlags", 3i64);
     // Provide default resources only when the AcroForm has none; an existing
-    // DR belongs to other fields and is left alone.
+    // DR belongs to other fields and is left alone. The embedded appearance
+    // font is registered as /Helv (a base-14 Helvetica cannot write Turkish).
     if !form.has(b"DR") {
+        let font = match appearance_font {
+            Some(font) => font.reference(),
+            None => Object::Reference(inc.new_document.add_object(Object::Dictionary(dictionary! {
+                "Type" => "Font",
+                "Subtype" => "Type1",
+                "BaseFont" => "Helvetica",
+                "Encoding" => "WinAnsiEncoding",
+            }))),
+        };
         form.set(
             "DR",
             Object::Dictionary(dictionary! {
                 "Font" => Object::Dictionary(dictionary! {
-                    "Helv" => Object::Reference(font_id),
+                    "Helv" => font,
                 }),
             }),
         );
@@ -1372,15 +1376,10 @@ pub fn sign_pdf_with_timestamp(
     }
     let moment = signing_moment_now()?;
 
-    // 3. Font for the appearance stream (Base14 Helvetica, no embedding).
-    let font_id = inc.new_document.add_object(Object::Dictionary(dictionary! {
-        "Type" => "Font",
-        "Subtype" => "Type1",
-        "BaseFont" => "Helvetica",
-        "Encoding" => "WinAnsiEncoding",
-    }));
-
-    // 4. Appearance stream (Form XObject) when requested.
+    // 3./4. Appearance stream (Form XObject) when requested. The text is drawn
+    // with the embedded Type0 font, so Turkish names, reasons and locations
+    // survive (base-14 Helvetica + WinAnsi wrote them as '?').
+    let mut appearance_font: Option<crate::textfont::TextFont> = None;
     let appearance_id = if options.appearance {
         let width = rect[2] - rect[0];
         let height = rect[3] - rect[1];
@@ -1389,7 +1388,10 @@ pub fn sign_pdf_with_timestamp(
             .clone()
             .or_else(|| name_common_name(&signer_cert.tbs_certificate.subject))
             .unwrap_or_default();
-        let content = appearance_content(&signer_name, &moment, options, width, height);
+        let lines = appearance_lines(&signer_name, &moment, options);
+        let chars: BTreeSet<char> = lines.join("").chars().collect();
+        let font = crate::textfont::TextFont::create(&mut inc.new_document, &chars)?;
+        let content = appearance_content(&lines, &font, width, height);
         let mut stream_dict = Dictionary::new();
         stream_dict.set("Type", "XObject");
         stream_dict.set("Subtype", "Form");
@@ -1399,10 +1401,11 @@ pub fn sign_pdf_with_timestamp(
             "Resources",
             Object::Dictionary(dictionary! {
                 "Font" => Object::Dictionary(dictionary! {
-                    "SigFont" => Object::Reference(font_id),
+                    crate::textfont::RESOURCE_NAME => font.reference(),
                 }),
             }),
         );
+        appearance_font = Some(font);
         Some(inc.new_document.add_object(Object::Stream(Stream::new(stream_dict, content))))
     } else {
         None
@@ -1474,7 +1477,7 @@ pub fn sign_pdf_with_timestamp(
     let field_id = inc.new_document.add_object(Object::Dictionary(field));
 
     append_page_annotation(&mut inc, page_id, field_id)?;
-    attach_signature_field(&mut inc, catalog_id, field_id, font_id)?;
+    attach_signature_field(&mut inc, catalog_id, field_id, appearance_font.as_ref())?;
 
     // 7. Serialize the incremental update and locate the placeholders.
     let mut output = Vec::new();

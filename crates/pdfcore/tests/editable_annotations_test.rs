@@ -150,6 +150,38 @@ fn editable_annotations_roundtrip_every_kind() {
 }
 
 #[test]
+fn a_text_box_appearance_rasterizes_turkish_instead_of_winansi_text() {
+    // Base-14 Helvetica + WinAnsi cannot write Turkish; a text box draws its
+    // text into an image XObject, so "Onaylandı şğüöç" renders correctly (the
+    // extractable copy lives in /Contents).
+    let dir = TestDir::new();
+    let input = source_doc(&dir, "textbox-turkish");
+    let output = dir.path("textbox-turkish-out.pdf");
+    let annotation = Annotation { text: "Onaylandı şğüöç".into(), ..base("textbox", 60.0, 340.0, 220.0, 40.0) };
+    annotate_editable_pdf(
+        &input,
+        &output,
+        &[annotation],
+        OverwritePolicy::Replace,
+        None,
+        &no_progress,
+        &CancelToken::new(),
+    )
+    .expect("annotate");
+
+    let doc = Document::load(&output).expect("reopen");
+    let appearance = doc
+        .objects
+        .values()
+        .filter_map(|object| object.as_stream().ok())
+        .find(|stream| stream.dict.get(b"Subtype").and_then(Object::as_name).ok() == Some(b"Form".as_slice()))
+        .expect("the text box must have an appearance");
+    let resources = appearance.dict.get(b"Resources").and_then(Object::as_dict).expect("resources");
+    assert!(resources.get(b"XObject").is_ok(), "the appearance draws an image");
+    assert!(resources.get(b"Font").is_err(), "no base-14 font is involved");
+}
+
+#[test]
 fn editable_annotations_can_be_moved_resized_updated_and_deleted() {
     let dir = TestDir::new();
     let input = source_doc(&dir, "edit");
