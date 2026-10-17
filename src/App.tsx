@@ -608,27 +608,34 @@ export default function App() {
   // Routes documents that arrived through an Android open-with intent to the
   // tool that can handle them. Unknown leftovers are handed to the system
   // viewer so nothing is silently dropped.
-  const handleIncomingPaths = useCallback((paths: string[]) => {
-    const officePaths = paths.filter((path) => isOfficePath(path));
-    if (officePaths.length > 0) {
-      setScreen("office");
-      for (const path of officePaths) void openOfficePath(path);
-      return;
-    }
-    const pdfPaths = paths.filter((path) => path.toLowerCase().endsWith(".pdf"));
-    if (pdfPaths.length > 0) {
-      setFiles(pdfPaths);
-      setScreen("reader");
-      return;
-    }
-    const imagePaths = paths.filter((path) => isImage(path));
-    if (imagePaths.length > 0) {
-      setFiles(imagePaths);
-      setScreen("imagesToPdf");
-      return;
-    }
-    for (const path of paths) void openAnyFile(path).catch(() => undefined);
-  }, []);
+  const handleIncomingPaths = useCallback(
+    (paths: string[]) => {
+      if (paths.length === 1) {
+        openSinglePath(paths[0]);
+        return;
+      }
+      const officePaths = paths.filter((path) => isOfficePath(path));
+      if (officePaths.length > 0) {
+        setScreen("office");
+        for (const path of officePaths) void openOfficePath(path);
+        return;
+      }
+      const pdfPaths = paths.filter((path) => path.toLowerCase().endsWith(".pdf"));
+      if (pdfPaths.length > 0) {
+        setFiles(pdfPaths);
+        setScreen("reader");
+        return;
+      }
+      const imagePaths = paths.filter((path) => isImage(path));
+      if (imagePaths.length > 0) {
+        setFiles(imagePaths);
+        setScreen("imagesToPdf");
+        return;
+      }
+      for (const path of paths) void openAnyFile(path).catch(() => undefined);
+    },
+    [openSinglePath],
+  );
 
   // Android open-with: MainActivity copies shared documents into the cache and
   // queues their paths. The copy runs on a background thread, so the queue is
