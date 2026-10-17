@@ -1,0 +1,47 @@
+name: Nightly
+
+# Compatibility score for the corpus (tests/corpus): every sample is imported,
+# exported back to its own format and re-imported (structural score), then
+# rendered to PDF and compared with its reviewed golden (visual score).
+# LibreOffice is installed best effort and adds the external reference score,
+# which is informational until it is calibrated (see docs/corpus.md).
+#
+# Third-party actions are pinned to commit SHAs; Dependabot
+# (.github/dependabot.yml, github-actions ecosystem) keeps them current.
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compat-score:
+    name: Compatibility score
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
+      - run: npm ci
+      - name: Fetch engines (pdfium, qpdf, tesseract, fonts)
+        run: npm run engines:fetch
+      # Best effort: the reference score is a bonus, the golden score is the
+      # gate. A failed install must not fail the nightly.
+      - name: LibreOffice (reference renderer, best effort)
+        continue-on-error: true
+        run: choco install libreoffice-fresh -y --no-progress
+      - name: Compatibility score
+        run: npm run compat:score
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: compat-report
+          path: target/compat/report.json
+          if-no-files-found: warn
