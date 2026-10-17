@@ -21,6 +21,19 @@ describe("document open routing", () => {
     });
   });
 
+  it("sends .eml and .xml to their respective tools", () => {
+    expect(routeForPath("C:/docs/mail.eml")).toEqual({
+      screen: "eml",
+      files: ["C:/docs/mail.eml"],
+      office: false,
+    });
+    expect(routeForPath("C:/docs/fatura.xml")).toEqual({
+      screen: "invoices",
+      files: ["C:/docs/fatura.xml"],
+      office: false,
+    });
+  });
+
   it("returns null for unknown types so the system viewer can open them", () => {
     expect(routeForPath("C:/docs/archive.zip")).toBeNull();
     expect(routeForPath("")).toBeNull();

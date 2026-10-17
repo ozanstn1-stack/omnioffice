@@ -29,5 +29,12 @@ export function routeForPath(path: string): OpenRoute | null {
   if (isImage(path)) {
     return { screen: "imagesToPdf", files: [path], office: false };
   }
+  const lower = path.toLowerCase();
+  if (lower.endsWith(".eml")) {
+    return { screen: "eml", files: [path], office: false };
+  }
+  if (lower.endsWith(".xml")) {
+    return { screen: "invoices", files: [path], office: false };
+  }
   return null;
 }
