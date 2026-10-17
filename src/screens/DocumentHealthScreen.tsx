@@ -45,19 +45,19 @@ export function DocumentHealthScreen({
       push({
         kind: "success",
         title: "Meta veriler temizlendi",
-        message: "Yazar, kurum ve yazılım bilgileri başarıyla kaldırıldı.",
+        detail: "Yazar, kurum ve yazılım bilgileri başarıyla kaldırıldı.",
       });
     } else if (issue.fixAction === "redact_kvkk") {
       push({
         kind: "info",
         title: "Karartma Aracı",
-        message: "Kişisel veriler Redact sekmesinde karartılmak üzere hazır.",
+        detail: "Kişisel veriler Redact sekmesinde karartılmak üzere hazır.",
       });
     } else {
       push({
         kind: "info",
         title: "Düzeltme Uygulandı",
-        message: `${issue.title} için önerilen düzeltme adımı uygulandı.`,
+        detail: `${issue.title} için önerilen düzeltme adımı uygulandı.`,
       });
     }
   };
@@ -65,13 +65,13 @@ export function DocumentHealthScreen({
   const getSeverityBadge = (severity: HealthIssue["severity"]) => {
     switch (severity) {
       case "critical":
-        return <Badge variant="danger">Kritik Risk</Badge>;
+        return <Badge tone="danger">Kritik Risk</Badge>;
       case "warning":
-        return <Badge variant="neutral">Uyarı</Badge>;
+        return <Badge tone="warn">Uyarı</Badge>;
       case "info":
-        return <Badge variant="neutral">Bilgi</Badge>;
+        return <Badge tone="default">Bilgi</Badge>;
       default:
-        return <Badge variant="success">Uyumlu</Badge>;
+        return <Badge tone="ok">Uyumlu</Badge>;
     }
   };
 
@@ -203,7 +203,7 @@ export function DocumentHealthScreen({
                     push({
                       kind: "success",
                       title: "Tüm meta veriler temizlendi",
-                      message: "Tüm gizli meta veri etiketleri sıfırlandı.",
+                      detail: "Tüm gizli meta veri etiketleri sıfırlandı.",
                     });
                   }}
                 >

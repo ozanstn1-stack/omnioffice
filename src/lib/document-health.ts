@@ -49,7 +49,6 @@ const TCKN_REGEX = /\b[1-9][0-9]{10}\b/g;
 const TR_PHONE_REGEX = /(?:\+90|0)?\s*[1-9][0-9]{2}[\s.-]*[0-9]{3}[\s.-]*[0-9]{2}[\s.-]*[0-9]{2}\b/g;
 const EMAIL_REGEX = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
 const IBAN_REGEX = /\bTR\s*[0-9]{2}(?:\s*[0-9]{4}){5}\s*[0-9]{2}\b/gi;
-const _VKN_REGEX = /\b[0-9]{10}\b/g;
 
 /**
  * Validate Turkish Republic Identity Number (TCKN) with mod-11 algorithm
