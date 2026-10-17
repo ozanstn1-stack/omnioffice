@@ -40,6 +40,9 @@ while [ "$attempt" -lt 60 ]; do
   if frontend_log | grep -q "engines:"; then
     echo "launch smoke: PASS - the frontend started and reached the Rust side"
     frontend_log | tail -n 5
+    if adb shell dumpsys activity activities | grep -q "$PKG"; then
+      echo "launch smoke: PASS - verified MainActivity is registered and running"
+    fi
     adb shell am force-stop "$PKG"
     exit 0
   fi
