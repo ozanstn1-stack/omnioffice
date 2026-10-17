@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.0] - Gerçek mobil (True mobile)
+
+A major release bringing first-class mobile capabilities to Android, featuring advanced document scanner page reordering and batch clearing, seamless launcher shortcuts and ACTION_SEND sharing intents for emails and e-invoices, and robust Storage Access Framework (SAF) integration validated with Android emulator launch smoke tests.
+
+### Added
+
+- **Document scanner enhancements (#266 / PR #269):** Page reordering (move up / down) and 1-click batch clearing in the Android document scanner interface, with full unit test coverage.
+- **Android shortcuts and ACTION_SEND intent sharing (#267 / PR #270):** Launcher shortcuts and deep ACTION_SEND / ACTION_VIEW integration routing `.eml` and `.xml` files directly to e-posta and e-fatura previewers.
+- **SAF compatibility and Android emulator smoke test (#268 / PR #271):** Storage Access Framework (SAF) MIME mapping for XML and EML, verified document export/sharing, and expanded Android launch smoke test asserting MainActivity runtime status.
+
 ## [5.5.0] - Muhasebe köprüsü (Accounting bridge)
 
 A minor release introducing accounting export bridges for Luca, Logo, and Zirve, interactive Turkish KDV1 VAT declaration helper summary tables with rate & withholding breakdowns, and automated duplicate invoice detection with 1-click workspace deduplication.
