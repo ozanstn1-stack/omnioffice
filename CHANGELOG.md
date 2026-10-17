@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.0] - Muhasebe köprüsü (Accounting bridge)
+
+A minor release introducing accounting export bridges for Luca, Logo, and Zirve, interactive Turkish KDV1 VAT declaration helper summary tables with rate & withholding breakdowns, and automated duplicate invoice detection with 1-click workspace deduplication.
+
+### Added
+
+- **Accounting export bridges (#259 / PR #262):** One-click export of UBL-TR invoices into standard exchange CSV formats for Turkey's leading accounting platforms: Luca, Logo, and Zirve.
+- **KDV declaration helper table & modal (#260 / PR #263):** Interactive KDV1 tax declaration helper breaking down taxable bases and calculated taxes across standard rates (%20, %10, %1, %0) and tevkifat withholdings with periodic date filtering.
+- **Duplicate invoice detection and deduplication (#261 / PR #264):** Automatic detection of duplicate invoices by ETTN UUID, supplier taxId + invoice number clash, or exact amount & date match, with a 1-click deduplication tool to clean the workspace.
+
 ## [5.4.0] - Belge sağlığı ve KVKK paketi (Document health and KVKK compliance)
 
 A minor release introducing one-click document health analysis and repair, verifiable PDF redaction certificates with SHA-256 integrity stamps, and a KVKK (Turkish Personal Data Protection Law) compliance wizard with customizable templates.
