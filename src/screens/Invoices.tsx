@@ -7,6 +7,7 @@ import { useT } from "../lib/i18n";
 import { reportError, useToasts } from "../lib/store";
 import { isAndroid, pickOfficeFiles } from "../lib/mobile";
 import { compareQrWithInvoice } from "../lib/invoice-qr";
+import { exportAccounting, type AccountingSoftware } from "../lib/accounting-export";
 import {
   exportPdf,
   openInvoice,
@@ -190,6 +191,34 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
     }
   };
 
+  const exportForAccounting = async (software: AccountingSoftware) => {
+    const ublInvoices = entries
+      .filter((e): e is Entry & { kind: "ubl" } => e.kind === "ubl")
+      .map((e) => e.document.invoice);
+    if (!ublInvoices.length) return;
+    const defaultName = `${software.toUpperCase()}-Aktarim-${new Date().toISOString().slice(0, 10)}.csv`;
+    const path = await saveDialog({
+      defaultPath: defaultName,
+      filters: [{ name: "CSV", extensions: ["csv"] }],
+    });
+    if (typeof path !== "string") return;
+    setBusy(true);
+    try {
+      const content = exportAccounting(ublInvoices, software);
+      const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+      await writeTextFile(path, content);
+      useToasts.getState().push({
+        kind: "success",
+        title: `${software.toUpperCase()} Aktarım Dosyası Kaydedildi`,
+        detail: path,
+      });
+    } catch (error) {
+      reportError(error, t);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const invoices: UblInvoice[] = entries.filter((entry) => entry.kind === "ubl").map((entry) => entry.document.invoice);
   const matchingInvoice = (qr: InvoiceQr): UblInvoice | undefined =>
     invoices.find(
@@ -208,6 +237,27 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
             </Button>
             <Button variant="ghost" disabled={busy || !invoices.length} onClick={() => void saveSummary()}>
               <Table2 size={16} /> {t("invoices.summary")}
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={busy || !invoices.length}
+              onClick={() => void exportForAccounting("luca")}
+            >
+              <Receipt size={16} /> Luca
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={busy || !invoices.length}
+              onClick={() => void exportForAccounting("logo")}
+            >
+              <Receipt size={16} /> Logo
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={busy || !invoices.length}
+              onClick={() => void exportForAccounting("zirve")}
+            >
+              <Receipt size={16} /> Zirve
             </Button>
             <span className="text-xs muted">{t("invoices.pickHint")}</span>
           </div>
