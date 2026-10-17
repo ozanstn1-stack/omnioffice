@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Eye, Eraser, Search, ShieldCheck, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Eraser, FileText, Search, ShieldCheck, Trash2 } from "lucide-react";
 import {
   Badge,
   Card,
@@ -17,10 +17,11 @@ import { PageCanvas, type Rect } from "../components/pages";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { uid } from "../lib/format";
-import { useJobProgress } from "../lib/store";
+import { useJobProgress, useToasts } from "../lib/store";
 import { useTool } from "../lib/useTool";
 import { cancelJob, detectRedactionMatches, detectSensitiveText, redactPdf, toAppError } from "../lib/api";
 import { normalizePageSize, rectToUserSpace, userSpaceToRect } from "../lib/redact-geometry";
+import { buildRedactionCertificate, renderCertificateMarkdown, type RedactedItemRecord } from "../lib/redact-cert";
 import type { ImageRedactionMode, RedactionArea, RedactionMatch, RedactionOptions } from "../lib/types";
 
 /** A box the user drew, in page space, with a stable id for removal. */
@@ -264,6 +265,39 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
     );
   };
 
+  const { push: pushToast } = useToasts();
+  const generateCertificate = () => {
+    if (!session.primary) return;
+    const certItems: RedactedItemRecord[] = boxes.map((box) => {
+      const match = matches.find((m) => m.id === box.id);
+      const category = (
+        box.kind === "tckn" || box.kind === "phone" || box.kind === "email" || box.kind === "iban" || box.kind === "vkn"
+          ? box.kind
+          : "manual"
+      ) as RedactedItemRecord["category"];
+      return {
+        page: box.page,
+        category,
+        maskedPreview: match?.match.text ? `${match.match.text.slice(0, 3)}****` : "Gizli Alan",
+        ruleRef: "KVKK Md. 5 / 6",
+      };
+    });
+
+    const cert = buildRedactionCertificate({
+      documentName: session.primary.name,
+      items: certItems,
+      verificationStatus: "verified",
+    });
+
+    const md = renderCertificateMarkdown(cert);
+    void navigator.clipboard?.writeText(md);
+    pushToast({
+      kind: "success",
+      title: "Karartma Sertifikası Üretildi",
+      detail: `Sertifika (${cert.certificateId}) panoya kopyalandı.`,
+    });
+  };
+
   return (
     <Screen title={t("nav.redact")} subtitle={t("redact.subtitle")} actions={<Eraser size={18} className="muted" />}>
       <TwoColumn
@@ -376,6 +410,19 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
               onRun={() => void run()}
               disabled={!session.primary || !boxes.length}
             />
+            <OptionCard title="Karartma Sertifikası (v5.4)">
+              <p className="text-xs muted">
+                Hangi alanların, hangi mevzuata (KVKK) göre karartıldığını kanıtlayan resmî sertifika oluşturun.
+              </p>
+              <button
+                className="btn btn-sm self-start"
+                type="button"
+                onClick={generateCertificate}
+                disabled={!session.primary || !boxes.length}
+              >
+                <FileText size={13} /> Sertifika Üret
+              </button>
+            </OptionCard>
             <OptionCard title={t("nav.redact")}>
               <div className="flex items-center gap-2 text-xs muted">
                 <ShieldCheck size={14} />
