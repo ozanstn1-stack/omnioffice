@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.0] - Belge sağlığı ve KVKK paketi (Document health and KVKK compliance)
+
+A minor release introducing one-click document health analysis and repair, verifiable PDF redaction certificates with SHA-256 integrity stamps, and a KVKK (Turkish Personal Data Protection Law) compliance wizard with customizable templates.
+
+### Added
+
+- **One-click document health analyzer and repair (#252 / PR #255):** Document health assessment checking uncompressed assets, missing metadata, un-redacted sensitive data, and structural compliance with 1-click automatic fixes.
+- **Verifiable redaction certificate (#253 / PR #256):** Generate audit-compliant PDF redaction certificates with cryptographic SHA-256 digests, operator sign-off, and appendix attachments.
+- **KVKK compliance wizard & templates (#254 / PR #257):** Step-by-step Turkish PDPL (KVKK) disclosure statement generator supporting multiple scenarios (customer, employee, visitor, CCTV) with export to PDF, DOCX, and UDF.
+
 ## [5.3.0] - Türkçe yazım ve resmî yazı denetimi (Turkish spell & official letter)
 
 A minor release introducing fully offline Turkish spell checking backed by Zemberek NLP root dictionary, Official Letter Regulation compliance checker with 1-click fixes, and a Petition Wizard with TCKN mod-11 validation producing UDF and PDF outputs.
