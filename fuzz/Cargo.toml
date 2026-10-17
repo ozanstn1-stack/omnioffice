@@ -39,3 +39,38 @@ path = "fuzz_targets/pdf_parse.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "docx"
+path = "fuzz_targets/docx.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "xlsx"
+path = "fuzz_targets/xlsx.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pptx"
+path = "fuzz_targets/pptx.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "udf"
+path = "fuzz_targets/udf.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ubl"
+path = "fuzz_targets/ubl.rs"
+test = false
+doc = false
+bench = false
