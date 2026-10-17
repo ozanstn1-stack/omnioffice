@@ -35,7 +35,7 @@ export function PetitionWizard() {
   const handleExport = async (format: "udf" | "pdf") => {
     if (!data.recipientAuthority.trim() || !data.subject.trim() || !data.fullName.trim() || !data.bodyText.trim()) {
       useToasts.getState().push({
-        kind: "warning",
+        kind: "info",
         title: "Lütfen makam, konu, ad soyad ve açıklama alanlarını doldurun.",
       });
       return;
@@ -157,10 +157,20 @@ export function PetitionWizard() {
           </Field>
 
           <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-hairline">
-            <Button variant="secondary" icon={FileText} disabled={busy} onClick={() => handleExport("udf")}>
+            <Button
+              variant="default"
+              icon={<FileText className="w-4 h-4" />}
+              disabled={busy}
+              onClick={() => handleExport("udf")}
+            >
               UYAP UDF Olarak Kaydet
             </Button>
-            <Button variant="primary" icon={Download} disabled={busy} onClick={() => handleExport("pdf")}>
+            <Button
+              variant="primary"
+              icon={<Download className="w-4 h-4" />}
+              disabled={busy}
+              onClick={() => handleExport("pdf")}
+            >
               PDF Olarak Kaydet
             </Button>
           </div>
