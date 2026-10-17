@@ -10,7 +10,7 @@ A minor release that builds the real-file test corpus, establishes nightly corpu
 
 ### Added
 
-- **License-clean sample corpus (#235 / PR #236):** added `tests/corpus` with public/clean samples across 5 formats (DOCX, XLSX, PPTX, ODF, UDF, UBL) and documented in `docs/corpus.md` with an automated import test.
+- **License-clean sample corpus (#235 / PR #236):** added `tests/corpus` with public/clean samples across 5 formats (DOCX, ODT, XLSX, PPTX, UDF) and documented in `docs/corpus.md` with an automated import test.
 - **Corpus compatibility score & nightly CI (#237 / PR #239):** added `crates/compat` measuring structural, visual, and reference rendering scores against LibreOffice, reported nightly and tested in CI.
 - **Fuzz targets extension (#241 / PR #242):** added per-importer fuzz targets for `docx`, `xlsx`, `pptx`, `udf`, and `ubl` with seed corpus under `fuzz/fuzz_targets/` and integrated into nightly/master CI with AddressSanitizer.
 
