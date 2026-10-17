@@ -176,4 +176,17 @@ describe("invoice screen", () => {
     await user.click(kdvBtn);
     expect(await screen.findByText("KDV1 Beyannamesi Yardımcı Özeti")).toBeInTheDocument();
   });
+
+  it("detects duplicate invoices and removes duplicates when clicking deduplicate", async () => {
+    const user = userEvent.setup();
+    // Pass two files that both return the same mocked invoice
+    render(<Invoices initialFiles={["C:/invoices/fatura1.xml", "C:/invoices/fatura2.xml"]} />);
+    const headers = await screen.findAllByText("GIB2026000000001");
+    expect(headers.length).toBeGreaterThan(0);
+    expect(await screen.findByText(/1 adet mükerrer fatura tespit edildi/i)).toBeInTheDocument();
+    const cleanBtn = screen.getByRole("button", { name: /Mükerrerleri Ayıkla/i });
+    expect(cleanBtn).toBeInTheDocument();
+    await user.click(cleanBtn);
+    expect(screen.queryByText(/mükerrer fatura tespit edildi/i)).not.toBeInTheDocument();
+  });
 });
