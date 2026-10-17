@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.0] - Sözleşme ve doğruluk (Contract and correctness)
+
+A minor release that hardens the IPC wire contracts, establishes type generation from Rust to TypeScript, enforces test-backed claims, and introduces feature flags.
+
+### Added
+
+- **Rust -> TS DTO type generation (#222 / PR #223):** automatic TypeScript types generation for IPC DTOs via `ts-rs` under an optional feature flag, with a CI drift gate (`types:check`).
+- **Real-serde wire contract tests (#225 / PR #226):** pins 20 DTO top-level JSON wire keys with `serde_json`, verifying them with mutation checks to prevent runtime discrepancies.
+- **"Claim = Test" enforcement in CI (#229 / PR #230):** every implemented claim in `RELEASE_READINESS.md` names its verifying test marker, enforced by `scripts/claims-audit.mjs` during CI lint.
+- **Feature flags infrastructure (#231 / PR #232):** added `src/lib/flags.ts` to hide experimental or incomplete features (e.g. scanner preview) behind off-by-default flags while preserving route contracts.
+
+### Security & Dependencies
+
+- Addressed `yoke-derive 0.8.3` yank by bumping to `0.8.4` (#227 / PR #228).
+- Added time-boxed, verified exceptions for upstream `zip` advisory extraction issues (`RUSTSEC-2026-0367/0368/0369`).
+
 ## [5.0.1] - Kanama durdurma (Stopping the bleeding)
 
 A patch release that closes every **P0** from the independent v5.0.0 audit
