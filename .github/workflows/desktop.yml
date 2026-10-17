@@ -549,6 +549,21 @@ jobs:
       - name: Office readers
         working-directory: fuzz
         run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu office_readers -- -max_total_time=60
+      - name: DOCX reader
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu docx -- -max_total_time=45
+      - name: XLSX reader
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu xlsx -- -max_total_time=45
+      - name: PPTX reader
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu pptx -- -max_total_time=45
+      - name: UDF reader
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu udf -- -max_total_time=30
+      - name: UBL reader
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu ubl -- -max_total_time=30
       - name: PDF parser
         working-directory: fuzz
         run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu pdf_parse -- -max_total_time=60
