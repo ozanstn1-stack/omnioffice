@@ -5,35 +5,48 @@ what is not. It is deliberately conservative: nothing is claimed as released,
 built or verified unless it was reproduced in this environment or is produced
 by CI.
 
+Every `Implemented` bullet carries a `test:<file>#<name>` marker pointing at
+the test that proves it (or an explicit `(no test: …)` reason);
+`npm run claims:check` resolves every marker in CI, so a deleted or renamed
+test cannot leave an unsupported claim behind.
+
 ## Implemented (this cycle, 5.0.1) — Kanama durdurma (Stopping the bleeding)
 
 Every P0 from the v5.0.0 audit (`docs/plan/DENETIM-v5.0.md`, PR #180), each
 with a regression test that failed before the fix:
 
 - **rustls 0.23.46** (issue #181): clears RUSTSEC-2026-0347/-0348 and two more;
-  the `Dependency audit` CI gate is green again.
+  the `Dependency audit` CI gate is green again. `(no test: the gate itself is the check — the Dependency audit job fails on any new advisory)`
 - **UTF-8 panic safety** (issue #183): `truncate_at_char_boundary` in the plugin
-  PDF reader; `chunk_snippet` folds 1:1 (`fold_char`); `VectorStore::load`
-  rejects a short `embeddings.bin` and `set/retain/search` skip missing vectors.
-  Tests: the three reproductions (panics) are now passing tests.
+  PDF reader `test:src-tauri/src/plugin.rs#truncating_to_the_byte_limit_never_splits_a_character`;
+  `chunk_snippet` folds 1:1 (`fold_char`) `test:src-tauri/src/vault.rs#chunk_snippet_survives_turkish_case_folding`;
+  `VectorStore::load` rejects a short `embeddings.bin` and `set/retain/search`
+  skip missing vectors `test:src-tauri/src/vault_index.rs#a_truncated_embeddings_file_is_rejected_not_panicked_on`.
 - **`.eml` nesting** (issue #185): `parse_eml_with_depth` carries the depth
   across `message/rfc822`; a 20,000-deep bomb parses with a warning instead of
-  overflowing the stack.
+  overflowing the stack `test:crates/officecore/src/eml.rs#nested_messages_are_depth_limited_not_stack_overflowing`.
 - **e-Devlet host** (issue #187): `officialTurkiyeUrl` requires an https
-  `turkiye.gov.tr` (or subdomain) host; lookalike hosts and http are refused.
+  `turkiye.gov.tr` (or subdomain) host; lookalike hosts and http are refused
+  `test:src/lib/edevlet.test.ts#refuses a URL whose host merely contains the name (phishing)`.
 - **Calc numbers** (issue #189): `cellEditText` writes numbers with the active
-  locale's separator so edits round-trip; `%18`/`18%` are `0.18`.
+  locale's separator so edits round-trip; `%18`/`18%` are `0.18`
+  `test:src/office/calc/locale.test.ts#round-trips a number through the editor text in both locales`.
 - **Font integrity** (issue #191): a stamp picks a free `/OmniTrN` resource
-  name instead of overwriting an earlier stamp's font; form filling keeps the
-  document's own `/Helv`.
-- **Comparison** (issue #193): blocks align by type (removed blocks are shown),
-  runs keep their own formatting, and the LCS trims prefix/suffix with a cell
-  cap for memory.
+  name instead of overwriting an earlier stamp's font
+  `test:crates/pdfcore/tests/stamp_test.rs#a_second_stamp_keeps_the_first_stamps_glyphs`;
+  form filling keeps the document's own `/Helv`
+  `test:crates/pdfcore/tests/forms_test.rs#filling_a_field_keeps_the_documents_own_helvetica`.
+- **Comparison** (issue #193): blocks align by type (removed blocks are shown)
+  `test:src/office/writer/compare.test.ts#shows a removed table as a deletion instead of dropping it`,
+  runs keep their own formatting `test:src/office/writer/compare.test.ts#keeps each run's own formatting`,
+  and the LCS trims prefix/suffix with a cell cap for memory.
 - **Blob store** (issue #195): blobs are marked sent only after the backend
-  confirms the write; `recovery_gc_blobs` runs on refresh.
+  confirms the write `test:src/lib/blob-store.test.ts#resends the blobs after a failed save`;
+  `recovery_gc_blobs` runs on refresh `test:src-tauri/src/office.rs#blob_refs_are_collected_for_gc`.
 - **Watched folder** (issue #197): overlapping folders are refused and never
-  scanned, a generation counter plus `Notify` prevents two loops, and the
-  password is stored via `secret::save_api_key` (DPAPI/keystore).
+  scanned `test:src-tauri/src/recipes.rs#a_watch_pass_never_writes_into_its_own_input_folder`,
+  a generation counter plus `Notify` prevents two loops, and the password is
+  stored via `secret::save_api_key` (DPAPI/keystore).
 
 ### Not done in this pass (honest)
 

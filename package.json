@@ -35,6 +35,7 @@
     "fmt:rust": "cargo fmt --all",
     "fmt:rust:check": "cargo fmt --all -- --check",
     "i18n:audit": "node scripts/i18n-audit.mjs",
+    "claims:check": "node scripts/claims-audit.mjs",
     "types:gen": "node scripts/types-gen.mjs",
     "types:check": "node scripts/types-gen.mjs --check",
     "check": "npm run lint && npm run i18n:audit && npx tsc --noEmit && npm run test",

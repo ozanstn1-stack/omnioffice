@@ -38,6 +38,10 @@ jobs:
         run: npm run lint
       - name: Translation tables (en/tr parity)
         run: npm run i18n:audit -- --check
+      # Every `Implemented` claim in RELEASE_READINESS.md names the test that
+      # proves it (`test:<file>#<name>`); a deleted or renamed test fails here.
+      - name: Release claims (evidence for every claim)
+        run: npm run claims:check
       # `tauri build` refuses an npm/Rust plugin version mismatch, and a
       # Dependabot bump of only one side shipped exactly that once.
       - name: Tauri plugin version sync
