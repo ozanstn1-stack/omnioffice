@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  analyzeDocumentHealth,
-  fixMetadataLeaks,
-  isValidTckn,
-  type DocumentScanInput,
-} from "./document-health";
+import { analyzeDocumentHealth, fixMetadataLeaks, isValidTckn, type DocumentScanInput } from "./document-health";
 
 describe("Document Health & KVKK Engine (v5.4.0)", () => {
   it("validates TCKN algorithm accurately", () => {

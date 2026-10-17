@@ -1,12 +1,5 @@
 import { useState, useMemo } from "react";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Info,
-  ShieldAlert,
-  Sparkles,
-  Trash2,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, ShieldAlert, Sparkles, Trash2 } from "lucide-react";
 import { Badge, Button, Card, TextArea } from "../components/ui";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import {
@@ -90,8 +83,8 @@ export function DocumentHealthScreen({
                     report.score >= 80
                       ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-500"
                       : report.score >= 50
-                      ? "border-amber-500/20 bg-amber-500/10 text-amber-500"
-                      : "border-red-500/20 bg-red-500/10 text-red-500"
+                        ? "border-amber-500/20 bg-amber-500/10 text-amber-500"
+                        : "border-red-500/20 bg-red-500/10 text-red-500"
                   }`}
                 >
                   {report.score}
@@ -102,8 +95,8 @@ export function DocumentHealthScreen({
                     {report.score >= 80
                       ? "Belgeniz genel olarak temiz ve mevzuata uygundur."
                       : report.score >= 50
-                      ? "Dikkat: Belgede düzeltilmesi gereken KVKK veya meta veri riskleri var."
-                      : "Yüksek Risk: Kişisel veriler veya kritik sızıntılar tespit edildi!"}
+                        ? "Dikkat: Belgede düzeltilmesi gereken KVKK veya meta veri riskleri var."
+                        : "Yüksek Risk: Kişisel veriler veya kritik sızıntılar tespit edildi!"}
                   </p>
                 </div>
               </div>
@@ -214,8 +207,8 @@ export function DocumentHealthScreen({
 
             <OptionCard title="KVKK / Mevzuat Bilgisi">
               <p className="text-xs muted leading-relaxed">
-                6698 sayılı KVKK gereğince; TCKN, ad-soyad, telefon, e-posta, IBAN ve araç plakası gibi
-                veriler açık rıza olmaksızın veya anonimleştirilmeden üçüncü taraflarla paylaşılamaz.
+                6698 sayılı KVKK gereğince; TCKN, ad-soyad, telefon, e-posta, IBAN ve araç plakası gibi veriler açık
+                rıza olmaksızın veya anonimleştirilmeden üçüncü taraflarla paylaşılamaz.
               </p>
             </OptionCard>
           </div>

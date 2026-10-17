@@ -13,10 +13,7 @@ describe("DocumentHealthScreen (v5.4.0)", () => {
   it("detects personal data and allows 1-click fix interaction", () => {
     const dirtyText = "Ad: Mehmet, TCKN: 10000000146, IBAN: TR33 0006 1005 1978 6457 8412 01";
     render(
-      <DocumentHealthScreen
-        initialText={dirtyText}
-        initialMetadata={{ author: "Mehmet Yılmaz", creator: "Word" }}
-      />
+      <DocumentHealthScreen initialText={dirtyText} initialMetadata={{ author: "Mehmet Yılmaz", creator: "Word" }} />,
     );
 
     expect(screen.getByText("T.C. Kimlik Numarası (TCKN) Tespit Edildi")).toBeInTheDocument();

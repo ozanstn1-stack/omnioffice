@@ -58,7 +58,7 @@ export function isValidTckn(tckn: string): boolean {
   const digits = tckn.split("").map(Number);
   const sumOdd = digits[0] + digits[2] + digits[4] + digits[6] + digits[8];
   const sumEven = digits[1] + digits[3] + digits[5] + digits[7];
-  const d10 = ((sumOdd * 7) - sumEven) % 10;
+  const d10 = (sumOdd * 7 - sumEven) % 10;
   if (d10 !== digits[9]) return false;
   const totalSum = digits.slice(0, 10).reduce((acc, d) => acc + d, 0);
   return totalSum % 10 === digits[10];
