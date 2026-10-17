@@ -820,19 +820,55 @@ fn master_styles_xml(document: &TextDocument) -> String {
     )
 }
 
-fn manifest() -> String {
-    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.2\">\
-        <manifest:file-entry manifest:full-path=\"/\" manifest:media-type=\"application/vnd.oasis.opendocument.text\"/>\
-        <manifest:file-entry manifest:full-path=\"content.xml\" manifest:media-type=\"text/xml\"/>\
-        <manifest:file-entry manifest:full-path=\"styles.xml\" manifest:media-type=\"text/xml\"/>\
-        <manifest:file-entry manifest:full-path=\"meta.xml\" manifest:media-type=\"text/xml\"/>\
-        <manifest:file-entry manifest:full-path=\"Pictures/\" manifest:media-type=\"\"/>\
-        <manifest:file-entry manifest:full-path=\"Images/\" manifest:media-type=\"\"/>\
-        </manifest:manifest>".to_string()
+/// Media type for a package entry. Chart sub-documents are directories; every
+/// other entry is a file whose type follows its extension.
+fn entry_media_type(name: &str) -> &'static str {
+    if name.ends_with('/') {
+        return "application/vnd.oasis.opendocument.chart";
+    }
+    let lower = name.to_ascii_lowercase();
+    if lower.ends_with(".png") {
+        "image/png"
+    } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+        "image/jpeg"
+    } else if lower.ends_with(".gif") {
+        "image/gif"
+    } else if lower.ends_with(".svg") {
+        "image/svg+xml"
+    } else if lower.ends_with(".webp") {
+        "image/webp"
+    } else {
+        "text/xml"
+    }
 }
 
-fn manifest_for(mime: &str) -> String {
-    manifest().replace("application/vnd.oasis.opendocument.text", mime)
+/// Builds the package manifest from the entries actually written.
+///
+/// LibreOffice refuses a package whose manifest and contents disagree (a
+/// dangling entry or an unlisted file is "source file could not be loaded"),
+/// so the manifest is generated from the same list the zip is filled with
+/// instead of a static template. `mimetype` and the manifest itself are the
+/// only entries a manifest never lists.
+fn manifest_for(mime: &str, files: &[String]) -> String {
+    let mut out = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.2\"><manifest:file-entry manifest:full-path=\"/\" manifest:media-type=\"{mime}\"/>"
+    );
+    for file in files {
+        let name = escape(file);
+        if file.ends_with('/') {
+            out.push_str(&format!(
+                "<manifest:file-entry manifest:full-path=\"{name}\" manifest:version=\"1.2\" manifest:media-type=\"{}\"/>",
+                entry_media_type(file)
+            ));
+        } else {
+            out.push_str(&format!(
+                "<manifest:file-entry manifest:full-path=\"{name}\" manifest:media-type=\"{}\"/>",
+                entry_media_type(file)
+            ));
+        }
+    }
+    out.push_str("</manifest:manifest>");
+    out
 }
 
 /// The `meta:user-defined` entries that carry a watermark losslessly; the
@@ -898,9 +934,14 @@ pub fn write_odt(document: &TextDocument) -> OfficeResult<Vec<u8>> {
         named_styles_xml(document),
         master_styles_xml(document)
     );
+    let mut files =
+        vec!["content.xml".to_string(), "styles.xml".to_string(), "meta.xml".to_string(), "settings.xml".to_string()];
+    for (name, _) in &media.items {
+        files.push(format!("Pictures/{name}"));
+    }
     let mut zip = ZipWriter::new();
     zip.add_text("mimetype", "application/vnd.oasis.opendocument.text");
-    zip.add_text("META-INF/manifest.xml", &manifest());
+    zip.add_text("META-INF/manifest.xml", &manifest_for("application/vnd.oasis.opendocument.text", &files));
     zip.add_text("content.xml", &content);
     zip.add_text("styles.xml", &styles_xml);
     zip.add_text("meta.xml", &meta_xml(&document.title, "OmniOffice", document.watermark.as_ref()));
@@ -2906,15 +2947,13 @@ pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
         })
         .collect();
     // Every chart object is a sub-document with its own manifest entries.
-    let mut object_entries = String::new();
+    let mut files = vec!["content.xml".to_string(), "styles.xml".to_string(), "meta.xml".to_string()];
     for object in &chart_objects {
-        let name = escape(&object.name);
-        object_entries.push_str(&format!(
-            "<manifest:file-entry manifest:full-path=\"{name}/\" manifest:version=\"1.2\" manifest:media-type=\"application/vnd.oasis.opendocument.chart\"/><manifest:file-entry manifest:full-path=\"{name}/content.xml\" manifest:media-type=\"text/xml\"/><manifest:file-entry manifest:full-path=\"{name}/styles.xml\" manifest:media-type=\"text/xml\"/>"
-        ));
+        files.push(format!("{}/", object.name));
+        files.push(format!("{}/content.xml", object.name));
+        files.push(format!("{}/styles.xml", object.name));
     }
-    let manifest = manifest_for("application/vnd.oasis.opendocument.spreadsheet")
-        .replace("</manifest:manifest>", &format!("{object_entries}</manifest:manifest>"));
+    let manifest = manifest_for("application/vnd.oasis.opendocument.spreadsheet", &files);
     let mut zip = ZipWriter::new();
     zip.add_text("mimetype", "application/vnd.oasis.opendocument.spreadsheet");
     zip.add_text("META-INF/manifest.xml", &manifest);
@@ -4648,15 +4687,16 @@ fn write_odp_bytes(deck: &Deck, warnings: &mut Vec<String>) -> OfficeResult<Vec<
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles {NS} office:version=\"1.2\"><office:styles/><office:automatic-styles>{page_layout}</office:automatic-styles><office:master-styles><style:master-page style:name=\"Default\" style:page-layout-name=\"pl1\"><style:drawing-page-properties {drawing_props}/>{master_shapes}</style:master-page></office:master-styles></office:document-styles>"
     );
     // Every chart object is a sub-document with its own manifest entries.
-    let mut object_entries = String::new();
+    let mut files = vec!["content.xml".to_string(), "styles.xml".to_string(), "meta.xml".to_string()];
     for object in &chart_objects {
-        let name = escape(&object.name);
-        object_entries.push_str(&format!(
-            "<manifest:file-entry manifest:full-path=\"{name}/\" manifest:version=\"1.2\" manifest:media-type=\"application/vnd.oasis.opendocument.chart\"/><manifest:file-entry manifest:full-path=\"{name}/content.xml\" manifest:media-type=\"text/xml\"/><manifest:file-entry manifest:full-path=\"{name}/styles.xml\" manifest:media-type=\"text/xml\"/>"
-        ));
+        files.push(format!("{}/", object.name));
+        files.push(format!("{}/content.xml", object.name));
+        files.push(format!("{}/styles.xml", object.name));
     }
-    let manifest = manifest_for("application/vnd.oasis.opendocument.presentation")
-        .replace("</manifest:manifest>", &format!("{object_entries}</manifest:manifest>"));
+    for (name, _) in &pictures {
+        files.push(format!("Pictures/{name}"));
+    }
+    let manifest = manifest_for("application/vnd.oasis.opendocument.presentation", &files);
     let mut zip = ZipWriter::new();
     zip.add_text("mimetype", "application/vnd.oasis.opendocument.presentation");
     zip.add_text("META-INF/manifest.xml", &manifest);
@@ -5286,6 +5326,63 @@ mod tests {
                 _ => None,
             })
             .expect("the document must contain a table")
+    }
+
+    /// Every manifest entry must name a real package entry and every package
+    /// entry must be named by the manifest. LibreOffice refuses packages where
+    /// the two disagree ("source file could not be loaded"), which is how the
+    /// old static manifest shipped with dangling `Pictures/`/`Images/` entries
+    /// and an unlisted `settings.xml`.
+    fn assert_manifest_matches_package(bytes: &[u8]) {
+        let reader = ZipReader::open(bytes.to_vec()).expect("paket açılmalı");
+        let manifest = reader.read_text("META-INF/manifest.xml").expect("manifest okunmalı");
+        assert!(!manifest.contains("media-type=\"\""), "boş media-type olmamalı");
+        let mut listed: Vec<String> = Vec::new();
+        let mut rest = manifest.as_str();
+        while let Some(index) = rest.find("manifest:full-path=\"") {
+            rest = &rest[index + "manifest:full-path=\"".len()..];
+            let end = rest.find('"').expect("kapanış tırnağı");
+            if &rest[..end] != "/" {
+                listed.push(rest[..end].to_string());
+            }
+            rest = &rest[end..];
+        }
+        let mut packaged: Vec<String> = reader
+            .names()
+            .filter(|name| *name != "mimetype" && *name != "META-INF/manifest.xml")
+            .map(|name| name.to_string())
+            .collect();
+        listed.sort();
+        packaged.sort();
+        assert_eq!(listed, packaged, "manifest ile paket birebir örtüşmeli");
+    }
+
+    #[test]
+    fn odt_manifest_matches_the_package() {
+        let mut document = sample_document();
+        document.blocks.push(Block::Image {
+            image: ImageData::from_bytes("resim.png", &sample_png()),
+            width_pt: 100.0,
+            height_pt: 60.0,
+            align: "center".into(),
+            caption: String::new(),
+            wrap: "inline".into(),
+        });
+        assert_manifest_matches_package(&write_odt(&document).unwrap());
+    }
+
+    #[test]
+    fn ods_manifest_matches_the_package() {
+        assert_manifest_matches_package(&write_ods(&Workbook::new_blank("Manifest")).unwrap());
+    }
+
+    #[test]
+    fn odp_manifest_matches_the_package() {
+        let mut deck = Deck::new_blank("Manifest");
+        let mut picture = SlideObject::new("image", 60.0, 60.0, 200.0, 120.0);
+        picture.image = Some(ImageData::from_bytes("resim.png", &sample_png()));
+        deck.slides = vec![Slide { objects: vec![picture], ..Default::default() }];
+        assert_manifest_matches_package(&write_odp(&deck).unwrap());
     }
 
     #[test]
