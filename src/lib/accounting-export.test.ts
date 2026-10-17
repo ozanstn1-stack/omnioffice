@@ -70,7 +70,7 @@ describe("Accounting Export (v5.5.0 - Issue #259)", () => {
     const csv = exportLogo(mockInvoices, { transactionType: "sales" });
     expect(csv).toContain('"FATURA_NO","TARIH","ETTN","CARI_UNVAN"');
     expect(csv).toContain('"GIB2026000000001","2026-10-15"');
-    expect(csv).toContain('1000.00,20,200.00');
+    expect(csv).toContain("1000.00,20,200.00");
   });
 
   it("exports Zirve format with horizontal VAT columns", () => {

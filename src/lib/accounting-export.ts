@@ -49,7 +49,8 @@ export function exportLuca(invoices: UblInvoice[], options: AccountingExportOpti
     kdvAccounts: { ...defaults.kdvAccounts, ...options.accountCodes?.kdvAccounts },
   };
 
-  const header = "Tarih;Belge No;ETTN;Cari Unvan;Vergi No;Hesap Kodu;Matrah;KDV Oranı;KDV Tutarı;Tevkifat Tutarı;Genel Toplam;Açıklama";
+  const header =
+    "Tarih;Belge No;ETTN;Cari Unvan;Vergi No;Hesap Kodu;Matrah;KDV Oranı;KDV Tutarı;Tevkifat Tutarı;Genel Toplam;Açıklama";
   const rows: string[] = [header];
 
   for (const inv of invoices) {
@@ -63,9 +64,10 @@ export function exportLuca(invoices: UblInvoice[], options: AccountingExportOpti
     const withholding = formatMoney(inv.withholdingAmount || 0);
 
     // KDV oranlarına göre grupla
-    const subtotals = inv.taxSubtotals && inv.taxSubtotals.length > 0
-      ? inv.taxSubtotals
-      : [{ rate: 20, taxable: inv.taxExclusiveAmount || 0, tax: inv.taxAmount || 0 }];
+    const subtotals =
+      inv.taxSubtotals && inv.taxSubtotals.length > 0
+        ? inv.taxSubtotals
+        : [{ rate: 20, taxable: inv.taxExclusiveAmount || 0, tax: inv.taxAmount || 0 }];
 
     for (const sub of subtotals) {
       const rateKey = Math.round(sub.rate);
@@ -75,7 +77,7 @@ export function exportLuca(invoices: UblInvoice[], options: AccountingExportOpti
       const desc = sanitizeText(`${docNo} nolu fatura - ${partyName}`);
 
       rows.push(
-        `${date};${docNo};${ettn};${partyName};${taxId};${matrahCode};${matrah};%${rateKey};${kdv};${withholding};${total};${desc}`
+        `${date};${docNo};${ettn};${partyName};${taxId};${matrahCode};${matrah};%${rateKey};${kdv};${withholding};${total};${desc}`,
       );
     }
   }
@@ -89,7 +91,8 @@ export function exportLuca(invoices: UblInvoice[], options: AccountingExportOpti
  */
 export function exportLogo(invoices: UblInvoice[], options: AccountingExportOptions = {}): string {
   const isSales = options.transactionType !== "purchase";
-  const header = '"FATURA_NO","TARIH","ETTN","CARI_UNVAN","VERGI_NO","MATRAH","KDV_ORANI","KDV_TUTARI","TEVKIFAT","GENEL_TOPLAM"';
+  const header =
+    '"FATURA_NO","TARIH","ETTN","CARI_UNVAN","VERGI_NO","MATRAH","KDV_ORANI","KDV_TUTARI","TEVKIFAT","GENEL_TOPLAM"';
   const rows: string[] = [header];
 
   for (const inv of invoices) {
@@ -102,9 +105,10 @@ export function exportLogo(invoices: UblInvoice[], options: AccountingExportOpti
     const total = formatMoney(inv.payableAmount || 0);
     const withholding = formatMoney(inv.withholdingAmount || 0);
 
-    const subtotals = inv.taxSubtotals && inv.taxSubtotals.length > 0
-      ? inv.taxSubtotals
-      : [{ rate: 20, taxable: inv.taxExclusiveAmount || 0, tax: inv.taxAmount || 0 }];
+    const subtotals =
+      inv.taxSubtotals && inv.taxSubtotals.length > 0
+        ? inv.taxSubtotals
+        : [{ rate: 20, taxable: inv.taxExclusiveAmount || 0, tax: inv.taxAmount || 0 }];
 
     for (const sub of subtotals) {
       const rate = Math.round(sub.rate);
@@ -112,7 +116,7 @@ export function exportLogo(invoices: UblInvoice[], options: AccountingExportOpti
       const kdv = formatMoney(sub.tax || 0);
 
       rows.push(
-        `"${docNo}","${date}","${ettn}","${partyName}","${taxId}",${matrah},${rate},${kdv},${withholding},${total}`
+        `"${docNo}","${date}","${ettn}","${partyName}","${taxId}",${matrah},${rate},${kdv},${withholding},${total}`,
       );
     }
   }
@@ -126,7 +130,8 @@ export function exportLogo(invoices: UblInvoice[], options: AccountingExportOpti
  */
 export function exportZirve(invoices: UblInvoice[], options: AccountingExportOptions = {}): string {
   const isSales = options.transactionType !== "purchase";
-  const header = "Tarih;Fatura No;ETTN;Cari Unvan;Vergi No;Matrah 1;KDV 1;Matrah 10;KDV 10;Matrah 20;KDV 20;Tevkifat;Genel Toplam";
+  const header =
+    "Tarih;Fatura No;ETTN;Cari Unvan;Vergi No;Matrah 1;KDV 1;Matrah 10;KDV 10;Matrah 20;KDV 20;Tevkifat;Genel Toplam";
   const rows: string[] = [header];
 
   for (const inv of invoices) {
@@ -139,11 +144,17 @@ export function exportZirve(invoices: UblInvoice[], options: AccountingExportOpt
     const total = formatMoney(inv.payableAmount || 0);
     const withholding = formatMoney(inv.withholdingAmount || 0);
 
-    let m1 = 0, k1 = 0, m10 = 0, k10 = 0, m20 = 0, k20 = 0;
+    let m1 = 0,
+      k1 = 0,
+      m10 = 0,
+      k10 = 0,
+      m20 = 0,
+      k20 = 0;
 
-    const subtotals = inv.taxSubtotals && inv.taxSubtotals.length > 0
-      ? inv.taxSubtotals
-      : [{ rate: 20, taxable: inv.taxExclusiveAmount || 0, tax: inv.taxAmount || 0 }];
+    const subtotals =
+      inv.taxSubtotals && inv.taxSubtotals.length > 0
+        ? inv.taxSubtotals
+        : [{ rate: 20, taxable: inv.taxExclusiveAmount || 0, tax: inv.taxAmount || 0 }];
 
     for (const sub of subtotals) {
       const rate = Math.round(sub.rate);
@@ -160,7 +171,7 @@ export function exportZirve(invoices: UblInvoice[], options: AccountingExportOpt
     }
 
     rows.push(
-      `${date};${docNo};${ettn};${partyName};${taxId};${formatMoney(m1)};${formatMoney(k1)};${formatMoney(m10)};${formatMoney(k10)};${formatMoney(m20)};${formatMoney(k20)};${withholding};${total}`
+      `${date};${docNo};${ettn};${partyName};${taxId};${formatMoney(m1)};${formatMoney(k1)};${formatMoney(m10)};${formatMoney(k10)};${formatMoney(m20)};${formatMoney(k20)};${withholding};${total}`,
     );
   }
 
@@ -173,7 +184,7 @@ export function exportZirve(invoices: UblInvoice[], options: AccountingExportOpt
 export function exportAccounting(
   invoices: UblInvoice[],
   target: AccountingSoftware,
-  options: AccountingExportOptions = {}
+  options: AccountingExportOptions = {},
 ): string {
   switch (target) {
     case "luca":

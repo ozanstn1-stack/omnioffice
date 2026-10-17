@@ -192,7 +192,9 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
   };
 
   const exportForAccounting = async (software: AccountingSoftware) => {
-    const ublInvoices = entries.filter((e): e is Entry & { kind: "ubl" } => e.kind === "ubl").map((e) => e.document.invoice);
+    const ublInvoices = entries
+      .filter((e): e is Entry & { kind: "ubl" } => e.kind === "ubl")
+      .map((e) => e.document.invoice);
     if (!ublInvoices.length) return;
     const defaultName = `${software.toUpperCase()}-Aktarim-${new Date().toISOString().slice(0, 10)}.csv`;
     const path = await saveDialog({
@@ -236,13 +238,25 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
             <Button variant="ghost" disabled={busy || !invoices.length} onClick={() => void saveSummary()}>
               <Table2 size={16} /> {t("invoices.summary")}
             </Button>
-            <Button variant="ghost" disabled={busy || !invoices.length} onClick={() => void exportForAccounting("luca")}>
+            <Button
+              variant="ghost"
+              disabled={busy || !invoices.length}
+              onClick={() => void exportForAccounting("luca")}
+            >
               <Receipt size={16} /> Luca
             </Button>
-            <Button variant="ghost" disabled={busy || !invoices.length} onClick={() => void exportForAccounting("logo")}>
+            <Button
+              variant="ghost"
+              disabled={busy || !invoices.length}
+              onClick={() => void exportForAccounting("logo")}
+            >
               <Receipt size={16} /> Logo
             </Button>
-            <Button variant="ghost" disabled={busy || !invoices.length} onClick={() => void exportForAccounting("zirve")}>
+            <Button
+              variant="ghost"
+              disabled={busy || !invoices.length}
+              onClick={() => void exportForAccounting("zirve")}
+            >
               <Receipt size={16} /> Zirve
             </Button>
             <span className="text-xs muted">{t("invoices.pickHint")}</span>
