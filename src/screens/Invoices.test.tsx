@@ -158,4 +158,12 @@ describe("invoice screen", () => {
       ),
     );
   });
+
+  it("renders Luca, Logo, and Zirve accounting export buttons when invoices are loaded", async () => {
+    render(<Invoices initialFiles={["C:/invoices/fatura.xml"]} />);
+    await screen.findByText("GIB2026000000001");
+    expect(screen.getByRole("button", { name: /Luca/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Logo/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Zirve/i })).toBeInTheDocument();
+  });
 });
