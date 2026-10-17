@@ -55,6 +55,7 @@ import packageJson from "../package.json";
 import { devLaunchContext } from "./lib/api";
 import { watchLaunchFiles } from "./lib/launch-files";
 import type { Navigate, PageToolsTab, ScreenId } from "./lib/nav";
+import { flagEnabled } from "./lib/flags";
 // Route-level code splitting: every screen is loaded when it is first opened,
 // so the startup bundle only carries the shell, the navigation and the shared
 // UI primitives. The lazy import maps the named export to the default export
@@ -746,7 +747,10 @@ export default function App() {
     [convertTab, dragging, files, homeDrop, navigate, pageToolTab, readerPage, securityTab],
   );
 
-  const navGroups: { label?: string; items: { id: ScreenId; label: string; icon: React.ReactElement }[] }[] = [
+  const navGroups: {
+    label?: string;
+    items: { id: ScreenId; label: string; icon: React.ReactElement; hidden?: boolean }[];
+  }[] = [
     {
       items: [
         { id: "home", label: t("nav.home"), icon: <Home size={16} /> },
@@ -779,7 +783,13 @@ export default function App() {
         { id: "converter", label: t("nav.converter"), icon: <Repeat size={16} /> },
         { id: "invoices", label: t("nav.invoices"), icon: <Receipt size={16} /> },
         { id: "eml", label: t("nav.eml"), icon: <Mail size={16} /> },
-        { id: "scanner", label: t("nav.scanner"), icon: <Camera size={16} /> },
+        {
+          id: "scanner",
+          label: t("nav.scanner"),
+          icon: <Camera size={16} />,
+          // The scanner screen is a scaffold; camera capture lands in v6.0.
+          hidden: !flagEnabled("experimentalScanner"),
+        },
         { id: "recipes", label: t("nav.recipes"), icon: <ListChecks size={16} /> },
         { id: "mailMerge", label: t("nav.mailMerge"), icon: <Mail size={16} /> },
         { id: "cleaner", label: t("nav.cleaner"), icon: <Sparkles size={16} /> },
@@ -847,28 +857,30 @@ export default function App() {
       {navGroups.map((group, index) => (
         <div key={index}>
           {group.label && showLabels ? <p className="nav-group-label">{group.label}</p> : null}
-          {group.items.map((item) => {
-            const active =
-              screen === item.id ||
-              (item.id === "pdfToImages" && screen === "pdfToImages") ||
-              (item.id === "imagesToPdf" && screen === "imagesToPdf");
-            return (
-              <button
-                key={item.id}
-                className="nav-item"
-                data-active={active}
-                aria-current={active ? "page" : undefined}
-                onClick={() => {
-                  navigate(item.id);
-                  setNavOpen(false);
-                }}
-                title={showLabels ? undefined : item.label}
-              >
-                <span className="shrink-0">{item.icon}</span>
-                {showLabels ? <span className="truncate">{item.label}</span> : null}
-              </button>
-            );
-          })}
+          {group.items
+            .filter((item) => !item.hidden)
+            .map((item) => {
+              const active =
+                screen === item.id ||
+                (item.id === "pdfToImages" && screen === "pdfToImages") ||
+                (item.id === "imagesToPdf" && screen === "imagesToPdf");
+              return (
+                <button
+                  key={item.id}
+                  className="nav-item"
+                  data-active={active}
+                  aria-current={active ? "page" : undefined}
+                  onClick={() => {
+                    navigate(item.id);
+                    setNavOpen(false);
+                  }}
+                  title={showLabels ? undefined : item.label}
+                >
+                  <span className="shrink-0">{item.icon}</span>
+                  {showLabels ? <span className="truncate">{item.label}</span> : null}
+                </button>
+              );
+            })}
         </div>
       ))}
     </>
