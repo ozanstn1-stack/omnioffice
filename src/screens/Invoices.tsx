@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { AlertTriangle, Calculator, CheckCircle2, FileText, QrCode, Receipt, Save, Table2 } from "lucide-react";
+import { AlertTriangle, Calculator, CheckCircle2, Copy, FileText, QrCode, Receipt, Save, Table2 } from "lucide-react";
 import { Badge, Button, Card, Modal } from "../components/ui";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
@@ -9,6 +9,7 @@ import { isAndroid, pickOfficeFiles } from "../lib/mobile";
 import { compareQrWithInvoice } from "../lib/invoice-qr";
 import { exportAccounting, type AccountingSoftware } from "../lib/accounting-export";
 import { generateKdvDeclarationReport } from "../lib/kdv-declaration";
+import { detectDuplicateInvoices } from "../lib/duplicate-invoices";
 import {
   exportPdf,
   openInvoice,
@@ -222,6 +223,40 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
   };
 
   const invoices: UblInvoice[] = entries.filter((entry) => entry.kind === "ubl").map((entry) => entry.document.invoice);
+  const duplicateResult = detectDuplicateInvoices(invoices);
+
+  const deduplicateInvoices = () => {
+    const seenEttns = new Set<string>();
+    const seenNumbers = new Set<string>();
+
+    setEntries((current) => {
+      const kept: Entry[] = [];
+      for (const entry of current) {
+        if (entry.kind !== "ubl") {
+          kept.push(entry);
+          continue;
+        }
+        const inv = entry.document.invoice;
+        const ettn = (inv.ettn || "").toLowerCase().trim();
+        const numKey = `${(inv.supplier?.taxId || "").trim()}:${(inv.number || "").trim()}`;
+
+        if (ettn && seenEttns.has(ettn)) continue;
+        if (numKey && seenNumbers.has(numKey)) continue;
+
+        if (ettn) seenEttns.add(ettn);
+        if (numKey) seenNumbers.add(numKey);
+        kept.push(entry);
+      }
+      return kept;
+    });
+
+    useToasts.getState().push({
+      kind: "success",
+      title: "Mükerrer Faturalar Temizlendi",
+      detail: `${duplicateResult.totalDuplicates} adet mükerrer fatura listeden çıkarıldı.`,
+    });
+  };
+
   const matchingInvoice = (qr: InvoiceQr): UblInvoice | undefined =>
     invoices.find(
       (invoice) =>
@@ -268,6 +303,25 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
           </div>
           <p className="text-xs muted">{t("invoices.xsltNote")}</p>
         </Card>
+
+        {duplicateResult.hasDuplicates ? (
+          <Card className="p-4 bg-amber-500/10 border-amber-500/30 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="text-amber-500 shrink-0" size={20} />
+              <div>
+                <strong className="text-amber-500">
+                  {duplicateResult.totalDuplicates} adet mükerrer fatura tespit edildi!
+                </strong>
+                <p className="text-xs muted">
+                  Aynı ETTN veya aynı satıcı ve fatura numarasına sahip yinelenen kayıtlar var.
+                </p>
+              </div>
+            </div>
+            <Button size="sm" variant="secondary" onClick={deduplicateInvoices}>
+              <Copy size={14} /> Mükerrerleri Ayıkla
+            </Button>
+          </Card>
+        ) : null}
 
         {entries.length === 0 ? (
           <Card className="p-5">
