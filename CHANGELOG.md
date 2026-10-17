@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.3.0] - Türkçe yazım ve resmî yazı denetimi (Turkish spell & official letter)
+
+A minor release introducing fully offline Turkish spell checking backed by Zemberek NLP root dictionary, Official Letter Regulation compliance checker with 1-click fixes, and a Petition Wizard with TCKN mod-11 validation producing UDF and PDF outputs.
+
+### Added
+
+- **Offline Turkish spell checking (`crates/turkish`, #245 / PR #248):** Zemberek root lexicon + frequency list (Apache-2.0), suffix morphology analysis (vowel harmony, consonant assimilation/softening), Damerau-Levenshtein suggestions, Tauri IPC commands (`turkish_spellcheck`, `turkish_suggestions`), and Writer wavy red underline styling.
+- **Official Letter Regulation compliance checker (#246 / PR #249):** verifies page margins (min 2.5 cm), font & size (Times New Roman 12 pt / Arial 11 pt), line spacing, number/subject/date headers, and signature blocks with 1-click automatic fixes.
+- **Petition Wizard (#247 / PR #250):** step-by-step petition creation with local TCKN mod-11 validation, producing compliant UDF (UYAP) and PDF documents.
+
 ## [5.2.0] - Gerçek dosya laboratuvarı (Real-file lab)
 
 A minor release that builds the real-file test corpus, establishes nightly corpus compatibility scoring against LibreOffice, fixes LibreOffice ODF package manifest alignment, and extends fuzzing to all office file importers.
