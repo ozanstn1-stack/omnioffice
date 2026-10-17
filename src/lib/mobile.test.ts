@@ -44,6 +44,8 @@ describe("mobile helpers", () => {
     expect(mimeForName("sheet.XLSX")).toBe("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     expect(mimeForName("drawing.svg")).toBe("image/svg+xml");
     expect(mimeForName("unit.oswk")).toBe("application/octet-stream");
+    expect(mimeForName("fatura.xml")).toBe("application/xml");
+    expect(mimeForName("eposta.eml")).toBe("message/rfc822");
   });
 
   it("has no published URI before a document is exported", () => {

@@ -79,6 +79,8 @@ export function mimeForName(name: string): string {
   if (lower.endsWith(".tsv")) return "text/tab-separated-values";
   if (lower.endsWith(".json")) return "application/json";
   if (lower.endsWith(".rtf")) return "application/rtf";
+  if (lower.endsWith(".xml")) return "application/xml";
+  if (lower.endsWith(".eml")) return "message/rfc822";
   // Office documents: a generic type would hide Word/Excel/PowerPoint and
   // other office apps from the "open with" chooser after an export.
   if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
