@@ -89,21 +89,64 @@ export function Scanner() {
             <span className="text-xs muted">{t("scanner.pickHint")}</span>
           </div>
           {pages.length ? (
-            <ul className="flex flex-col gap-1 text-sm">
-              {pages.map((path, index) => (
-                <li key={path} className="flex items-center gap-2">
-                  <span className="muted">{index + 1}.</span>
-                  <span className="truncate">{path.split(/[\\/]/).pop()}</span>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setPages((current) => current.filter((item) => item !== path))}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between text-xs muted">
+                <span>{pages.length} sayfa eklendi</span>
+                <Button size="sm" variant="ghost" onClick={() => setPages([])}>
+                  Tümünü Temizle
+                </Button>
+              </div>
+              <ul className="flex flex-col gap-1 text-sm">
+                {pages.map((path, index) => (
+                  <li
+                    key={path}
+                    className="flex items-center justify-between gap-2 p-1.5 rounded bg-surface/50 border border-border/40"
                   >
-                    ×
-                  </Button>
-                </li>
-              ))}
-            </ul>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="muted font-mono text-xs">{index + 1}.</span>
+                      <span className="truncate">{path.split(/[\\/]/).pop()}</span>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={index === 0}
+                        onClick={() => {
+                          const next = [...pages];
+                          const temp = next[index - 1];
+                          next[index - 1] = next[index];
+                          next[index] = temp;
+                          setPages(next);
+                        }}
+                      >
+                        ↑
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={index === pages.length - 1}
+                        onClick={() => {
+                          const next = [...pages];
+                          const temp = next[index + 1];
+                          next[index + 1] = next[index];
+                          next[index] = temp;
+                          setPages(next);
+                        }}
+                      >
+                        ↓
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setPages((current) => current.filter((item) => item !== path))}
+                      >
+                        ×
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ) : (
             <p className="muted text-sm">{t("scanner.empty")}</p>
           )}

@@ -47,4 +47,17 @@ describe("document scanner scaffold", () => {
     expect(await screen.findByText(/not implemented yet/i)).toBeInTheDocument();
     expect(screen.getByText(/ML Kit/i)).toBeInTheDocument();
   });
+
+  it("allows reordering and clearing pages", async () => {
+    const user = userEvent.setup();
+    render(<Scanner />);
+    await user.click(screen.getByRole("button", { name: /Add page photos/i }));
+    expect(await screen.findByText("a.png")).toBeInTheDocument();
+    expect(screen.getByText("b.png")).toBeInTheDocument();
+
+    const clearBtn = screen.getByRole("button", { name: /Tümünü Temizle/i });
+    expect(clearBtn).toBeInTheDocument();
+    await user.click(clearBtn);
+    expect(screen.queryByText("a.png")).not.toBeInTheDocument();
+  });
 });
