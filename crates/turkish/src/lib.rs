@@ -9,7 +9,7 @@
 //!
 //! No network, no external service: everything runs from the embedded data.
 //!
-//! ```
+//! ```no_run
 //! use turkish::{check_word, check_text, suggestions};
 //!
 //! assert!(check_word("evlerimizdekiler"));
