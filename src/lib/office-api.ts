@@ -344,3 +344,26 @@ export const mailMerge = (request: {
   format: "pdf" | "docx";
   nameField?: string;
 }) => invoke<MailMergeReport>("office_mail_merge", { request: { ...request, nameField: request.nameField || null } });
+
+// ---------------------------------------------------------------------------
+// Turkish spell checker (v5.3)
+// ---------------------------------------------------------------------------
+
+export interface SpellCheckMisspelling {
+  word: string;
+  start: number;
+  end: number;
+  suggestions: string[];
+}
+
+export interface SpellCheckResponse {
+  misspellings: SpellCheckMisspelling[];
+}
+
+/** Checks Turkish text using the offline Zemberek dictionary + morphological analyzer. */
+export const checkTurkishText = (text: string, suggestionsLimit = 4) =>
+  invoke<SpellCheckResponse>("turkish_spellcheck", { text, suggestionsLimit });
+
+/** Returns suggestions for a single misspelled word. */
+export const getTurkishSuggestions = (word: string, limit = 5) =>
+  invoke<string[]>("turkish_suggestions", { word, limit });
