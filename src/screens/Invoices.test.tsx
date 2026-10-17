@@ -166,4 +166,14 @@ describe("invoice screen", () => {
     expect(screen.getByRole("button", { name: /Logo/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Zirve/i })).toBeInTheDocument();
   });
+
+  it("opens KDV1 declaration summary modal upon clicking KDV Beyani", async () => {
+    const user = userEvent.setup();
+    render(<Invoices initialFiles={["C:/invoices/fatura.xml"]} />);
+    await screen.findByText("GIB2026000000001");
+    const kdvBtn = screen.getByRole("button", { name: /KDV Beyanı/i });
+    expect(kdvBtn).toBeInTheDocument();
+    await user.click(kdvBtn);
+    expect(await screen.findByText("KDV1 Beyannamesi Yardımcı Özeti")).toBeInTheDocument();
+  });
 });

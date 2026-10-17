@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { AlertTriangle, CheckCircle2, FileText, QrCode, Receipt, Save, Table2 } from "lucide-react";
-import { Badge, Button, Card } from "../components/ui";
+import { AlertTriangle, Calculator, CheckCircle2, FileText, QrCode, Receipt, Save, Table2 } from "lucide-react";
+import { Badge, Button, Card, Modal } from "../components/ui";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { reportError, useToasts } from "../lib/store";
 import { isAndroid, pickOfficeFiles } from "../lib/mobile";
 import { compareQrWithInvoice } from "../lib/invoice-qr";
 import { exportAccounting, type AccountingSoftware } from "../lib/accounting-export";
+import { generateKdvDeclarationReport } from "../lib/kdv-declaration";
 import {
   exportPdf,
   openInvoice,
@@ -54,6 +55,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [rates, setRates] = useState<VatRate[]>([]);
   const [busy, setBusy] = useState(false);
+  const [showKdvModal, setShowKdvModal] = useState(false);
 
   const initialKey = initialFiles.join("|");
 
@@ -258,6 +260,9 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
               onClick={() => void exportForAccounting("zirve")}
             >
               <Receipt size={16} /> Zirve
+            </Button>
+            <Button variant="ghost" disabled={busy || !invoices.length} onClick={() => setShowKdvModal(true)}>
+              <Calculator size={16} /> KDV Beyanı
             </Button>
             <span className="text-xs muted">{t("invoices.pickHint")}</span>
           </div>
@@ -480,6 +485,92 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
             </table>
             <p className="text-xs muted">{t("invoices.rates.note")}</p>
           </Card>
+        ) : null}
+
+        {showKdvModal ? (
+          <Modal
+            title="KDV1 Beyannamesi Yardımcı Özeti"
+            onClose={() => setShowKdvModal(false)}
+            footer={
+              <Button variant="primary" onClick={() => setShowKdvModal(false)}>
+                Kapat
+              </Button>
+            }
+          >
+            {(() => {
+              const report = generateKdvDeclarationReport(invoices);
+              return (
+                <div className="flex flex-col gap-3 text-sm">
+                  <p className="muted text-xs">
+                    Yüklenen {report.invoiceCount} adet faturanın KDV1 beyannamesi satırlarına esas teşkil eden matrah
+                    ve vergi dökümü.
+                  </p>
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="py-1">Oran</th>
+                        <th className="py-1">Matrah</th>
+                        <th className="py-1">Hesaplanan KDV</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="py-1">%1</td>
+                        <td className="py-1">
+                          {report.rates[1].taxableAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                        </td>
+                        <td className="py-1">
+                          {report.rates[1].vatAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-1">%10</td>
+                        <td className="py-1">
+                          {report.rates[10].taxableAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                        </td>
+                        <td className="py-1">
+                          {report.rates[10].vatAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-1">%20</td>
+                        <td className="py-1">
+                          {report.rates[20].taxableAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                        </td>
+                        <td className="py-1">
+                          {report.rates[20].vatAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                        </td>
+                      </tr>
+                      {report.exemptionAmount > 0 ? (
+                        <tr>
+                          <td className="py-1">%0 (İstisna)</td>
+                          <td className="py-1">
+                            {report.exemptionAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                          </td>
+                          <td className="py-1">0,00 TRY</td>
+                        </tr>
+                      ) : null}
+                      <tr className="border-t font-bold">
+                        <td className="py-1">TOPLAM</td>
+                        <td className="py-1">
+                          {report.totalTaxableAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                        </td>
+                        <td className="py-1">
+                          {report.totalCalculatedVat.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  {report.totalWithholdingVat > 0 ? (
+                    <div className="p-2 rounded bg-amber-500/10 border border-amber-500/20 text-xs">
+                      <strong>Tevkifat Tutarı:</strong>{" "}
+                      {report.totalWithholdingVat.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })()}
+          </Modal>
         ) : null}
       </div>
     </Screen>
