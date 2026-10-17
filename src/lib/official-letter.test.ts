@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { checkOfficialLetter, fixOfficialLetterViolation, REGULATION_RULES } from "./official-letter";
-import { newTextDocument } from "./office-types";
+import { defaultParaProps, newTextDocument } from "./office-types";
 
 describe("Official Letter Regulation Checker (v5.3 - Issue #246)", () => {
   it("detects narrow page margins and fixes them with 1-click", () => {
@@ -24,6 +24,7 @@ describe("Official Letter Regulation Checker (v5.3 - Issue #246)", () => {
       {
         type: "paragraph",
         props: {
+          ...defaultParaProps(),
           align: "left",
           lineSpacing: 1.15,
           spaceBeforePt: 0,
