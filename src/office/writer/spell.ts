@@ -5,11 +5,10 @@
  * the offline backend, and provides suggestion helpers and text replacement.
  */
 import { checkTurkishText } from "../../lib/office-api";
-import type { TextDocument, Run } from "../../lib/office-store";
+import type { TextDocument, Run } from "../../lib/office-types";
 
 export interface WordSpellError {
-  blockId: string;
-  runIndex: number;
+  blockIndex: number;
   word: string;
   start: number;
   end: number;
@@ -45,7 +44,7 @@ export function extractParagraphText(runs: Run[]): {
  * Checks a single paragraph block for spelling errors.
  */
 export async function checkBlockSpelling(
-  blockId: string,
+  blockIndex: number,
   runs: Run[],
   suggestionsLimit = 4,
 ): Promise<WordSpellError[]> {
@@ -55,8 +54,7 @@ export async function checkBlockSpelling(
   try {
     const res = await checkTurkishText(text, suggestionsLimit);
     return res.misspellings.map((m) => ({
-      blockId,
-      runIndex: 0,
+      blockIndex,
       word: m.word,
       start: m.start,
       end: m.end,
@@ -74,14 +72,15 @@ export async function checkBlockSpelling(
 export async function checkDocumentSpelling(
   doc: TextDocument,
   suggestionsLimit = 4,
-): Promise<Map<string, WordSpellError[]>> {
-  const result = new Map<string, WordSpellError[]>();
+): Promise<Map<number, WordSpellError[]>> {
+  const result = new Map<number, WordSpellError[]>();
 
-  for (const block of doc.blocks) {
+  for (let idx = 0; idx < doc.blocks.length; idx++) {
+    const block = doc.blocks[idx];
     if (block.type === "paragraph" && block.runs && block.runs.length > 0) {
-      const errors = await checkBlockSpelling(block.id, block.runs, suggestionsLimit);
+      const errors = await checkBlockSpelling(idx, block.runs, suggestionsLimit);
       if (errors.length > 0) {
-        result.set(block.id, errors);
+        result.set(idx, errors);
       }
     }
   }
@@ -92,12 +91,7 @@ export async function checkDocumentSpelling(
 /**
  * Applies a suggestion replacement to a paragraph's runs.
  */
-export function replaceMisspelledWord(
-  runs: Run[],
-  start: number,
-  end: number,
-  replacement: string,
-): Run[] {
+export function replaceMisspelledWord(runs: Run[], start: number, end: number, replacement: string): Run[] {
   const { text } = extractParagraphText(runs);
   if (start < 0 || end > text.length || start >= end) {
     return runs;
@@ -107,7 +101,21 @@ export function replaceMisspelledWord(
 
   // If there's only one run or no formatting complexity, simplify to single run preserving styles of first run
   if (runs.length <= 1) {
-    const first = runs[0] || { text: "" };
+    const first = runs[0] || {
+      text: "",
+      bold: false,
+      italic: false,
+      underline: false,
+      strike: false,
+      color: null,
+      highlight: null,
+      font: null,
+      sizePt: null,
+      link: null,
+      comment: null,
+      superscript: false,
+      subscript: false,
+    };
     return [{ ...first, text: newText }];
   }
 
@@ -133,9 +141,7 @@ export function replaceMisspelledWord(
       const localStart = Math.max(0, start - runStart);
       const localEnd = Math.min(runLen, end - runStart);
       const replaced =
-        run.text.slice(0, localStart) +
-        (start >= runStart ? replacement : "") +
-        run.text.slice(localEnd);
+        run.text.slice(0, localStart) + (start >= runStart ? replacement : "") + run.text.slice(localEnd);
       newRuns.push({ ...run, text: replaced });
     }
 
