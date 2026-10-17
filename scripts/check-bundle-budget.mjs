@@ -47,7 +47,9 @@ const CHUNK_BUDGET_KB = 100;
 // Raised to 505 in 5.0.0 for the plugin API v2 (the pdf capability and the
 // batch-step manifest surface) and the Writer document comparison; both ride
 // the existing lazy routes, so the per-chunk budgets are unchanged.
-const TOTAL_BUDGET_KB = 505;
+// Raised to 515 in 5.4.0 for the KVKK package (Document Health dashboard,
+// Redaction Certificate generator, and official compliance tools).
+const TOTAL_BUDGET_KB = 515;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);
