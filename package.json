@@ -24,6 +24,7 @@
     "test:watch": "vitest",
     "test:rust": "cargo test --workspace",
     "bench:check": "node scripts/check-bench-regression.mjs",
+    "compat:score": "node scripts/compat-score.mjs",
     "test:all": "npm run test && npm run test:rust",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

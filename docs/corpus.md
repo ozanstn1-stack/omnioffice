@@ -45,6 +45,39 @@ Each manifest entry has:
 | `content` | the guarantee that the content is synthetic (no personal data) |
 | `notes` | what the sample exercises |
 
+## Score
+
+`crates/compat` scores every sample and aggregates per format:
+
+* **structural** - import -> export back to the same format -> re-import, then
+  compare the flattened content (texts, cell values, slide texts). The round
+  trip is deterministic, so anything below 99.5% is data loss and puts the
+  format on the review list.
+* **visual** - import -> PDF (the Rust layout engine) -> render every page with
+  pdfium -> pixel comparison against the committed golden PDF
+  (`tests/corpus/golden/<file>.pdf`, one golden per corpus file). Below 90%
+  puts the format on the review list.
+* **reference** - the same visual comparison against LibreOffice's PDF of the
+  sample. It depends on the LibreOffice version and is not calibrated yet, so
+  it is informational and never drives the review list.
+
+Run it locally (pdfium comes from `npm run engines:fetch`):
+
+```powershell
+npm run compat:score
+```
+
+The same scoring runs in `cargo test -p compat` wherever pdfium is available,
+and nightly in `.github/workflows/nightly.yml` (Windows runner, LibreOffice
+installed best effort). The report lands in `target/compat/report.json`.
+
+Goldens are reviewed renders: after an intentional layout change, inspect the
+difference and regenerate them:
+
+```powershell
+node scripts/compat-score.mjs --update-golden
+```
+
 ## Regenerating
 
 ```powershell
