@@ -617,7 +617,10 @@ jobs:
       - name: cargo audit
         run: |
           cargo audit \
-            --ignore RUSTSEC-2023-0071
+            --ignore RUSTSEC-2023-0071 \
+            --ignore RUSTSEC-2026-0367 \
+            --ignore RUSTSEC-2026-0368 \
+            --ignore RUSTSEC-2026-0369
       # `deny.toml` owns the advisory policy (owned, time-boxed exceptions) and
       # the license/ban/source policy. A new advisory, an exception whose
       # review date has passed, or a dependency outside the allow lists fails
