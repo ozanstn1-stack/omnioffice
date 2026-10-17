@@ -10,6 +10,10 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 description = "Compatibility corpus scorer (import -> export -> re-import, import -> PDF -> page comparison)"
+# Never published: the path dependencies on the workspace crates are internal
+# and cargo-deny's wildcard policy treats a publishable crate as one that must
+# carry version requirements.
+publish = false
 
 [dependencies]
 officecore = { path = "../officecore" }
