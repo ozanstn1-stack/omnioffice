@@ -337,6 +337,8 @@ pub fn run() {
             office::office_open_eml,
             office::office_scan_pages,
             office::office_mail_merge,
+            office::turkish_spellcheck,
+            office::turkish_suggestions,
             signatures::signature_save,
             signatures::signature_list,
             signatures::signature_delete,

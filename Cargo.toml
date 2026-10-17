@@ -5,6 +5,7 @@ members = [
     "crates/officecore",
     "crates/pdfcore",
     "crates/synccore",
+    "crates/turkish",
     "src-tauri",
 ]
 # The fuzz crate needs nightly + libfuzzer; it is built by its own CI job and

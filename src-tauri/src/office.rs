@@ -2429,6 +2429,42 @@ pub fn office_startup_files() -> Vec<String> {
     crate::launch::launch_files(std::env::args(), None)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpellCheckMisspelling {
+    pub word: String,
+    pub start: usize,
+    pub end: usize,
+    pub suggestions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpellCheckResponse {
+    pub misspellings: Vec<SpellCheckMisspelling>,
+}
+
+/// Offline Turkish spell checker command.
+#[tauri::command]
+pub fn turkish_spellcheck(text: String, suggestions_limit: Option<usize>) -> SpellCheckResponse {
+    let limit = suggestions_limit.unwrap_or(4);
+    let items = turkish::check_text(&text);
+    let misspellings = items
+        .into_iter()
+        .map(|m| {
+            let suggestions = if limit > 0 { turkish::suggestions(&m.word, limit) } else { Vec::new() };
+            SpellCheckMisspelling { word: m.word, start: m.start, end: m.end, suggestions }
+        })
+        .collect();
+    SpellCheckResponse { misspellings }
+}
+
+/// Suggestions for a single word.
+#[tauri::command]
+pub fn turkish_suggestions(word: String, limit: Option<usize>) -> Vec<String> {
+    turkish::suggestions(&word, limit.unwrap_or(5))
+}
+
 #[cfg(test)]
 mod scan_tests {
     use super::*;

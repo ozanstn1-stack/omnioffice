@@ -3314,3 +3314,15 @@ body {
   border-color: var(--accent);
   background: var(--accent-weak);
 }
+
+/* Writer Turkish spell-checking (v5.3) */
+.writer-spell-error {
+  text-decoration: underline wavy #ef4444;
+  text-decoration-skip-ink: none;
+  cursor: pointer;
+}
+
+.writer-spell-error:hover {
+  background-color: rgba(239, 68, 68, 0.12);
+  border-radius: 2px;
+}

@@ -1,0 +1,21 @@
+[lints]
+workspace = true
+
+[package]
+name = "turkish"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Offline Turkish spell checking: root lexicon, suffix analyzer and suggestions"
+# Never published: the vendored lexicon data (crates/turkish/data/NOTICE.md)
+# stays with the app.
+publish = false
+
+[dependencies]
+# The Tauri command serializes `Misspelling` straight to the frontend.
+serde = { version = "1.0.229", features = ["derive"] }
+
+[dev-dependencies]
