@@ -40,6 +40,8 @@ mod sync;
 mod update;
 mod vault;
 mod vault_index;
+#[cfg(test)]
+mod wire_contract;
 
 use jobs::{JobRegistry, JobStore};
 use tauri::Manager;
