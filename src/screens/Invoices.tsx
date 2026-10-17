@@ -317,7 +317,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
                 </p>
               </div>
             </div>
-            <Button size="sm" variant="secondary" onClick={deduplicateInvoices}>
+            <Button size="sm" variant="default" onClick={deduplicateInvoices}>
               <Copy size={14} /> Mükerrerleri Ayıkla
             </Button>
           </Card>
