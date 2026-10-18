@@ -11,6 +11,13 @@ on:
 permissions:
   contents: write
 
+# One release build per tag: a second dispatch for the same tag must not run in
+# parallel with the first, and it must never be cancelled midway (a half
+# uploaded release is worse than a slow one).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   windows:
     name: Windows installer and portable package
@@ -165,7 +172,11 @@ jobs:
           } else {
             gh release edit $tag --notes-file release-notes.md
           }
-          Get-ChildItem release-artifacts -File | ForEach-Object { gh release upload $tag $_.FullName --clobber }
+          # No --clobber: a published asset is immutable. If a name clashes,
+          # the upload fails loudly instead of overwriting what users may have
+          # already downloaded (the repository also enables GitHub's immutable
+          # releases, which enforces the same rule on the API side).
+          Get-ChildItem release-artifacts -File | ForEach-Object { gh release upload $tag $_.FullName }
 
   version-consistency:
     name: Version consistency

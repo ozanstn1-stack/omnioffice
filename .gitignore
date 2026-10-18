@@ -72,3 +72,8 @@ samples/*_ocr.md
 samples/*_album.pdf
 samples/*_images/
 samples/*_batch.pdf
+
+# CI test-output files consumed by scripts/claims-audit.mjs
+junit.xml
+rust-tests.log
+rust-tests.err.log

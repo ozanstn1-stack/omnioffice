@@ -80,7 +80,11 @@ jobs:
       - name: TypeScript
         run: npx tsc --noEmit
       - name: Tests (with coverage)
-        run: npm run test:coverage
+        # The JUnit report is what the claims audit verifies against: a claim
+        # in RELEASE_READINESS.md must name a test that actually passed here.
+        run: npm run test:coverage -- --reporter=default --reporter=junit --outputFile=junit.xml
+      - name: Release claims (every claim's test passed)
+        run: node scripts/claims-audit.mjs --junit junit.xml
       - name: Production build
         run: npx vite build
       - name: Bundle budget
@@ -252,7 +256,13 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Workspace tests (Windows, with engines)
         if: runner.os == 'Windows'
-        run: cargo test --workspace
+        shell: pwsh
+        run: |
+          # The log feeds the claims audit: every Rust marker in
+          # RELEASE_READINESS.md must appear as a passing test in this run.
+          cargo test --workspace 2>&1 | Tee-Object -FilePath rust-tests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/claims-audit.mjs --rust-log rust-tests.log
       # officecore has no native engine dependency at all, so its integration
       # tests (golden fixtures, format round trips, the README contract) run on
       # every platform. pdfcore and aicore stay on --lib: most of their
