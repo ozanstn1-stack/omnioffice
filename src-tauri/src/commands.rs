@@ -209,6 +209,9 @@ const MAX_TILE_EDGE: u32 = 1024;
 /// (96/72 CSS px per point at 100 %) at its 2.5 device pixel ratio cap.
 const MAX_TILE_SCALE: f32 = 4.0 * (96.0 / 72.0) * 2.5;
 
+/// Safety cap for whole-document reads in the certificate commands.
+const MAX_DOCUMENT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
 /// Renders one tile of a page for the reader's high-zoom overlay: the region
 /// `x, y, width, height` (output pixels) of the page as if it were rendered
 /// whole at `scale` pixels per point. Past the full-page preview's raster cap
@@ -1437,6 +1440,73 @@ pub async fn redact_pdf(
             reduction: None,
             message,
         })
+    })
+    .await
+}
+
+/// What a certificate is built for: the original file, the redacted output and
+/// the item list (page, category, rule - never a value).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RedactionCertificateRequest {
+    pub original_path: String,
+    pub redacted_path: String,
+    pub items: Vec<pdfcore::certificate::CertificateItem>,
+    /// Optional RFC 3161 authority; when set, the certified digest is stamped.
+    #[serde(default)]
+    pub tsa_url: Option<String>,
+}
+
+/// Builds the verifiable redaction certificate (digests, items, optional
+/// RFC 3161 timestamp). See `pdfcore::certificate` for the guarantees.
+#[tauri::command]
+pub async fn redact_certificate_build(
+    request: RedactionCertificateRequest,
+) -> Result<pdfcore::certificate::RedactionCertificate, PdfError> {
+    run_blocking(move || {
+        let original = crate::paths::read_input_file(&request.original_path, MAX_DOCUMENT_BYTES)?;
+        let redacted = crate::paths::read_input_file(&request.redacted_path, MAX_DOCUMENT_BYTES)?;
+        let timestamp = match request.tsa_url.as_deref().map(str::trim).filter(|url| !url.is_empty()) {
+            Some(url) => {
+                // The authority stamps the certified digest (the file with the
+                // certificate stripped), which is what verification checks.
+                let digest = pdfcore::certificate::certified_digest(&redacted)?;
+                let token = crate::sign::request_timestamp(url, digest.sha256.as_bytes())?;
+                let time = pdfcore::timestamp::parse_token_time(&token);
+                Some(pdfcore::timestamp::TimestampToken { token, time })
+            }
+            None => None,
+        };
+        pdfcore::certificate::build_certificate(&original, &redacted, request.items, timestamp)
+    })
+    .await
+}
+
+/// Embeds the certificate into the redacted PDF (embedded file + XMP) and
+/// returns the verification of the file it just wrote.
+#[tauri::command]
+pub async fn redact_certificate_embed(
+    path: String,
+    certificate: pdfcore::certificate::RedactionCertificate,
+) -> Result<pdfcore::certificate::CertificateVerification, PdfError> {
+    run_blocking(move || {
+        let target = crate::paths::output_file(&path)?;
+        let bytes = crate::paths::read_input_file(&path, MAX_DOCUMENT_BYTES)?;
+        let embedded = pdfcore::certificate::embed_certificate(&bytes, &certificate)?;
+        write_atomic(target.as_path(), &embedded)?;
+        pdfcore::certificate::verify_certificate(&embedded)
+    })
+    .await
+}
+
+/// Extracts and verifies the certificate a PDF carries, if any.
+#[tauri::command]
+pub async fn redact_certificate_verify(
+    path: String,
+) -> Result<pdfcore::certificate::CertificateVerification, PdfError> {
+    run_blocking(move || {
+        let bytes = crate::paths::read_input_file(&path, MAX_DOCUMENT_BYTES)?;
+        pdfcore::certificate::verify_certificate(&bytes)
     })
     .await
 }

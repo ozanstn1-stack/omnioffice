@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
+  BadgeCheck,
   BookOpen,
   ChevronLeft,
   ChevronRight,
@@ -25,7 +26,15 @@ import { DropZone, InfoStrip } from "../components/files";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
-import { pagePreview, pageText, pageTile, pdfListTextRuns, searchDocument, toAppError } from "../lib/api";
+import {
+  pagePreview,
+  pageText,
+  pageTile,
+  pdfListTextRuns,
+  redactCertificateVerify,
+  searchDocument,
+  toAppError,
+} from "../lib/api";
 import type { TextRunInfo } from "../lib/api";
 import { clampSpeechRate, pageTextFromRuns, speechSupported, textLayerItems } from "../lib/reader-text";
 import type { SpeechWindow } from "../lib/reader-text";
@@ -922,6 +931,35 @@ export function Reader({
     }
   };
 
+  /**
+   * Verifies the redaction certificate a PDF carries (A6): the file is
+   * re-hashed with the certificate stripped, so an edit after certification
+   * shows up as a failure instead of a green check.
+   */
+  const verifyCertificate = async () => {
+    if (!session.primary) return;
+    try {
+      const result = await redactCertificateVerify(session.primary.path);
+      if (!result.present) {
+        pushToast({ kind: "info", title: t("reader.certificateNone") });
+        return;
+      }
+      const id = result.certificate?.id ?? "";
+      const createdAt = result.certificate?.createdAt ?? "";
+      if (result.contentMatches) {
+        pushToast({ kind: "success", title: t("reader.certificateOk", { id }), detail: createdAt });
+      } else {
+        pushToast({
+          kind: "error",
+          title: t("reader.certificateBad", { id }),
+          detail: t("reader.certificateBadHint"),
+        });
+      }
+    } catch (error) {
+      reportError(error, t);
+    }
+  };
+
   // The text layer is loaded once per document. A scanned PDF simply has no
   // runs, which is not an error: the Reader then offers the OCR hint instead.
   useEffect(() => {
@@ -1102,6 +1140,9 @@ export function Reader({
               disabled={currentPage >= pageCount}
             >
               <ChevronRight size={15} />
+            </IconButton>
+            <IconButton label={t("reader.certificate")} onClick={() => void verifyCertificate()}>
+              <BadgeCheck size={15} />
             </IconButton>
           </div>
 

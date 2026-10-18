@@ -30,7 +30,8 @@ const MAX_REVOCATION_REDIRECTS: usize = 3;
 
 /// Exchanges a signature value for an RFC 3161 timestamp token over HTTPS
 /// (plain HTTP only for a loopback TSA, mirroring the WebDAV transport rule).
-fn request_timestamp(url: &str, signature: &[u8]) -> PdfResult<Vec<u8>> {
+/// Also used by the redaction certificate to stamp its certified digest.
+pub(crate) fn request_timestamp(url: &str, signature: &[u8]) -> PdfResult<Vec<u8>> {
     let trimmed = url.trim();
     let parsed =
         reqwest::Url::parse(trimmed).map_err(|error| PdfError::InvalidInput(format!("invalid TSA URL: {error}")))?;

@@ -19,24 +19,23 @@ import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { uid } from "../lib/format";
 import { isAndroid } from "../lib/mobile";
-import { fileFingerprint } from "../lib/office-api";
-import { useJobProgress, useToasts } from "../lib/store";
+import { reportError, useJobProgress, useToasts } from "../lib/store";
 import { useTool } from "../lib/useTool";
 import {
   aiSaveOutput,
   cancelJob,
   detectRedactionMatches,
   detectSensitiveText,
+  redactCertificateBuild,
+  redactCertificateEmbed,
   redactPdf,
   toAppError,
 } from "../lib/api";
 import { normalizePageSize, rectToUserSpace, userSpaceToRect } from "../lib/redact-geometry";
-import {
-  buildRedactionCertificate,
-  maskSensitiveValue,
-  renderCertificateMarkdown,
-  type RedactedItemRecord,
-} from "../lib/redact-cert";
+import { renderCertificateMarkdown, type RedactedItemRecord } from "../lib/redact-cert";
+import type { CertificateItem } from "../lib/generated/CertificateItem";
+import type { RedactionCertificate } from "../lib/generated/RedactionCertificate";
+import type { CertificateVerification } from "../lib/generated/CertificateVerification";
 import type { ImageRedactionMode, RedactionArea, RedactionMatch, RedactionOptions } from "../lib/types";
 
 /** A box the user drew, in page space, with a stable id for removal. */
@@ -102,6 +101,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
   const [boxes, setBoxes] = useState<DrawnBox[]>([]);
   const [matches, setMatches] = useState<MatchRow[]>([]);
   const [detecting, setDetecting] = useState(false);
+  const [certBusy, setCertBusy] = useState(false);
   const [detected, setDetected] = useState(false);
   const [autoAdd, setAutoAdd] = useState(true);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -281,56 +281,85 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
   };
 
   const { push: pushToast } = useToasts();
+
+  /** Maps the Rust certificate onto the display record (no values, ever). */
+  const displayCertificate = (
+    certificate: RedactionCertificate,
+    verification: CertificateVerification,
+    documentName: string,
+  ) => ({
+    certificateId: certificate.id,
+    documentName,
+    originalSha256: certificate.original.sha256,
+    redactedSha256: certificate.redacted.sha256,
+    appliedAt: certificate.createdAt,
+    operatorName: "OmniOffice",
+    organization: "OmniOffice",
+    items: certificate.items.map((item): RedactedItemRecord => ({
+      page: item.page,
+      category: item.category as RedactedItemRecord["category"],
+      maskedPreview: "(maskeli)",
+      ruleRef: item.rule,
+    })),
+    totalRedactionsCount: certificate.items.length,
+    verificationStatus: verification.contentMatches ? ("verified" as const) : ("unverified" as const),
+  });
+
   const generateCertificate = async (saveToFile = false) => {
-    if (!session.primary) return;
-    const certItems: RedactedItemRecord[] = boxes.map((box) => {
-      const match = matches.find((m) => m.id === box.id);
-      const category = (
-        box.kind === "tckn" || box.kind === "phone" || box.kind === "email" || box.kind === "iban" || box.kind === "vkn"
-          ? box.kind
-          : "manual"
-      ) as RedactedItemRecord["category"];
-      return {
-        page: box.page,
-        category,
-        maskedPreview: maskSensitiveValue(match?.match.text),
-        ruleRef: "KVKK Md. 5 / 6",
-      };
-    });
-
-    const [origFp, outFp] = await Promise.all([
-      fileFingerprint(session.primary.path).catch(() => null),
-      session.result?.path ? fileFingerprint(session.result.path).catch(() => null) : Promise.resolve(null),
-    ]);
-    const originalSha256 = origFp?.exists ? origFp.sha256 : undefined;
-    const redactedSha256 = outFp?.exists ? outFp.sha256 : undefined;
-
-    const cert = buildRedactionCertificate({
-      documentName: session.primary.name,
-      items: certItems,
-      originalSha256,
-      redactedSha256,
-    });
-
-    const md = renderCertificateMarkdown(cert);
-    void navigator.clipboard?.writeText(md);
-
-    if (saveToFile && !isAndroid()) {
-      const defaultPath = session.primary.path.replace(/\.pdf$/i, "-karartma-sertifikasi.md");
-      const outPath = await saveDialog({
-        defaultPath,
-        filters: [{ name: "Markdown Raporu (*.md)", extensions: ["md"] }],
-      });
-      if (typeof outPath === "string") {
-        await aiSaveOutput(outPath, md, "overwrite");
-      }
+    if (!session.primary || !session.result?.path) {
+      pushToast({ kind: "info", title: "Önce karartmayı uygulayın; sertifika karartılmış PDF'e gömülür." });
+      return;
     }
+    setCertBusy(true);
+    try {
+      const certItems: CertificateItem[] = boxes.map((box) => ({
+        page: box.page,
+        category:
+          box.kind === "tckn" ||
+          box.kind === "phone" ||
+          box.kind === "email" ||
+          box.kind === "iban" ||
+          box.kind === "vkn"
+            ? box.kind
+            : "manual",
+        rule: "KVKK Md. 5 / 6",
+      }));
+      // The certificate is built and embedded by the Rust core: real SHA-256
+      // digests, the item list (never a value) and, when configured, an
+      // RFC 3161 timestamp; verification re-hashes the file minus the
+      // certificate, so an edited PDF fails.
+      const certificate = await redactCertificateBuild({
+        originalPath: session.primary.path,
+        redactedPath: session.result.path,
+        items: certItems,
+      });
+      const verification = await redactCertificateEmbed(session.result.path, certificate);
+      const md = renderCertificateMarkdown(displayCertificate(certificate, verification, session.primary.name));
+      void navigator.clipboard?.writeText(md);
 
-    pushToast({
-      kind: "success",
-      title: "Karartma Sertifikası Üretildi",
-      detail: `Sertifika (${cert.certificateId}) panoya kopyalandı${saveToFile ? " ve dosyaya kaydedildi" : ""}.`,
-    });
+      if (saveToFile && !isAndroid()) {
+        const defaultPath = session.primary.path.replace(/\.pdf$/i, "-karartma-sertifikasi.md");
+        const outPath = await saveDialog({
+          defaultPath,
+          filters: [{ name: "Markdown Raporu (*.md)", extensions: ["md"] }],
+        });
+        if (typeof outPath === "string") {
+          await aiSaveOutput(outPath, md, "overwrite");
+        }
+      }
+
+      pushToast({
+        kind: verification.contentMatches ? "success" : "error",
+        title: "Karartma sertifikası üretildi ve PDF'e gömüldü",
+        detail: `Sertifika (${certificate.id}) ${
+          verification.contentMatches ? "doğrulandı" : "DOĞRULANAMADI"
+        } — ${certificate.items.length} madde${saveToFile ? ", rapor dosyaya kaydedildi" : ""}.`,
+      });
+    } catch (error) {
+      reportError(error, t);
+    } finally {
+      setCertBusy(false);
+    }
   };
 
   return (
@@ -455,7 +484,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
                   className="btn btn-sm self-start"
                   type="button"
                   onClick={() => void generateCertificate(false)}
-                  disabled={!session.primary || !boxes.length}
+                  disabled={certBusy || !session.primary || !session.result?.path || !boxes.length}
                 >
                   <FileText size={13} /> Sertifika Kopyala
                 </button>
@@ -464,7 +493,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
                     className="btn btn-sm self-start"
                     type="button"
                     onClick={() => void generateCertificate(true)}
-                    disabled={!session.primary || !boxes.length}
+                    disabled={certBusy || !session.primary || !session.result?.path || !boxes.length}
                   >
                     <Download size={13} /> Sertifika Kaydet (.md)
                   </button>
