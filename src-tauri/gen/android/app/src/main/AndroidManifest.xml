@@ -109,6 +109,10 @@
                 <data android:mimeType="text/html" />
                 <data android:mimeType="text/csv" />
                 <data android:mimeType="text/tab-separated-values" />
+                <!-- e-mail (.eml) and e-Fatura UBL-TR (.xml) shared from another app -->
+                <data android:mimeType="message/rfc822" />
+                <data android:mimeType="text/xml" />
+                <data android:mimeType="application/xml" />
             </intent-filter>
             <!-- Fallback with a generic type (typically application/octet-stream): match the file name. -->
             <intent-filter>
@@ -164,6 +168,16 @@
                 <data android:pathPattern=".*\\..*\\.oswk" />
                 <data android:pathPattern=".*\\..*\\..*\\.oswk" />
                 <data android:pathPattern=".*\\..*\\..*\\..*\\.oswk" />
+                <data android:pathSuffix=".eml" />
+                <data android:pathPattern=".*\\.eml" />
+                <data android:pathPattern=".*\\..*\\.eml" />
+                <data android:pathPattern=".*\\..*\\..*\\.eml" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.eml" />
+                <data android:pathSuffix=".xml" />
+                <data android:pathPattern=".*\\.xml" />
+                <data android:pathPattern=".*\\..*\\.xml" />
+                <data android:pathPattern=".*\\..*\\..*\\.xml" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.xml" />
                 <data android:pathSuffix=".txt" />
                 <data android:pathPattern=".*\\.txt" />
                 <data android:pathPattern=".*\\..*\\.txt" />
@@ -283,6 +297,16 @@
                 <data android:pathPattern=".*\\..*\\.oswk" />
                 <data android:pathPattern=".*\\..*\\..*\\.oswk" />
                 <data android:pathPattern=".*\\..*\\..*\\..*\\.oswk" />
+                <data android:pathSuffix=".eml" />
+                <data android:pathPattern=".*\\.eml" />
+                <data android:pathPattern=".*\\..*\\.eml" />
+                <data android:pathPattern=".*\\..*\\..*\\.eml" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.eml" />
+                <data android:pathSuffix=".xml" />
+                <data android:pathPattern=".*\\.xml" />
+                <data android:pathPattern=".*\\..*\\.xml" />
+                <data android:pathPattern=".*\\..*\\..*\\.xml" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.xml" />
                 <data android:pathSuffix=".txt" />
                 <data android:pathPattern=".*\\.txt" />
                 <data android:pathPattern=".*\\..*\\.txt" />

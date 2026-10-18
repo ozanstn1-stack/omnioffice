@@ -789,7 +789,7 @@ export default function App() {
       converter: <ConverterScreen />,
       invoices: <InvoicesScreen initialFiles={files} />,
       eml: <EmlScreen initialFiles={files} onNavigate={navigate} />,
-      scanner: <ScannerScreen />,
+      scanner: <ScannerScreen onNavigate={navigate} />,
       recipes: <RecipesScreen />,
       mailMerge: <MailMergeScreen />,
       cleaner: <CleanerScreen />,

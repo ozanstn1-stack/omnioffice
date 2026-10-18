@@ -42,9 +42,9 @@ describe("document scanner scaffold", () => {
     );
   });
 
-  it("states that the camera capture is not implemented yet", async () => {
+  it("renders the camera capture action and ML Kit note", async () => {
     render(<Scanner />);
-    expect(await screen.findByText(/not implemented yet/i)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Kameradan Fotoğraf Çek/i })).toBeInTheDocument();
     expect(screen.getByText(/ML Kit/i)).toBeInTheDocument();
   });
 

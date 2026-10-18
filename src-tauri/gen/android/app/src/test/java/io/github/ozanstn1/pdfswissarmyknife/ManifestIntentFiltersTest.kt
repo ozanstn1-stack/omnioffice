@@ -90,6 +90,8 @@ class ManifestIntentFiltersTest {
     "odp" to listOf("application/vnd.oasis.opendocument.presentation"),
     "pdf" to listOf("application/pdf"),
     "oswk" to listOf("application/x-oswk"),
+    "eml" to listOf("message/rfc822"),
+    "xml" to listOf("text/xml", "application/xml"),
     "txt" to listOf("text/plain"),
     "md" to listOf("text/markdown"),
     "html" to listOf("text/html"),
