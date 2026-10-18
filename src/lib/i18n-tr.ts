@@ -1133,6 +1133,9 @@ export const tr: Record<string, string> = {
   "office.discardAll": "Yoksay",
   "office.noTabs": "Açık belge yok",
   "office.noTabsHint": "Başlamak için bir belge, hesap tablosu ya da sunum oluşturun.",
+  "office.udfClosed": "UYAP .udf desteği şu an kapalı",
+  "office.udfClosedHint":
+    "UDF biçimi, gerçek UYAP dosyalarıyla doğrulanana kadar gizli tutuluyor. Geliştiriciler flag:experimentalUdf=1 ile deneyebilir.",
   "office.newDocument": "Belge",
   "office.newSpreadsheet": "Hesap tablosu",
   "office.newPresentation": "Sunum",

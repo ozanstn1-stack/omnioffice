@@ -344,20 +344,34 @@ export default function App() {
   // Opens one document on the screen that can actually edit/view it: office
   // documents in the workspace, PDFs in the reader and images in the
   // image-to-PDF tool. Unknown types go to the system viewer.
-  const openSinglePath = useCallback((path: string) => {
-    const route = routeForPath(path);
-    if (!route) {
-      void openAnyFile(path).catch(() => undefined);
-      return;
-    }
-    if (route.office) {
-      setScreen("office");
-      void openOfficePath(path);
-      return;
-    }
-    setFiles(route.files ?? []);
-    setScreen(route.screen);
-  }, []);
+  const openSinglePath = useCallback(
+    (path: string) => {
+      // UYAP `.udf` is closed until real UYAP files verify the round trip
+      // (RELEASE_READINESS.md). A leftover file association, a share intent or
+      // drag & drop can still deliver one; say so instead of failing silently.
+      if (path.toLowerCase().endsWith(".udf") && !flagEnabled("experimentalUdf")) {
+        pushToast({
+          kind: "info",
+          title: t("office.udfClosed"),
+          detail: t("office.udfClosedHint"),
+        });
+        return;
+      }
+      const route = routeForPath(path);
+      if (!route) {
+        void openAnyFile(path).catch(() => undefined);
+        return;
+      }
+      if (route.office) {
+        setScreen("office");
+        void openOfficePath(path);
+        return;
+      }
+      setFiles(route.files ?? []);
+      setScreen(route.screen);
+    },
+    [pushToast, t],
+  );
 
   // OS drag & drop from Explorer
   useEffect(() => {
@@ -449,7 +463,7 @@ export default function App() {
             "tiff",
             "docx",
             "odt",
-            "udf",
+            ...(flagEnabled("experimentalUdf") ? ["udf"] : []),
             "rtf",
             "txt",
             "md",
@@ -1069,7 +1083,8 @@ interface OfficeLauncherProps {
 }
 
 const OFFICE_EXTENSIONS: Record<OfficeLauncherProps["kind"], string[]> = {
-  writer: ["docx", "odt", "udf", "rtf", "txt", "md"],
+  // UYAP `.udf` is experimental and only listed with the flag on.
+  writer: ["docx", "odt", "rtf", "txt", "md", ...(flagEnabled("experimentalUdf") ? ["udf"] : [])],
   calc: ["xlsx", "xls", "ods", "csv", "tsv"],
   impress: ["pptx", "odp"],
 };

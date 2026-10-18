@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Badge, Button, Card, IconButton, Modal, Spinner, TextInput } from "./ui";
 import { useT } from "../lib/i18n";
+import { flagEnabled } from "../lib/flags";
 import { formatBytes, formatPoints, fileBaseName } from "../lib/format";
 import { useOverwritePrompt, usePasswordPrompt, useToasts } from "../lib/store";
 import { useProgressPercent, type ToolSession } from "../lib/useTool";
@@ -67,7 +68,7 @@ export function DropZone({
                 "docm",
                 "dotx",
                 "odt",
-                "udf",
+                ...(flagEnabled("experimentalUdf") ? ["udf"] : []),
                 "rtf",
                 "txt",
                 "md",

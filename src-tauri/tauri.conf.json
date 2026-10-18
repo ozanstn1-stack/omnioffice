@@ -61,13 +61,6 @@
       },
       {
         "ext": [
-          "udf"
-        ],
-        "name": "OmniOffice UYAP document",
-        "role": "Editor"
-      },
-      {
-        "ext": [
           "rtf"
         ],
         "name": "OmniOffice Rich text document",

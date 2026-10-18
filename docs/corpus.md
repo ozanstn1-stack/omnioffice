@@ -23,7 +23,7 @@ third-party samples, which cannot be committed here:
 
 | Source | Format | Used for |
 | --- | --- | --- |
-| UYAP (Turkish judiciary) | `.udf` | UDF import - still unverified against a real file |
+| UYAP (Turkish judiciary) | `.udf` | UDF import - still unverified against a real file; the format is disabled in the app by default (`experimentalUdf` flag) |
 | KEP providers | `.eml` | KEP import (`tests/fixtures/kep-ornek.eml` covers a simplified case) |
 | Banks / e-Fatura portal | UBL `.xml` | invoice import - real portal output still unverified |
 | Microsoft Office | `.docx` / `.xlsx` / `.pptx` | import of Office-authored files |

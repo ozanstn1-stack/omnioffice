@@ -81,8 +81,6 @@
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
                 <!-- OpenDocument text (odt) -->
                 <data android:mimeType="application/vnd.oasis.opendocument.text" />
-                <!-- UYAP document (udf, no registered type) -->
-                <data android:mimeType="application/x-udf" />
                 <!-- Rich text (rtf) -->
                 <data android:mimeType="application/rtf" />
                 <data android:mimeType="text/rtf" />
@@ -166,11 +164,6 @@
                 <data android:pathPattern=".*\\..*\\.oswk" />
                 <data android:pathPattern=".*\\..*\\..*\\.oswk" />
                 <data android:pathPattern=".*\\..*\\..*\\..*\\.oswk" />
-                <data android:pathSuffix=".udf" />
-                <data android:pathPattern=".*\\.udf" />
-                <data android:pathPattern=".*\\..*\\.udf" />
-                <data android:pathPattern=".*\\..*\\..*\\.udf" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\.udf" />
                 <data android:pathSuffix=".txt" />
                 <data android:pathPattern=".*\\.txt" />
                 <data android:pathPattern=".*\\..*\\.txt" />
@@ -290,11 +283,6 @@
                 <data android:pathPattern=".*\\..*\\.oswk" />
                 <data android:pathPattern=".*\\..*\\..*\\.oswk" />
                 <data android:pathPattern=".*\\..*\\..*\\..*\\.oswk" />
-                <data android:pathSuffix=".udf" />
-                <data android:pathPattern=".*\\.udf" />
-                <data android:pathPattern=".*\\..*\\.udf" />
-                <data android:pathPattern=".*\\..*\\..*\\.udf" />
-                <data android:pathPattern=".*\\..*\\..*\\..*\\.udf" />
                 <data android:pathSuffix=".txt" />
                 <data android:pathPattern=".*\\.txt" />
                 <data android:pathPattern=".*\\..*\\.txt" />

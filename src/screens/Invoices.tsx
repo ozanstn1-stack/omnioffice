@@ -4,6 +4,7 @@ import { AlertTriangle, Calculator, CheckCircle2, Copy, FileText, QrCode, Receip
 import { Badge, Button, Card, Modal } from "../components/ui";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
+import { flagEnabled } from "../lib/flags";
 import { reportError, useToasts } from "../lib/store";
 import { isAndroid, pickOfficeFiles } from "../lib/mobile";
 import { compareQrWithInvoice } from "../lib/invoice-qr";
@@ -275,27 +276,34 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
             <Button variant="ghost" disabled={busy || !invoices.length} onClick={() => void saveSummary()}>
               <Table2 size={16} /> {t("invoices.summary")}
             </Button>
-            <Button
-              variant="ghost"
-              disabled={busy || !invoices.length}
-              onClick={() => void exportForAccounting("luca")}
-            >
-              <Receipt size={16} /> Luca
-            </Button>
-            <Button
-              variant="ghost"
-              disabled={busy || !invoices.length}
-              onClick={() => void exportForAccounting("logo")}
-            >
-              <Receipt size={16} /> Logo
-            </Button>
-            <Button
-              variant="ghost"
-              disabled={busy || !invoices.length}
-              onClick={() => void exportForAccounting("zirve")}
-            >
-              <Receipt size={16} /> Zirve
-            </Button>
+            {/* Luca/Logo/Zirve exports are experimental: no real import
+                template has verified them (RELEASE_READINESS.md), so they stay
+                behind the `accountingVendorExport` flag. */}
+            {flagEnabled("accountingVendorExport") ? (
+              <>
+                <Button
+                  variant="ghost"
+                  disabled={busy || !invoices.length}
+                  onClick={() => void exportForAccounting("luca")}
+                >
+                  <Receipt size={16} /> Luca
+                </Button>
+                <Button
+                  variant="ghost"
+                  disabled={busy || !invoices.length}
+                  onClick={() => void exportForAccounting("logo")}
+                >
+                  <Receipt size={16} /> Logo
+                </Button>
+                <Button
+                  variant="ghost"
+                  disabled={busy || !invoices.length}
+                  onClick={() => void exportForAccounting("zirve")}
+                >
+                  <Receipt size={16} /> Zirve
+                </Button>
+              </>
+            ) : null}
             <Button variant="ghost" disabled={busy || !invoices.length} onClick={() => setShowKdvModal(true)}>
               <Calculator size={16} /> KDV Beyanı
             </Button>

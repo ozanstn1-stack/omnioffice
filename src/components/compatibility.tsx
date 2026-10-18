@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Dialog } from "../office/office-ui";
 import { Badge, SectionTitle, Spinner } from "./ui";
+import { flagEnabled } from "../lib/flags";
 import { useT, type Translate } from "../lib/i18n";
 import { errorMessage } from "../lib/store";
 
@@ -33,7 +34,9 @@ export interface FormatCapabilities {
 }
 
 const TARGETS: Record<string, string[]> = {
-  writer: ["docx", "odt", "udf", "rtf", "txt", "md", "html", "pdf"],
+  // UYAP `.udf` is experimental: never offered as a target unless the flag is
+  // on (RELEASE_READINESS.md).
+  writer: ["docx", "odt", ...(flagEnabled("experimentalUdf") ? ["udf"] : []), "rtf", "txt", "md", "html", "pdf"],
   calc: ["xlsx", "ods", "csv", "pdf"],
   impress: ["pptx", "odp", "pdf"],
 };

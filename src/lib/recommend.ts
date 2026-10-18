@@ -15,9 +15,10 @@ const RULES: { matches: (extension: string) => boolean; tools: ScreenId[] }[] = 
     tools: ["reader", "merge", "split", "compress", "ocr", "watermark", "protect", "organize", "redact", "annotate"],
   },
   {
-    // Writer formats, including the UYAP `.udf` the app opens.
+    // Writer formats. UYAP `.udf` is experimental and hidden by default, so
+    // it is not advertised here (RELEASE_READINESS.md).
     matches: (extension) =>
-      ["docx", "docm", "dotx", "odt", "udf", "rtf", "txt", "md", "markdown", "html", "htm"].includes(extension),
+      ["docx", "docm", "dotx", "odt", "rtf", "txt", "md", "markdown", "html", "htm"].includes(extension),
     tools: ["documents", "converter", "cleaner", "annotate", "templates"],
   },
   {

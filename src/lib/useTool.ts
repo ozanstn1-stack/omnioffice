@@ -11,7 +11,7 @@ import {
   isOfficeDocument,
   isPdf,
   joinPath,
-  OFFICE_DOCUMENT_EXTENSIONS,
+  officeDocumentExtensions,
   uid,
 } from "./format";
 import { isAndroid, pickAndroidFiles, publishOutputs, type PublishTarget } from "./mobile";
@@ -194,7 +194,7 @@ export function useTool(options: ToolOptions): ToolSession {
                   name: "Documents & images",
                   extensions: [
                     ...new Set([
-                      ...OFFICE_DOCUMENT_EXTENSIONS,
+                      ...officeDocumentExtensions(),
                       "pdf",
                       "jpg",
                       "jpeg",

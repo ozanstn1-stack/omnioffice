@@ -1104,32 +1104,19 @@ pub async fn office_convert(
 }
 
 /// Lists the conversions the converter can perform for a given extension.
+///
+/// UYAP `.udf` is experimental (no real UYAP file has verified the round trip
+/// yet, RELEASE_READINESS.md), so it is deliberately absent as both a source
+/// and a target; the engine still reads and writes it behind the
+/// `experimentalUdf` flag.
 #[tauri::command]
 pub fn office_conversion_targets(extension: String) -> Vec<String> {
     match extension.trim_start_matches('.').to_ascii_lowercase().as_str() {
         "docx" | "docm" | "dotx" | "doc" | "dot" => {
-            vec![
-                "pdf".into(),
-                "docx".into(),
-                "odt".into(),
-                "udf".into(),
-                "rtf".into(),
-                "txt".into(),
-                "html".into(),
-                "oswk".into(),
-            ]
+            vec!["pdf".into(), "docx".into(), "odt".into(), "rtf".into(), "txt".into(), "html".into(), "oswk".into()]
         }
-        "odt" | "udf" | "rtf" | "txt" | "md" => {
-            vec![
-                "pdf".into(),
-                "docx".into(),
-                "odt".into(),
-                "udf".into(),
-                "rtf".into(),
-                "txt".into(),
-                "html".into(),
-                "oswk".into(),
-            ]
+        "odt" | "rtf" | "txt" | "md" => {
+            vec!["pdf".into(), "docx".into(), "odt".into(), "rtf".into(), "txt".into(), "html".into(), "oswk".into()]
         }
         "xlsx" | "ods" | "csv" | "tsv" | "xls" => {
             vec!["pdf".into(), "xlsx".into(), "ods".into(), "csv".into(), "oswk".into()]
@@ -2030,12 +2017,11 @@ mod tests {
         assert!(doc_targets.contains(&"pdf".into()));
         assert!(doc_targets.contains(&"docx".into()));
 
-        // A UDF opens as a Writer document and converts to DOCX, ODT and PDF.
-        let udf_targets = office_conversion_targets("udf".into());
-        assert!(udf_targets.contains(&"pdf".into()));
-        assert!(udf_targets.contains(&"docx".into()));
-        assert!(udf_targets.contains(&"odt".into()));
-        assert!(office_conversion_targets("docx".into()).contains(&"udf".into()));
+        // UYAP `.udf` is experimental: never listed as a source or a target
+        // until real UYAP files verify the round trip (RELEASE_READINESS.md).
+        assert!(office_conversion_targets("udf".into()).is_empty());
+        assert!(!office_conversion_targets("docx".into()).contains(&"udf".into()));
+        assert!(!office_conversion_targets("odt".into()).contains(&"udf".into()));
     }
 
     #[test]

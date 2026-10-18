@@ -54,8 +54,7 @@ A minor release introducing document health analysis and KVKK compliance:
   appendix attachments.
 - **KVKK compliance wizard & templates**: Step-by-step Turkish Personal Data
   Protection Law (KVKK) disclosure statement generator supporting multiple
-  scenarios (customer, employee, visitor, CCTV) with export to PDF, DOCX, and
-  UDF.
+  scenarios (customer, employee, visitor, CCTV) with export to PDF and DOCX.
 
 ## What's new in 5.3.0 (Türkçe yazım ve resmî yazı denetimi)
 
@@ -69,7 +68,8 @@ A minor release introducing offline Turkish NLP, official correspondence checks,
   2.5 cm), font & size (Times New Roman 12 pt / Arial 11 pt), line spacing,
   number/subject/date headers, and signature blocks with 1-click automatic fixes.
 - **Petition Wizard**: Step-by-step petition creation with local TCKN mod-11
-  validation, producing compliant UDF (UYAP) and PDF documents.
+  validation, producing DOCX and PDF documents. UYAP `.udf` output is
+  experimental and disabled by default (see the format table below).
 
 ## What's new in 5.2.0 (Gerçek dosya laboratuvarı)
 
@@ -176,9 +176,10 @@ A patch release that closes every P0 from the v5.0.0 audit:
 
 ## What's new in 4.9.0 (Resmî Belgeler)
 
-- UYAP `.udf` documents open in Writer and save back, with Windows and Android
-  file associations; an element the importer does not model is kept and
-  re-exported.
+- UYAP `.udf` documents open in Writer and save back. Since v6.0.1 the format is
+  **disabled by default** (no file associations, not offered in pickers) until
+  real UYAP files verify the round trip; developers can re-enable it with the
+  `experimentalUdf` flag.
 - The new **Invoices** screen reads e-Fatura / e-Arşiv UBL-TR files (XML or
   ZIP), checks the totals and VAT against a dated rate table, prints a
   deterministic PDF and builds a **VAT summary** XLSX.
@@ -1017,7 +1018,7 @@ Only combinations that actually work are marked. “–” means not supported.
 | DOCM / DOTX / XLSM / PPTM | ✓ | ✓ | ✓ | ✓ (macros are detected, never executed and dropped on save) |
 | DOC / DOT | ✓ (text import; save as .docx/.oswk) | ✓ (in memory) | – | ✓ (via Writer) |
 | ODT | ✓ | ✓ | ✓ | ✓ |
-| UDF | ✓ | ✓ | ✓ | ✓ |
+| UDF (experimental; hidden until real UYAP files verify it) | ✓ (via flag) | ✓ (via flag) | ✓ (via flag) | ✓ (via flag) |
 | RTF | ✓ | ✓ | ✓ (basic formatting, tables, images, notes) | ✓ |
 | TXT / Markdown / HTML | ✓ | ✓ | ✓ | ✓ (via Writer) |
 | XLSX | ✓ | ✓ | ✓ | ✓ |

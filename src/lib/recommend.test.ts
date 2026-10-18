@@ -17,12 +17,24 @@ describe("tool recommendations", () => {
     expect(tools).not.toContain("spreadsheets");
   });
 
-  it("suggests Writer for a Word/ODT/UDF document", () => {
-    for (const path of ["a.docx", "a.odt", "a.udf", "a.rtf"]) {
+  it("suggests Writer for a Word/ODT document", () => {
+    for (const path of ["a.docx", "a.odt", "a.rtf"]) {
       const tools = recommendTools([path]);
       expect(tools[0], path).toBe("documents");
       expect(tools, path).toContain("converter");
     }
+  });
+
+  it("does not recommend anything for the closed UYAP format", () => {
+    // UDF is experimental and hidden by default (RELEASE_READINESS.md); it
+    // comes back only with the flag.
+    expect(recommendTools(["a.udf"])).not.toContain("documents");
+    localStorage.setItem("flag:experimentalUdf", "1");
+    // The recommendation table is static per module load; the closed format
+    // must not be advertised regardless of the flag until the flag-aware
+    // source is wired here (tracked in RELEASE_READINESS.md).
+    expect(recommendTools(["a.udf"])).not.toContain("documents");
+    localStorage.clear();
   });
 
   it("suggests Calc for a spreadsheet and images-to-PDF for an image", () => {

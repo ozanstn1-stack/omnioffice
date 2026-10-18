@@ -44,6 +44,7 @@ import {
   saveFileBytes,
   type AndroidTarget,
 } from "../lib/mobile";
+import { flagEnabled } from "../lib/flags";
 import { fileBaseName } from "../lib/format";
 import { jpegToPdf } from "../lib/image-pdf";
 import { uid } from "../lib/office-types";
@@ -1195,7 +1196,7 @@ export function ConverterScreen() {
               "pptm",
               "odp",
               "oswk",
-              "udf",
+              ...(flagEnabled("experimentalUdf") ? ["udf"] : []),
               "pdf",
             ],
           },

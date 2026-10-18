@@ -4,13 +4,16 @@ import { FileText, Download } from "lucide-react";
 import { Button, Card, Field, TextInput } from "../components/ui";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
+import { flagEnabled } from "../lib/flags";
 import { reportError, useToasts } from "../lib/store";
 import { saveDocument, exportPdf } from "../lib/office-api";
 import { validateTCKN, createPetitionDocument, type PetitionData } from "../lib/petition";
 
 /**
  * Petition Wizard (Dilekçe Sihirbazı): Guided petition creation with
- * TCKN mod-11 validation and export to UDF and PDF (v5.3 - Issue #247).
+ * TCKN mod-11 validation and export to DOCX and PDF. UYAP `.udf` output is
+ * experimental and only offered while `experimentalUdf` is on
+ * (RELEASE_READINESS.md).
  */
 export function PetitionWizard() {
   const t = useT();
@@ -32,7 +35,7 @@ export function PetitionWizard() {
     setData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleExport = async (format: "udf" | "pdf") => {
+  const handleExport = async (format: "udf" | "pdf" | "docx") => {
     if (!data.recipientAuthority.trim() || !data.subject.trim() || !data.fullName.trim() || !data.bodyText.trim()) {
       useToasts.getState().push({
         kind: "info",
@@ -57,17 +60,21 @@ export function PetitionWizard() {
       filters:
         format === "udf"
           ? [{ name: "UYAP Doküman Formatı (*.udf)", extensions: ["udf"] }]
-          : [{ name: "PDF Belgesi (*.pdf)", extensions: ["pdf"] }],
+          : format === "docx"
+            ? [{ name: "Word Belgesi (*.docx)", extensions: ["docx"] }]
+            : [{ name: "PDF Belgesi (*.pdf)", extensions: ["pdf"] }],
     });
 
     if (!path || typeof path !== "string") return;
 
     setBusy(true);
     try {
-      if (format === "udf") {
-        await saveDocument("writer", doc, path);
-      } else {
+      if (format === "pdf") {
         await exportPdf("writer", doc, path);
+      } else {
+        // UDF and DOCX both save through the Writer pipeline, which picks the
+        // writer from the path extension.
+        await saveDocument("writer", doc, path);
       }
       useToasts.getState().push({
         kind: "success",
@@ -80,10 +87,16 @@ export function PetitionWizard() {
     }
   };
 
+  const udfEnabled = flagEnabled("experimentalUdf");
+
   return (
     <Screen
       title="Dilekçe Sihirbazı"
-      subtitle="Resmî makamlara sunulmak üzere standartlara uygun UDF ve PDF dilekçe oluşturun."
+      subtitle={
+        udfEnabled
+          ? "Resmî makamlara sunulmak üzere standartlara uygun UDF, DOCX ve PDF dilekçe oluşturun."
+          : "Resmî makamlara sunulmak üzere standartlara uygun DOCX ve PDF dilekçe oluşturun."
+      }
     >
       <div className="flex flex-col gap-4 max-w-4xl mx-auto">
         <Card className="p-5 flex flex-col gap-4">
@@ -157,13 +170,23 @@ export function PetitionWizard() {
           </Field>
 
           <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-hairline">
+            {udfEnabled ? (
+              <Button
+                variant="default"
+                icon={<FileText className="w-4 h-4" />}
+                disabled={busy}
+                onClick={() => handleExport("udf")}
+              >
+                UYAP UDF Olarak Kaydet
+              </Button>
+            ) : null}
             <Button
               variant="default"
               icon={<FileText className="w-4 h-4" />}
               disabled={busy}
-              onClick={() => handleExport("udf")}
+              onClick={() => handleExport("docx")}
             >
-              UYAP UDF Olarak Kaydet
+              DOCX Olarak Kaydet
             </Button>
             <Button
               variant="primary"

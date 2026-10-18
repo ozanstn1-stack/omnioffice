@@ -113,6 +113,7 @@ import { Invoices } from "./Invoices";
 describe("invoice screen", () => {
   beforeEach(() => {
     invoke.mockClear();
+    localStorage.clear();
   });
 
   it("shows the parsed invoice fields and its lines", async () => {
@@ -159,7 +160,18 @@ describe("invoice screen", () => {
     );
   });
 
-  it("renders Luca, Logo, and Zirve accounting export buttons when invoices are loaded", async () => {
+  it("hides the vendor accounting exports by default", async () => {
+    // Luca/Logo/Zirve exports are experimental: no real import template has
+    // verified them (RELEASE_READINESS.md), so no vendor name may appear.
+    render(<Invoices initialFiles={["C:/invoices/fatura.xml"]} />);
+    await screen.findByText("GIB2026000000001");
+    expect(screen.queryByRole("button", { name: /Luca/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Logo/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Zirve/i })).not.toBeInTheDocument();
+  });
+
+  it("offers Luca, Logo and Zirve once accountingVendorExport is on", async () => {
+    localStorage.setItem("flag:accountingVendorExport", "1");
     render(<Invoices initialFiles={["C:/invoices/fatura.xml"]} />);
     await screen.findByText("GIB2026000000001");
     expect(screen.getByRole("button", { name: /Luca/i })).toBeInTheDocument();
