@@ -6,6 +6,7 @@ type Dict = Record<string, string>;
 
 const en: Dict = {
   "app.name": "OmniOffice",
+  "common.experimental": "Experimental",
   "app.tagline": "Local-first office suite: Writer, Calc, Impress and a complete PDF toolkit.",
   "office.subtitle": "Writer, Calc and Impress in one workspace.",
   "office.documentsSubtitle": "Create and edit documents (DOCX, ODT, RTF, TXT, Markdown).",

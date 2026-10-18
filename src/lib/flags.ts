@@ -20,6 +20,10 @@ export const FEATURE_FLAGS = {
   experimentalUdf: false,
   /** Luca/Logo/Zirve exports: hidden until a real import template exists. */
   accountingVendorExport: false,
+  /** Document health: the checks are real, the file inputs are still fixed. */
+  experimentalDocumentHealth: false,
+  /** KVKK wizard: templates are real, the output is clipboard-only. */
+  experimentalKvkkWizard: false,
 } as const;
 
 export type FeatureFlag = keyof typeof FEATURE_FLAGS;
