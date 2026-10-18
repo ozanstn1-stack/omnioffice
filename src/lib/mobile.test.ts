@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { OFFICE_EXTENSIONS, isAndroid, mimeForName, publishedUri } from "./mobile";
+import { afterEach, describe, expect, it } from "vitest";
+import { isAndroid, mimeForName, officeExtensions, publishedUri } from "./mobile";
+import { officeDocumentExtensions } from "./format";
+
+afterEach(() => {
+  localStorage.clear();
+});
 
 describe("mobile helpers", () => {
   it("is a no-op on desktop", () => {
@@ -10,7 +15,6 @@ describe("mobile helpers", () => {
     for (const extension of [
       "docx",
       "odt",
-      "udf",
       "rtf",
       "txt",
       "md",
@@ -26,11 +30,19 @@ describe("mobile helpers", () => {
       "osdt",
       "oswk",
     ]) {
-      expect(OFFICE_EXTENSIONS).toContain(extension);
+      expect(officeExtensions()).toContain(extension);
     }
     // PDF and images are routed to their own tools, not the office workspace.
-    expect(OFFICE_EXTENSIONS).not.toContain("pdf");
-    expect(OFFICE_EXTENSIONS).not.toContain("png");
+    expect(officeExtensions()).not.toContain("pdf");
+    expect(officeExtensions()).not.toContain("png");
+  });
+
+  it("hides the experimental UYAP format unless the flag is on", () => {
+    expect(officeExtensions()).not.toContain("udf");
+    expect(officeDocumentExtensions()).not.toContain("udf");
+    localStorage.setItem("flag:experimentalUdf", "1");
+    expect(officeExtensions()).toContain("udf");
+    expect(officeDocumentExtensions()).toContain("udf");
   });
 
   it("keeps the existing PDF and image MIME mapping", () => {

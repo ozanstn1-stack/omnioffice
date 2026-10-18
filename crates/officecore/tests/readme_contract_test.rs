@@ -104,6 +104,21 @@ fn every_openable_format_is_documented() {
     assert!(missing.is_empty(), "README.md does not document these openable formats: {missing:?}");
 }
 
+/// Experimental formats are the engine's truth with a closed front door: the
+/// capability matrix still describes them (the Compatibility Center shows the
+/// data behind the `experimentalUdf` flag), but `supported_open_extensions`
+/// must not offer them by default.
+#[test]
+fn experimental_formats_are_not_offered_by_default() {
+    let extension = "udf";
+    let capabilities = format_capabilities(extension);
+    assert!(capabilities.experimental, "{extension} must be flagged experimental");
+    assert!(
+        !supported_open_extensions().contains(&extension),
+        "{extension} must not be offered by default while its external verification is missing"
+    );
+}
+
 #[test]
 fn documented_flags_match_the_capability_matrix() {
     let mut mismatches = Vec::new();

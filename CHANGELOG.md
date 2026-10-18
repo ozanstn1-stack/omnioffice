@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **UDF and vendor accounting exports are closed by default.** The UYAP `.udf`
+  format and the Luca/Logo/Zirve CSV exports are hidden behind the
+  off-by-default `experimentalUdf` and `accountingVendorExport` flags until a
+  real UYAP file and a real import template verify them. Every user-facing
+  entry point (open/save dialogs, converter, compatibility center, petition
+  wizard, Windows file association, Android intent filters) is closed; the
+  engine, tests and the fuzz target stay in the build, and README /
+  RELEASE_READINESS say exactly that. Developers can re-enable either area
+  with `flag:experimentalUdf=1` / `flag:accountingVendorExport=1`.
+
 ## [6.0.0] - Gerçek mobil (True mobile)
 
 A major release bringing first-class mobile capabilities to Android, featuring advanced document scanner page reordering and batch clearing, seamless launcher shortcuts and ACTION_SEND sharing intents for emails and e-invoices, and robust Storage Access Framework (SAF) integration validated with Android emulator launch smoke tests.

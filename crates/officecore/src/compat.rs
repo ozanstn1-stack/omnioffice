@@ -53,6 +53,11 @@ pub struct FormatCapabilities {
     pub save: bool,
     pub pdf_export: bool,
     pub lossless_native: bool,
+    /// The engine can handle the format, but the app does not offer it by
+    /// default: its external verification is still missing (UYAP `.udf` has
+    /// never been round-tripped against a real UYAP file). Experimental
+    /// formats are excluded from `supported_open_extensions`.
+    pub experimental: bool,
     pub features: Vec<FeatureSupport>,
 }
 
@@ -302,7 +307,8 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
         ),
         _ => (false, false, false, false, vec![]),
     };
-    FormatCapabilities { extension, open, edit, save, pdf_export, lossless_native: true, features }
+    let experimental = extension == "udf";
+    FormatCapabilities { extension, open, edit, save, pdf_export, lossless_native: true, experimental, features }
 }
 
 fn item(feature: &str, status: &str, message: &str) -> FeatureLoss {
@@ -702,10 +708,14 @@ pub fn deck_feature_report(deck: &Deck, format: &str) -> CompatibilityReport {
 }
 
 /// Every extension this build can open.
+/// Formats the app offers by default. Experimental formats (UYAP `.udf`,
+/// see `FormatCapabilities::experimental`) are deliberately absent until their
+/// external verification lands; the engine can still open them, and the
+/// frontend re-enables them behind the `experimentalUdf` flag.
 pub fn supported_open_extensions() -> Vec<&'static str> {
     vec![
-        "docx", "docm", "dotx", "odt", "udf", "rtf", "txt", "md", "markdown", "html", "htm", "xlsx", "xlsm", "xls",
-        "ods", "csv", "tsv", "pptx", "pptm", "odp", "oswk",
+        "docx", "docm", "dotx", "odt", "rtf", "txt", "md", "markdown", "html", "htm", "xlsx", "xlsm", "xls", "ods",
+        "csv", "tsv", "pptx", "pptm", "odp", "oswk",
     ]
 }
 

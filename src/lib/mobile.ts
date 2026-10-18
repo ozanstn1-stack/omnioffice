@@ -3,6 +3,7 @@ import { appCacheDir, join } from "@tauri-apps/api/path";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { readFile, writeFile } from "@tauri-apps/plugin-fs";
 import * as AndroidFs from "tauri-plugin-android-fs-api";
+import { flagEnabled } from "./flags";
 import { fileBaseName, uid } from "./format";
 
 // ---------------------------------------------------------------------------
@@ -87,7 +88,7 @@ export function mimeForName(name: string): string {
   if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   if (lower.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
   if (lower.endsWith(".odt")) return "application/vnd.oasis.opendocument.text";
-  if (lower.endsWith(".udf")) return "application/x-udf";
+  if (flagEnabled("experimentalUdf") && lower.endsWith(".udf")) return "application/x-udf";
   if (lower.endsWith(".ods")) return "application/vnd.oasis.opendocument.spreadsheet";
   if (lower.endsWith(".odp")) return "application/vnd.oasis.opendocument.presentation";
   if (lower.endsWith(".doc")) return "application/msword";
@@ -101,22 +102,23 @@ function mimeFilters(accept: "pdf" | "image" | "any" | "document"): string[] {
   if (accept === "image") return ["image/*"];
   // `any` is the Home picker and `document` the AI assistant: both accept the
   // office formats the open-with intent filter accepts.
-  return [...OFFICE_MIME_TYPES, "image/*"];
+  return [...officeMimeTypes(), "image/*"];
 }
 
 /**
  * Office formats the Android shell accepts. Kept in sync with the intent
  * filters in AndroidManifest.xml and the whitelist in MainActivity.kt so an
  * open-with intent never produces a file the app cannot route.
+ *
+ * `udf` is experimental and only listed while `experimentalUdf` is on.
  */
-export const OFFICE_EXTENSIONS: readonly string[] = [
+const OFFICE_EXTENSIONS_BASE: readonly string[] = [
   "docx",
   "docm",
   "dotx",
   "doc",
   "dot",
   "odt",
-  "udf",
   "rtf",
   "txt",
   "md",
@@ -137,16 +139,23 @@ export const OFFICE_EXTENSIONS: readonly string[] = [
   "oswk",
 ];
 
+/** The accepted office extensions, honouring the `experimentalUdf` flag. */
+export function officeExtensions(): readonly string[] {
+  if (flagEnabled("experimentalUdf")) {
+    return [...OFFICE_EXTENSIONS_BASE, "udf"];
+  }
+  return OFFICE_EXTENSIONS_BASE;
+}
+
 /**
- * MIME types for {@link OFFICE_EXTENSIONS}. The last entry is a catch-all so
+ * MIME types for {@link officeExtensions}. The last entry is a catch-all so
  * providers that report a generic type still offer the app. PDF is listed
  * explicitly because the vault imports PDFs through the same picker.
  */
-const OFFICE_MIME_TYPES: readonly string[] = [
+const OFFICE_MIME_TYPES_BASE: readonly string[] = [
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.oasis.opendocument.text",
-  "application/x-udf",
   "application/rtf",
   "application/msword",
   "application/vnd.ms-powerpoint",
@@ -161,6 +170,14 @@ const OFFICE_MIME_TYPES: readonly string[] = [
   "application/vnd.oasis.opendocument.presentation",
   "application/octet-stream",
 ];
+
+/** The accepted MIME types, honouring the `experimentalUdf` flag. */
+function officeMimeTypes(): readonly string[] {
+  if (flagEnabled("experimentalUdf")) {
+    return [...OFFICE_MIME_TYPES_BASE, "application/x-udf"];
+  }
+  return OFFICE_MIME_TYPES_BASE;
+}
 
 /** Copies picked SAF URIs into a fresh cache directory and returns real paths. */
 async function importPickedUris(picked: AndroidFs.FsUri[], fallbackName: string): Promise<string[]> {
@@ -219,7 +236,7 @@ export async function pickAndroidFilesWithMime(mimeTypes: string[], multiple = t
  * describe their files precisely are still usable.
  */
 export async function pickOfficeFiles(multiple = true): Promise<string[]> {
-  return pickAndroidFilesWithMime([...OFFICE_MIME_TYPES, "*/*"], multiple);
+  return pickAndroidFilesWithMime([...officeMimeTypes(), "*/*"], multiple);
 }
 
 /**

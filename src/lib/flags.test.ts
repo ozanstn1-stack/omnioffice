@@ -13,11 +13,22 @@ describe("feature flags", () => {
     expect(flagEnabled("experimentalScanner")).toBe(false);
   });
 
+  it("keeps the unverified formats hidden by default", () => {
+    // UDF and the Luca/Logo/Zirve exports are only reopened when their
+    // external verification lands (RELEASE_READINESS.md).
+    expect(FEATURE_FLAGS.experimentalUdf).toBe(false);
+    expect(FEATURE_FLAGS.accountingVendorExport).toBe(false);
+    expect(flagEnabled("experimentalUdf")).toBe(false);
+    expect(flagEnabled("accountingVendorExport")).toBe(false);
+  });
+
   it("honours a development override", () => {
     localStorage.setItem("flag:experimentalScanner", "1");
     expect(flagEnabled("experimentalScanner")).toBe(true);
     localStorage.setItem("flag:experimentalScanner", "0");
     expect(flagEnabled("experimentalScanner")).toBe(false);
+    localStorage.setItem("flag:experimentalUdf", "1");
+    expect(flagEnabled("experimentalUdf")).toBe(true);
   });
 
   it("ignores an unknown override value", () => {

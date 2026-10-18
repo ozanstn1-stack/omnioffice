@@ -6,7 +6,8 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { fileBaseName, uid } from "../lib/format";
+import { fileBaseName, officeDocumentExtensions, uid } from "../lib/format";
+import { flagEnabled } from "../lib/flags";
 import {
   isAndroid,
   openAnyFile,
@@ -59,7 +60,9 @@ const FILTERS: Record<OfficeKind, { name: string; extensions: string[] }[]> = {
   writer: [
     { name: "Word document", extensions: ["docx"] },
     { name: "OpenDocument text", extensions: ["odt"] },
-    { name: "UYAP document", extensions: ["udf"] },
+    // UYAP `.udf` is experimental: no real UYAP file has verified the round
+    // trip yet (RELEASE_READINESS.md), so the filter only appears with the flag.
+    ...(flagEnabled("experimentalUdf") ? [{ name: "UYAP document", extensions: ["udf"] }] : []),
     { name: "Rich text", extensions: ["rtf"] },
     { name: "Plain text", extensions: ["txt"] },
     { name: "Markdown", extensions: ["md"] },
@@ -453,7 +456,7 @@ export function useOfficeSession(tab: OfficeTab) {
       filters: [
         {
           name: "Office documents",
-          extensions: ["docx", "odt", "udf", "rtf", "txt", "md", "html", "xlsx", "ods", "csv", "pptx", "odp", "oswk"],
+          extensions: [...officeDocumentExtensions()],
         },
       ],
     });
@@ -527,7 +530,7 @@ export async function openIntoWorkspace(): Promise<string | null> {
       filters: [
         {
           name: "Documents",
-          extensions: ["docx", "odt", "udf", "rtf", "txt", "md", "html", "xlsx", "ods", "csv", "pptx", "odp", "oswk"],
+          extensions: [...officeDocumentExtensions()],
         },
         { name: "All files", extensions: ["*"] },
       ],

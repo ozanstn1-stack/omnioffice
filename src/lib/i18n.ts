@@ -1120,6 +1120,9 @@ const en: Dict = {
   "office.closeKeep": "Keep open",
   "office.noTabs": "No document open",
   "office.noTabsHint": "Create a document, spreadsheet or presentation to start.",
+  "office.udfClosed": "UYAP .udf support is closed for now",
+  "office.udfClosedHint":
+    "The UDF format stays hidden until real UYAP files verify the round trip. Developers can test it with flag:experimentalUdf=1.",
   "office.newDocument": "Document",
   "office.newSpreadsheet": "Spreadsheet",
   "office.newPresentation": "Presentation",

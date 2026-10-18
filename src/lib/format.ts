@@ -1,3 +1,5 @@
+import { flagEnabled } from "./flags";
+
 export function formatBytes(bytes: number | null | undefined): string {
   if (bytes === null || bytes === undefined || Number.isNaN(bytes)) return "—";
   if (bytes < 1024) return `${bytes} B`;
@@ -62,15 +64,18 @@ export function isPdf(path: string): boolean {
  * The office formats the workspace, the AI assistant and the global open flow
  * accept. Kept in one place so the pickers, the routing and the AI text
  * extraction never drift apart.
+ *
+ * `udf` (UYAP) is experimental: no real UYAP file has verified the round trip
+ * yet, so it stays hidden behind the `experimentalUdf` flag (see
+ * RELEASE_READINESS.md for the reopen criteria).
  */
-export const OFFICE_DOCUMENT_EXTENSIONS: readonly string[] = [
+const OFFICE_DOCUMENT_EXTENSIONS_BASE: readonly string[] = [
   "docx",
   "docm",
   "dotx",
   "doc",
   "dot",
   "odt",
-  "udf",
   "rtf",
   "txt",
   "md",
@@ -93,8 +98,16 @@ export const OFFICE_DOCUMENT_EXTENSIONS: readonly string[] = [
   "oswk",
 ];
 
+/** The accepted office extensions, honouring the `experimentalUdf` flag. */
+export function officeDocumentExtensions(): readonly string[] {
+  if (flagEnabled("experimentalUdf")) {
+    return [...OFFICE_DOCUMENT_EXTENSIONS_BASE, "udf"];
+  }
+  return OFFICE_DOCUMENT_EXTENSIONS_BASE;
+}
+
 export function isOfficeDocument(path: string): boolean {
-  return OFFICE_DOCUMENT_EXTENSIONS.includes((path.split(".").pop() ?? "").toLowerCase());
+  return officeDocumentExtensions().includes((path.split(".").pop() ?? "").toLowerCase());
 }
 
 export const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif"];

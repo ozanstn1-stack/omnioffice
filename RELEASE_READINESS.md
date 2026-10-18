@@ -50,8 +50,12 @@ with a regression test that failed before the fix:
 
 ### Not done in this pass (honest)
 
-- The UDF reader/writer is still **unverified against a real UYAP sample**; the
-  v5.2 file corpus is required to close that.
+- The UDF reader/writer is **disabled by default** (v6.0.1): it was never
+  verified against a real UYAP sample, so every user-facing entry point (open
+  and save dialogs, converter, compatibility center, petition wizard, Windows
+  file association, Android intent filters) is closed behind the off-by-default
+  `experimentalUdf` flag. Reopening requires a real UYAP file that round-trips.
+  The code, tests and the fuzz target stay in the build.
 - Comparison renders a removed table as delete-marked text (no block-level
   revision in the model) and carries a matched table over from the revised side.
 - The remaining P1 audit items (vault Turkish folding, invoice badge, tracked
@@ -232,8 +236,12 @@ with a regression test that failed before the fix:
   the ZIP + `content.xml` container (paragraphs, headings, lists, character
   formatting, alignment, indents, spacing, tables with spans, page setup,
   headers/footers). Unknown elements are kept verbatim in
-  `TextDocument.preservedUdf` and re-exported. Windows `fileAssociations` and the
-  Android intent filters + `IncomingFiles.openableExtensions` include `.udf`.
+  `TextDocument.preservedUdf` and re-exported.
+  **Status (v6.0.1): disabled by default** — the format was never verified
+  against a real UYAP sample, so the Windows `fileAssociations`, the Android
+  intent filters, `IncomingFiles.openableExtensions`, the converter targets,
+  the pickers and the petition wizard's UDF button are all closed behind the
+  off-by-default `experimentalUdf` flag.
   Tests: 8 unit tests plus `tests/udf_fixture_test.rs` over a hand-authored
   `tests/fixtures/uyap-ornek.udf`; a `src-tauri` open/save/convert test.
 - **e-Fatura / e-Arşiv UBL-TR** (issue #97): `crates/officecore/src/ubl.rs`
@@ -266,7 +274,9 @@ with a regression test that failed before the fix:
 - UDF is a **closed format** implemented from its documented container and the
   module's own files; **no open-licensed third-party `.udf` sample was
   available in this environment**, so compatibility with the official editor is
-  not proven. Unknown elements keep their bytes, not their formatting.
+  not proven. Unknown elements keep their bytes, not their formatting. Since
+  v6.0.1 the format is disabled by default (`experimentalUdf` flag) for exactly
+  this reason.
 - The **invoice XSLT is never executed** (the app always uses its own template).
 - GİB karekod verification is against the **UBL document**, not the AI
   extraction cards; the AI screen is not wired to it.

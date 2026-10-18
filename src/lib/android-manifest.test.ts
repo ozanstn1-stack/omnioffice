@@ -52,7 +52,6 @@ const SEND_MULTIPLE = "android.intent.action.SEND_MULTIPLE";
 const TYPES: Record<string, string[]> = {
   docx: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
   odt: ["application/vnd.oasis.opendocument.text"],
-  udf: ["application/x-udf"],
   rtf: ["application/rtf", "text/rtf"],
   xlsx: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
   ods: ["application/vnd.oasis.opendocument.spreadsheet"],
@@ -116,6 +115,13 @@ describe("Android intent filters", () => {
         expect(filter.paths, extension).toContain(`.*\\\\.${extension}`);
       }
     }
+  });
+
+  it("does not advertise the experimental UYAP format", () => {
+    // UDF stays closed until real UYAP files verify the round trip
+    // (RELEASE_READINESS.md); the manifest must not offer it.
+    expect(manifestXml).not.toContain("x-udf");
+    expect(manifestXml).not.toContain(".udf");
   });
 
   it("leaves the manifest to us: tauri-build must not regenerate the associations", () => {

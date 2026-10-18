@@ -13,7 +13,7 @@ import { toAppError } from "./api";
 import { makeTranslate } from "./i18n";
 import { describeImportLimit, splitImportWarnings } from "./importWarnings";
 import { BlobSendCache, stripImageBlobs } from "./blob-store";
-import { OFFICE_DOCUMENT_EXTENSIONS, fileBaseName, isOfficeDocument } from "./format";
+import { fileBaseName, isOfficeDocument } from "./format";
 import { useRecent, useSettings, useToasts } from "./store";
 
 export type OfficeModel = TextDocument | Workbook | Deck;
@@ -521,8 +521,6 @@ export const useDraw = create<DrawState>((set, get) => ({
 // Opening files into the workspace (shared by Home, the launcher, toolbars,
 // drag & drop, file associations and the command line)
 // ---------------------------------------------------------------------------
-
-export const OFFICE_EXTENSIONS = OFFICE_DOCUMENT_EXTENSIONS;
 
 export function isOfficePath(path: string): boolean {
   return isOfficeDocument(path);
