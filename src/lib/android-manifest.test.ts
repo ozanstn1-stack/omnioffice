@@ -59,6 +59,8 @@ const TYPES: Record<string, string[]> = {
   odp: ["application/vnd.oasis.opendocument.presentation"],
   pdf: ["application/pdf"],
   oswk: ["application/x-oswk"],
+  eml: ["message/rfc822"],
+  xml: ["text/xml", "application/xml"],
   txt: ["text/plain"],
   md: ["text/markdown"],
   html: ["text/html"],

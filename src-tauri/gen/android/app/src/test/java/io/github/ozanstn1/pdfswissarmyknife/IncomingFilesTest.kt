@@ -53,6 +53,9 @@ class IncomingFilesTest {
     assertTrue(IncomingFiles.isOpenableName("notes.OSWK"))
     assertTrue(IncomingFiles.isOpenableName("photo.jpeg"))
     assertTrue(IncomingFiles.isOpenableName("sheet.xlsx"))
+    assertTrue(IncomingFiles.isOpenableName("invoice.xml"))
+    assertTrue(IncomingFiles.isOpenableName("mail.eml"))
+    assertTrue(IncomingFiles.isOpenableName("archive.zip"))
   }
 
   @Test
@@ -78,5 +81,19 @@ class IncomingFilesTest {
     val output = ByteArrayOutputStream()
     assertFalse(IncomingFiles.copyCapped(ByteArrayInputStream(payload), output, 1024))
     assertTrue(output.size() <= 1024)
+  }
+
+  @Test
+  fun `saveSharedText writes plain text into incoming cache directory`() {
+    val tempRoot = java.nio.file.Files.createTempDirectory("pdfsak-shared-text").toFile()
+    try {
+      val saved = IncomingFiles.saveSharedText("Merhaba Dünya", "Not Başlığı", tempRoot)
+      assertTrue(saved != null && saved.isFile)
+      assertEquals("Not Başlığı.txt", saved!!.name)
+      assertEquals("Merhaba Dünya", saved.readText(Charsets.UTF_8))
+      assertNull(IncomingFiles.saveSharedText("   ", null, tempRoot))
+    } finally {
+      tempRoot.deleteRecursively()
+    }
   }
 }

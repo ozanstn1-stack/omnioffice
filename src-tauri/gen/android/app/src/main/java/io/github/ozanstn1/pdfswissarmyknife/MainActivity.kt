@@ -45,6 +45,20 @@ class MainActivity : TauriActivity() {
 
   private fun importOpenWithIntent(intent: Intent?) {
     if (intent == null) return
+    when (intent.action) {
+      ACTION_SHORTCUT_SCAN -> {
+        appendPendingOpen("__action:scan")
+        return
+      }
+      ACTION_SHORTCUT_NEW_DOCUMENT -> {
+        appendPendingOpen("__action:new_document")
+        return
+      }
+      ACTION_SHORTCUT_RECENT_FILES -> {
+        appendPendingOpen("__action:recent_files")
+        return
+      }
+    }
     val candidates = when (intent.action) {
       Intent.ACTION_VIEW -> listOfNotNull(intent.data)
       Intent.ACTION_SEND -> listOfNotNull(streamUri(intent)) + clipUris(intent)
@@ -52,7 +66,20 @@ class MainActivity : TauriActivity() {
       else -> emptyList()
     }
     val uris = candidates.filter { uri -> uri.scheme == "content" || uri.scheme == "file" }
-    if (uris.isEmpty()) return
+    if (uris.isEmpty()) {
+      if (intent.action == Intent.ACTION_SEND) {
+        val sharedText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
+        if (!sharedText.isNullOrBlank()) {
+          val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT)
+          Thread {
+            IncomingFiles.saveSharedText(sharedText, subject, cacheDir)?.let { saved ->
+              appendPendingOpen(saved.absolutePath)
+            }
+          }.start()
+        }
+      }
+      return
+    }
     Thread {
       for (uri in uris) {
         try {
@@ -217,6 +244,9 @@ class MainActivity : TauriActivity() {
   companion object {
     private const val TAG = "PdfSakIntent"
     private const val PENDING_OPEN_FILE = "pending-open.txt"
+    private const val ACTION_SHORTCUT_SCAN = "io.github.ozanstn1.pdfswissarmyknife.SCAN"
+    private const val ACTION_SHORTCUT_NEW_DOCUMENT = "io.github.ozanstn1.pdfswissarmyknife.NEW_DOCUMENT"
+    private const val ACTION_SHORTCUT_RECENT_FILES = "io.github.ozanstn1.pdfswissarmyknife.RECENT_FILES"
     private val pendingOpenLock = Any()
   }
 }
