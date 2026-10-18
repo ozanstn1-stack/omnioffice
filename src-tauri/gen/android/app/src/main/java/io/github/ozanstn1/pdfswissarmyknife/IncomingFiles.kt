@@ -24,7 +24,7 @@ object IncomingFiles {
     "xlsx", "ods", "csv", "tsv",
     "pptx", "odp",
     "pdf", "osed", "ospr", "osdt", "oswk",
-    "eml", "xml", "zip",
+    "eml", "xml",
     "png", "jpg", "jpeg", "webp", "bmp", "gif", "tif", "tiff",
   )
 
