@@ -829,7 +829,12 @@ export default function App() {
         { id: "presentations", label: t("nav.presentations"), icon: <Presentation size={16} /> },
         { id: "templates", label: t("nav.templates"), icon: <LayoutTemplate size={16} /> },
         { id: "petition", label: t("nav.petition"), icon: <FilePlus2 size={16} /> },
-        { id: "kvkk", label: t("nav.kvkk"), icon: <ShieldCheck size={16} /> },
+        {
+          id: "kvkk",
+          label: t("nav.kvkk"),
+          icon: <ShieldCheck size={16} />,
+          hidden: !flagEnabled("experimentalKvkkWizard"),
+        },
       ],
     },
     {
@@ -869,7 +874,12 @@ export default function App() {
         { id: "compress", label: t("nav.compress"), icon: <Minimize2 size={16} /> },
         { id: "pageTools", label: t("nav.pageTools"), icon: <Wand2 size={16} /> },
         { id: "pdfStudio", label: t("nav.pdfStudio"), icon: <ShieldCheck size={16} /> },
-        { id: "documentHealth", label: t("nav.documentHealth"), icon: <ShieldCheck size={16} /> },
+        {
+          id: "documentHealth",
+          label: t("nav.documentHealth"),
+          icon: <ShieldCheck size={16} />,
+          hidden: !flagEnabled("experimentalDocumentHealth"),
+        },
         { id: "watermark", label: t("nav.watermark"), icon: <Stamp size={16} /> },
         { id: "annotate", label: t("nav.annotate"), icon: <Type size={16} /> },
         { id: "redact", label: t("nav.redact"), icon: <Eraser size={16} /> },

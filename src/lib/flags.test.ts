@@ -22,6 +22,15 @@ describe("feature flags", () => {
     expect(flagEnabled("accountingVendorExport")).toBe(false);
   });
 
+  it("keeps the unfinished screens hidden by default", () => {
+    // Document health has fixed inputs and the KVKK wizard is clipboard-only;
+    // both stay off until the audit plan's A-phase work lands.
+    expect(FEATURE_FLAGS.experimentalDocumentHealth).toBe(false);
+    expect(FEATURE_FLAGS.experimentalKvkkWizard).toBe(false);
+    expect(flagEnabled("experimentalDocumentHealth")).toBe(false);
+    expect(flagEnabled("experimentalKvkkWizard")).toBe(false);
+  });
+
   it("honours a development override", () => {
     localStorage.setItem("flag:experimentalScanner", "1");
     expect(flagEnabled("experimentalScanner")).toBe(true);

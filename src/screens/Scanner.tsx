@@ -115,7 +115,15 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
   };
 
   return (
-    <Screen title={t("scanner.title")} subtitle={t("scanner.subtitle")}>
+    <Screen
+      title={
+        <span className="flex items-center gap-2">
+          {t("scanner.title")}
+          <Badge tone="warn">{t("common.experimental")}</Badge>
+        </span>
+      }
+      subtitle={t("scanner.subtitle")}
+    >
       <div className="flex flex-col gap-4">
         <Card className="p-5 flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">

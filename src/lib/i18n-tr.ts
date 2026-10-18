@@ -44,6 +44,7 @@ export const tr: Record<string, string> = {
     "{sheet} sayfası için geçerlidir. Bu ayarlar XLSX pageSetup bölümüne yazılır ve PDF dışa aktarımında kullanılır.",
 
   "app.name": "OmniOffice",
+  "common.experimental": "Deneysel",
   "app.tagline": "Yerel çalışan ofis paketi: Writer, Calc, Impress ve eksiksiz PDF araç seti.",
   "office.subtitle": "Writer, Calc ve Impress tek çalışma alanında.",
   "office.documentsSubtitle": "Belge oluşturun ve düzenleyin (DOCX, ODT, RTF, TXT, Markdown).",

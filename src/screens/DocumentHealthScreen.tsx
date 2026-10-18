@@ -214,7 +214,12 @@ export function DocumentHealthScreen({
 
   return (
     <Screen
-      title="Belge Sağlığı ve KVKK Denetimi"
+      title={
+        <span className="flex items-center gap-2">
+          Belge Sağlığı ve KVKK Denetimi
+          <Badge tone="warn">{t("common.experimental")}</Badge>
+        </span>
+      }
       subtitle="Kişisel veri riskleri, gizli meta veriler, erişilebilirlik ve imza durumunu tek tıkla analiz edin ve onarın."
       actions={
         <Button

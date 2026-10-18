@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { AlertTriangle, Copy, Download, Edit3, FileText, Shield } from "lucide-react";
-import { Button, Card, Field, Segmented, TextArea, TextInput } from "../components/ui";
+import { Badge, Button, Card, Field, Segmented, TextArea, TextInput } from "../components/ui";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { generateKvkkText, type KvkkTemplateType } from "../lib/kvkk-templates";
 import { useT } from "../lib/i18n";
@@ -164,7 +164,12 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
 
   return (
     <Screen
-      title="KVKK Aydınlatma ve Açık Rıza Sihirbazı"
+      title={
+        <span className="flex items-center gap-2">
+          KVKK Aydınlatma ve Açık Rıza Sihirbazı
+          <Badge tone="warn">{t("common.experimental")}</Badge>
+        </span>
+      }
       subtitle="Kurumunuza özel çalışan, müşteri, ziyaretçi ve açık rıza taslak metinlerini saniyeler içinde hazırlayın."
     >
       <TwoColumn
