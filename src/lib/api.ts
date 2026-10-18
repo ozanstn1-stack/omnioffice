@@ -62,6 +62,9 @@ import type {
   Thumbnail,
   WatermarkOptions,
 } from "./types";
+import type { CertificateItem } from "./generated/CertificateItem";
+import type { CertificateVerification } from "./generated/CertificateVerification";
+import type { RedactionCertificate } from "./generated/RedactionCertificate";
 import { trackJobInvocation } from "./job-retries";
 
 /**
@@ -635,6 +638,26 @@ export const redactPdf = (
 
 export const detectSensitiveText = (path: string, page: number, password?: string) =>
   invoke<RedactionMatch[]>("detect_sensitive_text", { path, page, password: password || null });
+
+/**
+ * Builds the verifiable redaction certificate: digests of the input and the
+ * certified output, the item list (page/category/rule - never a value) and,
+ * when `tsaUrl` is set, an RFC 3161 timestamp over the certified digest.
+ */
+export const redactCertificateBuild = (request: {
+  originalPath: string;
+  redactedPath: string;
+  items: CertificateItem[];
+  tsaUrl?: string | null;
+}) => invoke<RedactionCertificate>("redact_certificate_build", { request });
+
+/** Embeds the certificate in the redacted PDF and returns its verification. */
+export const redactCertificateEmbed = (path: string, certificate: RedactionCertificate) =>
+  invoke<CertificateVerification>("redact_certificate_embed", { path, certificate });
+
+/** Extracts and verifies the certificate a PDF carries, if any. */
+export const redactCertificateVerify = (path: string) =>
+  invoke<CertificateVerification>("redact_certificate_verify", { path });
 
 export const comparePdfs = (
   left: string,

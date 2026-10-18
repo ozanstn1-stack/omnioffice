@@ -32,6 +32,7 @@
 //! * `stamp`     - header/footer text and Bates numbering stamps
 
 pub mod annotate;
+pub mod certificate;
 pub mod compare;
 pub mod compress;
 pub mod content;
