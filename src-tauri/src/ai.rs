@@ -776,6 +776,8 @@ pub struct AiSummarizeRequest {
     pub pages: Option<Vec<u32>>,
     pub password: Option<String>,
     pub job_id: String,
+    #[serde(default)]
+    pub consent: bool,
 }
 
 /// Manual `Debug`: the derived one would print the document password into any
@@ -800,6 +802,7 @@ pub async fn ai_summarize(
 ) -> Result<AiTextResult, PdfError> {
     let started = std::time::Instant::now();
     let (cancel, mut job_guard) = registry.register_ai_managed(&request.job_id);
+    require_consent(request.consent, "sending document text to the provider")?;
     let config = build_config(&app)?;
     let model = config.model.clone();
     let path = crate::paths::input_file(&request.path)?;
@@ -846,6 +849,8 @@ pub struct AiTranslateRequest {
     pub pages: Option<Vec<u32>>,
     pub password: Option<String>,
     pub job_id: String,
+    #[serde(default)]
+    pub consent: bool,
 }
 
 /// Manual `Debug`; see [`AiSummarizeRequest`] for why the password is redacted.
@@ -869,6 +874,7 @@ pub async fn ai_translate(
 ) -> Result<AiTextResult, PdfError> {
     let started = std::time::Instant::now();
     let (cancel, mut job_guard) = registry.register_ai_managed(&request.job_id);
+    require_consent(request.consent, "sending document text to the provider")?;
     let config = build_config(&app)?;
     let model = config.model.clone();
     let path = crate::paths::input_file(&request.path)?;
@@ -928,6 +934,8 @@ pub struct AiAskRequest {
     pub question: String,
     pub password: Option<String>,
     pub job_id: String,
+    #[serde(default)]
+    pub consent: bool,
 }
 
 /// Manual `Debug`; see [`AiSummarizeRequest`] for why the password is redacted.
@@ -954,6 +962,7 @@ pub async fn ai_ask(
     if request.question.trim().is_empty() {
         return Err(PdfError::InvalidInput("Enter a question.".into()));
     }
+    require_consent(request.consent, "sending document text to the provider")?;
     let config = build_config(&app)?;
     let model = config.model.clone();
     let path = crate::paths::input_file(&request.path)?;
@@ -1246,12 +1255,14 @@ pub async fn ai_chat(
                 folder: None,
                 limit: 5,
                 offset: 0,
+                embedding_consent: request.embedding_consent,
             };
             // Hybrid: BM25 over the persistent index plus the stored chunk
             // vectors, fused with RRF. The query vector is only computed when
-            // the provider supports embeddings.
-            let embeddings = aicore::ProviderCapabilities::for_kind(client.config().provider).embeddings
-                || client.config().embedding_model.is_some();
+            // the user consented and the provider supports embeddings.
+            let embeddings = request.embedding_consent
+                && (aicore::ProviderCapabilities::for_kind(client.config().provider).embeddings
+                    || client.config().embedding_model.is_some());
             let model = client.config().embedding_model.clone().unwrap_or_else(|| "nomic-embed-text".to_string());
             let query_vector = if embeddings { client.embed(&request.question).await.ok() } else { None };
             let search_res = crate::vault::hybrid_search_at(&root, &search_req, &model, query_vector.as_deref());
@@ -1280,7 +1291,10 @@ pub async fn ai_chat(
                     None,
                     &cancel,
                 )?;
-                if aicore::ProviderCapabilities::for_kind(client.config().provider).embeddings || client.config().embedding_model.is_some() {
+                if request.embedding_consent
+                    && (aicore::ProviderCapabilities::for_kind(client.config().provider).embeddings
+                        || client.config().embedding_model.is_some())
+                {
                     if let Ok(query_vec) = client.embed(&request.question).await {
                         let mut scored: Vec<((u32, String), f32)> = Vec::new();
                         for (page_num, page_text) in &extracted {
@@ -1382,13 +1396,22 @@ pub async fn ai_chat(
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
+pub struct SavedChatMessage {
+    pub role: String,
+    pub content: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub citations: Vec<AiCitation>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct SavedChatThread {
     pub id: String,
     pub title: String,
     pub document_path: Option<String>,
     pub created_at: String,
     pub updated_at: String,
-    pub messages: Vec<prompts::DocChatMessage>,
+    pub messages: Vec<SavedChatMessage>,
 }
 
 fn chats_dir(app: &AppHandle) -> Result<PathBuf, PdfError> {
@@ -1523,6 +1546,8 @@ pub struct AiExtractRequest {
     pub extra_fields: Vec<String>,
     pub password: Option<String>,
     pub job_id: String,
+    #[serde(default)]
+    pub consent: bool,
 }
 
 impl std::fmt::Debug for AiExtractRequest {
@@ -1554,6 +1579,7 @@ pub async fn ai_extract_table(
 ) -> Result<AiTableResult, PdfError> {
     let started = std::time::Instant::now();
     let (cancel, mut job_guard) = registry.register_ai_managed(&request.job_id);
+    require_consent(request.consent, "sending document text to the provider")?;
     let config = build_config(&app)?;
     let path = crate::paths::input_file(&request.path)?;
     let extracted = extract_pages(
@@ -1924,6 +1950,8 @@ pub struct AiCleanupRequest {
     pub pages: Option<Vec<u32>>,
     pub password: Option<String>,
     pub job_id: String,
+    #[serde(default)]
+    pub consent: bool,
 }
 
 /// Manual `Debug`; see [`AiSummarizeRequest`] for why the password is redacted.
@@ -1946,6 +1974,7 @@ pub async fn ai_cleanup_text(
 ) -> Result<AiTextResult, PdfError> {
     let started = std::time::Instant::now();
     let (cancel, mut job_guard) = registry.register_ai_managed(&request.job_id);
+    require_consent(request.consent, "sending document text to the provider")?;
     let config = build_config(&app)?;
     let model = config.model.clone();
     let path = crate::paths::input_file(&request.path)?;
@@ -1992,6 +2021,8 @@ pub struct AiMetadataRequest {
     pub path: String,
     pub password: Option<String>,
     pub job_id: String,
+    #[serde(default)]
+    pub consent: bool,
 }
 
 /// Manual `Debug`; see [`AiSummarizeRequest`] for why the password is redacted.
@@ -2012,6 +2043,7 @@ pub async fn ai_suggest_metadata(
     request: AiMetadataRequest,
 ) -> Result<prompts::MetadataSuggestion, PdfError> {
     let (cancel, mut job_guard) = registry.register_ai_managed(&request.job_id);
+    require_consent(request.consent, "sending document text to the provider")?;
     let config = build_config(&app)?;
     let path = crate::paths::input_file(&request.path)?;
     let extracted = extract_pages(&app, &request.job_id, path.as_path(), request.password.as_deref(), None, &cancel)?;
@@ -2197,6 +2229,7 @@ mod tests {
             pages: Some(vec![1, 2]),
             password: Some(password.into()),
             job_id: "job-1".into(),
+            consent: true,
         };
         let translate = AiTranslateRequest {
             path: "C:/docs/report.pdf".into(),
@@ -2204,23 +2237,27 @@ mod tests {
             pages: None,
             password: Some(password.into()),
             job_id: "job-2".into(),
+            consent: true,
         };
         let ask = AiAskRequest {
             path: "C:/docs/report.pdf".into(),
             question: "total?".into(),
             password: Some(password.into()),
             job_id: "job-3".into(),
+            consent: true,
         };
         let cleanup = AiCleanupRequest {
             path: "C:/docs/report.pdf".into(),
             pages: None,
             password: Some(password.into()),
             job_id: "job-4".into(),
+            consent: true,
         };
         let metadata = AiMetadataRequest {
             path: "C:/docs/report.pdf".into(),
             password: Some(password.into()),
             job_id: "job-5".into(),
+            consent: true,
         };
         let chat = AiChatRequest {
             path: Some("C:/docs/report.pdf".into()),
@@ -2243,6 +2280,7 @@ mod tests {
             extra_fields: Vec::new(),
             password: Some(password.into()),
             job_id: "job-extract".into(),
+            consent: true,
         };
 
         for formatted in [
@@ -2261,7 +2299,8 @@ mod tests {
 
     #[test]
     fn request_debug_without_a_password_is_clean() {
-        let request = AiMetadataRequest { path: "C:/docs/a.pdf".into(), password: None, job_id: "job-6".into() };
+        let request =
+            AiMetadataRequest { path: "C:/docs/a.pdf".into(), password: None, job_id: "job-6".into(), consent: true };
         let formatted = format!("{request:?}");
         assert!(!formatted.contains("REDACTED"), "no marker when there is nothing to redact: {formatted}");
     }

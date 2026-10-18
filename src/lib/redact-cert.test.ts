@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildRedactionCertificate, renderCertificateMarkdown, type RedactedItemRecord } from "./redact-cert";
+import {
+  buildRedactionCertificate,
+  maskSensitiveValue,
+  renderCertificateMarkdown,
+  type RedactedItemRecord,
+} from "./redact-cert";
 
 describe("Redaction Certificate Engine (v5.4.0 - Issue #253)", () => {
   it("builds a structured redaction certificate with valid metadata", () => {
@@ -51,6 +56,7 @@ describe("Redaction Certificate Engine (v5.4.0 - Issue #253)", () => {
       redactedSha256: "ccc333ddd444",
     });
 
+    expect(cert.verificationStatus).toBe("verified");
     const markdown = renderCertificateMarkdown(cert);
     expect(markdown).toContain("RESMÎ KARARTMA VE ANONİMLEŞTİRME SERTİFİKASI");
     expect(markdown).toContain("personel_listesi.pdf");
@@ -59,5 +65,19 @@ describe("Redaction Certificate Engine (v5.4.0 - Issue #253)", () => {
     expect(markdown).toContain("EMAIL");
     expect(markdown).toContain("a***@example.com");
     expect(markdown).toContain("6698 sayılı Kişisel Verilerin Korunması Kanunu");
+  });
+
+  it("never invents empty-file SHA-256/MD5 hashes and masks sensitive values without leaking prefixes", () => {
+    const cert = buildRedactionCertificate({
+      documentName: "taslak.pdf",
+      items: [],
+    });
+    expect(cert.verificationStatus).toBe("unverified");
+    expect(cert.originalSha256).not.toContain("e3b0c442");
+    expect(cert.redactedSha256).not.toContain("d41d8cd9");
+
+    const masked = maskSensitiveValue("10000000146");
+    expect(masked).not.toContain("100");
+    expect(masked).toContain("11 karakter maskelendi");
   });
 });
