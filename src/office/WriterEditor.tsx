@@ -159,10 +159,21 @@ import { measureBlocks } from "./writer/measure";
 import { paginate, pageOfBlock, type BlockMetrics, type Fragment, type PageLayout } from "./writer/pagination";
 import { cellStartColumns, isRectangular, mergeCells, splitCell, type CellRange } from "./writer/table-ops";
 import { WriterRuler } from "./writer/WriterRuler";
-import { LayoutList, ListTree, ListOrdered as TocIcon, RefreshCw, FileDiff } from "lucide-react";
+import {
+  LayoutList,
+  ListTree,
+  ListOrdered as TocIcon,
+  RefreshCw,
+  FileDiff,
+  Scale,
+  CheckCircle2,
+  AlertTriangle,
+} from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openDocument } from "../lib/office-api";
 import { diffDocuments } from "./writer/compare";
+import { checkDocumentSpelling, replaceMisspelledWord, type WordSpellError } from "./writer/spell";
+import { checkOfficialLetter, fixOfficialLetterViolation, type LetterViolation } from "../lib/official-letter";
 
 export { runsToHtml, domToRuns };
 
@@ -271,6 +282,11 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   const pageCount = view === "paginated" ? pages.length : measuredPageCount;
   const [navOpen, setNavOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [spellOpen, setSpellOpen] = useState(false);
+  const [spellErrors, setSpellErrors] = useState<WordSpellError[]>([]);
+  const [spellLoading, setSpellLoading] = useState(false);
+  const [regulationOpen, setRegulationOpen] = useState(false);
+  const [regulationViolations, setRegulationViolations] = useState<LetterViolation[]>([]);
   const [sectionsOpen, setSectionsOpen] = useState(false);
   const [fieldOpen, setFieldOpen] = useState(false);
   const [fieldKind, setFieldKind] = useState<FieldRef["kind"]>("ref");
@@ -476,6 +492,78 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
       reportError(error, t);
     }
   }, [update, t]);
+
+  const runSpellCheck = useCallback(
+    async (docOverride?: TextDocument) => {
+      setSpellOpen(true);
+      setSpellLoading(true);
+      try {
+        const targetDoc = docOverride ?? document;
+        const map = await checkDocumentSpelling(targetDoc);
+        const flattened: WordSpellError[] = [];
+        for (const errors of map.values()) {
+          flattened.push(...errors);
+        }
+        setSpellErrors(flattened);
+      } catch (error) {
+        reportError(error, t);
+      } finally {
+        setSpellLoading(false);
+      }
+    },
+    [document, t],
+  );
+
+  const applySpellSuggestion = useCallback(
+    (err: WordSpellError, replacement: string) => {
+      let nextDoc: TextDocument | null = null;
+      update((doc) => {
+        const block = doc.blocks[err.blockIndex];
+        if (!block || block.type !== "paragraph") return doc;
+        const nextRuns = replaceMisspelledWord(block.runs, err.start, err.end, replacement);
+        const blocks = doc.blocks.map((b, i) => (i === err.blockIndex ? { ...block, runs: nextRuns } : b));
+        nextDoc = { ...doc, blocks };
+        return nextDoc;
+      });
+      setLayoutVersion((version) => version + 1);
+      if (nextDoc) {
+        void runSpellCheck(nextDoc);
+      }
+    },
+    [update, runSpellCheck],
+  );
+
+  const runRegulationCheck = useCallback(() => {
+    setRegulationOpen(true);
+    setRegulationViolations(checkOfficialLetter(document));
+  }, [document]);
+
+  const applyRegulationFix = useCallback(
+    (violationId: string) => {
+      let nextDoc: TextDocument | null = null;
+      update((doc) => {
+        nextDoc = fixOfficialLetterViolation(doc, violationId);
+        return nextDoc;
+      });
+      setLayoutVersion((version) => version + 1);
+      if (nextDoc) {
+        setRegulationViolations(checkOfficialLetter(nextDoc));
+      }
+    },
+    [update],
+  );
+
+  const applyAllRegulationFixes = useCallback(() => {
+    let nextDoc: TextDocument = document;
+    for (const v of regulationViolations) {
+      if (v.canAutoFix) {
+        nextDoc = fixOfficialLetterViolation(nextDoc, v.id);
+      }
+    }
+    applyModel(document, nextDoc);
+    setLayoutVersion((version) => version + 1);
+    setRegulationViolations(checkOfficialLetter(nextDoc));
+  }, [document, regulationViolations, applyModel]);
 
   const undoEdit = useCallback(() => {
     const result = undoHistory(historyRef.current);
@@ -2257,6 +2345,20 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
                 onClick={() => setFindOpen(true)}
               />
             </RibbonGroup>
+            <RibbonGroup label={t("writer.proofing")}>
+              <ToolButton
+                icon={<SpellCheck size={16} />}
+                label={t("writer.spellCheck")}
+                onClick={() => void runSpellCheck()}
+                active={spellOpen}
+              />
+              <ToolButton
+                icon={<Scale size={16} />}
+                label={t("writer.officialLetterCheck")}
+                onClick={runRegulationCheck}
+                active={regulationOpen}
+              />
+            </RibbonGroup>
           </>
         ) : null}
 
@@ -2834,6 +2936,162 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
               </div>
             </div>
           ))}
+        </div>
+      ) : null}
+
+      {spellOpen ? (
+        <div className="comments-sidebar writer-review-pane">
+          <div className="comments-head">
+            <strong>{t("writer.spellCheck")}</strong>
+            <span className="spacer" />
+            <span className="muted">{spellErrors.length}</span>
+            <button type="button" className="icon-btn" onClick={() => void runSpellCheck()} title={t("writer.recheck")}>
+              <RefreshCw size={14} />
+            </button>
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={() => setSpellOpen(false)}
+              aria-label={t("common.close")}
+            >
+              <X size={14} />
+            </button>
+          </div>
+          {spellLoading ? (
+            <p className="muted">{t("common.processing")}</p>
+          ) : spellErrors.length === 0 ? (
+            <p className="muted row" style={{ gap: 6, alignItems: "center" }}>
+              <CheckCircle2 size={14} /> {t("writer.noSpellErrors")}
+            </p>
+          ) : (
+            spellErrors.map((err, idx) => (
+              <div
+                key={`${err.blockIndex}-${err.start}-${idx}`}
+                className="comment-card"
+                onClick={() => jumpToBlock(err.blockIndex)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    jumpToBlock(err.blockIndex);
+                  }
+                }}
+              >
+                <div className="row">
+                  <strong style={{ color: "var(--danger, #dc2626)" }}>{err.word}</strong>
+                  <span className="spacer" />
+                  <span className="muted">§{err.blockIndex + 1}</span>
+                </div>
+                {err.suggestions.length > 0 ? (
+                  <div className="row" style={{ flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                    {err.suggestions.map((sug) => (
+                      <button
+                        key={sug}
+                        type="button"
+                        className="btn btn-soft"
+                        style={{ padding: "2px 8px", fontSize: 12 }}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          applySpellSuggestion(err, sug);
+                        }}
+                      >
+                        {sug}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="muted" style={{ fontSize: 12 }}>
+                    {t("writer.noSuggestions")}
+                  </p>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      ) : null}
+
+      {regulationOpen ? (
+        <div className="comments-sidebar writer-review-pane">
+          <div className="comments-head">
+            <strong>{t("writer.officialLetterCheck")}</strong>
+            <span className="spacer" />
+            <span className="muted">{regulationViolations.length}</span>
+            <button type="button" className="icon-btn" onClick={runRegulationCheck} title={t("writer.recheck")}>
+              <RefreshCw size={14} />
+            </button>
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={() => setRegulationOpen(false)}
+              aria-label={t("common.close")}
+            >
+              <X size={14} />
+            </button>
+          </div>
+          {regulationViolations.some((v) => v.canAutoFix) ? (
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ width: "100%", marginBottom: 8 }}
+              onClick={applyAllRegulationFixes}
+            >
+              {t("writer.fixAllRegulation")}
+            </button>
+          ) : null}
+          {regulationViolations.length === 0 ? (
+            <p className="muted row" style={{ gap: 6, alignItems: "center" }}>
+              <CheckCircle2 size={14} /> {t("writer.regulationCompliant")}
+            </p>
+          ) : (
+            regulationViolations.map((v) => (
+              <div
+                key={v.id}
+                className="comment-card"
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  if (v.blockIndex !== undefined) jumpToBlock(v.blockIndex);
+                }}
+                onKeyDown={(e) => {
+                  if ((e.key === "Enter" || e.key === " ") && v.blockIndex !== undefined) {
+                    e.preventDefault();
+                    jumpToBlock(v.blockIndex);
+                  }
+                }}
+              >
+                <div className="row" style={{ gap: 6, alignItems: "center" }}>
+                  <AlertTriangle size={14} />
+                  <strong>{v.ruleTitle}</strong>
+                  <span className="spacer" />
+                  <span className="muted" style={{ fontSize: 11 }}>
+                    {v.regulationArticle}
+                  </span>
+                </div>
+                <p style={{ fontSize: 12, marginTop: 4 }}>{v.message}</p>
+                {v.manualInstructions ? (
+                  <p className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                    {v.manualInstructions}
+                  </p>
+                ) : null}
+                {v.canAutoFix ? (
+                  <div className="row" style={{ marginTop: 6 }}>
+                    <button
+                      type="button"
+                      className="btn btn-soft"
+                      style={{ padding: "2px 8px", fontSize: 12 }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        applyRegulationFix(v.id);
+                      }}
+                    >
+                      {t("writer.autoFix")}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ))
+          )}
         </div>
       ) : null}
 
