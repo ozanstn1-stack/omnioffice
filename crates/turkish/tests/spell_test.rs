@@ -249,3 +249,14 @@ fn clean_text_has_few_false_positives() {
     let ratio = misspellings.len() as f64 / tokens as f64;
     assert!(ratio < 0.02, "yanlış pozitif {}/{} = {ratio:.3}: {:?}", misspellings.len(), tokens, misspellings);
 }
+
+#[test]
+fn utf16_offsets_align_after_multibyte_turkish_characters() {
+    let text = "Çok güzel yanlız bir gün.";
+    let misspellings = check_text(text);
+    assert_eq!(misspellings.len(), 1);
+    assert_eq!(misspellings[0].word, "yanlız");
+    // "Çok güzel " is 10 UTF-16 code units (even though Ç and ü are 2 UTF-8 bytes each)
+    assert_eq!(misspellings[0].start, 10);
+    assert_eq!(misspellings[0].end, 16);
+}

@@ -892,6 +892,8 @@ impl<'a> Renderer<'a> {
             self.y += space_before;
         }
 
+        let struct_tag = paragraph_struct_tag(props);
+        let mut marked_open = false;
         for (segment_index, segment) in segments.iter().enumerate() {
             let lines = break_line(self.fonts, segment, available, &base.align, &props.tabs);
             for line in lines {
@@ -904,6 +906,10 @@ impl<'a> Renderer<'a> {
                     + if first_line { base.first_line_pt.max(0.0) } else { 0.0 };
                 let line_height = line.height * line_spacing;
                 if self.remaining() < line_height {
+                    if marked_open {
+                        self.canvas().end_marked();
+                        marked_open = false;
+                    }
                     self.next_column();
                 }
                 let x = match base.align.as_str() {
@@ -912,10 +918,12 @@ impl<'a> Renderer<'a> {
                     _ => left,
                 };
                 let baseline = self.y + (line.height * (line_spacing - 1.0)) / 2.0 + line.ascent;
-                let struct_tag = paragraph_struct_tag(props);
                 let marker_x = self.column_x(self.column) + indent_left - marker_width;
                 let canvas = self.canvas();
-                canvas.begin_marked(&struct_tag, None);
+                if !marked_open {
+                    canvas.begin_marked(&struct_tag, None);
+                    marked_open = true;
+                }
                 if first_line && segment_index == 0 && list_marker.is_some() {
                     let marker = list_marker.clone().unwrap();
                     let style = text_style(&base);
@@ -924,10 +932,12 @@ impl<'a> Renderer<'a> {
                 for item in &line.items {
                     canvas.text(x + item.dx, baseline, &item.text, &item.style);
                 }
-                canvas.end_marked();
                 self.y += line_height;
                 first_line = false;
             }
+        }
+        if marked_open {
+            self.canvas().end_marked();
         }
 
         if space_after > 0.0 {
@@ -2319,5 +2329,31 @@ mod tests {
         // A run with no language is left alone too.
         style.lang = None;
         assert!(hyphen_break(&fonts, word, &style, available).is_none());
+    }
+
+    #[test]
+    fn multiline_paragraph_emits_single_structure_element() {
+        let mut document = TextDocument::new_blank("Tagged");
+        let long_text = "Bu çok uzun bir paragraf metnidir ve tek bir sayfada birden fazla satıra sarılarak yerleşir ancak PDF yapı ağacında her görsel satır için ayrı bir P etiketi yerine yalnızca tek bir P yapı elemanı üretmelidir. ".repeat(4);
+        document.blocks = vec![Block::Paragraph {
+            props: ParaProps::default(),
+            runs: vec![Run { text: long_text, ..Default::default() }],
+        }];
+        let bytes = document_to_pdf(&document);
+        let doc = lopdf::Document::load_mem(&bytes).expect("valid PDF");
+        let p_elems = doc
+            .objects
+            .values()
+            .filter(|obj| {
+                obj.as_dict()
+                    .ok()
+                    .map(|d| {
+                        d.get(b"Type").ok().and_then(|v| v.as_name().ok()) == Some(b"StructElem")
+                            && d.get(b"S").ok().and_then(|v| v.as_name().ok()) == Some(b"P")
+                    })
+                    .unwrap_or(false)
+            })
+            .count();
+        assert_eq!(p_elems, 1, "expected 1 <P> StructElem for the wrapped paragraph, got {p_elems}");
     }
 }

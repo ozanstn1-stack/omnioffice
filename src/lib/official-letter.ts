@@ -151,14 +151,20 @@ export function checkOfficialLetter(doc: TextDocument): LetterViolation[] {
           break;
         }
 
-        if (run.sizePt && run.sizePt < 10) {
+        if (
+          run.sizePt &&
+          (run.sizePt < 11 ||
+            run.sizePt > 12 ||
+            (run.font === "Times New Roman" && run.sizePt !== 12) ||
+            (run.font === "Arial" && run.sizePt !== 11))
+        ) {
           violations.push({
             id: `font-size-${idx}`,
             ruleId: REGULATION_RULES.FONT.id,
             ruleTitle: REGULATION_RULES.FONT.title,
             regulationArticle: REGULATION_RULES.FONT.article,
             severity: "warning",
-            message: `Yazı boyutu (${run.sizePt} pt) standartların altında. Metin alanı en az 11 pt veya 12 pt olmalıdır.`,
+            message: `Yazı boyutu (${run.sizePt} pt) standartların dışında. Times New Roman için 12 pt, Arial için 11 pt kullanılmalıdır.`,
             blockIndex: idx,
             canAutoFix: true,
           });
@@ -166,18 +172,50 @@ export function checkOfficialLetter(doc: TextDocument): LetterViolation[] {
         }
       }
 
-      // Check alignment (body paragraphs should typically be justify or left)
-      if (block.props && block.props.align === "center" && trimmed.length > 80) {
+      // Line spacing check (Madde 10)
+      if (
+        trimmed.length > 0 &&
+        block.props &&
+        (block.props.lineSpacing > REGULATION_RULES.LINE_SPACING.maxMultiple || block.props.lineSpacing < 1.0)
+      ) {
         violations.push({
-          id: `align-${idx}`,
-          ruleId: REGULATION_RULES.ALIGNMENT.id,
-          ruleTitle: REGULATION_RULES.ALIGNMENT.title,
-          regulationArticle: REGULATION_RULES.ALIGNMENT.article,
-          severity: "info",
-          message: "Uzun gövde paragrafları iki yana yaslı (justify) veya sola dayalı olmalıdır.",
+          id: `line-spacing-${idx}`,
+          ruleId: REGULATION_RULES.LINE_SPACING.id,
+          ruleTitle: REGULATION_RULES.LINE_SPACING.title,
+          regulationArticle: REGULATION_RULES.LINE_SPACING.article,
+          severity: "warning",
+          message: `Satır aralığı (${block.props.lineSpacing}) yönetmeliğe uygun değil. 1.0 veya 1.15 (en fazla 1.5) olmalıdır.`,
           blockIndex: idx,
           canAutoFix: true,
         });
+      }
+
+      // Check alignment and first-line indent (body paragraphs should typically be justify or left with 1.25 cm indent)
+      if (block.props && trimmed.length > 80 && !/^(Sayı|Konu|İlgi)\s*:/i.test(trimmed)) {
+        if (block.props.align === "center") {
+          violations.push({
+            id: `align-${idx}`,
+            ruleId: REGULATION_RULES.ALIGNMENT.id,
+            ruleTitle: REGULATION_RULES.ALIGNMENT.title,
+            regulationArticle: REGULATION_RULES.ALIGNMENT.article,
+            severity: "info",
+            message: "Uzun gövde paragrafları iki yana yaslı (justify) veya sola dayalı olmalıdır.",
+            blockIndex: idx,
+            canAutoFix: true,
+          });
+        }
+        if ((block.props.firstLinePt ?? 0) < 28) {
+          violations.push({
+            id: `indent-${idx}`,
+            ruleId: REGULATION_RULES.ALIGNMENT.id,
+            ruleTitle: REGULATION_RULES.ALIGNMENT.title,
+            regulationArticle: REGULATION_RULES.ALIGNMENT.article,
+            severity: "info",
+            message: "Gövde paragraflarında 1.25 cm (~35.4 pt) ilk satır girintisi bulunmalıdır.",
+            blockIndex: idx,
+            canAutoFix: true,
+          });
+        }
       }
 
       // Detect potential signature pattern (Name SURNAME in capital)
@@ -273,8 +311,17 @@ export function fixOfficialLetterViolation(doc: TextDocument, violationId: strin
     const block = updated.blocks[idx];
     if (block && block.type === "paragraph") {
       for (const run of block.runs || []) {
-        run.sizePt = 12;
+        run.sizePt = run.font === "Arial" ? 11 : 12;
       }
+    }
+    return updated;
+  }
+
+  if (violationId.startsWith("line-spacing-")) {
+    const idx = parseInt(violationId.replace("line-spacing-", ""), 10);
+    const block = updated.blocks[idx];
+    if (block && block.type === "paragraph" && block.props) {
+      block.props.lineSpacing = 1.15;
     }
     return updated;
   }
@@ -284,6 +331,15 @@ export function fixOfficialLetterViolation(doc: TextDocument, violationId: strin
     const block = updated.blocks[idx];
     if (block && block.type === "paragraph" && block.props) {
       block.props.align = "justify";
+    }
+    return updated;
+  }
+
+  if (violationId.startsWith("indent-")) {
+    const idx = parseInt(violationId.replace("indent-", ""), 10);
+    const block = updated.blocks[idx];
+    if (block && block.type === "paragraph" && block.props) {
+      block.props.firstLinePt = 35.4;
     }
     return updated;
   }
