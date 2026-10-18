@@ -2484,6 +2484,18 @@ const en: Dict = {
   "plugins.needDocument": "Open a document first",
   "plugins.sampleInstalled": "Sample plugin installed and enabled.",
   "plugins.notEnabled": "The plugin is not enabled.",
+  "nav.petition": "Petition Wizard",
+  "nav.kvkk": "KVKK Compliance",
+  "nav.documentHealth": "Document Health",
+  "writer.proofing": "Proofing & Regulation",
+  "writer.spellCheck": "Turkish Spell Check",
+  "writer.officialLetterCheck": "Official Letter Check",
+  "writer.recheck": "Recheck",
+  "writer.noSpellErrors": "No Turkish spelling issues detected.",
+  "writer.noSuggestions": "No suggestions available.",
+  "writer.fixAllRegulation": "Auto-fix All Formatting",
+  "writer.regulationCompliant": "Document complies with the Official Correspondence Regulation.",
+  "writer.autoFix": "Auto-fix",
 };
 // English ships in the entry chunk; the Turkish dictionary is a separate chunk
 // loaded on demand, so a build only pays for the language it is reading.
