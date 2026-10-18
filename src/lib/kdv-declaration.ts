@@ -1,4 +1,5 @@
 import type { UblInvoice } from "./office-api";
+import { isKdvSubtotal } from "./ubl-tax";
 
 export interface VatRateBreakdown {
   rate: number;
@@ -52,10 +53,9 @@ export function generateKdvDeclarationReport(invoices: UblInvoice[], period: str
     totalPayableAmount += inv.payableAmount || 0;
     totalWithholdingVat += inv.withholdingAmount || 0;
 
+    const kdvSubs = (inv.taxSubtotals || []).filter((sub) => isKdvSubtotal(sub.name));
     const subtotals =
-      inv.taxSubtotals && inv.taxSubtotals.length > 0
-        ? inv.taxSubtotals
-        : [{ rate: 20, taxable: inv.taxExclusiveAmount || 0, tax: inv.taxAmount || 0 }];
+      kdvSubs.length > 0 ? kdvSubs : [{ rate: 20, taxable: inv.taxExclusiveAmount || 0, tax: inv.taxAmount || 0 }];
 
     for (const sub of subtotals) {
       const rate = Math.round(sub.rate);
@@ -73,9 +73,15 @@ export function generateKdvDeclarationReport(invoices: UblInvoice[], period: str
       } else if (rate === 10 || rate === 8) {
         rates[10].taxableAmount += taxable;
         rates[10].vatAmount += tax;
-      } else {
+      } else if (rate === 20 || rate === 18) {
         rates[20].taxableAmount += taxable;
         rates[20].vatAmount += tax;
+      } else {
+        if (!rates[rate]) {
+          rates[rate] = { rate, taxableAmount: 0, vatAmount: 0 };
+        }
+        rates[rate].taxableAmount += taxable;
+        rates[rate].vatAmount += tax;
       }
     }
 
@@ -92,6 +98,7 @@ export function generateKdvDeclarationReport(invoices: UblInvoice[], period: str
         };
         existing.taxableAmount += taxable;
         existing.withholdingAmount += wAmount;
+        existing.declaredVatAmount += Math.max(0, taxable - wAmount);
         withholdingsMap.set(rate, existing);
       }
     }

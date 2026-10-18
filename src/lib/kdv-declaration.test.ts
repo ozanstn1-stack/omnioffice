@@ -76,4 +76,18 @@ describe("KDV Declaration Report (v5.5.0 - Issue #260)", () => {
     expect(reportNov.invoiceCount).toBe(0);
     expect(reportNov.totalTaxableAmount).toBe(0);
   });
+
+  it("ignores non-KDV subtotals such as ÖTV and computes declaredVatAmount on withholdings", () => {
+    const invoiceWithOtv: UblInvoice = {
+      ...mockInvoices[0],
+      taxSubtotals: [
+        { rate: 20, taxable: 1000, tax: 200, name: "KDV", exemptionReason: "" },
+        { rate: 50, taxable: 1000, tax: 500, name: "ÖTV", exemptionReason: "" },
+      ],
+    };
+    const report = generateKdvDeclarationReport([invoiceWithOtv]);
+    expect(report.totalTaxableAmount).toBe(1000);
+    expect(report.totalCalculatedVat).toBe(200);
+    expect(report.withholdings[0].declaredVatAmount).toBe(900);
+  });
 });

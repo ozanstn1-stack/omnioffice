@@ -81,6 +81,27 @@ export function detectDuplicateInvoices(invoices: UblInvoice[]): DuplicateDetect
           key: `Fatura No: ${key}`,
           invoices: list,
         });
+        seenGroupKeys.add(key);
+      }
+    }
+  }
+
+  for (const [key, list] of suspectMap.entries()) {
+    if (list.length > 1) {
+      const ettn = (list[0].ettn || "").toLowerCase().trim();
+      const supplierTaxId = (list[0].supplier?.taxId || "").trim();
+      const docNo = (list[0].number || "").trim();
+      const numKey = supplierTaxId && docNo ? `${supplierTaxId}:${docNo}` : "";
+      const allSameEttn = ettn !== "" && list.every((inv) => (inv.ettn || "").toLowerCase().trim() === ettn);
+      const allSameNum =
+        numKey !== "" &&
+        list.every((inv) => `${(inv.supplier?.taxId || "").trim()}:${(inv.number || "").trim()}` === numKey);
+      if (!allSameEttn && !allSameNum) {
+        groups.push({
+          reason: "identical_amount_date",
+          key: `Aynı Satıcı/Tarih/Tutar: ${key}`,
+          invoices: list,
+        });
       }
     }
   }
@@ -92,7 +113,9 @@ export function detectDuplicateInvoices(invoices: UblInvoice[]): DuplicateDetect
 
   for (const inv of invoices) {
     const ettn = (inv.ettn || "").toLowerCase().trim();
-    const numKey = `${(inv.supplier?.taxId || "").trim()}:${(inv.number || "").trim()}`;
+    const supplierTaxId = (inv.supplier?.taxId || "").trim();
+    const docNo = (inv.number || "").trim();
+    const numKey = supplierTaxId && docNo ? `${supplierTaxId}:${docNo}` : "";
 
     if (ettn && seenEttns.has(ettn)) continue;
     if (numKey && seenNumbers.has(numKey)) continue;

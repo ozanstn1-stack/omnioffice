@@ -724,6 +724,18 @@ fn number_cell(value: f64, style: CellStyle) -> Cell {
     Cell { value: CellValue::Number(value), style, ..Default::default() }
 }
 
+/// Returns true when a tax subtotal represents VAT (KDV) rather than excise tax (ÖTV) or withholding.
+pub fn is_kdv_subtotal(name: &str) -> bool {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    let upper = trimmed.to_uppercase();
+    (upper.contains("KDV") || upper.contains("KATMA DEGER") || upper.contains("KATMA DEĞER"))
+        && !upper.contains("TEVKIFAT")
+        && !upper.contains("TEVKİFAT")
+}
+
 /// Aggregates a VAT summary by month, supplier and rate, and adds a totals row.
 pub fn vat_summary_workbook(invoices: &[UblInvoice]) -> Workbook {
     // month -> supplier -> rate -> (base, vat)
@@ -735,8 +747,10 @@ pub fn vat_summary_workbook(invoices: &[UblInvoice]) -> Workbook {
         } else {
             invoice.supplier.name.clone()
         };
-        // Use the document-level subtotals; fall back to the lines.
-        if invoice.tax_subtotals.is_empty() {
+        let kdv_subtotals: Vec<&UblTaxSubtotal> =
+            invoice.tax_subtotals.iter().filter(|subtotal| is_kdv_subtotal(&subtotal.name)).collect();
+        // Use the document-level KDV subtotals; fall back to the lines.
+        if kdv_subtotals.is_empty() {
             for line in &invoice.lines {
                 let key = (month.clone(), supplier.clone(), format!("{:.2}", line.vat_rate));
                 let entry = groups.entry(key).or_insert((0.0, 0.0));
@@ -744,7 +758,7 @@ pub fn vat_summary_workbook(invoices: &[UblInvoice]) -> Workbook {
                 entry.1 += line.vat_amount;
             }
         } else {
-            for subtotal in &invoice.tax_subtotals {
+            for subtotal in kdv_subtotals {
                 let key = (month.clone(), supplier.clone(), format!("{:.2}", subtotal.rate));
                 let entry = groups.entry(key).or_insert((0.0, 0.0));
                 entry.0 += subtotal.taxable;
@@ -1076,6 +1090,26 @@ mod tests {
         // It exports to XLSX.
         let package = crate::xlsx::write_xlsx_package(&workbook).unwrap();
         assert!(package.bytes.starts_with(b"PK"));
+    }
+
+    #[test]
+    fn vat_summary_workbook_excludes_excise_tax_subtotals() {
+        let xml = invoice_20()
+            .replace(
+                "<cac:TaxTotal>\n    <cbc:TaxAmount currencyID=\"TRY\">300.00</cbc:TaxAmount>",
+                "<cac:TaxTotal>\n    <cbc:TaxAmount currencyID=\"TRY\">500.00</cbc:TaxAmount>",
+            )
+            .replace(">1800.00<", ">2000.00<")
+            .replace(
+                "<cbc:Name>KDV</cbc:Name></cac:TaxScheme></cac:TaxCategory></cac:TaxSubtotal>",
+                "<cbc:Name>KDV</cbc:Name></cac:TaxScheme></cac:TaxCategory></cac:TaxSubtotal><cac:TaxSubtotal><cbc:TaxableAmount currencyID=\"TRY\">1500.00</cbc:TaxableAmount><cbc:TaxAmount currencyID=\"TRY\">200.00</cbc:TaxAmount><cbc:Percent>20.00</cbc:Percent><cac:TaxCategory><cac:TaxScheme><cbc:Name>ÖTV</cbc:Name></cac:TaxScheme></cac:TaxCategory></cac:TaxSubtotal>",
+            );
+        let invoice = read_ubl(xml.as_bytes()).unwrap().invoice;
+        let workbook = vat_summary_workbook(&[invoice]);
+        let sheet = &workbook.sheets[0];
+        // Base is 1500, VAT is 300 (not 1500+1500=3000 and 300+200=500)
+        assert_eq!(sheet.cells["E3"].value, CellValue::Number(1500.0));
+        assert_eq!(sheet.cells["F3"].value, CellValue::Number(300.0));
     }
 
     #[test]

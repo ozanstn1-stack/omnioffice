@@ -39,6 +39,7 @@ const cleanInvoice: UblInvoice = {
   ...invoice1,
   number: "GIB2026000000002",
   ettn: "uuid-clean-8888",
+  issueDate: "2026-10-11",
 };
 
 describe("Duplicate Invoice Detection (v5.5.0 - Issue #261)", () => {
@@ -63,5 +64,20 @@ describe("Duplicate Invoice Detection (v5.5.0 - Issue #261)", () => {
     expect(result.hasDuplicates).toBe(false);
     expect(result.totalDuplicates).toBe(0);
     expect(result.uniqueInvoices.length).toBe(2);
+  });
+
+  it("flags suspect identical supplier+date+amount invoices and does not collapse unnumbered invoices", () => {
+    const suspectTwin: UblInvoice = {
+      ...invoice1,
+      number: "GIB2026000000077",
+      ettn: "uuid-suspect-7777",
+    };
+    const suspectResult = detectDuplicateInvoices([invoice1, suspectTwin]);
+    expect(suspectResult.groups.some((g) => g.reason === "identical_amount_date")).toBe(true);
+
+    const unnumberedA: UblInvoice = { ...invoice1, number: "", ettn: "uuid-u1", issueDate: "2026-10-01" };
+    const unnumberedB: UblInvoice = { ...invoice1, number: "", ettn: "uuid-u2", issueDate: "2026-10-02" };
+    const unnumberedResult = detectDuplicateInvoices([unnumberedA, unnumberedB]);
+    expect(unnumberedResult.uniqueInvoices.length).toBe(2);
   });
 });

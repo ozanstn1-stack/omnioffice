@@ -84,8 +84,28 @@ describe("Accounting Export (v5.5.0 - Issue #259)", () => {
     const luca = exportAccounting(mockInvoices, "luca");
     const logo = exportAccounting(mockInvoices, "logo");
     const zirve = exportAccounting(mockInvoices, "zirve");
+    expect(luca.startsWith("\uFEFF")).toBe(true);
     expect(luca).toContain("600.20.001");
     expect(logo).toContain('"FATURA_NO"');
     expect(zirve).toContain("Matrah 20");
+  });
+
+  it("excludes non-KDV subtotals (e.g. ÖTV) and does not duplicate payableAmount across multi-rate rows", () => {
+    const invoiceWithOtv: UblInvoice = {
+      ...mockInvoices[0],
+      taxSubtotals: [
+        { rate: 20, taxable: 1000, tax: 200, name: "KDV", exemptionReason: "" },
+        { rate: 10, taxable: 500, tax: 50, name: "KDV", exemptionReason: "" },
+        { rate: 20, taxable: 1000, tax: 300, name: "ÖTV", exemptionReason: "" },
+      ],
+      withholdingAmount: 40,
+      payableAmount: 1710,
+    };
+    const lucaLines = exportLuca([invoiceWithOtv], { includeBom: false }).split("\r\n");
+    // 1 header + 2 KDV rows (ÖTV excluded)
+    expect(lucaLines.length).toBe(3);
+    // First row has 1000 + 200 - 40 = 1160.00, second row has 500 + 50 - 0 = 550.00 -> sum = 1710.00
+    expect(lucaLines[1]).toContain(";40.00;1160.00;");
+    expect(lucaLines[2]).toContain(";0.00;550.00;");
   });
 });
