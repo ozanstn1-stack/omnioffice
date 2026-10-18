@@ -12,6 +12,25 @@ test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
 
+## Release trains and the freeze (v6.0.1)
+
+The v6.0.0 review put a **feature freeze** in place: until its A-phase items
+close, changes fix, verify or close what exists instead of adding features.
+Two channels carry builds:
+
+- **Stable** — the versioned releases; their installers check
+  `releases/latest/download/latest.json`.
+- **Beta** — `scripts/set-update-channel.mjs` (CI-only) and
+  `.github/workflows/beta.yml` build a signed installer from master with a
+  `X.Y.Z-beta.N` version (a prerelease of the *next* minor, so semver moves
+  beta users forward and later pulls them back onto stable) and its own
+  updater endpoint (`releases/download/beta/latest.json`), published to the
+  rolling `beta` prerelease.
+
+The channel is a property of the installed build; Settings shows which one and
+links to the beta installers. Beta cadence is a manual dispatch until the
+release-train schedule is decided.
+
 ## Implemented (this cycle, 6.0.0) — Gerçek mobil (True mobile)
 
 - **Scanner page list** (#266): move up/down reordering and batch clearing on

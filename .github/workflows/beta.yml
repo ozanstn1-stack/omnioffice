@@ -1,0 +1,76 @@
+name: Beta
+
+# Builds a signed beta installer from master and refreshes the rolling `beta`
+# prerelease, which is the beta channel's updater endpoint
+# (`releases/download/beta/latest.json`, see scripts/set-update-channel.mjs).
+#
+# Cadence is deliberately manual: the v6.0.0 review leaves the release-train
+# decision (weekly beta vs every merge) to the maintainer; once decided, add a
+# `schedule:` trigger here. The stable train is unaffected either way: the
+# beta release is a prerelease, so `releases/latest` never points at it.
+#
+# Third-party actions are pinned to commit SHAs; Dependabot
+# (.github/dependabot.yml, github-actions ecosystem) keeps them current.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: beta
+  cancel-in-progress: false
+
+jobs:
+  beta:
+    name: Signed beta installer and rolling prerelease
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
+      - run: npm ci
+      - name: Fetch engines (pdfium, qpdf, tesseract, fonts)
+        run: npm run engines:fetch
+      - name: Beta version (prerelease of the next minor)
+        id: version
+        shell: pwsh
+        run: |
+          $stable = node -p "require('./package.json').version"
+          $parts = $stable.Split('.')
+          $next = "$($parts[0]).$([int]$parts[1] + 1).0"
+          $beta = "$next-beta.${{ github.run_number }}"
+          Write-Output "beta=$beta" >> $env:GITHUB_OUTPUT
+          Write-Host "stable $stable -> beta $beta"
+      - name: Patch the version files for the beta channel
+        run: node scripts/set-update-channel.mjs beta ${{ steps.version.outputs.beta }}
+      - name: Build the signed bundle
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build
+      - name: Updater manifest (latest.json)
+        run: node scripts/make-latest-json.mjs
+      - name: Refresh the rolling beta prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          # The beta release is a rolling prerelease, so uploading over the
+          # previous assets is intended (`--clobber`). If the repository ever
+          # enables GitHub's immutable releases, this flow must switch to a
+          # fresh tag per run (beta-<run>) with a stable latest.json pointer.
+          if (Test-Path release-artifacts/latest.json) {
+            if (-not (gh release view beta 2>$null)) {
+              gh release create beta --title "OmniOffice beta" --prerelease `
+                --notes "Rolling beta from master (${{ steps.version.outputs.beta }}). Not for production; installs update through the beta channel."
+            }
+            Get-ChildItem release-artifacts -File | ForEach-Object { gh release upload beta $_.FullName --clobber }
+            Write-Host "beta prerelease refreshed"
+          } else {
+            Write-Host "::warning::no latest.json was produced (missing signing key?); nothing uploaded"
+          }
