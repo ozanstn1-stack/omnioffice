@@ -1,4 +1,5 @@
 import type { UblInvoice } from "./office-api";
+import { getKdvSubtotals } from "./ubl-tax";
 
 export type AccountingSoftware = "luca" | "logo" | "zirve";
 
@@ -14,7 +15,11 @@ export interface AccountCodeMapping {
 export interface AccountingExportOptions {
   transactionType?: "sales" | "purchase";
   accountCodes?: AccountCodeMapping;
+  /** Prepends UTF-8 BOM (\uFEFF) so Microsoft Excel on Windows opens Turkish characters cleanly (default: true). */
+  includeBom?: boolean;
 }
+
+const UTF8_BOM = "\uFEFF";
 
 const DEFAULT_SALES_CODES: Required<AccountCodeMapping> = {
   cariAccount: "120.01.001",
@@ -34,6 +39,11 @@ function formatMoney(value: number): string {
 
 function sanitizeText(text: string): string {
   return (text || "").replace(/[\r\n;,"\t]/g, " ").trim();
+}
+
+function withBom(content: string, options: AccountingExportOptions): string {
+  const includeBom = options.includeBom ?? true;
+  return includeBom ? `${UTF8_BOM}${content}` : content;
 }
 
 /**
@@ -60,29 +70,25 @@ export function exportLuca(invoices: UblInvoice[], options: AccountingExportOpti
     const ettn = inv.ettn || "";
     const partyName = sanitizeText(party?.name || "");
     const taxId = sanitizeText(party?.taxId || "");
-    const total = formatMoney(inv.payableAmount || 0);
-    const withholding = formatMoney(inv.withholdingAmount || 0);
+    const subtotals = getKdvSubtotals(inv);
 
-    // KDV oranlarına göre grupla
-    const subtotals =
-      inv.taxSubtotals && inv.taxSubtotals.length > 0
-        ? inv.taxSubtotals
-        : [{ rate: 20, taxable: inv.taxExclusiveAmount || 0, tax: inv.taxAmount || 0 }];
-
-    for (const sub of subtotals) {
+    subtotals.forEach((sub, idx) => {
       const rateKey = Math.round(sub.rate);
       const matrahCode = codes.matrahAccounts[rateKey] || (isSales ? `600.${rateKey}.001` : `153.${rateKey}.001`);
       const matrah = formatMoney(sub.taxable || 0);
       const kdv = formatMoney(sub.tax || 0);
+      const rowWithholding = idx === 0 ? inv.withholdingAmount || 0 : 0;
+      const rowTotal =
+        subtotals.length === 1 ? inv.payableAmount || 0 : (sub.taxable || 0) + (sub.tax || 0) - rowWithholding;
       const desc = sanitizeText(`${docNo} nolu fatura - ${partyName}`);
 
       rows.push(
-        `${date};${docNo};${ettn};${partyName};${taxId};${matrahCode};${matrah};%${rateKey};${kdv};${withholding};${total};${desc}`,
+        `${date};${docNo};${ettn};${partyName};${taxId};${matrahCode};${matrah};%${rateKey};${kdv};${formatMoney(rowWithholding)};${formatMoney(rowTotal)};${desc}`,
       );
-    }
+    });
   }
 
-  return rows.join("\r\n");
+  return withBom(rows.join("\r\n"), options);
 }
 
 /**
@@ -102,26 +108,23 @@ export function exportLogo(invoices: UblInvoice[], options: AccountingExportOpti
     const ettn = inv.ettn || "";
     const partyName = (party?.name || "").replace(/"/g, '""');
     const taxId = party?.taxId || "";
-    const total = formatMoney(inv.payableAmount || 0);
-    const withholding = formatMoney(inv.withholdingAmount || 0);
+    const subtotals = getKdvSubtotals(inv);
 
-    const subtotals =
-      inv.taxSubtotals && inv.taxSubtotals.length > 0
-        ? inv.taxSubtotals
-        : [{ rate: 20, taxable: inv.taxExclusiveAmount || 0, tax: inv.taxAmount || 0 }];
-
-    for (const sub of subtotals) {
+    subtotals.forEach((sub, idx) => {
       const rate = Math.round(sub.rate);
       const matrah = formatMoney(sub.taxable || 0);
       const kdv = formatMoney(sub.tax || 0);
+      const rowWithholding = idx === 0 ? inv.withholdingAmount || 0 : 0;
+      const rowTotal =
+        subtotals.length === 1 ? inv.payableAmount || 0 : (sub.taxable || 0) + (sub.tax || 0) - rowWithholding;
 
       rows.push(
-        `"${docNo}","${date}","${ettn}","${partyName}","${taxId}",${matrah},${rate},${kdv},${withholding},${total}`,
+        `"${docNo}","${date}","${ettn}","${partyName}","${taxId}",${matrah},${rate},${kdv},${formatMoney(rowWithholding)},${formatMoney(rowTotal)}`,
       );
-    }
+    });
   }
 
-  return rows.join("\r\n");
+  return withBom(rows.join("\r\n"), options);
 }
 
 /**
@@ -151,10 +154,7 @@ export function exportZirve(invoices: UblInvoice[], options: AccountingExportOpt
       m20 = 0,
       k20 = 0;
 
-    const subtotals =
-      inv.taxSubtotals && inv.taxSubtotals.length > 0
-        ? inv.taxSubtotals
-        : [{ rate: 20, taxable: inv.taxExclusiveAmount || 0, tax: inv.taxAmount || 0 }];
+    const subtotals = getKdvSubtotals(inv);
 
     for (const sub of subtotals) {
       const rate = Math.round(sub.rate);
@@ -164,7 +164,7 @@ export function exportZirve(invoices: UblInvoice[], options: AccountingExportOpt
       } else if (rate === 10 || rate === 8) {
         m10 += sub.taxable || 0;
         k10 += sub.tax || 0;
-      } else {
+      } else if (rate === 20 || rate === 18) {
         m20 += sub.taxable || 0;
         k20 += sub.tax || 0;
       }
@@ -175,7 +175,7 @@ export function exportZirve(invoices: UblInvoice[], options: AccountingExportOpt
     );
   }
 
-  return rows.join("\r\n");
+  return withBom(rows.join("\r\n"), options);
 }
 
 /**

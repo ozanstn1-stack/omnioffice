@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { appCacheDir, join } from "@tauri-apps/api/path";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { AlertTriangle, Calculator, CheckCircle2, Copy, FileText, QrCode, Receipt, Save, Table2 } from "lucide-react";
 import { Badge, Button, Card, Modal } from "../components/ui";
@@ -6,7 +7,7 @@ import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { flagEnabled } from "../lib/flags";
 import { reportError, useToasts } from "../lib/store";
-import { isAndroid, pickOfficeFiles } from "../lib/mobile";
+import { isAndroid, pickOfficeFiles, saveFileOnAndroid, saveTextOnAndroid } from "../lib/mobile";
 import { compareQrWithInvoice } from "../lib/invoice-qr";
 import { exportAccounting, type AccountingSoftware } from "../lib/accounting-export";
 import { generateKdvDeclarationReport } from "../lib/kdv-declaration";
@@ -23,8 +24,8 @@ import {
 import type { InvoiceDocument, InvoiceQr, UblInvoice, VatRate } from "../lib/office-api";
 
 type Entry =
-  | { path: string; kind: "ubl"; document: InvoiceDocument }
-  | { path: string; kind: "pdf"; qr: InvoiceQr | null; error?: string };
+  | { id: string; path: string; kind: "ubl"; document: InvoiceDocument }
+  | { id: string; path: string; kind: "pdf"; qr: InvoiceQr | null; error?: string };
 
 function money(value: number, currency: string) {
   const formatted = value.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -39,9 +40,22 @@ function extensionOf(path: string) {
 async function loadUblEntries(path: string): Promise<Entry[]> {
   if (extensionOf(path) === "zip") {
     const documents = await openInvoicePackage(path);
-    return documents.map((document) => ({ path, kind: "ubl" as const, document }));
+    return documents.map((document, idx) => ({
+      id: `${path}#${document.invoice.ettn || document.invoice.number || idx}`,
+      path,
+      kind: "ubl" as const,
+      document,
+    }));
   }
-  return [{ path, kind: "ubl", document: await openInvoice(path) }];
+  const document = await openInvoice(path);
+  return [
+    {
+      id: `${path}#${document.invoice.ettn || document.invoice.number || 0}`,
+      path,
+      kind: "ubl",
+      document,
+    },
+  ];
 }
 
 /**
@@ -76,7 +90,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
               reportError(error, t);
             }
           } else {
-            loaded.push({ path, kind: "pdf", qr: null });
+            loaded.push({ id: path, path, kind: "pdf", qr: null });
           }
         }
         setEntries((current) => [...loaded, ...current.filter((entry) => !paths.includes(entry.path))]);
@@ -110,7 +124,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
             reportError(error, t);
           }
         } else {
-          loaded.push({ path, kind: "pdf", qr: null });
+          loaded.push({ id: path, path, kind: "pdf", qr: null });
         }
       }
       if (!cancelled && loaded.length) {
@@ -141,26 +155,34 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
       const qr = await readInvoiceQr(entry.path);
       setEntries((current) =>
         current.map((candidate) =>
-          candidate.path === entry.path ? { ...candidate, kind: "pdf", qr, error: undefined } : candidate,
+          candidate.id === entry.id ? { ...candidate, kind: "pdf", qr, error: undefined } : candidate,
         ),
       );
     } catch (error) {
       reportError(error, t);
       setEntries((current) =>
-        current.map((candidate) =>
-          candidate.path === entry.path ? { ...candidate, kind: "pdf", qr: null } : candidate,
-        ),
+        current.map((candidate) => (candidate.id === entry.id ? { ...candidate, kind: "pdf", qr: null } : candidate)),
       );
     }
   };
 
   const savePdf = async (document: InvoiceDocument) => {
-    const path = await saveDialog({
-      defaultPath: `${document.invoice.number || "e-fatura"}.pdf`,
-      filters: [{ name: "PDF", extensions: ["pdf"] }],
-    });
-    if (typeof path !== "string") return;
+    const defaultName = `${document.invoice.number || "e-fatura"}.pdf`;
     try {
+      if (isAndroid()) {
+        const tempPath = await join(await appCacheDir(), defaultName);
+        await exportPdf("writer", document.model, tempPath);
+        const saved = await saveFileOnAndroid(tempPath, defaultName);
+        if (saved) {
+          useToasts.getState().push({ kind: "success", title: t("invoices.pdfSaved"), detail: saved });
+        }
+        return;
+      }
+      const path = await saveDialog({
+        defaultPath: defaultName,
+        filters: [{ name: "PDF", extensions: ["pdf"] }],
+      });
+      if (typeof path !== "string") return;
       await exportPdf("writer", document.model, path);
       useToasts.getState().push({ kind: "success", title: t("invoices.pdfSaved"), detail: path });
     } catch (error) {
@@ -171,20 +193,34 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
   const saveSummary = async () => {
     const ubl = entries.filter((entry): entry is Entry & { kind: "ubl" } => entry.kind === "ubl");
     if (!ubl.length) return;
-    const path = await saveDialog({
-      defaultPath: "KDV-Ozeti.xlsx",
-      filters: [{ name: "Excel", extensions: ["xlsx"] }],
-    });
-    if (typeof path !== "string") return;
+    const uniquePaths = Array.from(new Set(ubl.map((entry) => entry.path)));
     setBusy(true);
     try {
-      const summary = await invoiceSummary(ubl.map((entry) => entry.path));
-      await saveDocument("calc", summary.workbook, path);
-      useToasts.getState().push({
-        kind: "success",
-        title: t("invoices.summarySaved", { count: summary.count }),
-        detail: path,
-      });
+      const summary = await invoiceSummary(uniquePaths);
+      if (isAndroid()) {
+        const tempPath = await join(await appCacheDir(), "KDV-Ozeti.xlsx");
+        await saveDocument("calc", summary.workbook, tempPath);
+        const saved = await saveFileOnAndroid(tempPath, "KDV-Ozeti.xlsx");
+        if (saved) {
+          useToasts.getState().push({
+            kind: "success",
+            title: t("invoices.summarySaved", { count: summary.count }),
+            detail: saved,
+          });
+        }
+      } else {
+        const path = await saveDialog({
+          defaultPath: "KDV-Ozeti.xlsx",
+          filters: [{ name: "Excel", extensions: ["xlsx"] }],
+        });
+        if (typeof path !== "string") return;
+        await saveDocument("calc", summary.workbook, path);
+        useToasts.getState().push({
+          kind: "success",
+          title: t("invoices.summarySaved", { count: summary.count }),
+          detail: path,
+        });
+      }
       for (const warning of summary.warnings) {
         useToasts.getState().push({ kind: "info", title: t("invoices.warnings"), detail: warning });
       }
@@ -200,14 +236,30 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
       .filter((e): e is Entry & { kind: "ubl" } => e.kind === "ubl")
       .map((e) => e.document.invoice);
     if (!ublInvoices.length) return;
-    const defaultName = `${software.toUpperCase()}-Aktarim-${new Date().toISOString().slice(0, 10)}.csv`;
-    const path = await saveDialog({
-      defaultPath: defaultName,
-      filters: [{ name: "CSV", extensions: ["csv"] }],
-    });
-    if (typeof path !== "string") return;
+    const dateSlug = new Date().toISOString().slice(0, 10);
+    const defaultName = `${software.toUpperCase()}-Aktarim-${dateSlug}.csv`;
     setBusy(true);
     try {
+      if (isAndroid()) {
+        const content = exportAccounting(ublInvoices, software);
+        const ok = await saveTextOnAndroid(content, defaultName);
+        if (ok) {
+          useToasts.getState().push({
+            kind: "success",
+            title: `${software.toUpperCase()} Aktarım Dosyası Kaydedildi`,
+            detail: defaultName,
+          });
+        }
+        return;
+      }
+      // CSV only: the vendor "Excel" and Logo-XML shapes were never verified
+      // against a real import template, so they are not offered
+      // (RELEASE_READINESS.md; the whole vendor export area is flag-gated).
+      const path = await saveDialog({
+        defaultPath: defaultName,
+        filters: [{ name: "CSV", extensions: ["csv"] }],
+      });
+      if (typeof path !== "string") return;
       const content = exportAccounting(ublInvoices, software);
       const { writeTextFile } = await import("@tauri-apps/plugin-fs");
       await writeTextFile(path, content);
@@ -239,7 +291,9 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
         }
         const inv = entry.document.invoice;
         const ettn = (inv.ettn || "").toLowerCase().trim();
-        const numKey = `${(inv.supplier?.taxId || "").trim()}:${(inv.number || "").trim()}`;
+        const supplierTaxId = (inv.supplier?.taxId || "").trim();
+        const docNo = (inv.number || "").trim();
+        const numKey = supplierTaxId && docNo ? `${supplierTaxId}:${docNo}` : "";
 
         if (ettn && seenEttns.has(ettn)) continue;
         if (numKey && seenNumbers.has(numKey)) continue;
@@ -343,7 +397,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
             const invoice = qr ? matchingInvoice(qr) : undefined;
             const mismatches = qr && invoice ? compareQrWithInvoice(qr.payload, invoice) : [];
             return (
-              <Card key={entry.path} className="p-5 flex flex-col gap-3">
+              <Card key={entry.id} className="p-5 flex flex-col gap-3">
                 <div className="flex items-center gap-2 flex-wrap">
                   <QrCode size={16} style={{ color: "var(--accent)" }} />
                   <strong>{entry.path.split(/[\\/]/).pop()}</strong>
@@ -419,7 +473,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
           }
           const invoice = entry.document.invoice;
           return (
-            <Card key={entry.path} className="p-5 flex flex-col gap-3">
+            <Card key={entry.id} className="p-5 flex flex-col gap-3">
               <div className="flex items-center gap-2 flex-wrap">
                 <Receipt size={16} style={{ color: "var(--accent)" }} />
                 <strong>{invoice.number || entry.path}</strong>
