@@ -8,7 +8,97 @@ by CI.
 Every `Implemented` bullet carries a `test:<file>#<name>` marker pointing at
 the test that proves it (or an explicit `(no test: …)` reason);
 `npm run claims:check` resolves every marker in CI, so a deleted or renamed
-test cannot leave an unsupported claim behind.
+test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
+run the suites also verify the markers against the test output
+(`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
+
+## Implemented (this cycle, 6.0.0) — Gerçek mobil (True mobile)
+
+- **Scanner page list** (#266): move up/down reordering and batch clearing on
+  the scanner screen, on top of the existing Rust perspective-correction and
+  PDF assembly. `test:src/screens/Scanner.test.tsx#allows reordering and clearing pages`
+  The screen itself stays behind `experimentalScanner` (off by default) until
+  the camera capture gets a real device test.
+- **Android shortcuts and ACTION_SEND sharing** (#267): `.eml` and `.xml`
+  shares route to the e-mail and e-invoice previewers; the intent filters are
+  guarded by `test:src/lib/android-manifest.test.ts#opens and shares every supported type through one typed filter without a scheme`
+  `(no test: the Kotlin unit tests IncomingFilesTest/ManifestIntentFiltersTest run in the tag-triggered Android workflow, not in the Desktop matrix)`
+- **SAF compatibility and emulator smoke test** (#268): Storage Access
+  Framework MIME mapping, document export/share and an Android launch smoke
+  test. `test:src/lib/mobile.test.ts#exports the office whitelist used by the Android shell and the pickers`
+  `(no test: the emulator smoke test runs in the Android workflow)`
+- **XLSX parser panic guard** (#273): `catch_unwind` around the calamine
+  reader so a malformed workbook reports an error instead of taking the app
+  down. `(no test: release builds use panic=abort, so the guard cannot be
+  exercised end to end yet; the worker-process fix is tracked in the v6.0.1
+  audit plan)`
+
+## Implemented (this cycle, 5.1.0 – 5.5.0) — contracts, Turkish suite, KVKK package, accounting bridge
+
+The v5.1.0–v5.5.0 cycles shipped without their own `Implemented` sections.
+This is the honest, test-linked record of what went out (written in v6.0.1);
+it claims nothing that is not in the tree today.
+
+### 5.1.0 — Sözleşme ve doğruluk (Contract and correctness)
+
+- **Type generation and drift gate** (#222): ts-rs bindings under
+  `src/lib/generated`, produced by `npm run types:gen` and guarded by
+  `types:check`. `test:src/lib/ipc-contract.test.ts#RecipeStep carries the same variants and fields as the Rust enum`
+- **Real serde wire contract** (#225): 20 DTOs pinned against real
+  `serde_json` output. `test:src-tauri/src/wire_contract.rs#office_and_recipe_dtos_keep_their_wire_shape`
+- **"Claim = test" CI rule** (#229): this script is the gate and runs in the
+  Lint job. `(no test: scripts/claims-audit.mjs is itself the check)`
+- **Feature flags** (#231): `src/lib/flags.ts`, the scanner hidden behind an
+  off-by-default flag. `test:src/lib/flags.test.ts#keeps the experimental scanner hidden by default`
+
+### 5.2.0 — Gerçek dosya laboratuvarı (Real-file lab)
+
+- **License-clean sample corpus** (#235): `tests/corpus` across five formats
+  with a manifest, documented in `docs/corpus.md`.
+  `test:crates/officecore/tests/corpus_test.rs#every_corpus_sample_imports_through_its_reader`
+- **Compatibility score** (#237): `crates/compat` structural + visual scores
+  against committed goldens, nightly report, LibreOffice reference.
+  `test:crates/compat/tests/score_test.rs#the_corpus_scores_above_the_threshold`
+- **LibreOffice ODF fix** (#238): the manifest is generated from the entries
+  actually written, so LibreOffice opens our ODT/ODS/ODP output.
+  `test:crates/officecore/src/odf.rs#odt_manifest_matches_the_package`
+- **Per-importer fuzz targets** (#241): `docx`, `xlsx`, `pptx`, `udf`, `ubl`.
+  `(no test: the Fuzz job runs the targets on every master push and nightly)`
+
+### 5.3.0 — Türkçe yazım ve resmî yazı denetimi
+
+- **Offline Turkish spell checker** (#245): Zemberek lexicon (Apache-2.0),
+  suffix analysis, suggestions. `test:crates/turkish/tests/spell_test.rs#common_misspellings_are_caught`
+  and `test:crates/turkish/tests/spell_test.rs#clean_text_has_few_false_positives`
+- **Official letter compliance checker** (#246): regulation rules with
+  1-click fixes. `test:src/lib/official-letter.test.ts#detects non-compliant fonts and auto-fixes to Times New Roman`
+- **Petition wizard** (#247): TCKN mod-11 validation, DOCX and PDF output.
+  `test:src/lib/petition.test.ts#validates TCKN mod-11 correctly`
+  The UYAP `.udf` output is **disabled by default** since v6.0.1 (#275).
+
+### 5.4.0 — Belge sağlığı ve KVKK paketi
+
+- **Document health report** (#252): risk list with 1-click fixes.
+  `test:src/lib/document-health.test.ts#detects hidden metadata leaks and applies 1-click fix`
+- **Redaction certificate** (#253): structured certificate with hashes.
+  `test:src/lib/redact-cert.test.ts#builds a structured redaction certificate with valid metadata`
+  (the certificate still fabricates a default hash when none is provided; the
+  real SHA-256/RFC 3161 version is tracked in the v6.0.1 audit plan)
+- **KVKK wizard and templates** (#254).
+  `test:src/screens/KvkkWizard.test.tsx#renders KVKK wizard and switches template types`
+  The wizard is not routed in the app yet; routing is tracked in the v6.0.1
+  audit plan.
+
+### 5.5.0 — Muhasebe köprüsü (Accounting bridge)
+
+- **Vendor accounting exports** (#259): Luca/Logo/Zirve CSV writers.
+  `test:src/lib/accounting-export.test.ts#delegates properly through exportAccounting wrapper`
+  **Disabled by default** since v6.0.1 (#275) until a real import template
+  verifies them.
+- **KDV declaration helper** (#260).
+  `test:src/lib/kdv-declaration.test.ts#accurately summarizes VAT breakdown across rates 1%, 10%, and 20%`
+- **Duplicate invoice detection** (#261).
+  `test:src/lib/duplicate-invoices.test.ts#detects exact duplicate ETTNs and deduplicates them`
 
 ## Implemented (this cycle, 5.0.1) — Kanama durdurma (Stopping the bleeding)
 

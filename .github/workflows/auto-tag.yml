@@ -1,9 +1,9 @@
 name: Auto release tag
 
 # Publishing a release used to need a manual `git push origin vX.Y.Z`. This
-# workflow does it when a merge to master changes the version: it tags the
-# merge commit and starts the release builds, which attach the Windows
-# installer/portable ZIP and the Android APK/AAB to the GitHub release.
+# workflow does it when a merge to master changes the version, but only after
+# the Desktop workflow for that same commit has finished **successfully**: a
+# version bump whose CI is red must not produce a tag (or a release).
 #
 # A tag created with GITHUB_TOKEN does not trigger `push: tags` workflows
 # (GitHub's recursion guard), so Release and Android are dispatched explicitly
@@ -12,9 +12,10 @@ name: Auto release tag
 # refs/tags/vX.Y.Z. A tag that already exists (pushed by hand) is left alone.
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Desktop"]
+    types: [completed]
     branches: [master]
-    paths: [package.json]
   workflow_dispatch:
 
 permissions:
@@ -28,13 +29,21 @@ concurrency:
 jobs:
   tag:
     name: Tag the version and start the release builds
+    # The gate: a push-to-master Desktop run that passed. Manual dispatch skips
+    # the gate on purpose (a human decided the commit is good).
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Tag and dispatch
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           set -euo pipefail
           version=$(node -p "require('./package.json').version")
@@ -58,8 +67,8 @@ jobs:
             echo "$tag already exists; nothing to do."
             exit 0
           fi
-          gh api "repos/$REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" > /dev/null
-          echo "created $tag at $GITHUB_SHA"
+          gh api "repos/$REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$TARGET_SHA" > /dev/null
+          echo "created $tag at $TARGET_SHA"
           gh workflow run release.yml --repo "$REPO" --ref "$tag"
           gh workflow run android.yml --repo "$REPO" --ref "$tag"
           echo "dispatched release.yml and android.yml on $tag"
