@@ -94,6 +94,16 @@ export interface VaultSearchRequest {
   folder: string | null;
   limit: number;
   offset: number;
+  embeddingConsent?: boolean;
+}
+
+export interface VaultIndexReport {
+  documents: number;
+  chunks: number;
+  embedded: number;
+  reused: number;
+  cancelled: boolean;
+  tookMs: number;
 }
 
 export interface VaultSearchHit {
@@ -220,11 +230,14 @@ export function Vault() {
   const [exact, setExact] = useState(false);
   const [phrase, setPhrase] = useState(false);
   const [fuzzy, setFuzzy] = useState(false);
+  const [embeddingConsent, setEmbeddingConsent] = useState(false);
+  const [buildingIndex, setBuildingIndex] = useState(false);
   const [extensions, setExtensions] = useState("");
   const [modifiedAfter, setModifiedAfter] = useState("");
   const [modifiedBefore, setModifiedBefore] = useState("");
   const [folderFilter, setFolderFilter] = useState("");
   const [limit, setLimit] = useState(50);
+  const [offset, setOffset] = useState(0);
   const [searching, setSearching] = useState(false);
   const [result, setResult] = useState<VaultSearchResponse | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -235,7 +248,7 @@ export function Vault() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const previewId = useRef("");
 
-  const busy = scanning || Boolean(status?.scanning);
+  const busy = scanning || buildingIndex || Boolean(status?.scanning);
   const percent =
     progress && progress.total > 0 ? Math.min(100, Math.round((progress.current / progress.total) * 100)) : null;
   // The import flow is Android's replacement for folder selection; the
@@ -263,7 +276,7 @@ export function Vault() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     void onProgress((payload) => {
-      if (payload.jobId === "vault-scan") setProgress(payload);
+      if (payload.jobId === "vault-scan" || payload.jobId === "vault-index") setProgress(payload);
     }).then((fn) => {
       unlisten = fn;
     });
@@ -324,6 +337,26 @@ export function Vault() {
 
   const cancelScan = () => {
     void cancelJob("vault-scan").catch(() => undefined);
+    void cancelJob("vault-index").catch(() => undefined);
+  };
+
+  const buildSemanticIndex = async () => {
+    if (!embeddingConsent) return;
+    setBuildingIndex(true);
+    setScanError(null);
+    setProgress(null);
+    try {
+      const report = await invoke<VaultIndexReport>("vault_index_build", { consent: embeddingConsent });
+      pushToast({
+        kind: "success",
+        title: `Vektör İndeksi Güncellendi (${report.embedded} yeni, ${report.reused} önbellek)`,
+      });
+    } catch (err) {
+      setScanError(errorMessage(err, t));
+    } finally {
+      setBuildingIndex(false);
+      setProgress(null);
+    }
   };
 
   /** Forgets the index/cache; optionally deletes the imported copies too. */
@@ -380,13 +413,14 @@ export function Vault() {
     }
   };
 
-  const runSearch = async (offset: number) => {
+  const runSearch = async (nextOffset: number) => {
     const trimmed = query.trim();
     if (!trimmed) {
       setResult(null);
       setSearchError(null);
       return;
     }
+    setOffset(nextOffset);
     setSearching(true);
     setSearchError(null);
     try {
@@ -403,11 +437,12 @@ export function Vault() {
         modifiedBefore: modifiedBefore || null,
         folder: folderFilter.trim() || null,
         limit,
-        offset,
+        offset: nextOffset,
+        embeddingConsent,
       };
-      // Hybrid search: BM25 plus, when embeddings are configured, the stored
-      // chunk vectors fused with RRF. It falls back to keyword-only when the
-      // provider has no embeddings.
+      // Hybrid search: BM25 plus, when embeddings are configured and consented,
+      // the stored chunk vectors fused with RRF. It falls back to keyword-only
+      // when consent is off or the provider has no embeddings.
       const response = await invoke<VaultSearchResponse>("vault_search_hybrid", { request });
       setResult(response);
     } catch (err) {
@@ -680,6 +715,7 @@ export function Vault() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <Badge tone="accent">{t("vault.resultCount", { count: result.total })}</Badge>
                     <span className="text-xs muted">{t("vault.tookMs", { ms: result.tookMs })}</span>
+                    {result.retrievalMode ? <Badge>{result.retrievalMode}</Badge> : null}
                   </div>
                   <div className="flex flex-col gap-2">
                     {result.hits.map((entry) => (
@@ -691,6 +727,32 @@ export function Vault() {
                       />
                     ))}
                   </div>
+                  {result.total > limit ? (
+                    <div
+                      className="flex items-center justify-between pt-2 border-t"
+                      style={{ borderColor: "var(--border)" }}
+                    >
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={searching || offset === 0}
+                        onClick={() => void runSearch(Math.max(0, offset - limit))}
+                      >
+                        ← Önceki
+                      </Button>
+                      <span className="text-xs muted tabular-nums">
+                        {offset + 1}–{Math.min(result.total, offset + result.hits.length)} / {result.total}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={searching || offset + limit >= result.total}
+                        onClick={() => void runSearch(offset + limit)}
+                      >
+                        Sonraki →
+                      </Button>
+                    </div>
+                  ) : null}
                 </Card>
               ) : (
                 <EmptyState icon={<Search size={22} />} title={t("vault.noResults")} />
@@ -752,12 +814,23 @@ export function Vault() {
               >
                 {busy ? t("vault.indexing") : t("vault.indexNow")}
               </Button>
+              <div className="flex flex-col gap-2 pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+                <Checkbox checked={embeddingConsent} onChange={setEmbeddingConsent} label={t("ai.consentEmbedding")} />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy || !embeddingConsent || !status?.indexed}
+                  onClick={() => void buildSemanticIndex()}
+                >
+                  Semantik Vektör İndeksi Oluştur
+                </Button>
+              </div>
               {busy ? (
                 <Button variant="ghost" size="lg" onClick={cancelScan}>
                   {t("common.cancel")}
                 </Button>
               ) : null}
-              {scanning && progress ? (
+              {(scanning || buildingIndex) && progress ? (
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between text-xs muted tabular-nums">
                     <span>

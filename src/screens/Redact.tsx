@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Eye, Eraser, FileText, Search, ShieldCheck, Trash2 } from "lucide-react";
+import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { ChevronLeft, ChevronRight, Download, Eye, Eraser, FileText, Search, ShieldCheck, Trash2 } from "lucide-react";
 import {
   Badge,
   Card,
@@ -17,11 +18,25 @@ import { PageCanvas, type Rect } from "../components/pages";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { uid } from "../lib/format";
+import { isAndroid } from "../lib/mobile";
+import { fileFingerprint } from "../lib/office-api";
 import { useJobProgress, useToasts } from "../lib/store";
 import { useTool } from "../lib/useTool";
-import { cancelJob, detectRedactionMatches, detectSensitiveText, redactPdf, toAppError } from "../lib/api";
+import {
+  aiSaveOutput,
+  cancelJob,
+  detectRedactionMatches,
+  detectSensitiveText,
+  redactPdf,
+  toAppError,
+} from "../lib/api";
 import { normalizePageSize, rectToUserSpace, userSpaceToRect } from "../lib/redact-geometry";
-import { buildRedactionCertificate, renderCertificateMarkdown, type RedactedItemRecord } from "../lib/redact-cert";
+import {
+  buildRedactionCertificate,
+  maskSensitiveValue,
+  renderCertificateMarkdown,
+  type RedactedItemRecord,
+} from "../lib/redact-cert";
 import type { ImageRedactionMode, RedactionArea, RedactionMatch, RedactionOptions } from "../lib/types";
 
 /** A box the user drew, in page space, with a stable id for removal. */
@@ -266,7 +281,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
   };
 
   const { push: pushToast } = useToasts();
-  const generateCertificate = () => {
+  const generateCertificate = async (saveToFile = false) => {
     if (!session.primary) return;
     const certItems: RedactedItemRecord[] = boxes.map((box) => {
       const match = matches.find((m) => m.id === box.id);
@@ -278,23 +293,43 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
       return {
         page: box.page,
         category,
-        maskedPreview: match?.match.text ? `${match.match.text.slice(0, 3)}****` : "Gizli Alan",
+        maskedPreview: maskSensitiveValue(match?.match.text),
         ruleRef: "KVKK Md. 5 / 6",
       };
     });
 
+    const [origFp, outFp] = await Promise.all([
+      fileFingerprint(session.primary.path).catch(() => null),
+      session.result?.path ? fileFingerprint(session.result.path).catch(() => null) : Promise.resolve(null),
+    ]);
+    const originalSha256 = origFp?.exists ? origFp.sha256 : undefined;
+    const redactedSha256 = outFp?.exists ? outFp.sha256 : undefined;
+
     const cert = buildRedactionCertificate({
       documentName: session.primary.name,
       items: certItems,
-      verificationStatus: "verified",
+      originalSha256,
+      redactedSha256,
     });
 
     const md = renderCertificateMarkdown(cert);
     void navigator.clipboard?.writeText(md);
+
+    if (saveToFile && !isAndroid()) {
+      const defaultPath = session.primary.path.replace(/\.pdf$/i, "-karartma-sertifikasi.md");
+      const outPath = await saveDialog({
+        defaultPath,
+        filters: [{ name: "Markdown Raporu (*.md)", extensions: ["md"] }],
+      });
+      if (typeof outPath === "string") {
+        await aiSaveOutput(outPath, md, "overwrite");
+      }
+    }
+
     pushToast({
       kind: "success",
       title: "Karartma Sertifikası Üretildi",
-      detail: `Sertifika (${cert.certificateId}) panoya kopyalandı.`,
+      detail: `Sertifika (${cert.certificateId}) panoya kopyalandı${saveToFile ? " ve dosyaya kaydedildi" : ""}.`,
     });
   };
 
@@ -412,16 +447,29 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
             />
             <OptionCard title="Karartma Sertifikası (v5.4)">
               <p className="text-xs muted">
-                Hangi alanların, hangi mevzuata (KVKK) göre karartıldığını kanıtlayan resmî sertifika oluşturun.
+                Hangi alanların, hangi mevzuata (KVKK) göre karartıldığını ve SHA-256 dosya özetlerini kanıtlayan resmî
+                sertifika oluşturun.
               </p>
-              <button
-                className="btn btn-sm self-start"
-                type="button"
-                onClick={generateCertificate}
-                disabled={!session.primary || !boxes.length}
-              >
-                <FileText size={13} /> Sertifika Üret
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="btn btn-sm self-start"
+                  type="button"
+                  onClick={() => void generateCertificate(false)}
+                  disabled={!session.primary || !boxes.length}
+                >
+                  <FileText size={13} /> Sertifika Kopyala
+                </button>
+                {!isAndroid() ? (
+                  <button
+                    className="btn btn-sm self-start"
+                    type="button"
+                    onClick={() => void generateCertificate(true)}
+                    disabled={!session.primary || !boxes.length}
+                  >
+                    <Download size={13} /> Sertifika Kaydet (.md)
+                  </button>
+                ) : null}
+              </div>
             </OptionCard>
             <OptionCard title={t("nav.redact")}>
               <div className="flex items-center gap-2 text-xs muted">

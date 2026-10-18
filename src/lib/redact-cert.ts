@@ -27,6 +27,15 @@ export interface RedactionCertificateData {
 }
 
 /**
+ * Safely masks a sensitive string without leaking plaintext characters.
+ */
+export function maskSensitiveValue(value?: string | null): string {
+  if (!value || !value.trim()) return "Gizli Alan";
+  const len = value.trim().length;
+  return `******** (${len} karakter maskelendi)`;
+}
+
+/**
  * Creates a standard Redaction Certificate data structure.
  */
 export function buildRedactionCertificate(params: {
@@ -40,18 +49,25 @@ export function buildRedactionCertificate(params: {
 }): RedactionCertificateData {
   const now = new Date();
   const certId = `CERT-RED-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}-${Math.floor(100000 + Math.random() * 900000)}`;
+  const hasRealHashes = Boolean(
+    params.originalSha256 &&
+    params.redactedSha256 &&
+    params.originalSha256 !== params.redactedSha256 &&
+    !params.originalSha256.startsWith("Hesaplanmadı") &&
+    !params.redactedSha256.startsWith("Hesaplanmadı"),
+  );
 
   return {
     certificateId: certId,
     documentName: params.documentName,
-    originalSha256: params.originalSha256 || "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    redactedSha256: params.redactedSha256 || "d41d8cd98f00b204e9800998ecf8427e",
+    originalSha256: params.originalSha256 || "Hesaplanmadı (Kaynak dosya doğrulanmadı)",
+    redactedSha256: params.redactedSha256 || "Hesaplanmadı (Karartma henüz uygulanmadı)",
     appliedAt: now.toISOString(),
     operatorName: params.operatorName || "OmniOffice Automated Compliance Officer",
     organization: params.organization || "OmniOffice Güvenli Belge İşleme Merkezi",
     items: params.items,
     totalRedactionsCount: params.items.length,
-    verificationStatus: params.verificationStatus || "verified",
+    verificationStatus: params.verificationStatus ?? (hasRealHashes ? "verified" : "unverified"),
   };
 }
 

@@ -218,6 +218,7 @@ pub struct VaultSearchRequest {
     pub folder: Option<String>,
     pub limit: usize,
     pub offset: usize,
+    pub embedding_consent: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2054,13 +2055,21 @@ pub(crate) fn hybrid_search_at(
             retrieval_mode: Some("keyword".to_string()),
         };
     }
+    if request.exact || request.phrase {
+        let mut res = search_index(&vault, request);
+        res.retrieval_mode = Some("keyword".to_string());
+        return res;
+    }
     let limit = if request.limit == 0 { DEFAULT_LIMIT } else { request.limit.min(MAX_LIMIT) };
     let index = ensure_search_index(root, model, query_vector.map(|vector| vector.len()));
     // BM25 and, when the query was embedded, the stored chunk vectors, fused
-    // with RRF by the index itself.
+    // with RRF by the index itself. Evaluate all chunks so metadata filters
+    // and pagination are never starved by an early top-40 cutoff.
     let has_semantic = query_vector.is_some() && !index.vectors.keys.is_empty();
-    let fused = index.hybrid_search(query, query_vector, (limit * 2).max(40));
+    let fused = index.hybrid_search(query, query_vector, index.chunks.len().max(40));
     let terms = vault_index::tokenize(query);
+    let terms_raw = query_terms(query);
+    let terms_folded: Vec<Vec<char>> = terms_raw.iter().map(|term| fold(term)).collect();
     let extensions: HashSet<String> = request
         .extensions
         .iter()
@@ -2068,6 +2077,28 @@ pub(crate) fn hybrid_search_at(
         .filter(|extension| !extension.is_empty())
         .collect();
     let folder = request.folder.as_deref().map(normalize_path_key).filter(|folder| !folder.is_empty());
+
+    let doc_matches_filters = |document: &VaultDocument| -> bool {
+        if !extensions.is_empty() && !extensions.contains(&document.extension) {
+            return false;
+        }
+        if let Some(folder_key) = &folder {
+            if !path_is_under(&normalize_path_key(&document.path), folder_key) {
+                return false;
+            }
+        }
+        if let Some(after) = &request.modified_after {
+            if document.modified.as_str() < after.as_str() {
+                return false;
+            }
+        }
+        if let Some(before) = &request.modified_before {
+            if document.modified.as_str() >= before.as_str() {
+                return false;
+            }
+        }
+        true
+    };
 
     // Keep the best chunk per document, preserving the fused order.
     let mut seen: HashSet<String> = HashSet::new();
@@ -2078,26 +2109,30 @@ pub(crate) fn hybrid_search_at(
             continue;
         }
         let Some(document) = vault.documents.iter().find(|document| document.id == chunk.document_id) else { continue };
-        if !extensions.is_empty() && !extensions.contains(&document.extension) {
+        if !doc_matches_filters(document) {
             continue;
         }
-        if let Some(folder_key) = &folder {
-            if !path_is_under(&normalize_path_key(&document.path), folder_key) {
-                continue;
-            }
-        }
-        if let Some(after) = &request.modified_after {
-            if document.modified.as_str() < after.as_str() {
-                continue;
-            }
-        }
-        if let Some(before) = &request.modified_before {
-            if document.modified.as_str() >= before.as_str() {
-                continue;
-            }
-        }
-        let matched: Vec<String> =
-            terms.iter().filter(|term| chunk.text.to_lowercase().contains(term.as_str())).cloned().collect();
+        let (match_label, snippet, matched) =
+            if let Some(evaluated) = evaluate_document(document, request, &terms_raw, &terms_folded) {
+                let snip =
+                    if evaluated.snippet.is_empty() { chunk_snippet(&chunk.text, &terms) } else { evaluated.snippet };
+                (evaluated.label, snip, evaluated.matched_terms)
+            } else {
+                let loc_label = document
+                    .locations
+                    .iter()
+                    .find(|loc| {
+                        let sample: String = chunk.text.chars().take(64).collect();
+                        !sample.is_empty() && loc.text.contains(&sample)
+                    })
+                    .map(|loc| loc.label.clone())
+                    .unwrap_or_else(|| "document".to_string());
+                let highlighted = make_snippet(&chunk.text, &terms_folded);
+                let snip = if highlighted.is_empty() { chunk_snippet(&chunk.text, &terms) } else { highlighted };
+                let matched_terms: Vec<String> =
+                    terms.iter().filter(|term| chunk.text.to_lowercase().contains(term.as_str())).cloned().collect();
+                (loc_label, snip, matched_terms)
+            };
         hits.push(VaultSearchHit {
             document_id: document.id.clone(),
             path: document.path.clone(),
@@ -2106,11 +2141,35 @@ pub(crate) fn hybrid_search_at(
             size: document.size,
             modified: document.modified.clone(),
             score,
-            match_label: "hybrid".to_string(),
-            snippet: chunk_snippet(&chunk.text, &terms),
+            match_label,
+            snippet,
             matched_terms: matched,
         });
     }
+
+    // When fuzzy search is enabled (or query matched file name / headings not in body chunks),
+    // append any remaining documents that match via `evaluate_document`.
+    for document in &vault.documents {
+        if seen.contains(&document.id) || !doc_matches_filters(document) {
+            continue;
+        }
+        if let Some(evaluated) = evaluate_document(document, request, &terms_raw, &terms_folded) {
+            seen.insert(document.id.clone());
+            hits.push(VaultSearchHit {
+                document_id: document.id.clone(),
+                path: document.path.clone(),
+                file_name: document.file_name.clone(),
+                extension: document.extension.clone(),
+                size: document.size,
+                modified: document.modified.clone(),
+                score: evaluated.score,
+                match_label: evaluated.label,
+                snippet: evaluated.snippet,
+                matched_terms: evaluated.matched_terms,
+            });
+        }
+    }
+
     let total = hits.len();
     let hits: Vec<VaultSearchHit> = hits.into_iter().skip(request.offset).take(limit).collect();
     VaultSearchResponse {
@@ -2267,7 +2326,7 @@ pub async fn vault_search_hybrid(app: AppHandle, request: VaultSearchRequest) ->
     let root = config_dir(&app)?;
     let (model, enabled, client) = hybrid_settings(&app);
     let mut query_vector: Option<Vec<f32>> = None;
-    if enabled && !request.query.trim().is_empty() {
+    if request.embedding_consent && enabled && !request.query.trim().is_empty() {
         if let Some(client) = &client {
             if let Ok(vector) = client.embed(request.query.trim()).await {
                 query_vector = Some(vector);
@@ -2429,6 +2488,29 @@ mod tests {
         let _ = hybrid_search_at(&root, &request, "test-model", None);
         let second = std::fs::read(directory.join("index.json")).expect("index still there");
         assert_eq!(first, second, "an unchanged vault must not be re-indexed");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn hybrid_search_preserves_locations_highlights_and_fuzzy_mode() {
+        let root = temp_root("hybrid-loc");
+        let index = sample_index();
+        save_index(&root, &index).unwrap();
+
+        let labelled = hybrid_search_at(&root, &search_request("value"), "test-model", None);
+        assert_eq!(labelled.total, 1);
+        assert_eq!(labelled.hits[0].match_label, "Sheet1!A1:B2");
+        assert!(labelled.hits[0].snippet.contains("<<value>>"));
+
+        let fuzzy = hybrid_search_at(
+            &root,
+            &VaultSearchRequest { query: "colr".into(), fuzzy: true, ..Default::default() },
+            "test-model",
+            None,
+        );
+        assert_eq!(fuzzy.total, 1);
+        assert_eq!(fuzzy.hits[0].file_name, "alpha.txt");
+        assert!(fuzzy.hits[0].snippet.to_lowercase().contains("<<color>>"));
         let _ = std::fs::remove_dir_all(&root);
     }
 

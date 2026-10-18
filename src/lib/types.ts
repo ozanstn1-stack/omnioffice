@@ -606,6 +606,7 @@ export interface AiSummarizeRequest {
   pages?: number[];
   password?: string;
   jobId: string;
+  consent?: boolean;
 }
 
 export interface AiTranslateRequest {
@@ -614,6 +615,7 @@ export interface AiTranslateRequest {
   pages?: number[];
   password?: string;
   jobId: string;
+  consent?: boolean;
 }
 
 export interface AiAskRequest {
@@ -621,6 +623,7 @@ export interface AiAskRequest {
   question: string;
   password?: string;
   jobId: string;
+  consent?: boolean;
 }
 
 export type AiChatScope = "document" | "page" | "selection" | "vault";
@@ -628,6 +631,7 @@ export type AiChatScope = "document" | "page" | "selection" | "vault";
 export interface DocChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
+  citations?: AiCitation[];
 }
 
 export interface AiChatRequest {
@@ -690,6 +694,7 @@ export interface AiExtractRequest {
   extraFields?: string[];
   password?: string;
   jobId: string;
+  consent?: boolean;
 }
 
 export interface AiTableRow {
@@ -753,6 +758,7 @@ export interface AiCleanupRequest {
   pages?: number[];
   password?: string;
   jobId: string;
+  consent?: boolean;
 }
 
 export interface AiLibraryEntry {

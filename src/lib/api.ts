@@ -137,8 +137,10 @@ export const aiCleanupText = (request: AiCleanupRequest) => invokeTracked<AiText
  * persists the invoke args, which here hold the user's selected document text.
  */
 export const aiEditText = (request: AiEditRequest) => invoke<AiEditResult>("ai_edit_text", { request });
-export const aiSuggestMetadata = (path: string, password: string | undefined, jobId: string) =>
-  invokeTracked<AiMetadataSuggestion>("ai_suggest_metadata", { request: { path, password: password || null, jobId } });
+export const aiSuggestMetadata = (path: string, password: string | undefined, jobId: string, consent = true) =>
+  invokeTracked<AiMetadataSuggestion>("ai_suggest_metadata", {
+    request: { path, password: password || null, jobId, consent },
+  });
 export const aiSaveOutput = (path: string, text: string, overwrite?: string) =>
   invoke<string>("ai_save_output", { path, text, overwrite: overwrite ?? null });
 export const aiExamplePrompts = () => invoke<AiExamplePrompts>("ai_example_prompts");
