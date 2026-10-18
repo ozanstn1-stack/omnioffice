@@ -85,7 +85,7 @@ export function createPetitionDocument(data: PetitionData): TextDocument {
     {
       type: "paragraph",
       props: { ...defaultParaProps(), align: "center", spaceAfterPt: 18 },
-      runs: [makeRun(data.recipientAuthority.toUpperCase(), true)],
+      runs: [makeRun(data.recipientAuthority.trim().toLocaleUpperCase("tr-TR"), true)],
     },
     // Konu (Sola dayalı, Kalın başlık)
     {
@@ -109,7 +109,7 @@ export function createPetitionDocument(data: PetitionData): TextDocument {
     {
       type: "paragraph",
       props: { ...defaultParaProps(), align: "right", spaceAfterPt: 4 },
-      runs: [makeRun(data.fullName.toUpperCase(), true)],
+      runs: [makeRun(data.fullName.trim().toLocaleUpperCase("tr-TR"), true)],
     },
     {
       type: "paragraph",

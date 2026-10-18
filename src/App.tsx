@@ -120,6 +120,15 @@ const PlannerScreen = React.lazy(() =>
 const TemplatesScreen = React.lazy(() =>
   import("./office/ToolsScreens").then((module) => ({ default: module.TemplatesScreen })),
 );
+const PetitionWizardScreen = React.lazy(() =>
+  import("./screens/PetitionWizard").then((module) => ({ default: module.PetitionWizard })),
+);
+const KvkkWizardScreen = React.lazy(() =>
+  import("./screens/KvkkWizard").then((module) => ({ default: module.KvkkWizard })),
+);
+const DocumentHealthScreen = React.lazy(() =>
+  import("./screens/DocumentHealthScreen").then((module) => ({ default: module.DocumentHealthScreen })),
+);
 import { matchKeybinding, registerCommand, runCommand, setCommandTranslator, unregisterCommand } from "./lib/commands";
 import { resumeJobs, useJobs as useBackgroundJobs } from "./lib/jobs";
 import { installJobRetryHandlers } from "./lib/job-retries";
@@ -528,6 +537,14 @@ export default function App() {
       { id: "data", key: "nav.data", category: "view" },
       { id: "draw", key: "nav.draw", category: "view" },
       { id: "converter", key: "nav.converter", category: "view" },
+      { id: "invoices", key: "nav.invoices", category: "view" },
+      { id: "eml", key: "nav.eml", category: "view" },
+      { id: "scanner", key: "nav.scanner", category: "view" },
+      { id: "recipes", key: "nav.recipes", category: "view" },
+      { id: "mailMerge", key: "nav.mailMerge", category: "view" },
+      { id: "petition", key: "nav.petition", category: "view" },
+      { id: "kvkk", key: "nav.kvkk", category: "view" },
+      { id: "documentHealth", key: "nav.documentHealth", category: "view" },
       { id: "cleaner", key: "nav.cleaner", category: "view" },
       { id: "history", key: "nav.history", category: "view" },
       { id: "jobs", key: "nav.jobs", category: "view" },
@@ -624,29 +641,45 @@ export default function App() {
   // viewer so nothing is silently dropped.
   const handleIncomingPaths = useCallback(
     (paths: string[]) => {
-      if (paths.length === 1) {
-        openSinglePath(paths[0]);
+      const actionToken = paths.find((p) => p.startsWith("__action:"));
+      if (actionToken === "__action:scan") {
+        setScreen("scanner");
         return;
       }
-      const officePaths = paths.filter((path) => isOfficePath(path));
+      if (actionToken === "__action:new_document") {
+        useOfficeTabs.getState().create("writer");
+        setScreen("office");
+        return;
+      }
+      if (actionToken === "__action:recent_files") {
+        setScreen("home");
+        return;
+      }
+      const realPaths = paths.filter((p) => !p.startsWith("__action:"));
+      if (realPaths.length === 0) return;
+      if (realPaths.length === 1) {
+        openSinglePath(realPaths[0]);
+        return;
+      }
+      const officePaths = realPaths.filter((path) => isOfficePath(path));
       if (officePaths.length > 0) {
         setScreen("office");
         for (const path of officePaths) void openOfficePath(path);
         return;
       }
-      const pdfPaths = paths.filter((path) => path.toLowerCase().endsWith(".pdf"));
+      const pdfPaths = realPaths.filter((path) => path.toLowerCase().endsWith(".pdf"));
       if (pdfPaths.length > 0) {
         setFiles(pdfPaths);
         setScreen("reader");
         return;
       }
-      const imagePaths = paths.filter((path) => isImage(path));
+      const imagePaths = realPaths.filter((path) => isImage(path));
       if (imagePaths.length > 0) {
         setFiles(imagePaths);
         setScreen("imagesToPdf");
         return;
       }
-      for (const path of paths) void openAnyFile(path).catch(() => undefined);
+      for (const path of realPaths) void openAnyFile(path).catch(() => undefined);
     },
     [openSinglePath],
   );
@@ -666,8 +699,14 @@ export default function App() {
       void takePendingAndroidOpen()
         .then((paths) => {
           if (cancelled || !paths.length) return;
-          const fresh = paths.filter((path) => !seen.has(path));
-          for (const path of fresh) seen.add(path);
+          // Launcher shortcuts arrive as `__action:*` tokens, and the same
+          // token is legitimate every time it is used: deduplicating them
+          // would let each shortcut fire only once per session. Only real
+          // file paths are remembered.
+          const fresh = paths.filter((path) => path.startsWith("__action:") || !seen.has(path));
+          for (const path of fresh) {
+            if (!path.startsWith("__action:")) seen.add(path);
+          }
           if (fresh.length > 0) handleIncomingPaths(fresh);
         })
         .catch(() => undefined);
@@ -764,6 +803,9 @@ export default function App() {
       jobs: <JobsScreen />,
       sync: <Sync />,
       plugins: <Plugins />,
+      petition: <PetitionWizardScreen onNavigate={navigate} />,
+      kvkk: <KvkkWizardScreen onNavigate={navigate} />,
+      documentHealth: <DocumentHealthScreen onNavigate={navigate} />,
     }),
     [convertTab, dragging, files, homeDrop, navigate, pageToolTab, readerPage, securityTab],
   );
@@ -786,6 +828,8 @@ export default function App() {
         { id: "spreadsheets", label: t("nav.spreadsheets"), icon: <FileSpreadsheet size={16} /> },
         { id: "presentations", label: t("nav.presentations"), icon: <Presentation size={16} /> },
         { id: "templates", label: t("nav.templates"), icon: <LayoutTemplate size={16} /> },
+        { id: "petition", label: t("nav.petition"), icon: <FilePlus2 size={16} /> },
+        { id: "kvkk", label: t("nav.kvkk"), icon: <ShieldCheck size={16} /> },
       ],
     },
     {
@@ -808,7 +852,6 @@ export default function App() {
           id: "scanner",
           label: t("nav.scanner"),
           icon: <Camera size={16} />,
-          // The scanner screen is a scaffold; camera capture lands in v6.0.
           hidden: !flagEnabled("experimentalScanner"),
         },
         { id: "recipes", label: t("nav.recipes"), icon: <ListChecks size={16} /> },
@@ -826,6 +869,7 @@ export default function App() {
         { id: "compress", label: t("nav.compress"), icon: <Minimize2 size={16} /> },
         { id: "pageTools", label: t("nav.pageTools"), icon: <Wand2 size={16} /> },
         { id: "pdfStudio", label: t("nav.pdfStudio"), icon: <ShieldCheck size={16} /> },
+        { id: "documentHealth", label: t("nav.documentHealth"), icon: <ShieldCheck size={16} /> },
         { id: "watermark", label: t("nav.watermark"), icon: <Stamp size={16} /> },
         { id: "annotate", label: t("nav.annotate"), icon: <Type size={16} /> },
         { id: "redact", label: t("nav.redact"), icon: <Eraser size={16} /> },

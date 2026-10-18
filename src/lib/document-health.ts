@@ -46,7 +46,8 @@ export interface DocumentScanInput {
 
 // Regex patterns for Turkish personal data (KVKK)
 const TCKN_REGEX = /\b[1-9][0-9]{10}\b/g;
-const TR_PHONE_REGEX = /(?:\+90|0)?\s*[1-9][0-9]{2}[\s.-]*[0-9]{3}[\s.-]*[0-9]{2}[\s.-]*[0-9]{2}\b/g;
+const TR_PHONE_REGEX =
+  /(?:\+90[\s.-]*|0\s*)(?:5[0-9]{2}|[2348][0-9]{2})[\s.-]*[0-9]{3}[\s.-]*[0-9]{2}[\s.-]*[0-9]{2}\b/g;
 const EMAIL_REGEX = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
 const IBAN_REGEX = /\bTR\s*[0-9]{2}(?:\s*[0-9]{4}){5}\s*[0-9]{2}\b/gi;
 
@@ -58,7 +59,7 @@ export function isValidTckn(tckn: string): boolean {
   const digits = tckn.split("").map(Number);
   const sumOdd = digits[0] + digits[2] + digits[4] + digits[6] + digits[8];
   const sumEven = digits[1] + digits[3] + digits[5] + digits[7];
-  const d10 = (sumOdd * 7 - sumEven) % 10;
+  const d10 = (((sumOdd * 7 - sumEven) % 10) + 10) % 10;
   if (d10 !== digits[9]) return false;
   const totalSum = digits.slice(0, 10).reduce((acc, d) => acc + d, 0);
   return totalSum % 10 === digits[10];
@@ -129,9 +130,9 @@ export function analyzeDocumentHealth(input: DocumentScanInput): DocumentHealthR
     });
   }
 
-  // 2. Hidden Metadata Scan
+  // 2. Hidden Metadata Scan (title is an accessibility field, not a privacy leak)
   const meta = input.metadata || {};
-  const metaFields = ["author", "creator", "producer", "title", "subject", "keywords"];
+  const metaFields = ["author", "creator", "producer", "subject", "keywords"];
   const populatedMeta = metaFields.filter((key) => Boolean(meta[key] && meta[key]?.trim() !== ""));
   if (populatedMeta.length > 0) {
     issues.push({
