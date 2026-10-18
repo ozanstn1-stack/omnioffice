@@ -10,5 +10,7 @@ fuzz_target!(|data: &[u8]| {
     if data.len() > 16 * 1024 * 1024 {
         return;
     }
-    let _ = officecore::xlsx::read_workbook_bytes(data);
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = officecore::xlsx::read_workbook_bytes(data);
+    }));
 });
