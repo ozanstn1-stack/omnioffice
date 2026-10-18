@@ -9,6 +9,24 @@ import type { Settings, UpdateInfo } from "./types";
 /** Automatic checks run at most once per this interval. */
 export const UPDATE_CHECK_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * Release channels. The channel is a property of the installed build, not a
+ * runtime switch: stable installers come from the versioned releases and
+ * check `releases/latest`, beta installers carry a `-beta.N` version and are
+ * built by the beta workflow with their own updater endpoint
+ * (`releases/download/beta`). Switching channels means installing the other
+ * channel's installer; the Settings screen links to it.
+ */
+export type UpdateChannel = "stable" | "beta";
+
+/** The installed build's channel: beta builds carry a `-beta.N` suffix. */
+export function updateChannel(appVersion: string): UpdateChannel {
+  return /-beta\.\d+$/.test(appVersion) ? "beta" : "stable";
+}
+
+/** Where the beta installers live (the rolling `beta` prerelease). */
+export const BETA_RELEASES_URL = "https://github.com/ozanstn1-stack/omnioffice/releases/tag/beta";
+
 /** True when the weekly automatic check is due. */
 export function updateCheckDue(settings: Settings, now: number): boolean {
   if (!settings.updateCheck) return false;

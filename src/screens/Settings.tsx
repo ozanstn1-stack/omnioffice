@@ -13,7 +13,7 @@ import { Badge, Button, Card, Kbd } from "../components/ui";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { reportError, useSettings, useToasts } from "../lib/store";
-import { useUpdate } from "../lib/update";
+import { BETA_RELEASES_URL, updateChannel, useUpdate, type UpdateChannel } from "../lib/update";
 import { AiSettings } from "../components/ai-settings";
 import { appInfo, aiClearData, diagnosticsReport, updateOpen } from "../lib/api";
 import { saveFileBytes } from "../lib/mobile";
@@ -43,6 +43,13 @@ function UpdateControls() {
   const error = useUpdate((s) => s.error);
   const check = useUpdate((s) => s.check);
   const [ran, setRan] = useState(false);
+  // The channel is a property of the installed build (see lib/update.ts).
+  const [channel, setChannel] = useState<UpdateChannel | null>(null);
+  useEffect(() => {
+    void appInfo()
+      .then((value) => setChannel(updateChannel(value.appVersion)))
+      .catch(() => undefined);
+  }, []);
 
   const result =
     !ran || checking
@@ -65,6 +72,17 @@ function UpdateControls() {
         />
         <span>{t("update.weekly")}</span>
       </label>
+      <div className="flex items-center gap-2 flex-wrap text-xs muted">
+        <span>
+          {t("update.channel")}:{" "}
+          <strong>{channel === "beta" ? t("update.channelBeta") : t("update.channelStable")}</strong>
+        </span>
+        {channel === "stable" ? (
+          <Button size="sm" variant="ghost" onClick={() => void updateOpen(BETA_RELEASES_URL).catch(() => undefined)}>
+            {t("update.betaOpen")}
+          </Button>
+        ) : null}
+      </div>
       <div className="flex items-center gap-2 flex-wrap">
         <Button
           size="sm"

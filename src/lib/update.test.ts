@@ -32,7 +32,7 @@ vi.mock("@tauri-apps/plugin-updater", () => ({ check: updaterCheckMock }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: processRelaunchMock }));
 
 import { useSettings } from "./store";
-import { UPDATE_CHECK_INTERVAL_MS, shouldAnnounce, updateCheckDue, useUpdate } from "./update";
+import { UPDATE_CHECK_INTERVAL_MS, shouldAnnounce, updateChannel, updateCheckDue, useUpdate } from "./update";
 import { UpdateBanner } from "../components/update-banner";
 
 const NEWER: UpdateInfo = {
@@ -282,5 +282,16 @@ describe("in-app install", () => {
     android.value = true;
     await useUpdate.getState().relaunch();
     expect(processRelaunchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("update channels", () => {
+  it("reads the channel from the installed version", () => {
+    // Stable builds have a plain semver; beta builds carry a -beta.N suffix
+    // (scripts/set-update-channel.mjs writes it in CI).
+    expect(updateChannel("6.0.0")).toBe("stable");
+    expect(updateChannel("6.1.0")).toBe("stable");
+    expect(updateChannel("6.1.0-beta.3")).toBe("beta");
+    expect(updateChannel("6.2.1-beta.12")).toBe("beta");
   });
 });
