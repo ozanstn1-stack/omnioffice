@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { analyzeDocumentHealth, fixMetadataLeaks, isValidTckn, type DocumentScanInput } from "./document-health";
 
 describe("Document Health & KVKK Engine (v5.4.0)", () => {
-  it("validates TCKN algorithm accurately", () => {
+  it("validates TCKN algorithm accurately including negative difference before modulo", () => {
     // Known valid TCKN algorithm example: 10000000146
     expect(isValidTckn("10000000146")).toBe(true);
+    // Valid TCKN where sumOdd*7 (5*7=35) < sumEven (9+9+9+9=36) -> (35-36) mod 10 = 9, sum10 = 50 -> check11 = 0
+    expect(isValidTckn("19191919190")).toBe(true);
     // Invalid checks
     expect(isValidTckn("10000000147")).toBe(false);
     expect(isValidTckn("01234567890")).toBe(false); // starts with 0
@@ -72,6 +74,8 @@ describe("Document Health & KVKK Engine (v5.4.0)", () => {
     expect(cleaned.producer).toBeUndefined();
     expect(cleaned.keywords).toBeUndefined();
     expect(cleaned.title).toBe("Resmi Yazı"); // kept
+    const rechecked = analyzeDocumentHealth({ ...input, metadata: cleaned });
+    expect(rechecked.issues.find((i) => i.id === "metadata-leaks")).toBeUndefined();
   });
 
   it("produces high health score for clean, signed, and accessible document", () => {

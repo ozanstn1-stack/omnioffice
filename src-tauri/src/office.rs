@@ -1220,8 +1220,12 @@ pub async fn office_invoice_summary(paths: Vec<String>) -> Result<InvoiceSummary
     let task = tauri::async_runtime::spawn_blocking(move || {
         let mut invoices = Vec::new();
         let mut warnings = Vec::new();
+        let mut seen_paths = std::collections::HashSet::new();
         for path in &paths {
             let source = input_path(path)?;
+            if !seen_paths.insert(source.clone()) {
+                continue;
+            }
             match ubl::read_ubl_package_file(&source) {
                 Ok(reads) => {
                     for read in reads {

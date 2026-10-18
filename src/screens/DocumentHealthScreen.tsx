@@ -1,40 +1,183 @@
 import { useState, useMemo } from "react";
-import { AlertTriangle, CheckCircle2, Info, ShieldAlert, Sparkles, Trash2 } from "lucide-react";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { AlertTriangle, CheckCircle2, FolderOpen, Info, ShieldAlert, Sparkles, Trash2 } from "lucide-react";
 import { Badge, Button, Card, TextArea } from "../components/ui";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
+import { editMetadata, inspectDocument, pageText, pdfVerifySignatures } from "../lib/api";
 import {
   analyzeDocumentHealth,
   fixMetadataLeaks,
   type DocumentHealthReport,
   type HealthIssue,
 } from "../lib/document-health";
-import { useToasts } from "../lib/store";
+import { fileBaseName, uid } from "../lib/format";
+import { useT } from "../lib/i18n";
+import { isAndroid, pickOfficeFiles } from "../lib/mobile";
+import type { ViewId } from "../lib/nav";
+import { openDocument, saveDocument } from "../lib/office-api";
+import type { TextDocument } from "../lib/office-types";
+import { reportError, useToasts } from "../lib/store";
 
 export function DocumentHealthScreen({
   initialText = "",
   initialMetadata = {},
+  onNavigate,
 }: {
   initialText?: string;
   initialMetadata?: Record<string, string | undefined>;
+  onNavigate?: (view: ViewId) => void;
 }) {
+  const t = useT();
   const { push } = useToasts();
+  const [filePath, setFilePath] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [content, setContent] = useState(initialText);
   const [metadata, setMetadata] = useState<Record<string, string | undefined>>(initialMetadata);
+  const [hasSignatures, setHasSignatures] = useState(true);
+  const [hasTitle, setHasTitle] = useState(true);
+  const [hasLanguage, setHasLanguage] = useState(true);
+  const [fontIssuesCount, setFontIssuesCount] = useState(0);
 
   const report: DocumentHealthReport = useMemo(() => {
     return analyzeDocumentHealth({
       text: content,
       metadata,
-      hasSignatures: true,
-      hasTitle: true,
-      hasLanguage: true,
-      fontIssuesCount: 0,
+      hasSignatures,
+      hasTitle,
+      hasLanguage,
+      fontIssuesCount,
     });
-  }, [content, metadata]);
+  }, [content, metadata, hasSignatures, hasTitle, hasLanguage, fontIssuesCount]);
 
-  const handleFixIssue = (issue: HealthIssue) => {
+  const loadFileForInspection = async (path: string) => {
+    setBusy(true);
+    setFilePath(path);
+    try {
+      const lower = path.toLowerCase();
+      if (lower.endsWith(".pdf")) {
+        const [insp, sigs] = await Promise.all([
+          inspectDocument(path),
+          pdfVerifySignatures(path).catch(() => ({ signatures: [], warnings: [] })),
+        ]);
+        const meta: Record<string, string | undefined> = {};
+        if (insp.authorOverride) meta.author = insp.authorOverride;
+        if (insp.creator) meta.creator = insp.creator;
+        if (insp.producer) meta.producer = insp.producer;
+        if (insp.titleOverride) meta.title = insp.titleOverride;
+        if (insp.subjectOverride) meta.subject = insp.subjectOverride;
+        setMetadata(meta);
+        setHasSignatures(sigs.signatures.length > 0);
+        setHasTitle(Boolean(insp.titleOverride?.trim()));
+        setHasLanguage(Boolean(insp.language?.trim()));
+        setFontIssuesCount(insp.fonts.filter((f) => !f.embedded).length);
+
+        const maxPages = Math.min(insp.pageCount, 20);
+        const pageTexts: string[] = [];
+        for (let p = 1; p <= maxPages; p++) {
+          const txt = await pageText(path, p).catch(() => "");
+          if (txt.trim()) pageTexts.push(txt);
+        }
+        setContent(pageTexts.join("\n\n"));
+      } else {
+        const opened = await openDocument(path);
+        const doc = opened.model as TextDocument;
+        const meta: Record<string, string | undefined> = {};
+        if (doc.metadata?.author) meta.author = doc.metadata.author;
+        if (doc.metadata?.creator) meta.creator = doc.metadata.creator;
+        if (doc.metadata?.lastModifiedBy) meta.lastModifiedBy = doc.metadata.lastModifiedBy;
+        if (doc.metadata?.title || doc.title) meta.title = doc.metadata?.title || doc.title;
+        if (doc.metadata?.subject) meta.subject = doc.metadata.subject;
+        setMetadata(meta);
+        setHasSignatures(false);
+        setHasTitle(Boolean((doc.metadata?.title || doc.title || "").trim()));
+        setHasLanguage(true);
+        setFontIssuesCount(0);
+
+        const paragraphs: string[] = [];
+        for (const block of doc.blocks || []) {
+          if (block.type === "paragraph") {
+            const line = (block.runs || []).map((r) => r.text || "").join("");
+            if (line.trim()) paragraphs.push(line);
+          }
+        }
+        setContent(paragraphs.join("\n\n"));
+      }
+      push({
+        kind: "success",
+        title: "Belge Analiz Edildi",
+        detail: `${fileBaseName(path)} üzerinde KVKK, meta veri, yazı tipi ve e-imza denetimi tamamlandı.`,
+      });
+    } catch (error) {
+      reportError(error, t);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handlePickFile = async () => {
+    if (isAndroid()) {
+      const [picked] = await pickOfficeFiles(false).catch(() => []);
+      if (picked) await loadFileForInspection(picked);
+      return;
+    }
+    const picked = await openDialog({
+      multiple: false,
+      filters: [
+        { name: "Belgeler (PDF, DOCX, ODT, UDF)", extensions: ["pdf", "docx", "odt", "udf", "rtf", "txt", "md"] },
+      ],
+    });
+    if (typeof picked === "string") {
+      await loadFileForInspection(picked);
+    }
+  };
+
+  const handleFixIssue = async (issue: HealthIssue) => {
     if (issue.fixAction === "strip_metadata") {
       setMetadata((prev) => fixMetadataLeaks(prev));
+      if (filePath && filePath.toLowerCase().endsWith(".pdf") && !isAndroid()) {
+        const outPath = await saveDialog({
+          defaultPath: filePath.replace(/\.pdf$/i, "-temiz.pdf"),
+          filters: [{ name: "PDF (*.pdf)", extensions: ["pdf"] }],
+        });
+        if (typeof outPath === "string") {
+          try {
+            await editMetadata(
+              filePath,
+              { path: outPath, overwrite: "replace" },
+              {
+                title: metadata.title || "",
+                author: "",
+                subject: "",
+                keywords: "",
+                creator: "",
+                producer: "",
+                creation_date: "",
+                mod_date: "",
+              },
+              true,
+              uid("meta-clean"),
+              undefined,
+              false,
+            );
+          } catch (error) {
+            reportError(error, t);
+            return;
+          }
+        }
+      } else if (filePath && !filePath.toLowerCase().endsWith(".pdf")) {
+        try {
+          const opened = await openDocument(filePath);
+          const doc = opened.model as TextDocument;
+          if (doc.metadata) {
+            doc.metadata.author = "";
+            doc.metadata.creator = "";
+            doc.metadata.lastModifiedBy = "";
+          }
+          await saveDocument(opened.kind, doc, filePath);
+        } catch {
+          // In-memory state is still cleaned below
+        }
+      }
       push({
         kind: "success",
         title: "Meta veriler temizlendi",
@@ -46,6 +189,7 @@ export function DocumentHealthScreen({
         title: "Karartma Aracı",
         detail: "Kişisel veriler Redact sekmesinde karartılmak üzere hazır.",
       });
+      onNavigate?.("redact");
     } else {
       push({
         kind: "info",
@@ -72,6 +216,16 @@ export function DocumentHealthScreen({
     <Screen
       title="Belge Sağlığı ve KVKK Denetimi"
       subtitle="Kişisel veri riskleri, gizli meta veriler, erişilebilirlik ve imza durumunu tek tıkla analiz edin ve onarın."
+      actions={
+        <Button
+          variant="primary"
+          icon={<FolderOpen className="w-4 h-4" />}
+          disabled={busy}
+          onClick={() => void handlePickFile()}
+        >
+          {filePath ? `Belge: ${fileBaseName(filePath)}` : "Belge Seç (PDF / DOCX / UDF)"}
+        </Button>
+      }
     >
       <TwoColumn
         main={
@@ -149,7 +303,7 @@ export function DocumentHealthScreen({
                           variant="primary"
                           size="sm"
                           icon={<Sparkles className="w-3.5 h-3.5" />}
-                          onClick={() => handleFixIssue(issue)}
+                          onClick={() => void handleFixIssue(issue)}
                         >
                           Tek Tıkla Düzelt
                         </Button>

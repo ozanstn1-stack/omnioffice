@@ -425,6 +425,7 @@ export function Ai({
         },
         password: session.password || undefined,
         jobId: jobId.current,
+        consent,
       });
       setOutput(result.text);
       setLastResult({
@@ -452,6 +453,7 @@ export function Ai({
         options: { targetLanguage, bilingual },
         password: session.password || undefined,
         jobId: jobId.current,
+        consent,
       });
       setOutput(result.text);
       setLastResult({ kind: "translate", result, options: `${targetLanguage}${bilingual ? " / bilingual" : ""}` });
@@ -476,6 +478,7 @@ export function Ai({
         question: asked,
         password: session.password || undefined,
         jobId: jobId.current,
+        consent,
       });
       setOutput(result.text);
       setLastResult({ kind: "ask", result, options: asked });
@@ -570,11 +573,12 @@ export function Ai({
     }
   };
 
-  const renderChatContent = (content: string) =>
+  const renderChatContent = (content: string, citations?: AiCitation[]) =>
     content.split(CITATION_PATTERN).map((part, index) => {
       const match = /^\[page\s+(\d+)\]$/i.exec(part);
       if (match) {
         const pageNum = parseInt(match[1], 10);
+        const cited = citations?.find((c) => c.page === pageNum) ?? citations?.[pageNum - 1];
         return (
           <button
             key={index}
@@ -584,17 +588,22 @@ export function Ai({
             onClick={() => {
               // The citation may point at another document (the vault scope);
               // open that file, not the one currently loaded.
-              const target = resolveCitationTarget(session.primary?.path, pageNum, undefined, session.primary?.path);
+              const target = resolveCitationTarget(
+                cited?.path,
+                cited?.page ?? pageNum,
+                cited?.location,
+                session.primary?.path,
+              );
               if (!target) return;
               if (target.kind === "pdf") {
-                onNavigate?.("reader", { files: [target.path], targetPage: target.page });
+                onNavigate?.("reader", { files: [target.path], targetPage: target.page > 0 ? target.page : undefined });
               } else {
                 void openOfficePath(target.path).then(() => onNavigate?.("office"));
               }
             }}
-            title={t("ai.jumpToPage", { page: pageNum })}
+            title={cited?.quote || cited?.snippet || t("ai.jumpToPage", { page: cited?.page ?? pageNum })}
           >
-            <BookOpenCheck size={11} /> {label("ai.citationPage", "page")} {pageNum}
+            <BookOpenCheck size={11} /> {label("ai.citationPage", "page")} {cited?.page ?? pageNum}
           </button>
         );
       }
@@ -622,7 +631,11 @@ export function Ai({
       documentPath: session.primary?.path,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      messages: chatMessages.map((m) => ({ role: m.role, content: m.content })),
+      messages: chatMessages.map((m) => ({
+        role: m.role,
+        content: m.content,
+        citations: m.citations,
+      })),
     };
     try {
       await aiChatSave(thread);
@@ -635,7 +648,13 @@ export function Ai({
   const handleLoadThread = async (id: string) => {
     try {
       const thread = await aiChatLoad(id);
-      setChatMessages(thread.messages.map((m) => ({ role: m.role, content: m.content })));
+      setChatMessages(
+        thread.messages.map((m) => ({
+          role: m.role,
+          content: m.content,
+          citations: m.citations,
+        })),
+      );
       setShowThreadsList(false);
       pushToast({ kind: "info", title: label("ai.threadLoaded", "Loaded thread"), detail: thread.title });
     } catch (err) {
@@ -675,6 +694,7 @@ export function Ai({
         extraFields: extraFieldsArr.length > 0 ? extraFieldsArr : undefined,
         password: session.password || undefined,
         jobId: jobId.current,
+        consent,
       });
       setTableResult(result);
     } catch (runError) {
@@ -838,6 +858,7 @@ export function Ai({
         path: session.primary.path,
         password: session.password || undefined,
         jobId: jobId.current,
+        consent,
       });
       setOutput(result.text);
       setLastResult({ kind: "cleanup", result, options: "ocr-text-repair" });
@@ -856,7 +877,12 @@ export function Ai({
     setMetadataSuggestion(null);
     setError(null);
     try {
-      const suggestion = await aiSuggestMetadata(session.primary.path, session.password || undefined, jobId.current);
+      const suggestion = await aiSuggestMetadata(
+        session.primary.path,
+        session.password || undefined,
+        jobId.current,
+        consent,
+      );
       setMetadataSuggestion(suggestion);
     } catch (runError) {
       fail(String((runError as { message?: string })?.message ?? runError));
@@ -1257,7 +1283,7 @@ export function Ai({
                               {message.role === "assistant" ? (
                                 <div className="whitespace-pre-wrap leading-relaxed">
                                   {message.content ? (
-                                    renderChatContent(message.content)
+                                    renderChatContent(message.content, message.citations)
                                   ) : running ? (
                                     <Spinner size={13} />
                                   ) : null}

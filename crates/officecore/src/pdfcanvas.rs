@@ -851,7 +851,7 @@ pub fn write_pdf(pages: &[BuiltPage], fonts: &FontSet, title: &str, lang: &str) 
             };
             if let Some(alt) = &item.alt {
                 if !alt.trim().is_empty() {
-                    elem.set("Alt", Object::string_literal(alt.clone()));
+                    elem.set("Alt", pdf_text_object(alt));
                 }
             }
             doc.objects.insert(elem_id, Object::Dictionary(elem));
@@ -891,13 +891,25 @@ pub fn write_pdf(pages: &[BuiltPage], fonts: &FontSet, title: &str, lang: &str) 
     });
     doc.trailer.set("Root", Object::Reference(catalog_id));
     let info_id = doc.add_object(dictionary! {
-        "Title" => Object::string_literal(title.to_string()),
+        "Title" => pdf_text_object(title),
         "Producer" => Object::string_literal("OmniOffice".to_string()),
     });
     doc.trailer.set("Info", Object::Reference(info_id));
     let mut bytes = Vec::new();
     let _ = doc.save_to(&mut bytes);
     bytes
+}
+
+fn pdf_text_object(value: &str) -> Object {
+    if value.is_ascii() {
+        Object::string_literal(value.to_string())
+    } else {
+        let mut bytes = vec![0xFE, 0xFF];
+        for unit in value.encode_utf16() {
+            bytes.extend_from_slice(&unit.to_be_bytes());
+        }
+        Object::string_literal(bytes)
+    }
 }
 
 #[cfg(test)]
@@ -964,5 +976,40 @@ mod tests {
                 .map(|value| String::from_utf8_lossy(value) == "Kedi resmi")
                 .unwrap_or(false)
         }));
+    }
+
+    #[test]
+    fn non_ascii_title_and_alt_text_use_utf16be_bom() {
+        let fonts = FontSet::new();
+        let mut canvas = Canvas::new(595.28, 841.89, &fonts);
+        canvas.begin_marked("Figure", Some("Şema Görseli"));
+        canvas.fill_rect(72.0, 130.0, 40.0, 40.0, Rgb(10, 20, 30), 1.0);
+        canvas.end_marked();
+        let page = canvas.finish();
+
+        let bytes = write_pdf(&[page], &fonts, "Türkçe Başlık", "tr-TR");
+        let doc = Document::load_mem(&bytes).expect("the tagged PDF loads");
+        let decode_utf16be = |raw: &[u8]| -> Option<String> {
+            if !raw.starts_with(&[0xFE, 0xFF]) {
+                return None;
+            }
+            let units: Vec<u16> = raw[2..].as_chunks::<2>().0.iter().copied().map(u16::from_be_bytes).collect();
+            Some(String::from_utf16_lossy(&units))
+        };
+        let has_alt = doc.objects.values().any(|object| {
+            object
+                .as_dict()
+                .ok()
+                .and_then(|dict| dict.get(b"Alt").ok())
+                .and_then(|value| value.as_str().ok())
+                .and_then(decode_utf16be)
+                .as_deref()
+                == Some("Şema Görseli")
+        });
+        assert!(has_alt, "Turkish /Alt must be UTF-16BE encoded");
+        let info_id = doc.trailer.get(b"Info").unwrap().as_reference().unwrap();
+        let info = doc.get_dictionary(info_id).unwrap();
+        let title_bytes = info.get(b"Title").unwrap().as_str().unwrap();
+        assert_eq!(decode_utf16be(title_bytes).as_deref(), Some("Türkçe Başlık"));
     }
 }

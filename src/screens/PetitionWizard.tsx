@@ -1,18 +1,24 @@
 import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { appCacheDir, join } from "@tauri-apps/api/path";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { FileText, Download } from "lucide-react";
+import { FileText, Download, Edit3 } from "lucide-react";
 import { Button, Card, Field, TextInput } from "../components/ui";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
+import { uid } from "../lib/format";
+import { isAndroid, pickAndroidSaveTarget, publishOutputs } from "../lib/mobile";
+import type { ViewId } from "../lib/nav";
+import { useOfficeTabs } from "../lib/office-store";
 import { reportError, useToasts } from "../lib/store";
 import { saveDocument, exportPdf } from "../lib/office-api";
 import { validateTCKN, createPetitionDocument, type PetitionData } from "../lib/petition";
 
 /**
  * Petition Wizard (Dilekçe Sihirbazı): Guided petition creation with
- * TCKN mod-11 validation and export to UDF and PDF (v5.3 - Issue #247).
+ * TCKN mod-11 validation and export to UDF, DOCX, PDF, or Writer (v5.3 - Issue #247).
  */
-export function PetitionWizard() {
+export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void }) {
   const t = useT();
   const [data, setData] = useState<PetitionData>({
     recipientAuthority: "",
@@ -32,13 +38,13 @@ export function PetitionWizard() {
     setData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleExport = async (format: "udf" | "pdf") => {
+  const validateForm = (): boolean => {
     if (!data.recipientAuthority.trim() || !data.subject.trim() || !data.fullName.trim() || !data.bodyText.trim()) {
       useToasts.getState().push({
         kind: "info",
         title: "Lütfen makam, konu, ad soyad ve açıklama alanlarını doldurun.",
       });
-      return;
+      return false;
     }
 
     if (data.tckn.trim() && !validateTCKN(data.tckn)) {
@@ -46,28 +52,75 @@ export function PetitionWizard() {
         kind: "error",
         title: "Geçersiz T.C. Kimlik Numarası!",
       });
-      return;
+      return false;
     }
 
+    return true;
+  };
+
+  const handleOpenInWriter = () => {
+    if (!validateForm()) return;
     const doc = createPetitionDocument(data);
-    const defaultName = `${data.subject || "dilekce"}.${format}`;
+    useOfficeTabs.getState().create("writer", data.subject.trim() || "Dilekçe", doc);
+    onNavigate?.("office");
+  };
+
+  const handleExport = async (format: "udf" | "docx" | "pdf") => {
+    if (!validateForm()) return;
+
+    const doc = createPetitionDocument(data);
+    const defaultName = `${data.subject.trim() || "dilekce"}.${format}`;
+
+    if (isAndroid()) {
+      const target = await pickAndroidSaveTarget(defaultName, format);
+      if (!target) return;
+      setBusy(true);
+      try {
+        const cache = await appCacheDir();
+        const dir = await join(cache, "petition-export");
+        await invoke("ensure_dir", { path: dir });
+        const tempPath = await join(dir, `${uid("petition")}.${format}`);
+        if (format === "pdf") {
+          await exportPdf("writer", doc, tempPath);
+        } else {
+          await saveDocument("writer", doc, tempPath);
+        }
+        const failures = await publishOutputs([tempPath], { file: target });
+        if (failures.length) {
+          useToasts.getState().push({ kind: "error", title: t("errors.title"), detail: failures[0].error });
+        } else {
+          useToasts.getState().push({
+            kind: "success",
+            title: `${format.toUpperCase()} belgesi başarıyla kaydedildi!`,
+            detail: target.name,
+          });
+        }
+      } catch (error) {
+        reportError(error, t);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
 
     const path = await saveDialog({
       defaultPath: defaultName,
       filters:
         format === "udf"
           ? [{ name: "UYAP Doküman Formatı (*.udf)", extensions: ["udf"] }]
-          : [{ name: "PDF Belgesi (*.pdf)", extensions: ["pdf"] }],
+          : format === "docx"
+            ? [{ name: "Word Belgesi (*.docx)", extensions: ["docx"] }]
+            : [{ name: "PDF Belgesi (*.pdf)", extensions: ["pdf"] }],
     });
 
     if (!path || typeof path !== "string") return;
 
     setBusy(true);
     try {
-      if (format === "udf") {
-        await saveDocument("writer", doc, path);
-      } else {
+      if (format === "pdf") {
         await exportPdf("writer", doc, path);
+      } else {
+        await saveDocument("writer", doc, path);
       }
       useToasts.getState().push({
         kind: "success",
@@ -157,11 +210,22 @@ export function PetitionWizard() {
           </Field>
 
           <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-hairline">
+            <Button variant="default" icon={<Edit3 className="w-4 h-4" />} disabled={busy} onClick={handleOpenInWriter}>
+              Writer&apos;da Aç
+            </Button>
             <Button
               variant="default"
               icon={<FileText className="w-4 h-4" />}
               disabled={busy}
-              onClick={() => handleExport("udf")}
+              onClick={() => void handleExport("docx")}
+            >
+              DOCX Olarak Kaydet
+            </Button>
+            <Button
+              variant="default"
+              icon={<FileText className="w-4 h-4" />}
+              disabled={busy}
+              onClick={() => void handleExport("udf")}
             >
               UYAP UDF Olarak Kaydet
             </Button>
@@ -169,7 +233,7 @@ export function PetitionWizard() {
               variant="primary"
               icon={<Download className="w-4 h-4" />}
               disabled={busy}
-              onClick={() => handleExport("pdf")}
+              onClick={() => void handleExport("pdf")}
             >
               PDF Olarak Kaydet
             </Button>

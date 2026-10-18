@@ -45,7 +45,12 @@ export type ScreenId =
   | "sync"
   | "compat"
   | "plugins"
-  | "jobs";
+  | "jobs"
+  | "petition"
+  | "kvkk"
+  | "documentHealth";
+
+export type ViewId = ScreenId;
 
 export interface PageToolsTab {
   tab: "extract" | "delete" | "rotate" | "resize" | "crop" | "numbering" | "stamp" | "nup";

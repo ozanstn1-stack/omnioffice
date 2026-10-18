@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 5.0.1
+# Release Readiness — OmniOffice 6.0.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -9,6 +9,55 @@ Every `Implemented` bullet carries a `test:<file>#<name>` marker pointing at
 the test that proves it (or an explicit `(no test: …)` reason);
 `npm run claims:check` resolves every marker in CI, so a deleted or renamed
 test cannot leave an unsupported claim behind.
+
+## Implemented (this cycle, 5.1.0 – 6.0.0) — Türkçe Zekâ, KVKK, e-Fatura & Gerçek Mobil
+
+- **Turkish spell check & UTF-16 offset alignment** (v5.3): `crates/turkish`
+  tokenises Turkish text and returns UTF-16 code-unit `start`/`end` offsets
+  compatible with JavaScript `String.prototype.slice` so multibyte characters
+  (`ş, ğ, ı, İ, ö, ü, ç`) never corrupt surrounding text when applying a
+  suggestion in Writer `test:crates/turkish/tests/spell_test.rs#utf16_offsets_align_after_multibyte_turkish_characters`.
+- **Official Correspondence Regulation (Resmî Yazışmalar Yönetmeliği) checker**
+  (v5.3): `src/lib/official-letter.ts` checks and auto-fixes font family,
+  font-specific point sizes, line spacing (`REG-03`), paragraph first-line
+  indent (`REG-06`), and T.C. header blocks `test:src/lib/official-letter.test.ts#detects excessive line spacing and missing first-line indent on body paragraphs and auto-fixes both`.
+- **Petition Wizard (Dilekçe Sihirbazı)** (v5.3): `src/lib/petition.ts` and
+  `src/screens/PetitionWizard.tsx` build official petitions with Turkish
+  locale uppercasing (`toLocaleUpperCase("tr-TR")`) and export to Writer, DOCX,
+  or PDF `test:src/lib/petition.test.ts#creates compliant TextDocument from petition data`.
+- **Document Health, KVKK Wizard & Redaction Certificate** (v5.4):
+  `src/lib/document-health.ts` validates all valid TCKNs (including negative
+  `(sumOdd*7 - sumEven) % 10` cases), filters phone false positives, and ignores
+  benign document titles `test:src/lib/document-health.test.ts#validates TCKN algorithm accurately including negative difference before modulo`;
+  `src/lib/redact-cert.ts` masks sensitive matches without leaking plaintext
+  prefixes and requires real SHA-256 hashes `test:src/lib/redact-cert.test.ts#never invents empty-file SHA-256/MD5 hashes and masks sensitive values without leaking prefixes`.
+- **Accounting Export, KDV Declaration & Duplicate Invoices** (v5.5):
+  `crates/officecore/src/ubl.rs`, `src/lib/accounting-export.ts`, and
+  `src/lib/kdv-declaration.ts` exclude non-KDV taxes (e.g. ÖTV) from VAT
+  summaries, prepend UTF-8 BOM (`\uFEFF`) for Excel/Luca/Logo/Zirve, avoid
+  duplicating `payableAmount` across multi-rate rows, and export Logo XML and
+  `.xlsx` workbooks `test:crates/officecore/src/ubl.rs#vat_summary_workbook_excludes_excise_tax_subtotals`
+  `test:src/lib/accounting-export.test.ts#excludes non-KDV subtotals (e.g. ÖTV) and does not duplicate payableAmount across multi-rate rows`
+  `test:src/lib/kdv-declaration.test.ts#ignores non-KDV subtotals such as ÖTV and computes declaredVatAmount on withholdings`;
+  `src/lib/duplicate-invoices.ts` detects `identical_amount_date` and avoids
+  grouping empty invoice numbers `test:src/lib/duplicate-invoices.test.ts#flags suspect identical supplier+date+amount invoices and does not collapse unnumbered invoices`.
+- **Vault Hybrid Search, Privacy Consent & Tagged PDF UTF-16BE** (v5.1–v6.0):
+  `src-tauri/src/vault.rs` gates remote query embeddings on `embedding_consent`,
+  scores all chunks before metadata filtering and pagination, preserves real
+  location labels and `<<...>>` highlights, and honours `exact`/`phrase`/`fuzzy`
+  modes `test:src-tauri/src/vault.rs#hybrid_search_preserves_locations_highlights_and_fuzzy_mode`;
+  `crates/officecore/src/layout.rs` emits one structure tag per paragraph and
+  `crates/officecore/src/pdfcanvas.rs` encodes non-ASCII `/Title` and `/Alt`
+  strings as UTF-16BE `test:crates/officecore/src/layout.rs#multiline_paragraph_emits_single_structure_element`
+  `test:crates/officecore/src/pdfcanvas.rs#non_ascii_title_and_alt_text_use_utf16be_bom`.
+- **Android True Mobile: Shortcuts, `.eml`/`.xml`/`.zip` Intents, Shared Text & Scanner**
+  (v6.0): `MainActivity.kt` and `IncomingFiles.kt` route launcher shortcuts
+  (`SCAN`, `NEW_DOCUMENT`, `RECENT_FILES`), accept `.eml`/`.xml`/`.zip` files,
+  and stage `Intent.EXTRA_TEXT` shares into `incoming/<uuid>/<subject>.txt`
+  `test:src-tauri/gen/android/app/src/test/java/io/github/ozanstn1/pdfswissarmyknife/IncomingFilesTest.kt#openable extensions accept routable documents case-insensitively`
+  `test:src-tauri/gen/android/app/src/test/java/io/github/ozanstn1/pdfswissarmyknife/IncomingFilesTest.kt#saveSharedText writes plain text into incoming cache directory`;
+  the document scanner is enabled by default with camera capture and Android
+  SAF export `test:src/lib/flags.test.ts#enables the scanner by default in v6.0`.
 
 ## Implemented (this cycle, 5.0.1) — Kanama durdurma (Stopping the bleeding)
 

@@ -30,5 +30,9 @@ describe("Petition Wizard (v5.3 - Issue #247)", () => {
     expect(doc.title).toBe("İkametgah Düzeltme Talebi");
     expect(doc.blocks.length).toBeGreaterThan(6);
     expect(doc.page.marginTopPt).toBeCloseTo(70.87, 1);
+    const authorityBlock = doc.blocks[1];
+    expect(authorityBlock.type === "paragraph" && authorityBlock.runs[0].text).toBe("ÇANKAYA KAYMAKAMLIĞINA");
+    const signerBlock = doc.blocks[5];
+    expect(signerBlock.type === "paragraph" && signerBlock.runs[0].text).toBe("ALİ VELİ");
   });
 });

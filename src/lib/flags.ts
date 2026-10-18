@@ -11,8 +11,8 @@
  * start. Anything else is ignored.
  */
 export const FEATURE_FLAGS = {
-  /** Document scanner; camera capture is a v6.0 deliverable. */
-  experimentalScanner: false,
+  /** Document scanner; camera capture + perspective correction shipped in v6.0. */
+  experimentalScanner: true,
 } as const;
 
 export type FeatureFlag = keyof typeof FEATURE_FLAGS;

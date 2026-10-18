@@ -24,6 +24,7 @@ object IncomingFiles {
     "xlsx", "ods", "csv", "tsv",
     "pptx", "odp",
     "pdf", "osed", "ospr", "osdt", "oswk",
+    "eml", "xml", "zip",
     "png", "jpg", "jpeg", "webp", "bmp", "gif", "tif", "tiff",
   )
 
@@ -129,5 +130,29 @@ object IncomingFiles {
       return null to CopyResult.FAILED
     }
     return destination to CopyResult.COPIED
+  }
+
+  /**
+   * Saves plain text shared via `Intent.EXTRA_TEXT` (when no `EXTRA_STREAM` URI
+   * is present) into `cacheDir/incoming/<uuid>/<subject>.txt` so the frontend
+   * can open it as a document.
+   */
+  fun saveSharedText(text: String, subject: String?, cacheDir: File): File? {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) return null
+    val bytes = trimmed.toByteArray(Charsets.UTF_8)
+    if (bytes.size > 4 * 1024 * 1024) return null
+    val stem = sanitizeDisplayName(subject)?.removeSuffix(".txt")?.take(48)?.ifEmpty { null } ?: "shared-note"
+    val directory = File(File(cacheDir, "incoming"), UUID.randomUUID().toString())
+    if (!directory.mkdirs()) return null
+    val destination = File(directory, "$stem.txt")
+    return try {
+      destination.writeBytes(bytes)
+      destination
+    } catch (error: Exception) {
+      destination.delete()
+      directory.delete()
+      null
+    }
   }
 }

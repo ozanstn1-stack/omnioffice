@@ -49,7 +49,11 @@ const CHUNK_BUDGET_KB = 100;
 // the existing lazy routes, so the per-chunk budgets are unchanged.
 // Raised to 515 in 5.4.0 for the KVKK package (Document Health dashboard,
 // Redaction Certificate generator, and official compliance tools).
-const TOTAL_BUDGET_KB = 515;
+// Raised to 540 in 6.0.0 for the lazy-routed PetitionWizard, KvkkWizard,
+// DocumentHealthScreen, Writer Turkish proofing panels, v5.5 accounting
+// XLSX/XML exports, and v6.0 mobile scanner workflow; entry and per-chunk
+// budgets remain unchanged.
+const TOTAL_BUDGET_KB = 540;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);

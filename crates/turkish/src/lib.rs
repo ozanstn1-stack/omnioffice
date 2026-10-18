@@ -28,7 +28,7 @@ pub mod suggest;
 
 pub use lexicon::Lexicon;
 
-/// A misspelled word with its byte range in the original text.
+/// A misspelled word with its UTF-16 code-unit range in the original text.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Misspelling {
     pub word: String,
@@ -94,14 +94,16 @@ fn consider(text: &str, start: usize, end: usize, lexicon: &Lexicon, out: &mut V
         return;
     }
     let lowered = casing::lower(core);
+    let start_utf16 = text[..start].encode_utf16().count();
+    let end_utf16 = start_utf16 + core.encode_utf16().count();
     if suggest::is_known_mistake(&lowered) {
-        out.push(Misspelling { word: core.to_string(), start, end: start + core.len() });
+        out.push(Misspelling { word: core.to_string(), start: start_utf16, end: end_utf16 });
         return;
     }
     if lexicon.contains(&lowered) || suffix::analyze(lexicon, &lowered) {
         return;
     }
-    out.push(Misspelling { word: core.to_string(), start, end: start + core.len() });
+    out.push(Misspelling { word: core.to_string(), start: start_utf16, end: end_utf16 });
 }
 
 /// Suggestions for `word`, best first, at most `limit`.

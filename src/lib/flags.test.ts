@@ -8,26 +8,26 @@ afterEach(() => {
 });
 
 describe("feature flags", () => {
-  it("keeps the experimental scanner hidden by default", () => {
-    expect(FEATURE_FLAGS.experimentalScanner).toBe(false);
-    expect(flagEnabled("experimentalScanner")).toBe(false);
+  it("enables the scanner by default in v6.0", () => {
+    expect(FEATURE_FLAGS.experimentalScanner).toBe(true);
+    expect(flagEnabled("experimentalScanner")).toBe(true);
   });
 
   it("honours a development override", () => {
-    localStorage.setItem("flag:experimentalScanner", "1");
-    expect(flagEnabled("experimentalScanner")).toBe(true);
     localStorage.setItem("flag:experimentalScanner", "0");
     expect(flagEnabled("experimentalScanner")).toBe(false);
+    localStorage.setItem("flag:experimentalScanner", "1");
+    expect(flagEnabled("experimentalScanner")).toBe(true);
   });
 
   it("ignores an unknown override value", () => {
-    localStorage.setItem("flag:experimentalScanner", "yes");
-    expect(flagEnabled("experimentalScanner")).toBe(false);
+    localStorage.setItem("flag:experimentalScanner", "no");
+    expect(flagEnabled("experimentalScanner")).toBe(true);
   });
 
   it("hides the scanner nav entry behind the flag", () => {
-    // A weak but useful guard: the nav entry must be gated, not deleted, so the
-    // deep link still works while the feature stays hidden.
+    // A weak but useful guard: the nav entry must be gated so the override
+    // can still hide it if needed.
     expect(appSource).toContain('hidden: !flagEnabled("experimentalScanner")');
     expect(appSource).toContain("item.hidden");
   });
