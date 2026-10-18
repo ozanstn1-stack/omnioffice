@@ -2275,7 +2275,33 @@ impl From<OfficeError> for ValuesFailure {
 }
 
 /// The first pass: values and formulas for every sheet, through `calamine`.
+///
+/// Wrapped in `std::panic::catch_unwind` so third-party parser panics on corrupted
+/// or fuzzed inputs (e.g. integer multiplication overflows) are safely caught and
+/// converted into errors rather than crashing the process.
 fn read_cell_values(bytes: &[u8], workbook: &mut Workbook, warnings: &mut Vec<String>) -> Result<(), ValuesFailure> {
+    let mut temp_wb = Workbook::new_blank("Imported workbook");
+    temp_wb.sheets.clear();
+    let mut temp_warnings = Vec::new();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        read_cell_values_inner(bytes, &mut temp_wb, &mut temp_warnings)
+    }));
+    match result {
+        Ok(Ok(())) => {
+            *workbook = temp_wb;
+            *warnings = temp_warnings;
+            Ok(())
+        }
+        Ok(Err(err)) => Err(err),
+        Err(_) => Err(OfficeError::corrupt("Spreadsheet parser panicked on malformed input").into()),
+    }
+}
+
+fn read_cell_values_inner(
+    bytes: &[u8],
+    workbook: &mut Workbook,
+    warnings: &mut Vec<String>,
+) -> Result<(), ValuesFailure> {
     let cursor = Cursor::new(bytes.to_vec());
     let mut sheets = match calamine::open_workbook_auto_from_rs(cursor) {
         Ok(sheets) => sheets,
@@ -2434,6 +2460,14 @@ pub fn read_workbook_bytes(bytes: &[u8]) -> OfficeResult<SheetRead> {
     if bytes.len() < 8 {
         return Err(OfficeError::corrupt("The file is too small to be a spreadsheet."));
     }
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| read_workbook_bytes_inner(bytes)));
+    match result {
+        Ok(inner) => inner,
+        Err(_) => Err(OfficeError::corrupt("Spreadsheet parser panicked on malformed input")),
+    }
+}
+
+fn read_workbook_bytes_inner(bytes: &[u8]) -> OfficeResult<SheetRead> {
     let mut warnings: Vec<String> = Vec::new();
     let mut workbook = Workbook::new_blank("Imported workbook");
     workbook.sheets.clear();
@@ -4781,6 +4815,7 @@ mod tests {
     fn rejects_garbage() {
         assert!(read_workbook_bytes(b"").is_err());
         assert!(read_workbook_bytes(&[0u8; 32]).is_err());
+        assert!(read_workbook_bytes(b"PK\x03\x04\x14\x00\x00\x00\x08\x00corrupt_payload").is_err());
     }
 
     fn chart_placement(kind: &str) -> ChartPlacement {

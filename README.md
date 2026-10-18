@@ -10,9 +10,99 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 5.0.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 6.0.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+
+## What's new in 6.0.0 (Gerçek mobil)
+
+A major release bringing first-class mobile capabilities to Android:
+
+- **Document scanner enhancements**: Page reordering (move up / down) and
+  1-click batch clearing in the Android document scanner interface, with full
+  unit test coverage.
+- **Android shortcuts and ACTION_SEND sharing**: Launcher shortcuts (Scan, New
+  document, Recent files) and deep `ACTION_SEND` / `ACTION_VIEW` intent routing
+  for `.eml` and `.xml` files directly into the email and e-invoice previewers.
+- **SAF compatibility and Android emulator smoke test**: Storage Access Framework
+  (SAF) MIME mapping for XML and EML, verified document export/sharing, and
+  expanded Android launch smoke test asserting MainActivity runtime status.
+
+## What's new in 5.5.0 (Muhasebe köprüleri)
+
+A minor release expanding Turkish accounting interoperability and invoice management:
+
+- **Accounting software exports**: Direct 1-click accounting bridges generating
+  standard formats for Luca (XML), Logo (XML transfer), and Zirve (Excel) from
+  verified e-Fatura / e-Arşiv documents.
+- **KDV declaration helper table**: Interactive KDV1 tax declaration helper
+  breaking down taxable bases and calculated taxes across standard rates (20%,
+  10%, 1%, 0%) and tevkifat withholdings with periodic date filtering.
+- **Duplicate invoice detection**: Automatic detection of duplicate invoices by
+  ETTN UUID, supplier taxId + invoice number clash, or exact amount & date
+  match, with a 1-click deduplication tool to clean the workspace.
+
+## What's new in 5.4.0 (Belge sağlığı ve KVKK paketi)
+
+A minor release introducing document health analysis and KVKK compliance:
+
+- **Document health analyzer and repair**: One-click assessment checking
+  uncompressed assets, missing metadata, un-redacted sensitive data, and
+  structural compliance with automatic repairs.
+- **Verifiable redaction certificate**: Audit-compliant PDF redaction
+  certificates with cryptographic SHA-256 digests, operator sign-off, and
+  appendix attachments.
+- **KVKK compliance wizard & templates**: Step-by-step Turkish Personal Data
+  Protection Law (KVKK) disclosure statement generator supporting multiple
+  scenarios (customer, employee, visitor, CCTV) with export to PDF, DOCX, and
+  UDF.
+
+## What's new in 5.3.0 (Türkçe yazım ve resmî yazı denetimi)
+
+A minor release introducing offline Turkish NLP, official correspondence checks, and petition wizard:
+
+- **Offline Turkish spell checking (`crates/turkish`)**: Zemberek root lexicon +
+  frequency list (Apache-2.0), suffix morphology analysis (vowel harmony,
+  consonant assimilation/softening), Damerau-Levenshtein suggestions, Tauri IPC
+  commands, and Writer wavy red underline styling.
+- **Official Letter Regulation compliance checker**: Verifies page margins (min
+  2.5 cm), font & size (Times New Roman 12 pt / Arial 11 pt), line spacing,
+  number/subject/date headers, and signature blocks with 1-click automatic fixes.
+- **Petition Wizard**: Step-by-step petition creation with local TCKN mod-11
+  validation, producing compliant UDF (UYAP) and PDF documents.
+
+## What's new in 5.2.0 (Gerçek dosya laboratuvarı)
+
+A minor release establishing real-file test corpus, compatibility scoring, and fuzzing:
+
+- **License-clean sample corpus**: Public sample corpus (`tests/corpus`) across 5
+  formats (DOCX, ODT, XLSX, PPTX, UDF) documented in `docs/corpus.md` with an
+  automated import test.
+- **Corpus compatibility score & nightly CI**: `crates/compat` measuring
+  structural, visual, and reference rendering scores against LibreOffice,
+  reported nightly and tested in CI.
+- **Expanded fuzz targets**: Dedicated per-importer fuzz targets for `docx`,
+  `xlsx`, `pptx`, `udf`, and `ubl` with seed corpus under `fuzz/fuzz_targets/`
+  integrated into nightly/master CI with AddressSanitizer.
+- **LibreOffice ODF output compatibility**: Fixed ODF output manifest and package
+  alignment so LibreOffice opens ODT, ODS, and ODP documents without load errors.
+
+## What's new in 5.1.0 (Sözleşme ve doğruluk)
+
+A minor release hardening IPC wire contracts, claims verification, and dependencies:
+
+- **Rust -> TS DTO type generation**: Automatic TypeScript type generation for
+  IPC DTOs via `ts-rs` under an optional feature flag, with a CI drift gate
+  (`npm run types:check`).
+- **Real-serde wire contract tests**: Pins 20 DTO top-level JSON wire keys with
+  `serde_json`, verifying them with mutation checks to prevent runtime discrepancies.
+- **"Claim = Test" enforcement in CI**: Every implemented claim in
+  `RELEASE_READINESS.md` names its verifying test marker, enforced by
+  `scripts/claims-audit.mjs` during CI lint.
+- **Feature flags infrastructure**: `src/lib/flags.ts` hides experimental or
+  incomplete features behind off-by-default flags while preserving route contracts.
+- **Security & dependencies**: Upgraded `yoke-derive` to 0.8.4; time-boxed,
+  verified exceptions for upstream `zip` advisories.
 
 ## What's new in 5.0.1 (Kanama durdurma)
 
