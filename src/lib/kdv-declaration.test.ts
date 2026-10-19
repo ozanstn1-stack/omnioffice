@@ -91,3 +91,44 @@ describe("KDV Declaration Report (v5.5.0 - Issue #260)", () => {
     expect(report.withholdings[0].declaredVatAmount).toBe(900);
   });
 });
+
+describe("KDV sales/purchase split and period strictness", () => {
+  const purchase: UblInvoice = {
+    ...mockInvoices[0],
+    number: "GIB2026000000003",
+    ettn: "uuid-3",
+    // Own tax id (1) is the buyer here: a purchase with 300 VAT.
+    supplier: { name: "Tedarik�i", taxId: "9", taxIdScheme: "VKN", taxOffice: "", address: "", city: "" },
+    customer: { name: "Ben", taxId: "1", taxIdScheme: "VKN", taxOffice: "", address: "", city: "" },
+    taxSubtotals: [{ rate: 20, taxable: 1500, tax: 300, name: "KDV", exemptionReason: "" }],
+    withholdingSubtotals: [],
+    taxExclusiveAmount: 1500,
+    taxAmount: 300,
+    withholdingAmount: 0,
+    payableAmount: 1800,
+  };
+
+  it("splits sales and purchases by the configured own tax id", () => {
+    const report = generateKdvDeclarationReport([...mockInvoices, purchase], "", "1");
+    expect(report.sales.invoiceCount).toBe(2);
+    expect(report.sales.vatAmount).toBe(651);
+    expect(report.purchases.invoiceCount).toBe(1);
+    expect(report.purchases.taxableAmount).toBe(1500);
+    expect(report.purchases.vatAmount).toBe(300);
+    expect(report.netVat).toBe(351);
+    expect(report.unclassified).toBe(0);
+  });
+
+  it("counts everything as unclassified when no own tax id is set", () => {
+    const report = generateKdvDeclarationReport([...mockInvoices, purchase]);
+    expect(report.sales.invoiceCount).toBe(0);
+    expect(report.purchases.invoiceCount).toBe(0);
+    expect(report.unclassified).toBe(3);
+  });
+
+  it("treats an incomplete period as no filter instead of a text prefix", () => {
+    // "2026-1" used to match 2026-10/11/12 through startsWith.
+    expect(generateKdvDeclarationReport(mockInvoices, "2026-1").invoiceCount).toBe(2);
+    expect(generateKdvDeclarationReport(mockInvoices, "2026-11").invoiceCount).toBe(0);
+  });
+});

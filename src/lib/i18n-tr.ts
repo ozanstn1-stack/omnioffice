@@ -805,6 +805,8 @@ export const tr: Record<string, string> = {
   "settings.aiIndexCleared": "Vault dizini silindi; gerektiğinde yeniden kurulacak.",
   "settings.defaults": "Varsayılanlar",
   "settings.defaultOutputDir": "Varsayılan çıktı klasörü",
+  "settings.ownTaxId": "Kendi vergi kimlik numaranız (VKN/TCKN)",
+  "settings.ownTaxIdHint": "KDV yardımcısında alış ve satışı ayırmak için kullanılır",
   "settings.sameAsInput": "Kaynak dosyanın yanında",
   "settings.defaultCompression": "Varsayılan sıkıştırma düzeyi",
   "settings.defaultImageDpi": "Varsayılan görsel çözünürlüğü (DPI)",

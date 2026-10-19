@@ -17,7 +17,7 @@ export interface WithholdingBreakdown {
 export interface KdvDeclarationReport {
   period: string;
   invoiceCount: number;
-  /** Tevkifatsız standart satış/alım matrah ve KDV dağılımı */
+  /** Tevkifatsız standart satış/alış matrah ve KDV dağılımı */
   rates: Record<number, VatRateBreakdown>;
   /** Tevkifatlı işlemler dökümü */
   withholdings: WithholdingBreakdown[];
@@ -29,12 +29,43 @@ export interface KdvDeclarationReport {
   totalWithholdingVat: number;
   /** Net ödenecek/tahsil edilecek genel toplam */
   totalPayableAmount: number;
-  /** %0 / İstisna kapsamındaki matrah */
+  /** %0 / istisna kapsamındaki matrah */
   exemptionAmount: number;
+  /** Satışlar (tedarikçi VKN'si "kendi VKN" olan faturalar). */
+  sales: KdvSide;
+  /** Alışlar (alıcı VKN'si "kendi VKN" olan faturalar): indirilecek KDV. */
+  purchases: KdvSide;
+  /** "Kendi VKN" ayarlanmadığında veya eşleşmeyen faturaların sayısı. */
+  unclassified: number;
+  /** Hesaplanan - indirilecek KDV (negatifse devreden KDV). */
+  netVat: number;
 }
 
-export function generateKdvDeclarationReport(invoices: UblInvoice[], period: string = ""): KdvDeclarationReport {
-  const filtered = period ? invoices.filter((inv) => (inv.issueDate || "").startsWith(period)) : invoices;
+export interface KdvSide {
+  invoiceCount: number;
+  taxableAmount: number;
+  /** Satışta hesaplanan KDV, alışta indirilecek KDV. */
+  vatAmount: number;
+}
+
+/** A period is `YYYY-MM`; anything else disables the filter instead of
+ * silently matching by text prefix (`"2026-1"` used to catch 10/11/12). */
+function matchesPeriod(issueDate: string, period: string): boolean {
+  if (!period) return true;
+  if (!/^\d{4}-\d{2}$/.test(period)) return true;
+  return issueDate.slice(0, 7) === period;
+}
+
+export function generateKdvDeclarationReport(
+  invoices: UblInvoice[],
+  period: string = "",
+  ownTaxId: string = "",
+): KdvDeclarationReport {
+  const filtered = invoices.filter((inv) => matchesPeriod(inv.issueDate || "", period));
+  const own = ownTaxId.trim();
+  const sales: KdvSide = { invoiceCount: 0, taxableAmount: 0, vatAmount: 0 };
+  const purchases: KdvSide = { invoiceCount: 0, taxableAmount: 0, vatAmount: 0 };
+  let unclassified = 0;
 
   const rates: Record<number, VatRateBreakdown> = {
     1: { rate: 1, taxableAmount: 0, vatAmount: 0 },
@@ -52,6 +83,18 @@ export function generateKdvDeclarationReport(invoices: UblInvoice[], period: str
   for (const inv of filtered) {
     totalPayableAmount += inv.payableAmount || 0;
     totalWithholdingVat += inv.withholdingAmount || 0;
+
+    // Sales and purchases: only decidable when the user's own tax id is set.
+    const seller = (inv.supplier?.taxId || "").trim();
+    const buyer = (inv.customer?.taxId || "").trim();
+    const side = own && seller === own ? sales : own && buyer === own ? purchases : null;
+    if (side) {
+      side.invoiceCount += 1;
+      side.taxableAmount += inv.taxExclusiveAmount || 0;
+      side.vatAmount += inv.taxAmount || 0;
+    } else {
+      unclassified += 1;
+    }
 
     const kdvSubs = (inv.taxSubtotals || []).filter((sub) => isKdvSubtotal(sub.name));
     const subtotals =
@@ -114,5 +157,17 @@ export function generateKdvDeclarationReport(invoices: UblInvoice[], period: str
     totalWithholdingVat: Number(totalWithholdingVat.toFixed(2)),
     totalPayableAmount: Number(totalPayableAmount.toFixed(2)),
     exemptionAmount: Number(exemptionAmount.toFixed(2)),
+    sales: {
+      invoiceCount: sales.invoiceCount,
+      taxableAmount: Number(sales.taxableAmount.toFixed(2)),
+      vatAmount: Number(sales.vatAmount.toFixed(2)),
+    },
+    purchases: {
+      invoiceCount: purchases.invoiceCount,
+      taxableAmount: Number(purchases.taxableAmount.toFixed(2)),
+      vatAmount: Number(purchases.vatAmount.toFixed(2)),
+    },
+    unclassified,
+    netVat: Number((sales.vatAmount - purchases.vatAmount).toFixed(2)),
   };
 }

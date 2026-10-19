@@ -406,6 +406,13 @@ export interface Settings {
    */
   authorName: string;
   /**
+   * Your own VKN/TCKN. Invoices where the supplier carries it count as
+   * sales, where the customer carries it as purchases; the VAT declaration
+   * helper splits calculated and deductible VAT with it. Empty keeps every
+   * invoice unclassified.
+   */
+  ownTaxId: string;
+  /**
    * Ask the certificate authority (OCSP, then CRL) whether a signer
    * certificate was revoked when signatures are verified. Off by default:
    * it is the one signature feature that contacts a server.
@@ -440,6 +447,7 @@ export const DEFAULT_SETTINGS: Settings = {
   onboardingDone: false,
   pinnedTools: [],
   authorName: "",
+  ownTaxId: "",
   onlineRevocationCheck: false,
 };
 
