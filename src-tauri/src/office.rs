@@ -2466,25 +2466,31 @@ pub struct SpellCheckResponse {
     pub misspellings: Vec<SpellCheckMisspelling>,
 }
 
-/// Offline Turkish spell checker command.
+/// Offline Turkish spell checker command. Async + `spawn_blocking`: a long
+/// document must never block the UI thread while the analyzer walks it.
 #[tauri::command]
-pub fn turkish_spellcheck(text: String, suggestions_limit: Option<usize>) -> SpellCheckResponse {
+pub async fn turkish_spellcheck(text: String, suggestions_limit: Option<usize>) -> SpellCheckResponse {
     let limit = suggestions_limit.unwrap_or(4);
-    let items = turkish::check_text(&text);
-    let misspellings = items
-        .into_iter()
-        .map(|m| {
-            let suggestions = if limit > 0 { turkish::suggestions(&m.word, limit) } else { Vec::new() };
-            SpellCheckMisspelling { word: m.word, start: m.start, end: m.end, suggestions }
-        })
-        .collect();
-    SpellCheckResponse { misspellings }
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        turkish::check_text(&text)
+            .into_iter()
+            .map(|m| {
+                let suggestions = if limit > 0 { turkish::suggestions(&m.word, limit) } else { Vec::new() };
+                SpellCheckMisspelling { word: m.word, start: m.start, end: m.end, suggestions }
+            })
+            .collect::<Vec<_>>()
+    });
+    match task.await {
+        Ok(misspellings) => SpellCheckResponse { misspellings },
+        Err(_) => SpellCheckResponse { misspellings: Vec::new() },
+    }
 }
 
 /// Suggestions for a single word.
 #[tauri::command]
-pub fn turkish_suggestions(word: String, limit: Option<usize>) -> Vec<String> {
-    turkish::suggestions(&word, limit.unwrap_or(5))
+pub async fn turkish_suggestions(word: String, limit: Option<usize>) -> Vec<String> {
+    let limit = limit.unwrap_or(5);
+    tauri::async_runtime::spawn_blocking(move || turkish::suggestions(&word, limit)).await.unwrap_or_default()
 }
 
 #[cfg(test)]

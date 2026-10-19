@@ -63,6 +63,7 @@ const SUFFIXES: &[&[&str]] = &[
     &["an", "en"],
     &["yan", "yen"],
     &["ar", "er", "ır", "ir", "ur", "ür"],
+    &["ken"],
     &["r"],
     &["sın", "sin", "sun", "sün"],
     &["ız", "iz", "uz", "üz"],
@@ -287,6 +288,10 @@ fn variant_allowed(stem: &str, variant: &str) -> Option<Harmony> {
     // vowel; `telefon-n` is not a form.
     if matches!(variant, "m" | "n" | "k") && !is_vowel(last) {
         return None;
+    }
+    // `-ken` ("gelirken", "yaparken") is invariant: it never harmonizes.
+    if variant == "ken" {
+        return Some(Harmony::Regular);
     }
     // The `-ki`/`-kü` suffix is special: it keeps `i` after every unrounded
     // vowel (`akşamki`, `evdeki`) and `ü` after rounded ones (`bugünkü`).

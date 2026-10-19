@@ -28,6 +28,9 @@ pub mod suggest;
 
 pub use lexicon::Lexicon;
 
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
 /// A misspelled word with its UTF-16 code-unit range in the original text.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Misspelling {
@@ -36,13 +39,42 @@ pub struct Misspelling {
     pub end: usize,
 }
 
+/// Cuts a token at an apostrophe (`Ankara'da`, `Ankara’da`): only the part
+/// before it is the word; the rest is a suffix.
+fn split_at_apostrophe(word: &str) -> &str {
+    word.split(['\'', '\u{2019}']).next().unwrap_or(word)
+}
+
+/// Memoized [`suffix::analyze`] result: the Writer checks the whole document,
+/// so the same words are asked over and over. Bounded; the cache resets when
+/// it grows past the limit.
+fn cached_word_ok(word: &str, compute: impl FnOnce() -> bool) -> bool {
+    const LIMIT: usize = 50_000;
+    static CACHE: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(guard) = cache.lock() {
+        if let Some(value) = guard.get(word) {
+            return *value;
+        }
+    }
+    let value = compute();
+    if let Ok(mut guard) = cache.lock() {
+        if guard.len() > LIMIT {
+            guard.clear();
+        }
+        guard.insert(word.to_string(), value);
+    }
+    value
+}
+
 /// True when `word` is a lexicon root or a valid inflected form of one.
 ///
-/// Capitalized words are accepted (proper nouns), as are numbers and
-/// all-caps acronyms.
+/// All-caps acronyms are accepted; a capitalized word passes when it is a
+/// known proper noun (the corpus list) or a valid lowercase word, so a
+/// sentence-initial misspelling like `Yanlız` is flagged.
 pub fn check_word(word: &str) -> bool {
     let lexicon = Lexicon::embedded();
-    let core = word.split('\'').next().unwrap_or(word);
+    let core = split_at_apostrophe(word);
     if core.is_empty() {
         return true;
     }
@@ -50,23 +82,31 @@ pub fn check_word(word: &str) -> bool {
     if characters.len() < 2 || characters.iter().any(|c| c.is_ascii_digit()) {
         return true;
     }
-    if characters.iter().all(|c| !c.is_lowercase()) || casing::starts_uppercase(core) {
+    if characters.iter().all(|c| !c.is_lowercase()) {
+        return true;
+    }
+    // Mixed case after the first letter is a brand/acronym ("OmniOffice",
+    // "iPhone"), not a Turkish word; never flag those.
+    if characters[1..].iter().any(|c| c.is_uppercase()) {
         return true;
     }
     let lowered = casing::lower(core);
     if suggest::is_known_mistake(&lowered) {
         return false;
     }
-    lexicon.contains(&lowered) || suffix::analyze(lexicon, &lowered)
+    if casing::starts_uppercase(core) && lexicon.contains_proper(core) {
+        return true;
+    }
+    cached_word_ok(&lowered, || lexicon.contains(&lowered) || suffix::analyze(lexicon, &lowered))
 }
 
-/// Misspelled words in `text` (lowercase tokens only, see `check_word`).
+/// Misspelled words in `text` (UTF-16 offsets; see [`Misspelling`]).
 pub fn check_text(text: &str) -> Vec<Misspelling> {
     let lexicon = Lexicon::embedded();
     let mut out = Vec::new();
     let mut token_start: Option<usize> = None;
     for (index, character) in text.char_indices() {
-        if character.is_alphabetic() || character == '\'' {
+        if character.is_alphabetic() || character == '\'' || character == '\u{2019}' {
             if token_start.is_none() {
                 token_start = Some(index);
             }
@@ -82,7 +122,7 @@ pub fn check_text(text: &str) -> Vec<Misspelling> {
 
 fn consider(text: &str, start: usize, end: usize, lexicon: &Lexicon, out: &mut Vec<Misspelling>) {
     let token = &text[start..end];
-    let core = token.split('\'').next().unwrap_or(token);
+    let core = split_at_apostrophe(token);
     if core.is_empty() {
         return;
     }
@@ -90,20 +130,25 @@ fn consider(text: &str, start: usize, end: usize, lexicon: &Lexicon, out: &mut V
     if characters.len() < 2 || characters.iter().any(|c| c.is_ascii_digit()) {
         return;
     }
-    if characters.iter().all(|c| !c.is_lowercase()) || casing::starts_uppercase(core) {
+    if characters.iter().all(|c| !c.is_lowercase()) {
+        return;
+    }
+    if characters[1..].iter().any(|c| c.is_uppercase()) {
         return;
     }
     let lowered = casing::lower(core);
-    let start_utf16 = text[..start].encode_utf16().count();
-    let end_utf16 = start_utf16 + core.encode_utf16().count();
-    if suggest::is_known_mistake(&lowered) {
+    let flagged = if suggest::is_known_mistake(&lowered) {
+        true
+    } else if casing::starts_uppercase(core) && lexicon.contains_proper(core) {
+        false
+    } else {
+        !cached_word_ok(&lowered, || lexicon.contains(&lowered) || suffix::analyze(lexicon, &lowered))
+    };
+    if flagged {
+        let start_utf16 = text[..start].encode_utf16().count();
+        let end_utf16 = start_utf16 + core.encode_utf16().count();
         out.push(Misspelling { word: core.to_string(), start: start_utf16, end: end_utf16 });
-        return;
     }
-    if lexicon.contains(&lowered) || suffix::analyze(lexicon, &lowered) {
-        return;
-    }
-    out.push(Misspelling { word: core.to_string(), start: start_utf16, end: end_utf16 });
 }
 
 /// Suggestions for `word`, best first, at most `limit`.

@@ -260,3 +260,38 @@ fn utf16_offsets_align_after_multibyte_turkish_characters() {
     assert_eq!(misspellings[0].start, 10);
     assert_eq!(misspellings[0].end, 16);
 }
+
+#[test]
+fn the_ken_suffix_is_recognized() {
+    // "-ken" is invariant: it follows front and back stems alike.
+    for word in ["gelirken", "yaparken", "okurken", "koşarken", "bakarken"] {
+        assert!(check_word(word), "geçerli sayılmalıydı: {word}");
+    }
+}
+
+#[test]
+fn a_curly_apostrophe_is_a_word_boundary() {
+    let text = "Ankara’da yanlız kaldı.";
+    let misspellings = check_text(text);
+    assert_eq!(misspellings.len(), 1, "{misspellings:?}");
+    assert_eq!(misspellings[0].word, "yanlız");
+}
+
+#[test]
+fn capitalized_words_are_checked_against_the_proper_noun_list() {
+    // Known proper nouns, acronyms and mixed-case brands pass; a
+    // sentence-initial misspelling is still caught (the old heuristic skipped
+    // every capitalized word).
+    let mut rejected = Vec::new();
+    for word in ["Ankara", "Türkiye", "İstanbul", "ANKARA", "OmniOffice", "iPhone"] {
+        if !check_word(word) {
+            rejected.push(word);
+        }
+    }
+    assert!(rejected.is_empty(), "geçerli sayılmalıydı: {rejected:?}");
+    assert!(!check_word("Yanlız"), "cümle başındaki yanlış yazım yakalanmalı");
+    let text = "Yanlız bu cümle yanlış.";
+    let misspellings = check_text(text);
+    assert_eq!(misspellings.len(), 1, "{misspellings:?}");
+    assert_eq!(misspellings[0].word, "Yanlız");
+}
