@@ -57,5 +57,11 @@ large_enum_variant = "allow"
 codegen-units = 1
 lto = true
 opt-level = "s"
-panic = "abort"
+# `panic = "unwind"` (the default, spelled out because it is load-bearing):
+# the untrusted parsers run in a worker process, and when that process cannot
+# be spawned the app parses in-process behind `catch_unwind` (see
+# src-tauri/src/worker.rs). `abort` would make that belt useless - the very
+# bug the v6.0.0 audit found in the #273 guard. The worker process remains the
+# primary containment; this is the fallback for the dev/test path.
+panic = "unwind"
 strip = true

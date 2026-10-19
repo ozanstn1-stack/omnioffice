@@ -21,6 +21,12 @@ pub struct OfficeErrorPayload {
     pub message: String,
 }
 
+impl std::fmt::Display for OfficeErrorPayload {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
 impl From<OfficeError> for OfficeErrorPayload {
     fn from(error: OfficeError) -> Self {
         Self { code: error.code, message: error.message }
@@ -51,7 +57,7 @@ fn output_path(raw: &str) -> Result<PathBuf, OfficeErrorPayload> {
 // Wire types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenDocument {
     pub kind: String,
@@ -396,7 +402,13 @@ pub async fn office_open_document(path: String) -> Result<OpenDocument, OfficeEr
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let path = input_path(&path)?;
-        open_path(&path)
+        // Untrusted parse: it runs in a worker process, so a malformed file
+        // can kill the parser, never the app (see `crate::worker`).
+        let json =
+            crate::worker::run_json_or_local(&crate::worker::Job::OfficeOpen { path: path.as_path().to_path_buf() })
+                .map_err(|error| payload(OfficeError::invalid(error)))?;
+        serde_json::from_str(&json)
+            .map_err(|error| payload(OfficeError::internal(format!("the parser result is not valid: {error}"))))
     });
     task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
@@ -1135,7 +1147,7 @@ pub fn office_conversion_targets(extension: String) -> Vec<String> {
 // e-Fatura / e-Arşiv (UBL-TR)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InvoiceDocument {
     pub kind: String,
     pub title: String,
@@ -1146,23 +1158,54 @@ pub struct InvoiceDocument {
     pub issues: Vec<ubl::UblIssue>,
 }
 
-/// Opens a `.xml`/`.zip` UBL-TR invoice and returns both the parsed fields and
-/// the Writer model the app renders (never the invoice's own XSLT).
-#[tauri::command]
-pub async fn office_open_invoice(path: String) -> Result<InvoiceDocument, OfficeErrorPayload> {
-    let _permit = crate::concurrency::acquire().await;
-    let task = tauri::async_runtime::spawn_blocking(move || {
-        let source = input_path(&path)?;
-        let read = ubl::read_ubl_file(&source).map_err(payload)?;
+/// Parses a `.xml`/`.zip` UBL-TR invoice into the app's document shape.
+pub fn invoice_document(path: &Path) -> Result<InvoiceDocument, OfficeErrorPayload> {
+    let read = ubl::read_ubl_file(path).map_err(payload)?;
+    let document = ubl::invoice_to_document(&read.invoice);
+    Ok(InvoiceDocument {
+        kind: "writer".into(),
+        title: document.title.clone(),
+        model: to_value(document)?,
+        invoice: read.invoice,
+        warnings: read.warnings,
+        issues: read.issues,
+    })
+}
+
+/// Reads every invoice in one `.xml`/`.zip` file.
+pub fn invoice_package(path: &Path) -> Result<Vec<InvoiceDocument>, OfficeErrorPayload> {
+    let reads = ubl::read_ubl_package_file(path).map_err(payload)?;
+    let mut documents = Vec::with_capacity(reads.len());
+    for read in reads {
         let document = ubl::invoice_to_document(&read.invoice);
-        Ok::<_, OfficeErrorPayload>(InvoiceDocument {
+        documents.push(InvoiceDocument {
             kind: "writer".into(),
             title: document.title.clone(),
             model: to_value(document)?,
             invoice: read.invoice,
             warnings: read.warnings,
             issues: read.issues,
-        })
+        });
+    }
+    Ok(documents)
+}
+
+/// Reads an `.eml` message and extracts its attachments into the cache.
+pub fn eml_message(path: &Path) -> Result<officecore::eml::EmlMessage, OfficeErrorPayload> {
+    officecore::eml::read_eml_file(path, &officecore::eml::default_cache_dir()).map_err(payload)
+}
+
+/// Opens a `.xml`/`.zip` UBL-TR invoice and returns both the parsed fields and
+/// the Writer model the app renders (never the invoice's own XSLT).
+#[tauri::command]
+pub async fn office_open_invoice(path: String) -> Result<InvoiceDocument, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let path = input_path(&path)?;
+        let json = crate::worker::run_json_or_local(&crate::worker::Job::InvoiceOpen { path })
+            .map_err(|error| payload(OfficeError::invalid(error)))?;
+        serde_json::from_str(&json)
+            .map_err(|error| payload(OfficeError::internal(format!("the parser result is not valid: {error}"))))
     });
     task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
@@ -1181,21 +1224,11 @@ pub struct InvoiceSummary {
 pub async fn office_open_invoice_package(path: String) -> Result<Vec<InvoiceDocument>, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
-        let source = input_path(&path)?;
-        let reads = ubl::read_ubl_package_file(&source).map_err(payload)?;
-        let mut documents = Vec::with_capacity(reads.len());
-        for read in reads {
-            let document = ubl::invoice_to_document(&read.invoice);
-            documents.push(InvoiceDocument {
-                kind: "writer".into(),
-                title: document.title.clone(),
-                model: to_value(document)?,
-                invoice: read.invoice,
-                warnings: read.warnings,
-                issues: read.issues,
-            });
-        }
-        Ok::<_, OfficeErrorPayload>(documents)
+        let path = input_path(&path)?;
+        let json = crate::worker::run_json_or_local(&crate::worker::Job::InvoicePackage { path })
+            .map_err(|error| payload(OfficeError::invalid(error)))?;
+        serde_json::from_str(&json)
+            .map_err(|error| payload(OfficeError::internal(format!("the parser result is not valid: {error}"))))
     });
     task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
@@ -1442,8 +1475,11 @@ fn scan_pages(request: ScanRequest) -> Result<ScanResult, OfficeErrorPayload> {
 pub async fn office_open_eml(path: String) -> Result<officecore::eml::EmlMessage, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
-        let source = input_path(&path)?;
-        officecore::eml::read_eml_file(&source, &officecore::eml::default_cache_dir()).map_err(payload)
+        let path = input_path(&path)?;
+        let json = crate::worker::run_json_or_local(&crate::worker::Job::EmlOpen { path })
+            .map_err(|error| payload(OfficeError::invalid(error)))?;
+        serde_json::from_str(&json)
+            .map_err(|error| payload(OfficeError::internal(format!("the parser result is not valid: {error}"))))
     });
     task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }

@@ -42,6 +42,7 @@ mod vault;
 mod vault_index;
 #[cfg(test)]
 mod wire_contract;
+pub mod worker;
 
 use jobs::{JobRegistry, JobStore};
 use tauri::Manager;
