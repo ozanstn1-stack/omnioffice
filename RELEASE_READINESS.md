@@ -31,6 +31,42 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.0.1) — Durdur, doğrula, dürüst ol (Stop, verify, be honest)
+
+The v6.0.0 audit's A-phase, all verified in this tree:
+
+- **Release channels** (#296): build-time beta endpoint, rolling `beta`
+  prerelease, Settings display. `test:src/lib/update.test.ts#reads the channel from the installed version`
+- **Verifiable redaction certificate** (#298): attached file + XMP metadata,
+  strip-and-rehash verification. `test:crates/pdfcore/src/certificate.rs#a_modified_file_fails_verification`
+  and `test:crates/pdfcore/src/certificate.rs#the_certificate_never_carries_a_redacted_value`
+- **Crash-proof parsers** (#300): worker process with time, output and memory
+  limits. `test:src-tauri/src/worker.rs#a_corrupt_workbook_is_an_error_not_a_crash`
+- **Own tax id and VAT split** (#302): sales vs purchases, strict period.
+  `test:src/lib/kdv-declaration.test.ts#splits sales and purchases by the configured own tax id`
+- **Spell checker completeness** (#304): capitalized words, `-ken`, curly
+  apostrophes, word cache. `test:crates/turkish/tests/spell_test.rs#capitalized_words_are_checked_against_the_proper_noun_list`
+  and `test:crates/turkish/tests/spell_test.rs#the_ken_suffix_is_recognized`
+- **UDF and vendor exports closed by default** (#275).
+  `test:src/lib/flags.test.ts#keeps the unverified formats hidden by default`
+- **Release gate** (#277): tags only after a green Desktop run, claims
+  verified against the passing tests.
+  `(no test: the gate is the workflow plus scripts/claims-audit.mjs, which this release runs in CI)`
+- **Honesty cleanup** (#294): experimental screens and the slim README.
+  `test:src/lib/flags.test.ts#keeps the unfinished screens hidden by default`
+- **Routed v5.3-v6.0 screens** (#279).
+  `test:src/screens/KvkkWizard.test.tsx#renders KVKK wizard and switches template types`
+- **Invoice math** (#281): duplicate key and the same-amount-and-date rule.
+  `test:src/lib/duplicate-invoices.test.ts#detects exact duplicate ETTNs and deduplicates them`
+- **AI consent and certificate honesty** (#285).
+  `test:src/lib/redact-cert.test.ts#builds a structured redaction certificate with valid metadata`
+- **Android sharing** (#287): `.eml`/`.xml` match the typed intent filter.
+  `test:src/lib/android-manifest.test.ts#opens and shares every supported type through one typed filter without a scheme`
+- **Writer proofing** (#283): spell + official letter panels.
+  `test:src/lib/official-letter.test.ts#detects non-compliant fonts and auto-fixes to Times New Roman`
+- **CI leftovers** (#289): hardened fuzz targets, pinned runners.
+  `(no test: the Fuzz job runs the hardened targets on every master push)`
+
 ## Implemented (this cycle, 6.0.0) — Gerçek mobil (True mobile)
 
 - **Scanner page list** (#266): move up/down reordering and batch clearing on

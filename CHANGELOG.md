@@ -4,7 +4,33 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [6.0.1] - Durdur, doğrula, dürüst ol (Stop, verify, be honest)
+
+The v6.0.0 audit's A-phase. The release process became a real gate, the two
+areas that could not be verified were closed instead of shipped, and the
+money, document and parser paths were fixed.
+
+### Added
+
+- **Release channels (#296 / PR #297):** stable installers follow
+  `releases/latest`, beta installers (built from master with a
+  `X.Y.Z-beta.N` version) follow the rolling `beta` prerelease; Settings
+  shows the installed channel.
+- **Verifiable redaction certificate (#298 / PR #299):** SHA-256 digests of
+  the input and the certified output, the item list (page/category/rule,
+  never a value) and an optional RFC 3161 timestamp, embedded in the redacted
+  PDF as an attached file and XMP metadata; the Reader verifies it and shows
+  a file changed after certification in red.
+- **Crash-proof parsers (#300 / PR #301):** docx/xlsx/pptx/odt/ods/odp/UDF/
+  RTF/UBL/EML imports and PDF repair run in a worker process with time,
+  output and (on Windows) memory limits; a malformed file can no longer take
+  the application down.
+- **Own tax id and VAT split (#302 / PR #303):** invoices are split into
+  sales (calculated VAT) and purchases (deductible VAT) by your VKN/TCKN,
+  with a strict period selector in the KDV helper.
+- **Spell checker completeness (#304 / PR #305):** capitalized words are
+  checked against proper-noun lists, the `-ken` suffix and curly apostrophes
+  are recognized, and the checker runs off the UI thread with a word cache.
 
 ### Changed
 
@@ -16,7 +42,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   wizard, Windows file association, Android intent filters) is closed; the
   engine, tests and the fuzz target stay in the build, and README /
   RELEASE_READINESS say exactly that. Developers can re-enable either area
-  with `flag:experimentalUdf=1` / `flag:accountingVendorExport=1`.
+  with `flag:experimentalUdf=1` / `flag:accountingVendorExport=1`. (#275 / PR #276)
+- **Release gate (#277 / PR #278):** tags are created only after the Desktop
+  workflow for the same commit succeeds; the release workflow no longer
+  overwrites published assets; the claim audit scans every cycle section and
+  verifies each claim against the passing tests in CI.
+- **Honesty cleanup (#294 / PR #295):** the document-health and KVKK screens
+  are marked experimental and hidden behind flags, and the README dropped its
+  44 duplicated "What's new" sections.
+- **Routed the v5.3-v6.0 screens (#279 / PR #280):** the petition wizard,
+  KVKK wizard and document-health screens are reachable; the launcher-shortcut
+  token bug is fixed.
+
+### Fixed
+
+- **Invoice math (#281 / PR #282):** excise tax and withholding no longer
+  pollute the KDV summary, %18/%8 land in their brackets, `declaredVatAmount`
+  is computed, and the duplicate check no longer collapses unrelated invoices
+  into an empty key.
+- **AI consent, vault and certificate honesty (#285 / PR #286):** AI requests
+  require consent, the certificate no longer fabricates hashes and never
+  leaks the redacted value.
+- **Android sharing (#287 / PR #288):** `.eml` and `.xml` shares match the
+  typed intent filter, and the scanner hands off to OCR.
+- **Writer proofing (#283 / PR #284):** the Turkish spell check and official
+  letter panels are wired into the Writer; wrapped paragraphs emit a single
+  tagged-PDF structure element; non-ASCII titles/alt text use UTF-16BE.
+- **CI leftovers (#289 / PR #290):** fuzz targets hardened, runner images
+  pinned, `turkish`/`synccore` covered in the test and release crate lists.
 
 ## [6.0.0] - Gerçek mobil (True mobile)
 
