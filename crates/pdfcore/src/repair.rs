@@ -9,12 +9,12 @@
 use crate::error::{PdfError, PdfResult};
 use crate::progress::{CancelToken, ProgressCallback, ProgressEvent, ProgressReporter};
 use crate::{docutil, engines, rebuild};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Stdio;
 
 /// The engine that rewrote a repaired file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RepairMethod {
     Qpdf,
@@ -22,7 +22,7 @@ pub enum RepairMethod {
     Builtin,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepairReport {
     /// Where the rewritten file was written.

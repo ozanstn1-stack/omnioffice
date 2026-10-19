@@ -72,7 +72,19 @@ pub async fn pdf_repair(
             Some(spec) => spec.resolve()?.0,
             None => pdfcore::docutil::default_output_for(input.as_path(), "-repaired"),
         };
-        pdfcore::repair::repair_pdf(input.as_path(), &output, progress, cancel)
+        // Repair walks a possibly damaged file with lopdf/qpdf; it runs in a
+        // worker process so a crash cannot take the app down (see
+        // `crate::worker`). Progress stays coarse: the worker is one shot.
+        progress(pdfcore::progress::ProgressEvent::new("repair", 0, 1));
+        let json = crate::worker::run_json_or_local(&crate::worker::Job::Repair {
+            input: input.as_path().to_path_buf(),
+            output,
+        })
+        .map_err(PdfError::ProcessingFailed)?;
+        cancel.check()?;
+        progress(pdfcore::progress::ProgressEvent::new("repair", 1, 1));
+        serde_json::from_str(&json)
+            .map_err(|error| PdfError::Internal(format!("the repair result is not valid: {error}")))
     })
     .await
 }

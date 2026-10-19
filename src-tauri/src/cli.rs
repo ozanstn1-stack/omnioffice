@@ -151,6 +151,9 @@ fn write_line(message: &str, error: bool) {
 /// Runs the CLI when `--cli` is present, returning the process exit code.
 /// `None` means "not a CLI invocation; start the GUI".
 pub fn run_if_present(args: Vec<String>) -> Option<i32> {
+    if let Some(index) = args.iter().position(|arg| arg == "--worker") {
+        return Some(run_worker(&args[index + 1..]));
+    }
     match parse(&args) {
         Ok(None) => None,
         Ok(Some(command)) => {
@@ -175,6 +178,30 @@ pub fn run_if_present(args: Vec<String>) -> Option<i32> {
                 write_line(&format!("error: {message}\n\n{USAGE}"), true);
                 Some(2)
             }
+        }
+    }
+}
+
+/// Runs one worker job (see `crate::worker`): the JSON result goes to stdout,
+/// a failure to stderr with exit code 1. This process exists to contain a
+/// parser crash, so nothing else may be written to stdout.
+fn run_worker(rest: &[String]) -> i32 {
+    use std::io::Write as _;
+    let job = match crate::worker::Job::parse(rest) {
+        Ok(job) => job,
+        Err(error) => {
+            let _ = writeln!(std::io::stderr(), "error: {error}");
+            return 2;
+        }
+    };
+    match crate::worker::execute(&job) {
+        Ok(json) => {
+            let _ = std::io::stdout().write_all(json.as_bytes());
+            0
+        }
+        Err(error) => {
+            let _ = writeln!(std::io::stderr(), "error: {error}");
+            1
         }
     }
 }
