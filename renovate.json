@@ -1,0 +1,37 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommits"],
+  "timezone": "Europe/Istanbul",
+  "schedule": ["before 6am on monday"],
+  "prConcurrentLimit": 4,
+  "prHourlyLimit": 2,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on the first day of the month"]
+  },
+  "packageRules": [
+    {
+      "description": "The Tauri desktop stack moves as one: the npm and Cargo sides must share a version or `tauri build` refuses to run.",
+      "groupName": "tauri desktop stack",
+      "groupSlug": "tauri",
+      "matchPackageNames": ["tauri", "tauri-build", "tauri-plugin-{/,}**", "@tauri-apps/{/,}**"]
+    },
+    {
+      "description": "GitHub Actions move together; SHA pins are updated by Renovate.",
+      "groupName": "github actions",
+      "groupSlug": "actions",
+      "matchManagers": ["github-actions"]
+    },
+    {
+      "description": "The Chrome extension has its own lock file and moves separately.",
+      "groupName": "chrome extension",
+      "groupSlug": "extension",
+      "matchFileNames": ["chrome-extension/**"]
+    },
+    {
+      "description": "Major updates wait for a dashboard approval: they need a migration, not a rubber stamp.",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    }
+  ]
+}
