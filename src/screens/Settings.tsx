@@ -314,6 +314,15 @@ export function Settings() {
             />
           </div>
           <div>
+            <label className="label">{t("settings.ownTaxId")}</label>
+            <input
+              className="input"
+              value={settings.ownTaxId}
+              placeholder={t("settings.ownTaxIdHint")}
+              onChange={(event) => void update({ ownTaxId: event.target.value })}
+            />
+          </div>
+          <div>
             <label className="label">{t("settings.defaultCompression")}</label>
             <div className="seg">
               {(["low", "medium", "high"] as const).map((preset) => (

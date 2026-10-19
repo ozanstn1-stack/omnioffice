@@ -6,7 +6,7 @@ import { Badge, Button, Card, Modal } from "../components/ui";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { flagEnabled } from "../lib/flags";
-import { reportError, useToasts } from "../lib/store";
+import { reportError, useSettings, useToasts } from "../lib/store";
 import { isAndroid, pickOfficeFiles, saveFileOnAndroid, saveTextOnAndroid } from "../lib/mobile";
 import { compareQrWithInvoice } from "../lib/invoice-qr";
 import { exportAccounting, type AccountingSoftware } from "../lib/accounting-export";
@@ -72,6 +72,8 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
   const [rates, setRates] = useState<VatRate[]>([]);
   const [busy, setBusy] = useState(false);
   const [showKdvModal, setShowKdvModal] = useState(false);
+  const [kdvPeriod, setKdvPeriod] = useState("");
+  const ownTaxId = useSettings((state) => state.settings.ownTaxId);
 
   const initialKey = initialFiles.join("|");
 
@@ -614,9 +616,39 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
             }
           >
             {(() => {
-              const report = generateKdvDeclarationReport(invoices);
+              // The period list comes from the loaded invoices' dates, so the
+              // selector can only produce real YYYY-MM values.
+              const periods = Array.from(
+                new Set(
+                  invoices
+                    .map((invoice) => (invoice.issueDate || "").slice(0, 7))
+                    .filter((value) => value.length === 7),
+                ),
+              ).sort((left, right) => right.localeCompare(left));
+              const report = generateKdvDeclarationReport(invoices, kdvPeriod, ownTaxId);
               return (
                 <div className="flex flex-col gap-3 text-sm">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="text-xs muted" htmlFor="kdv-period">
+                      Dönem
+                    </label>
+                    <select
+                      id="kdv-period"
+                      className="input input-sm"
+                      value={kdvPeriod}
+                      onChange={(event) => setKdvPeriod(event.target.value)}
+                    >
+                      <option value="">Tüm dönemler</option>
+                      {periods.map((period) => (
+                        <option key={period} value={period}>
+                          {period}
+                        </option>
+                      ))}
+                    </select>
+                    {!ownTaxId.trim() ? (
+                      <span className="text-xs muted">Alış/satış ayrımı için Ayarlar'da kendi VKN'nizi girin.</span>
+                    ) : null}
+                  </div>
                   <p className="muted text-xs">
                     Yüklenen {report.invoiceCount} adet faturanın KDV1 beyannamesi satırlarına esas teşkil eden matrah
                     ve vergi dökümü.
@@ -682,6 +714,55 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
                       <strong>Tevkifat Tutarı:</strong>{" "}
                       {report.totalWithholdingVat.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
                     </div>
+                  ) : null}
+                  {ownTaxId.trim() ? (
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="py-1">Özet</th>
+                          <th className="py-1">Fatura</th>
+                          <th className="py-1">Matrah</th>
+                          <th className="py-1">KDV</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td className="py-1">Satışlar (hesaplanan KDV)</td>
+                          <td className="py-1">{report.sales.invoiceCount}</td>
+                          <td className="py-1">
+                            {report.sales.taxableAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                          </td>
+                          <td className="py-1">
+                            {report.sales.vatAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="py-1">Alışlar (indirilecek KDV)</td>
+                          <td className="py-1">{report.purchases.invoiceCount}</td>
+                          <td className="py-1">
+                            {report.purchases.taxableAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                          </td>
+                          <td className="py-1">
+                            {report.purchases.vatAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                          </td>
+                        </tr>
+                        <tr className="border-t font-bold">
+                          <td className="py-1" colSpan={3}>
+                            {report.netVat >= 0 ? "Ödenecek KDV" : "Devreden KDV"}
+                          </td>
+                          <td className="py-1">
+                            {Math.abs(report.netVat).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                          </td>
+                        </tr>
+                        {report.unclassified > 0 ? (
+                          <tr>
+                            <td className="py-1 muted" colSpan={4}>
+                              {report.unclassified} fatura kendi VKN'nizle eşleşmedi; alış/satış ayrımına girmedi.
+                            </td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
                   ) : null}
                 </div>
               );

@@ -780,6 +780,8 @@ const en: Dict = {
   "settings.aiIndexCleared": "The vault index was removed and will be rebuilt on demand.",
   "settings.defaults": "Defaults",
   "settings.defaultOutputDir": "Default output folder",
+  "settings.ownTaxId": "Your tax id (VKN/TCKN)",
+  "settings.ownTaxIdHint": "Used to split sales and purchases in the VAT helper",
   "settings.sameAsInput": "Next to the source file",
   "settings.defaultCompression": "Default compression level",
   "settings.defaultImageDpi": "Default image resolution (DPI)",
