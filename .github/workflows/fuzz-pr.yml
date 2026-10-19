@@ -1,0 +1,61 @@
+name: Fuzz (pull request)
+
+# The master push runs the full short fuzz pass in desktop.yml. A pull request
+# that touches a parser gets a shorter pass over the same targets, so a crash
+# is found before merge instead of on master. Crashes are uploaded as the
+# artifact that becomes the regression test.
+
+on:
+  pull_request:
+    paths:
+      - "crates/officecore/**"
+      - "crates/pdfcore/**"
+      - "crates/turkish/**"
+      - "fuzz/**"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Fuzz changed parsers (short)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: "fuzz -> target"
+      - uses: taiki-e/install-action@861a07ce7084f55488e375df125cdc99bba60eb7 # v2
+        with:
+          tool: cargo-fuzz
+      # Explicit target: the prebuilt cargo-fuzz binary is linked against musl
+      # and would otherwise build for x86_64-unknown-linux-musl, where the
+      # address sanitizer cannot link (see the master fuzz job).
+      - name: Office readers
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu office_readers -- -max_total_time=20
+      - name: DOCX reader
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu docx -- -max_total_time=15
+      - name: XLSX reader
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu xlsx -- -max_total_time=15
+      - name: PPTX reader
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu pptx -- -max_total_time=15
+      - name: UDF reader
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu udf -- -max_total_time=15
+      - name: UBL reader
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu ubl -- -max_total_time=15
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts/
+          if-no-files-found: ignore
