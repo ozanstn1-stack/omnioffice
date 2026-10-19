@@ -56,6 +56,7 @@ import { devLaunchContext } from "./lib/api";
 import { watchLaunchFiles } from "./lib/launch-files";
 import type { Navigate, PageToolsTab, ScreenId } from "./lib/nav";
 import { flagEnabled } from "./lib/flags";
+import { enabledRoutes, navSections, routeEnabled } from "./lib/routes";
 // Route-level code splitting: every screen is loaded when it is first opened,
 // so the startup bundle only carries the shell, the navigation and the shared
 // UI primitives. The lazy import maps the named export to the default export
@@ -502,62 +503,13 @@ export default function App() {
   // palette and search actions. The keybindings registered here are the single
   // source of truth for the former hard-coded shortcut handler.
   useEffect(() => {
-    const views: { id: ScreenId; key: string; category: "view" | "settings"; keybinding?: string }[] = [
-      { id: "home", key: "nav.home", category: "view" },
-      { id: "office", key: "nav.office", category: "view" },
-      { id: "reader", key: "nav.reader", category: "view" },
-      { id: "ai", key: "nav.ai", category: "view" },
-      { id: "aiLibrary", key: "nav.aiLibrary", category: "view" },
-      { id: "merge", key: "nav.merge", category: "view" },
-      { id: "organize", key: "nav.organize", category: "view" },
-      { id: "split", key: "nav.split", category: "view" },
-      { id: "compress", key: "nav.compress", category: "view" },
-      { id: "ocr", key: "nav.ocr", category: "view" },
-      { id: "pdfToImages", key: "nav.pdfToImages", category: "view" },
-      { id: "imagesToPdf", key: "nav.imagesToPdf", category: "view" },
-      { id: "protect", key: "nav.protect", category: "view" },
-      { id: "unlock", key: "nav.unlock", category: "view" },
-      { id: "watermark", key: "nav.watermark", category: "view" },
-      { id: "annotate", key: "nav.annotate", category: "view" },
-      { id: "redact", key: "nav.redact", category: "view" },
-      { id: "compare", key: "nav.compare", category: "view" },
-      { id: "inspect", key: "nav.inspect", category: "view" },
-      { id: "metadata", key: "nav.metadata", category: "view" },
-      { id: "pageTools", key: "nav.pageTools", category: "view" },
-      { id: "batch", key: "nav.batch", category: "view" },
-      { id: "pdfStudio", key: "nav.pdfStudio", category: "view" },
-      { id: "pdfForms", key: "nav.pdfForms", category: "view" },
-      { id: "vault", key: "nav.vault", category: "view" },
-      { id: "documents", key: "nav.documents", category: "view" },
-      { id: "spreadsheets", key: "nav.spreadsheets", category: "view" },
-      { id: "presentations", key: "nav.presentations", category: "view" },
-      { id: "templates", key: "nav.templates", category: "view" },
-      { id: "notes", key: "nav.notes", category: "view" },
-      { id: "planner", key: "nav.planner", category: "view" },
-      { id: "data", key: "nav.data", category: "view" },
-      { id: "draw", key: "nav.draw", category: "view" },
-      { id: "converter", key: "nav.converter", category: "view" },
-      { id: "invoices", key: "nav.invoices", category: "view" },
-      { id: "eml", key: "nav.eml", category: "view" },
-      { id: "scanner", key: "nav.scanner", category: "view" },
-      { id: "recipes", key: "nav.recipes", category: "view" },
-      { id: "mailMerge", key: "nav.mailMerge", category: "view" },
-      { id: "petition", key: "nav.petition", category: "view" },
-      { id: "kvkk", key: "nav.kvkk", category: "view" },
-      { id: "documentHealth", key: "nav.documentHealth", category: "view" },
-      { id: "cleaner", key: "nav.cleaner", category: "view" },
-      { id: "history", key: "nav.history", category: "view" },
-      { id: "jobs", key: "nav.jobs", category: "view" },
-      { id: "sync", key: "nav.sync", category: "view" },
-      { id: "plugins", key: "nav.plugins", category: "view" },
-      { id: "compat", key: "nav.compat", category: "view" },
-      { id: "info", key: "nav.info", category: "view" },
-      { id: "settings", key: "nav.settings", category: "settings", keybinding: "Ctrl+," },
-    ];
-    for (const view of views) {
+    // The command palette mirrors the route manifest (lib/routes.ts): one
+    // list, and a flag-gated route is not registered at all.
+
+    for (const view of enabledRoutes()) {
       registerCommand({
         id: `view.${view.id}`,
-        titleKey: view.key,
+        titleKey: view.labelKey,
         category: view.category,
         keybinding: view.keybinding,
         enabled: () => true,
@@ -588,7 +540,12 @@ export default function App() {
       enabled: () => true,
       execute: () => setSearchOpen(true),
     });
-    const ids = [...views.map((view) => `view.${view.id}`), "file.open", "app.commandPalette", "app.globalSearch"];
+    const ids = [
+      ...enabledRoutes().map((view) => `view.${view.id}`),
+      "file.open",
+      "app.commandPalette",
+      "app.globalSearch",
+    ];
     return () => ids.forEach((id) => unregisterCommand(id));
   }, [pickFiles]);
 
@@ -810,120 +767,73 @@ export default function App() {
     [convertTab, dragging, files, homeDrop, navigate, pageToolTab, readerPage, securityTab],
   );
 
-  const navGroups: {
-    label?: string;
-    items: { id: ScreenId; label: string; icon: React.ReactElement; hidden?: boolean }[];
-  }[] = [
-    {
-      items: [
-        { id: "home", label: t("nav.home"), icon: <Home size={16} /> },
-        { id: "office", label: t("nav.office"), icon: <LayoutGrid size={16} /> },
-        { id: "reader", label: t("nav.reader"), icon: <BookOpen size={16} /> },
-      ],
-    },
-    {
-      label: t("nav.office"),
-      items: [
-        { id: "documents", label: t("nav.documents"), icon: <FileText size={16} /> },
-        { id: "spreadsheets", label: t("nav.spreadsheets"), icon: <FileSpreadsheet size={16} /> },
-        { id: "presentations", label: t("nav.presentations"), icon: <Presentation size={16} /> },
-        { id: "templates", label: t("nav.templates"), icon: <LayoutTemplate size={16} /> },
-        { id: "petition", label: t("nav.petition"), icon: <FilePlus2 size={16} /> },
-        {
-          id: "kvkk",
-          label: t("nav.kvkk"),
-          icon: <ShieldCheck size={16} />,
-          hidden: !flagEnabled("experimentalKvkkWizard"),
-        },
-      ],
-    },
-    {
-      label: t("nav.productivity"),
-      items: [
-        { id: "notes", label: t("nav.notes"), icon: <NotebookPen size={16} /> },
-        { id: "planner", label: t("nav.planner"), icon: <CalendarDays size={16} /> },
-        { id: "data", label: t("nav.data"), icon: <Database size={16} /> },
-        { id: "draw", label: t("nav.draw"), icon: <PenTool size={16} /> },
-        { id: "vault", label: t("nav.vault"), icon: <FileSearch size={16} /> },
-      ],
-    },
-    {
-      label: t("nav.convert"),
-      items: [
-        { id: "converter", label: t("nav.converter"), icon: <Repeat size={16} /> },
-        { id: "invoices", label: t("nav.invoices"), icon: <Receipt size={16} /> },
-        { id: "eml", label: t("nav.eml"), icon: <Mail size={16} /> },
-        {
-          id: "scanner",
-          label: t("nav.scanner"),
-          icon: <Camera size={16} />,
-          hidden: !flagEnabled("experimentalScanner"),
-        },
-        { id: "recipes", label: t("nav.recipes"), icon: <ListChecks size={16} /> },
-        { id: "mailMerge", label: t("nav.mailMerge"), icon: <Mail size={16} /> },
-        { id: "cleaner", label: t("nav.cleaner"), icon: <Sparkles size={16} /> },
-        { id: "pdfForms", label: t("nav.pdfForms"), icon: <ClipboardList size={16} /> },
-      ],
-    },
-    {
-      label: t("nav.pdfTools"),
-      items: [
-        { id: "merge", label: t("nav.merge"), icon: <Combine size={16} /> },
-        { id: "organize", label: t("nav.organize"), icon: <Layers size={16} /> },
-        { id: "split", label: t("nav.split"), icon: <Scissors size={16} /> },
-        { id: "compress", label: t("nav.compress"), icon: <Minimize2 size={16} /> },
-        { id: "pageTools", label: t("nav.pageTools"), icon: <Wand2 size={16} /> },
-        { id: "pdfStudio", label: t("nav.pdfStudio"), icon: <ShieldCheck size={16} /> },
-        {
-          id: "documentHealth",
-          label: t("nav.documentHealth"),
-          icon: <ShieldCheck size={16} />,
-          hidden: !flagEnabled("experimentalDocumentHealth"),
-        },
-        { id: "watermark", label: t("nav.watermark"), icon: <Stamp size={16} /> },
-        { id: "annotate", label: t("nav.annotate"), icon: <Type size={16} /> },
-        { id: "redact", label: t("nav.redact"), icon: <Eraser size={16} /> },
-        { id: "compare", label: t("nav.compare"), icon: <FileDiff size={16} /> },
-        { id: "inspect", label: t("nav.inspect"), icon: <FileSearch size={16} /> },
-        { id: "metadata", label: t("nav.metadata"), icon: <Puzzle size={16} /> },
-      ],
-    },
-    {
-      label: t("nav.convert"),
-      items: [
-        { id: "pdfToImages", label: t("nav.pdfToImages"), icon: <FileImage size={16} /> },
-        { id: "imagesToPdf", label: t("nav.imagesToPdf"), icon: <Images size={16} /> },
-      ],
-    },
-    { items: [{ id: "ocr", label: t("nav.ocr"), icon: <FileSearch size={16} /> }] },
-    {
-      label: t("nav.security"),
-      items: [
-        { id: "protect", label: t("nav.protect"), icon: <Lock size={16} /> },
-        { id: "unlock", label: t("nav.unlock"), icon: <LockOpen size={16} /> },
-      ],
-    },
-    {
-      label: t("nav.ai"),
-      items: [
-        { id: "ai", label: t("nav.ai"), icon: <Bot size={16} /> },
-        { id: "aiLibrary", label: t("nav.aiLibrary"), icon: <Library size={16} /> },
-      ],
-    },
-    {
-      label: t("nav.batch"),
-      items: [
-        { id: "batch", label: t("nav.batch"), icon: <Archive size={16} /> },
-        { id: "jobs", label: t("nav.jobs"), icon: <ListChecks size={16} /> },
-        { id: "sync", label: t("nav.sync"), icon: <Repeat size={16} /> },
-        { id: "plugins", label: t("nav.plugins"), icon: <Puzzle size={16} /> },
-        { id: "compat", label: t("nav.compat"), icon: <ShieldCheck size={16} /> },
-        { id: "info", label: t("nav.info"), icon: <Info size={16} /> },
-        { id: "history", label: t("nav.history"), icon: <FolderClock size={16} /> },
-        { id: "settings", label: t("nav.settings"), icon: <SettingsIcon size={16} /> },
-      ],
-    },
-  ];
+  /** Icons are presentation, not routing: the manifest owns the ids. */
+  const NAV_ICONS: Record<ScreenId, React.ReactElement> = {
+    home: <Home size={16} />,
+    office: <LayoutGrid size={16} />,
+    reader: <BookOpen size={16} />,
+    documents: <FileText size={16} />,
+    spreadsheets: <FileSpreadsheet size={16} />,
+    presentations: <Presentation size={16} />,
+    templates: <LayoutTemplate size={16} />,
+    petition: <FilePlus2 size={16} />,
+    kvkk: <ShieldCheck size={16} />,
+    notes: <NotebookPen size={16} />,
+    planner: <CalendarDays size={16} />,
+    data: <Database size={16} />,
+    draw: <PenTool size={16} />,
+    vault: <FileSearch size={16} />,
+    converter: <Repeat size={16} />,
+    invoices: <Receipt size={16} />,
+    eml: <Mail size={16} />,
+    scanner: <Camera size={16} />,
+    recipes: <ListChecks size={16} />,
+    mailMerge: <Mail size={16} />,
+    cleaner: <Sparkles size={16} />,
+    pdfForms: <ClipboardList size={16} />,
+    merge: <Combine size={16} />,
+    organize: <Layers size={16} />,
+    split: <Scissors size={16} />,
+    compress: <Minimize2 size={16} />,
+    pageTools: <Wand2 size={16} />,
+    pdfStudio: <ShieldCheck size={16} />,
+    documentHealth: <ShieldCheck size={16} />,
+    watermark: <Stamp size={16} />,
+    annotate: <Type size={16} />,
+    redact: <Eraser size={16} />,
+    compare: <FileDiff size={16} />,
+    inspect: <FileSearch size={16} />,
+    metadata: <Puzzle size={16} />,
+    pdfToImages: <FileImage size={16} />,
+    imagesToPdf: <Images size={16} />,
+    ocr: <FileSearch size={16} />,
+    protect: <Lock size={16} />,
+    unlock: <LockOpen size={16} />,
+    ai: <Bot size={16} />,
+    aiLibrary: <Library size={16} />,
+    batch: <Archive size={16} />,
+    jobs: <ListChecks size={16} />,
+    sync: <Repeat size={16} />,
+    plugins: <Puzzle size={16} />,
+    compat: <ShieldCheck size={16} />,
+    info: <Info size={16} />,
+    history: <FolderClock size={16} />,
+    settings: <SettingsIcon size={16} />,
+  };
+
+  // Sidebar entries come from the same manifest, grouped by section.
+  const navGroups = navSections().map((section) => ({
+    label: section.labelKey ? t(section.labelKey) : undefined,
+    items: section.routes.map((item) => ({
+      id: item.id,
+      label: t(item.labelKey),
+      icon: NAV_ICONS[item.id],
+    })),
+  }));
+
+  // Flag-gated routes are closed, not just hidden: a deep link to a disabled
+  // route renders Home instead of the unfinished screen.
+  const effectiveScreen = routeEnabled(screen) ? screen : "home";
 
   const isDark = settings.theme === "dark" || (settings.theme === "system" && appliedDark);
 
@@ -932,30 +842,28 @@ export default function App() {
       {navGroups.map((group, index) => (
         <div key={index}>
           {group.label && showLabels ? <p className="nav-group-label">{group.label}</p> : null}
-          {group.items
-            .filter((item) => !item.hidden)
-            .map((item) => {
-              const active =
-                screen === item.id ||
-                (item.id === "pdfToImages" && screen === "pdfToImages") ||
-                (item.id === "imagesToPdf" && screen === "imagesToPdf");
-              return (
-                <button
-                  key={item.id}
-                  className="nav-item"
-                  data-active={active}
-                  aria-current={active ? "page" : undefined}
-                  onClick={() => {
-                    navigate(item.id);
-                    setNavOpen(false);
-                  }}
-                  title={showLabels ? undefined : item.label}
-                >
-                  <span className="shrink-0">{item.icon}</span>
-                  {showLabels ? <span className="truncate">{item.label}</span> : null}
-                </button>
-              );
-            })}
+          {group.items.map((item) => {
+            const active =
+              screen === item.id ||
+              (item.id === "pdfToImages" && screen === "pdfToImages") ||
+              (item.id === "imagesToPdf" && screen === "imagesToPdf");
+            return (
+              <button
+                key={item.id}
+                className="nav-item"
+                data-active={active}
+                aria-current={active ? "page" : undefined}
+                onClick={() => {
+                  navigate(item.id);
+                  setNavOpen(false);
+                }}
+                title={showLabels ? undefined : item.label}
+              >
+                <span className="shrink-0">{item.icon}</span>
+                {showLabels ? <span className="truncate">{item.label}</span> : null}
+              </button>
+            );
+          })}
         </div>
       ))}
     </>
@@ -1006,7 +914,7 @@ export default function App() {
 
         <main className="flex-1 min-w-0 relative overflow-hidden">
           <div key={`${screen}-${files.join("|")}`} className="h-full">
-            <ScreenFrame screen={screen}>{screens[screen]}</ScreenFrame>
+            <ScreenFrame screen={effectiveScreen}>{screens[effectiveScreen]}</ScreenFrame>
           </div>
         </main>
 
@@ -1102,7 +1010,7 @@ export default function App() {
           </div>
         ) : null}
         <div key={`${screen}-${files.join("|")}`} className="h-full">
-          <ScreenFrame screen={screen}>{screens[screen]}</ScreenFrame>
+          <ScreenFrame screen={effectiveScreen}>{screens[effectiveScreen]}</ScreenFrame>
         </div>
       </main>
 
