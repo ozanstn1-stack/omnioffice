@@ -84,7 +84,9 @@ class OpenWithIntentTest {
 
   @Test
   fun unknownExtensionsAreRejected() {
-    val uri = staged("archive.zip", byteArrayOf(1, 2, 3))
+    // `.zip` is routable now (e-Fatura packages, see IncomingFilesTest); use a
+    // container the app genuinely cannot open.
+    val uri = staged("archive.rar", byteArrayOf(1, 2, 3))
     val (file, result) = IncomingFiles.copyToCache(resolver, uri, cacheDir)
     assertNull(file)
     assertEquals(IncomingFiles.CopyResult.UNSUPPORTED, result)
