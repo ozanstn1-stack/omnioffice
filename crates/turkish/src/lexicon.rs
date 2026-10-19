@@ -16,27 +16,33 @@ pub struct Attributes {
 
 pub struct Lexicon {
     words: HashSet<String>,
+    /// Capitalized proper nouns from the corpus list (`proper-from-corpus.dict`).
+    proper: HashSet<String>,
     attributes: HashMap<String, Attributes>,
     frequency: HashMap<String, u32>,
 }
 
 const MASTER: &str = include_str!("../data/master-dictionary.dict");
 const FIRST_10K: &str = include_str!("../data/first-10K");
+const PROPER: &str = include_str!("../data/proper-from-corpus.dict");
+const PROPER_TR: &str = include_str!("../data/proper-tr.txt");
 
 impl Lexicon {
     /// The embedded lexicon, parsed once per process.
     pub fn embedded() -> &'static Lexicon {
         static LEXICON: OnceLock<Lexicon> = OnceLock::new();
-        LEXICON.get_or_init(|| Lexicon::from_data(MASTER, FIRST_10K))
+        LEXICON.get_or_init(|| Lexicon::from_data(MASTER, FIRST_10K, PROPER, PROPER_TR))
     }
 
-    /// Parses the master dictionary (`word [P:POS; A:Attrs]` per line) and the
-    /// frequency list (one word per line, most frequent first).
+    /// Parses the master dictionary (`word [P:POS; A:Attrs]` per line), the
+    /// frequency list (one word per line, most frequent first) and the
+    /// capitalized proper-noun lists (the vendored corpus list plus this
+    /// project's curated one, `data/proper-tr.txt`).
     ///
     /// Homonym lines (`kalp [A:Voicing, InverseHarmony]`, `kalp [P:Adj;
     /// A:NoVoicing]`, ...) are merged: inverse harmony holds when *any* sense
     /// has it, and `NoVoicing` only when *every* sense has it.
-    pub fn from_data(master: &str, frequency: &str) -> Lexicon {
+    pub fn from_data(master: &str, frequency: &str, proper: &str, proper_tr: &str) -> Lexicon {
         let mut words = HashSet::new();
         let mut sense_counts: HashMap<String, (u32, u32, u32)> = HashMap::new();
         for line in master.lines() {
@@ -78,11 +84,26 @@ impl Lexicon {
                 frequency_rank.entry(word.to_string()).or_insert(rank as u32);
             }
         }
-        Lexicon { words, attributes, frequency: frequency_rank }
+        let mut proper_words = HashSet::new();
+        for source in [proper, proper_tr] {
+            for line in source.lines() {
+                let word = line.trim();
+                if word.is_empty() || word.starts_with('#') || word.contains(' ') {
+                    continue;
+                }
+                proper_words.insert(word.to_string());
+            }
+        }
+        Lexicon { words, proper: proper_words, attributes, frequency: frequency_rank }
     }
 
     pub fn contains(&self, word: &str) -> bool {
         self.words.contains(word)
+    }
+
+    /// True when the capitalized form is a known proper noun.
+    pub fn contains_proper(&self, word: &str) -> bool {
+        self.proper.contains(word)
     }
 
     pub fn attributes(&self, word: &str) -> Attributes {
