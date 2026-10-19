@@ -25,6 +25,8 @@
     "test:rust": "cargo test --workspace",
     "bench:check": "node scripts/check-bench-regression.mjs",
     "compat:score": "node scripts/compat-score.mjs",
+    "docs:stats": "node scripts/docs-stats.mjs",
+    "docs:stats:check": "node scripts/docs-stats.mjs --check",
     "test:all": "npm run test && npm run test:rust",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

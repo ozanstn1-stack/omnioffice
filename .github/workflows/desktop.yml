@@ -42,6 +42,10 @@ jobs:
       # proves it (`test:<file>#<name>`); a deleted or renamed test fails here.
       - name: Release claims (evidence for every claim)
         run: npm run claims:check
+      # The README's project statistics are generated from the sources
+      # (screens, commands, tests); a hand-edited stale count fails here.
+      - name: Project statistics (generated from the sources)
+        run: npm run docs:stats:check
       # `tauri build` refuses an npm/Rust plugin version mismatch, and a
       # Dependabot bump of only one side shipped exactly that once.
       - name: Tauri plugin version sync
