@@ -53,6 +53,7 @@ import { foldSearch } from "../lib/search-fold";
 import { recommendTools } from "../lib/recommend";
 import { isAndroid, openAnyFile, revealAnyFile } from "../lib/mobile";
 import type { Navigate, ScreenId } from "../lib/nav";
+import { routeEnabled } from "../lib/routes";
 import { fileStem } from "../lib/format";
 
 type ToolGroup = "pdf" | "office" | "tools" | "ai";
@@ -283,7 +284,8 @@ export function Home({
     void refreshRecent();
   }, [refreshRecent]);
 
-  const cards = useMemo(() => CARDS, []);
+  // Cards follow the same route manifest: a flag-gated route is not offered.
+  const cards = useMemo(() => CARDS.filter((card) => routeEnabled(card.id)), []);
 
   const needle = fold(query.trim());
   const matches = useMemo(() => {

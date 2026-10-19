@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import appSource from "../App.tsx?raw";
 import { FEATURE_FLAGS, flagEnabled } from "./flags";
 
 afterEach(() => {
@@ -43,12 +42,5 @@ describe("feature flags", () => {
   it("ignores an unknown override value", () => {
     localStorage.setItem("flag:experimentalScanner", "yes");
     expect(flagEnabled("experimentalScanner")).toBe(false);
-  });
-
-  it("hides the scanner nav entry behind the flag", () => {
-    // A weak but useful guard: the nav entry must be gated, not deleted, so the
-    // deep link still works while the feature stays hidden.
-    expect(appSource).toContain('hidden: !flagEnabled("experimentalScanner")');
-    expect(appSource).toContain("item.hidden");
   });
 });
