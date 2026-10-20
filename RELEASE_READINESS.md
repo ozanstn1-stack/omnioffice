@@ -31,6 +31,16 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.0.2) - Android indirmeleri (downloaded documents)
+
+- **Downloaded docx/xlsx open from other apps** (#342): the typed intent filter
+  accepts `application/octet-stream` (Chrome/DownloadManager hide the extension
+  from the URI path), `doc`/`dot`/`docm`/`dotx`/`xlsm`/`pptm`/`ppt` are
+  associated end to end, a rejected share now surfaces `errors.unsupported`,
+  and display names lose control characters. (no test: pinned by the Android
+  JVM tests `ManifestIntentFiltersTest` and `IncomingFilesTest` in the Android
+  Kotlin CI job; the claims verifier reads the Rust/Vitest logs only.)
+
 ## Implemented (this cycle, 6.0.1) — Durdur, doğrula, dürüst ol (Stop, verify, be honest)
 
 The v6.0.0 audit's A-phase, all verified in this tree:
