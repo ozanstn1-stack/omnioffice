@@ -8,9 +8,12 @@
 //! * manifests and sources live under `<app data>/plugins/<id>/`;
 //! * per-plugin data files live under `<app data>/plugins/<id>/data/`;
 //! * `plugin_http_request` is the only network path and re-checks the
-//!   manifest's `network` permission (https only; plain http only for
-//!   localhost and private addresses; GET/POST; 1 MB response cap; 15 s
-//!   timeout; no redirects).
+//!   manifest's `network` permission. Address rules come from `netpolicy.rs`:
+//!   https reaches public hosts (the connect-time resolver refuses private
+//!   answers, so DNS rebinding cannot bypass it); plain http is a local
+//!   network exception for localhost and private literals, never the cloud
+//!   metadata address. GET/POST only, 1 MB response cap, 15 s timeout, no
+//!   redirects.
 //!
 //! Threat model: this protects documents and user data from buggy or
 //! malicious plugins through the capability API. Worker isolation is
@@ -20,6 +23,7 @@
 //! The sample plugin ships inside the binary with `include_str!`, so the
 //! "reload sample" action works in packaged builds with no resource paths.
 
+use crate::netpolicy::UrlPolicy;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -380,143 +384,26 @@ pub fn delete_plugin(root: &Path, id: &str) -> PluginResult<()> {
 /// True for the cloud instance-metadata endpoint every major provider uses
 /// (AWS/GCP/Azure/OpenStack). It is link-local, so the generic class check would
 /// otherwise wave it through; block it explicitly on every scheme.
-fn is_metadata_address(ip: std::net::IpAddr) -> bool {
-    match ip {
-        std::net::IpAddr::V4(ip) => ip.octets() == [169, 254, 169, 254],
-        // IPv4-mapped IPv6 (`::ffff:169.254.169.254`) must be unwrapped first.
-        std::net::IpAddr::V6(ip) => ip.to_ipv4_mapped().map(|v4| v4.octets() == [169, 254, 169, 254]).unwrap_or(false),
+/// The address policy for a plugin request: https to public hosts, plain http
+/// to the local network (the documented LAN exception), never metadata.
+fn plugin_policy(url: &reqwest::Url) -> UrlPolicy {
+    if url.scheme() == "http" {
+        UrlPolicy::PrivateHttp
+    } else {
+        UrlPolicy::PublicHttps
     }
 }
 
-/// True when the address is loopback, private, link-local, CGNAT, unspecified
-/// or otherwise non-routable on the public internet. Used both for the plain
-/// http exception and to re-check a DNS result.
-fn is_private_address(ip: std::net::IpAddr) -> bool {
-    if is_metadata_address(ip) {
-        return true;
-    }
-    match ip {
-        std::net::IpAddr::V4(ip) => {
-            // 100.64.0.0/10 (carrier-grade NAT) is not covered by is_private().
-            let octets = ip.octets();
-            ip.is_private()
-                || ip.is_loopback()
-                || ip.is_link_local()
-                || ip.is_unspecified()
-                || ip.is_broadcast()
-                || (octets[0] == 100 && (64..128).contains(&octets[1]))
-        }
-        std::net::IpAddr::V6(ip) => {
-            ip.is_loopback()
-                || ip.is_unique_local()
-                || ip.is_unicast_link_local()
-                || ip.is_unspecified()
-                || ip.is_multicast()
-                // IPv4-mapped forms are classified by their IPv4 address.
-                || ip.to_ipv4_mapped().map(std::net::IpAddr::V4).map(is_private_address).unwrap_or(false)
-        }
-    }
-}
-
-fn is_private_host(host: Option<&str>) -> bool {
-    let Some(host) = host else {
-        return false;
-    };
-    let host = host.trim_start_matches('[').trim_end_matches(']');
-    if host.eq_ignore_ascii_case("localhost") {
-        return true;
-    }
-    match host.parse::<std::net::IpAddr>() {
-        Ok(ip) => is_private_address(ip),
-        Err(_) => false,
-    }
-}
-
-/// Validates a plugin URL and rejects access to the cloud metadata endpoint on
-/// every scheme.
+/// Validates a plugin URL against the shared network policy.
 ///
-/// Policy: https is allowed to any host *except* the metadata endpoint; plain
-/// http is allowed only to localhost/private/link-local addresses (and still
-/// never to the metadata endpoint). Credentials in the URL are refused.
+/// Policy: https is allowed to any public host; plain http is allowed only to
+/// localhost and private/link-local literals (and still never to the cloud
+/// metadata endpoint). Credentials in the URL are refused. Host names over
+/// `https` are re-checked at connect time by the policy's DNS resolver.
 pub fn validate_http_url(raw: &str) -> PluginResult<reqwest::Url> {
     let url = reqwest::Url::parse(raw).map_err(|_| PluginErrorPayload::invalid("The URL is not valid."))?;
-    let host = url.host_str().map(|value| value.trim_start_matches('[').trim_end_matches(']').to_string());
-    // A literal metadata IP is blocked before the scheme branch so https cannot
-    // reach it either.
-    if let Some(host) = host.as_deref() {
-        if let Ok(ip) = host.parse::<std::net::IpAddr>() {
-            if is_metadata_address(ip) {
-                return Err(PluginErrorPayload::forbidden("The cloud metadata address is not allowed."));
-            }
-        }
-    }
-    match url.scheme() {
-        "https" => {}
-        "http" => {
-            if !is_private_host(url.host_str()) {
-                return Err(PluginErrorPayload::forbidden(
-                    "Plain http is only allowed for localhost and private network addresses.",
-                ));
-            }
-        }
-        _ => return Err(PluginErrorPayload::forbidden("Only https (or private http) URLs are allowed.")),
-    }
-    if !url.username().is_empty() || url.password().is_some() {
-        return Err(PluginErrorPayload::invalid("Credentials in the URL are not allowed."));
-    }
+    plugin_policy(&url).check_url(&url).map_err(PluginErrorPayload::forbidden)?;
     Ok(url)
-}
-
-/// Refuses private/metadata destinations for the request that is about to be
-/// made. The policy mirrors [`validate_http_url`]:
-///
-/// * `https` may only reach public addresses (literal private IPs and names
-///   that resolve to private addresses are refused);
-/// * `http` was already restricted to localhost/private literal hosts, so the
-///   explicit private exception stays available there and only the metadata
-///   endpoint is refused.
-///
-/// It is a best-effort pre-flight: a rebinding server could still change its
-/// answer, so the resolved address is not pinned for the actual connect (the
-/// redirects are disabled and the response is size-capped regardless).
-pub fn ensure_public_destination(url: &reqwest::Url) -> PluginResult<()> {
-    let Some(host) = url.host_str() else {
-        return Err(PluginErrorPayload::invalid("The URL has no host."));
-    };
-    let is_https = url.scheme() == "https";
-    let bare = host.trim_start_matches('[').trim_end_matches(']');
-    if let Ok(ip) = bare.parse::<std::net::IpAddr>() {
-        if is_metadata_address(ip) {
-            return Err(PluginErrorPayload::forbidden("The cloud metadata address is not allowed."));
-        }
-        // A private literal over https is the same bypass as a private DNS
-        // answer and must be refused; the http branch is the documented
-        // local-network exception.
-        if is_https && is_private_address(ip) {
-            return Err(PluginErrorPayload::forbidden(
-                "Private and loopback addresses are not reachable over https from a plugin.",
-            ));
-        }
-        return Ok(());
-    }
-    if !is_https {
-        // `validate_http_url` only lets private/localhost literal hosts through
-        // for http; a public hostname that resolves privately cannot occur.
-        return Ok(());
-    }
-    let port = url.port_or_known_default().unwrap_or(443);
-    if let Ok(addresses) = std::net::ToSocketAddrs::to_socket_addrs(&(bare, port)) {
-        for address in addresses {
-            if is_private_address(address.ip()) {
-                return Err(PluginErrorPayload::forbidden(
-                    "The URL resolves to a private or metadata address; it is not reachable from a plugin.",
-                ));
-            }
-        }
-    }
-    // Resolution failure is not fatal: the connection will simply fail. Only a
-    // resolved private address is a hard refusal.
-    Ok(())
 }
 
 fn forbidden_header(name: &str) -> bool {
@@ -654,8 +541,10 @@ pub async fn plugin_http_request(
     require_permission(&dir, "network")?;
 
     let url = validate_http_url(&request.url)?;
-    // Reject names that resolve to private/metadata addresses (DNS-based SSRF).
-    ensure_public_destination(&url)?;
+    // The same policy supplies the connect-time resolver: an https host name
+    // that resolves to a private address is filtered when the connection is
+    // made, not just when the URL was parsed (DNS rebinding).
+    let policy = plugin_policy(&url);
     let method = match request.method.as_deref().unwrap_or("GET").to_ascii_uppercase().as_str() {
         "GET" => reqwest::Method::GET,
         "POST" => reqwest::Method::POST,
@@ -673,11 +562,14 @@ pub async fn plugin_http_request(
         )));
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(HTTP_TIMEOUT_SECS))
-        .connect_timeout(Duration::from_secs(10))
-        .redirect(reqwest::redirect::Policy::none())
-        .user_agent(concat!("OfficeSwissArmyKnife/", env!("CARGO_PKG_VERSION")))
+    let client = policy
+        .apply_async(
+            reqwest::Client::builder()
+                .timeout(Duration::from_secs(HTTP_TIMEOUT_SECS))
+                .connect_timeout(Duration::from_secs(10))
+                .redirect(reqwest::redirect::Policy::none())
+                .user_agent(concat!("OfficeSwissArmyKnife/", env!("CARGO_PKG_VERSION"))),
+        )
         .build()
         .map_err(|_| PluginErrorPayload::internal("Could not create the HTTP client."))?;
 
@@ -896,18 +788,8 @@ mod tests {
         assert!(validate_http_url("http://10.1.2.3/").is_ok());
         assert!(validate_http_url("http://172.16.0.1/").is_ok());
         assert!(validate_http_url("http://172.32.0.1/").is_err());
-    }
-
-    #[test]
-    fn plugin_private_host_detection() {
-        assert!(is_private_host(Some("localhost")));
-        assert!(is_private_host(Some("[::1]")));
-        assert!(is_private_host(Some("::1")));
-        assert!(is_private_host(Some("127.0.0.1")));
-        assert!(is_private_host(Some("192.168.0.10")));
-        assert!(!is_private_host(Some("example.com")));
-        assert!(!is_private_host(Some("8.8.8.8")));
-        assert!(!is_private_host(None));
+        // The plugin host may use a non-web port for a public https API.
+        assert!(validate_http_url("https://example.com:8443/api").is_ok());
     }
 
     #[test]
@@ -923,20 +805,20 @@ mod tests {
             "https://[::ffff:127.0.0.1]/",
             "https://169.254.169.254/latest/meta-data/",
         ] {
-            let url = reqwest::Url::parse(raw).expect("url");
-            assert!(ensure_public_destination(&url).is_err(), "{raw} must be refused over https");
+            assert!(validate_http_url(raw).is_err(), "{raw} must be refused over https");
         }
         // A public literal is still reachable over https.
-        let public = reqwest::Url::parse("https://8.8.8.8/").expect("url");
-        assert!(ensure_public_destination(&public).is_ok());
+        assert!(validate_http_url("https://8.8.8.8/").is_ok());
     }
 
     #[test]
     fn plain_http_private_exception_stays_available_but_metadata_is_not() {
-        let loopback = reqwest::Url::parse("http://127.0.0.1:8080/health").expect("url");
-        assert!(ensure_public_destination(&loopback).is_ok());
-        let metadata = reqwest::Url::parse("http://169.254.169.254/latest/meta-data/").expect("url");
-        assert!(ensure_public_destination(&metadata).is_err());
+        assert!(validate_http_url("http://127.0.0.1:8080/health").is_ok());
+        for raw in
+            ["http://169.254.169.254/latest/meta-data/", "http://[::ffff:169.254.169.254]/", "https://169.254.169.254/"]
+        {
+            assert!(validate_http_url(raw).is_err(), "{raw} must be refused");
+        }
     }
 
     #[test]
