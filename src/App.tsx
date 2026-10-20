@@ -612,7 +612,13 @@ export default function App() {
         setScreen("home");
         return;
       }
-      const realPaths = paths.filter((p) => !p.startsWith("__action:"));
+      // The Android shell queues `__error:<reason>:<name>` when it refuses a
+      // shared/downloaded file (unsupported type, unreadable stream, size cap,
+      // ...). Say so instead of doing nothing; any real paths still open.
+      if (paths.some((p) => p.startsWith("__error:"))) {
+        pushToast({ kind: "error", title: t("errors.unsupported") });
+      }
+      const realPaths = paths.filter((p) => !p.startsWith("__action:") && !p.startsWith("__error:"));
       if (realPaths.length === 0) return;
       if (realPaths.length === 1) {
         openSinglePath(realPaths[0]);
@@ -638,7 +644,7 @@ export default function App() {
       }
       for (const path of realPaths) void openAnyFile(path).catch(() => undefined);
     },
-    [openSinglePath],
+    [openSinglePath, pushToast, t],
   );
 
   // Android open-with: MainActivity copies shared documents into the cache and

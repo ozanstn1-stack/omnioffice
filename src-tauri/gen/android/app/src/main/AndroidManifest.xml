@@ -96,6 +96,21 @@
                 <data android:mimeType="application/pdf" />
                 <!-- OmniOffice document (oswk, no registered type) -->
                 <data android:mimeType="application/x-oswk" />
+                <!-- Legacy Word/PowerPoint and macro-enabled/template OOXML.
+                     The backend reads these (CFB importer or the OOXML reader). -->
+                <data android:mimeType="application/msword" />
+                <data android:mimeType="application/vnd.ms-word.document.macroEnabled.12" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.template" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.macroEnabled.12" />
+                <data android:mimeType="application/vnd.ms-powerpoint.presentation.macroEnabled.12" />
+                <data android:mimeType="application/vnd.ms-powerpoint" />
+                <!-- Generic binary: Chrome's download provider and some mail apps
+                     report application/octet-stream and hide the extension from the
+                     URI path, so no path pattern can match them (a downloaded
+                     report.docx arrives as .../document/msf%3A42). The copy pipeline
+                     still checks the display name against openableExtensions, so a
+                     non-document that lands here is rejected before anything opens. -->
+                <data android:mimeType="application/octet-stream" />
                 <!-- Images and plain text shared from another app -->
                 <data android:mimeType="image/*" />
                 <data android:mimeType="image/jpeg" />
@@ -128,6 +143,26 @@
                 <data android:pathPattern=".*\\..*\\.docx" />
                 <data android:pathPattern=".*\\..*\\..*\\.docx" />
                 <data android:pathPattern=".*\\..*\\..*\\..*\\.docx" />
+                <data android:pathSuffix=".doc" />
+                <data android:pathPattern=".*\\.doc" />
+                <data android:pathPattern=".*\\..*\\.doc" />
+                <data android:pathPattern=".*\\..*\\..*\\.doc" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.doc" />
+                <data android:pathSuffix=".docm" />
+                <data android:pathPattern=".*\\.docm" />
+                <data android:pathPattern=".*\\..*\\.docm" />
+                <data android:pathPattern=".*\\..*\\..*\\.docm" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.docm" />
+                <data android:pathSuffix=".dotx" />
+                <data android:pathPattern=".*\\.dotx" />
+                <data android:pathPattern=".*\\..*\\.dotx" />
+                <data android:pathPattern=".*\\..*\\..*\\.dotx" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.dotx" />
+                <data android:pathSuffix=".dot" />
+                <data android:pathPattern=".*\\.dot" />
+                <data android:pathPattern=".*\\..*\\.dot" />
+                <data android:pathPattern=".*\\..*\\..*\\.dot" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.dot" />
                 <data android:pathSuffix=".odt" />
                 <data android:pathPattern=".*\\.odt" />
                 <data android:pathPattern=".*\\..*\\.odt" />
@@ -143,6 +178,11 @@
                 <data android:pathPattern=".*\\..*\\.xlsx" />
                 <data android:pathPattern=".*\\..*\\..*\\.xlsx" />
                 <data android:pathPattern=".*\\..*\\..*\\..*\\.xlsx" />
+                <data android:pathSuffix=".xlsm" />
+                <data android:pathPattern=".*\\.xlsm" />
+                <data android:pathPattern=".*\\..*\\.xlsm" />
+                <data android:pathPattern=".*\\..*\\..*\\.xlsm" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.xlsm" />
                 <data android:pathSuffix=".ods" />
                 <data android:pathPattern=".*\\.ods" />
                 <data android:pathPattern=".*\\..*\\.ods" />
@@ -153,6 +193,16 @@
                 <data android:pathPattern=".*\\..*\\.pptx" />
                 <data android:pathPattern=".*\\..*\\..*\\.pptx" />
                 <data android:pathPattern=".*\\..*\\..*\\..*\\.pptx" />
+                <data android:pathSuffix=".pptm" />
+                <data android:pathPattern=".*\\.pptm" />
+                <data android:pathPattern=".*\\..*\\.pptm" />
+                <data android:pathPattern=".*\\..*\\..*\\.pptm" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.pptm" />
+                <data android:pathSuffix=".ppt" />
+                <data android:pathPattern=".*\\.ppt" />
+                <data android:pathPattern=".*\\..*\\.ppt" />
+                <data android:pathPattern=".*\\..*\\..*\\.ppt" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.ppt" />
                 <data android:pathSuffix=".odp" />
                 <data android:pathPattern=".*\\.odp" />
                 <data android:pathPattern=".*\\..*\\.odp" />
@@ -257,6 +307,26 @@
                 <data android:pathPattern=".*\\..*\\.docx" />
                 <data android:pathPattern=".*\\..*\\..*\\.docx" />
                 <data android:pathPattern=".*\\..*\\..*\\..*\\.docx" />
+                <data android:pathSuffix=".doc" />
+                <data android:pathPattern=".*\\.doc" />
+                <data android:pathPattern=".*\\..*\\.doc" />
+                <data android:pathPattern=".*\\..*\\..*\\.doc" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.doc" />
+                <data android:pathSuffix=".docm" />
+                <data android:pathPattern=".*\\.docm" />
+                <data android:pathPattern=".*\\..*\\.docm" />
+                <data android:pathPattern=".*\\..*\\..*\\.docm" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.docm" />
+                <data android:pathSuffix=".dotx" />
+                <data android:pathPattern=".*\\.dotx" />
+                <data android:pathPattern=".*\\..*\\.dotx" />
+                <data android:pathPattern=".*\\..*\\..*\\.dotx" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.dotx" />
+                <data android:pathSuffix=".dot" />
+                <data android:pathPattern=".*\\.dot" />
+                <data android:pathPattern=".*\\..*\\.dot" />
+                <data android:pathPattern=".*\\..*\\..*\\.dot" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.dot" />
                 <data android:pathSuffix=".odt" />
                 <data android:pathPattern=".*\\.odt" />
                 <data android:pathPattern=".*\\..*\\.odt" />
@@ -272,6 +342,11 @@
                 <data android:pathPattern=".*\\..*\\.xlsx" />
                 <data android:pathPattern=".*\\..*\\..*\\.xlsx" />
                 <data android:pathPattern=".*\\..*\\..*\\..*\\.xlsx" />
+                <data android:pathSuffix=".xlsm" />
+                <data android:pathPattern=".*\\.xlsm" />
+                <data android:pathPattern=".*\\..*\\.xlsm" />
+                <data android:pathPattern=".*\\..*\\..*\\.xlsm" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.xlsm" />
                 <data android:pathSuffix=".ods" />
                 <data android:pathPattern=".*\\.ods" />
                 <data android:pathPattern=".*\\..*\\.ods" />
@@ -282,6 +357,16 @@
                 <data android:pathPattern=".*\\..*\\.pptx" />
                 <data android:pathPattern=".*\\..*\\..*\\.pptx" />
                 <data android:pathPattern=".*\\..*\\..*\\..*\\.pptx" />
+                <data android:pathSuffix=".pptm" />
+                <data android:pathPattern=".*\\.pptm" />
+                <data android:pathPattern=".*\\..*\\.pptm" />
+                <data android:pathPattern=".*\\..*\\..*\\.pptm" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.pptm" />
+                <data android:pathSuffix=".ppt" />
+                <data android:pathPattern=".*\\.ppt" />
+                <data android:pathPattern=".*\\..*\\.ppt" />
+                <data android:pathPattern=".*\\..*\\..*\\.ppt" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.ppt" />
                 <data android:pathSuffix=".odp" />
                 <data android:pathPattern=".*\\.odp" />
                 <data android:pathPattern=".*\\..*\\.odp" />

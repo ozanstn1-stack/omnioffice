@@ -127,11 +127,18 @@ class OpenWithIntentTest {
   /** Extension -> the MIME types senders use for it (see the typed filter). */
   private val typesByExtension = mapOf(
     "docx" to listOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    "docm" to listOf("application/vnd.ms-word.document.macroEnabled.12"),
+    "dotx" to listOf("application/vnd.openxmlformats-officedocument.wordprocessingml.template"),
+    "doc" to listOf("application/msword"),
+    "dot" to listOf("application/msword"),
     "odt" to listOf("application/vnd.oasis.opendocument.text"),
     "rtf" to listOf("application/rtf", "text/rtf"),
     "xlsx" to listOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    "xlsm" to listOf("application/vnd.ms-excel.sheet.macroEnabled.12"),
     "ods" to listOf("application/vnd.oasis.opendocument.spreadsheet"),
     "pptx" to listOf("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+    "pptm" to listOf("application/vnd.ms-powerpoint.presentation.macroEnabled.12"),
+    "ppt" to listOf("application/vnd.ms-powerpoint"),
     "odp" to listOf("application/vnd.oasis.opendocument.presentation"),
     "pdf" to listOf("application/pdf"),
     "oswk" to listOf("application/x-oswk"),
@@ -214,16 +221,41 @@ class OpenWithIntentTest {
   }
 
   @Test
+  fun aGenericTypeWithNoExtensionInTheUriIsClaimed() {
+    // The exact shape Chrome uses for a downloaded document when the server
+    // sent a generic Content-Type: the name exists only in DISPLAY_NAME.
+    for (extension in listOf("docx", "xlsx")) {
+      val uri = "content://com.android.providers.downloads.documents/document/msf%3A42"
+      assertTrue(
+        "octet-stream without an extension must reach the app ($extension)",
+        handledByApp(viewIntent(uri, "application/octet-stream")),
+      )
+    }
+  }
+
+  @Test
   fun unrelatedFilesAreNotClaimed() {
     val unrelated = listOf(
-      Triple("content://com.example.docs/files/setup.exe", "application/octet-stream", "an executable"),
       Triple("content://com.example.docs/files/app.apk", "application/vnd.android.package-archive", "an apk"),
       Triple("content://com.example.docs/files/archive.zip", "application/zip", "a zip"),
-      Triple("content://com.example.docs/files/report.docx.exe", "application/octet-stream", "a double extension"),
       Triple("file:///storage/emulated/0/Download/notes.zip", null, "an untyped zip"),
     )
     for ((uri, type, what) in unrelated) {
       assertFalse("$what ($uri) must not be routed to the app", handledByApp(viewIntent(uri, type)))
+    }
+  }
+
+  @Test
+  fun genericBinariesAreClaimedButTheCopyPipelineRejectsThem() {
+    // application/octet-stream has to be claimed broadly (the provider hides
+    // the name), so an executable can appear in the chooser. The extension
+    // whitelist is what stops it: nothing is copied, and the activity queues
+    // an __error: token the UI shows as a message.
+    for (name in listOf("setup.exe", "report.docx.exe", "script.sh")) {
+      assertTrue("${name} may be offered", handledByApp(viewIntent("content://com.example.docs/files/$name", "application/octet-stream")))
+      val (file, result) = IncomingFiles.copyToCache(resolver, staged(name, byteArrayOf(1, 2, 3)), cacheDir)
+      assertNull("$name must not be copied", file)
+      assertEquals(IncomingFiles.CopyResult.UNSUPPORTED, result)
     }
   }
 }
