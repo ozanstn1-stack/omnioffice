@@ -8,6 +8,7 @@
  *   node e2e/smoke.mjs --office           # Writer type -> Ctrl+S -> file written
  *   node e2e/smoke.mjs --merge            # two PDFs merged through the real UI
  *   node e2e/smoke.mjs --sanitize         # PDF Studio sanitizer run through the UI
+ *   node e2e/smoke.mjs --persona accountant  # UBL invoice -> KDV summary (real backend)
  *   node e2e/smoke.mjs --all              # office + merge + sanitize
  *
  * Environment:
@@ -66,7 +67,8 @@ function webdriver(port, path, method = "GET", body) {
   });
 }
 
-const execute = (session, script) => webdriver(session.port, `/session/${session.id}/execute/sync`, "POST", { script, args: [] });
+const execute = (session, script) =>
+  webdriver(session.port, `/session/${session.id}/execute/sync`, "POST", { script, args: [] });
 
 function findElement(session, selector) {
   return webdriver(session.port, `/session/${session.id}/element`, "POST", { using: "css selector", value: selector });
@@ -133,7 +135,10 @@ async function withSession(name, env, steps) {
   // cannot bind a port the old one still holds.
   const driverArgs = ["--port", String(port), "--native-port", String(port + 100)];
   if (process.env.TAURI_NATIVE_DRIVER) driverArgs.push("--native-driver", process.env.TAURI_NATIVE_DRIVER);
-  const driver = spawn("tauri-driver", driverArgs, { env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] });
+  const driver = spawn("tauri-driver", driverArgs, {
+    env: { ...process.env, ...env },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   let driverLog = "";
   driver.stdout.on("data", (data) => (driverLog += data));
   driver.stderr.on("data", (data) => (driverLog += data));
@@ -234,12 +239,7 @@ async function officeRoundtrip(session) {
   const doc = join(work, "test-document.docx");
   const modTimeBefore = statSync(doc).mtimeMs;
 
-  await waitForScript(
-    session,
-    "return document.querySelectorAll('.writer-fragment').length",
-    30000,
-    "writer editor",
-  );
+  await waitForScript(session, "return document.querySelectorAll('.writer-fragment').length", 30000, "writer editor");
   const fragment = await findElement(session, ".writer-fragment");
   await clickElement(session, elementKey(fragment));
 
@@ -361,6 +361,39 @@ async function sanitizeFlow(session) {
   console.log(`PASS: sanitizer wrote ${output} (${size} bytes${onStudio ? "" : ", nav fallback"})`);
 }
 
+/**
+ * Accountant persona: a UBL-TR invoice opens through the real `open_invoice`
+ * command (nothing is mocked), the row shows the parsed payable total in the
+ * Turkish format, and the KDV summary modal recomputes the declaration
+ * figures from the parsed lines.
+ */
+async function accountantPersona(session) {
+  await waitForScript(
+    session,
+    "return /Örnek Danışmanlık/.test(document.body.innerText) && /1\\.800,00/.test(document.body.innerText)",
+    60000,
+    "parsed UBL invoice",
+  );
+  const opened = await execute(
+    session,
+    "const button=[...document.querySelectorAll('button')].find((el)=>(el.textContent||'').includes('KDV Beyan')); if(!button) return false; button.click(); return true;",
+  );
+  if (!opened) throw new Error("the KDV summary button was not found");
+  const summary = await waitForScript(
+    session,
+    "return /KDV1 Beyannamesi/.test(document.body.innerText) ? document.body.innerText.slice(0, 6000) : ''",
+    15000,
+    "KDV summary",
+  );
+  for (const expected of ["1.500,00", "300,00"]) {
+    if (!summary.includes(expected)) {
+      throw new Error(`the KDV summary is missing ${expected}: ${summary.slice(0, 400)}`);
+    }
+  }
+  await screenshot(session, "persona-accountant");
+  console.log("PASS: accountant persona parsed the UBL invoice and the KDV summary");
+}
+
 async function main() {
   mkdirSync(artifacts, { recursive: true });
   const scenarios = [];
@@ -370,6 +403,17 @@ async function main() {
 
   if (pdf) {
     await withSession("reader", { PDFSAK_START_SCREEN: "reader", PDFSAK_DEV_FILES: resolve(pdf) }, reader);
+    return;
+  }
+  const persona = valueOf("--persona");
+  if (persona) {
+    if (persona !== "accountant") throw new Error(`unknown persona: ${persona} (known: accountant)`);
+    const invoice = prepareWorkFile("sample-invoice.xml");
+    await withSession(
+      "persona-accountant",
+      { PDFSAK_START_SCREEN: "invoices", PDFSAK_DEV_FILES: invoice },
+      accountantPersona,
+    );
     return;
   }
   if (scenarios.length === 0) {
@@ -390,11 +434,7 @@ async function main() {
       );
     } else if (scenario === "sanitize") {
       const input = prepareWorkFile("sample-1.pdf");
-      await withSession(
-        "sanitize",
-        { PDFSAK_START_SCREEN: "pdfStudio", PDFSAK_DEV_FILES: input },
-        sanitizeFlow,
-      );
+      await withSession("sanitize", { PDFSAK_START_SCREEN: "pdfStudio", PDFSAK_DEV_FILES: input }, sanitizeFlow);
     }
   }
 }

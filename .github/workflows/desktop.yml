@@ -393,6 +393,11 @@ jobs:
       - name: Deep flows (Xvfb)
         timeout-minutes: 15
         run: xvfb-run -a npm run e2e:flows
+      # Persona journey (v6.0.0 audit B7): a UBL invoice is parsed by the real
+      # backend and the KDV summary is recomputed in the UI.
+      - name: Persona flows (Xvfb)
+        timeout-minutes: 10
+        run: xvfb-run -a npm run e2e:personas
       # When a flow fails, the app's own log records the dev-context line and
       # any frontend error; without it a WebDriver failure is hard to explain.
       - name: App log on E2E failure
