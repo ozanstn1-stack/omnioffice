@@ -1114,7 +1114,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a"
 dependencies = [
  "quote",
- "syn 2.0.119",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -3695,6 +3695,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pbkdf2"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "112d82ceb8c5bf524d9af484d4e4970c9fd5a0cc15ba14ad93dccd28873b0629"
+dependencies = [
+ "digest 0.11.3",
+ "hmac 0.13.0",
+]
+
+[[package]]
 name = "pdf-swiss-army-knife"
 version = "6.0.1"
 dependencies = [
@@ -3746,7 +3756,7 @@ dependencies = [
  "image",
  "lopdf",
  "p256",
- "pbkdf2",
+ "pbkdf2 0.13.0",
  "pdfium-render",
  "pkcs12",
  "pkcs5",
@@ -3931,7 +3941,7 @@ dependencies = [
  "cbc 0.1.2",
  "der",
  "des 0.8.1",
- "pbkdf2",
+ "pbkdf2 0.12.2",
  "scrypt",
  "sha1",
  "sha2 0.10.9",
@@ -4800,7 +4810,7 @@ version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0516a385866c09368f0b5bcd1caff3366aace790fcd46e2bb032697bb172fd1f"
 dependencies = [
- "pbkdf2",
+ "pbkdf2 0.12.2",
  "salsa20",
  "sha2 0.10.9",
 ]
