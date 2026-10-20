@@ -176,11 +176,6 @@ function ScreenFrame({ screen, children }: { screen: ScreenId; children: React.R
   );
 }
 
-/** Reads and clears the Android open-with queue filled by MainActivity.kt. */
-async function takePendingAndroidOpen(): Promise<string[]> {
-  return invoke<string[]>("android_take_pending_open");
-}
-
 export default function App() {
   const t = useT();
   const init = useSettings((s) => s.init);
@@ -612,9 +607,8 @@ export default function App() {
         setScreen("home");
         return;
       }
-      // The Android shell queues `__error:<reason>:<name>` when it refuses a
-      // shared/downloaded file (unsupported type, unreadable stream, size cap,
-      // ...). Say so instead of doing nothing; any real paths still open.
+      // The Android shell queues `__error:<reason>:<name>` for a refused file;
+      // say so instead of doing nothing (any real paths still open).
       if (paths.some((p) => p.startsWith("__error:"))) {
         pushToast({ kind: "error", title: t("errors.unsupported") });
       }
@@ -659,7 +653,7 @@ export default function App() {
     let cancelled = false;
     const seen = new Set<string>();
     const drain = () => {
-      void takePendingAndroidOpen()
+      void invoke<string[]>("android_take_pending_open")
         .then((paths) => {
           if (cancelled || !paths.length) return;
           // Launcher shortcuts arrive as `__action:*` tokens, and the same
