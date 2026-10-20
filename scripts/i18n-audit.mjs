@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 /**
- * Translation table audit for src/lib/i18n.ts.
+ * Translation table audit for src/lib/i18n/{en,tr}.json.
  *
- * The dictionaries are a flat TypeScript table (one entry per line, on
- * purpose: src/lib/i18n-encoding.test.ts scans it line by line), so the only
+ * The dictionaries are flat JSON assets (fetched at runtime), so the only
  * way to notice a key that exists in English but was never translated is to
  * compare the two blocks.
  *
@@ -21,44 +20,23 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const enPath = fileURLToPath(new URL("../src/lib/i18n.ts", import.meta.url));
-const trPath = fileURLToPath(new URL("../src/lib/i18n-tr.ts", import.meta.url));
-const enSource = readFileSync(enPath, "utf8");
-const trSource = readFileSync(trPath, "utf8");
+const enPath = fileURLToPath(new URL("../src/lib/i18n/en.json", import.meta.url));
+const trPath = fileURLToPath(new URL("../src/lib/i18n/tr.json", import.meta.url));
 
-// English lives in i18n.ts; Turkish is a lazily loaded chunk of its own.
-const enStart = enSource.indexOf("const en: Dict = {");
-const enEnd = enSource.indexOf("\n};", enStart);
-const trStart = trSource.indexOf("export const tr: Record<string, string> = {");
-const trEnd = trSource.indexOf("\n};", trStart);
-if (enStart < 0 || enEnd < 0 || trStart < 0 || trEnd < 0) {
-  console.error("i18n-audit: could not find the en/tr dictionary blocks");
-  process.exit(2);
-}
+// The dictionaries are JSON assets the app fetches at runtime; they are the
+// source of truth for this audit.
+const en = JSON.parse(readFileSync(enPath, "utf8"));
+const tr = JSON.parse(readFileSync(trPath, "utf8"));
 
-const enBody = enSource.slice(enStart, enEnd);
-const trBody = trSource.slice(trStart, trEnd);
-
-const keysOf = (body) => [...body.matchAll(/^\s*"([^"]+)":/gm)].map((match) => match[1]);
-
-const enKeys = keysOf(enBody);
-const trKeys = new Set(keysOf(trBody));
+const enKeys = Object.keys(en);
+const trKeys = new Set(Object.keys(tr));
 const missing = enKeys.filter((key) => !trKeys.has(key));
 const extra = [...trKeys].filter((key) => !enKeys.includes(key));
 
 if (process.argv.includes("--tsv")) {
   const out = enKeys
     .map((key) => {
-      const line = enBody.split("\n").find((entry) => entry.trim().startsWith('"' + key + '":'));
-      const value = line
-        ? line
-            .trim()
-            .slice(line.indexOf(":") + 1)
-            .trim()
-            .replace(/,$/, "")
-            .replace(/^"|"$/g, "")
-        : "?";
-      return key + "\t" + value;
+      return key + "\t" + (en[key] ?? "?");
     })
     .join("\n");
   console.log(out);
@@ -73,7 +51,7 @@ function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) walk(full, out);
-    else if (/\.(ts|tsx)$/.test(entry) && !/\.test\./.test(entry) && entry !== "i18n.ts" && entry !== "i18n-tr.ts")
+    else if (/\.(ts|tsx)$/.test(entry) && !/\.test\./.test(entry) && entry !== "i18n.ts")
       out.push(full);
   }
   return out;

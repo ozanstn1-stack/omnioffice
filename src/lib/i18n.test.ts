@@ -1,13 +1,10 @@
-import { beforeAll, describe, expect, it } from "vitest";
-import { ensureLanguage, makeTranslate } from "./i18n";
+import { describe, expect, it } from "vitest";
+import { makeTranslate } from "./i18n";
 
+// The dictionaries are primed by `src/test-setup.ts` before this module loads
+// (in production they are JSON assets fetched on first use).
 const en = makeTranslate("en");
-// Turkish is a lazily loaded chunk, so load it before resolving its keys.
-let tr: ReturnType<typeof makeTranslate>;
-beforeAll(async () => {
-  await ensureLanguage("tr");
-  tr = makeTranslate("tr");
-});
+const tr = makeTranslate("tr");
 
 describe("i18n dictionaries", () => {
   it("resolves a known English key", () => {

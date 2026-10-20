@@ -1,13 +1,17 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
-import { ensureLanguage } from "./lib/i18n-runtime";
+import en from "./lib/i18n/en.json";
+import tr from "./lib/i18n/tr.json";
+import { primeDictionary } from "./lib/i18n-runtime";
 
-// The Turkish dictionary is a lazy chunk in production; load it before the
-// test files are imported so module-scope `makeTranslate("tr")` resolves it.
+// The dictionaries are JSON assets fetched at runtime in production; tests
+// import the same files and prime the cache before the test modules load, so
+// module-scope `makeTranslate(…)` calls resolve real strings without a fetch.
 // Imported from `i18n-runtime` (not `i18n`) so the settings store and the
 // Tauri API are not pulled in ahead of each file's `vi.mock` calls.
-await ensureLanguage("tr");
+primeDictionary("en", en as Record<string, string>);
+primeDictionary("tr", tr as Record<string, string>);
 
 // jsdom does not implement these, but the editors rely on them.
 if (!window.matchMedia) {

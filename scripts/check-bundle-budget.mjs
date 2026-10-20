@@ -34,31 +34,32 @@ const [largestName, largestBytes] = [...sizes.entries()]
   .sort((a, b) => b[1] - a[1])[0] ?? ["", 0];
 const largestKb = largestBytes / 1024;
 
-const ENTRY_BUDGET_KB = 180;
+const ENTRY_BUDGET_KB = 60;
 const CHUNK_BUDGET_KB = 100;
-// Raised from 450 in 4.5.0: the Writer ruler/table tools and the Impress
-// rich-text, connectors, crop and sorter features add real UI to the chunks.
-// Raised to 485 in 4.7.0 for Belge Asistanı 2.0 (Document Assistant 2.0:
-// document chat with citations, invoice extraction, and batch queue).
-// Raised to 500 in 4.9.0 for "Resmî Belgeler": the UYAP `.udf` reader/writer,
-// the UBL-TR e-Fatura screen with its VAT summary and GİB karekod panel, and
-// the Reader's e-Devlet verification button. Each is a lazy route; the total
-// moves because they all ship, not because one chunk lost its split.
-// Raised to 505 in 5.0.0 for the plugin API v2 (the pdf capability and the
-// batch-step manifest surface) and the Writer document comparison; both ride
-// the existing lazy routes, so the per-chunk budgets are unchanged.
-// Raised to 515 in 5.4.0 for the KVKK package (Document Health dashboard,
-// Redaction Certificate generator, and official compliance tools).
-// Raised to 525 in 6.0.1: the petition, KVKK and document-health screens that
-// shipped in 5.3-5.4 had no routes, so their chunks were tree-shaken out of
-// the total. Wiring them up (A2 routing split) makes ~8.5 KB gzip of real,
-// already-written UI part of the bundle again.
-// Raised to 530 in 6.0.1 for the Writer proofing panel (the offline Turkish
-// spell check and the Official Correspondence Regulation checker, the second
-// half of the same A2 split). This is the last raise of the cycle: the next
-// budget change must be the dedicated reduction PR towards the <=480 KB
-// target in the v6.0.1 audit plan.
-const TOTAL_BUDGET_KB = 530;
+// The v6.0.0 audit asked for a budget per route, not just one global number: a
+// screen can load slowly even while the total stays flat. These caps cover the
+// chunks that carry an editor or a large route (measured sizes plus a small
+// margin at 6.0.1); anything not listed falls back to CHUNK_BUDGET_KB.
+const ROUTE_BUDGETS = {
+  react: 72,
+  CalcEditor: 52,
+  WriterEditor: 35,
+  ImpressEditor: 30,
+  "calc-functions": 27,
+  ToolsScreens: 24,
+  Ai: 14,
+  Reader: 12,
+  PdfStudio: 12,
+  Invoices: 10,
+};
+const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$/, "");
+// History: 450 → 485 (4.7.0) → 500 (4.9.0) → 505 (5.0.0) → 515 (5.4.0) →
+// 525 → 530 (6.1 routing/proofing wiring, see 6.0.1 notes).
+// Reduced to 480 in 6.0.1 (B5): the English and Turkish dictionaries moved
+// from JS chunks to JSON assets (`src/lib/i18n/*.json`, fetched at runtime),
+// which took ~71 KB gzip out of the total. The cap now tracks the audit's
+// <=480 KB target; a future raise needs its own justified PR.
+const TOTAL_BUDGET_KB = 480;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);
@@ -66,6 +67,12 @@ if (entryKb > ENTRY_BUDGET_KB)
   failures.push(`entry ${entry} is ${entryKb.toFixed(1)} KB gzip (budget ${ENTRY_BUDGET_KB} KB)`);
 if (largestKb > CHUNK_BUDGET_KB)
   failures.push(`largest chunk ${largestName} is ${largestKb.toFixed(1)} KB gzip (budget ${CHUNK_BUDGET_KB} KB)`);
+for (const [file, bytes] of sizes) {
+  const cap = ROUTE_BUDGETS[baseName(file)];
+  if (cap !== undefined && bytes / 1024 > cap) {
+    failures.push(`${file} is ${(bytes / 1024).toFixed(1)} KB gzip (${baseName(file)} budget ${cap} KB)`);
+  }
+}
 if (totalKb > TOTAL_BUDGET_KB)
   failures.push(`total JS is ${totalKb.toFixed(1)} KB gzip (budget ${TOTAL_BUDGET_KB} KB)`);
 

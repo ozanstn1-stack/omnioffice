@@ -1,11 +1,6 @@
-/**
- * Turkish dictionary, loaded on demand so the entry chunk only carries the
- * language most builds read. Imported by `ensureLanguage` in `i18n.ts`.
- */
-export const tr: Record<string, string> = {
+{
   "office.recoveryKept": "Kurtarma anlık görüntüsü korundu",
-  "office.recoveryKeptHint":
-    "Bu biçim belgedeki her şeyi saklayamaz, bu yüzden otomatik kayıt anlık görüntüsü tutuldu. Kayıpsız bir kopya için .oswk olarak kaydedin.",
+  "office.recoveryKeptHint": "Bu biçim belgedeki her şeyi saklayamaz, bu yüzden otomatik kayıt anlık görüntüsü tutuldu. Kayıpsız bir kopya için .oswk olarak kaydedin.",
   "office.compatCheckFailed": "Uyumluluk denetimi kullanılamıyor",
   "office.compatCheckFailedHint": "Uyumluluk raporu yüklenemedi; kayıt raporsuz devam ediyor.",
   "office.versionHistory": "Sürüm geçmişi",
@@ -13,8 +8,7 @@ export const tr: Record<string, string> = {
   "office.versionRestore": "Geri yükle",
   "office.versionClear": "Tüm sürümleri sil",
   "office.unsavedTitle": "Kaydedilmemiş değişiklikler",
-  "office.unsavedBody":
-    '"{name}" kaydedilmemiş değişiklikler içeriyor. Her durumda bir kurtarma anlık görüntüsü tutulur.',
+  "office.unsavedBody": "\"{name}\" kaydedilmemiş değişiklikler içeriyor. Her durumda bir kurtarma anlık görüntüsü tutulur.",
   "office.closeDiscard": "Kapat ve sil",
   "office.closeKeep": "Açık tut",
   "calc.names": "Adlar",
@@ -23,8 +17,7 @@ export const tr: Record<string, string> = {
   "calc.nameTarget": "Şunu gösterir",
   "calc.nameThisSheetOnly": "Yalnızca bu sayfa",
   "calc.nameRequired": "Bir ad girin.",
-  "calc.nameInvalid":
-    "Ad bir harfle başlamalı; harf, rakam, nokta ve alt çizgi içerebilir; hücre adresi gibi görünemez.",
+  "calc.nameInvalid": "Ad bir harfle başlamalı; harf, rakam, nokta ve alt çizgi içerebilir; hücre adresi gibi görünemez.",
   "calc.nameColumn": "Ad",
   "calc.nameScope": "Kapsam",
   "calc.nameWorkbookScope": "Çalışma kitabı",
@@ -40,9 +33,7 @@ export const tr: Record<string, string> = {
   "calc.printHeadings": "Satır ve sütun başlıklarını yazdır",
   "calc.centerHorizontally": "Yatayda ortala",
   "calc.header": "Üst bilgi",
-  "calc.printSheetNote":
-    "{sheet} sayfası için geçerlidir. Bu ayarlar XLSX pageSetup bölümüne yazılır ve PDF dışa aktarımında kullanılır.",
-
+  "calc.printSheetNote": "{sheet} sayfası için geçerlidir. Bu ayarlar XLSX pageSetup bölümüne yazılır ve PDF dışa aktarımında kullanılır.",
   "app.name": "OmniOffice",
   "common.experimental": "Deneysel",
   "app.tagline": "Yerel çalışan ofis paketi: Writer, Calc, Impress ve eksiksiz PDF araç seti.",
@@ -88,7 +79,7 @@ export const tr: Record<string, string> = {
   "common.saveAs": "Farklı kaydet…",
   "common.share": "Paylaş",
   "common.androidDefaultDestination": "Sonuçlar Downloads/OmniOffice klasörüne kopyalanır",
-  "common.androidChosenDestination": 'Sonuçlar "{name}" klasörüne kopyalanır',
+  "common.androidChosenDestination": "Sonuçlar \"{name}\" klasörüne kopyalanır",
   "common.remove": "Kaldır",
   "common.clear": "Temizle",
   "common.apply": "Uygula",
@@ -165,8 +156,7 @@ export const tr: Record<string, string> = {
   "nav.ai": "AI asistanı",
   "nav.aiLibrary": "AI kitaplığı",
   "ai.title": "AI asistanı",
-  "ai.subtitle":
-    "PDF ve ofis belgeleri için özetleme, çeviri, belge soru-cevap ve metin temizleme — kendi API anahtarınızla.",
+  "ai.subtitle": "PDF ve ofis belgeleri için özetleme, çeviri, belge soru-cevap ve metin temizleme — kendi API anahtarınızla.",
   "ai.edit.group": "Yapay zeka",
   "ai.edit.notConfigured": "Bunu kullanmak için Ayarlar'dan yapay zekayı yapılandırın.",
   "ai.edit.btn.rewrite": "Yeniden yaz",
@@ -194,8 +184,7 @@ export const tr: Record<string, string> = {
   "ai.edit.original": "Özgün",
   "ai.edit.suggestion": "Öneri",
   "ai.edit.consentTitle": "İlk istekten önce",
-  "ai.edit.consentBody":
-    "Bu işlem, anahtarınızla {what} metnini {provider} ({host}) sağlayıcısına gönderir. Belgeden başka hiçbir şey gönderilmez ve siz devam etmeden hiçbir şey gönderilmez. Başka bir belge, sağlayıcı veya veri türü için yeniden sorulur.",
+  "ai.edit.consentBody": "Bu işlem, anahtarınızla {what} metnini {provider} ({host}) sağlayıcısına gönderir. Belgeden başka hiçbir şey gönderilmez ve siz devam etmeden hiçbir şey gönderilmez. Başka bir belge, sağlayıcı veya veri türü için yeniden sorulur.",
   "ai.edit.consentAction": "Gönder ve devam et",
   "ai.edit.working": "AI çalışıyor…",
   "ai.edit.cancel": "İptal",
@@ -229,7 +218,7 @@ export const tr: Record<string, string> = {
   "ai.edit.insertBelow": "Altına ekle",
   "ai.edit.insertedBelow": "Özet {cell} hücresine eklendi",
   "ai.edit.formulaRequest": "Formül ne hesaplamalı?",
-  "ai.edit.formulaPlaceholder": 'örn. A sütunu "Ödendi" olan satırlar için B sütununun toplamı',
+  "ai.edit.formulaPlaceholder": "örn. A sütunu \"Ödendi\" olan satırlar için B sütununun toplamı",
   "ai.edit.formulaFor": "{cell} için önerilen formül",
   "ai.edit.formulaAccept": "{cell} hücresine ekle",
   "ai.edit.outlineLabel": "Taslak (her satıra bir konu, alt maddeler girintili)",
@@ -238,15 +227,12 @@ export const tr: Record<string, string> = {
   "ai.edit.slidesAccept": "{count} slayt ekle",
   "ai.edit.slidesAdded": "{count} slayt eklendi",
   "ai.notConfigured": "AI yapılandırılmadı",
-  "ai.notConfiguredBody":
-    "Özetleme, çeviri, soru-cevap ve metaveri önerilerini kullanmak için Ayarlar bölümüne API anahtarınızı ekleyin (ya da yerel bir Ollama modeli seçin).",
+  "ai.notConfiguredBody": "Özetleme, çeviri, soru-cevap ve metaveri önerilerini kullanmak için Ayarlar bölümüne API anahtarınızı ekleyin (ya da yerel bir Ollama modeli seçin).",
   "ai.privacyTitle": "Cihazınızdan ne çıkıyor",
-  "ai.privacyBody":
-    "Bu belgeden yalnızca çıkarılan metin, kendi anahtarınızla {provider} sağlayıcısına gönderilir — dosyanın kendisi asla, parolalar asla gönderilmez. Çalıştır'a basana kadar hiçbir şey gönderilmez ve diğer tüm araçlar tamamen çevrimdışı kalır.",
+  "ai.privacyBody": "Bu belgeden yalnızca çıkarılan metin, kendi anahtarınızla {provider} sağlayıcısına gönderilir — dosyanın kendisi asla, parolalar asla gönderilmez. Çalıştır'a basana kadar hiçbir şey gönderilmez ve diğer tüm araçlar tamamen çevrimdışı kalır.",
   "ai.consent": "Çıkarılan metnin {provider} sağlayıcısına gönderileceğini anlıyorum",
   "ai.consentLocal": "Çıkarılan metnin bu bilgisayarda veya yerel ağda {provider} tarafından işleneceğini anlıyorum",
-  "ai.privacyBodyLocal":
-    "Bu belgeden yalnızca çıkarılan metin, bu bilgisayarda veya yerel ağınızda çalışan {provider} uygulamasına iletilir — dosyanın kendisi asla, parolalar asla iletilmez ve hiçbir şey internete gönderilmez. Çalıştır'a basana kadar hiçbir şey işlenmez ve diğer tüm araçlar tamamen çevrimdışı kalır.",
+  "ai.privacyBodyLocal": "Bu belgeden yalnızca çıkarılan metin, bu bilgisayarda veya yerel ağınızda çalışan {provider} uygulamasına iletilir — dosyanın kendisi asla, parolalar asla iletilmez ve hiçbir şey internete gönderilmez. Çalıştır'a basana kadar hiçbir şey işlenmez ve diğer tüm araçlar tamamen çevrimdışı kalır.",
   "ai.consentShort": "Bu belge için veri bildirimi onaylandı",
   "ai.consentVault": "Tüm vault sorgulanır (kütüphanedeki tüm belgeler)",
   "ai.consentEmbedding": "Anlamsal arama için belge metni gömülür",
@@ -260,7 +246,7 @@ export const tr: Record<string, string> = {
   "ai.tabCleanup": "OCR metnini onar",
   "ai.tabMetadata": "Metaveri önerileri",
   "ai.language": "Çıktı dili",
-  "ai.languageHint": '"auto" belge dilini korur (örn. tr, English)',
+  "ai.languageHint": "\"auto\" belge dilini korur (örn. tr, English)",
   "ai.length": "Uzunluk",
   "ai.lengthShort": "Kısa",
   "ai.lengthMedium": "Orta",
@@ -276,8 +262,7 @@ export const tr: Record<string, string> = {
   "ai.question": "Soru",
   "ai.questionPlaceholder": "Toplam tutar nedir?",
   "ai.cleanupIntro": "OCR metnindeki bozuk kelimeleri, tirelemeyi ve boşlukları özetlemeden onarır.",
-  "ai.cleanupHint":
-    "Kötü kaliteli bir tarama üzerinde OCR çalıştırdıktan sonra kullanışlıdır; sonuç Markdown veya düz metin olarak kaydedilir.",
+  "ai.cleanupHint": "Kötü kaliteli bir tarama üzerinde OCR çalıştırdıktan sonra kullanışlıdır; sonuç Markdown veya düz metin olarak kaydedilir.",
   "ai.metadataIntro": "Belge metnine dayanarak başlık, yazar, konu ve anahtar kelime önerir.",
   "ai.metadataHint": "Öneri almak için Çalıştır'a basın, ardından bunları yeni bir PDF'e uygulayın.",
   "ai.metadataApply": "Yeni bir PDF'e uygula…",
@@ -401,8 +386,7 @@ export const tr: Record<string, string> = {
   "ai.scopePageNumber": "Sayfa",
   "ai.scopeSelectionPlaceholder": "Belgede seçtiğiniz metni yapıştırın",
   "ai.scopeSelectionText": "Seçili metin",
-  "ai.scopeVaultNote":
-    "Kasa modu, kitaplığınızdaki tüm belgeleri anlamsal gömme ve anahtar kelime eşlemesiyle hibrit olarak arar.",
+  "ai.scopeVaultNote": "Kasa modu, kitaplığınızdaki tüm belgeleri anlamsal gömme ve anahtar kelime eşlemesiyle hibrit olarak arar.",
   "ai.sendImageVision": "Sayfa görüntüsünü resim olarak gönder (Görsel)",
   "ai.visionWarning": "Görsel girdi gönderilemedi",
   "ai.sendScope": "Gönderim kapsamı",
@@ -419,8 +403,7 @@ export const tr: Record<string, string> = {
   "ai.keyPlain": "API anahtarı şifresiz saklanıyor (DPAPI kullanılamıyor)",
   "ai.keyMissing": "Kayıtlı API anahtarı yok",
   "ai.thinkingTitle": "Düşünüyor (model akıl yürütmesi)",
-  "ai.thinkingHint":
-    "DeepSeek V4 akıl yürütür; yanıt düşünme izinden sonra gelir. Düşünme sırasında jeton bütçesi tükenirse hata yerine bu iz sonuç olarak gösterilir.",
+  "ai.thinkingHint": "DeepSeek V4 akıl yürütür; yanıt düşünme izinden sonra gelir. Düşünme sırasında jeton bütçesi tükenirse hata yerine bu iz sonuç olarak gösterilir.",
   "ai.showThinking": "Düşünmeyi göster",
   "ai.hideThinking": "Düşünmeyi gizle",
   "ai.savedToLibrary": "AI kitaplığına kaydedildi",
@@ -429,8 +412,7 @@ export const tr: Record<string, string> = {
   "ai.openLibrary": "AI kitaplığını aç",
   "ai.libraryFolder": "Kitaplık klasörü",
   "library.title": "AI kitaplığı",
-  "library.subtitle":
-    "Her AI sonucu burada Markdown olarak saklanır, böylece ekrandan ayrıldığınızda hiçbir şey kaybolmaz.",
+  "library.subtitle": "Her AI sonucu burada Markdown olarak saklanır, böylece ekrandan ayrıldığınızda hiçbir şey kaybolmaz.",
   "library.folder": "Kitaplık klasörü",
   "library.changeFolder": "Klasörü değiştir…",
   "library.chooseFolder": "AI sonuçları için bir klasör seçin",
@@ -438,10 +420,8 @@ export const tr: Record<string, string> = {
   "library.clearAll": "Kitaplığı temizle",
   "library.cleared": "AI kitaplığı temizlendi",
   "library.empty": "Henüz kayıtlı AI sonucu yok",
-  "library.emptyHint":
-    "Bir özet, çeviri, soru-cevap, OCR onarımı veya metaveri önerisi çalıştırın — sonuçlar burada otomatik olarak saklanır.",
-  "library.selectHint":
-    "Okumak, Markdown dosyasını açmak ya da bir kopyasını dışa aktarmak için soldaki kayıtlı bir sonucu seçin.",
+  "library.emptyHint": "Bir özet, çeviri, soru-cevap, OCR onarımı veya metaveri önerisi çalıştırın — sonuçlar burada otomatik olarak saklanır.",
+  "library.selectHint": "Okumak, Markdown dosyasını açmak ya da bir kopyasını dışa aktarmak için soldaki kayıtlı bir sonucu seçin.",
   "library.exportAs": "Farklı kaydet…",
   "library.exported": "Kaydedildi",
   "library.savedAt": "Kaydedilme",
@@ -476,8 +456,7 @@ export const tr: Record<string, string> = {
   "reader.matches": "{pages} sayfada {count} eşleşme",
   "reader.noMatches": "Eşleşme bulunamadı",
   "reader.truncated": "İlk {count} eşleşme gösteriliyor",
-  "reader.noTextLayer":
-    "Bu belgede kullanılabilir bir metin katmanı yok. Aranabilir hâle getirmek için OCR aracını çalıştırın.",
+  "reader.noTextLayer": "Bu belgede kullanılabilir bir metin katmanı yok. Aranabilir hâle getirmek için OCR aracını çalıştırın.",
   "reader.noTextLayerShort": "Bu sayfada metin katmanı yok",
   "reader.showTextLayer": "Seçilebilir metin katmanını göster",
   "reader.hideTextLayer": "Seçilebilir metin katmanını gizle",
@@ -500,8 +479,7 @@ export const tr: Record<string, string> = {
   "reader.bookmarks": "Yer imleri",
   "reader.noBookmarks": "Bu belgede yer imi yok.",
   "reader.untitledBookmark": "Başlıksız",
-  "reader.shortcutHint":
-    "Ctrl+F ara · Ctrl +/− yakınlaştır · Ctrl+0 genişliğe sığdır · PgUp/PgDn kaydır · Home/End ilk/son sayfa",
+  "reader.shortcutHint": "Ctrl+F ara · Ctrl +/− yakınlaştır · Ctrl+0 genişliğe sığdır · PgUp/PgDn kaydır · Home/End ilk/son sayfa",
   "home.recentEmpty": "Henüz belge yok",
   "home.recentEmptyHint": "Başlamak için buraya bir PDF bırakın.",
   "home.viewAll": "Tümünü gör",
@@ -551,8 +529,7 @@ export const tr: Record<string, string> = {
   "split.modeAtPages": "Seçilen sayfalarda",
   "split.rangesHint": "Her satıra bir aralık, örn. 1-5, 6-10, 11-20",
   "split.everyN": "Dosya başına sayfa",
-  "split.atPagesHint":
-    "Kesimler her sayfadan önce yerleştirilir, örn. 4, 10 yeni dosyaları 4. ve 10. sayfada başlatır.",
+  "split.atPagesHint": "Kesimler her sayfadan önce yerleştirilir, örn. 4, 10 yeni dosyaları 4. ve 10. sayfada başlatır.",
   "split.run": "PDF böl",
   "split.created": "{count} dosya oluşturuldu",
   "compress.title": "PDF sıkıştır",
@@ -561,8 +538,7 @@ export const tr: Record<string, string> = {
   "compress.lossless": "Kayıpsız",
   "compress.losslessHint": "Yapıyı optimize eder, metni metin olarak korur. Orta düzeyde tasarruf sağlar.",
   "compress.raster": "Güçlü (yeniden işleme)",
-  "compress.rasterHint":
-    "Sayfaları görsel olarak yeniden işler. Taramalar için en iyisi; metin görselin bir parçası hâline gelir.",
+  "compress.rasterHint": "Sayfaları görsel olarak yeniden işler. Taramalar için en iyisi; metin görselin bir parçası hâline gelir.",
   "compress.preset": "Düzey",
   "compress.low": "Düşük",
   "compress.medium": "Orta",
@@ -716,10 +692,8 @@ export const tr: Record<string, string> = {
   "metadata.subtitle": "Başlık ve yazar gibi belge özelliklerini okuyun ve düzenleyin.",
   "metadata.signatures": "İmzalar",
   "metadata.keepSignatures": "Mevcut imzaları koru",
-  "metadata.keepSignaturesHint":
-    "İmzalı bir belge yeniden yazılmak yerine yeni bir revizyonla genişletilir; böylece her imza geçerli kalır ve okuyucu neyin imzalandığını, sonrasında neyin değiştiğini görebilir.",
-  "annotate.keepSignaturesHint":
-    "Damga, imzalı belgenin yeni bir revizyonu olarak eklenir; mevcut imzalar geçerli kalır.",
+  "metadata.keepSignaturesHint": "İmzalı bir belge yeniden yazılmak yerine yeni bir revizyonla genişletilir; böylece her imza geçerli kalır ve okuyucu neyin imzalandığını, sonrasında neyin değiştiğini görebilir.",
+  "annotate.keepSignaturesHint": "Damga, imzalı belgenin yeni bir revizyonu olarak eklenir; mevcut imzalar geçerli kalır.",
   "annotate.noteTool": "Yapışkan not",
   "annotate.underlineTool": "Altı çizili",
   "annotate.strikeTool": "Üstü çizili",
@@ -727,8 +701,7 @@ export const tr: Record<string, string> = {
   "annotate.textboxTool": "Metin kutusu",
   "annotate.signatureTool": "İmza",
   "annotate.editable": "Açıklamaları düzenlenebilir tut",
-  "annotate.editableHint":
-    "Düzenlenebilir açıklamalar PDF'nin açıklama katmanına yazılır ve sonradan değiştirilebilir; düzleştirme onları sayfaya işler.",
+  "annotate.editableHint": "Düzenlenebilir açıklamalar PDF'nin açıklama katmanına yazılır ve sonradan değiştirilebilir; düzleştirme onları sayfaya işler.",
   "annotate.flatten": "Sayfaya düzleştir",
   "annotate.existing": "Mevcut açıklamalar",
   "annotate.loadExisting": "Belgedeki açıklamaları yükle",
@@ -794,8 +767,7 @@ export const tr: Record<string, string> = {
   "settings.calcLocaleAuto": "Arayüz diliyle aynı",
   "settings.authorName": "Adınız",
   "settings.authorNamePlaceholder": "Ben",
-  "settings.authorNameHint":
-    "Yeni Writer yorumlarını ve izlenen değişiklikleri bu adla işaretler. Boşsa varsayılan kullanılır.",
+  "settings.authorNameHint": "Yeni Writer yorumlarını ve izlenen değişiklikleri bu adla işaretler. Boşsa varsayılan kullanılır.",
   "settings.aiPrivacy": "Yapay zekâ verileri",
   "settings.aiRetention": "Kaydedilen sohbetleri sakla (gün)",
   "settings.aiRetentionHint": "Daha eski sohbetler otomatik silinir. 0 süresiz saklar.",
@@ -831,8 +803,7 @@ export const tr: Record<string, string> = {
   "settings.version": "Sürüm",
   "settings.ocrInstalled": "{count} OCR dili yüklü",
   "settings.diagnosticsExport": "Tanılama raporunu dışa aktar",
-  "settings.diagnosticsHint":
-    "GitHub'da sorun bildirirken eklemek için bir metin raporu kaydeder (sürüm, motorlar, son hatalar, uygulama günlüğü). Klasör ve dosya adları <path> ile değiştirilir; paylaşmadan önce okuyun. Hiçbir şey otomatik gönderilmez.",
+  "settings.diagnosticsHint": "GitHub'da sorun bildirirken eklemek için bir metin raporu kaydeder (sürüm, motorlar, son hatalar, uygulama günlüğü). Klasör ve dosya adları <path> ile değiştirilir; paylaşmadan önce okuyun. Hiçbir şey otomatik gönderilmez.",
   "settings.diagnosticsSaved": "Tanılama raporu kaydedildi",
   "office.printAndroid": "PDF olarak açıldı - görüntüleyicinin menüsünden yazdırın.",
   "office.ribbonMore": "Daha fazla",
@@ -864,8 +835,7 @@ export const tr: Record<string, string> = {
   "ai.discoverModels": "Modelleri keşfet",
   "ai.discoverModelsHint": "Sağlayıcıdan model listesini isteyin ve açılır listeyi doldurun.",
   "ai.discoverModelsFailed": "Model listesi okunamadı: {error}",
-  "update.hint":
-    "Yalnızca GitHub'daki herkese açık sürüm listesi sorgulanır; size veya belgelerinize ait hiçbir bilgi gönderilmez.",
+  "update.hint": "Yalnızca GitHub'daki herkese açık sürüm listesi sorgulanır; size veya belgelerinize ait hiçbir bilgi gönderilmez.",
   "welcome.title": "OmniOffice'e hoş geldiniz",
   "welcome.intro": "İlk deneyebileceğiniz üç şey. Her şey bu cihazda çalışır.",
   "welcome.officeTitle": "Yazın, hesaplayın, sunun",
@@ -880,8 +850,7 @@ export const tr: Record<string, string> = {
   "welcome.done": "Anladım",
   "settings.showWelcome": "Ana sayfada hoş geldiniz rehberini göster",
   "settings.privacyTitle": "Gizlilik",
-  "settings.privacyBody":
-    "OmniOffice belgelerinizi hiçbir zaman yüklemez. Her şey bu makinede, uygulamayla gelen açık kaynak motorlarla işlenir. Telemetri yok, analitik yok, bulut yok. Tek istisna isteğe bağlı AI asistanıdır; kendi API anahtarınızı ekleyene (ya da yerel bir Ollama modeli seçene) ve her seferinde veri bildirimini onaylayana kadar devre dışıdır.",
+  "settings.privacyBody": "OmniOffice belgelerinizi hiçbir zaman yüklemez. Her şey bu makinede, uygulamayla gelen açık kaynak motorlarla işlenir. Telemetri yok, analitik yok, bulut yok. Tek istisna isteğe bağlı AI asistanıdır; kendi API anahtarınızı ekleyene (ya da yerel bir Ollama modeli seçene) ve her seferinde veri bildirimini onaylayana kadar devre dışıdır.",
   "settings.aiTitle": "AI asistanı",
   "settings.aiKey": "API anahtarı",
   "settings.aiKeyHint": "Şifrelenerek saklanır (Windows DPAPI / Android Keystore) · asla günlüğe yazılmaz",
@@ -891,23 +860,18 @@ export const tr: Record<string, string> = {
   "settings.aiBaseUrl": "API temel URL'si",
   "settings.aiBaseUrlHint": "Yalnızca uyumlu bir ağ geçidi kullanıyorsanız değiştirin",
   "settings.aiModel": "Model",
-  "settings.aiModelHint":
-    "deepseek-flash varsayılandır (DeepSeek V4.1 Flash, 1M bağlam); V4 Pro daha yavaş ama daha güçlüdür",
+  "settings.aiModelHint": "deepseek-flash varsayılandır (DeepSeek V4.1 Flash, 1M bağlam); V4 Pro daha yavaş ama daha güçlüdür",
   "settings.aiModelCustom": "Özel model kimliği…",
   "settings.aiTemperature": "Sıcaklık",
   "settings.aiMaxTokens": "En fazla çıktı jetonu",
-  "settings.aiMaxTokensHint":
-    "Tek bir yanıtın ne kadar uzun olabileceği. DeepSeek V4 en fazla 384.000 jetona izin verir.",
+  "settings.aiMaxTokensHint": "Tek bir yanıtın ne kadar uzun olabileceği. DeepSeek V4 en fazla 384.000 jetona izin verir.",
   "settings.aiContextTokens": "Bağlam bütçesi (giriş jetonları)",
-  "settings.aiContextTokensHint":
-    "Her istekte ne kadar belge metni gönderileceği. DeepSeek V4 Flash/Pro 1.000.000 jetonu destekler; daha büyük değerler daha az parçalı istek demektir (daha yavaş, daha maliyetli).",
+  "settings.aiContextTokensHint": "Her istekte ne kadar belge metni gönderileceği. DeepSeek V4 Flash/Pro 1.000.000 jetonu destekler; daha büyük değerler daha az parçalı istek demektir (daha yavaş, daha maliyetli).",
   "settings.aiTestConnection": "Bağlantıyı test et",
   "settings.aiTestOk": "Bağlandı — {model} yanıt verdi.",
   "settings.aiThinking": "Düşünme modu (DeepSeek V4 akıl yürütmesi)",
-  "settings.aiThinkingHint":
-    "Etkinleştirildiğinde model yanıtlamadan önce akıl yürütür (daha iyi kalite, daha yavaş, daha fazla jeton). En hızlı yanıtlar için kapatın.",
-  "settings.aiThinkingModelWarning":
-    "Düşünme modu yalnızca deepseek-v4-* modellerinde geçerlidir; diğer modellerde yok sayılır.",
+  "settings.aiThinkingHint": "Etkinleştirildiğinde model yanıtlamadan önce akıl yürütür (daha iyi kalite, daha yavaş, daha fazla jeton). En hızlı yanıtlar için kapatın.",
+  "settings.aiThinkingModelWarning": "Düşünme modu yalnızca deepseek-v4-* modellerinde geçerlidir; diğer modellerde yok sayılır.",
   "settings.aiReasoningEffort": "Akıl yürütme yoğunluğu",
   "settings.aiReasoningEffortHint": "Modelin yanıtlamadan önce ne kadar düşünebileceği",
   "settings.aiEffortLow": "Düşük (en hızlı)",
@@ -915,12 +879,10 @@ export const tr: Record<string, string> = {
   "settings.aiEffortMax": "En yüksek (en derin)",
   "settings.aiStorage": "Anahtar saklama",
   "settings.aiAutoSave": "AI sonuçlarını kitaplığa otomatik olarak kaydet",
-  "settings.aiAutoSaveHint":
-    "Tamamlanan her özet, çeviri, yanıt ya da temizlenmiş metin, daha sonra yeniden açabileceğiniz bir Markdown dosyası olarak saklanır.",
+  "settings.aiAutoSaveHint": "Tamamlanan her özet, çeviri, yanıt ya da temizlenmiş metin, daha sonra yeniden açabileceğiniz bir Markdown dosyası olarak saklanır.",
   "settings.aiLibraryDir": "AI kitaplığı klasörü",
   "settings.keepOperationLog": "İşlem günlüğü tut (yalnızca yollar ve boyutlar)",
-  "settings.aiWarning":
-    "AI asistanı, interneti kullanan tek özelliktir: seçtiğiniz belgeden çıkarılan metin, anahtarınızla seçtiğiniz sağlayıcıya (örneğin DeepSeek, Anthropic veya Google) gönderilir; yerel bir Ollama modeli kullanırsanız bu bilgisayarda kalır. Bu uygulamadaki diğer her şey çevrimdışı kalır.",
+  "settings.aiWarning": "AI asistanı, interneti kullanan tek özelliktir: seçtiğiniz belgeden çıkarılan metin, anahtarınızla seçtiğiniz sağlayıcıya (örneğin DeepSeek, Anthropic veya Google) gönderilir; yerel bir Ollama modeli kullanırsanız bu bilgisayarda kalır. Bu uygulamadaki diğer her şey çevrimdışı kalır.",
   "settings.enginePdfium": "PDF görüntüleme (pdfium)",
   "settings.engineQpdf": "PDF motoru (qpdf)",
   "settings.engineTesseract": "OCR (Tesseract)",
@@ -952,8 +914,7 @@ export const tr: Record<string, string> = {
   "progress.cancel": "İptal",
   "errors.title": "Bir şeyler ters gitti",
   "errors.boundaryBody": "Uygulamanın bu bölümü beklenmedik şekilde durdu. OmniOffice'in geri kalanı etkilenmedi.",
-  "errors.boundaryOfficeNote":
-    "Kaydedilmemiş değişikliklerin kurtarma kopyası mümkünse kaydedilir ve çalışma alanı bir sonraki açılışında sunulur.",
+  "errors.boundaryOfficeNote": "Kaydedilmemiş değişikliklerin kurtarma kopyası mümkünse kaydedilir ve çalışma alanı bir sonraki açılışında sunulur.",
   "errors.tryAgain": "Yeniden dene",
   "errors.copyDetails": "Ayrıntıları kopyala",
   "errors.copied": "Kopyalandı",
@@ -977,8 +938,7 @@ export const tr: Record<string, string> = {
   "errors.processing_failed": "İşleme başarısız oldu. Belge zarar görmüş olabilir.",
   "errors.internal": "Beklenmeyen bir hata oluştu.",
   "errors.ai_not_configured": "AI henüz yapılandırılmadı. Ayarlar bölümüne API anahtarınızı ekleyin.",
-  "errors.ai_invalid_key":
-    "API anahtarı AI sağlayıcısı tarafından reddedildi. Anahtarı Ayarlar bölümünde kontrol edin.",
+  "errors.ai_invalid_key": "API anahtarı AI sağlayıcısı tarafından reddedildi. Anahtarı Ayarlar bölümünde kontrol edin.",
   "errors.ai_rate_limited": "AI sağlayıcısının hız sınırına ulaşıldı. Birazdan yeniden deneyin.",
   "errors.ai_insufficient_balance": "AI sağlayıcı hesabınızın bakiyesi yetersiz.",
   "errors.ai_network": "AI sağlayıcısına ulaşılamadı. İnternet bağlantınızı ve Ayarlar'daki temel URL'yi kontrol edin.",
@@ -1000,8 +960,7 @@ export const tr: Record<string, string> = {
   "nav.recipes": "Tarifler",
   "nav.mailMerge": "Adres mektup birleştirme",
   "mailMerge.title": "Adres mektup birleştirme",
-  "mailMerge.subtitle":
-    "Writer şablonundaki {{alan}} yer tutucularını CSV'den doldurun; her satır için bir belge üretin.",
+  "mailMerge.subtitle": "Writer şablonundaki {{alan}} yer tutucularını CSV'den doldurun; her satır için bir belge üretin.",
   "mailMerge.template": "Writer şablonu",
   "mailMerge.templateHint": "{{alan}} yer tutucuları olan bir .docx/.odt.",
   "mailMerge.data": "Veri (CSV)",
@@ -1019,8 +978,7 @@ export const tr: Record<string, string> = {
   "mailMerge.produced": "{count} belge yazıldı.",
   "mailMerge.row": "Satır {row}",
   "recipes.title": "Toplu iş tarifleri",
-  "recipes.subtitle":
-    "Adımları (sıkıştır, damgala, PDF/A, OCR, karart) tarifte zincirleyip çalıştırın veya bir klasörü izleyin.",
+  "recipes.subtitle": "Adımları (sıkıştır, damgala, PDF/A, OCR, karart) tarifte zincirleyip çalıştırın veya bir klasörü izleyin.",
   "recipes.builder": "Tarif oluştur",
   "recipes.name": "Tarif adı",
   "recipes.namePlaceholder": "örn. Arşiv tarifi",
@@ -1048,8 +1006,7 @@ export const tr: Record<string, string> = {
   "scanner.subtitle": "Sayfa fotoğraflarını çok sayfalı PDF'e çevirin. Android kamera akışı yolda.",
   "scanner.cameraTitle": "Kamera ile tarama",
   "scanner.pending": "henüz uygulanmadı",
-  "scanner.cameraNote":
-    "Uygulama içi kamera akışı (ML Kit belge tarayıcı veya Google Play hizmeti olmayan cihazlarda elle dört köşe seçimiyle CameraX) henüz bağlanmadı. Fotoğrafları seçin; perspektif düzeltme ve PDF birleştirme şimdiden çalışır.",
+  "scanner.cameraNote": "Uygulama içi kamera akışı (ML Kit belge tarayıcı veya Google Play hizmeti olmayan cihazlarda elle dört köşe seçimiyle CameraX) henüz bağlanmadı. Fotoğrafları seçin; perspektif düzeltme ve PDF birleştirme şimdiden çalışır.",
   "scanner.permissionNote": "Kamera izni yalnızca tarama başlarken, çalışma anında istenir.",
   "scanner.filterName": "Sayfa fotoğrafı",
   "scanner.pick": "Sayfa fotoğrafı ekle",
@@ -1113,8 +1070,7 @@ export const tr: Record<string, string> = {
   "invoices.warnings": "Fatura uyarıları",
   "invoices.xsltNote": "Fatura içindeki XSLT asla çalıştırılmaz; uygulama kendi deterministik şablonunu kullanır.",
   "invoices.qr.read": "Karekodu oku",
-  "invoices.qr.none":
-    "İlk sayfalarda GİB karekodu bulunamadı. Düşük çözünürlüklü bir tarama daha net bir kopya gerektirebilir.",
+  "invoices.qr.none": "İlk sayfalarda GİB karekodu bulunamadı. Düşük çözünürlüklü bir tarama daha net bir kopya gerektirebilir.",
   "invoices.qr.sender": "Gönderen VKN/TCKN",
   "invoices.qr.validTaxId": "sağlama tutuyor",
   "invoices.qr.invalidTaxId": "sağlama tutmuyor",
@@ -1136,8 +1092,7 @@ export const tr: Record<string, string> = {
   "office.savedWithNotes": "Notlarla birlikte kaydedildi",
   "office.openedWithNotes": "Notlarla açıldı",
   "office.importLimitTitle": "Sayfanın bir bölümü içe aktarılmadı",
-  "office.importLimit":
-    '"{sheet}" sayfasında {rows}. satırın veya {cols}. sütunun ötesinde hücreler var. Bunlar içe aktarılmadı ve özgün dosyanın üzerine kaydederseniz eksik kalır; bunun yerine bir kopya kaydedin.',
+  "office.importLimit": "\"{sheet}\" sayfasında {rows}. satırın veya {cols}. sütunun ötesinde hücreler var. Bunlar içe aktarılmadı ve özgün dosyanın üzerine kaydederseniz eksik kalır; bunun yerine bir kopya kaydedin.",
   "office.pdfExported": "PDF dışa aktarıldı",
   "office.versionRestored": "Sürüm geri yüklendi",
   "office.recovered": "Belge kurtarıldı",
@@ -1146,8 +1101,7 @@ export const tr: Record<string, string> = {
   "office.noTabs": "Açık belge yok",
   "office.noTabsHint": "Başlamak için bir belge, hesap tablosu ya da sunum oluşturun.",
   "office.udfClosed": "UYAP .udf desteği şu an kapalı",
-  "office.udfClosedHint":
-    "UDF biçimi, gerçek UYAP dosyalarıyla doğrulanana kadar gizli tutuluyor. Geliştiriciler flag:experimentalUdf=1 ile deneyebilir.",
+  "office.udfClosedHint": "UDF biçimi, gerçek UYAP dosyalarıyla doğrulanana kadar gizli tutuluyor. Geliştiriciler flag:experimentalUdf=1 ile deneyebilir.",
   "office.newDocument": "Belge",
   "office.newSpreadsheet": "Hesap tablosu",
   "office.newPresentation": "Sunum",
@@ -1165,8 +1119,7 @@ export const tr: Record<string, string> = {
   "writer.findOneMatch": "1 eşleşme",
   "writer.findNoMatches": "Eşleşme yok",
   "writer.findSearching": "Aranıyor…",
-  "writer.regexTooSlow":
-    "Bu desenle arama çok uzun sürüyor. Deseni sadeleştirin (örneğin (a+)+ gibi iç içe tekrarlardan kaçının).",
+  "writer.regexTooSlow": "Bu desenle arama çok uzun sürüyor. Deseni sadeleştirin (örneğin (a+)+ gibi iç içe tekrarlardan kaçının).",
   "writer.findMatchOf": "{current} / {count} eşleşme",
   "writer.findInvalidRegex": "Geçersiz düzenli ifade",
   "writer.styles": "Stiller",
@@ -1313,8 +1266,7 @@ export const tr: Record<string, string> = {
   "calc.removeDuplicatesNeedsRange": "En az iki satırlık bir aralık seçin.",
   "calc.duplicatesHeaders": "Verilerimde başlık satırı var",
   "calc.duplicatesColumns": "Karşılaştırılacak sütunlar",
-  "calc.duplicatesHint":
-    "İşaretli sütunları daha önceki bir satırla aynı olan satırlar kaldırılır. Metinler büyük/küçük harf ayrımı yapılmadan karşılaştırılır.",
+  "calc.duplicatesHint": "İşaretli sütunları daha önceki bir satırla aynı olan satırlar kaldırılır. Metinler büyük/küçük harf ayrımı yapılmadan karşılaştırılır.",
   "calc.columnLabel": "{column} sütunu",
   "calc.duplicatesRemoved": "Kaldırılan yinelenen satır: {removed}. Kalan benzersiz satır: {kept}.",
   "calc.duplicatesNone": "Yinelenen satır bulunamadı.",
@@ -1329,8 +1281,7 @@ export const tr: Record<string, string> = {
   "calc.findOneCell": "1 hücre bulundu",
   "calc.findNoCells": "Hücre bulunamadı",
   "calc.findCellOf": "{current} / {count}. hücre",
-  "calc.findNotReplaceable":
-    "Bulunan {count} hücre değiştirilemez: korumalı sayfa veya değerlerde aranırken düz metin olmayan hücre.",
+  "calc.findNotReplaceable": "Bulunan {count} hücre değiştirilemez: korumalı sayfa veya değerlerde aranırken düz metin olmayan hücre.",
   "calc.replaceDone": "{count} hücre değiştirildi.",
   "calc.replaceDoneSkipped": "{count} hücre değiştirildi; {skipped} hücre atlandı (korumalı veya düz metin değil).",
   "calc.replaceNothing": "Hiçbir şey değiştirilmedi.",
@@ -1344,8 +1295,7 @@ export const tr: Record<string, string> = {
   "calc.pasteValues": "Değerler",
   "calc.pasteFormats": "Biçimlendirme",
   "calc.pasteTranspose": "Satır ve sütunları değiştir",
-  "calc.pasteExternalNote":
-    "Panoda başka bir uygulamadan gelen metin var. Formül veya biçimlendirme içermediği için değer olarak yapıştırılır.",
+  "calc.pasteExternalNote": "Panoda başka bir uygulamadan gelen metin var. Formül veya biçimlendirme içermediği için değer olarak yapıştırılır.",
   "calc.pasteNothing": "Pano boş. Önce bazı hücreleri kopyalayın.",
   "calc.editing": "Düzenleme",
   "calc.autoSum": "Otomatik toplam",
@@ -1369,8 +1319,7 @@ export const tr: Record<string, string> = {
   "calc.chartDelete": "Grafiği sil",
   "calc.chartHole": "Boşluk boyutu",
   "calc.chartScatterStyle": "Noktalar ve çizgiler",
-  "calc.chartHintScatter":
-    "Başlıkları olan bir aralık seçin: ilk sütun X değerlerini içerir, diğer her sütun bir Y değerleri serisidir.",
+  "calc.chartHintScatter": "Başlıkları olan bir aralık seçin: ilk sütun X değerlerini içerir, diğer her sütun bir Y değerleri serisidir.",
   "calc.scatter_marker": "Yalnızca işaretçiler",
   "calc.scatter_lineMarker": "İşaretçili çizgiler",
   "calc.scatter_line": "Yalnızca çizgiler",
@@ -1540,8 +1489,7 @@ export const tr: Record<string, string> = {
   "calc.linkBroken": "Bu bağlantı var olmayan bir yere işaret ediyor.",
   "calc.linkOpenFailed": "Bağlantı açılamadı.",
   "calc.hideNothing": "Burada gizlenecek bir şey yok. En az bir satır ve bir sütun görünür kalmalıdır.",
-  "calc.unhideNothing":
-    "Burada gizli satır veya sütun yok. Gizli olanların iki yanındaki satırları veya sütunları seçin.",
+  "calc.unhideNothing": "Burada gizli satır veya sütun yok. Gizli olanların iki yanındaki satırları veya sütunları seçin.",
   "calc.sheetProtected": "Bu sayfa korumalı, bu değişikliğe izin verilmiyor.",
   "calc.view": "Görünüm",
   "calc.freezePanes": "Bölme çubuklarını sabitle",
@@ -1684,8 +1632,7 @@ export const tr: Record<string, string> = {
   "converter.password": "PDF parolası",
   "converter.passwordHint": "Yalnızca parola korumalı PDF'ler için gerekir.",
   "converter.tablesHint": "Basit tablolar tablo olarak kurtarılır; yinelenen üst ve alt bilgiler kaldırılır.",
-  "converter.hint":
-    "PDF ve görsel dönüştürmeleri PDF modülünde bulunur (PDF'den JPG'ye, JPG'den PDF'e). Desteklenmeyen hedefler açıkça bildirilir.",
+  "converter.hint": "PDF ve görsel dönüştürmeleri PDF modülünde bulunur (PDF'den JPG'ye, JPG'den PDF'e). Desteklenmeyen hedefler açıkça bildirilir.",
   "cleaner.title": "Belge temizleyici",
   "cleaner.subtitle": "Metaveriyi, yorumları ve ağır gömülü görselleri kaldırın.",
   "cleaner.pickFile": "Belge seç",
@@ -1697,8 +1644,7 @@ export const tr: Record<string, string> = {
   "cleaner.optimizeImages": "Görselleri optimize et",
   "cleaner.maxPixels": "En fazla piksel",
   "cleaner.quality": "JPEG kalitesi",
-  "cleaner.note":
-    "Temizleme, paketi atomik yazmalarla yerinde yeniden yazar. Desteklenmeyen bölümler olduğu gibi bırakılır.",
+  "cleaner.note": "Temizleme, paketi atomik yazmalarla yerinde yeniden yazar. Desteklenmeyen bölümler olduğu gibi bırakılır.",
   "cleaner.results": "Sonuçlar",
   "forms.title": "PDF formları",
   "forms.subtitle": "Bir PDF'e metin alanları, onay kutuları ve açılır listeler ekleyin.",
@@ -1728,8 +1674,7 @@ export const tr: Record<string, string> = {
   "redact.manual": "Elle",
   "redact.removesText": "Metin içerik akışından silinir; kopyalanamaz, aranamaz ve geri getirilemez.",
   "redact.scan": "Hassas verileri bul",
-  "redact.scanHint":
-    "Bu sayfada e-posta, kart, IBAN ve telefon numaralarının yanında Türkçe TCKN, vergi no ve plaka arar.",
+  "redact.scanHint": "Bu sayfada e-posta, kart, IBAN ve telefon numaralarının yanında Türkçe TCKN, vergi no ve plaka arar.",
   "redact.noneFound": "Bu sayfada hassas veri bulunamadı.",
   "redact.detected": "Bulunanlar",
   "redact.autoAdd": "Bulunanları otomatik ekle",
@@ -1740,8 +1685,7 @@ export const tr: Record<string, string> = {
   "redact.imageObscure": "Karart",
   "redact.imageRemove": "Pikseli sil",
   "redact.imageObscureHint": "Kutu altındaki pikseller dolgu rengiyle boyanır.",
-  "redact.imageRemoveHint":
-    "Kutu altındaki pikseller görselden silinir ve saydamlaşır. Taranmış belgeler için en iyisi.",
+  "redact.imageRemoveHint": "Kutu altındaki pikseller görselden silinir ve saydamlaşır. Taranmış belgeler için en iyisi.",
   "redact.kind.email": "E-posta",
   "redact.kind.card": "Kart",
   "redact.kind.iban": "IBAN",
@@ -1766,8 +1710,7 @@ export const tr: Record<string, string> = {
   "compare.needTwo": "Karşılaştırmak için ikinci bir PDF ekleyin. İlk dosya asıl, ikinci dosya revizyondur.",
   "compare.options": "Karşılaştırma",
   "compare.visualToggle": "Görselleri de karşılaştır",
-  "compare.visualHint":
-    "Her iki belgeyi de işleyip farklı pikselleri işaretler. Daha yavaştır ama damga, imza ve tarama değişikliklerini yakalar.",
+  "compare.visualHint": "Her iki belgeyi de işleyip farklı pikselleri işaretler. Daha yavaştır ama damga, imza ve tarama değişikliklerini yakalar.",
   "compare.dpi": "İşleme çözünlüğü",
   "compare.tolerance": "Piksel toleransı",
   "compare.ignoreWhitespace": "Boşluk ve satır sonlarını yoksay",
@@ -1791,8 +1734,7 @@ export const tr: Record<string, string> = {
   "compare.optional": "Dosya kilitliyse parola",
   "compare.running": "Karşılaştırılıyor…",
   "compare.localNote": "Her iki dosya yerelde okunur ve yerinde karşılaştırılır. Hiçbir dosya değiştirilmez.",
-  "inspect.subtitle":
-    "Bir PDF'in içinde gerçekte ne olduğuna daır, nelerin yanlş olduğunu da gösteren salt okunur rapor.",
+  "inspect.subtitle": "Bir PDF'in içinde gerçekte ne olduğuna daır, nelerin yanlş olduğunu da gösteren salt okunur rapor.",
   "inspect.document": "Belge",
   "inspect.analyze": "Analiz et",
   "inspect.analyzing": "Belge okunuyor…",
@@ -1852,7 +1794,6 @@ export const tr: Record<string, string> = {
   "inspect.noEmbeddedFiles": "Bu belgede gömülü dosya yok.",
   "inspect.structTreeParsed": "Yapı ağacısı okundu",
   "inspect.acroForm": "Etkileşimli form",
-
   "nav.vault": "Belge Kasası",
   "nav.compat": "Uyumluluk",
   "nav.jobs": "İşler",
@@ -1873,29 +1814,22 @@ export const tr: Record<string, string> = {
   "jobs.status.failed": "Başarısız",
   "jobs.status.cancelled": "İptal edildi",
   "jobs.status.interrupted": "Kesintiye uğradı",
-  "jobs.interruptedHint":
-    "Uygulama kapanırken bu iş hâlâ çalışıyordu ve artık çalışmıyor. Yeniden başlatmak için Yeniden dene'ye basın.",
-  "jobs.retryUnavailable":
-    "Bu iş türü otomatik olarak yeniden başlatılamıyor; lütfen işlemi kendi ekranından yeniden çalıştırın.",
+  "jobs.interruptedHint": "Uygulama kapanırken bu iş hâlâ çalışıyordu ve artık çalışmıyor. Yeniden başlatmak için Yeniden dene'ye basın.",
+  "jobs.retryUnavailable": "Bu iş türü otomatik olarak yeniden başlatılamıyor; lütfen işlemi kendi ekranından yeniden çalıştırın.",
   "sync.title": "Bulut Eşitleme",
-  "sync.subtitle":
-    ".oswk belgeleri için WebDAV üzerinden yerel öncelikli eşitleme. Varsayılan olarak kapalı; her yükleme ve indirme bilinçli bir eylemdir.",
+  "sync.subtitle": ".oswk belgeleri için WebDAV üzerinden yerel öncelikli eşitleme. Varsayılan olarak kapalı; her yükleme ve indirme bilinçli bir eylemdir.",
   "sync.offTitle": "Bulut eşitleme kapalı",
   "sync.offHint": "Buradan etkinleştirene kadar hiçbir şey yüklenmez veya indirilmez.",
   "sync.enable": "Bulut eşitlemeyi etkinleştir",
-  "sync.enableHint":
-    "Bu anahtarı kaydetmek hiçbir şeyi aktarmaz: yükleme ve indirme her zaman açık bir düğme basışı gerektirir.",
+  "sync.enableHint": "Bu anahtarı kaydetmek hiçbir şeyi aktarmaz: yükleme ve indirme her zaman açık bir düğme basışı gerektirir.",
   "sync.provider": "Sağlayıcı",
   "sync.provider.webdav": "WebDAV (Nextcloud, ownCloud, Synology…)",
   "sync.provider.onedrive": "OneDrive (OAuth gerekir)",
   "sync.provider.google": "Google Drive (OAuth gerekir)",
-  "sync.providerUnavailable":
-    "OneDrive ve Google Drive OAuth oturumu gerektirir; bu sürümde mevcut değil. WebDAV şimdi çalışır; diğer sağlayıcılar yalnızca şeffaflık için gösterilir.",
-  "sync.oauth.hint":
-    "Oturum açma, sağlayıcının kendi sayfasını tarayıcınızda açar; yetkilendirme kodu bu makinedeki bir loopback dinleyicisine döner. Jetonlar masaüstünde işletim sisteminin kimlik kasasında saklanır.",
+  "sync.providerUnavailable": "OneDrive ve Google Drive OAuth oturumu gerektirir; bu sürümde mevcut değil. WebDAV şimdi çalışır; diğer sağlayıcılar yalnızca şeffaflık için gösterilir.",
+  "sync.oauth.hint": "Oturum açma, sağlayıcının kendi sayfasını tarayıcınızda açar; yetkilendirme kodu bu makinedeki bir loopback dinleyicisine döner. Jetonlar masaüstünde işletim sisteminin kimlik kasasında saklanır.",
   "sync.oauth.clientId": "OAuth istemci kimliği",
-  "sync.oauth.clientIdHint":
-    "Sağlayıcının geliştirici konsolunda bir masaüstü/kurulu uygulama oluşturup istemci kimliğini buraya yapıştırın.",
+  "sync.oauth.clientIdHint": "Sağlayıcının geliştirici konsolunda bir masaüstü/kurulu uygulama oluşturup istemci kimliğini buraya yapıştırın.",
   "sync.oauth.clientSecret": "İstemci sırrı (isteğe bağlı)",
   "sync.oauth.clientSecretHint": "Yalnızca sağlayıcı masaüstü istemciler için istiyorsa gerekir (Google istiyor).",
   "sync.oauth.secretStored": "Kayıtlı bir istemci sırrı var. Korumak için boş bırakın.",
@@ -1914,12 +1848,10 @@ export const tr: Record<string, string> = {
   "sync.url": "Sunucu adresi",
   "sync.urlPlaceholder": "https://cloud.example.com/remote.php/dav/files/me",
   "sync.allowInsecureHttp": "Yerel sunucu için düz HTTP'ye izin ver (yalnızca loopback)",
-  "sync.allowInsecureHttpHint":
-    "Varsayılan olarak kapalı. Etkinleştirildiğinde http:// yalnızca localhost / 127.0.0.1 / ::1 için kabul edilir; uzak bir sunucu her zaman https:// kullanmalıdır.",
+  "sync.allowInsecureHttpHint": "Varsayılan olarak kapalı. Etkinleştirildiğinde http:// yalnızca localhost / 127.0.0.1 / ::1 için kabul edilir; uzak bir sunucu her zaman https:// kullanmalıdır.",
   "sync.username": "Kullanıcı adı",
   "sync.password": "Parola",
-  "sync.passwordHint":
-    "Platformun gizli deposuyla saklanır (Windows'ta DPAPI). Kayıtlı parolayı korumak için boş bırakın; kaldırmak için alanı temizleyip kaydedin.",
+  "sync.passwordHint": "Platformun gizli deposuyla saklanır (Windows'ta DPAPI). Kayıtlı parolayı korumak için boş bırakın; kaldırmak için alanı temizleyip kaydedin.",
   "sync.passwordStored": "Kayıtlı bir parola var ({storage}).",
   "sync.passwordMissing": "Henüz parola kaydedilmedi.",
   "sync.remoteDir": "Uzak klasör",
@@ -1964,11 +1896,9 @@ export const tr: Record<string, string> = {
   "sync.conflictExplanation": "Son eşitlemeden bu yana hem yerel dosya hem bulut kopyası değişti.",
   "sync.baseSha256Label": "temel {hash}",
   "sync.keepLocal": "Yereli koru",
-  "sync.keepLocalHint":
-    "Bu cihazın sürümünü yükleyin. Yazma koşulludur: bu sırada bulut yine değiştiyse yükleme reddedilir ve yeniden deneyebilirsiniz.",
+  "sync.keepLocalHint": "Bu cihazın sürümünü yükleyin. Yazma koşulludur: bu sırada bulut yine değiştiyse yükleme reddedilir ve yeniden deneyebilirsiniz.",
   "sync.keepCloud": "Bulutu koru",
-  "sync.keepCloudHint":
-    "Yerel dosyayı bulut kopyasıyla değiştirin. Yerel değişiklikler kaybolur - emin değilseniz ikisini de saklayın.",
+  "sync.keepCloudHint": "Yerel dosyayı bulut kopyasıyla değiştirin. Yerel değişiklikler kaybolur - emin değilseniz ikisini de saklayın.",
   "sync.keepBoth": "İkisini de sakla",
   "sync.keepBothHint": "Bulut kopyasını yeni bir “(cloud copy …)” belgesi olarak kaydedin ve yerel dosyaya dokunmayın.",
   "sync.remoteTitle": "Bulut klasörü",
@@ -1979,8 +1909,7 @@ export const tr: Record<string, string> = {
   "sync.downloadHint": "Bulut kopyası yeni bir yerel dosyaya yazılır; var olan dosyaların üzerine sessizce yazılmaz.",
   "sync.chooseDestination": "Hedef seç…",
   "sync.limit": "Aktarım sınırı: belge başına {size}.",
-  "sync.noBackground":
-    "Bu sürümde arka plan eşitlemesi ve otomatik birleştirme yok: uygulama kapalıyken hiçbir şey olmaz.",
+  "sync.noBackground": "Bu sürümde arka plan eşitlemesi ve otomatik birleştirme yok: uygulama kapalıyken hiçbir şey olmaz.",
   "sync.working": "Çalışıyor…",
   "sync.errorTitle": "Eşitleme başarısız",
   "sync.dismiss": "Kapat",
@@ -2006,13 +1935,11 @@ export const tr: Record<string, string> = {
   "search.files": "Son dosyalar",
   "search.indexed": "Dizinlenmiş belgeler",
   "search.searching": "Yerel dizinde aranıyor…",
-  "search.vaultMissing":
-    "Belge kasası dizini boş. Belgelerin içinde aramak için Kasa ekranından bir klasör dizinleyin.",
+  "search.vaultMissing": "Belge kasası dizini boş. Belgelerin içinde aramak için Kasa ekranından bir klasör dizinleyin.",
   "vault.title": "Belge Kasası",
   "vault.subtitle": "Kendi klasörlerinizde isteğe bağlı yerel dizinleme ve tam metin arama.",
   "vault.privacyTitle": "Bu bilgisayarda kalır",
-  "vault.privacyBody":
-    "Yalnızca sizin seçtiğiniz klasörler taranır. Dizin, çıkarılan metin ve arama sonuçları bu makineden çıkmaz; telemetri gönderilmez.",
+  "vault.privacyBody": "Yalnızca sizin seçtiğiniz klasörler taranır. Dizin, çıkarılan metin ve arama sonuçları bu makineden çıkmaz; telemetri gönderilmez.",
   "vault.foldersTitle": "Dizinlenen klasörler",
   "vault.addFolder": "Klasör ekle",
   "vault.removeFolder": "Kaldır",
@@ -2020,8 +1947,7 @@ export const tr: Record<string, string> = {
   "vault.clearHint": "Arama dizinini ve metin çıkarma önbelleğini siler; klasör seçiminiz korunur.",
   "vault.clearAction": "Temizle",
   "vault.clearConfirmTitle": "Belge dizini temizlensin mi?",
-  "vault.clearConfirmBody":
-    "Arama dizini ve çıkarılan metin önbelleği silinecek. Eklediğiniz klasörler ayarlı kalır; sonraki tarama dosyalarını yeniden dizinler.",
+  "vault.clearConfirmBody": "Arama dizini ve çıkarılan metin önbelleği silinecek. Eklediğiniz klasörler ayarlı kalır; sonraki tarama dosyalarını yeniden dizinler.",
   "vault.deleteImports": "Uygulama depolamasındaki içe aktarılmış belge kopyalarını da sil",
   "vault.clearDone": "Dizin ve önbellek temizlendi",
   "vault.noFolders": "Klasör seçilmedi",
@@ -2068,14 +1994,12 @@ export const tr: Record<string, string> = {
   "vault.importDone": "{count} belge içe aktarıldı",
   "vault.importNone": "Yeni bir şey içe aktarılmadı",
   "vault.importSkipped": "{count} atlandı",
-  "vault.androidImportNote":
-    "Android uygulamaları yalnızca belge içe aktardıkları klasörleri dizinleyebilir. Seçilen belgeler uygulamanın özel kasasına kopyalanır; asılları yerinde kalır.",
+  "vault.androidImportNote": "Android uygulamaları yalnızca belge içe aktardıkları klasörleri dizinleyebilir. Seçilen belgeler uygulamanın özel kasasına kopyalanır; asılları yerinde kalır.",
   "vault.importedRootName": "İçe aktarılan belgeler",
   "vault.appPrivate": "uygulamaya özel",
   "vault.folderFilterAndroid": "içe aktarılan",
   "compat.title": "Uyumluluk Merkezi",
-  "compat.subtitle":
-    "Bu sürümün hangi biçimleri açabildiği, düzenleyebildiği ve kaydedebildiği ve her biçimde neyin kaybolduğu.",
+  "compat.subtitle": "Bu sürümün hangi biçimleri açabildiği, düzenleyebildiği ve kaydedebildiği ve her biçimde neyin kaybolduğu.",
   "compat.loading": "Yetenekler yükleniyor…",
   "compat.formats": "biçim",
   "compat.open": "Aç",
@@ -2085,8 +2009,7 @@ export const tr: Record<string, string> = {
   "compat.edit": "Düzenle",
   "compat.supported": "Destekleniyor",
   "compat.unsupported": "Desteklenmiyor",
-  "compat.nativeHint":
-    "Yerel .oswk biçimi her şeyi korur; diğer biçimler listelenen özellikleri dönüştürür veya düşürür.",
+  "compat.nativeHint": "Yerel .oswk biçimi her şeyi korur; diğer biçimler listelenen özellikleri dönüştürür veya düşürür.",
   "compat.reportTitle": "Kayıp raporu",
   "compat.reportHint": "Düzenleyiciler kayıplı bir biçime kaydetmeden önce bunu çağırır.",
   "compat.noReport": "Bir belgenin ne kaybedeceğini görmek için kaydetme penceresinden raporu açın.",
@@ -2110,19 +2033,17 @@ export const tr: Record<string, string> = {
   "loss.exported": "Dışa aktarıldı?",
   "loss.transformed": "Dönüştürüldü?",
   "loss.lost": "Kayboldu?",
-  "loss.columnHint":
-    "Destekleniyor? = hedef biçim özelliği gösterebilir. İçe aktarıldı? = özellik bu belge için listelendi (arka uç raporu temkinlidir ve belge kullanmadan önce birkaç hedef sınırını da listeler). Dışa aktarıldı? = olduğu gibi yazılır. Dönüştürüldü? = dönüştürülmüş biçimde yazılır. Kayboldu? = düşürülür.",
+  "loss.columnHint": "Destekleniyor? = hedef biçim özelliği gösterebilir. İçe aktarıldı? = özellik bu belge için listelendi (arka uç raporu temkinlidir ve belge kullanmadan önce birkaç hedef sınırını da listeler). Dışa aktarıldı? = olduğu gibi yazılır. Dönüştürüldü? = dönüştürülmüş biçimde yazılır. Kayboldu? = düşürülür.",
   "loss.nativeNote": ".oswk ana biçimi her şeyi korur; oraya kaydetmek hiçbir şey kaybettirmez.",
   "loss.cancel": "İptal",
   "loss.saveOs": ".oswk olarak kaydet",
   "loss.continue": "Devam et",
   "conflict.title": "Dosya uygulama dışında değişti",
-  "conflict.body": '"{name}" siz açtıktan sonra diskte değişti. Şimdi kaydetmek bu değişikliklerin üzerine yazar.',
-  "conflict.bodyMissing": '"{name}" siz açtıktan sonra diskte silindi ya da taşındı.',
+  "conflict.body": "\"{name}\" siz açtıktan sonra diskte değişti. Şimdi kaydetmek bu değişikliklerin üzerine yazar.",
+  "conflict.bodyMissing": "\"{name}\" siz açtıktan sonra diskte silindi ya da taşındı.",
   "conflict.openedVersion": "Açtığınız sürüm",
   "conflict.currentVersion": "Diskteki güncel sürüm",
-  "conflict.hint":
-    "Dış değişiklikleri yeniden yükleyip buradaki düzenlemelerinizi bırakın ya da her ikisini korumak için yeni dosya olarak kaydedin.",
+  "conflict.hint": "Dış değişiklikleri yeniden yükleyip buradaki düzenlemelerinizi bırakın ya da her ikisini korumak için yeni dosya olarak kaydedin.",
   "conflict.reload": "Dış değişiklikleri yeniden yükle",
   "conflict.saveAs": "Yeni dosya olarak kaydet",
   "conflict.cancel": "İptal",
@@ -2242,14 +2163,10 @@ export const tr: Record<string, string> = {
   "impress.chartRowCount": "Satır",
   "impress.chartAddRow": "Satır ekle",
   "impress.chartRemoveRow": "Satırı sil",
-  "impress.chartPasteHint":
-    "Sekme, virgül veya satır sonuyla ayrılmış bir bloğu yapıştırın; blok odaklanan hücreden başlar.",
-  "impress.chartDataHint":
-    "Buraya yazılan değerler grafik önbelleğine kaydedilir ve dışa aktarılan PPTX dosyasına gömülür; grafik özgün çalışma kitabı olmadan da görüntülenir.",
-  "impress.chartDataGapNote":
-    "Bir serinin içindeki hücre temizlenirse 0 saklanır; son hücre temizlenirse seri kısalır.",
-  "impress.chartRangeOnlyHint":
-    "Bu grafik yalnızca hücre aralıkları taşıyor. Dışa aktarılan dosyanın her yerde görüntülenmesi için değerleri buraya yazın veya yapıştırın.",
+  "impress.chartPasteHint": "Sekme, virgül veya satır sonuyla ayrılmış bir bloğu yapıştırın; blok odaklanan hücreden başlar.",
+  "impress.chartDataHint": "Buraya yazılan değerler grafik önbelleğine kaydedilir ve dışa aktarılan PPTX dosyasına gömülür; grafik özgün çalışma kitabı olmadan da görüntülenir.",
+  "impress.chartDataGapNote": "Bir serinin içindeki hücre temizlenirse 0 saklanır; son hücre temizlenirse seri kısalır.",
+  "impress.chartRangeOnlyHint": "Bu grafik yalnızca hücre aralıkları taşıyor. Dışa aktarılan dosyanın her yerde görüntülenmesi için değerleri buraya yazın veya yapıştırın.",
   "impress.chartCachedData": "Önbelleğe alınmış grafik verisi",
   "impress.animations": "Animasyonlar",
   "impress.tabAnimations": "Animasyonlar",
@@ -2302,17 +2219,14 @@ export const tr: Record<string, string> = {
   "studio.revocationError": "İptal denetimi başarısız oldu",
   "studio.revocationOffline": "Çevrimiçi iptal denetimi çalışmadı; çevrimdışı sonuç gösteriliyor.",
   "settings.onlineRevocation": "İmzalar doğrulanırken sertifika iptalini çevrimiçi denetle",
-  "settings.onlineRevocationHint":
-    "İmzalayanın sertifikasında belirtilen sertifika yetkilisinin OCSP ve CRL sunucularına bağlanır (belgenizi değil, sertifikanın seri numarasını görürler). Varsayılan olarak kapalıdır.",
+  "settings.onlineRevocationHint": "İmzalayanın sertifikasında belirtilen sertifika yetkilisinin OCSP ve CRL sunucularına bağlanır (belgenizi değil, sertifikanın seri numarasını görürler). Varsayılan olarak kapalıdır.",
   "studio.subtitle": "PDF'leri temizleyin, düzleştirin ve PDF/A'ya karşı doğrulayın - her sonuç gerçek bir denetimdir.",
   "studio.sanitize": "Temizle",
-  "studio.sanitizeHint":
-    "JavaScript, gömülü dosyalar, başlatma eylemleri, güvensiz açıklamalar ve üst veriyi kaldırır, ardından neyin kaldırıldığını raporlar.",
+  "studio.sanitizeHint": "JavaScript, gömülü dosyalar, başlatma eylemleri, güvensiz açıklamalar ve üst veriyi kaldırır, ardından neyin kaldırıldığını raporlar.",
   "studio.sanitizeDone": "Temizleme tamamlandı",
   "studio.sanitizeVerify": "Riskli içeriğin gittiğini doğrulamak için sonuç üzerinde İncele'yi çalıştırın.",
   "studio.repair": "Onar",
-  "studio.repairHint":
-    "Hasarlı bir PDF'i yeniden oluşturur; okuyucunun açamadığı dosyaları kurtarır. qpdf kuruluysa o kullanılır, değilse yerleşik motor devreye girer. Sonuç özgün dosyanın yanına yazılır; özgün dosyaya dokunulmaz.",
+  "studio.repairHint": "Hasarlı bir PDF'i yeniden oluşturur; okuyucunun açamadığı dosyaları kurtarır. qpdf kuruluysa o kullanılır, değilse yerleşik motor devreye girer. Sonuç özgün dosyanın yanına yazılır; özgün dosyaya dokunulmaz.",
   "studio.repairRun": "Dosyayı onar",
   "studio.repairDone": "Onarma tamamlandı",
   "studio.linearizeRun": "Hızlı Web Görünümü",
@@ -2324,8 +2238,7 @@ export const tr: Record<string, string> = {
   "studio.flattenHint": "Açıklama ve form görünümlerini sayfa içeriğine işler ve etkileşimli nesneleri kaldırır.",
   "studio.flattenDone": "Düzleştirme tamamlandı",
   "studio.pdfa": "PDF/A",
-  "studio.pdfaHint":
-    "PDF/A-1b, -2b ve -3b'ye karşı yapısal doğrulama. Dönüştürme, başarılabilen düzeltmeleri uygular ve yeniden doğrular; doğrulamadan uyumluluk iddia etmez.",
+  "studio.pdfaHint": "PDF/A-1b, -2b ve -3b'ye karşı yapısal doğrulama. Dönüştürme, başarılabilen düzeltmeleri uygular ve yeniden doğrular; doğrulamadan uyumluluk iddia etmez.",
   "studio.validate": "Doğrula",
   "studio.convert": "Dönüştür ve doğrula",
   "studio.pdfaValid": "PDF/A uyumlu",
@@ -2342,10 +2255,8 @@ export const tr: Record<string, string> = {
   "studio.pages": "Sayfalar",
   "studio.failures": "başarısız",
   "studio.warnings": "uyarı",
-
   "studio.signatures": "İmzalar",
-  "studio.signaturesHint":
-    "Gerçek CMS/PKCS#7 ayrık imzalar (SHA-256). Doğrulama, gömülü sertifikaya karşı tamamen yerelde çalışır; bu sürümde sistem güven deposu olmadığı için güven bilinmiyor olarak raporlanır. İptal, yalnızca Ayarlar'dan açarsanız çevrimiçi denetlenir.",
+  "studio.signaturesHint": "Gerçek CMS/PKCS#7 ayrık imzalar (SHA-256). Doğrulama, gömülü sertifikaya karşı tamamen yerelde çalışır; bu sürümde sistem güven deposu olmadığı için güven bilinmiyor olarak raporlanır. İptal, yalnızca Ayarlar'dan açarsanız çevrimiçi denetlenir.",
   "studio.verify": "İmzaları doğrula",
   "studio.verifyDone": "Doğrulama tamamlandı",
   "studio.noSignatures": "Bu belgede dijital imza bulunamadı.",
@@ -2357,8 +2268,7 @@ export const tr: Record<string, string> = {
   "studio.modifiedAfter": "İmzadan sonra değiştirilmiş",
   "studio.superseded": "Bu imzadan sonra belge güncellendi (imza kendi revizyonu için geçerli)",
   "studio.ltv": "Doğrulama verisini göm",
-  "studio.ltvHint":
-    "İmzaların ihtiyaç duyduğu sertifika zincirini belgenin kendisine (DSS) yazar; güncelleme mevcut imzaları aynen korur. İnternetten hiçbir şey indirilmez.",
+  "studio.ltvHint": "İmzaların ihtiyaç duyduğu sertifika zincirini belgenin kendisine (DSS) yazar; güncelleme mevcut imzaları aynen korur. İnternetten hiçbir şey indirilmez.",
   "studio.ltvDone": "Doğrulama verisi gömüldü",
   "studio.ltvResult": "saklanan sertifika",
   "studio.trustUnknown": "Güven: bilinmiyor (çevrimdışı)",
@@ -2380,8 +2290,7 @@ export const tr: Record<string, string> = {
   "studio.storeCertificates": "Windows sertifika deposu (CurrentUser\\My)",
   "studio.refresh": "Yenile",
   "studio.noStoreCertificates": "Kişisel sertifika bulunamadı. Bunun yerine bir PFX/P12 dosyası kullanın.",
-  "studio.storeSigningNote":
-    "Depodan imzalama dışa aktarılabilir bir özel anahtar gerektirir. Windows dışa aktarmayı engellerse uygulama bunu söyler ve PFX dosyası ister - hiçbir şey taklit edilmez.",
+  "studio.storeSigningNote": "Depodan imzalama dışa aktarılabilir bir özel anahtar gerektirir. Windows dışa aktarmayı engellerse uygulama bunu söyler ve PFX dosyası ister - hiçbir şey taklit edilmez.",
   "studio.choosePfx": "PFX/P12 seç…",
   "studio.pfxPassword": "PFX parolası",
   "studio.pfxHint": "Parola yalnızca bellekte kullanılır; hiçbir zaman saklanmaz veya günlüğe yazılmaz.",
@@ -2394,27 +2303,22 @@ export const tr: Record<string, string> = {
   "studio.visibleAppearance": "Görünür imza",
   "studio.signSave": "İmzala ve farklı kaydet…",
   "studio.tsaUrl": "Zaman damgası sunucusu (RFC 3161, isteğe bağlı)",
-  "studio.tsaUrlHint":
-    "İmza değeri TSA tarafından HTTPS üzerinden zaman damgalanır ve jeton gömülür; TSA hatası zaman damgasını sessizce atlamak yerine imzalamayı durdurur.",
+  "studio.tsaUrlHint": "İmza değeri TSA tarafından HTTPS üzerinden zaman damgalanır ve jeton gömülür; TSA hatası zaman damgasını sessizce atlamak yerine imzalamayı durdurur.",
   "studio.timestampPresent": "RFC 3161 zaman damgası: {time}",
   "studio.timestampNone": "Bu imzada RFC 3161 zaman damgası yok.",
   "studio.signDone": "Belge imzalandı",
   "studio.needCertificate": "Önce bir sertifika seçin.",
-
   "studio.objects": "Formlar ve nesneler",
-  "studio.objectsHint":
-    "Gerçek AcroForm alanları ve sayfa nesneleri. Doldurma /V değerini yazar ve widget görünümlerini yeniden üretir; nesne düzenlemeleri açıklama dikdörtgenini veya görüntü yerleşim matrisini değiştirir. İçerik akışlarındaki metin ve vektör grafikler güvenle bulunamadığı için listelenmez.",
+  "studio.objectsHint": "Gerçek AcroForm alanları ve sayfa nesneleri. Doldurma /V değerini yazar ve widget görünümlerini yeniden üretir; nesne düzenlemeleri açıklama dikdörtgenini veya görüntü yerleşim matrisini değiştirir. İçerik akışlarındaki metin ve vektör grafikler güvenle bulunamadığı için listelenmez.",
   "studio.refreshData": "Yenile",
   "studio.noFields": "Bu belgede form alanı bulunamadı.",
   "studio.textRuns": "Metin",
-  "studio.textRunsHint":
-    "Var olan metin parçalarını yerinde düzenleyin: yazı tipi ve konum aynı kalır, sonuç yeni bir revizyon olarak kaydedilir; özgün belge üzerindeki imzalar geçerli kalır. Konumlar yaklaşıktır.",
+  "studio.textRunsHint": "Var olan metin parçalarını yerinde düzenleyin: yazı tipi ve konum aynı kalır, sonuç yeni bir revizyon olarak kaydedilir; özgün belge üzerindeki imzalar geçerli kalır. Konumlar yaklaşıktır.",
   "studio.textRunCount": "bu sayfadaki parça",
   "studio.noTextRuns": "Bu sayfada metin parçası yok. Taranmış sayfalarda metin katmanı olmaz - önce OCR çalıştırın.",
   "studio.textReadOnly": "salt okunur",
   "studio.textReplace": "Yeni metin",
-  "studio.textReplaceHint":
-    "Yalnızca parçanın yazı tipinin gösterebildiği metin kabul edilir; kodlanamayan metin bozulmadan reddedilir.",
+  "studio.textReplaceHint": "Yalnızca parçanın yazı tipinin gösterebildiği metin kabul edilir; kodlanamayan metin bozulmadan reddedilir.",
   "studio.textApply": "Metni uygula",
   "studio.textEdited": "Metin güncellendi",
   "studio.textKeepPosition": "Yazı tipi, konum ve diğer tüm parçalar değişmez.",
@@ -2432,8 +2336,7 @@ export const tr: Record<string, string> = {
   "studio.unsupportedField": "Bu alan türü buradan doldurulamaz.",
   "studio.radioManual": "Dışa aktarım durumu",
   "studio.objectsOnPage": "Sayfa {page} nesneleri",
-  "studio.selectObjectHint":
-    "Seçmek için bir nesneye dokunun, taşımak için sürükleyin, boyutlandırmak için tutamaçları kullanın.",
+  "studio.selectObjectHint": "Seçmek için bir nesneye dokunun, taşımak için sürükleyin, boyutlandırmak için tutamaçları kullanın.",
   "studio.deleteObject": "Nesneyi sil",
   "studio.rotateLeft": "-90° döndür",
   "studio.rotateRight": "+90° döndür",
@@ -2455,15 +2358,12 @@ export const tr: Record<string, string> = {
   "studio.issue.scriptedFormat": "Betikli biçim denetlenmedi",
   "studio.severity.error": "hata",
   "studio.severity.warning": "uyarı",
-
   "nav.plugins": "Eklentiler",
   "nav.sidebar": "Kenar çubuğu",
   "palette.category.plugins": "Eklentiler",
   "plugins.title": "Eklentiler",
-  "plugins.subtitle":
-    "Kum havuzunda çalışan uzantılar: her eklenti yalnızca bildirgesinde tanımlı izinlerle bir worker içinde çalışır.",
-  "plugins.sandboxNote":
-    "Eklenti kodu DOM ve sistem erişimi olmayan bir Web Worker içinde çalışır. Her yetenek uygulama ana sürecinden geçer ve bildirgedeki izinlere göre denetlenir; belgeler ve dosyalar uygulamanın denetiminde kalır.",
+  "plugins.subtitle": "Kum havuzunda çalışan uzantılar: her eklenti yalnızca bildirgesinde tanımlı izinlerle bir worker içinde çalışır.",
+  "plugins.sandboxNote": "Eklenti kodu DOM ve sistem erişimi olmayan bir Web Worker içinde çalışır. Her yetenek uygulama ana sürecinden geçer ve bildirgedeki izinlere göre denetlenir; belgeler ve dosyalar uygulamanın denetiminde kalır.",
   "plugins.installFolder": "Klasörden kur…",
   "plugins.reloadSample": "Örnek eklentiyi yeniden yükle",
   "plugins.refresh": "Yenile",
@@ -2501,5 +2401,5 @@ export const tr: Record<string, string> = {
   "writer.noSuggestions": "Öneri bulunamadı.",
   "writer.fixAllRegulation": "Biçim İhlallerini Otomatik Düzelt",
   "writer.regulationCompliant": "Belge Resmî Yazışmalar Yönetmeliği kurallarına uygundur.",
-  "writer.autoFix": "Otomatik Düzelt",
-};
+  "writer.autoFix": "Otomatik Düzelt"
+}

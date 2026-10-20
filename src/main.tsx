@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { ensureLanguage } from "./lib/i18n";
 import "./styles.css";
 
 const splash = document.getElementById("root");
@@ -27,11 +28,23 @@ report(
   `viewport innerWidth=${window.innerWidth} innerHeight=${window.innerHeight} dpr=${window.devicePixelRatio} screen=${window.screen.width}x${window.screen.height} avail=${window.screen.availWidth}x${window.screen.availHeight}`,
 );
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    {/* Last resort: a crash in the shell itself must not leave a blank window. */}
-    <ErrorBoundary scope="app">
-      <App />
-    </ErrorBoundary>
-  </React.StrictMode>,
-);
+// The English dictionary is a JSON asset (not a JS chunk), so wait for it
+// before the first render; a failed load falls back to raw keys instead of
+// leaving a blank window.
+async function start() {
+  try {
+    await ensureLanguage("en");
+  } catch {
+    // The UI is still usable; the audit covers missing strings.
+  }
+  ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+    <React.StrictMode>
+      {/* Last resort: a crash in the shell itself must not leave a blank window. */}
+      <ErrorBoundary scope="app">
+        <App />
+      </ErrorBoundary>
+    </React.StrictMode>,
+  );
+}
+
+void start();
