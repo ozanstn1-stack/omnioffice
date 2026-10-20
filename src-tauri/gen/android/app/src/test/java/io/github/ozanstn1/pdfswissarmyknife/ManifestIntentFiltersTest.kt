@@ -82,11 +82,18 @@ class ManifestIntentFiltersTest {
   /** Extension -> the MIME types senders use for it. */
   private val typesByExtension = mapOf(
     "docx" to listOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    "docm" to listOf("application/vnd.ms-word.document.macroEnabled.12"),
+    "dotx" to listOf("application/vnd.openxmlformats-officedocument.wordprocessingml.template"),
+    "doc" to listOf("application/msword"),
+    "dot" to listOf("application/msword"),
     "odt" to listOf("application/vnd.oasis.opendocument.text"),
     "rtf" to listOf("application/rtf", "text/rtf"),
     "xlsx" to listOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    "xlsm" to listOf("application/vnd.ms-excel.sheet.macroEnabled.12"),
     "ods" to listOf("application/vnd.oasis.opendocument.spreadsheet"),
     "pptx" to listOf("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+    "pptm" to listOf("application/vnd.ms-powerpoint.presentation.macroEnabled.12"),
+    "ppt" to listOf("application/vnd.ms-powerpoint"),
     "odp" to listOf("application/vnd.oasis.opendocument.presentation"),
     "pdf" to listOf("application/pdf"),
     "oswk" to listOf("application/x-oswk"),
@@ -149,6 +156,19 @@ class ManifestIntentFiltersTest {
       assertEquals(setOf("*"), filter.hosts)
     }
     assertEquals(setOf(setOf("*/*"), emptySet<String>()), fallbacks.map { it.mimeTypes }.toSet())
+  }
+
+  @Test
+  fun `generic binary downloads reach the app so the copy pipeline can name-check them`() {
+    // Chrome's download provider hands a downloaded report.docx over as
+    // content://.../document/msf%3A42 (no extension in the path) with
+    // application/octet-stream when the server sent a generic type. No path
+    // filter can match that, so the typed filter must accept the generic type;
+    // IncomingFiles then rejects anything whose display name is not a document
+    // (covered by IncomingFilesTest and the on-device OpenWithIntentTest).
+    val typed = mainActivityFilters().single { view in it.actions && send in it.actions && sendMultiple in it.actions }
+    assertTrue("application/octet-stream is missing from the typed filter", "application/octet-stream" in typed.mimeTypes)
+    assertFalse("the generic type must not require a path", typed.hasPath)
   }
 
   @Test

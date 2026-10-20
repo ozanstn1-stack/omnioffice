@@ -53,9 +53,25 @@ class IncomingFilesTest {
     assertTrue(IncomingFiles.isOpenableName("notes.OSWK"))
     assertTrue(IncomingFiles.isOpenableName("photo.jpeg"))
     assertTrue(IncomingFiles.isOpenableName("sheet.xlsx"))
+    assertTrue(IncomingFiles.isOpenableName("macro.xlsm"))
     assertTrue(IncomingFiles.isOpenableName("invoice.xml"))
     assertTrue(IncomingFiles.isOpenableName("mail.eml"))
     assertTrue(IncomingFiles.isOpenableName("archive.zip"))
+    // Legacy/Word-template formats the office backend reads.
+    assertTrue(IncomingFiles.isOpenableName("old.doc"))
+    assertTrue(IncomingFiles.isOpenableName("template.dotx"))
+    assertTrue(IncomingFiles.isOpenableName("macro.docm"))
+    assertTrue(IncomingFiles.isOpenableName("slides.pptm"))
+    assertTrue(IncomingFiles.isOpenableName("old.ppt"))
+  }
+
+  @Test
+  fun `sanitize strips control characters that would split the open queue`() {
+    // The pending-open queue is one path per line; a provider name with an
+    // inner newline used to inject a second, bogus entry.
+    assertEquals("report_.docx", IncomingFiles.sanitizeDisplayName("report\n.docx"))
+    assertEquals("a_b.pdf", IncomingFiles.sanitizeDisplayName("a\u0007b.pdf"))
+    assertEquals("tab_.pdf", IncomingFiles.sanitizeDisplayName("tab\t.pdf"))
   }
 
   @Test

@@ -176,11 +176,6 @@ function ScreenFrame({ screen, children }: { screen: ScreenId; children: React.R
   );
 }
 
-/** Reads and clears the Android open-with queue filled by MainActivity.kt. */
-async function takePendingAndroidOpen(): Promise<string[]> {
-  return invoke<string[]>("android_take_pending_open");
-}
-
 export default function App() {
   const t = useT();
   const init = useSettings((s) => s.init);
@@ -612,7 +607,12 @@ export default function App() {
         setScreen("home");
         return;
       }
-      const realPaths = paths.filter((p) => !p.startsWith("__action:"));
+      // The Android shell queues `__error:<reason>:<name>` for a refused file;
+      // say so instead of doing nothing (any real paths still open).
+      if (paths.some((p) => p.startsWith("__error:"))) {
+        pushToast({ kind: "error", title: t("errors.unsupported") });
+      }
+      const realPaths = paths.filter((p) => !p.startsWith("__action:") && !p.startsWith("__error:"));
       if (realPaths.length === 0) return;
       if (realPaths.length === 1) {
         openSinglePath(realPaths[0]);
@@ -638,7 +638,7 @@ export default function App() {
       }
       for (const path of realPaths) void openAnyFile(path).catch(() => undefined);
     },
-    [openSinglePath],
+    [openSinglePath, pushToast, t],
   );
 
   // Android open-with: MainActivity copies shared documents into the cache and
@@ -653,7 +653,7 @@ export default function App() {
     let cancelled = false;
     const seen = new Set<string>();
     const drain = () => {
-      void takePendingAndroidOpen()
+      void invoke<string[]>("android_take_pending_open")
         .then((paths) => {
           if (cancelled || !paths.length) return;
           // Launcher shortcuts arrive as `__action:*` tokens, and the same

@@ -20,9 +20,9 @@ import java.util.UUID
 object IncomingFiles {
   /** Extensions the frontend can route. Anything else is logged and skipped. */
   val openableExtensions: Set<String> = setOf(
-    "docx", "odt", "rtf", "txt", "md", "html",
-    "xlsx", "ods", "csv", "tsv",
-    "pptx", "odp",
+    "docx", "docm", "dotx", "doc", "dot", "odt", "rtf", "txt", "md", "html",
+    "xlsx", "xlsm", "ods", "csv", "tsv",
+    "pptx", "pptm", "ppt", "odp",
     "pdf", "osed", "ospr", "osdt", "oswk",
     "eml", "xml", "zip",
     "png", "jpg", "jpeg", "webp", "bmp", "gif", "tif", "tiff",
@@ -41,6 +41,11 @@ object IncomingFiles {
     name = name.substringAfterLast('/').substringAfterLast('\\')
     name = name.replace("..", "_")
     name = name.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+    // The pending-open queue is one path per line: an inner line break in a
+    // provider-supplied name would inject a bogus entry (and a newline in a
+    // cache file name is legal on Linux). These are never meaningful in a
+    // display name.
+    name = name.replace(Regex("[\\u0000-\\u001f\\u007f]"), "_")
     name = name.trim().trimStart('.')
     return name.ifEmpty { null }
   }

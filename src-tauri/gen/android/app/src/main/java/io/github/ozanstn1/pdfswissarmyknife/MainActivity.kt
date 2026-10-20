@@ -121,14 +121,16 @@ class MainActivity : TauriActivity() {
 
   private fun copyIncoming(uri: Uri) {
     val (destination, result) = IncomingFiles.copyToCache(contentResolver, uri, cacheDir)
-    when (result) {
-      IncomingFiles.CopyResult.COPIED -> appendPendingOpen(destination!!.absolutePath)
-      IncomingFiles.CopyResult.NO_NAME -> Log.w(TAG, "open-with: no usable file name for $uri")
-      IncomingFiles.CopyResult.UNSUPPORTED -> Log.w(TAG, "open-with: rejected extension for $uri")
-      IncomingFiles.CopyResult.NO_STREAM -> Log.w(TAG, "open-with: provider returned no stream for $uri")
-      IncomingFiles.CopyResult.TOO_LARGE -> Log.w(TAG, "open-with: $uri exceeds the size limit")
-      IncomingFiles.CopyResult.FAILED -> Log.w(TAG, "open-with: copy failed for $uri")
+    if (result == IncomingFiles.CopyResult.COPIED) {
+      appendPendingOpen(destination!!.absolutePath)
+      return
     }
+    // The user chose OmniOffice for this file, so a silent Log.w looks like
+    // "the app did nothing". Queue a token the webview turns into a message;
+    // the rejected stream itself is never copied.
+    Log.w(TAG, "open-with: $result for $uri")
+    val name = IncomingFiles.queryDisplayName(contentResolver, uri) ?: "?"
+    appendPendingOpen("__error:${result.name}:$name")
   }
 
   /**
