@@ -104,9 +104,9 @@
   testi; LibreOffice (`soffice --headless --convert-to`) ile iki yönlü kontrol.
 - **Dürüstlük:** CHANGELOG, README ve RELEASE_READINESS'ta test edilmeyen hiçbir şey
   "yapıldı/test edildi" diye yazılmaz. 4.7.0'daki yanlış iddialar bir daha tekrarlanmaz.
-- **i18n:** her yeni metin `src/lib/i18n.ts` içinde **en ve tr** olarak, ilgili anahtarın yanına
+- **i18n:** her yeni metin `src/lib/i18n/{en,tr}.json` içinde **en ve tr** olarak, ilgili anahtarın yanına
   eklenir.
-- **Paket bütçesi:** şu an 485 KB sınırına karşı yaklaşık 471 KB. Sınır gerekçesiz yükseltilmez;
+- **Paket bütçesi:** şu an 480 KB sınırına karşı yaklaşık 458 KB. Sınır gerekçesiz yükseltilmez;
   yeni ağır ekranlar `React.lazy` ile ayrı parçaya alınır.
 - **Satır sonları:** CRLF dosyalar korunur (`src/App.tsx`, `src/styles.css`,
   `src/office/CalcEditor.tsx`, `src/office/OfficeWorkspace.tsx`). `git diff --stat` ile tüm
@@ -131,7 +131,7 @@
    - Ayrıştırma başarısız olursa ham yanıtla birlikte hata döndür. Bugün sessizce 0 satır
      dönüyor.
    - Testler: snake_case, camelCase, eksik page, string tutar ve bozuk JSON.
-2. **Eksik Türkçe metinler** (`src/screens/Ai.tsx`, `src/lib/i18n.ts`). `label("ai.…", fallback)`
+2. **Eksik Türkçe metinler** (`src/screens/Ai.tsx`, `src/lib/i18n/{en,tr}.json`). `label("ai.…", fallback)`
    ile kullanılan 41 anahtar her iki dilde de eksik.
    - Anahtarları ekle.
    - `scripts/i18n-audit.mjs` kaynakta kullanılan anahtarları da taramalı: `t("…")`,

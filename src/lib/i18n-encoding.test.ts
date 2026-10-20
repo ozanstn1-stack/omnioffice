@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import enSource from "./i18n.ts?raw";
-import trSource from "./i18n-tr.ts?raw";
+import en from "./i18n/en.json";
+import tr from "./i18n/tr.json";
+
+const tables = { en, tr } as const;
 
 /**
  * A bulk insert once ran the Turkish strings through
@@ -18,23 +20,16 @@ import trSource from "./i18n-tr.ts?raw";
 const MOJIBAKE = /[Â-ÿ][-¿]/;
 
 function table(name: "en" | "tr"): string {
-  // English is in `i18n.ts`; Turkish is a lazily loaded chunk of its own.
-  const source = name === "tr" ? trSource : enSource;
-  const start = source.indexOf(
-    name === "tr" ? "export const tr: Record<string, string> = {" : `const ${name}: Dict = {`,
-  );
-  const end = source.indexOf("\n};", start);
-  return source.slice(start, end);
+  // The dictionaries are JSON assets; the checks below only need key/value
+  // pairs, so serialising the imported object keeps the regex-driven helpers
+  // working regardless of the file format behind it.
+  return JSON.stringify(tables[name]);
 }
 
 function entries(body: string): { key: string; value: string }[] {
   const out: { key: string; value: string }[] = [];
-  // Tolerate CRLF checkouts: a Windows runner with core.autocrlf=true used to
-  // leave a \r at the end of every line, the regex then matched nothing and
-  // the "contains Turkish characters" check silently saw an empty table.
-  for (const line of body.split(/\r?\n/)) {
-    const match = line.match(/^ {2}"([^"]+)": "(.*)"(,?)\s*$/);
-    if (match) out.push({ key: match[1], value: match[2] });
+  for (const [key, value] of Object.entries(JSON.parse(body) as Record<string, string>)) {
+    out.push({ key, value });
   }
   return out;
 }

@@ -67,9 +67,7 @@ function repoFiles() {
 function wanted(file) {
   const normalised = file.split(path.sep).join("/");
   if (mode === "rust") return normalised.endsWith(".rs") && !normalised.startsWith("target/");
-  // i18n.ts is one entry per line on purpose: the mojibake test parses it line
-  // by line, and a wrapped value would silently leave the scan.
-  return /^src\/.*\.(ts|tsx|css)$/.test(normalised) && !normalised.endsWith("src/lib/i18n.ts");
+  return /^src\/.*\.(ts|tsx|css)$/.test(normalised);
 }
 
 function run(command, args) {
