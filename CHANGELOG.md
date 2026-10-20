@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.2] - Android indirmeleri (Open with for downloaded documents)
+
+### Fixed
+
+- **Android "Open with" for downloaded docx/xlsx (#342 / PR #343):** Chrome's
+  download provider hands a file over as a `content://` URI without an
+  extension and an `application/octet-stream` type, so none of the intent
+  filters matched and OmniOffice was missing from the chooser. The typed filter
+  now accepts the generic type (the display name is still checked against the
+  extension whitelist), legacy/macro/template formats (`doc`, `dot`, `docm`,
+  `dotx`, `xlsm`, `pptm`, `ppt`) are associated end to end, a refused file
+  shows a message instead of doing nothing, and provider display names lose
+  control characters so the line-based open queue cannot be split.
+
 ## [6.0.1] - Durdur, doğrula, dürüst ol (Stop, verify, be honest)
 
 The v6.0.0 audit's A-phase. The release process became a real gate, the two

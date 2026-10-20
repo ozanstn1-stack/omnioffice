@@ -18,7 +18,7 @@ path = "src/lib.rs"
 [dependencies]
 ab_glyph = "0.2.32"
 base64 = "0.23"
-calamine = "0.36.1"
+calamine = "0.37.0"
 # Word 97-2003 / PowerPoint 97-2003 are OLE2 Compound File Binary containers;
 # `legacy.rs` reads their streams without a native Office dependency.
 cfb = "0.15"
