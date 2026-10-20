@@ -46,6 +46,10 @@ jobs:
       # (screens, commands, tests); a hand-edited stale count fails here.
       - name: Project statistics (generated from the sources)
         run: npm run docs:stats:check
+      # Line budgets only shrink (v6.0.0 audit B4): a split lowers the
+      # baseline, and a file that grows without one fails with its budget.
+      - name: File size ratchet
+        run: npm run files:check
       # `tauri build` refuses an npm/Rust plugin version mismatch, and a
       # Dependabot bump of only one side shipped exactly that once.
       - name: Tauri plugin version sync
