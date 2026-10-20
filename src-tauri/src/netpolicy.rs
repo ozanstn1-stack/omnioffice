@@ -34,8 +34,14 @@ const ALLOWED_PORTS: [u16; 2] = [80, 443];
 /// Which addresses a request may reach.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UrlPolicy {
-    /// Public internet addresses only (the production policy).
+    /// Public internet addresses only on the web ports (revocation checks).
     Public,
+    /// `https` only, any port, public addresses (plugin requests).
+    PublicHttps,
+    /// `http` only, any port, local network literals and `localhost` (the
+    /// documented plugin LAN exception). The cloud metadata address is never
+    /// reachable, and a host name is refused so DNS cannot redirect it.
+    PrivateHttp,
     /// No restriction beyond http(s): lets the tests talk to a loopback
     /// server. Not compiled into release builds.
     #[cfg(test)]
@@ -121,6 +127,43 @@ pub fn filter_public(addresses: Vec<SocketAddr>) -> Result<Vec<SocketAddr>, Stri
     Ok(allowed)
 }
 
+/// True when `ip` is the cloud metadata endpoint (169.254.169.254), which no
+/// request may contact whatever the scheme or the policy.
+pub fn is_metadata_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => v4.octets() == [169, 254, 169, 254],
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map(|v4| v4.octets() == [169, 254, 169, 254]).unwrap_or(false),
+    }
+}
+
+/// True when `ip` belongs to the local machine or network: loopback, private
+/// (RFC 1918), link-local, unspecified, broadcast, carrier-grade NAT or
+/// unique-local. Includes the metadata address; callers that must refuse it
+/// separately use [`is_metadata_ip`] first.
+pub fn is_local_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => {
+            // 100.64.0.0/10 (carrier-grade NAT) is not covered by is_private().
+            let octets = ip.octets();
+            ip.is_private()
+                || ip.is_loopback()
+                || ip.is_link_local()
+                || ip.is_unspecified()
+                || ip.is_broadcast()
+                || (octets[0] == 100 && (64..128).contains(&octets[1]))
+        }
+        IpAddr::V6(ip) => {
+            ip.is_loopback()
+                || ip.is_unique_local()
+                || ip.is_unicast_link_local()
+                || ip.is_unspecified()
+                || ip.is_multicast()
+                // IPv4-mapped forms are classified by their IPv4 address.
+                || ip.to_ipv4_mapped().map(IpAddr::V4).map(is_local_ip).unwrap_or(false)
+        }
+    }
+}
+
 impl UrlPolicy {
     /// The checks that need no lookup: scheme, credentials, port and literal
     /// IP addresses.
@@ -138,31 +181,69 @@ impl UrlPolicy {
         if !url.username().is_empty() || url.password().is_some() {
             return Err("the URL carries credentials".to_string());
         }
-        if let Some(port) = url.port() {
-            if !ALLOWED_PORTS.contains(&port) {
-                return Err(format!("port {port} is not used: only ports 80 and 443 are allowed"));
-            }
-        }
-        // The URL parser has already turned every spelling of an IP address
-        // (decimal, hex, octal, short forms) into the canonical literal.
-        if url.domain().is_none() {
-            match host.trim_start_matches('[').trim_end_matches(']').parse::<IpAddr>() {
-                Ok(ip) if is_public_ip(ip) => {}
-                Ok(ip) => {
-                    return Err(format!("{ip} is a local or private address, which revocation checks never contact"))
+        let bare = host.trim_start_matches('[').trim_end_matches(']');
+        match self {
+            Self::PrivateHttp => {
+                if url.scheme() != "http" {
+                    return Err("plain http is the only scheme for local network requests".to_string());
                 }
-                Err(_) => return Err(format!("{host} is not a usable host")),
+                if let Some(name) = url.domain() {
+                    if !name.eq_ignore_ascii_case("localhost") {
+                        return Err(format!(
+                            "plain http is only used for localhost or a private literal address, not {name}"
+                        ));
+                    }
+                    return Ok(());
+                }
+                // The URL parser has already turned every spelling of an IP
+                // address (decimal, hex, octal, short forms) into the
+                // canonical literal.
+                let Ok(ip) = bare.parse::<IpAddr>() else {
+                    return Err(format!("{host} is not a usable host"));
+                };
+                if is_metadata_ip(ip) {
+                    return Err("the cloud metadata address is never contacted".to_string());
+                }
+                if !is_local_ip(ip) {
+                    return Err(format!("{ip} is not a local network address"));
+                }
+                Ok(())
             }
+            Self::Public | Self::PublicHttps => {
+                if self == Self::PublicHttps && url.scheme() != "https" {
+                    return Err("only https is used for public hosts".to_string());
+                }
+                if self == Self::Public {
+                    if let Some(port) = url.port() {
+                        if !ALLOWED_PORTS.contains(&port) {
+                            return Err(format!("port {port} is not used: only ports 80 and 443 are allowed"));
+                        }
+                    }
+                }
+                if url.domain().is_none() {
+                    match bare.parse::<IpAddr>() {
+                        Ok(ip) if is_public_ip(ip) => {}
+                        Ok(ip) => return Err(format!("{ip} is a local or private address, which is never contacted")),
+                        Err(_) => return Err(format!("{host} is not a usable host")),
+                    }
+                }
+                Ok(())
+            }
+            #[cfg(test)]
+            Self::Unrestricted => Ok(()),
         }
-        Ok(())
     }
 
     /// [`Self::check_url`] plus a lookup of a host name: every address it
-    /// resolves to must be public.
+    /// resolves to must be public. The local-network policy has no host names
+    /// to resolve (`localhost` and literals stay on the machine).
     pub fn check_resolved(self, url: &Url) -> Result<(), String> {
         self.check_url(url)?;
         #[cfg(test)]
         if self == Self::Unrestricted {
+            return Ok(());
+        }
+        if self == Self::PrivateHttp {
             return Ok(());
         }
         let Some(name) = url.domain() else {
@@ -201,9 +282,16 @@ impl UrlPolicy {
     /// than when it was checked).
     pub fn apply(self, builder: reqwest::blocking::ClientBuilder) -> reqwest::blocking::ClientBuilder {
         match self {
-            Self::Public => builder.dns_resolver(Arc::new(PublicOnlyResolver)),
-            #[cfg(test)]
-            Self::Unrestricted => builder,
+            Self::Public | Self::PublicHttps => builder.dns_resolver(Arc::new(PublicOnlyResolver)),
+            _ => builder,
+        }
+    }
+
+    /// [`Self::apply`] for the async client the plugin host uses.
+    pub fn apply_async(self, builder: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
+        match self {
+            Self::Public | Self::PublicHttps => builder.dns_resolver(Arc::new(PublicOnlyResolver)),
+            _ => builder,
         }
     }
 }
@@ -429,5 +517,64 @@ mod tests {
     fn the_unrestricted_test_policy_still_requires_http() {
         assert!(UrlPolicy::Unrestricted.check_url(&url("http://127.0.0.1:4000/")).is_ok());
         assert!(UrlPolicy::Unrestricted.check_url(&url("ftp://127.0.0.1/")).is_err());
+    }
+
+    #[test]
+    fn plugin_https_reaches_public_hosts_on_any_port_but_no_local_literal() {
+        for text in [
+            "https://example.com/api",
+            "https://8.8.8.8:8443/",
+            "https://[2606:4700:4700::1111]:4443/",
+            "https://crl.example.test:9443/ca.crl",
+        ] {
+            assert_eq!(UrlPolicy::PublicHttps.check_url(&url(text)), Ok(()), "{text}");
+        }
+        for text in [
+            "https://127.0.0.1/",
+            "https://[::1]/",
+            "https://10.0.0.5/",
+            "https://192.168.1.1/",
+            "https://169.254.169.254/latest/meta-data/",
+            "https://[::ffff:127.0.0.1]/",
+            "https://100.64.0.1/",
+            "http://8.8.8.8/",
+            "ftp://8.8.8.8/",
+            "https://user:pass@8.8.8.8/",
+        ] {
+            assert!(UrlPolicy::PublicHttps.check_url(&url(text)).is_err(), "{text} must be refused");
+        }
+        // Literal addresses need no lookup at all.
+        assert_eq!(UrlPolicy::PublicHttps.check_resolved(&url("https://8.8.8.8:8443/")), Ok(()));
+    }
+
+    #[test]
+    fn plugin_http_is_a_local_network_exception_never_the_metadata_endpoint() {
+        for text in [
+            "http://localhost:8080/health",
+            "http://LOCALHOST/",
+            "http://127.0.0.1:9/",
+            "http://192.168.1.5/",
+            "http://10.1.2.3/",
+            "http://172.16.0.1/",
+            "http://[::1]/",
+            "http://169.254.1.1/",
+            "http://100.64.0.1/",
+        ] {
+            assert_eq!(UrlPolicy::PrivateHttp.check_url(&url(text)), Ok(()), "{text}");
+        }
+        for text in [
+            "http://example.com/",
+            "http://nas.local/",
+            "http://8.8.8.8/",
+            "http://172.32.0.1/",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://[::ffff:169.254.169.254]/",
+            "http://user:pass@127.0.0.1/",
+            "https://127.0.0.1/",
+        ] {
+            assert!(UrlPolicy::PrivateHttp.check_url(&url(text)).is_err(), "{text} must be refused");
+        }
+        // `localhost` and literals never leave the machine, so no lookup runs.
+        assert_eq!(UrlPolicy::PrivateHttp.check_resolved(&url("http://localhost:8080/health")), Ok(()));
     }
 }
