@@ -28,7 +28,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-os = "2"
-tauri-plugin-android-fs = "29"
+tauri-plugin-android-fs = "30"
 # Only for the heavy-work semaphore and the batch queue's retry sleep
 # (already in the tree through Tauri).
 tokio = { version = "1", features = ["rt", "sync", "time"] }
