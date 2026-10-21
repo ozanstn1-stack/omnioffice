@@ -26,7 +26,7 @@
  * in the Linux CI job. Working copies live under e2e/artifacts/work/ so the
  * checked-in samples are never modified.
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -190,6 +190,14 @@ async function withSession(name, env, steps) {
   } finally {
     if (session) await webdriver(session.port, `/session/${session.id}`, "DELETE").catch(() => undefined);
     driver.kill();
+    // An app left with unsaved changes answers the close request with a
+    // dialog and survives; the next session's launch would then forward to it
+    // (single-instance) and time out. Reap the app between scenarios.
+    if (process.platform === "win32") {
+      spawnSync("taskkill", ["/IM", exeName, "/F"], { stdio: "ignore" });
+    } else {
+      spawnSync("pkill", ["-f", exeName], { stdio: "ignore" });
+    }
     // Do not wait for EOF on pipes that a surviving grandchild may hold.
     driver.stdout.destroy();
     driver.stderr.destroy();
@@ -466,6 +474,8 @@ async function openReviewRibbon(session) {
  * apply the checker's suggestion (the Rust `check_document_spelling` command).
  */
 async function studentPersona(session) {
+  const doc = join(work, "test-document.docx");
+  const modTimeBefore = statSync(doc).mtimeMs;
   await activateWriter(session);
   await typeInWriter(session, "yanlız");
   await openReviewRibbon(session);
@@ -491,8 +501,28 @@ async function studentPersona(session) {
     15000,
     "suggestion applied",
   );
+  // Save the corrected document: the journey is "fix and keep", and an app
+  // left with unsaved changes blocks the next scenario's app launch.
+  await execute(
+    session,
+    "window.dispatchEvent(new KeyboardEvent('keydown',{key:'s',code:'KeyS',ctrlKey:true,bubbles:true,cancelable:true})); return true;",
+  );
+  const started = Date.now();
+  let saved = false;
+  while (Date.now() - started < 30000) {
+    if (statSync(doc).mtimeMs > modTimeBefore) {
+      saved = true;
+      break;
+    }
+    await execute(
+      session,
+      "const button=[...document.querySelectorAll('button')].find((el)=>/^(Continue|Devam)/i.test((el.textContent||'').trim())); if(button){button.click(); return true;} return false;",
+    ).catch(() => undefined);
+    await sleep(400);
+  }
+  if (!saved) throw new Error("Ctrl+S after the spell fix did not write the document");
   await screenshot(session, "persona-student");
-  console.log(`PASS: student persona applied the spell suggestion (${applied})`);
+  console.log(`PASS: student persona applied the spell suggestion (${applied}) and saved`);
 }
 
 /**
