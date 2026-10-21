@@ -507,9 +507,9 @@ async function studentPersona(session) {
     session,
     "window.dispatchEvent(new KeyboardEvent('keydown',{key:'s',code:'KeyS',ctrlKey:true,bubbles:true,cancelable:true})); return true;",
   );
-  const started = Date.now();
+  const saveStarted = Date.now();
   let saved = false;
-  while (Date.now() - started < 30000) {
+  while (Date.now() - saveStarted < 30000) {
     if (statSync(doc).mtimeMs > modTimeBefore) {
       saved = true;
       break;
