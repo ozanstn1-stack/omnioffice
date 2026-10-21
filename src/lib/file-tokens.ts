@@ -14,8 +14,7 @@ export interface FileToken {
 }
 
 /** Opens the native open dialog; resolves to null when the user cancels. */
-export const pickDocumentToken = (extensions?: string[]) =>
-  invoke<FileToken | null>("file_token_pick", { extensions });
+export const pickDocumentToken = (extensions?: string[]) => invoke<FileToken | null>("file_token_pick", { extensions });
 
 /** Opens the native save dialog; the token allows writing to the target. */
 export const pickSaveToken = (name?: string, extensions?: string[]) =>
