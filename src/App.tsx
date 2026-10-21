@@ -95,10 +95,10 @@ const OfficeWorkspace = React.lazy(() =>
   import("./office/OfficeWorkspace").then((module) => ({ default: module.OfficeWorkspace })),
 );
 const CleanerScreen = React.lazy(() =>
-  import("./office/ToolsScreens").then((module) => ({ default: module.CleanerScreen })),
+  import("./office/tools/cleaner").then((module) => ({ default: module.CleanerScreen })),
 );
 const ConverterScreen = React.lazy(() =>
-  import("./office/ToolsScreens").then((module) => ({ default: module.ConverterScreen })),
+  import("./office/tools/converter").then((module) => ({ default: module.ConverterScreen })),
 );
 const InvoicesScreen = React.lazy(() => import("./screens/Invoices").then((module) => ({ default: module.Invoices })));
 const EmlScreen = React.lazy(() => import("./screens/Eml").then((module) => ({ default: module.Eml })));
@@ -107,19 +107,19 @@ const RecipesScreen = React.lazy(() => import("./screens/Recipes").then((module)
 const MailMergeScreen = React.lazy(() =>
   import("./screens/MailMerge").then((module) => ({ default: module.MailMerge })),
 );
-const DataScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.DataScreen })));
-const DrawScreen = React.lazy(() => import("./office/ToolsScreens").then((module) => ({ default: module.DrawScreen })));
+const DataScreen = React.lazy(() => import("./office/tools/data").then((module) => ({ default: module.DataScreen })));
+const DrawScreen = React.lazy(() => import("./office/tools/draw").then((module) => ({ default: module.DrawScreen })));
 const NotesScreen = React.lazy(() =>
-  import("./office/ToolsScreens").then((module) => ({ default: module.NotesScreen })),
+  import("./office/tools/notes").then((module) => ({ default: module.NotesScreen })),
 );
 const PdfFormsScreen = React.lazy(() =>
-  import("./office/ToolsScreens").then((module) => ({ default: module.PdfFormsScreen })),
+  import("./office/tools/pdf-forms").then((module) => ({ default: module.PdfFormsScreen })),
 );
 const PlannerScreen = React.lazy(() =>
-  import("./office/ToolsScreens").then((module) => ({ default: module.PlannerScreen })),
+  import("./office/tools/planner").then((module) => ({ default: module.PlannerScreen })),
 );
 const TemplatesScreen = React.lazy(() =>
-  import("./office/ToolsScreens").then((module) => ({ default: module.TemplatesScreen })),
+  import("./office/tools/templates").then((module) => ({ default: module.TemplatesScreen })),
 );
 const PetitionWizardScreen = React.lazy(() =>
   import("./screens/PetitionWizard").then((module) => ({ default: module.PetitionWizard })),

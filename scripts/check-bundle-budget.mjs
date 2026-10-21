@@ -46,7 +46,7 @@ const ROUTE_BUDGETS = {
   WriterEditor: 35,
   ImpressEditor: 30,
   "calc-functions": 27,
-  ToolsScreens: 24,
+  templates: 14,
   Ai: 14,
   Reader: 12,
   PdfStudio: 12,
