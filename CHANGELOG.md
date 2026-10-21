@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.4] - Personalar ve sağlam E2E (personas and a stable E2E)
+
+### Added
+
+- **Persona E2E journeys (#340 / PR #351):** lawyer (KVKK redaction of a
+  synthetic TCKN/IBAN/e-mail/phone document through the real detector and
+  redaction commands), public (Official Letter Check) and student (Turkish
+  spell check, suggestion click, save). The accountant flow from 6.0.2 stays.
+  Engine-free personas run on Linux; the lawyer journey runs in the
+  engine-enabled Windows job.
+- **E2E stability (#350):** WebDriver calls wait up to 150 s, `/status` up to
+  60 s, `POST /session` is retried once, and the app is reaped between
+  scenarios (an unsaved-changes dialog used to block the next launch).
+
+### Changed
+
+- The Redact screen's development auto-run scans before redacting; the pure
+  keyword/match helpers moved to `src/lib/redact-rows.ts`, and
+  `samples/redaction-sample.pdf` comes from its own generator example.
+
 ## [6.0.3] - Bağımlılıklar ve araç parçaları (dependency pass and tool chunks)
 
 ### Changed

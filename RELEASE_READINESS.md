@@ -31,6 +31,18 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.0.4) - Personalar ve sağlam E2E
+
+- **Persona journeys** (#340): accountant, student, public and lawyer
+  (redaction) run through the real UI and backend; `e2e/smoke.mjs --persona`
+  selects them and the Desktop E2E jobs run all four. (no test: these journeys
+  are the tests.)
+- **E2E session stability** (#350): 150 s WebDriver bound, one `POST /session`
+  retry, and the app is reaped between scenarios. (no test: exercised by the
+  Desktop E2E job itself.)
+- **Redaction helpers keep their unit coverage** after the move.
+  `test:src/screens/pdf-screens.test.tsx#offers the sensitive data the detector found, and lets it be dropped`
+
 ## Implemented (this cycle, 6.0.3) - Bağımlılıklar ve araç parçaları
 
 - **Paired dependency update** (#345): six Tauri plugin pairs upgraded on both
