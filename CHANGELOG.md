@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.3] - Bağımlılıklar ve araç parçaları (dependency pass and tool chunks)
+
+### Changed
+
+- **Paired Tauri plugin upgrades (#345):** updater 2.14, fs 2.7.1, dialog
+  2.8.3, opener 2.7.2, single-instance 2.5.4 and android-fs 30.2.0 moved
+  together with their npm packages (the version-sync gate rejects one-sided
+  bumps); TypeScript 6.0.3, typescript-eslint 8.71.2, pbkdf2 0.13.
+- **Tool screens are separate lazy chunks (#328 / PR #346):** Notes, Planner,
+  Data, Draw, Templates, Converter, Cleaner and PDF Forms moved out of one
+  1712-line module into `src/office/tools/*`; the 19.9 KB `ToolsScreens` chunk
+  is gone and each tool route now loads 1.1-3.3 KB (templates 10.3 KB).
+
 ## [6.0.2] - Android indirmeleri (Open with for downloaded documents)
 
 ### Fixed
