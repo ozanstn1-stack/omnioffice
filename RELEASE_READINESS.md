@@ -31,6 +31,18 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.0.3) - Bağımlılıklar ve araç parçaları
+
+- **Paired dependency update** (#345): six Tauri plugin pairs upgraded on both
+  sides (updater 2.14, fs 2.7.1, dialog 2.8.3, opener 2.7.2, single-instance
+  2.5.4, android-fs 30.2.0), TypeScript 6.0.3, pbkdf2 0.13; the manifest gate
+  checks all six pairs. (no test: the gate is
+  `scripts/check-tauri-plugin-versions.mjs` in the Lint job, and every Rust
+  suite ran against the new lockfile.)
+- **Per-tool lazy chunks** (#328): the eight productivity screens live in
+  `src/office/tools/*` and still render and act on their stores.
+  `test:src/office/tools-screens.test.tsx#renders the converter, cleaner and PDF forms screens`
+
 ## Implemented (this cycle, 6.0.2) - Android indirmeleri (downloaded documents)
 
 - **Downloaded docx/xlsx open from other apps** (#342): the typed intent filter
