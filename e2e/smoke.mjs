@@ -580,7 +580,7 @@ async function main() {
       public: { screen: "office", file: "test-document.docx", run: publicPersona },
       lawyer: { screen: "redact", file: "redaction-sample.pdf", run: lawyerPersona, autoRun: true },
     };
-    const names = persona === "all" ? Object.keys(personas) : [persona];
+    const names = persona === "all" ? Object.keys(personas) : persona.split(",").map((name) => name.trim()).filter(Boolean);
     for (const name of names) {
       const spec = personas[name];
       if (!spec) throw new Error(`unknown persona: ${name} (known: ${Object.keys(personas).join(", ")})`);
