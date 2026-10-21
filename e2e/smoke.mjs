@@ -9,6 +9,10 @@
  *   node e2e/smoke.mjs --merge            # two PDFs merged through the real UI
  *   node e2e/smoke.mjs --sanitize         # PDF Studio sanitizer run through the UI
  *   node e2e/smoke.mjs --persona accountant  # UBL invoice -> KDV summary (real backend)
+ *   node e2e/smoke.mjs --persona student     # Writer spell check + suggestion
+ *   node e2e/smoke.mjs --persona public      # Official letter check
+ *   node e2e/smoke.mjs --persona lawyer      # KVKK redaction of synthetic identifiers
+ *   node e2e/smoke.mjs --persona all         # the four personas in sequence
  *   node e2e/smoke.mjs --all              # office + merge + sanitize
  *
  * Environment:
@@ -22,7 +26,7 @@
  * in the Linux CI job. Working copies live under e2e/artifacts/work/ so the
  * checked-in samples are never modified.
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,9 +54,10 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Every WebDriver call is bounded: a stalled native driver used to leave the
 // CI step waiting with no output until the job-level limit (one deep-flows
-// run sat for 36 minutes). Session creation launches the app, so the bound is
-// generous; a timeout surfaces as a normal failure with a screenshot.
-const WEBDRIVER_TIMEOUT_MS = 90_000;
+// run sat for 36 minutes). Session creation launches the app on a loaded CI
+// runner, so the bound is generous (and createSession retries once); a timeout
+// surfaces as a normal failure with a screenshot.
+const WEBDRIVER_TIMEOUT_MS = 150_000;
 
 function webdriver(port, path, method = "GET", body) {
   return fetch(`http://127.0.0.1:${port}${path}`, {
@@ -97,7 +102,7 @@ async function waitForScript(session, script, timeoutMs, label) {
 
 async function waitForDriver(port) {
   const started = Date.now();
-  while (Date.now() - started < 30000) {
+  while (Date.now() - started < 60000) {
     try {
       const response = await fetch(`http://127.0.0.1:${port}/status`);
       if (response.ok) return;
@@ -106,7 +111,30 @@ async function waitForDriver(port) {
     }
     await sleep(250);
   }
-  throw new Error(`tauri-driver did not answer /status on port ${port} within 30 s`);
+  throw new Error(`tauri-driver did not answer /status on port ${port} within 60 s`);
+}
+
+/**
+ * Creates the WebDriver session, retrying once. A loaded CI runner can take
+ * longer than the call timeout to start the native driver and the app, which
+ * used to fail a whole release on the third scenario.
+ */
+async function createSession(port) {
+  let lastError;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      return await webdriver(port, "/session", "POST", {
+        capabilities: { alwaysMatch: { "tauri:options": { application: exe } } },
+      });
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) {
+        console.log(`[driver] session attempt ${attempt} failed (${error.message}); retrying`);
+        await sleep(4000);
+      }
+    }
+  }
+  throw lastError;
 }
 
 async function waitForFile(path, timeoutMs, label) {
@@ -145,9 +173,7 @@ async function withSession(name, env, steps) {
   let session = null;
   try {
     await waitForDriver(port);
-    const created = await webdriver(port, "/session", "POST", {
-      capabilities: { alwaysMatch: { "tauri:options": { application: exe } } },
-    });
+    const created = await createSession(port);
     session = { id: created.sessionId, port };
     try {
       return await steps(session);
@@ -164,6 +190,14 @@ async function withSession(name, env, steps) {
   } finally {
     if (session) await webdriver(session.port, `/session/${session.id}`, "DELETE").catch(() => undefined);
     driver.kill();
+    // An app left with unsaved changes answers the close request with a
+    // dialog and survives; the next session's launch would then forward to it
+    // (single-instance) and time out. Reap the app between scenarios.
+    if (process.platform === "win32") {
+      spawnSync("taskkill", ["/IM", exeName, "/F"], { stdio: "ignore" });
+    } else {
+      spawnSync("pkill", ["-f", exeName], { stdio: "ignore" });
+    }
     // Do not wait for EOF on pipes that a surviving grandchild may hold.
     driver.stdout.destroy();
     driver.stderr.destroy();
@@ -394,6 +428,139 @@ async function accountantPersona(session) {
   console.log("PASS: accountant persona parsed the UBL invoice and the KDV summary");
 }
 
+/** Opens the office document and focuses its first paragraph. */
+async function activateWriter(session) {
+  await waitForScript(session, "return document.querySelectorAll('.writer-fragment').length", 30000, "writer editor");
+  const fragment = await findElement(session, ".writer-fragment");
+  await clickElement(session, elementKey(fragment));
+  await waitForScript(
+    session,
+    "return document.querySelectorAll('[contenteditable=\"true\"][data-block-index]').length",
+    15000,
+    "active writer paragraph",
+  );
+}
+
+/** Types text at the end of the active Writer paragraph. */
+async function typeInWriter(session, text) {
+  const typed = await execute(
+    session,
+    `const el=document.querySelector('[contenteditable="true"][data-block-index]');
+     if(!el) return '';
+     el.focus();
+     const range=document.createRange();
+     range.selectNodeContents(el);
+     range.collapse(false);
+     const sel=window.getSelection();
+     sel.removeAllRanges();
+     sel.addRange(range);
+     document.execCommand('insertText', false, ${JSON.stringify(` ${text}`)});
+     return el.textContent;`,
+  );
+  if (!String(typed).includes(text)) throw new Error(`the typed text did not reach the paragraph: ${typed}`);
+}
+
+/** Selects the Review ribbon tab, where the proofing tools live. */
+async function openReviewRibbon(session) {
+  const clicked = await execute(
+    session,
+    "const tab=[...document.querySelectorAll('button')].find((el)=>(el.textContent||'').trim()==='Review'); if(!tab) return false; tab.click(); return true;",
+  );
+  if (!clicked) throw new Error("the Review ribbon tab was not found");
+}
+
+/**
+ * Student persona: type a misspelled Turkish word into the real Writer and
+ * apply the checker's suggestion (the Rust `check_document_spelling` command).
+ */
+async function studentPersona(session) {
+  const doc = join(work, "test-document.docx");
+  const modTimeBefore = statSync(doc).mtimeMs;
+  await activateWriter(session);
+  await typeInWriter(session, "yanlız");
+  await openReviewRibbon(session);
+  const started = await execute(
+    session,
+    "const button=[...document.querySelectorAll('button')].find((el)=>(el.textContent||'').includes('Turkish Spell Check')); if(!button) return false; button.click(); return true;",
+  );
+  if (!started) throw new Error("the Turkish Spell Check button was not found");
+  await waitForScript(
+    session,
+    "const panes=[...document.querySelectorAll('.writer-review-pane')]; return panes.some((pane)=>/Turkish Spell Check/.test(pane.innerText||'') && /yanlız/.test(pane.innerText||''));",
+    60000,
+    "spell check results",
+  );
+  const applied = await execute(
+    session,
+    "const pane=[...document.querySelectorAll('.writer-review-pane')].find((el)=>/Turkish Spell Check/.test(el.innerText||'')); const card=pane && [...pane.querySelectorAll('.comment-card')].find((el)=>/yanlız/.test(el.innerText||'')); const button=card && card.querySelector('button.btn-soft'); if(!button) return ''; const text=(button.textContent||'').trim(); button.click(); return text;",
+  );
+  if (!applied) throw new Error("no suggestion button in the spell panel");
+  await waitForScript(
+    session,
+    "return !/yanlız/.test((document.querySelector('[contenteditable=\"true\"][data-block-index]')||{}).textContent||'')",
+    15000,
+    "suggestion applied",
+  );
+  // Save the corrected document: the journey is "fix and keep", and an app
+  // left with unsaved changes blocks the next scenario's app launch.
+  await execute(
+    session,
+    "window.dispatchEvent(new KeyboardEvent('keydown',{key:'s',code:'KeyS',ctrlKey:true,bubbles:true,cancelable:true})); return true;",
+  );
+  const saveStarted = Date.now();
+  let saved = false;
+  while (Date.now() - saveStarted < 30000) {
+    if (statSync(doc).mtimeMs > modTimeBefore) {
+      saved = true;
+      break;
+    }
+    await execute(
+      session,
+      "const button=[...document.querySelectorAll('button')].find((el)=>/^(Continue|Devam)/i.test((el.textContent||'').trim())); if(button){button.click(); return true;} return false;",
+    ).catch(() => undefined);
+    await sleep(400);
+  }
+  if (!saved) throw new Error("Ctrl+S after the spell fix did not write the document");
+  await screenshot(session, "persona-student");
+  console.log(`PASS: student persona applied the spell suggestion (${applied}) and saved`);
+}
+
+/**
+ * Public persona: run the Official Correspondence Regulation checker on the
+ * writer document and read its findings panel.
+ */
+async function publicPersona(session) {
+  await activateWriter(session);
+  await openReviewRibbon(session);
+  const started = await execute(
+    session,
+    "const button=[...document.querySelectorAll('button')].find((el)=>(el.textContent||'').includes('Official Letter Check')); if(!button) return false; button.click(); return true;",
+  );
+  if (!started) throw new Error("the Official Letter Check button was not found");
+  const result = await waitForScript(
+    session,
+    "const pane=[...document.querySelectorAll('.writer-review-pane')].find((el)=>/Official Letter Check/.test(el.innerText||'')); if(!pane) return ''; const text=(pane.innerText||'').trim(); return text.length>20 ? text.slice(0,400) : '';",
+    30000,
+    "official letter results",
+  );
+  await screenshot(session, "persona-public");
+  console.log(`PASS: public persona ran the official letter check (${result.replace(/\n/g, " ").slice(0, 80)})`);
+}
+
+/**
+ * Lawyer persona: the Redact screen's dev auto-run finds the synthetic TCKN,
+ * IBAN, e-mail and phone in `samples/redaction-sample.pdf` and redacts them
+ * through the real `detect_sensitive_text` + `redact_pdf` commands.
+ */
+async function lawyerPersona(session) {
+  const output = join(work, "redaction-sample_redacted.pdf");
+  rmSync(output, { force: true });
+  await waitForScript(session, "return document.querySelectorAll('button, .tool-card').length", 20000, "redact screen");
+  const size = await waitForFile(output, 120000, "redacted output");
+  await screenshot(session, "persona-lawyer");
+  console.log(`PASS: lawyer persona found and redacted the synthetic identifiers (${size} bytes)`);
+}
+
 async function main() {
   mkdirSync(artifacts, { recursive: true });
   const scenarios = [];
@@ -407,13 +574,33 @@ async function main() {
   }
   const persona = valueOf("--persona");
   if (persona) {
-    if (persona !== "accountant") throw new Error(`unknown persona: ${persona} (known: accountant)`);
-    const invoice = prepareWorkFile("sample-invoice.xml");
-    await withSession(
-      "persona-accountant",
-      { PDFSAK_START_SCREEN: "invoices", PDFSAK_DEV_FILES: invoice },
-      accountantPersona,
-    );
+    const personas = {
+      accountant: { screen: "invoices", file: "sample-invoice.xml", run: accountantPersona },
+      student: { screen: "office", file: "test-document.docx", run: studentPersona },
+      public: { screen: "office", file: "test-document.docx", run: publicPersona },
+      lawyer: { screen: "redact", file: "redaction-sample.pdf", run: lawyerPersona, autoRun: true },
+    };
+    const names =
+      persona === "all"
+        ? Object.keys(personas)
+        : persona
+            .split(",")
+            .map((name) => name.trim())
+            .filter(Boolean);
+    for (const name of names) {
+      const spec = personas[name];
+      if (!spec) throw new Error(`unknown persona: ${name} (known: ${Object.keys(personas).join(", ")})`);
+      const file = prepareWorkFile(spec.file);
+      await withSession(
+        `persona-${name}`,
+        {
+          PDFSAK_START_SCREEN: spec.screen,
+          PDFSAK_DEV_FILES: file,
+          ...(spec.autoRun ? { PDFSAK_DEV_RUN: "1" } : {}),
+        },
+        spec.run,
+      );
+    }
     return;
   }
   if (scenarios.length === 0) {

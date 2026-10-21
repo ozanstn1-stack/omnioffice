@@ -36,57 +36,10 @@ import { renderCertificateMarkdown, type RedactedItemRecord } from "../lib/redac
 import type { CertificateItem } from "../lib/generated/CertificateItem";
 import type { RedactionCertificate } from "../lib/generated/RedactionCertificate";
 import type { CertificateVerification } from "../lib/generated/CertificateVerification";
-import type { ImageRedactionMode, RedactionArea, RedactionMatch, RedactionOptions } from "../lib/types";
+import type { ImageRedactionMode, RedactionArea, RedactionOptions } from "../lib/types";
+import { kindLabel, matchBox, matchRow, splitKeywords, type DrawnBox, type MatchRow } from "../lib/redact-rows";
 
-/** A box the user drew, in page space, with a stable id for removal. */
-interface DrawnBox extends RedactionArea {
-  id: string;
-  /** Set for boxes the detector proposed, so they can be labelled. */
-  kind?: string;
-}
-
-/** A detected match plus the id that links its checkbox to its box. */
-interface MatchRow {
-  id: string;
-  match: RedactionMatch;
-}
-
-/** Comma/semicolon/newline separated keywords: trimmed, order kept, deduped. */
-export function splitKeywords(raw: string): string[] {
-  const seen = new Set<string>();
-  const keywords: string[] = [];
-  for (const part of raw.split(/[,;\n]/)) {
-    const keyword = part.trim();
-    if (!keyword || seen.has(keyword)) continue;
-    seen.add(keyword);
-    keywords.push(keyword);
-  }
-  return keywords;
-}
-
-/** The row id is page-scoped so a match keeps its identity off the shown page. */
-function matchRow(source: "auto" | "pattern", match: RedactionMatch, index: number): MatchRow {
-  return { id: `${source}-${match.page}-${index}`, match };
-}
-
-function matchBox(row: MatchRow): DrawnBox {
-  return {
-    id: row.id,
-    page: row.match.page,
-    left: row.match.left,
-    bottom: row.match.bottom,
-    right: row.match.right,
-    top: row.match.top,
-    kind: row.match.kind,
-  };
-}
-
-function kindLabel(t: (key: string) => string, kind?: string): string {
-  if (!kind) return t("redact.manual");
-  const key = `redact.kind.${kind}`;
-  const label = t(key);
-  return label === key ? kind : label;
-}
+export { splitKeywords } from "../lib/redact-rows";
 
 export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dragging: boolean }) {
   const t = useT();
@@ -190,8 +143,8 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
     </div>
   ) : null;
 
-  const scan = async () => {
-    if (!session.primary) return;
+  const scan = async (): Promise<MatchRow[]> => {
+    if (!session.primary) return [];
     setDetecting(true);
     setScanError(null);
     try {
@@ -204,10 +157,12 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
         setBoxes((previous) => [...previous.filter((box) => !box.id.startsWith("auto-")), ...rows.map(matchBox)]);
       }
       setDetected(true);
+      return rows;
     } catch (error) {
       const appError = toAppError(error);
       setScanError(appError.message);
       setMatches((previous) => previous.filter((row) => !row.id.startsWith("auto-")));
+      return [];
     } finally {
       setDetecting(false);
     }
@@ -258,10 +213,9 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
     return { total: boxes.length, perPage };
   }, [boxes]);
 
-  session.registerAutoRun(() => void run());
-  const run = () => {
-    if (!boxes.length) return;
-    const areas: RedactionArea[] = boxes.map(({ page: boxPage, left, bottom, right, top }) => ({
+  const runWith = (list: DrawnBox[]) => {
+    if (!list.length) return;
+    const areas: RedactionArea[] = list.map(({ page: boxPage, left, bottom, right, top }) => ({
       page: boxPage,
       left,
       bottom,
@@ -279,6 +233,20 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
       ),
     );
   };
+  const run = () => runWith(boxes);
+  // Development automation (PDFSAK_DEV_RUN=1): find the sensitive data on the
+  // current page, then redact it - the same two clicks the user makes, so the
+  // E2E exercises the real detector and the real redaction command.
+  session.registerAutoRun(() => {
+    if (!session.primary) return;
+    if (boxes.length > 0) {
+      void run();
+      return;
+    }
+    void scan().then((rows) => {
+      if (rows.length > 0) void runWith(rows.map(matchBox));
+    });
+  });
 
   const { push: pushToast } = useToasts();
 

@@ -518,6 +518,12 @@ jobs:
       - name: Deep flows
         timeout-minutes: 15
         run: npm run e2e:flows
+      # The lawyer persona needs the pdfium engine (the Redact detector reads
+      # page text through it), so it runs here; the engine-free personas run in
+      # the Linux tauri-driver job.
+      - name: Lawyer persona (KVKK redaction, engines)
+        timeout-minutes: 10
+        run: npm run e2e:persona:lawyer
       - name: App log on E2E failure
         if: failure()
         shell: pwsh

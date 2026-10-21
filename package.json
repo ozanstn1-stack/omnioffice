@@ -21,7 +21,7 @@
     "e2e:smoke": "node e2e/smoke.mjs",
     "e2e:smoke:pdf": "node e2e/smoke.mjs --pdf samples/sample-1.pdf",
     "e2e:flows": "node e2e/smoke.mjs --all",
-    "e2e:personas": "node e2e/smoke.mjs --persona accountant",
+    "e2e:personas": "node e2e/smoke.mjs --persona accountant,student,public",
     "test:watch": "vitest",
     "test:rust": "cargo test --workspace",
     "bench:check": "node scripts/check-bench-regression.mjs",
@@ -55,7 +55,8 @@
     "android:init": "tauri android init",
     "android:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-android.ps1",
     "android:build:all": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& ./scripts/build-android.ps1 -Abi arm64-v8a,armeabi-v7a\"",
-    "android:dev": "tauri android dev"
+    "android:dev": "tauri android dev",
+    "e2e:persona:lawyer": "node e2e/smoke.mjs --persona lawyer"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
