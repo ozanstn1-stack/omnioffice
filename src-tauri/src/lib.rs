@@ -9,9 +9,7 @@ mod android_background;
 mod android_intent;
 #[cfg(target_os = "android")]
 mod android_keystore;
-// Android in-app update (APK download + system installer). Host tests compile
-// the module too so the URL/checksum helpers are covered by `cargo test` on
-// any platform; see android_update.rs.
+// Android in-app update; host tests cover the URL/checksum helpers too.
 #[cfg(any(target_os = "android", test))]
 mod android_update;
 #[cfg(any(target_os = "android", test))]
@@ -21,6 +19,7 @@ mod commands;
 mod concurrency;
 mod crash_log;
 mod diagnostics;
+mod files;
 mod jobs;
 mod launch;
 mod library;
@@ -91,11 +90,9 @@ fn crash_log_dir_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Release builds abort on panic: record the panic in crash.log first (the
-    // log directory is handed over by the plugin below once the app exists).
+    // Release builds abort on panic: the panic hook writes crash.log first.
     crash_log::install_panic_hook();
-    // Persistent job history, shared by the registry and the jobs_* commands.
-    // Managed as Arc<JobStore> so both sides see the same records.
+    // Persistent job history shared by the registry and the jobs_* commands.
     let job_store = JobStore::shared();
     let builder = tauri::Builder::default();
     // The single-instance plugin has to come first: a second launch must be
@@ -229,6 +226,9 @@ pub fn run() {
             diagnostics::diagnostics_report,
             commands::engine_status,
             commands::ocr_languages,
+            files::file_token_pick,
+            files::file_token_save,
+            files::file_token_release,
             commands::cancel_job,
             jobs::jobs_list,
             jobs::jobs_clear_finished,
