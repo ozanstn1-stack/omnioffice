@@ -1,19 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { appDataDir } from "@tauri-apps/api/path";
-import { open } from "@tauri-apps/plugin-dialog";
 import { cancelJob, fileSizes, logOperation, pdfInfo, suggestOutput, toAppError } from "./api";
-import {
-  dirName,
-  fileBaseName,
-  fileStem,
-  isImage,
-  isOfficeDocument,
-  isPdf,
-  joinPath,
-  officeDocumentExtensions,
-  uid,
-} from "./format";
+import { releaseFileToken, type FileToken } from "./file-tokens";
+import { acceptsFile, pathEntries, pickDesktopFiles, tokenEntries } from "./tool-files";
+import { dirName, fileBaseName, fileStem, isPdf, joinPath, uid } from "./format";
 import { isAndroid, pickAndroidFiles, publishOutputs, type PublishTarget } from "./mobile";
 import {
   reportError,
@@ -144,31 +135,33 @@ export function useTool(options: ToolOptions): ToolSession {
     filesRef.current = files;
   }, [files]);
 
-  const accepted = useCallback(
-    (path: string) => {
-      if (accept === "pdf") return isPdf(path);
-      if (accept === "image") return isImage(path);
-      if (accept === "document") return isPdf(path) || isImage(path) || isOfficeDocument(path);
-      return isPdf(path) || isImage(path);
-    },
-    [accept],
-  );
+  const accepted = useMemo(() => acceptsFile(accept), [accept]);
 
   const addPaths = useCallback(
     async (paths: string[]) => {
       const filtered = paths.filter(accepted);
       if (!filtered.length) {
-        if (paths.length) {
-          setError({ code: "unsupported", message: t("errors.unsupported") });
-        }
+        if (paths.length) setError({ code: "unsupported", message: t("errors.unsupported") });
         return;
       }
       const sizes = await fileSizes(filtered).catch(() => filtered.map(() => null));
-      const entries: SelectedFile[] = filtered.map((path, index) => ({
-        path,
-        name: fileBaseName(path),
-        sizeBytes: sizes[index] ?? 0,
-      }));
+      const entries = pathEntries(filtered, sizes);
+      setResult(null);
+      setError(null);
+      setFiles((previous) => (multiple ? [...previous, ...entries] : entries.slice(0, 1)));
+    },
+    [accepted, multiple, t],
+  );
+
+  const addTokens = useCallback(
+    async (refs: FileToken[]) => {
+      const acceptedRefs = refs.filter((ref) => accepted(ref.name));
+      if (!acceptedRefs.length) {
+        if (refs.length) setError({ code: "unsupported", message: t("errors.unsupported") });
+        return;
+      }
+      const sizes = await fileSizes(acceptedRefs.map((ref) => ref.token)).catch(() => acceptedRefs.map(() => null));
+      const entries = tokenEntries(acceptedRefs, sizes);
       setResult(null);
       setError(null);
       setFiles((previous) => (multiple ? [...previous, ...entries] : entries.slice(0, 1)));
@@ -183,38 +176,13 @@ export function useTool(options: ToolOptions): ToolSession {
       await addPaths(paths);
       return;
     }
-    const filters =
-      accept === "pdf"
-        ? [{ name: "PDF", extensions: ["pdf"] }]
-        : accept === "image"
-          ? [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"] }]
-          : accept === "document"
-            ? [
-                {
-                  name: "Documents & images",
-                  extensions: [
-                    ...new Set([
-                      ...officeDocumentExtensions(),
-                      "pdf",
-                      "jpg",
-                      "jpeg",
-                      "png",
-                      "webp",
-                      "bmp",
-                      "tif",
-                      "tiff",
-                    ]),
-                  ],
-                },
-              ]
-            : [{ name: "Documents & images", extensions: ["pdf", "jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"] }];
-    const picked = await open({ multiple, filters, title: t("common.selectFiles") });
-    if (!picked) return;
-    const paths = Array.isArray(picked) ? picked : [picked];
-    await addPaths(paths.map(String));
-  }, [accept, addPaths, multiple, t]);
+    const refs = await pickDesktopFiles(accept, multiple);
+    if (refs.length) await addTokens(refs);
+  }, [accept, addPaths, addTokens, multiple]);
 
   const removeFile = useCallback((index: number) => {
+    const file = filesRef.current[index];
+    if (file?.token) void releaseFileToken(file.token);
     setFiles((previous) => previous.filter((_, i) => i !== index));
     setResult(null);
   }, []);
@@ -258,7 +226,7 @@ export function useTool(options: ToolOptions): ToolSession {
         if (appError.code === "password_required") {
           setNeedsPassword(true);
           setInfo(null);
-          const entered = await askPassword(file.path);
+          const entered = await askPassword(file.path, file.name);
           if (entered) {
             await loadInfoForRef.current(file, entered);
           }

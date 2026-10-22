@@ -209,6 +209,9 @@ fn validate_output_path(path: &Path) -> Result<ValidatedPath, PdfError> {
 /// so it is the right check for paths the command intentionally creates (e.g.
 /// [`crate::commands::ensure_dir`]) or probes for absence.
 pub fn lexical(raw: &str) -> Result<ValidatedPath, PdfError> {
+    if let Some(resolved) = crate::files::lookup(raw, crate::files::FileAccess::Read) {
+        return Ok(ValidatedPath(resolved.map_err(PdfError::InvalidInput)?));
+    }
     let path = normalize(raw)?;
     Ok(ValidatedPath(path.to_path_buf()))
 }

@@ -41,8 +41,7 @@ export const useSettings = create<SettingsState>((set, get) => ({
         engineStatus().catch(() => null),
         ocrLanguages().catch(() => []),
       ]);
-      // A settings file written by an older version means this is not a
-      // first run, so upgraders do not get the welcome card.
+      // An existing settings file means this is not a first run.
       const upgraded = Object.keys(stored).length > 0;
       const settings: Settings = { ...DEFAULT_SETTINGS, onboardingDone: upgraded, ...stored };
       if (!upgraded) {
@@ -245,17 +244,18 @@ export const useDev = create<DevState>((set) => ({
 interface PasswordState {
   request: {
     path: string;
+    name: string;
     resolve: (password: string | null) => void;
   } | null;
-  ask: (path: string) => Promise<string | null>;
+  ask: (path: string, name: string) => Promise<string | null>;
   answer: (password: string | null) => void;
 }
 
 export const usePasswordPrompt = create<PasswordState>((set, get) => ({
   request: null,
-  ask: (path) =>
+  ask: (path, name) =>
     new Promise<string | null>((resolve) => {
-      set({ request: { path, resolve } });
+      set({ request: { path, name, resolve } });
     }),
   answer: (password) => {
     const current = get().request;

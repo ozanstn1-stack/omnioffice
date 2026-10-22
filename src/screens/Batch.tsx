@@ -74,7 +74,7 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
       const jobId = `batch-${index}-${jobCounter.current++}`;
       currentJobRef.current = jobId;
       try {
-        const stem = fileBaseName(item.path).replace(/\.[^.]+$/, "");
+        const stem = item.name.replace(/\.[^.]+$/, "");
         const output = await runOne(jobId, item.path, stem);
         setQueue((previous) =>
           previous.map((entry, i) =>

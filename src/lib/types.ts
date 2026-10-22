@@ -799,6 +799,8 @@ export interface OperationEntry {
 
 export interface SelectedFile {
   path: string;
+  /** Capability token for files picked through the native Rust dialog (B3). */
+  token?: string;
   name: string;
   sizeBytes: number;
   pages?: number;
@@ -807,11 +809,9 @@ export interface SelectedFile {
 // ---------------------------------------------------------------------------
 // Redaction, comparison, inspection
 //
-// These mirror the Rust structs one field at a time. Every one of those derives
-// Serialize with `#[serde(rename_all = "camelCase")]`, so the wire format is
-// camelCase; inventing a field here reads as `undefined` at runtime and, in one
-// case, blanked the whole window. `crates/pdfcore/tests/dump_inspection.rs`
-// prints the real payload for a real file to check this against.
+// These mirror the Rust structs one field at a time (serde camelCase). A made-up
+// field reads as `undefined` at runtime; `crates/pdfcore/tests/dump_inspection.rs`
+// prints the real payload to check against.
 // ---------------------------------------------------------------------------
 
 /** How an image area under a redaction box is treated. */
