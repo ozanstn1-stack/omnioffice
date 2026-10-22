@@ -6,7 +6,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 import { pickDocumentToken, pickDocumentTokens, pickSaveToken, releaseFileToken } from "./file-tokens";
 
 describe("file token wrappers", () => {
-  it("asks the Rust dialog for read tokens and passes the filters", async () => {
+  it("asks the Rust dialog for a read token and passes the extensions", async () => {
     invoke.mockResolvedValueOnce([
       { token: "abc", name: "report.pdf" },
       { token: "def", name: "second.pdf" },
