@@ -31,6 +31,15 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.1.1) - Jetonlarla araç seçicileri
+
+- **Token-based tool pickers** (#337): `useTool` opens the Rust dialog, stores
+  `{ path: token, token, name }`, releases the token on remove, and displays
+  the FileRef name; `paths::lexical` resolves tokens like input/output.
+  `test:src/lib/tool-files.test.ts#maps tokens to selected files without exposing a path`
+- **Scope:** drop, launch/recents and the global App picker still use paths,
+  and output targets remain paths. (no test: tracked in #337.)
+
 ## Implemented (this cycle, 6.1.0) - Yetki jetonları (slice 1)
 
 - **Capability token registry and dialog commands** (#337): 128-bit tokens,
