@@ -90,6 +90,7 @@ fn a_file_token_flows_through_the_input_and_output_validators() {
     let write = crate::files::issue(&output, crate::files::FileAccess::ReadWrite);
     assert_eq!(output_file(&write.token).unwrap().as_path(), output);
     assert_eq!(input_file(&write.token).unwrap().as_path(), output);
+    assert_eq!(lexical(&read.token).unwrap().as_path(), input);
 }
 
 #[test]

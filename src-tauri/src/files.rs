@@ -95,13 +95,14 @@ pub fn lookup(value: &str, access: FileAccess) -> Option<Result<PathBuf, String>
     })
 }
 
-/// Opens the native file dialog on the Rust side and returns a read token.
+/// Opens the native file dialog on the Rust side and returns read tokens.
 #[tauri::command]
 pub async fn file_token_pick(
     app: tauri::AppHandle,
     extensions: Option<Vec<String>>,
-) -> Result<Option<FileRef>, String> {
-    pick(&app, extensions, None).await
+    multiple: Option<bool>,
+) -> Result<Vec<FileRef>, String> {
+    pick(&app, extensions, PickMode::Open { multiple: multiple.unwrap_or(false) }).await
 }
 
 /// Opens the native save dialog and returns a read-write token for the target.
@@ -110,8 +111,8 @@ pub async fn file_token_save(
     app: tauri::AppHandle,
     name: Option<String>,
     extensions: Option<Vec<String>>,
-) -> Result<Option<FileRef>, String> {
-    pick(&app, extensions, name).await
+) -> Result<Vec<FileRef>, String> {
+    pick(&app, extensions, PickMode::Save { name }).await
 }
 
 /// Forgets a token (best effort; an unknown token is not an error).
@@ -120,41 +121,78 @@ pub fn file_token_release(token: String) -> bool {
     revoke(&token)
 }
 
-async fn pick(
-    app: &tauri::AppHandle,
-    extensions: Option<Vec<String>>,
-    save_name: Option<String>,
-) -> Result<Option<FileRef>, String> {
+enum PickMode {
+    Open { multiple: bool },
+    Save { name: Option<String> },
+}
+
+async fn pick(app: &tauri::AppHandle, extensions: Option<Vec<String>>, mode: PickMode) -> Result<Vec<FileRef>, String> {
     use tauri_plugin_dialog::DialogExt;
 
-    let (sender, receiver) = std::sync::mpsc::channel();
     let mut builder = app.dialog().file();
     if let Some(extensions) = extensions.as_ref().filter(|list| !list.is_empty()) {
         let filters: Vec<&str> = extensions.iter().map(String::as_str).collect();
         builder = builder.add_filter("Documents", &filters);
     }
-    let saving = save_name.is_some();
-    if let Some(name) = save_name {
-        builder = builder.set_file_name(name);
+    match mode {
+        PickMode::Save { name } => {
+            let (sender, receiver) = std::sync::mpsc::channel();
+            if let Some(name) = name {
+                builder = builder.set_file_name(name);
+            }
+            builder.save_file(move |path| {
+                let _ = sender.send(path);
+            });
+            let picked = await_path(receiver).await?;
+            Ok(picked
+                .and_then(|path| path.into_path().ok())
+                .map(|path| issue(&path, FileAccess::ReadWrite))
+                .into_iter()
+                .collect())
+        }
+        PickMode::Open { multiple } => {
+            if multiple {
+                let (sender, receiver) = std::sync::mpsc::channel();
+                builder.pick_files(move |paths| {
+                    let _ = sender.send(paths);
+                });
+                let picked = await_paths(receiver).await?;
+                Ok(picked
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|path| path.into_path().ok())
+                    .map(|path| issue(&path, FileAccess::Read))
+                    .collect())
+            } else {
+                let (sender, receiver) = std::sync::mpsc::channel();
+                builder.pick_file(move |path| {
+                    let _ = sender.send(path);
+                });
+                let picked = await_path(receiver).await?;
+                Ok(picked
+                    .and_then(|path| path.into_path().ok())
+                    .map(|path| issue(&path, FileAccess::Read))
+                    .into_iter()
+                    .collect())
+            }
+        }
     }
-    if saving {
-        builder.save_file(move |path| {
-            let _ = sender.send(path);
-        });
-    } else {
-        builder.pick_file(move |path| {
-            let _ = sender.send(path);
-        });
-    }
-    let picked = tauri::async_runtime::spawn_blocking(move || receiver.recv().ok().flatten())
+}
+
+async fn await_path(
+    receiver: std::sync::mpsc::Receiver<Option<tauri_plugin_dialog::FilePath>>,
+) -> Result<Option<tauri_plugin_dialog::FilePath>, String> {
+    tauri::async_runtime::spawn_blocking(move || receiver.recv().ok().flatten())
         .await
-        .map_err(|_| "the file dialog failed".to_string())?;
-    let Some(picked) = picked else {
-        return Ok(None); // the user cancelled
-    };
-    let path = picked.into_path().map_err(|_| "the chosen file is not a local path".to_string())?;
-    let access = if saving { FileAccess::ReadWrite } else { FileAccess::Read };
-    Ok(Some(issue(&path, access)))
+        .map_err(|_| "the file dialog failed".to_string())
+}
+
+async fn await_paths(
+    receiver: std::sync::mpsc::Receiver<Option<Vec<tauri_plugin_dialog::FilePath>>>,
+) -> Result<Option<Vec<tauri_plugin_dialog::FilePath>>, String> {
+    tauri::async_runtime::spawn_blocking(move || receiver.recv().ok().flatten())
+        .await
+        .map_err(|_| "the file dialog failed".to_string())
 }
 
 #[cfg(test)]

@@ -38,7 +38,7 @@ import {
 import type { TextRunInfo } from "../lib/api";
 import { clampSpeechRate, pageTextFromRuns, speechSupported, textLayerItems } from "../lib/reader-text";
 import type { SpeechWindow } from "../lib/reader-text";
-import { clamp, fileBaseName, previewPixelRatio, previewRasterWidth, uid } from "../lib/format";
+import { clamp, previewPixelRatio, previewRasterWidth, uid } from "../lib/format";
 import { reportError, useJobProgress, useToasts } from "../lib/store";
 import {
   TILE_VIEW_MARGIN,
@@ -1108,7 +1108,7 @@ export function Reader({
         >
           <BookOpen size={16} style={{ color: "var(--accent)" }} />
           <span className="font-semibold text-[13.5px] truncate max-w-[220px]" title={session.primary.path}>
-            {fileBaseName(session.primary.path)}
+            {session.primary.name}
           </span>
           <Badge tone="accent">
             {currentPage} / {pageCount}

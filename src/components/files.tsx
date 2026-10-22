@@ -649,7 +649,7 @@ function PasswordDialogBody() {
         </>
       }
     >
-      <p className="text-[13.5px] mb-4">{t("passwordModal.body", { name: fileBaseName(request.path) })}</p>
+      <p className="text-[13.5px] mb-4">{t("passwordModal.body", { name: request.name })}</p>
       <input
         ref={inputRef}
         className="input"
