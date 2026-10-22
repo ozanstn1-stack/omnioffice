@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.1] - Jetonlarla araç seçicileri (token-based tool pickers)
+
+### Changed
+
+- **Tool file pickers issue capability tokens (#337 / PR #356):** every tool's
+  "Add" dialog opens on the Rust side and returns an opaque token plus the
+  display name; `useTool` stores the token, releases it when a file is removed,
+  and the reader, batch list and password prompt show the name instead of a
+  path. Drop, launch, recents and the global picker still deliver paths (dual
+  mode), and output targets remain paths - the next slice migrates them.
+
 ## [6.1.0] - Yetki jetonları, ilk dilim (capability tokens, slice 1)
 
 ### Added
