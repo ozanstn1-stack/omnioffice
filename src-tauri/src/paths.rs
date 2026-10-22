@@ -141,17 +141,26 @@ fn is_windows_reserved(name: &str) -> bool {
 /// that pass the path on; callers that read the bytes should prefer
 /// [`read_input_file`], which keeps using the same handle for the whole read.
 pub fn input_file(raw: &str) -> Result<ValidatedPath, PdfError> {
-    let path = normalize(raw)?;
+    // A capability token stands in for the path the human picked; it is the
+    // first thing checked so a migrated caller never has to handle both shapes.
+    if let Some(resolved) = crate::files::lookup(raw, crate::files::FileAccess::Read) {
+        let path = resolved.map_err(PdfError::InvalidInput)?;
+        return validate_input_path(&path);
+    }
+    validate_input_path(normalize(raw)?)
+}
+
+fn validate_input_path(path: &Path) -> Result<ValidatedPath, PdfError> {
     // A directory is rejected before the open: on Windows opening one with
     // `File::open` fails with a permission error instead of the honest
     // "not a file" message the callers and tests expect.
     if path.is_dir() {
-        return Err(PdfError::InvalidInput(format!("not a file: {raw}")));
+        return Err(PdfError::InvalidInput(format!("not a file: {}", path.display())));
     }
     let file = std::fs::File::open(path).map_err(PdfError::from_io)?;
     let handle_meta = file.metadata().map_err(PdfError::from_io)?;
     if !handle_meta.is_file() {
-        return Err(PdfError::InvalidInput(format!("not a file: {raw}")));
+        return Err(PdfError::InvalidInput(format!("not a file: {}", path.display())));
     }
     #[cfg(unix)]
     {
@@ -173,14 +182,21 @@ pub fn input_file(raw: &str) -> Result<ValidatedPath, PdfError> {
 /// chooses the destination through an OS dialog. Do not read this as a
 /// confinement guarantee.
 pub fn output_file(raw: &str) -> Result<ValidatedPath, PdfError> {
-    let path = normalize(raw)?;
+    if let Some(resolved) = crate::files::lookup(raw, crate::files::FileAccess::ReadWrite) {
+        let path = resolved.map_err(PdfError::InvalidInput)?;
+        return validate_output_path(&path);
+    }
+    validate_output_path(normalize(raw)?)
+}
+
+fn validate_output_path(path: &Path) -> Result<ValidatedPath, PdfError> {
     if path.is_dir() {
-        return Err(PdfError::InvalidInput(format!("expected a file path, got a folder: {raw}")));
+        return Err(PdfError::InvalidInput(format!("expected a file path, got a folder: {}", path.display())));
     }
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
-        .ok_or_else(|| PdfError::InvalidInput(format!("the output path has no folder: {raw}")))?;
+        .ok_or_else(|| PdfError::InvalidInput(format!("the output path has no folder: {}", path.display())))?;
     if !parent.is_dir() {
         return Err(PdfError::InvalidInput(format!("the output folder does not exist: {}", parent.display())));
     }
@@ -250,103 +266,5 @@ pub fn read_input_file(raw: &str, max_bytes: u64) -> Result<Vec<u8>, PdfError> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn scratch_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("pdfsak-paths-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("temp dir");
-        dir
-    }
-
-    #[test]
-    fn input_requires_an_existing_regular_file() {
-        let dir = scratch_dir();
-        let file = dir.join("input.pdf");
-        std::fs::write(&file, b"%PDF").expect("write fixture");
-        assert_eq!(input_file(file.to_str().unwrap()).unwrap().as_path(), file);
-
-        assert!(matches!(input_file(dir.to_str().unwrap()), Err(PdfError::InvalidInput(_))));
-        assert!(matches!(input_file(dir.join("missing.pdf").to_str().unwrap()), Err(PdfError::NotFound(_))));
-    }
-
-    #[test]
-    fn traversal_and_device_names_are_refused() {
-        assert!(input_file("C:\\docs\\..\\secret.pdf").is_err());
-        assert!(input_file("relative.pdf").is_err());
-        assert!(input_file("").is_err());
-        assert!(input_file("C:\\docs\\nul.pdf").is_err());
-        assert!(input_file("C:\\docs\\con").is_err());
-        assert!(output_file("C:\\docs\\..\\out.pdf").is_err());
-        assert!(output_file("out.pdf").is_err());
-        assert!(output_file("").is_err());
-    }
-
-    #[test]
-    fn unc_and_extended_paths_are_refused() {
-        assert!(input_file("\\\\server\\share\\a.pdf").is_err());
-        assert!(output_file(r"\\?\C:\docs\out.pdf").is_err());
-        assert!(directory("\\\\server\\share").is_err());
-    }
-
-    #[test]
-    fn nul_and_control_characters_are_refused() {
-        assert!(input_file("C:\\docs\\a\0b.pdf").is_err());
-        assert!(output_file("C:\\docs\\a\u{7}b.pdf").is_err());
-    }
-
-    #[test]
-    fn output_requires_an_existing_parent_folder() {
-        let dir = scratch_dir();
-        let target = dir.join("out.pdf");
-        assert_eq!(output_file(target.to_str().unwrap()).unwrap().as_path(), target);
-        assert!(matches!(
-            output_file(dir.join("missing-dir").join("out.pdf").to_str().unwrap()),
-            Err(PdfError::InvalidInput(_))
-        ));
-    }
-
-    #[test]
-    fn directory_requires_an_existing_folder() {
-        let dir = scratch_dir();
-        assert_eq!(directory(dir.to_str().unwrap()).unwrap().as_path(), dir);
-        assert!(matches!(directory(dir.join("nope").to_str().unwrap()), Err(PdfError::NotFound(_))));
-
-        let file = dir.join("a-file.pdf");
-        std::fs::write(&file, b"%PDF").expect("write");
-        assert!(matches!(directory(file.to_str().unwrap()), Err(PdfError::InvalidInput(_))));
-    }
-
-    #[test]
-    fn unicode_and_space_paths_are_accepted() {
-        let dir = scratch_dir();
-        let file = dir.join("belge ç Ğ ü.pdf");
-        std::fs::write(&file, b"%PDF").expect("write");
-        assert_eq!(input_file(file.to_str().unwrap()).unwrap().as_path(), file);
-    }
-
-    #[test]
-    fn read_input_file_enforces_the_size_cap() {
-        let dir = scratch_dir();
-        let file = dir.join("big.pdf");
-        std::fs::write(&file, vec![0u8; 2048]).expect("write");
-        assert!(matches!(read_input_file(file.to_str().unwrap(), 1024), Err(PdfError::InvalidInput(_))));
-        assert_eq!(read_input_file(file.to_str().unwrap(), 4096).unwrap().len(), 2048);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn read_input_file_rejects_a_symlink_swap() {
-        use std::os::unix::fs::symlink;
-        let dir = scratch_dir();
-        let real = dir.join("real.pdf");
-        std::fs::write(&real, b"%PDF real").expect("write");
-        let link = dir.join("link.pdf");
-        let _ = std::fs::remove_file(&link);
-        symlink(&real, &link).expect("symlink");
-        // A symlink pointing at a regular file is still a valid input (dialog
-        // paths can be symlinks); the swap guard only fires on a race, which a
-        // single-threaded test cannot trigger. Assert it reads the target.
-        assert_eq!(read_input_file(link.to_str().unwrap(), 4096).unwrap(), b"%PDF real");
-    }
-}
+#[path = "paths_tests.rs"]
+mod tests;
