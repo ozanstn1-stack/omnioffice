@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.0] - Yetki jetonları, ilk dilim (capability tokens, slice 1)
+
+### Added
+
+- **File capability tokens (#337 / PR #353):** `src-tauri/src/files.rs` issues
+  random, scoped (read / read-write), expiring tokens for paths the user picked
+  through a Rust-side dialog. `file_token_pick`, `file_token_save` and
+  `file_token_release` are the only commands that learn a user path, and
+  `FileRef` serializes the token and display name only. The frontend wrapper is
+  `src/lib/file-tokens.ts`.
+
+### Scope (honest)
+
+Document commands still accept raw paths; moving the PDF, office and tool
+commands onto `files::resolve` is the next slice (tracked in #337).
+
 ## [6.0.4] - Personalar ve sağlam E2E (personas and a stable E2E)
 
 ### Added
