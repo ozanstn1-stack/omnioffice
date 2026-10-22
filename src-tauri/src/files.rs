@@ -82,6 +82,19 @@ pub fn revoke(token: &str) -> bool {
     with_registry(|registry| registry.remove(token).is_some())
 }
 
+/// The path behind a token when `value` is one; `None` means it is a plain
+/// path (the caller keeps its usual path validation), so this is the bridge
+/// the command layer uses while the migration is in progress.
+pub fn lookup(value: &str, access: FileAccess) -> Option<Result<PathBuf, String>> {
+    with_registry(|registry| {
+        let entry = registry.get(value)?;
+        if access == FileAccess::ReadWrite && entry.access != FileAccess::ReadWrite {
+            return Some(Err("the file token was issued for reading only".to_string()));
+        }
+        Some(Ok(entry.path.clone()))
+    })
+}
+
 /// Opens the native file dialog on the Rust side and returns a read token.
 #[tauri::command]
 pub async fn file_token_pick(
