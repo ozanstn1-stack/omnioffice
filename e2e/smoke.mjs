@@ -158,6 +158,11 @@ function screenshot(session, name) {
 /** Launches tauri-driver + one session, runs `steps`, and always tears down. */
 async function withSession(name, env, steps) {
   const port = basePort + withSession.index++;
+  // A stale app from a previous scenario would win the single-instance race
+  // and forward the new launch to itself; the session would then attach to the
+  // old window (usually Home) and time out. Reap before launching.
+  killAppInstances();
+  await sleep(500);
   // A unique native port per session: killing tauri-driver does not always
   // reap the WebDriver child on Windows, and a second session's msedgedriver
   // cannot bind a port the old one still holds.
@@ -193,11 +198,7 @@ async function withSession(name, env, steps) {
     // An app left with unsaved changes answers the close request with a
     // dialog and survives; the next session's launch would then forward to it
     // (single-instance) and time out. Reap the app between scenarios.
-    if (process.platform === "win32") {
-      spawnSync("taskkill", ["/IM", exeName, "/F"], { stdio: "ignore" });
-    } else {
-      spawnSync("pkill", ["-f", exeName], { stdio: "ignore" });
-    }
+    killAppInstances();
     // Do not wait for EOF on pipes that a surviving grandchild may hold.
     driver.stdout.destroy();
     driver.stderr.destroy();
