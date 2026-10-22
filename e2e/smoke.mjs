@@ -205,6 +205,14 @@ async function withSession(name, env, steps) {
     if (tail) console.log(`[${name}] driver: ${tail}`);
   }
 }
+function killAppInstances() {
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/IM", exeName, "/F"], { stdio: "ignore" });
+  } else {
+    spawnSync("pkill", ["-f", exeName], { stdio: "ignore" });
+  }
+}
+
 withSession.index = 0;
 
 async function homeAndSettings(session) {
