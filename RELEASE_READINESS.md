@@ -31,6 +31,17 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.1.0) - Yetki jetonları (slice 1)
+
+- **Capability token registry and dialog commands** (#337): 128-bit tokens,
+  read/read-write scope, 12 h TTL, revoke; a `FileRef` never carries a path.
+  `test:src-tauri/src/files.rs#a_read_token_cannot_be_used_for_writing`
+- **Frontend wrapper** `src/lib/file-tokens.ts` for the pick/save/release
+  commands.
+  `test:src/lib/file-tokens.test.ts#asks the Rust dialog for a read token and passes the extensions`
+- **Scope:** document commands still accept raw paths; the PDF/office/tool
+  migration onto `files::resolve` is the next slice. (no test: tracked in #337.)
+
 ## Implemented (this cycle, 6.0.4) - Personalar ve sağlam E2E
 
 - **Persona journeys** (#340): accountant, student, public and lawyer
