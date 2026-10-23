@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.7] - Ofis yazma jetonları (office write tokens)
+
+### Changed
+
+- **In-place office saves use a document write token (#337 / PR #371):**
+  `office_open_document` returns a write token for the opened file (issued in
+  the app process); the tab stores it beside the real path and Ctrl+S sends the
+  token. Legacy imports get none.
+- **Office save/export dialogs and workspace pickers issue tokens (#337 / PR
+  #372):** save-as and PDF export use the Rust save dialog (`pickSaveToken`),
+  and the workspace open pickers use `pickDocumentToken`. The remaining screen
+  dialogs and strict mode are the next slices.
+
 ## [6.1.6] - Dizin jetonları (directory tokens)
 
 ### Changed
