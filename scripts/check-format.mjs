@@ -66,7 +66,9 @@ function repoFiles() {
 /** Frontend: the same globs package.json formats. Rust: workspace sources. */
 function wanted(file) {
   const normalised = file.split(path.sep).join("/");
-  if (mode === "rust") return normalised.endsWith(".rs") && !normalised.startsWith("target/");
+  // vendor/ is third-party source (patched upstream code); format it upstream only.
+  if (mode === "rust")
+    return normalised.endsWith(".rs") && !normalised.startsWith("target/") && !normalised.startsWith("vendor/");
   return /^src\/.*\.(ts|tsx|css)$/.test(normalised);
 }
 
