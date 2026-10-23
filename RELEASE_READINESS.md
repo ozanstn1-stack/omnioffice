@@ -31,6 +31,17 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.1.8) - Kalan diyaloglar jetonlaştı
+
+- **Remaining save dialogs** (#337): every save/export target listed in 4d-c/2b
+  uses `pickSaveToken`; the shared DropZone picker and Recipes use
+  `pickDocumentTokens`.
+  `test:src/screens/Invoices.test.tsx#builds the VAT summary workbook and saves it as XLSX`
+- **Display names for tokens** via `file-token-names.ts`; drop/launch events and
+  dialogs populate it, so `fileBaseName(token)` keeps the UI readable.
+- **Scope:** the remaining input pickers (2c) and strict mode (4d-d) are next.
+  (no test: tracked in #337.)
+
 ## Implemented (this cycle, 6.1.7) - Ofis yazma jetonları
 
 - **Office in-place saves** (#337): `OpenDocument.token`, stored on the tab, sent

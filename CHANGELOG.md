@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.8] - Kalan diyaloglar jetonlaştı (remaining dialogs tokenized)
+
+### Changed
+
+- **Save/export dialogs on the remaining screens (#337 / PR #375):** Invoices
+  (PDF/XLSX/CSV), Ai (CSV/PDF/Markdown), AiLibrary, Redact, Petition/KVKK,
+  Scanner, Sync download, Recipes, DocumentHealth and pdf-forms now use the
+  Rust save dialog and send a write token; the shared DropZone picker and the
+  Recipes input use document tokens. `fileBaseName` resolves a remembered token
+  name so existing display call sites show the real name. The office save dialog
+  is seeded with the file name. Remaining input pickers are part 2c; strict
+  mode is 4d-d.
+
 ## [6.1.7] - Ofis yazma jetonları (office write tokens)
 
 ### Changed
