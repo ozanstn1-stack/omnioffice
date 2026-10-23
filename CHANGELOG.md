@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.2] - Açılış ve sürükle-bırak jetonları (launch and drop tokens)
+
+### Changed
+
+- **Launch/association and window drops issue tokens (#337 / PR #359):** the
+  launch commands and the window drop handler register the paths in Rust and
+  return/emit `FileRef` tokens only; `file_names` resolves display names without
+  a path, and the App routes by name. The webview event is still used for the
+  drag highlight (it carries no paths). Outputs, the global picker and the
+  recents store still use paths, in the next slices.
+
 ## [6.1.1] - Jetonlarla araç seçicileri (token-based tool pickers)
 
 ### Changed

@@ -31,6 +31,17 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.1.2) - Açılış ve sürükle-bırak jetonları
+
+- **Launch and drop tokens** (#337): `startup_tokens`/`office_take_launch_files`
+  return `FileRef`; the window drag-drop event issues tokens and emits
+  `file-drop`; `file_names` gives display names.
+  `test:src-tauri/src/files_tests.rs#names_resolve_tokens_and_plain_paths_without_a_path`
+- **Routing by display name** for token documents.
+  `test:src/lib/file-refs.test.ts#opens a PDF in the reader with the token, not the name`
+- **Scope:** outputs, the global picker and the recents store still use paths.
+  (no test: tracked in #337.)
+
 ## Implemented (this cycle, 6.1.1) - Jetonlarla araç seçicileri
 
 - **Token-based tool pickers** (#337): `useTool` opens the Rust dialog, stores
