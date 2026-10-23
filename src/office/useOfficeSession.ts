@@ -265,9 +265,12 @@ export function useOfficeSession(tab: OfficeTab) {
             }
           }
         }
+        // Saving in place goes through the document's write token; a save-as
+        // target is a path from the dialog (the next slice tokenizes it).
+        const writeTarget = !targetPath && !forceDestination && tab.token ? tab.token : path;
         const result = lossless
-          ? await api.saveUnit(tab.kind, tab.title, tab.model, path)
-          : await api.saveDocument(tab.kind, tab.model, path);
+          ? await api.saveUnit(tab.kind, tab.title, tab.model, writeTarget)
+          : await api.saveDocument(tab.kind, tab.model, writeTarget);
         // Re-fingerprint the file we just wrote so the next save compares
         // against our own bytes, not the pre-save version.
         let savedFingerprint: string | null = null;

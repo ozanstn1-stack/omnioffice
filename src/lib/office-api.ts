@@ -11,6 +11,8 @@ export interface OpenDocumentResult {
   /** Legacy binary (.doc/.ppt): the tab has no save path, so the first save
    *  asks for a modern destination. */
   legacy?: boolean;
+  /** Write token for an in-place save (empty for legacy imports). */
+  token?: string;
 }
 
 export interface SaveDocumentResult {

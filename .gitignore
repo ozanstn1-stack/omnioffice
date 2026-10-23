@@ -77,3 +77,4 @@ samples/*_batch.pdf
 junit.xml
 rust-tests.log
 rust-tests.err.log
+.tmp/

@@ -70,6 +70,10 @@ pub struct OpenDocument {
     /// first save asks for a modern destination.
     #[serde(default)]
     pub legacy: bool,
+    /// Write token for an in-place save (issued in the app process, not the
+    /// worker: the token registry is per process).
+    #[serde(default)]
+    pub token: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -291,7 +295,7 @@ pub fn open_path(path: &Path) -> Result<OpenDocument, OfficeErrorPayload> {
             return Err(payload(OfficeError::unsupported(format!("Opening .{other} files is not supported yet."))));
         }
     };
-    Ok(OpenDocument { kind, title, path: path_text, model, warnings, legacy })
+    Ok(OpenDocument { kind, title, path: path_text, model, warnings, legacy, token: String::new() })
 }
 
 // ---------------------------------------------------------------------------
@@ -400,17 +404,26 @@ fn try_libreoffice(path: &Path, target: &str) -> Option<LibreOfficeConversion> {
 #[tauri::command]
 pub async fn office_open_document(path: String) -> Result<OpenDocument, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
-    let task = tauri::async_runtime::spawn_blocking(move || {
+    let task = tauri::async_runtime::spawn_blocking(move || -> Result<OpenDocument, OfficeErrorPayload> {
         let path = input_path(&path)?;
         // Untrusted parse: it runs in a worker process, so a malformed file
         // can kill the parser, never the app (see `crate::worker`).
         let json =
             crate::worker::run_json_or_local(&crate::worker::Job::OfficeOpen { path: path.as_path().to_path_buf() })
                 .map_err(|error| payload(OfficeError::invalid(error)))?;
-        serde_json::from_str(&json)
-            .map_err(|error| payload(OfficeError::internal(format!("the parser result is not valid: {error}"))))
+        let document: OpenDocument = serde_json::from_str(&json)
+            .map_err(|error| payload(OfficeError::internal(format!("the parser result is not valid: {error}"))))?;
+        Ok(document)
     });
-    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+    let mut document =
+        task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))??;
+    if !document.legacy {
+        // The registry lives in this process; the worker's JSON cannot carry a
+        // usable token, so it is issued here for an in-place save.
+        document.token =
+            crate::files::issue(std::path::Path::new(&document.path), crate::files::FileAccess::ReadWrite).token;
+    }
+    Ok(document)
 }
 
 // ---------------------------------------------------------------------------

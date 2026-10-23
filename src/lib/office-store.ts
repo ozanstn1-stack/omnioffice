@@ -23,6 +23,8 @@ export interface OfficeTab {
   kind: OfficeKind;
   title: string;
   path: string | null;
+  /** Write token for the opened file (in-place saves); null for new units. */
+  token?: string;
   model: OfficeModel;
   dirty: boolean;
   warnings: string[];
@@ -568,6 +570,7 @@ export async function openOfficePath(path: string): Promise<OpenPathResult> {
       // A legacy binary document is imported, never edited in place: an empty
       // path makes the first Ctrl+S ask for a modern (DOCX/PPTX/OSWK) target.
       path: result.legacy ? "" : result.path,
+      token: result.legacy ? undefined : result.token,
       model: result.model as OfficeModel,
       warnings: result.warnings,
     });
