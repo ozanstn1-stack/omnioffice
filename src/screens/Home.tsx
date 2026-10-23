@@ -53,8 +53,8 @@ import { foldSearch } from "../lib/search-fold";
 import { recommendTools } from "../lib/recommend";
 import { isAndroid, openAnyFile, revealAnyFile } from "../lib/mobile";
 import type { Navigate, ScreenId } from "../lib/nav";
+import type { RecentEntry } from "../lib/types";
 import { routeEnabled } from "../lib/routes";
-import { fileStem } from "../lib/format";
 
 type ToolGroup = "pdf" | "office" | "tools" | "ai";
 
@@ -306,19 +306,19 @@ export function Home({
 
   // PDFs open in the reader and office documents in their editor; anything
   // else (images, archives, outputs of other tools) goes to the system viewer.
-  const openRecent = async (path: string) => {
-    if (isPdf(path)) {
-      onFileList([path]);
+  const openRecent = async (entry: RecentEntry) => {
+    if (isPdf(entry.fileName)) {
+      onFileList([entry.token]);
       onNavigate("reader");
       return;
     }
-    if (isOfficePath(path)) {
+    if (isOfficePath(entry.fileName)) {
       onNavigate("office");
-      const result = await openOfficePath(path);
+      const result = await openOfficePath(entry.token);
       if (!result.ok) pushToast({ kind: "error", title: t("errors.title"), detail: result.error });
       return;
     }
-    await openAnyFile(path).catch(() => undefined);
+    await openAnyFile(entry.token).catch(() => undefined);
   };
 
   const suggestionLabel = suggestion
@@ -470,27 +470,26 @@ export function Home({
               <div className="flex flex-col">
                 {recent.slice(0, 6).map((entry) => (
                   <div
-                    key={entry.path}
+                    key={entry.token}
                     className="flex items-center gap-3 px-2.5 py-2 rounded-lg hover:bg-[var(--surface-2)]"
                   >
                     <div
                       className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                       style={{ background: "var(--accent-weak)", color: "var(--accent)" }}
                     >
-                      <RecentIcon path={entry.path} />
+                      <RecentIcon name={entry.fileName} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13.5px] font-medium">{entry.fileName || fileStem(entry.path)}</p>
-                      <p className="text-xs muted truncate">{entry.path}</p>
+                      <p className="truncate text-[13.5px] font-medium">{entry.fileName}</p>
                     </div>
                     <span className="text-xs muted shrink-0">{formatDate(entry.timestamp)}</span>
                     <div className="flex gap-1 shrink-0">
-                      <Button size="sm" variant="ghost" onClick={() => void openRecent(entry.path)}>
+                      <Button size="sm" variant="ghost" onClick={() => void openRecent(entry)}>
                         {t("common.open")}
                       </Button>
                       <IconButton
                         label={t("common.openFolder")}
-                        onClick={() => void revealAnyFile(entry.path).catch(() => undefined)}
+                        onClick={() => void revealAnyFile(entry.token).catch(() => undefined)}
                       >
                         <FolderOpen size={14} />
                       </IconButton>
@@ -516,10 +515,10 @@ export function Home({
   );
 }
 
-function RecentIcon({ path }: { path: string }) {
-  if (isSpreadsheetPath(path)) return <FileSpreadsheet size={15} />;
-  if (isPresentationPath(path)) return <Presentation size={15} />;
-  if (isOfficePath(path) || isPdf(path)) return <FileText size={15} />;
+function RecentIcon({ name }: { name: string }) {
+  if (isSpreadsheetPath(name)) return <FileSpreadsheet size={15} />;
+  if (isPresentationPath(name)) return <Presentation size={15} />;
+  if (isOfficePath(name) || isPdf(name)) return <FileText size={15} />;
   return <FileImage size={15} />;
 }
 

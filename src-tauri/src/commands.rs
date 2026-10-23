@@ -93,15 +93,6 @@ pub struct AppInfo {
     pub name: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct RecentEntry {
-    pub path: String,
-    pub file_name: String,
-    pub tool: String,
-    pub timestamp: u64,
-}
-
 // ---------------------------------------------------------------------------
 // System commands
 // ---------------------------------------------------------------------------
@@ -1831,14 +1822,14 @@ pub async fn inspect_document(
 // Settings / recent files (paths + timestamps only, never content)
 // ---------------------------------------------------------------------------
 
-fn config_dir(app: &AppHandle) -> Result<PathBuf, PdfError> {
+pub(crate) fn config_dir(app: &AppHandle) -> Result<PathBuf, PdfError> {
     let dir = app.path().app_config_dir().map_err(|e| PdfError::Internal(format!("config dir unavailable: {e}")))?;
     std::fs::create_dir_all(&dir).map_err(PdfError::from_io)?;
     Ok(dir)
 }
 
 /// Reads a text file, tolerating a UTF-8 byte order mark (hand-edited files).
-fn read_config_text(path: &Path) -> Result<String, PdfError> {
+pub(crate) fn read_config_text(path: &Path) -> Result<String, PdfError> {
     let bytes = std::fs::read(path).map_err(PdfError::from_io)?;
     let text = String::from_utf8_lossy(bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&bytes)).to_string();
     Ok(text)
@@ -1869,47 +1860,6 @@ pub fn save_settings(app: AppHandle, settings: serde_json::Value) -> Result<(), 
     write_atomic(&path, text.as_bytes())
 }
 
-#[tauri::command]
-pub fn load_recent(app: AppHandle) -> Result<Vec<RecentEntry>, PdfError> {
-    let path = config_dir(&app)?.join("recent.json");
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let text = read_config_text(&path)?;
-    let mut entries: Vec<RecentEntry> = serde_json::from_str(&text).unwrap_or_default();
-    entries.retain(|e| Path::new(&e.path).exists());
-    entries.sort_by_key(|entry| std::cmp::Reverse(entry.timestamp));
-    entries.truncate(30);
-    Ok(entries)
-}
-
-#[tauri::command]
-pub fn add_recent(app: AppHandle, entry: RecentEntry) -> Result<(), PdfError> {
-    let path = config_dir(&app)?.join("recent.json");
-    let mut entries: Vec<RecentEntry> = if path.exists() {
-        read_config_text(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-    entries.retain(|e| e.path != entry.path);
-    entries.insert(0, entry);
-    entries.truncate(30);
-    let text =
-        serde_json::to_string(&entries).map_err(|e| PdfError::Internal(format!("recent serialize error: {e}")))?;
-    write_atomic(&path, text.as_bytes())
-}
-
-#[tauri::command]
-pub fn clear_recent(app: AppHandle) -> Result<(), PdfError> {
-    let path = config_dir(&app)?.join("recent.json");
-    if path.exists() {
-        std::fs::remove_file(&path).map_err(PdfError::from_io)?;
-    }
-    Ok(())
-}
-
-/// Checks whether an output path exists (drives the overwrite dialog). This is
-/// a probe for *absence*, so only the path shape is validated.
 #[tauri::command]
 pub fn output_exists(path: String) -> bool {
     crate::paths::lexical(&path).map(|validated| validated.as_path().exists()).unwrap_or(false)

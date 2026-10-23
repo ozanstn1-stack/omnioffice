@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import type { FileToken } from "./lib/file-tokens";
+import { pickDocumentTokens, type FileToken } from "./lib/file-tokens";
+import { extensionsFor } from "./lib/tool-files";
 import { openTokenDocument } from "./lib/file-refs";
 import { useDropTokens, useLaunchTokens } from "./lib/use-file-ref-events";
-import { open } from "@tauri-apps/plugin-dialog";
 import {
   Archive,
   BookOpen,
@@ -449,6 +449,26 @@ export default function App() {
     [screen],
   );
 
+  const openPickedRefs = useCallback(
+    (refs: FileToken[]) => {
+      if (!refs.length) return;
+      const office = refs.filter((ref) => isOfficePath(ref.name));
+      const documents = refs.filter((ref) => !isOfficePath(ref.name));
+      if (office.length > 0) {
+        setScreen("office");
+        for (const ref of office) void openOfficePath(ref.token);
+      }
+      if (!documents.length) return;
+      if (screen === "home" || office.length > 0) {
+        setFiles(documents.map((ref) => ref.token));
+        return;
+      }
+      const handler = useDrop.getState().handler;
+      if (handler) handler(documents.map((ref) => ref.token));
+    },
+    [screen],
+  );
+
   const pickFiles = useCallback(() => {
     if (isAndroid()) {
       void pickAndroidFiles({ multiple: true, accept: "any" })
@@ -456,42 +476,10 @@ export default function App() {
         .catch(() => undefined);
       return;
     }
-    void open({
-      multiple: true,
-      filters: [
-        {
-          name: "Documents",
-          extensions: [
-            "pdf",
-            "jpg",
-            "jpeg",
-            "png",
-            "webp",
-            "bmp",
-            "tif",
-            "tiff",
-            "docx",
-            "odt",
-            ...(flagEnabled("experimentalUdf") ? ["udf"] : []),
-            "rtf",
-            "txt",
-            "md",
-            "html",
-            "xlsx",
-            "ods",
-            "csv",
-            "tsv",
-            "pptx",
-            "odp",
-            "oswk",
-          ],
-        },
-      ],
-    }).then((picked) => {
-      if (!picked) return;
-      openPickedFiles((Array.isArray(picked) ? picked : [picked]).map(String));
-    });
-  }, [openPickedFiles]);
+    void pickDocumentTokens(extensionsFor("document"), true)
+      .then(openPickedRefs)
+      .catch(() => undefined);
+  }, [openPickedFiles, openPickedRefs]);
 
   // Retry routing for background jobs: one handler per tracked kind, so a
   // failed or interrupted job can be re-run from its persisted payload even
@@ -936,6 +924,7 @@ export default function App() {
           open={searchOpen}
           onClose={() => setSearchOpen(false)}
           onOpenPath={openAnyPath}
+          onOpenRecent={(entry) => openDocumentRef({ token: entry.token, name: entry.fileName })}
           onNavigate={(next) => setScreen(next as ScreenId)}
         />
       </div>
@@ -1031,6 +1020,7 @@ export default function App() {
         open={searchOpen}
         onClose={() => setSearchOpen(false)}
         onOpenPath={openAnyPath}
+        onOpenRecent={(entry) => openDocumentRef({ token: entry.token, name: entry.fileName })}
         onNavigate={(next) => setScreen(next as ScreenId)}
       />
     </div>
@@ -1070,7 +1060,7 @@ function OfficeLauncher({ kind, onOpen }: OfficeLauncherProps) {
   };
 
   const related = recent.filter((entry) =>
-    OFFICE_EXTENSIONS[kind].includes((entry.path.split(".").pop() ?? "").toLowerCase()),
+    OFFICE_EXTENSIONS[kind].includes((entry.fileName.split(".").pop() ?? "").toLowerCase()),
   );
 
   return (
@@ -1113,9 +1103,13 @@ function OfficeLauncher({ kind, onOpen }: OfficeLauncherProps) {
         {related.length === 0 ? <p className="muted">{t("converter.noFiles")}</p> : null}
         <div className="stack">
           {related.map((entry) => (
-            <button key={entry.path} type="button" className="row recent-row" onClick={() => void openPath(entry.path)}>
-              <span className="grow">{entry.path.split(/[\\/]/).pop()}</span>
-              <span className="muted">{entry.path}</span>
+            <button
+              key={entry.token}
+              type="button"
+              className="row recent-row"
+              onClick={() => void openPath(entry.token)}
+            >
+              <span className="grow">{entry.fileName}</span>
             </button>
           ))}
         </div>

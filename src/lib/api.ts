@@ -53,6 +53,7 @@ import type {
   ProgressPayload,
   SearchResponse,
   ProtectOptions,
+  RecentAdd,
   RecentEntry,
   RedactionArea,
   UpdateInfo,
@@ -687,7 +688,7 @@ export const inspectDocument = (path: string, password?: string) =>
 export const loadSettings = () => invoke<Partial<Settings>>("load_settings");
 export const saveSettings = (settings: Settings) => invoke<void>("save_settings", { settings });
 export const loadRecent = () => invoke<RecentEntry[]>("load_recent");
-export const addRecent = (entry: RecentEntry) => invoke<void>("add_recent", { entry });
+export const addRecent = (entry: RecentAdd) => invoke<void>("add_recent", { entry });
 export const clearRecent = () => invoke<void>("clear_recent");
 
 /** Vault scan: tracked so a failed/interrupted scan can be retried from Jobs. */
