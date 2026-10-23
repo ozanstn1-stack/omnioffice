@@ -561,7 +561,7 @@ export function rememberOfficePath(path: string): void {
 export async function openOfficePath(path: string): Promise<OpenPathResult> {
   try {
     const result = await api.openDocument(path);
-    rememberOfficePath(path);
+    rememberOfficePath(result.path);
     const id = useOfficeTabs.getState().open({
       kind: result.kind,
       title: result.title || path.split(/[\\/]/).pop() || "Document",

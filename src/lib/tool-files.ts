@@ -44,6 +44,14 @@ export function tokenEntries(refs: FileToken[], sizes: Array<number | null>): Se
   }));
 }
 
-export function pathEntries(paths: string[], sizes: Array<number | null>): SelectedFile[] {
-  return paths.map((path, index) => ({ path, name: fileBaseName(path), sizeBytes: sizes[index] ?? 0 }));
+export function pathEntries(
+  paths: string[],
+  sizes: Array<number | null>,
+  names?: Array<string | null>,
+): SelectedFile[] {
+  return paths.map((path, index) => ({
+    path,
+    name: names?.[index] ?? fileBaseName(path),
+    sizeBytes: sizes[index] ?? 0,
+  }));
 }

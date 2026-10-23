@@ -2447,8 +2447,8 @@ mod tests {
 /// Files passed on the command line (Windows file associations / "Open with").
 /// Only existing file paths are returned; anything else is ignored.
 #[tauri::command]
-pub fn office_startup_files() -> Vec<String> {
-    crate::launch::launch_files(std::env::args(), None)
+pub fn office_startup_files() -> Vec<crate::files::FileRef> {
+    crate::launch::startup_tokens(std::env::args())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

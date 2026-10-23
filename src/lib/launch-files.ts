@@ -1,4 +1,5 @@
 import { onLaunchFilesQueued, startupFiles, takeLaunchFiles } from "./api";
+import type { FileToken } from "./file-tokens";
 
 /**
  * Delivers every document the OS handed to the app: the files on the command
@@ -11,11 +12,11 @@ import { onLaunchFilesQueued, startupFiles, takeLaunchFiles } from "./api";
  * after listening starts, so nothing queued earlier is missed. Returns the
  * cleanup function.
  */
-export function watchLaunchFiles(deliver: (paths: string[]) => void): () => void {
+export function watchLaunchFiles(deliver: (refs: FileToken[]) => void): () => void {
   let cancelled = false;
   let unlisten: (() => void) | undefined;
-  const hand = (paths: string[]) => {
-    if (!cancelled && paths.length > 0) deliver(paths);
+  const hand = (refs: FileToken[]) => {
+    if (!cancelled && refs.length > 0) deliver(refs);
   };
   const drain = () => {
     void takeLaunchFiles()
