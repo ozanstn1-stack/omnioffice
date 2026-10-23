@@ -236,22 +236,21 @@ export function History({ onNavigate }: { onNavigate: Navigate }) {
             </thead>
             <tbody>
               {entries.map((entry) => (
-                <tr key={entry.path}>
+                <tr key={entry.token}>
                   <td>
-                    <p className="font-medium truncate max-w-[520px]" title={entry.path}>
+                    <p className="font-medium truncate max-w-[520px]" title={entry.fileName}>
                       {entry.fileName}
                     </p>
-                    <p className="text-xs muted truncate max-w-[520px]">{entry.path}</p>
                   </td>
                   <td>
                     <div className="flex gap-1.5">
                       <Button
                         size="sm"
                         onClick={() => {
-                          if (isPdf(entry.path)) {
-                            onNavigate("reader", { files: [entry.path] });
+                          if (isPdf(entry.fileName)) {
+                            onNavigate("reader", { files: [entry.token] });
                           } else {
-                            void openAnyFile(entry.path).catch(() => undefined);
+                            void openAnyFile(entry.token).catch(() => undefined);
                           }
                         }}
                       >
@@ -261,7 +260,7 @@ export function History({ onNavigate }: { onNavigate: Navigate }) {
                         size="sm"
                         variant="ghost"
                         icon={<FolderOpen size={13} />}
-                        onClick={() => void revealAnyFile(entry.path).catch(() => undefined)}
+                        onClick={() => void revealAnyFile(entry.token).catch(() => undefined)}
                       />
                     </div>
                   </td>

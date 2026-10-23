@@ -16,6 +16,7 @@ import {
   type EngineStatus,
   type OcrLanguage,
   type ProgressPayload,
+  type RecentAdd,
   type RecentEntry,
   type Settings,
 } from "./types";
@@ -45,8 +46,7 @@ export const useSettings = create<SettingsState>((set, get) => ({
       const upgraded = Object.keys(stored).length > 0;
       const settings: Settings = { ...DEFAULT_SETTINGS, onboardingDone: upgraded, ...stored };
       if (!upgraded) {
-        // First run: follow the operating system language, so a Turkish
-        // Windows starts with the Turkish interface and Turkish OCR.
+        // First run: follow the OS language (Turkish Windows, Turkish UI/OCR).
         const osLanguage = typeof navigator !== "undefined" ? navigator.language : "";
         if (/^tr\b/i.test(osLanguage)) {
           settings.language = "tr";
@@ -174,7 +174,7 @@ export function useJobProgress(jobId: string): ProgressPayload | null {
 interface RecentState {
   entries: RecentEntry[];
   refresh: () => Promise<void>;
-  add: (entry: RecentEntry) => Promise<void>;
+  add: (entry: RecentAdd) => Promise<void>;
   clear: () => Promise<void>;
 }
 

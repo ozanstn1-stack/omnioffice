@@ -106,12 +106,7 @@ export interface ProgressPayload {
   message?: string;
 }
 
-export interface RecentEntry {
-  path: string;
-  fileName: string;
-  tool: string;
-  timestamp: number;
-}
+export type { RecentAdd, RecentEntry } from "./recent-types";
 
 export interface SplitPart {
   path: string;

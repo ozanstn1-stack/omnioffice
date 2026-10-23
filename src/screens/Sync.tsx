@@ -175,16 +175,16 @@ export function Sync() {
 
   const enabled = Boolean(config?.enabled);
 
-  // Local .oswk documents: recent files (most common flow) plus anything the
-  // user added with the picker in this session. Capped so a long history
-  // cannot turn status refreshing into a batch job.
+  // Local .oswk documents: recents first, then files added this session.
+  const recentNames = useMemo(() => new Map(recent.map((entry) => [entry.token, entry.fileName])), [recent]);
+
   const tracked = useMemo(() => {
     const seen = new Set<string>();
     const list: string[] = [];
     for (const entry of recent) {
-      if (!isOswkPath(entry.path) || seen.has(entry.path)) continue;
-      seen.add(entry.path);
-      list.push(entry.path);
+      if (!isOswkPath(entry.fileName) || seen.has(entry.token)) continue;
+      seen.add(entry.token);
+      list.push(entry.token);
       if (list.length >= 25) break;
     }
     for (const path of added) {
@@ -798,7 +798,7 @@ export function Sync() {
                     const row = rows[path] ?? { kind: "idle" as const };
                     const view = row.kind === "ready" ? row.view : null;
                     const state: SyncStateId | null = view?.state ?? null;
-                    const fileName = path.split(/[\\/]/).pop() ?? path;
+                    const fileName = recentNames.get(path) ?? path.split(/[\\/]/).pop() ?? path;
                     const isSelected = selected === path;
                     return (
                       <div

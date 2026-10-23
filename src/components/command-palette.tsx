@@ -11,6 +11,7 @@ import { Command as CommandIcon, FileText, Search } from "lucide-react";
 import { runCommand, searchCommands, type CommandDefinition, type CommandContext } from "../lib/commands";
 import { errorMessage, useRecent } from "../lib/store";
 import { useT } from "../lib/i18n";
+import type { RecentEntry } from "../lib/types";
 
 interface VaultHit {
   documentId: string;
@@ -56,8 +57,7 @@ function CommandPaletteBody({
   const [index, setIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // The body mounts fresh on every open, so "reset and focus" is its initial
-  // state plus one focus effect instead of a setState cascade.
+  // The body mounts fresh on every open: reset is its initial state.
   useEffect(() => {
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, []);
@@ -135,24 +135,30 @@ export function GlobalSearch({
   open,
   onClose,
   onOpenPath,
+  onOpenRecent,
   onNavigate,
 }: {
   open: boolean;
   onClose: () => void;
   onOpenPath: (path: string) => void;
+  onOpenRecent: (entry: RecentEntry) => void;
   onNavigate?: (screen: string) => void;
 }) {
   if (!open) return null;
-  return <GlobalSearchBody onClose={onClose} onOpenPath={onOpenPath} onNavigate={onNavigate} />;
+  return (
+    <GlobalSearchBody onClose={onClose} onOpenPath={onOpenPath} onOpenRecent={onOpenRecent} onNavigate={onNavigate} />
+  );
 }
 
 function GlobalSearchBody({
   onClose,
   onOpenPath,
+  onOpenRecent,
   onNavigate,
 }: {
   onClose: () => void;
   onOpenPath: (path: string) => void;
+  onOpenRecent: (entry: RecentEntry) => void;
   onNavigate?: (screen: string) => void;
 }) {
   const t = useT();
@@ -163,16 +169,14 @@ function GlobalSearchBody({
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // The body mounts fresh on every open, so the reset is just its initial
-  // state; only the autofocus needs an effect.
+  // The body mounts fresh on every open; only autofocus needs an effect.
   useEffect(() => {
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, []);
 
   useEffect(() => {
     if (query.trim().length < 2) {
-      // Nothing to search: the derived view below already shows no hits, so
-      // no state needs clearing here.
+      // Nothing to search: the derived view already shows no hits.
       return;
     }
     let cancelled = false;
@@ -207,9 +211,7 @@ function GlobalSearchBody({
   const fileHits = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return recent.slice(0, 8);
-    return recent
-      .filter((entry) => entry.fileName.toLowerCase().includes(needle) || entry.path.toLowerCase().includes(needle))
-      .slice(0, 10);
+    return recent.filter((entry) => entry.fileName.toLowerCase().includes(needle)).slice(0, 10);
   }, [query, recent]);
 
   return (
@@ -255,18 +257,16 @@ function GlobalSearchBody({
           {fileHits.length > 0 ? <p className="palette-section">{t("search.files")}</p> : null}
           {fileHits.map((entry) => (
             <button
-              key={entry.path}
+              key={entry.token}
               type="button"
               className="palette-row"
               onClick={() => {
                 onClose();
-                onOpenPath(entry.path);
+                onOpenRecent(entry);
               }}
             >
               <FileText size={13} />
               <span className="palette-title">{entry.fileName}</span>
-              <span className="spacer" />
-              <span className="muted small truncate">{entry.path}</span>
             </button>
           ))}
 

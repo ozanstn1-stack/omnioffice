@@ -45,7 +45,7 @@ const invoke = vi.fn(async (command: string, payload?: unknown) => {
     case "oauth_status":
       return [];
     case "load_recent":
-      return [{ path: "C:/docs/report.oswk", fileName: "report.oswk", tool: "_office", timestamp: 1_700_000_000 }];
+      return [{ token: "C:/docs/report.oswk", fileName: "report.oswk", tool: "_office", timestamp: 1_700_000_000 }];
     case "sync_status":
       return view("synced");
     case "sync_delete_remote":

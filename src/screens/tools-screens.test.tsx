@@ -22,9 +22,9 @@ const invoke = vi.fn(async (command: string, _payload?: unknown) => {
       return null;
     case "load_recent":
       return [
-        { path: "C:/docs/report.pdf", fileName: "report.pdf", tool: "_merged", timestamp: 1_700_000_000 },
-        { path: "C:/docs/notes.txt", fileName: "notes.txt", tool: "_info", timestamp: 1_700_000_100 },
-        { path: "C:/docs/budget.xlsx", fileName: "budget.xlsx", tool: "_office", timestamp: 1_700_000_200 },
+        { token: "C:/docs/report.pdf", fileName: "report.pdf", tool: "_merged", timestamp: 1_700_000_000 },
+        { token: "C:/docs/notes.txt", fileName: "notes.txt", tool: "_info", timestamp: 1_700_000_100 },
+        { token: "C:/docs/budget.xlsx", fileName: "budget.xlsx", tool: "_office", timestamp: 1_700_000_200 },
       ];
     case "clear_recent":
       return null;

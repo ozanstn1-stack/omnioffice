@@ -31,6 +31,7 @@ mod office_tools;
 mod paths;
 mod pdf_v3;
 mod plugin;
+mod recent;
 mod recipes;
 mod secret;
 mod sign;
@@ -272,9 +273,9 @@ pub fn run() {
             commands::inspect_document,
             commands::load_settings,
             commands::save_settings,
-            commands::load_recent,
-            commands::add_recent,
-            commands::clear_recent,
+            recent::load_recent,
+            recent::add_recent,
+            recent::clear_recent,
             commands::output_exists,
             commands::ensure_dir,
             commands::suggest_output,
