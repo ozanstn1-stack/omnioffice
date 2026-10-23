@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { pickDirectoryToken, pickDocumentToken } from "../lib/file-tokens";
 import { FileSpreadsheet, FileText, Play } from "lucide-react";
 import { Button, Card, Field, Segmented, TextInput } from "../components/ui";
 import { Screen } from "../components/layout";
@@ -20,14 +20,28 @@ export function MailMerge() {
   const [nameField, setNameField] = useState("");
   const [report, setReport] = useState<MailMergeReport | null>(null);
   const [busy, setBusy] = useState(false);
+  const [templateLabel, setTemplateLabel] = useState("");
+  const [dataLabel, setDataLabel] = useState("");
+  const [dirLabel, setDirLabel] = useState("");
 
-  const pick = async (setter: (value: string) => void, extensions: string[], directory = false) => {
-    const picked = await openDialog({
-      multiple: false,
-      directory,
-      filters: directory ? undefined : [{ name: t("mailMerge.filter"), extensions }],
-    });
-    if (typeof picked === "string") setter(picked);
+  const pickDocument = async (
+    setter: (value: string) => void,
+    label: (value: string) => void,
+    extensions: string[],
+  ) => {
+    const picked = await pickDocumentToken(extensions).catch(() => null);
+    if (picked) {
+      setter(picked.token);
+      label(picked.name);
+    }
+  };
+
+  const pickDirectory = async (setter: (value: string) => void, label: (value: string) => void) => {
+    const picked = await pickDirectoryToken().catch(() => null);
+    if (picked) {
+      setter(picked.token);
+      label(picked.name);
+    }
   };
 
   const run = async () => {
@@ -57,24 +71,50 @@ export function MailMerge() {
         <Card className="p-5 flex flex-col gap-3">
           <Field label={t("mailMerge.template")} hint={t("mailMerge.templateHint")}>
             <div className="flex items-center gap-2">
-              <TextInput value={template} onChange={(event) => setTemplate(event.target.value)} />
-              <Button size="sm" variant="ghost" onClick={() => void pick(setTemplate, ["docx", "odt"])}>
+              <TextInput
+                value={templateLabel || template}
+                onChange={(event) => {
+                  setTemplateLabel("");
+                  setTemplate(event.target.value);
+                }}
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void pickDocument(setTemplate, setTemplateLabel, ["docx", "odt"])}
+              >
                 <FileText size={14} />
               </Button>
             </div>
           </Field>
           <Field label={t("mailMerge.data")} hint={t("mailMerge.dataHint")}>
             <div className="flex items-center gap-2">
-              <TextInput value={data} onChange={(event) => setData(event.target.value)} />
-              <Button size="sm" variant="ghost" onClick={() => void pick(setData, ["csv", "tsv", "txt"])}>
+              <TextInput
+                value={dataLabel || data}
+                onChange={(event) => {
+                  setDataLabel("");
+                  setData(event.target.value);
+                }}
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void pickDocument(setData, setDataLabel, ["csv", "tsv", "txt"])}
+              >
                 <FileSpreadsheet size={14} />
               </Button>
             </div>
           </Field>
           <Field label={t("mailMerge.outputDir")}>
             <div className="flex items-center gap-2">
-              <TextInput value={outputDir} onChange={(event) => setOutputDir(event.target.value)} />
-              <Button size="sm" variant="ghost" onClick={() => void pick(setOutputDir, [], true)}>
+              <TextInput
+                value={dirLabel || outputDir}
+                onChange={(event) => {
+                  setDirLabel("");
+                  setOutputDir(event.target.value);
+                }}
+              />
+              <Button size="sm" variant="ghost" onClick={() => void pickDirectory(setOutputDir, setDirLabel)}>
                 {t("mailMerge.choose")}
               </Button>
             </div>

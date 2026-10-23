@@ -130,3 +130,17 @@ fn read_input_file_rejects_a_symlink_swap() {
     // single-threaded test cannot trigger. Assert it reads the target.
     assert_eq!(read_input_file(link.to_str().unwrap(), 4096).unwrap(), b"%PDF real");
 }
+
+#[test]
+fn debug_builds_accept_raw_paths() {
+    // Unit tests run with debug assertions; Android and debug/E2E builds also
+    // accept raw paths. Release desktop builds require a file token.
+    assert!(crate::paths_policy::raw_paths_allowed());
+    assert_eq!(crate::paths_policy::raw_paths_allowed(), cfg!(any(debug_assertions, target_os = "android")));
+}
+
+#[test]
+fn raw_path_rejection_names_tokens() {
+    let error = PdfError::InvalidInput(crate::paths_policy::RAW_PATH_ERROR.to_string());
+    assert!(error.to_string().contains("file token"));
+}

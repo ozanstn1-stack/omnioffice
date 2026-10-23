@@ -30,6 +30,7 @@ mod oauth;
 mod office;
 mod office_tools;
 mod paths;
+mod paths_policy;
 mod paths_read;
 mod pdf_v3;
 mod plugin;
