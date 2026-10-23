@@ -24,9 +24,9 @@ token cannot outlive the process and the settings store must survive restarts:
 - Vault root folders (`src/screens/Vault.tsx`).
 - AI settings and AI library folder (`src/components/ai-settings.tsx`,
   `src/screens/AiLibrary.tsx`).
-- MailMerge template/data fields are free-text path inputs; the picker fills
-  the field and the Rust command resolves the text. A token would be opaque in
-  an editable text field, so these fields stay path-based.
+- MailMerge picks a template, data file and output folder with tokens; the
+  editable fields show the picked display name and keep accepting a manual
+  path only in debug/Android builds (release desktop requires a pick).
 
 Android keeps its SAF path bridge (`src/lib/mobile.ts`) for the same reason:
 the platform hands out cache copies, not durable document paths.
