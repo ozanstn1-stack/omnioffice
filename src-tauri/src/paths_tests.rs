@@ -44,6 +44,19 @@ fn nul_and_control_characters_are_refused() {
 }
 
 #[test]
+fn a_directory_token_resolves_through_the_directory_validator() {
+    let dir = scratch_dir().join("token-dir");
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let reference = crate::file_dirs::issue_dir(&dir);
+    assert_eq!(directory(&reference.token).unwrap().as_path(), dir);
+    let file = dir.join("a.pdf");
+    std::fs::write(&file, b"%PDF").expect("write");
+    let file_ref = crate::files::issue(&file, crate::files::FileAccess::Read);
+    assert!(directory(&file_ref.token).is_err(), "a file token is not a folder");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn output_requires_an_existing_parent_folder() {
     let dir = scratch_dir();
     let target = dir.join("out.pdf");

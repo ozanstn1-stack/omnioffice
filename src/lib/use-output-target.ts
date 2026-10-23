@@ -15,10 +15,14 @@ export interface OutputTarget {
   outputPath: string;
   outputToken: string;
   outputDir: string;
+  /** Directory token for the folder-writing tools (PDF to images, split). */
+  outputDirToken: string;
   setOutputPath: (value: string) => void;
   setOutputDir: (value: string) => void;
   /** A save target picked in the Rust dialog: token for the command, path for the UI. */
   setOutputTarget: (target: { token: string; path: string }) => void;
+  /** A folder picked in the Rust dialog: token for the command, path for the UI. */
+  setDirectoryTarget: (target: { token: string; path: string }) => void;
 }
 
 export function useOutputTarget(options: {
@@ -32,6 +36,7 @@ export function useOutputTarget(options: {
   const [outputPath, setOutputPath] = useState("");
   const [outputToken, setOutputToken] = useState("");
   const [outputDir, setOutputDir] = useState("");
+  const [outputDirToken, setOutputDirToken] = useState("");
 
   useEffect(() => {
     if (!input) {
@@ -39,6 +44,7 @@ export function useOutputTarget(options: {
       setOutputPath("");
       setOutputToken("");
       setOutputDir("");
+      setOutputDirToken("");
       return;
     }
     let cancelled = false;
@@ -92,11 +98,19 @@ export function useOutputTarget(options: {
     outputPath,
     outputToken,
     outputDir,
+    outputDirToken,
     setOutputPath,
-    setOutputDir,
+    setOutputDir: (value: string) => {
+      setOutputDirToken("");
+      setOutputDir(value);
+    },
     setOutputTarget: (target: { token: string; path: string }) => {
       setOutputToken(target.token);
       setOutputPath(target.path);
+    },
+    setDirectoryTarget: (target: { token: string; path: string }) => {
+      setOutputDirToken(target.token);
+      setOutputDir(target.path);
     },
   };
 }

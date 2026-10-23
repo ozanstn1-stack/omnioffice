@@ -71,7 +71,7 @@ function PdfToImages({ initialFiles, dragging }: { initialFiles?: string[]; drag
     session.run(async (jobId, overwrite) => {
       const result = await pdfToImages({
         input: session.primary?.path ?? "",
-        outputDir: session.outputDir || session.outputPath.replace(/[^\\/]*$/, ""),
+        outputDir: session.outputDirToken || session.outputDir || session.outputPath.replace(/[^\\/]*$/, ""),
         format,
         dpi,
         jpegQuality: quality,

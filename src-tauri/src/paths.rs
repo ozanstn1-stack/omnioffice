@@ -24,7 +24,6 @@
 //! already-open handle.
 
 use pdfcore::error::PdfError;
-use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
 /// A filesystem path that passed [`input_file`], [`output_file`] or
@@ -219,54 +218,24 @@ pub fn lexical(raw: &str) -> Result<ValidatedPath, PdfError> {
 /// Validates a directory path coming from the webview. It must be absolute and
 /// already exist as a directory.
 pub fn directory(raw: &str) -> Result<ValidatedPath, PdfError> {
-    let path = normalize(raw)?;
+    if let Some(resolved) = crate::files::lookup(raw, crate::files::FileAccess::ReadWrite) {
+        let path = resolved.map_err(PdfError::InvalidInput)?;
+        return validate_directory_path(&path);
+    }
+    validate_directory_path(normalize(raw)?)
+}
+
+fn validate_directory_path(path: &Path) -> Result<ValidatedPath, PdfError> {
     if !path.exists() {
-        return Err(PdfError::NotFound(raw.to_string()));
+        return Err(PdfError::NotFound(path.display().to_string()));
     }
     if !path.is_dir() {
-        return Err(PdfError::InvalidInput(format!("not a folder: {raw}")));
+        return Err(PdfError::InvalidInput(format!("not a folder: {}", path.display())));
     }
     Ok(ValidatedPath(path.to_path_buf()))
 }
 
-/// Reads an input file after validating the *opened* handle.
-///
-/// The path is validated lexically first, then the file is opened and its
-/// metadata is read from the handle. On Unix a symlink swap between the check
-/// and the open is closed by comparing the handle metadata against the path
-/// metadata; the remaining Windows limitation (no `O_NOFOLLOW`) is documented
-/// and covered by the lexical rules above.
-pub fn read_input_file(raw: &str, max_bytes: u64) -> Result<Vec<u8>, PdfError> {
-    let validated = input_file(raw)?;
-    let mut file = std::fs::File::open(validated.as_path()).map_err(PdfError::from_io)?;
-    let handle_meta = file.metadata().map_err(PdfError::from_io)?;
-    if !handle_meta.is_file() {
-        return Err(PdfError::InvalidInput(format!("not a file: {raw}")));
-    }
-    if handle_meta.len() > max_bytes {
-        return Err(PdfError::InvalidInput(format!(
-            "the file is larger than the {max_bytes} byte safety limit: {raw}"
-        )));
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        let path_meta = std::fs::metadata(validated.as_path()).map_err(PdfError::from_io)?;
-        if handle_meta.dev() != path_meta.dev() || handle_meta.ino() != path_meta.ino() {
-            return Err(PdfError::InvalidInput(
-                "the file changed between validation and open (possible symlink swap)".to_string(),
-            ));
-        }
-    }
-    let mut bytes = Vec::with_capacity(handle_meta.len().min(max_bytes) as usize);
-    file.read_to_end(&mut bytes).map_err(PdfError::from_io)?;
-    if bytes.len() as u64 > max_bytes {
-        return Err(PdfError::InvalidInput(format!(
-            "the file grew past the {max_bytes} byte safety limit while reading: {raw}"
-        )));
-    }
-    Ok(bytes)
-}
+pub use crate::paths_read::read_input_file;
 
 #[cfg(test)]
 #[path = "paths_tests.rs"]

@@ -24,6 +24,9 @@ export const pickDocumentToken = async (extensions?: string[]): Promise<FileToke
   return picked[0] ?? null;
 };
 
+/** Opens the native folder dialog; the token allows writing into the folder. */
+export const pickDirectoryToken = () => invoke<FileToken | null>("file_token_pick_directory");
+
 /** Opens the native save dialog; the token allows writing to the target. */
 export const pickSaveToken = async (name?: string, extensions?: string[]): Promise<FileToken | null> => {
   const picked = await invoke<FileToken[]>("file_token_save", { name, extensions });

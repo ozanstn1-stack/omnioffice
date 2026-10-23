@@ -56,6 +56,9 @@ export interface ToolSession {
   setOutputPath: (value: string) => void;
   /** Save target from the Rust dialog: token for the command, path for display. */
   setOutputTarget: (target: { token: string; path: string }) => void;
+  /** Folder token for multi-output tools. */
+  outputDirToken: string;
+  setDirectoryTarget: (target: { token: string; path: string }) => void;
   outputDir: string;
   setOutputDir: (value: string) => void;
   overwrite: OverwriteMode;
@@ -261,7 +264,7 @@ export function useTool(options: ToolOptions): ToolSession {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [primary?.path, loadInfo]);
 
-  const { outputPath, outputToken, outputDir, setOutputPath, setOutputDir, setOutputTarget } = useOutputTarget({
+  const output = useOutputTarget({
     input: primary?.path ?? null,
     suffix,
     accept,
@@ -361,7 +364,7 @@ export function useTool(options: ToolOptions): ToolSession {
           const appError = toAppError(err);
           if (appError.code === "output_exists") {
             const match = /already exists:\s*(.*)$/i.exec(appError.message);
-            const targetName = match?.[1] ? fileBaseName(match[1].trim()) : fileBaseName(outputPath) || "output";
+            const targetName = match?.[1] ? fileBaseName(match[1].trim()) : fileBaseName(output.outputPath) || "output";
             const choice = await useOverwritePrompt.getState().ask(targetName);
             if (choice && choice !== "error") {
               setOverwrite(choice);
@@ -378,7 +381,7 @@ export function useTool(options: ToolOptions): ToolSession {
 
       await execute(overwrite);
     },
-    [addRecentEntry, jobId, outputPath, overwrite, publish, suffix, t],
+    [addRecentEntry, jobId, output.outputPath, overwrite, publish, suffix, t],
   );
 
   const cancel = useCallback(() => {
@@ -389,10 +392,10 @@ export function useTool(options: ToolOptions): ToolSession {
     (mode?: OverwriteMode, path?: string): OutputSpec => ({
       // Single-output tools send the capability token; multi-output folders
       // (and Android staging) keep the path.
-      path: path ?? outputToken ?? outputPath,
+      path: path ?? output.outputToken ?? output.outputPath,
       overwrite: mode ?? overwrite,
     }),
-    [outputPath, outputToken, overwrite],
+    [output, overwrite],
   );
 
   const resetResult = useCallback(() => setResult(null), []);
@@ -410,11 +413,7 @@ export function useTool(options: ToolOptions): ToolSession {
     removeFile,
     moveFile,
     clearFiles,
-    outputPath,
-    setOutputPath,
-    setOutputTarget,
-    outputDir,
-    setOutputDir,
+    ...output,
     overwrite,
     setOverwrite,
     outputSpec,

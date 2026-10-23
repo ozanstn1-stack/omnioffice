@@ -1,7 +1,7 @@
 //! OmniOffice - Tauri application shell.
 //!
-//! The heavy lifting lives in the `pdfcore` crate; this layer only wires
-//! commands, progress events, cancellation and engine discovery.
+//! The heavy lifting lives in `pdfcore`; this layer wires commands, events,
+//! cancellation and engine discovery.
 
 mod ai;
 #[cfg(target_os = "android")]
@@ -19,6 +19,7 @@ mod commands;
 mod concurrency;
 mod crash_log;
 mod diagnostics;
+mod file_dirs;
 mod files;
 mod jobs;
 mod launch;
@@ -29,6 +30,7 @@ mod oauth;
 mod office;
 mod office_tools;
 mod paths;
+mod paths_read;
 mod pdf_v3;
 mod plugin;
 mod recent;
@@ -48,8 +50,7 @@ pub mod worker;
 use jobs::{JobRegistry, JobStore};
 use tauri::Manager;
 
-/// Brings the main window to the front, for a launch that was forwarded to the
-/// running instance (it may be minimized or sit behind other windows).
+/// Brings the main window to the front for a forwarded launch (it may be hidden).
 #[cfg(desktop)]
 fn focus_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -59,9 +60,8 @@ fn focus_main_window(app: &tauri::AppHandle) {
     }
 }
 
-/// Single instance (desktop): a second launch, for example another document
-/// opened from Explorer, never starts a second app. Its arguments are queued
-/// for the frontend (see launch.rs) and the running window is focused.
+/// Single instance: a second launch never starts a second app; its arguments
+/// are queued for the frontend (launch.rs) and the running window is focused.
 #[cfg(desktop)]
 fn single_instance_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
     use tauri::Emitter;
@@ -77,8 +77,7 @@ fn single_instance_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
     })
 }
 
-/// Hands the app log directory to the panic hook as soon as plugins are set
-/// up, which is before the setup hook and the first window.
+/// Hands the log directory to the panic hook before the first window exists.
 fn crash_log_dir_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
     tauri::plugin::Builder::<tauri::Wry>::new("omnioffice-crash-log")
         .setup(|app, _api| {
@@ -224,6 +223,7 @@ pub fn run() {
             files::file_token_save,
             files::file_token_release,
             files::file_names,
+            file_dirs::file_token_pick_directory,
             commands::cancel_job,
             jobs::jobs_list,
             jobs::jobs_clear_finished,
