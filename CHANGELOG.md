@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.6] - Dizin jetonları (directory tokens)
+
+### Changed
+
+- **Folder outputs use directory tokens (#337 / PR #368):** the native folder
+  dialog registers the folder as a read-write token (`issue_dir`), and
+  `paths::directory` resolves tokens like the file validators. The OutputBar
+  folder Browse stores the token beside the display path; Split, Convert and
+  Batch send it to the multi-output commands. The OutputBar **file** Browse now
+  also uses the Rust save dialog token (the v6.1.4 wiring fix). On Android the
+  native folder dialog stays SAF-based (desktop-only command).
+
 ## [6.1.5] - ODT yazıcısı ayrıldı (ODT writer split)
 
 ### Changed
