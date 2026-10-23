@@ -30,3 +30,6 @@ export const pickSaveToken = async (name?: string, extensions?: string[]): Promi
 
 /** Forgets a token when the document or save target is closed. */
 export const releaseFileToken = (token: string) => invoke<boolean>("file_token_release", { token });
+
+/** Display names for values that may be tokens or paths (never a path for tokens). */
+export const displayNames = (values: string[]) => invoke<(string | null)[]>("file_names", { values });

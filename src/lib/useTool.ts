@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { appDataDir } from "@tauri-apps/api/path";
 import { cancelJob, fileSizes, logOperation, pdfInfo, suggestOutput, toAppError } from "./api";
-import { releaseFileToken, type FileToken } from "./file-tokens";
+import { displayNames, releaseFileToken, type FileToken } from "./file-tokens";
 import { acceptsFile, pathEntries, pickDesktopFiles, tokenEntries } from "./tool-files";
 import { dirName, fileBaseName, fileStem, isPdf, joinPath, uid } from "./format";
 import { isAndroid, pickAndroidFiles, publishOutputs, type PublishTarget } from "./mobile";
@@ -145,7 +145,7 @@ export function useTool(options: ToolOptions): ToolSession {
         return;
       }
       const sizes = await fileSizes(filtered).catch(() => filtered.map(() => null));
-      const entries = pathEntries(filtered, sizes);
+      const entries = pathEntries(filtered, sizes, await displayNames(filtered).catch(() => filtered.map(() => null)));
       setResult(null);
       setError(null);
       setFiles((previous) => (multiple ? [...previous, ...entries] : entries.slice(0, 1)));

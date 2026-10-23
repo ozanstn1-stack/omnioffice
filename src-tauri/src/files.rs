@@ -121,6 +121,31 @@ pub fn file_token_release(token: String) -> bool {
     revoke(&token)
 }
 
+/// Display names for values that may be tokens or plain paths. The webview
+/// only ever needs the name, never the path behind a token.
+#[tauri::command]
+pub fn file_names(values: Vec<String>) -> Vec<Option<String>> {
+    values
+        .iter()
+        .map(|value| {
+            let path = lookup(value, FileAccess::Read)
+                .and_then(|resolved| resolved.ok())
+                .unwrap_or_else(|| PathBuf::from(value));
+            path.file_name().map(|name| name.to_string_lossy().into_owned())
+        })
+        .collect()
+}
+
+/// Registers the paths of a window drop and emits only the tokens. Called from
+/// the window event handler so the app code never receives the paths.
+pub fn emit_drop_tokens<R: tauri::Runtime>(window: &tauri::Window<R>, paths: &[PathBuf]) {
+    let refs: Vec<FileRef> =
+        paths.iter().filter(|path| path.is_file()).map(|path| issue(path, FileAccess::Read)).collect();
+    if !refs.is_empty() {
+        let _ = tauri::Emitter::emit(window, "file-drop", refs);
+    }
+}
+
 enum PickMode {
     Open { multiple: bool },
     Save { name: Option<String> },
@@ -196,55 +221,5 @@ async fn await_paths(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn temp_file(label: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("pdfsak-token-{label}-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).expect("temp dir");
-        let file = dir.join(format!("{label}.pdf"));
-        std::fs::write(&file, b"%PDF-1.7\n").expect("temp file");
-        file
-    }
-
-    #[test]
-    fn a_token_resolves_to_the_registered_path_and_keeps_only_the_name() {
-        let path = temp_file("resolve");
-        let issued = issue(&path, FileAccess::Read);
-        assert!(issued.name.ends_with("resolve.pdf"));
-        assert!(!issued.name.contains(std::path::MAIN_SEPARATOR));
-        assert_eq!(resolve(&issued.token, FileAccess::Read).expect("resolve"), path);
-        std::fs::remove_dir_all(path.parent().unwrap()).ok();
-    }
-
-    #[test]
-    fn a_read_token_cannot_be_used_for_writing() {
-        let path = temp_file("readonly");
-        let issued = issue(&path, FileAccess::Read);
-        assert!(resolve(&issued.token, FileAccess::ReadWrite).is_err());
-        let writable = issue(&path, FileAccess::ReadWrite);
-        assert_eq!(resolve(&writable.token, FileAccess::Read).expect("read via rw"), path);
-        assert_eq!(resolve(&writable.token, FileAccess::ReadWrite).expect("write"), path);
-        std::fs::remove_dir_all(path.parent().unwrap()).ok();
-    }
-
-    #[test]
-    fn releasing_a_token_invalidates_it() {
-        let path = temp_file("release");
-        let issued = issue(&path, FileAccess::Read);
-        assert!(revoke(&issued.token));
-        assert!(resolve(&issued.token, FileAccess::Read).is_err());
-        assert!(!revoke(&issued.token), "a second release is a no-op");
-        std::fs::remove_dir_all(path.parent().unwrap()).ok();
-    }
-
-    #[test]
-    fn unknown_tokens_are_rejected_and_issued_tokens_are_unique() {
-        assert!(resolve("not-a-token", FileAccess::Read).is_err());
-        let path = temp_file("unique");
-        let first = issue(&path, FileAccess::Read);
-        let second = issue(&path, FileAccess::Read);
-        assert_ne!(first.token, second.token);
-        std::fs::remove_dir_all(path.parent().unwrap()).ok();
-    }
-}
+#[path = "files_tests.rs"]
+mod tests;

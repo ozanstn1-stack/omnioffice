@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { FileToken } from "./file-tokens";
 import type {
   AiAskRequest,
   AiBatchRequest,
@@ -109,9 +110,7 @@ export const cancelJob = (jobId: string) => invoke<void>("cancel_job", { jobId }
 export const onProgress = (handler: (payload: ProgressPayload) => void): Promise<UnlistenFn> =>
   listen<ProgressPayload>("job:progress", (event) => handler(event.payload));
 
-// ---------------------------------------------------------------------------
-// AI (DeepSeek) - the only network feature, opt-in with the user's own key
-// ---------------------------------------------------------------------------
+// AI (DeepSeek) - the only network feature, opt-in with the user's own key.
 
 export const aiGetSettings = () => invoke<AiSettingsView>("ai_get_settings");
 export const aiSaveSettings = (input: AiSettingsInput) => invoke<AiSettingsView>("ai_save_settings", { input });
@@ -300,10 +299,10 @@ export const devLaunchContext = () =>
     tab: string | null;
   }>("dev_launch_context");
 
-export const startupFiles = () => invoke<string[]>("office_startup_files");
+export const startupFiles = () => invoke<FileToken[]>("office_startup_files");
 
 /** Drains the files later launches forwarded to this (single) instance. */
-export const takeLaunchFiles = () => invoke<string[]>("office_take_launch_files");
+export const takeLaunchFiles = () => invoke<FileToken[]>("office_take_launch_files");
 
 /** Fires when a later launch queued files; fetch them with `takeLaunchFiles`. */
 export const onLaunchFilesQueued = (handler: () => void): Promise<UnlistenFn> =>

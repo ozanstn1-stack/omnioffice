@@ -44,7 +44,7 @@ release-train schedule is decided.
 
 - **Capability token registry and dialog commands** (#337): 128-bit tokens,
   read/read-write scope, 12 h TTL, revoke; a `FileRef` never carries a path.
-  `test:src-tauri/src/files.rs#a_read_token_cannot_be_used_for_writing`
+  `test:src-tauri/src/files_tests.rs#a_read_token_cannot_be_used_for_writing`
 - **Frontend wrapper** `src/lib/file-tokens.ts` for the pick/save/release
   commands.
   `test:src/lib/file-tokens.test.ts#asks the Rust dialog for a read token and passes the extensions`

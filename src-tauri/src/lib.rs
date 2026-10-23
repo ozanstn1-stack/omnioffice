@@ -39,6 +39,7 @@ mod sync;
 mod update;
 mod vault;
 mod vault_index;
+mod window_events;
 #[cfg(test)]
 mod wire_contract;
 pub mod worker;
@@ -205,15 +206,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .on_window_event(|window, event| {
-            // Cancelling every running job when the window closes keeps the
-            // process from lingering on long operations.
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
-                if let Some(registry) = window.app_handle().try_state::<JobRegistry>() {
-                    registry.cancel_all();
-                }
-            }
-        })
+        .on_window_event(window_events::handle)
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
             update::update_check,
@@ -229,6 +222,7 @@ pub fn run() {
             files::file_token_pick,
             files::file_token_save,
             files::file_token_release,
+            files::file_names,
             commands::cancel_job,
             jobs::jobs_list,
             jobs::jobs_clear_finished,

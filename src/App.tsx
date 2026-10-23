@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import type { FileToken } from "./lib/file-tokens";
+import { openTokenDocument } from "./lib/file-refs";
+import { useDropTokens, useLaunchTokens } from "./lib/use-file-ref-events";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   Archive,
@@ -53,7 +56,6 @@ import { useT } from "./lib/i18n";
 import { useDev, useDrop, useIsDarkTheme, useJobs, useRecent, useSettings, useToasts } from "./lib/store";
 import packageJson from "../package.json";
 import { devLaunchContext } from "./lib/api";
-import { watchLaunchFiles } from "./lib/launch-files";
 import type { Navigate, PageToolsTab, ScreenId } from "./lib/nav";
 import { flagEnabled } from "./lib/flags";
 import { enabledRoutes, navSections, routeEnabled } from "./lib/routes";
@@ -378,43 +380,45 @@ export default function App() {
     [pushToast, t],
   );
 
-  // OS drag & drop from Explorer
+  const openDocumentRef = useCallback(
+    (ref: FileToken) =>
+      openTokenDocument(ref, {
+        showClosedUdf: () =>
+          pushToast({ kind: "info", title: t("office.udfClosed"), detail: t("office.udfClosedHint") }),
+        openOffice: (token) => {
+          setScreen("office");
+          void openOfficePath(token);
+        },
+        openScreen: (next, files) => {
+          setFiles(files);
+          setScreen(next);
+        },
+        openExternal: (token) => void openAnyFile(token).catch(() => undefined),
+      }),
+    [pushToast, t],
+  );
+
+  // OS drag & drop from Explorer. The highlight still comes from the webview
+  // event (it carries no paths), but the drop itself is handled in Rust: the
+  // window event registers the paths and emits `file-drop` with tokens only.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     void getCurrentWebview()
       .onDragDropEvent((event) => {
-        if (event.payload.type === "enter" || event.payload.type === "over") {
-          setDragging(true);
-        } else if (event.payload.type === "drop") {
-          setDragging(false);
-          const paths = event.payload.paths ?? [];
-          if (!paths.length) return;
-          if (screen === "home") {
-            // Dropping a single document opens it; several files stay on the
-            // board as a quick-action suggestion.
-            if (paths.length === 1) {
-              openSinglePath(paths[0]);
-              return;
-            }
-            setFiles(paths);
-            pushToast({
-              kind: "info",
-              title: t("home.quickActions"),
-              detail: `${paths.length} files`,
-            });
-            return;
-          }
-          const handler = useDrop.getState().handler;
-          if (handler) handler(paths);
-        } else {
-          setDragging(false);
-        }
+        setDragging(event.payload.type === "enter" || event.payload.type === "over");
       })
       .then((fn) => {
         unlisten = fn;
       });
     return () => unlisten?.();
-  }, [openSinglePath, pushToast, screen, t]);
+  }, []);
+
+  useDropTokens({
+    screen,
+    openDocument: openDocumentRef,
+    setFiles,
+    notify: (detail) => pushToast({ kind: "info", title: t("home.quickActions"), detail }),
+  });
 
   // Command platform: route palette titles through the active language and
   // register the real navigation commands (palette and global search).
@@ -571,22 +575,16 @@ export default function App() {
   // Files handed to the app: the command line of this launch (Windows file
   // association, "open with") and the files later launches forward to this
   // window, because the single-instance plugin keeps one app per user.
-  useEffect(
-    () =>
-      watchLaunchFiles((paths) => {
-        const officePaths = paths.filter((path) => isOfficePath(path));
-        if (officePaths.length > 0) {
-          setScreen("office");
-          for (const path of officePaths) void openOfficePath(path);
-        }
-        const pdfPaths = paths.filter((path) => path.toLowerCase().endsWith(".pdf"));
-        if (pdfPaths.length > 0 && officePaths.length === 0) {
-          setFiles(pdfPaths);
-          setScreen("reader");
-        }
-      }),
-    [],
-  );
+  useLaunchTokens({
+    openOffice: (tokens) => {
+      setScreen("office");
+      for (const token of tokens) void openOfficePath(token);
+    },
+    openPdfs: (tokens) => {
+      setFiles(tokens);
+      setScreen("reader");
+    },
+  });
 
   // Routes documents that arrived through an Android open-with intent to the
   // tool that can handle them. Unknown leftovers are handed to the system

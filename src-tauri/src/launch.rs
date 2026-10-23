@@ -55,8 +55,21 @@ impl LaunchQueue {
 
 /// Drains the files forwarded by later launches (empty on mobile).
 #[tauri::command]
-pub fn office_take_launch_files(queue: State<'_, LaunchQueue>) -> Vec<String> {
-    queue.take()
+fn issue_tokens(paths: Vec<String>) -> Vec<crate::files::FileRef> {
+    paths
+        .into_iter()
+        .map(|path| crate::files::issue(std::path::Path::new(&path), crate::files::FileAccess::Read))
+        .collect()
+}
+
+/// The files of this launch as capability tokens (never paths).
+pub fn startup_tokens<I: IntoIterator<Item = String>>(args: I) -> Vec<crate::files::FileRef> {
+    issue_tokens(launch_files(args, None))
+}
+
+#[tauri::command]
+pub fn office_take_launch_files(queue: State<'_, LaunchQueue>) -> Vec<crate::files::FileRef> {
+    issue_tokens(queue.take())
 }
 
 #[cfg(test)]
