@@ -31,6 +31,15 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.1.4) - Çıktı hedefleri jetonları
+
+- **Output tokens** (#337): `suggest_output` issues the write token and returns
+  the display path; the OutputBar's Browse uses `file_token_save`; commands get
+  the token via `outputSpec`.
+  `test:src/lib/file-tokens.test.ts#asks for a suggested save target and falls back to a display path`
+- **Scope:** multi-output folders and Android SAF staging still use paths;
+  strict mode and the B4 functional splits remain. (no test: tracked in #337 / #339.)
+
 ## Implemented (this cycle, 6.1.3) - Global seçici ve son dosyalar jetonları
 
 - **Token-based global picker** and **recents in Rust** (#337): the open dialog

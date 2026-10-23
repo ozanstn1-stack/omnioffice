@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.4] - Çıktı hedefleri jetonları (output target tokens)
+
+### Changed
+
+- **Desktop output targets issue write tokens (#337 / PR #363):** `suggest_output`
+  returns the write token plus the display path (a configured output folder is
+  validated in Rust). The OutputBar shows the path read-only and its Browse
+  button opens the Rust save dialog; single-output commands receive a token,
+  never a typed path. Multi-output folders and Android SAF staging keep paths.
+  Strict mode (rejecting every raw path) and the B4 functional splits are next.
+
 ## [6.1.3] - Global seçici ve son dosyalar jetonları (picker and recents tokens)
 
 ### Changed
