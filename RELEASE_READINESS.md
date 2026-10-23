@@ -31,6 +31,18 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.1.7) - Ofis yazma jetonları
+
+- **Office in-place saves** (#337): `OpenDocument.token`, stored on the tab, sent
+  by Ctrl+S; the real path still drives fingerprints, conflicts and recents.
+  `test:src/office/useOfficeSession.test.tsx#never runs the compatibility report for a .oswk save`
+- **Office save/export dialogs** use `pickSaveToken`; the workspace pickers use
+  `pickDocumentToken`.
+  `test:src/office/useOfficeSession.test.tsx#writes the lossless .oswk master instead when the user chooses it`
+- **Scope:** the remaining screen dialogs (PFX, images, invoices/EML, mail
+  merge, vault/sync folders, scanner, templates) and strict mode are next.
+  (no test: tracked in #337.)
+
 ## Implemented (this cycle, 6.1.6) - Dizin jetonları
 
 - **Directory tokens** (#337): `file_token_pick_directory` + `issue_dir`, and
