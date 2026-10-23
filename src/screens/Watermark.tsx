@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Image as ImageIcon, Stamp } from "lucide-react";
-import { open } from "@tauri-apps/plugin-dialog";
+import { pickDocumentToken } from "../lib/file-tokens";
 import { isAndroid, pickAndroidFiles } from "../lib/mobile";
 import { Card, Field, Segmented, Slider, Toggle } from "../components/ui";
 import { DropZone, FileList, InfoStrip, OutputBar, ResultCard } from "../components/files";
@@ -52,8 +52,8 @@ export function Watermark({ initialFiles, dragging }: { initialFiles?: string[];
       if (paths.length) patch({ kind: "image", image_path: paths[0] });
       return;
     }
-    const picked = await open({ multiple: false, filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg"] }] });
-    if (picked) patch({ kind: "image", image_path: String(picked) });
+    const picked = await pickDocumentToken(["png", "jpg", "jpeg"]).catch(() => null);
+    if (picked) patch({ kind: "image", image_path: picked.token });
   };
 
   session.registerAutoRun(() => void run());

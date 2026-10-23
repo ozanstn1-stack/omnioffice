@@ -37,6 +37,8 @@ const invoke = vi.fn(async (command: string, payload?: { path?: string }) => {
       return { startScreen: null, files: [], autoRun: false, tab: null, newTab: null };
     case "suggest_output":
       return { token: "C:/out.pdf", path: "C:/out.pdf" };
+    case "file_token_save":
+      return [{ token: "C:/filled.pdf", name: "filled.pdf", path: "C:/filled.pdf" }];
     case "file_sizes":
       return [1024];
     case "pdf_info":

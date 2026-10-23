@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { appDataDir } from "@tauri-apps/api/path";
-import { open } from "@tauri-apps/plugin-dialog";
+import { pickDocumentToken } from "../lib/file-tokens";
 import { isAndroid, pickAndroidFiles } from "../lib/mobile";
 import { Badge, Button, Card, ColorInput, Field, NumberInput, Segmented, Slider, Toggle } from "../components/ui";
 import { DropZone, InfoStrip, OutputBar, ResultCard } from "../components/files";
@@ -547,8 +547,8 @@ export function Annotate({ initialFiles, dragging }: { initialFiles?: string[]; 
       if (paths.length) setImagePath(paths[0]);
       return;
     }
-    const picked = await open({ multiple: false, filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg"] }] });
-    if (picked) setImagePath(String(picked));
+    const picked = await pickDocumentToken(["png", "jpg", "jpeg"]).catch(() => null);
+    if (picked) setImagePath(picked.token);
   };
 
   const run = () =>

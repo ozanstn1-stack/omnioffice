@@ -9,7 +9,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { open } from "@tauri-apps/plugin-dialog";
+import { pickDocumentToken, pickSaveToken } from "../lib/file-tokens";
 import {
   BadgeCheck,
   FileCheck2,
@@ -582,13 +583,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
       return { output: input.replace(/\.pdf$/i, suffix), androidTarget: target };
     }
     const suggested = await suggestedOutputPath(input, suffix, input.replace(/\.pdf$/i, suffix));
-    const picked = await saveDialog({
-      title: t("common.saveAs"),
-      defaultPath: suggested,
-      filters: [{ name: "PDF", extensions: ["pdf"] }],
-    });
+    const picked = await pickSaveToken(fileBaseName(suggested), ["pdf"]).catch(() => null);
     if (!picked) return null;
-    return { output: String(picked), androidTarget: null };
+    return { output: picked.token, androidTarget: null };
   };
 
   const fillAndSave = async () => {
@@ -842,11 +839,10 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
         // Fall through to the standard dialog below.
       }
     }
-    const picked = await open({ multiple: false, filters: [{ name: "PKCS#12", extensions: ["pfx", "p12"] }] });
+    const picked = await pickDocumentToken(["pfx", "p12"]).catch(() => null);
     if (!picked) return;
-    const path = String(Array.isArray(picked) ? picked[0] : picked);
-    setPfxPath(path);
-    setPfxName(fileBaseName(path));
+    setPfxPath(picked.token);
+    setPfxName(picked.name);
     setCertIndex(null);
   };
 
@@ -915,13 +911,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
       output = input.replace(/\.pdf$/i, "-signed.pdf");
     } else {
       const suggested = await suggestedOutputPath(input, "-signed", input.replace(/\.pdf$/i, "-signed.pdf"));
-      const picked = await saveDialog({
-        title: t("common.saveAs"),
-        defaultPath: suggested,
-        filters: [{ name: "PDF", extensions: ["pdf"] }],
-      });
+      const picked = await pickSaveToken(fileBaseName(suggested), ["pdf"]).catch(() => null);
       if (!picked) return;
-      output = String(picked);
+      output = picked.token;
     }
 
     setSigning(true);
