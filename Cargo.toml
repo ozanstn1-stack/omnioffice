@@ -65,3 +65,7 @@ opt-level = "s"
 # primary containment; this is the fallback for the dev/test path.
 panic = "unwind"
 strip = true
+
+[patch.crates-io]
+# See vendor/calamine/README.md: checked arithmetic for hostile cell refs.
+calamine = { path = "vendor/calamine" }

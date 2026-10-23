@@ -548,8 +548,6 @@ dependencies = [
 [[package]]
 name = "calamine"
 version = "0.37.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9ca341b94bc4b29e08970b1a03914fad2dfe177e2ecb67fcd6de9046004aafb"
 dependencies = [
  "atoi_simd",
  "byteorder",

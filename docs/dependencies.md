@@ -35,3 +35,17 @@ splits again.
 * Closed rather than merged: the Windows 0.62, rcgen 0.14 and x509-cert 0.3
   majors (API migrations are their own work) and the duplicate frontend-group
   branches; Renovate re-opens them behind the approval rule.
+
+## Vendored patch: calamine 0.37.0
+
+`vendor/calamine` is a verbatim copy of crates.io 0.37.0 with one change:
+`cell_ref_to_row_col` uses `checked_mul`/`checked_add` so a hostile cell
+reference (`AAAAAAAA...`, a giant row number) is a parse error instead of an
+integer-overflow panic. cargo-fuzz builds with overflow checks, so the panic
+aborted the `office_readers` target (the app's worker would have caught it, but
+the fuzz gate must stay green for releases).
+
+Both `Cargo.toml` files patch the crate (`[patch.crates-io]`). Remove the
+directory and the patches when calamine ships the same guard upstream
+(`vendor/calamine/README.md` has the details). The rustfmt gate skips
+`vendor/` because it is third-party source.

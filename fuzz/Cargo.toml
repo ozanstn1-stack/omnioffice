@@ -74,3 +74,6 @@ path = "fuzz_targets/ubl.rs"
 test = false
 doc = false
 bench = false
+
+[patch.crates-io]
+calamine = { path = "../vendor/calamine" }
