@@ -31,6 +31,17 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.1.6) - Dizin jetonları
+
+- **Directory tokens** (#337): `file_token_pick_directory` + `issue_dir`, and
+  `paths::directory` resolves tokens; multi-output tools send the folder token.
+  `test:src-tauri/src/paths_tests.rs#a_directory_token_resolves_through_the_directory_validator`
+- **Fix:** the OutputBar file Browse now uses `pickSaveToken` (the v6.1.4 note
+  claimed it, the code still opened the plugin dialog). (no test: UI wiring;
+  the token wrapper is covered by `file-tokens.test.ts`.)
+- **Scope:** the remaining dialog sources and strict mode are the next slices;
+  Android uses SAF paths for folders. (no test: tracked in #337.)
+
 ## Implemented (this cycle, 6.1.5) - ODT yazıcısı ayrıldı
 
 - **ODT writer split** (#339): `odf.rs` 6208 -> 4346 lines; the writer lives in
