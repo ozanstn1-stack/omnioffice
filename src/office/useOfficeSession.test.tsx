@@ -21,6 +21,7 @@ interface Call {
 }
 
 const calls: Call[] = [];
+let nextSavePath: string | null = null;
 let compatibilityByTarget: Record<string, unknown> = {};
 let compatibilityFailure: Error | null = null;
 
@@ -32,8 +33,13 @@ async function handleInvoke(command: string, args?: Record<string, unknown>): Pr
     const target = String(payload.target ?? "");
     return compatibilityByTarget[target] ?? { target, items: [] };
   }
+  if (command === "file_token_save") {
+    const path = nextSavePath ?? String(payload.name ?? "C:/docs/output.pdf");
+    return [{ token: `tok:${path}`, name: "output.pdf", path }];
+  }
   if (command === "office_save_document" || command === "office_save_unit" || command === "office_export_pdf") {
-    return { path: String(payload.path ?? ""), warnings: [] };
+    const target = String(payload.path ?? "");
+    return { path: target.startsWith("tok:") ? target.slice(4) : target, warnings: [] };
   }
   return null;
 }
@@ -212,7 +218,7 @@ describe("Data Loss Protection before lossy office saves", () => {
       ],
     } satisfies CompatibilityReport;
     // A real destination choice: the .oswk flow opens its own save dialog.
-    saveDialogMock.mockResolvedValueOnce("C:/docs/report.oswk");
+    nextSavePath = "C:/docs/report.oswk";
     const session = renderSession();
     const pending = startSave(session, "C:/docs/report.rtf");
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
@@ -223,9 +229,9 @@ describe("Data Loss Protection before lossy office saves", () => {
       saved = await pending;
     });
     expect(saved).toBe("C:/docs/report.oswk");
-    expect(lastCall("office_save_unit")?.args.path).toBe("C:/docs/report.oswk");
+    expect(lastCall("office_save_unit")?.args.path).toBe("tok:C:/docs/report.oswk");
     expect(lastCall("office_save_document")).toBeUndefined();
-    expect(saveDialogMock).toHaveBeenCalledWith(expect.objectContaining({ defaultPath: "C:/docs/report.oswk" }));
+    expect(String(lastCall("file_token_save")?.args.name)).toContain("report.oswk");
   });
 
   it("never runs the compatibility report for a .oswk save", async () => {
@@ -251,7 +257,7 @@ describe("Data Loss Protection before lossy office saves", () => {
 
 describe("the PDF render-target carve-out", () => {
   it("does not gate a pure PDF export on a container-loss row", async () => {
-    saveDialogMock.mockResolvedValue("C:/docs/Report.pdf");
+    nextSavePath = "C:/docs/Report.pdf";
     compatibilityByTarget.pdf = {
       target: "pdf",
       items: [{ feature: "format", status: "lost", message: "This format is not a Writer target." }],
@@ -261,12 +267,12 @@ describe("the PDF render-target carve-out", () => {
       await session.exportPdf();
     });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(lastCall("office_export_pdf")?.args.path).toBe("C:/docs/Report.pdf");
+    expect(lastCall("office_export_pdf")?.args.path).toBe("tok:C:/docs/Report.pdf");
   });
 
   it("still warns about a real rendering loss before a PDF export", async () => {
     const user = userEvent.setup();
-    saveDialogMock.mockResolvedValue("C:/docs/Deck.pdf");
+    nextSavePath = "C:/docs/Deck.pdf";
     compatibilityByTarget.pdf = {
       target: "pdf",
       items: [{ feature: "animations", status: "lost", message: "Animations do not apply to PDF output." }],
