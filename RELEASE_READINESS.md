@@ -37,7 +37,8 @@ release-train schedule is decided.
   `paths::directory` resolves tokens; multi-output tools send the folder token.
   `test:src-tauri/src/paths_tests.rs#a_directory_token_resolves_through_the_directory_validator`
 - **Fix:** the OutputBar file Browse now uses `pickSaveToken` (the v6.1.4 note
-  claimed it, the code still opened the plugin dialog).
+  claimed it, the code still opened the plugin dialog). (no test: UI wiring;
+  the token wrapper is covered by `file-tokens.test.ts`.)
 - **Scope:** the remaining dialog sources and strict mode are the next slices;
   Android uses SAF paths for folders. (no test: tracked in #337.)
 
