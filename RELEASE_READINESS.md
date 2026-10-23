@@ -31,6 +31,17 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.1.9) - Katı jeton denetimi
+
+- **Raw paths rejected in desktop release builds** (#337): `input_file` and
+  `output_file` require tokens; Android/debug keep the exception.
+  `test:src-tauri/src/paths_tests.rs#debug_builds_accept_raw_paths`
+- **MailMerge tokenized** with display labels; folder-setting exceptions are
+  documented in `docs/file-tokens.md`. (no test: UI-only picker, covered by the
+  token tests.)
+- **Scope:** remaining B4 splits and the B2/2 plan (#316) follow.
+  (no test: tracked in #337.)
+
 ## Implemented (this cycle, 6.1.8) - Kalan diyaloglar jetonlaştı
 
 - **Remaining save dialogs** (#337): every save/export target listed in 4d-c/2b
