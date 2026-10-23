@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.5] - ODT yazıcısı ayrıldı (ODT writer split)
+
+### Changed
+
+- **B4 functional split (#339 / PR #366):** the ODT package writer (styles,
+  notes, tables, media, package parts) moved from `odf.rs` to
+  `odf/text_write.rs`; the reader and the ODS/ODP halves stay. `odf.rs` drops
+  from 6208 to 4346 lines, and the file-size ratchet records the lower budget
+  (shared helpers are `pub(crate)`, public API unchanged).
+
 ## [6.1.4] - Çıktı hedefleri jetonları (output target tokens)
 
 ### Changed

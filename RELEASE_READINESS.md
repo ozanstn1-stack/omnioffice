@@ -31,6 +31,15 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.1.5) - ODT yazıcısı ayrıldı
+
+- **ODT writer split** (#339): `odf.rs` 6208 -> 4346 lines; the writer lives in
+  `odf/text_write.rs`, the public API is re-exported and 241 officecore tests
+  pass unchanged.
+  `test:crates/officecore/src/odf_tests.rs#odt_manifest_matches_the_package`
+- **Next B4 splits:** ODT reader, ODS/ODP halves, then the editor seams.
+  (no test: tracked in #339.)
+
 ## Implemented (this cycle, 6.1.4) - Çıktı hedefleri jetonları
 
 - **Output tokens** (#337): `suggest_output` issues the write token and returns
