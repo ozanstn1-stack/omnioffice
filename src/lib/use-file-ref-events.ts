@@ -11,6 +11,7 @@ import { useDrop } from "./store";
 import type { FileToken } from "./file-tokens";
 import { watchLaunchFiles } from "./launch-files";
 import type { ScreenId } from "./nav";
+import { rememberTokenRefs } from "./file-token-names";
 
 export function useDropTokens(options: {
   screen: ScreenId;
@@ -27,6 +28,7 @@ export function useDropTokens(options: {
     void listen<FileToken[]>("file-drop", (event) => {
       const refs = event.payload ?? [];
       if (!refs.length) return;
+      rememberTokenRefs(refs);
       const current = latest.current;
       if (current.screen === "home") {
         if (refs.length === 1) {
@@ -59,6 +61,7 @@ export function useLaunchTokens(options: {
   useEffect(
     () =>
       watchLaunchFiles((refs) => {
+        rememberTokenRefs(refs);
         const office = refs.filter((ref) => isOfficePath(ref.name));
         if (office.length > 0) latest.current.openOffice(office.map((ref) => ref.token));
         const pdfs = refs.filter((ref) => ref.name.toLowerCase().endsWith(".pdf"));

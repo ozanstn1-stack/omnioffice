@@ -23,7 +23,8 @@ import {
   Wand2,
   X,
 } from "lucide-react";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { pickSaveToken } from "../lib/file-tokens";
 import {
   isAndroid,
   pickAndroidSaveTarget,
@@ -768,18 +769,14 @@ export function Ai({
       return;
     }
 
-    const picked = await saveDialog({
-      title: t("common.save"),
-      defaultPath: defaultName,
-      filters: [{ name: "CSV", extensions: ["csv"] }],
-    });
-    if (!picked) return;
+    const target = await pickSaveToken(fileBaseName(defaultName), ["csv"]).catch(() => null);
+    if (!target) return;
     try {
-      await aiSaveOutput(String(picked), csvContent, "unique_name");
+      await aiSaveOutput(target.token, csvContent, "unique_name");
       pushToast({
         kind: "success",
         title: label("ai.csvExportSuccess", "Table exported to CSV"),
-        detail: String(picked),
+        detail: target.path ?? target.name,
       });
     } catch (saveError) {
       fail(String((saveError as { message?: string })?.message ?? saveError));
@@ -902,13 +899,9 @@ export function Ai({
       androidTarget = chosen;
       targetPath = session.outputPath;
     } else {
-      const picked = await saveDialog({
-        title: t("common.save"),
-        defaultPath: session.outputPath,
-        filters: [{ name: "PDF", extensions: ["pdf"] }],
-      });
-      if (!picked) return;
-      targetPath = String(picked);
+      const target = await pickSaveToken(fileBaseName(session.outputPath) || "document.pdf", ["pdf"]).catch(() => null);
+      if (!target) return;
+      targetPath = target.token;
     }
     setRunning(true);
     try {
@@ -962,17 +955,10 @@ export function Ai({
       }
       return;
     }
-    const picked = await saveDialog({
-      title: t("common.save"),
-      defaultPath: defaultName,
-      filters: [
-        { name: "Markdown", extensions: ["md"] },
-        { name: "Text", extensions: ["txt"] },
-      ],
-    });
-    if (!picked) return;
+    const target = await pickSaveToken(fileBaseName(defaultName), ["md", "txt"]).catch(() => null);
+    if (!target) return;
     try {
-      const saved = await aiSaveOutput(String(picked), output, "unique_name");
+      const saved = await aiSaveOutput(target.token, output, "unique_name");
       setError(null);
       setSavedPath(saved);
     } catch (saveError) {

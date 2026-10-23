@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { pickSaveToken } from "../lib/file-tokens";
 import { AlertTriangle, CheckCircle2, FolderOpen, Info, ShieldAlert, Sparkles, Trash2 } from "lucide-react";
 import { Badge, Button, Card, TextArea } from "../components/ui";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
@@ -135,15 +136,14 @@ export function DocumentHealthScreen({
     if (issue.fixAction === "strip_metadata") {
       setMetadata((prev) => fixMetadataLeaks(prev));
       if (filePath && filePath.toLowerCase().endsWith(".pdf") && !isAndroid()) {
-        const outPath = await saveDialog({
-          defaultPath: filePath.replace(/\.pdf$/i, "-temiz.pdf"),
-          filters: [{ name: "PDF (*.pdf)", extensions: ["pdf"] }],
-        });
-        if (typeof outPath === "string") {
+        const outPath = await pickSaveToken(fileBaseName(filePath.replace(/\.pdf$/i, "-temiz.pdf")), ["pdf"]).catch(
+          () => null,
+        );
+        if (outPath) {
           try {
             await editMetadata(
               filePath,
-              { path: outPath, overwrite: "replace" },
+              { path: outPath.token, overwrite: "replace" },
               {
                 title: metadata.title || "",
                 author: "",

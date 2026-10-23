@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { pickDocumentToken, pickSaveToken } from "../lib/file-tokens";
 import { ArrowRight, FolderOpen, ListPlus, Play, Save, Trash2 } from "lucide-react";
 import { Button, Card, Field, TextInput } from "../components/ui";
 import { Screen } from "../components/layout";
@@ -106,13 +106,13 @@ export function Recipes() {
   };
 
   const run = async (recipe: Recipe) => {
-    const picked = await openDialog({ multiple: false, filters: [{ name: "PDF", extensions: ["pdf"] }] });
-    if (typeof picked !== "string") return;
-    const output = await saveDialog({ defaultPath: "islenmis.pdf", filters: [{ name: "PDF", extensions: ["pdf"] }] });
-    if (typeof output !== "string") return;
+    const picked = await pickDocumentToken(["pdf"]).catch(() => null);
+    if (!picked) return;
+    const output = await pickSaveToken("islenmis.pdf", ["pdf"]).catch(() => null);
+    if (!output) return;
     setBusy(true);
     try {
-      const result = await recipeRun(picked, output, recipe);
+      const result = await recipeRun(picked.token, output.token, recipe);
       notify("success", t("recipes.ran", { steps: result.applied.join(" → ") }), result.output);
     } catch (error) {
       reportError(error, t);

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { appCacheDir, join } from "@tauri-apps/api/path";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { pickSaveToken } from "../lib/file-tokens";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -361,9 +362,9 @@ export function Sync() {
           await saveFileOnAndroid(target, entry.name);
           setRow(view.localPath, { kind: "ready", view });
         } else {
-          const target = await saveDialog({ defaultPath: entry.name, title: t("sync.downloadTitle") });
+          const target = await pickSaveToken(entry.name, ["oswk"]).catch(() => null);
           if (!target) return;
-          const view = await syncDownload(entry.name, target);
+          const view = await syncDownload(entry.name, target.token);
           setRow(view.localPath, { kind: "ready", view });
           setSelected(view.localPath);
         }

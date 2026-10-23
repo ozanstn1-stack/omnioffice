@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -20,7 +19,7 @@ import { useT } from "../lib/i18n";
 import { flagEnabled } from "../lib/flags";
 import { formatBytes, formatPoints, fileBaseName } from "../lib/format";
 import { useOverwritePrompt, usePasswordPrompt, useToasts } from "../lib/store";
-import { pickDirectoryToken, pickSaveToken } from "../lib/file-tokens";
+import { pickDirectoryToken, pickDocumentTokens, pickSaveToken } from "../lib/file-tokens";
 import { useProgressPercent, type ToolSession } from "../lib/useTool";
 import type { OpResult, PdfInfo, SelectedFile } from "../lib/types";
 import { checkPassword } from "../lib/api";
@@ -102,9 +101,10 @@ export function DropZone({
       if (paths.length) onPaths(paths);
       return;
     }
-    const picked = await open({ multiple, filters });
-    if (!picked) return;
-    onPaths(Array.isArray(picked) ? picked.map(String) : [String(picked)]);
+    const extensions = filters.flatMap((filter) => filter.extensions);
+    const refs = await pickDocumentTokens(extensions, multiple).catch(() => []);
+    if (!refs.length) return;
+    onPaths(refs.map((ref) => ref.token));
   };
 
   return (
