@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { appCacheDir, join } from "@tauri-apps/api/path";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { pickDocumentToken, pickSaveToken } from "../lib/file-tokens";
 import { fileBaseName, officeDocumentExtensions, uid } from "../lib/format";
 import { flagEnabled } from "../lib/flags";
 import {
@@ -196,6 +196,7 @@ export function useOfficeSession(tab: OfficeTab) {
       // Ctrl+S keeps the current path; `saveAs` forces a fresh destination.
       const forceDestination = options?.forceDestination ?? false;
       let path = targetPath ?? (forceDestination ? undefined : tab.path) ?? undefined;
+      let saveToken: string | null = null;
       let androidTarget: AndroidTarget | null = null;
       if (!path) {
         if (isAndroid()) {
@@ -207,14 +208,14 @@ export function useOfficeSession(tab: OfficeTab) {
           if (!androidTarget) return null;
           path = await scratchPath(extension);
         } else {
-          path =
-            (await saveDialog({
-              title: `Save ${tab.title}`,
-              defaultPath:
-                options?.defaultPath ?? suggestedName(tab, options?.extension ?? defaultExtensionFor(tab.kind)),
-              filters: FILTERS[tab.kind],
-            })) ?? undefined;
-          if (!path) return null;
+          const extension = options?.extension ?? defaultExtensionFor(tab.kind);
+          const suggested = options?.defaultPath ?? suggestedName(tab, extension);
+          const picked = await pickSaveToken(suggested, FILTERS[tab.kind]?.[0]?.extensions ?? [extension]).catch(
+            () => null,
+          );
+          if (!picked) return null;
+          saveToken = picked.token;
+          path = picked.path ?? suggested;
         }
       }
       setBusy(true);
@@ -265,9 +266,9 @@ export function useOfficeSession(tab: OfficeTab) {
             }
           }
         }
-        // Saving in place goes through the document's write token; a save-as
-        // target is a path from the dialog (the next slice tokenizes it).
-        const writeTarget = !targetPath && !forceDestination && tab.token ? tab.token : path;
+        // An in-place save goes through the document's write token; a save-as
+        // target gets its own write token from the Rust dialog.
+        const writeTarget = saveToken ?? (!targetPath && !forceDestination && tab.token ? tab.token : path);
         const result = lossless
           ? await api.saveUnit(tab.kind, tab.title, tab.model, writeTarget)
           : await api.saveDocument(tab.kind, tab.model, writeTarget);
@@ -326,36 +327,21 @@ export function useOfficeSession(tab: OfficeTab) {
   );
 
   /** Always asks for a destination, even when the tab already has a path. */
-  const saveAs = useCallback(async (): Promise<string | null> => {
-    if (isAndroid()) {
-      // Android picks its destination inside `save` (the engine writes a cache
-      // copy first, then the file is published through the system dialog).
-      return save(undefined, { forceDestination: true });
-    }
-    const chosen = (await saveDialog({
-      title: `Save ${tab.title} as`,
-      defaultPath: tab.path ?? suggestedName(tab, extensionOf(tab.path ?? "") || defaultExtensionFor(tab.kind)),
-      filters: FILTERS[tab.kind],
-    })) as string | null;
-    if (!chosen) return null;
-    return save(chosen);
-  }, [save, tab]);
+  const saveAs = useCallback(async (): Promise<string | null> => save(undefined, { forceDestination: true }), [save]);
 
   const exportPdf = useCallback(async (): Promise<string | null> => {
     let path: string | undefined;
+    let outputToken: string | null = null;
     let androidTarget: AndroidTarget | null = null;
     if (isAndroid()) {
       androidTarget = await pickAndroidSaveTarget(`${tab.title}.pdf`, "application/pdf");
       if (!androidTarget) return null;
       path = await scratchPath("pdf");
     } else {
-      path =
-        ((await saveDialog({
-          title: `Export ${tab.title} as PDF`,
-          defaultPath: `${tab.title}.pdf`,
-          filters: [{ name: "PDF", extensions: ["pdf"] }],
-        })) as string | null) ?? undefined;
-      if (!path) return null;
+      const picked = await pickSaveToken(`${tab.title}.pdf`, ["pdf"]).catch(() => null);
+      if (!picked) return null;
+      outputToken = picked.token;
+      path = picked.path ?? `${tab.title}.pdf`;
     }
     setBusy(true);
     try {
@@ -376,7 +362,7 @@ export function useOfficeSession(tab: OfficeTab) {
           });
         }
       }
-      const result = await api.exportPdf(tab.kind, tab.model, path);
+      const result = await api.exportPdf(tab.kind, tab.model, outputToken ?? path);
       if (isAndroid()) {
         const failures = await publishOutputs([result.path], androidTarget ? { file: androidTarget } : undefined);
         if (failures.length) {
@@ -440,12 +426,12 @@ export function useOfficeSession(tab: OfficeTab) {
   const choosePath = useCallback(async (): Promise<string | null> => {
     // Android has no writable paths to hand out; callers use `save` instead.
     if (isAndroid()) return null;
-    const path = (await saveDialog({
-      title: `Save ${tab.title}`,
-      defaultPath: `${tab.title}.${tab.kind === "writer" ? "docx" : tab.kind === "calc" ? "xlsx" : "pptx"}`,
-      filters: FILTERS[tab.kind],
-    })) as string | null;
-    return path;
+    const extension = tab.kind === "writer" ? "docx" : tab.kind === "calc" ? "xlsx" : "pptx";
+    const picked = await pickSaveToken(
+      `${tab.title}.${extension}`,
+      FILTERS[tab.kind]?.[0]?.extensions ?? [extension],
+    ).catch(() => null);
+    return picked?.token ?? null;
   }, [tab]);
 
   const openFile = useCallback(async (): Promise<string | null> => {
@@ -454,16 +440,8 @@ export function useOfficeSession(tab: OfficeTab) {
       const [picked] = await pickOfficeFiles(false);
       return picked ?? null;
     }
-    const selection = await openDialog({
-      multiple: false,
-      filters: [
-        {
-          name: "Office documents",
-          extensions: [...officeDocumentExtensions()],
-        },
-      ],
-    });
-    return typeof selection === "string" ? selection : null;
+    const picked = await pickDocumentToken([...officeDocumentExtensions()]).catch(() => null);
+    return picked?.token ?? null;
   }, []);
 
   const autosaveInterval = useSettings((state) => state.settings).autosaveSeconds ?? 30;
@@ -528,17 +506,8 @@ export async function openIntoWorkspace(): Promise<string | null> {
     const [picked] = await pickOfficeFiles(false);
     selection = picked ?? null;
   } else {
-    const picked = await openDialog({
-      multiple: false,
-      filters: [
-        {
-          name: "Documents",
-          extensions: [...officeDocumentExtensions()],
-        },
-        { name: "All files", extensions: ["*"] },
-      ],
-    });
-    selection = typeof picked === "string" ? picked : null;
+    const picked = await pickDocumentToken([...officeDocumentExtensions()]).catch(() => null);
+    selection = picked?.token ?? null;
   }
   if (!selection) return null;
   const result = await openOfficePath(selection);
