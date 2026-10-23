@@ -4,6 +4,7 @@ const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
 import {
+  pickDirectoryToken,
   pickDocumentToken,
   pickDocumentTokens,
   pickSaveToken,
@@ -32,6 +33,12 @@ describe("file token wrappers", () => {
     invoke.mockResolvedValueOnce([{ token: "out", name: "out.pdf" }]);
     await expect(pickSaveToken("out.pdf", ["pdf"])).resolves.toEqual({ token: "out", name: "out.pdf" });
     expect(invoke).toHaveBeenCalledWith("file_token_save", { name: "out.pdf", extensions: ["pdf"] });
+  });
+
+  it("asks for a folder token for multi-output tools", async () => {
+    invoke.mockResolvedValueOnce({ token: "dir-1", name: "Outputs", path: "C:/Outputs" });
+    await expect(pickDirectoryToken()).resolves.toEqual({ token: "dir-1", name: "Outputs", path: "C:/Outputs" });
+    expect(invoke).toHaveBeenCalledWith("file_token_pick_directory");
   });
 
   it("releases tokens", async () => {

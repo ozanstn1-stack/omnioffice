@@ -68,7 +68,7 @@ export function Split({ initialFiles, dragging }: { initialFiles?: string[]; dra
       const result = await splitPdf(
         session.primary?.path ?? "",
         splitMode,
-        session.outputDir,
+        session.outputDirToken || session.outputDir,
         overwrite,
         jobId,
         session.password || undefined,

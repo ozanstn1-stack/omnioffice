@@ -20,6 +20,7 @@ import { useT } from "../lib/i18n";
 import { flagEnabled } from "../lib/flags";
 import { formatBytes, formatPoints, fileBaseName } from "../lib/format";
 import { useOverwritePrompt, usePasswordPrompt, useToasts } from "../lib/store";
+import { pickDirectoryToken, pickSaveToken } from "../lib/file-tokens";
 import { useProgressPercent, type ToolSession } from "../lib/useTool";
 import type { OpResult, PdfInfo, SelectedFile } from "../lib/types";
 import { checkPassword } from "../lib/api";
@@ -394,14 +395,10 @@ export function OutputBar({
       session.setAndroidTarget(target ? { file: target } : null);
       return;
     }
-    const picked = await open({
-      multiple: false,
-      directory: false,
-      title: t("common.output"),
-      defaultPath: session.outputPath,
-      filters: [{ name: "PDF", extensions: ["pdf"] }],
-    });
-    if (picked) session.setOutputPath(String(picked));
+    const suggested = fileBaseName(session.outputPath) || "document.pdf";
+    const extension = suggested.split(".").pop()?.toLowerCase() || "pdf";
+    const picked = await pickSaveToken(suggested, [extension]).catch(() => null);
+    if (picked?.path) session.setOutputTarget({ token: picked.token, path: picked.path });
   };
 
   const chooseFolder = async () => {
@@ -410,8 +407,8 @@ export function OutputBar({
       session.setAndroidTarget(target ? { dir: target } : null);
       return;
     }
-    const picked = await open({ multiple: false, directory: true, title: t("common.chooseFolder") });
-    if (picked) session.setOutputDir(String(picked));
+    const picked = await pickDirectoryToken().catch(() => null);
+    if (picked?.path) session.setDirectoryTarget({ token: picked.token, path: picked.path });
   };
 
   const androidTargetName = session.androidTarget?.file?.name ?? session.androidTarget?.dir?.name ?? null;
@@ -439,6 +436,7 @@ export function OutputBar({
             <TextInput
               value={session.outputDir}
               onChange={(event) => session.setOutputDir(event.target.value)}
+              readOnly={!isAndroid()}
               spellCheck={false}
             />
           </div>

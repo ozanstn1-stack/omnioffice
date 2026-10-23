@@ -60,7 +60,7 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
   // Monotonic per-run job counter (Date.now is impure and may collide).
   const jobCounter = useRef(0);
 
-  const outputDir = session.outputDir || session.outputPath.replace(/[^\\/]*$/, "");
+  const outputDir = session.outputDirToken || session.outputDir || session.outputPath.replace(/[^\\/]*$/, "");
 
   const start = async () => {
     if (!session.files.length) return;
