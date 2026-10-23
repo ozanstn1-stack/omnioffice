@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invoke = vi.fn(async (command: string) => {
+  if (command === "file_token_pick")
+    return ["C:/pages/a.png", "C:/pages/b.png"].map((path) => ({ token: path, name: path.split("/").pop(), path }));
   if (command === "file_token_save") return [{ token: "C:/out.pdf", name: "out.pdf", path: "C:/out.pdf" }];
   if (command === "office_scan_pages") return { output: "C:/out.pdf", pages: 2, corrected: 0, warnings: [] };
   return null;

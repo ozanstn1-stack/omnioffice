@@ -165,6 +165,12 @@ const invoke = vi.fn(async (command: string, _payload?: unknown) => {
         totalElapsedMs: 650,
         status: "completed",
       };
+    case "file_token_pick":
+      return ["C:/docs/invoice1.pdf", "C:/docs/invoice2.pdf"].map((path) => ({
+        token: path,
+        name: path.split("/").pop(),
+        path,
+      }));
     case "file_token_save":
       return [{ token: "C:/docs/invoice_table.csv", name: "invoice_table.csv", path: "C:/docs/invoice_table.csv" }];
     case "ai_save_output":

@@ -1,8 +1,8 @@
 /** Document cleaner: metadata, hidden layers and sanitization. */
 import { useState } from "react";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Wand2 } from "lucide-react";
 import { useT } from "../../lib/i18n";
+import { pickDocumentToken } from "../../lib/file-tokens";
 import { reportError } from "../../lib/store";
 import { isAndroid, pickOfficeFiles, publishOutputs } from "../../lib/mobile";
 import * as api from "../../lib/office-api";
@@ -34,11 +34,8 @@ export function CleanerScreen() {
       const [picked] = await pickOfficeFiles(false).catch(() => []);
       selection = picked ?? null;
     } else {
-      const chosen = await openDialog({
-        multiple: false,
-        filters: [{ name: "Office documents", extensions: ["docx", "xlsx", "pptx", "odt", "ods", "odp"] }],
-      });
-      selection = typeof chosen === "string" ? chosen : null;
+      selection =
+        (await pickDocumentToken(["docx", "xlsx", "pptx", "odt", "ods", "odp"]).catch(() => null))?.token ?? null;
     }
     if (selection) {
       setPath(selection);

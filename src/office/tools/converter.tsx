@@ -2,9 +2,10 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { appCacheDir, join } from "@tauri-apps/api/path";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Check, Eye, EyeOff, Plus, RefreshCw } from "lucide-react";
 import { useT } from "../../lib/i18n";
+import { fileBaseName } from "../../lib/format";
+import { pickDirectoryToken, pickDocumentTokens } from "../../lib/file-tokens";
 import { errorMessage } from "../../lib/store";
 import { toAppError } from "../../lib/api";
 import { isAndroid, pickAndroidFolder, pickOfficeFiles, publishOutputs, type AndroidTarget } from "../../lib/mobile";
@@ -86,41 +87,37 @@ export function ConverterScreen() {
       // bridge copies the chosen documents into the app cache as real paths.
       list = await pickOfficeFiles(true).catch(() => []);
     } else {
-      const selection = await openDialog({
-        multiple: true,
-        filters: [
-          {
-            name: "Documents",
-            extensions: [
-              "docx",
-              "docm",
-              "dotx",
-              "odt",
-              "rtf",
-              "txt",
-              "md",
-              "html",
-              "xlsx",
-              "xlsm",
-              "xls",
-              "ods",
-              "csv",
-              "tsv",
-              "pptx",
-              "pptm",
-              "odp",
-              "oswk",
-              ...(flagEnabled("experimentalUdf") ? ["udf"] : []),
-              "pdf",
-            ],
-          },
-        ],
-      });
-      list = Array.isArray(selection) ? selection : typeof selection === "string" ? [selection] : [];
+      list = (
+        await pickDocumentTokens(
+          [
+            "docx",
+            "docm",
+            "dotx",
+            "odt",
+            "rtf",
+            "txt",
+            "md",
+            "html",
+            "xlsx",
+            "xlsm",
+            "xls",
+            "ods",
+            "csv",
+            "tsv",
+            "pptx",
+            "pptm",
+            "odp",
+            "oswk",
+            ...(flagEnabled("experimentalUdf") ? ["udf"] : []),
+            "pdf",
+          ],
+          true,
+        ).catch(() => [])
+      ).map((file) => file.token);
     }
     setFiles(list);
     if (list[0]) {
-      const extension = list[0].split(".").pop() ?? "";
+      const extension = fileBaseName(list[0]).split(".").pop() ?? "";
       const available = await api.conversionTargets(extension).catch(() => []);
       if (available.length > 0) {
         setTargets(available);
@@ -135,8 +132,8 @@ export function ConverterScreen() {
       if (target) setAndroidDir(target);
       return;
     }
-    const selection = await openDialog({ directory: true });
-    if (typeof selection === "string") setOutputDir(selection);
+    const target = await pickDirectoryToken().catch(() => null);
+    if (target) setOutputDir(target.token);
   };
 
   const run = async () => {

@@ -1,13 +1,13 @@
 import { useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { appCacheDir, join } from "@tauri-apps/api/path";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { pickSaveToken } from "../lib/file-tokens";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import { Camera, FileText, Save, ScanText } from "lucide-react";
 import { Badge, Button, Card } from "../components/ui";
 import { Screen } from "../components/layout";
-import { uid } from "../lib/format";
+import { fileBaseName, uid } from "../lib/format";
+import { pickDocumentTokens } from "../lib/file-tokens";
 import { useT } from "../lib/i18n";
 import { reportError, useToasts } from "../lib/store";
 import { isAndroid, pickAndroidFiles, pickAndroidSaveTarget, publishOutputs } from "../lib/mobile";
@@ -38,11 +38,9 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
     if (isAndroid()) {
       paths = await pickAndroidFiles({ multiple: true, accept: "image" }).catch(() => []);
     } else {
-      const picked = await openDialog({
-        multiple: true,
-        filters: [{ name: t("scanner.filterName"), extensions: ["jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"] }],
-      });
-      paths = Array.isArray(picked) ? picked : typeof picked === "string" ? [picked] : [];
+      paths = (
+        await pickDocumentTokens(["jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"], true).catch(() => [])
+      ).map((file) => file.token);
     }
     setPages((current) => [...current, ...paths.filter((path) => !current.includes(path))]);
   };
@@ -178,7 +176,7 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="muted font-mono text-xs">{index + 1}.</span>
-                      <span className="truncate">{path.split(/[\\/]/).pop()}</span>
+                      <span className="truncate">{fileBaseName(path)}</span>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <Button

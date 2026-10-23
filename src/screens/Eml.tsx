@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { AlertTriangle, ExternalLink, FileText, Mail, Paperclip } from "lucide-react";
 import { Badge, Button, Card } from "../components/ui";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
+import { pickDocumentTokens } from "../lib/file-tokens";
 import { reportError } from "../lib/store";
 import { openAnyFile } from "../lib/mobile";
 import { openEml } from "../lib/office-api";
@@ -97,12 +97,8 @@ export function Eml({ initialFiles = [], onNavigate }: { initialFiles?: string[]
   }, [initialKey, t]);
 
   const pick = async () => {
-    const picked = await openDialog({
-      multiple: true,
-      filters: [{ name: t("eml.filterName"), extensions: ["eml"] }],
-    });
-    const paths = Array.isArray(picked) ? picked : typeof picked === "string" ? [picked] : [];
-    await load(paths);
+    const picked = await pickDocumentTokens(["eml"], true).catch(() => []);
+    await load(picked.map((file) => file.token));
   };
 
   const openAttachment = (name: string, path?: string) => {

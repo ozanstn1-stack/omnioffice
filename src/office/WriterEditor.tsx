@@ -9,6 +9,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { pickFileBytes } from "../lib/mobile";
+import { pickDocumentToken } from "../lib/file-tokens";
 import {
   AlignCenter,
   AlignJustify,
@@ -169,7 +170,6 @@ import {
   CheckCircle2,
   AlertTriangle,
 } from "lucide-react";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openDocument } from "../lib/office-api";
 import { diffDocuments } from "./writer/compare";
 import { checkDocumentSpelling, replaceMisspelledWord, type WordSpellError } from "./writer/spell";
@@ -476,11 +476,8 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   // Compares the current document against a picked version and turns the
   // differences into tracked changes on this document.
   const compareWithFile = useCallback(async () => {
-    const picked = await openDialog({
-      multiple: false,
-      filters: [{ name: t("writer.compareFilter"), extensions: ["docx", "docm", "dotx", "odt"] }],
-    });
-    if (typeof picked !== "string") return;
+    const picked = (await pickDocumentToken(["docx", "docm", "dotx", "odt"]).catch(() => null))?.token;
+    if (!picked) return;
     try {
       const opened = await openDocument(picked);
       const base = opened.model as TextDocument;
