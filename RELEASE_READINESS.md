@@ -38,7 +38,8 @@ release-train schedule is decided.
   `pickDocumentTokens`.
   `test:src/screens/Invoices.test.tsx#builds the VAT summary workbook and saves it as XLSX`
 - **Display names for tokens** via `file-token-names.ts`; drop/launch events and
-  dialogs populate it, so `fileBaseName(token)` keeps the UI readable.
+  dialogs populate it, so `fileBaseName(token)` keeps the UI readable. (no test:
+  display-only cache exercised by the token tests.)
 - **Scope:** the remaining input pickers (2c) and strict mode (4d-d) are next.
   (no test: tracked in #337.)
 
