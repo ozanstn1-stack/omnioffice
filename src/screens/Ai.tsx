@@ -23,7 +23,6 @@ import {
   Wand2,
   X,
 } from "lucide-react";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { pickSaveToken } from "../lib/file-tokens";
 import {
   isAndroid,
@@ -68,6 +67,7 @@ import { consentKeys, isLocalProvider, plainProviderName, providerDisplayName } 
 import { useTool } from "../lib/useTool";
 import { useDev, useSettings, useToasts } from "../lib/store";
 import { clamp, fileBaseName, formatBytes, isPdf, uid } from "../lib/format";
+import { pickDocumentTokens } from "../lib/file-tokens";
 import type {
   AiBatchItemRequest,
   AiBatchResult,
@@ -790,12 +790,9 @@ export function Ai({
       const paths = isAndroid()
         ? await pickOfficeFiles(true)
         : await (async () => {
-            const picked = await openDialog({
-              multiple: true,
-              filters: [{ name: "Documents", extensions: ["pdf", "docx", "xlsx", "pptx", "txt", "md"] }],
-            });
-            if (!picked) return [];
-            return Array.isArray(picked) ? picked : [picked];
+            return (await pickDocumentTokens(["pdf", "docx", "xlsx", "pptx", "txt", "md"], true).catch(() => [])).map(
+              (file) => file.token,
+            );
           })();
       if (paths.length) {
         setBatchFiles((prev) => Array.from(new Set([...prev, ...paths])));

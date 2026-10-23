@@ -2,7 +2,6 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { appCacheDir, join } from "@tauri-apps/api/path";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { pickSaveToken } from "../../lib/file-tokens";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { useT } from "../../lib/i18n";
@@ -15,6 +14,7 @@ import {
   type AndroidTarget,
 } from "../../lib/mobile";
 import { fileBaseName } from "../../lib/format";
+import { pickDocumentToken } from "../../lib/file-tokens";
 import { uid } from "../../lib/office-types";
 import * as api from "../../lib/office-api";
 import { Screen } from "../../components/layout";
@@ -34,8 +34,8 @@ export function PdfFormsScreen() {
       // Android: the SAF picker copies the PDF into the app cache.
       const selection = isAndroid()
         ? (await pickAndroidFiles({ multiple: false, accept: "pdf" }))[0]
-        : await openDialog({ multiple: false, filters: [{ name: "PDF", extensions: ["pdf"] }] });
-      if (typeof selection === "string") {
+        : (await pickDocumentToken(["pdf"]).catch(() => null))?.token;
+      if (selection) {
         setPath(selection);
         setFields(await api.pdfListForm(selection).catch(() => []));
       }

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { appCacheDir, join } from "@tauri-apps/api/path";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { pickSaveToken } from "../lib/file-tokens";
 import {
   AlertTriangle,
@@ -62,7 +61,8 @@ import {
   type SyncStatusView,
 } from "../lib/api";
 import { isOswkPath, needsResolution, shortHash, syncStateTone } from "../lib/sync";
-import { formatBytes, formatDate } from "../lib/format";
+import { fileBaseName, formatBytes, formatDate } from "../lib/format";
+import { pickDocumentTokens } from "../lib/file-tokens";
 import { isAndroid, pickAndroidFilesWithMime, saveFileOnAndroid } from "../lib/mobile";
 
 /**
@@ -304,13 +304,11 @@ export function Sync() {
       // desktop dialog cannot open it); `.oswk` has no registered MIME type.
       const picked = isAndroid()
         ? await pickAndroidFilesWithMime(["application/octet-stream", "*/*"], true)
-        : await openDialog({
-            multiple: true,
-            title: t("sync.addFile"),
-            filters: [{ name: "OmniOffice", extensions: ["oswk"] }],
-          });
+        : await pickDocumentTokens(["oswk"], true).catch(() => []);
       const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
-      const documents = paths.filter((path): path is string => typeof path === "string" && isOswkPath(path));
+      const documents = paths.filter(
+        (path): path is string => typeof path === "string" && isOswkPath(fileBaseName(path)),
+      );
       if (!documents.length) return;
       setAdded((current) => [...new Set([...current, ...documents])]);
       setSelected(documents[0]);

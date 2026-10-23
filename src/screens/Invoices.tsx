@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { appCacheDir, join } from "@tauri-apps/api/path";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { pickSaveToken } from "../lib/file-tokens";
 import { fileBaseName } from "../lib/format";
+import { pickDocumentTokens } from "../lib/file-tokens";
 import { AlertTriangle, Calculator, CheckCircle2, Copy, FileText, QrCode, Receipt, Save, Table2 } from "lucide-react";
 import { Badge, Button, Card, Modal } from "../components/ui";
 import { Screen } from "../components/layout";
@@ -36,7 +36,7 @@ function money(value: number, currency: string) {
 }
 
 function extensionOf(path: string) {
-  return (path.split(".").pop() ?? "").toLowerCase();
+  return (fileBaseName(path).split(".").pop() ?? "").toLowerCase();
 }
 
 /** Reads a UBL file: a `.zip` can hold several invoices, so all of them load. */
@@ -146,11 +146,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
     if (isAndroid()) {
       paths = await pickOfficeFiles(true).catch(() => []);
     } else {
-      const picked = await openDialog({
-        multiple: true,
-        filters: [{ name: t("invoices.filterName"), extensions: ["xml", "zip", "pdf"] }],
-      });
-      paths = Array.isArray(picked) ? picked : typeof picked === "string" ? [picked] : [];
+      paths = (await pickDocumentTokens(["xml", "zip", "pdf"], true).catch(() => [])).map((file) => file.token);
     }
     await load(paths);
   };
@@ -395,7 +391,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
               <Card key={entry.id} className="p-5 flex flex-col gap-3">
                 <div className="flex items-center gap-2 flex-wrap">
                   <QrCode size={16} style={{ color: "var(--accent)" }} />
-                  <strong>{entry.path.split(/[\\/]/).pop()}</strong>
+                  <strong>{fileBaseName(entry.path)}</strong>
                   <Button size="sm" variant="ghost" onClick={() => void readQr(entry)}>
                     {t("invoices.qr.read")}
                   </Button>
