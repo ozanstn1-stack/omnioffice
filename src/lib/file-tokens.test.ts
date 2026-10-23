@@ -3,7 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
-import { pickDocumentToken, pickDocumentTokens, pickSaveToken, releaseFileToken, suggestedOutputPath } from "./file-tokens";
+import {
+  pickDocumentToken,
+  pickDocumentTokens,
+  pickSaveToken,
+  releaseFileToken,
+  suggestedOutputPath,
+} from "./file-tokens";
 
 describe("file token wrappers", () => {
   it("asks the Rust dialog for a read token and passes the extensions", async () => {
