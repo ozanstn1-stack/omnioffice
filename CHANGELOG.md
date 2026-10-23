@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.3] - Global seçici ve son dosyalar jetonları (picker and recents tokens)
+
+### Changed
+
+- **Global open picker and recent files issue tokens (#337 / PR #361):** the
+  command palette / Ctrl+O dialog opens through the Rust token picker and routes
+  by display name. `recent.json` still stores real paths, but `load_recent`
+  returns a fresh opaque token and the display name per entry, so recents
+  survive a restart without exposing paths; `add_recent` resolves a token before
+  storing. Home, History, the search palette and Sync display names and open by
+  token. Output targets, strict mode and the B4 functional splits are next.
+
 ## [6.1.2] - Açılış ve sürükle-bırak jetonları (launch and drop tokens)
 
 ### Changed

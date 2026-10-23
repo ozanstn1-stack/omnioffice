@@ -31,6 +31,16 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.1.3) - Global seçici ve son dosyalar jetonları
+
+- **Token-based global picker** and **recents in Rust** (#337): the open dialog
+  returns tokens; `recent.json` keeps real paths and `load_recent` re-issues
+  tokens with display names on every load, so a restart keeps the list without
+  exposing paths.
+  `test:src-tauri/src/recent_tests.rs#entries_become_token_refs_and_missing_files_are_dropped`
+- **Scope:** output targets, the strict no-path mode and the B4 functional
+  splits remain. (no test: tracked in #337 / #339.)
+
 ## Implemented (this cycle, 6.1.2) - Açılış ve sürükle-bırak jetonları
 
 - **Launch and drop tokens** (#337): `startup_tokens`/`office_take_launch_files`
