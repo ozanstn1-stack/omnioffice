@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { appCacheDir, join } from "@tauri-apps/api/path";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { pickSaveToken } from "../lib/file-tokens";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import { Camera, FileText, Save, ScanText } from "lucide-react";
 import { Badge, Button, Card } from "../components/ui";
@@ -81,12 +82,9 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
       const cache = await appCacheDir();
       outputPath = await join(cache, androidTarget.name || "Tarama.pdf");
     } else {
-      const output = await saveDialog({
-        defaultPath: "Tarama.pdf",
-        filters: [{ name: "PDF", extensions: ["pdf"] }],
-      });
-      if (typeof output !== "string") return;
-      outputPath = output;
+      const target = await pickSaveToken("Tarama.pdf", ["pdf"]).catch(() => null);
+      if (!target) return;
+      outputPath = target.token;
     }
 
     setBusy(true);

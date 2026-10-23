@@ -2,7 +2,8 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { appCacheDir, join } from "@tauri-apps/api/path";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { pickSaveToken } from "../../lib/file-tokens";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { useT } from "../../lib/i18n";
 import { reportError, useToasts } from "../../lib/store";
@@ -74,14 +75,21 @@ export function PdfFormsScreen() {
       await invoke("ensure_dir", { path: stageDir });
       output = await join(stageDir, fileBaseName(defaultPath));
     } else {
-      output = await saveDialog({ defaultPath, filters: [{ name: "PDF", extensions: ["pdf"] }] });
+      const pickedTarget = await pickSaveToken(fileBaseName(defaultPath), ["pdf"]).catch(() => null);
+      if (!pickedTarget) return;
+      output = pickedTarget.token;
     }
     if (!output) return;
     setBusy(true);
     try {
       // The save dialog already confirmed replacing an existing file, so the
       // backend must not refuse it again ("error" made every overwrite fail).
-      const written = await api.pdfAddForm({ input: path, output, fields, overwrite: "replace" });
+      const written = await api.pdfAddForm({
+        input: path,
+        output,
+        fields,
+        overwrite: "replace",
+      });
       if (androidTarget) {
         const failures = await publishOutputs([written || output], { file: androidTarget });
         if (failures.length) throw new Error(failures[0].error);

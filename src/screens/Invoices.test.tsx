@@ -93,6 +93,8 @@ const invoke = vi.fn(async (command: string, payload?: { paths?: string[]; path?
         warnings: [],
         count: payload?.paths?.length ?? 0,
       };
+    case "file_token_save":
+      return [{ token: "C:/out/KDV-Ozeti.xlsx", name: "KDV-Ozeti.xlsx", path: "C:/out/KDV-Ozeti.xlsx" }];
     case "office_save_document":
     case "office_export_pdf":
       return { path: String(payload?.path ?? ""), warnings: [] };

@@ -1,4 +1,5 @@
 import { flagEnabled } from "./flags";
+import { tokenName } from "./file-token-names";
 
 export function formatBytes(bytes: number | null | undefined): string {
   if (bytes === null || bytes === undefined || Number.isNaN(bytes)) return "—";
@@ -33,6 +34,10 @@ export function formatPoints(pt: number): string {
 }
 
 export function fileBaseName(path: string): string {
+  // A capability token is opaque; the dialog/drop/launch layer remembered its
+  // display name so the UI can keep calling fileBaseName on both shapes.
+  const known = tokenName(path);
+  if (known) return known;
   const parts = path.split(/[\\/]/);
   return parts[parts.length - 1] || path;
 }

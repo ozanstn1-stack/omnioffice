@@ -1,13 +1,13 @@
 import { useState, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { appCacheDir, join } from "@tauri-apps/api/path";
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { AlertTriangle, Copy, Download, Edit3, FileText, Shield } from "lucide-react";
 import { Badge, Button, Card, Field, Segmented, TextArea, TextInput } from "../components/ui";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { generateKvkkText, type KvkkTemplateType } from "../lib/kvkk-templates";
 import { useT } from "../lib/i18n";
-import { uid } from "../lib/format";
+import { fileBaseName, uid } from "../lib/format";
+import { pickSaveToken } from "../lib/file-tokens";
 import { isAndroid, pickAndroidSaveTarget, publishOutputs } from "../lib/mobile";
 import type { ViewId } from "../lib/nav";
 import { defaultParaProps, newTextDocument, type Block, type TextDocument } from "../lib/office-types";
@@ -134,22 +134,16 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
       return;
     }
 
-    const path = await saveDialog({
-      defaultPath: defaultName,
-      filters:
-        format === "docx"
-          ? [{ name: "Word Belgesi (*.docx)", extensions: ["docx"] }]
-          : [{ name: "PDF Belgesi (*.pdf)", extensions: ["pdf"] }],
-    });
-
-    if (!path || typeof path !== "string") return;
+    const extension = format === "docx" ? "docx" : "pdf";
+    const target = await pickSaveToken(fileBaseName(defaultName), [extension]).catch(() => null);
+    if (!target) return;
 
     setBusy(true);
     try {
       if (format === "pdf") {
-        await exportPdf("writer", doc, path);
+        await exportPdf("writer", doc, target.token);
       } else {
-        await saveDocument("writer", doc, path);
+        await saveDocument("writer", doc, target.token);
       }
       push({
         kind: "success",

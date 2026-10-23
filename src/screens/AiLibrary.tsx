@@ -12,7 +12,8 @@ import {
   Trash2,
   Wand2,
 } from "lucide-react";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { pickSaveToken } from "../lib/file-tokens";
 import { isAndroid, openAnyFile, revealAnyFile, saveFileOnAndroid } from "../lib/mobile";
 import { Badge, Button, Card, EmptyState, IconButton, Spinner, TextInput } from "../components/ui";
 import { Screen } from "../components/layout";
@@ -25,7 +26,7 @@ import {
   aiLibraryList,
   aiLibraryText,
 } from "../lib/api";
-import { formatDate } from "../lib/format";
+import { fileBaseName, formatDate } from "../lib/format";
 import { useSettings, useToasts } from "../lib/store";
 import type { AiLibraryEntry } from "../lib/types";
 
@@ -105,16 +106,9 @@ export function AiLibrary({ onOpenAi }: { onOpenAi: () => void }) {
         pushToast({ kind: "success", title: t("library.exported"), detail: saved });
         return;
       }
-      const picked = await saveDialog({
-        title: t("common.save"),
-        defaultPath: defaultName,
-        filters: [
-          { name: "Markdown", extensions: ["md"] },
-          { name: "Text", extensions: ["txt"] },
-        ],
-      });
-      if (!picked) return;
-      const path = await aiLibraryExport(entry.id, String(picked));
+      const target = await pickSaveToken(fileBaseName(defaultName), ["md", "txt"]).catch(() => null);
+      if (!target) return;
+      const path = await aiLibraryExport(entry.id, target.token);
       pushToast({ kind: "success", title: t("library.exported"), detail: path });
     } catch (error) {
       pushToast({

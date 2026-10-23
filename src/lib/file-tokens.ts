@@ -6,6 +6,7 @@
  * tokens in `paths::input_file`/`output_file`.
  */
 import { invoke } from "@tauri-apps/api/core";
+import { rememberTokenName } from "./file-token-names";
 
 export interface FileToken {
   token: string;
@@ -15,8 +16,11 @@ export interface FileToken {
 }
 
 /** Opens the native open dialog; an empty list means the user cancelled. */
-export const pickDocumentTokens = (extensions?: string[], multiple = false) =>
-  invoke<FileToken[]>("file_token_pick", { extensions, multiple });
+export const pickDocumentTokens = async (extensions?: string[], multiple = false) => {
+  const refs = await invoke<FileToken[]>("file_token_pick", { extensions, multiple });
+  for (const ref of refs) rememberTokenName(ref.token, ref.name);
+  return refs;
+};
 
 /** Convenience for single-file tools. */
 export const pickDocumentToken = async (extensions?: string[]): Promise<FileToken | null> => {
@@ -25,12 +29,18 @@ export const pickDocumentToken = async (extensions?: string[]): Promise<FileToke
 };
 
 /** Opens the native folder dialog; the token allows writing into the folder. */
-export const pickDirectoryToken = () => invoke<FileToken | null>("file_token_pick_directory");
+export const pickDirectoryToken = async (): Promise<FileToken | null> => {
+  const picked = await invoke<FileToken | null>("file_token_pick_directory");
+  if (picked) rememberTokenName(picked.token, picked.name);
+  return picked;
+};
 
 /** Opens the native save dialog; the token allows writing to the target. */
 export const pickSaveToken = async (name?: string, extensions?: string[]): Promise<FileToken | null> => {
   const picked = await invoke<FileToken[]>("file_token_save", { name, extensions });
-  return picked[0] ?? null;
+  const first = picked[0] ?? null;
+  if (first) rememberTokenName(first.token, first.name);
+  return first;
 };
 
 /** Forgets a token when the document or save target is closed. */

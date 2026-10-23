@@ -210,9 +210,10 @@ export function useOfficeSession(tab: OfficeTab) {
         } else {
           const extension = options?.extension ?? defaultExtensionFor(tab.kind);
           const suggested = options?.defaultPath ?? suggestedName(tab, extension);
-          const picked = await pickSaveToken(suggested, FILTERS[tab.kind]?.[0]?.extensions ?? [extension]).catch(
-            () => null,
-          );
+          const picked = await pickSaveToken(
+            fileBaseName(suggested),
+            FILTERS[tab.kind]?.[0]?.extensions ?? [extension],
+          ).catch(() => null);
           if (!picked) return null;
           saveToken = picked.token;
           path = picked.path ?? suggested;

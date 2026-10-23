@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { appCacheDir, join } from "@tauri-apps/api/path";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { pickSaveToken } from "../lib/file-tokens";
+import { fileBaseName } from "../lib/format";
 import { AlertTriangle, Calculator, CheckCircle2, Copy, FileText, QrCode, Receipt, Save, Table2 } from "lucide-react";
 import { Badge, Button, Card, Modal } from "../components/ui";
 import { Screen } from "../components/layout";
@@ -10,6 +12,7 @@ import { reportError, useSettings, useToasts } from "../lib/store";
 import { isAndroid, pickOfficeFiles, saveFileOnAndroid, saveTextOnAndroid } from "../lib/mobile";
 import { compareQrWithInvoice } from "../lib/invoice-qr";
 import { exportAccounting, type AccountingSoftware } from "../lib/accounting-export";
+import { aiSaveOutput } from "../lib/api";
 import { generateKdvDeclarationReport } from "../lib/kdv-declaration";
 import { detectDuplicateInvoices } from "../lib/duplicate-invoices";
 import {
@@ -180,13 +183,10 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
         }
         return;
       }
-      const path = await saveDialog({
-        defaultPath: defaultName,
-        filters: [{ name: "PDF", extensions: ["pdf"] }],
-      });
-      if (typeof path !== "string") return;
-      await exportPdf("writer", document.model, path);
-      useToasts.getState().push({ kind: "success", title: t("invoices.pdfSaved"), detail: path });
+      const target = await pickSaveToken(fileBaseName(defaultName), ["pdf"]).catch(() => null);
+      if (!target) return;
+      await exportPdf("writer", document.model, target.token);
+      useToasts.getState().push({ kind: "success", title: t("invoices.pdfSaved"), detail: target.path ?? target.name });
     } catch (error) {
       reportError(error, t);
     }
@@ -211,16 +211,13 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
           });
         }
       } else {
-        const path = await saveDialog({
-          defaultPath: "KDV-Ozeti.xlsx",
-          filters: [{ name: "Excel", extensions: ["xlsx"] }],
-        });
-        if (typeof path !== "string") return;
-        await saveDocument("calc", summary.workbook, path);
+        const target = await pickSaveToken("KDV-Ozeti.xlsx", ["xlsx"]).catch(() => null);
+        if (!target) return;
+        await saveDocument("calc", summary.workbook, target.token);
         useToasts.getState().push({
           kind: "success",
           title: t("invoices.summarySaved", { count: summary.count }),
-          detail: path,
+          detail: target.path ?? target.name,
         });
       }
       for (const warning of summary.warnings) {
@@ -257,18 +254,14 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
       // CSV only: the vendor "Excel" and Logo-XML shapes were never verified
       // against a real import template, so they are not offered
       // (RELEASE_READINESS.md; the whole vendor export area is flag-gated).
-      const path = await saveDialog({
-        defaultPath: defaultName,
-        filters: [{ name: "CSV", extensions: ["csv"] }],
-      });
-      if (typeof path !== "string") return;
+      const target = await pickSaveToken(fileBaseName(defaultName), ["csv"]).catch(() => null);
+      if (!target) return;
       const content = exportAccounting(ublInvoices, software);
-      const { writeTextFile } = await import("@tauri-apps/plugin-fs");
-      await writeTextFile(path, content);
+      await aiSaveOutput(target.token, content, "overwrite");
       useToasts.getState().push({
         kind: "success",
         title: `${software.toUpperCase()} Aktarım Dosyası Kaydedildi`,
-        detail: path,
+        detail: target.path ?? target.name,
       });
     } catch (error) {
       reportError(error, t);

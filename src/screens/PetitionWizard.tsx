@@ -1,13 +1,13 @@
 import { useState } from "react";
+import { pickSaveToken } from "../lib/file-tokens";
 import { invoke } from "@tauri-apps/api/core";
 import { appCacheDir, join } from "@tauri-apps/api/path";
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { FileText, Download, Edit3 } from "lucide-react";
 import { Button, Card, Field, TextInput } from "../components/ui";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { flagEnabled } from "../lib/flags";
-import { uid } from "../lib/format";
+import { fileBaseName, uid } from "../lib/format";
 import { isAndroid, pickAndroidSaveTarget, publishOutputs } from "../lib/mobile";
 import type { ViewId } from "../lib/nav";
 import { useOfficeTabs } from "../lib/office-store";
@@ -104,24 +104,16 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
       return;
     }
 
-    const path = await saveDialog({
-      defaultPath: defaultName,
-      filters:
-        format === "udf"
-          ? [{ name: "UYAP Doküman Formatı (*.udf)", extensions: ["udf"] }]
-          : format === "docx"
-            ? [{ name: "Word Belgesi (*.docx)", extensions: ["docx"] }]
-            : [{ name: "PDF Belgesi (*.pdf)", extensions: ["pdf"] }],
-    });
-
-    if (!path || typeof path !== "string") return;
+    const extension = format === "udf" ? "udf" : format === "docx" ? "docx" : "pdf";
+    const target = await pickSaveToken(fileBaseName(defaultName), [extension]).catch(() => null);
+    if (!target) return;
 
     setBusy(true);
     try {
       if (format === "pdf") {
-        await exportPdf("writer", doc, path);
+        await exportPdf("writer", doc, target.token);
       } else {
-        await saveDocument("writer", doc, path);
+        await saveDocument("writer", doc, target.token);
       }
       useToasts.getState().push({
         kind: "success",

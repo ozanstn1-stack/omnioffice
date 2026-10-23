@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { pickSaveToken } from "../lib/file-tokens";
 import { ChevronLeft, ChevronRight, Download, Eye, Eraser, FileText, Search, ShieldCheck, Trash2 } from "lucide-react";
 import {
   Badge,
@@ -17,7 +17,7 @@ import { DropZone, FileList, InfoStrip, OutputBar, ResultCard } from "../compone
 import { PageCanvas, type Rect } from "../components/pages";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
-import { uid } from "../lib/format";
+import { fileBaseName, uid } from "../lib/format";
 import { isAndroid } from "../lib/mobile";
 import { reportError, useJobProgress, useToasts } from "../lib/store";
 import { useTool } from "../lib/useTool";
@@ -307,12 +307,9 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
 
       if (saveToFile && !isAndroid()) {
         const defaultPath = session.primary.path.replace(/\.pdf$/i, "-karartma-sertifikasi.md");
-        const outPath = await saveDialog({
-          defaultPath,
-          filters: [{ name: "Markdown Raporu (*.md)", extensions: ["md"] }],
-        });
-        if (typeof outPath === "string") {
-          await aiSaveOutput(outPath, md, "overwrite");
+        const outPath = await pickSaveToken(fileBaseName(defaultPath), ["md"]).catch(() => null);
+        if (outPath) {
+          await aiSaveOutput(outPath.token, md, "overwrite");
         }
       }
 
