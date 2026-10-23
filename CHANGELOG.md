@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.9] - Katı dosya jetonları (strict file tokens)
+
+### Changed
+
+- **Desktop release builds only accept capability tokens (#337 / PR #378):**
+  `paths::input_file` / `paths::output_file` reject raw paths with a clear
+  error; Android's SAF bridge and debug/E2E builds keep the documented raw-path
+  exception. MailMerge picks tokens and shows the picked name. Remaining
+  persisted-folder exceptions (Vault, AI library/settings) are documented in
+  `docs/file-tokens.md`.
+
 ## [6.1.8] - Kalan diyaloglar jetonlaştı (remaining dialogs tokenized)
 
 ### Changed
