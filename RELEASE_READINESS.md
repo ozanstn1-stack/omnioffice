@@ -170,7 +170,7 @@ it claims nothing that is not in the tree today.
   `test:crates/compat/tests/score_test.rs#the_corpus_scores_above_the_threshold`
 - **LibreOffice ODF fix** (#238): the manifest is generated from the entries
   actually written, so LibreOffice opens our ODT/ODS/ODP output.
-  `test:crates/officecore/src/odf.rs#odt_manifest_matches_the_package`
+  `test:crates/officecore/src/odf_tests.rs#odt_manifest_matches_the_package`
 - **Per-importer fuzz targets** (#241): `docx`, `xlsx`, `pptx`, `udf`, `ubl`.
   `(no test: the Fuzz job runs the targets on every master push and nightly)`
 
