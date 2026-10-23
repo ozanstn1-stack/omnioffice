@@ -25,6 +25,7 @@ import {
   Type as TypeIcon,
   Wrench,
 } from "lucide-react";
+import { suggestedOutputPath } from "../lib/file-tokens";
 import { useT } from "../lib/i18n";
 import { errorMessage, useSettings, useToasts } from "../lib/store";
 import { invokeTracked } from "../lib/api";
@@ -46,7 +47,6 @@ import {
   pdfValidateForm,
   pdfVerifySignatures,
   pdfVerifySignaturesOnline,
-  suggestOutput,
   toAppError,
   type FieldIssue,
   type FieldValue,
@@ -367,8 +367,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
 
   const runRepair = () =>
     run(async () => {
-      // On Android the result is exported through the system save flow, so the
-      // destination is picked before the work starts.
+      // On Android the destination is picked before the work starts.
       let androidTarget: AndroidTarget | null = null;
       if (isAndroid() && input) {
         androidTarget = await pickAndroidSaveTarget(fileBaseName(input).replace(/\.pdf$/i, "-repaired.pdf")).catch(
@@ -582,7 +581,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
       if (!target) return null;
       return { output: input.replace(/\.pdf$/i, suffix), androidTarget: target };
     }
-    const suggested = await suggestOutput(input, suffix).catch(() => input.replace(/\.pdf$/i, suffix));
+    const suggested = await suggestedOutputPath(input, suffix, input.replace(/\.pdf$/i, suffix));
     const picked = await saveDialog({
       title: t("common.saveAs"),
       defaultPath: suggested,
@@ -915,7 +914,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
       androidTarget = target;
       output = input.replace(/\.pdf$/i, "-signed.pdf");
     } else {
-      const suggested = await suggestOutput(input, "-signed").catch(() => input.replace(/\.pdf$/i, "-signed.pdf"));
+      const suggested = await suggestedOutputPath(input, "-signed", input.replace(/\.pdf$/i, "-signed.pdf"));
       const picked = await saveDialog({
         title: t("common.saveAs"),
         defaultPath: suggested,

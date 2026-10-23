@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
-import { pickDocumentToken, pickDocumentTokens, pickSaveToken, releaseFileToken } from "./file-tokens";
+import { pickDocumentToken, pickDocumentTokens, pickSaveToken, releaseFileToken, suggestedOutputPath } from "./file-tokens";
 
 describe("file token wrappers", () => {
   it("asks the Rust dialog for a read token and passes the extensions", async () => {
@@ -32,5 +32,17 @@ describe("file token wrappers", () => {
     invoke.mockResolvedValueOnce(true);
     await expect(releaseFileToken("abc")).resolves.toBe(true);
     expect(invoke).toHaveBeenCalledWith("file_token_release", { token: "abc" });
+  });
+
+  it("asks for a suggested save target and falls back to a display path", async () => {
+    invoke.mockResolvedValueOnce({ token: "write-1", path: "C:/out.pdf" });
+    await expect(suggestedOutputPath("C:/in.pdf", "_out", "C:/fallback.pdf")).resolves.toBe("C:/out.pdf");
+    expect(invoke).toHaveBeenCalledWith("suggest_output", {
+      input: "C:/in.pdf",
+      suffix: "_out",
+      directory: undefined,
+    });
+    invoke.mockRejectedValueOnce(new Error("engine"));
+    await expect(suggestedOutputPath("C:/in.pdf", "_out", "C:/fallback.pdf")).resolves.toBe("C:/fallback.pdf");
   });
 });

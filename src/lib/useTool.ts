@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { appDataDir } from "@tauri-apps/api/path";
-import { cancelJob, fileSizes, logOperation, pdfInfo, suggestOutput, toAppError } from "./api";
+import { cancelJob, fileSizes, logOperation, pdfInfo, toAppError } from "./api";
 import { displayNames, releaseFileToken, type FileToken } from "./file-tokens";
 import { acceptsFile, pathEntries, pickDesktopFiles, tokenEntries } from "./tool-files";
-import { dirName, fileBaseName, fileStem, isPdf, joinPath, uid } from "./format";
+import { useOutputTarget } from "./use-output-target";
+import { fileBaseName, isPdf, uid } from "./format";
 import { isAndroid, pickAndroidFiles, publishOutputs, type PublishTarget } from "./mobile";
 import {
   reportError,
@@ -55,6 +54,8 @@ export interface ToolSession {
   clearFiles: () => void;
   outputPath: string;
   setOutputPath: (value: string) => void;
+  /** Save target from the Rust dialog: token for the command, path for display. */
+  setOutputTarget: (target: { token: string; path: string }) => void;
   outputDir: string;
   setOutputDir: (value: string) => void;
   overwrite: OverwriteMode;
@@ -106,8 +107,6 @@ export function useTool(options: ToolOptions): ToolSession {
   const [infoError, setInfoError] = useState<string | null>(null);
   const [password, setPassword] = useState("");
   const [needsPassword, setNeedsPassword] = useState(false);
-  const [outputPath, setOutputPath] = useState("");
-  const [outputDir, setOutputDir] = useState("");
   // Multi-output tools show the overwrite choice up front; "create new" is the
   // displayed default, so the state must match it (the old "error" default made
   // a second export fail with "a file with this name already exists").
@@ -262,71 +261,13 @@ export function useTool(options: ToolOptions): ToolSession {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [primary?.path, loadInfo]);
 
-  // Default output path suggestion.
-  useEffect(() => {
-    if (!primary) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing the suggestion for an empty selection
-      setOutputPath("");
-      setOutputDir("");
-      return;
-    }
-    let cancelled = false;
-    const suggestedName = primary.path.replace(/\.[^.\\/]+$/, "") + suffix + (accept === "image" ? ".pdf" : ".pdf");
-    // Android: outputs are staged inside the app's private data directory and
-    // published through the SAF dialog afterwards. No standing grant to any
-    // shared/user-visible storage is needed for the intermediate file.
-    if (isAndroid()) {
-      void (async () => {
-        let base = settings.defaultOutputDir;
-        if (!base) {
-          const appData = await appDataDir().catch(() => "");
-          base = appData ? joinPath(appData, "Outputs") : dirName(primary.path);
-        }
-        // The native commands require the output folder to exist (centralized
-        // path policy); a fresh install has no staging folder yet, so create
-        // it here instead of failing the merge/export with "folder missing".
-        await invoke("ensure_dir", { path: base }).catch(() => undefined);
-        if (cancelled) return;
-        setOutputPath(joinPath(base, fileBaseName(suggestedName)));
-        setOutputDir(base);
-      })();
-      return () => {
-        cancelled = true;
-      };
-    }
-    // Multi-output tools (PDF -> images, split) write into a folder named after
-    // the document: exporting several PDFs from the same directory can no
-    // longer collide on the first page_001 file.
-    if (isMultiOutput) {
-      const folder = joinPath(dirName(primary.path), `${fileStem(primary.path)}${suffix}`);
-      void invoke("ensure_dir", { path: folder }).catch(() => undefined);
-      setOutputPath(joinPath(folder, fileBaseName(suggestedName)));
-      setOutputDir(folder);
-      return;
-    }
-    const target = settings.defaultOutputDir
-      ? joinPath(settings.defaultOutputDir, fileBaseName(suggestedName))
-      : suggestedName;
-    if (!settings.defaultOutputDir) {
-      void suggestOutput(primary.path, suffix)
-        .then((path) => {
-          if (!cancelled) setOutputPath(path);
-        })
-        .catch(() => {
-          if (!cancelled) setOutputPath(suggestedName);
-        });
-    } else {
-      setOutputPath(target);
-    }
-
-    setOutputDir(settings.defaultOutputDir || dirName(primary.path));
-    return () => {
-      cancelled = true;
-    };
-    // The suggestion is derived from the active file/output settings; the async
-    // callbacks own the state they set.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [primary?.path, suffix, settings.defaultOutputDir, isMultiOutput]);
+  const { outputPath, outputToken, outputDir, setOutputPath, setOutputDir, setOutputTarget } = useOutputTarget({
+    input: primary?.path ?? null,
+    suffix,
+    accept,
+    isMultiOutput,
+    defaultOutputDir: settings.defaultOutputDir,
+  });
 
   // Files handed over from another screen.
   const initialised = useRef(false);
@@ -446,10 +387,12 @@ export function useTool(options: ToolOptions): ToolSession {
 
   const outputSpec = useCallback(
     (mode?: OverwriteMode, path?: string): OutputSpec => ({
-      path: path ?? outputPath,
+      // Single-output tools send the capability token; multi-output folders
+      // (and Android staging) keep the path.
+      path: path ?? outputToken ?? outputPath,
       overwrite: mode ?? overwrite,
     }),
-    [outputPath, overwrite],
+    [outputPath, outputToken, overwrite],
   );
 
   const resetResult = useCallback(() => setResult(null), []);
@@ -469,6 +412,7 @@ export function useTool(options: ToolOptions): ToolSession {
     clearFiles,
     outputPath,
     setOutputPath,
+    setOutputTarget,
     outputDir,
     setOutputDir,
     overwrite,

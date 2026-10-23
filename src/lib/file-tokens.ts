@@ -10,6 +10,8 @@ import { invoke } from "@tauri-apps/api/core";
 export interface FileToken {
   token: string;
   name: string;
+  /** Save targets only: the location the user just picked (for display). */
+  path?: string;
 }
 
 /** Opens the native open dialog; an empty list means the user cancelled. */
@@ -30,6 +32,14 @@ export const pickSaveToken = async (name?: string, extensions?: string[]): Promi
 
 /** Forgets a token when the document or save target is closed. */
 export const releaseFileToken = (token: string) => invoke<boolean>("file_token_release", { token });
+
+/** Asks Rust for a suggested save target: a write token and the display path. */
+export const suggestOutput = (input: string, suffix: string, directory?: string) =>
+  invoke<{ token: string; path: string }>("suggest_output", { input, suffix, directory });
+
+/** The display path of a suggested target, or `fallback` if Rust refused. */
+export const suggestedOutputPath = async (input: string, suffix: string, fallback: string) =>
+  (await suggestOutput(input, suffix).catch(() => ({ path: fallback }))).path;
 
 /** Display names for values that may be tokens or paths (never a path for tokens). */
 export const displayNames = (values: string[]) => invoke<(string | null)[]>("file_names", { values });
