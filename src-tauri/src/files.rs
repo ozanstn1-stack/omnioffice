@@ -32,6 +32,10 @@ pub enum FileAccess {
 pub struct FileRef {
     pub token: String,
     pub name: String,
+    /// Only set for a save target: the human just picked it in the dialog, and
+    /// the UI shows it. Pick tokens never carry a path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
 }
 
 struct Entry {
@@ -63,7 +67,7 @@ pub fn issue(path: &Path, access: FileAccess) -> FileRef {
     with_registry(|registry| {
         registry.insert(token.clone(), Entry { path: path.to_path_buf(), access, issued: Instant::now() });
     });
-    FileRef { token, name }
+    FileRef { token, name, path: None }
 }
 
 /// Resolves a token; a read-only token cannot be used for writing.
@@ -171,7 +175,11 @@ async fn pick(app: &tauri::AppHandle, extensions: Option<Vec<String>>, mode: Pic
             let picked = await_path(receiver).await?;
             Ok(picked
                 .and_then(|path| path.into_path().ok())
-                .map(|path| issue(&path, FileAccess::ReadWrite))
+                .map(|path| {
+                    let mut reference = issue(&path, FileAccess::ReadWrite);
+                    reference.path = Some(path.display().to_string());
+                    reference
+                })
                 .into_iter()
                 .collect())
         }

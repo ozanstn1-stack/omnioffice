@@ -23,7 +23,7 @@ const invoke = vi.fn(async (command: string, _payload?: unknown) => {
     case "file_sizes":
       return [2048];
     case "suggest_output":
-      return "C:/docs/out.pdf";
+      return { token: "C:/docs/out.pdf", path: "C:/docs/out.pdf" };
     case "output_exists":
       return false;
     case "pdf_info":

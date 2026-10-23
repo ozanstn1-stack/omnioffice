@@ -284,8 +284,6 @@ export const checkPassword = (path: string, password: string) => invoke<boolean>
 
 export const outputExists = (path: string) => invoke<boolean>("output_exists", { path });
 
-export const suggestOutput = (input: string, suffix: string) => invoke<string>("suggest_output", { input, suffix });
-
 export const fileSizes = (paths: string[]) => invoke<(number | null)[]>("file_sizes", { paths });
 
 export const logFrontend = (level: string, message: string) =>

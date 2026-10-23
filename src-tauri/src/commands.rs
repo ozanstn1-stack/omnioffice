@@ -1877,12 +1877,31 @@ pub fn ensure_dir(path: String) -> Result<(), PdfError> {
 }
 
 /// Suggests a default output path next to the input.
+/// A suggested save target: the write token and the path the UI displays.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutputSuggestion {
+    pub token: String,
+    pub path: String,
+}
+
 #[tauri::command]
-pub fn suggest_output(input: String, suffix: String) -> String {
+pub fn suggest_output(input: String, suffix: String, directory: Option<String>) -> OutputSuggestion {
     let Ok(input) = crate::paths::input_file(&input) else {
-        return String::new();
+        return OutputSuggestion { token: String::new(), path: String::new() };
     };
-    pdfcore::docutil::default_output_for(input.as_path(), &suffix).display().to_string()
+    let suggested = pdfcore::docutil::default_output_for(input.as_path(), &suffix);
+    // A configured output folder is validated like any other directory; the
+    // token is issued here, never by the webview.
+    let target = match directory {
+        Some(directory) => match crate::paths::directory(&directory) {
+            Ok(base) => base.as_path().join(suggested.file_name().unwrap_or_default()),
+            Err(_) => suggested,
+        },
+        None => suggested,
+    };
+    let token = crate::files::issue(&target, crate::files::FileAccess::ReadWrite).token;
+    OutputSuggestion { token, path: target.display().to_string() }
 }
 
 /// File sizes for the selected files (used by the file list UI). Missing or
