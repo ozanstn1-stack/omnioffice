@@ -31,6 +31,14 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.1.10) - ODT okuyucu modülü
+
+- **ODT reader split** (#339): `odf/text_read.rs` now owns the import path;
+  `odf.rs` fell to 3418 lines and the file-size baseline was lowered.
+  `test:crates/officecore/src/odf_tests.rs#odt_roundtrip`
+- **Scope:** ODS/ODP halves and the Writer/Impress/Calc editor seams follow.
+  (no test: tracked in #339.)
+
 ## Implemented (this cycle, 6.1.9) - Katı jeton denetimi
 
 - **Raw paths rejected in desktop release builds** (#337): `input_file` and
