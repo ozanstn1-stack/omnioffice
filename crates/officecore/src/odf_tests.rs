@@ -921,7 +921,7 @@ fn condition_formulas_convert_references_and_separators() {
 
 #[test]
 fn condition_arguments_split_outside_quotes_and_parentheses() {
-    assert_eq!(split_ods_args("1,9"), ["1", "9"]);
-    assert_eq!(split_ods_args("\"a,b\";MAX(1;2)"), ["\"a,b\"", "MAX(1;2)"]);
-    assert_eq!(unquote_ods("\"say \"\"hi\"\"\""), "say \"hi\"");
+    assert_eq!(super::sheets_read::split_ods_args("1,9"), ["1", "9"]);
+    assert_eq!(super::sheets_read::split_ods_args("\"a,b\";MAX(1;2)"), ["\"a,b\"", "MAX(1;2)"]);
+    assert_eq!(super::sheets_read::unquote_ods("\"say \"\"hi\"\"\""), "say \"hi\"");
 }

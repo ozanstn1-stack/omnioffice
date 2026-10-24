@@ -447,7 +447,7 @@ fn ods_ranges_to_ours(addresses: &str) -> String {
 
 /// Splits condition arguments on `,` or `;` outside string literals and nested
 /// parentheses.
-pub(super) fn split_ods_args(inner: &str) -> Vec<String> {
+pub(crate) fn split_ods_args(inner: &str) -> Vec<String> {
     let mut args = vec![String::new()];
     let (mut quoted, mut depth) = (false, 0i32);
     for ch in inner.chars() {
@@ -467,7 +467,7 @@ pub(super) fn split_ods_args(inner: &str) -> Vec<String> {
 }
 
 /// `"a ""b"""` -> `a "b"`; text without quotes is returned as written.
-pub(super) fn unquote_ods(text: &str) -> String {
+pub(crate) fn unquote_ods(text: &str) -> String {
     let text = text.trim();
     match text.strip_prefix('"').and_then(|inner| inner.strip_suffix('"')) {
         Some(inner) => inner.replace("\"\"", "\""),
