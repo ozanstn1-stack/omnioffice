@@ -31,6 +31,14 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.1.12) - ODS yazıcı modülü
+
+- **ODS writer split** (#339): `odf/sheets_write.rs` owns the Calc export;
+  `odf.rs` fell to 2282 lines and the baseline was lowered.
+  `test:crates/officecore/src/odf_tests.rs#ods_roundtrip_with_formulas`
+- **Scope:** the ODP halves and the editor seams follow.
+  (no test: tracked in #339.)
+
 ## Implemented (this cycle, 6.1.11) - ODS okuyucu modülü
 
 - **ODS reader split** (#339): `odf/sheets_read.rs` owns the Calc import;
