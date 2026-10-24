@@ -26,7 +26,7 @@ const NS: &str = concat!(
     "xmlns:presentation=\"urn:oasis:names:tc:opendocument:xmlns:presentation:1.0\""
 );
 mod sheets_read;
-use sheets_read::{ods_annotation, ods_href, read_ods_chart, split_ods_args, unquote_ods};
+use sheets_read::{ods_annotation, ods_href, read_ods_chart};
 mod text_read;
 use text_read::{collect_styles, node_text_runs, paragraph_props, wrap_trailing_text, NoteReadState};
 mod text_write;
