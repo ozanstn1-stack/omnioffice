@@ -1,5 +1,6 @@
 //! ODS (Calc) import: sheets, cells, charts, conditional formats and links.
 
+use super::sheets_write::OdsLocalTable;
 use super::*;
 use crate::xml::{parse_xml, XmlNode};
 use std::collections::HashMap;
