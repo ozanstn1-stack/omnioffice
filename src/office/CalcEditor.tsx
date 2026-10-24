@@ -80,6 +80,14 @@ import { applyFilterDraft, clearFilter, sheetFilterDraft, tableFilterDraft, type
 import { argumentHintFor, buildSuggestions, type FormulaSuggestion } from "./calc/formula-assist";
 import { clampGridZoom, pinchGridZoom, shiftFormulaColumns } from "./calc/grid-math";
 import type { CellPosition, GridSelection } from "./calc/grid-types";
+import {
+  attributeAtEvent,
+  cellAtEvent,
+  TAP_SLOP,
+  type DragBounds,
+  type GridGesture,
+  type PinchGesture,
+} from "./calc/gestures";
 import { prepareConditional } from "./calc/conditional";
 import { defaultRuleRange } from "./calc/conditional-form";
 import { isValid } from "./calc/rules";
@@ -140,64 +148,6 @@ type CommitMove = "down" | "up" | "right" | "left" | "none";
 /** The element carrying `attribute` under a pointer event: the event target
  * when the event bubbles from it, or hit-testing at the pointer's coordinates
  * when the pointer is captured by the grid (capture retargets every move). */
-function attributeAtEvent(event: PointerEvent | React.PointerEvent, attribute: string): HTMLElement | null {
-  const closest = (element: Element | null | undefined) => element?.closest?.<HTMLElement>(`[${attribute}]`) ?? null;
-  const fromTarget = closest(event.target as Element | null);
-  if (fromTarget) return fromTarget;
-  if (typeof document.elementFromPoint !== "function") return null;
-  return closest(document.elementFromPoint(event.clientX, event.clientY));
-}
-
-/** The cell under a pointer event, or null. */
-function cellAtEvent(event: PointerEvent | React.PointerEvent): CellPosition | null {
-  const element = attributeAtEvent(event, "data-cell");
-  return element ? { row: Number(element.dataset.row), col: Number(element.dataset.col) } : null;
-}
-
-interface DragBounds {
-  start: CellPosition;
-  end: CellPosition;
-}
-
-type GridGesture =
-  | { kind: "cells"; pointerId: number; anchor: CellPosition; startX: number; startY: number; moved: boolean }
-  | { kind: "rows"; pointerId: number; anchorRow: number }
-  | { kind: "cols"; pointerId: number; anchorCol: number }
-  | { kind: "resize"; pointerId: number; col: number; startX: number; startWidth: number }
-  | { kind: "fill"; pointerId: number; source: DragBounds; target: CellPosition }
-  | { kind: "pan"; pointerId: number; startX: number; startY: number; scrollLeft: number; scrollTop: number }
-  // A finger on a cell: it pans the sheet once it moves and selects the cell
-  // when it lifts without moving (ranges come from the selection handles).
-  | {
-      kind: "tap";
-      pointerId: number;
-      cell: CellPosition;
-      startX: number;
-      startY: number;
-      scrollLeft: number;
-      scrollTop: number;
-      moved: boolean;
-    }
-  // A touch selection handle: the opposite corner stays, the dragged one follows.
-  | { kind: "extend"; pointerId: number; fixed: CellPosition };
-
-/** Movement (px) after which a finger on a cell pans instead of tapping. */
-const TAP_SLOP = 8;
-
-interface PinchGesture {
-  startDistance: number;
-  startZoom: number;
-  /** Midpoint of the previous move, so two-finger pans are incremental and
-   * survive a zoom change in the middle of the gesture. */
-  lastMidX: number;
-  lastMidY: number;
-  /** Canvas coordinates under the pinch midpoint at the last move. */
-  contentX: number;
-  contentY: number;
-  /** Midpoint relative to the grid viewport at the last move. */
-  localX: number;
-  localY: number;
-}
 
 export function CalcEditor({ tab }: { tab: CalcTab }) {
   const t = useT();
