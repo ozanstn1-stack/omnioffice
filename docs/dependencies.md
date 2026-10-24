@@ -49,3 +49,16 @@ Both `Cargo.toml` files patch the crate (`[patch.crates-io]`). Remove the
 directory and the patches when calamine ships the same guard upstream
 (`vendor/calamine/README.md` has the details). The rustfmt gate skips
 `vendor/` because it is third-party source.
+
+## tauri-specta (B2/2 scaffold, #316)
+
+The migration is pinned to the release candidate pair that resolves together:
+`tauri-specta =2.0.0-rc.26`, `specta =2.0.0-rc.26`, `specta-typescript 0.0.13`.
+It sits behind the `bindings` Cargo feature so normal builds and the release
+binaries are unchanged; `npm run bindings:specta` exports the current scaffold
+to `src/lib/generated/specta.ts`.
+
+The RC risk is handled by moving **command groups one PR at a time**: each group
+gets `#[specta::specta]`, joins `collect_commands!`, and its frontend call site
+switches to the generated wrapper. Until a group lands, the hand-written
+`invoke` path stays authoritative.
