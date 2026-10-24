@@ -1,5 +1,6 @@
 //! ODP (Impress) import: shapes, text boxes and frames.
 
+use super::slides_write_file::OdpImport;
 use super::*;
 use crate::xml::XmlNode;
 
