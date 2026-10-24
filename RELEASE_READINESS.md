@@ -31,6 +31,16 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.2.0) - B4 tamamlandı
+
+- **Format modules and editor seams** (#339): ODT/ODS/ODP readers and writers
+  live under `crates/officecore/src/odf/`; the Writer/Impress/Calc editors have
+  their first extracted modules (objects, selection, gestures). The ratchet fell
+  on every slice.
+  `test:crates/officecore/src/odf_tests.rs#odp_roundtrip`
+- **Scope:** B2/2 stays on #316 (RC risk); the v6.2 scaffold follows.
+  (no test: tracked in #316.)
+
 ## Implemented (this cycle, 6.1.15) - Writer nesne panelleri
 
 - **Writer object seam** (#339): `office/writer/objects.tsx` owns the image and

@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.0] - B4 tamamlandı: formatlar ve editör dikişleri
+
+### Changed
+
+- **B4 complete (#339):** every office format now has its own reader/writer
+  modules (ODT, ODS, ODP; `odf.rs` 4346 -> 945 lines before the ODP writer
+  split, then the ODP writer moved out) and the editors have their first seams:
+  `office/writer/objects.tsx` (image/watermark panels), `office/impress/selection.ts`
+  (paths/groups/animation helpers) and `office/calc/gestures.ts` (pointer hit
+  testing). The file-size ratchet fell with each slice.
+
 ## [6.1.15] - Writer nesne panelleri ayrıldı (writer object panels split)
 
 ### Changed
