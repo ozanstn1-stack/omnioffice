@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.10] - ODT okuyucu ayrıldı (ODT reader split)
+
+### Changed
+
+- **ODT import module (#339 / PR #380):** the ODT reader (content, styles,
+  notes, frames, watermarks) moved from `odf.rs` into `odf/text_read.rs`,
+  mirroring the writer split. `odf.rs` dropped from 4346 to 3418 lines and the
+  file-size baseline fell.
+- **CI:** the npm audit gate now checks production dependencies only; the
+  jsdom/undici dev advisory has no fixed release and is tracked by Dependabot.
+
 ## [6.1.9] - Katı dosya jetonları (strict file tokens)
 
 ### Changed
