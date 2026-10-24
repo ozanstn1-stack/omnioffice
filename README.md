@@ -462,12 +462,16 @@ produces the criterion report, and `npm run bench:check` compares it against
 the stored baseline (the CI bench job does this with a cached baseline and
 fails on a >15 % mean regression).
 
-**564 Rust tests** (3 heavy performance cases are `#[ignore]`d) and **690
-frontend tests** pass, plus the 1 heavy case gated by `OSAK_PERF_HEAVY=1`,
-with a strict TypeScript type check on top. Frontend coverage floors are
-enforced by `npm run test:coverage` (see `vite.config.ts`). The per-crate split
-is deliberately not repeated here - `cargo test --workspace` prints it, and
-the numbers written out in prose went stale every release.
+Measured on `master` (2026-10-25): **158 frontend test files and 2,117 Vitest
+cases pass** (1 skipped), on top of a strict TypeScript type check; coverage
+floors are enforced by `npm run test:coverage` (see `vite.config.ts`).
+`cargo test --workspace` is the authority for the Rust suite and prints the
+per-crate split. The generated block at the end of this file counts
+`#[test]`/`#[tokio::test]` attributes in the sources (1,269); that is a source
+metric, not the number of cases a given run executes, so it must not be read as
+"tests passed". Three heavy performance cases are `#[ignore]`d and one more is
+gated by `OSAK_PERF_HEAVY=1`. Prose numbers went stale every release, so the
+generated block stays the single source for source counts.
 
 ### What runs where
 
