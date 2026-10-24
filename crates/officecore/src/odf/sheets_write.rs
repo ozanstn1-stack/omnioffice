@@ -1,7 +1,6 @@
 //! ODS (Calc) export.
 
 use super::*;
-use crate::xml::XmlWriter;
 use std::path::Path;
 
 pub fn write_ods(workbook: &Workbook) -> OfficeResult<Vec<u8>> {
