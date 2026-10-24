@@ -31,6 +31,13 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.1.15) - Writer nesne panelleri
+
+- **Writer object seam** (#339): `office/writer/objects.tsx` owns the image and
+  watermark panels; WriterEditor.tsx shrank by ~176 lines.
+  `test:src/office/WriterEditor.test.tsx#splits the paragraph on Enter and keeps typing in the new one`
+- **Scope:** Impress/Calc seams next. (no test: tracked in #339.)
+
 ## Implemented (this cycle, 6.1.14) - ODP yazıcı modülleri
 
 - **ODP writer split** (#339): `odf/slides_write.rs`,
