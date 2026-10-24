@@ -31,6 +31,14 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.2.1) - tauri-specta iskeleti
+
+- **Bindings scaffold** (#316): `bindings` feature + `specta_scaffold` export
+  one typed command; RC trio pinned and documented.
+  `test:src/lib/ipc-contract.test.ts#RecipeStep carries the same variants and fields as the Rust enum`
+- **Scope:** command groups migrate one PR at a time; Phase C follows.
+  (no test: scaffold exercised by `npm run bindings:specta`.)
+
 ## Implemented (this cycle, 6.2.0) - B4 tamamlandı
 
 - **Format modules and editor seams** (#339): ODT/ODS/ODP readers and writers
