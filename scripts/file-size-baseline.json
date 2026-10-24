@@ -225,7 +225,7 @@
     "src/office/writer/runs.ts": 217,
     "src/office/writer/table-ops.ts": 228,
     "src/office/writer/writerDom.ts": 384,
-    "src/office/WriterEditor.tsx": 4924,
+    "src/office/WriterEditor.tsx": 4745,
     "src/screens/Ai.tsx": 1910,
     "src/screens/AiLibrary.tsx": 328,
     "src/screens/Annotate.tsx": 1180,
