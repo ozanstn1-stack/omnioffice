@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.15] - Writer nesne panelleri ayrıldı (writer object panels split)
+
+### Changed
+
+- **Writer editor seam (#339 / PR #392):** the image and watermark panels and
+  the watermark overlay moved to `src/office/writer/objects.tsx`;
+  `WriterEditor.tsx` dropped by ~176 lines.
+
 ## [6.1.14] - ODP yazıcı ayrıldı (ODP writer split)
 
 ### Changed
