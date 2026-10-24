@@ -2,7 +2,6 @@
 
 use super::slides_write::*;
 use super::*;
-use crate::xml::XmlWriter;
 
 /// Writes a `draw:text-box`'s paragraphs the way the ODT writer writes body
 /// text: automatic paragraph and text styles shared through `AutoStyles`,

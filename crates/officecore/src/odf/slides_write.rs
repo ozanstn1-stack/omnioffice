@@ -1,7 +1,7 @@
 //! ODP (Impress) export helpers: effects, timing and ids.
 
 use super::*;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 pub(super) fn is_ncname(value: &str) -> bool {
     let mut chars = value.chars();
