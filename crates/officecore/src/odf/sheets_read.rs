@@ -5,7 +5,6 @@ use super::*;
 use crate::xml::{parse_xml, XmlNode};
 use std::collections::HashMap;
 use std::path::Path;
-
 fn read_ods_table_row(row: &XmlNode) -> Vec<(String, Option<f64>)> {
     let mut cells = Vec::new();
     for cell in row.children.iter().filter(|cell| matches!(cell.local_name(), "table-cell" | "covered-table-cell")) {
