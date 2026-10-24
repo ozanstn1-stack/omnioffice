@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.11] - ODS okuyucu ayrıldı (ODS reader split)
+
+### Changed
+
+- **ODS import module (#339 / PR #383):** the Calc reader (sheets, cells,
+  charts, conditional formats, links) moved to `odf/sheets_read.rs`. `odf.rs`
+  fell from 3418 to 2506 lines and the file-size baseline dropped again.
+
 ## [6.1.10] - ODT okuyucu ayrıldı (ODT reader split)
 
 ### Changed
