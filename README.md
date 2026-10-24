@@ -10,23 +10,58 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 6.0.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 6.2.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
 
-## What's new in 6.0.0 (Gerçek mobil)
+## What's new in 6.2 (file tokens, strict mode, module splits)
 
-A major release bringing first-class mobile capabilities to Android:
+6.1 and 6.2 are one continuous arc: user files are no longer handed to the
+webview as raw paths, release builds enforce that boundary, and the office core
+was split into per-format modules.
 
-- **Document scanner enhancements**: Page reordering (move up / down) and
-  1-click batch clearing in the Android document scanner interface, with full
-  unit test coverage.
-- **Android shortcuts and ACTION_SEND sharing**: Launcher shortcuts (Scan, New
-  document, Recent files) and deep `ACTION_SEND` / `ACTION_VIEW` intent routing
-  for `.eml` and `.xml` files directly into the email and e-invoice previewers.
-- **SAF compatibility and Android emulator smoke test**: Storage Access Framework
-  (SAF) MIME mapping for XML and EML, verified document export/sharing, and
-  expanded Android launch smoke test asserting MainActivity runtime status.
+**Capability tokens (B3)**
+
+- Every user file the UI touches is addressed by a random, scoped token
+  (`FileRef`): read, read-write and write scopes, a 12-hour TTL and explicit
+  revoke. The webview never receives a filesystem path.
+- Covered surfaces: open/save dialogs, drag-and-drop and launch/association
+  events, recents, the global picker and command palette, output targets and
+  `suggest_output`, PDF Studio (PFX, watermark/annotate images), Invoices, Ai
+  attachments, Eml, Scanner, Sync, MailMerge, Converter/Cleaner and the shared
+  pickers.
+- **Strict mode in release builds**: `input_file`/`output_file` reject raw
+  paths in desktop release builds; Android SAF and debug/E2E keep documented
+  exceptions (`docs/file-tokens.md`). The `addPaths` path mode was removed.
+
+**Office core splits (B4)**
+
+- `odf.rs` went from 4,346 to ~945 lines: ODT/ODS/ODP readers and writers now
+  live in dedicated modules (`odf/text_read.rs`, `text_write.rs`,
+  `sheets_read.rs`, `sheets_write.rs`, `slides_read*.rs`,
+  `slides_write*.rs`).
+- Writer/Impress/Calc editor seams: watermark/image options and
+  selection/animation helpers moved out of the multi-thousand-line editors into
+  `office/writer/objects.tsx`, `office/impress/selection.ts` and
+  `office/calc/gestures.ts`; the file-size ratchet drops with every split.
+
+**Also in this window**
+
+- Fuzz fix: calamine cell-reference overflow patched in `vendor/calamine`
+  (checked arithmetic) with the crash input added to the corpus.
+- Security: `tokio 1.54.1` (RUSTSEC-2026-0384), `ctutils 0.4.5`, and a
+  time-boxed `crypto-bigint` exception in `deny.toml`; `cargo audit` green.
+- CI: npm audit gates production dependencies only; the Desktop, Rust and
+  Android matrices stay green.
+- `tauri-specta` scaffold (B2/2) landed in 6.2.1; the command-by-command
+  migration continues in 6.2.x.
+
+**Downloads (v6.2.1)** — Windows Setup/Portable, Android APK/AAB and SHA-256
+manifests: [Release v6.2.1](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v6.2.1)
+· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.2.1/OmniOffice-Setup-6.2.1.exe)
+· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.2.1/OmniOffice-Portable-6.2.1.zip)
+· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.2.1/OmniOffice-Android-6.2.1-arm64-v8a.apk)
+· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.2.1/OmniOffice-Android-6.2.1-armeabi-v7a.apk)
 
 ## Release history
 
