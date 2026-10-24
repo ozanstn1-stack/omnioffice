@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.1] - tauri-specta iskeleti (bindings scaffold)
+
+### Added
+
+- **B2/2 scaffold (#316 / PR #397):** the tauri-specta RC trio is pinned behind
+  the `bindings` Cargo feature; `specta_scaffold` exports one typed command to
+  `src/lib/generated/specta.ts` via `npm run bindings:specta`. Production
+  registration and builds are unchanged; command groups migrate one PR at a
+  time (policy in `docs/dependencies.md`).
+
 ## [6.2.0] - B4 tamamlandı: formatlar ve editör dikişleri
 
 ### Changed
