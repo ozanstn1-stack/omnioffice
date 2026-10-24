@@ -31,6 +31,7 @@ mod text_read;
 use text_read::{collect_styles, node_text_runs, paragraph_props, wrap_trailing_text, NoteReadState};
 mod text_write;
 pub use sheets_read::{read_ods, read_ods_file};
+pub(crate) use sheets_read::{split_ods_args, unquote_ods};
 pub use text_read::{read_odt, read_odt_file};
 pub(crate) use text_write::{
     cm, escape, manifest_for, meta_xml, paragraph_style_xml, parse_cm, write_runs, write_table, AutoStyles, Media,
