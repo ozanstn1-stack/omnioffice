@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.2] - XLSX bölmesi, bağımlılık turu ve ölçülmüş istatistikler
+
+### Changed
+
+- **XLSX split (#339 / PR #402):** `crates/officecore/src/xlsx.rs` (4,750
+  lines) became `crates/officecore/src/xlsx/` with thirteen modules
+  (`reader`/`import`, `sheet_read`, `conditional_read`, `drawings_read`,
+  `pivot_read`, `styles_read`, `writer`, `sheet_write`, `chart_write`,
+  `conditional_write`, `styles_write`, `mod`). Pure move: public API unchanged,
+  the 19 XLSX unit tests still run, and the file-size ratchet dropped the
+  4,750-line entry for ten tracked modules without raising a budget. Largest
+  resulting file: 748 lines.
+- **Dependency pass (#399, #387):** `crc32fast` 1.5.3 plus the grouped frontend
+  updates (`@tauri-apps/*`, React 19.3.1, lucide-react 1.61, jsdom 30.1.3,
+  prettier 3.9.10, Vite 6.4.5). Desktop, Rust and Android jobs green.
+- **Honest statistics (PR #401):** the README stopped repeating stale prose
+  test counts. It now states the measured Vitest numbers (158 files / 2,117
+  cases) and defines the generated Rust count (1,269 `#[test]` attributes) as a
+  source metric rather than a run result.
+
+### Docs
+
+- Homepage refreshed for the 6.1/6.2 releases — capability tokens, strict mode
+  and the module splits (PR #400).
+
 ## [6.2.1] - tauri-specta iskeleti (bindings scaffold)
 
 ### Added
