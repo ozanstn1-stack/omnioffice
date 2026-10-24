@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.14] - ODP yazıcı ayrıldı (ODP writer split)
+
+### Changed
+
+- **ODP export modules (#339 / PR #390):** effects/timing helpers moved to
+  `odf/slides_write.rs`, frames/shapes to `odf/slides_write_objects.rs` and the
+  package writer to `odf/slides_write_file.rs`. `odf.rs` fell from 1771 to 945
+  lines; every office format now has its own reader/writer modules.
+
 ## [6.1.13] - ODP okuyucu ayrıldı (ODP reader split)
 
 ### Changed
