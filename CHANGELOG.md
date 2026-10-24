@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.13] - ODP okuyucu ayrıldı (ODP reader split)
+
+### Changed
+
+- **ODP import modules (#339 / PR #388):** shapes and text frames moved to
+  `odf/slides_read.rs`, timing/footers/package reading to
+  `odf/slides_read_timing.rs` (both under the 400-line new-file limit).
+  `odf.rs` fell from 2281 to 1771 lines and the baseline dropped.
+
 ## [6.1.12] - ODS yazıcı ayrıldı (ODS writer split)
 
 ### Changed
