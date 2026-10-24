@@ -31,6 +31,23 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.2.2) - XLSX bölmesi ve ölçülmüş istatistikler
+
+- **XLSX modules** (#339 / PR #402): `crates/officecore/src/xlsx.rs` (4,750
+  lines) split into `crates/officecore/src/xlsx/` — thirteen modules, largest
+  748 lines. Pure move: public API and the `crate::xlsx::*` helper paths are
+  unchanged, no behaviour change.
+  `test:crates/officecore/src/xlsx_tests.rs#xlsx_roundtrip_values`
+- **Dependency pass** (#399, #387): `crc32fast` 1.5.3 and the grouped frontend
+  updates; Desktop/Rust/Android matrix green.
+  (no test: dependency bump, the CI dependency audit covers it.)
+- **Documented statistics** (PR #401): README states the measured Vitest counts
+  and defines the generated Rust count as a source metric, not a run result.
+  (no test: documentation only.)
+- **Scope:** the remaining B4 slices (WriterEditor/ImpressEditor/CalcEditor,
+  docx/pptx) stay open in #339; Phase C follows.
+  (no test: tracked in #339.)
+
 ## Implemented (this cycle, 6.2.1) - tauri-specta iskeleti
 
 - **Bindings scaffold** (#316): `bindings` feature + `specta_scaffold` export
