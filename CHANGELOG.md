@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.12] - ODS yazıcı ayrıldı (ODS writer split)
+
+### Changed
+
+- **ODS export module (#339 / PR #385):** `write_ods`/`write_ods_file` and the
+  chart local-table type moved to `odf/sheets_write.rs`. `odf.rs` fell from
+  2505 to 2282 lines and the file-size baseline dropped again.
+
 ## [6.1.11] - ODS okuyucu ayrıldı (ODS reader split)
 
 ### Changed
