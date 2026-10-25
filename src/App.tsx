@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { pickDocumentTokens, type FileToken } from "./lib/file-tokens";
 import { extensionsFor } from "./lib/tool-files";
@@ -154,6 +153,8 @@ import {
 import { openIntoWorkspace } from "./office/useOfficeSession";
 import { isOfficePath, openOfficePath, useOfficeTabs } from "./lib/office-store";
 import { routeForPath } from "./lib/open-route";
+import { useAndroidPendingOpen } from "./lib/android-open-with";
+import { recordOpenWith } from "./lib/open-with-diagnostics";
 
 type PageToolTab = PageToolsTab["tab"];
 
@@ -358,6 +359,7 @@ export default function App() {
       // (RELEASE_READINESS.md). A leftover file association, a share intent or
       // drag & drop can still deliver one; say so instead of failing silently.
       if (path.toLowerCase().endsWith(".udf") && !flagEnabled("experimentalUdf")) {
+        recordOpenWith("route:udf-closed");
         pushToast({
           kind: "info",
           title: t("office.udfClosed"),
@@ -367,14 +369,21 @@ export default function App() {
       }
       const route = routeForPath(path);
       if (!route) {
+        recordOpenWith("route:external");
         void openAnyFile(path).catch(() => undefined);
         return;
       }
       if (route.office) {
+        recordOpenWith("route:office");
         setScreen("office");
-        void openOfficePath(path);
+        // The open request is asynchronous and used to be swallowed here: a
+        // failed open left an empty workspace with no message at all.
+        void openOfficePath(path).then((result) => {
+          if (!result.ok) pushToast({ kind: "error", title: t("errors.openFailed"), detail: result.error });
+        });
         return;
       }
+      recordOpenWith(`route:${route.screen}`);
       setFiles(route.files ?? []);
       setScreen(route.screen);
     },
@@ -580,17 +589,21 @@ export default function App() {
   // viewer so nothing is silently dropped.
   const handleIncomingPaths = useCallback(
     (paths: string[]) => {
+      recordOpenWith(`incoming:${paths.length}`);
       const actionToken = paths.find((p) => p.startsWith("__action:"));
       if (actionToken === "__action:scan") {
+        recordOpenWith("route:scanner");
         setScreen("scanner");
         return;
       }
       if (actionToken === "__action:new_document") {
+        recordOpenWith("route:office-new");
         useOfficeTabs.getState().create("writer");
         setScreen("office");
         return;
       }
       if (actionToken === "__action:recent_files") {
+        recordOpenWith("route:home");
         setScreen("home");
         return;
       }
@@ -599,77 +612,48 @@ export default function App() {
       const incomingError = firstIncomingError(paths);
       if (incomingError) pushToast({ kind: "error", title: t(incomingErrorKey(incomingError.reason)) });
       const realPaths = paths.filter((p) => !p.startsWith("__action:") && !p.startsWith("__error:"));
-      if (realPaths.length === 0) return;
+      if (realPaths.length === 0) {
+        recordOpenWith("route:none");
+        return;
+      }
       if (realPaths.length === 1) {
         openSinglePath(realPaths[0]);
         return;
       }
       const officePaths = realPaths.filter((path) => isOfficePath(path));
       if (officePaths.length > 0) {
+        recordOpenWith(`route:office:${officePaths.length}`);
         setScreen("office");
-        for (const path of officePaths) void openOfficePath(path);
+        for (const path of officePaths) {
+          void openOfficePath(path).then((result) => {
+            if (!result.ok) pushToast({ kind: "error", title: t("errors.openFailed"), detail: result.error });
+          });
+        }
         return;
       }
       const pdfPaths = realPaths.filter((path) => path.toLowerCase().endsWith(".pdf"));
       if (pdfPaths.length > 0) {
+        recordOpenWith(`route:reader:${pdfPaths.length}`);
         setFiles(pdfPaths);
         setScreen("reader");
         return;
       }
       const imagePaths = realPaths.filter((path) => isImage(path));
       if (imagePaths.length > 0) {
+        recordOpenWith(`route:imagesToPdf:${imagePaths.length}`);
         setFiles(imagePaths);
         setScreen("imagesToPdf");
         return;
       }
+      recordOpenWith(`route:external:${realPaths.length}`);
       for (const path of realPaths) void openAnyFile(path).catch(() => undefined);
     },
     [openSinglePath, pushToast, t],
   );
 
-  // Android open-with: MainActivity copies shared documents into the cache and
-  // queues their paths. The copy runs on a background thread, so the queue is
-  // polled once shortly after mount, when the app returns to the foreground,
-  // and continuously while the activity is visible - a share sent to an app
-  // that is already on screen (singleTask -> onNewIntent) never triggers a
-  // visibility change, so the poll is what makes that case work. The command
-  // is a small file read and returns nothing when the queue is empty.
-  useEffect(() => {
-    if (!isAndroid()) return;
-    let cancelled = false;
-    const seen = new Set<string>();
-    const drain = () => {
-      void invoke<string[]>("android_take_pending_open")
-        .then((paths) => {
-          if (cancelled || !paths.length) return;
-          // Launcher shortcuts arrive as `__action:*` tokens, and the same
-          // token is legitimate every time it is used: deduplicating them
-          // would let each shortcut fire only once per session. Only real
-          // file paths are remembered.
-          const fresh = paths.filter((path) => path.startsWith("__action:") || !seen.has(path));
-          for (const path of fresh) {
-            if (!path.startsWith("__action:")) seen.add(path);
-          }
-          if (fresh.length > 0) handleIncomingPaths(fresh);
-        })
-        .catch(() => undefined);
-    };
-    drain();
-    const retry = window.setTimeout(drain, 900);
-    const poll = window.setInterval(() => {
-      if (document.visibilityState === "visible") drain();
-    }, 2500);
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") drain();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(retry);
-      window.clearInterval(poll);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [handleIncomingPaths]);
+  // Android open-with: the poll and its trace live in lib/android-open-with.ts,
+  // which also records the drained counts and refusal tokens.
+  useAndroidPendingOpen(handleIncomingPaths);
 
   const homeDrop = useCallback(
     (paths: string[]) => {

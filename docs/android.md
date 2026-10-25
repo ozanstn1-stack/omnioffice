@@ -186,3 +186,29 @@ Android version metadata against `tauri.conf.json` and the tag.
 * **Security**: `allowBackup=false`, data-extraction rules, narrowed
   FileProvider paths, network security config limiting cleartext to
   localhost/emulator hosts.
+
+## Open-with troubleshooting
+
+The open-with pipeline runs in the Kotlin shell (intent handling and the cache
+copy), in Rust (the pending queue) and in the webview (routing) at the same
+time, and most failures only reproduce on a real phone. The app therefore
+collects an on-device report; no adb is needed:
+
+1. Reproduce the problem once (share the document from the other app, or open
+   it from Files) so the failed attempt is recorded.
+2. Open **Settings → Diagnostics → Show open-with report**.
+3. Press **Copy** and paste the text into the issue.
+
+The report has three sections:
+
+| Section | What it shows |
+| --- | --- |
+| `open-with: Rust side` | The app `cache_dir`, the `pending-open.txt` path and whether it exists, and the queue contents. An entry left in `pending_open_contents` means the copy succeeded but the webview never drained it; an empty queue right after the failure means the document never reached the queue. |
+| `open-with: Kotlin log` | One line per received intent (action, type, `content://` data, flags, ClipData count), every candidate URI and its copy outcome (`COPIED` plus the destination, or the `CopyResult` reason), every queue append with the cache path, and one `drain count=N` line for every webview poll. |
+| `open-with: frontend` | App version, WebView user agent and the last 100 routing events: drained counts, `__error:<reason>` tokens, `route:<screen>` decisions and `open-failed:<message>` entries. |
+
+No `drain count=N` line at all means the webview never called
+`android_take_pending_open`; `drain count=0` lines mean it polls and finds
+nothing. The report contains document display names and cache paths, so read it
+before sharing it publicly. On a development device the same Kotlin lines are
+still available with `adb logcat -s PdfSakIntent`.

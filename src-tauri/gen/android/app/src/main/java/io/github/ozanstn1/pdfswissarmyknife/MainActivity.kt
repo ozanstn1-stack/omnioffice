@@ -21,6 +21,9 @@ class MainActivity : TauriActivity() {
     enableEdgeToEdge()
     installTessdata()
     super.onCreate(savedInstanceState)
+    // The durable open-with log must exist before the first intent is imported;
+    // Settings reads it back through android_open_with_diagnostics.
+    OpenWithLog.attach(cacheDir)
     importOpenWithIntent(intent)
   }
 
@@ -47,12 +50,13 @@ class MainActivity : TauriActivity() {
     if (intent == null) return
     // One info-level line per received intent: "I picked OmniOffice and nothing
     // happened" cannot be diagnosed on a device without the action, the type
-    // the sender declared and the URI(s) it handed over. `adb logcat -s PdfSakIntent`.
-    Log.i(
-      TAG,
-      "intent action=${intent.action} type=${intent.type} data=${intent.data} " +
-        "flags=0x${Integer.toHexString(intent.flags)}",
-    )
+    // the sender declared and the URI(s) it handed over. `adb logcat -s PdfSakIntent`
+    // shows it on a development device; OpenWithLog keeps the same line on the
+    // phone for the in-app report (Settings -> Diagnostics).
+    val description = "action=${intent.action} type=${intent.type} data=${intent.data} " +
+      "flags=0x${Integer.toHexString(intent.flags)} clip=${intent.clipData?.itemCount ?: 0}"
+    Log.i(TAG, "intent $description")
+    OpenWithLog.record("intent $description")
     when (intent.action) {
       ACTION_SHORTCUT_SCAN -> {
         appendPendingOpen("__action:scan")
@@ -78,17 +82,23 @@ class MainActivity : TauriActivity() {
     val uris = candidates
       .filter { uri -> uri.scheme == "content" || uri.scheme == "file" }
       .distinct()
+    OpenWithLog.record("candidates=${candidates.size} accepted=${uris.size}")
     if (uris.isEmpty()) {
       if (intent.action == Intent.ACTION_SEND) {
         val sharedText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
         if (!sharedText.isNullOrBlank()) {
+          OpenWithLog.record("no uris; saving shared text length=${sharedText.length}")
           val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT)
           Thread {
             IncomingFiles.saveSharedText(sharedText, subject, cacheDir)?.let { saved ->
               appendPendingOpen(saved.absolutePath)
             }
           }.start()
+        } else {
+          OpenWithLog.record("no candidates: no URI and blank EXTRA_TEXT")
         }
+      } else {
+        OpenWithLog.record("no candidates: no URI for action=${intent.action}")
       }
       return
     }
@@ -98,6 +108,7 @@ class MainActivity : TauriActivity() {
           copyIncoming(uri, intent.type)
         } catch (error: Exception) {
           Log.w(TAG, "open-with: unexpected failure for $uri (${error.message})")
+          OpenWithLog.record("copy FAILED uri=$uri error=${error.message}")
         }
       }
     }.start()
@@ -132,9 +143,12 @@ class MainActivity : TauriActivity() {
   }
 
   private fun copyIncoming(uri: Uri, intentType: String?) {
+    OpenWithLog.record("candidate uri=$uri type=$intentType")
     val (destination, result) = IncomingFiles.copyToCache(contentResolver, uri, cacheDir, intentType)
     if (result == IncomingFiles.CopyResult.COPIED) {
-      appendPendingOpen(destination!!.absolutePath)
+      val path = destination!!.absolutePath
+      OpenWithLog.record("copy COPIED dest=$path")
+      appendPendingOpen(path)
       return
     }
     // The user chose OmniOffice for this file, so a silent Log.w looks like
@@ -142,6 +156,7 @@ class MainActivity : TauriActivity() {
     // the rejected stream itself is never copied.
     Log.w(TAG, "open-with: $result for $uri")
     val name = IncomingFiles.queryDisplayName(contentResolver, uri) ?: "?"
+    OpenWithLog.record("copy $result uri=$uri name=$name")
     appendPendingOpen("__error:${result.name}:$name")
   }
 
@@ -166,6 +181,10 @@ class MainActivity : TauriActivity() {
 
   /** Appends one absolute path per line; the Rust side drains the file. */
   private fun appendPendingOpen(path: String) {
+    // The queue path and the cache directory are the two facts the on-device
+    // report needs to tell "the copy never happened" from "the webview never
+    // polled", so they are recorded before the write is even attempted.
+    OpenWithLog.record("queue path=$path cache=${cacheDir.absolutePath}")
     synchronized(pendingOpenLock) {
       try {
         FileOutputStream(File(cacheDir, PENDING_OPEN_FILE), true).use { stream ->
@@ -174,6 +193,7 @@ class MainActivity : TauriActivity() {
         }
       } catch (error: Exception) {
         Log.w(TAG, "open-with: cannot queue $path (${error.message})")
+        OpenWithLog.record("queue FAILED path=$path error=${error.message}")
       }
     }
   }

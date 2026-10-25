@@ -123,9 +123,8 @@ pub fn run() {
     // package installer; see android_update.rs.
     #[cfg(target_os = "android")]
     let builder = builder.plugin(android_update::init());
-    // Desktop auto-update plus the `relaunch` used after installing one. The
-    // updater plugin has no Android support (updates there run through
-    // android_update.rs), so both plugins are desktop only.
+    // Desktop auto-update plus the `relaunch` used after installing one; both
+    // are desktop only (Android updates run through android_update.rs).
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build()).plugin(tauri_plugin_process::init());
 
@@ -286,6 +285,7 @@ pub fn run() {
             commands::reveal_document_file,
             commands::dev_launch_context,
             android_intent::android_take_pending_open,
+            android_intent::android_open_with_diagnostics,
             ai::ai_get_settings,
             ai::ai_save_settings,
             ai::ai_clear_key,

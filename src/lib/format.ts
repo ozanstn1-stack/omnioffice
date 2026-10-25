@@ -122,6 +122,16 @@ export function isImage(path: string): boolean {
   return IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }
 
+/** File names the Calc editor and the spreadsheet launchers accept. */
+export function isSpreadsheetPath(path: string): boolean {
+  return ["xlsx", "xlsm", "xls", "ods", "csv", "tsv"].includes((path.split(".").pop() ?? "").toLowerCase());
+}
+
+/** File names the Impress editor accepts. */
+export function isPresentationPath(path: string): boolean {
+  return ["pptx", "pptm", "odp"].includes((path.split(".").pop() ?? "").toLowerCase());
+}
+
 export function uid(prefix = "job"): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
