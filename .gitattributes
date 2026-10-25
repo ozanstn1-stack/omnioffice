@@ -11,6 +11,7 @@ src/lib/generated/*.ts text eol=lf
 crates/officecore/tests/fixtures/*.oswk binary
 # The legacy Excel fixture is a BIFF container; never let git rewrite its bytes.
 crates/officecore/tests/fixtures/*.xls binary
+crates/officecore/tests/fixtures/*.xlsx binary
 
 # The Gradle shell wrapper must be LF: the committed copy was CRLF, which fails
 # under `sh` on Linux. android.yml never noticed because `tauri android init`
