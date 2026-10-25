@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.6] - PPTX okuyucu/yazıcı ayrıldı (PPTX reader and writer modules)
+
+### Changed
+
+- **PPTX split (#339 / PR #413):** `crates/officecore/src/pptx.rs` (3,271
+  lines) became `crates/officecore/src/pptx/` - `writer.rs` (1,643 lines) and
+  `reader.rs` (1,115 lines), with `mod.rs` re-exporting the same public API
+  (`DeckRead`, `DeckWrite`, `write_pptx_package`, `write_pptx`,
+  `write_pptx_file`, `read_pptx`, `read_pptx_file`), and the 17 inline unit
+  tests moved verbatim to `pptx_tests.rs` (493 lines). Pure move: no behaviour
+  change, and the ratchet dropped the 3,271-line entry for the new modules
+  without raising a budget.
+
 ## [6.2.5] - DOCX okuyucu/yazıcı ayrıldı (DOCX reader and writer modules)
 
 ### Changed

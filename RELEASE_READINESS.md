@@ -31,6 +31,19 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.2.6) - PPTX okuyucu/yazıcı ayrıldı
+
+- **PPTX reader/writer modules** (#339 / PR #413): `crates/officecore/src/pptx.rs`
+  (3,271 lines) split into `pptx/writer.rs` (1,643), `pptx/reader.rs` (1,115) and
+  a 26-line `pptx/mod.rs` that re-exports the same public API, with the 17
+  inline unit tests moved verbatim to `crates/officecore/src/pptx_tests.rs`
+  (493 lines). Pure move: no behaviour change, no test body edited.
+  `test:crates/officecore/src/pptx_tests.rs#pptx_roundtrip`
+- **Scope:** the per-format splits are complete. The only remaining #339 work is
+  the `CalcEditor.tsx` controller, which is a single component (no pure-move
+  seam) and is tracked separately.
+  (no test: tracked in #339.)
+
 ## Implemented (this cycle, 6.2.5) - DOCX okuyucu/yazıcı ayrıldı
 
 - **DOCX reader/writer modules** (#339 / PR #411): `crates/officecore/src/docx.rs`
