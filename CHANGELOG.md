@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.3] - Writer görünüm katmanı ayrıldı (writer view modules)
+
+### Changed
+
+- **Writer editor seam (#339 / PR #404):** the static page renderers, the
+  paginated paragraph, the table surface and the compare helpers moved out of
+  `src/office/WriterEditor.tsx` into `src/office/writer/views.tsx` (1,166
+  lines) and `src/office/writer/table-view.tsx` (363 lines). Pure extraction:
+  the public exports are unchanged, no behaviour change, the full Vitest suite
+  stays green, and the editor dropped from 4,745 to 3,246 lines. The file-size
+  ratchet fell accordingly.
+
 ## [6.2.2] - XLSX bölmesi, bağımlılık turu ve ölçülmüş istatistikler
 
 ### Changed
