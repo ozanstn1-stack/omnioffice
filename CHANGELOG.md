@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.4] - Impress editör dikişi ve E2E dayanıklılığı
+
+### Changed
+
+- **Impress editor seam (#339 / PR #409):** the footer/master/chart/animation
+  dialogs, the slide object renderers, the selection handles, the object tree
+  and the slide preview moved out of `src/office/ImpressEditor.tsx` into
+  `src/office/impress/dialogs.tsx` (803 lines) and
+  `src/office/impress/slide-view.tsx` (816 lines); a small
+  `src/office/impress/shared.ts` (168 lines) holds the theme and chart values
+  both halves need, so the module graph stays acyclic. Pure extraction: all 37
+  public exports are unchanged, no behaviour change, the editor dropped from
+  4,493 to 2,795 lines and the existing tests stayed green.
+- **E2E deep-flow resilience (#407 / PR #408):** the WebView2 deep flows now
+  relaunch once with a fresh session when the dev launch context misses, the
+  dev-route deadline grew from 15 s to 45 s, and a navigation fallback fails
+  fast with the accurate reason. This removes the flake that blocked the v6.2.3
+  release tag even though every other job was green.
+
 ## [6.2.3] - Writer görünüm katmanı ayrıldı (writer view modules)
 
 ### Changed
