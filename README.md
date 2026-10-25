@@ -10,7 +10,7 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 6.2.4** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 6.2.5** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
 
@@ -54,6 +54,9 @@ was split into per-format modules.
   slide renderers live in `office/impress/dialogs.tsx` and
   `office/impress/slide-view.tsx`; `ImpressEditor.tsx` is 2,795 lines (was
   4,493).
+- `docx.rs` (3,621 lines) followed in 6.2.5: the writer (`docx/writer.rs`, 1,523)
+  and reader (`docx/reader.rs`, 1,326) halves are separate modules and the unit
+  tests live in `docx_tests.rs` (757).
 
 **Also in this window**
 
@@ -66,12 +69,12 @@ was split into per-format modules.
 - `tauri-specta` scaffold (B2/2) landed in 6.2.1; the command-by-command
   migration continues in 6.2.x.
 
-**Downloads (v6.2.4)** — Windows Setup/Portable, Android APK/AAB and SHA-256
-manifests: [Release v6.2.4](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v6.2.4)
-· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.2.4/OmniOffice-Setup-6.2.4.exe)
-· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.2.4/OmniOffice-Portable-6.2.4.zip)
-· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.2.4/OmniOffice-Android-6.2.4-arm64-v8a.apk)
-· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.2.4/OmniOffice-Android-6.2.4-armeabi-v7a.apk)
+**Downloads (v6.2.5)** — Windows Setup/Portable, Android APK/AAB and SHA-256
+manifests: [Release v6.2.5](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v6.2.5)
+· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.2.5/OmniOffice-Setup-6.2.5.exe)
+· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.2.5/OmniOffice-Portable-6.2.5.zip)
+· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.2.5/OmniOffice-Android-6.2.5-arm64-v8a.apk)
+· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.2.5/OmniOffice-Android-6.2.5-armeabi-v7a.apk)
 
 ## Release history
 

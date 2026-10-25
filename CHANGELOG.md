@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.5] - DOCX okuyucu/yazıcı ayrıldı (DOCX reader and writer modules)
+
+### Changed
+
+- **DOCX split (#339 / PR #411):** `crates/officecore/src/docx.rs` (3,621
+  lines) became `crates/officecore/src/docx/` - `writer.rs` (1,523 lines) and
+  `reader.rs` (1,326 lines), with `mod.rs` re-exporting the same public API
+  (`DocxRead`, `write_docx`, `write_docx_file`, `read_docx`, `read_docx_file`),
+  and the inline unit tests moved verbatim to `docx_tests.rs` (757 lines). Pure
+  move: no behaviour change, and the ratchet dropped the 3,621-line entry for
+  the new modules without raising a budget.
+
 ## [6.2.4] - Impress editör dikişi ve E2E dayanıklılığı
 
 ### Changed
