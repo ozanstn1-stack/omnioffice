@@ -31,6 +31,22 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.2.4) - Impress dikişi ve E2E dayanıklılığı
+
+- **Impress dialogs and slide view** (#339 / PR #409): `ImpressEditor.tsx`
+  dropped from 4,493 to 2,795 lines; `src/office/impress/dialogs.tsx` (803
+  lines) and `src/office/impress/slide-view.tsx` (816 lines) own the dialog and
+  slide-rendering layers, and `src/office/impress/shared.ts` (168 lines) holds
+  the theme/chart values both halves need. Pure extraction: the 37 public
+  exports are unchanged, no behaviour change.
+  `test:src/office/ImpressEditor.test.tsx#groups a selection into absolute children under a bounding box`
+- **E2E deep-flow resilience** (#407 / PR #408): the WebView2 deep flows relaunch
+  once when the dev launch context misses, the dev-route deadline is 45 s, and a
+  navigation fallback fails fast with the accurate reason.
+  (no test: harness-only change, exercised by both Desktop E2E jobs.)
+- **Scope:** `CalcEditor.tsx` and the docx/pptx splits stay open in #339.
+  (no test: tracked in #339.)
+
 ## Implemented (this cycle, 6.2.3) - Writer görünüm katmanı
 
 - **Writer view modules** (#339 / PR #404): `WriterEditor.tsx` dropped from
