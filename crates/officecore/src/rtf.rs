@@ -1578,7 +1578,7 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
                     continue;
                 }
                 word.clear();
-                let mut value: i64 = 0;
+                let mut value: i32 = 0;
                 let mut has_param = false;
                 let mut negative = false;
                 while i < chars.len() && chars[i].is_ascii_alphabetic() {
@@ -1590,8 +1590,9 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
                         negative = true;
                         i += 1;
                     }
+                    // Hostile documents carry unbounded digit runs: saturate into i32 instead of overflowing i64.
                     while i < chars.len() && chars[i].is_ascii_digit() {
-                        value = value * 10 + (chars[i] as i64 - '0' as i64);
+                        value = value.saturating_mul(10).saturating_add(chars[i] as i32 - '0' as i32);
                         i += 1;
                     }
                     has_param = true;
@@ -1599,7 +1600,7 @@ pub fn read_rtf(bytes: &[u8]) -> OfficeResult<RtfRead> {
                 if i < chars.len() && chars[i] == ' ' {
                     i += 1;
                 }
-                let param = if has_param { Some(if negative { -(value as i32) } else { value as i32 }) } else { None };
+                let param = if has_param { Some(if negative { -value } else { value }) } else { None };
 
                 if IGNORABLE_GROUPS.contains(&word.as_str()) {
                     let start = i;
