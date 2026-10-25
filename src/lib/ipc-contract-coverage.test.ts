@@ -112,4 +112,14 @@ describe("IPC surface", () => {
     }
     expect([...duplicates], "duplicate #[tauri::command] names").toEqual([]);
   });
+
+  // The open-with pipeline is driven by src/App.tsx (queue drain) and
+  // src/components/open-with-diagnostics.tsx (report); both commands have an
+  // Android implementation plus a desktop stub, so they must stay registered
+  // even though the scan above only sees the platform-specific attribute.
+  it("keeps the Android open-with commands available to the frontend", () => {
+    const names = registered.map((entry) => entry.name);
+    expect(names).toContain("android_take_pending_open");
+    expect(names).toContain("android_open_with_diagnostics");
+  });
 });

@@ -15,6 +15,7 @@ import { describeImportLimit, splitImportWarnings } from "./importWarnings";
 import { BlobSendCache, stripImageBlobs } from "./blob-store";
 import { fileBaseName, isOfficeDocument } from "./format";
 import { useRecent, useSettings, useToasts } from "./store";
+import { recordOpenWith } from "./open-with-diagnostics";
 
 export type OfficeModel = TextDocument | Workbook | Deck;
 
@@ -528,14 +529,6 @@ export function isOfficePath(path: string): boolean {
   return isOfficeDocument(path);
 }
 
-export function isSpreadsheetPath(path: string): boolean {
-  return ["xlsx", "xlsm", "xls", "ods", "csv", "tsv"].includes((path.split(".").pop() ?? "").toLowerCase());
-}
-
-export function isPresentationPath(path: string): boolean {
-  return ["pptx", "pptm", "odp"].includes((path.split(".").pop() ?? "").toLowerCase());
-}
-
 export interface OpenPathResult {
   ok: boolean;
   kind?: OfficeKind;
@@ -606,6 +599,8 @@ export async function openOfficePath(path: string): Promise<OpenPathResult> {
     }
     return { ok: true, kind: result.kind };
   } catch (error) {
-    return { ok: false, error: toAppError(error).message };
+    const message = toAppError(error).message;
+    recordOpenWith(`open-failed:${message}`);
+    return { ok: false, error: message };
   }
 }

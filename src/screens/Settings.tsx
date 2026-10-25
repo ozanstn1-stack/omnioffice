@@ -15,8 +15,8 @@ import { useT } from "../lib/i18n";
 import { reportError, useSettings, useToasts } from "../lib/store";
 import { BETA_RELEASES_URL, updateChannel, useUpdate, type UpdateChannel } from "../lib/update";
 import { AiSettings } from "../components/ai-settings";
-import { appInfo, aiClearData, diagnosticsReport, updateOpen } from "../lib/api";
-import { saveFileBytes } from "../lib/mobile";
+import { appInfo, aiClearData, updateOpen } from "../lib/api";
+import { DiagnosticsExport, OpenWithDiagnostics } from "../components/open-with-diagnostics";
 
 function VersionLine() {
   const t = useT();
@@ -131,38 +131,6 @@ function RevocationControl() {
         <span>{t("settings.onlineRevocation")}</span>
       </label>
       <p className="text-xs muted">{t("settings.onlineRevocationHint")}</p>
-    </div>
-  );
-}
-
-/** Writes a redacted plain-text report the user can attach to an issue. */
-function DiagnosticsExport() {
-  const t = useT();
-  const [busy, setBusy] = useState(false);
-  const exportReport = async () => {
-    setBusy(true);
-    try {
-      const report = await diagnosticsReport();
-      const stamp = new Date().toISOString().slice(0, 10);
-      const saved = await saveFileBytes(new TextEncoder().encode(report), `omnioffice-diagnostics-${stamp}.txt`, {
-        name: "Text",
-        extensions: ["txt"],
-      });
-      if (saved) useToasts.getState().push({ kind: "success", title: t("settings.diagnosticsSaved"), detail: saved });
-    } catch (error) {
-      reportError(error, t);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="flex flex-col gap-2">
-      <div>
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void exportReport()}>
-          {t("settings.diagnosticsExport")}
-        </Button>
-      </div>
-      <p className="text-xs muted">{t("settings.diagnosticsHint")}</p>
     </div>
   );
 }
@@ -552,6 +520,8 @@ export function Settings() {
           <RevocationControl />
           <DiagnosticsExport />
         </Card>
+
+        <OpenWithDiagnostics />
       </div>
     </Screen>
   );
