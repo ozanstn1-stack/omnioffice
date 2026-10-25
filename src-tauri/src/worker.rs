@@ -12,19 +12,33 @@
 //! * a crash (access violation, stack overflow, `abort`) is reported as a
 //!   parse error - the document cannot kill the application.
 //!
-//! When the worker cannot be spawned at all (Android, where an app cannot
-//! exec itself; unit tests; a stripped dev binary), [`run_json_or_local`]
-//! falls back to the in-process parse wrapped in `catch_unwind`, which is why
-//! the release profile uses `panic = "unwind"` (see the workspace Cargo.toml).
+//! When the worker cannot be spawned at all (unit tests; a stripped dev
+//! binary), [`run_json_or_local`] falls back to the in-process parse wrapped in
+//! `catch_unwind`, which is why the release profile uses `panic = "unwind"`
+//! (see the workspace Cargo.toml).
+//!
+//! Android is handled explicitly instead of relying on that fallback: an app
+//! cannot exec its own binary, but `current_exe()` there is the `app_process`
+//! launcher, so spawning it *succeeds* and the child exits immediately with an
+//! empty stderr - every office/invoice/EML open then failed with "the
+//! office-open parser failed" on devices. [`run_json_or_local`] therefore runs
+//! the job in-process on Android.
 
+#[cfg(not(target_os = "android"))]
 use std::io::Read;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+#[cfg(windows)]
+use std::process::Child;
+#[cfg(not(target_os = "android"))]
+use std::process::{Command, Stdio};
+#[cfg(not(target_os = "android"))]
 use std::time::{Duration, Instant};
 
 /// Wall-clock limit for one worker job.
+#[cfg(not(target_os = "android"))]
 const TIMEOUT: Duration = Duration::from_secs(180);
 /// Largest result the parent accepts from a worker.
+#[cfg(not(target_os = "android"))]
 const MAX_OUTPUT_BYTES: u64 = 512 * 1024 * 1024;
 /// Windows job-object process memory limit.
 #[cfg(windows)]
@@ -122,12 +136,14 @@ fn to_json<T: serde::Serialize>(value: &T) -> Result<String, String> {
 /// Why a worker run failed: the worker could not even start, or it started and
 /// the job failed (a crash counts as a job failure and is never retried
 /// in-process, where the same input could take the app down).
+#[cfg(not(target_os = "android"))]
 enum RunError {
     Spawn(String),
     Job(String),
 }
 
 /// Spawns the worker for `job` and returns its stdout (the JSON result).
+#[cfg(not(target_os = "android"))]
 fn run(job: &Job) -> Result<String, RunError> {
     let exe = std::env::current_exe().map_err(|error| RunError::Spawn(format!("worker: {error}")))?;
     let mut command = Command::new(&exe);
@@ -195,24 +211,37 @@ fn run(job: &Job) -> Result<String, RunError> {
 /// worker that started and failed is reported as-is, because re-running the
 /// same input in-process would risk the very crash the worker exists to
 /// contain.
+///
+/// Android always takes the in-process path: `current_exe()` there is the
+/// `app_process` launcher, which *does* spawn and then exits with an empty
+/// stderr, which used to surface as "the office-open parser failed" for every
+/// document (see the module docs).
 pub fn run_json_or_local(job: &Job) -> Result<String, String> {
+    #[cfg(target_os = "android")]
+    return run_in_process(job, None);
+    #[cfg(not(target_os = "android"))]
     match run(job) {
         Ok(json) => Ok(json),
         Err(RunError::Job(message)) => Err(message),
-        Err(RunError::Spawn(spawn_error)) => {
-            let fallback = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| execute(job)));
-            match fallback {
-                Ok(result) => result,
-                Err(_) => {
-                    Err(format!("the {} parser panicked; the document may be malformed ({spawn_error})", job.name()))
-                }
-            }
-        }
+        Err(RunError::Spawn(spawn_error)) => run_in_process(job, Some(&spawn_error)),
+    }
+}
+
+/// The in-process parse, contained by `catch_unwind` so a panicking
+/// third-party parser becomes a parse error instead of an aborted app.
+fn run_in_process(job: &Job, spawn_error: Option<&str>) -> Result<String, String> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| execute(job))) {
+        Ok(result) => result,
+        Err(_) => match spawn_error {
+            Some(error) => Err(format!("the {} parser panicked; the document may be malformed ({error})", job.name())),
+            None => Err(format!("the {} parser panicked; the document may be malformed", job.name())),
+        },
     }
 }
 
 /// Reads at most `limit` bytes; a larger stream is an error (and the caller
 /// kills the worker).
+#[cfg(not(target_os = "android"))]
 fn read_capped(mut stream: impl Read, limit: u64) -> Result<Vec<u8>, String> {
     let mut collected = Vec::new();
     let mut buffer = [0u8; 64 * 1024];
@@ -299,6 +328,21 @@ mod tests {
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("tests").join("corpus").join("writer-basic.docx");
         let json = execute(&Job::OfficeOpen { path }).expect("the corpus sample parses");
         assert!(json.contains("\"kind\":\"writer\""), "{json:.120}");
+    }
+
+    /// Android has no worker process (see the module docs), so this is the path
+    /// every document takes there: it must return an error for a bad document
+    /// instead of unwinding.
+    #[test]
+    fn the_in_process_path_is_used_on_android_and_returns_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("broken.xlsx");
+        std::fs::write(&path, b"PK\x03\x04this is not a workbook at all").unwrap();
+        let result = run_in_process(&Job::OfficeOpen { path }, None);
+        assert!(result.is_err(), "a corrupt workbook is an error, not a panic");
+        // A missing file goes through the same path.
+        let missing = dir.path().join("missing.docx");
+        assert!(run_in_process(&Job::OfficeOpen { path: missing }, None).is_err());
     }
 
     #[test]
