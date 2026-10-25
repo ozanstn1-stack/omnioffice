@@ -23,8 +23,8 @@ import java.io.FileOutputStream
  * They run on an emulator (`./gradlew :app:connectedUniversalDebugAndroidTest`)
  * and exercise the same `ContentResolver` -> [IncomingFiles.copyToCache] path
  * the Activity uses for an incoming intent, without booting the Tauri WebView:
- * display-name sanitization, the extension whitelist, the size cap and the
- * queued cache file are all verified with real Android I/O.
+ * display-name sanitization, the name/MIME/content acceptance order, the size
+ * cap and the queued cache file are all verified with real Android I/O.
  *
  * Routing: the second half asks the real PackageManager which intents the
  * platform resolver hands to this app (`queryIntentActivities`), with
@@ -76,10 +76,13 @@ class OpenWithIntentTest {
 
   @Test
   fun executableExtensionsAreRejected() {
-    val uri = staged("installer.exe", "MZ".toByteArray())
+    // Without a routable name the copy is made and the bytes decide; an
+    // executable never sniffs as a document, so it is rejected after the copy
+    // and never queued.
+    val uri = staged("installer.exe", "MZ\u0090\u0000\u0003\u0000\u0000\u0000".toByteArray(Charsets.ISO_8859_1))
     val (file, result) = IncomingFiles.copyToCache(resolver, uri, cacheDir)
     assertNull("an .exe must never be copied", file)
-    assertEquals(IncomingFiles.CopyResult.UNSUPPORTED, result)
+    assertEquals(IncomingFiles.CopyResult.UNKNOWN_TYPE, result)
   }
 
   @Test
@@ -89,7 +92,7 @@ class OpenWithIntentTest {
     val uri = staged("archive.rar", byteArrayOf(1, 2, 3))
     val (file, result) = IncomingFiles.copyToCache(resolver, uri, cacheDir)
     assertNull(file)
-    assertEquals(IncomingFiles.CopyResult.UNSUPPORTED, result)
+    assertEquals(IncomingFiles.CopyResult.UNKNOWN_TYPE, result)
   }
 
   @Test
@@ -118,6 +121,90 @@ class OpenWithIntentTest {
     val (file, result) = IncomingFiles.copyToCache(resolver, uri, cacheDir)
     assertEquals(IncomingFiles.CopyResult.COPIED, result)
     assertNotNull(file)
+  }
+
+  // ---------------------------------------------------------------------------
+  // Provider-independent acceptance (the WhatsApp open-with report)
+  //
+  // The on-device staging helper is a `file://` URI, so the display name always
+  // exists (as the last path segment) and only its extension can vary. A
+  // provider that returns no DISPLAY_NAME at all needs an in-process
+  // DocumentsProvider, which this suite does not register; that variant is
+  // covered by the JVM tests of `provisionalName` and `sniffExtension`. The two
+  // shapes below are the ones a real share produces: an extensionless name and
+  // a MIME-only declaration.
+  // ---------------------------------------------------------------------------
+
+  @Test
+  fun extensionlessNameIsAcceptedByContentSniffing() {
+    val body = "%PDF-1.7\n1 0 obj\n<<>>\nendobj\n".toByteArray()
+    val uri = staged("IMG-0001", body)
+    val (file, result) = IncomingFiles.copyToCache(resolver, uri, cacheDir)
+    assertEquals(IncomingFiles.CopyResult.COPIED, result)
+    assertNotNull("a real PDF is accepted without a display-name extension", file)
+    assertEquals("the sniffed copy carries a routable extension", "IMG-0001.pdf", file!!.name)
+    assertEquals("the copy is byte-identical", body.toList(), file.readBytes().toList())
+  }
+
+  @Test
+  fun mimeOnlyDocumentIsAcceptedFromItsBytes() {
+    // The exact WhatsApp shape: only a generic MIME type was declared, so the
+    // temporary copy has no useful name and the copied bytes must decide.
+    val body = "%PDF-1.7\n1 0 obj\n<<>>\nendobj\n".toByteArray()
+    val uri = staged("download", body)
+    val (file, result) = IncomingFiles.copyToCache(resolver, uri, cacheDir, "application/octet-stream")
+    assertEquals(IncomingFiles.CopyResult.COPIED, result)
+    assertNotNull(file)
+    assertEquals("download.pdf", file!!.name)
+  }
+
+  @Test
+  fun mimeOnlyImageIsAcceptedFromTheDeclaredType() {
+    // Images are covered by the sender-declared MIME type, not by a document
+    // magic; the PNG signature below must not be mistaken for unknown content.
+    val pngHeader = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+    val uri = staged("photo", pngHeader)
+    val (file, result) = IncomingFiles.copyToCache(resolver, uri, cacheDir, "image/png")
+    assertEquals(IncomingFiles.CopyResult.COPIED, result)
+    assertNotNull(file)
+    assertEquals("photo.png", file!!.name)
+  }
+
+  @Test
+  fun legacyXlsWithoutANameIsAcceptedByItsStreamMarker() {
+    // Regression guard for the .xls association that landed on the base
+    // branch: the legacy import must keep working through content sniffing.
+    val uri = staged("attachment", compoundBytes("Workbook"))
+    val (file, result) = IncomingFiles.copyToCache(resolver, uri, cacheDir)
+    assertEquals(IncomingFiles.CopyResult.COPIED, result)
+    assertNotNull(file)
+    assertEquals("attachment.xls", file!!.name)
+  }
+
+  @Test
+  fun unknownContentIsRejectedAfterTheCopy() {
+    val uri = staged("IMG-0002", byteArrayOf(0, 1, 2, 3, 0))
+    val (file, result) = IncomingFiles.copyToCache(resolver, uri, cacheDir)
+    assertNull("content that cannot be identified is never queued", file)
+    assertEquals(IncomingFiles.CopyResult.UNKNOWN_TYPE, result)
+    assertTrue(
+      "the rejected copy is deleted from the cache",
+      File(cacheDir, "incoming").listFiles().isNullOrEmpty(),
+    )
+  }
+
+  /** Minimal OLE/CFB header plus one UTF-16LE directory entry name. */
+  private fun compoundBytes(marker: String): ByteArray {
+    val output = ByteArrayOutputStream()
+    output.write(
+      byteArrayOf(
+        0xD0.toByte(), 0xCF.toByte(), 0x11, 0xE0.toByte(), 0xA1.toByte(), 0xB1.toByte(), 0x1A, 0xE1.toByte(),
+      ),
+    )
+    output.write(ByteArray(64))
+    output.write(marker.toByteArray(Charsets.UTF_16LE))
+    output.write(ByteArray(64))
+    return output.toByteArray()
   }
 
   // ---------------------------------------------------------------------------
@@ -249,14 +336,14 @@ class OpenWithIntentTest {
   @Test
   fun genericBinariesAreClaimedButTheCopyPipelineRejectsThem() {
     // application/octet-stream has to be claimed broadly (the provider hides
-    // the name), so an executable can appear in the chooser. The extension
-    // whitelist is what stops it: nothing is copied, and the activity queues
+    // the name), so an executable can appear in the chooser. The content
+    // sniffer is what stops it now: nothing is copied, and the activity queues
     // an __error: token the UI shows as a message.
     for (name in listOf("setup.exe", "report.docx.exe", "script.sh")) {
       assertTrue("${name} may be offered", handledByApp(viewIntent("content://com.example.docs/files/$name", "application/octet-stream")))
       val (file, result) = IncomingFiles.copyToCache(resolver, staged(name, byteArrayOf(1, 2, 3)), cacheDir)
       assertNull("$name must not be copied", file)
-      assertEquals(IncomingFiles.CopyResult.UNSUPPORTED, result)
+      assertEquals(IncomingFiles.CopyResult.UNKNOWN_TYPE, result)
     }
   }
 }

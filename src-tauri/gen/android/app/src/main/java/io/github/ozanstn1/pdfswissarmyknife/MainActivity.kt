@@ -45,6 +45,14 @@ class MainActivity : TauriActivity() {
 
   private fun importOpenWithIntent(intent: Intent?) {
     if (intent == null) return
+    // One info-level line per received intent: "I picked OmniOffice and nothing
+    // happened" cannot be diagnosed on a device without the action, the type
+    // the sender declared and the URI(s) it handed over. `adb logcat -s PdfSakIntent`.
+    Log.i(
+      TAG,
+      "intent action=${intent.action} type=${intent.type} data=${intent.data} " +
+        "flags=0x${Integer.toHexString(intent.flags)}",
+    )
     when (intent.action) {
       ACTION_SHORTCUT_SCAN -> {
         appendPendingOpen("__action:scan")
@@ -60,12 +68,16 @@ class MainActivity : TauriActivity() {
       }
     }
     val candidates = when (intent.action) {
-      Intent.ACTION_VIEW -> listOfNotNull(intent.data)
+      // Some senders put the document into the ClipData of a VIEW intent
+      // instead of `data`, the same way others do it for ACTION_SEND.
+      Intent.ACTION_VIEW -> listOfNotNull(intent.data) + clipUris(intent)
       Intent.ACTION_SEND -> listOfNotNull(streamUri(intent)) + clipUris(intent)
       Intent.ACTION_SEND_MULTIPLE -> streamUris(intent) + clipUris(intent)
       else -> emptyList()
     }
-    val uris = candidates.filter { uri -> uri.scheme == "content" || uri.scheme == "file" }
+    val uris = candidates
+      .filter { uri -> uri.scheme == "content" || uri.scheme == "file" }
+      .distinct()
     if (uris.isEmpty()) {
       if (intent.action == Intent.ACTION_SEND) {
         val sharedText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
@@ -83,7 +95,7 @@ class MainActivity : TauriActivity() {
     Thread {
       for (uri in uris) {
         try {
-          copyIncoming(uri)
+          copyIncoming(uri, intent.type)
         } catch (error: Exception) {
           Log.w(TAG, "open-with: unexpected failure for $uri (${error.message})")
         }
@@ -119,8 +131,8 @@ class MainActivity : TauriActivity() {
     return uris
   }
 
-  private fun copyIncoming(uri: Uri) {
-    val (destination, result) = IncomingFiles.copyToCache(contentResolver, uri, cacheDir)
+  private fun copyIncoming(uri: Uri, intentType: String?) {
+    val (destination, result) = IncomingFiles.copyToCache(contentResolver, uri, cacheDir, intentType)
     if (result == IncomingFiles.CopyResult.COPIED) {
       appendPendingOpen(destination!!.absolutePath)
       return
@@ -139,9 +151,9 @@ class MainActivity : TauriActivity() {
    * rejected). Instrumented tests drive it with a real `content://` provider.
    */
   @VisibleForTesting
-  internal fun importIncomingUriForTest(uri: Uri): String? {
+  internal fun importIncomingUriForTest(uri: Uri, intentType: String? = null): String? {
     val before = pendingOpenPaths()
-    copyIncoming(uri)
+    copyIncoming(uri, intentType)
     val after = pendingOpenPaths()
     return after.lastOrNull { it !in before }
   }
