@@ -159,10 +159,10 @@ Android version metadata against `tauri.conf.json` and the tag.
 ## V3.1 platform behavior
 
 * **Open with**: `MainActivity` handles `ACTION_VIEW` and
-  `ACTION_SEND`/`SEND_MULTIPLE`, validates the extension against a whitelist,
-  copies the stream into app cache (256 MB cap, sanitized name) and the
-  frontend drains `android_take_pending_open()` at startup, on new intents and
-  on resume.
+  `ACTION_SEND`/`SEND_MULTIPLE`, validates the extension against a whitelist
+  (legacy `.doc`/`.xls`/`.ppt` included), copies the stream into app cache
+  (256 MB cap, sanitized name) and the frontend drains
+  `android_take_pending_open()` at startup, on new intents and on resume.
 * **SAF**: office documents can be imported (`pickOfficeFiles`) and saved
   through a SAF destination or published to Downloads; `content://` URIs are
   never passed to the Rust backend.

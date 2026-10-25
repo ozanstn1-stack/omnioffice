@@ -135,6 +135,7 @@ class OpenWithIntentTest {
     "rtf" to listOf("application/rtf", "text/rtf"),
     "xlsx" to listOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
     "xlsm" to listOf("application/vnd.ms-excel.sheet.macroEnabled.12"),
+    "xls" to listOf("application/vnd.ms-excel", "application/msexcel", "application/x-msexcel"),
     "ods" to listOf("application/vnd.oasis.opendocument.spreadsheet"),
     "pptx" to listOf("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
     "pptm" to listOf("application/vnd.ms-powerpoint.presentation.macroEnabled.12"),

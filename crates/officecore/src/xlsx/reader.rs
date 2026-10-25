@@ -271,7 +271,17 @@ fn read_workbook_bytes_inner(bytes: &[u8]) -> OfficeResult<SheetRead> {
     // pivot caches). It is best effort: every failure is a warning and the
     // values from the first pass stay untouched.
     if !import_ooxml_layout(bytes, &mut workbook, &mut warnings) {
-        warnings.push("Formatting, layout and comments are imported from XLSX/XLSM workbooks only; this file opened with values and formulas.".into());
+        // A legacy `.xls` is a CFB container, not an OOXML package: calamine
+        // exposes the cached cell values but not the formula records, so say
+        // exactly that instead of implying formulas were imported.
+        if bytes.starts_with(&[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]) {
+            warnings.push(
+                "Legacy Excel (.xls) workbooks import the cached values only: formulas arrive as their last saved results and formatting, comments and layout are not imported."
+                    .into(),
+            );
+        } else {
+            warnings.push("Formatting, layout and comments are imported from XLSX/XLSM workbooks only; this file opened with values and formulas.".into());
+        }
     }
     // Only warn about charts/images/pivots that are present in the package but
     // could not be attached to a sheet; imported ones are reported by the

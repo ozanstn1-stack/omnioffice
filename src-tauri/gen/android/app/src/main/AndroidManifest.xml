@@ -86,6 +86,10 @@
                 <data android:mimeType="text/rtf" />
                 <!-- Excel (xlsx) -->
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <!-- Legacy Excel (xls); some senders report an old alias instead. -->
+                <data android:mimeType="application/vnd.ms-excel" />
+                <data android:mimeType="application/msexcel" />
+                <data android:mimeType="application/x-msexcel" />
                 <!-- OpenDocument spreadsheet (ods) -->
                 <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
                 <!-- PowerPoint (pptx) -->
@@ -183,6 +187,11 @@
                 <data android:pathPattern=".*\\..*\\.xlsm" />
                 <data android:pathPattern=".*\\..*\\..*\\.xlsm" />
                 <data android:pathPattern=".*\\..*\\..*\\..*\\.xlsm" />
+                <data android:pathSuffix=".xls" />
+                <data android:pathPattern=".*\\.xls" />
+                <data android:pathPattern=".*\\..*\\.xls" />
+                <data android:pathPattern=".*\\..*\\..*\\.xls" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.xls" />
                 <data android:pathSuffix=".ods" />
                 <data android:pathPattern=".*\\.ods" />
                 <data android:pathPattern=".*\\..*\\.ods" />
@@ -347,6 +356,11 @@
                 <data android:pathPattern=".*\\..*\\.xlsm" />
                 <data android:pathPattern=".*\\..*\\..*\\.xlsm" />
                 <data android:pathPattern=".*\\..*\\..*\\..*\\.xlsm" />
+                <data android:pathSuffix=".xls" />
+                <data android:pathPattern=".*\\.xls" />
+                <data android:pathPattern=".*\\..*\\.xls" />
+                <data android:pathPattern=".*\\..*\\..*\\.xls" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.xls" />
                 <data android:pathSuffix=".ods" />
                 <data android:pathPattern=".*\\.ods" />
                 <data android:pathPattern=".*\\..*\\.ods" />

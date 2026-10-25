@@ -608,6 +608,11 @@ These are real and honest:
   a locally installed LibreOffice gives full fidelity when available. Legacy
   documents are never saved back as `.doc`/`.ppt`: the first save asks for
   `.docx`/`.pptx`/`.oswk`.
+- **Legacy `.xls` import is values-only.** The same `calamine` pass used for
+  XLSX reads the cached cell values of a BIFF workbook; formula records,
+  formatting, comments and layout are not reconstructed, and a locally
+  installed LibreOffice is used for full fidelity when available. `.xls` files
+  are never saved back: the first save asks for `.xlsx`/`.oswk`.
 - **Track changes** tracks run-level insertions, deletions and formatting
   changes plus paragraph-level split/merge as text edits; paragraph *move*
   revisions and table/list structural revision objects are not modelled and
@@ -767,7 +772,7 @@ Next (architecture prepared, not implemented):
 | --- | --- |
 | Screens | 50 |
 | Tauri commands | 220 |
-| Rust tests | 1270 |
+| Rust tests | 1271 |
 | TypeScript test files | 158 |
 | TypeScript test cases (approx.) | 2110 |
 <!-- stats:end -->

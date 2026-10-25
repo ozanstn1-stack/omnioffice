@@ -21,7 +21,7 @@ object IncomingFiles {
   /** Extensions the frontend can route. Anything else is logged and skipped. */
   val openableExtensions: Set<String> = setOf(
     "docx", "docm", "dotx", "doc", "dot", "odt", "rtf", "txt", "md", "html",
-    "xlsx", "xlsm", "ods", "csv", "tsv",
+    "xlsx", "xlsm", "xls", "ods", "csv", "tsv",
     "pptx", "pptm", "ppt", "odp",
     "pdf", "osed", "ospr", "osdt", "oswk",
     "eml", "xml", "zip",
