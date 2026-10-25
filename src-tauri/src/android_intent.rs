@@ -128,6 +128,22 @@ pub fn drain_pending_open(cache_dir: &Path) -> Vec<String> {
     content.lines().map(str::trim).filter(|line| !line.is_empty()).map(str::to_string).collect()
 }
 
+/// Set once the first drain of this process has been logged.
+#[cfg(target_os = "android")]
+static FIRST_DRAIN_LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether a drain is worth a log line: the first one of the process (it shows
+/// that the webview polls at all) and every drain that returned something.
+///
+/// Why: the webview polls every 2.5 s, and logging every empty drain filled
+/// the 64 KB log within minutes, pushing out the intent and copy lines a
+/// report needs (seen on a device with v6.2.9).
+#[cfg(any(target_os = "android", test))]
+pub fn should_log_drain(first_logged: &std::sync::atomic::AtomicBool, count: usize) -> bool {
+    let first = !first_logged.swap(true, std::sync::atomic::Ordering::Relaxed);
+    first || count > 0
+}
+
 /// Returns the paths of documents opened through an Android intent and clears
 /// the queue. Always empty on desktop.
 ///
@@ -146,9 +162,9 @@ pub async fn android_take_pending_open(app: tauri::AppHandle) -> Vec<String> {
     match app.path().app_cache_dir() {
         Ok(cache) => {
             let paths = drain_pending_open(&cache);
-            // One line per drain: the report then shows whether the webview
-            // polls at all and whether the queue was already empty.
-            append_open_with_log(&cache, &format!("drain count={} cache={}", paths.len(), cache.display()));
+            if should_log_drain(&FIRST_DRAIN_LOGGED, paths.len()) {
+                append_open_with_log(&cache, &format!("drain count={} cache={}", paths.len(), cache.display()));
+            }
             paths
         }
         Err(_) => Vec::new(),
@@ -203,6 +219,16 @@ mod tests {
     fn write_queue(dir: &Path, content: &str) {
         let mut file = std::fs::File::create(dir.join(PENDING_OPEN_FILE)).expect("create queue");
         file.write_all(content.as_bytes()).expect("write queue");
+    }
+
+    #[test]
+    fn only_the_first_and_non_empty_drains_are_logged() {
+        let first = std::sync::atomic::AtomicBool::new(false);
+        assert!(should_log_drain(&first, 0), "the first drain shows the webview polls");
+        assert!(!should_log_drain(&first, 0), "later empty drains must not flood the log");
+        assert!(!should_log_drain(&first, 0));
+        assert!(should_log_drain(&first, 1), "a drain that delivered a document is always logged");
+        assert!(!should_log_drain(&first, 0));
     }
 
     #[test]

@@ -11,6 +11,7 @@ import {
   Pause,
   Play,
   Search,
+  Share2,
   ShieldCheck,
   Square,
   Volume2,
@@ -18,7 +19,8 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { openAnyFile } from "../lib/mobile";
+import { isAndroid, openAnyFile } from "../lib/mobile";
+import { shareDocumentFile } from "../lib/share";
 import { detectEdevletVerification, type EdevletVerification } from "../lib/edevlet";
 import { openExternalLink } from "../office/calc/open-link";
 import { Badge, Button, IconButton, Spinner, useDebounced } from "../components/ui";
@@ -1238,6 +1240,14 @@ export function Reader({
             >
               <ExternalLink size={15} />
             </IconButton>
+            {isAndroid() ? (
+              <IconButton
+                label={t("reader.share")}
+                onClick={() => void shareDocumentFile(session.primary!.path, t("reader.share")).catch(() => undefined)}
+              >
+                <Share2 size={15} />
+              </IconButton>
+            ) : null}
           </div>
         </div>
 

@@ -12,8 +12,16 @@
  * screen (`singleTask` -> `onNewIntent`) never triggers a visibility change, so
  * the interval is what makes that case work. The queue read is a small file
  * read and returns nothing while it is empty.
+ *
+ * Why the handler lives in a ref: the Rust side truncates the queue before it
+ * answers, so a drained path exists nowhere else. The effect used to depend on
+ * `onPaths`; on a cold start from "Open with" the first drain was still in
+ * flight when the settings loaded and App passed a new handler, the cleanup
+ * marked that drain cancelled and its result - the shared document - was
+ * dropped, leaving the app on Home (v6.2.9 on a Pixel 8 Pro). The poll now
+ * starts once and every drained path reaches the current handler.
  */
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { isAndroid } from "./mobile";
 import { parseIncomingError } from "./incoming";
@@ -32,14 +40,20 @@ const EARLY_RETRY_MS = 900;
  * No-op on desktop and when the command is unavailable.
  */
 export function useAndroidPendingOpen(onPaths: (paths: string[]) => void): void {
+  const onPathsRef = useRef(onPaths);
+  useEffect(() => {
+    onPathsRef.current = onPaths;
+  }, [onPaths]);
+
   useEffect(() => {
     if (!isAndroid()) return;
-    let cancelled = false;
     const seen = new Set<string>();
     const drain = () => {
       void invoke<string[]>("android_take_pending_open")
         .then((paths) => {
-          if (cancelled || !paths.length) return;
+          // No `cancelled` check: the queue is already empty on the Rust side,
+          // so a result that arrives after a cleanup is still delivered.
+          if (!paths.length) return;
           recordOpenWith(`drain:${paths.length}`);
           // Launcher shortcuts arrive as `__action:*` tokens, and the same
           // token is legitimate every time it is used: deduplicating them
@@ -53,7 +67,7 @@ export function useAndroidPendingOpen(onPaths: (paths: string[]) => void): void 
             }
             if (!path.startsWith("__action:")) seen.add(path);
           }
-          if (fresh.length > 0) onPaths(fresh);
+          if (fresh.length > 0) onPathsRef.current(fresh);
         })
         .catch((error: unknown) => recordOpenWith(`drain-failed:${String(error)}`));
     };
@@ -67,10 +81,9 @@ export function useAndroidPendingOpen(onPaths: (paths: string[]) => void): void 
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      cancelled = true;
       window.clearTimeout(retry);
       window.clearInterval(poll);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [onPaths]);
+  }, []);
 }
