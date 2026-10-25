@@ -4,6 +4,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { pickDocumentTokens, type FileToken } from "./lib/file-tokens";
 import { extensionsFor } from "./lib/tool-files";
 import { openTokenDocument } from "./lib/file-refs";
+import { firstIncomingError, incomingErrorKey } from "./lib/incoming";
 import { useDropTokens, useLaunchTokens } from "./lib/use-file-ref-events";
 import {
   Archive,
@@ -594,10 +595,9 @@ export default function App() {
         return;
       }
       // The Android shell queues `__error:<reason>:<name>` for a refused file;
-      // say so instead of doing nothing (any real paths still open).
-      if (paths.some((p) => p.startsWith("__error:"))) {
-        pushToast({ kind: "error", title: t("errors.unsupported") });
-      }
+      // say why instead of doing nothing (any real paths still open).
+      const incomingError = firstIncomingError(paths);
+      if (incomingError) pushToast({ kind: "error", title: t(incomingErrorKey(incomingError.reason)) });
       const realPaths = paths.filter((p) => !p.startsWith("__action:") && !p.startsWith("__error:"));
       if (realPaths.length === 0) return;
       if (realPaths.length === 1) {

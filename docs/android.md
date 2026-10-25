@@ -158,11 +158,21 @@ Android version metadata against `tauri.conf.json` and the tag.
 
 ## V3.1 platform behavior
 
-* **Open with**: `MainActivity` handles `ACTION_VIEW` and
-  `ACTION_SEND`/`SEND_MULTIPLE`, validates the extension against a whitelist
-  (legacy `.doc`/`.xls`/`.ppt` included), copies the stream into app cache
-  (256 MB cap, sanitized name) and the frontend drains
-  `android_take_pending_open()` at startup, on new intents and on resume.
+* **Open with**: `MainActivity` handles `ACTION_VIEW` (including a document
+  handed over in the intent's `ClipData`) and `ACTION_SEND`/`SEND_MULTIPLE`.
+  Acceptance is provider-independent: a display name with a routable extension
+  is used as-is; otherwise the type comes from the MIME type
+  (`ContentResolver.getType`, then the intent type) and the bytes of the copied
+  file may refine it by content sniffing - PDF, OOXML/ODF ZIP containers,
+  legacy `.doc`/`.xls`/`.ppt` compound files, RTF, EML, XML and text/CSV
+  (images are accepted by their declared MIME type; legacy `.xls` included). The stream is copied into app cache (256 MB cap, sanitized
+  name) and the frontend drains `android_take_pending_open()` at startup, on
+  new intents and on resume; content that cannot be identified is deleted and
+  never queued. A refused document shows an explicit message (too large,
+  unreadable/no access, type not recognised, unsupported) instead of one
+  generic toast. On a device, `adb logcat -s PdfSakIntent` shows every received
+  intent and `IncomingFiles` logs the resolved MIME, provisional type, sniffed
+  type and outcome.
 * **SAF**: office documents can be imported (`pickOfficeFiles`) and saved
   through a SAF destination or published to Downloads; `content://` URIs are
   never passed to the Rust backend.
