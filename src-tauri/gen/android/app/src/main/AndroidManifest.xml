@@ -47,6 +47,18 @@
                 <!-- AndroidTV support -->
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+        </activity>
+        <!-- Open with / share trampoline: receives every document intent in its own,
+             invisible task, copies the documents while it holds the sender's read grant
+             and wakes MainActivity without the sender's task flags. A CLEAR_TASK delivered
+             to MainActivity itself destroys the running activity, and
+             WryActivity.onDestroy ends the process (OpenWithActivity.kt). -->
+        <activity
+            android:name=".OpenWithActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
             <!--
               File associations ("Open with" and share). HAND-MAINTAINED, not generated:
               tauri.android.conf.json clears bundle.fileAssociations, so tauri-build no longer

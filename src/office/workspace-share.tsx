@@ -11,7 +11,7 @@ import type { OfficeTab } from "../lib/office-store";
 import { shareExtensionFor, shareOfficeDocument } from "../lib/share";
 import { errorMessage, useToasts } from "../lib/store";
 import { useT } from "../lib/i18n";
-import { Dialog } from "./office-ui";
+import { Modal } from "../components/ui";
 
 export function ShareTabButton({ tab }: { tab: OfficeTab | null }) {
   const t = useT();
@@ -45,17 +45,28 @@ export function ShareTabButton({ tab }: { tab: OfficeTab | null }) {
         <Share2 size={15} />
       </button>
       {open && tab ? (
-        <Dialog title={t("office.shareTitle", { name: tab.title })} onClose={() => setOpen(false)}>
-          <p className="muted">{t("office.shareHint")}</p>
-          <div className="row" style={{ justifyContent: "flex-end", marginTop: 14, flexWrap: "wrap" }}>
-            <button type="button" className="btn btn-soft" disabled={sharing} onClick={() => void share("pdf")}>
-              {t("office.shareAsPdf")}
-            </button>
-            <button type="button" className="btn btn-primary" disabled={sharing} onClick={() => void share("document")}>
-              {t("office.shareAsDocument", { format: shareExtensionFor(tab.kind, tab.path).toUpperCase() })}
-            </button>
-          </div>
-        </Dialog>
+        <Modal
+          title={t("office.shareTitle", { name: tab.title })}
+          onClose={() => setOpen(false)}
+          width={440}
+          footer={
+            <>
+              <button type="button" className="btn btn-soft" disabled={sharing} onClick={() => void share("pdf")}>
+                {t("office.shareAsPdf")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={sharing}
+                onClick={() => void share("document")}
+              >
+                {t("office.shareAsDocument", { format: shareExtensionFor(tab.kind, tab.path).toUpperCase() })}
+              </button>
+            </>
+          }
+        >
+          <p className="muted text-sm">{t("office.shareHint")}</p>
+        </Modal>
       ) : null}
     </>
   );

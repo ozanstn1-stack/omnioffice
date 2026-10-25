@@ -172,7 +172,15 @@ Android version metadata against `tauri.conf.json` and the tag.
 
 ## V3.1 platform behavior
 
-* **Open with**: `MainActivity` handles `ACTION_VIEW` (including a document
+* **Open with**: the intents arrive at `OpenWithActivity`, an invisible
+  trampoline in its own task. It wakes `MainActivity` with `NEW_TASK` only and
+  copies the documents itself (`OpenWithImport`), because the sender's read
+  grant belongs to the receiving activity and dies with it; it finishes once
+  the copy is done. A sender's `FLAG_ACTIVITY_CLEAR_TASK`
+  delivered to `MainActivity` itself would destroy the running activity, and
+  the generated `WryActivity.onDestroy` ends the whole process (the app
+  vanished and the next start opened the leftover document as an extra tab).
+  `MainActivity` handles `ACTION_VIEW` (including a document
   handed over in the intent's `ClipData`) and `ACTION_SEND`/`SEND_MULTIPLE`.
   Acceptance is provider-independent: a display name with a routable extension
   is used as-is; otherwise the type comes from the MIME type

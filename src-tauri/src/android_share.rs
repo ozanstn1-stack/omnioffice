@@ -27,10 +27,7 @@ pub fn validate_share_path(roots: &[PathBuf], candidate: &Path) -> Result<PathBu
     if !resolved.is_file() {
         return Err("Only documents can be shared.".to_string());
     }
-    let inside = roots
-        .iter()
-        .filter_map(|root| root.canonicalize().ok())
-        .any(|root| resolved.starts_with(&root));
+    let inside = roots.iter().filter_map(|root| root.canonicalize().ok()).any(|root| resolved.starts_with(&root));
     if !inside {
         return Err("This document is not in the app's storage; save or export it first.".to_string());
     }
