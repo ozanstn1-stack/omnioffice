@@ -206,6 +206,26 @@ async function withSession(name, env, steps) {
     if (tail) console.log(`[${name}] driver: ${tail}`);
   }
 }
+
+/**
+ * Runs a scenario, and on failure relaunches it once with a fresh session.
+ *
+ * The dev launch context (PDFSAK_START_SCREEN / PDFSAK_DEV_FILES) is applied
+ * only at launch, so a flow that missed its start screen cannot recover by
+ * navigating - the sanitize fallback clears the selected file and then times
+ * out (#407). A relaunch is the only recovery; one retry keeps a slow WebView2
+ * start from blocking the release tag, while a real regression still fails
+ * both attempts.
+ */
+async function withSessionRetry(name, env, steps) {
+  try {
+    return await withSession(name, env, steps);
+  } catch (error) {
+    console.warn(`RETRY: ${name} failed (${error.message}); relaunching once with a fresh session`);
+    return withSession(`${name}-retry`, env, steps);
+  }
+}
+
 function killAppInstances() {
   if (process.platform === "win32") {
     spawnSync("taskkill", ["/IM", exeName, "/F"], { stdio: "ignore" });
@@ -356,14 +376,15 @@ async function sanitizeFlow(session) {
 
   // The dev launch screen opens the Studio with the file already selected;
   // clicking a navigation item would clear that selection, so the route is
-  // preferred. If it did not arrive, fall back to the sidebar (and say so).
+  // preferred. A slow WebView2 start gets a generous deadline; if it still
+  // misses, the sidebar fallback can only prove the screen renders (#407).
   let onStudio = false;
   try {
     await waitForScript(
       session,
       "return /PDF St/i.test(document.querySelector('h1')?.textContent || '')",
-      15000,
-      "PDF Studio screen",
+      45000,
+      "PDF Studio screen from the dev launch context",
     );
     onStudio = true;
   } catch {
@@ -391,13 +412,25 @@ async function sanitizeFlow(session) {
   // The run button is the last enabled primary button on the screen (the file
   // picker is the first). Requiring two enabled primary buttons means the
   // sanitize card is really rendered with a file selected, so a race with the
-  // lazy screen never clicks the picker and opens a native dialog.
-  const clicked = await waitForScript(
-    session,
-    "const buttons=[...document.querySelectorAll('button.btn.btn-primary')].filter((button)=>!button.disabled); if(buttons.length>=2){buttons[buttons.length-1].click(); return true;} return false;",
-    30000,
-    `sanitize run button (${onStudio ? "dev route" : "nav fallback, file was cleared"})`,
-  );
+  // lazy screen never clicks the picker and opens a native dialog. After a
+  // navigation fallback the dev-selected file is gone, so fail fast and let
+  // the caller relaunch instead of waiting the full deadline.
+  let clicked;
+  try {
+    clicked = await waitForScript(
+      session,
+      "const buttons=[...document.querySelectorAll('button.btn.btn-primary')].filter((button)=>!button.disabled); if(buttons.length>=2){buttons[buttons.length-1].click(); return true;} return false;",
+      onStudio ? 30000 : 10000,
+      `sanitize run button (${onStudio ? "dev route" : "nav fallback, the dev-selected file was cleared"})`,
+    );
+  } catch (error) {
+    if (!onStudio) {
+      throw new Error(
+        `the dev launch screen missed PDF Studio and navigating clears the selected file, so the sanitizer cannot run (relaunch required): ${error.message}`,
+      );
+    }
+    throw error;
+  }
   if (!clicked) throw new Error("the sanitize run button could not be clicked");
   const size = await waitForFile(output, 60000, "sanitized output");
   await screenshot(session, "sanitize");
@@ -619,18 +652,18 @@ async function main() {
   for (const scenario of scenarios) {
     if (scenario === "office") {
       const doc = prepareWorkFile("test-document.docx");
-      await withSession("office", { PDFSAK_START_SCREEN: "office", PDFSAK_DEV_FILES: doc }, officeRoundtrip);
+      await withSessionRetry("office", { PDFSAK_START_SCREEN: "office", PDFSAK_DEV_FILES: doc }, officeRoundtrip);
     } else if (scenario === "merge") {
       const first = prepareWorkFile("sample-1.pdf");
       const second = prepareWorkFile("sample-2.pdf");
-      await withSession(
+      await withSessionRetry(
         "merge",
         { PDFSAK_START_SCREEN: "merge", PDFSAK_DEV_FILES: `${first};${second}`, PDFSAK_DEV_RUN: "1" },
         mergeFlow,
       );
     } else if (scenario === "sanitize") {
       const input = prepareWorkFile("sample-1.pdf");
-      await withSession("sanitize", { PDFSAK_START_SCREEN: "pdfStudio", PDFSAK_DEV_FILES: input }, sanitizeFlow);
+      await withSessionRetry("sanitize", { PDFSAK_START_SCREEN: "pdfStudio", PDFSAK_DEV_FILES: input }, sanitizeFlow);
     }
   }
 }
