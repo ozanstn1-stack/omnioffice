@@ -473,11 +473,11 @@ cases pass** (1 skipped), on top of a strict TypeScript type check; coverage
 floors are enforced by `npm run test:coverage` (see `vite.config.ts`).
 `cargo test --workspace` is the authority for the Rust suite and prints the
 per-crate split. The generated block at the end of this file counts
-`#[test]`/`#[tokio::test]` attributes in the sources (1,269); that is a source
-metric, not the number of cases a given run executes, so it must not be read as
-"tests passed". Three heavy performance cases are `#[ignore]`d and one more is
-gated by `OSAK_PERF_HEAVY=1`. Prose numbers went stale every release, so the
-generated block stays the single source for source counts.
+`#[test]`/`#[tokio::test]` attributes in the sources; that is a source metric,
+not the number of cases a given run executes, so it must not be read as "tests
+passed". Three heavy performance cases are `#[ignore]`d and one more is gated by
+`OSAK_PERF_HEAVY=1`. Prose numbers went stale every release, so the generated
+block stays the single source for source counts.
 
 ### What runs where
 
@@ -757,7 +757,7 @@ Next (architecture prepared, not implemented):
 | --- | --- |
 | Screens | 50 |
 | Tauri commands | 220 |
-| Rust tests | 1269 |
+| Rust tests | 1270 |
 | TypeScript test files | 158 |
 | TypeScript test cases (approx.) | 2110 |
 <!-- stats:end -->

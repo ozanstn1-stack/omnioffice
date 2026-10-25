@@ -16,6 +16,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   stays green, and the editor dropped from 4,745 to 3,246 lines. The file-size
   ratchet fell accordingly.
 
+### Fixed
+
+- **Hostile RTF parameters (nightly fuzz):** a control word with an unbounded
+  digit run overflowed the `i64` accumulator and aborted the reader in
+  overflow-checked builds (`crates/officecore/src/rtf.rs`). Parameters now
+  saturate and clamp to the `i32` range, the crashing input is part of the fuzz
+  corpus and a regression test covers it.
+
 ## [6.2.2] - XLSX bölmesi, bağımlılık turu ve ölçülmüş istatistikler
 
 ### Changed
