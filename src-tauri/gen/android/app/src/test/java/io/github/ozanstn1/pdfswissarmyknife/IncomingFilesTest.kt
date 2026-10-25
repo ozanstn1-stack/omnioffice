@@ -54,6 +54,7 @@ class IncomingFilesTest {
     assertTrue(IncomingFiles.isOpenableName("photo.jpeg"))
     assertTrue(IncomingFiles.isOpenableName("sheet.xlsx"))
     assertTrue(IncomingFiles.isOpenableName("macro.xlsm"))
+    assertTrue(IncomingFiles.isOpenableName("legacy.xls"))
     assertTrue(IncomingFiles.isOpenableName("invoice.xml"))
     assertTrue(IncomingFiles.isOpenableName("mail.eml"))
     assertTrue(IncomingFiles.isOpenableName("archive.zip"))

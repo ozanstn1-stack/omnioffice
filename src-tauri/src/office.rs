@@ -65,7 +65,7 @@ pub struct OpenDocument {
     pub path: String,
     pub model: Value,
     pub warnings: Vec<String>,
-    /// True when the file was a legacy binary format (`.doc`/`.ppt`). The
+    /// True when the file was a legacy binary format (`.doc`/`.xls`/`.ppt`). The
     /// frontend must not save back to it: the tab keeps an empty path so the
     /// first save asks for a modern destination.
     #[serde(default)]
@@ -224,9 +224,36 @@ pub fn open_path(path: &Path) -> Result<OpenDocument, OfficeErrorPayload> {
             }
             ("writer".to_string(), title, to_value(document)?, warnings)
         }
-        "xlsx" | "xlsm" | "xls" | "ods" => {
+        "xlsx" | "xlsm" | "ods" => {
             let read = xlsx::read_workbook_file(path).map_err(payload)?;
             ("calc".to_string(), read.workbook.title.clone(), to_value(read.workbook)?, read.warnings)
+        }
+        // Excel 97-2003: prefer a locally installed LibreOffice for fidelity,
+        // fall back to the calamine values-only import. Never edited in place.
+        "xls" => {
+            legacy = true;
+            if let Some(converted) = try_libreoffice(path, "xlsx") {
+                let read = xlsx::read_workbook_file(&converted.path).map_err(payload)?;
+                let mut warnings = vec![
+                    "Converted with the installed LibreOffice. The original .xls file is unchanged; save as .xlsx or .oswk to keep your edits."
+                        .to_string(),
+                ];
+                warnings.extend(read.warnings);
+                let title = if read.workbook.title.trim().is_empty() {
+                    officecore::io::file_stem(path)
+                } else {
+                    read.workbook.title.clone()
+                };
+                ("calc".to_string(), title, to_value(read.workbook)?, warnings)
+            } else {
+                let read = xlsx::read_workbook_file(path).map_err(payload)?;
+                let mut warnings = read.warnings;
+                warnings.push(
+                    "Legacy Excel (.xls) files import the cached values only; the original is unchanged - save as .xlsx or .oswk to keep your edits."
+                        .into(),
+                );
+                ("calc".to_string(), officecore::io::file_stem(path), to_value(read.workbook)?, warnings)
+            }
         }
         "csv" | "tsv" => {
             let bytes = officecore::io::read_bytes(path).map_err(payload)?;

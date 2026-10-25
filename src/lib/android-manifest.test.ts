@@ -54,6 +54,7 @@ const TYPES: Record<string, string[]> = {
   odt: ["application/vnd.oasis.opendocument.text"],
   rtf: ["application/rtf", "text/rtf"],
   xlsx: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+  xls: ["application/vnd.ms-excel", "application/msexcel", "application/x-msexcel"],
   ods: ["application/vnd.oasis.opendocument.spreadsheet"],
   pptx: ["application/vnd.openxmlformats-officedocument.presentationml.presentation"],
   odp: ["application/vnd.oasis.opendocument.presentation"],
