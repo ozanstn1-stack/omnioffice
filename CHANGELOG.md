@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.7] - Android open-with ve XLSX fuzz düzeltmesi
+
+### Fixed
+
+- **Android open-with no longer depends on the sender's file name (#417):**
+  a document shared from WhatsApp or a download manager is accepted by its
+  display name, then its MIME type, then its bytes: the copy is sniffed for
+  PDF, OOXML, ODF, legacy Office, RTF, EML, XML and text, renamed to the
+  detected type and opened on the right screen. Files whose type cannot be
+  determined are deleted and reported with a specific message (too large,
+  unreadable/no access, unknown type) instead of one generic "unsupported".
+  `adb logcat -s PdfSakIntent` shows the received intent and the copy outcome.
+- **Legacy Excel (.xls) opens on Android (#416):** the typed intent filter
+  accepts `application/vnd.ms-excel` (plus the `msexcel`/`x-msexcel` aliases)
+  and both name-based fallbacks list `.xls`; the copy pipeline accepts it and
+  the editor treats it as a legacy document - the cached values are imported,
+  the first save asks for `.xlsx`/`.oswk`, and the original file is never
+  overwritten. The reader says so explicitly instead of implying formulas
+  were imported.
+- **XLSX dimension underflow (nightly fuzz, #418):** a worksheet with a
+  reversed `<dimension ref="O1:C4"/>` made the vendored `calamine` subtract
+  past zero; reversed references are normalized to their bounding box (and the
+  table header/totals offsets use saturating arithmetic). The crashing input
+  is part of the fuzz corpus, with a regression test.
+
 ## [6.2.6] - PPTX okuyucu/yazıcı ayrıldı (PPTX reader and writer modules)
 
 ### Changed

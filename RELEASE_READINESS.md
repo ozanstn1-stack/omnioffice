@@ -31,6 +31,29 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.2.7) - Android open-with ve XLSX fuzz düzeltmesi
+
+- **Provider-independent Android open-with** (#417 / PR #417): a shared document
+  is accepted by display name, then MIME type, then content sniffing (PDF,
+  OOXML, ODF, legacy Office, RTF, EML, XML, text); the copy is renamed to the
+  detected type, unidentifiable content is deleted with a specific reason
+  (too large / unreadable / unknown type) and `adb logcat -s PdfSakIntent`
+  shows the received intent and the copy outcome.
+  `test:src/lib/incoming.test.ts#parses a refused document token into reason and name`
+- **Legacy `.xls` end to end on Android** (#416): the typed intent filter
+  accepts `application/vnd.ms-excel` (with the `msexcel`/`x-msexcel` aliases)
+  and both name fallbacks list `.xls`; the copy pipeline accepts it and the
+  editor treats it as legacy (values only, save-as on first save).
+  `test:crates/officecore/tests/legacy_xls_import_test.rs#legacy_xls_imports_values_and_formulas`
+- **XLSX reversed-dimension underflow** (#418): the vendored `calamine`
+  normalizes a reversed `<dimension ref="O1:C4"/>` to its bounding box and uses
+  saturating arithmetic for the table offsets; the fuzz input is a corpus seed.
+  `test:crates/officecore/tests/calamine_dimension_test.rs#a_reversed_dimension_does_not_overflow`
+- **Scope:** the Kotlin copy pipeline and the manifest associations are covered
+  by the JVM and instrumented Android suites that run in `android.yml`, not by a
+  claims marker.
+  (no test: Android JVM/instrumented suites run in android.yml.)
+
 ## Implemented (this cycle, 6.2.6) - PPTX okuyucu/yazıcı ayrıldı
 
 - **PPTX reader/writer modules** (#339 / PR #413): `crates/officecore/src/pptx.rs`
