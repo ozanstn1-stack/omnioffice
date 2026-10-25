@@ -31,6 +31,19 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.2.5) - DOCX okuyucu/yazıcı ayrıldı
+
+- **DOCX reader/writer modules** (#339 / PR #411): `crates/officecore/src/docx.rs`
+  (3,621 lines) split into `docx/writer.rs` (1,523), `docx/reader.rs` (1,326)
+  and a 28-line `docx/mod.rs` that re-exports the same public API, with the
+  inline unit tests moved verbatim to `crates/officecore/src/docx_tests.rs`
+  (757 lines). Pure move: no behaviour change, no test body edited.
+  `test:crates/officecore/src/docx_tests.rs#roundtrip_paragraphs_and_lists`
+- **Scope:** `pptx.rs` (3,271 lines) is the last per-format split in #339;
+  `CalcEditor.tsx` (3,051) is a single controller whose UI is already modular,
+  so it needs a different (non-pure-move) approach and stays open.
+  (no test: tracked in #339.)
+
 ## Implemented (this cycle, 6.2.4) - Impress dikişi ve E2E dayanıklılığı
 
 - **Impress dialogs and slide view** (#339 / PR #409): `ImpressEditor.tsx`
