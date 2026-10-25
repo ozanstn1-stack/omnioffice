@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.9] - Android'de belgeler süreç içinde açılıyor
+
+### Fixed
+
+- **Android office/invoice/EML/repair jobs failed in the worker:** `run()`
+  spawned `std::env::current_exe()` with `--worker`; on Android that path is
+  the `app_process` launcher, so the child "started", exited immediately with
+  an empty stderr and every document failed with "the office-open parser
+  failed" (named by the v6.2.8 toast). Android now parses these jobs
+  in-process, still wrapped in `catch_unwind` so a malformed document is a
+  parse error and never takes the app down; desktop keeps the worker process
+  and its timeout/memory containment.
+
 ## [6.2.8] - Android açma tanılaması ve görünür açma hatası
 
 ### Added
