@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.8] - Android açma tanılaması ve görünür açma hatası
+
+### Added
+
+- **In-app open-with diagnostics (#420):** Settings -> Diagnostics shows the
+  open-with pipeline as it ran on the device - the Rust cache directory and
+  pending queue, the Kotlin log of received intents, copied documents and
+  queued paths, and the webview's drain/route/error trace - with a copy
+  button, because the "shared document does not open" report came from a
+  phone without adb.
+- The queue drain appends a `drain count=N cache=<dir>` line per poll, so a
+  report can tell "the webview never polls" from "the queue was empty".
+
+### Fixed
+
+- **The Android queue-drain commands are async:** Tauri runs synchronous
+  commands on the main thread while `app.path()` is a mobile-plugin round trip
+  back to the main thread, so the drain could stall and the webview never
+  receive a shared document (the reported "share opens the app, stays on
+  Home"). The diagnostics trace now shows whether that happened.
+- **A failed office open is visible:** `openOfficePath` used to swallow the
+  error after switching to the Office screen, leaving an empty workspace; the
+  failure now raises a toast with the reason and is recorded in the report.
+
 ## [6.2.7] - Android open-with ve XLSX fuzz düzeltmesi
 
 ### Fixed
