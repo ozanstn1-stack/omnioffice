@@ -31,6 +31,17 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.2.3) - Writer görünüm katmanı
+
+- **Writer view modules** (#339 / PR #404): `WriterEditor.tsx` dropped from
+  4,745 to 3,246 lines; `src/office/writer/views.tsx` (1,166 lines) owns the
+  static page renderers and `src/office/writer/table-view.tsx` (363 lines) the
+  table surface. Pure extraction: public exports unchanged, no behaviour change.
+  `test:src/office/WriterEditor.test.tsx#splits the paragraph on Enter and keeps typing in the new one`
+- **Scope:** Impress/Calc editor seams and the docx/pptx splits stay open in
+  #339; Phase C follows.
+  (no test: tracked in #339.)
+
 ## Implemented (this cycle, 6.2.2) - XLSX bölmesi ve ölçülmüş istatistikler
 
 - **XLSX modules** (#339 / PR #402): `crates/officecore/src/xlsx.rs` (4,750
