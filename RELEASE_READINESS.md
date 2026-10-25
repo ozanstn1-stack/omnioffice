@@ -31,6 +31,20 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.2.9) - Android parse in-process
+
+- **Android jobs run in-process** (#422 / PR #422): the worker spawned
+  `current_exe()` with `--worker`, but on Android that is the `app_process`
+  launcher, so the child exited immediately with an empty stderr and every
+  office/invoice/EML/repair job failed with "the office-open parser failed"
+  (named by the v6.2.8 toast). `run_json_or_local` now takes the in-process path
+  on Android, contained by `catch_unwind`; desktop keeps the worker process with
+  its timeout and memory caps.
+  `test:src-tauri/src/worker.rs#the_in_process_path_is_used_on_android_and_returns_errors`
+- **Scope:** on-device confirmation is the next step: install v6.2.9 and open the
+  same `.xls`/PDF/DOCX from WhatsApp and from the app's picker.
+  (no test: on-device verification pending.)
+
 ## Implemented (this cycle, 6.2.8) - Android açma tanılaması
 
 - **In-app open-with diagnostics** (#420 / PR #420): Settings -> Diagnostics
