@@ -742,10 +742,12 @@ impl<RS: Read + Seek> Xlsx<RS> {
                 }
                 let mut dims = get_dimension(&table_meta.ref_cells)?;
                 if table_meta.header_row_count != 0 {
-                    dims.start.0 += table_meta.header_row_count;
+                    // Both counts come from the file: saturate so a hostile
+                    // table definition cannot overflow the dimension math.
+                    dims.start.0 = dims.start.0.saturating_add(table_meta.header_row_count);
                 }
                 if table_meta.totals_row_count != 0 {
-                    dims.end.0 -= table_meta.header_row_count;
+                    dims.end.0 = dims.end.0.saturating_sub(table_meta.header_row_count);
                 }
 
                 new_tables.push((
@@ -2848,18 +2850,28 @@ pub(crate) fn get_dimension(dimension: &str) -> Result<Dimensions, XlsxError> {
             end: parts[0],
         }),
         2 => {
-            let rows = parts[1].0 - parts[0].0;
-            let columns = parts[1].1 - parts[0].1;
+            // A reversed reference (`O1:C4`) is invalid OOXML that hostile or
+            // buggy producers do send: normalize it to its bounding box so the
+            // subtraction below - and `Dimensions::len`, which does the same
+            // arithmetic - cannot underflow. The fuzzer found this as
+            // `get_dimension` "attempt to subtract with overflow".
+            let mut start = parts[0];
+            let mut end = parts[1];
+            if start.0 > end.0 {
+                std::mem::swap(&mut start.0, &mut end.0);
+            }
+            if start.1 > end.1 {
+                std::mem::swap(&mut start.1, &mut end.1);
+            }
+            let rows = end.0 - start.0;
+            let columns = end.1 - start.1;
             if rows > MAX_ROWS {
                 warn!("xlsx has more than maximum number of rows ({rows} > {MAX_ROWS})");
             }
             if columns > MAX_COLUMNS {
                 warn!("xlsx has more than maximum number of columns ({columns} > {MAX_COLUMNS})");
             }
-            Ok(Dimensions {
-                start: parts[0],
-                end: parts[1],
-            })
+            Ok(Dimensions { start, end })
         }
         len => Err(XlsxError::DimensionCount(len)),
     }

@@ -38,15 +38,20 @@ splits again.
 
 ## Vendored patch: calamine 0.37.0
 
-`vendor/calamine` is a verbatim copy of crates.io 0.37.0 with one change:
-`cell_ref_to_row_col` uses `checked_mul`/`checked_add` so a hostile cell
-reference (`AAAAAAAA...`, a giant row number) is a parse error instead of an
-integer-overflow panic. cargo-fuzz builds with overflow checks, so the panic
-aborted the `office_readers` target (the app's worker would have caught it, but
-the fuzz gate must stay green for releases).
+`vendor/calamine` is a verbatim copy of crates.io 0.37.0 with two arithmetic
+guards, both found by nightly fuzzing (cargo-fuzz builds with overflow checks,
+so the panic aborted a fuzz target even though the app's worker would catch it;
+the fuzz gate must stay green for releases):
+
+* `cell_ref_to_row_col` uses `checked_mul`/`checked_add` so a hostile cell
+  reference (`AAAAAAAA...`, a giant row number) is a parse error instead of an
+  integer-overflow panic;
+* `get_dimension` normalizes a reversed `<dimension ref="O1:C4"/>` to its
+  bounding box (and the table header/totals offsets use saturating arithmetic),
+  so the `end - start` maths - and `Dimensions::len` - cannot underflow.
 
 Both `Cargo.toml` files patch the crate (`[patch.crates-io]`). Remove the
-directory and the patches when calamine ships the same guard upstream
+directory and the patches when calamine ships the same guards upstream
 (`vendor/calamine/README.md` has the details). The rustfmt gate skips
 `vendor/` because it is third-party source.
 
