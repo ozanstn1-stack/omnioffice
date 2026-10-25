@@ -255,11 +255,11 @@ class OpenWithIntentTest {
     return intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
   }
 
-  /** True when the platform resolver offers MainActivity for [intent]. */
+  /** True when the platform resolver offers the open-with trampoline (OpenWithActivity) for [intent]. */
   @Suppress("DEPRECATION")
   private fun handledByApp(intent: Intent): Boolean {
     val matches = context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
-    return matches.any { it.activityInfo.packageName == context.packageName && it.activityInfo.name.endsWith(".MainActivity") }
+    return matches.any { it.activityInfo.packageName == context.packageName && it.activityInfo.name.endsWith(".OpenWithActivity") }
   }
 
   @Test

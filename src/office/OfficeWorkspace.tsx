@@ -11,6 +11,7 @@ import { useT } from "../lib/i18n";
 import * as api from "../lib/office-api";
 import { Dialog } from "./office-ui";
 import { historyKeyFor } from "./historyKey";
+import { ShareTabButton } from "./workspace-share";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 // Each editor is its own chunk: only the kind of document being edited is
 // downloaded, which keeps the workspace chunk inside the bundle budget as the
@@ -223,6 +224,7 @@ export function OfficeWorkspace() {
           ))}
         </div>
         <div className="office-tab-actions">
+          <ShareTabButton tab={active} />
           <button
             type="button"
             className="tool-btn is-icon-only"

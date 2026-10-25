@@ -2,13 +2,10 @@ package io.github.ozanstn1.pdfswissarmyknife
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.VisibleForTesting
 import java.io.File
-import java.io.FileOutputStream
 
 class MainActivity : TauriActivity() {
   // The generated TauriActivity disables the WebView back handling so plugins
@@ -38,126 +35,31 @@ class MainActivity : TauriActivity() {
   // ---------------------------------------------------------------------------
   // Open-with / share intents
   //
-  // Modern file managers send content:// URIs, which the Rust engine cannot
-  // read. Each incoming stream is copied into cacheDir/incoming/<uuid>/ under
-  // its display name and its absolute path is appended to
-  // cacheDir/pending-open.txt, which android_intent.rs drains for the webview.
-  // The untrusted-input handling lives in [IncomingFiles], covered by JVM
-  // unit tests (src/test/.../IncomingFilesTest.kt).
+  // Documents from other apps normally arrive through OpenWithActivity, which
+  // copies them while it holds the sender's read grant and then wakes this
+  // activity with ACTION_OPEN_WITH_WAKE (nothing to import, the webview drains
+  // the queue). Launcher shortcuts and intents addressed to MainActivity
+  // directly still go through [OpenWithImport] here.
   // ---------------------------------------------------------------------------
 
   private fun importOpenWithIntent(intent: Intent?) {
     if (intent == null) return
-    // One info-level line per received intent: "I picked OmniOffice and nothing
-    // happened" cannot be diagnosed on a device without the action, the type
-    // the sender declared and the URI(s) it handed over. `adb logcat -s PdfSakIntent`
-    // shows it on a development device; OpenWithLog keeps the same line on the
-    // phone for the in-app report (Settings -> Diagnostics).
-    val description = "action=${intent.action} type=${intent.type} data=${intent.data} " +
-      "flags=0x${Integer.toHexString(intent.flags)} clip=${intent.clipData?.itemCount ?: 0}"
-    Log.i(TAG, "intent $description")
-    OpenWithLog.record("intent $description")
     when (intent.action) {
+      ACTION_OPEN_WITH_WAKE -> return
       ACTION_SHORTCUT_SCAN -> {
-        appendPendingOpen("__action:scan")
+        OpenWithImport.appendPendingOpen(cacheDir, "__action:scan")
         return
       }
       ACTION_SHORTCUT_NEW_DOCUMENT -> {
-        appendPendingOpen("__action:new_document")
+        OpenWithImport.appendPendingOpen(cacheDir, "__action:new_document")
         return
       }
       ACTION_SHORTCUT_RECENT_FILES -> {
-        appendPendingOpen("__action:recent_files")
+        OpenWithImport.appendPendingOpen(cacheDir, "__action:recent_files")
         return
       }
     }
-    val candidates = when (intent.action) {
-      // Some senders put the document into the ClipData of a VIEW intent
-      // instead of `data`, the same way others do it for ACTION_SEND.
-      Intent.ACTION_VIEW -> listOfNotNull(intent.data) + clipUris(intent)
-      Intent.ACTION_SEND -> listOfNotNull(streamUri(intent)) + clipUris(intent)
-      Intent.ACTION_SEND_MULTIPLE -> streamUris(intent) + clipUris(intent)
-      else -> emptyList()
-    }
-    val uris = candidates
-      .filter { uri -> uri.scheme == "content" || uri.scheme == "file" }
-      .distinct()
-    OpenWithLog.record("candidates=${candidates.size} accepted=${uris.size}")
-    if (uris.isEmpty()) {
-      if (intent.action == Intent.ACTION_SEND) {
-        val sharedText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
-        if (!sharedText.isNullOrBlank()) {
-          OpenWithLog.record("no uris; saving shared text length=${sharedText.length}")
-          val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT)
-          Thread {
-            IncomingFiles.saveSharedText(sharedText, subject, cacheDir)?.let { saved ->
-              appendPendingOpen(saved.absolutePath)
-            }
-          }.start()
-        } else {
-          OpenWithLog.record("no candidates: no URI and blank EXTRA_TEXT")
-        }
-      } else {
-        OpenWithLog.record("no candidates: no URI for action=${intent.action}")
-      }
-      return
-    }
-    Thread {
-      for (uri in uris) {
-        try {
-          copyIncoming(uri, intent.type)
-        } catch (error: Exception) {
-          Log.w(TAG, "open-with: unexpected failure for $uri (${error.message})")
-          OpenWithLog.record("copy FAILED uri=$uri error=${error.message}")
-        }
-      }
-    }.start()
-  }
-
-  @Suppress("DEPRECATION")
-  private fun streamUri(intent: Intent): Uri? =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-      intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
-    } else {
-      intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
-    }
-
-  @Suppress("DEPRECATION")
-  private fun streamUris(intent: Intent): List<Uri> {
-    val raw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-      intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
-    } else {
-      intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
-    }
-    return raw?.filterNotNull() ?: emptyList()
-  }
-
-  /** Some senders put the documents into the ClipData instead of EXTRA_STREAM. */
-  private fun clipUris(intent: Intent): List<Uri> {
-    val clip = intent.clipData ?: return emptyList()
-    val uris = mutableListOf<Uri>()
-    for (index in 0 until clip.itemCount) {
-      clip.getItemAt(index).uri?.let(uris::add)
-    }
-    return uris
-  }
-
-  private fun copyIncoming(uri: Uri, intentType: String?) {
-    OpenWithLog.record("candidate uri=$uri type=$intentType")
-    val (destination, result) = IncomingFiles.copyToCache(contentResolver, uri, cacheDir, intentType)
-    if (result == IncomingFiles.CopyResult.COPIED) {
-      val path = destination!!.absolutePath
-      OpenWithLog.record("copy COPIED dest=$path")
-      appendPendingOpen(path)
-      return
-    }
-    // The user chose OmniOffice for this file, so a silent Log.w looks like
-    // "the app did nothing". Queue a token the webview turns into a message;
-    // the rejected stream itself is never copied.
-    Log.w(TAG, "open-with: $result for $uri")
-    val name = IncomingFiles.queryDisplayName(contentResolver, uri) ?: "?"
-    OpenWithLog.record("copy $result uri=$uri name=$name")
-    appendPendingOpen("__error:${result.name}:$name")
+    OpenWithImport.import(this, intent)
   }
 
   /**
@@ -167,35 +69,10 @@ class MainActivity : TauriActivity() {
    */
   @VisibleForTesting
   internal fun importIncomingUriForTest(uri: Uri, intentType: String? = null): String? {
-    val before = pendingOpenPaths()
-    copyIncoming(uri, intentType)
-    val after = pendingOpenPaths()
+    val before = OpenWithImport.pendingOpenPaths(cacheDir)
+    OpenWithImport.copyIncoming(this, uri, intentType)
+    val after = OpenWithImport.pendingOpenPaths(cacheDir)
     return after.lastOrNull { it !in before }
-  }
-
-  private fun pendingOpenPaths(): List<String> {
-    val file = File(cacheDir, PENDING_OPEN_FILE)
-    if (!file.isFile) return emptyList()
-    return file.readLines().filter { it.isNotBlank() }
-  }
-
-  /** Appends one absolute path per line; the Rust side drains the file. */
-  private fun appendPendingOpen(path: String) {
-    // The queue path and the cache directory are the two facts the on-device
-    // report needs to tell "the copy never happened" from "the webview never
-    // polled", so they are recorded before the write is even attempted.
-    OpenWithLog.record("queue path=$path cache=${cacheDir.absolutePath}")
-    synchronized(pendingOpenLock) {
-      try {
-        FileOutputStream(File(cacheDir, PENDING_OPEN_FILE), true).use { stream ->
-          stream.write("$path\n".toByteArray(Charsets.UTF_8))
-          stream.flush()
-        }
-      } catch (error: Exception) {
-        Log.w(TAG, "open-with: cannot queue $path (${error.message})")
-        OpenWithLog.record("queue FAILED path=$path error=${error.message}")
-      }
-    }
   }
 
   /**
@@ -276,11 +153,10 @@ class MainActivity : TauriActivity() {
   }
 
   companion object {
-    private const val TAG = "PdfSakIntent"
-    private const val PENDING_OPEN_FILE = "pending-open.txt"
+    /** Sent by OpenWithActivity after it queued the documents: bring the app forward, import nothing. */
+    const val ACTION_OPEN_WITH_WAKE = "io.github.ozanstn1.pdfswissarmyknife.OPEN_WITH_WAKE"
     private const val ACTION_SHORTCUT_SCAN = "io.github.ozanstn1.pdfswissarmyknife.SCAN"
     private const val ACTION_SHORTCUT_NEW_DOCUMENT = "io.github.ozanstn1.pdfswissarmyknife.NEW_DOCUMENT"
     private const val ACTION_SHORTCUT_RECENT_FILES = "io.github.ozanstn1.pdfswissarmyknife.RECENT_FILES"
-    private val pendingOpenLock = Any()
   }
 }

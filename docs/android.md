@@ -98,6 +98,20 @@ this without changing any tool:
 Nothing is uploaded anywhere: the copies live in the app's private storage and
 the public Downloads folder.
 
+### Sharing an open document
+
+The office workspace (Writer, Calc, Impress) and the PDF reader have a
+**Share** button. Office tabs are written from the current model - unsaved
+edits included - to `cacheDir/share/<id>/<title>.<ext>` in the format they were
+opened from when the editor can write it (`.xls`/`.doc`/`.oswk` go out as
+XLSX/DOCX/PPTX), or as a PDF. The file is handed to the system share sheet
+(WhatsApp, mail, Drive, Bluetooth, ...) straight from private storage through
+`ShareFilePlugin.kt` and the app's FileProvider, which grants read access to
+the chosen app only; `share_document_file` accepts only regular files inside
+the app cache or data directory. When that bridge refuses, the older route
+publishes a copy to `Downloads/OmniOffice` and shares that copy.
+`adb logcat -s PdfSakShare` shows each opened chooser.
+
 ## Engine notes
 
 * **pdfium** is loaded from the app's native library directory with
@@ -158,7 +172,15 @@ Android version metadata against `tauri.conf.json` and the tag.
 
 ## V3.1 platform behavior
 
-* **Open with**: `MainActivity` handles `ACTION_VIEW` (including a document
+* **Open with**: the intents arrive at `OpenWithActivity`, an invisible
+  trampoline in its own task. It wakes `MainActivity` with `NEW_TASK` only and
+  copies the documents itself (`OpenWithImport`), because the sender's read
+  grant belongs to the receiving activity and dies with it; it finishes once
+  the copy is done. A sender's `FLAG_ACTIVITY_CLEAR_TASK`
+  delivered to `MainActivity` itself would destroy the running activity, and
+  the generated `WryActivity.onDestroy` ends the whole process (the app
+  vanished and the next start opened the leftover document as an extra tab).
+  `MainActivity` handles `ACTION_VIEW` (including a document
   handed over in the intent's `ClipData`) and `ACTION_SEND`/`SEND_MULTIPLE`.
   Acceptance is provider-independent: a display name with a routable extension
   is used as-is; otherwise the type comes from the MIME type

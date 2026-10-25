@@ -9,6 +9,7 @@ mod android_background;
 mod android_intent;
 #[cfg(target_os = "android")]
 mod android_keystore;
+mod android_share;
 // Android in-app update; host tests cover the URL/checksum helpers too.
 #[cfg(any(target_os = "android", test))]
 mod android_update;
@@ -123,6 +124,9 @@ pub fn run() {
     // package installer; see android_update.rs.
     #[cfg(target_os = "android")]
     let builder = builder.plugin(android_update::init());
+    // Android share sheet for app-private documents; see android_share.rs.
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(android_share::init());
     // Desktop auto-update plus the `relaunch` used after installing one; both
     // are desktop only (Android updates run through android_update.rs).
     #[cfg(desktop)]
@@ -286,6 +290,7 @@ pub fn run() {
             commands::dev_launch_context,
             android_intent::android_take_pending_open,
             android_intent::android_open_with_diagnostics,
+            android_share::share_document_file,
             ai::ai_get_settings,
             ai::ai_save_settings,
             ai::ai_clear_key,

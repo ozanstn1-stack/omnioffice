@@ -54,7 +54,7 @@ class ManifestIntentFiltersTest {
     val activities = document.getElementsByTagName("activity")
     val main = (0 until activities.length)
       .map { activities.item(it) as Element }
-      .first { attr(it, "name") == ".MainActivity" }
+      .first { attr(it, "name") == ".OpenWithActivity" }
     val filters = main.getElementsByTagName("intent-filter")
     return (0 until filters.length).map { index ->
       val filter = filters.item(index) as Element
@@ -114,6 +114,36 @@ class ManifestIntentFiltersTest {
     "tif" to listOf("image/tiff"),
     "tiff" to listOf("image/tiff"),
   )
+
+  private fun activity(name: String): Element {
+    val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+    val activities = factory.newDocumentBuilder().parse(manifestFile).getElementsByTagName("activity")
+    return (0 until activities.length).map { activities.item(it) as Element }.first { attr(it, "name") == name }
+  }
+
+  @Test
+  fun `document intents land on the trampoline in its own task, never on MainActivity`() {
+    // A sender's FLAG_ACTIVITY_CLEAR_TASK on MainActivity destroys the running
+    // activity and WryActivity.onDestroy ends the process (v6.2.9 on a Pixel).
+    val trampoline = activity(".OpenWithActivity")
+    assertEquals("true", attr(trampoline, "exported"))
+    assertEquals("", trampoline.getAttributeNS(androidNs, "taskAffinity"))
+    assertTrue(trampoline.hasAttributeNS(androidNs, "taskAffinity"))
+    // No noHistory: the trampoline must outlive the copy, its grant dies with it.
+    assertEquals(null, attr(trampoline, "noHistory"))
+    assertEquals("true", attr(trampoline, "excludeFromRecents"))
+    val mainFilters = activity(".MainActivity").getElementsByTagName("intent-filter")
+    val mainActions = (0 until mainFilters.length).flatMap { index ->
+      val actions = (mainFilters.item(index) as Element).getElementsByTagName("action")
+      (0 until actions.length).mapNotNull { attr(actions.item(it) as Element, "name") }
+    }
+    assertEquals(listOf("android.intent.action.MAIN"), mainActions)
+  }
+
+  @Test
+  fun `the app is woken with new task only, never the sender's task flags`() {
+    assertEquals(0x10000000, OpenWithActivity.wakeFlags()) // FLAG_ACTIVITY_NEW_TASK
+  }
 
   @Test
   fun `a path is never declared without a scheme and a host`() {

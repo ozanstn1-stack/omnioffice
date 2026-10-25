@@ -23,11 +23,14 @@ interface Filter {
   paths: string[];
 }
 
+// Document intents land on the OpenWithActivity trampoline, not on MainActivity:
+// a sender's CLEAR_TASK on MainActivity would destroy the Tauri activity and end
+// the process (see OpenWithActivity.kt).
 function mainActivityFilters(): Filter[] {
   const document = new DOMParser().parseFromString(manifestXml, "application/xml");
   expect(document.querySelector("parsererror")).toBeNull();
   const activity = Array.from(document.getElementsByTagName("activity")).find(
-    (element) => element.getAttribute("android:name") === ".MainActivity",
+    (element) => element.getAttribute("android:name") === ".OpenWithActivity",
   );
   expect(activity).toBeDefined();
   return Array.from(activity!.getElementsByTagName("intent-filter")).map((filter) => {
