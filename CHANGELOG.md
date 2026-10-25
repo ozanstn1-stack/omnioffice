@@ -4,6 +4,37 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.10] - WhatsApp'tan "Birlikte aç" ve Paylaş
+
+### Fixed
+
+- **"Open with" from WhatsApp left the app on Home (#424):** on a cold start
+  the Kotlin shell copied the document and queued it, and the webview's first
+  queue drain took it - but the settings finished loading while that drain was
+  in flight, App passed `useAndroidPendingOpen` a new handler and the effect
+  cleanup dropped the drained path. Rust had already truncated the queue, so
+  the document was lost. The poll now starts once and every drained path
+  reaches the current handler (reproduced and verified with adb on a Pixel 8
+  Pro, Android 17).
+- **An open-with intent with `FLAG_ACTIVITY_CLEAR_TASK` closed the app (#424):**
+  Android recreated `MainActivity`, the generated `WryActivity.onDestroy` ended
+  the process, and the next start opened the leftover document as a duplicate
+  tab. Document intents now arrive at `OpenWithActivity`, an invisible
+  trampoline in its own task that copies the streams while it holds the
+  sender's read grant and wakes `MainActivity` with `NEW_TASK` only.
+- The open-with diagnostics log no longer fills with an entry per empty 2.5 s
+  poll; it keeps the first drain of the process and every drain that returned
+  documents.
+
+### Added
+
+- **Share on Android (#424):** the office workspace (Writer, Calc, Impress)
+  shares the open document as its own format (DOCX/XLSX/PPTX/ODT/...; legacy
+  `.doc`/`.xls` and `.oswk` go out as DOCX/XLSX/PPTX) or as a PDF, including
+  unsaved edits; the PDF reader shares the open PDF. Files go to the system
+  share sheet (WhatsApp, mail, Drive, Quick Share, ...) straight from private
+  storage through the app's FileProvider, without a copy in Downloads.
+
 ## [6.2.9] - Android'de belgeler süreç içinde açılıyor
 
 ### Fixed

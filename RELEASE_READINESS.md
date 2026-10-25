@@ -31,6 +31,48 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.2.10) - WhatsApp'tan açma ve Paylaş
+
+- **The first open-with drain is delivered** (#424 / PR #424): on a cold start
+  the drain that took the shared document was still in flight when App passed
+  `useAndroidPendingOpen` a new handler; the cleanup dropped its result after
+  Rust had truncated the queue. The handler lives in a ref and the poll starts
+  once. Reproduced and verified with adb on a Pixel 8 Pro (Android 17).
+  `test:src/lib/android-open-with.test.ts#delivers a drain that resolves after the handler changed`
+- **`CLEAR_TASK` no longer closes the app** (#424): document intents land on
+  `OpenWithActivity` (own task, invisible), which copies the streams while it
+  holds the sender's read grant and wakes `MainActivity` with `NEW_TASK` only;
+  an XLSX sent with `CLEAR_TASK` to the running app opened in a new tab with the
+  same pid on the device.
+  (no test: the manifest and wake flags are pinned by the JVM suite
+  `ManifestIntentFiltersTest` in android.yml; the claims audit cannot resolve
+  Kotlin test names.)
+- **Drain log keeps the useful lines** (#424): the first drain of the process
+  and every non-empty drain are logged, not every empty poll.
+  `test:src-tauri/src/android_intent.rs#only_the_first_and_non_empty_drains_are_logged`
+- **Share on Android** (#424): the office workspace shares the open tab as its
+  own format or PDF (current model, unsaved edits included) and the reader
+  shares its PDF; `share_document_file` accepts only regular files under the
+  app cache/data directory and `ShareFilePlugin.kt` opens the system share sheet
+  through the FileProvider. The sheet opened on the device for `.xlsx`, a
+  Writer PDF and a reader PDF.
+  `test:src/lib/share.test.ts#writes the current model to a named share copy, then shares it`
+  `test:src-tauri/src/android_share.rs#rejects_files_outside_the_app_storage`
+
+### Not done / Known limitations (6.2.10)
+
+- The real WhatsApp sender was not driven end to end here: adb `am` cannot
+  reproduce its read grant on `ACTION_SEND`, so the device checks used `VIEW`
+  intents and the in-app share sheet. Confirm with the release APK: open a
+  document from WhatsApp, and share one back.
+  (no test: on-device verification with WhatsApp pending.)
+- Sharing is Android-only; the desktop build keeps "Open folder".
+  (no test: platform scope.)
+- The office `Dialog` (`office-ui.tsx`) still has no `.modal-backdrop` styles;
+  the share dialog uses the shared `Modal` instead, the other office dialogs
+  are unchanged.
+  (no test: known gap, not changed in this release.)
+
 ## Implemented (this cycle, 6.2.9) - Android parse in-process
 
 - **Android jobs run in-process** (#422 / PR #422): the worker spawned
