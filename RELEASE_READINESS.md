@@ -31,6 +31,31 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.2.8) - Android açma tanılaması
+
+- **In-app open-with diagnostics** (#420 / PR #420): Settings -> Diagnostics
+  renders the pipeline report - the Rust cache directory and pending queue, the
+  Kotlin log of received intents/copied documents/queued paths, and the webview
+  drain/route/error trace - with a copy button; every queue drain also appends a
+  `drain count=N cache=<dir>` line. This is the evidence path for the on-device
+  "shared document does not open" report, made from a phone without adb.
+  `test:src/lib/open-with-diagnostics.test.ts#records events with a timestamp, oldest first`
+- **Queue-drain commands are async** (#420): Tauri runs synchronous commands on
+  the main thread while `app.path()` is a mobile-plugin round trip back to the
+  main thread, so the drain could stall and the webview never receive a shared
+  document; both Android commands are async now.
+  (no test: Android build + instrumented suites run in android.yml; the drain
+  lines in the on-device report are the runtime evidence.)
+- **A failed office open is visible** (#420): `openOfficePath` no longer
+  swallows the error after switching to the Office screen; a toast names the
+  reason and the failure is recorded in the diagnostics ring.
+  (no test: UI integration; the reason string is covered by the diagnostics
+  ring test.)
+- **Scope:** an on-device round is still required to confirm the reported
+  symptoms: install the APK, share a PDF/DOCX/XLS from WhatsApp, and if the
+  document still does not open use Settings -> Diagnostics -> Copy.
+  (no test: on-device verification pending.)
+
 ## Implemented (this cycle, 6.2.7) - Android open-with ve XLSX fuzz düzeltmesi
 
 - **Provider-independent Android open-with** (#417 / PR #417): a shared document
