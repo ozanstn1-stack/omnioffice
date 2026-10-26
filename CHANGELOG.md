@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.11] - Telefon düzeltmeleri: dil, Writer tabloları ve düzeni, diyaloglar
+
+### Fixed
+
+- **Mixed-language UI (#428):** with Turkish selected, the drawer, screen
+  titles and toasts pushed by App stayed in English. `useT` kept a `ready`
+  flag that English had already set, so components mounted before the
+  settings picked Turkish never re-rendered when its dictionary landed.
+- **Writer tables collapsed into one row (#428):** unmerged cells arrive with
+  `rowspan` 0 and `<td rowspan="0">` spans every remaining row, so the later
+  rows were laid out to the right of the first ("P e n" in a sliver column).
+- **Writer page cut off on phones (#428):** the page now opens fitted to the
+  width below 700 px (with a "Fit width" button), and a page wider than the
+  window keeps its left edge reachable.
+- **Office dialogs rendered inside the page (#428):** the office `Dialog`
+  classes had no styles; unsaved-changes, version history and table dialogs
+  now open over the editor.
+- The editors' status line shows the file name on Android instead of the
+  app's private cache path (#428).
+- Old open-with and share copies (older than 14 days) are removed from the
+  cache at startup; the open-with diagnostics log starts fresh with each app
+  version and the report lists the frontend trace first (#428).
+
 ## [6.2.10] - WhatsApp'tan "Birlikte aç" ve Paylaş
 
 ### Fixed

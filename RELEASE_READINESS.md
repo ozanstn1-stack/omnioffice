@@ -31,6 +31,42 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.2.11) - Telefon düzeltmeleri
+
+- **Translations reach components mounted before the language loaded** (#428):
+  `useT` records which dictionary is loaded instead of a `ready` flag English
+  had already set.
+  `test:src/lib/i18n-hook.test.tsx#switches a mounted component to a language that finishes loading later`
+- **Unmerged Writer table cells span one row and column** (#428): both table
+  renderers clamp the readers' 0 defaults to 1.
+  `test:src/office/writer/table-span.test.tsx#renders unmerged cells with a span of one on the page`
+- **Writer opens fitted to a phone's width** (#428), and `safe` centring keeps
+  a wide page's left edge reachable.
+  `test:src/office/writer/zoom.test.ts#starts fitted on a phone and at 100 % on a desktop window`
+- **Office dialogs are styled** (#428): `.modal-backdrop/-head/-body/-wide`
+  exist and the backdrop covers the window.
+  `test:src/office/office-dialog-css.test.ts#styles every class the Dialog renders`
+- **Android status line shows the file name** (#428).
+  `test:src/office/location-label.test.ts#shows only the file name on Android`
+- **Cache pruning and a per-version diagnostics log** (#428): incoming/share
+  folders older than 14 days are removed at startup; the open-with log resets
+  on a new app version.
+  (no test: covered by the JVM suite `IncomingFilesTest`/`OpenWithLogTest` in
+  android.yml; the claims audit cannot resolve Kotlin test names.)
+
+### Not done / Known limitations (6.2.11)
+
+- These fixes were built into a release APK locally but not checked on the
+  phone this cycle (it was not connected); confirm the Turkish drawer, a DOCX
+  table and the Writer page width on the device.
+  (no test: on-device verification pending.)
+- The real WhatsApp round trip (open from WhatsApp, share back) is still to be
+  confirmed by hand, as noted for 6.2.10.
+  (no test: on-device verification pending.)
+- Writer's fit width is a zoom, not reflow: text is small on a phone; pinch
+  zoom in Writer and a reflow view are Phase C11 (mobile ergonomics).
+  (no test: known limitation.)
+
 ## Implemented (this cycle, 6.2.10) - WhatsApp'tan açma ve Paylaş
 
 - **The first open-with drain is delivered** (#424 / PR #424): on a cold start
