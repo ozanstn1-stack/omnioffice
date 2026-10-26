@@ -126,6 +126,7 @@ import { VisibleNotes } from "./calc/ui/NoteViews";
 import { isLinkCell } from "./calc/links";
 import { noteOf } from "./calc/notes";
 import { useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
+import { documentLocationLabel } from "./location-label";
 
 export { scalarToCellValue, computeWorkbookValues, applyCellEdit, shiftFormulaRows, isBlankCell };
 export { clampGridZoom, pinchGridZoom, shiftFormulaColumns, isValidDefinedName };
@@ -2835,7 +2836,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       <SheetTabs
         sheets={workbook.sheets}
         activeIndex={sheetIndex}
-        path={tab.path ?? null}
+        path={documentLocationLabel(tab.path)}
         dirty={tab.dirty}
         onSelect={(index) => {
           setSheetIndex(index);
