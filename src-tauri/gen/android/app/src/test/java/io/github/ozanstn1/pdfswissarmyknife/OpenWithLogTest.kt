@@ -80,4 +80,18 @@ class OpenWithLogTest {
     val last = text.trimEnd().lines().last()
     assertTrue(last, last.endsWith("\t299-$payload"))
   }
+
+  @Test
+  fun `a new app version starts a fresh log and the same version keeps it`() {
+    OpenWithLog.attach(directory, "6.2.10")
+    OpenWithLog.record("drain count=0 from the old build")
+    OpenWithLog.attach(directory, "6.2.10")
+    assertTrue(OpenWithLog.read().contains("from the old build"))
+
+    OpenWithLog.attach(directory, "6.2.11")
+    assertEquals("", OpenWithLog.read())
+    assertEquals("6.2.11", File(directory, OpenWithLog.VERSION_FILE_NAME).readText().trim())
+    OpenWithLog.record("intent action=android.intent.action.VIEW")
+    assertTrue(OpenWithLog.read().contains("intent action"))
+  }
 }

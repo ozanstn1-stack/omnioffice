@@ -44,9 +44,34 @@ object OpenWithLog {
   @Volatile
   private var cacheDir: File? = null
 
+  /** Records which app version wrote the log; see [attach]. */
+  const val VERSION_FILE_NAME = "open-with.version"
+
   /** Points the logger at the app cache; called once per process. */
   fun attach(directory: File) {
     cacheDir = directory
+  }
+
+  /**
+   * Points the logger at the app cache and starts a fresh log when the app
+   * version changed. A report from v6.2.10 still opened with tens of kilobytes
+   * of v6.2.9 drain lines, so the lines of the reproduction never fit in what
+   * the report showed.
+   */
+  fun attach(directory: File, appVersion: String) {
+    cacheDir = directory
+    try {
+      synchronized(lock) {
+        val marker = File(directory, VERSION_FILE_NAME)
+        val previous = if (marker.isFile) marker.readText(Charsets.UTF_8).trim() else null
+        if (previous != appVersion) {
+          File(directory, FILE_NAME).delete()
+          marker.writeText(appVersion, Charsets.UTF_8)
+        }
+      }
+    } catch (error: Exception) {
+      // A diagnostics failure must never break the intent pipeline.
+    }
   }
 
   /** Appends one timestamped line, or does nothing when no directory is set. */

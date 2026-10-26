@@ -183,8 +183,8 @@ function StaticTable({ table, zoom, from = 0, to }: { table: TableData; zoom: nu
                 {row.cells.map((cell, cellIndex) => (
                   <td
                     key={cellIndex}
-                    colSpan={cell.colspan}
-                    rowSpan={cell.rowspan}
+                    colSpan={Math.max(1, cell.colspan)}
+                    rowSpan={Math.max(1, cell.rowspan)}
                     style={{
                       background: cell.background ?? undefined,
                       textAlign: (cell.align || "left") as "left" | "center" | "right",

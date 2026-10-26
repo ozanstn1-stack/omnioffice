@@ -9,6 +9,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { pickFileBytes } from "../lib/mobile";
+import { fitWidthZoom, initialWriterZoom } from "./writer/zoom";
+import { documentLocationLabel } from "./location-label";
 import { pickDocumentToken } from "../lib/file-tokens";
 import {
   AlignCenter,
@@ -226,7 +228,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   const { edit } = useOfficeTabs();
   const session = useOfficeSession(tab);
   const [ribbon, setRibbon] = useState("home");
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(() => initialWriterZoom(tab.model.page.widthPt, window.innerWidth));
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [editingHeader, setEditingHeader] = useState<"header" | "footer" | null>(null);
   const [findOpen, setFindOpen] = useState(false);
@@ -2355,6 +2357,10 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
               />
             </RibbonGroup>
             <RibbonGroup label={t("writer.zoom")}>
+              <ToolButton
+                label={t("reader.fitWidth")}
+                onClick={() => setZoom(fitWidthZoom(document.page.widthPt, window.innerWidth))}
+              />
               <ToolButton label="75%" onClick={() => setZoom(0.75)} active={zoom === 0.75} />
               <ToolButton label="100%" onClick={() => setZoom(1)} active={zoom === 1} />
               <ToolButton label="125%" onClick={() => setZoom(1.25)} active={zoom === 1.25} />
@@ -2394,7 +2400,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         ) : null}
         <span className="spacer" />
         <span className="muted">
-          {tab.path ?? t("writer.unsaved")} {tab.dirty ? "•" : ""}
+          {documentLocationLabel(tab.path) ?? t("writer.unsaved")} {tab.dirty ? "•" : ""}
         </span>
       </div>
 

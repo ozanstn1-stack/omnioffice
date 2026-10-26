@@ -20,8 +20,16 @@ class MainActivity : TauriActivity() {
     super.onCreate(savedInstanceState)
     // The durable open-with log must exist before the first intent is imported;
     // Settings reads it back through android_open_with_diagnostics.
-    OpenWithLog.attach(cacheDir)
+    OpenWithLog.attach(cacheDir, packageInfoVersion())
     importOpenWithIntent(intent)
+    // Old open-with and share copies; off the UI thread, failures are ignored.
+    Thread {
+      try {
+        IncomingFiles.pruneDocumentCache(cacheDir, System.currentTimeMillis())
+      } catch (error: Exception) {
+        // A cache sweep must never stop the app from starting.
+      }
+    }.start()
   }
 
   override fun onNewIntent(intent: Intent) {

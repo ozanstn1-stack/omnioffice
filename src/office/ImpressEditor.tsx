@@ -136,6 +136,7 @@ import { withFrameAlign, withFrameSize } from "./impress/textFrame";
 import type { TextEditHandle, TextSelectionInfo } from "./impress/TextFrameEditor";
 import { Ribbon, RibbonGroup, ToolButton, ToolColor, ToolNumber, ToolSelect } from "./office-ui";
 import { openIntoWorkspace, useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
+import { documentLocationLabel } from "./location-label";
 
 type ImpressTab = OfficeTab & { model: Deck };
 /** Path of object ids from the slide root; deeper paths are children of groups. */
@@ -2665,7 +2666,7 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
         </span>
         <span className="spacer" />
         <span>
-          {tab.path ?? t("writer.unsaved")} {tab.dirty ? "•" : ""}
+          {documentLocationLabel(tab.path) ?? t("writer.unsaved")} {tab.dirty ? "•" : ""}
         </span>
       </div>
 
