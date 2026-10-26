@@ -128,8 +128,8 @@ export function TableView({
                 return (
                   <td
                     key={cellIndex}
-                    colSpan={cell.colspan}
-                    rowSpan={cell.rowspan}
+                    colSpan={Math.max(1, cell.colspan)}
+                    rowSpan={Math.max(1, cell.rowspan)}
                     className={inSelection(rowIndex, gridCol) ? "is-selected" : undefined}
                     data-grid-row={rowIndex}
                     data-grid-col={gridCol}
