@@ -35,13 +35,21 @@ export function useT(): Translate {
   const language = useSettings((state) => state.settings.language);
   // Re-render once the requested dictionary lands (English is awaited at
   // startup; Turkish and any future language load on first use).
-  const [ready, setReady] = useState(() => loadedDictionary(language) !== null);
+  //
+  // The state records *which* language is loaded, not a plain "ready" flag: a
+  // component mounted while the settings still said English (App, the drawer)
+  // had ready=true already, so the later setReady(true) for Turkish changed
+  // nothing, no re-render happened and the translator built during the fetch
+  // kept the English fallback - the mixed-language UI seen on a phone.
+  const [loadedLanguage, setLoadedLanguage] = useState(() => (loadedDictionary(language) ? language : null));
   useEffect(() => {
+    // Already loaded: the memo below rebuilds the translator because
+    // `language` changed, so there is nothing to wait for.
     if (loadedDictionary(language)) return;
     let cancelled = false;
     void ensureLanguage(language)
       .then(() => {
-        if (!cancelled) setReady(true);
+        if (!cancelled) setLoadedLanguage(language);
       })
       .catch(() => undefined);
     return () => {
@@ -49,9 +57,9 @@ export function useT(): Translate {
     };
   }, [language]);
   return useMemo(() => {
-    // `ready` is the trigger for a fresh dictionary lookup once it lands;
-    // without it the memo would keep the English fallback.
-    void ready;
+    // `loadedLanguage` is the trigger for a fresh dictionary lookup once the
+    // requested one lands; without it the memo would keep the English fallback.
+    void loadedLanguage;
     return makeTranslate(language);
-  }, [language, ready]);
+  }, [language, loadedLanguage]);
 }
