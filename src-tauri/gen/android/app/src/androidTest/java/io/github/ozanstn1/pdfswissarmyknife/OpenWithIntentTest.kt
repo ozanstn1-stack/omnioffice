@@ -16,6 +16,8 @@ import org.junit.runner.RunWith
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * On-device instrumentation tests for the open-with / share intent pipeline.
@@ -46,6 +48,10 @@ class OpenWithIntentTest {
   fun clearStaging() {
     File(cacheDir, "incoming").deleteRecursively()
     File(cacheDir, "testdocuments").deleteRecursively()
+    // The pending-open queue is a process-level file: a path queued by an
+    // earlier test would satisfy the queue assertions below without the
+    // trampoline import doing anything.
+    File(cacheDir, OpenWithImport.PENDING_OPEN_FILE).delete()
   }
 
   /**
@@ -72,6 +78,57 @@ class OpenWithIntentTest {
     assertEquals("the cache copy keeps the display name", "report.pdf", file.name)
     assertTrue("the copy lives under incoming/", file.parentFile!!.canonicalPath.contains("incoming"))
     assertEquals("the copied bytes match the source", body.toList(), file.readBytes().toList())
+  }
+
+  /**
+   * [OpenWithActivity] hands the intent to [OpenWithImport.import] while it
+   * still holds the sender's read grant; the webview drains the queued path
+   * afterwards. Copying without queueing (or queueing before the copy finished)
+   * means the document is copied and still never opens - the reported "share
+   * opens the app, stays on Home" - so the import + queue contract is pinned
+   * here, not just in the single `copyToCache` call.
+   */
+  @Test
+  fun theTrampolineImportCopiesAndQueuesTheDocument() {
+    val body = "%PDF-1.7\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n".toByteArray()
+    val uri = staged("trampoline.pdf", body)
+    val before = OpenWithImport.pendingOpenPaths(cacheDir)
+    val finished = CountDownLatch(1)
+    OpenWithImport.import(context, Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/pdf")) {
+      finished.countDown()
+    }
+    assertTrue("the trampoline import must call back", finished.await(10, TimeUnit.SECONDS))
+
+    val queued = OpenWithImport.pendingOpenPaths(cacheDir).filter { it !in before }
+    assertEquals("exactly one document is queued", 1, queued.size)
+    val copied = File(queued.single())
+    assertTrue("the queue points at a real cache file", copied.isFile)
+    assertEquals("the cache copy keeps the display name", "trampoline.pdf", copied.name)
+    assertTrue("the copy lives under incoming/", copied.parentFile!!.canonicalPath.contains("incoming"))
+    assertEquals("the queued copy holds the source bytes", body.toList(), copied.readBytes().toList())
+  }
+
+  /**
+   * An unreadable stream (deleted file, provider that grants nothing) must still
+   * reach the webview as a refusal token: the queue is the only channel that
+   * turns it into a message, and a silent failure was one of the reported
+   * symptoms.
+   */
+  @Test
+  fun theTrampolineImportQueuesTheRefusalForAnUnreadableUri() {
+    val directory = File(cacheDir, "testdocuments").apply { mkdirs() }
+    val missing = Uri.fromFile(File(directory, "missing.pdf"))
+    val before = OpenWithImport.pendingOpenPaths(cacheDir)
+    val finished = CountDownLatch(1)
+    OpenWithImport.import(context, Intent(Intent.ACTION_VIEW).setDataAndType(missing, "application/pdf")) {
+      finished.countDown()
+    }
+    assertTrue("the trampoline import must call back", finished.await(10, TimeUnit.SECONDS))
+
+    val queued = OpenWithImport.pendingOpenPaths(cacheDir).filter { it !in before }
+    assertEquals("the refusal is queued once", 1, queued.size)
+    assertTrue("a refused stream is queued as an error token", queued.single().startsWith("__error:"))
+    assertTrue("the token still carries the file name", queued.single().endsWith(":missing.pdf"))
   }
 
   @Test
