@@ -665,4 +665,30 @@ object IncomingFiles {
       null
     }
   }
+
+  /** How long a copied or shared document stays in the cache. */
+  const val CACHE_MAX_AGE_MS: Long = 14L * 24 * 60 * 60 * 1000
+
+  /**
+   * Deletes the per-document folders under `cacheDir/incoming` and
+   * `cacheDir/share` whose newest file is older than [maxAgeMs].
+   *
+   * Every document opened from another app and every share copy got its own
+   * `<uuid>` folder and nothing removed them, so the cache only grew. Tabs do
+   * not survive a restart, so a folder that old belongs to no open document;
+   * the age is taken from the newest entry so a document still being re-shared
+   * stays. Returns the number of folders removed; failures are skipped.
+   */
+  fun pruneDocumentCache(cacheDir: File, nowMs: Long, maxAgeMs: Long = CACHE_MAX_AGE_MS): Int {
+    var removed = 0
+    for (root in listOf(File(cacheDir, "incoming"), File(cacheDir, "share"))) {
+      val folders = root.listFiles() ?: continue
+      for (folder in folders) {
+        if (!folder.isDirectory) continue
+        val newest = folder.walkTopDown().maxOfOrNull { it.lastModified() } ?: folder.lastModified()
+        if (nowMs - newest > maxAgeMs && folder.deleteRecursively()) removed += 1
+      }
+    }
+    return removed
+  }
 }

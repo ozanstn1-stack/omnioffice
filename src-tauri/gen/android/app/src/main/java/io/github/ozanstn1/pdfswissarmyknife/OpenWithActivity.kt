@@ -26,7 +26,7 @@ import android.util.Log
 class OpenWithActivity : Activity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    OpenWithLog.attach(cacheDir)
+    OpenWithLog.attach(cacheDir, appVersion())
     val incoming = intent
     OpenWithLog.record("trampoline action=${incoming?.action} flags=0x${Integer.toHexString(incoming?.flags ?: 0)}")
     try {
@@ -44,6 +44,12 @@ class OpenWithActivity : Activity() {
       return
     }
     OpenWithImport.import(this, incoming) { runOnUiThread { finish() } }
+  }
+
+  private fun appVersion(): String = try {
+    packageManager.getPackageInfo(packageName, 0).versionName ?: "0"
+  } catch (error: Exception) {
+    "0"
   }
 
   companion object {

@@ -470,4 +470,29 @@ class IncomingFilesTest {
     output.write(ByteArray(64))
     return writeTemp(root, name, output.toByteArray())
   }
+
+  @Test
+  fun `the document cache drops folders older than the limit and keeps the rest`() {
+    val cache = kotlin.io.path.createTempDirectory("pdfsak-prune").toFile()
+    val now = 1_000_000_000_000L
+    val day = 24L * 60 * 60 * 1000
+    fun folder(root: String, name: String, ageDays: Long): File {
+      val dir = File(File(cache, root), name).apply { mkdirs() }
+      File(dir, "doc.pdf").apply { writeText("%PDF") }.setLastModified(now - ageDays * day)
+      dir.setLastModified(now - ageDays * day)
+      return dir
+    }
+    val oldIncoming = folder("incoming", "old", 20)
+    val freshIncoming = folder("incoming", "fresh", 2)
+    val oldShare = folder("share", "old", 30)
+    val queue = File(cache, "pending-open.txt").apply { writeText("") }
+
+    assertEquals(2, IncomingFiles.pruneDocumentCache(cache, now, 14 * day))
+    assertFalse(oldIncoming.exists())
+    assertFalse(oldShare.exists())
+    assertTrue(freshIncoming.exists())
+    assertTrue("files next to the folders are not touched", queue.exists())
+    assertEquals(0, IncomingFiles.pruneDocumentCache(File(cache, "missing"), now))
+    cache.deleteRecursively()
+  }
 }

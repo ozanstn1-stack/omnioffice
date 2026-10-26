@@ -68,7 +68,9 @@ export function OpenWithDiagnostics() {
       // The command answers on every build (a desktop stub returns ""), and a
       // failed IPC call must still show the frontend ring instead of nothing.
       const native = await invoke<string>("android_open_with_diagnostics").catch(() => "");
-      const sections = [native.trim(), openWithDiagnosticsText()].filter((section) => section.length > 0);
+      // The frontend trace goes first: it is short and names the route that
+      // was taken, while the native log can fill the visible text on a phone.
+      const sections = [openWithDiagnosticsText(), native.trim()].filter((section) => section.length > 0);
       setReport(sections.join("\n\n") || t("settings.openWithDiagnosticsEmpty"));
       setOpen(true);
     } catch (error) {
