@@ -72,17 +72,21 @@ was split into per-format modules.
 - `tauri-specta` scaffold (B2/2) landed in 6.2.1; the command-by-command
   migration continues in 6.2.x.
 - **Android open-with**: documents shared from WhatsApp or a download manager
-  open directly - accepted by MIME type and content, not by the sender's file
-  name - and legacy `.xls` opens too. See `docs/android.md`.
+  open directly when the sender grants read access - accepted by MIME type and
+  content, not by the sender's file name - and legacy `.xls` opens too. A sender
+  that grants nothing is reported instead of failing silently. See
+  `docs/android.md`.
 - **Open-with diagnostics**: Settings -> Diagnostics copies the on-device
   pipeline trace (queue, intent log, drain/route events) when a shared document
   still does not open; failed opens now show a reason instead of a blank screen.
 - **Android office documents open in-process** (an app cannot exec a worker
   binary there), which fixes the `office-open parser failed` error on devices.
 
-- **WhatsApp "Open with" opens the document** (6.2.10): the first queue drain
-  is no longer dropped on a cold start, and a sender's `CLEAR_TASK` flag no
-  longer closes the app (an invisible `OpenWithActivity` receives the intent).
+- **WhatsApp "Open with" (6.2.10)**: the cold-start queue drain is no longer
+  dropped and a sender's `CLEAR_TASK` flag no longer closes the app (an
+  invisible `OpenWithActivity` receives the intent and copies it while it holds
+  the read grant). If WhatsApp hands over the URI without a read grant, the app
+  now says so instead of staying on Home.
 - **Share on Android** (6.2.10): Writer/Calc/Impress share the open document
   (own format or PDF, unsaved edits included) and the reader shares the PDF
   through the system share sheet.

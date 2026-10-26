@@ -180,8 +180,10 @@ Android version metadata against `tauri.conf.json` and the tag.
   delivered to `MainActivity` itself would destroy the running activity, and
   the generated `WryActivity.onDestroy` ends the whole process (the app
   vanished and the next start opened the leftover document as an extra tab).
-  `MainActivity` handles `ACTION_VIEW` (including a document
-  handed over in the intent's `ClipData`) and `ACTION_SEND`/`SEND_MULTIPLE`.
+  `MainActivity` itself only handles the launcher shortcuts and intents
+  addressed directly to it (`OpenWithImport` still accepts `ACTION_VIEW`,
+  `ACTION_SEND`/`SEND_MULTIPLE` and a document handed over in the intent's
+  `ClipData`); the document filters live on `OpenWithActivity`.
   Acceptance is provider-independent: a display name with a routable extension
   is used as-is; otherwise the type comes from the MIME type
   (`ContentResolver.getType`, then the intent type) and the bytes of the copied
@@ -231,6 +233,11 @@ The report has three sections:
 
 No `drain count=N` line at all means the webview never called
 `android_take_pending_open`; `drain count=0` lines mean it polls and finds
-nothing. The report contains document display names and cache paths, so read it
+nothing. A copy result of `FAILED`/`NO_ACCESS` with `cannot open ... (No content
+provider)` in the Kotlin log means the sending app handed the URI over without
+read access: no receiver can open that file, so the sending app's **Share**
+action (it grants read permission) or saving the file to Downloads and opening
+it from Files is the way in. The report contains document display names and
+cache paths, so read it
 before sharing it publicly. On a development device the same Kotlin lines are
 still available with `adb logcat -s PdfSakIntent`.
