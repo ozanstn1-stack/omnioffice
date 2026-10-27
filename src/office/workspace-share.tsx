@@ -12,6 +12,7 @@ import { shareExtensionFor, shareOfficeDocument } from "../lib/share";
 import { errorMessage, useToasts } from "../lib/store";
 import { useT } from "../lib/i18n";
 import { Modal } from "../components/ui";
+import { SaveDestinationHost } from "./save-destination";
 
 export function ShareTabButton({ tab }: { tab: OfficeTab | null }) {
   const t = useT();
@@ -34,6 +35,8 @@ export function ShareTabButton({ tab }: { tab: OfficeTab | null }) {
 
   return (
     <>
+      {/* Android-only office prompts live with the share button: the first save of a shared document. */}
+      <SaveDestinationHost />
       <button
         type="button"
         className="tool-btn is-icon-only"
