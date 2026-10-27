@@ -826,7 +826,8 @@ with a regression test that failed before the fix:
   (including the manifest contract test) but the on-device flows are untested.
 - The perspective correction is implemented directly rather than with
   `imageproc` (same projection, no extra dependency).
-- **Signatures are stored unencrypted** in the app data directory.
+- **Signatures are stored unencrypted** in the app data directory. (Fixed in
+  6.3.3: sealed with DPAPI / the Android Keystore.)
 - The scanner does not run OCR; the OCR tool is used on the result.
 - Tool pins are stored in the given order; there is no manual reordering.
 
