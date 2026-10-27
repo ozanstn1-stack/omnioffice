@@ -1,4 +1,5 @@
-//! Storage for the DeepSeek API key, OAuth tokens and the WebDAV password.
+//! Storage for the DeepSeek API key, OAuth tokens and the WebDAV password,
+//! and (through [`seal_bytes`] / [`open_bytes`]) the saved signature images.
 //!
 //! On Windows the value is encrypted with DPAPI (CryptProtectData), so the
 //! stored blob can only be decrypted by the same Windows user on the same
@@ -101,17 +102,17 @@ impl SecretCipher for Dpapi {
 }
 
 #[cfg(windows)]
-fn platform_cipher() -> Option<&'static dyn SecretCipher> {
+pub(crate) fn platform_cipher() -> Option<&'static dyn SecretCipher> {
     Some(&Dpapi)
 }
 
 #[cfg(target_os = "android")]
-fn platform_cipher() -> Option<&'static dyn SecretCipher> {
+pub(crate) fn platform_cipher() -> Option<&'static dyn SecretCipher> {
     Some(&crate::android_keystore::Keystore)
 }
 
 #[cfg(not(any(windows, target_os = "android")))]
-fn platform_cipher() -> Option<&'static dyn SecretCipher> {
+pub(crate) fn platform_cipher() -> Option<&'static dyn SecretCipher> {
     None
 }
 
@@ -128,12 +129,38 @@ fn file_lock() -> std::sync::MutexGuard<'static, ()> {
 /// Builds the file payload: encrypted when the cipher works, `plain:` when it
 /// is missing or fails (the user's value is never dropped).
 fn seal(cipher: Option<&dyn SecretCipher>, value: &str) -> String {
+    seal_bytes(cipher, value.as_bytes())
+}
+
+/// [`seal`] for arbitrary bytes (the signature images).
+pub(crate) fn seal_bytes(cipher: Option<&dyn SecretCipher>, bytes: &[u8]) -> String {
     if let Some(cipher) = cipher {
-        if let Ok(blob) = cipher.protect(value.as_bytes()) {
+        if let Ok(blob) = cipher.protect(bytes) {
             return format!("{}{}", cipher.prefix(), base64_encode(&blob));
         }
     }
-    format!("{PLAIN_PREFIX}{}", base64_encode(value.as_bytes()))
+    format!("{PLAIN_PREFIX}{}", base64_encode(bytes))
+}
+
+/// Decodes a payload written by [`seal_bytes`]. Unlike a key, unknown content
+/// is an error: a signature file is never empty.
+pub(crate) fn open_bytes(cipher: Option<&dyn SecretCipher>, content: &str) -> Result<Vec<u8>, PdfError> {
+    let content = content.trim();
+    if let Some(encoded) = content.strip_prefix(PLAIN_PREFIX) {
+        return base64_decode(encoded).ok_or_else(|| PdfError::Internal("invalid stored blob".to_string()));
+    }
+    for prefix in [DPAPI_PREFIX, KEYSTORE_PREFIX] {
+        let Some(encoded) = content.strip_prefix(prefix) else { continue };
+        let cipher = cipher.filter(|cipher| cipher.prefix() == prefix).ok_or_else(|| {
+            PdfError::Internal(format!("this value was stored with {prefix} protection, which is not available here"))
+        })?;
+        let blob = base64_decode(encoded).ok_or_else(|| PdfError::Internal("invalid stored blob".to_string()))?;
+        return cipher.unprotect(&blob).map_err(|error| match error {
+            CipherError::KeyLost => PdfError::Internal("the stored value can no longer be decrypted".to_string()),
+            CipherError::Failed(message) => PdfError::Internal(message),
+        });
+    }
+    Err(PdfError::Internal("unknown stored format".to_string()))
 }
 
 struct Opened {
