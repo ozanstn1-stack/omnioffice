@@ -43,7 +43,7 @@ base64 = "0.23"
 uuid = { version = "1", features = ["v4"] }
 aicore = { path = "../crates/aicore" }
 officecore = { path = "../crates/officecore" }
-lopdf = "0.45.0"
+lopdf = "0.46.0"
 pdfcore = { path = "../crates/pdfcore" }
 # TypeScript bindings for the IPC DTOs (v5.1). Optional: only the `ts` feature
 # pulls it in, so shipped builds are unchanged.

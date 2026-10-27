@@ -25,7 +25,7 @@ cfb = "0.15"
 crc32fast = "1"
 flate2 = "1"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "bmp", "tiff", "gif"] }
-lopdf = "0.45.0"
+lopdf = "0.46.0"
 quick-xml = "0.42.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
