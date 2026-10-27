@@ -20,10 +20,17 @@
  * marked that drain cancelled and its result - the shared document - was
  * dropped, leaving the app on Home (v6.2.9 on a Pixel 8 Pro). The poll now
  * starts once and every drained path reaches the current handler.
+ *
+ * Recents: an office document is listed under Home's "Recent" once it opens
+ * (`rememberOfficePath`), but a PDF or image shared from WhatsApp went to the
+ * reader without a trace and could only be found again by sharing it anew.
+ * Every other drained file is now remembered here, as soon as it arrives.
  */
 import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { fileBaseName, isOfficeDocument } from "./format";
 import { isAndroid } from "./mobile";
+import { useRecent } from "./store";
 import { parseIncomingError } from "./incoming";
 import { recordOpenWith } from "./open-with-diagnostics";
 
@@ -32,6 +39,21 @@ const POLL_MS = 2500;
 
 /** One early retry after mount: the copy thread may still be writing. */
 const EARLY_RETRY_MS = 900;
+
+/** Recent-files tag for documents another app handed over. */
+export const OPEN_WITH_RECENT_TOOL = "_openWith";
+
+/**
+ * Lists drained files under Home's "Recent". Shortcut and refusal tokens are
+ * skipped, and so are office documents: those are remembered once they open.
+ */
+export function rememberIncomingPaths(paths: string[]): void {
+  const timestamp = Math.floor(Date.now() / 1000);
+  for (const path of paths) {
+    if (path.startsWith("__action:") || path.startsWith("__error:") || isOfficeDocument(path)) continue;
+    void useRecent.getState().add({ path, fileName: fileBaseName(path), tool: OPEN_WITH_RECENT_TOOL, timestamp });
+  }
+}
 
 /**
  * Starts draining the Android pending-open queue for as long as the calling
@@ -67,7 +89,10 @@ export function useAndroidPendingOpen(onPaths: (paths: string[]) => void): void 
             }
             if (!path.startsWith("__action:")) seen.add(path);
           }
-          if (fresh.length > 0) onPathsRef.current(fresh);
+          if (fresh.length > 0) {
+            rememberIncomingPaths(fresh);
+            onPathsRef.current(fresh);
+          }
         })
         .catch((error: unknown) => recordOpenWith(`drain-failed:${String(error)}`));
     };

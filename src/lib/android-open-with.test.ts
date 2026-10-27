@@ -2,8 +2,14 @@ import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.fn();
+// Recent-file writes go to their own mock so they do not consume the queue's
+// scripted drain results.
+const recentMock = vi.fn(async (_command: string, _args?: unknown) => [] as unknown);
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invokeMock(...args) }));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (command: string, args?: unknown) =>
+    command === "android_take_pending_open" ? invokeMock(command, args) : recentMock(command, args),
+}));
 vi.mock("./mobile", () => ({ isAndroid: () => true }));
 
 import { useAndroidPendingOpen } from "./android-open-with";
@@ -27,6 +33,7 @@ describe("useAndroidPendingOpen", () => {
     vi.useFakeTimers();
     invokeMock.mockReset();
     invokeMock.mockResolvedValue([]);
+    recentMock.mockClear();
   });
 
   afterEach(() => {
@@ -80,5 +87,26 @@ describe("useAndroidPendingOpen", () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledWith(["/data/cache/incoming/b/one.pdf"]);
+  });
+
+  it("lists a shared PDF under Recent, but not shortcuts, refusals or office documents", async () => {
+    invokeMock.mockResolvedValueOnce([
+      "/data/cache/incoming/c/scan.pdf",
+      "/data/cache/incoming/d/offer.docx",
+      "__action:scan",
+      "__error:TOO_LARGE:big.pdf",
+    ]);
+    renderHook(() => useAndroidPendingOpen(vi.fn()));
+    await flush();
+    const added = recentMock.mock.calls.filter(([command]) => command === "add_recent").map(([, args]) => args);
+    expect(added).toEqual([
+      {
+        entry: expect.objectContaining({
+          path: "/data/cache/incoming/c/scan.pdf",
+          fileName: "scan.pdf",
+          tool: "_openWith",
+        }),
+      },
+    ]);
   });
 });

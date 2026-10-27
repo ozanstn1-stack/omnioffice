@@ -11,6 +11,7 @@ import {
   Loader2,
   Lock,
   Plus,
+  Share2,
   X,
   XCircle,
 } from "lucide-react";
@@ -551,7 +552,12 @@ export function ResultCard({ result, onReset }: { result: OpResult; onReset?: ()
         <Button size="sm" icon={<FileText size={14} />} onClick={open}>
           {t("common.openFile")}
         </Button>
-        <Button size="sm" variant="ghost" icon={<FolderOpen size={14} />} onClick={reveal}>
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={isAndroid() ? <Share2 size={14} /> : <FolderOpen size={14} />}
+          onClick={reveal}
+        >
           {isAndroid() ? t("common.share") : t("common.openFolder")}
         </Button>
         {onReset ? (

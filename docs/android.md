@@ -122,6 +122,24 @@ the app cache or data directory. When that bridge refuses, the older route
 publishes a copy to `Downloads/OmniOffice` and shares that copy.
 `adb logcat -s PdfSakShare` shows each opened chooser.
 
+### Sharing tool results and Recent files
+
+The **Share** button on a tool result, on Home's Recent list and in History
+uses the same bridge (`revealAnyFile` in `lib/mobile.ts`). A document published
+this session is shared through its public URI; any other file - a result from
+an earlier session, a Recent entry (a file token, resolved on the Rust side),
+a document opened from another app - goes straight from private storage, so
+tapping Share no longer leaves another copy in `Downloads/OmniOffice`. Files
+outside the app's storage are still published first.
+
+### Recent files
+
+Documents another app hands over are listed under Home's **Recent**: office
+documents once they open in the editor, PDFs and images as soon as they arrive
+(`rememberIncomingPaths` in `lib/android-open-with.ts`). The entry points at
+the private copy in `cache/incoming/`, which is removed after 14 days; the
+entry disappears with it.
+
 ## Engine notes
 
 * **pdfium** is loaded from the app's native library directory with

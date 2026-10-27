@@ -34,6 +34,46 @@ pub fn validate_share_path(roots: &[PathBuf], candidate: &Path) -> Result<PathBu
     Ok(resolved)
 }
 
+/// The file behind `value`: a Recent entry or a dialog pick reaches the webview
+/// as a file token, a tool result or an incoming document as a plain path.
+#[cfg(any(target_os = "android", test))]
+pub fn share_input_path(value: &str) -> PathBuf {
+    match crate::files::lookup(value, crate::files::FileAccess::Read) {
+        Some(Ok(path)) => path,
+        _ => PathBuf::from(value),
+    }
+}
+
+/// The MIME type to share with: the caller's, unless it is missing or generic
+/// (a token whose display name the webview no longer knows), then one derived
+/// from the file's extension so WhatsApp and office apps still accept it.
+#[cfg(any(target_os = "android", test))]
+pub fn share_mime_type(given: Option<&str>, path: &Path) -> String {
+    if let Some(given) = given.filter(|mime| !mime.is_empty() && *mime != "application/octet-stream") {
+        return given.to_string();
+    }
+    let extension = path.extension().map(|ext| ext.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    match extension.as_str() {
+        "pdf" => "application/pdf",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "txt" => "text/plain",
+        "csv" => "text/csv",
+        "html" | "htm" => "text/html",
+        "rtf" => "application/rtf",
+        "zip" => "application/zip",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "odt" => "application/vnd.oasis.opendocument.text",
+        "ods" => "application/vnd.oasis.opendocument.spreadsheet",
+        "odp" => "application/vnd.oasis.opendocument.presentation",
+        _ => "application/octet-stream",
+    }
+    .to_string()
+}
+
 /// Opens the system share sheet for an app-private document.
 ///
 /// `async` keeps the work off the main thread: `app.path()` and
@@ -55,12 +95,9 @@ pub async fn share_document_file(
     if let Ok(data) = app.path().app_data_dir() {
         roots.push(data);
     }
-    let resolved = validate_share_path(&roots, Path::new(&path))?;
-    call_share(
-        &resolved.to_string_lossy(),
-        mime_type.as_deref().unwrap_or("application/octet-stream"),
-        title.as_deref().unwrap_or(""),
-    )
+    let resolved = validate_share_path(&roots, &share_input_path(&path))?;
+    let mime_type = share_mime_type(mime_type.as_deref(), &resolved);
+    call_share(&resolved.to_string_lossy(), &mime_type, title.as_deref().unwrap_or(""))
 }
 
 /// Desktop stub so `generate_handler!` stays platform independent; the
@@ -156,5 +193,30 @@ mod tests {
         assert!(validate_share_path(&[root.join("cache")], &root.join("cache").join("incoming")).is_err());
         assert!(validate_share_path(&[root.join("cache")], &root.join("cache").join("gone.pdf")).is_err());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn resolves_a_file_token_to_its_path() {
+        let root = temp_root("token");
+        let file = root.join("cache").join("incoming").join("scan.pdf");
+        std::fs::write(&file, b"%PDF").expect("write");
+        let token = crate::files::issue(&file, crate::files::FileAccess::Read).token;
+        assert_eq!(share_input_path(&token), file);
+        assert!(validate_share_path(&[root.join("cache")], &share_input_path(&token)).is_ok());
+        // A plain path is taken as it is.
+        assert_eq!(share_input_path(&file.to_string_lossy()), file);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn derives_the_mime_type_when_the_caller_has_none() {
+        let docx = Path::new("/cache/a/Teklif.DOCX");
+        assert_eq!(
+            share_mime_type(None, docx),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        );
+        assert_eq!(share_mime_type(Some("application/octet-stream"), Path::new("/a/scan.pdf")), "application/pdf");
+        assert_eq!(share_mime_type(Some("image/png"), Path::new("/a/scan.pdf")), "image/png");
+        assert_eq!(share_mime_type(None, Path::new("/a/unit.oswk")), "application/octet-stream");
     }
 }
