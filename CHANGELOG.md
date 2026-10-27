@@ -4,6 +4,33 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.3.2] - Kamerayla belge tarama
+
+### Added
+
+- **Camera document scanning (#441):** the Scan screen (and the Android Scan
+  shortcut) takes page photos with the phone's camera app and opens each one
+  in a new four-corner picker: drag the corners onto the page, or keep the
+  whole photo. The result is a multi-page PDF that can go straight to OCR.
+  ML Kit's scanner was not used: it needs Google Play services and brings
+  Google's usage logging along.
+
+### Fixed
+
+- Page photos taken in portrait no longer land sideways in the PDF: every page
+  is turned upright from its EXIF orientation first (#441).
+- The camera button could not find a camera app on Android 11+ and opened the
+  file picker instead; the manifest now queries `IMAGE_CAPTURE` (#441).
+- Scanned pages are stored as JPEG instead of PNG, so a 12 MP page no longer
+  makes a PDF of tens of MB (#441).
+- Old scanner page photos and the camera's leftover captures are removed at
+  start (#441).
+
+### Changed
+
+- The scanner is no longer behind a feature flag; its labels are translated
+  (#441).
+
 ## [6.3.1] - Son kullanılanlar ve doğrudan paylaşım
 
 ### Added
