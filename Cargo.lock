@@ -3760,7 +3760,7 @@ dependencies = [
  "ab_glyph",
  "cbc 0.2.1",
  "cms",
- "const-oid 0.9.6",
+ "const-oid 0.10.2",
  "criterion",
  "der",
  "des 0.9.0",
