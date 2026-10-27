@@ -499,7 +499,17 @@ export async function openAnyFile(path: string): Promise<void> {
   }
 }
 
-/** Shares a document with another app (Android) or reveals it in the folder. */
+/**
+ * Shares a document with another app (Android) or reveals it in the folder.
+ *
+ * Android: a document published this session is shared through its public
+ * URI. Anything else - a tool result from an earlier session, a Recent entry
+ * (a file token), a document opened from another app - goes straight from
+ * the app's storage through the FileProvider (`share_document_file`). It used
+ * to be published to `Downloads/OmniOffice` first, so every Share tap on a
+ * Recent entry left one more copy there. Publishing remains the fallback for
+ * a file outside the app's storage.
+ */
 export async function revealAnyFile(path: string): Promise<void> {
   if (!isAndroid()) {
     await invoke("reveal_document_file", { path });
@@ -507,8 +517,13 @@ export async function revealAnyFile(path: string): Promise<void> {
   }
   let uri = publishedUris.get(path);
   if (!uri) {
-    await publishOutputs([path]);
-    uri = publishedUris.get(path);
+    try {
+      await invoke("share_document_file", { path, mimeType: mimeForName(fileBaseName(path)), title: null });
+      return;
+    } catch {
+      await publishOutputs([path]);
+      uri = publishedUris.get(path);
+    }
   }
   if (uri) {
     await AndroidFs.showShareFileAppChooser(uri);

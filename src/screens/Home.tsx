@@ -33,6 +33,7 @@ import {
   Repeat,
   Scissors,
   Search,
+  Share2,
   ShieldCheck,
   Sparkles,
   Stamp,
@@ -488,10 +489,10 @@ export function Home({
                         {t("common.open")}
                       </Button>
                       <IconButton
-                        label={t("common.openFolder")}
+                        label={isAndroid() ? t("common.share") : t("common.openFolder")}
                         onClick={() => void revealAnyFile(entry.token).catch(() => undefined)}
                       >
-                        <FolderOpen size={14} />
+                        {isAndroid() ? <Share2 size={14} /> : <FolderOpen size={14} />}
                       </IconButton>
                     </div>
                   </div>

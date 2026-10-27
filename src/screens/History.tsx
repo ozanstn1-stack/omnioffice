@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Download, FilePlus2, FolderOpen, ScrollText, Trash2, XCircle } from "lucide-react";
-import { openAnyFile, revealAnyFile, saveFileBytes } from "../lib/mobile";
+import { CheckCircle2, Download, FilePlus2, FolderOpen, ScrollText, Share2, Trash2, XCircle } from "lucide-react";
+import { isAndroid, openAnyFile, revealAnyFile, saveFileBytes } from "../lib/mobile";
+import { openOfficePath } from "../lib/office-store";
 import { Badge, Button, Card, EmptyState, Segmented, TextInput } from "../components/ui";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { reportError, useRecent, useToasts } from "../lib/store";
 import { clearOperations, loadOperations } from "../lib/api";
 import type { OperationEntry } from "../lib/types";
-import { formatBytes, formatDate, isPdf } from "../lib/format";
+import { formatBytes, formatDate, isOfficeDocument, isPdf } from "../lib/format";
 import type { Navigate } from "../lib/nav";
 
 /** RFC 4180 field: commas, quotes and line breaks force double quotes. */
@@ -249,6 +250,14 @@ export function History({ onNavigate }: { onNavigate: Navigate }) {
                         onClick={() => {
                           if (isPdf(entry.fileName)) {
                             onNavigate("reader", { files: [entry.token] });
+                          } else if (isOfficeDocument(entry.fileName)) {
+                            // Same route as Home's Recent list: the editor, not
+                            // an outside app (Android used to hand it over).
+                            onNavigate("office");
+                            void openOfficePath(entry.token).then((result) => {
+                              if (!result.ok)
+                                pushToast({ kind: "error", title: t("errors.title"), detail: result.error });
+                            });
                           } else {
                             void openAnyFile(entry.token).catch(() => undefined);
                           }
@@ -259,7 +268,8 @@ export function History({ onNavigate }: { onNavigate: Navigate }) {
                       <Button
                         size="sm"
                         variant="ghost"
-                        icon={<FolderOpen size={13} />}
+                        icon={isAndroid() ? <Share2 size={13} /> : <FolderOpen size={13} />}
+                        title={isAndroid() ? t("common.share") : t("common.openFolder")}
                         onClick={() => void revealAnyFile(entry.token).catch(() => undefined)}
                       />
                     </div>
