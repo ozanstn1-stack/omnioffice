@@ -341,6 +341,7 @@ pub fn run() {
             office::office_read_invoice_qr,
             office::office_open_eml,
             office::office_scan_pages,
+            office::office_scan_preview,
             office::office_mail_merge,
             office::turkish_spellcheck,
             office::turkish_suggestions,

@@ -7,9 +7,9 @@ afterEach(() => {
 });
 
 describe("feature flags", () => {
-  it("keeps the experimental scanner hidden by default", () => {
-    expect(FEATURE_FLAGS.experimentalScanner).toBe(false);
-    expect(flagEnabled("experimentalScanner")).toBe(false);
+  it("ships the document scanner without a flag", () => {
+    // The camera capture and corner picker landed in 6.3.2.
+    expect(Object.keys(FEATURE_FLAGS)).not.toContain("experimentalScanner");
   });
 
   it("keeps the unverified formats hidden by default", () => {
@@ -31,16 +31,16 @@ describe("feature flags", () => {
   });
 
   it("honours a development override", () => {
-    localStorage.setItem("flag:experimentalScanner", "1");
-    expect(flagEnabled("experimentalScanner")).toBe(true);
-    localStorage.setItem("flag:experimentalScanner", "0");
-    expect(flagEnabled("experimentalScanner")).toBe(false);
+    localStorage.setItem("flag:experimentalKvkkWizard", "1");
+    expect(flagEnabled("experimentalKvkkWizard")).toBe(true);
+    localStorage.setItem("flag:experimentalKvkkWizard", "0");
+    expect(flagEnabled("experimentalKvkkWizard")).toBe(false);
     localStorage.setItem("flag:experimentalUdf", "1");
     expect(flagEnabled("experimentalUdf")).toBe(true);
   });
 
   it("ignores an unknown override value", () => {
-    localStorage.setItem("flag:experimentalScanner", "yes");
-    expect(flagEnabled("experimentalScanner")).toBe(false);
+    localStorage.setItem("flag:experimentalKvkkWizard", "yes");
+    expect(flagEnabled("experimentalKvkkWizard")).toBe(false);
   });
 });

@@ -485,14 +485,38 @@ class IncomingFilesTest {
     val oldIncoming = folder("incoming", "old", 20)
     val freshIncoming = folder("incoming", "fresh", 2)
     val oldShare = folder("share", "old", 30)
+    val oldScan = folder("scans", "old", 15)
     val queue = File(cache, "pending-open.txt").apply { writeText("") }
 
-    assertEquals(2, IncomingFiles.pruneDocumentCache(cache, now, 14 * day))
+    assertEquals(3, IncomingFiles.pruneDocumentCache(cache, now, 14 * day))
     assertFalse(oldIncoming.exists())
     assertFalse(oldShare.exists())
+    assertFalse("scanner page photos are swept too", oldScan.exists())
     assertTrue(freshIncoming.exists())
     assertTrue("files next to the folders are not touched", queue.exists())
     assertEquals(0, IncomingFiles.pruneDocumentCache(File(cache, "missing"), now))
     cache.deleteRecursively()
+  }
+
+  @Test
+  fun `old camera captures are removed, other pictures stay`() {
+    // The WebView's capture chooser writes every photo to
+    // getExternalFilesDir(Pictures)/JPEG_<time>_<n>.jpg and never deletes it;
+    // the scanner keeps its own copy in cacheDir/scans.
+    val pictures = kotlin.io.path.createTempDirectory("pdfsak-pictures").toFile()
+    val now = 1_000_000_000_000L
+    val day = 24L * 60 * 60 * 1000
+    fun file(name: String, ageDays: Long) =
+      File(pictures, name).apply { writeText("x") }.also { it.setLastModified(now - ageDays * day) }
+    val oldCapture = file("JPEG_20261027_101010_123.jpg", 3)
+    val freshCapture = file("JPEG_20261030_101010_456.jpg", 0)
+    val other = file("signature.png", 30)
+
+    assertEquals(1, IncomingFiles.pruneCapturePhotos(pictures, now))
+    assertFalse(oldCapture.exists())
+    assertTrue("a capture still being staged is kept", freshCapture.exists())
+    assertTrue(other.exists())
+    assertEquals(0, IncomingFiles.pruneCapturePhotos(null, now))
+    pictures.deleteRecursively()
   }
 }

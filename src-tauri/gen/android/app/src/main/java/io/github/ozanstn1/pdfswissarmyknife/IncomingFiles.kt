@@ -670,8 +670,9 @@ object IncomingFiles {
   const val CACHE_MAX_AGE_MS: Long = 14L * 24 * 60 * 60 * 1000
 
   /**
-   * Deletes the per-document folders under `cacheDir/incoming` and
-   * `cacheDir/share` whose newest file is older than [maxAgeMs].
+   * Deletes the per-document folders under `cacheDir/incoming`,
+   * `cacheDir/share` and `cacheDir/scans` (the scanner's page photos) whose
+   * newest file is older than [maxAgeMs].
    *
    * Every document opened from another app and every share copy got its own
    * `<uuid>` folder and nothing removed them, so the cache only grew. Tabs do
@@ -681,7 +682,7 @@ object IncomingFiles {
    */
   fun pruneDocumentCache(cacheDir: File, nowMs: Long, maxAgeMs: Long = CACHE_MAX_AGE_MS): Int {
     var removed = 0
-    for (root in listOf(File(cacheDir, "incoming"), File(cacheDir, "share"))) {
+    for (root in listOf(File(cacheDir, "incoming"), File(cacheDir, "share"), File(cacheDir, "scans"))) {
       val folders = root.listFiles() ?: continue
       for (folder in folders) {
         if (!folder.isDirectory) continue
@@ -690,5 +691,25 @@ object IncomingFiles {
       }
     }
     return removed
+  }
+
+  /** A camera capture is copied into `cacheDir/scans` within seconds. */
+  const val CAPTURE_MAX_AGE_MS: Long = 24L * 60 * 60 * 1000
+
+  /**
+   * Deletes the WebView capture chooser's photos (`JPEG_<time>_<n>.jpg` in
+   * `getExternalFilesDir(Pictures)`) older than [maxAgeMs]. The chooser
+   * (generated RustWebChromeClient) never removes them and the scanner keeps
+   * its own copy, so each page photo was left behind for good.
+   */
+  fun pruneCapturePhotos(picturesDir: File?, nowMs: Long, maxAgeMs: Long = CAPTURE_MAX_AGE_MS): Int {
+    val files = picturesDir?.listFiles() ?: return 0
+    return files.count { file ->
+      file.isFile &&
+        file.name.startsWith("JPEG_") &&
+        file.name.endsWith(".jpg") &&
+        nowMs - file.lastModified() > maxAgeMs &&
+        file.delete()
+    }
   }
 }

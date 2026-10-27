@@ -1,11 +1,13 @@
 //! Document-scanner geometry: turn a photographed page (four corners in the
 //! image) into a rectangular scan.
 //!
-//! The Android scanner either uses ML Kit's document scanner or, on devices
-//! without Google Play services, lets the user tap the four corners of the page
-//! with CameraX. Either way the corner list ends up here: the quad is ordered,
-//! an output size is derived from the edge lengths and a homography resamples
-//! the pixels so the page comes out flat.
+//! The scanner takes page photos from the system camera app (Android) or a
+//! file pick and lets the user drag the four corners of the page on an upright
+//! preview; ML Kit's scanner was passed over because it brings Google's usage
+//! logging along. The corner list ends up here: the quad is ordered, an output
+//! size is derived from the edge lengths and a homography resamples the pixels
+//! so the page comes out flat. Every page is first turned upright from its
+//! EXIF orientation (`open_upright`).
 //!
 //! The homography is implemented directly (an 8×8 linear solve plus bilinear
 //! sampling) instead of pulling in `imageproc`'s `warp_perspective`: it is the
@@ -14,7 +16,9 @@
 //! (`crate::ocr::preprocess`) before tesseract.
 
 use crate::error::{PdfError, PdfResult};
-use image::RgbaImage;
+use image::codecs::jpeg::JpegEncoder;
+use image::metadata::Orientation;
+use image::{DynamicImage, GenericImageView, ImageDecoder, ImageReader, RgbaImage};
 use std::path::Path;
 
 /// A page corner in source-image pixels.
@@ -161,13 +165,85 @@ pub fn correct_perspective(image: &RgbaImage, corners: [Point; 4]) -> PdfResult<
 
 /// Reads an image file, corrects its perspective and writes a PNG.
 pub fn correct_file(input: &Path, corners: [Point; 4], output: &Path) -> PdfResult<()> {
-    let image = image::open(input)
-        .map_err(|error| PdfError::ConversionFailed(format!("the page image could not be read: {error}")))?;
+    let (image, _) = open_upright(input)?;
     let corrected = correct_perspective(&image.to_rgba8(), corners)?;
     corrected
         .save_with_format(output, image::ImageFormat::Png)
         .map_err(|error| PdfError::ConversionFailed(format!("the corrected page could not be written: {error}")))?;
     Ok(())
+}
+
+fn unreadable(error: impl std::fmt::Display) -> PdfError {
+    PdfError::ConversionFailed(format!("the page image could not be read: {error}"))
+}
+
+/// Reads an image the way a viewer shows it. A phone camera stores most
+/// photos sideways and records the turn in the EXIF orientation tag, which
+/// `image::open` ignores: a captured page came out on its side in the PDF, and
+/// corners picked on the (upright) preview missed the page. Returns the image
+/// and whether a turn or flip was applied.
+pub fn open_upright(input: &Path) -> PdfResult<(DynamicImage, bool)> {
+    let reader = ImageReader::open(input).map_err(unreadable)?.with_guessed_format().map_err(unreadable)?;
+    let mut decoder = reader.into_decoder().map_err(unreadable)?;
+    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+    let mut image = DynamicImage::from_decoder(decoder).map_err(unreadable)?;
+    let turned = orientation != Orientation::NoTransforms;
+    if turned {
+        image.apply_orientation(orientation);
+    }
+    Ok((image, turned))
+}
+
+/// JPEG quality of prepared pages: a 12 MP page photo stays well under a few
+/// MB in the PDF instead of the tens of MB a lossless PNG would take.
+const PAGE_JPEG_QUALITY: u8 = 88;
+
+/// Prepares one captured page for the PDF: turned upright and, when corners
+/// are given (in upright pixels), flattened. Writes a JPEG to `output` and
+/// returns true; returns false, writing nothing, when the source can go into
+/// the PDF as it is.
+pub fn prepare_page(input: &Path, corners: Option<[Point; 4]>, output: &Path) -> PdfResult<bool> {
+    let (image, turned) = open_upright(input)?;
+    let page = match corners {
+        Some(corners) => DynamicImage::ImageRgba8(correct_perspective(&image.to_rgba8(), corners)?),
+        None if turned => image,
+        None => return Ok(false),
+    };
+    write_jpeg(&page, output, PAGE_JPEG_QUALITY)?;
+    Ok(true)
+}
+
+/// A downscaled, upright copy of a page photo for the corner picker.
+pub struct PagePreview {
+    /// JPEG bytes of the preview.
+    pub jpeg: Vec<u8>,
+    /// Width of the upright full-size image; corners are given in its pixels.
+    pub width: u32,
+    /// Height of the upright full-size image.
+    pub height: u32,
+}
+
+/// Builds the corner picker's preview, its longest side at most `max_side`.
+pub fn preview(input: &Path, max_side: u32) -> PdfResult<PagePreview> {
+    let (image, _) = open_upright(input)?;
+    let (width, height) = image.dimensions();
+    let small = if width.max(height) > max_side { image.thumbnail(max_side, max_side) } else { image };
+    let mut jpeg = Vec::new();
+    small
+        .to_rgb8()
+        .write_with_encoder(JpegEncoder::new_with_quality(&mut jpeg, 80))
+        .map_err(|error| PdfError::ConversionFailed(format!("the page preview could not be made: {error}")))?;
+    Ok(PagePreview { jpeg, width, height })
+}
+
+fn write_jpeg(image: &DynamicImage, output: &Path, quality: u8) -> PdfResult<()> {
+    let file = std::fs::File::create(output)
+        .map_err(|error| PdfError::ConversionFailed(format!("the prepared page could not be written: {error}")))?;
+    let mut writer = std::io::BufWriter::new(file);
+    image
+        .to_rgb8()
+        .write_with_encoder(JpegEncoder::new_with_quality(&mut writer, quality))
+        .map_err(|error| PdfError::ConversionFailed(format!("the prepared page could not be written: {error}")))
 }
 
 #[cfg(test)]
@@ -238,5 +314,78 @@ mod tests {
         let corners = [[35.0, 35.0], [5.0, 5.0], [5.0, 35.0], [35.0, 5.0]];
         let corrected = correct_perspective(&image, corners).unwrap();
         assert_eq!(corrected.dimensions(), (30, 30));
+    }
+
+    /// A minimal big-endian EXIF block holding only the orientation tag.
+    fn exif_orientation(value: u16) -> Vec<u8> {
+        let mut exif = b"MM\0*\0\0\0\x08".to_vec();
+        exif.extend_from_slice(&1u16.to_be_bytes()); // one IFD entry
+        exif.extend_from_slice(&0x0112u16.to_be_bytes()); // Orientation
+        exif.extend_from_slice(&3u16.to_be_bytes()); // SHORT
+        exif.extend_from_slice(&1u32.to_be_bytes()); // count
+        exif.extend_from_slice(&value.to_be_bytes());
+        exif.extend_from_slice(&[0, 0]); // value padding
+        exif.extend_from_slice(&0u32.to_be_bytes()); // no next IFD
+        exif
+    }
+
+    /// Writes a `width`x`height` JPEG, optionally tagged with an EXIF orientation.
+    fn photo(dir: &Path, name: &str, width: u32, height: u32, orientation: Option<u16>) -> std::path::PathBuf {
+        use image::ImageEncoder;
+        let path = dir.join(name);
+        let pixels = image::RgbImage::from_pixel(width, height, image::Rgb([200, 200, 200]));
+        let mut bytes = Vec::new();
+        let mut encoder = JpegEncoder::new_with_quality(&mut bytes, 90);
+        if let Some(value) = orientation {
+            encoder.set_exif_metadata(exif_orientation(value)).expect("exif");
+        }
+        encoder.write_image(pixels.as_raw(), width, height, image::ExtendedColorType::Rgb8).expect("encode");
+        std::fs::write(&path, bytes).expect("write");
+        path
+    }
+
+    #[test]
+    fn a_photo_stored_sideways_is_turned_upright() {
+        // Phones save a portrait shot as a landscape JPEG tagged "rotate 90".
+        let dir = tempfile::tempdir().unwrap();
+        let path = photo(dir.path(), "page.jpg", 40, 20, Some(6));
+        let (image, turned) = open_upright(&path).unwrap();
+        assert!(turned);
+        assert_eq!(image.dimensions(), (20, 40));
+    }
+
+    #[test]
+    fn an_upright_page_without_corners_goes_in_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = photo(dir.path(), "page.jpg", 40, 20, None);
+        let output = dir.path().join("out.jpg");
+        assert!(!prepare_page(&path, None, &output).unwrap());
+        assert!(!output.exists());
+    }
+
+    #[test]
+    fn a_sideways_or_cropped_page_is_written_upright_as_jpeg() {
+        let dir = tempfile::tempdir().unwrap();
+        let sideways = photo(dir.path(), "side.jpg", 40, 20, Some(6));
+        let output = dir.path().join("side-out.jpg");
+        assert!(prepare_page(&sideways, None, &output).unwrap());
+        assert_eq!(image::open(&output).unwrap().dimensions(), (20, 40));
+
+        // Corners are given on the upright image (20 wide, 40 tall).
+        let cropped = dir.path().join("crop-out.jpg");
+        let corners = [[2.0, 4.0], [18.0, 4.0], [18.0, 36.0], [2.0, 36.0]];
+        assert!(prepare_page(&sideways, Some(corners), &cropped).unwrap());
+        assert_eq!(image::open(&cropped).unwrap().dimensions(), (16, 32));
+        assert_eq!(&std::fs::read(&cropped).unwrap()[..2], &[0xFF, 0xD8], "JPEG, not PNG");
+    }
+
+    #[test]
+    fn the_preview_is_small_and_reports_the_upright_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = photo(dir.path(), "big.jpg", 1200, 600, Some(6));
+        let preview = preview(&path, 300).unwrap();
+        assert_eq!((preview.width, preview.height), (600, 1200));
+        let small = image::load_from_memory(&preview.jpeg).unwrap();
+        assert_eq!(small.dimensions(), (150, 300));
     }
 }

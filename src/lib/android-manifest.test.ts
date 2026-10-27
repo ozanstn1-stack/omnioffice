@@ -139,3 +139,18 @@ describe("Android intent filters", () => {
     expect(desktop.bundle.fileAssociations.length).toBeGreaterThan(0);
   });
 });
+
+describe("Android camera capture", () => {
+  // The scanner's camera button is an <input capture>: the WebView's chooser
+  // (RustWebChromeClient.showImageCapturePicker) asks resolveActivity() for a
+  // camera app first. On Android 11+ package visibility hides every camera app
+  // unless the manifest queries IMAGE_CAPTURE, and the button fell back to the
+  // file picker without a word.
+  it("queries the image capture intent so the camera app is visible", () => {
+    const document = new DOMParser().parseFromString(manifestXml, "application/xml");
+    const queried = Array.from(document.getElementsByTagName("queries")).flatMap((queries) =>
+      Array.from(queries.getElementsByTagName("action")).map((action) => action.getAttribute("android:name")),
+    );
+    expect(queried).toContain("android.media.action.IMAGE_CAPTURE");
+  });
+});

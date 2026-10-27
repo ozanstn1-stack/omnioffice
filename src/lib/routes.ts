@@ -130,7 +130,7 @@ export const ROUTES: readonly RouteDef[] = [
   route("converter", "convert"),
   route("invoices", "convert"),
   route("eml", "convert"),
-  route("scanner", "convert", { flag: "experimentalScanner" }),
+  route("scanner", "convert"),
   route("recipes", "convert"),
   route("mailMerge", "convert"),
   route("cleaner", "convert"),
