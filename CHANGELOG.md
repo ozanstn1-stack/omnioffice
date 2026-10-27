@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.3.1] - Son kullanılanlar ve doğrudan paylaşım
+
+### Added
+
+- **Shared PDFs appear under Recent (#439):** a PDF or image opened from
+  WhatsApp or another app is listed under Home's Recent as soon as it
+  arrives; office documents already were, once they opened.
+
+### Changed
+
+- **Share sends the app's own file (#439):** Share on a tool result, a Recent
+  entry or in History hands the file to the Android share sheet straight
+  from the app's storage. A file not published in the current session (every
+  Recent entry) used to be copied to `Downloads/OmniOffice` first, leaving
+  another copy there on each tap.
+- Android shows a share icon instead of a folder icon on those buttons (#439).
+
+### Fixed
+
+- History opens office documents in the editor instead of handing them to
+  another app (#439).
+
 ## [6.3.0] - Paylaşılan belgeyi kaydet ve geri gönder
 
 ### Added

@@ -31,6 +31,38 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.3.1) - Son kullanılanlar ve doğrudan paylaşım
+
+- **Documents from other apps are listed under Recent** (#439): PDFs and
+  images as they arrive; shortcuts, refused files and office documents (listed
+  once they open) are skipped.
+  `test:src/lib/android-open-with.test.ts#lists a shared PDF under Recent, but not shortcuts, refusals or office documents`
+- **Share sends the app's own file without a Downloads copy** (#439), with
+  publishing kept as the fallback outside the app's storage.
+  `test:src/lib/mobile-share.test.ts#shares an app file directly, without a copy in Downloads`
+  `test:src/lib/mobile-share.test.ts#publishes and shares a copy when the file is outside the app's storage`
+- **The share command accepts Recent file tokens** and derives the MIME type
+  from the extension (#439).
+  `test:src-tauri/src/android_share.rs#resolves_a_file_token_to_its_path`
+  `test:src-tauri/src/android_share.rs#derives_the_mime_type_when_the_caller_has_none`
+
+### Not done / Known limitations (6.3.1)
+
+- Partly exercised on a Samsung S22 Ultra (Android 16): the 6.3.1 APK
+  installed over 6.2.10, and a PDF sent with "Open with" (content URI to
+  `OpenWithActivity`) was copied in (`PdfSakIntent ... COPIED`). The phone
+  was locked, so Recent and the Share icon were not checked on screen.
+  Confirm by hand: share a PDF from WhatsApp to OmniOffice, check Home ->
+  Recent, tap its Share icon and confirm no new file appears in
+  `Downloads/OmniOffice`.
+  (no test: on-device verification pending.)
+- A Recent entry for a document from another app points at the private copy,
+  which is removed after 14 days; the entry disappears with it.
+  (no test: known limitation.)
+- The 6.2.11, 6.3.0 and WhatsApp round-trip checks are still awaiting the same
+  on-device confirmation.
+  (no test: on-device verification pending.)
+
 ## Implemented (this cycle, 6.3.0) - Paylaşılan belgeyi kaydet
 
 - **First save of a shared document asks where it goes** (#430): Save to
