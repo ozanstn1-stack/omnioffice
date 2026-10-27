@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.3.0] - Paylaşılan belgeyi kaydet ve geri gönder
+
+### Added
+
+- **Saving a document opened from another app (#430):** the first Save of a
+  document shared from WhatsApp, mail or a download manager asks where the
+  changes go - Save to Downloads (`Downloads/OmniOffice`), Save and share
+  (then the system share sheet with the saved file) or Choose a location
+  (keeping the document's format). Later saves go to the same place without
+  asking.
+
+### Changed
+
+- A save that lands in Downloads names the folder in its confirmation
+  instead of only "Saved" (#430).
+
 ## [6.2.11] - Telefon düzeltmeleri: dil, Writer tabloları ve düzeni, diyaloglar
 
 ### Fixed
