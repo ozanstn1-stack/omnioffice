@@ -31,6 +31,29 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.3.0) - Paylaşılan belgeyi kaydet
+
+- **First save of a shared document asks where it goes** (#430): Save to
+  Downloads, Save and share, or Choose a location (keeping the opened format);
+  cancel writes nothing and later saves reuse the destination.
+  `test:src/office/save-destination.test.tsx#saves and opens the share sheet for the saved file`
+  `test:src/office/save-destination.test.tsx#asks only once: a later save goes to the same place`
+- **A save to Downloads names the folder** in its confirmation (#430).
+  `test:src/office/save-destination.test.tsx#saves to Downloads and says where`
+
+### Not done / Known limitations (6.3.0)
+
+- Not exercised on the phone this cycle (no USB connection); the flow is
+  covered by component tests with the Android file bridge mocked. Confirm by
+  hand: open a DOCX from WhatsApp, edit, Save -> each of the three choices.
+  (no test: on-device verification pending.)
+- The 6.2.11 phone fixes and the WhatsApp round trip from 6.2.10 are still
+  awaiting the same on-device check.
+  (no test: on-device verification pending.)
+- The remembered destination lasts for the app session; after a restart the
+  first save of a reopened shared copy asks again.
+  (no test: known limitation.)
+
 ## Implemented (this cycle, 6.2.11) - Telefon düzeltmeleri
 
 - **Translations reach components mounted before the language loaded** (#428):
