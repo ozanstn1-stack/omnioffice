@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.3.3] - İmzalar şifreli saklanıyor
+
+### Security
+
+- **Saved signatures are encrypted (#443):** signatures and paraphs saved in
+  Annotate used to be plain PNGs in the app folder, readable by any backup or
+  program running as the user. They are now sealed like the API keys: DPAPI
+  on Windows, the Android Keystore on Android. Existing signatures are
+  converted the first time the library opens; the plain PNG is removed only
+  after the encrypted copy reads back.
+
+### Changed
+
+- A signature that can no longer be decrypted (Android: the Keystore key is
+  lost with a re-install) is skipped instead of failing the whole list; its
+  file is kept (#443).
+
 ## [6.3.2] - Kamerayla belge tarama
 
 ### Added

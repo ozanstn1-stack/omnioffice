@@ -31,6 +31,35 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.3.3) - İmzalar şifreli
+
+- **Saved signatures are sealed with DPAPI / the Android Keystore** (#443),
+  stored as `<name>.sig` through `secret::seal_bytes`.
+  `test:src-tauri/src/signatures.rs#a_saved_signature_is_sealed_on_disk_and_lists_back`
+  `test:src-tauri/src/signatures.rs#windows_seals_signatures_with_dpapi`
+- **Legacy plain PNGs are migrated** and removed only after the sealed copy
+  reads back (#443).
+  `test:src-tauri/src/signatures.rs#a_legacy_png_is_listed_and_moved_to_sealed_storage`
+- **An undecryptable signature is skipped and kept** (#443).
+  `test:src-tauri/src/signatures.rs#an_unreadable_signature_is_skipped_and_kept`
+
+### Not done / Known limitations (6.3.3)
+
+- The Android Keystore path was not exercised on a phone this cycle (no
+  device connected); it reuses the `Keystore` cipher the API keys already use,
+  and the sealing logic is unit-tested with a fake cipher. Confirm by hand:
+  save a signature in Annotate, restart the app, reuse it.
+  (no test: on-device verification pending.)
+- Linux and macOS builds have no platform cipher, so signatures stay
+  `plain:` there, as the API keys do.
+  (no test: known limitation.)
+- A signature sealed on Android is lost with a re-install or a backup
+  restore to another device (the Keystore key does not move); it has to be
+  drawn again.
+  (no test: known limitation.)
+- The 6.2.11 to 6.3.2 on-device checks are still pending.
+  (no test: on-device verification pending.)
+
 ## Implemented (this cycle, 6.3.2) - Kamerayla belge tarama
 
 - **Camera capture with a four-corner picker** (#441): each camera photo opens
