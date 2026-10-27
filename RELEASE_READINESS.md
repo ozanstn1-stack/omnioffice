@@ -31,6 +31,42 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.3.2) - Kamerayla belge tarama
+
+- **Camera capture with a four-corner picker** (#441): each camera photo opens
+  in the corner picker; the corners reach `office_scan_pages` in photo pixels,
+  and "Whole photo" drops the crop.
+  `test:src/screens/Scanner.test.tsx#crops a page with the corner picker and sends the corners in photo pixels`
+  `test:src/screens/Scanner.test.tsx#drops the crop when the whole photo is chosen`
+- **Pages are turned upright from EXIF and written as JPEG** (#441).
+  `test:crates/pdfcore/src/scan.rs#a_photo_stored_sideways_is_turned_upright`
+  `test:crates/pdfcore/src/scan.rs#a_sideways_or_cropped_page_is_written_upright_as_jpeg`
+- **The camera app is visible to the capture chooser on Android 11+** (#441).
+  `test:src/lib/android-manifest.test.ts#queries the image capture intent so the camera app is visible`
+- **Scanner photos are swept** (#441): `cacheDir/scans` after 14 days, the
+  chooser's `Pictures/JPEG_*` captures after a day.
+  (no test: covered by the Kotlin JVM IncomingFilesTest, which runs in the Android job.)
+- **The scanner left its feature flag** (#441).
+  `test:src/lib/flags.test.ts#ships the document scanner without a flag`
+
+### Not done / Known limitations (6.3.2)
+
+- Not exercised on a phone this cycle (no device connected): the camera
+  capture, the runtime CAMERA prompt and dragging the corners by touch are
+  covered by component and JVM tests only. Confirm by hand: Scan -> Take a
+  page photo -> allow the camera -> drag the corners -> Build PDF.
+  (no test: on-device verification pending.)
+- No automatic edge detection: the corners start 6 % inside the photo and are
+  set by hand. ML Kit's detector was left out for privacy (Play services and
+  Google usage logging).
+  (no test: known limitation.)
+- One photo per tap: the system camera app returns a single picture, so a
+  multi-page document takes one tap per page.
+  (no test: known limitation.)
+- The 6.2.11, 6.3.0, 6.3.1 and WhatsApp round-trip checks still await the
+  same on-device confirmation.
+  (no test: on-device verification pending.)
+
 ## Implemented (this cycle, 6.3.1) - Son kullanılanlar ve doğrudan paylaşım
 
 - **Documents from other apps are listed under Recent** (#439): PDFs and
