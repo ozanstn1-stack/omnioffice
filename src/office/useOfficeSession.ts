@@ -25,6 +25,8 @@ import * as api from "../lib/office-api";
 import { historyKeyFor } from "./historyKey";
 import { compatibilityReport, gatingLossItems, type CompatibilityReport } from "../components/compatibility";
 import { useDataLossPrompt } from "../components/data-loss-dialog";
+import { shareDocumentFile, shareExtensionFor } from "../lib/share";
+import { needsSaveDestination, useSaveDestinationPrompt } from "./save-destination";
 import { useFileConflictPrompt, type ConflictDetails } from "../components/file-conflict-dialog";
 
 /** Shortens a hash for display without pretending it is the full digest. */
@@ -182,7 +184,8 @@ export function useOfficeSession(tab: OfficeTab) {
       if (failures.length) {
         useToasts.getState().push({ kind: "error", title: t("errors.title"), detail: failures[0].error });
       } else {
-        notify(t("office.saved"), fileBaseName(sourcePath));
+        // Without a picked target the copy lands in Downloads/OmniOffice: say so.
+        notify(t("office.saved"), t("office.savedToDownloads", { name: fileBaseName(sourcePath) }));
       }
     },
     [notify, t],
@@ -198,6 +201,14 @@ export function useOfficeSession(tab: OfficeTab) {
       let path = targetPath ?? (forceDestination ? undefined : tab.path) ?? undefined;
       let saveToken: string | null = null;
       let androidTarget: AndroidTarget | null = null;
+      // A document shared from another app: ask once where the changes go.
+      const destination = needsSaveDestination(path, Boolean(targetPath) || forceDestination)
+        ? await useSaveDestinationPrompt.getState().ask(fileBaseName(path!))
+        : null;
+      if (destination === "cancel") return null;
+      if (destination === "pick") {
+        return saveImpl(undefined, { forceDestination: true, extension: shareExtensionFor(tab.kind, path) });
+      }
       if (!path) {
         if (isAndroid()) {
           // Android never hands out a writable path for the user's documents:
@@ -288,6 +299,7 @@ export function useOfficeSession(tab: OfficeTab) {
         rememberOfficePath(result.path);
         if (isAndroid()) {
           await publishAndroidResult(result.path, androidTarget, androidTarget?.name ?? fileBaseName(path));
+          if (destination === "share") await shareDocumentFile(result.path, t("office.share")).catch(() => undefined);
           if (result.warnings.length > 0) {
             useToasts
               .getState()

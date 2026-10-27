@@ -98,6 +98,16 @@ this without changing any tool:
 Nothing is uploaded anywhere: the copies live in the app's private storage and
 the public Downloads folder.
 
+### Saving a document opened from another app
+
+A document shared from WhatsApp, mail or a download manager is edited in the
+app's private copy (`cache/incoming/<id>/name.ext`). Its first Save asks where
+the changes go - **Save to Downloads** (`Downloads/OmniOffice/name.ext`),
+**Save and share** (the same, then the system share sheet), or **Choose a
+location** (the system save dialog, keeping the document's format) - and later
+saves of the tab overwrite that destination without asking. The confirmation
+names the folder (`office/save-destination.tsx`, `useOfficeSession.save`).
+
 ### Sharing an open document
 
 The office workspace (Writer, Calc, Impress) and the PDF reader have a

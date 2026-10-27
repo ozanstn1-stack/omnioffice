@@ -234,7 +234,7 @@
     "src/office/tools/draw.tsx": 360,
     "src/office/tools/notes.tsx": 200,
     "src/office/tools/pdf-forms.tsx": 254,
-    "src/office/useOfficeSession.ts": 520,
+    "src/office/useOfficeSession.ts": 532,
     "src/office/writer/caret.ts": 252,
     "src/office/writer/compare.ts": 227,
     "src/office/writer/find-replace.ts": 395,
