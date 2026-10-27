@@ -21,6 +21,16 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
+    <!-- The scanner's camera button opens the system camera app through the
+         WebView file chooser, which checks resolveActivity() first. Android 11+
+         package visibility hides every camera app from that check unless the
+         intent is queried here; the button then fell back to the file picker. -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+    </queries>
+
     <application
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

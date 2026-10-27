@@ -122,6 +122,20 @@ class ManifestIntentFiltersTest {
   }
 
   @Test
+  fun `the camera app is visible to the scanner's capture chooser`() {
+    // RustWebChromeClient.showImageCapturePicker calls resolveActivity(); on
+    // Android 11+ that finds no camera app unless IMAGE_CAPTURE is queried.
+    val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+    val document = factory.newDocumentBuilder().parse(manifestFile)
+    val queries = document.getElementsByTagName("queries")
+    val actions = (0 until queries.length).flatMap { index ->
+      val nodes = (queries.item(index) as Element).getElementsByTagName("action")
+      (0 until nodes.length).mapNotNull { attr(nodes.item(it) as Element, "name") }
+    }
+    assertTrue(actions.contains("android.media.action.IMAGE_CAPTURE"))
+  }
+
+  @Test
   fun `document intents land on the trampoline in its own task, never on MainActivity`() {
     // A sender's FLAG_ACTIVITY_CLEAR_TASK on MainActivity destroys the running
     // activity and WryActivity.onDestroy ends the process (v6.2.9 on a Pixel).

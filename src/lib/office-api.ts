@@ -309,7 +309,7 @@ export const openEml = (path: string) => invoke<EmlMessage>("office_open_eml", {
 
 export interface ScanPage {
   path: string;
-  /** The four page corners the user tapped, in source pixels; omitted to use the image as it is. */
+  /** The four page corners picked on the upright photo, in its pixels; omitted to use the whole photo. */
   corners?: [number, number][];
 }
 
@@ -323,6 +323,15 @@ export interface ScanResult {
 /** Corrects the perspective of each captured page and assembles a multi-page PDF. */
 export const scanPages = (pages: ScanPage[], output: string) =>
   invoke<ScanResult>("office_scan_pages", { request: { pages, output } });
+
+/** An upright, downscaled page photo for the corner picker; `width`/`height` are the full-size pixels. */
+export interface ScanPreview {
+  dataUrl: string;
+  width: number;
+  height: number;
+}
+
+export const scanPreview = (path: string) => invoke<ScanPreview>("office_scan_preview", { path });
 
 // ---------------------------------------------------------------------------
 // Address mail merge

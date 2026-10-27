@@ -3,6 +3,7 @@ package io.github.ozanstn1.pdfswissarmyknife
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.VisibleForTesting
 import java.io.File
@@ -22,10 +23,13 @@ class MainActivity : TauriActivity() {
     // Settings reads it back through android_open_with_diagnostics.
     OpenWithLog.attach(cacheDir, packageInfoVersion())
     importOpenWithIntent(intent)
-    // Old open-with and share copies; off the UI thread, failures are ignored.
+    // Old open-with, share and scan copies and leftover camera captures; off
+    // the UI thread, failures are ignored.
     Thread {
       try {
-        IncomingFiles.pruneDocumentCache(cacheDir, System.currentTimeMillis())
+        val now = System.currentTimeMillis()
+        IncomingFiles.pruneDocumentCache(cacheDir, now)
+        IncomingFiles.pruneCapturePhotos(getExternalFilesDir(Environment.DIRECTORY_PICTURES), now)
       } catch (error: Exception) {
         // A cache sweep must never stop the app from starting.
       }

@@ -1449,9 +1449,42 @@ pub struct ScanResult {
     pub warnings: Vec<String>,
 }
 
-/// Corrects the perspective of each captured page and assembles a multi-page
-/// PDF, reusing the existing image-to-PDF writer. The camera capture itself
-/// happens on the Android side; this is the Rust half of the CameraX path.
+/// The corner picker's view of one page photo (see `pdfcore::scan::preview`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanPreview {
+    /// A small upright JPEG as a `data:` URL.
+    pub data_url: String,
+    /// Upright full-size width and height: the corners are sent in these pixels.
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Longest side of the corner picker's preview.
+const SCAN_PREVIEW_SIDE: u32 = 1280;
+
+/// A small upright preview of a page photo for the corner picker. The photo
+/// itself can be 12 MP and carry its rotation in EXIF; the preview is turned
+/// the same way the page will be, so the picked corners line up.
+#[tauri::command]
+pub async fn office_scan_preview(path: String) -> Result<ScanPreview, OfficeErrorPayload> {
+    let task = tauri::async_runtime::spawn_blocking(move || scan_preview(&path));
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+}
+
+fn scan_preview(path: &str) -> Result<ScanPreview, OfficeErrorPayload> {
+    use base64::Engine;
+    let source = input_path(path)?;
+    let preview = pdfcore::scan::preview(&source, SCAN_PREVIEW_SIDE)
+        .map_err(|error| payload(OfficeError::invalid(error.to_string())))?;
+    let data_url =
+        format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(&preview.jpeg));
+    Ok(ScanPreview { data_url, width: preview.width, height: preview.height })
+}
+
+/// Turns each captured page upright, corrects its perspective when it has
+/// corners and assembles a multi-page PDF through the existing image-to-PDF
+/// writer. The photos come from the system camera (Android) or a file pick.
 #[tauri::command]
 pub async fn office_scan_pages(request: ScanRequest) -> Result<ScanResult, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
@@ -1470,27 +1503,29 @@ fn scan_pages(request: ScanRequest) -> Result<ScanResult, OfficeErrorPayload> {
     let mut corrected = 0usize;
     for (index, page) in request.pages.iter().enumerate() {
         let source = input_path(&page.path)?;
-        let target = match &page.corners {
-            Some(corners) if corners.len() == 4 => {
-                let quad = [
-                    [corners[0][0], corners[0][1]],
-                    [corners[1][0], corners[1][1]],
-                    [corners[2][0], corners[2][1]],
-                    [corners[3][0], corners[3][1]],
-                ];
-                let path = temp.path().join(format!("page-{index}.png"));
-                match pdfcore::scan::correct_file(&source, quad, &path) {
-                    Ok(()) => {
-                        corrected += 1;
-                        path
-                    }
-                    Err(error) => {
-                        warnings.push(format!("Page {} was used uncorrected: {error}", index + 1));
-                        source.clone()
-                    }
+        let quad = page.corners.as_ref().filter(|corners| corners.len() == 4).map(|corners| {
+            [
+                [corners[0][0], corners[0][1]],
+                [corners[1][0], corners[1][1]],
+                [corners[2][0], corners[2][1]],
+                [corners[3][0], corners[3][1]],
+            ]
+        });
+        // Every page is turned upright first (camera photos carry their
+        // rotation in EXIF), then flattened when it has corners.
+        let path = temp.path().join(format!("page-{index}.jpg"));
+        let target = match pdfcore::scan::prepare_page(&source, quad, &path) {
+            Ok(true) => {
+                if quad.is_some() {
+                    corrected += 1;
                 }
+                path
             }
-            _ => source.clone(),
+            Ok(false) => source.clone(),
+            Err(error) => {
+                warnings.push(format!("Page {} was used as it is: {error}", index + 1));
+                source.clone()
+            }
         };
         items.push(pdfcore::images::ImageItem { path: target.to_string_lossy().to_string(), rotation_delta: 0 });
     }
@@ -2575,6 +2610,17 @@ mod scan_tests {
         assert!(result.warnings.is_empty(), "warnings: {:?}", result.warnings);
         let bytes = std::fs::read(&output).expect("pdf written");
         assert!(bytes.starts_with(b"%PDF"));
+    }
+
+    #[test]
+    fn scan_preview_is_a_small_jpeg_with_the_full_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let page = dir.path().join("page.png");
+        write_page(&page, 2560, 1280);
+        let preview = scan_preview(&page.to_string_lossy()).expect("preview");
+        assert!(preview.data_url.starts_with("data:image/jpeg;base64,"));
+        assert_eq!((preview.width, preview.height), (2560, 1280));
+        assert!(scan_preview(&dir.path().join("gone.jpg").to_string_lossy()).is_err());
     }
 
     #[test]

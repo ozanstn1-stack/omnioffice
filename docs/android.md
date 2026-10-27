@@ -132,6 +132,26 @@ a document opened from another app - goes straight from private storage, so
 tapping Share no longer leaves another copy in `Downloads/OmniOffice`. Files
 outside the app's storage are still published first.
 
+### Document scanner
+
+**Scan** (also the launcher shortcut) photographs pages with the phone's own
+camera app: the screen's `<input type="file" capture="environment">` goes
+through the WebView file chooser (`RustWebChromeClient.showImageCapturePicker`),
+which asks for the CAMERA permission the first time and launches
+`ACTION_IMAGE_CAPTURE`. The manifest's `<queries>` entry for that intent is
+what lets the chooser see a camera app on Android 11+; without it the button
+silently opened the file picker. Each photo is copied to `cacheDir/scans/` and
+opens in the corner picker (`screens/scanner-corners.tsx`) on an upright,
+downscaled preview (`office_scan_preview`). `office_scan_pages` then turns
+every page upright from its EXIF orientation, flattens the cropped ones and
+writes a JPEG-page PDF.
+
+ML Kit's document scanner was considered and left out: it needs Google Play
+services and adds Google's usage logging (`transport-backend-cct`), which the
+app's no-telemetry promise rules out. Old `cacheDir/scans` folders go with
+the 14-day cache sweep; the chooser's own `Pictures/JPEG_*.jpg` captures are
+removed after a day (`IncomingFiles.pruneCapturePhotos`).
+
 ### Recent files
 
 Documents another app hands over are listed under Home's **Recent**: office

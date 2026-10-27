@@ -29,14 +29,19 @@ describe("route manifest", () => {
   });
 
   it("gates flagged routes out of the nav and the palette", () => {
-    for (const id of ["scanner", "kvkk", "documentHealth"] as const) {
+    for (const id of ["kvkk", "documentHealth"] as const) {
       expect(routeEnabled(id)).toBe(false);
       expect(enabledRoutes().map((entry) => entry.id)).not.toContain(id);
       expect(navSections().flatMap((section) => section.routes.map((entry) => entry.id))).not.toContain(id);
     }
-    localStorage.setItem("flag:experimentalScanner", "1");
+    localStorage.setItem("flag:experimentalKvkkWizard", "1");
+    expect(routeEnabled("kvkk")).toBe(true);
+    expect(enabledRoutes().map((entry) => entry.id)).toContain("kvkk");
+    expect(navSections().flatMap((section) => section.routes.map((entry) => entry.id))).toContain("kvkk");
+  });
+
+  it("lists the document scanner, which the Android Scan shortcut opens", () => {
     expect(routeEnabled("scanner")).toBe(true);
-    expect(enabledRoutes().map((entry) => entry.id)).toContain("scanner");
     expect(navSections().flatMap((section) => section.routes.map((entry) => entry.id))).toContain("scanner");
   });
 

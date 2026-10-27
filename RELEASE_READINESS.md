@@ -575,7 +575,8 @@ it claims nothing that is not in the tree today.
 - **"Claim = test" CI rule** (#229): this script is the gate and runs in the
   Lint job. `(no test: scripts/claims-audit.mjs is itself the check)`
 - **Feature flags** (#231): `src/lib/flags.ts`, the scanner hidden behind an
-  off-by-default flag. `test:src/lib/flags.test.ts#keeps the experimental scanner hidden by default`
+  off-by-default flag (the scanner left its flag in 6.3.2; UDF and the vendor
+  exports still use it). `test:src/lib/flags.test.ts#keeps the unverified formats hidden by default`
 
 ### 5.2.0 — Gerçek dosya laboratuvarı (Real-file lab)
 
