@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.2] - Tebligat süre hesaplayıcı
+
+### Added
+
+- **Notification deadline calculator (C2, #341):** a new screen that gives
+  the last day of a court period. An e-notice is served at the end of the
+  fifth day after it reaches the electronic address (Tebligat Kanunu 7/a);
+  the period runs from the next day, weeks and months end on the matching
+  day (HMK 92), a period ending in the judicial recess moves to 7 September
+  (HMK 104), and a last day on a weekend or an official holiday moves to the
+  next working day (HMK 93). Every step is listed, a half-day eve and a year
+  outside the holiday table are flagged.
+- **Dates from an e-Tebligat PDF:** drop or pick the PDF and the arrival and
+  service dates in its text are offered; the lawyer confirms one.
+- **Planner and calendar:** the last day goes to the Planner or into a
+  `.ics` file with a reminder two days before.
+- Presets for the common periods (2 weeks for HMK appeal/cassation/answer,
+  7 days for an İİK objection, 30 and 60 days for tax and administrative
+  actions) and any custom length.
+- The lawyer's desk links the calculator instead of the plain Planner.
+
 ## [6.4.1] - Gönderim öncesi kontrol
 
 ### Added
