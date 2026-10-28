@@ -1,9 +1,20 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { pickSaveToken } from "../lib/file-tokens";
 import { fileBaseName } from "../lib/format";
 import { pickDocumentTokens } from "../lib/file-tokens";
-import { AlertTriangle, Calculator, CheckCircle2, Copy, FileText, QrCode, Receipt, Save, Table2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Calculator,
+  CheckCircle2,
+  ClipboardCheck,
+  Copy,
+  FileText,
+  QrCode,
+  Receipt,
+  Save,
+  Table2,
+} from "lucide-react";
 import { Badge, Button, Card, Modal } from "../components/ui";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
@@ -25,6 +36,11 @@ import {
   vatRates,
 } from "../lib/office-api";
 import type { InvoiceDocument, InvoiceQr, UblInvoice, VatRate } from "../lib/office-api";
+
+// The audit (rules, workbook writer, dialog) loads on first use.
+const PeriodAuditModal = lazy(() =>
+  import("./invoices/period-audit-modal").then((module) => ({ default: module.PeriodAuditModal })),
+);
 
 type Entry =
   | { id: string; path: string; kind: "ubl"; document: InvoiceDocument }
@@ -76,6 +92,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
   const [busy, setBusy] = useState(false);
   const [showKdvModal, setShowKdvModal] = useState(false);
   const [kdvPeriod, setKdvPeriod] = useState("");
+  const [showAudit, setShowAudit] = useState(false);
   const ownTaxId = useSettings((state) => state.settings.ownTaxId);
 
   const initialKey = initialFiles.join("|");
@@ -352,6 +369,9 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
             <Button variant="ghost" disabled={busy || !invoices.length} onClick={() => setShowKdvModal(true)}>
               <Calculator size={16} /> KDV Beyanı
             </Button>
+            <Button variant="ghost" disabled={busy || !invoices.length} onClick={() => setShowAudit(true)}>
+              <ClipboardCheck size={16} /> {t("periodAudit.open")}
+            </Button>
             <span className="text-xs muted">{t("invoices.pickHint")}</span>
           </div>
           <p className="text-xs muted">{t("invoices.xsltNote")}</p>
@@ -592,6 +612,12 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
             </table>
             <p className="text-xs muted">{t("invoices.rates.note")}</p>
           </Card>
+        ) : null}
+
+        {showAudit ? (
+          <Suspense fallback={null}>
+            <PeriodAuditModal invoices={invoices} ownTaxId={ownTaxId} onClose={() => setShowAudit(false)} />
+          </Suspense>
         ) : null}
 
         {showKdvModal ? (
