@@ -165,7 +165,7 @@
     "src-tauri/src/vault.rs": 3232,
     "src-tauri/src/wire_contract.rs": 285,
     "src-tauri/src/worker.rs": 356,
-    "src/App.tsx": 1119,
+    "src/App.tsx": 1126,
     "src/components/ai-settings.tsx": 570,
     "src/components/command-palette.tsx": 298,
     "src/components/compatibility.tsx": 367,

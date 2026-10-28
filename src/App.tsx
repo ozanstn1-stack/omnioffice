@@ -71,6 +71,8 @@ const AiLibrary = React.lazy(() => import("./screens/AiLibrary").then((module) =
 const Merge = React.lazy(() => import("./screens/Merge").then((module) => ({ default: module.Merge })));
 const Organize = React.lazy(() => import("./screens/Organize").then((module) => ({ default: module.Organize })));
 const Split = React.lazy(() => import("./screens/Split").then((module) => ({ default: module.Split })));
+// Phones only; until it loads an empty bar of the same height holds its place.
+const BottomNav = React.lazy(() => import("./components/bottom-nav").then((module) => ({ default: module.BottomNav })));
 const PresendDialog = React.lazy(() =>
   import("./components/presend-dialog").then((module) => ({ default: module.PresendDialog })),
 );
@@ -898,6 +900,11 @@ export default function App() {
             <ScreenFrame screen={effectiveScreen}>{screens[effectiveScreen]}</ScreenFrame>
           </div>
         </main>
+
+        {/* Thumb-reach navigation on phones (C11); More opens the full drawer. */}
+        <React.Suspense fallback={<div className="bottom-nav bottom-nav-placeholder" aria-hidden />}>
+          <BottomNav screen={screen} onNavigate={navigate} onMore={() => setNavOpen(true)} />
+        </React.Suspense>
 
         <Toasts />
         <div className="sr-only" role="status" aria-live="polite">

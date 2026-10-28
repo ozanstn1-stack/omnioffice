@@ -2666,5 +2666,7 @@
   "periodAudit.col.taxable": "Matrah",
   "periodAudit.col.vat": "KDV",
   "periodAudit.col.payable": "Ödenecek",
-  "periodAudit.col.ettn": "ETTN"
+  "periodAudit.col.ettn": "ETTN",
+  "nav.bottom": "Ana bölümler",
+  "nav.more": "Diğer"
 }
