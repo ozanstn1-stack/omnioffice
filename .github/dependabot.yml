@@ -77,6 +77,11 @@ updates:
       # pre-release. Lift when the formats family ships der 0.8 stably.
       - dependency-name: der
         versions: [">=0.8.0"]
+      # const-oid 0.10 is the OID crate of that same der 0.8 family (it drops
+      # the `db` module pdfcore takes its signature OIDs from) and must move
+      # with der, cms and x509-cert; on its own it does not compile.
+      - dependency-name: const-oid
+        versions: [">=0.10.0"]
       # rsa 0.9 (via num-bigint-dig) generates keys from rand_core 0.6, so the
       # signing tests' RNG must be rand 0.8. The rand 0.10 entry Dependabot
       # sees in the tree belongs to lopdf and is not ours to bump.
