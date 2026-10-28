@@ -38,12 +38,15 @@ import type { RedactionCertificate } from "../lib/generated/RedactionCertificate
 import type { CertificateVerification } from "../lib/generated/CertificateVerification";
 import type { ImageRedactionMode, RedactionArea, RedactionOptions } from "../lib/types";
 import { kindLabel, matchBox, matchRow, splitKeywords, type DrawnBox, type MatchRow } from "../lib/redact-rows";
+import { useScreenReady } from "../lib/screen-ready";
 
 export { splitKeywords } from "../lib/redact-rows";
 
 export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dragging: boolean }) {
   const t = useT();
   const session = useTool({ suffix: "_redacted", accept: "pdf", initialPaths: initialFiles });
+  // Automation (E2E) waits on this: the PDF is loaded and can be scanned.
+  useScreenReady("redact", Boolean(session.primary));
   const [options, setOptions] = useState<RedactionOptions>({
     fill: "#000000",
     images: "obscure",

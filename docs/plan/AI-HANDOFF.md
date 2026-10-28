@@ -35,6 +35,11 @@ Bu dosya, [`ROADMAP-3.md`](./ROADMAP-3.md) yol haritasını uygulayacak yapay ze
   Biri eksikse sürüm tamamlanmış sayılmaz.
 - **Tag asla taşınmaz:** v4.7.0'da tag yayından sonra taşındı. Hata çıkarsa yeni bir yama sürümü
   (X.Y.Z+1) yayınlanır.
+- **Sürüm kapısı E2E'dir:** `auto-tag.yml` yalnızca master'daki Desktop çalışması başarılıysa tag
+  atar; "Desktop E2E (Windows, WebView2)" işi bu yüzden sürüm kapısıdır. Office/merge/sanitize
+  akışları `withSessionRetry` ile **bir kez** yeni oturumla yeniden denenir. Akışlar düğme saymak
+  yerine ekranın hazır sinyalini bekler: `<html data-screen-ready>`, `src/lib/screen-ready.ts`
+  (#407). Yeni bir E2E akışı da kendi ekranında `useScreenReady` kullanır.
 
 ## Kalite kapıları
 - **Yerelde koşulacaklar:**

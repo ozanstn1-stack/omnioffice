@@ -95,9 +95,24 @@ async function waitForScript(session, script, timeoutMs, label) {
   // stuck app are otherwise indistinguishable from a wrong selector.
   const diagnostic = await execute(
     session,
-    "return JSON.stringify({ready: document.readyState, href: location.href, text: (document.body?.innerText||'').slice(0,300)})",
+    "const root=document.documentElement.dataset; return JSON.stringify({ready: document.readyState, href: location.href, screenReady: root.screenReady||null, screenReadyDetail: root.screenReadyDetail||null, text: (document.body?.innerText||'').slice(0,300)})",
   ).catch(() => "<no diagnostic>");
   throw new Error(`timed out waiting for ${label} (last value: ${JSON.stringify(last)}; page: ${diagnostic})`);
+}
+
+/**
+ * Waits until a screen reports that it holds its input and can run
+ * (`<html data-screen-ready>`, see src/lib/screen-ready.ts). This replaces
+ * waits on button counts, which could not tell "rendered" from "has its
+ * file" (#407).
+ */
+async function waitForScreenReady(session, screen, timeoutMs) {
+  return waitForScript(
+    session,
+    `return document.documentElement.dataset.screenReady === ${JSON.stringify(screen)} ? (document.documentElement.dataset.screenReadyDetail || true) : false`,
+    timeoutMs,
+    `${screen} ready signal (data-screen-ready)`,
+  );
 }
 
 async function waitForDriver(port) {
@@ -409,14 +424,14 @@ async function sanitizeFlow(session) {
     );
   }
 
+  // The Studio says when it holds the dev-selected file; only then is the
+  // run button the sanitizer's. After a navigation fallback the file is gone
+  // and the signal never comes, so fail fast and let the caller relaunch.
   // The run button is the last enabled primary button on the screen (the file
-  // picker is the first). Requiring two enabled primary buttons means the
-  // sanitize card is really rendered with a file selected, so a race with the
-  // lazy screen never clicks the picker and opens a native dialog. After a
-  // navigation fallback the dev-selected file is gone, so fail fast and let
-  // the caller relaunch instead of waiting the full deadline.
+  // picker is the first); requiring two keeps a native dialog from opening.
   let clicked;
   try {
+    await waitForScreenReady(session, "pdfStudio", onStudio ? 30000 : 10000);
     clicked = await waitForScript(
       session,
       "const buttons=[...document.querySelectorAll('button.btn.btn-primary')].filter((button)=>!button.disabled); if(buttons.length>=2){buttons[buttons.length-1].click(); return true;} return false;",
@@ -597,7 +612,7 @@ async function publicPersona(session) {
 async function lawyerPersona(session) {
   const output = join(work, "redaction-sample_redacted.pdf");
   rmSync(output, { force: true });
-  await waitForScript(session, "return document.querySelectorAll('button, .tool-card').length", 20000, "redact screen");
+  await waitForScreenReady(session, "redact", 45000);
   const size = await waitForFile(output, 120000, "redacted output");
   await screenshot(session, "persona-lawyer");
   console.log(`PASS: lawyer persona found and redacted the synthetic identifiers (${size} bytes)`);
