@@ -18,6 +18,8 @@ path = "src/lib.rs"
 [features]
 # Generates the TypeScript bindings for the IPC DTOs (`cargo test export_bindings`).
 ts = ["dep:ts-rs"]
+# Typed command bindings (tauri-specta, #316): the error type the commands return.
+bindings = ["dep:specta"]
 
 [dependencies]
 # Real digital signatures (crates/pdfcore/src/sign.rs). Every crypto crate here
@@ -57,6 +59,8 @@ thiserror = "2.0.20"
 # TypeScript bindings for the DTOs that cross the IPC boundary (v5.1). Optional:
 # only the `ts` feature pulls it in, so shipped builds are unchanged.
 ts-rs = { version = "12", optional = true }
+# tauri-specta's type layer, pinned with the app crate's (docs/dependencies.md).
+specta = { version = "=2.0.0-rc.26", features = ["derive"], optional = true }
 time = "0.3"
 getrandom = "0.2"
 x509-cert = { version = "0.2", default-features = false, features = ["std"] }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import type * as specta from "../lib/generated/specta";
+import { commands, unwrap } from "../lib/typed-ipc";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   AlertTriangle,
@@ -37,96 +38,18 @@ import { formatBytes, formatDate } from "../lib/format";
 import { isAndroid, openAnyFile, pickOfficeFiles } from "../lib/mobile";
 import type { ProgressPayload } from "../lib/types";
 
-export interface VaultConfig {
-  folders: string[];
-  includePdf: boolean;
-  includeOffice: boolean;
-  maxFileMb: number;
-  updatedAt: string;
-}
-
-export interface VaultStatus {
-  indexed: number;
-  folders: number;
-  indexBytes: number;
-  lastScan: string | null;
-  scanning: boolean;
-  warnings: string[];
-  /** Platform capability: folder scanning (desktop only). Optional so an
-   *  older backend without the field still renders. */
-  canScanFolders?: boolean;
-  /** Platform capability: importing picked documents into app storage. */
-  canImportFiles?: boolean;
-}
-
-export interface VaultImportFile {
-  source: string;
-  path: string;
-  name: string;
-  size: number;
-  sha256: string;
-}
-
-export interface VaultImportSkip {
-  source: string;
-  reason: string;
-}
-
-export interface VaultImportReport {
-  imported: VaultImportFile[];
-  skipped: VaultImportSkip[];
-}
-
-export interface VaultScanRequest {
-  folders: string[];
-  rescan: boolean;
-  maxFiles: number;
-}
-
-export interface VaultSearchRequest {
-  query: string;
-  exact: boolean;
-  fuzzy: boolean;
-  phrase: boolean;
-  extensions: string[];
-  modifiedAfter: string | null;
-  modifiedBefore: string | null;
-  folder: string | null;
-  limit: number;
-  offset: number;
-  embeddingConsent?: boolean;
-}
-
-export interface VaultIndexReport {
-  documents: number;
-  chunks: number;
-  embedded: number;
-  reused: number;
-  cancelled: boolean;
-  tookMs: number;
-}
-
-export interface VaultSearchHit {
-  documentId: string;
-  path: string;
-  fileName: string;
-  extension: string;
-  size: number;
-  modified: string;
-  score: number;
-  matchLabel: string;
-  snippet: string;
-  matchedTerms: string[];
-}
-
-export interface VaultSearchResponse {
-  hits: VaultSearchHit[];
-  total: number;
-  tookMs: number;
-  indexMissing: boolean;
-  /** "hybrid" when BM25 and the stored vectors were fused with RRF. */
-  retrievalMode?: string | null;
-}
+// The vault's wire types come from the Rust structs (tauri-specta, #316):
+// results are the `_Serialize` shapes, requests the `_Deserialize` ones.
+export type VaultConfig = specta.VaultConfig_Serialize;
+export type VaultStatus = specta.VaultStatus_Serialize;
+export type VaultImportFile = specta.VaultImportFile_Serialize;
+export type VaultImportSkip = specta.VaultImportSkip_Serialize;
+export type VaultImportReport = specta.VaultImportReport_Serialize;
+export type VaultScanRequest = specta.VaultScanRequest_Deserialize;
+export type VaultSearchRequest = specta.VaultSearchRequest_Deserialize;
+export type VaultIndexReport = specta.VaultIndexReport;
+export type VaultSearchHit = specta.VaultSearchHit;
+export type VaultSearchResponse = specta.VaultSearchResponse_Serialize;
 
 const DEFAULT_CONFIG: VaultConfig = {
   folders: [],
@@ -194,7 +117,7 @@ function HitRow({
         </span>
         <Badge>{hit.extension.toUpperCase()}</Badge>
         <Badge tone="accent">{hit.matchLabel}</Badge>
-        <span className="text-xs muted ml-auto">{t("vault.score", { score: Math.round(hit.score) })}</span>
+        <span className="text-xs muted ml-auto">{t("vault.score", { score: Math.round(hit.score ?? 0) })}</span>
       </span>
       <span className="block w-full text-xs muted truncate" title={hit.path}>
         {hit.path}
@@ -259,7 +182,7 @@ export function Vault() {
 
   const refreshStatus = useCallback(async () => {
     try {
-      const next = await invoke<VaultStatus>("vault_status");
+      const next = await unwrap(commands.vaultStatus());
       setStatus(next);
       setStatusError(null);
     } catch (err) {
@@ -287,7 +210,7 @@ export function Vault() {
     async (next: VaultConfig) => {
       setConfig(next);
       try {
-        const saved = await invoke<VaultConfig>("vault_configure", { config: next });
+        const saved = await unwrap(commands.vaultConfigure(next));
         setConfig(saved);
         setConfigError(null);
         await refreshStatus();
@@ -346,7 +269,7 @@ export function Vault() {
     setScanError(null);
     setProgress(null);
     try {
-      const report = await invoke<VaultIndexReport>("vault_index_build", { consent: embeddingConsent });
+      const report = await unwrap(commands.vaultIndexBuild(embeddingConsent));
       pushToast({
         kind: "success",
         title: `Vektör İndeksi Güncellendi (${report.embedded} yeni, ${report.reused} önbellek)`,
@@ -363,7 +286,7 @@ export function Vault() {
   const clearVault = async () => {
     setClearing(true);
     try {
-      const next = await invoke<VaultStatus>("vault_clear", { deleteImports });
+      const next = await unwrap(commands.vaultClear(deleteImports));
       setStatus(next);
       setStatusError(null);
       setResult(null);
@@ -391,7 +314,7 @@ export function Vault() {
     try {
       const picked = await pickOfficeFiles(true);
       if (!picked.length) return;
-      const report = await invoke<VaultImportReport>("vault_import_files", { paths: picked });
+      const report = await unwrap(commands.vaultImportFiles(picked));
       await startScan();
       if (report.imported.length) {
         pushToast({
@@ -443,7 +366,7 @@ export function Vault() {
       // Hybrid search: BM25 plus, when embeddings are configured and consented,
       // the stored chunk vectors fused with RRF. It falls back to keyword-only
       // when consent is off or the provider has no embeddings.
-      const response = await invoke<VaultSearchResponse>("vault_search_hybrid", { request });
+      const response = await unwrap(commands.vaultSearchHybrid(request));
       setResult(response);
     } catch (err) {
       setSearchError(errorMessage(err, t));
@@ -459,7 +382,7 @@ export function Vault() {
     setPreviewError(null);
     setPreviewLoading(true);
     try {
-      const text = await invoke<string>("vault_document_text", { id: next.documentId });
+      const text = await unwrap(commands.vaultDocumentText(next.documentId));
       if (previewId.current === next.documentId) setPreview(text);
     } catch (err) {
       if (previewId.current === next.documentId) setPreviewError(errorMessage(err, t));

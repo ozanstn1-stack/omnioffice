@@ -6,27 +6,15 @@
  * or opens a real file.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import type { VaultSearchHit } from "../lib/generated/specta";
 import { Command as CommandIcon, FileText, Search } from "lucide-react";
 import { runCommand, searchCommands, type CommandDefinition, type CommandContext } from "../lib/commands";
 import { errorMessage, useRecent } from "../lib/store";
 import { useT } from "../lib/i18n";
 import type { RecentEntry } from "../lib/types";
 
-interface VaultHit {
-  documentId: string;
-  path: string;
-  fileName: string;
-  extension: string;
-  matchLabel: string;
-  snippet: string;
-}
-
-interface VaultResponse {
-  hits: VaultHit[];
-  total: number;
-  indexMissing: boolean;
-}
+/** A vault search hit, as the Rust command returns it (generated, #316). */
+type VaultHit = VaultSearchHit;
 
 export function CommandPalette({
   open,
@@ -182,7 +170,9 @@ function GlobalSearchBody({
     let cancelled = false;
     const timer = window.setTimeout(() => {
       setVaultState("searching");
-      void invoke<VaultResponse>("vault_search", { request: { query: query.trim(), limit: 20, offset: 0 } })
+      // The typed wrappers load on first search: the palette is in the entry chunk.
+      void import("../lib/typed-ipc")
+        .then(({ commands, unwrap }) => unwrap(commands.vaultSearch({ query: query.trim(), limit: 20, offset: 0 })))
         .then((response) => {
           if (cancelled) return;
           setVault(response.hits ?? []);

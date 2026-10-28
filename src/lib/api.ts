@@ -1,3 +1,4 @@
+import type { VaultScanRequest_Deserialize } from "./generated/specta";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { FileToken } from "./file-tokens";
@@ -690,8 +691,9 @@ export const addRecent = (entry: RecentAdd) => invoke<void>("add_recent", { entr
 export const clearRecent = () => invoke<void>("clear_recent");
 
 /** Vault scan: tracked so a failed/interrupted scan can be retried from Jobs. */
-export const vaultScan = <T>(request: { folders: string[]; rescan: boolean; maxFiles: number }) =>
-  invokeTracked<T>("vault_scan", { request });
+// The request type is generated from the Rust struct (#316); the call stays
+// on invokeTracked because the job tracker needs the command name.
+export const vaultScan = <T>(request: VaultScanRequest_Deserialize) => invokeTracked<T>("vault_scan", { request });
 
 // ---------------------------------------------------------------------------
 // Digital signatures - real CMS/PKCS#7 detached signatures (SHA-256)

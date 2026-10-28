@@ -4,6 +4,284 @@ import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 
 /** Commands */
 export const commands = {
-	scaffoldPing: () => __TAURI_INVOKE<string>("scaffold_ping"),
+	vaultStatus: () => typedError<VaultStatus_Serialize, PdfError>(__TAURI_INVOKE("vault_status")),
+	/**  Saves the folder selection and the indexing switches. */
+	vaultConfigure: (config: VaultConfig_Deserialize) => typedError<VaultConfig_Serialize, PdfError>(__TAURI_INVOKE("vault_configure", { config })),
+	/**
+	 *  Scans the configured folders. When `request.folders` is present, those
+	 *  user-selected folders are added to the saved configuration first; folders
+	 *  outside the saved configuration are never walked.
+	 */
+	vaultScan: (request: VaultScanRequest_Deserialize) => typedError<VaultStatus_Serialize, PdfError>(__TAURI_INVOKE("vault_scan", { request })),
+	/**
+	 *  Copies user-picked documents into the app-private vault import directory
+	 *  and reports what was imported and skipped. This is the Android ingestion
+	 *  path (SAF hands out content:// URIs, never browsable paths); on desktop it
+	 *  works too, but folder selection stays the primary model. The command never
+	 *  scans and never touches a folder the user did not pick through the picker;
+	 *  the caller triggers `vault_scan` afterwards.
+	 */
+	vaultImportFiles: (paths: string[]) => typedError<VaultImportReport_Serialize, PdfError>(__TAURI_INVOKE("vault_import_files", { paths })),
+	vaultSearch: (request: VaultSearchRequest_Deserialize) => typedError<VaultSearchResponse_Serialize, PdfError>(__TAURI_INVOKE("vault_search", { request })),
+	vaultSearchHybrid: (request: VaultSearchRequest_Deserialize) => typedError<VaultSearchResponse_Serialize, PdfError>(__TAURI_INVOKE("vault_search_hybrid", { request })),
+	/**
+	 *  Embeds the pending vault chunks into the persistent vector store. Requests
+	 *  are grouped in small batches with a progress event between them, and the
+	 *  job can be cancelled; an unchanged chunk is never re-embedded.
+	 */
+	vaultIndexBuild: (consent: boolean | null) => typedError<VaultIndexReport, PdfError>(__TAURI_INVOKE("vault_index_build", { consent })),
+	/**  Full cached text of one indexed document (for preview panes). */
+	vaultDocumentText: (id: string) => typedError<string, PdfError>(__TAURI_INVOKE("vault_document_text", { id })),
+	/**
+	 *  Forgets the index and the extraction cache; the folder selection stays.
+	 *  `delete_imports` also removes the app-private copies imported on Android.
+	 */
+	vaultClear: (deleteImports: boolean | null) => typedError<VaultStatus_Serialize, PdfError>(__TAURI_INVOKE("vault_clear", { deleteImports })),
 };
+
+/* Types */
+/**
+ *  Stable error codes surfaced to the UI. The frontend maps these to
+ *  localized, user friendly messages - raw internal errors are never shown.
+ */
+export type ErrorCode = "invalid_pdf" | "corrupt_pdf" | "password_required" | "wrong_password" | "not_found" | "permission_denied" | "file_locked" | "output_exists" | "disk_full" | "cancelled" | "engine_missing" | "ocr_engine_unavailable" | "unsupported" | "invalid_input" | "invalid_image" | "range_out_of_bounds" | "conversion_failed" | "processing_failed" | "internal" | "ai_not_configured" | "ai_invalid_key" | "ai_rate_limited" | "ai_insufficient_balance" | "ai_network" | "ai_no_text" | "ai_too_large" | "ai_server_error" | "ai_invalid_response";
+
+/**
+ *  The wire shape of [`PdfError`] for the typed bindings: the same two
+ *  fields its `Serialize` writes.
+ */
+export type PdfError = {
+	code: ErrorCode,
+	message: string,
+};
+
+export type VaultConfig = VaultConfig_Serialize | VaultConfig_Deserialize;
+
+export type VaultConfig_Deserialize = {
+	/**  Folders the user explicitly selected for indexing. */
+	folders?: string[],
+	includePdf?: boolean,
+	includeOffice?: boolean,
+	maxFileMb?: number,
+	updatedAt?: string,
+};
+
+export type VaultConfig_Serialize = {
+	/**  Folders the user explicitly selected for indexing. */
+	folders: string[],
+	includePdf: boolean,
+	includeOffice: boolean,
+	maxFileMb: number,
+	updatedAt: string,
+};
+
+/**  One document copied into the vault's private import directory. */
+export type VaultImportFile = VaultImportFile_Serialize | VaultImportFile_Deserialize;
+
+/**  One document copied into the vault's private import directory. */
+export type VaultImportFile_Deserialize = {
+	/**  Path the user picked (on Android a cache copy of the SAF selection). */
+	source?: string,
+	/**  Path of the copy inside the vault import directory. */
+	path?: string,
+	name?: string,
+	size?: number,
+	sha256?: string,
+};
+
+/**  One document copied into the vault's private import directory. */
+export type VaultImportFile_Serialize = {
+	/**  Path the user picked (on Android a cache copy of the SAF selection). */
+	source: string,
+	/**  Path of the copy inside the vault import directory. */
+	path: string,
+	name: string,
+	size: number,
+	sha256: string,
+};
+
+/**  Result of `vault_import_files`. */
+export type VaultImportReport = VaultImportReport_Serialize | VaultImportReport_Deserialize;
+
+/**  Result of `vault_import_files`. */
+export type VaultImportReport_Deserialize = {
+	imported?: VaultImportFile_Deserialize[],
+	skipped?: VaultImportSkip_Deserialize[],
+};
+
+/**  Result of `vault_import_files`. */
+export type VaultImportReport_Serialize = {
+	imported: VaultImportFile_Serialize[],
+	skipped: VaultImportSkip_Serialize[],
+};
+
+/**  One pick that was not imported, with a machine-stable reason string. */
+export type VaultImportSkip = VaultImportSkip_Serialize | VaultImportSkip_Deserialize;
+
+/**  One pick that was not imported, with a machine-stable reason string. */
+export type VaultImportSkip_Deserialize = {
+	source?: string,
+	reason?: string,
+};
+
+/**  One pick that was not imported, with a machine-stable reason string. */
+export type VaultImportSkip_Serialize = {
+	source: string,
+	reason: string,
+};
+
+/**  Result of `vault_index_build`. */
+export type VaultIndexReport = {
+	documents: number,
+	chunks: number,
+	/**  Chunks embedded in this run. */
+	embedded: number,
+	/**  Vectors already cached (unchanged chunks). */
+	reused: number,
+	cancelled: boolean,
+	tookMs: number,
+};
+
+export type VaultScanRequest = VaultScanRequest_Serialize | VaultScanRequest_Deserialize;
+
+export type VaultScanRequest_Deserialize = {
+	/**
+	 *  When present these user-selected folders are added to the saved config
+	 *  before scanning; entries that are not in the saved config are never
+	 *  walked.
+	 */
+	folders?: string[] | null,
+	/**  Re-extract every file, even unchanged ones (full rescan). */
+	rescan?: boolean,
+	/**  Upper bound for discovered files; 0 uses the default cap. */
+	maxFiles?: number,
+};
+
+export type VaultScanRequest_Serialize = {
+	/**
+	 *  When present these user-selected folders are added to the saved config
+	 *  before scanning; entries that are not in the saved config are never
+	 *  walked.
+	 */
+	folders: string[] | null,
+	/**  Re-extract every file, even unchanged ones (full rescan). */
+	rescan: boolean,
+	/**  Upper bound for discovered files; 0 uses the default cap. */
+	maxFiles: number,
+};
+
+export type VaultSearchHit = {
+	documentId: string,
+	path: string,
+	fileName: string,
+	extension: string,
+	size: number,
+	modified: string,
+	score: number | null,
+	matchLabel: string,
+	snippet: string,
+	matchedTerms: string[],
+};
+
+export type VaultSearchRequest = VaultSearchRequest_Serialize | VaultSearchRequest_Deserialize;
+
+export type VaultSearchRequest_Deserialize = {
+	query?: string,
+	exact?: boolean,
+	fuzzy?: boolean,
+	phrase?: boolean,
+	extensions?: string[],
+	modifiedAfter?: string | null,
+	modifiedBefore?: string | null,
+	folder?: string | null,
+	limit?: number,
+	offset?: number,
+	embeddingConsent?: boolean,
+};
+
+export type VaultSearchRequest_Serialize = {
+	query: string,
+	exact: boolean,
+	fuzzy: boolean,
+	phrase: boolean,
+	extensions: string[],
+	modifiedAfter: string | null,
+	modifiedBefore: string | null,
+	folder: string | null,
+	limit: number,
+	offset: number,
+	embeddingConsent: boolean,
+};
+
+export type VaultSearchResponse = VaultSearchResponse_Serialize | VaultSearchResponse_Deserialize;
+
+export type VaultSearchResponse_Deserialize = {
+	hits: VaultSearchHit[],
+	total: number,
+	tookMs: number,
+	/**  True when there is no usable index yet; the UI should offer a scan. */
+	indexMissing: boolean,
+	retrievalMode?: string | null,
+};
+
+export type VaultSearchResponse_Serialize = {
+	hits: VaultSearchHit[],
+	total: number,
+	tookMs: number,
+	/**  True when there is no usable index yet; the UI should offer a scan. */
+	indexMissing: boolean,
+	retrievalMode?: string,
+};
+
+export type VaultStatus = VaultStatus_Serialize | VaultStatus_Deserialize;
+
+export type VaultStatus_Deserialize = {
+	indexed?: number,
+	folders?: number,
+	indexBytes?: number,
+	lastScan?: string | null,
+	scanning?: boolean,
+	/**  Recovery/cap notes from the last load or scan (never file contents). */
+	warnings?: string[],
+	/**
+	 *  Platform capability: the app can walk user-chosen folders. False on
+	 *  Android, where the only index root is the import directory.
+	 */
+	canScanFolders?: boolean,
+	/**
+	 *  Platform capability: picked documents can be copied into the
+	 *  app-private import directory (true on every platform).
+	 */
+	canImportFiles?: boolean,
+};
+
+export type VaultStatus_Serialize = {
+	indexed: number,
+	folders: number,
+	indexBytes: number,
+	lastScan: string | null,
+	scanning: boolean,
+	/**  Recovery/cap notes from the last load or scan (never file contents). */
+	warnings: string[],
+	/**
+	 *  Platform capability: the app can walk user-chosen folders. False on
+	 *  Android, where the only index root is the import directory.
+	 */
+	canScanFolders: boolean,
+	/**
+	 *  Platform capability: picked documents can be copied into the
+	 *  app-private import directory (true on every platform).
+	 */
+	canImportFiles: boolean,
+};
+
+/* Tauri Specta runtime */
+async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {
+    try {
+        return { status: "ok", data: await result };
+    } catch (e) {
+        if (e instanceof Error) throw e;
+        return { status: "error", error: e as any };
+    }
+}
 

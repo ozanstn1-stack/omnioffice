@@ -216,3 +216,24 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running OmniOffice");
 }
+
+/// Writes the typed command bindings (tauri-specta, #316) to `path`. The
+/// command groups move one at a time (docs/dependencies.md); the vault is the
+/// first. Until a group is listed here, its hand-written `invoke` stays.
+#[cfg(feature = "bindings")]
+pub fn export_typed_bindings(path: &std::path::Path) -> Result<(), String> {
+    tauri_specta::Builder::<tauri::Wry>::new()
+        .commands(tauri_specta::collect_commands![
+            vault::vault_status,
+            vault::vault_configure,
+            vault::vault_scan,
+            vault::vault_import_files,
+            vault::vault_search,
+            vault::vault_search_hybrid,
+            vault::vault_index_build,
+            vault::vault_document_text,
+            vault::vault_clear,
+        ])
+        .export(specta_typescript::Typescript::default(), path)
+        .map_err(|error| error.to_string())
+}

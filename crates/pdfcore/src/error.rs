@@ -4,6 +4,7 @@ use std::path::Path;
 /// Stable error codes surfaced to the UI. The frontend maps these to
 /// localized, user friendly messages - raw internal errors are never shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
     InvalidPdf,
@@ -198,6 +199,24 @@ impl From<lopdf::Error> for PdfError {
 impl From<std::io::Error> for PdfError {
     fn from(err: std::io::Error) -> Self {
         PdfError::from_io(err)
+    }
+}
+
+/// The wire shape of [`PdfError`] for the typed bindings: the same two
+/// fields its `Serialize` writes.
+#[cfg(feature = "bindings")]
+#[derive(specta::Type, Serialize)]
+#[serde(rename = "PdfError")]
+#[allow(dead_code)]
+struct PdfErrorWire {
+    code: ErrorCode,
+    message: String,
+}
+
+#[cfg(feature = "bindings")]
+impl specta::Type for PdfError {
+    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
+        <PdfErrorWire as specta::Type>::definition(types)
     }
 }
 

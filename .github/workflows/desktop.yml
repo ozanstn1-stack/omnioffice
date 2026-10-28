@@ -290,6 +290,12 @@ jobs:
       - name: Generated TypeScript bindings
         if: runner.os == 'Linux'
         run: npm run types:check
+      # The typed command wrappers (tauri-specta, #316) come from the Rust
+      # command signatures; a signature change without a regenerated
+      # src/lib/generated/specta.ts fails here.
+      - name: Typed command bindings
+        if: runner.os == 'Linux'
+        run: npm run bindings:check
       - name: Release build (library crates)
         shell: bash
         run: cargo build --release $(node scripts/workspace-crates.mjs release)

@@ -67,3 +67,12 @@ The RC risk is handled by moving **command groups one PR at a time**: each group
 gets `#[specta::specta]`, joins `collect_commands!`, and its frontend call site
 switches to the generated wrapper. Until a group lands, the hand-written
 `invoke` path stays authoritative.
+
+The groups are the domains of `src-tauri/src/ipc.rs` (#338). Migrated so far:
+
+- **vault** (9 commands, #316 group 1):
+  - **Types:** the DTOs derive `specta::Type` behind `bindings`. `pdfcore` gets a `bindings` feature for `ErrorCode` and a hand-written `Type` for `PdfError`, matching its `{ code, message }` serializer. `u64`/`usize` fields are marked `specta_typescript::Number`: the exporter refuses BigInt types, and these are byte counts and counters far below 2^53.
+  - **Screens:** `Vault.tsx` and the command palette call `commands.*` through `unwrap` (`src/lib/typed-ipc.ts`, which rejects with the error object as `invoke` does). Their hand-written types became aliases of the generated ones.
+  - **Exception:** `vault_scan` stays on `invokeTracked` (the job tracker needs the command name), with the generated request type.
+
+`npm run bindings:check` regenerates `src/lib/generated/specta.ts` and fails on drift; the Linux Rust job runs it. Next groups, in order of size: plugin (10), sync (15), ai (31), app (42), office (43), pdf (70).

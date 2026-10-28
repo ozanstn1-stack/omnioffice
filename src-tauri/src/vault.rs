@@ -85,12 +85,14 @@ const IMPORT_NAME_CHARS: usize = 120;
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[serde(rename_all = "camelCase", default)]
 pub struct VaultConfig {
     /// Folders the user explicitly selected for indexing.
     pub folders: Vec<String>,
     pub include_pdf: bool,
     pub include_office: bool,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub max_file_mb: u64,
     pub updated_at: String,
 }
@@ -110,6 +112,7 @@ impl Default for VaultConfig {
 /// One labelled chunk of a document: "page 3", "paragraph 12", "Sheet1!A1",
 /// "slide 4" ... `text` is a bounded excerpt, the full text lives in the cache.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[serde(rename_all = "camelCase", default)]
 pub struct TextLocation {
     pub label: String,
@@ -117,6 +120,7 @@ pub struct TextLocation {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[serde(rename_all = "camelCase", default)]
 pub struct VaultDocument {
     /// Stable hash of the normalized path; also the cache file name.
@@ -124,6 +128,7 @@ pub struct VaultDocument {
     pub path: String,
     pub file_name: String,
     pub extension: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub size: u64,
     /// ISO-8601 UTC string read from the file's modification time.
     pub modified: String,
@@ -138,6 +143,7 @@ pub struct VaultDocument {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[serde(rename_all = "camelCase", default)]
 pub struct VaultIndex {
     pub version: u32,
@@ -146,10 +152,14 @@ pub struct VaultIndex {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[serde(rename_all = "camelCase", default)]
 pub struct VaultStatus {
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub indexed: usize,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub folders: usize,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub index_bytes: u64,
     pub last_scan: Option<String>,
     pub scanning: bool,
@@ -164,6 +174,7 @@ pub struct VaultStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[serde(rename_all = "camelCase", default)]
 pub struct VaultScanRequest {
     /// When present these user-selected folders are added to the saved config
@@ -173,11 +184,13 @@ pub struct VaultScanRequest {
     /// Re-extract every file, even unchanged ones (full rescan).
     pub rescan: bool,
     /// Upper bound for discovered files; 0 uses the default cap.
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub max_files: usize,
 }
 
 /// One document copied into the vault's private import directory.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[serde(rename_all = "camelCase", default)]
 pub struct VaultImportFile {
     /// Path the user picked (on Android a cache copy of the SAF selection).
@@ -185,12 +198,14 @@ pub struct VaultImportFile {
     /// Path of the copy inside the vault import directory.
     pub path: String,
     pub name: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub size: u64,
     pub sha256: String,
 }
 
 /// One pick that was not imported, with a machine-stable reason string.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[serde(rename_all = "camelCase", default)]
 pub struct VaultImportSkip {
     pub source: String,
@@ -199,6 +214,7 @@ pub struct VaultImportSkip {
 
 /// Result of `vault_import_files`.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[serde(rename_all = "camelCase", default)]
 pub struct VaultImportReport {
     pub imported: Vec<VaultImportFile>,
@@ -206,6 +222,7 @@ pub struct VaultImportReport {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[serde(rename_all = "camelCase", default)]
 pub struct VaultSearchRequest {
     pub query: String,
@@ -216,18 +233,22 @@ pub struct VaultSearchRequest {
     pub modified_after: Option<String>,
     pub modified_before: Option<String>,
     pub folder: Option<String>,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub limit: usize,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub offset: usize,
     pub embedding_consent: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
 pub struct VaultSearchHit {
     pub document_id: String,
     pub path: String,
     pub file_name: String,
     pub extension: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub size: u64,
     pub modified: String,
     pub score: f64,
@@ -237,10 +258,13 @@ pub struct VaultSearchHit {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
 pub struct VaultSearchResponse {
     pub hits: Vec<VaultSearchHit>,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub total: usize,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub took_ms: u64,
     /// True when there is no usable index yet; the UI should offer a scan.
     pub index_missing: bool,
@@ -2203,6 +2227,7 @@ where
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn vault_status(app: AppHandle) -> Result<VaultStatus, PdfError> {
     let root = config_dir(&app)?;
     Ok(vault_status_at(&root))
@@ -2210,6 +2235,7 @@ pub fn vault_status(app: AppHandle) -> Result<VaultStatus, PdfError> {
 
 /// Saves the folder selection and the indexing switches.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn vault_configure(app: AppHandle, config: VaultConfig) -> Result<VaultConfig, PdfError> {
     let root = config_dir(&app)?;
     save_config(&root, &config)
@@ -2219,6 +2245,7 @@ pub fn vault_configure(app: AppHandle, config: VaultConfig) -> Result<VaultConfi
 /// user-selected folders are added to the saved configuration first; folders
 /// outside the saved configuration are never walked.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn vault_scan(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -2282,12 +2309,14 @@ pub async fn vault_scan(
 /// scans and never touches a folder the user did not pick through the picker;
 /// the caller triggers `vault_scan` afterwards.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn vault_import_files(app: AppHandle, paths: Vec<String>) -> Result<VaultImportReport, PdfError> {
     let root = config_dir(&app)?;
     run_blocking(move || Ok(import_files(&root, &paths))).await
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn vault_search(app: AppHandle, request: VaultSearchRequest) -> Result<VaultSearchResponse, PdfError> {
     let root = config_dir(&app)?;
     run_blocking(move || Ok(search_at(&root, &request))).await
@@ -2309,19 +2338,26 @@ fn hybrid_settings(app: &AppHandle) -> (String, bool, Option<aicore::DeepSeekCli
 
 /// Result of `vault_index_build`.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
 pub struct VaultIndexReport {
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub documents: usize,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub chunks: usize,
     /// Chunks embedded in this run.
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub embedded: usize,
     /// Vectors already cached (unchanged chunks).
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub reused: usize,
     pub cancelled: bool,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub took_ms: u64,
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn vault_search_hybrid(app: AppHandle, request: VaultSearchRequest) -> Result<VaultSearchResponse, PdfError> {
     let root = config_dir(&app)?;
     let (model, enabled, client) = hybrid_settings(&app);
@@ -2343,6 +2379,7 @@ pub async fn vault_search_hybrid(app: AppHandle, request: VaultSearchRequest) ->
 /// are grouped in small batches with a progress event between them, and the
 /// job can be cancelled; an unchanged chunk is never re-embedded.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn vault_index_build(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -2410,6 +2447,7 @@ pub async fn vault_index_build(
 
 /// Full cached text of one indexed document (for preview panes).
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn vault_document_text(app: AppHandle, id: String) -> Result<String, PdfError> {
     let root = config_dir(&app)?;
     run_blocking(move || {
@@ -2432,6 +2470,7 @@ pub async fn vault_document_text(app: AppHandle, id: String) -> Result<String, P
 /// Forgets the index and the extraction cache; the folder selection stays.
 /// `delete_imports` also removes the app-private copies imported on Android.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn vault_clear(app: AppHandle, delete_imports: Option<bool>) -> Result<VaultStatus, PdfError> {
     let root = config_dir(&app)?;
     clear_vault_at(&root, delete_imports.unwrap_or(false))?;

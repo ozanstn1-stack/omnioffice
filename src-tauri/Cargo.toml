@@ -61,7 +61,7 @@ windows = { version = "0.61", features = ["Win32_Security_Cryptography", "Win32_
 
 # The AI extraction test writes real DOCX/XLSX/PPTX fixtures with the engines.
 [features]
-bindings = ["dep:tauri-specta", "dep:specta", "dep:specta-typescript"]
+bindings = ["dep:tauri-specta", "dep:specta", "dep:specta-typescript", "pdfcore/bindings"]
 # Generates the TypeScript bindings for the IPC DTOs (`cargo test export_bindings`).
 # Enabling it also turns on pdfcore's `ts` feature, so its DTOs export too.
 ts = ["dep:ts-rs", "pdfcore/ts"]
