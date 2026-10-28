@@ -915,3 +915,27 @@ describe("Reader e-Devlet verification", () => {
     expect(screen.queryByRole("button", { name: /verify document/i })).not.toBeInTheDocument();
   });
 });
+// The E2E harness waits on this signal instead of counting buttons (#407):
+// it must appear only once the screen holds its file.
+describe("screens report when they are ready to run", () => {
+  afterEach(() => {
+    delete document.documentElement.dataset.screenReady;
+    delete document.documentElement.dataset.screenReadyDetail;
+  });
+
+  it("PDF Studio is ready with its file selected", async () => {
+    render(<PdfStudio {...props} />);
+    await waitFor(() => expect(document.documentElement.dataset.screenReady).toBe("pdfStudio"));
+    expect(document.documentElement.dataset.screenReadyDetail).toBe("a.pdf");
+  });
+
+  it("PDF Studio without a file is not ready", () => {
+    render(<PdfStudio dragging={false} initialFiles={[]} />);
+    expect(document.documentElement.dataset.screenReady).toBeUndefined();
+  });
+
+  it("Redact is ready once its PDF is loaded", async () => {
+    render(<Redact {...props} />);
+    await waitFor(() => expect(document.documentElement.dataset.screenReady).toBe("redact"));
+  });
+});

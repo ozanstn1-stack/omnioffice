@@ -62,6 +62,7 @@ import {
   type TextRunInfo,
 } from "../lib/api";
 import type { PdfInfo } from "../lib/types";
+import { useScreenReady } from "../lib/screen-ready";
 import { isAndroid, pickAndroidFiles, pickAndroidSaveTarget, publishOutputs, type AndroidTarget } from "../lib/mobile";
 
 type StudioTab = "sanitize" | "repair" | "flatten" | "pdfa" | "signatures" | "objects" | "textruns";
@@ -337,6 +338,8 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
   }, [running]);
 
   const input = files[0];
+  // Automation (E2E) waits on this: the Studio holds a file and can run.
+  useScreenReady("pdfStudio", Boolean(input), input ? fileBaseName(input) : undefined);
   const toast = (kind: "success" | "error" | "info", title: string, detail?: string) =>
     useToasts.getState().push({ kind, title, detail });
 
