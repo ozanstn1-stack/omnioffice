@@ -84,14 +84,690 @@ export const commands = {
 	 */
 	pluginPdfRead: (pluginId: string, name: string) => typedError<PluginPdfRead, PluginErrorPayload>(__TAURI_INVOKE("plugin_pdf_read", { pluginId, name })),
 	pluginHttpRequest: (pluginId: string, request: PluginHttpRequest_Deserialize) => typedError<PluginHttpResponse, PluginErrorPayload>(__TAURI_INVOKE("plugin_http_request", { pluginId, request })),
+	aiGetSettings: () => __TAURI_INVOKE<AiSettingsView_Serialize>("ai_get_settings"),
+	aiSaveSettings: (input: AiSettingsInput_Deserialize) => typedError<AiSettingsView_Serialize, PdfError>(__TAURI_INVOKE("ai_save_settings", { input })),
+	aiClearKey: (provider: string | null) => typedError<AiSettingsView_Serialize, PdfError>(__TAURI_INVOKE("ai_clear_key", { provider })),
+	aiTestConnection: () => typedError<AiTestResult, PdfError>(__TAURI_INVOKE("ai_test_connection")),
+	aiDocumentPreview: (path: string, pages: number[] | null, password: string | null) => typedError<AiPreview, PdfError>(__TAURI_INVOKE("ai_document_preview", { path, pages, password })),
+	aiSummarize: (request: AiSummarizeRequest_Deserialize) => typedError<AiTextResult, PdfError>(__TAURI_INVOKE("ai_summarize", { request })),
+	aiTranslate: (request: AiTranslateRequest_Deserialize) => typedError<AiTextResult, PdfError>(__TAURI_INVOKE("ai_translate", { request })),
+	aiAsk: (request: AiAskRequest_Deserialize) => typedError<AiTextResult, PdfError>(__TAURI_INVOKE("ai_ask", { request })),
+	aiChat: (request: AiChatRequest_Deserialize) => typedError<AiChatResult_Serialize, PdfError>(__TAURI_INVOKE("ai_chat", { request })),
+	aiChatSave: (thread: SavedChatThread_Deserialize) => typedError<null, PdfError>(__TAURI_INVOKE("ai_chat_save", { thread })),
+	aiChatList: () => typedError<SavedChatThread_Serialize[], PdfError>(__TAURI_INVOKE("ai_chat_list")),
+	aiChatLoad: (id: string) => typedError<SavedChatThread_Serialize, PdfError>(__TAURI_INVOKE("ai_chat_load", { id })),
+	aiChatDelete: (id: string) => typedError<null, PdfError>(__TAURI_INVOKE("ai_chat_delete", { id })),
+	/**
+	 *  Deletes AI data. With `older_than_days` the saved chats older than that are
+	 *  pruned (retention); without it every chat is deleted. The derived vault
+	 *  index (embeddings) is always removed so it is rebuilt on demand.
+	 */
+	aiClearData: (olderThanDays: number | null) => typedError<AiClearReport, PdfError>(__TAURI_INVOKE("ai_clear_data", { olderThanDays })),
+	aiExtractTable: (request: AiExtractRequest_Deserialize) => typedError<AiTableResult_Serialize, PdfError>(__TAURI_INVOKE("ai_extract_table", { request })),
+	aiBatchRun: (request: AiBatchRequest_Deserialize) => typedError<AiBatchResult_Serialize, PdfError>(__TAURI_INVOKE("ai_batch_run", { request })),
+	aiCleanupText: (request: AiCleanupRequest_Deserialize) => typedError<AiTextResult, PdfError>(__TAURI_INVOKE("ai_cleanup_text", { request })),
+	aiSuggestMetadata: (request: AiMetadataRequest_Deserialize) => typedError<MetadataSuggestion, PdfError>(__TAURI_INVOKE("ai_suggest_metadata", { request })),
+	aiCancel: (jobId: string) => __TAURI_INVOKE<void>("ai_cancel", { jobId }),
+	aiEditText: (request: AiEditRequest_Deserialize) => typedError<AiEditResult_Serialize, PdfError>(__TAURI_INVOKE("ai_edit_text", { request })),
+	/**  Saves an AI result as a text/Markdown file (with the usual overwrite rules). */
+	aiSaveOutput: (path: string, text: string, overwrite: string | null) => typedError<string, PdfError>(__TAURI_INVOKE("ai_save_output", { path, text, overwrite })),
+	aiExamplePrompts: () => __TAURI_INVOKE<AiExamplePrompts>("ai_example_prompts"),
+	/**
+	 *  Static fallback list (used before a provider answers, or when discovery is
+	 *  unavailable). The live list comes from [`ai_discover_models`].
+	 */
+	aiModels: (provider: string | null) => __TAURI_INVOKE<AiModelOption[]>("ai_models", { provider }),
+	/**
+	 *  Asks the configured provider which models it currently serves. Best-effort:
+	 *  a provider that does not answer returns `discovered: false` with an empty
+	 *  list and the settings screen keeps its static suggestions. This removes the
+	 *  hard-coded assumption that only the models in `SUGGESTED_MODELS` exist.
+	 */
+	aiDiscoverModels: () => typedError<AiDiscoveredModels, PdfError>(__TAURI_INVOKE("ai_discover_models")),
+	/**
+	 *  Stores an AI result as Markdown plus an index entry (auto-save and the
+	 *  explicit "save to library" action both use this).
+	 */
+	aiLibrarySave: (request: SaveAiEntryRequest_Deserialize) => typedError<AiLibraryEntry, PdfError>(__TAURI_INVOKE("ai_library_save", { request })),
+	aiLibraryList: () => typedError<AiLibraryEntry[], PdfError>(__TAURI_INVOKE("ai_library_list")),
+	aiLibraryText: (id: string) => typedError<string, PdfError>(__TAURI_INVOKE("ai_library_text", { id })),
+	aiLibraryDelete: (id: string, deleteFile: boolean | null) => typedError<AiLibraryEntry[], PdfError>(__TAURI_INVOKE("ai_library_delete", { id, deleteFile })),
+	aiLibraryClear: (deleteFiles: boolean | null) => typedError<null, PdfError>(__TAURI_INVOKE("ai_library_clear", { deleteFiles })),
+	/**  Copies a stored result to a user-chosen path (Save as...). */
+	aiLibraryExport: (id: string, target: string) => typedError<string, PdfError>(__TAURI_INVOKE("ai_library_export", { id, target })),
+	aiLibraryDefaultDir: () => __TAURI_INVOKE<string>("ai_library_default_dir"),
 };
 
 /* Types */
+export type AiAskRequest = AiAskRequest_Serialize | AiAskRequest_Deserialize;
+
+export type AiAskRequest_Deserialize = {
+	path: string,
+	question: string,
+	password?: string | null,
+	jobId: string,
+	consent?: boolean,
+};
+
+export type AiAskRequest_Serialize = {
+	path: string,
+	question: string,
+	password: string | null,
+	jobId: string,
+	consent: boolean,
+};
+
+export type AiBatchItemRequest = AiBatchItemRequest_Serialize | AiBatchItemRequest_Deserialize;
+
+export type AiBatchItemRequest_Deserialize = {
+	path: string,
+	action: string,
+	targetLang?: string | null,
+	labels?: string[] | null,
+	/**  Password for this item's encrypted source document. */
+	password?: string | null,
+};
+
+export type AiBatchItemRequest_Serialize = {
+	path: string,
+	action: string,
+	targetLang: string | null,
+	labels: string[] | null,
+	/**  Password for this item's encrypted source document. */
+	password: string | null,
+};
+
+export type AiBatchItemResult = AiBatchItemResult_Serialize | AiBatchItemResult_Deserialize;
+
+export type AiBatchItemResult_Deserialize = {
+	path: string,
+	action: string,
+	success: boolean,
+	output?: string | null,
+	error?: string | null,
+	elapsedMs: number,
+	/**  Approximate tokens used (input + output), from character counts. */
+	estimatedTokens?: number,
+	/**  Approximate cost in USD; 0 when the model's price is unknown. */
+	estimatedCostUsd?: number | null,
+};
+
+export type AiBatchItemResult_Serialize = {
+	path: string,
+	action: string,
+	success: boolean,
+	output: string | null,
+	error: string | null,
+	elapsedMs: number,
+	/**  Approximate tokens used (input + output), from character counts. */
+	estimatedTokens: number,
+	/**  Approximate cost in USD; 0 when the model's price is unknown. */
+	estimatedCostUsd: number | null,
+};
+
+export type AiBatchRequest = AiBatchRequest_Serialize | AiBatchRequest_Deserialize;
+
+export type AiBatchRequest_Deserialize = {
+	items: AiBatchItemRequest_Deserialize[],
+	jobId: string,
+	/**  The user accepted that the queued documents are sent to the provider. */
+	consent?: boolean,
+};
+
+export type AiBatchRequest_Serialize = {
+	items: AiBatchItemRequest_Serialize[],
+	jobId: string,
+	/**  The user accepted that the queued documents are sent to the provider. */
+	consent: boolean,
+};
+
+export type AiBatchResult = AiBatchResult_Serialize | AiBatchResult_Deserialize;
+
+export type AiBatchResult_Deserialize = {
+	results: AiBatchItemResult_Deserialize[],
+	totalElapsedMs: number,
+	/**
+	 *  "completed", "cancelled" or "failed": a run the user stopped, or one
+	 *  where every item failed, must not look like a completed batch.
+	 */
+	status: string,
+};
+
+export type AiBatchResult_Serialize = {
+	results: AiBatchItemResult_Serialize[],
+	totalElapsedMs: number,
+	/**
+	 *  "completed", "cancelled" or "failed": a run the user stopped, or one
+	 *  where every item failed, must not look like a completed batch.
+	 */
+	status: string,
+};
+
+export type AiChatRequest = AiChatRequest_Serialize | AiChatRequest_Deserialize;
+
+export type AiChatRequest_Deserialize = {
+	path?: string | null,
+	question: string,
+	history?: DocChatMessage[],
+	scope?: string,
+	page?: number | null,
+	selection?: string | null,
+	sendImage?: boolean,
+	password?: string | null,
+	jobId: string,
+	/**
+	 *  The user accepted that the document text leaves the app. The backend
+	 *  refuses to run without it, so the consent is enforced on both sides.
+	 */
+	consent?: boolean,
+	/**  The user accepted the vault scope (all library documents are queried). */
+	vaultConsent?: boolean,
+	/**  The user accepted that text is embedded (a third-party embedding model). */
+	embeddingConsent?: boolean,
+	/**  The user accepted that a rendered page image is sent. */
+	imageConsent?: boolean,
+};
+
+export type AiChatRequest_Serialize = {
+	path: string | null,
+	question: string,
+	history: DocChatMessage[],
+	scope: string,
+	page: number | null,
+	selection: string | null,
+	sendImage: boolean,
+	password: string | null,
+	jobId: string,
+	/**
+	 *  The user accepted that the document text leaves the app. The backend
+	 *  refuses to run without it, so the consent is enforced on both sides.
+	 */
+	consent: boolean,
+	/**  The user accepted the vault scope (all library documents are queried). */
+	vaultConsent: boolean,
+	/**  The user accepted that text is embedded (a third-party embedding model). */
+	embeddingConsent: boolean,
+	/**  The user accepted that a rendered page image is sent. */
+	imageConsent: boolean,
+};
+
+export type AiChatResult = AiChatResult_Serialize | AiChatResult_Deserialize;
+
+export type AiChatResult_Deserialize = {
+	answer: string,
+	citations: AiCitation_Deserialize[],
+	retrievalMode: string,
+	model: string,
+	elapsedMs: number,
+	/**  Set when a requested page image could not be rendered, encoded or sent. */
+	warning?: string | null,
+};
+
+export type AiChatResult_Serialize = {
+	answer: string,
+	citations: AiCitation_Serialize[],
+	retrievalMode: string,
+	model: string,
+	elapsedMs: number,
+	/**  Set when a requested page image could not be rendered, encoded or sent. */
+	warning?: string,
+};
+
+export type AiCitation = AiCitation_Serialize | AiCitation_Deserialize;
+
+export type AiCitation_Deserialize = {
+	page: number,
+	snippet: string,
+	score: number | null,
+	cited: boolean,
+	/**  The page was retrieved **and** the model's quote matches its text. */
+	verified?: boolean,
+	/**  The short quote the model attached to this citation. */
+	quote?: string,
+	/**
+	 *  The source document's path, so a click opens the right file (empty for
+	 *  an older saved thread).
+	 */
+	path?: string,
+	/**
+	 *  Where inside the document the source is: `page 3`, `paragraph 12`,
+	 *  `Sheet1!A1:B7`, `slide 4`.
+	 */
+	location?: string,
+};
+
+export type AiCitation_Serialize = {
+	page: number,
+	snippet: string,
+	score: number | null,
+	cited: boolean,
+	/**  The page was retrieved **and** the model's quote matches its text. */
+	verified: boolean,
+	/**  The short quote the model attached to this citation. */
+	quote: string,
+	/**
+	 *  The source document's path, so a click opens the right file (empty for
+	 *  an older saved thread).
+	 */
+	path: string,
+	/**
+	 *  Where inside the document the source is: `page 3`, `paragraph 12`,
+	 *  `Sheet1!A1:B7`, `slide 4`.
+	 */
+	location: string,
+};
+
+export type AiCleanupRequest = AiCleanupRequest_Serialize | AiCleanupRequest_Deserialize;
+
+export type AiCleanupRequest_Deserialize = {
+	path: string,
+	pages?: number[] | null,
+	password?: string | null,
+	jobId: string,
+	consent?: boolean,
+};
+
+export type AiCleanupRequest_Serialize = {
+	path: string,
+	pages: number[] | null,
+	password: string | null,
+	jobId: string,
+	consent: boolean,
+};
+
+export type AiClearReport = {
+	chatsDeleted: number,
+	indexDeleted: boolean,
+};
+
+/**
+ *  Result of a live model lookup. `models` is empty when the provider does not
+ *  expose a listing (the UI then keeps its fallback list). `message` explains
+ *  what happened without ever containing a key.
+ */
+export type AiDiscoveredModels = {
+	models: AiModelOption[],
+	discovered: boolean,
+	message: string,
+};
+
+export type AiEditRequest = AiEditRequest_Serialize | AiEditRequest_Deserialize;
+
+export type AiEditRequest_Deserialize = {
+	task: EditTask,
+	text: string,
+	options?: EditOptions_Deserialize,
+	jobId: string,
+	/**
+	 *  Provider id the user saw in the consent step. The request is refused if
+	 *  the saved settings now point somewhere else.
+	 */
+	expectedProvider: string,
+	/**  Host (with a non-default port) the user saw in the consent step. */
+	expectedHost: string,
+};
+
+export type AiEditRequest_Serialize = {
+	task: EditTask,
+	text: string,
+	options: EditOptions_Serialize,
+	jobId: string,
+	/**
+	 *  Provider id the user saw in the consent step. The request is refused if
+	 *  the saved settings now point somewhere else.
+	 */
+	expectedProvider: string,
+	/**  Host (with a non-default port) the user saw in the consent step. */
+	expectedHost: string,
+};
+
+export type AiEditResult = AiEditResult_Serialize | AiEditResult_Deserialize;
+
+export type AiEditResult_Deserialize = {
+	/**  The validated reply (for `outline_to_slides`, the normalized JSON). */
+	text: string,
+	/**  Parsed slides, only for `outline_to_slides`. */
+	slides?: OutlineSlide_Deserialize[] | null,
+	model: string,
+	elapsedMs: number,
+};
+
+export type AiEditResult_Serialize = {
+	/**  The validated reply (for `outline_to_slides`, the normalized JSON). */
+	text: string,
+	/**  Parsed slides, only for `outline_to_slides`. */
+	slides: OutlineSlide_Serialize[] | null,
+	model: string,
+	elapsedMs: number,
+};
+
+/**  Also referenced by the UI to know if AI features are worth showing. */
+export type AiExamplePrompts = {
+	summarize: string[],
+	ask: string[],
+	translateTargets: string[],
+};
+
+export type AiExtractRequest = AiExtractRequest_Serialize | AiExtractRequest_Deserialize;
+
+export type AiExtractRequest_Deserialize = {
+	path: string,
+	pages?: number[] | null,
+	extraFields?: string[],
+	password?: string | null,
+	jobId: string,
+	consent?: boolean,
+};
+
+export type AiExtractRequest_Serialize = {
+	path: string,
+	pages: number[] | null,
+	extraFields: string[],
+	password: string | null,
+	jobId: string,
+	consent: boolean,
+};
+
+/**  Whether a key is stored for one provider, never the key itself. */
+export type AiKeyState = {
+	configured: boolean,
+	maskedKey: string,
+	/**  "dpapi" | "keystore" | "plain" | "none". */
+	keyStorage: string,
+};
+
+export type AiLibraryEntry = {
+	id: string,
+	/**  Unix seconds. */
+	createdAt: number,
+	/**  summary | translate | ask | cleanup | metadata */
+	kind: string,
+	sourcePath: string,
+	sourceName: string,
+	model: string,
+	pages: number,
+	characters: number,
+	/**  Human readable summary of the options used. */
+	options: string,
+	/**  Markdown file written to disk. */
+	filePath: string,
+	/**  First characters of the result, for the list view. */
+	preview: string,
+	elapsedMs: number,
+};
+
+export type AiMetadataRequest = AiMetadataRequest_Serialize | AiMetadataRequest_Deserialize;
+
+export type AiMetadataRequest_Deserialize = {
+	path: string,
+	password?: string | null,
+	jobId: string,
+	consent?: boolean,
+};
+
+export type AiMetadataRequest_Serialize = {
+	path: string,
+	password: string | null,
+	jobId: string,
+	consent: boolean,
+};
+
+/**  Model ids offered in the settings dropdown (id + human label). */
+export type AiModelOption = {
+	id: string,
+	label: string,
+	recommended: boolean,
+};
+
+export type AiPreview = {
+	pages: number,
+	characters: number,
+	sample: string,
+	estimatedWords: number,
+};
+
+export type AiSettingsInput = AiSettingsInput_Serialize | AiSettingsInput_Deserialize;
+
+export type AiSettingsInput_Deserialize = {
+	apiKey?: string | null,
+	baseUrl: string,
+	model: string,
+	temperature: number | null,
+	maxTokens: number,
+	thinking?: boolean | null,
+	reasoningEffort?: string | null,
+	contextTokens?: number | null,
+	provider?: string | null,
+	embeddingModel?: string | null,
+};
+
+export type AiSettingsInput_Serialize = {
+	apiKey: string | null,
+	baseUrl: string,
+	model: string,
+	temperature: number | null,
+	maxTokens: number,
+	thinking: boolean | null,
+	reasoningEffort: string | null,
+	contextTokens: number | null,
+	provider: string | null,
+	embeddingModel: string | null,
+};
+
+export type AiSettingsView = AiSettingsView_Serialize | AiSettingsView_Deserialize;
+
+export type AiSettingsView_Deserialize = {
+	configured: boolean,
+	/**  "dpapi" (encrypted), "plain" (no OS encryption available) or "none". */
+	keyStorage: string,
+	maskedKey: string,
+	baseUrl: string,
+	model: string,
+	temperature: number | null,
+	maxTokens: number,
+	thinking: boolean,
+	reasoningEffort: string,
+	contextTokens: number,
+	/**  Maximum output tokens accepted by the API (384K). */
+	maxOutputTokens: number,
+	/**  Provider id and its honest one-line privacy note. */
+	provider: string,
+	providerLabel: string,
+	providerNote: string,
+	capabilities: ProviderCapabilities,
+	embeddingModel?: string | null,
+	/**
+	 *  Key state of every provider (keys are stored per provider), so the
+	 *  settings can show the right one when another provider is selected.
+	 */
+	providerKeys: { [key in string]: AiKeyState },
+};
+
+export type AiSettingsView_Serialize = {
+	configured: boolean,
+	/**  "dpapi" (encrypted), "plain" (no OS encryption available) or "none". */
+	keyStorage: string,
+	maskedKey: string,
+	baseUrl: string,
+	model: string,
+	temperature: number | null,
+	maxTokens: number,
+	thinking: boolean,
+	reasoningEffort: string,
+	contextTokens: number,
+	/**  Maximum output tokens accepted by the API (384K). */
+	maxOutputTokens: number,
+	/**  Provider id and its honest one-line privacy note. */
+	provider: string,
+	providerLabel: string,
+	providerNote: string,
+	capabilities: ProviderCapabilities,
+	embeddingModel: string | null,
+	/**
+	 *  Key state of every provider (keys are stored per provider), so the
+	 *  settings can show the right one when another provider is selected.
+	 */
+	providerKeys: { [key in string]: AiKeyState },
+};
+
+export type AiSummarizeRequest = AiSummarizeRequest_Serialize | AiSummarizeRequest_Deserialize;
+
+export type AiSummarizeRequest_Deserialize = {
+	path: string,
+	options: SummaryOptions_Deserialize,
+	pages?: number[] | null,
+	password?: string | null,
+	jobId: string,
+	consent?: boolean,
+};
+
+export type AiSummarizeRequest_Serialize = {
+	path: string,
+	options: SummaryOptions_Serialize,
+	pages: number[] | null,
+	password: string | null,
+	jobId: string,
+	consent: boolean,
+};
+
+export type AiTableResult = AiTableResult_Serialize | AiTableResult_Deserialize;
+
+export type AiTableResult_Deserialize = {
+	rows: InvoiceTableRow_Deserialize[],
+	columns: string[],
+	pages: number,
+	elapsedMs: number,
+};
+
+export type AiTableResult_Serialize = {
+	rows: InvoiceTableRow_Serialize[],
+	columns: string[],
+	pages: number,
+	elapsedMs: number,
+};
+
+export type AiTestResult = {
+	ok: boolean,
+	message: string,
+	model: string,
+};
+
+export type AiTextResult = {
+	text: string,
+	pages: number,
+	characters: number,
+	model: string,
+	elapsedMs: number,
+};
+
+export type AiTranslateRequest = AiTranslateRequest_Serialize | AiTranslateRequest_Deserialize;
+
+export type AiTranslateRequest_Deserialize = {
+	path: string,
+	options: TranslateOptions_Deserialize,
+	pages?: number[] | null,
+	password?: string | null,
+	jobId: string,
+	consent?: boolean,
+};
+
+export type AiTranslateRequest_Serialize = {
+	path: string,
+	options: TranslateOptions_Serialize,
+	pages: number[] | null,
+	password: string | null,
+	jobId: string,
+	consent: boolean,
+};
+
+export type DocChatMessage = {
+	role: string,
+	content: string,
+};
+
+export type EditOptions = EditOptions_Serialize | EditOptions_Deserialize;
+
+export type EditOptions_Deserialize = {
+	/**
+	 *  Target language for `translate` (a code like "tr" or a name); the reply
+	 *  language for `summarize_column` and `outline_to_slides`.
+	 */
+	language?: string | null,
+	/**  Target tone for `tone` ("formal", "friendly", ...). */
+	tone?: string | null,
+	/**
+	 *  Extra data the task needs (sheet headers and the selection address for
+	 *  `suggest_formula`).
+	 */
+	context?: string | null,
+};
+
+export type EditOptions_Serialize = {
+	/**
+	 *  Target language for `translate` (a code like "tr" or a name); the reply
+	 *  language for `summarize_column` and `outline_to_slides`.
+	 */
+	language: string | null,
+	/**  Target tone for `tone` ("formal", "friendly", ...). */
+	tone: string | null,
+	/**
+	 *  Extra data the task needs (sheet headers and the selection address for
+	 *  `suggest_formula`).
+	 */
+	context: string | null,
+};
+
+export type EditTask = "rewrite" | "shorten" | "expand" | "fix" | "translate" | "tone" | "summarize_column" | "suggest_formula" | "outline_to_slides";
+
 /**
  *  Stable error codes surfaced to the UI. The frontend maps these to
  *  localized, user friendly messages - raw internal errors are never shown.
  */
 export type ErrorCode = "invalid_pdf" | "corrupt_pdf" | "password_required" | "wrong_password" | "not_found" | "permission_denied" | "file_locked" | "output_exists" | "disk_full" | "cancelled" | "engine_missing" | "ocr_engine_unavailable" | "unsupported" | "invalid_input" | "invalid_image" | "range_out_of_bounds" | "conversion_failed" | "processing_failed" | "internal" | "ai_not_configured" | "ai_invalid_key" | "ai_rate_limited" | "ai_insufficient_balance" | "ai_network" | "ai_no_text" | "ai_too_large" | "ai_server_error" | "ai_invalid_response";
+
+export type InvoiceTableRow = InvoiceTableRow_Serialize | InvoiceTableRow_Deserialize;
+
+export type InvoiceTableRow_Deserialize = {
+	page?: number,
+	vendor?: string,
+	date?: string,
+	currency?: string,
+	subtotal?: number | null,
+	tax?: number | null,
+	total?: number | null,
+} & ({
+	invoiceNumber?: string,
+} & {
+	invoice_number?: string,
+}) & ({
+	lineItems?: string,
+} & {
+	line_items?: string,
+}) & ({
+	customFields?: { [key in string]: string },
+} & {
+	custom_fields?: { [key in string]: string },
+});
+
+export type InvoiceTableRow_Serialize = {
+	page: number,
+	vendor: string,
+	date: string,
+	invoiceNumber: string,
+	currency: string,
+	subtotal: number | null,
+	tax: number | null,
+	total: number | null,
+	lineItems: string,
+	customFields: { [key in string]: string },
+};
+
+export type MetadataSuggestion = {
+	title: string,
+	author: string,
+	subject: string,
+	keywords: string[],
+};
 
 export type OAuthStatus = {
 	provider: string,
@@ -103,6 +779,18 @@ export type OAuthStatus = {
 	tenant: string,
 	/**  Where tokens live: `keychain` or `file`. */
 	store: string,
+};
+
+export type OutlineSlide = OutlineSlide_Serialize | OutlineSlide_Deserialize;
+
+export type OutlineSlide_Deserialize = {
+	title: string,
+	bullets?: string[],
+};
+
+export type OutlineSlide_Serialize = {
+	title: string,
+	bullets: string[],
 };
 
 /**
@@ -156,6 +844,102 @@ export type PluginPdfRead = {
 	hasTextLayer: boolean,
 	text: string,
 };
+
+export type ProviderCapabilities = {
+	chat: boolean,
+	embeddings: boolean,
+	vision: boolean,
+	structured_output: boolean,
+	streaming: boolean,
+};
+
+export type SaveAiEntryRequest = SaveAiEntryRequest_Serialize | SaveAiEntryRequest_Deserialize;
+
+export type SaveAiEntryRequest_Deserialize = {
+	kind: string,
+	sourcePath: string,
+	sourceName: string,
+	model: string,
+	pages: number,
+	characters: number,
+	options?: string,
+	text: string,
+	elapsedMs?: number,
+	/**  Overrides the default library folder for this save. */
+	directory?: string | null,
+};
+
+export type SaveAiEntryRequest_Serialize = {
+	kind: string,
+	sourcePath: string,
+	sourceName: string,
+	model: string,
+	pages: number,
+	characters: number,
+	options: string,
+	text: string,
+	elapsedMs: number,
+	/**  Overrides the default library folder for this save. */
+	directory: string | null,
+};
+
+export type SavedChatMessage = SavedChatMessage_Serialize | SavedChatMessage_Deserialize;
+
+export type SavedChatMessage_Deserialize = {
+	role: string,
+	content: string,
+	citations?: AiCitation_Deserialize[],
+};
+
+export type SavedChatMessage_Serialize = {
+	role: string,
+	content: string,
+	citations?: AiCitation_Serialize[],
+};
+
+export type SavedChatThread = SavedChatThread_Serialize | SavedChatThread_Deserialize;
+
+export type SavedChatThread_Deserialize = {
+	id: string,
+	title: string,
+	documentPath?: string | null,
+	createdAt: string,
+	updatedAt: string,
+	messages: SavedChatMessage_Deserialize[],
+};
+
+export type SavedChatThread_Serialize = {
+	id: string,
+	title: string,
+	documentPath: string | null,
+	createdAt: string,
+	updatedAt: string,
+	messages: SavedChatMessage_Serialize[],
+};
+
+export type SummaryLength = "short" | "medium" | "detailed";
+
+export type SummaryOptions = SummaryOptions_Serialize | SummaryOptions_Deserialize;
+
+export type SummaryOptions_Deserialize = {
+	/**  "auto" keeps the document language, otherwise an ISO code or plain name. */
+	language?: string,
+	length?: SummaryLength,
+	style?: SummaryStyle,
+	/**  Optional user focus, e.g. "focus on payment terms". */
+	focus?: string,
+};
+
+export type SummaryOptions_Serialize = {
+	/**  "auto" keeps the document language, otherwise an ISO code or plain name. */
+	language: string,
+	length: SummaryLength,
+	style: SummaryStyle,
+	/**  Optional user focus, e.g. "focus on payment terms". */
+	focus: string,
+};
+
+export type SummaryStyle = "paragraph" | "bullets" | "executive";
 
 /**  Honest capability report for the UI (size limit, provider availability). */
 export type SyncCapabilities = {
@@ -294,6 +1078,22 @@ export type SyncTestResult = {
 	remoteDir: string,
 	remoteDirExists: boolean,
 	message: string,
+};
+
+export type TranslateOptions = TranslateOptions_Serialize | TranslateOptions_Deserialize;
+
+export type TranslateOptions_Deserialize = {
+	/**  Target language name or ISO code, e.g. "tr" or "Turkish". */
+	targetLanguage: string,
+	/**  Keep the original text under each translated page. */
+	bilingual?: boolean,
+};
+
+export type TranslateOptions_Serialize = {
+	/**  Target language name or ISO code, e.g. "tr" or "Turkish". */
+	targetLanguage: string,
+	/**  Keep the original text under each translated page. */
+	bilingual: boolean,
 };
 
 export type VaultConfig = VaultConfig_Serialize | VaultConfig_Deserialize;

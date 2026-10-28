@@ -79,7 +79,7 @@ export function AiSettings() {
         setModel(settings.model);
         setProvider(parseProviderId(settings.provider));
         setEmbeddingModel(settings.embeddingModel ?? "");
-        setTemperature(settings.temperature);
+        setTemperature(settings.temperature ?? 0.2);
         setMaxTokens(settings.maxTokens);
         setThinking(settings.thinking);
         setReasoningEffort((settings.reasoningEffort as ReasoningEffort) ?? "high");

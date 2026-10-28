@@ -45,6 +45,7 @@ pub const REDUCE_SYSTEM: &str =
     "You combine partial summaries into one coherent final summary. Remove repetition, keep all \
 key facts, and follow the style and length requested by the user.";
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SummaryLength {
@@ -53,6 +54,7 @@ pub enum SummaryLength {
     Detailed,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SummaryStyle {
@@ -61,6 +63,7 @@ pub enum SummaryStyle {
     Executive,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SummaryOptions {
@@ -92,6 +95,7 @@ impl Default for SummaryOptions {
     }
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TranslateOptions {
@@ -351,6 +355,7 @@ pub fn parse_metadata_reply(reply: &str) -> Option<MetadataSuggestion> {
     })
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct MetadataSuggestion {
@@ -404,6 +409,7 @@ pub fn sanitize_history(history: &[DocChatMessage], budget: usize) -> Vec<DocCha
     kept
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DocChatMessage {
     pub role: String,
@@ -618,28 +624,39 @@ pub fn summarize_selection_prompt(text: &str, language: &str) -> Vec<ChatMessage
 // Invoice & receipt extraction
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct InvoiceTableRow {
     #[serde(default, deserialize_with = "de_lenient_page")]
+    #[cfg_attr(feature = "bindings", specta(type = u32))]
     pub page: u32,
     #[serde(default, deserialize_with = "de_lenient_string")]
+    #[cfg_attr(feature = "bindings", specta(type = String))]
     pub vendor: String,
     #[serde(default, deserialize_with = "de_lenient_string")]
+    #[cfg_attr(feature = "bindings", specta(type = String))]
     pub date: String,
     #[serde(default, alias = "invoice_number", deserialize_with = "de_lenient_string")]
+    #[cfg_attr(feature = "bindings", specta(type = String))]
     pub invoice_number: String,
     #[serde(default, deserialize_with = "de_lenient_string")]
+    #[cfg_attr(feature = "bindings", specta(type = String))]
     pub currency: String,
     #[serde(default, deserialize_with = "de_lenient_money")]
+    #[cfg_attr(feature = "bindings", specta(type = Option<f64>))]
     pub subtotal: Option<f64>,
     #[serde(default, deserialize_with = "de_lenient_money")]
+    #[cfg_attr(feature = "bindings", specta(type = Option<f64>))]
     pub tax: Option<f64>,
     #[serde(default, deserialize_with = "de_lenient_money")]
+    #[cfg_attr(feature = "bindings", specta(type = Option<f64>))]
     pub total: Option<f64>,
     #[serde(default, alias = "line_items", deserialize_with = "de_lenient_string")]
+    #[cfg_attr(feature = "bindings", specta(type = String))]
     pub line_items: String,
     #[serde(default, alias = "custom_fields", deserialize_with = "de_lenient_custom_fields")]
+    #[cfg_attr(feature = "bindings", specta(type = BTreeMap<String, String>))]
     pub custom_fields: BTreeMap<String, String>,
 }
 

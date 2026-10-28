@@ -1,30 +1,10 @@
+import type * as specta from "./generated/specta";
 import type { SyncState, VaultScanRequest_Deserialize } from "./generated/specta";
+import type { CommandResult } from "./typed-ipc";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { FileToken } from "./file-tokens";
 import type {
-  AiAskRequest,
-  AiBatchRequest,
-  AiBatchResult,
-  AiChatRequest,
-  AiChatResult,
-  AiCleanupRequest,
-  AiEditRequest,
-  AiEditResult,
-  AiExamplePrompts,
-  AiExtractRequest,
-  AiLibraryEntry,
-  AiMetadataSuggestion,
-  AiModelOption,
-  AiPreview,
-  AiSettingsInput,
-  AiSettingsView,
-  AiSummarizeRequest,
-  AiTableResult,
-  SavedChatThread,
-  AiTestResult,
-  AiTextResult,
-  AiTranslateRequest,
   Annotation,
   AnnotationEditItem,
   AnnotationEditReport,
@@ -82,6 +62,19 @@ function invokeTracked<T>(command: string, args: Record<string, unknown>): Promi
 
 export { invokeTracked };
 
+/**
+ * Typed command calls (tauri-specta, #316). The generated wrappers load on
+ * first use: this module sits in the entry chunk, which cannot carry them.
+ * `call` unwraps a command that returns a Result (it rejects with the
+ * command's error, as `invoke` does); `callPlain` is for the others.
+ */
+type Commands = typeof import("./generated/specta").commands;
+const typedCommands = () => import("./typed-ipc");
+const call = <T>(run: (commands: Commands) => Promise<CommandResult<T, unknown>>): Promise<T> =>
+  typedCommands().then(({ commands, unwrap }) => unwrap(run(commands)));
+const callPlain = <T>(run: (commands: Commands) => Promise<T>): Promise<T> =>
+  typedCommands().then(({ commands }) => run(commands));
+
 /** Normalizes any thrown value into a friendly {code, message} pair. */
 export function toAppError(error: unknown): { code: string; message: string } {
   if (typeof error === "string") {
@@ -114,41 +107,52 @@ export const onProgress = (handler: (payload: ProgressPayload) => void): Promise
 
 // AI (DeepSeek) - the only network feature, opt-in with the user's own key.
 
-export const aiGetSettings = () => invoke<AiSettingsView>("ai_get_settings");
-export const aiSaveSettings = (input: AiSettingsInput) => invoke<AiSettingsView>("ai_save_settings", { input });
+export const aiGetSettings = () => callPlain((c) => c.aiGetSettings());
+export const aiSaveSettings = (input: specta.AiSettingsInput_Deserialize) => call((c) => c.aiSaveSettings(input));
 /** Removes the stored key of `provider` (the saved provider when omitted). */
-export const aiClearKey = (provider?: string) => invoke<AiSettingsView>("ai_clear_key", { provider: provider ?? null });
-export const aiTestConnection = () => invoke<AiTestResult>("ai_test_connection");
+export const aiClearKey = (provider?: string) => call((c) => c.aiClearKey(provider ?? null));
+export const aiTestConnection = () => call((c) => c.aiTestConnection());
 export const aiDocumentPreview = (path: string, pages: number[] | undefined, password?: string) =>
-  invoke<AiPreview>("ai_document_preview", { path, pages: pages ?? null, password: password || null });
-export const aiSummarize = (request: AiSummarizeRequest) => invokeTracked<AiTextResult>("ai_summarize", { request });
-export const aiTranslate = (request: AiTranslateRequest) => invokeTracked<AiTextResult>("ai_translate", { request });
-export const aiAsk = (request: AiAskRequest) => invokeTracked<AiTextResult>("ai_ask", { request });
-export const aiChat = (request: AiChatRequest) => invokeTracked<AiChatResult>("ai_chat", { request });
-export const aiChatSave = (thread: SavedChatThread) => invoke<void>("ai_chat_save", { thread });
-export const aiChatList = () => invoke<SavedChatThread[]>("ai_chat_list");
-export const aiChatLoad = (id: string) => invoke<SavedChatThread>("ai_chat_load", { id });
-export const aiChatDelete = (id: string) => invoke<void>("ai_chat_delete", { id });
+  call((c) => c.aiDocumentPreview(path, pages ?? null, password || null));
+// The long AI jobs stay on `invokeTracked` (the Jobs screen re-runs them from
+// the stored args); their request and result types are the generated ones.
+export const aiSummarize = (request: specta.AiSummarizeRequest_Deserialize) =>
+  invokeTracked<specta.AiTextResult>("ai_summarize", { request });
+export const aiTranslate = (request: specta.AiTranslateRequest_Deserialize) =>
+  invokeTracked<specta.AiTextResult>("ai_translate", { request });
+export const aiAsk = (request: specta.AiAskRequest_Deserialize) =>
+  invokeTracked<specta.AiTextResult>("ai_ask", { request });
+export const aiChat = (request: specta.AiChatRequest_Deserialize) =>
+  invokeTracked<specta.AiChatResult_Serialize>("ai_chat", { request });
+export const aiChatSave = async (thread: specta.SavedChatThread_Deserialize) => {
+  await call((c) => c.aiChatSave(thread));
+};
+export const aiChatList = () => call((c) => c.aiChatList());
+export const aiChatLoad = (id: string) => call((c) => c.aiChatLoad(id));
+export const aiChatDelete = async (id: string) => {
+  await call((c) => c.aiChatDelete(id));
+};
 /** Deletes AI data: saved chats (all, or older than the retention) and the derived vault index. */
-export const aiClearData = (olderThanDays?: number) =>
-  invoke<{ chatsDeleted: number; indexDeleted: boolean }>("ai_clear_data", { olderThanDays: olderThanDays ?? null });
-export const aiExtractTable = (request: AiExtractRequest) =>
-  invokeTracked<AiTableResult>("ai_extract_table", { request });
-export const aiBatchRun = (request: AiBatchRequest) => invokeTracked<AiBatchResult>("ai_batch_run", { request });
-export const aiCleanupText = (request: AiCleanupRequest) => invokeTracked<AiTextResult>("ai_cleanup_text", { request });
+export const aiClearData = (olderThanDays?: number) => call((c) => c.aiClearData(olderThanDays ?? null));
+export const aiExtractTable = (request: specta.AiExtractRequest_Deserialize) =>
+  invokeTracked<specta.AiTableResult_Serialize>("ai_extract_table", { request });
+export const aiBatchRun = (request: specta.AiBatchRequest_Deserialize) =>
+  invokeTracked<specta.AiBatchResult_Serialize>("ai_batch_run", { request });
+export const aiCleanupText = (request: specta.AiCleanupRequest_Deserialize) =>
+  invokeTracked<specta.AiTextResult>("ai_cleanup_text", { request });
 /**
  * In-editor AI action. Deliberately NOT `invokeTracked`: the retry store
  * persists the invoke args, which here hold the user's selected document text.
  */
-export const aiEditText = (request: AiEditRequest) => invoke<AiEditResult>("ai_edit_text", { request });
-export const aiSuggestMetadata = (path: string, password: string | undefined, jobId: string, consent = true) =>
-  invokeTracked<AiMetadataSuggestion>("ai_suggest_metadata", {
-    request: { path, password: password || null, jobId, consent },
-  });
+export const aiEditText = (request: specta.AiEditRequest_Deserialize) => call((c) => c.aiEditText(request));
+export const aiSuggestMetadata = (path: string, password: string | undefined, jobId: string, consent = true) => {
+  const request: specta.AiMetadataRequest_Deserialize = { path, password: password || null, jobId, consent };
+  return invokeTracked<specta.MetadataSuggestion>("ai_suggest_metadata", { request });
+};
 export const aiSaveOutput = (path: string, text: string, overwrite?: string) =>
-  invoke<string>("ai_save_output", { path, text, overwrite: overwrite ?? null });
-export const aiExamplePrompts = () => invoke<AiExamplePrompts>("ai_example_prompts");
-export const aiModels = (provider?: string) => invoke<AiModelOption[]>("ai_models", { provider: provider ?? null });
+  call((c) => c.aiSaveOutput(path, text, overwrite ?? null));
+export const aiExamplePrompts = () => callPlain((c) => c.aiExamplePrompts());
+export const aiModels = (provider?: string) => callPlain((c) => c.aiModels(provider ?? null));
 
 /**
  * Live model list straight from the configured provider. The command takes no
@@ -156,39 +160,25 @@ export const aiModels = (provider?: string) => invoke<AiModelOption[]>("ai_model
  * settings must be saved before calling it. Never throws for a provider that
  * does not answer - `discovered` is false and `message` explains why.
  */
-export interface AiDiscoveredModels {
-  models: AiModelOption[];
-  discovered: boolean;
-  message: string;
-}
+export type AiDiscoveredModels = specta.AiDiscoveredModels;
 
-export const aiDiscoverModels = () => invoke<AiDiscoveredModels>("ai_discover_models");
+export const aiDiscoverModels = () => call((c) => c.aiDiscoverModels());
 
 // ---------------------------------------------------------------------------
 // AI library (saved results) and the operation log
 // ---------------------------------------------------------------------------
 
-export interface SaveAiEntryRequest {
-  kind: string;
-  sourcePath: string;
-  sourceName: string;
-  model: string;
-  pages: number;
-  characters: number;
-  options: string;
-  text: string;
-  elapsedMs: number;
-  directory?: string;
-}
+export type SaveAiEntryRequest = specta.SaveAiEntryRequest_Deserialize;
 
-export const aiLibrarySave = (request: SaveAiEntryRequest) => invoke<AiLibraryEntry>("ai_library_save", { request });
-export const aiLibraryList = () => invoke<AiLibraryEntry[]>("ai_library_list");
-export const aiLibraryText = (id: string) => invoke<string>("ai_library_text", { id });
-export const aiLibraryDelete = (id: string, deleteFile = true) =>
-  invoke<AiLibraryEntry[]>("ai_library_delete", { id, deleteFile });
-export const aiLibraryClear = (deleteFiles = true) => invoke<void>("ai_library_clear", { deleteFiles });
-export const aiLibraryExport = (id: string, target: string) => invoke<string>("ai_library_export", { id, target });
-export const aiLibraryDefaultDir = () => invoke<string>("ai_library_default_dir");
+export const aiLibrarySave = (request: SaveAiEntryRequest) => call((c) => c.aiLibrarySave(request));
+export const aiLibraryList = () => call((c) => c.aiLibraryList());
+export const aiLibraryText = (id: string) => call((c) => c.aiLibraryText(id));
+export const aiLibraryDelete = (id: string, deleteFile = true) => call((c) => c.aiLibraryDelete(id, deleteFile));
+export const aiLibraryClear = async (deleteFiles = true) => {
+  await call((c) => c.aiLibraryClear(deleteFiles));
+};
+export const aiLibraryExport = (id: string, target: string) => call((c) => c.aiLibraryExport(id, target));
+export const aiLibraryDefaultDir = () => callPlain((c) => c.aiLibraryDefaultDir());
 
 export const logOperation = (entry: {
   operation: string;

@@ -126,6 +126,7 @@ impl Default for AiSettingsFile {
     }
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiSettingsView {
@@ -154,6 +155,7 @@ pub struct AiSettingsView {
 }
 
 /// Whether a key is stored for one provider, never the key itself.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiKeyState {
@@ -163,6 +165,7 @@ pub struct AiKeyState {
     pub key_storage: String,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiSettingsInput {
@@ -359,11 +362,13 @@ pub(crate) fn build_config(app: &AppHandle) -> Result<AiConfig, PdfError> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_get_settings(app: AppHandle) -> AiSettingsView {
     view(&app)
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_save_settings(app: AppHandle, input: AiSettingsInput) -> Result<AiSettingsView, PdfError> {
     // The legacy single key belongs to the provider saved so far, so it moves
     // before the settings (and with them the provider) change.
@@ -408,6 +413,7 @@ pub fn ai_save_settings(app: AppHandle, input: AiSettingsInput) -> Result<AiSett
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_clear_key(app: AppHandle, provider: Option<String>) -> Result<AiSettingsView, PdfError> {
     // Clears the key of the provider the settings screen shows (the saved one
     // when none is named), never another provider's.
@@ -419,6 +425,7 @@ pub fn ai_clear_key(app: AppHandle, provider: Option<String>) -> Result<AiSettin
     Ok(view(&app))
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiTestResult {
@@ -428,6 +435,7 @@ pub struct AiTestResult {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn ai_test_connection(app: AppHandle) -> Result<AiTestResult, PdfError> {
     let config = build_config(&app)?;
     let model = config.model.clone();
@@ -725,16 +733,20 @@ fn join_text(pages: &[(u32, String)]) -> String {
     prompts::format_pages(pages, false)
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiPreview {
     pub pages: u32,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub characters: u64,
     pub sample: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub estimated_words: u64,
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn ai_document_preview(
     app: AppHandle,
     path: String,
@@ -754,13 +766,16 @@ pub async fn ai_document_preview(
     })
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiTextResult {
     pub text: String,
     pub pages: u32,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub characters: u64,
     pub model: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub elapsed_ms: u64,
 }
 
@@ -768,6 +783,7 @@ pub struct AiTextResult {
 // Summarize
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiSummarizeRequest {
@@ -795,6 +811,7 @@ impl std::fmt::Debug for AiSummarizeRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn ai_summarize(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -841,6 +858,7 @@ pub async fn ai_summarize(
 // Translate
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiTranslateRequest {
@@ -867,6 +885,7 @@ impl std::fmt::Debug for AiTranslateRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn ai_translate(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -927,6 +946,7 @@ pub async fn ai_translate(
 // Ask the document / cleanup / metadata
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiAskRequest {
@@ -951,6 +971,7 @@ impl std::fmt::Debug for AiAskRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn ai_ask(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -992,6 +1013,7 @@ pub async fn ai_ask(
 // Document Chat with Citations & Multi-Turn History
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiChatRequest {
@@ -1051,6 +1073,7 @@ impl std::fmt::Debug for AiChatRequest {
     }
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AiCitation {
@@ -1083,6 +1106,7 @@ struct CitationSource {
     page: u32,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AiChatResult {
@@ -1090,6 +1114,7 @@ pub struct AiChatResult {
     pub citations: Vec<AiCitation>,
     pub retrieval_mode: String, // "hybrid" | "keyword"
     pub model: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub elapsed_ms: u64,
     /// Set when a requested page image could not be rendered, encoded or sent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1113,6 +1138,7 @@ fn page_from_location(location: &str) -> u32 {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn ai_chat(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -1394,6 +1420,7 @@ pub async fn ai_chat(
 // Chat Persistence
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SavedChatMessage {
@@ -1403,6 +1430,7 @@ pub struct SavedChatMessage {
     pub citations: Vec<AiCitation>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SavedChatThread {
@@ -1425,6 +1453,7 @@ fn sanitize_thread_id(id: &str) -> String {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_chat_save(app: AppHandle, thread: SavedChatThread) -> Result<(), PdfError> {
     let dir = chats_dir(&app)?;
     let safe_id = sanitize_thread_id(&thread.id);
@@ -1439,6 +1468,7 @@ pub fn ai_chat_save(app: AppHandle, thread: SavedChatThread) -> Result<(), PdfEr
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_chat_list(app: AppHandle) -> Result<Vec<SavedChatThread>, PdfError> {
     let dir = chats_dir(&app)?;
     let mut threads = Vec::new();
@@ -1459,6 +1489,7 @@ pub fn ai_chat_list(app: AppHandle) -> Result<Vec<SavedChatThread>, PdfError> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_chat_load(app: AppHandle, id: String) -> Result<SavedChatThread, PdfError> {
     let dir = chats_dir(&app)?;
     let safe_id = sanitize_thread_id(&id);
@@ -1471,6 +1502,7 @@ pub fn ai_chat_load(app: AppHandle, id: String) -> Result<SavedChatThread, PdfEr
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_chat_delete(app: AppHandle, id: String) -> Result<(), PdfError> {
     let dir = chats_dir(&app)?;
     let safe_id = sanitize_thread_id(&id);
@@ -1487,9 +1519,11 @@ fn thread_is_expired(updated_at: &str, cutoff: &str) -> bool {
     !updated_at.is_empty() && updated_at < cutoff
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiClearReport {
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub chats_deleted: usize,
     pub index_deleted: bool,
 }
@@ -1498,6 +1532,7 @@ pub struct AiClearReport {
 /// pruned (retention); without it every chat is deleted. The derived vault
 /// index (embeddings) is always removed so it is rebuilt on demand.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_clear_data(app: AppHandle, older_than_days: Option<u32>) -> Result<AiClearReport, PdfError> {
     let root = config_dir(&app)?;
     let dir = chats_dir(&app)?;
@@ -1536,6 +1571,7 @@ pub fn ai_clear_data(app: AppHandle, older_than_days: Option<u32>) -> Result<AiC
 // Structured Invoice & Table Extraction
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiExtractRequest {
@@ -1562,16 +1598,19 @@ impl std::fmt::Debug for AiExtractRequest {
     }
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AiTableResult {
     pub rows: Vec<prompts::InvoiceTableRow>,
     pub columns: Vec<String>,
     pub pages: u32,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub elapsed_ms: u64,
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn ai_extract_table(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -1627,6 +1666,7 @@ pub async fn ai_extract_table(
 // Batch AI Processing Queue
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiBatchItemRequest {
@@ -1639,6 +1679,7 @@ pub struct AiBatchItemRequest {
     pub password: Option<String>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiBatchRequest {
@@ -1649,6 +1690,7 @@ pub struct AiBatchRequest {
     pub consent: bool,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AiBatchItemResult {
@@ -1657,19 +1699,23 @@ pub struct AiBatchItemResult {
     pub success: bool,
     pub output: Option<String>,
     pub error: Option<String>,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub elapsed_ms: u64,
     /// Approximate tokens used (input + output), from character counts.
     #[serde(default)]
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub estimated_tokens: u64,
     /// Approximate cost in USD; 0 when the model's price is unknown.
     #[serde(default)]
     pub estimated_cost_usd: f64,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AiBatchResult {
     pub results: Vec<AiBatchItemResult>,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub total_elapsed_ms: u64,
     /// "completed", "cancelled" or "failed": a run the user stopped, or one
     /// where every item failed, must not look like a completed batch.
@@ -1863,6 +1909,7 @@ async fn run_batch_item(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn ai_batch_run(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -1943,6 +1990,7 @@ pub async fn ai_batch_run(
     Ok(AiBatchResult { results, total_elapsed_ms: started.elapsed().as_millis() as u64, status: status.to_string() })
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiCleanupRequest {
@@ -1967,6 +2015,7 @@ impl std::fmt::Debug for AiCleanupRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn ai_cleanup_text(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -2015,6 +2064,7 @@ pub async fn ai_cleanup_text(
     })
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiMetadataRequest {
@@ -2037,6 +2087,7 @@ impl std::fmt::Debug for AiMetadataRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn ai_suggest_metadata(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -2062,12 +2113,14 @@ pub async fn ai_suggest_metadata(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_cancel(registry: State<'_, JobRegistry>, job_id: String) {
     registry.cancel(&job_id);
 }
 
 /// Saves an AI result as a text/Markdown file (with the usual overwrite rules).
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_save_output(path: String, text: String, overwrite: Option<String>) -> Result<String, PdfError> {
     let policy = match overwrite.as_deref() {
         Some("replace") => pdfcore::docutil::OverwritePolicy::Replace,
@@ -2086,6 +2139,7 @@ pub fn ai_save_output(path: String, text: String, overwrite: Option<String>) -> 
 }
 
 /// Model ids offered in the settings dropdown (id + human label).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiModelOption {
@@ -2097,6 +2151,7 @@ pub struct AiModelOption {
 /// Static fallback list (used before a provider answers, or when discovery is
 /// unavailable). The live list comes from [`ai_discover_models`].
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_models(provider: Option<String>) -> Vec<AiModelOption> {
     let kind = provider.as_deref().map(provider_kind).unwrap_or_default();
     let default_model = match kind {
@@ -2116,6 +2171,7 @@ pub fn ai_models(provider: Option<String>) -> Vec<AiModelOption> {
 /// Result of a live model lookup. `models` is empty when the provider does not
 /// expose a listing (the UI then keeps its fallback list). `message` explains
 /// what happened without ever containing a key.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiDiscoveredModels {
@@ -2129,6 +2185,7 @@ pub struct AiDiscoveredModels {
 /// list and the settings screen keeps its static suggestions. This removes the
 /// hard-coded assumption that only the models in `SUGGESTED_MODELS` exist.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn ai_discover_models(app: AppHandle) -> Result<AiDiscoveredModels, PdfError> {
     let config = build_config(&app)?;
     let client = DeepSeekClient::new(config).map_err(ai_error)?;
@@ -2153,6 +2210,7 @@ pub async fn ai_discover_models(app: AppHandle) -> Result<AiDiscoveredModels, Pd
 }
 
 /// Also referenced by the UI to know if AI features are worth showing.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiExamplePrompts {
@@ -2162,6 +2220,7 @@ pub struct AiExamplePrompts {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_example_prompts() -> AiExamplePrompts {
     AiExamplePrompts {
         summarize: vec![
