@@ -10,7 +10,7 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 6.3.3** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 6.4.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
 
@@ -110,12 +110,15 @@ was split into per-format modules.
 - **Encrypted signatures** (6.3.3): saved signatures and paraphs are sealed
   with Windows DPAPI or the Android Keystore instead of plain PNG files.
 
-**Downloads (v6.3.3)** — Windows Setup/Portable, Android APK/AAB and SHA-256
-manifests: [Release v6.3.3](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v6.3.3)
-· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.3.3/OmniOffice-Setup-6.3.3.exe)
-· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.3.3/OmniOffice-Portable-6.3.3.zip)
-· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.3.3/OmniOffice-Android-6.3.3-arm64-v8a.apk)
-· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.3.3/OmniOffice-Android-6.3.3-armeabi-v7a.apk)
+- **Profession desks** (6.4.0): Home asks what you do and leads with six to
+  eight tasks for lawyers, accountants, the public sector or students; all
+  tools stay one tap away.
+**Downloads (v6.4.0)** — Windows Setup/Portable, Android APK/AAB and SHA-256
+manifests: [Release v6.4.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v6.4.0)
+· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.4.0/OmniOffice-Setup-6.4.0.exe)
+· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.4.0/OmniOffice-Portable-6.4.0.zip)
+· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.4.0/OmniOffice-Android-6.4.0-arm64-v8a.apk)
+· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.4.0/OmniOffice-Android-6.4.0-armeabi-v7a.apk)
 
 ## Release history
 

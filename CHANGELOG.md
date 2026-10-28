@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.0] - Meslek masaları
+
+### Added
+
+- **Profession desks on Home (C1, #341):** the first time Home opens it asks
+  "What do you do?" (lawyer, accountant, public sector, student, or all
+  tools). The answer puts a desk of six to eight tasks at the top of Home:
+  a petition, an evidence bundle, KVKK redaction and KEP messages for a
+  lawyer; the invoice inbox with its VAT summary, the period workbook and
+  client letters for an accountant; official letters, templates and PDF/A
+  for the public sector; scanning, homework, slides and upload-size PDFs for
+  a student. Every task opens a screen that already exists.
+- **"All tools"** keeps the full catalogue one tap away while a desk leads
+  Home; search still covers every tool.
+- **Settings → Home desk** changes the choice; "Change desk" on Home does
+  the same.
+
 ## [6.3.3] - İmzalar şifreli saklanıyor
 
 ### Security

@@ -31,6 +31,36 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.4.0) - Meslek masaları
+
+- **Profession desks** (C1, #341): four desks of six to eight tasks, each
+  pointing at an existing, enabled screen; a task whose screen is behind an
+  off flag is left out.
+  `test:src/lib/desks.test.ts#gives every profession six to eight tasks`
+  `test:src/lib/desks.test.ts#leaves out a task whose screen is behind an off flag`
+- **First-run question on Home** and the desk replacing the catalogue, with
+  "All tools" and search still reaching every tool (#341).
+  `test:src/screens/Home.test.tsx#asks what you do on first run and turns Home into that desk`
+  `test:src/screens/Home.test.tsx#still finds every tool through search while a desk is shown`
+- **Desk choice in Settings** (#341).
+  `test:src/screens/Settings.test.tsx#chooses the Home desk`
+
+### Not done / Known limitations (6.4.0)
+
+- The command palette does not run desk tasks by phrase yet ("bu PDF'i
+  karart", "KDV özeti çıkar"); the issue lists it as part of C1 and it is
+  left for a later release.
+  (no test: not implemented.)
+- The desks were not looked at on a phone this cycle (no device connected);
+  the layout reuses the Home tool-card grid. Confirm by hand: fresh install →
+  Home asks the question → pick a profession → tasks open their screens.
+  (no test: on-device verification pending.)
+- Existing installs see the question once too (no profession is stored yet);
+  "Show all tools" keeps the old Home.
+  (no test: intended behaviour, covered by the general-choice test.)
+- The 6.2.11 to 6.3.3 on-device checks are still pending.
+  (no test: on-device verification pending.)
+
 ## Implemented (this cycle, 6.3.3) - İmzalar şifreli
 
 - **Saved signatures are sealed with DPAPI / the Android Keystore** (#443),
