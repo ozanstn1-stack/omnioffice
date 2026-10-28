@@ -939,3 +939,49 @@ describe("Calc frozen panes", () => {
     expect(screen.getByRole("button", { name: "Freeze panes" })).toBeInTheDocument();
   });
 });
+
+// Gesture paths the other suites did not reach: the column grip used to read
+// `dataset.col` (the grip only carries data-col-resize) and stored "NaN".
+describe("Calc double tap, pinch zoom and column resize", () => {
+  beforeEach(() => {
+    useOfficeTabs.setState({ tabs: [], activeId: null });
+    vi.mocked(isAndroid).mockReturnValue(false);
+  });
+
+  it("opens the inline editor on a double tap", () => {
+    const id = useOfficeTabs.getState().create("calc", "Untitled");
+    render(<Harness id={id} />);
+    for (const pointerId of [20, 21]) {
+      fireEvent.pointerDown(cellAt(1, 1), { pointerId, pointerType: "touch", button: 0, clientX: 200, clientY: 200 });
+      fireEvent.pointerUp(window, { pointerId, pointerType: "touch" });
+    }
+    expect(activeCellEditor()).not.toBeNull();
+    expect(document.querySelector<HTMLInputElement>(".name-box")?.value).toBe("B2");
+  });
+
+  it("zooms the grid with a two-finger pinch", () => {
+    const id = useOfficeTabs.getState().create("calc", "Untitled");
+    render(<Harness id={id} />);
+    const canvas = () => document.querySelector<HTMLElement>("[style*='zoom']");
+    expect(canvas()?.style.zoom).toBe("1");
+    fireEvent.pointerDown(cellAt(1, 1), { pointerId: 30, pointerType: "touch", button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerDown(cellAt(1, 2), { pointerId: 31, pointerType: "touch", button: 0, clientX: 200, clientY: 100 });
+    // The fingers move from 100 px apart to 150 px: zoom 1.5.
+    fireEvent.pointerMove(window, { pointerId: 31, pointerType: "touch", clientX: 250, clientY: 100 });
+    expect(canvas()?.style.zoom).toBe("1.5");
+    fireEvent.pointerUp(window, { pointerId: 31, pointerType: "touch" });
+    fireEvent.pointerUp(window, { pointerId: 30, pointerType: "touch" });
+    expect(canvas()?.style.zoom).toBe("1.5");
+  });
+
+  it("widens a column by dragging its header grip", () => {
+    const id = useOfficeTabs.getState().create("calc", "Untitled");
+    render(<Harness id={id} />);
+    const grip = document.querySelector<HTMLElement>("[data-col-resize='0']");
+    expect(grip).not.toBeNull();
+    fireEvent.pointerDown(grip!, { pointerId: 40, pointerType: "mouse", button: 0, clientX: 150, clientY: 10 });
+    fireEvent.pointerMove(window, { pointerId: 40, pointerType: "mouse", clientX: 200, clientY: 10 });
+    fireEvent.pointerUp(window, { pointerId: 40, pointerType: "mouse" });
+    expect(workbookOf().sheets[0].colWidths["0"]).toBe(146);
+  });
+});
