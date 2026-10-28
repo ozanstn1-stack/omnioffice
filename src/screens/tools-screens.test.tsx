@@ -405,7 +405,7 @@ describe("History, Home and Settings act on the local stores", () => {
     const openButtons = await screen.findAllByRole("button", { name: "Open" });
     await user.click(openButtons[2]);
     expect(onNavigate).toHaveBeenCalledWith("office");
-    expect(requestOf("office_open_document")).toEqual({ path: "C:/docs/budget.xlsx" });
+    await waitFor(() => expect(requestOf("office_open_document")).toEqual({ path: "C:/docs/budget.xlsx" }));
     await waitFor(() =>
       expect(requestOf("add_recent")).toEqual({
         entry: expect.objectContaining({ path: "C:/docs/budget.xlsx", fileName: "budget.xlsx", tool: "_office" }),

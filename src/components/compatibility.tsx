@@ -1,37 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import type * as specta from "../lib/generated/specta";
+import { call, callPlain } from "../lib/typed-call";
 import { Dialog } from "../office/office-ui";
 import { Badge, SectionTitle, Spinner } from "./ui";
 import { flagEnabled } from "../lib/flags";
 import { useT, type Translate } from "../lib/i18n";
 import { errorMessage } from "../lib/store";
 
-export interface CompatibilityItem {
-  feature: string;
-  status: string;
-  message: string;
-}
-
-export interface CompatibilityReport {
-  target: string;
-  items: CompatibilityItem[];
-}
-
-export interface FeatureSupport {
-  feature: string;
-  level: string;
-  note: string;
-}
-
-export interface FormatCapabilities {
-  extension: string;
-  open: boolean;
-  edit: boolean;
-  save: boolean;
-  pdfExport: boolean;
-  losslessNative: boolean;
-  features: FeatureSupport[];
-}
+// Generated from the Rust structs (tauri-specta, #316).
+export type CompatibilityItem = specta.FeatureLoss;
+export type CompatibilityReport = specta.CompatibilityReport;
+export type FeatureSupport = specta.FeatureSupport;
+export type FormatCapabilities = specta.FormatCapabilities;
 
 const TARGETS: Record<string, string[]> = {
   // UYAP `.udf` is experimental: never offered as a target unless the flag is
@@ -57,8 +37,8 @@ function groupFor(status: string): StatusGroup {
   return "transformed";
 }
 
-const supportedExtensions = () => invoke<string[]>("office_supported_extensions");
-const formatCapabilities = (extension: string) => invoke<FormatCapabilities>("office_capabilities", { extension });
+export const supportedExtensions = () => callPlain((c) => c.officeSupportedExtensions());
+export const formatCapabilities = (extension: string) => callPlain((c) => c.officeCapabilities(extension));
 
 /**
  * Runs the backend feature report for `kind`'s model against `target`.
@@ -67,7 +47,7 @@ const formatCapabilities = (extension: string) => invoke<FormatCapabilities>("of
  * save, because the document would then be trapped in the editor.
  */
 export const compatibilityReport = (kind: string, model: unknown, target: string) =>
-  invoke<CompatibilityReport>("office_compatibility", { kind, model, target });
+  call((c) => c.officeCompatibility(kind, model as specta.Value, target));
 
 // ---------------------------------------------------------------------------
 // Data Loss Protection helpers

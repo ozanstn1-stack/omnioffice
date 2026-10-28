@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 /// How well a format supports one feature.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SupportLevel {
@@ -35,6 +36,7 @@ impl SupportLevel {
 }
 
 /// One feature support entry for a format.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FeatureSupport {
@@ -44,6 +46,7 @@ pub struct FeatureSupport {
 }
 
 /// What a format can do in this build.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FormatCapabilities {
@@ -62,6 +65,7 @@ pub struct FormatCapabilities {
 }
 
 /// One lossy item in a compatibility report.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FeatureLoss {
@@ -72,6 +76,7 @@ pub struct FeatureLoss {
 }
 
 /// The report produced before saving a document into a target format.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompatibilityReport {
@@ -721,6 +726,7 @@ pub fn supported_open_extensions() -> Vec<&'static str> {
 
 /// The capabilities of a document model (what the *model* supports, regardless
 /// of the current file format).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentCapabilities {
