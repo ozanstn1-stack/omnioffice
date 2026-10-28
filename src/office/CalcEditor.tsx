@@ -77,7 +77,6 @@ import {
   type DuplicateOptions,
 } from "./calc/data-tools";
 import { applyFilterDraft, clearFilter, sheetFilterDraft, tableFilterDraft, type FilterDraft } from "./calc/filter";
-import { argumentHintFor, buildSuggestions, type FormulaSuggestion } from "./calc/formula-assist";
 import { clampGridZoom, pinchGridZoom, shiftFormulaColumns } from "./calc/grid-math";
 import type { CellPosition, GridSelection } from "./calc/grid-types";
 import type { DragBounds } from "./calc/gestures";
@@ -115,6 +114,7 @@ import { useCalcUndoRedo } from "./calc/ui/useCalcUndoRedo";
 import { DEFAULT_COL_WIDTH, HEADER_HEIGHT, HEADER_WIDTH, ROW_HEIGHT } from "./calc/grid-metrics";
 import { useGridGestures } from "./calc/ui/useGridGestures";
 import { useListDropdown } from "./calc/ui/useListDropdown";
+import { useFormulaDraft } from "./calc/ui/useFormulaDraft";
 import { usePasteSpecial, type InternalClipboard } from "./calc/ui/usePasteSpecial";
 import { useVisibilityActions, type Axis } from "./calc/ui/useVisibilityActions";
 import { ValidationDialog } from "./calc/ui/ValidationDialog";
@@ -157,7 +157,6 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const [sheetIndex, setSheetIndex] = useState(workbook.activeSheet ?? 0);
   const [selection, setSelection] = useState<GridSelection>({ anchor: { row: 0, col: 0 }, focus: { row: 0, col: 0 } });
   const [editing, setEditingState] = useState<EditingCell | null>(null);
-  const [formulaDraft, setFormulaDraft] = useState("");
   const [scroll, setScroll] = useState({ top: 0, left: 0, width: 900, height: 500 });
   const [chartDialog, setChartDialog] = useState(false);
   const [pivotDialog, setPivotDialog] = useState(false);
@@ -195,11 +194,6 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const restoreGridFocusRef = useRef(false);
   const formulaInputRef = useRef<HTMLInputElement>(null);
   const pendingCaretRef = useRef<number | null>(null);
-  const [focusMode, setFocusMode] = useState<"cell" | "bar" | null>(null);
-  const [draftCaret, setDraftCaret] = useState(0);
-  const [suggestIndex, setSuggestIndex] = useState(0);
-  const [suggestDismissed, setSuggestDismissed] = useState(false);
-  const [assistAnchor, setAssistAnchor] = useState<{ left: number; top: number; above?: boolean } | null>(null);
   const [tableDialog, setTableDialog] = useState(false);
   const [tablesPanel, setTablesPanel] = useState(false);
   const [trace, setTrace] = useState<{ kind: "precedents" | "dependents"; cells: AuditNode[] } | null>(null);
@@ -253,93 +247,34 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   const computed = useMemo(() => computeSheetValues(workbook, sheet), [workbook, sheet]);
   const catalogue = useMemo(() => new Map(functionCatalogue().map((entry) => [entry.name, entry] as const)), []);
 
-  // The draft and caret of whichever input owns the focus. The suggestion
-  // popup and the argument hint are derived from these, never from the grid
-  // selection, so the inline editor and the formula bar stay independent.
-  const assistText = focusMode === "cell" ? (editing?.value ?? "") : focusMode === "bar" ? formulaDraft : "";
-  const assistCaret = Math.min(Math.max(0, draftCaret), assistText.length);
-  const suggestions = useMemo(() => {
-    if (focusMode === null || suggestDismissed) return null;
-    return buildSuggestions(assistText, assistCaret, workbook, sheet, catalogue, t);
-  }, [focusMode, suggestDismissed, assistText, assistCaret, workbook, sheet, catalogue, t]);
-  const argumentHint = useMemo(() => {
-    if (focusMode === null) return null;
-    return argumentHintFor(assistText, assistCaret, catalogue);
-  }, [focusMode, assistText, assistCaret, catalogue]);
-  const suggestionKey = suggestions?.items.map((item) => item.label).join("|") ?? "";
-  const [lastSuggestionKey, setLastSuggestionKey] = useState(suggestionKey);
-  if (lastSuggestionKey !== suggestionKey) {
-    setLastSuggestionKey(suggestionKey);
-    setSuggestIndex(0);
-  }
-
-  const [lastFocusMode, setLastFocusMode] = useState(focusMode);
-  if (lastFocusMode !== focusMode) {
-    setLastFocusMode(focusMode);
-    if (focusMode === null) setAssistAnchor(null);
-  }
-
-  // Keep the popup glued under the focused input as the draft changes.
-  useLayoutEffect(() => {
-    if (focusMode === null) return;
-    const input = focusMode === "cell" ? cellInputRef.current : formulaInputRef.current;
-    if (!input) {
-      setAssistAnchor(null);
-      return;
-    }
-    const rect = input.getBoundingClientRect();
-    // The Android bar is docked at the bottom and the soft keyboard shrinks
-    // (or covers) the visible area, so the popup flips above the input when
-    // space runs out. visualViewport is the usable height in overlay mode.
-    const viewport = window.visualViewport;
-    const usableBottom = Math.min(
-      window.innerHeight,
-      viewport ? viewport.height + viewport.offsetTop : window.innerHeight,
-    );
-    const above = rect.bottom + 200 > usableBottom;
-    setAssistAnchor({ left: rect.left, top: above ? rect.top - 4 : rect.bottom + 2, above });
-  }, [focusMode, assistText, assistCaret, editing]);
-
-  /** Replaces the current token with the picked suggestion. */
-  const applySuggestion = (suggestion: FormulaSuggestion) => {
-    if (!suggestions) return;
-    const { start, end } = suggestions;
-    const next = assistText.slice(0, start) + suggestion.insert + assistText.slice(end);
-    const caret = start + (suggestion.caret ?? suggestion.insert.length);
-    pendingCaretRef.current = caret;
-    setDraftCaret(caret);
-    setSuggestDismissed(false);
-    if (focusMode === "cell" && editingRef.current) {
-      setEditing({ row: editingRef.current.row, col: editingRef.current.col, value: next });
-    } else {
-      setFormulaDraft(next);
-      if (editingRef.current) setEditing({ ...editingRef.current, value: next });
-    }
-  };
-
-  /** Popup keys consumed before the editor's own Enter/Tab handling. */
-  const handleAssistKey = (event: React.KeyboardEvent<HTMLInputElement>): boolean => {
-    if (!suggestions || suggestions.items.length === 0) return false;
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      setSuggestIndex((index) => {
-        const count = suggestions.items.length;
-        return event.key === "ArrowDown" ? (index + 1) % count : (index - 1 + count) % count;
-      });
-      return true;
-    }
-    if (event.key === "Tab" || event.key === "Enter") {
-      event.preventDefault();
-      applySuggestion(suggestions.items[Math.min(suggestIndex, suggestions.items.length - 1)] ?? suggestions.items[0]);
-      return true;
-    }
-    if (event.key === "Escape") {
-      event.preventDefault();
-      setSuggestDismissed(true);
-      return true;
-    }
-    return false;
-  };
+  // The formula bar draft and the suggestion/argument assist of whichever
+  // input (inline editor or formula bar) has the focus.
+  const {
+    formulaDraft,
+    setFormulaDraft,
+    focusMode,
+    setFocusMode,
+    setDraftCaret,
+    suggestIndex,
+    setSuggestIndex,
+    setSuggestDismissed,
+    assistAnchor,
+    suggestions,
+    argumentHint,
+    applySuggestion,
+    handleAssistKey,
+  } = useFormulaDraft({
+    editing,
+    setEditing,
+    editingRef,
+    cellInputRef,
+    formulaInputRef,
+    pendingCaretRef,
+    workbook,
+    sheet,
+    catalogue,
+    t,
+  });
 
   const history = useCalcUndoRedo(workbook, (next) => edit(tab.id, () => next));
   const recordHistory = history.record;
