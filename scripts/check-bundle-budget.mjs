@@ -34,7 +34,11 @@ const [largestName, largestBytes] = [...sizes.entries()]
   .sort((a, b) => b[1] - a[1])[0] ?? ["", 0];
 const largestKb = largestBytes / 1024;
 
-const ENTRY_BUDGET_KB = 60;
+// Raised to 61 in 6.4.5 (#316, group 1): the typed command wrappers and the
+// generated specta table the command palette needs at startup add about
+// 0.2 KB gzip to the entry, which the Linux CI measured at 60.1 KB against
+// the old 60 KB cap. The total cap is unchanged.
+const ENTRY_BUDGET_KB = 61;
 const CHUNK_BUDGET_KB = 100;
 // The v6.0.0 audit asked for a budget per route, not just one global number: a
 // screen can load slowly even while the total stays flat. These caps cover the
