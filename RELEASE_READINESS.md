@@ -31,6 +31,51 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.4.5) - Teknik borç
+
+- **IPC registrations in seven domains (#338).** The 220-command
+  `generate_handler!` list is split per domain; a contract test proves every
+  declared command is registered exactly once and never twice.
+  `test:src/lib/ipc-contract-coverage.test.ts#registers every declared command in exactly one domain, and nothing else`
+  `test:src/lib/ipc-contract-coverage.test.ts#never registers the same command name twice for the same platform`
+- **Typed vault commands (#316, group 1).** The nine vault commands go
+  through generated tauri-specta wrappers; no hand-written `invoke` for a
+  vault command remains outside the typed layer.
+  `test:src/lib/typed-ipc.test.ts#generates a typed wrapper for every vault command`
+  `test:src/lib/typed-ipc.test.ts#leaves no hand-written vault invoke outside the job tracker`
+  `test:src/lib/typed-ipc.test.ts#returns the data of an ok result`
+- **Calc editor hooks (#415, slices 1–2).** Undo/redo and the grid's pointer,
+  touch and pinch code moved out of `CalcEditor` with the same behaviour.
+  `test:src/office/calc/ui/useCalcUndoRedo.test.ts#keeps the last 41 states, so 41 undos reach back that far and no further`
+  `test:src/office/calc/ui/useCalcUndoRedo.test.ts#drops the redo history when a new edit is recorded`
+  `test:src/office/calc/ui/useGridGestures.test.ts#turns two fingers into a pinch that sets the zoom`
+  `test:src/office/calc/ui/useGridGestures.test.ts#selects the tapped cell when a finger lifts without moving`
+- **E2E waits on a screen-ready signal (#407).** Flows wait for
+  `<html data-screen-ready>` instead of counting buttons.
+  `test:src/lib/screen-ready.test.tsx#is set only once the screen has what it needs to run`
+  `test:src/lib/screen-ready.test.tsx#is cleared when the screen goes away or loses its input`
+- **Token pickers in PDF Studio and Document health (#337).**
+  `test:src/screens/DocumentHealthScreen.tokens.test.tsx#picks through the Rust dialog and inspects a PDF token as a PDF`
+  `test:src/screens/pdf-screens.test.tsx#adds a PDF through the Rust token dialog, not a raw path`
+- **Calc column resize (#457).** Dragging a column header grip resizes that
+  column.
+  `test:src/office/CalcEditor.test.tsx#widens a column by dragging its header grip`
+- **Android-only clippy gate (#461).** `android.yml` runs
+  `cargo clippy -p pdf-swiss-army-knife --lib --target aarch64-linux-android -- -D warnings`.
+  (no test: CI step; the Android job fails when a lint appears.)
+
+### Not done / Known limitations (6.4.5)
+
+- Nothing in 6.4.5 was exercised on a phone (no device connected). The typed
+  vault commands and the token pickers are covered by component tests with
+  the bridge mocked.
+  (no test: on-device verification pending.)
+- The 6.2.11 to 6.4.4 on-device checks are still pending.
+  (no test: on-device verification pending.)
+- The entry bundle cap moved from 60 to 61 KB for the typed wrappers; the
+  total cap is unchanged at 490 KB.
+  (no test: budget policy note.)
+
 ## Implemented (this cycle, 6.4.4) - Mobil ergonomi
 
 - **Phone bottom bar** with the current section marked and hidden while the
