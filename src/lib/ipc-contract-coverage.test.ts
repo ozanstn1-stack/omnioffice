@@ -122,4 +122,25 @@ describe("IPC surface", () => {
     expect(names).toContain("android_take_pending_open");
     expect(names).toContain("android_open_with_diagnostics");
   });
+
+  // A declared command that no handler lists fails only at runtime, in the
+  // packaged app. The registration lives in the per-domain lists of
+  // src-tauri/src/ipc.rs (#338); every declared name must be in exactly one.
+  it("registers every declared command in exactly one domain, and nothing else", () => {
+    const source = readFileSync(path.join(root, "src-tauri", "src", "ipc.rs"), "utf8").replace(/\r\n/g, "\n");
+    const listed = new Map<string, string[]>();
+    for (const block of source.matchAll(/domain! \{\n(?:\s*\/\/\/[^\n]*\n)*\s*([a-z_]+) \{\n([\s\S]*?)\n\s*\}\n\}/g)) {
+      for (const entry of block[2].matchAll(/^\s*[a-z_0-9]+::([a-z_0-9]+),$/gm)) {
+        listed.set(entry[1], [...(listed.get(entry[1]) ?? []), block[1]]);
+      }
+    }
+    expect(listed.size).toBeGreaterThan(150);
+    const declared = new Set(registered.map((entry) => entry.name));
+    const unregistered = [...declared].filter((name) => !listed.has(name));
+    const undeclared = [...listed.keys()].filter((name) => !declared.has(name));
+    const twice = [...listed.entries()].filter(([, domains]) => domains.length > 1);
+    expect(unregistered, "declared but not registered").toEqual([]);
+    expect(undeclared, "registered but not declared").toEqual([]);
+    expect(twice, "registered in more than one domain").toEqual([]);
+  });
 });
