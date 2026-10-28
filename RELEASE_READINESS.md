@@ -31,6 +31,31 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.4.6) - Teknik borç: kalanlar
+
+- **Calc list dropdown and formula draft as hooks** (#415 slices 3-4).
+  `test:src/office/calc/ui/useListDropdown.test.ts#moves with the arrows, Home and End, and stays inside the list`
+  `test:src/office/calc/ui/useListDropdown.test.ts#closes when the cell, the sheet or the editing state changes`
+  `test:src/office/calc/ui/useFormulaDraft.test.ts#inserts the picked function on Enter and asks for the caret inside the brackets`
+  `test:src/office/calc/ui/useFormulaDraft.test.ts#hides the suggestions on Escape until the draft is typed into again`
+- **Typed sync and OAuth commands** (#316 group 2).
+  `test:src/lib/typed-ipc.test.ts#generates a typed wrapper for every sync and OAuth command`
+  `test:src/lib/typed-ipc.test.ts#leaves no hand-written sync or OAuth invoke in the app`
+- **Typed plugin commands** (#316 group 3).
+  `test:src/lib/typed-ipc.test.ts#generates a typed wrapper for every plugin command`
+  `test:src/lib/typed-ipc.test.ts#calls the typed wrappers from the plugin transport`
+- **lopdf 0.46; the repair test checks the engine that ran.**
+  `test:crates/pdfcore/tests/repair_test.rs#repair_rewrites_a_damaged_pdf`
+
+### Not done / Known limitations (6.4.6)
+
+- #316 covers the vault, sync and plugin groups; ai, app, office and pdf
+  (about 200 commands) still use hand-written `invoke`.
+  (no test: not implemented.)
+- Nothing in 6.4.0-6.4.6 was tried on a phone (no device connected); the
+  Android clippy step and the instrumented emulator tests are the Android
+  coverage this cycle.
+  (no test: on-device verification pending.)
 ## Implemented (this cycle, 6.4.5) - Teknik borç
 
 - **IPC registrations in seven domains (#338).** The 220-command

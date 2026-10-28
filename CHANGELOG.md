@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.6] - Teknik borç: kalanlar
+
+### Changed (internal)
+
+- **Calc editor hooks done (#415, #339):** the list-validation dropdown
+  (`useListDropdown`) and the formula draft and assist (`useFormulaDraft`)
+  left the controller, behaviour unchanged. With undo/redo and the grid
+  gestures from 6.4.5, `CalcEditor.tsx` went from 3,052 to 2,541 lines.
+- **Typed sync, OAuth and plugin commands (#316, groups 2-3):** the sync
+  screen and the plugin transport call generated tauri-specta wrappers
+  whose types come from the Rust structs; their hand-written wrappers left
+  `api.ts`. Vault, sync and plugin are typed; ai, app, office and pdf
+  remain.
+- **Command palette off the entry budget:** the palette's vault search
+  calls `invoke` with the generated types instead of loading the typed
+  wrappers, so the entry chunk is back under its 60 KB budget (59.5 KB).
+
+### Dependencies
+
+- lopdf 0.46 (its parser now rebuilds a missing cross-reference table; the
+  repair test checks that qpdf did the repair instead of relying on lopdf
+  failing), uuid 1.29, zustand 5.0.16, lucide-react 1.61 and @types/chrome
+  0.3.6 in the browser extension.
+- const-oid 0.10 is held with the der 0.8 family (Dependabot ignore rule):
+  it drops the `db` module the signing code takes its OIDs from.
 ## [6.4.5] - Teknik borÃ§: tipti IPC, hook'lar ve jetonlar
 
 ### Added
