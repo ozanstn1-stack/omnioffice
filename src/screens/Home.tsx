@@ -54,7 +54,8 @@ import { isOfficePath, openOfficePath } from "../lib/office-store";
 import { fileBaseName, formatDate, isPdf, isPresentationPath, isSpreadsheetPath } from "../lib/format";
 import { foldSearch } from "../lib/search-fold";
 import { recommendTools } from "../lib/recommend";
-import { isAndroid, openAnyFile, revealAnyFile } from "../lib/mobile";
+import { isAndroid, openAnyFile } from "../lib/mobile";
+import { shareRecent } from "../lib/presend-gate";
 import type { Navigate, ScreenId } from "../lib/nav";
 import type { RecentEntry } from "../lib/types";
 import { routeEnabled } from "../lib/routes";
@@ -525,7 +526,7 @@ export function Home({
                       </Button>
                       <IconButton
                         label={isAndroid() ? t("common.share") : t("common.openFolder")}
-                        onClick={() => void revealAnyFile(entry.token).catch(() => undefined)}
+                        onClick={() => void shareRecent(entry.token, entry.fileName).catch(() => undefined)}
                       >
                         {isAndroid() ? <Share2 size={14} /> : <FolderOpen size={14} />}
                       </IconButton>

@@ -32,6 +32,7 @@ import {
   pickAndroidSaveTarget,
   revealAnyFile,
 } from "../lib/mobile";
+import { shareWithCheck } from "../lib/presend-gate";
 
 // ---------------------------------------------------------------------------
 // Drop zone
@@ -523,8 +524,10 @@ export function OutputBar({
 
 export function ResultCard({ result, onReset }: { result: OpResult; onReset?: () => void }) {
   const t = useT();
+  // Android shares the result (a PDF is checked first); desktop opens its folder.
   const reveal = useCallback(() => {
-    void revealAnyFile(result.path).catch(() => undefined);
+    const send = isAndroid() ? shareWithCheck(result.path) : revealAnyFile(result.path);
+    void send.catch(() => undefined);
   }, [result.path]);
   const open = useCallback(() => {
     void openAnyFile(result.path).catch(() => undefined);

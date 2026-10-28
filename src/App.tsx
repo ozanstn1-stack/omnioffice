@@ -70,6 +70,9 @@ const AiLibrary = React.lazy(() => import("./screens/AiLibrary").then((module) =
 const Merge = React.lazy(() => import("./screens/Merge").then((module) => ({ default: module.Merge })));
 const Organize = React.lazy(() => import("./screens/Organize").then((module) => ({ default: module.Organize })));
 const Split = React.lazy(() => import("./screens/Split").then((module) => ({ default: module.Split })));
+const PresendDialog = React.lazy(() =>
+  import("./components/presend-dialog").then((module) => ({ default: module.PresendDialog })),
+);
 const Compress = React.lazy(() => import("./screens/Compress").then((module) => ({ default: module.Compress })));
 const Ocr = React.lazy(() => import("./screens/Ocr").then((module) => ({ default: module.Ocr })));
 const Convert = React.lazy(() => import("./screens/Convert").then((module) => ({ default: module.Convert })));
@@ -137,6 +140,7 @@ import { resumeJobs, useJobs as useBackgroundJobs } from "./lib/jobs";
 import { installJobRetryHandlers } from "./lib/job-retries";
 import { CommandPalette, GlobalSearch } from "./components/command-palette";
 import { OverwriteDialog, PasswordDialog, Toasts } from "./components/files";
+import { usePresend } from "./lib/presend-gate";
 import { DataLossDialogHost } from "./components/data-loss-dialog";
 import { FileConflictDialogHost } from "./components/file-conflict-dialog";
 import { Badge, IconButton, Spinner } from "./components/ui";
@@ -190,6 +194,7 @@ export default function App() {
   const refreshRecent = useRecent((s) => s.refresh);
   const setDropHandler = useDrop((s) => s.setHandler);
   const pushToast = useToasts((s) => s.push);
+  const presendOpen = usePresend((s) => s.request !== null);
 
   const [screen, setScreen] = useState<ScreenId>("home");
   const [files, setFiles] = useState<string[]>([]);
@@ -893,6 +898,11 @@ export default function App() {
           {backgroundJobs > 0 ? t("jobs.runningCount", { count: backgroundJobs }) : ""}
         </div>
         <OverwriteDialog />
+        {presendOpen ? (
+          <React.Suspense fallback={null}>
+            <PresendDialog onNavigate={navigate} />
+          </React.Suspense>
+        ) : null}
         <PasswordDialog />
         {/* One global host so the compatibility gate also covers the
             converter, which is not rendered inside the office workspace. */}

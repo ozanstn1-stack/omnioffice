@@ -1,7 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { analyzeDocumentHealth, fixMetadataLeaks, isValidTckn, type DocumentScanInput } from "./document-health";
+import {
+  analyzeDocumentHealth,
+  countPersonalData,
+  fixMetadataLeaks,
+  isValidTckn,
+  type DocumentScanInput,
+} from "./document-health";
 
 describe("Document Health & KVKK Engine (v5.4.0)", () => {
+  it("counts personal data by kind, ignoring an 11-digit number that fails the TCKN check", () => {
+    expect(
+      countPersonalData(
+        "TCKN 10000000146 ve 10000000147, IBAN TR33 0006 1005 1978 6457 8412 01, 0532 123 45 67, a@b.co",
+      ),
+    ).toEqual({ tckn: 1, iban: 1, phone: 1, email: 1 });
+    expect(countPersonalData("")).toEqual({ tckn: 0, iban: 0, phone: 0, email: 0 });
+  });
+
   it("validates TCKN algorithm accurately including negative difference before modulo", () => {
     // Known valid TCKN algorithm example: 10000000146
     expect(isValidTckn("10000000146")).toBe(true);

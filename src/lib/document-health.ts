@@ -65,6 +65,23 @@ export function isValidTckn(tckn: string): boolean {
   return totalSum % 10 === digits[10];
 }
 
+export interface PersonalDataCounts {
+  tckn: number;
+  iban: number;
+  phone: number;
+  email: number;
+}
+
+/** How many of each personal data kind the text holds (TCKN only when mod-11 valid). */
+export function countPersonalData(text: string): PersonalDataCounts {
+  return {
+    tckn: (text.match(TCKN_REGEX) || []).filter(isValidTckn).length,
+    iban: (text.match(IBAN_REGEX) || []).length,
+    phone: (text.match(TR_PHONE_REGEX) || []).length,
+    email: (text.match(EMAIL_REGEX) || []).length,
+  };
+}
+
 /**
  * Scans a document content and metadata to produce a comprehensive Document Health Report.
  */
