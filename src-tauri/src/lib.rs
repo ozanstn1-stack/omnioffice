@@ -233,6 +233,21 @@ pub fn export_typed_bindings(path: &std::path::Path) -> Result<(), String> {
             vault::vault_index_build,
             vault::vault_document_text,
             vault::vault_clear,
+            sync::sync_get_config,
+            sync::sync_save_config,
+            sync::sync_test_connection,
+            sync::sync_status,
+            sync::sync_upload,
+            sync::sync_download,
+            sync::sync_list,
+            sync::sync_resolve,
+            sync::sync_forget,
+            sync::sync_delete_remote,
+            sync::sync_capabilities,
+            oauth::oauth_status,
+            oauth::oauth_save_client,
+            oauth::oauth_connect,
+            oauth::oauth_disconnect,
         ])
         .export(specta_typescript::Typescript::default(), path)
         .map_err(|error| error.to_string())

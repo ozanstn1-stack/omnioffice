@@ -45,3 +45,24 @@ describe("typed bindings: the vault group", () => {
     expect(palette).toContain("const request: VaultSearchRequest_Deserialize");
   });
 });
+
+describe("typed bindings: the sync group", () => {
+  const ipc = read("src-tauri/src/ipc.rs");
+  const syncBlock = /sync_commands \{\n([\s\S]*?)\n\s*\}\n\}/.exec(ipc)?.[1] ?? "";
+  const syncCommands = [...syncBlock.matchAll(/(?:sync|oauth)::([a-z_]+),/g)].map((match) => match[1]);
+  const generated = read("src/lib/generated/specta.ts");
+
+  // A command without a Result is generated as `__TAURI_INVOKE<T>("name")`.
+  it("generates a typed wrapper for every sync and OAuth command", () => {
+    expect(syncCommands.length).toBe(15);
+    for (const name of syncCommands) {
+      expect(generated, name).toMatch(new RegExp(`__TAURI_INVOKE(?:<[^>]*>)?\\("${name}"`));
+    }
+  });
+
+  it("leaves no hand-written sync or OAuth invoke in the app", () => {
+    for (const file of ["src/lib/api.ts", "src/screens/Sync.tsx"]) {
+      expect(read(file), file).not.toMatch(/invoke(?:<[^>]*>)?\(\s*"(?:sync|oauth)_/);
+    }
+  });
+});
