@@ -118,6 +118,7 @@ import { SheetTabs } from "./calc/ui/SheetTabs";
 import { FindReplacePanel } from "./calc/ui/FindReplacePanel";
 import { InsertTableDialog, TablesPanel } from "./calc/ui/TablesUi";
 import { useFindReplace } from "./calc/ui/useFindReplace";
+import { useCalcUndoRedo } from "./calc/ui/useCalcUndoRedo";
 import { usePasteSpecial, type InternalClipboard } from "./calc/ui/usePasteSpecial";
 import { useVisibilityActions, type Axis } from "./calc/ui/useVisibilityActions";
 import { ValidationDialog } from "./calc/ui/ValidationDialog";
@@ -193,8 +194,6 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   // The context menu of a row or column header, at the pointer position.
   const [sortDialog, setSortDialog] = useState<{ range: SortRange; headerGuess: boolean } | null>(null);
   const [headerMenu, setHeaderMenu] = useState<{ axis: Axis; x: number; y: number } | null>(null);
-  const [undoStack, setUndoStack] = useState<Workbook[]>([]);
-  const [redoStack, setRedoStack] = useState<Workbook[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const cellInputRef = useRef<HTMLInputElement>(null);
@@ -358,15 +357,15 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     return false;
   };
 
+  const history = useCalcUndoRedo(workbook, (next) => edit(tab.id, () => next));
+  const recordHistory = history.record;
+
   const update = useCallback(
     (mutate: (workbook: Workbook) => Workbook, recordUndo = true) => {
-      if (recordUndo) {
-        setUndoStack((stack) => [...stack.slice(-40), workbook]);
-        setRedoStack([]);
-      }
+      if (recordUndo) recordHistory();
       edit(tab.id, (model) => mutate(model as Workbook));
     },
-    [edit, tab.id, workbook],
+    [edit, tab.id, recordHistory],
   );
 
   const updateSheet = useCallback(
@@ -1279,25 +1278,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     }
   };
 
-  const undo = () => {
-    setUndoStack((stack) => {
-      const previous = stack[stack.length - 1];
-      if (!previous) return stack;
-      setRedoStack((redos) => [...redos, workbook]);
-      edit(tab.id, () => previous);
-      return stack.slice(0, -1);
-    });
-  };
-
-  const redo = () => {
-    setRedoStack((stack) => {
-      const next = stack[stack.length - 1];
-      if (!next) return stack;
-      setUndoStack((undos) => [...undos, workbook]);
-      edit(tab.id, () => next);
-      return stack.slice(0, -1);
-    });
-  };
+  const { undo, redo } = history;
 
   // -------------------------------------------------------------------------
   // Sheets
@@ -2324,8 +2305,8 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
       <CalcRibbon
         active={ribbon}
         onSelect={setRibbon}
-        canUndo={undoStack.length > 0}
-        canRedo={redoStack.length > 0}
+        canUndo={history.canUndo}
+        canRedo={history.canRedo}
         activeStyle={activeCell?.style}
         frozen={sheet.freezeRows > 0 || sheet.freezeCols > 0}
         showGridlines={sheet.showGridlines}

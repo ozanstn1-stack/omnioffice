@@ -223,7 +223,7 @@
     "src/office/calc/ui/TablesUi.tsx": 254,
     "src/office/calc/ui/useCellAnnotations.tsx": 288,
     "src/office/calc/ui/useFindReplace.ts": 209,
-    "src/office/CalcEditor.tsx": 3052,
+    "src/office/CalcEditor.tsx": 3033,
     "src/office/ImpressEditor.tsx": 2796,
     "src/office/impress/connectors.ts": 208,
     "src/office/impress/dialogs.tsx": 803,
