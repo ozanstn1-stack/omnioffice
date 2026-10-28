@@ -25,7 +25,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"], optional = true }
-specta = { version = "=2.0.0-rc.26", features = ["derive"], optional = true }
+specta = { version = "=2.0.0-rc.26", features = ["derive", "serde_json"], optional = true }
 specta-typescript = { version = "0.0.13", optional = true }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
@@ -61,7 +61,7 @@ windows = { version = "0.61", features = ["Win32_Security_Cryptography", "Win32_
 
 # The AI extraction test writes real DOCX/XLSX/PPTX fixtures with the engines.
 [features]
-bindings = ["dep:tauri-specta", "dep:specta", "dep:specta-typescript", "pdfcore/bindings", "synccore/bindings", "aicore/bindings"]
+bindings = ["dep:tauri-specta", "dep:specta", "dep:specta-typescript", "pdfcore/bindings", "synccore/bindings", "officecore/bindings", "aicore/bindings"]
 # Generates the TypeScript bindings for the IPC DTOs (`cargo test export_bindings`).
 # Enabling it also turns on pdfcore's `ts` feature, so its DTOs export too.
 ts = ["dep:ts-rs", "pdfcore/ts"]

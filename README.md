@@ -833,7 +833,7 @@ Next (architecture prepared, not implemented):
 | Tauri commands | 225 |
 | Rust tests | 1296 |
 | TypeScript test files | 187 |
-| TypeScript test cases (approx.) | 2261 |
+| TypeScript test cases (approx.) | 2263 |
 <!-- stats:end -->
 
 ## License

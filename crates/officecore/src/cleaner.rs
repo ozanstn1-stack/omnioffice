@@ -12,6 +12,7 @@ use crate::zip::{ZipLimits, ZipReader, ZipWriter};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct CleanOptions {
@@ -24,6 +25,7 @@ pub struct CleanOptions {
     pub image_quality: u8,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct CleanResult {

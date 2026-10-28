@@ -14,8 +14,11 @@ fn silent(_event: ProgressEvent) {}
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
+// The PDF tools have a request of the same name; the bindings keep them apart.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
+#[cfg_attr(feature = "bindings", serde(rename = "OfficeImagesToPdfRequest"))]
 pub struct ImagesToPdfRequest {
     pub images: Vec<String>,
     pub output: String,
@@ -26,8 +29,11 @@ pub struct ImagesToPdfRequest {
     pub overwrite: Option<String>,
 }
 
+// The PDF tools have a request of the same name; the bindings keep them apart.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
+#[cfg_attr(feature = "bindings", serde(rename = "OfficePdfToImagesRequest"))]
 pub struct PdfToImagesRequest {
     pub input: String,
     pub output_dir: String,
@@ -63,6 +69,7 @@ fn pdf_error(error: pdfcore::error::PdfError) -> OfficeErrorPayload {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_images_to_pdf(request: ImagesToPdfRequest) -> Result<String, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -109,6 +116,7 @@ pub async fn office_images_to_pdf(request: ImagesToPdfRequest) -> Result<String,
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_pdf_to_images(request: PdfToImagesRequest) -> Result<Vec<String>, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -138,6 +146,7 @@ pub async fn office_pdf_to_images(request: PdfToImagesRequest) -> Result<Vec<Str
     task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PdfTextRequest {
@@ -147,6 +156,7 @@ pub struct PdfTextRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_pdf_to_text(request: PdfTextRequest) -> Result<String, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -171,6 +181,7 @@ pub async fn office_pdf_to_text(request: PdfTextRequest) -> Result<String, Offic
 // PDF form creator (AcroForm)
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PdfFormField {
@@ -179,16 +190,22 @@ pub struct PdfFormField {
     pub name: String,
     pub page: u32,
     /// Position and size in PDF points, top-left origin.
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub x: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub y: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub w: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub h: f64,
     pub value: String,
     pub options: Vec<String>,
+    #[cfg_attr(feature = "bindings", specta(type = Option<specta_typescript::Number>))]
     pub font_size: Option<f64>,
     pub required: bool,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PdfFormRequest {
@@ -200,6 +217,7 @@ pub struct PdfFormRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_pdf_add_form(request: PdfFormRequest) -> Result<String, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -400,6 +418,7 @@ pub async fn office_pdf_add_form(request: PdfFormRequest) -> Result<String, Offi
 /// editor uses, so listing a created form and saving it again leaves every
 /// field where it was.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_pdf_list_form(input: String) -> Result<Vec<PdfFormField>, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {

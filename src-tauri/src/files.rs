@@ -28,6 +28,7 @@ pub enum FileAccess {
 }
 
 /// What the webview gets: an opaque token and a display name, never a path.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FileRef {
     pub token: String,

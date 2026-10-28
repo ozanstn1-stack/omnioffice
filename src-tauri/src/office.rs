@@ -15,6 +15,7 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 pub struct OfficeErrorPayload {
     pub code: String,
@@ -57,6 +58,7 @@ fn output_path(raw: &str) -> Result<PathBuf, OfficeErrorPayload> {
 // Wire types
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenDocument {
@@ -76,6 +78,7 @@ pub struct OpenDocument {
     pub token: String,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveDocument {
@@ -83,6 +86,7 @@ pub struct SaveDocument {
     pub warnings: Vec<String>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ConvertOptions {
@@ -91,11 +95,13 @@ pub struct ConvertOptions {
     pub encoding: Option<String>,
     pub pdf_mode: Option<String>,
     pub image_format: Option<String>,
+    #[cfg_attr(feature = "bindings", specta(type = Option<specta_typescript::Number>))]
     pub dpi: Option<f64>,
     pub jpeg_quality: Option<u8>,
     pub grayscale: Option<bool>,
     pub page_size: Option<String>,
     pub orientation: Option<String>,
+    #[cfg_attr(feature = "bindings", specta(type = Option<specta_typescript::Number>))]
     pub margin_pt: Option<f64>,
     /// Password for an encrypted PDF input. `office_convert` keeps its
     /// `{ input, output, options }` request shape; the frontend carries this
@@ -429,6 +435,7 @@ fn try_libreoffice(path: &Path, target: &str) -> Option<LibreOfficeConversion> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_open_document(path: String) -> Result<OpenDocument, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || -> Result<OpenDocument, OfficeErrorPayload> {
@@ -608,6 +615,7 @@ pub fn save_model(kind: &str, model: Value, path: &Path) -> Result<SaveDocument,
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_save_document(
     kind: String,
     model: Value,
@@ -697,6 +705,7 @@ pub fn save_native_with_metadata(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_save_unit(
     kind: String,
     title: String,
@@ -713,24 +722,28 @@ pub async fn office_save_unit(
 
 /// The capability matrix for one file extension (Compatibility Center).
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn office_capabilities(extension: String) -> officecore::compat::FormatCapabilities {
     officecore::compat::format_capabilities(&extension)
 }
 
 /// What the document *model* supports for a kind, independent of the format.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn office_model_capabilities(kind: String) -> officecore::compat::DocumentCapabilities {
     officecore::compat::model_capabilities(&kind)
 }
 
 /// Lists every extension this build can open.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn office_supported_extensions() -> Vec<String> {
     officecore::compat::supported_open_extensions().iter().map(|value| value.to_string()).collect()
 }
 
 /// Reports what `kind`'s model would lose if it were saved as `target`.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn office_compatibility(
     kind: String,
     model: Value,
@@ -796,6 +809,7 @@ pub fn export_pdf(kind: &str, model: Value, path: &Path) -> Result<SaveDocument,
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_export_pdf(kind: String, model: Value, path: String) -> Result<SaveDocument, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -809,6 +823,7 @@ pub async fn office_export_pdf(kind: String, model: Value, path: String) -> Resu
 // Universal conversion
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversionInfo {
@@ -1140,6 +1155,7 @@ pub fn convert(input: &Path, output: &Path, options: &ConvertOptions) -> Result<
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_convert(
     input: String,
     output: String,
@@ -1162,6 +1178,7 @@ pub async fn office_convert(
 /// and a target; the engine still reads and writes it behind the
 /// `experimentalUdf` flag.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn office_conversion_targets(extension: String) -> Vec<String> {
     match extension.trim_start_matches('.').to_ascii_lowercase().as_str() {
         "docx" | "docm" | "dotx" | "doc" | "dot" => {
@@ -1187,6 +1204,7 @@ pub fn office_conversion_targets(extension: String) -> Vec<String> {
 // e-Fatura / e-Arşiv (UBL-TR)
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InvoiceDocument {
     pub kind: String,
@@ -1238,6 +1256,7 @@ pub fn eml_message(path: &Path) -> Result<officecore::eml::EmlMessage, OfficeErr
 /// Opens a `.xml`/`.zip` UBL-TR invoice and returns both the parsed fields and
 /// the Writer model the app renders (never the invoice's own XSLT).
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_open_invoice(path: String) -> Result<InvoiceDocument, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -1250,17 +1269,20 @@ pub async fn office_open_invoice(path: String) -> Result<InvoiceDocument, Office
     task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 pub struct InvoiceSummary {
     /// A Calc workbook model for the VAT summary; save it as `.xlsx`/`.ods`.
     pub workbook: Value,
     pub warnings: Vec<String>,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub count: usize,
 }
 
 /// Reads every invoice in one `.xml`/`.zip` file. A zip can hold several
 /// invoices; the single-invoice command returns only the first.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_open_invoice_package(path: String) -> Result<Vec<InvoiceDocument>, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -1275,6 +1297,7 @@ pub async fn office_open_invoice_package(path: String) -> Result<Vec<InvoiceDocu
 
 /// Reads every invoice in the selection and builds the VAT summary workbook.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_invoice_summary(paths: Vec<String>) -> Result<InvoiceSummary, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -1305,6 +1328,7 @@ pub async fn office_invoice_summary(paths: Vec<String>) -> Result<InvoiceSummary
 
 /// The dated reference VAT-rate table shown next to the validation results.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn office_vat_rates() -> Vec<ubl::VatRate> {
     ubl::vat_rates()
 }
@@ -1313,6 +1337,7 @@ pub fn office_vat_rates() -> Vec<ubl::VatRate> {
 // Address mail merge
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MailMergeRequest {
@@ -1326,13 +1351,16 @@ pub struct MailMergeRequest {
     pub name_field: Option<String>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MailMergeError {
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub row: usize,
     pub message: String,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MailMergeReport {
@@ -1362,6 +1390,7 @@ fn safe_file_stem(value: &str) -> String {
 /// one document per row. A row that misses a placeholder is reported, not
 /// written.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_mail_merge(request: MailMergeRequest) -> Result<MailMergeReport, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || mail_merge(request));
@@ -1425,6 +1454,7 @@ fn mail_merge(request: MailMergeRequest) -> Result<MailMergeReport, OfficeErrorP
 
 /// One captured page: an image file plus the four page corners the user tapped
 /// (in source pixels). Without corners the image is used as it is.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanPage {
@@ -1433,6 +1463,7 @@ pub struct ScanPage {
     pub corners: Option<Vec<[f32; 2]>>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanRequest {
@@ -1440,16 +1471,20 @@ pub struct ScanRequest {
     pub output: String,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanResult {
     pub output: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub pages: usize,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub corrected: usize,
     pub warnings: Vec<String>,
 }
 
 /// The corner picker's view of one page photo (see `pdfcore::scan::preview`).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanPreview {
@@ -1467,6 +1502,7 @@ const SCAN_PREVIEW_SIDE: u32 = 1280;
 /// itself can be 12 MP and carry its rotation in EXIF; the preview is turned
 /// the same way the page will be, so the picked corners line up.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_scan_preview(path: String) -> Result<ScanPreview, OfficeErrorPayload> {
     let task = tauri::async_runtime::spawn_blocking(move || scan_preview(&path));
     task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
@@ -1486,6 +1522,7 @@ fn scan_preview(path: &str) -> Result<ScanPreview, OfficeErrorPayload> {
 /// corners and assembles a multi-page PDF through the existing image-to-PDF
 /// writer. The photos come from the system camera (Android) or a file pick.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_scan_pages(request: ScanRequest) -> Result<ScanResult, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || scan_pages(request));
@@ -1547,6 +1584,7 @@ fn scan_pages(request: ScanRequest) -> Result<ScanResult, OfficeErrorPayload> {
 /// attachment is written to a temp directory so the UI can open it; the message
 /// itself is never modified and nothing is sent anywhere.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_open_eml(path: String) -> Result<officecore::eml::EmlMessage, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -1559,6 +1597,7 @@ pub async fn office_open_eml(path: String) -> Result<officecore::eml::EmlMessage
     task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export))]
 #[derive(Debug, Clone, Serialize)]
@@ -1575,6 +1614,7 @@ pub struct InvoiceQr {
 /// Reads the GİB karekod (e-Fatura QR) from a PDF's first pages (or a given
 /// page). Returns `None` when no QR is found, so the UI can say so plainly.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_read_invoice_qr(path: String, page: Option<u32>) -> Result<Option<InvoiceQr>, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -1605,6 +1645,7 @@ pub async fn office_read_invoice_qr(path: String, page: Option<u32>) -> Result<O
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_clean(path: String, options: CleanOptions) -> Result<CleanResult, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -1616,6 +1657,7 @@ pub async fn office_clean(path: String, options: CleanOptions) -> Result<CleanRe
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn office_image_footprint(path: String) -> Result<u64, OfficeErrorPayload> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -1649,6 +1691,7 @@ fn store_path(app: &AppHandle, key: &str) -> Result<PathBuf, OfficeErrorPayload>
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn store_load(app: AppHandle, key: String) -> Result<Value, OfficeErrorPayload> {
     let key = sanitize_key(&key)?;
     let path = store_path(&app, &key)?;
@@ -1661,6 +1704,7 @@ pub fn store_load(app: AppHandle, key: String) -> Result<Value, OfficeErrorPaylo
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn store_save(app: AppHandle, key: String, value: Value) -> Result<(), OfficeErrorPayload> {
     let key = sanitize_key(&key)?;
     let path = store_path(&app, &key)?;
@@ -1670,6 +1714,7 @@ pub fn store_save(app: AppHandle, key: String, value: Value) -> Result<(), Offic
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn store_clear(app: AppHandle, key: String) -> Result<(), OfficeErrorPayload> {
     let key = sanitize_key(&key)?;
     let path = store_path(&app, &key)?;
@@ -1683,6 +1728,7 @@ pub fn store_clear(app: AppHandle, key: String) -> Result<(), OfficeErrorPayload
 // Version history
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryEntry {
@@ -1690,6 +1736,7 @@ pub struct HistoryEntry {
     pub saved_at: String,
     pub title: String,
     pub kind: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub size: u64,
 }
 
@@ -1702,6 +1749,7 @@ fn history_dir(app: &AppHandle, document_id: &str) -> Result<PathBuf, OfficeErro
 const HISTORY_LIMIT: usize = 25;
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn history_push(
     app: AppHandle,
     document_id: String,
@@ -1768,6 +1816,7 @@ fn read_history_index(dir: &Path) -> Vec<HistoryEntry> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn history_list(app: AppHandle, document_id: String) -> Result<Vec<HistoryEntry>, OfficeErrorPayload> {
     let dir = history_dir(&app, &document_id)?;
     let mut index = read_history_index(&dir);
@@ -1776,6 +1825,7 @@ pub fn history_list(app: AppHandle, document_id: String) -> Result<Vec<HistoryEn
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn history_load(app: AppHandle, document_id: String, version: u32) -> Result<Value, OfficeErrorPayload> {
     let dir = history_dir(&app, &document_id)?;
     let path = dir.join(format!("v{version}.json"));
@@ -1786,6 +1836,7 @@ pub fn history_load(app: AppHandle, document_id: String, version: u32) -> Result
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn history_clear(app: AppHandle, document_id: String) -> Result<(), OfficeErrorPayload> {
     let dir = history_dir(&app, &document_id)?;
     if dir.exists() {
@@ -1798,6 +1849,7 @@ pub fn history_clear(app: AppHandle, document_id: String) -> Result<(), OfficeEr
 // Recovery (autosave snapshots)
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecoveryEntry {
@@ -1806,6 +1858,7 @@ pub struct RecoveryEntry {
     pub title: String,
     pub path: Option<String>,
     pub saved_at: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub size: u64,
 }
 
@@ -1814,6 +1867,7 @@ fn recovery_dir(app: &AppHandle) -> Result<PathBuf, OfficeErrorPayload> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn recovery_save(
     app: AppHandle,
     document_id: String,
@@ -1839,6 +1893,7 @@ pub fn recovery_save(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn recovery_list(app: AppHandle) -> Result<Vec<RecoveryEntry>, OfficeErrorPayload> {
     let dir = recovery_dir(&app)?;
     let mut entries = Vec::new();
@@ -1864,6 +1919,7 @@ pub fn recovery_list(app: AppHandle) -> Result<Vec<RecoveryEntry>, OfficeErrorPa
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn recovery_load(app: AppHandle, document_id: String) -> Result<Value, OfficeErrorPayload> {
     let id = sanitize_key(&document_id)?;
     let dir = recovery_dir(&app)?;
@@ -1879,6 +1935,7 @@ pub fn recovery_load(app: AppHandle, document_id: String) -> Result<Value, Offic
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn recovery_discard(app: AppHandle, document_id: String) -> Result<(), OfficeErrorPayload> {
     let id = sanitize_key(&document_id)?;
     let path = recovery_dir(&app)?.join(format!("{id}.json"));
@@ -1889,6 +1946,7 @@ pub fn recovery_discard(app: AppHandle, document_id: String) -> Result<(), Offic
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn recovery_discard_all(app: AppHandle) -> Result<(), OfficeErrorPayload> {
     let dir = recovery_dir(&app)?;
     if dir.exists() {
@@ -1910,6 +1968,7 @@ fn sanitize_blob_hash(hash: &str) -> Result<String, OfficeErrorPayload> {
 /// the session has not sent yet, so an autosave of a document with unchanged
 /// images moves no image data over IPC at all.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn recovery_save_blobs(
     app: AppHandle,
     document_id: String,
@@ -2003,6 +2062,7 @@ fn collect_blob_refs(value: &Value, out: &mut std::collections::HashSet<String>)
 /// snapshots, so this is a mark-and-sweep, never a per-snapshot delete).
 /// Returns how many files were removed.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn recovery_gc_blobs(app: AppHandle) -> Result<u64, OfficeErrorPayload> {
     let dir = recovery_dir(&app)?;
     let blob_dir = dir.join("blobs");
@@ -2522,19 +2582,24 @@ mod tests {
 /// Files passed on the command line (Windows file associations / "Open with").
 /// Only existing file paths are returned; anything else is ignored.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn office_startup_files() -> Vec<crate::files::FileRef> {
     crate::launch::startup_tokens(std::env::args())
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpellCheckMisspelling {
     pub word: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub start: usize,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub end: usize,
     pub suggestions: Vec<String>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpellCheckResponse {
@@ -2544,6 +2609,7 @@ pub struct SpellCheckResponse {
 /// Offline Turkish spell checker command. Async + `spawn_blocking`: a long
 /// document must never block the UI thread while the analyzer walks it.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn turkish_spellcheck(text: String, suggestions_limit: Option<usize>) -> SpellCheckResponse {
     let limit = suggestions_limit.unwrap_or(4);
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -2563,6 +2629,7 @@ pub async fn turkish_spellcheck(text: String, suggestions_limit: Option<usize>) 
 
 /// Suggestions for a single word.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn turkish_suggestions(word: String, limit: Option<usize>) -> Vec<String> {
     let limit = limit.unwrap_or(5);
     tauri::async_runtime::spawn_blocking(move || turkish::suggestions(&word, limit)).await.unwrap_or_default()
