@@ -4,6 +4,40 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.5] - Teknik borÃ§: tipti IPC, hook'lar ve jetonlar
+
+### Added
+
+- **Typed vault commands (#316, group 1):** the nine vault commands go
+  through generated tauri-specta wrappers; the Rust side emits the bindings
+  behind a `bindings` feature, so shipped builds are unchanged, and
+  `src/lib/generated/specta.ts` is checked for drift in CI.
+
+### Changed
+
+- **IPC registrations in domains (#338):** the single 220-entry
+  `generate_handler!` becomes seven domain lists in `src-tauri/src/ipc.rs`,
+  with a contract test that every declared command is registered exactly
+  once.
+- **Calc editor hooks (#415, slices 1â€“2):** the undo/redo stacks move to
+  `useCalcUndoRedo` and the grid's pointer, touch and pinch code to
+  `useGridGestures`, with the same behaviour.
+- **E2E waits on a screen-ready signal (#407):** flows wait for
+  `<html data-screen-ready>` instead of counting buttons, so a screen that
+  loads slowly no longer fails them.
+- **Token pickers (#337):** PDF Studio and Document health pick files through
+  capability tokens; the raw-path fallbacks are gone.
+- **Android-only clippy (#461):** `android.yml` runs clippy for
+  `aarch64-linux-android`, so Android-only lints fail the build; the first
+  run removed dead code in android-only modules.
+- **Entry bundle cap 60 â†’ 61 KB** for the typed wrappers the command palette
+  needs at startup; the total cap stays 490 KB.
+
+### Fixed
+
+- **Calc column resize (#457):** dragging a column header grip resized
+  nothing (the width went to `colWidths["NaN"]`); it now reads
+  `data-col-resize` and resizes the column.
 ## [6.4.4] - Mobil ergonomi
 
 ### Added
