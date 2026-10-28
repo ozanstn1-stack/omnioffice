@@ -1,9 +1,10 @@
 import "@testing-library/jest-dom/vitest";
-import { afterEach, vi } from "vitest";
+import { afterEach, beforeAll, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import en from "./lib/i18n/en.json";
 import tr from "./lib/i18n/tr.json";
 import { primeDictionary } from "./lib/i18n-runtime";
+import { preloadTypedCommands } from "./lib/typed-call";
 
 // The dictionaries are JSON assets fetched at runtime in production; tests
 // import the same files and prime the cache before the test modules load, so
@@ -12,6 +13,13 @@ import { primeDictionary } from "./lib/i18n-runtime";
 // Tauri API are not pulled in ahead of each file's `vi.mock` calls.
 primeDictionary("en", en as Record<string, string>);
 primeDictionary("tr", tr as Record<string, string>);
+
+// The typed command wrappers (#316) load as main.tsx loads them at launch,
+// before the first screen. This runs once the test file is collected, so the
+// generated wrappers bind that file's `vi.mock` of `@tauri-apps/api/core`.
+beforeAll(async () => {
+  await preloadTypedCommands();
+});
 
 // jsdom does not implement these, but the editors rely on them.
 if (!window.matchMedia) {
