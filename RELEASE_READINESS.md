@@ -31,6 +31,41 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.4.1) - Gönderim öncesi kontrol
+
+- **Pre-send findings** from the inspection, signature, text and PDF/A
+  results, worst first, never echoing the personal data (C10, #341).
+  `test:src/lib/presend-check.test.ts#stops on a valid TCKN or IBAN and counts each kind without echoing the values`
+  `test:src/lib/presend-check.test.ts#reports notes, hidden annotations, attachments, scripts and metadata`
+  `test:src/lib/presend-check.test.ts#stops on a broken signature and warns when a signed file changed later`
+- **Clean and send** shares a sanitized copy, never for a signed file (#341).
+  `test:src/lib/presend-check.test.ts#offers cleaning only for an unsigned file with something the sanitizer removes`
+  `test:src/components/presend-dialog.test.tsx#lists metadata and attachments and sends a cleaned copy`
+- **Share gate** with redaction, send-anyway for unreadable files and a
+  setting to turn it off (#341).
+  `test:src/components/presend-dialog.test.tsx#stops on a TCKN and offers the redaction tool for that file`
+  `test:src/components/presend-dialog.test.tsx#lets you send anyway when the file cannot be checked`
+  `test:src/components/presend-dialog.test.tsx#shares a PDF without asking when the setting is off`
+
+### Not done / Known limitations (6.4.1)
+
+- Personal data is looked for in the first 20 pages' text layer only; a
+  scanned page without OCR has no text to check.
+  (no test: known limitation.)
+- Text drawn in white or under an image ("hidden text") is not detected;
+  only annotations marked hidden are.
+  (no test: known limitation.)
+- Office documents shared in their own format (DOCX/XLSX/PPTX) are not
+  checked; only PDFs are.
+  (no test: known limitation.)
+- The dialog was not tried on a phone this cycle (no device connected).
+  Confirm by hand: Reader → Share on a PDF with a TCKN → the dialog lists
+  it → Redact; a PDF with an author → Clean and send → WhatsApp receives the
+  cleaned copy.
+  (no test: on-device verification pending.)
+- The 6.2.11 to 6.4.0 on-device checks are still pending.
+  (no test: on-device verification pending.)
+
 ## Implemented (this cycle, 6.4.0) - Meslek masaları
 
 - **Profession desks** (C1, #341): four desks of six to eight tasks, each

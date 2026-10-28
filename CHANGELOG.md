@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.1] - Gönderim öncesi kontrol
+
+### Added
+
+- **Pre-send check (C10, #341):** sharing a PDF first reads the real file and
+  lists what it carries that the sender may not mean to send: valid TCKNs,
+  IBANs, phone numbers and e-mail addresses in the text, notes and hidden
+  annotations, attached files, JavaScript, author and software names in the
+  properties, fillable fields, signatures that no longer verify or were
+  changed after signing, and whether it is PDF/A. The worst findings come
+  first; the personal data itself is never shown, only how much of each kind.
+- **Clean and send:** metadata, attachments and scripts are removed into a
+  copy that is shared instead; the original stays as it is. It is not offered
+  for a signed PDF, where rewriting the file would break the signature.
+- **Redact:** with personal data found, one button opens the redaction tool
+  on that file.
+- The check runs from the Reader, the office Share (as PDF), the tool result
+  cards and Recent files on Android, and from the Reader on desktop.
+  **Settings → "Check PDFs before sharing"** turns it off.
+
 ## [6.4.0] - Meslek masaları
 
 ### Added
