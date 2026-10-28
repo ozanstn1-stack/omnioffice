@@ -102,6 +102,22 @@ jobs:
       - name: Fetch Android engines
         run: pwsh -NoProfile -File scripts/fetch-engines-android.ps1 -Abis arm64-v8a,armeabi-v7a
 
+      # Desktop clippy never compiles the `cfg(target_os = "android")` code;
+      # this runs it for the Android target so Android-only dead code and
+      # unused variables fail here instead of slipping through. The Tauri CLI
+      # sets the NDK compilers for its own builds; plain cargo needs them for
+      # the dependencies' C code.
+      - name: Clippy (aarch64-linux-android)
+        run: |
+          set -e
+          bin="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$bin/aarch64-linux-android24-clang"
+          export CXX_aarch64_linux_android="$bin/aarch64-linux-android24-clang++"
+          export AR_aarch64_linux_android="$bin/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$bin/aarch64-linux-android24-clang"
+          rustup component add clippy
+          cargo clippy -p pdf-swiss-army-knife --lib --target aarch64-linux-android -- -D warnings
+
       # The Tauri CLI builds the "universal" flavor restricted to the requested
       # target, so each run overwrites the previous APK - collect per target.
       - name: Build arm64 APK

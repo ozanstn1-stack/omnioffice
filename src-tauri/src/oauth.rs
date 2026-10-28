@@ -17,6 +17,8 @@ use synccore::oauth::{self, OAuthEndpoints, TokenSet};
 use tauri::{AppHandle, Manager};
 
 const OAUTH_CONFIG_FILE: &str = "oauth.json";
+/// The keyring service; Android keeps OAuth tokens in the app file instead.
+#[cfg(not(target_os = "android"))]
 const SECRET_SERVICE: &str = "office-swiss-army-knife.sync";
 /// Sign-in must finish within this window.
 const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(300);
@@ -118,7 +120,7 @@ fn store_secret(app: &AppHandle, provider: &str, value: &str) -> bool {
             }
         }
     }
-    let _ = app;
+    let _ = (app, provider, value);
     false
 }
 
@@ -183,7 +185,7 @@ fn token_store_kind(app: &AppHandle, provider: &str) -> &'static str {
             return "keychain";
         }
     }
-    let _ = app;
+    let _ = (app, provider);
     "file"
 }
 

@@ -2,10 +2,15 @@
 //! get an opaque token for the folder the human picked, resolved by
 //! `paths::directory`. Kept apart from `files.rs` to respect the ratchet.
 
-use crate::files::{issue, FileAccess, FileRef};
+use crate::files::FileRef;
+#[cfg(any(desktop, test))]
+use crate::files::{issue, FileAccess};
+#[cfg(any(desktop, test))]
 use std::path::Path;
 
-/// Registers a directory the human picked for output.
+/// Registers a directory the human picked for output (the desktop folder
+/// dialog; Android picks folders through the SAF picker).
+#[cfg(any(desktop, test))]
 pub fn issue_dir(path: &Path) -> FileRef {
     let mut reference = issue(path, FileAccess::ReadWrite);
     reference.path = Some(path.display().to_string());
