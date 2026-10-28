@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.4] - Mobil ergonomi
+
+### Added
+
+- **Bottom bar on phones (C11, #341):** Home, Office, Read, Scan and More sit
+  at the bottom of the screen within thumb reach; More opens the full menu.
+  The tab a screen belongs to is highlighted (Documents, Spreadsheets and
+  Presentations light up Office). The bar steps aside while the on-screen
+  keyboard is up and keeps clear of the system gesture area.
+
+### Changed
+
+- **Larger touch targets:** on a touch screen, buttons and icon buttons are
+  at least 44 px tall (small buttons 40 px) and icon buttons 44 px wide.
+- **No zoom on focus:** text fields and drop-downs use 16 px text on a touch
+  screen, so tapping one no longer zooms the page.
+
 ## [6.4.3] - Mali müşavir dönem denetimi
 
 ### Added

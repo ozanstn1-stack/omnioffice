@@ -31,6 +31,34 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.4.4) - Mobil ergonomi
+
+- **Phone bottom bar** with the current section marked and hidden while the
+  keyboard is open (C11, #341).
+  `test:src/components/bottom-nav.test.tsx#offers Home, Office, Read, Scan and More within thumb reach`
+  `test:src/components/bottom-nav.test.tsx#marks the tab a screen belongs to as the current page`
+  `test:src/components/bottom-nav.test.tsx#steps aside while the on-screen keyboard is up`
+- **Touch targets and no zoom on focus** (#341).
+  `test:src/components/touch-css.test.ts#gives buttons and icon buttons a 44 px touch target on a touch screen`
+  `test:src/components/touch-css.test.ts#keeps form fields at 16 px so focusing one does not zoom the page`
+  `test:src/components/touch-css.test.ts#lays the bottom bar above the system gesture area`
+
+### Not done / Known limitations (6.4.4)
+
+- None of the 6.4.x layouts were looked at on a phone (no device connected).
+  The larger buttons can make a dense toolbar (Reader, tool result rows)
+  wrap onto a second line. Confirm by hand on the Pixel/S22: the bottom bar,
+  Reader toolbar, Office toolbar and a form with the keyboard open.
+  (no test: on-device verification pending.)
+- The office editors keep their own toolbars at the top; a one-handed
+  bottom toolbar inside Writer/Calc is not part of this release.
+  (no test: not implemented.)
+- The keyboard detection uses the visual viewport (keyboard taller than a
+  quarter of the window); a floating or split keyboard may not hide the bar.
+  (no test: known limitation.)
+- The 6.2.11 to 6.4.3 on-device checks are still pending.
+  (no test: on-device verification pending.)
+
 ## Implemented (this cycle, 6.4.3) - Mali müşavir dönem denetimi
 
 - **Period audit rules** (C4, #341): out-of-period, duplicates, sales
