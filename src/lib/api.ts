@@ -1,4 +1,4 @@
-import type { VaultScanRequest_Deserialize } from "./generated/specta";
+import type { SyncState, VaultScanRequest_Deserialize } from "./generated/specta";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { FileToken } from "./file-tokens";
@@ -842,109 +842,11 @@ export const pdfListSigningCertificates = () => invoke<SigningCertificateSummary
 // ---------------------------------------------------------------------------
 
 export type SyncProviderId = "webdav" | "onedrive" | "google-drive";
-export type SyncStateId = "local_only" | "synced" | "local_ahead" | "cloud_ahead" | "conflict";
+export type SyncStateId = SyncState;
 export type SyncResolutionId = "keep_local" | "keep_cloud" | "keep_both";
 
-export interface SyncConfigView {
-  enabled: boolean;
-  provider: SyncProviderId;
-  url: string;
-  username: string;
-  /** Explicit opt-in for plain HTTP, honored for loopback servers only. */
-  allowInsecureHttp: boolean;
-  remoteDir: string;
-  hasPassword: boolean;
-  passwordStorage: "dpapi" | "keystore" | "plain" | "none";
-}
-
-export interface SyncSaveInput {
-  enabled: boolean;
-  provider: SyncProviderId;
-  url: string;
-  username: string;
-  allowInsecureHttp: boolean;
-  /** null keeps the stored password, "" clears it, any value replaces it. */
-  password: string | null;
-  remoteDir: string;
-}
-
-export interface SyncTestResult {
-  server: string;
-  remoteDir: string;
-  remoteDirExists: boolean;
-  message: string;
-}
-
-export interface SyncStatusView {
-  file: string;
-  localPath: string;
-  remotePath: string;
-  state: SyncStateId;
-  tracked: boolean;
-  localSize: number;
-  remoteSize: number | null;
-  localSha256: string;
-  cloudSha256: string | null;
-  remoteEtag: string | null;
-  baseEtag: string | null;
-  baseSha256: string | null;
-  localRevision: number;
-  lastSyncedAt: string | null;
-  updatedAt: string | null;
-  note: string | null;
-}
-
-export interface SyncListEntry {
-  name: string;
-  size: number;
-  etag: string | null;
-  modified: string | null;
-}
-
-export interface SyncProviderInfo {
-  id: string;
-  available: boolean;
-  note: string;
-}
-
-export interface SyncCapabilities {
-  maxTransferBytes: number;
-  backgroundSync: boolean;
-  autoMerge: boolean;
-  providers: SyncProviderInfo[];
-}
-
-export const syncGetConfig = () => invoke<SyncConfigView>("sync_get_config");
-export const syncSaveConfig = (input: SyncSaveInput) => invoke<SyncConfigView>("sync_save_config", { input });
-export const syncTestConnection = () => invoke<SyncTestResult>("sync_test_connection");
-export const syncStatus = (localPath: string) => invoke<SyncStatusView>("sync_status", { localPath });
-export const syncUpload = (localPath: string) => invoke<SyncStatusView>("sync_upload", { localPath });
-export const syncDownload = (remoteName: string, localPath: string) =>
-  invoke<SyncStatusView>("sync_download", { remoteName, localPath });
-export const syncList = () => invoke<SyncListEntry[]>("sync_list");
-export const syncResolve = (localPath: string, resolution: SyncResolutionId) =>
-  invoke<SyncStatusView>("sync_resolve", { localPath, resolution });
-export const syncForget = (localPath: string) => invoke<void>("sync_forget", { localPath });
-/** Deletes the cloud copy of a tracked document; the local file is untouched. */
-export const syncDeleteRemote = (localPath: string) => invoke<SyncStatusView>("sync_delete_remote", { localPath });
-export const syncCapabilities = () => invoke<SyncCapabilities>("sync_capabilities");
-
-export interface OAuthProviderStatus {
-  provider: string;
-  configured: boolean;
-  connected: boolean;
-  account: string;
-  clientId: string;
-  tenant: string;
-  /** `keychain` (OS vault) or `file` (app secret store fallback). */
-  store: string;
-}
-
-export const oauthStatus = () => invoke<OAuthProviderStatus[]>("oauth_status");
-export const oauthSaveClient = (provider: string, clientId: string, clientSecret: string, tenant: string) =>
-  invoke<OAuthProviderStatus[]>("oauth_save_client", { provider, clientId, clientSecret, tenant });
-export const oauthConnect = (provider: string) => invoke<OAuthProviderStatus[]>("oauth_connect", { provider });
-export const oauthDisconnect = (provider: string) => invoke<OAuthProviderStatus[]>("oauth_disconnect", { provider });
+// The views and commands are generated from the Rust types (#316): the sync
+// screen calls `commands.sync*` / `commands.oauth*` from `typed-ipc`.
 
 // ---------------------------------------------------------------------------
 // AcroForm fields and PDF Studio page objects (V3.1)

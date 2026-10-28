@@ -139,6 +139,7 @@ impl Default for SyncConfigFile {
 }
 
 /// Frontend view. Never contains the password itself.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncConfigView {
@@ -155,6 +156,7 @@ pub struct SyncConfigView {
     pub password_storage: String,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncSaveInput {
@@ -528,6 +530,7 @@ fn evaluate(app: &AppHandle, local_path: &Path) -> Result<Evaluated, PdfError> {
 }
 
 /// Status view sent to the frontend.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncStatusView {
@@ -536,13 +539,16 @@ pub struct SyncStatusView {
     pub remote_path: String,
     pub state: SyncState,
     pub tracked: bool,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub local_size: u64,
+    #[cfg_attr(feature = "bindings", specta(type = Option<specta_typescript::Number>))]
     pub remote_size: Option<u64>,
     pub local_sha256: String,
     pub cloud_sha256: Option<String>,
     pub remote_etag: Option<String>,
     pub base_etag: Option<String>,
     pub base_sha256: Option<String>,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub local_revision: u64,
     pub last_synced_at: Option<String>,
     pub updated_at: Option<String>,
@@ -750,11 +756,13 @@ fn download_core(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn sync_get_config(app: AppHandle) -> SyncConfigView {
     config_view(&app)
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn sync_save_config(app: AppHandle, input: SyncSaveInput) -> Result<SyncConfigView, PdfError> {
     let provider = match provider_kind(&input.provider) {
         ProviderKind::OneDrive => "onedrive",
@@ -800,6 +808,7 @@ pub fn sync_save_config(app: AppHandle, input: SyncSaveInput) -> Result<SyncConf
     Ok(config_view(&app))
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncTestResult {
@@ -810,6 +819,7 @@ pub struct SyncTestResult {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sync_test_connection(app: AppHandle) -> Result<SyncTestResult, PdfError> {
     run_blocking(move || {
         let context = sync_context(&app)?;
@@ -834,6 +844,7 @@ pub async fn sync_test_connection(app: AppHandle) -> Result<SyncTestResult, PdfE
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sync_status(app: AppHandle, local_path: String) -> Result<SyncStatusView, PdfError> {
     // The webview is untrusted: every sync path goes through the same
     // centralized validation as the rest of the command surface (absolute,
@@ -874,12 +885,14 @@ pub async fn sync_status(app: AppHandle, local_path: String) -> Result<SyncStatu
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sync_upload(app: AppHandle, local_path: String) -> Result<SyncStatusView, PdfError> {
     let path = crate::paths::input_file(&local_path)?.into_path_buf();
     run_blocking(move || upload_core(&app, &path, false)).await
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sync_download(
     app: AppHandle,
     remote_name: String,
@@ -895,6 +908,7 @@ pub async fn sync_download(
 /// never touched; this is the only destructive cloud action besides the
 /// explicit conflict resolutions.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sync_delete_remote(app: AppHandle, local_path: String) -> Result<SyncStatusView, PdfError> {
     let path = crate::paths::input_file(&local_path)?.into_path_buf();
     run_blocking(move || {
@@ -933,16 +947,19 @@ pub async fn sync_delete_remote(app: AppHandle, local_path: String) -> Result<Sy
     .await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncListEntry {
     pub name: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub size: u64,
     pub etag: Option<String>,
     pub modified: Option<String>,
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sync_list(app: AppHandle) -> Result<Vec<SyncListEntry>, PdfError> {
     run_blocking(move || {
         let context = sync_context(&app)?;
@@ -964,6 +981,7 @@ pub async fn sync_list(app: AppHandle) -> Result<Vec<SyncListEntry>, PdfError> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sync_resolve(app: AppHandle, local_path: String, resolution: String) -> Result<SyncStatusView, PdfError> {
     let path = crate::paths::input_file(&local_path)?.into_path_buf();
     run_blocking(move || {
@@ -1014,6 +1032,7 @@ pub async fn sync_resolve(app: AppHandle, local_path: String, resolution: String
 /// Removes only the sidecar; the document and the cloud copy are untouched.
 /// This works even while sync is turned off (local cleanup).
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn sync_forget(app: AppHandle, local_path: String) -> Result<(), PdfError> {
     // Forgetting must also work for a file that no longer exists, so only the
     // path shape is validated (still absolute, no traversal/device names).
@@ -1022,15 +1041,18 @@ pub fn sync_forget(app: AppHandle, local_path: String) -> Result<(), PdfError> {
 }
 
 /// Honest capability report for the UI (size limit, provider availability).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncCapabilities {
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub max_transfer_bytes: u64,
     pub background_sync: bool,
     pub auto_merge: bool,
     pub providers: Vec<SyncProviderInfo>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncProviderInfo {
@@ -1040,6 +1062,7 @@ pub struct SyncProviderInfo {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn sync_capabilities() -> SyncCapabilities {
     SyncCapabilities {
         max_transfer_bytes: MAX_TRANSFER_BYTES,

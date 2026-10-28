@@ -82,6 +82,7 @@ pub struct SyncMeta {
 }
 
 /// Version state of one tracked file, computed by [`detect_state`].
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SyncState {

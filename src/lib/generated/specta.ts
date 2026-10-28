@@ -37,6 +37,31 @@ export const commands = {
 	 *  `delete_imports` also removes the app-private copies imported on Android.
 	 */
 	vaultClear: (deleteImports: boolean | null) => typedError<VaultStatus_Serialize, PdfError>(__TAURI_INVOKE("vault_clear", { deleteImports })),
+	syncGetConfig: () => __TAURI_INVOKE<SyncConfigView>("sync_get_config"),
+	syncSaveConfig: (input: SyncSaveInput_Deserialize) => typedError<SyncConfigView, PdfError>(__TAURI_INVOKE("sync_save_config", { input })),
+	syncTestConnection: () => typedError<SyncTestResult, PdfError>(__TAURI_INVOKE("sync_test_connection")),
+	syncStatus: (localPath: string) => typedError<SyncStatusView_Serialize, PdfError>(__TAURI_INVOKE("sync_status", { localPath })),
+	syncUpload: (localPath: string) => typedError<SyncStatusView_Serialize, PdfError>(__TAURI_INVOKE("sync_upload", { localPath })),
+	syncDownload: (remoteName: string, localPath: string) => typedError<SyncStatusView_Serialize, PdfError>(__TAURI_INVOKE("sync_download", { remoteName, localPath })),
+	syncList: () => typedError<SyncListEntry_Serialize[], PdfError>(__TAURI_INVOKE("sync_list")),
+	syncResolve: (localPath: string, resolution: string) => typedError<SyncStatusView_Serialize, PdfError>(__TAURI_INVOKE("sync_resolve", { localPath, resolution })),
+	/**
+	 *  Removes only the sidecar; the document and the cloud copy are untouched.
+	 *  This works even while sync is turned off (local cleanup).
+	 */
+	syncForget: (localPath: string) => typedError<null, PdfError>(__TAURI_INVOKE("sync_forget", { localPath })),
+	/**
+	 *  Deletes the tracked document's remote copy and removes the local sidecar,
+	 *  so the file is reported as `LocalOnly` afterwards. The local document is
+	 *  never touched; this is the only destructive cloud action besides the
+	 *  explicit conflict resolutions.
+	 */
+	syncDeleteRemote: (localPath: string) => typedError<SyncStatusView_Serialize, PdfError>(__TAURI_INVOKE("sync_delete_remote", { localPath })),
+	syncCapabilities: () => __TAURI_INVOKE<SyncCapabilities>("sync_capabilities"),
+	oauthStatus: () => __TAURI_INVOKE<OAuthStatus[]>("oauth_status"),
+	oauthSaveClient: (provider: string, clientId: string, clientSecret: string | null, tenant: string | null) => typedError<OAuthStatus[], PdfError>(__TAURI_INVOKE("oauth_save_client", { provider, clientId, clientSecret, tenant })),
+	oauthConnect: (provider: string) => typedError<OAuthStatus[], PdfError>(__TAURI_INVOKE("oauth_connect", { provider })),
+	oauthDisconnect: (provider: string) => typedError<OAuthStatus[], PdfError>(__TAURI_INVOKE("oauth_disconnect", { provider })),
 };
 
 /* Types */
@@ -46,12 +71,163 @@ export const commands = {
  */
 export type ErrorCode = "invalid_pdf" | "corrupt_pdf" | "password_required" | "wrong_password" | "not_found" | "permission_denied" | "file_locked" | "output_exists" | "disk_full" | "cancelled" | "engine_missing" | "ocr_engine_unavailable" | "unsupported" | "invalid_input" | "invalid_image" | "range_out_of_bounds" | "conversion_failed" | "processing_failed" | "internal" | "ai_not_configured" | "ai_invalid_key" | "ai_rate_limited" | "ai_insufficient_balance" | "ai_network" | "ai_no_text" | "ai_too_large" | "ai_server_error" | "ai_invalid_response";
 
+export type OAuthStatus = {
+	provider: string,
+	configured: boolean,
+	connected: boolean,
+	account: string,
+	/**  Configured client id / tenant (never the secret). */
+	clientId: string,
+	tenant: string,
+	/**  Where tokens live: `keychain` or `file`. */
+	store: string,
+};
+
 /**
  *  The wire shape of [`PdfError`] for the typed bindings: the same two
  *  fields its `Serialize` writes.
  */
 export type PdfError = {
 	code: ErrorCode,
+	message: string,
+};
+
+/**  Honest capability report for the UI (size limit, provider availability). */
+export type SyncCapabilities = {
+	maxTransferBytes: number,
+	backgroundSync: boolean,
+	autoMerge: boolean,
+	providers: SyncProviderInfo[],
+};
+
+/**  Frontend view. Never contains the password itself. */
+export type SyncConfigView = {
+	enabled: boolean,
+	provider: string,
+	url: string,
+	username: string,
+	/**
+	 *  True when the user explicitly allowed plain HTTP for a loopback
+	 *  server. Public HTTP endpoints are refused regardless.
+	 */
+	allowInsecureHttp: boolean,
+	remoteDir: string,
+	hasPassword: boolean,
+	/**  "dpapi" (OS encrypted), "plain" (no OS encryption available) or "none". */
+	passwordStorage: string,
+};
+
+export type SyncListEntry = SyncListEntry_Serialize | SyncListEntry_Deserialize;
+
+export type SyncListEntry_Deserialize = {
+	name: string,
+	size: number,
+	etag?: string | null,
+	modified?: string | null,
+};
+
+export type SyncListEntry_Serialize = {
+	name: string,
+	size: number,
+	etag: string | null,
+	modified: string | null,
+};
+
+export type SyncProviderInfo = {
+	id: string,
+	available: boolean,
+	note: string,
+};
+
+export type SyncSaveInput = SyncSaveInput_Serialize | SyncSaveInput_Deserialize;
+
+export type SyncSaveInput_Deserialize = {
+	enabled: boolean,
+	provider: string,
+	url?: string,
+	username?: string,
+	/**  Explicit opt-in for plain HTTP on a loopback server only. */
+	allowInsecureHttp?: boolean,
+	/**  `None` keeps the stored password; `Some("")` clears it. */
+	password?: string | null,
+	remoteDir?: string,
+};
+
+export type SyncSaveInput_Serialize = {
+	enabled: boolean,
+	provider: string,
+	url: string,
+	username: string,
+	/**  Explicit opt-in for plain HTTP on a loopback server only. */
+	allowInsecureHttp: boolean,
+	/**  `None` keeps the stored password; `Some("")` clears it. */
+	password: string | null,
+	remoteDir: string,
+};
+
+/**  Version state of one tracked file, computed by [`detect_state`]. */
+export type SyncState = 
+/**  Local file exists, cloud copy does not (or was deleted). */
+"local_only" | 
+/**  Local and cloud content hashes match. */
+"synced" | 
+/**  Local divergence since the base, cloud unchanged. */
+"local_ahead" | 
+/**  Cloud divergence since the base, local unchanged. */
+"cloud_ahead" | 
+/**
+ *  Both sides changed (or no common base and content differs). Never
+ *  resolved automatically.
+ */
+"conflict";
+
+/**  Status view sent to the frontend. */
+export type SyncStatusView = SyncStatusView_Serialize | SyncStatusView_Deserialize;
+
+/**  Status view sent to the frontend. */
+export type SyncStatusView_Deserialize = {
+	file: string,
+	localPath: string,
+	remotePath: string,
+	state: SyncState,
+	tracked: boolean,
+	localSize: number,
+	remoteSize?: number | null,
+	localSha256: string,
+	cloudSha256?: string | null,
+	remoteEtag?: string | null,
+	baseEtag?: string | null,
+	baseSha256?: string | null,
+	localRevision: number,
+	lastSyncedAt?: string | null,
+	updatedAt?: string | null,
+	note?: string | null,
+};
+
+/**  Status view sent to the frontend. */
+export type SyncStatusView_Serialize = {
+	file: string,
+	localPath: string,
+	remotePath: string,
+	state: SyncState,
+	tracked: boolean,
+	localSize: number,
+	remoteSize: number | null,
+	localSha256: string,
+	cloudSha256: string | null,
+	remoteEtag: string | null,
+	baseEtag: string | null,
+	baseSha256: string | null,
+	localRevision: number,
+	lastSyncedAt: string | null,
+	updatedAt: string | null,
+	note: string | null,
+};
+
+export type SyncTestResult = {
+	server: string,
+	remoteDir: string,
+	remoteDirExists: boolean,
 	message: string,
 };
 
