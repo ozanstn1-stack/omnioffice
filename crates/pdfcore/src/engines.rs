@@ -134,7 +134,7 @@ pub fn pdfium_path() -> Option<PathBuf> {
     {
         // Packaged as a native library; the system loader finds it by name,
         // but an explicit path keeps the diagnostic output useful.
-        return native_library_dir().map(|dir| dir.join("libpdfium.so")).filter(|path| path.exists());
+        native_library_dir().map(|dir| dir.join("libpdfium.so")).filter(|path| path.exists())
     }
     #[cfg(not(target_os = "android"))]
     {

@@ -305,7 +305,8 @@ pub fn install_into(root: &Path, manifest_json: &str, source: &str) -> PluginRes
 
 /// Reads a plugin folder the *user* selected. The folder and its two manifest
 /// files must be real files, not symlinks, so a plugin cannot smuggle host
-/// files into its own directory.
+/// files into its own directory. Desktop only: Android has no folder install.
+#[cfg(any(desktop, test))]
 pub fn install_from_dir(root: &Path, source_dir: &Path) -> PluginResult<PluginEntry> {
     let link_meta = std::fs::symlink_metadata(source_dir)
         .map_err(|_| PluginErrorPayload::invalid("Choose a folder that contains manifest.json and main.js."))?;
