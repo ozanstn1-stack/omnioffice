@@ -15,6 +15,10 @@ description = "Local-first cloud sync foundation (WebDAV) for OmniOffice"
 name = "synccore"
 path = "src/lib.rs"
 
+[features]
+# Typed command bindings (tauri-specta, #316): the sync state the commands return.
+bindings = ["dep:specta"]
+
 [dependencies]
 # Blocking client: every network call runs inside a Tauri spawn_blocking worker,
 # so the UI thread is never blocked. rustls keeps the crate free of OpenSSL /
@@ -29,6 +33,8 @@ serde_json = "1"
 sha2 = "0.10"
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
+# tauri-specta's type layer, pinned with the app crate's (docs/dependencies.md).
+specta = { version = "=2.0.0-rc.26", features = ["derive"], optional = true }
 
 [dev-dependencies]
 tempfile = "3"

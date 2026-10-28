@@ -34,32 +34,9 @@ import {
 import { Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useRecent, useToasts } from "../lib/store";
-import { toAppError } from "../lib/api";
-import {
-  oauthConnect,
-  oauthDisconnect,
-  oauthSaveClient,
-  oauthStatus,
-  syncCapabilities,
-  syncDeleteRemote,
-  syncDownload,
-  syncForget,
-  syncGetConfig,
-  syncList,
-  syncResolve,
-  syncSaveConfig,
-  syncStatus,
-  syncTestConnection,
-  syncUpload,
-  type OAuthProviderStatus,
-  type SyncCapabilities,
-  type SyncConfigView,
-  type SyncListEntry,
-  type SyncProviderId,
-  type SyncResolutionId,
-  type SyncStateId,
-  type SyncStatusView,
-} from "../lib/api";
+import { toAppError, type SyncProviderId, type SyncResolutionId, type SyncStateId } from "../lib/api";
+import type * as specta from "../lib/generated/specta";
+import { commands, unwrap } from "../lib/typed-ipc";
 import { isOswkPath, needsResolution, shortHash, syncStateTone } from "../lib/sync";
 import { fileBaseName, formatBytes, formatDate } from "../lib/format";
 import { pickDocumentTokens } from "../lib/file-tokens";
@@ -75,6 +52,12 @@ import { isAndroid, pickAndroidFilesWithMime, saveFileOnAndroid } from "../lib/m
  *  - conflicts show all three resolutions and nothing is overwritten until
  *    one of them is chosen.
  */
+
+type OAuthProviderStatus = specta.OAuthStatus;
+type SyncCapabilities = specta.SyncCapabilities;
+type SyncConfigView = specta.SyncConfigView;
+type SyncListEntry = specta.SyncListEntry_Serialize;
+type SyncStatusView = specta.SyncStatusView_Serialize;
 
 interface Draft {
   enabled: boolean;
@@ -92,7 +75,7 @@ type RowState =
 function draftFrom(config: SyncConfigView): Draft {
   return {
     enabled: config.enabled,
-    provider: config.provider,
+    provider: config.provider as SyncProviderId,
     url: config.url,
     username: config.username,
     password: "",
@@ -159,16 +142,19 @@ export function Sync() {
 
   useEffect(() => {
     void refreshRecent();
-    void syncGetConfig()
+    void commands
+      .syncGetConfig()
       .then((next) => {
         setConfig(next);
         setDraft(draftFrom(next));
       })
       .catch((error) => setSettingsError(syncMessage(error, t("sync.errorTitle"))));
-    void syncCapabilities()
+    void commands
+      .syncCapabilities()
       .then(setCapabilities)
       .catch(() => setCapabilities(null));
-    void oauthStatus()
+    void commands
+      .oauthStatus()
       .then((statuses) => setOauth(statuses))
       .catch(() => setOauth([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -204,7 +190,7 @@ export function Sync() {
     async (path: string) => {
       setRow(path, { kind: "loading" });
       try {
-        const view = await syncStatus(path);
+        const view = await unwrap(commands.syncStatus(path));
         setRow(path, { kind: "ready", view });
         return view;
       } catch (error) {
@@ -226,7 +212,7 @@ export function Sync() {
       if (!requireEnabled()) return;
       setBusy(path);
       try {
-        const view = await syncUpload(path);
+        const view = await unwrap(commands.syncUpload(path));
         setRow(path, { kind: "ready", view });
         setSelected(path);
         pushToast({ kind: "success", title: t("sync.upload"), detail: view.note ?? undefined });
@@ -246,7 +232,7 @@ export function Sync() {
       if (!requireEnabled()) return;
       setBusy(path);
       try {
-        const view = await syncResolve(path, resolution);
+        const view = await unwrap(commands.syncResolve(path, resolution));
         setRow(path, { kind: "ready", view });
         pushToast({ kind: "success", title: t("sync.resolve"), detail: view.note ?? undefined });
       } catch (error) {
@@ -263,7 +249,7 @@ export function Sync() {
   const runForget = useCallback(
     async (path: string) => {
       try {
-        await syncForget(path);
+        await unwrap(commands.syncForget(path));
         setRows((current) => {
           const next = { ...current };
           delete next[path];
@@ -284,7 +270,7 @@ export function Sync() {
       if (!requireEnabled()) return;
       setBusy(path);
       try {
-        const view = await syncDeleteRemote(path);
+        const view = await unwrap(commands.syncDeleteRemote(path));
         setRow(path, { kind: "ready", view });
         pushToast({ kind: "success", title: t("sync.deleteRemoteDone"), detail: view.file });
       } catch (error) {
@@ -336,7 +322,7 @@ export function Sync() {
     setLoadingRemote(true);
     setRemoteError(null);
     try {
-      setRemote(await syncList());
+      setRemote(await unwrap(commands.syncList()));
     } catch (error) {
       setRemoteError(syncMessage(error, t("sync.errorTitle")));
     } finally {
@@ -356,13 +342,13 @@ export function Sync() {
           const directory = await join(cache, "sync-downloads");
           await invoke("ensure_dir", { path: directory });
           const target = await join(directory, entry.name);
-          const view = await syncDownload(entry.name, target);
+          const view = await unwrap(commands.syncDownload(entry.name, target));
           await saveFileOnAndroid(target, entry.name);
           setRow(view.localPath, { kind: "ready", view });
         } else {
           const target = await pickSaveToken(entry.name, ["oswk"]).catch(() => null);
           if (!target) return;
-          const view = await syncDownload(entry.name, target.token);
+          const view = await unwrap(commands.syncDownload(entry.name, target.token));
           setRow(view.localPath, { kind: "ready", view });
           setSelected(view.localPath);
         }
@@ -381,17 +367,19 @@ export function Sync() {
     setSaving(true);
     setSettingsError(null);
     try {
-      const next = await syncSaveConfig({
-        enabled: draft.enabled,
-        provider: draft.provider,
-        url: draft.url,
-        username: draft.username,
-        allowInsecureHttp: draft.allowInsecureHttp,
-        // Empty field + existing password = keep it (null); a previously
-        // empty field with no stored password is also null.
-        password: draft.password.length > 0 ? draft.password : config?.hasPassword ? null : "",
-        remoteDir: draft.remoteDir,
-      });
+      const next = await unwrap(
+        commands.syncSaveConfig({
+          enabled: draft.enabled,
+          provider: draft.provider,
+          url: draft.url,
+          username: draft.username,
+          allowInsecureHttp: draft.allowInsecureHttp,
+          // Empty field + existing password = keep it (null); a previously
+          // empty field with no stored password is also null.
+          password: draft.password.length > 0 ? draft.password : config?.hasPassword ? null : "",
+          remoteDir: draft.remoteDir,
+        }),
+      );
       setConfig(next);
       setDraft(draftFrom(next));
       setTestResult(null);
@@ -407,7 +395,7 @@ export function Sync() {
     setTesting(true);
     setTestResult(null);
     try {
-      const result = await syncTestConnection();
+      const result = await unwrap(commands.syncTestConnection());
       setTestResult({
         ok: true,
         message: result.remoteDirExists
@@ -430,7 +418,9 @@ export function Sync() {
     setOauthBusy("save");
     setOauthError(null);
     try {
-      const statuses = await oauthSaveClient(draft.provider, oauthClientId, oauthClientSecret, oauthTenant);
+      const statuses = await unwrap(
+        commands.oauthSaveClient(draft.provider, oauthClientId, oauthClientSecret, oauthTenant),
+      );
       setOauthClientSecret("");
       applyOauth(statuses, draft.provider);
       pushToast({ kind: "success", title: t("sync.oauth.saved"), detail: oauthProviderLabel });
@@ -446,7 +436,7 @@ export function Sync() {
     setOauthBusy("connect");
     setOauthError(null);
     try {
-      const statuses = await oauthConnect(draft.provider);
+      const statuses = await unwrap(commands.oauthConnect(draft.provider));
       applyOauth(statuses, draft.provider);
       const entry = statuses.find((item) => item.provider === draft.provider);
       pushToast({ kind: "success", title: t("sync.oauth.connected", { account: entry?.account || "" }) });
@@ -462,7 +452,7 @@ export function Sync() {
     setOauthBusy("disconnect");
     setOauthError(null);
     try {
-      const statuses = await oauthDisconnect(draft.provider);
+      const statuses = await unwrap(commands.oauthDisconnect(draft.provider));
       applyOauth(statuses, draft.provider);
       pushToast({ kind: "info", title: t("sync.oauth.disconnected") });
     } catch (error) {

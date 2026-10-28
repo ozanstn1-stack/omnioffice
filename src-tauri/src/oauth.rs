@@ -42,6 +42,7 @@ pub struct OAuthConfigFile {
     pub providers: BTreeMap<String, ProviderConfig>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OAuthStatus {
@@ -256,6 +257,7 @@ impl synccore::cloud::TokenSource for AppTokenSource {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn oauth_status(app: AppHandle) -> Vec<OAuthStatus> {
     let config = load_config(&app);
     ["google-drive", "onedrive"]
@@ -277,6 +279,7 @@ pub fn oauth_status(app: AppHandle) -> Vec<OAuthStatus> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn oauth_save_client(
     app: AppHandle,
     provider: String,
@@ -299,6 +302,7 @@ pub fn oauth_save_client(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn oauth_connect(app: AppHandle, provider: String) -> Result<Vec<OAuthStatus>, PdfError> {
     let provider = normalize_provider(&provider)?;
     let config = load_config(&app);
@@ -353,6 +357,7 @@ pub async fn oauth_connect(app: AppHandle, provider: String) -> Result<Vec<OAuth
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn oauth_disconnect(app: AppHandle, provider: String) -> Result<Vec<OAuthStatus>, PdfError> {
     let provider = normalize_provider(&provider)?;
     clear_secret(&app, &provider);
