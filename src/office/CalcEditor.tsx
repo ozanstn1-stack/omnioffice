@@ -689,7 +689,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     const resize = target.closest?.<HTMLElement>("[data-col-resize]");
     if (resize) {
       // Checked before the column header because the grip lives inside it.
-      const col = Number(resize.dataset.col);
+      const col = Number(resize.dataset.colResize);
       gestureRef.current = {
         kind: "resize",
         pointerId: event.pointerId,
