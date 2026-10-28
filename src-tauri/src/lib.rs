@@ -248,6 +248,16 @@ pub fn export_typed_bindings(path: &std::path::Path) -> Result<(), String> {
             oauth::oauth_save_client,
             oauth::oauth_connect,
             oauth::oauth_disconnect,
+            plugin::plugin_list,
+            plugin::plugin_read_source,
+            plugin::plugin_install,
+            plugin::plugin_install_from_dialog,
+            plugin::plugin_install_sample,
+            plugin::plugin_delete,
+            plugin::plugin_file_read,
+            plugin::plugin_file_write,
+            plugin::plugin_pdf_read,
+            plugin::plugin_http_request,
         ])
         .export(specta_typescript::Typescript::default(), path)
         .map_err(|error| error.to_string())

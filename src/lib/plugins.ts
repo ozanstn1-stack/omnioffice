@@ -11,7 +11,8 @@
  * plugins through the capability API. Worker isolation is same-process and
  * same-engine - it is not an escape hatch from the browser engine itself.
  */
-import { invoke } from "@tauri-apps/api/core";
+import type * as specta from "./generated/specta";
+import { commands, unwrap } from "./typed-ipc";
 import { create } from "zustand";
 import packageJson from "../../package.json";
 import { registerCommand, unregisterCommand } from "./commands";
@@ -300,10 +301,8 @@ export function safePluginFileName(name: unknown): string | null {
 // Transport (the only place Tauri is touched)
 // ---------------------------------------------------------------------------
 
-export interface PluginArchivedRecord {
-  manifest: unknown;
-  sourceBytes: number;
-}
+// The records the commands return are generated from the Rust types (#316).
+export type PluginArchivedRecord = specta.PluginEntry;
 
 export interface PluginHttpRequest {
   url: string;
@@ -312,17 +311,9 @@ export interface PluginHttpRequest {
   body?: string;
 }
 
-export interface PluginHttpResponse {
-  status: number;
-  body: string;
-  truncated: boolean;
-}
+export type PluginHttpResponse = specta.PluginHttpResponse;
 
-export interface PluginPdfRead {
-  pageCount: number;
-  hasTextLayer: boolean;
-  text: string;
-}
+export type PluginPdfRead = specta.PluginPdfRead;
 
 export interface PluginTransport {
   list: () => Promise<PluginArchivedRecord[]>;
@@ -345,16 +336,20 @@ export interface PluginTransport {
  * sandbox directory.
  */
 export const tauriPluginTransport: PluginTransport = {
-  list: () => invoke<PluginArchivedRecord[]>("plugin_list"),
-  readSource: (id) => invoke<string>("plugin_read_source", { id }),
-  install: (manifestJson, source) => invoke<PluginArchivedRecord>("plugin_install", { manifestJson, source }),
-  installFromDialog: () => invoke<PluginArchivedRecord | null>("plugin_install_from_dialog"),
-  installSample: () => invoke<PluginArchivedRecord>("plugin_install_sample"),
-  remove: (id) => invoke<void>("plugin_delete", { id }),
-  readFile: (pluginId, name) => invoke<string>("plugin_file_read", { pluginId, name }),
-  writeFile: (pluginId, name, text) => invoke<void>("plugin_file_write", { pluginId, name, text }),
-  readPdf: (pluginId, name) => invoke<PluginPdfRead>("plugin_pdf_read", { pluginId, name }),
-  httpRequest: (pluginId, request) => invoke<PluginHttpResponse>("plugin_http_request", { pluginId, request }),
+  list: () => unwrap(commands.pluginList()),
+  readSource: (id) => unwrap(commands.pluginReadSource(id)),
+  install: (manifestJson, source) => unwrap(commands.pluginInstall(manifestJson, source)),
+  installFromDialog: () => unwrap(commands.pluginInstallFromDialog()),
+  installSample: () => unwrap(commands.pluginInstallSample()),
+  remove: async (id) => {
+    await unwrap(commands.pluginDelete(id));
+  },
+  readFile: (pluginId, name) => unwrap(commands.pluginFileRead(pluginId, name)),
+  writeFile: async (pluginId, name, text) => {
+    await unwrap(commands.pluginFileWrite(pluginId, name, text));
+  },
+  readPdf: (pluginId, name) => unwrap(commands.pluginPdfRead(pluginId, name)),
+  httpRequest: (pluginId, request) => unwrap(commands.pluginHttpRequest(pluginId, request)),
 };
 
 let activeTransport: PluginTransport = tauriPluginTransport;

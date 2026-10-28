@@ -66,3 +66,21 @@ describe("typed bindings: the sync group", () => {
     }
   });
 });
+
+describe("typed bindings: the plugin group", () => {
+  const ipc = read("src-tauri/src/ipc.rs");
+  const pluginBlock = /plugin_commands \{\n([\s\S]*?)\n\s*\}\n\}/.exec(ipc)?.[1] ?? "";
+  const pluginCommands = [...pluginBlock.matchAll(/plugin::([a-z_]+),/g)].map((match) => match[1]);
+  const generated = read("src/lib/generated/specta.ts");
+
+  it("generates a typed wrapper for every plugin command", () => {
+    expect(pluginCommands.length).toBe(10);
+    for (const name of pluginCommands) {
+      expect(generated, name).toMatch(new RegExp(`__TAURI_INVOKE(?:<[^>]*>)?\\("${name}"`));
+    }
+  });
+
+  it("calls the typed wrappers from the plugin transport", () => {
+    expect(read("src/lib/plugins.ts")).not.toMatch(/invoke(?:<[^>]*>)?\(\s*"plugin_/);
+  });
+});
