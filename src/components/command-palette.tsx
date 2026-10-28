@@ -6,7 +6,12 @@
  * or opens a real file.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { VaultSearchHit } from "../lib/generated/specta";
+import { invoke } from "@tauri-apps/api/core";
+import type {
+  VaultSearchHit,
+  VaultSearchRequest_Deserialize,
+  VaultSearchResponse_Serialize,
+} from "../lib/generated/specta";
 import { Command as CommandIcon, FileText, Search } from "lucide-react";
 import { runCommand, searchCommands, type CommandDefinition, type CommandContext } from "../lib/commands";
 import { errorMessage, useRecent } from "../lib/store";
@@ -170,9 +175,10 @@ function GlobalSearchBody({
     let cancelled = false;
     const timer = window.setTimeout(() => {
       setVaultState("searching");
-      // The typed wrappers load on first search: the palette is in the entry chunk.
-      void import("../lib/typed-ipc")
-        .then(({ commands, unwrap }) => unwrap(commands.vaultSearch({ query: query.trim(), limit: 20, offset: 0 })))
+      // The palette is in the entry chunk, so it calls `invoke` itself with the
+      // generated request/response types (#316) instead of loading the wrappers.
+      const request: VaultSearchRequest_Deserialize = { query: query.trim(), limit: 20, offset: 0 };
+      void invoke<VaultSearchResponse_Serialize>("vault_search", { request })
         .then((response) => {
           if (cancelled) return;
           setVault(response.hits ?? []);

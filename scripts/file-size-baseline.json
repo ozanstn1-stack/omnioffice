@@ -168,7 +168,7 @@
     "src-tauri/src/worker.rs": 356,
     "src/App.tsx": 1126,
     "src/components/ai-settings.tsx": 570,
-    "src/components/command-palette.tsx": 288,
+    "src/components/command-palette.tsx": 294,
     "src/components/compatibility.tsx": 367,
     "src/components/files.tsx": 721,
     "src/components/pages.tsx": 450,

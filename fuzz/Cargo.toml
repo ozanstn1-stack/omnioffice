@@ -10,7 +10,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 officecore = { path = "../crates/officecore" }
-lopdf = "0.45.0"
+lopdf = "0.46.0"
 
 [[bin]]
 name = "zip_archive"
