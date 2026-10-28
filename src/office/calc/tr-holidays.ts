@@ -59,6 +59,23 @@ export function turkishHolidaySerials(year: number): number[] {
   return serials;
 }
 
+/** Years whose religious feasts are tabulated above. */
+export const TR_HOLIDAY_YEARS: readonly number[] = Object.keys(RELIGIOUS).map(Number);
+
+/**
+ * Half-day eves (arife), a holiday from 13:00: 28 October and the day before
+ * each religious feast (the feast eves only for tabulated years).
+ */
+export function turkishHalfDaySerials(year: number): number[] {
+  const serials = [serialOf(year, 10, 28)];
+  const religious = RELIGIOUS[year];
+  if (religious) {
+    serials.push(serialOf(year, religious.ramazan[0], religious.ramazan[1] - 1));
+    serials.push(serialOf(year, religious.kurban[0], religious.kurban[1] - 1));
+  }
+  return serials;
+}
+
 /** Serial days of the TR holidays inside `[from, to]` (either order). */
 export function turkishHolidaySerialsBetween(from: number, to: number): number[] {
   const low = Math.min(from, to);
