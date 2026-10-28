@@ -145,7 +145,7 @@
     "src-tauri/src/crash_log.rs": 322,
     "src-tauri/src/diagnostics.rs": 239,
     "src-tauri/src/files.rs": 233,
-    "src-tauri/src/ipc.rs": 403,
+    "src-tauri/src/ipc.rs": 404,
     "src-tauri/src/jobs.rs": 1127,
     "src-tauri/src/lib.rs": 218,
     "src-tauri/src/library.rs": 393,
