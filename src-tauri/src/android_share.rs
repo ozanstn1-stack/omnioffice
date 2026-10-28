@@ -101,9 +101,11 @@ pub async fn share_document_file(
 }
 
 /// Desktop stub so `generate_handler!` stays platform independent; the
-/// desktop UI reveals the file in its folder instead.
+/// desktop UI reveals the file in its folder instead. The typed bindings
+/// (exported on desktop) take their signature from it.
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn share_document_file(path: String, mime_type: Option<String>, title: Option<String>) -> Result<(), String> {
     let _ = (path, mime_type, title);
     Err("Sharing is only available on Android.".to_string())

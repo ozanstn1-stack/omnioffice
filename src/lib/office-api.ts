@@ -3,7 +3,6 @@
  * the Rust structs (tauri-specta, #316); the document models stay opaque
  * JSON (`specta.Value`) and the editors cast them with the helpers below.
  */
-import { invoke } from "@tauri-apps/api/core";
 import type * as specta from "./generated/specta";
 import { call, callPlain } from "./typed-call";
 import type { Deck, OfficeKind, TextDocument, Workbook } from "./office-types";
@@ -59,7 +58,7 @@ export interface FileFingerprint {
 }
 
 /** Fingerprints a local file so a save can detect an external change. */
-export const fileFingerprint = (path: string) => invoke<FileFingerprint>("file_fingerprint", { path });
+export const fileFingerprint = (path: string) => call((c) => c.fileFingerprint(path));
 
 export const storeLoad = <T>(key: string) => call((c) => c.storeLoad(key)).then((value) => value as T | null);
 

@@ -20,6 +20,7 @@ pub fn issue_dir(path: &Path) -> FileRef {
 /// Opens the native folder dialog and returns a directory token. Android uses
 /// the SAF picker instead, so the native folder dialog is desktop-only.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn file_token_pick_directory(app: tauri::AppHandle) -> Result<Option<FileRef>, String> {
     #[cfg(desktop)]
     {

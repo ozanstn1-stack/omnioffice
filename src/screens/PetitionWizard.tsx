@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { pickSaveToken } from "../lib/file-tokens";
-import { invoke } from "@tauri-apps/api/core";
+import { call } from "../lib/typed-call";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { FileText, Download, Edit3 } from "lucide-react";
 import { Button, Card, Field, TextInput } from "../components/ui";
@@ -79,7 +79,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
       try {
         const cache = await appCacheDir();
         const dir = await join(cache, "petition-export");
-        await invoke("ensure_dir", { path: dir });
+        await call((c) => c.ensureDir(dir));
         const tempPath = await join(dir, `${uid("petition")}.${format}`);
         if (format === "pdf") {
           await exportPdf("writer", doc, tempPath);

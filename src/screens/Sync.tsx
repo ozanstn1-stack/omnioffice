@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { call } from "../lib/typed-call";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { pickSaveToken } from "../lib/file-tokens";
 import {
@@ -340,7 +340,7 @@ export function Sync() {
           // app cache first, then publish through the SAF save dialog.
           const cache = await appCacheDir();
           const directory = await join(cache, "sync-downloads");
-          await invoke("ensure_dir", { path: directory });
+          await call((c) => c.ensureDir(directory));
           const target = await join(directory, entry.name);
           const view = await unwrap(commands.syncDownload(entry.name, target));
           await saveFileOnAndroid(target, entry.name);

@@ -256,6 +256,119 @@ export const commands = {
 	officeSupportedExtensions: () => __TAURI_INVOKE<string[]>("office_supported_extensions"),
 	/**  Reports what `kind`'s model would lose if it were saved as `target`. */
 	officeCompatibility: (kind: string, model: Value, target: string) => typedError<CompatibilityReport, OfficeErrorPayload>(__TAURI_INVOKE("office_compatibility", { kind, model, target })),
+	appInfo: () => __TAURI_INVOKE<AppInfo>("app_info"),
+	updateCheck: () => typedError<UpdateInfo_Serialize, string>(__TAURI_INVOKE("update_check")),
+	/**
+	 *  Opens a release page or download in the system browser. Only links to
+	 *  this project's GitHub releases are accepted (parsed and normalised; see
+	 *  [`is_allowed_release_url`]).
+	 */
+	updateOpen: (url: string) => typedError<null, string>(__TAURI_INVOKE("update_open", { url })),
+	openExternalLink: (url: string) => typedError<null, string>(__TAURI_INVOKE("open_external_link", { url })),
+	diagnosticsReport: () => __TAURI_INVOKE<string>("diagnostics_report"),
+	engineStatus: () => __TAURI_INVOKE<EngineStatus_Serialize>("engine_status"),
+	ocrLanguages: () => __TAURI_INVOKE<OcrLanguage[]>("ocr_languages"),
+	/**  Opens the native file dialog on the Rust side and returns read tokens. */
+	fileTokenPick: (extensions: string[] | null, multiple: boolean | null) => typedError<FileRef_Serialize[], string>(__TAURI_INVOKE("file_token_pick", { extensions, multiple })),
+	/**  Opens the native save dialog and returns a read-write token for the target. */
+	fileTokenSave: (name: string | null, extensions: string[] | null) => typedError<FileRef_Serialize[], string>(__TAURI_INVOKE("file_token_save", { name, extensions })),
+	/**  Forgets a token (best effort; an unknown token is not an error). */
+	fileTokenRelease: (token: string) => __TAURI_INVOKE<boolean>("file_token_release", { token }),
+	/**
+	 *  Display names for values that may be tokens or plain paths. The webview
+	 *  only ever needs the name, never the path behind a token.
+	 */
+	fileNames: (values: string[]) => __TAURI_INVOKE<(string | null)[]>("file_names", { values }),
+	/**
+	 *  Opens the native folder dialog and returns a directory token. Android uses
+	 *  the SAF picker instead, so the native folder dialog is desktop-only.
+	 */
+	fileTokenPickDirectory: () => typedError<FileRef_Serialize | null, string>(__TAURI_INVOKE("file_token_pick_directory")),
+	cancelJob: (jobId: string) => __TAURI_INVOKE<void>("cancel_job", { jobId }),
+	/**  Full persisted history, newest first. */
+	jobsList: () => __TAURI_INVOKE<JobRecord_Serialize[]>("jobs_list"),
+	/**  Drops done/failed/cancelled/interrupted records and returns what remains. */
+	jobsClearFinished: () => __TAURI_INVOKE<JobRecord_Serialize[]>("jobs_clear_finished"),
+	/**  Registers (or restarts) a job from the frontend with kind/title/payload. */
+	jobsRegister: (id: string, kind: string, title: string, payload: Value | null) => typedError<JobRecord_Serialize, string>(__TAURI_INVOKE("jobs_register", { id, kind, title, payload })),
+	/**
+	 *  Progress mirror for events the Rust side does not emit itself (AI jobs emit
+	 *  `ai:progress` directly); idempotent with `job:progress`.
+	 */
+	jobsProgress: (id: string, stage: string, current: number, total: number, message: string | null) => __TAURI_INVOKE<void>("jobs_progress", { id, stage, current, total, message }),
+	/**
+	 *  Terminal status reported by the producer ("succeeded" | "failed" |
+	 *  "cancelled" | "interrupted").
+	 */
+	jobsFinish: (id: string, status: string, error: string | null) => typedError<null, string>(__TAURI_INVOKE("jobs_finish", { id, status, error })),
+	/**
+	 *  Returns the persisted record (including its payload) so the frontend can
+	 *  route it back to the originating screen. The status is intentionally left
+	 *  untouched: the screen starts a new run through the normal `start` path.
+	 */
+	jobsRetry: (id: string) => typedError<JobRecord_Serialize, string>(__TAURI_INVOKE("jobs_retry", { id })),
+	loadSettings: () => typedError<Value, PdfError>(__TAURI_INVOKE("load_settings")),
+	saveSettings: (settings: Value) => typedError<null, PdfError>(__TAURI_INVOKE("save_settings", { settings })),
+	loadRecent: () => typedError<RecentRef[], PdfError>(__TAURI_INVOKE("load_recent")),
+	addRecent: (entry: RecentEntry) => typedError<null, PdfError>(__TAURI_INVOKE("add_recent", { entry })),
+	clearRecent: () => typedError<null, PdfError>(__TAURI_INVOKE("clear_recent")),
+	outputExists: (path: string) => __TAURI_INVOKE<boolean>("output_exists", { path }),
+	/**
+	 *  Creates a directory (including its parents). The Android shell uses this to
+	 *  stage documents picked through the system file picker inside the app cache.
+	 * 
+	 *  The directory intentionally does not exist yet, so this validates the path's
+	 *  shape only (absolute, no `..`, no reserved names) instead of requiring it.
+	 */
+	ensureDir: (path: string) => typedError<null, PdfError>(__TAURI_INVOKE("ensure_dir", { path })),
+	suggestOutput: (input: string, suffix: string, directory: string | null) => __TAURI_INVOKE<OutputSuggestion>("suggest_output", { input, suffix, directory }),
+	/**
+	 *  File sizes for the selected files (used by the file list UI). Missing or
+	 *  invalid paths are reported as `None` instead of failing the whole call.
+	 */
+	fileSizes: (paths: string[]) => __TAURI_INVOKE<(number | null)[]>("file_sizes", { paths }),
+	/**
+	 *  Fingerprints a local file for the file-conflict check. A missing file is
+	 *  reported as `exists: false` rather than an error, so the caller can tell
+	 *  "deleted outside the app" apart from "check failed".
+	 */
+	fileFingerprint: (path: string) => typedError<FileFingerprint, PdfError>(__TAURI_INVOKE("file_fingerprint", { path })),
+	/**  Opens a document the app produced with the OS default handler. */
+	openDocumentFile: (path: string) => typedError<null, PdfError>(__TAURI_INVOKE("open_document_file", { path })),
+	/**  Reveals a document in the system file manager. */
+	revealDocumentFile: (path: string) => typedError<null, PdfError>(__TAURI_INVOKE("reveal_document_file", { path })),
+	/**
+	 *  Development/screenshot helper: lets an automated run start on a specific
+	 *  screen with pre-selected files, e.g.
+	 *    set PDFSAK_START_SCREEN=compress && set PDFSAK_DEV_FILES=C:\in.pdf
+	 *  Returns empty values in normal use.
+	 */
+	devLaunchContext: () => __TAURI_INVOKE<Value>("dev_launch_context"),
+	/**
+	 *  Desktop stub so `generate_handler!` stays platform independent; the typed
+	 *  bindings (exported on desktop) take their signature from it.
+	 */
+	androidTakePendingOpen: () => __TAURI_INVOKE<string[]>("android_take_pending_open"),
+	/**
+	 *  Desktop stub so `generate_handler!` stays platform independent; the typed
+	 *  bindings (exported on desktop) take their signature from it.
+	 */
+	androidOpenWithDiagnostics: () => __TAURI_INVOKE<string>("android_open_with_diagnostics"),
+	/**
+	 *  Desktop stub so `generate_handler!` stays platform independent; the
+	 *  desktop UI reveals the file in its folder instead. The typed bindings
+	 *  (exported on desktop) take their signature from it.
+	 */
+	shareDocumentFile: (path: string, mimeType: string | null, title: string | null) => typedError<null, string>(__TAURI_INVOKE("share_document_file", { path, mimeType, title })),
+	logOperation: (entry: OperationLogRequest_Deserialize) => typedError<null, PdfError>(__TAURI_INVOKE("log_operation", { entry })),
+	loadOperations: () => __TAURI_INVOKE<OperationEntry_Serialize[]>("load_operations"),
+	clearOperations: () => typedError<null, PdfError>(__TAURI_INVOKE("clear_operations")),
+	/**
+	 *  Frontend error sink (production-safe diagnostic log). Only error text and
+	 *  stack traces are recorded - never document content or passwords.
+	 */
+	logFrontend: (level: string, message: string) => __TAURI_INVOKE<void>("log_frontend", { level, message }),
+	officeTakeLaunchFiles: () => __TAURI_INVOKE<FileRef_Serialize[]>("office_take_launch_files"),
 };
 
 /* Types */
@@ -800,6 +913,13 @@ export type AiTranslateRequest_Serialize = {
 	consent: boolean,
 };
 
+export type AppInfo = {
+	appVersion: string,
+	coreVersion: string,
+	platform: string,
+	name: string,
+};
+
 export type CleanOptions = CleanOptions_Serialize | CleanOptions_Deserialize;
 
 export type CleanOptions_Deserialize = {
@@ -1028,6 +1148,32 @@ export type EmlMessage_Serialize = {
 	warnings: string[],
 };
 
+export type EngineStatus = EngineStatus_Serialize | EngineStatus_Deserialize;
+
+export type EngineStatus_Deserialize = {
+	pdfium: boolean,
+	qpdf: boolean,
+	tesseract: boolean,
+	tesseract_version?: string | null,
+	ocr_languages: string[],
+	/**  Resolved locations, useful for support/diagnostics. */
+	pdfium_path?: string | null,
+	tesseract_path?: string | null,
+	tessdata_dir?: string | null,
+};
+
+export type EngineStatus_Serialize = {
+	pdfium: boolean,
+	qpdf: boolean,
+	tesseract: boolean,
+	tesseract_version: string | null,
+	ocr_languages: string[],
+	/**  Resolved locations, useful for support/diagnostics. */
+	pdfium_path: string | null,
+	tesseract_path: string | null,
+	tessdata_dir: string | null,
+};
+
 /**
  *  Stable error codes surfaced to the UI. The frontend maps these to
  *  localized, user friendly messages - raw internal errors are never shown.
@@ -1047,6 +1193,19 @@ export type FeatureSupport = {
 	feature: string,
 	level: SupportLevel,
 	note: string,
+};
+
+/**
+ *  A file fingerprint used to detect that a document changed on disk since it
+ *  was opened (another program, another tab, or a cloud client). `sha256` is
+ *  lowercase hex; `size` and `modified_ms` let the caller short-circuit the
+ *  hash when only the timestamp moved.
+ */
+export type FileFingerprint = {
+	exists: boolean,
+	size: number,
+	modifiedMs: number,
+	sha256: string,
 };
 
 /**  What the webview gets: an opaque token and a display name, never a path. */
@@ -1246,6 +1405,65 @@ export type InvoiceTableRow_Serialize = {
 	customFields: { [key in string]: string },
 };
 
+/**
+ *  One background job as persisted to `<app config dir>/jobs.json`.
+ * 
+ *  `payload` is the serialized operation input captured at job start. It is
+ *  never document content, only paths/options the frontend already had; the
+ *  UI hands it back to the originating screen when Retry is pressed.
+ */
+export type JobRecord = JobRecord_Serialize | JobRecord_Deserialize;
+
+/**
+ *  One background job as persisted to `<app config dir>/jobs.json`.
+ * 
+ *  `payload` is the serialized operation input captured at job start. It is
+ *  never document content, only paths/options the frontend already had; the
+ *  UI hands it back to the originating screen when Retry is pressed.
+ */
+export type JobRecord_Deserialize = {
+	id: string,
+	kind: string,
+	title: string,
+	status: JobStatus,
+	/**  Normalized 0..1; stays at the previous value while `total` is unknown. */
+	progress: number,
+	/**  Human-readable last stage/message (never document content). */
+	detail?: string | null,
+	payload?: Value | null,
+	error?: string | null,
+	createdAt: number,
+	updatedAt: number,
+};
+
+/**
+ *  One background job as persisted to `<app config dir>/jobs.json`.
+ * 
+ *  `payload` is the serialized operation input captured at job start. It is
+ *  never document content, only paths/options the frontend already had; the
+ *  UI hands it back to the originating screen when Retry is pressed.
+ */
+export type JobRecord_Serialize = {
+	id: string,
+	kind: string,
+	title: string,
+	status: JobStatus,
+	/**  Normalized 0..1; stays at the previous value while `total` is unknown. */
+	progress: number,
+	/**  Human-readable last stage/message (never document content). */
+	detail: string | null,
+	payload: Value | null,
+	error: string | null,
+	createdAt: number,
+	updatedAt: number,
+};
+
+/**
+ *  The lifecycle of a persisted job. Serialized lowercase to match the
+ *  frontend type (`src/lib/jobs.ts` maps `done` to the UI's `succeeded`).
+ */
+export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled" | "interrupted";
+
 export type MailMergeError = {
 	row: number,
 	message: string,
@@ -1295,6 +1513,11 @@ export type OAuthStatus = {
 	tenant: string,
 	/**  Where tokens live: `keychain` or `file`. */
 	store: string,
+};
+
+export type OcrLanguage = {
+	code: string,
+	name: string,
 };
 
 export type OfficeErrorPayload = {
@@ -1388,6 +1611,62 @@ export type OpenDocument_Serialize = {
 	token: string,
 };
 
+export type OperationEntry = OperationEntry_Serialize | OperationEntry_Deserialize;
+
+export type OperationEntry_Deserialize = {
+	id: string,
+	createdAt: number,
+	/**  merge | split | compress | ocr | watermark | protect | convert | ai ... */
+	operation: string,
+	inputPath: string,
+	outputPath: string,
+	pageCount?: number | null,
+	inputBytes?: number | null,
+	outputBytes?: number | null,
+	/**  true when the user cancelled or the operation failed (kept for context). */
+	ok: boolean,
+	detail?: string | null,
+};
+
+export type OperationEntry_Serialize = {
+	id: string,
+	createdAt: number,
+	/**  merge | split | compress | ocr | watermark | protect | convert | ai ... */
+	operation: string,
+	inputPath: string,
+	outputPath: string,
+	pageCount: number | null,
+	inputBytes: number | null,
+	outputBytes: number | null,
+	/**  true when the user cancelled or the operation failed (kept for context). */
+	ok: boolean,
+	detail: string | null,
+};
+
+export type OperationLogRequest = OperationLogRequest_Serialize | OperationLogRequest_Deserialize;
+
+export type OperationLogRequest_Deserialize = {
+	operation: string,
+	inputPath: string,
+	outputPath?: string,
+	pageCount?: number | null,
+	inputBytes?: number | null,
+	outputBytes?: number | null,
+	ok?: boolean,
+	detail?: string | null,
+};
+
+export type OperationLogRequest_Serialize = {
+	operation: string,
+	inputPath: string,
+	outputPath: string,
+	pageCount: number | null,
+	inputBytes: number | null,
+	outputBytes: number | null,
+	ok: boolean,
+	detail: string | null,
+};
+
 export type OutlineSlide = OutlineSlide_Serialize | OutlineSlide_Deserialize;
 
 export type OutlineSlide_Deserialize = {
@@ -1398,6 +1677,15 @@ export type OutlineSlide_Deserialize = {
 export type OutlineSlide_Serialize = {
 	title: string,
 	bullets: string[],
+};
+
+/**
+ *  Suggests a default output path next to the input.
+ *  A suggested save target: the write token and the path the UI displays.
+ */
+export type OutputSuggestion = {
+	token: string,
+	path: string,
 };
 
 /**
@@ -1524,6 +1812,22 @@ export type ProviderCapabilities = {
 	vision: boolean,
 	structured_output: boolean,
 	streaming: boolean,
+};
+
+/**  The stored shape (a real path and its metadata). */
+export type RecentEntry = {
+	path: string,
+	fileName: string,
+	tool: string,
+	timestamp: number,
+};
+
+/**  What the webview receives: an opaque token and the display name. */
+export type RecentRef = {
+	token: string,
+	fileName: string,
+	tool: string,
+	timestamp: number,
 };
 
 export type RecoveryEntry = RecoveryEntry_Serialize | RecoveryEntry_Deserialize;
@@ -2009,6 +2313,44 @@ export type UblTaxSubtotal_Serialize = {
 	/**  `KDV`, `KDV Tevkifatı`, `ÖTV`, ... */
 	name: string,
 	exemptionReason: string,
+};
+
+export type UpdateInfo = UpdateInfo_Serialize | UpdateInfo_Deserialize;
+
+export type UpdateInfo_Deserialize = {
+	current: string,
+	latest: string,
+	newer: boolean,
+	releaseUrl: string,
+	/**  Installer/APK for this platform and CPU, when the release has one. */
+	downloadUrl?: string | null,
+	downloadName?: string | null,
+	/**
+	 *  SHA-256 of the chosen asset when the GitHub API reports one
+	 *  (`digest: "sha256:..."`). The Android updater verifies the download
+	 *  against it before opening the installer.
+	 */
+	sha256?: string | null,
+	/**  Release notes (Markdown), shortened. */
+	notes: string,
+};
+
+export type UpdateInfo_Serialize = {
+	current: string,
+	latest: string,
+	newer: boolean,
+	releaseUrl: string,
+	/**  Installer/APK for this platform and CPU, when the release has one. */
+	downloadUrl: string | null,
+	downloadName: string | null,
+	/**
+	 *  SHA-256 of the chosen asset when the GitHub API reports one
+	 *  (`digest: "sha256:..."`). The Android updater verifies the download
+	 *  against it before opening the installer.
+	 */
+	sha256: string | null,
+	/**  Release notes (Markdown), shortened. */
+	notes: string,
 };
 
 export type Value = null | boolean | number | string | Value[] | { [key in string]: Value };

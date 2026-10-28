@@ -471,14 +471,19 @@ describe("operation log CSV helpers", () => {
         operation: "merged",
         inputPath: "C:/a.pdf",
         outputPath: "C:/b.pdf",
+        // Rust sends an absent value as null (OperationEntry's Option fields).
+        pageCount: null,
+        inputBytes: null,
+        outputBytes: null,
         ok: true,
+        detail: null,
       },
     ]);
     expect(csv).toBe("operation,input,output,pages,bytesIn,bytesOut,ok,detail\r\nmerged,C:/a.pdf,C:/b.pdf,,,,true,");
   });
 
   it("filters case-insensitively by operation or either path", () => {
-    const base = { createdAt: 0, pageCount: 1, inputBytes: 10, outputBytes: 10, ok: true };
+    const base = { createdAt: 0, pageCount: 1, inputBytes: 10, outputBytes: 10, ok: true, detail: null };
     const entries = [
       { ...base, id: "1", operation: "merged", inputPath: "C:/docs/a.pdf", outputPath: "C:/docs/out.pdf" },
       { ...base, id: "2", operation: "watermark", inputPath: "C:/docs/b.pdf", outputPath: "C:/docs/b_wm.pdf" },

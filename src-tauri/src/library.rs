@@ -43,6 +43,7 @@ pub struct AiLibraryEntry {
     pub elapsed_ms: u64,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OperationEntry {

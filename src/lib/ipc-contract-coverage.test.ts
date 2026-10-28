@@ -8,7 +8,8 @@ import { describe, expect, it } from "vitest";
  * A screen that calls `invoke("name")` for a command that does not exist only
  * fails at runtime, in the packaged app, with a tauri error nobody sees in
  * review. This test reads the Rust command attributes and the frontend
- * `invoke`/`invokeTracked` calls and fails when a name has no Rust
+ * `invoke`/`invokeTracked` calls, plus the generated typed wrappers'
+ * `__TAURI_INVOKE` calls (#316), and fails when a name has no Rust
  * counterpart, or when two commands share a name (Tauri registers by name, so
  * the second one would shadow the first).
  */
@@ -51,7 +52,7 @@ function tsInvocations(): Map<string, string> {
   const calls = new Map<string, string>();
   for (const file of files) {
     const text = readFileSync(file, "utf8");
-    for (const match of text.matchAll(/\binvoke(?:Tracked)?\b/g)) {
+    for (const match of text.matchAll(/\b(?:invoke(?:Tracked)?|__TAURI_INVOKE)\b/g)) {
       let cursor = (match.index ?? 0) + match[0].length;
       while (cursor < text.length && /\s/.test(text[cursor])) cursor += 1;
       // Optional generic argument, with balanced angle brackets.

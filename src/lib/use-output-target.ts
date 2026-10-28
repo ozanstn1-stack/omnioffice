@@ -5,7 +5,7 @@
  * session hook past its line budget.
  */
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { call } from "./typed-call";
 import { appDataDir } from "@tauri-apps/api/path";
 import { dirName, fileBaseName, fileStem, joinPath } from "./format";
 import { isAndroid } from "./mobile";
@@ -58,7 +58,7 @@ export function useOutputTarget(options: {
           const appData = await appDataDir().catch(() => "");
           base = appData ? joinPath(appData, "Outputs") : dirName(input);
         }
-        await invoke("ensure_dir", { path: base }).catch(() => undefined);
+        await call((c) => c.ensureDir(base)).catch(() => undefined);
         if (cancelled) return;
         setOutputPath(joinPath(base, fileBaseName(suggestedName)));
         setOutputDir(base);
@@ -70,7 +70,7 @@ export function useOutputTarget(options: {
     // Multi-output tools write into a folder named after the document.
     if (isMultiOutput) {
       const folder = joinPath(dirName(input), `${fileStem(input)}${suffix}`);
-      void invoke("ensure_dir", { path: folder }).catch(() => undefined);
+      void call((c) => c.ensureDir(folder)).catch(() => undefined);
       setOutputPath(joinPath(folder, fileBaseName(suggestedName)));
       setOutputDir(folder);
       return;

@@ -171,9 +171,11 @@ pub async fn android_take_pending_open(app: tauri::AppHandle) -> Vec<String> {
     }
 }
 
-/// Desktop stub so `generate_handler!` stays platform independent.
+/// Desktop stub so `generate_handler!` stays platform independent; the typed
+/// bindings (exported on desktop) take their signature from it.
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn android_take_pending_open() -> Vec<String> {
     Vec::new()
 }
@@ -196,9 +198,11 @@ pub async fn android_open_with_diagnostics(app: tauri::AppHandle) -> String {
     build_open_with_diagnostics(app.path().app_cache_dir().ok().as_deref())
 }
 
-/// Desktop stub so `generate_handler!` stays platform independent.
+/// Desktop stub so `generate_handler!` stays platform independent; the typed
+/// bindings (exported on desktop) take their signature from it.
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn android_open_with_diagnostics() -> String {
     String::new()
 }

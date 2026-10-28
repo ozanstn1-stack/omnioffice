@@ -84,6 +84,7 @@ pub struct Thumbnail {
     pub height: u32,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppInfo {
@@ -98,6 +99,7 @@ pub struct AppInfo {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn app_info() -> AppInfo {
     AppInfo {
         app_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -108,16 +110,19 @@ pub fn app_info() -> AppInfo {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn engine_status() -> EngineStatus {
     engines::engine_status()
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ocr_languages() -> Vec<OcrLanguage> {
     engines::ocr_languages()
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn cancel_job(registry: State<'_, JobRegistry>, job_id: String) {
     registry.cancel(&job_id);
 }
@@ -1843,6 +1848,7 @@ pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), PdfError> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn load_settings(app: AppHandle) -> Result<serde_json::Value, PdfError> {
     let path = config_dir(&app)?.join("settings.json");
     if !path.exists() {
@@ -1853,6 +1859,7 @@ pub fn load_settings(app: AppHandle) -> Result<serde_json::Value, PdfError> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn save_settings(app: AppHandle, settings: serde_json::Value) -> Result<(), PdfError> {
     let path = config_dir(&app)?.join("settings.json");
     let text = serde_json::to_string_pretty(&settings)
@@ -1861,6 +1868,7 @@ pub fn save_settings(app: AppHandle, settings: serde_json::Value) -> Result<(), 
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn output_exists(path: String) -> bool {
     crate::paths::lexical(&path).map(|validated| validated.as_path().exists()).unwrap_or(false)
 }
@@ -1871,6 +1879,7 @@ pub fn output_exists(path: String) -> bool {
 /// The directory intentionally does not exist yet, so this validates the path's
 /// shape only (absolute, no `..`, no reserved names) instead of requiring it.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ensure_dir(path: String) -> Result<(), PdfError> {
     let path = crate::paths::lexical(&path)?;
     std::fs::create_dir_all(path.as_path()).map_err(PdfError::from_io)
@@ -1878,6 +1887,7 @@ pub fn ensure_dir(path: String) -> Result<(), PdfError> {
 
 /// Suggests a default output path next to the input.
 /// A suggested save target: the write token and the path the UI displays.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OutputSuggestion {
@@ -1886,6 +1896,7 @@ pub struct OutputSuggestion {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn suggest_output(input: String, suffix: String, directory: Option<String>) -> OutputSuggestion {
     let Ok(input) = crate::paths::input_file(&input) else {
         return OutputSuggestion { token: String::new(), path: String::new() };
@@ -1907,6 +1918,7 @@ pub fn suggest_output(input: String, suffix: String, directory: Option<String>) 
 /// File sizes for the selected files (used by the file list UI). Missing or
 /// invalid paths are reported as `None` instead of failing the whole call.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn file_sizes(paths: Vec<String>) -> Vec<Option<u64>> {
     paths
         .iter()
@@ -1923,6 +1935,7 @@ pub fn file_sizes(paths: Vec<String>) -> Vec<Option<u64>> {
 /// was opened (another program, another tab, or a cloud client). `sha256` is
 /// lowercase hex; `size` and `modified_ms` let the caller short-circuit the
 /// hash when only the timestamp moved.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileFingerprint {
@@ -1936,6 +1949,7 @@ pub struct FileFingerprint {
 /// reported as `exists: false` rather than an error, so the caller can tell
 /// "deleted outside the app" apart from "check failed".
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn file_fingerprint(path: String) -> Result<FileFingerprint, PdfError> {
     let validated = crate::paths::lexical(&path)?;
     let target = validated.as_path();
@@ -1989,6 +2003,7 @@ fn openable_document_path(raw: &str) -> Result<PathBuf, PdfError> {
 
 /// Opens a document the app produced with the OS default handler.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn open_document_file(path: String) -> Result<(), PdfError> {
     let path = openable_document_path(&path)?;
     tauri_plugin_opener::open_path(path, None::<&str>)
@@ -1997,6 +2012,7 @@ pub fn open_document_file(path: String) -> Result<(), PdfError> {
 
 /// Reveals a document in the system file manager.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn reveal_document_file(path: String) -> Result<(), PdfError> {
     let path = openable_document_path(&path)?;
     tauri_plugin_opener::reveal_item_in_dir(path)
@@ -2008,6 +2024,7 @@ pub fn reveal_document_file(path: String) -> Result<(), PdfError> {
 ///   set PDFSAK_START_SCREEN=compress && set PDFSAK_DEV_FILES=C:\in.pdf
 /// Returns empty values in normal use.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn dev_launch_context() -> serde_json::Value {
     serde_json::json!({
         "startScreen": std::env::var("PDFSAK_START_SCREEN").ok(),
@@ -2027,6 +2044,7 @@ pub fn dev_launch_context() -> serde_json::Value {
 /// Frontend error sink (production-safe diagnostic log). Only error text and
 /// stack traces are recorded - never document content or passwords.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn log_frontend(app: AppHandle, level: String, message: String) {
     let Ok(dir) = app.path().app_log_dir() else {
         return;
@@ -2181,6 +2199,7 @@ pub fn ai_library_default_dir(app: AppHandle) -> String {
     default_library_dir(&app).display().to_string()
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OperationLogRequest {
@@ -2201,6 +2220,7 @@ pub struct OperationLogRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn log_operation(app: AppHandle, entry: OperationLogRequest) -> Result<(), PdfError> {
     library::append_operation(
         &operations_log(&app)?,
@@ -2220,11 +2240,13 @@ pub fn log_operation(app: AppHandle, entry: OperationLogRequest) -> Result<(), P
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn load_operations(app: AppHandle) -> Vec<OperationEntry> {
     operations_log(&app).map(|path| library::list_operations(&path)).unwrap_or_default()
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn clear_operations(app: AppHandle) -> Result<(), PdfError> {
     library::clear_operations(&operations_log(&app)?)
 }
