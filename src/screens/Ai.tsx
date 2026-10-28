@@ -112,6 +112,11 @@ interface ChatEntry {
   citations?: AiCitation[];
 }
 
+/** A saved message's role comes back as a plain string; anything unknown is shown as the assistant's. */
+function chatRole(role: string): ChatEntry["role"] {
+  return role === "user" || role === "system" ? role : "assistant";
+}
+
 const CITATION_PATTERN = /(\[page\s+\d+\])/gi;
 
 export function Ai({
@@ -629,7 +634,7 @@ export function Ai({
     const thread: SavedChatThread = {
       id: uid("chat_thread"),
       title,
-      documentPath: session.primary?.path,
+      documentPath: session.primary?.path ?? null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       messages: chatMessages.map((m) => ({
@@ -651,7 +656,7 @@ export function Ai({
       const thread = await aiChatLoad(id);
       setChatMessages(
         thread.messages.map((m) => ({
-          role: m.role,
+          role: chatRole(m.role),
           content: m.content,
           citations: m.citations,
         })),

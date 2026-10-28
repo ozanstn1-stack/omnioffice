@@ -1,4 +1,5 @@
 // Types mirrored from the Rust command layer (serde camelCase).
+import type * as specta from "./generated/specta";
 import type { ProfessionChoice } from "./desks";
 
 export interface AppError {
@@ -495,32 +496,10 @@ export interface TranslateOptions {
 /** "medium" and "xhigh" are accepted by the backend (Anthropic effort levels) but have no UI control yet. */
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max";
 
-export interface AiSettingsView {
-  configured: boolean;
-  keyStorage: "none" | "dpapi" | "keystore" | "plain" | string;
-  maskedKey: string;
-  baseUrl: string;
-  model: string;
-  temperature: number;
-  maxTokens: number;
-  thinking: boolean;
-  reasoningEffort: ReasoningEffort | string;
-  contextTokens: number;
-  /** Hard API maximum for generated tokens (384K on DeepSeek V4). */
-  maxOutputTokens: number;
-  /** Provider id ("deepseek" | "ollama") and its short display name. */
-  provider?: string;
-  providerLabel?: string;
-  /** Key state per provider id: keys are stored separately for each provider. */
-  providerKeys?: Record<string, AiKeyState>;
-}
+export type AiSettingsView = specta.AiSettingsView_Serialize;
 
 /** Whether a key is stored for one provider (never the key itself). */
-export interface AiKeyState {
-  configured: boolean;
-  maskedKey: string;
-  keyStorage: "none" | "dpapi" | "keystore" | "plain" | string;
-}
+export type AiKeyState = specta.AiKeyState;
 
 export interface AiSettingsInput {
   apiKey?: string;
@@ -533,26 +512,11 @@ export interface AiSettingsInput {
   contextTokens?: number;
 }
 
-export interface AiTestResult {
-  ok: boolean;
-  message: string;
-  model: string;
-}
+export type AiTestResult = specta.AiTestResult;
 
-export interface AiPreview {
-  pages: number;
-  characters: number;
-  sample: string;
-  estimatedWords: number;
-}
+export type AiPreview = specta.AiPreview;
 
-export interface AiTextResult {
-  text: string;
-  pages: number;
-  characters: number;
-  model: string;
-  elapsedMs: number;
-}
+export type AiTextResult = specta.AiTextResult;
 
 /** In-editor AI actions (`ai_edit_text`). */
 export type AiEditTask =
@@ -584,37 +548,15 @@ export interface AiEditRequest {
   expectedHost: string;
 }
 
-export interface AiOutlineSlide {
-  title: string;
-  bullets: string[];
-}
+export type AiOutlineSlide = specta.OutlineSlide_Serialize;
 
-export interface AiEditResult {
-  text: string;
-  /** Validated slides, only for `outline_to_slides`. */
-  slides: AiOutlineSlide[] | null;
-  model: string;
-  elapsedMs: number;
-}
+export type AiEditResult = specta.AiEditResult_Serialize;
 
-export interface AiMetadataSuggestion {
-  title: string;
-  author: string;
-  subject: string;
-  keywords: string[];
-}
+export type AiMetadataSuggestion = specta.MetadataSuggestion;
 
-export interface AiModelOption {
-  id: string;
-  label: string;
-  recommended: boolean;
-}
+export type AiModelOption = specta.AiModelOption;
 
-export interface AiExamplePrompts {
-  summarize: string[];
-  ask: string[];
-  translateTargets: string[];
-}
+export type AiExamplePrompts = specta.AiExamplePrompts;
 
 export interface AiSummarizeRequest {
   path: string;
@@ -670,39 +612,11 @@ export interface AiChatRequest {
   imageConsent?: boolean;
 }
 
-export interface AiCitation {
-  page: number;
-  snippet: string;
-  score: number;
-  cited: boolean;
-  /** The source document's path; a click opens this file (not the current one). */
-  path?: string;
-  /** Where inside the document: `page 3`, `paragraph 12`, `Sheet1!A1:B7`, `slide 4`. */
-  location?: string;
-  /** The page was retrieved and the model's quote matches its text. */
-  verified?: boolean;
-  /** The short quote the model attached to this citation. */
-  quote?: string;
-}
+export type AiCitation = specta.AiCitation_Serialize;
 
-export interface AiChatResult {
-  answer: string;
-  citations: AiCitation[];
-  retrievalMode: "hybrid" | "keyword" | string;
-  model: string;
-  elapsedMs: number;
-  /** Set when a requested page image could not be rendered or sent. */
-  warning?: string;
-}
+export type AiChatResult = specta.AiChatResult_Serialize;
 
-export interface SavedChatThread {
-  id: string;
-  title: string;
-  documentPath?: string;
-  createdAt: string;
-  updatedAt: string;
-  messages: DocChatMessage[];
-}
+export type SavedChatThread = specta.SavedChatThread_Serialize;
 
 export interface AiExtractRequest {
   path: string;
@@ -713,25 +627,9 @@ export interface AiExtractRequest {
   consent?: boolean;
 }
 
-export interface AiTableRow {
-  page: number;
-  vendor: string;
-  date: string;
-  invoiceNumber: string;
-  currency: string;
-  subtotal?: number | null;
-  tax?: number | null;
-  total?: number | null;
-  lineItems: string;
-  customFields?: Record<string, string>;
-}
+export type AiTableRow = specta.InvoiceTableRow_Serialize;
 
-export interface AiTableResult {
-  rows: AiTableRow[];
-  columns: string[];
-  pages: number;
-  elapsedMs: number;
-}
+export type AiTableResult = specta.AiTableResult_Serialize;
 
 export interface AiBatchItemRequest {
   path: string;
@@ -749,25 +647,9 @@ export interface AiBatchRequest {
   consent?: boolean;
 }
 
-export interface AiBatchItemResult {
-  path: string;
-  action: string;
-  success: boolean;
-  output?: string;
-  error?: string;
-  elapsedMs: number;
-  /** Approximate tokens used (input + output). */
-  estimatedTokens?: number;
-  /** Approximate cost in USD; 0 when the model's price is unknown. */
-  estimatedCostUsd?: number;
-}
+export type AiBatchItemResult = specta.AiBatchItemResult_Serialize;
 
-export interface AiBatchResult {
-  results: AiBatchItemResult[];
-  totalElapsedMs: number;
-  /** A cancelled or all-failed run must not be presented as completed. */
-  status: "completed" | "cancelled" | "failed";
-}
+export type AiBatchResult = specta.AiBatchResult_Serialize;
 
 export interface AiCleanupRequest {
   path: string;
@@ -777,20 +659,7 @@ export interface AiCleanupRequest {
   consent?: boolean;
 }
 
-export interface AiLibraryEntry {
-  id: string;
-  createdAt: number;
-  kind: "summary" | "translate" | "ask" | "cleanup" | "metadata" | string;
-  sourcePath: string;
-  sourceName: string;
-  model: string;
-  pages: number;
-  characters: number;
-  options: string;
-  filePath: string;
-  preview: string;
-  elapsedMs: number;
-}
+export type AiLibraryEntry = specta.AiLibraryEntry;
 
 export interface OperationEntry {
   id: string;

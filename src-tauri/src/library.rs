@@ -17,11 +17,13 @@ const MAX_AI_ENTRIES: usize = 300;
 const MAX_OPERATION_ENTRIES: usize = 500;
 const PREVIEW_CHARS: usize = 400;
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiLibraryEntry {
     pub id: String,
     /// Unix seconds.
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub created_at: u64,
     /// summary | translate | ask | cleanup | metadata
     pub kind: String,
@@ -29,6 +31,7 @@ pub struct AiLibraryEntry {
     pub source_name: String,
     pub model: String,
     pub pages: u32,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub characters: u64,
     /// Human readable summary of the options used.
     pub options: String,
@@ -36,6 +39,7 @@ pub struct AiLibraryEntry {
     pub file_path: String,
     /// First characters of the result, for the list view.
     pub preview: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub elapsed_ms: u64,
 }
 

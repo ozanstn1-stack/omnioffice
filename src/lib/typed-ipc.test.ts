@@ -84,3 +84,24 @@ describe("typed bindings: the plugin group", () => {
     expect(read("src/lib/plugins.ts")).not.toMatch(/invoke(?:<[^>]*>)?\(\s*"plugin_/);
   });
 });
+
+// The AI commands are called through api.ts, which loads the generated
+// wrappers on first use; the long jobs stay on `invokeTracked` so the Jobs
+// screen can re-run them.
+describe("typed bindings: the ai group", () => {
+  const ipc = read("src-tauri/src/ipc.rs");
+  const aiBlock = /ai_commands \{\n([\s\S]*?)\n\s*\}\n\}/.exec(ipc)?.[1] ?? "";
+  const aiCommands = [...aiBlock.matchAll(/[a-z_]+::([a-z_]+),/g)].map((match) => match[1]);
+  const generated = read("src/lib/generated/specta.ts");
+
+  it("generates a typed wrapper for every AI command", () => {
+    expect(aiCommands.length).toBe(31);
+    for (const name of aiCommands) {
+      expect(generated, name).toMatch(new RegExp(`__TAURI_INVOKE(?:<[^>]*>)?\\("${name}"`));
+    }
+  });
+
+  it("leaves no hand-written AI invoke outside the job tracker", () => {
+    expect(read("src/lib/api.ts")).not.toMatch(/invoke(?:<[^>]*>)?\(\s*"ai_/);
+  });
+});

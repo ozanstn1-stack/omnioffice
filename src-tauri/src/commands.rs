@@ -2081,6 +2081,7 @@ fn default_library_dir(app: &AppHandle) -> PathBuf {
     std::env::temp_dir().join("pdfsak-ai-library")
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveAiEntryRequest {
@@ -2089,11 +2090,13 @@ pub struct SaveAiEntryRequest {
     pub source_name: String,
     pub model: String,
     pub pages: u32,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub characters: u64,
     #[serde(default)]
     pub options: String,
     pub text: String,
     #[serde(default)]
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub elapsed_ms: u64,
     /// Overrides the default library folder for this save.
     #[serde(default)]
@@ -2103,6 +2106,7 @@ pub struct SaveAiEntryRequest {
 /// Stores an AI result as Markdown plus an index entry (auto-save and the
 /// explicit "save to library" action both use this).
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_library_save(app: AppHandle, request: SaveAiEntryRequest) -> Result<AiLibraryEntry, PdfError> {
     let index = ai_library_index(&app)?;
     // The library folder may be created below, so validate its shape only.
@@ -2126,16 +2130,19 @@ pub fn ai_library_save(app: AppHandle, request: SaveAiEntryRequest) -> Result<Ai
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_library_list(app: AppHandle) -> Result<Vec<AiLibraryEntry>, PdfError> {
     Ok(library::list_ai_entries(&ai_library_index(&app)?))
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_library_text(app: AppHandle, id: String) -> Result<String, PdfError> {
     library::read_ai_entry_text(&ai_library_index(&app)?, &id)
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_library_delete(
     app: AppHandle,
     id: String,
@@ -2147,12 +2154,14 @@ pub fn ai_library_delete(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_library_clear(app: AppHandle, delete_files: Option<bool>) -> Result<(), PdfError> {
     library::clear_ai_entries(&ai_library_index(&app)?, delete_files.unwrap_or(true))
 }
 
 /// Copies a stored result to a user-chosen path (Save as...).
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_library_export(app: AppHandle, id: String, target: String) -> Result<String, PdfError> {
     let text = library::read_ai_entry_text(&ai_library_index(&app)?, &id)?;
     let target = crate::paths::output_file(&target)?;
@@ -2167,6 +2176,7 @@ pub fn ai_library_export(app: AppHandle, id: String, target: String) -> Result<S
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ai_library_default_dir(app: AppHandle) -> String {
     default_library_dir(&app).display().to_string()
 }

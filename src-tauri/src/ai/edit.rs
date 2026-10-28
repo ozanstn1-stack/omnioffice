@@ -32,6 +32,7 @@ const MAX_FORMULA_CHARS: usize = 1_000;
 /// own reasoning and for a reply that is longer than its input (translation).
 const EDIT_TOKEN_HEADROOM: usize = 2_048;
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EditTask {
@@ -46,6 +47,7 @@ pub enum EditTask {
     OutlineToSlides,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct EditOptions {
@@ -59,6 +61,7 @@ pub struct EditOptions {
     pub context: Option<String>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiEditRequest {
@@ -99,6 +102,7 @@ impl std::fmt::Debug for EditOptions {
     }
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutlineSlide {
     pub title: String,
@@ -106,6 +110,7 @@ pub struct OutlineSlide {
     pub bullets: Vec<String>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiEditResult {
@@ -114,6 +119,7 @@ pub struct AiEditResult {
     /// Parsed slides, only for `outline_to_slides`.
     pub slides: Option<Vec<OutlineSlide>>,
     pub model: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub elapsed_ms: u64,
 }
 
@@ -481,6 +487,7 @@ fn edit_error(error: AiError) -> PdfError {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn ai_edit_text(
     app: AppHandle,
     registry: State<'_, JobRegistry>,

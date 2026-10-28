@@ -285,6 +285,7 @@ pub fn suggested_models(kind: ProviderKind) -> &'static [(&'static str, &'static
     }
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderCapabilities {
     pub chat: bool,
