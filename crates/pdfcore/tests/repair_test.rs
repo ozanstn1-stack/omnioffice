@@ -8,6 +8,7 @@ mod common;
 
 use common::{build_text_doc, no_progress, page_count, page_text, write_doc, TestDir};
 use pdfcore::progress::CancelToken;
+use pdfcore::repair::RepairMethod;
 
 fn qpdf_available() -> bool {
     pdfcore::engines::qpdf_path().is_some()
@@ -46,12 +47,14 @@ fn repair_rewrites_a_damaged_pdf() {
     write_doc(&mut doc, &input);
     break_cross_reference(&input);
 
-    // The damaged file must actually be unreadable by the simple parser,
-    // otherwise the test would pass without exercising qpdf.
-    assert!(lopdf::Document::load(&input).is_err(), "the damaged input should not load");
+    let damaged = std::fs::read(&input).expect("read damaged input");
+    assert!(!damaged.windows(b"startxref".len()).any(|window| window == b"startxref"), "the trailer is gone");
 
     let report =
         pdfcore::repair::repair_pdf(&input, &output, &no_progress, &CancelToken::new()).expect("repair succeeds");
+    // lopdf 0.46 rebuilds a missing xref itself, so whether it loads the
+    // damaged file says nothing; the report names the engine that ran.
+    assert_eq!(report.method, Some(RepairMethod::Qpdf), "qpdf did the repair");
     assert!(output.is_file());
     assert_eq!(report.pages, 2);
     assert_eq!(page_count(&output), 2);
