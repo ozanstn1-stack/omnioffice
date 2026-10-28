@@ -31,6 +31,46 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.4.2) - Tebligat süre hesaplayıcı
+
+- **Deadline rules** (C2, #341): 7/a service, HMK 92 counting, month-end
+  clamp, HMK 104 recess, HMK 93 weekend/holiday roll-forward, half-day eve
+  and outside-table flags.
+  `test:src/lib/legal-deadline.test.ts#serves an e-notice five days after it arrives and moves past a feast and a weekend`
+  `test:src/lib/legal-deadline.test.ts#ends a month on the last day of a shorter month, then on the next working day`
+  `test:src/lib/legal-deadline.test.ts#extends a period ending in the judicial recess to 7 September, only when asked`
+  `test:src/lib/legal-deadline.test.ts#flags a deadline on a half-day eve`
+- **Dates from an e-notice's text** (#341).
+  `test:src/lib/legal-deadline.test.ts#puts the arrival date first, then the deemed service, then the rest`
+  `test:src/screens/DeadlineCalculator.test.tsx#reads the arrival date from a notification PDF opened with the screen`
+- **Planner entry and `.ics` file** (#341).
+  `test:src/screens/DeadlineCalculator.test.tsx#puts the deadline in the planner and saves a calendar file`
+  `test:src/lib/legal-deadline.test.ts#writes one all-day event with a reminder and escaped text`
+
+### Not done / Known limitations (6.4.2)
+
+- Date reading was written against the field names e-Tebligat uses
+  ("Elektronik Adrese Ulaşma Tarihi", "Tebliğ Edilmiş Sayılma Tarihi") but
+  no real e-Tebligat PDF was available to test with; the screen always asks
+  the lawyer to confirm the date.
+  (no test: real-file verification pending.)
+- Only the HMK general rules are modelled: CMK periods and its recess rule
+  (CMK 331), urgent matters that run through the recess, and periods set by
+  a judge are not. The screen says so.
+  (no test: known limitation.)
+- Saturday is treated as a non-working day and a half-day eve only raises
+  a warning; both follow common practice, not a single statute.
+  (no test: known limitation, flagged in the result.)
+- Religious holidays are tabulated for 2020-2029 only; other years are
+  flagged.
+  `test:src/lib/legal-deadline.test.ts#warns when a year has no religious holiday table and refuses bad input`
+- The screen was not tried on a phone this cycle (no device connected).
+  Confirm by hand: open an e-Tebligat PDF with the screen → the arrival date
+  is offered → Add to the planner.
+  (no test: on-device verification pending.)
+- The 6.2.11 to 6.4.1 on-device checks are still pending.
+  (no test: on-device verification pending.)
+
 ## Implemented (this cycle, 6.4.1) - Gönderim öncesi kontrol
 
 - **Pre-send findings** from the inspection, signature, text and PDF/A

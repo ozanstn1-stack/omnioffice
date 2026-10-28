@@ -10,7 +10,7 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 6.4.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 6.4.2** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
 
@@ -116,12 +116,15 @@ was split into per-format modules.
 - **Pre-send check** (6.4.1): before a PDF is shared the app lists personal
   data, notes, attachments, scripts, metadata and signature problems, and can
   send a cleaned copy instead.
-**Downloads (v6.4.1)** — Windows Setup/Portable, Android APK/AAB and SHA-256
-manifests: [Release v6.4.1](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v6.4.1)
-· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.4.1/OmniOffice-Setup-6.4.1.exe)
-· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.4.1/OmniOffice-Portable-6.4.1.zip)
-· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.4.1/OmniOffice-Android-6.4.1-arm64-v8a.apk)
-· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.4.1/OmniOffice-Android-6.4.1-armeabi-v7a.apk)
+- **Notification deadline calculator** (6.4.2): the last day of a court
+  period from an e-Tebligat (7/a, holidays, judicial recess), to the Planner
+  or a `.ics` file.
+**Downloads (v6.4.2)** — Windows Setup/Portable, Android APK/AAB and SHA-256
+manifests: [Release v6.4.2](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v6.4.2)
+· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.4.2/OmniOffice-Setup-6.4.2.exe)
+· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.4.2/OmniOffice-Portable-6.4.2.zip)
+· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.4.2/OmniOffice-Android-6.4.2-arm64-v8a.apk)
+· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.4.2/OmniOffice-Android-6.4.2-armeabi-v7a.apk)
 
 ## Release history
 
