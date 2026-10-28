@@ -31,7 +31,7 @@ export const DESKS: Record<Profession, readonly DeskTask[]> = {
     { key: "kepMessage", screen: "eml" },
     { key: "compareDrafts", screen: "compare" },
     { key: "scanCourtPapers", screen: "scanner" },
-    { key: "deadlines", screen: "planner" },
+    { key: "deadlines", screen: "deadline" },
     { key: "kvkkTexts", screen: "kvkk" },
   ],
   accountant: [
