@@ -54,6 +54,10 @@ Bu dosya, [`ROADMAP-3.md`](./ROADMAP-3.md) yol haritasını uygulayacak yapay ze
   - `cargo check --locked`
 - **Windows clippy:** CI daha yeni bir clippy kullanıyor. Platforma özel kod `cfg` ile
   korunmalı; ölü kod bırakılmaz.
+- **Android clippy:** `android.yml` artık `cargo clippy -p pdf-swiss-army-knife --lib --target
+  aarch64-linux-android -- -D warnings` koşuyor. Masaüstü clippy `cfg(target_os = "android")`
+  kodunu hiç derlemez. Yerelde aynı kontrol için NDK'nın `aarch64-linux-android24-clang`
+  derleyicisi `CC_`/`CARGO_TARGET_..._LINKER` değişkenleriyle verilir.
 - **Test önce:** her hata için önce kırmızı test, sonra düzeltme. Her biçim işi için gidiş-dönüş
   testi; LibreOffice (`soffice --headless --convert-to`) ile iki yönlü kontrol.
 - **Dürüstlük:** CHANGELOG, README ve RELEASE_READINESS'ta test edilmeyen hiçbir şey

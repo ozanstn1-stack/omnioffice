@@ -39,6 +39,8 @@ const invoke = vi.fn(async (command: string, payload?: { path?: string }) => {
       return { token: "C:/out.pdf", path: "C:/out.pdf" };
     case "file_token_save":
       return [{ token: "C:/filled.pdf", name: "filled.pdf", path: "C:/filled.pdf" }];
+    case "file_token_pick":
+      return [{ token: "tok-picked", name: "picked report.pdf" }];
     case "file_sizes":
       return [1024];
     case "pdf_info":
@@ -219,6 +221,7 @@ import {
 import { previewRasterWidth } from "../lib/format";
 import { useDrop, useSettings } from "../lib/store";
 import { DEFAULT_SETTINGS } from "../lib/types";
+import { rememberTokenName } from "../lib/file-token-names";
 import { PdfStudio, displayDeltaToPage, displayRectToPageRect, pageRectToDisplayRect } from "./PdfStudio";
 
 // jsdom has no PointerEvent; MouseEvent carries button/clientX/pointerId, which
@@ -937,5 +940,32 @@ describe("screens report when they are ready to run", () => {
   it("Redact is ready once its PDF is loaded", async () => {
     render(<Redact {...props} />);
     await waitFor(() => expect(document.documentElement.dataset.screenReady).toBe("redact"));
+  });
+});
+
+// Desktop release builds reject raw paths (paths_policy), so a screen that
+// hands a JS dialog path to a command is broken there (#337).
+describe("PDF Studio works with file tokens", () => {
+  it("adds a PDF through the Rust token dialog, not a raw path", async () => {
+    const user = userEvent.setup();
+    const dialog = await import("@tauri-apps/plugin-dialog");
+    vi.mocked(dialog.open).mockClear();
+    render(<PdfStudio dragging={false} initialFiles={[]} />);
+    await user.click(screen.getByRole("button", { name: /Add PDF/ }));
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("file_token_pick", expect.objectContaining({ extensions: ["pdf"] })),
+    );
+    expect(dialog.open).not.toHaveBeenCalled();
+    expect(await screen.findByText("picked report.pdf")).toBeInTheDocument();
+    expect(screen.queryByText("tok-picked")).not.toBeInTheDocument();
+  });
+
+  // Static import: an earlier test resets the module registry, and the screen
+  // reads the names map through its own (static) import.
+  it("names a token-held file by its real name", async () => {
+    rememberTokenName("tok-held", "Sözleşme.pdf");
+    render(<PdfStudio dragging={false} initialFiles={["tok-held"]} />);
+    expect(await screen.findByText("Sözleşme.pdf")).toBeInTheDocument();
+    expect(screen.queryByText("tok-held")).not.toBeInTheDocument();
   });
 });

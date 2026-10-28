@@ -9,8 +9,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
 import { pickDocumentToken, pickSaveToken } from "../lib/file-tokens";
+import { fileBaseName } from "../lib/format";
 import {
   BadgeCheck,
   FileCheck2,
@@ -245,10 +245,6 @@ interface PdfaReport {
   failures: number;
   warnings: number;
   converted: boolean;
-}
-
-function fileBaseName(path: string): string {
-  return path.split(/[\\/]/).pop() ?? path;
 }
 
 function signatureTone(info: SignatureInfo): "ok" | "warn" | "danger" {
@@ -1065,15 +1061,17 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
       <Card>
         <DropZone onPaths={(paths) => setFiles(paths)} dragging={dragging ?? false} accept="pdf" />
         <FileList
-          files={files.map((path) => ({ path, name: path.split(/[\\/]/).pop() ?? path, sizeBytes: 0 }))}
+          files={files.map((path) => ({ path, name: fileBaseName(path), sizeBytes: 0 }))}
           onRemove={(index) => setFiles((current) => current.filter((_, position) => position !== index))}
           onAdd={async () => {
             // Android: the SAF picker (the desktop dialog cannot open it).
+            // Desktop: the Rust dialog, which returns a token (release builds
+            // refuse a raw path from the webview).
             const picked = isAndroid()
               ? (await pickAndroidFiles({ multiple: false, accept: "pdf" }).catch(() => []))[0]
-              : await open({ multiple: false, filters: [{ name: "PDF", extensions: ["pdf"] }] });
+              : (await pickDocumentToken(["pdf"]).catch(() => null))?.token;
             if (!picked) return;
-            setFiles([String(Array.isArray(picked) ? picked[0] : picked)]);
+            setFiles([picked]);
           }}
           addLabel={t("common.addPdf")}
         />
