@@ -68,6 +68,7 @@ pub fn startup_tokens<I: IntoIterator<Item = String>>(args: I) -> Vec<crate::fil
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn office_take_launch_files(queue: State<'_, LaunchQueue>) -> Vec<crate::files::FileRef> {
     issue_tokens(queue.take())
 }

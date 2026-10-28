@@ -228,6 +228,7 @@ pub fn tesseract_command() -> Option<Command> {
     Some(cmd)
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 pub struct EngineStatus {
     pub pdfium: bool,
@@ -241,6 +242,7 @@ pub struct EngineStatus {
     pub tessdata_dir: Option<String>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 pub struct OcrLanguage {
     pub code: String,

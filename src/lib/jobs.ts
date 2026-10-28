@@ -23,6 +23,7 @@
  * the process. A job that died that way shows up as `interrupted` on the next
  * start with a Retry action, and no UI text here claims liveness.
  */
+import { asJson, call, callPlain } from "./typed-call";
 import { create } from "zustand";
 import type { ProgressPayload } from "./types";
 
@@ -201,13 +202,7 @@ function fromRecord(record: JobRecord): BackgroundJob {
 
 async function persistRegister(job: BackgroundJob): Promise<void> {
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("jobs_register", {
-      id: job.id,
-      kind: job.kind,
-      title: job.title,
-      payload: job.payload ?? null,
-    });
+    await call((c) => c.jobsRegister(job.id, job.kind, job.title, asJson(job.payload ?? null)));
   } catch {
     // No Tauri (tests/web preview): keep the job in memory only.
   }
@@ -219,14 +214,9 @@ async function persistProgress(id: string, update: JobProgressUpdate): Promise<v
   if (now - last < PROGRESS_SYNC_MS) return;
   progressSyncedAt.set(id, now);
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("jobs_progress", {
-      id,
-      stage: update.stage ?? "",
-      current: update.current ?? 0,
-      total: update.total ?? 0,
-      message: update.message ?? null,
-    });
+    await callPlain((c) =>
+      c.jobsProgress(id, update.stage ?? "", update.current ?? 0, update.total ?? 0, update.message ?? null),
+    );
   } catch {
     // Best effort: the backend is absent in browser tests, and a job that
     // cannot be persisted must still run.
@@ -239,8 +229,7 @@ async function persistFinish(
   error?: string,
 ): Promise<void> {
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("jobs_finish", { id, status, error: error ?? null });
+    await call((c) => c.jobsFinish(id, status, error ?? null));
   } catch {
     // Best effort: the backend is absent in browser tests, and a job that
     // cannot be persisted must still run.
@@ -249,9 +238,8 @@ async function persistFinish(
 
 async function persistCancel(id: string): Promise<void> {
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("cancel_job", { jobId: id });
-    await invoke("jobs_finish", { id, status: "cancelled", error: null });
+    await callPlain((c) => c.cancelJob(id));
+    await call((c) => c.jobsFinish(id, "cancelled", null));
   } catch {
     // Best effort: the backend is absent in browser tests, and a job that
     // cannot be persisted must still run.
@@ -260,8 +248,7 @@ async function persistCancel(id: string): Promise<void> {
 
 async function persistClearFinished(): Promise<void> {
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("jobs_clear_finished");
+    await callPlain((c) => c.jobsClearFinished());
   } catch {
     // Best effort: the backend is absent in browser tests, and a job that
     // cannot be persisted must still run.
@@ -373,8 +360,7 @@ export const useJobs = create<JobsState>((set, get) => ({
     // Restored jobs carry a payload; route it to the handler registered for
     // their kind (the originating screen), if any.
     try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      const record = await invoke<JobRecord>("jobs_retry", { id });
+      const record = await call((c) => c.jobsRetry(id));
       const handler = retryHandlers.get(record.kind);
       if (!handler) return "unavailable";
       await handler(record);
@@ -446,8 +432,7 @@ export function attachJobEvents(): Promise<void> {
 export async function resumeJobs(): Promise<void> {
   await attachJobEvents();
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    const records = await invoke<JobRecord[]>("jobs_list");
+    const records = await callPlain((c) => c.jobsList());
     if (Array.isArray(records)) useJobs.getState().hydrate(records);
   } catch {
     // Outside Tauri there is nothing to restore.

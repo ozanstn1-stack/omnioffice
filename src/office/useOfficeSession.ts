@@ -3,7 +3,7 @@
  * Keeps the editors focused on editing while this hook deals with files.
  */
 import { useCallback, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { call } from "../lib/typed-call";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { pickDocumentToken, pickSaveToken } from "../lib/file-tokens";
 import { fileBaseName, officeDocumentExtensions, uid } from "../lib/format";
@@ -128,7 +128,7 @@ function suggestedName(tab: OfficeTab, extension: string): string {
 async function scratchPath(extension: string): Promise<string> {
   const cache = await appCacheDir();
   const directory = await join(cache, "office");
-  await invoke("ensure_dir", { path: directory });
+  await call((c) => c.ensureDir(directory));
   return join(directory, `${uid("office")}.${extension}`);
 }
 

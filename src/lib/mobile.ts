@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { call } from "./typed-call";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { readFile, writeFile } from "@tauri-apps/plugin-fs";
@@ -185,7 +185,7 @@ async function importPickedUris(picked: AndroidFs.FsUri[], fallbackName: string)
 
   const cache = await appCacheDir();
   const directory = await join(cache, "imports", uid("import"));
-  await invoke("ensure_dir", { path: directory });
+  await call((c) => c.ensureDir(directory));
 
   const taken = new Set<string>();
   const paths: string[] = [];
@@ -486,7 +486,7 @@ export async function openAnyFile(path: string): Promise<void> {
     // Goes through the validated Rust command: the opener plugin permission is
     // not granted to the webview, so only document types the app produces can
     // reach the OS default handler.
-    await invoke("open_document_file", { path });
+    await call((c) => c.openDocumentFile(path));
     return;
   }
   let uri = publishedUris.get(path);
@@ -512,13 +512,13 @@ export async function openAnyFile(path: string): Promise<void> {
  */
 export async function revealAnyFile(path: string): Promise<void> {
   if (!isAndroid()) {
-    await invoke("reveal_document_file", { path });
+    await call((c) => c.revealDocumentFile(path));
     return;
   }
   let uri = publishedUris.get(path);
   if (!uri) {
     try {
-      await invoke("share_document_file", { path, mimeType: mimeForName(fileBaseName(path)), title: null });
+      await call((c) => c.shareDocumentFile(path, mimeForName(fileBaseName(path)), null));
       return;
     } catch {
       await publishOutputs([path]);

@@ -27,7 +27,7 @@
  * Every other drained file is now remembered here, as soon as it arrives.
  */
 import { useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { callPlain } from "./typed-call";
 import { fileBaseName, isOfficeDocument } from "./format";
 import { isAndroid } from "./mobile";
 import { useRecent } from "./store";
@@ -71,7 +71,7 @@ export function useAndroidPendingOpen(onPaths: (paths: string[]) => void): void 
     if (!isAndroid()) return;
     const seen = new Set<string>();
     const drain = () => {
-      void invoke<string[]>("android_take_pending_open")
+      void callPlain((c) => c.androidTakePendingOpen())
         .then((paths) => {
           // No `cancelled` check: the queue is already empty on the Rust side,
           // so a result that arrives after a cleanup is still delivered.

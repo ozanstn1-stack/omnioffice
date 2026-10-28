@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 /// The stored shape (a real path and its metadata).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RecentEntry {
@@ -21,6 +22,7 @@ pub struct RecentEntry {
 }
 
 /// What the webview receives: an opaque token and the display name.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecentRef {
@@ -43,6 +45,7 @@ pub fn refs(entries: Vec<RecentEntry>) -> Vec<RecentRef> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn load_recent(app: AppHandle) -> Result<Vec<RecentRef>, PdfError> {
     let path = config_dir(&app)?.join("recent.json");
     if !path.exists() {
@@ -56,6 +59,7 @@ pub fn load_recent(app: AppHandle) -> Result<Vec<RecentRef>, PdfError> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn add_recent(app: AppHandle, entry: RecentEntry) -> Result<(), PdfError> {
     let path = config_dir(&app)?.join("recent.json");
     let mut entries: Vec<RecentEntry> = if path.exists() {
@@ -82,6 +86,7 @@ pub fn add_recent(app: AppHandle, entry: RecentEntry) -> Result<(), PdfError> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn clear_recent(app: AppHandle) -> Result<(), PdfError> {
     let path = config_dir(&app)?.join("recent.json");
     if path.exists() {

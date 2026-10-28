@@ -10,7 +10,7 @@
  * Office tabs are shared as a fresh file written from the current model, so
  * unsaved edits go out too and the receiver sees the document's own name.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { call } from "./typed-call";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { fileBaseName, uid } from "./format";
 import { isAndroid, mimeForName, revealAnyFile } from "./mobile";
@@ -54,7 +54,7 @@ export async function shareDocumentFile(path: string, title?: string): Promise<v
     return;
   }
   try {
-    await invoke("share_document_file", { path, mimeType: mimeForName(fileBaseName(path)), title: title ?? null });
+    await call((c) => c.shareDocumentFile(path, mimeForName(fileBaseName(path)), title ?? null));
   } catch {
     // Outside the FileProvider roots (or the bridge is not registered): share
     // a published copy instead, the route the tool result panels use.
@@ -65,7 +65,7 @@ export async function shareDocumentFile(path: string, title?: string): Promise<v
 /** Where an office share copy is written: its own folder keeps the plain name. */
 async function shareTarget(name: string): Promise<string> {
   const directory = await join(await appCacheDir(), "share", uid("share"));
-  await invoke("ensure_dir", { path: directory });
+  await call((c) => c.ensureDir(directory));
   return join(directory, name);
 }
 

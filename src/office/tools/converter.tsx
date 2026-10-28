@@ -1,6 +1,6 @@
 /** Universal converter: images/PDF/office inputs through the real engines. */
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { call } from "../../lib/typed-call";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { Check, Eye, EyeOff, Plus, RefreshCw } from "lucide-react";
 import { useT } from "../../lib/i18n";
@@ -175,7 +175,7 @@ export function ConverterScreen() {
       const cache = await appCacheDir().catch(() => "");
       if (cache) {
         stageDir = await join(cache, "converts", uid());
-        await invoke("ensure_dir", { path: stageDir }).catch(() => undefined);
+        await call((c) => c.ensureDir(stageDir)).catch(() => undefined);
       }
     }
     for (const input of files) {

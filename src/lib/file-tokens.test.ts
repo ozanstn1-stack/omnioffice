@@ -53,7 +53,8 @@ describe("file token wrappers", () => {
     expect(invoke).toHaveBeenCalledWith("suggest_output", {
       input: "C:/in.pdf",
       suffix: "_out",
-      directory: undefined,
+      // The typed wrapper sends an absent folder as null (Rust reads it as None).
+      directory: null,
     });
     invoke.mockRejectedValueOnce(new Error("engine"));
     await expect(suggestedOutputPath("C:/in.pdf", "_out", "C:/fallback.pdf")).resolves.toBe("C:/fallback.pdf");

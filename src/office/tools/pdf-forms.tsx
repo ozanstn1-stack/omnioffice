@@ -1,6 +1,6 @@
 /** PDF forms: list fields and fill them in place. */
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { call } from "../../lib/typed-call";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { pickSaveToken } from "../../lib/file-tokens";
 import { Plus, Save, Trash2 } from "lucide-react";
@@ -72,7 +72,7 @@ export function PdfFormsScreen() {
       androidTarget = await pickAndroidSaveTarget(fileBaseName(defaultPath), "application/pdf").catch(() => null);
       if (!androidTarget) return;
       const stageDir = await join(await appCacheDir(), "forms", `form-${uid()}`);
-      await invoke("ensure_dir", { path: stageDir });
+      await call((c) => c.ensureDir(stageDir));
       output = await join(stageDir, fileBaseName(defaultPath));
     } else {
       const pickedTarget = await pickSaveToken(fileBaseName(defaultPath), ["pdf"]).catch(() => null);

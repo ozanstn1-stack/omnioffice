@@ -15,6 +15,7 @@ fn external_link_target(url: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn open_external_link(url: String) -> Result<(), String> {
     let target = external_link_target(&url)?;
     tauri_plugin_opener::open_url(target, None::<&str>).map_err(|error| error.to_string())

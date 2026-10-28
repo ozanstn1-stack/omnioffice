@@ -145,6 +145,7 @@ pub fn build_report(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn diagnostics_report(app: AppHandle, store: State<'_, Arc<JobStore>>) -> String {
     let now = time::OffsetDateTime::now_utc();
     let header = [
