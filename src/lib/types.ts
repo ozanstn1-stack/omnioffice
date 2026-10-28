@@ -1,4 +1,5 @@
 // Types mirrored from the Rust command layer (serde camelCase).
+import type { ProfessionChoice } from "./desks";
 
 export interface AppError {
   code: string;
@@ -393,6 +394,11 @@ export interface Settings {
   dismissedUpdate: string;
   /** The first-run welcome card on Home was closed. */
   onboardingDone: boolean;
+  /**
+   * The Home desk: a profession puts its six to eight tasks first, "general"
+   * keeps the plain catalogue, "" means the first-run question is still open.
+   */
+  profession: ProfessionChoice;
   /** Tool ids pinned on the Home screen; they lead the list and persist. */
   pinnedTools: string[];
   /**
@@ -440,6 +446,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lastUpdateCheck: 0,
   dismissedUpdate: "",
   onboardingDone: false,
+  profession: "",
   pinnedTools: [],
   authorName: "",
   ownTaxId: "",

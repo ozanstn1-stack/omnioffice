@@ -99,3 +99,19 @@ describe("AI data controls", () => {
     expect(useSettings.getState().settings.aiRetentionDays).toBe(30);
   });
 });
+
+describe("profession desk setting", () => {
+  beforeEach(() => {
+    invoke.mockClear();
+    useSettings.setState({ settings: { ...DEFAULT_SETTINGS }, loaded: true });
+  });
+
+  it("chooses the Home desk", async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await screen.findByText(/v3\.9\.0/);
+    const select = screen.getByRole("combobox", { name: /Home desk/ });
+    await user.selectOptions(select, "accountant");
+    expect(useSettings.getState().settings.profession).toBe("accountant");
+  });
+});

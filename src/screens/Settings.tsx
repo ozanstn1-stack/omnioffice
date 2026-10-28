@@ -17,6 +17,7 @@ import { BETA_RELEASES_URL, updateChannel, useUpdate, type UpdateChannel } from 
 import { AiSettings } from "../components/ai-settings";
 import { appInfo, aiClearData, updateOpen } from "../lib/api";
 import { DiagnosticsExport, OpenWithDiagnostics } from "../components/open-with-diagnostics";
+import { PROFESSIONS, type ProfessionChoice } from "../lib/desks";
 
 function VersionLine() {
   const t = useT();
@@ -263,6 +264,26 @@ export function Settings() {
               onChange={(event) => void update({ authorName: event.target.value })}
             />
             <p className="text-xs muted">{t("settings.authorNameHint")}</p>
+          </div>
+          <div>
+            <label className="label" htmlFor="settings-profession">
+              {t("settings.profession")}
+            </label>
+            <select
+              id="settings-profession"
+              className="select"
+              value={settings.profession ?? ""}
+              onChange={(event) => void update({ profession: event.target.value as ProfessionChoice })}
+            >
+              <option value="">{t("settings.professionAsk")}</option>
+              {PROFESSIONS.map((profession) => (
+                <option key={profession} value={profession}>
+                  {t(`desk.profession.${profession}`)}
+                </option>
+              ))}
+              <option value="general">{t("desk.general")}</option>
+            </select>
+            <p className="text-xs muted">{t("settings.professionHint")}</p>
           </div>
         </Card>
 

@@ -46,6 +46,8 @@ import { Screen } from "../components/layout";
 import { BrandMark } from "../components/brand";
 import { UpdateBanner } from "../components/update-banner";
 import { WelcomeCard } from "../components/welcome-card";
+import { ProfessionDesk, ProfessionPicker } from "../components/profession-desk";
+import { deskTasks, isProfession, type ProfessionChoice } from "../lib/desks";
 import { useT } from "../lib/i18n";
 import { useRecent, useSettings, useToasts } from "../lib/store";
 import { isOfficePath, openOfficePath } from "../lib/office-store";
@@ -269,10 +271,25 @@ export function Home({
   const recent = useRecent((s) => s.entries);
   const refreshRecent = useRecent((s) => s.refresh);
   const settings = useSettings((s) => s.settings);
+  const settingsLoaded = useSettings((s) => s.loaded);
   const updateSettings = useSettings((s) => s.update);
   const pushToast = useToasts((s) => s.push);
   const [suggestion, setSuggestion] = useState<string[] | null>(null);
   const [query, setQuery] = useState("");
+
+  // The profession desk leads Home; until the first-run question is answered
+  // (or while "Change desk" is open) the picker takes its place.
+  const profession = settings.profession ?? "";
+  const desk = useMemo(() => deskTasks(profession), [profession]);
+  const [choosing, setChoosing] = useState(false);
+  const [showAllTools, setShowAllTools] = useState(false);
+  const asking = settingsLoaded && (profession === "" || choosing);
+  const catalogueCollapsed = desk.length > 0 && !showAllTools;
+  const chooseProfession = (choice: ProfessionChoice) => {
+    setChoosing(false);
+    setShowAllTools(false);
+    void updateSettings({ profession: choice });
+  };
 
   const pinned = useMemo(() => settings.pinnedTools ?? [], [settings.pinnedTools]);
   const pinnedCards = useMemo(() => CARDS.filter((card) => pinned.includes(card.id)), [pinned]);
@@ -286,6 +303,8 @@ export function Home({
   }, [refreshRecent]);
 
   // Cards follow the same route manifest: a flag-gated route is not offered.
+  // While a desk is shown the full catalogue sits behind "All tools" (search
+  // still covers every tool).
   const cards = useMemo(() => CARDS.filter((card) => routeEnabled(card.id)), []);
 
   const needle = fold(query.trim());
@@ -339,7 +358,16 @@ export function Home({
       subtitle={t("app.tagline")}
     >
       <UpdateBanner />
-      <WelcomeCard onNavigate={onNavigate} />
+      {asking ? <ProfessionPicker onChoose={chooseProfession} /> : null}
+      {profession !== "" ? <WelcomeCard onNavigate={onNavigate} /> : null}
+      {!asking && isProfession(profession) && desk.length > 0 ? (
+        <ProfessionDesk
+          profession={profession}
+          tasks={desk}
+          onNavigate={onNavigate}
+          onChange={() => setChoosing(true)}
+        />
+      ) : null}
       <DropZone
         onPaths={(paths) => {
           onDropFiles(paths);
@@ -429,7 +457,14 @@ export function Home({
                 </div>
               </div>
             ) : null}
-            {grouped.map((group) => (
+            {catalogueCollapsed ? (
+              <div>
+                <Button size="sm" icon={<LayoutGrid size={14} />} onClick={() => setShowAllTools(true)}>
+                  {t("desk.allTools", { count: cards.length })}
+                </Button>
+              </div>
+            ) : null}
+            {(catalogueCollapsed ? [] : grouped).map((group) => (
               <div key={group.key}>
                 <h3 className="text-[11px] font-bold uppercase tracking-wider muted mb-2">{t(group.labelKey)}</h3>
                 <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}>
