@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.3] - Mali müşavir dönem denetimi
+
+### Added
+
+- **Period close audit (C4, #341):** Invoices → "Period audit" checks a
+  month's e-invoices before the VAT declaration: invoices dated outside the
+  period, duplicates (same ETTN, same supplier and number, or same supplier,
+  date and amount), gaps in the numbering of your own sales series (a
+  missing or cancelled invoice), VKN/TCKN numbers that fail their check
+  digit, invoices that are neither a sale nor a purchase of your VKN, and
+  the sales base, calculated VAT and deductible VAT against the figures
+  typed from the declaration (more than 1 TL apart is an error).
+- **Audit workbook:** "Export to Excel" writes the summary with the
+  comparison, the findings and every invoice of the period with its side to
+  an `.xlsx` file.
+
 ## [6.4.2] - Tebligat süre hesaplayıcı
 
 ### Added

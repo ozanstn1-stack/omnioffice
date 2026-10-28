@@ -31,6 +31,41 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.4.3) - Mali müşavir dönem denetimi
+
+- **Period audit rules** (C4, #341): out-of-period, duplicates, sales
+  numbering gaps, VKN/TCKN check digits, unclassified invoices and the
+  declaration comparison with a 1 TL tolerance.
+  `test:src/lib/period-audit.test.ts#finds an out-of-period invoice, a duplicate ETTN, a sales gap and a bad tax number`
+  `test:src/lib/period-audit.test.ts#reports a declaration that differs from the invoices beyond rounding`
+  `test:src/lib/period-audit.test.ts#lists the numbers missing inside each series and folds a long run`
+  `test:src/lib/period-audit.test.ts#checks the VKN check digit and the TCKN, and leaves an empty number alone`
+- **Audit dialog and workbook** (#341).
+  `test:src/screens/invoices/period-audit-modal.test.tsx#opens on the busiest month, lists the findings and compares the declaration`
+  `test:src/screens/invoices/period-audit-modal.test.tsx#exports the audit as a workbook`
+  `test:src/screens/invoices/period-audit-modal.test.tsx#writes the period's invoices with their side and the findings`
+
+### Not done / Known limitations (6.4.3)
+
+- Numbering gaps are found only for the user's own sales in the GİB format
+  (3-character series, year, 9-digit sequence) and only between the first
+  and last number loaded; a missing first or last invoice of the month is
+  not visible. A gap can be a legitimately cancelled invoice.
+  (no test: known limitation.)
+- Missing purchase invoices cannot be detected from the invoices alone (no
+  e-Defter or GİB portal list is read).
+  (no test: known limitation.)
+- The comparison covers the sales base, calculated VAT and deductible VAT;
+  withholding (tevkifat) lines and exempt sales are not compared yet.
+  (no test: not implemented.)
+- The VKN check uses the published Gelir İdaresi check-digit algorithm; it
+  was verified against example numbers, not against GİB's own service.
+  (no test: external verification pending.)
+- The dialog was not tried on a phone this cycle (no device connected).
+  (no test: on-device verification pending.)
+- The 6.2.11 to 6.4.2 on-device checks are still pending.
+  (no test: on-device verification pending.)
+
 ## Implemented (this cycle, 6.4.2) - Tebligat süre hesaplayıcı
 
 - **Deadline rules** (C2, #341): 7/a service, HMK 92 counting, month-end
