@@ -723,6 +723,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "lopdf"
+version = "0.46.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d43f64cb8c0d673ff84245a6de9e0172c0cc05dc5dd9d263660b5b4a02b6c4ae"
+dependencies = [
+ "aes",
+ "bitflags",
+ "brotli-decompressor",
+ "cbc",
+ "chrono",
+ "ecb",
+ "encoding_rs",
+ "flate2",
+ "getrandom",
+ "indexmap",
+ "itoa",
+ "log",
+ "md-5",
+ "nom",
+ "rand",
+ "rangemap",
+ "rayon",
+ "sha2 0.11.0",
+ "stringprep",
+ "thiserror",
+ "weezl 0.2.1",
+]
+
+[[package]]
 name = "md-5"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -815,7 +844,7 @@ dependencies = [
  "crc32fast",
  "flate2",
  "image",
- "lopdf",
+ "lopdf 0.45.0",
  "quick-xml",
  "serde",
  "serde_json",
@@ -845,7 +874,7 @@ name = "pdf-sak-fuzz"
 version = "0.0.0"
 dependencies = [
  "libfuzzer-sys",
- "lopdf",
+ "lopdf 0.46.0",
  "officecore",
 ]
 

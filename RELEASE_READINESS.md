@@ -39,10 +39,12 @@ release-train schedule is decided.
   `test:src/lib/ipc-contract-coverage.test.ts#registers every declared command in exactly one domain, and nothing else`
   `test:src/lib/ipc-contract-coverage.test.ts#never registers the same command name twice for the same platform`
 - **Typed vault commands (#316, group 1).** The nine vault commands go
-  through generated tauri-specta wrappers; no hand-written `invoke` for a
-  vault command remains outside the typed layer.
+  through generated tauri-specta wrappers. The vault screen calls the
+  wrappers; the command palette, which sits in the entry chunk, keeps
+  `invoke` but takes the request and response types from the generated file.
   `test:src/lib/typed-ipc.test.ts#generates a typed wrapper for every vault command`
-  `test:src/lib/typed-ipc.test.ts#leaves no hand-written vault invoke outside the job tracker`
+  `test:src/lib/typed-ipc.test.ts#calls the typed wrappers from the vault screen`
+  `test:src/lib/typed-ipc.test.ts#types the palette's vault search with the generated types`
   `test:src/lib/typed-ipc.test.ts#returns the data of an ok result`
 - **Calc editor hooks (#415, slices 1–2).** Undo/redo and the grid's pointer,
   touch and pinch code moved out of `CalcEditor` with the same behaviour.

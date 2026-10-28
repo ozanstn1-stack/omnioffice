@@ -33,10 +33,16 @@ describe("typed bindings: the vault group", () => {
     }
   });
 
-  it("leaves no hand-written vault invoke outside the job tracker", () => {
-    for (const file of ["src/screens/Vault.tsx", "src/components/command-palette.tsx"]) {
-      expect(read(file), file).not.toMatch(/invoke(?:<[^>]*>)?\(\s*"vault_/);
-    }
+  it("calls the typed wrappers from the vault screen", () => {
+    expect(read("src/screens/Vault.tsx")).not.toMatch(/invoke(?:<[^>]*>)?\(\s*"vault_/);
+  });
+
+  // The palette sits in the entry chunk: it keeps `invoke` but takes the
+  // request and response types from the generated file.
+  it("types the palette's vault search with the generated types", () => {
+    const palette = read("src/components/command-palette.tsx");
+    expect(palette).toMatch(/invoke<VaultSearchResponse_Serialize>\("vault_search"/);
+    expect(palette).toContain("const request: VaultSearchRequest_Deserialize");
   });
 });
 
