@@ -71,12 +71,14 @@ async function shareTarget(name: string): Promise<string> {
 
 /**
  * Writes the tab's current model to a share copy and shares it, as the
- * document itself or as a PDF. Returns the written path.
+ * document itself or as a PDF. Returns the written path. `send` lets the
+ * caller put the pre-send check in front of the share sheet.
  */
 export async function shareOfficeDocument(
   tab: { kind: OfficeKind; title: string; path?: string | null; model: unknown },
   as: "document" | "pdf",
   chooserTitle?: string,
+  send: (path: string, title?: string) => Promise<void> = shareDocumentFile,
 ): Promise<string> {
   const extension = as === "pdf" ? "pdf" : shareExtensionFor(tab.kind, tab.path);
   const target = await shareTarget(shareFileName(tab.title, extension));
@@ -84,6 +86,6 @@ export async function shareOfficeDocument(
     as === "pdf"
       ? await api.exportPdf(tab.kind, tab.model, target)
       : await api.saveDocument(tab.kind, tab.model, target);
-  await shareDocumentFile(result.path, chooserTitle);
+  await send(result.path, chooserTitle);
   return result.path;
 }

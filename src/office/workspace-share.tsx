@@ -9,6 +9,7 @@ import { Share2 } from "lucide-react";
 import { isAndroid } from "../lib/mobile";
 import type { OfficeTab } from "../lib/office-store";
 import { shareExtensionFor, shareOfficeDocument } from "../lib/share";
+import { shareWithCheck } from "../lib/presend-gate";
 import { errorMessage, useToasts } from "../lib/store";
 import { useT } from "../lib/i18n";
 import { Modal } from "../components/ui";
@@ -24,7 +25,7 @@ export function ShareTabButton({ tab }: { tab: OfficeTab | null }) {
     if (!tab) return;
     setSharing(true);
     try {
-      await shareOfficeDocument(tab, as, t("office.share"));
+      await shareOfficeDocument(tab, as, t("office.share"), shareWithCheck);
       setOpen(false);
     } catch (error) {
       useToasts.getState().push({ kind: "error", title: t("office.shareFailed"), detail: errorMessage(error, t) });

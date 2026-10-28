@@ -467,6 +467,14 @@ export function Settings() {
           <label className="checkbox">
             <input
               type="checkbox"
+              checked={settings.presendCheck !== false}
+              onChange={(event) => void update({ presendCheck: event.target.checked })}
+            />
+            <span>{t("settings.presendCheck")}</span>
+          </label>
+          <label className="checkbox">
+            <input
+              type="checkbox"
               checked={!settings.onboardingDone}
               onChange={(event) => void update({ onboardingDone: !event.target.checked })}
             />

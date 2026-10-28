@@ -419,6 +419,11 @@ export interface Settings {
    * it is the one signature feature that contacts a server.
    */
   onlineRevocationCheck: boolean;
+  /**
+   * Check a PDF before it goes to the share sheet: personal data, notes,
+   * attachments, scripts, metadata and signatures (`lib/presend.ts`).
+   */
+  presendCheck: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -451,6 +456,7 @@ export const DEFAULT_SETTINGS: Settings = {
   authorName: "",
   ownTaxId: "",
   onlineRevocationCheck: false,
+  presendCheck: true,
 };
 
 export interface TextMatch {
