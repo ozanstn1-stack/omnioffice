@@ -114,6 +114,7 @@ import { useFindReplace } from "./calc/ui/useFindReplace";
 import { useCalcUndoRedo } from "./calc/ui/useCalcUndoRedo";
 import { DEFAULT_COL_WIDTH, HEADER_HEIGHT, HEADER_WIDTH, ROW_HEIGHT } from "./calc/grid-metrics";
 import { useGridGestures } from "./calc/ui/useGridGestures";
+import { useListDropdown } from "./calc/ui/useListDropdown";
 import { usePasteSpecial, type InternalClipboard } from "./calc/ui/usePasteSpecial";
 import { useVisibilityActions, type Axis } from "./calc/ui/useVisibilityActions";
 import { ValidationDialog } from "./calc/ui/ValidationDialog";
@@ -176,7 +177,6 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   >(null);
   // The open choice list of a list-validated active cell; `index` is the
   // highlighted choice. It always belongs to the active cell (see below).
-  const [listDropdown, setListDropdown] = useState<{ index: number } | null>(null);
   const listDropdownRef = useRef<HTMLDivElement>(null);
   const listDropdownId = useId();
   const [filterOpen, setFilterOpen] = useState<FilterDraft | null>(null);
@@ -729,7 +729,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     // Alt+Down opens the choices of a list-validated cell, as in Excel.
     if (event.altKey && event.key === "ArrowDown" && activeListItems.length > 0) {
       event.preventDefault();
-      openListDropdown();
+      list.show();
       return;
     }
     if (mod && event.altKey && event.code === "KeyV") {
@@ -1258,50 +1258,6 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
     });
   };
 
-  const openListDropdown = () => {
-    // Start on the cell's current value when it is one of the choices.
-    const current = toText(computed.get(selectionAddress) ?? "")
-      .trim()
-      .toLowerCase();
-    const index = activeListItems.findIndex((item) => item.toLowerCase() === current);
-    setListDropdown({ index: Math.max(0, index) });
-  };
-
-  /** Closes the choice list and gives the keyboard back to the grid. */
-  const closeListDropdown = () => {
-    setListDropdown(null);
-    gridRef.current?.focus({ preventScroll: true });
-  };
-
-  /** Writes a chosen list value into the active cell, like typing it. */
-  const chooseListValue = (value: string) => {
-    const { row, col } = selection.focus;
-    closeListDropdown();
-    update((current) => applyCellEdit(current, sheetIndex, row, col, value));
-  };
-
-  const handleListDropdownKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!listDropdown) return;
-    const last = activeListItems.length - 1;
-    const index = Math.min(listDropdown.index, last);
-    const keys: Record<string, () => void> = {
-      ArrowDown: () => setListDropdown({ index: Math.min(last, index + 1) }),
-      ArrowUp: () => (event.altKey ? closeListDropdown() : setListDropdown({ index: Math.max(0, index - 1) })),
-      Home: () => setListDropdown({ index: 0 }),
-      End: () => setListDropdown({ index: last }),
-      Enter: () => chooseListValue(activeListItems[index]),
-      Escape: closeListDropdown,
-      Tab: closeListDropdown,
-    };
-    const action = keys[event.key];
-    if (!action) return;
-    // Handled keys stay out of the grid, which would otherwise move the
-    // selection or start typing into the cell.
-    event.preventDefault();
-    event.stopPropagation();
-    action();
-  };
-
   // -------------------------------------------------------------------------
   // Structured tables (V3)
   // -------------------------------------------------------------------------
@@ -1751,16 +1707,20 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   );
   const activeListItems = activeListRule ? (listItems.get(activeListRule.id) ?? []) : [];
 
-  // The choice list belongs to one cell: moving the selection, switching
-  // sheets or starting an edit closes it.
-  const listDropdownKey = `${sheetIndex}:${selectionAddress}:${editing ? "editing" : ""}`;
-  const [lastListDropdownKey, setLastListDropdownKey] = useState(listDropdownKey);
-  if (lastListDropdownKey !== listDropdownKey) {
-    setLastListDropdownKey(listDropdownKey);
-    setListDropdown(null);
-  }
-  const listDropdownOpen = listDropdown !== null && activeListItems.length > 0;
-  const listDropdownIndex = Math.min(listDropdown?.index ?? 0, Math.max(0, activeListItems.length - 1));
+  // The choice list of a list-validated cell; it closes when the cell, the
+  // sheet or the editing state changes.
+  const list = useListDropdown({
+    id: listDropdownId,
+    popupRef: listDropdownRef,
+    items: activeListItems,
+    resetKey: `${sheetIndex}:${selectionAddress}:${editing ? "editing" : ""}`,
+    currentText: () => toText(computed.get(selectionAddress) ?? ""),
+    onChoose: (value) => {
+      const { row, col } = selection.focus;
+      update((current) => applyCellEdit(current, sheetIndex, row, col, value));
+    },
+    gridRef,
+  });
 
   // The arrow sits inside the right edge of the active cell, in canvas
   // coordinates like the fill handle. The list opens below the cell, or above
@@ -1788,18 +1748,6 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
           return { left, width, top, height: listCellHeight, above };
         })()
       : null;
-
-  // Opening the list moves the keyboard into it; the highlighted choice stays
-  // in view while the arrow keys move it.
-  useLayoutEffect(() => {
-    if (listDropdownOpen) listDropdownRef.current?.focus({ preventScroll: true });
-  }, [listDropdownOpen]);
-  useLayoutEffect(() => {
-    if (!listDropdownOpen) return;
-    listDropdownRef.current
-      ?.querySelector<HTMLElement>('[aria-selected="true"]')
-      ?.scrollIntoView?.({ block: "nearest" });
-  }, [listDropdownOpen, listDropdownIndex]);
 
   // The last valid row/column, used for Ctrl+End, Space and the data extent.
   const lastRow = Math.max(0, sheet.rowCount - 1);
@@ -2380,24 +2328,24 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 tabIndex={-1}
                 aria-label={t("calc.listShow")}
                 aria-haspopup="listbox"
-                aria-expanded={listDropdownOpen}
+                aria-expanded={list.open}
                 style={{ left: listCell.left + listCell.width, top: listCell.top, height: listCell.height }}
                 // The grid would start a selection or pan gesture and capture
                 // the pointer; the arrow only needs its click.
                 onPointerDown={(event) => event.stopPropagation()}
-                onClick={() => (listDropdownOpen ? closeListDropdown() : openListDropdown())}
+                onClick={() => (list.open ? list.close() : list.show())}
               >
                 <ChevronDown size={13} />
               </button>
             ) : null}
-            {listCell && listDropdownOpen ? (
+            {listCell && list.open ? (
               <div
                 ref={listDropdownRef}
                 className="calc-list-popup"
                 role="listbox"
                 tabIndex={-1}
                 aria-label={t("calc.listValues")}
-                aria-activedescendant={`${listDropdownId}-${listDropdownIndex}`}
+                aria-activedescendant={`${list.id}-${list.index}`}
                 style={{
                   left: listCell.left,
                   top: listCell.above ? listCell.top : listCell.top + listCell.height,
@@ -2405,30 +2353,30 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                   transform: listCell.above ? "translateY(-100%)" : undefined,
                 }}
                 onPointerDown={(event) => event.stopPropagation()}
-                onKeyDown={handleListDropdownKey}
+                onKeyDown={list.handleKey}
                 // One click handler for every option; a tap is a click too,
                 // while a touch scroll of the list never produces one.
                 onClick={(event) => {
                   const option = (event.target as HTMLElement).closest<HTMLElement>("[data-list-index]");
-                  if (option) chooseListValue(activeListItems[Number(option.dataset.listIndex)]);
+                  if (option) list.choose(activeListItems[Number(option.dataset.listIndex)]);
                 }}
                 onBlur={(event) => {
                   // Focus moving to the arrow belongs to the arrow's own toggle.
                   const next = event.relatedTarget as HTMLElement | null;
                   if (next?.closest?.("[data-list-arrow]") || event.currentTarget.contains(next)) return;
-                  setListDropdown(null);
+                  list.dismiss();
                 }}
               >
                 {activeListItems.map((item, index) => (
                   <div
                     key={item}
-                    id={`${listDropdownId}-${index}`}
+                    id={`${list.id}-${index}`}
                     role="option"
                     tabIndex={-1}
                     data-list-index={index}
-                    aria-selected={index === listDropdownIndex}
-                    className={`calc-list-option${index === listDropdownIndex ? " is-active" : ""}`}
-                    onMouseEnter={() => setListDropdown({ index })}
+                    aria-selected={index === list.index}
+                    className={`calc-list-option${index === list.index ? " is-active" : ""}`}
+                    onMouseEnter={() => list.highlight(index)}
                   >
                     {item}
                   </div>
