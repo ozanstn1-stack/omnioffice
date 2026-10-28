@@ -1,6 +1,5 @@
 import { useState, useMemo } from "react";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { pickSaveToken } from "../lib/file-tokens";
+import { pickDocumentToken, pickSaveToken } from "../lib/file-tokens";
 import { AlertTriangle, CheckCircle2, FolderOpen, Info, ShieldAlert, Sparkles, Trash2 } from "lucide-react";
 import { Badge, Button, Card, TextArea } from "../components/ui";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
@@ -54,7 +53,8 @@ export function DocumentHealthScreen({
     setBusy(true);
     setFilePath(path);
     try {
-      const lower = path.toLowerCase();
+      // A token has no extension; its remembered name does.
+      const lower = fileBaseName(path).toLowerCase();
       if (lower.endsWith(".pdf")) {
         const [insp, sigs] = await Promise.all([
           inspectDocument(path),
@@ -121,22 +121,16 @@ export function DocumentHealthScreen({
       if (picked) await loadFileForInspection(picked);
       return;
     }
-    const picked = await openDialog({
-      multiple: false,
-      filters: [
-        { name: "Belgeler (PDF, DOCX, ODT, UDF)", extensions: ["pdf", "docx", "odt", "udf", "rtf", "txt", "md"] },
-      ],
-    });
-    if (typeof picked === "string") {
-      await loadFileForInspection(picked);
-    }
+    // The Rust dialog returns a token; release builds refuse raw paths.
+    const picked = await pickDocumentToken(["pdf", "docx", "odt", "udf", "rtf", "txt", "md"]).catch(() => null);
+    if (picked) await loadFileForInspection(picked.token);
   };
 
   const handleFixIssue = async (issue: HealthIssue) => {
     if (issue.fixAction === "strip_metadata") {
       setMetadata((prev) => fixMetadataLeaks(prev));
-      if (filePath && filePath.toLowerCase().endsWith(".pdf") && !isAndroid()) {
-        const outPath = await pickSaveToken(fileBaseName(filePath.replace(/\.pdf$/i, "-temiz.pdf")), ["pdf"]).catch(
+      if (filePath && fileBaseName(filePath).toLowerCase().endsWith(".pdf") && !isAndroid()) {
+        const outPath = await pickSaveToken(fileBaseName(filePath).replace(/\.pdf$/i, "-temiz.pdf"), ["pdf"]).catch(
           () => null,
         );
         if (outPath) {
@@ -164,7 +158,7 @@ export function DocumentHealthScreen({
             return;
           }
         }
-      } else if (filePath && !filePath.toLowerCase().endsWith(".pdf")) {
+      } else if (filePath && !fileBaseName(filePath).toLowerCase().endsWith(".pdf")) {
         try {
           const opened = await openDocument(filePath);
           const doc = opened.model as TextDocument;
