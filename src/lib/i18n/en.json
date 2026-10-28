@@ -2666,5 +2666,7 @@
   "periodAudit.col.taxable": "Tax base",
   "periodAudit.col.vat": "VAT",
   "periodAudit.col.payable": "Payable",
-  "periodAudit.col.ettn": "ETTN"
+  "periodAudit.col.ettn": "ETTN",
+  "nav.bottom": "Main sections",
+  "nav.more": "More"
 }
