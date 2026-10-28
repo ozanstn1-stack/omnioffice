@@ -62,6 +62,28 @@ export const commands = {
 	oauthSaveClient: (provider: string, clientId: string, clientSecret: string | null, tenant: string | null) => typedError<OAuthStatus[], PdfError>(__TAURI_INVOKE("oauth_save_client", { provider, clientId, clientSecret, tenant })),
 	oauthConnect: (provider: string) => typedError<OAuthStatus[], PdfError>(__TAURI_INVOKE("oauth_connect", { provider })),
 	oauthDisconnect: (provider: string) => typedError<OAuthStatus[], PdfError>(__TAURI_INVOKE("oauth_disconnect", { provider })),
+	pluginList: () => typedError<PluginEntry[], PluginErrorPayload>(__TAURI_INVOKE("plugin_list")),
+	pluginReadSource: (id: string) => typedError<string, PluginErrorPayload>(__TAURI_INVOKE("plugin_read_source", { id })),
+	pluginInstall: (manifestJson: string, source: string) => typedError<PluginEntry, PluginErrorPayload>(__TAURI_INVOKE("plugin_install", { manifestJson, source })),
+	/**
+	 *  Installs a plugin from a folder the user picks in a native dialog that the
+	 *  *Rust* side opens. The webview cannot supply the path: it only triggers this
+	 *  command, and the folder is chosen by the human. This removes the previous
+	 *  design where a compromised renderer could pass any directory on disk.
+	 */
+	pluginInstallFromDialog: () => typedError<PluginEntry | null, PluginErrorPayload>(__TAURI_INVOKE("plugin_install_from_dialog")),
+	pluginInstallSample: () => typedError<PluginEntry, PluginErrorPayload>(__TAURI_INVOKE("plugin_install_sample")),
+	pluginDelete: (id: string) => typedError<null, PluginErrorPayload>(__TAURI_INVOKE("plugin_delete", { id })),
+	pluginFileRead: (pluginId: string, name: string) => typedError<string, PluginErrorPayload>(__TAURI_INVOKE("plugin_file_read", { pluginId, name })),
+	pluginFileWrite: (pluginId: string, name: string, text: string) => typedError<null, PluginErrorPayload>(__TAURI_INVOKE("plugin_file_write", { pluginId, name, text })),
+	/**
+	 *  Read-only PDF capability. The file name is resolved inside the plugin's own
+	 *  sandbox directory (the same guard as the file commands), and the manifest
+	 *  must declare the `read_pdf` permission. The extracted text is bounded so a
+	 *  huge PDF cannot exhaust memory in the worker.
+	 */
+	pluginPdfRead: (pluginId: string, name: string) => typedError<PluginPdfRead, PluginErrorPayload>(__TAURI_INVOKE("plugin_pdf_read", { pluginId, name })),
+	pluginHttpRequest: (pluginId: string, request: PluginHttpRequest_Deserialize) => typedError<PluginHttpResponse, PluginErrorPayload>(__TAURI_INVOKE("plugin_http_request", { pluginId, request })),
 };
 
 /* Types */
@@ -90,6 +112,49 @@ export type OAuthStatus = {
 export type PdfError = {
 	code: ErrorCode,
 	message: string,
+};
+
+export type PluginEntry = {
+	/**  The raw manifest as stored on disk; the frontend validates it strictly. */
+	manifest: unknown,
+	sourceBytes: number,
+};
+
+export type PluginErrorPayload = {
+	code: string,
+	message: string,
+};
+
+export type PluginHttpRequest = PluginHttpRequest_Serialize | PluginHttpRequest_Deserialize;
+
+export type PluginHttpRequest_Deserialize = {
+	url: string,
+	method?: string | null,
+	headers?: { [key in string]: string } | null,
+	body?: string | null,
+};
+
+export type PluginHttpRequest_Serialize = {
+	url: string,
+	method: string | null,
+	headers: { [key in string]: string } | null,
+	body: string | null,
+};
+
+export type PluginHttpResponse = {
+	status: number,
+	body: string,
+	truncated: boolean,
+};
+
+/**
+ *  Read-only result of the `pdf` capability: page count, whether a text layer
+ *  exists, and the extracted text (bounded).
+ */
+export type PluginPdfRead = {
+	pageCount: number,
+	hasTextLayer: boolean,
+	text: string,
 };
 
 /**  Honest capability report for the UI (size limit, provider availability). */

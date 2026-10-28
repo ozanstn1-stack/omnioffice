@@ -42,6 +42,7 @@ const HTTP_TIMEOUT_SECS: u64 = 15;
 const SAMPLE_MANIFEST: &str = include_str!("../../plugins/sample/manifest.json");
 const SAMPLE_SOURCE: &str = include_str!("../../plugins/sample/main.js");
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 pub struct PluginErrorPayload {
     pub code: String,
@@ -80,16 +81,20 @@ type PluginResult<T> = Result<T, PluginErrorPayload>;
 // Wire types
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginEntry {
     /// The raw manifest as stored on disk; the frontend validates it strictly.
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Unknown))]
     pub manifest: Value,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub source_bytes: u64,
 }
 
 /// Read-only result of the `pdf` capability: page count, whether a text layer
 /// exists, and the extracted text (bounded).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginPdfRead {
@@ -98,6 +103,7 @@ pub struct PluginPdfRead {
     pub text: String,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginHttpRequest {
@@ -107,6 +113,7 @@ pub struct PluginHttpRequest {
     pub body: Option<String>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginHttpResponse {
@@ -419,11 +426,13 @@ fn forbidden_header(name: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn plugin_list(app: AppHandle) -> PluginResult<Vec<PluginEntry>> {
     Ok(list_plugins(&plugins_root(&app)?))
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn plugin_read_source(app: AppHandle, id: String) -> PluginResult<String> {
     let root = plugins_root(&app)?;
     let dir = plugin_dir(&root, &id)?;
@@ -431,6 +440,7 @@ pub fn plugin_read_source(app: AppHandle, id: String) -> PluginResult<String> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn plugin_install(app: AppHandle, manifest_json: String, source: String) -> PluginResult<PluginEntry> {
     install_into(&plugins_root(&app)?, &manifest_json, &source)
 }
@@ -440,6 +450,7 @@ pub fn plugin_install(app: AppHandle, manifest_json: String, source: String) -> 
 /// command, and the folder is chosen by the human. This removes the previous
 /// design where a compromised renderer could pass any directory on disk.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn plugin_install_from_dialog(app: AppHandle) -> PluginResult<Option<PluginEntry>> {
     #[cfg(any(desktop, target_os = "windows", target_os = "linux", target_os = "macos"))]
     {
@@ -467,16 +478,19 @@ pub async fn plugin_install_from_dialog(app: AppHandle) -> PluginResult<Option<P
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn plugin_install_sample(app: AppHandle) -> PluginResult<PluginEntry> {
     install_into(&plugins_root(&app)?, SAMPLE_MANIFEST, SAMPLE_SOURCE)
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn plugin_delete(app: AppHandle, id: String) -> PluginResult<()> {
     delete_plugin(&plugins_root(&app)?, &id)
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn plugin_file_read(app: AppHandle, plugin_id: String, name: String) -> PluginResult<String> {
     let root = plugins_root(&app)?;
     let dir = plugin_dir(&root, &plugin_id)?;
@@ -487,6 +501,7 @@ pub fn plugin_file_read(app: AppHandle, plugin_id: String, name: String) -> Plug
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn plugin_file_write(app: AppHandle, plugin_id: String, name: String, text: String) -> PluginResult<()> {
     let root = plugins_root(&app)?;
     let dir = plugin_dir(&root, &plugin_id)?;
@@ -503,6 +518,7 @@ pub fn plugin_file_write(app: AppHandle, plugin_id: String, name: String, text: 
 /// must declare the `read_pdf` permission. The extracted text is bounded so a
 /// huge PDF cannot exhaust memory in the worker.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn plugin_pdf_read(app: AppHandle, plugin_id: String, name: String) -> PluginResult<PluginPdfRead> {
     let root = plugins_root(&app)?;
     let dir = plugin_dir(&root, &plugin_id)?;
@@ -532,6 +548,7 @@ fn truncate_at_char_boundary(text: &mut String, max: usize) {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn plugin_http_request(
     app: AppHandle,
     plugin_id: String,
