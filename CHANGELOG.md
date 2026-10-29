@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.1] - Telefon denetimindeki arayüz kusurları
+
+### Fixed
+
+- **PDF Studio scrolls on a phone again, and five screens have their
+  padding back.** PDF Studio, Jobs, Plugins, Compatibility and the office
+  launcher used layout classes that had no styles, so their content touched
+  the screen edge and PDF Studio's Run button could not be reached on a
+  phone. The office empty screen and the Calc dialogs, which used the same
+  unstyled helpers, have their gaps back too.
+- PDF Studio shows each file's real size instead of "0 B".
+- New office documents are named in the interface language ("Adsız hesap
+  tablosu" with a "Sayfa1" tab in Turkish).
+- Reader: on a phone the page opens at the screen width instead of partly
+  off screen, and the search icon no longer covers the placeholder (also in
+  the Home and AI library searches).
+- Dialog buttons wrap on a narrow screen; the pre-send dialog's first button
+  was cut off.
+- The drawer's "100% local" badge sits above the system navigation bar.
+- A long dropdown value ends with an ellipsis before the arrow.
 ## [6.5.0] - Delil klasörü, resmî yazı ve okunur ofis PDF'leri
 
 ### Added
