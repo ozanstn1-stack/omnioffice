@@ -2216,6 +2216,9 @@ pub enum ObjectAction {
 pub struct ObjectEdit {
     pub page: u32,
     pub index: u32,
+    /// Flattened: the front end sends `{ page, index, action: "move", dx, dy }`,
+    /// the action's tag and fields beside the object's address.
+    #[serde(flatten)]
     pub action: ObjectAction,
 }
 
