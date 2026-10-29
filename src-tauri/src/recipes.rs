@@ -23,6 +23,7 @@ use tauri::{AppHandle, Emitter, Manager};
 /// `rename_all_fields` renames the variant **fields** too, so the frontend's
 /// `headerFooter` reaches `header_footer` (it used to be silently dropped, and
 /// the stamp step ran empty).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,6 +64,7 @@ impl RecipeStep {
     }
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -156,6 +158,7 @@ fn recipes_dir(app: &AppHandle) -> Result<PathBuf, PdfError> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn recipe_save(app: AppHandle, recipe: Recipe) -> Result<(), PdfError> {
     let id = sanitize_id(&recipe.id);
     if id.is_empty() {
@@ -168,6 +171,7 @@ pub fn recipe_save(app: AppHandle, recipe: Recipe) -> Result<(), PdfError> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn recipe_list(app: AppHandle) -> Result<Vec<Recipe>, PdfError> {
     let dir = recipes_dir(&app)?;
     let mut recipes = Vec::new();
@@ -189,6 +193,7 @@ pub fn recipe_list(app: AppHandle) -> Result<Vec<Recipe>, PdfError> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn recipe_delete(app: AppHandle, id: String) -> Result<(), PdfError> {
     let id = sanitize_id(&id);
     if id.is_empty() {
@@ -202,6 +207,7 @@ pub fn recipe_delete(app: AppHandle, id: String) -> Result<(), PdfError> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn recipe_run(app: AppHandle, request: RecipeRunRequest) -> Result<RecipeRunResult, PdfError> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -227,6 +233,7 @@ pub async fn recipe_run(app: AppHandle, request: RecipeRunRequest) -> Result<Rec
     task.await.map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipeRunRequest {
@@ -236,6 +243,7 @@ pub struct RecipeRunRequest {
     pub password: Option<String>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipeRunResult {
@@ -247,6 +255,7 @@ pub struct RecipeRunResult {
 // Watched folder
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct WatchedFolder {
@@ -256,6 +265,7 @@ pub struct WatchedFolder {
     pub password: Option<String>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WatchedResult {
@@ -334,6 +344,7 @@ fn watched_secret_path(app: &AppHandle) -> Result<PathBuf, PdfError> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn watched_folder_get(app: AppHandle) -> Result<WatchedFolder, PdfError> {
     let path = watched_config_path(&app)?;
     let mut config = if path.exists() {
@@ -351,6 +362,7 @@ pub fn watched_folder_get(app: AppHandle) -> Result<WatchedFolder, PdfError> {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn watched_folder_set(app: AppHandle, mut config: WatchedFolder) -> Result<(), PdfError> {
     let path = watched_config_path(&app)?;
     if !config.folder.trim().is_empty()
@@ -381,6 +393,7 @@ pub fn watched_folder_set(app: AppHandle, mut config: WatchedFolder) -> Result<(
 /// One watch pass: reads the config, the named recipe, and processes new files.
 /// The frontend (or the background loop) calls this on an interval.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn watched_folder_scan(app: AppHandle, seen: Option<Vec<String>>) -> Result<Vec<WatchedResult>, PdfError> {
     let _permit = crate::concurrency::acquire().await;
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -418,6 +431,7 @@ fn watch_wake() -> &'static tokio::sync::Notify {
 /// `watched_folder_stop` is called. Best-effort: a pass error is logged and the
 /// loop keeps running.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn watched_folder_start(app: AppHandle, interval_seconds: Option<u64>) -> Result<(), PdfError> {
     if WATCH_ACTIVE.swap(true, Ordering::SeqCst) {
         return Ok(());
@@ -470,6 +484,7 @@ pub async fn watched_folder_start(app: AppHandle, interval_seconds: Option<u64>)
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn watched_folder_stop() -> Result<(), PdfError> {
     WATCH_ACTIVE.store(false, Ordering::SeqCst);
     WATCH_GENERATION.fetch_add(1, Ordering::SeqCst);

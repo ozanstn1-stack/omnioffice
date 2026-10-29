@@ -225,7 +225,7 @@ export function Recipes() {
             recipes.map((recipe) => (
               <div key={recipe.id} className="flex items-center gap-2 flex-wrap">
                 <span className="font-medium">{recipe.name}</span>
-                <span className="text-xs muted">{recipe.steps.map(stepLabel).join(" → ")}</span>
+                <span className="text-xs muted">{(recipe.steps ?? []).map(stepLabel).join(" → ")}</span>
                 <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(recipe)}>
                   <Play size={13} /> {t("recipes.run")}
                 </Button>

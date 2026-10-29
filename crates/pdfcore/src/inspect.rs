@@ -20,6 +20,7 @@ use crate::docutil;
 use crate::error::{PdfError, PdfResult};
 
 /// How serious a finding is for an accessible or archival document.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Severity {
@@ -41,6 +42,7 @@ impl Severity {
     }
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Finding {
@@ -54,6 +56,7 @@ pub struct Finding {
 }
 
 /// One embedded font.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FontInfo {
@@ -67,6 +70,7 @@ pub struct FontInfo {
 }
 
 /// One image XObject, aggregated across the document.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageInfo {
@@ -79,6 +83,7 @@ pub struct ImageInfo {
     pub occurrences: u32,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ColorSpaceInfo {
@@ -88,6 +93,7 @@ pub struct ColorSpaceInfo {
     pub device_dependent: bool,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AnnotationInfo {
@@ -99,6 +105,7 @@ pub struct AnnotationInfo {
     pub hidden: bool,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FormFieldInfo {
@@ -115,6 +122,7 @@ pub struct FormFieldInfo {
     pub options: Vec<String>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OutlineEntry {
@@ -125,6 +133,7 @@ pub struct OutlineEntry {
 }
 
 /// The full structural report for a document.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentInspection {

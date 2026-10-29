@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 pub const INFO_KEYS: [&str; 8] =
     ["Title", "Author", "Subject", "Keywords", "Creator", "Producer", "CreationDate", "ModDate"];
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PdfMetadata {
     pub title: String,

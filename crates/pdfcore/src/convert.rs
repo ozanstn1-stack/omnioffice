@@ -8,6 +8,7 @@ use crate::render::{self, RenderOptions};
 use serde::Serialize;
 use std::path::Path;
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 pub struct ImageOutput {
     pub path: String,

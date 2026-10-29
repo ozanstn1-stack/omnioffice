@@ -52,6 +52,7 @@ pub fn parse_page_selection(input: &str, total_pages: u32) -> PdfResult<Vec<u32>
 }
 
 /// A split strategy chosen by the user.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "mode")]
 pub enum SplitMode {

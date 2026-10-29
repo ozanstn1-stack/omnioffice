@@ -14,6 +14,7 @@ use std::path::Path;
 use std::process::Stdio;
 
 /// The engine that rewrote a repaired file.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RepairMethod {
@@ -22,6 +23,7 @@ pub enum RepairMethod {
     Builtin,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepairReport {

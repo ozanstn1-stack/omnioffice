@@ -63,13 +63,18 @@ impl Default for RenderOptions {
     }
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct PageGeometry {
     pub page: u32,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub width_pt: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub height_pt: f64,
     /// Width/height as displayed, i.e. after the page's /Rotate value.
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub display_width_pt: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub display_height_pt: f64,
     pub rotation: i32,
 }
@@ -382,6 +387,7 @@ pub fn document_has_text(path: &Path, password: Option<&str>, sample: u32) -> Pd
 // Text search (reading mode)
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TextMatch {
     pub page: u32,

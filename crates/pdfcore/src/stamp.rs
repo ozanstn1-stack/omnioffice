@@ -19,6 +19,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 /// Header and footer templates; empty strings skip that slot.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export))]
 #[cfg_attr(feature = "ts", ts(optional_fields))]
@@ -31,8 +32,10 @@ pub struct HeaderFooterOptions {
     pub footer_left: String,
     pub footer_center: String,
     pub footer_right: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub font_size_pt: f64,
     pub color: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub margin_pt: f64,
     /// 1-based pages; empty means every page.
     pub pages: Vec<u32>,
@@ -62,6 +65,7 @@ impl Default for HeaderFooterOptions {
 }
 
 /// Bates numbering: `{prefix}{number}{suffix}` with zero padding.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export))]
 #[cfg_attr(feature = "ts", ts(optional_fields))]
@@ -75,8 +79,10 @@ pub struct BatesOptions {
     pub digits: u32,
     /// `bottomLeft` | `bottomCenter` | `bottomRight` | `topLeft` | `topCenter` | `topRight`.
     pub position: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub font_size_pt: f64,
     pub color: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub margin_pt: f64,
     /// 1-based pages; empty means every page.
     pub pages: Vec<u32>,

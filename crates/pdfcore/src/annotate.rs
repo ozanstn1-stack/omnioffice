@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Annotation {
     /// text | image | rect | highlight | line | note | underline | strike |
@@ -30,13 +31,18 @@ pub struct Annotation {
     pub page: u32,
     /// Display-space rectangle in points with the origin at the TOP-LEFT of
     /// the displayed page (matches how the UI canvas reports coordinates).
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub x: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub y: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub w: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub h: f64,
     #[serde(default)]
     pub text: String,
     #[serde(default = "default_font_size")]
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub font_size_pt: f64,
     #[serde(default)]
     pub bold: bool,
@@ -44,18 +50,23 @@ pub struct Annotation {
     #[serde(default = "default_color")]
     pub color: String,
     #[serde(default = "default_opacity")]
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub opacity: f64,
     #[serde(default)]
     pub image_path: Option<String>,
     #[serde(default = "default_line_width")]
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub line_width_pt: f64,
     /// For line annotations: the second point, in the same top-left space.
     #[serde(default)]
+    #[cfg_attr(feature = "bindings", specta(type = Option<specta_typescript::Number>))]
     pub x2: Option<f64>,
     #[serde(default)]
+    #[cfg_attr(feature = "bindings", specta(type = Option<specta_typescript::Number>))]
     pub y2: Option<f64>,
     /// Ink strokes in display space (top-left origin), absolute on the page.
     #[serde(default)]
+    #[cfg_attr(feature = "bindings", specta(type = Vec<Vec<[specta_typescript::Number; 2]>>))]
     pub strokes: Vec<Vec<[f64; 2]>>,
     /// PNG bytes for image/signature annotations, base64 encoded (a `data:`
     /// URL prefix is accepted). Takes precedence over `image_path`.
@@ -77,6 +88,7 @@ fn default_line_width() -> f64 {
 }
 
 /// An annotation read back from a document, in display space (top-left).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditableAnnotation {
@@ -86,35 +98,50 @@ pub struct EditableAnnotation {
     pub index: u32,
     /// note|highlight|underline|strike|ink|textbox|signature|image|rect|line|text
     pub kind: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub x: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub y: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub w: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub h: f64,
     pub text: String,
     /// "#rrggbb"
     pub color: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub opacity: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub line_width_pt: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub font_size_pt: f64,
     pub bold: bool,
     /// Ink strokes in display space (top-left origin).
+    #[cfg_attr(feature = "bindings", specta(type = Vec<Vec<[specta_typescript::Number; 2]>>))]
     pub strokes: Vec<Vec<[f64; 2]>>,
 }
 
 /// One edit applied to an existing annotation.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "action")]
 pub enum AnnotationAction {
     /// Display-space delta.
     Move {
+        #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
         dx: f64,
+        #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
         dy: f64,
     },
     /// New display-space rectangle.
     Resize {
+        #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
         x: f64,
+        #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
         y: f64,
+        #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
         w: f64,
+        #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
         h: f64,
     },
     Delete,
@@ -124,13 +151,16 @@ pub enum AnnotationAction {
         #[serde(default)]
         color: Option<String>,
         #[serde(default)]
+        #[cfg_attr(feature = "bindings", specta(type = Option<specta_typescript::Number>))]
         opacity: Option<f64>,
         #[serde(default, rename = "lineWidthPt")]
+        #[cfg_attr(feature = "bindings", specta(type = Option<specta_typescript::Number>))]
         line_width_pt: Option<f64>,
     },
 }
 
 /// A page/index handle plus the action to apply to that annotation.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AnnotationEditItem {
@@ -141,6 +171,7 @@ pub struct AnnotationEditItem {
 }
 
 /// Outcome of a batch of annotation edits.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AnnotationEditReport {

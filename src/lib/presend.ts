@@ -3,7 +3,6 @@
  * findings (`presend-check.ts`) and write a cleaned copy for sending. The
  * gate the share buttons call is `presend-gate.ts`.
  */
-import { invoke } from "@tauri-apps/api/core";
 import { call } from "./typed-call";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { inspectDocument, pageText, pdfVerifySignatures } from "./api";
@@ -18,7 +17,7 @@ export async function runPresendCheck(path: string): Promise<PresendFinding[]> {
   const [inspection, signatures, pdfa] = await Promise.all([
     inspectDocument(path),
     pdfVerifySignatures(path).catch(() => ({ signatures: [], warnings: [] })),
-    invoke<{ valid: boolean }>("pdfa_validate", { request: { input: path, level: "2b" } }).catch(() => null),
+    call((c) => c.pdfaValidate({ input: path, level: "2b" })).catch(() => null),
   ]);
   const texts: string[] = [];
   for (let page = 1; page <= Math.min(inspection.pageCount, PRESEND_TEXT_PAGES); page++) {
@@ -40,8 +39,8 @@ export async function cleanCopyForSending(path: string, name?: string): Promise<
   const directory = await join(await appCacheDir(), "share", uid("clean"));
   await call((c) => c.ensureDir(directory));
   const output = await join(directory, name ?? fileBaseName(path));
-  await invoke("sanitize_pdf", {
-    request: { input: path, output: { path: output, overwrite: "replace" }, options: SEND_SANITIZE_OPTIONS },
-  });
+  await call((c) =>
+    c.sanitizePdf({ input: path, output: { path: output, overwrite: "replace" }, options: SEND_SANITIZE_OPTIONS }),
+  );
   return output;
 }

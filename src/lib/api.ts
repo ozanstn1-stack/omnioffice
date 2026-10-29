@@ -6,14 +6,11 @@ import type { FileToken } from "./file-tokens";
 import type {
   Annotation,
   AnnotationEditItem,
-  AnnotationEditReport,
   BatesOptions,
-  CompressEstimate,
   CompareOptions,
   CompareReport,
   CompressOptions,
   CropItem,
-  DocumentInspection,
   EditableAnnotation,
   HeaderFooterOptions,
   ImageItem,
@@ -25,9 +22,7 @@ import type {
   OutlineEntry,
   OutputSpec,
   PagePlanItem,
-  PdfInfo,
   ProgressPayload,
-  SearchResponse,
   ProtectOptions,
   RecentAdd,
   RedactionArea,
@@ -35,12 +30,12 @@ import type {
   RedactionOptions,
   Settings,
   SplitMode,
-  Thumbnail,
   WatermarkOptions,
 } from "./types";
-import type { CertificateItem } from "./generated/CertificateItem";
-import type { CertificateVerification } from "./generated/CertificateVerification";
-import type { RedactionCertificate } from "./generated/RedactionCertificate";
+// The redaction certificate as Rust sends it (sizes are JS numbers; the
+// older ts-rs files typed them as bigint, which the JSON never carries).
+type CertificateItem = specta.CertificateItem;
+type RedactionCertificate = specta.RedactionCertificate_Serialize;
 import { trackJobInvocation } from "./job-retries";
 import { asJson, call, callPlain } from "./typed-call";
 
@@ -161,16 +156,8 @@ export const aiLibraryClear = async (deleteFiles = true) => {
 export const aiLibraryExport = (id: string, target: string) => call((c) => c.aiLibraryExport(id, target));
 export const aiLibraryDefaultDir = () => callPlain((c) => c.aiLibraryDefaultDir());
 
-export const logOperation = (entry: {
-  operation: string;
-  inputPath: string;
-  outputPath?: string;
-  pageCount?: number;
-  inputBytes?: number;
-  outputBytes?: number;
-  ok?: boolean;
-  detail?: string;
-}) => call((c) => c.logOperation(entry)).catch(() => undefined);
+export const logOperation = (entry: specta.OperationLogRequest_Deserialize) =>
+  call((c) => c.logOperation(entry)).catch(() => undefined);
 export const loadOperations = () => callPlain((c) => c.loadOperations());
 export const clearOperations = () => call((c) => c.clearOperations());
 
@@ -193,11 +180,10 @@ export const onAiBatchProgress = (
 // Inspection
 // ---------------------------------------------------------------------------
 
-export const pdfInfo = (path: string, password?: string) =>
-  invoke<PdfInfo>("pdf_info", { path, password: password || null });
+export const pdfInfo = (path: string, password?: string) => call((c) => c.pdfInfo(path, password || null));
 
 export const pageThumbnail = (path: string, page: number, maxWidth = 200, password?: string) =>
-  invoke<Thumbnail>("page_thumbnail", { path, page, maxWidth, password: password || null });
+  call((c) => c.pageThumbnail(path, page, maxWidth, password || null));
 
 export const pagePreview = (
   path: string,
@@ -206,7 +192,7 @@ export const pagePreview = (
   password?: string,
   format: "png" | "jpeg" = "png",
   quality = 86,
-) => invoke<Thumbnail>("page_preview", { path, page, maxWidth, password: password || null, format, quality });
+) => call((c) => c.pagePreview(path, page, maxWidth, password || null, format, quality));
 
 /** One tile of a page rendered at `scale` output pixels per PDF point; the
  *  region is in output pixels (reader high-zoom overlay). */
@@ -219,21 +205,12 @@ export const pageTile = (
   format: "png" | "jpeg" = "jpeg",
   quality = 90,
 ) =>
-  invoke<Thumbnail>("page_tile", {
-    path,
-    page,
-    scale,
-    x: region.x,
-    y: region.y,
-    width: region.width,
-    height: region.height,
-    password: password || null,
-    format,
-    quality,
-  });
+  call((c) =>
+    c.pageTile(path, page, scale, region.x, region.y, region.width, region.height, password || null, format, quality),
+  );
 
 export const pageText = (path: string, page: number, password?: string) =>
-  invoke<string>("page_text", { path, page, password: password || null });
+  call((c) => c.pageText(path, page, password || null));
 
 export const searchDocument = (
   path: string,
@@ -242,17 +219,9 @@ export const searchDocument = (
   maxResults: number,
   password: string | undefined,
   jobId: string,
-) =>
-  invoke<SearchResponse>("search_document", {
-    path,
-    query,
-    matchCase,
-    maxResults,
-    password: password ?? null,
-    jobId,
-  });
+) => call((c) => c.searchDocument(path, query, matchCase, maxResults, password ?? null, jobId));
 
-export const checkPassword = (path: string, password: string) => invoke<boolean>("check_password", { path, password });
+export const checkPassword = (path: string, password: string) => call((c) => c.checkPassword(path, password));
 
 export const outputExists = (path: string) => callPlain((c) => c.outputExists(path));
 
@@ -326,7 +295,7 @@ export const splitPdf = (
   });
 
 export const estimateCompression = (input: string, options: CompressOptions, password?: string) =>
-  invoke<CompressEstimate>("estimate_compression", { input, options, password: password || null });
+  call((c) => c.estimateCompression(input, options, password || null));
 
 export const compressPdf = (
   input: string,
@@ -474,13 +443,14 @@ export const pdfAnnotateEditable = (
 
 /** Lists the document's annotations in display space (top-left origin). */
 export const pdfListAnnotations = (path: string, password?: string) =>
-  invoke<EditableAnnotation[]>("pdf_list_annotations", { path, password: password || null });
+  call((c) => c.pdfListAnnotations(path, password || null)).then(
+    // Rust names the kind with a plain string; these are the kinds it writes.
+    (annotations) => annotations as EditableAnnotation[],
+  );
 
 /** Moves, resizes, updates or deletes existing annotations by index. */
 export const pdfEditAnnotations = (input: string, output: OutputSpec, edits: AnnotationEditItem[], password?: string) =>
-  invoke<AnnotationEditReport>("pdf_edit_annotations", {
-    request: { input, output, edits, password },
-  });
+  call((c) => c.pdfEditAnnotations({ input, output, edits, password }));
 
 // ---------------------------------------------------------------------------
 // Signature / paraphe library
@@ -492,66 +462,39 @@ export interface SignatureEntry {
 }
 
 /** Stores a drawn signature/paraphe PNG locally under a name. */
-export const signatureSave = (name: string, imageBase64: string) =>
-  invoke<void>("signature_save", { name, imageBase64 });
+export const signatureSave = (name: string, imageBase64: string) => call((c) => c.signatureSave(name, imageBase64));
 
 /** Lists the locally saved signatures. */
-export const signatureList = () => invoke<SignatureEntry[]>("signature_list");
+export const signatureList = () => call((c) => c.signatureList());
 
 /** Deletes a saved signature. */
-export const signatureDelete = (name: string) => invoke<void>("signature_delete", { name });
+export const signatureDelete = (name: string) => call((c) => c.signatureDelete(name));
 
 // ---------------------------------------------------------------------------
 // Batch recipes and watched folder
 // ---------------------------------------------------------------------------
 
 /**
- * Batch recipes. The step shapes are locked to the Rust enum by
- * `src/lib/generated/contract.test.ts` (`npm run types:gen` regenerates the
- * bindings). The option objects stay partial because the Rust structs carry
- * `#[serde(default)]`, so a step only names the fields it sets.
+ * Batch recipes, generated from the Rust enum (#316). The input shape is the
+ * one Rust reads: the option structs carry `#[serde(default)]`, so a step only
+ * names the fields it sets; a saved recipe Rust returns fits it as well.
  */
-export type RecipeStep =
-  | { kind: "compress"; options: Partial<CompressOptions> }
-  | { kind: "stamp"; headerFooter?: Partial<HeaderFooterOptions>; bates?: Partial<BatesOptions> }
-  | { kind: "pdfa"; level: string }
-  | { kind: "ocr"; options: Partial<OcrOptions> }
-  | { kind: "redact"; areas?: RedactionArea[]; options?: Partial<RedactionOptions> };
+export type RecipeStep = specta.RecipeStep_Deserialize;
+export type Recipe = specta.Recipe_Deserialize;
+export type WatchedFolder = specta.WatchedFolder_Deserialize;
+export type WatchedResult = specta.WatchedResult;
 
-export interface Recipe {
-  id: string;
-  name: string;
-  steps: RecipeStep[];
-}
-
-export interface WatchedFolder {
-  folder: string;
-  outputDir: string;
-  recipeId: string;
-  password?: string | null;
-}
-
-export interface WatchedResult {
-  input: string;
-  output: string;
-  ok: boolean;
-  detail: string;
-}
-
-export const recipeSave = (recipe: Recipe) => invoke<void>("recipe_save", { recipe });
-export const recipeList = () => invoke<Recipe[]>("recipe_list");
-export const recipeDelete = (id: string) => invoke<void>("recipe_delete", { id });
+export const recipeSave = (recipe: Recipe) => call((c) => c.recipeSave(recipe));
+export const recipeList = () => call((c) => c.recipeList());
+export const recipeDelete = (id: string) => call((c) => c.recipeDelete(id));
 export const recipeRun = (input: string, output: string, recipe: Recipe, password?: string) =>
-  invoke<{ output: string; applied: string[] }>("recipe_run", {
-    request: { input, output, recipe, password: password || null },
-  });
-export const watchedFolderGet = () => invoke<WatchedFolder>("watched_folder_get");
-export const watchedFolderSet = (config: WatchedFolder) => invoke<void>("watched_folder_set", { config });
-export const watchedFolderScan = (seen?: string[]) =>
-  invoke<WatchedResult[]>("watched_folder_scan", { seen: seen ?? null });
+  call((c) => c.recipeRun({ input, output, recipe, password: password || null }));
+export const watchedFolderGet = () => call((c) => c.watchedFolderGet());
+export const watchedFolderSet = (config: WatchedFolder) => call((c) => c.watchedFolderSet(config));
+export const watchedFolderScan = (seen?: string[]) => call((c) => c.watchedFolderScan(seen ?? null));
 export const watchedFolderStart = (intervalSeconds?: number) =>
-  invoke<void>("watched_folder_start", { intervalSeconds: intervalSeconds ?? null });
-export const watchedFolderStop = () => invoke<void>("watched_folder_stop");
+  call((c) => c.watchedFolderStart(intervalSeconds ?? null));
+export const watchedFolderStop = () => call((c) => c.watchedFolderStop());
 
 /** Keyword/regex matches for redaction, next to the built-in detector. */
 export const detectRedactionMatches = (
@@ -610,7 +553,7 @@ export const redactPdf = (
 ) => invokeTracked<OpResult>("redact_pdf", { request: { input, output, areas, options, password, jobId } });
 
 export const detectSensitiveText = (path: string, page: number, password?: string) =>
-  invoke<RedactionMatch[]>("detect_sensitive_text", { path, page, password: password || null });
+  call((c) => c.detectSensitiveText(path, page, password || null));
 
 /**
  * Builds the verifiable redaction certificate: digests of the input and the
@@ -622,15 +565,14 @@ export const redactCertificateBuild = (request: {
   redactedPath: string;
   items: CertificateItem[];
   tsaUrl?: string | null;
-}) => invoke<RedactionCertificate>("redact_certificate_build", { request });
+}) => call((c) => c.redactCertificateBuild(request));
 
 /** Embeds the certificate in the redacted PDF and returns its verification. */
 export const redactCertificateEmbed = (path: string, certificate: RedactionCertificate) =>
-  invoke<CertificateVerification>("redact_certificate_embed", { path, certificate });
+  call((c) => c.redactCertificateEmbed(path, certificate));
 
 /** Extracts and verifies the certificate a PDF carries, if any. */
-export const redactCertificateVerify = (path: string) =>
-  invoke<CertificateVerification>("redact_certificate_verify", { path });
+export const redactCertificateVerify = (path: string) => call((c) => c.redactCertificateVerify(path));
 
 export const comparePdfs = (
   left: string,
@@ -652,7 +594,7 @@ export const comparePdfs = (
   });
 
 export const inspectDocument = (path: string, password?: string) =>
-  invoke<DocumentInspection>("inspect_document", { path, password: password || null });
+  call((c) => c.inspectDocument(path, password || null));
 
 // ---------------------------------------------------------------------------
 // Settings / recent
@@ -777,11 +719,10 @@ export interface SigningCertificateSummary {
   sha256Fingerprint: string;
 }
 
-export const pdfVerifySignatures = (path: string) => invoke<SignatureReport>("pdf_verify_signatures", { path });
+export const pdfVerifySignatures = (path: string) => call((c) => c.pdfVerifySignatures(path));
 
 /** Verifies, then asks each signer certificate's CA about revocation. Needs the `onlineRevocationCheck` setting. */
-export const pdfVerifySignaturesOnline = (path: string) =>
-  invoke<SignatureReport>("pdf_verify_signatures_online", { path });
+export const pdfVerifySignaturesOnline = (path: string) => call((c) => c.pdfVerifySignaturesOnline(path));
 
 /** What the validation-data archiving wrote into the document. */
 export interface LtvReport {
@@ -798,7 +739,7 @@ export interface LtvReport {
  * it signed.
  */
 export const pdfArchiveValidationData = (input: string, output?: string) =>
-  invoke<LtvReport>("pdf_archive_validation_data", { input, output: output ?? null });
+  call((c) => c.pdfArchiveValidationData(input, output ?? null));
 
 export const pdfSign = (payload: {
   input: string;
@@ -809,9 +750,20 @@ export const pdfSign = (payload: {
   options: SignOptionsInput;
   /** Optional RFC 3161 timestamp authority URL; a failure fails the signing. */
   tsaUrl?: string | null;
-}) => invoke<SignResult>("pdf_sign", payload);
+}) =>
+  call((c) =>
+    c.pdfSign(
+      payload.input,
+      payload.output,
+      payload.pfxPath ?? null,
+      payload.pfxPassword ?? null,
+      payload.certIndex ?? null,
+      payload.options,
+      payload.tsaUrl ?? null,
+    ),
+  );
 
-export const pdfListSigningCertificates = () => invoke<SigningCertificateSummary[]>("pdf_list_signing_certificates");
+export const pdfListSigningCertificates = () => call((c) => c.pdfListSigningCertificates());
 
 // ---------------------------------------------------------------------------
 // Cloud sync (.oswk over WebDAV; off by default, everything explicit)
@@ -920,27 +872,27 @@ export interface EditReport {
 }
 
 export const pdfListFormFields = (path: string, password?: string) =>
-  invoke<FormFieldInfo[]>("pdf_list_form_fields", { path, password: password || null });
+  call((c) => c.pdfListFormFields(path, password || null));
 
 export const pdfFillForm = (request: {
   input: string;
   output: OutputSpec;
   values: FieldValue[];
   password?: string | null;
-}) => invoke<FillReport>("pdf_fill_form", { request });
+}) => call((c) => c.pdfFillForm(request));
 
 export const pdfValidateForm = (path: string, values: FieldValue[], password?: string) =>
-  invoke<FieldIssue[]>("pdf_validate_form", { path, values, password: password || null });
+  call((c) => c.pdfValidateForm(path, values, password || null));
 
 export const pdfListObjects = (path: string, password?: string) =>
-  invoke<PageObjectInfo[]>("pdf_list_objects", { path, password: password || null });
+  call((c) => c.pdfListObjects(path, password || null));
 
 export const pdfEditObjects = (request: {
   input: string;
   output: OutputSpec;
   edits: ObjectEdit[];
   password?: string | null;
-}) => invoke<EditReport>("pdf_edit_objects", { request });
+}) => call((c) => c.pdfEditObjects(request));
 
 /** One text-showing operation on a page (V3.6 content editing). */
 export interface TextRunInfo {
@@ -969,7 +921,7 @@ export interface TextEditReport {
 }
 
 export const pdfListTextRuns = (path: string, password?: string) =>
-  invoke<TextRunInfo[]>("pdf_list_text_runs", { path, password: password || null });
+  call((c) => c.pdfListTextRuns(path, password || null));
 
 /** Replaces run text; the output keeps the original bytes as a new revision. */
 export const pdfEditTextRuns = (request: {
@@ -977,4 +929,4 @@ export const pdfEditTextRuns = (request: {
   output: OutputSpec;
   edits: TextRunEdit[];
   password?: string | null;
-}) => invoke<TextEditReport>("pdf_edit_text_runs", { request });
+}) => call((c) => c.pdfEditTextRuns(request));

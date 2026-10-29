@@ -90,6 +90,7 @@ const MAX_TO_UNICODE: usize = 4 * 1024 * 1024;
 
 /// One font's outcome. `embedded` means "this conversion embedded a program
 /// now"; a font that already carried one is reported as skipped, not embedded.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EmbeddedFontReport {

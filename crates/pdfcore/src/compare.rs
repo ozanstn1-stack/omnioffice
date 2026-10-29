@@ -18,6 +18,7 @@ use crate::progress::{CancelToken, ProgressCallback, ProgressReporter};
 use crate::render::RenderOptions;
 
 /// One difference between two pages of text.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextDifference {
@@ -30,12 +31,14 @@ pub struct TextDifference {
 }
 
 /// How two pages look different.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VisualDifference {
     /// Page in the original document, 1-based.
     pub page: u32,
     /// 0 (identical) to 1 (completely different).
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub difference: f64,
     pub changed_pixels: u64,
     pub total_pixels: u64,
@@ -43,6 +46,7 @@ pub struct VisualDifference {
     pub preview: String,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompareOptions {
@@ -66,6 +70,7 @@ impl Default for CompareOptions {
     }
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompareReport {

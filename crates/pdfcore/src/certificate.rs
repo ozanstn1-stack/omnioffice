@@ -28,6 +28,7 @@ pub const CERTIFICATE_FILE_NAME: &str = "omni-redaction-certificate.json";
 pub const CERTIFICATE_XMP_NAMESPACE: &str = "https://omnioffice.app/ns/redaction/1.0/";
 
 /// SHA-256 and size of one file in the chain.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -38,6 +39,7 @@ pub struct FileDigest {
 }
 
 /// One redaction: where and under which rule, never what.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -49,6 +51,7 @@ pub struct CertificateItem {
 }
 
 /// The granted timestamp, mirroring [`TimestampToken`] in JSON form.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -61,6 +64,7 @@ pub struct CertificateTimestamp {
 }
 
 /// The certificate as embedded in the PDF.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -78,6 +82,7 @@ pub struct RedactionCertificate {
 }
 
 /// The result of checking a PDF for a certificate.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export))]
 #[derive(Debug, Clone, Serialize)]

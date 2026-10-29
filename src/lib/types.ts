@@ -36,29 +36,9 @@ export interface PdfMetadata {
   mod_date: string;
 }
 
-export interface PdfInfo {
-  path: string;
-  fileName: string;
-  fileSizeBytes: number;
-  pageCount: number;
-  pdfVersion: string;
-  encrypted: boolean;
-  hasTextLayer: boolean;
-  metadata: PdfMetadata;
-  pageGeometries: PageGeometry[];
-  imageCount: number;
-  title: string;
-  author: string;
-  producer: string;
-  /** Document bookmarks; entries whose destination could not be resolved have page 0. */
-  outline: OutlineEntry[];
-}
+export type PdfInfo = specta.PdfInfo;
 
-export interface Thumbnail {
-  dataUrl: string;
-  width: number;
-  height: number;
-}
+export type Thumbnail = specta.Thumbnail;
 
 export type OverwriteMode = "error" | "replace" | "unique_name";
 
@@ -67,13 +47,14 @@ export interface OutputSpec {
   overwrite?: OverwriteMode;
 }
 
+/** A tool's result as the screens show it (also built on the front end for multi-step tools). */
 export interface OpResult {
   path: string;
-  pageCount?: number;
-  originalBytes?: number;
-  outputBytes?: number;
-  reduction?: number;
-  message?: string;
+  pageCount?: number | null;
+  originalBytes?: number | null;
+  outputBytes?: number | null;
+  reduction?: number | null;
+  message?: string | null;
 }
 
 export interface ProgressPayload {
@@ -100,15 +81,7 @@ export interface ImageOutput {
   bytes: number;
 }
 
-export interface CompressEstimate {
-  original_bytes: number;
-  estimated_bytes: number;
-  page_count: number;
-  reduction: number;
-  method: string;
-  sample_pages: number;
-  accurate: boolean;
-}
+export type CompressEstimate = specta.CompressEstimate;
 
 export interface CompressOptions {
   strategy: "lossless" | "raster";
@@ -212,23 +185,8 @@ export interface Annotation {
 }
 
 /** An annotation read back from a document, in display space (top-left). */
-export interface EditableAnnotation {
-  page: number;
-  /** Index among the page's annotations, stable for edit/delete. */
-  index: number;
-  kind: AnnotationKind;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  text: string;
-  color: string;
-  opacity: number;
-  lineWidthPt: number;
-  fontSizePt: number;
-  bold: boolean;
-  strokes: number[][][];
-}
+/** `index` is the annotation's position on its page, stable for edit/delete. */
+export type EditableAnnotation = Omit<specta.EditableAnnotation, "kind"> & { kind: AnnotationKind };
 
 export type AnnotationEditAction =
   | { action: "move"; dx: number; dy: number }
@@ -238,11 +196,7 @@ export type AnnotationEditAction =
 
 export type AnnotationEditItem = { page: number; index: number } & AnnotationEditAction;
 
-export interface AnnotationEditReport {
-  edited: number;
-  deleted: number;
-  warnings: string[];
-}
+export type AnnotationEditReport = specta.AnnotationEditReport;
 
 export interface ImageToPdfOptions {
   page_size: string;
@@ -442,12 +396,7 @@ export interface TextMatch {
   index_on_page: number;
 }
 
-export interface SearchResponse {
-  matches: TextMatch[];
-  pagesWithMatches: number;
-  totalMatches: number;
-  truncated: boolean;
-}
+export type SearchResponse = specta.SearchResponse;
 
 // ---------------------------------------------------------------------------
 // AI (DeepSeek) types
@@ -794,43 +743,4 @@ export interface OutlineEntry {
   depth: number;
 }
 
-export interface DocumentInspection {
-  path: string;
-  fileSizeBytes: number;
-  pdfVersion: string;
-  pageCount: number;
-  encrypted: boolean;
-  linearized: boolean;
-  objectCount: number;
-  /** /StructTreeRoot is present. */
-  hasStructTree: boolean;
-  /** /MarkInfo is present. */
-  marked: boolean;
-  /** The structure tree itself parsed. */
-  structTree: boolean;
-  /** `Figure` structure elements without `/Alt` text. */
-  figuresMissingAlt: number;
-  language: string;
-  viewerPreferences: string;
-  fonts: FontInfo[];
-  images: ImageInfo[];
-  colorSpaces: ColorSpaceInfo[];
-  annotations: AnnotationInfo[];
-  formFields: FormFieldInfo[];
-  outline: OutlineEntry[];
-  embeddedFiles: string[];
-  hasJavascript: boolean;
-  javascriptEntries: string[];
-  hasOpenAction: boolean;
-  hasAcroForm: boolean;
-  attachmentCount: number;
-  totalImagePixels: number;
-  findings: InspectionFinding[];
-  /** "pdf/ua" when the blocking checks pass, otherwise the first failure. */
-  accessibilityConformance: string;
-  titleOverride: string;
-  subjectOverride: string;
-  authorOverride: string;
-  producer: string;
-  creator: string;
-}
+export type DocumentInspection = specta.DocumentInspection;

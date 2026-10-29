@@ -18,6 +18,7 @@ import ocrPreprocessSource from "./generated/OcrPreprocess.ts?raw";
 import redactionAreaSource from "./generated/RedactionArea.ts?raw";
 import redactionOptionsSource from "./generated/RedactionOptions.ts?raw";
 import recipeStepSource from "./generated/RecipeStep.ts?raw";
+import spectaSource from "./generated/specta.ts?raw";
 
 /** Field names of a generated `export type X = { a: T, b?: U, };`. */
 function generatedFields(source: string, typeName: string): string[] {
@@ -75,8 +76,13 @@ describe("generated bindings match the hand-written types", () => {
     });
   }
 
+  // The app's RecipeStep is the tauri-specta binding (#316); it must carry the
+  // same variants and fields as the ts-rs export of the same Rust enum.
   it("RecipeStep carries the same variants and fields as the Rust enum", () => {
-    expect(unionVariants(apiSource, "RecipeStep")).toEqual(unionVariants(recipeStepSource, "RecipeStep"));
+    expect(apiSource).toContain("export type RecipeStep = specta.RecipeStep_Deserialize;");
+    expect(unionVariants(spectaSource, "RecipeStep_Deserialize")).toEqual(
+      unionVariants(recipeStepSource, "RecipeStep"),
+    );
   });
 
   it("documents the snake_case wire names of the compress/OCR options", () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import inspectSource from "./Inspect.tsx?raw";
-import typesSource from "../lib/types.ts?raw";
+import spectaSource from "../lib/generated/specta.ts?raw";
 
 /**
  * The inspector reads `DocumentInspection`, which the backend serializes with
@@ -32,9 +32,12 @@ describe("the inspection payload and the inspector agree", () => {
   });
 
   it("declares every field the backend sends", () => {
+    // DocumentInspection is generated from the Rust struct (#316); its fields
+    // are the tab-indented lines of the generated type.
     const declared = new Set<string>();
-    const body = typesSource.slice(typesSource.indexOf("export interface DocumentInspection {"));
-    for (const match of body.matchAll(/^ {2}([A-Za-z0-9]+)\??:/gm)) declared.add(match[1]);
+    const start = spectaSource.indexOf("export type DocumentInspection = {");
+    const body = spectaSource.slice(start, spectaSource.indexOf("\n};", start));
+    for (const match of body.matchAll(/^\t([A-Za-z0-9]+)\??:/gm)) declared.add(match[1]);
     expect(
       keys.filter((key) => !declared.has(key)),
       "DocumentInspection is missing fields the backend sends",

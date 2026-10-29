@@ -8,14 +8,17 @@ use lopdf::{Document, Object};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResizeOptions {
     /// a3 | a4 | a5 | letter | legal | custom
     #[serde(default = "default_size")]
     pub page_size: String,
     #[serde(default)]
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub custom_width_pt: f64,
     #[serde(default)]
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub custom_height_pt: f64,
     /// auto | portrait | landscape
     #[serde(default = "default_orientation")]
@@ -148,14 +151,19 @@ pub fn resize_pages(
     Ok(final_path)
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CropItem {
     pub page: u32,
     /// Display-space rectangle (top-left origin, points), as reported by the
     /// crop UI overlay.
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub x: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub y: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub w: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub h: f64,
 }
 

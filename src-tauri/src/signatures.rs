@@ -54,6 +54,7 @@ fn signatures_dir(app: &AppHandle) -> Result<PathBuf, PdfError> {
     Ok(dir)
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureEntry {
@@ -150,6 +151,7 @@ async fn blocking<T: Send + 'static>(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn signature_save(app: AppHandle, name: String, image_base64: String) -> Result<(), PdfError> {
     let name = sanitize_name(&name);
     if name.is_empty() {
@@ -167,12 +169,14 @@ pub async fn signature_save(app: AppHandle, name: String, image_base64: String) 
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn signature_list(app: AppHandle) -> Result<Vec<SignatureEntry>, PdfError> {
     let dir = signatures_dir(&app)?;
     blocking(move || Ok(list_in(&dir, secret::platform_cipher()))).await
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn signature_delete(app: AppHandle, name: String) -> Result<(), PdfError> {
     let name = sanitize_name(&name);
     if name.is_empty() {

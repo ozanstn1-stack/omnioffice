@@ -33,9 +33,7 @@ import {
 } from "../lib/api";
 import { normalizePageSize, rectToUserSpace, userSpaceToRect } from "../lib/redact-geometry";
 import { renderCertificateMarkdown, type RedactedItemRecord } from "../lib/redact-cert";
-import type { CertificateItem } from "../lib/generated/CertificateItem";
-import type { RedactionCertificate } from "../lib/generated/RedactionCertificate";
-import type { CertificateVerification } from "../lib/generated/CertificateVerification";
+import type * as specta from "../lib/generated/specta";
 import type { ImageRedactionMode, RedactionArea, RedactionOptions } from "../lib/types";
 import { kindLabel, matchBox, matchRow, splitKeywords, type DrawnBox, type MatchRow } from "../lib/redact-rows";
 import { useScreenReady } from "../lib/screen-ready";
@@ -255,8 +253,8 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
 
   /** Maps the Rust certificate onto the display record (no values, ever). */
   const displayCertificate = (
-    certificate: RedactionCertificate,
-    verification: CertificateVerification,
+    certificate: specta.RedactionCertificate_Serialize,
+    verification: specta.CertificateVerification_Serialize,
     documentName: string,
   ) => ({
     certificateId: certificate.id,
@@ -283,7 +281,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
     }
     setCertBusy(true);
     try {
-      const certItems: CertificateItem[] = boxes.map((box) => ({
+      const certItems: specta.CertificateItem[] = boxes.map((box) => ({
         page: box.page,
         category:
           box.kind === "tckn" ||
