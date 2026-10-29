@@ -22,18 +22,18 @@ its own release section; the issue checklist is updated when an item lands.
 | C5. Official letter | Delivered in 6.5.0 (#487) | `official-letter-template.ts` |
 | C6. Smart template form and person cards | Open | `office/templates.ts`, `MailMerge.tsx` exist; no form/person layer |
 | C7. Turkish AI task packs, local by default | Partial | Ollama provider preset exists; no task packs or local-default flow |
-| C8. Provenance-backed output | Partial | `aicore/citations.rs` verifies chat citations; exports carry no source manifest |
-| C9. Verification chain (verification only) | Infrastructure ready, screen missing | `certificate.rs`, `revocation.rs`, `ltv.rs`, `evidence.rs`; pre-send check reports signature problems |
+| C8. Provenance-backed output | Delivered in 6.6.0 for PDFs; DOCX and automatic producers remain | `crates/pdfcore/src/provenance.rs`, `pdf_provenance_write/read`; card on the verification screen |
+| C9. Verification chain (verification only) | Delivered in 6.6.0 | verification screen over the existing certificate/revocation/LTV modules; trust stays unknown |
 | C10. Pre-send check | Delivered in 6.4.1 | `DocumentHealthScreen.tsx`, `document-health.ts` |
 | C11. Mobile ergonomics | Delivered in 6.4.4 and 6.5.1; per-screen audit remains | `bottom-nav.tsx`, touch CSS tests |
 | C12. Real scanner | Partial | Camera capture and manual four-corner picker only; no automatic edge detection |
 | C13. Make differences visible | Partial | PDF Compare exists (`pdfcore/src/compare.rs`); no office-document or version-history comparison |
 | C14. Office-internal sync | Partial | WebDAV/Drive/OneDrive sync and `synccore/src/merge.rs`; no same-network device pairing |
-| C15. Privacy-preserving feedback | Open | No feedback path; diagnostics exist (`diagnostics.rs`, `crash_log.rs`) |
+| C15. Privacy-preserving feedback | Delivered in 6.6.0 | `report-problem.tsx`, `feedback.ts`; the diagnostics report is copied and the issue pre-filled, nothing is uploaded |
 
 ## Open and partial items
 
-### C9. Document verification screen — M, 2–3 days
+### C9. Document verification screen — delivered in 6.6.0
 
 **Goal.** One screen that answers "is this document real, and what changed
 since it was signed?" for signed PDFs.
@@ -55,7 +55,7 @@ instead of being presented as valid (consistent with the current limitation).
 an unsigned PDF says "no signature"; a valid test signature shows signer and
 time; both UI languages.
 
-### C8. Provenance-backed output — M, about 2 days
+### C8. Provenance-backed output — delivered in 6.6.0 for PDFs
 
 **Goal.** Every generated PDF/DOCX can prove where it came from.
 
@@ -167,7 +167,7 @@ background limits shape the design.
 a conflicting change shows the existing manual resolution; unpair revokes
 access.
 
-### C15. Privacy-preserving feedback — S, 0.5–1 day
+### C15. Privacy-preserving feedback — delivered in 6.6.0
 
 **Goal.** A feedback path that never leaks document content.
 
@@ -195,7 +195,7 @@ disabled command says why; plugin commands keep working.
 
 | Release | Contents | Effort |
 |---|---|---|
-| v6.6.0 "Verify" | C9, C8, C15 | 3–4 days |
+| v6.6.0 "Verify" | C9, C8, C15 | Done in 6.6.0 (C8: PDF manifests only) |
 | v6.7.0 "Templates" | C6, C1 remainder | 3–4 days |
 | v6.8.0 "Compare" | C13, tracker and README/RELEASE_READINESS cleanup | 2–3 days |
 | v6.9.0 "Local AI" | C7 | 3–5 days |

@@ -4,6 +4,35 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.6.0] - Doğrulama, geri bildirim ve kaynak manifesti
+
+### Added
+
+- **Signature verification screen (C9, #493):** the Security section gains
+  "Verify signature": pick a PDF and see, without signing anything, whether
+  the document was signed, whether the signed revision changed afterwards,
+  one verdict for the document (verified, changed after signing, does not
+  verify, unsigned, unreadable) and, per signature, the signer, issuer,
+  serial, validity, signing time, RFC 3161 timestamp, algorithm, SHA-256,
+  certificate chain and notes. The optional online revocation check is
+  disabled until it is turned on in Settings and a failed online check keeps
+  the offline result. Trust is still reported unknown: the build has no
+  system trust store.
+- **Source manifest for generated PDFs (C8, #497):** a manifest embedded in
+  the file (JSON record plus XMP) records the source files with their
+  SHA-256, the creation time, the producing module and - when AI was
+  involved - the provider, model and citation count. Reopening the document
+  shows the manifest and reports when the document changed after it was
+  written. The verification screen shows the manifest and writes a manifested
+  copy from picked source files and a note. A signed document is refused: a
+  rewrite would break its signatures. DOCX manifests and automatic manifests
+  from the producer screens remain follow-ups.
+- **Report a problem without uploading anything (C15, #495):** Settings'
+  diagnostics section now opens a feedback flow that builds the existing
+  redacted diagnostics report, shows it for review, copies it on request and
+  opens the GitHub issue form pre-filled with a template. Nothing is sent
+  automatically; file and folder names stay masked as `<path>`.
+
 ## [6.5.1] - Telefon denetimindeki arayüz kusurları
 
 ### Fixed

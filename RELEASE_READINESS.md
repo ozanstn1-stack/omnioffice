@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 6.5.1
+# Release Readiness — OmniOffice 6.6.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -30,6 +30,51 @@ Two channels carry builds:
 The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
+
+## Implemented (this cycle, 6.6.0) - Doğrulama, geri bildirim ve kaynak manifesti
+
+- **Signature verification screen (C9, #493):** pick a PDF and read one
+  verdict for the document (verified, changed after signing, does not verify,
+  unsigned, unreadable) and, per signature, validity, digest match, coverage,
+  certificate chain, signing time, RFC 3161 timestamp, algorithm, SHA-256 and
+  notes. The online revocation check is disabled until it is turned on in
+  Settings; a failed online check keeps the offline result. Trust stays
+  unknown because there is no system trust store.
+  `test:src/lib/verify-signatures.test.ts#prefers modified over invalid when both are present`
+  `test:src/lib/verify-signatures.test.ts#treats an unreadable file as unreadable, not unsigned`
+  `test:src/screens/Verify.test.tsx#calls out a document whose signed revision changed`
+  `test:src/screens/Verify.test.tsx#keeps the offline result when the online revocation check fails`
+- **Source manifest for generated PDFs (C8, #497):** a JSON record plus XMP
+  packet carries the sources with their SHA-256, the creation time, the
+  producing module and the AI provider/model/citation count when one was
+  involved. The recorded digest is the document with the manifest stripped
+  and is recomputed on read; a changed document is reported as not intact;
+  a signed document is refused because a rewrite would break its signatures.
+  The verification screen shows the manifest and writes a manifested copy.
+  `test:crates/pdfcore/src/provenance.rs#embedding_round_trips_the_manifest_and_the_digest`
+  `test:crates/pdfcore/src/provenance.rs#changing_the_document_after_the_manifest_is_detected`
+  `test:crates/pdfcore/src/provenance.rs#re_embedding_replaces_the_manifest_instead_of_stacking_it`
+  `test:src/components/provenance-card.test.tsx#writes a copy with the picked sources and the app version`
+  `test:src/components/provenance-card.test.tsx#calls out a document changed after the manifest`
+- **Report a problem without uploading anything (C15, #495):** the live
+  diagnostics report is shown for review, copied on request and the GitHub
+  issue form opens pre-filled; nothing is sent automatically and file/folder
+  names stay masked as `<path>`.
+  `test:src/lib/feedback.test.ts#prefills the title, body and label`
+  `test:src/components/report-problem.test.tsx#copies the report and opens the pre-filled GitHub issue`
+  `test:src/components/report-problem.test.tsx#says so when the browser cannot be opened`
+
+### Not done / Known limitations (6.6.0)
+
+- The provenance manifest is written for PDFs only; a DOCX custom XML part is
+  not written yet and the producer screens (merge, office PDF export, ...) do
+  not add it automatically - the verification screen writes it on request.
+  (no test: documented follow-up, #497.)
+- Adding a manifest needs the desktop save dialog; on Android the provenance
+  card reads a manifest but cannot write one. (no test: documented follow-up, #497.)
+- Verification reports trust `unknown`: there is no system trust store, and
+  the online revocation check is opt-in and separate from trust.
+  (no test: the Rust side documents this and no trust-store work shipped.)
 
 ## Implemented (this cycle, 6.5.1) - Telefon denetimindeki arayüz kusurları
 
