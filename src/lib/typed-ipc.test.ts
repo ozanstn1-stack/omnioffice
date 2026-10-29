@@ -105,3 +105,29 @@ describe("typed bindings: the ai group", () => {
     expect(read("src/lib/api.ts")).not.toMatch(/invoke(?:<[^>]*>)?\(\s*"ai_/);
   });
 });
+
+describe("typed bindings: the office group", () => {
+  const ipc = read("src-tauri/src/ipc.rs");
+  const officeBlock = /office_commands \{\n([\s\S]*?)\n\s*\}\n\}/.exec(ipc)?.[1] ?? "";
+  const officeCommands = [...officeBlock.matchAll(/[a-z_]+::([a-z_0-9]+),/g)].map((match) => match[1]);
+  const generated = read("src/lib/generated/specta.ts");
+
+  it("generates a typed wrapper for every office command", () => {
+    expect(officeCommands.length).toBe(43);
+    for (const name of officeCommands) {
+      expect(generated, name).toMatch(new RegExp(`__TAURI_INVOKE(?:<[^>]*>)?\\("${name}"`));
+    }
+  });
+
+  it("leaves no hand-written office invoke in the app", () => {
+    const pattern = new RegExp(`invoke(?:<[^>]*>)?\\(\\s*"(?:${officeCommands.join("|")})"`);
+    for (const file of [
+      "src/lib/office-api.ts",
+      "src/lib/api.ts",
+      "src/components/compatibility.tsx",
+      "src/screens/Compatibility.tsx",
+    ]) {
+      expect(read(file), file).not.toMatch(pattern);
+    }
+  });
+});

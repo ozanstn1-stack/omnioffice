@@ -70,6 +70,7 @@ dependencies = [
  "serde",
  "serde_json",
  "specta",
+ "specta-typescript",
  "thiserror 2.0.21",
  "tokio",
 ]
@@ -3524,6 +3525,8 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "specta",
+ "specta-typescript",
  "tempfile",
  "thiserror 2.0.21",
  "uuid",
@@ -3785,6 +3788,7 @@ dependencies = [
  "sha1",
  "sha2 0.10.9",
  "specta",
+ "specta-typescript",
  "tempfile",
  "thiserror 2.0.21",
  "time",
@@ -5242,6 +5246,7 @@ checksum = "ed155e448f42fc4be7a5cbc12bd43f6c549981f7c32fcba429ff6bc57cc4f30c"
 dependencies = [
  "paste",
  "rustc_version",
+ "serde_json",
  "specta-macros",
 ]
 

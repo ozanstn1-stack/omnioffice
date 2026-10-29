@@ -30,6 +30,7 @@ const MONEY_TOLERANCE: f64 = 0.005;
 // Model
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct UblParty {
@@ -43,35 +44,49 @@ pub struct UblParty {
     pub city: String,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct UblTaxSubtotal {
     /// VAT or withholding rate in percent.
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub rate: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub taxable: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub tax: f64,
     /// `KDV`, `KDV Tevkifatı`, `ÖTV`, ...
     pub name: String,
     pub exemption_reason: String,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct UblLine {
     pub id: String,
     pub name: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub quantity: f64,
     pub unit: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub unit_price: f64,
     /// Line-level discount (`cac:AllowanceCharge`, indicator false).
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub allowance: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub line_total: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub vat_rate: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub vat_amount: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub withholding_rate: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub withholding_amount: f64,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct UblInvoice {
@@ -90,22 +105,32 @@ pub struct UblInvoice {
     pub lines: Vec<UblLine>,
     pub tax_subtotals: Vec<UblTaxSubtotal>,
     pub withholding_subtotals: Vec<UblTaxSubtotal>,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub line_extension_amount: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub tax_exclusive_amount: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub tax_inclusive_amount: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub allowance_total: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub tax_amount: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub withholding_amount: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub payable_amount: f64,
     pub notes: Vec<String>,
 }
 
 /// A field whose value disagrees with the arithmetic the invoice claims.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct UblIssue {
     pub field: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub expected: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub found: f64,
     pub message: String,
 }
@@ -119,9 +144,11 @@ pub struct UblRead {
 }
 
 /// One dated entry of the reference VAT-rate table.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct VatRate {
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub rate: f64,
     pub label: String,
     /// Inclusive start date (`YYYY-MM-DD`).

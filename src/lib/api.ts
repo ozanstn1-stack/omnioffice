@@ -1,6 +1,5 @@
 import type * as specta from "./generated/specta";
 import type { SyncState, VaultScanRequest_Deserialize } from "./generated/specta";
-import type { CommandResult } from "./typed-ipc";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { FileToken } from "./file-tokens";
@@ -49,6 +48,7 @@ import type { CertificateItem } from "./generated/CertificateItem";
 import type { CertificateVerification } from "./generated/CertificateVerification";
 import type { RedactionCertificate } from "./generated/RedactionCertificate";
 import { trackJobInvocation } from "./job-retries";
+import { call, callPlain } from "./typed-call";
 
 /**
  * Every long operation goes through here: the retry metadata (kind + the exact
@@ -61,19 +61,6 @@ function invokeTracked<T>(command: string, args: Record<string, unknown>): Promi
 }
 
 export { invokeTracked };
-
-/**
- * Typed command calls (tauri-specta, #316). The generated wrappers load on
- * first use: this module sits in the entry chunk, which cannot carry them.
- * `call` unwraps a command that returns a Result (it rejects with the
- * command's error, as `invoke` does); `callPlain` is for the others.
- */
-type Commands = typeof import("./generated/specta").commands;
-const typedCommands = () => import("./typed-ipc");
-const call = <T>(run: (commands: Commands) => Promise<CommandResult<T, unknown>>): Promise<T> =>
-  typedCommands().then(({ commands, unwrap }) => unwrap(run(commands)));
-const callPlain = <T>(run: (commands: Commands) => Promise<T>): Promise<T> =>
-  typedCommands().then(({ commands }) => run(commands));
 
 /** Normalizes any thrown value into a friendly {code, message} pair. */
 export function toAppError(error: unknown): { code: string; message: string } {
@@ -289,7 +276,7 @@ export const devLaunchContext = () =>
     tab: string | null;
   }>("dev_launch_context");
 
-export const startupFiles = () => invoke<FileToken[]>("office_startup_files");
+export const startupFiles = (): Promise<FileToken[]> => callPlain((c) => c.officeStartupFiles());
 
 /** Drains the files later launches forwarded to this (single) instance. */
 export const takeLaunchFiles = () => invoke<FileToken[]>("office_take_launch_files");

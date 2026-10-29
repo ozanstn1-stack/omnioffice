@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// One attachment (or an unparsed body part kept for the user).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct EmlAttachment {
@@ -34,6 +35,7 @@ pub struct EmlAttachment {
     pub data_base64: String,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct EmlMessage {
@@ -51,6 +53,7 @@ pub struct EmlMessage {
     pub warnings: Vec<String>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct EmlHeader {

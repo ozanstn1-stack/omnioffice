@@ -136,6 +136,126 @@ export const commands = {
 	/**  Copies a stored result to a user-chosen path (Save as...). */
 	aiLibraryExport: (id: string, target: string) => typedError<string, PdfError>(__TAURI_INVOKE("ai_library_export", { id, target })),
 	aiLibraryDefaultDir: () => __TAURI_INVOKE<string>("ai_library_default_dir"),
+	/**
+	 *  Files passed on the command line (Windows file associations / "Open with").
+	 *  Only existing file paths are returned; anything else is ignored.
+	 */
+	officeStartupFiles: () => __TAURI_INVOKE<FileRef_Serialize[]>("office_startup_files"),
+	officeOpenDocument: (path: string) => typedError<OpenDocument_Serialize, OfficeErrorPayload>(__TAURI_INVOKE("office_open_document", { path })),
+	officeSaveDocument: (kind: string, model: Value, path: string) => typedError<SaveDocument, OfficeErrorPayload>(__TAURI_INVOKE("office_save_document", { kind, model, path })),
+	officeSaveUnit: (kind: string, title: string, model: Value, path: string) => typedError<SaveDocument, OfficeErrorPayload>(__TAURI_INVOKE("office_save_unit", { kind, title, model, path })),
+	officeExportPdf: (kind: string, model: Value, path: string) => typedError<SaveDocument, OfficeErrorPayload>(__TAURI_INVOKE("office_export_pdf", { kind, model, path })),
+	officeConvert: (input: string, output: string, options: ConvertOptions_Deserialize | null) => typedError<ConversionInfo, OfficeErrorPayload>(__TAURI_INVOKE("office_convert", { input, output, options })),
+	/**
+	 *  Lists the conversions the converter can perform for a given extension.
+	 * 
+	 *  UYAP `.udf` is experimental (no real UYAP file has verified the round trip
+	 *  yet, RELEASE_READINESS.md), so it is deliberately absent as both a source
+	 *  and a target; the engine still reads and writes it behind the
+	 *  `experimentalUdf` flag.
+	 */
+	officeConversionTargets: (extension: string) => __TAURI_INVOKE<string[]>("office_conversion_targets", { extension }),
+	/**
+	 *  Opens a `.xml`/`.zip` UBL-TR invoice and returns both the parsed fields and
+	 *  the Writer model the app renders (never the invoice's own XSLT).
+	 */
+	officeOpenInvoice: (path: string) => typedError<InvoiceDocument_Serialize, OfficeErrorPayload>(__TAURI_INVOKE("office_open_invoice", { path })),
+	/**
+	 *  Reads every invoice in one `.xml`/`.zip` file. A zip can hold several
+	 *  invoices; the single-invoice command returns only the first.
+	 */
+	officeOpenInvoicePackage: (path: string) => typedError<InvoiceDocument_Serialize[], OfficeErrorPayload>(__TAURI_INVOKE("office_open_invoice_package", { path })),
+	/**  Reads every invoice in the selection and builds the VAT summary workbook. */
+	officeInvoiceSummary: (paths: string[]) => typedError<InvoiceSummary, OfficeErrorPayload>(__TAURI_INVOKE("office_invoice_summary", { paths })),
+	/**  The dated reference VAT-rate table shown next to the validation results. */
+	officeVatRates: () => __TAURI_INVOKE<VatRate[]>("office_vat_rates"),
+	/**
+	 *  Reads the GİB karekod (e-Fatura QR) from a PDF's first pages (or a given
+	 *  page). Returns `None` when no QR is found, so the UI can say so plainly.
+	 */
+	officeReadInvoiceQr: (path: string, page: number | null) => typedError<InvoiceQr_Serialize | null, OfficeErrorPayload>(__TAURI_INVOKE("office_read_invoice_qr", { path, page })),
+	/**
+	 *  Opens a KEP `.eml` message (read-only): headers, body and attachments. Each
+	 *  attachment is written to a temp directory so the UI can open it; the message
+	 *  itself is never modified and nothing is sent anywhere.
+	 */
+	officeOpenEml: (path: string) => typedError<EmlMessage_Serialize, OfficeErrorPayload>(__TAURI_INVOKE("office_open_eml", { path })),
+	/**
+	 *  Turns each captured page upright, corrects its perspective when it has
+	 *  corners and assembles a multi-page PDF through the existing image-to-PDF
+	 *  writer. The photos come from the system camera (Android) or a file pick.
+	 */
+	officeScanPages: (request: ScanRequest_Deserialize) => typedError<ScanResult, OfficeErrorPayload>(__TAURI_INVOKE("office_scan_pages", { request })),
+	/**
+	 *  A small upright preview of a page photo for the corner picker. The photo
+	 *  itself can be 12 MP and carry its rotation in EXIF; the preview is turned
+	 *  the same way the page will be, so the picked corners line up.
+	 */
+	officeScanPreview: (path: string) => typedError<ScanPreview, OfficeErrorPayload>(__TAURI_INVOKE("office_scan_preview", { path })),
+	/**
+	 *  Fills a Writer template's `{{alan}}` placeholders from a CSV file and writes
+	 *  one document per row. A row that misses a placeholder is reported, not
+	 *  written.
+	 */
+	officeMailMerge: (request: MailMergeRequest_Deserialize) => typedError<MailMergeReport, OfficeErrorPayload>(__TAURI_INVOKE("office_mail_merge", { request })),
+	/**
+	 *  Offline Turkish spell checker command. Async + `spawn_blocking`: a long
+	 *  document must never block the UI thread while the analyzer walks it.
+	 */
+	turkishSpellcheck: (text: string, suggestionsLimit: number | null) => __TAURI_INVOKE<SpellCheckResponse>("turkish_spellcheck", { text, suggestionsLimit }),
+	/**  Suggestions for a single word. */
+	turkishSuggestions: (word: string, limit: number | null) => __TAURI_INVOKE<string[]>("turkish_suggestions", { word, limit }),
+	officeClean: (path: string, options: CleanOptions_Deserialize) => typedError<CleanResult_Serialize, OfficeErrorPayload>(__TAURI_INVOKE("office_clean", { path, options })),
+	officeImageFootprint: (path: string) => typedError<number, OfficeErrorPayload>(__TAURI_INVOKE("office_image_footprint", { path })),
+	storeLoad: (key: string) => typedError<Value, OfficeErrorPayload>(__TAURI_INVOKE("store_load", { key })),
+	storeSave: (key: string, value: Value) => typedError<null, OfficeErrorPayload>(__TAURI_INVOKE("store_save", { key, value })),
+	storeClear: (key: string) => typedError<null, OfficeErrorPayload>(__TAURI_INVOKE("store_clear", { key })),
+	historyPush: (documentId: string, kind: string, title: string, model: Value) => typedError<HistoryEntry, OfficeErrorPayload>(__TAURI_INVOKE("history_push", { documentId, kind, title, model })),
+	historyList: (documentId: string) => typedError<HistoryEntry[], OfficeErrorPayload>(__TAURI_INVOKE("history_list", { documentId })),
+	historyLoad: (documentId: string, version: number) => typedError<Value, OfficeErrorPayload>(__TAURI_INVOKE("history_load", { documentId, version })),
+	historyClear: (documentId: string) => typedError<null, OfficeErrorPayload>(__TAURI_INVOKE("history_clear", { documentId })),
+	recoverySave: (documentId: string, kind: string, title: string, path: string | null, model: Value) => typedError<null, OfficeErrorPayload>(__TAURI_INVOKE("recovery_save", { documentId, kind, title, path, model })),
+	/**
+	 *  Autosave that stores images separately. `model` already has each image's
+	 *  `dataBase64` replaced by a `blobRef` digest; `blobs` carries only the blobs
+	 *  the session has not sent yet, so an autosave of a document with unchanged
+	 *  images moves no image data over IPC at all.
+	 */
+	recoverySaveBlobs: (documentId: string, kind: string, title: string, path: string | null, model: Value, blobs: { [key in string]: string }) => typedError<null, OfficeErrorPayload>(__TAURI_INVOKE("recovery_save_blobs", { documentId, kind, title, path, model, blobs })),
+	/**
+	 *  Deletes blobs no snapshot references any more (one blob can back many
+	 *  snapshots, so this is a mark-and-sweep, never a per-snapshot delete).
+	 *  Returns how many files were removed.
+	 */
+	recoveryGcBlobs: () => typedError<number, OfficeErrorPayload>(__TAURI_INVOKE("recovery_gc_blobs")),
+	recoveryList: () => typedError<RecoveryEntry_Serialize[], OfficeErrorPayload>(__TAURI_INVOKE("recovery_list")),
+	recoveryLoad: (documentId: string) => typedError<Value, OfficeErrorPayload>(__TAURI_INVOKE("recovery_load", { documentId })),
+	recoveryDiscard: (documentId: string) => typedError<null, OfficeErrorPayload>(__TAURI_INVOKE("recovery_discard", { documentId })),
+	recoveryDiscardAll: () => typedError<null, OfficeErrorPayload>(__TAURI_INVOKE("recovery_discard_all")),
+	officeImagesToPdf: (request: OfficeImagesToPdfRequest_Deserialize) => typedError<string, OfficeErrorPayload>(__TAURI_INVOKE("office_images_to_pdf", { request })),
+	officePdfToImages: (request: OfficePdfToImagesRequest_Deserialize) => typedError<string[], OfficeErrorPayload>(__TAURI_INVOKE("office_pdf_to_images", { request })),
+	officePdfToText: (request: PdfTextRequest_Deserialize) => typedError<string, OfficeErrorPayload>(__TAURI_INVOKE("office_pdf_to_text", { request })),
+	officePdfAddForm: (request: PdfFormRequest_Deserialize) => typedError<string, OfficeErrorPayload>(__TAURI_INVOKE("office_pdf_add_form", { request })),
+	/**
+	 *  Reading form fields back out of a PDF (used for previews and batch flows).
+	 * 
+	 *  Delegates to `pdfcore::forms::list_fields`, which walks the AcroForm field
+	 *  tree properly (parent `/Kids`, `/FT` and `/V` inheritance, widget state
+	 *  dictionaries) instead of the earlier shallow read that reported every
+	 *  field as page 1, dropped options and guessed the type from `/FT` alone.
+	 *  Coordinates are converted back to the top-left origin the office form
+	 *  editor uses, so listing a created form and saving it again leaves every
+	 *  field where it was.
+	 */
+	officePdfListForm: (input: string) => typedError<PdfFormField_Serialize[], OfficeErrorPayload>(__TAURI_INVOKE("office_pdf_list_form", { input })),
+	/**  The capability matrix for one file extension (Compatibility Center). */
+	officeCapabilities: (extension: string) => __TAURI_INVOKE<FormatCapabilities>("office_capabilities", { extension }),
+	/**  What the document *model* supports for a kind, independent of the format. */
+	officeModelCapabilities: (kind: string) => __TAURI_INVOKE<DocumentCapabilities>("office_model_capabilities", { kind }),
+	/**  Lists every extension this build can open. */
+	officeSupportedExtensions: () => __TAURI_INVOKE<string[]>("office_supported_extensions"),
+	/**  Reports what `kind`'s model would lose if it were saved as `target`. */
+	officeCompatibility: (kind: string, model: Value, target: string) => typedError<CompatibilityReport, OfficeErrorPayload>(__TAURI_INVOKE("office_compatibility", { kind, model, target })),
 };
 
 /* Types */
@@ -680,9 +800,129 @@ export type AiTranslateRequest_Serialize = {
 	consent: boolean,
 };
 
+export type CleanOptions = CleanOptions_Serialize | CleanOptions_Deserialize;
+
+export type CleanOptions_Deserialize = {
+	removeMetadata?: boolean,
+	removeComments?: boolean,
+	optimizeImages?: boolean,
+	/**  Longest edge in pixels for optimized images (0 = keep size). */
+	imageMaxPixels?: number,
+	/**  JPEG quality used when re-encoding (1-100). */
+	imageQuality?: number,
+};
+
+export type CleanOptions_Serialize = {
+	removeMetadata: boolean,
+	removeComments: boolean,
+	optimizeImages: boolean,
+	/**  Longest edge in pixels for optimized images (0 = keep size). */
+	imageMaxPixels: number,
+	/**  JPEG quality used when re-encoding (1-100). */
+	imageQuality: number,
+};
+
+export type CleanResult = CleanResult_Serialize | CleanResult_Deserialize;
+
+export type CleanResult_Deserialize = {
+	bytesBefore?: number,
+	bytesAfter?: number,
+	actions?: string[],
+	warnings?: string[],
+};
+
+export type CleanResult_Serialize = {
+	bytesBefore: number,
+	bytesAfter: number,
+	actions: string[],
+	warnings: string[],
+};
+
+/**  The report produced before saving a document into a target format. */
+export type CompatibilityReport = {
+	target: string,
+	items: FeatureLoss[],
+};
+
+export type ConversionInfo = {
+	input: string,
+	output: string,
+	converted: boolean,
+	warnings: string[],
+};
+
+export type ConvertOptions = ConvertOptions_Serialize | ConvertOptions_Deserialize;
+
+export type ConvertOptions_Deserialize = {
+	delimiter?: string | null,
+	hasHeader?: boolean | null,
+	encoding?: string | null,
+	pdfMode?: string | null,
+	imageFormat?: string | null,
+	dpi?: number | null,
+	jpegQuality?: number | null,
+	grayscale?: boolean | null,
+	pageSize?: string | null,
+	orientation?: string | null,
+	marginPt?: number | null,
+	/**
+	 *  Password for an encrypted PDF input. `office_convert` keeps its
+	 *  `{ input, output, options }` request shape; the frontend carries this
+	 *  inside the options bag. It is only ever passed to pdfcore and never
+	 *  persisted or logged.
+	 */
+	password?: string | null,
+};
+
+export type ConvertOptions_Serialize = {
+	delimiter: string | null,
+	hasHeader: boolean | null,
+	encoding: string | null,
+	pdfMode: string | null,
+	imageFormat: string | null,
+	dpi: number | null,
+	jpegQuality: number | null,
+	grayscale: boolean | null,
+	pageSize: string | null,
+	orientation: string | null,
+	marginPt: number | null,
+	/**
+	 *  Password for an encrypted PDF input. `office_convert` keeps its
+	 *  `{ input, output, options }` request shape; the frontend carries this
+	 *  inside the options bag. It is only ever passed to pdfcore and never
+	 *  persisted or logged.
+	 */
+	password: string | null,
+};
+
 export type DocChatMessage = {
 	role: string,
 	content: string,
+};
+
+/**
+ *  The capabilities of a document model (what the *model* supports, regardless
+ *  of the current file format).
+ */
+export type DocumentCapabilities = {
+	kind: string,
+	supportsSections: boolean,
+	supportsTrackChanges: boolean,
+	supportsFootnotes: boolean,
+	supportsEndnotes: boolean,
+	supportsComments: boolean,
+	supportsFields: boolean,
+	supportsBookmarks: boolean,
+	supportsStructuredReferences: boolean,
+	supportsCharts: boolean,
+	supportsAnimations: boolean,
+	supportsMasters: boolean,
+	supportsGroups: boolean,
+	supportsWatermark: boolean,
+	supportsHiddenSlides: boolean,
+	supportsFooter: boolean,
+	supportsConnectors: boolean,
+	supportsImageCrop: boolean,
 };
 
 export type EditOptions = EditOptions_Serialize | EditOptions_Deserialize;
@@ -719,11 +959,255 @@ export type EditOptions_Serialize = {
 
 export type EditTask = "rewrite" | "shorten" | "expand" | "fix" | "translate" | "tone" | "summarize_column" | "suggest_formula" | "outline_to_slides";
 
+/**  One attachment (or an unparsed body part kept for the user). */
+export type EmlAttachment = EmlAttachment_Serialize | EmlAttachment_Deserialize;
+
+/**  One attachment (or an unparsed body part kept for the user). */
+export type EmlAttachment_Deserialize = {
+	name?: string,
+	contentType?: string,
+	size?: number,
+	/**  Where the attachment was extracted, when it was written to disk. */
+	path?: string,
+	/**  The attachment bytes (kept for small parts so the UI can preview them). */
+	dataBase64?: string,
+};
+
+/**  One attachment (or an unparsed body part kept for the user). */
+export type EmlAttachment_Serialize = {
+	name: string,
+	contentType: string,
+	size: number,
+	/**  Where the attachment was extracted, when it was written to disk. */
+	path?: string,
+	/**  The attachment bytes (kept for small parts so the UI can preview them). */
+	dataBase64?: string,
+};
+
+export type EmlHeader = EmlHeader_Serialize | EmlHeader_Deserialize;
+
+export type EmlHeader_Deserialize = {
+	name?: string,
+	value?: string,
+};
+
+export type EmlHeader_Serialize = {
+	name: string,
+	value: string,
+};
+
+export type EmlMessage = EmlMessage_Serialize | EmlMessage_Deserialize;
+
+export type EmlMessage_Deserialize = {
+	subject?: string,
+	from?: string,
+	to?: string,
+	cc?: string,
+	date?: string,
+	messageId?: string,
+	/**  Every header, in order, for a "raw headers" view. */
+	headers?: EmlHeader_Deserialize[],
+	bodyText?: string,
+	bodyHtml?: string,
+	attachments?: EmlAttachment_Deserialize[],
+	warnings?: string[],
+};
+
+export type EmlMessage_Serialize = {
+	subject: string,
+	from: string,
+	to: string,
+	cc: string,
+	date: string,
+	messageId: string,
+	/**  Every header, in order, for a "raw headers" view. */
+	headers: EmlHeader_Serialize[],
+	bodyText: string,
+	bodyHtml: string,
+	attachments: EmlAttachment_Serialize[],
+	warnings: string[],
+};
+
 /**
  *  Stable error codes surfaced to the UI. The frontend maps these to
  *  localized, user friendly messages - raw internal errors are never shown.
  */
 export type ErrorCode = "invalid_pdf" | "corrupt_pdf" | "password_required" | "wrong_password" | "not_found" | "permission_denied" | "file_locked" | "output_exists" | "disk_full" | "cancelled" | "engine_missing" | "ocr_engine_unavailable" | "unsupported" | "invalid_input" | "invalid_image" | "range_out_of_bounds" | "conversion_failed" | "processing_failed" | "internal" | "ai_not_configured" | "ai_invalid_key" | "ai_rate_limited" | "ai_insufficient_balance" | "ai_network" | "ai_no_text" | "ai_too_large" | "ai_server_error" | "ai_invalid_response";
+
+/**  One lossy item in a compatibility report. */
+export type FeatureLoss = {
+	feature: string,
+	/**  `lost`, `transformed` or `unchanged`. */
+	status: string,
+	message: string,
+};
+
+/**  One feature support entry for a format. */
+export type FeatureSupport = {
+	feature: string,
+	level: SupportLevel,
+	note: string,
+};
+
+/**  What the webview gets: an opaque token and a display name, never a path. */
+export type FileRef = FileRef_Serialize | FileRef_Deserialize;
+
+/**  What the webview gets: an opaque token and a display name, never a path. */
+export type FileRef_Deserialize = {
+	token: string,
+	name: string,
+	/**
+	 *  Only set for a save target: the human just picked it in the dialog, and
+	 *  the UI shows it. Pick tokens never carry a path.
+	 */
+	path?: string | null,
+};
+
+/**  What the webview gets: an opaque token and a display name, never a path. */
+export type FileRef_Serialize = {
+	token: string,
+	name: string,
+	/**
+	 *  Only set for a save target: the human just picked it in the dialog, and
+	 *  the UI shows it. Pick tokens never carry a path.
+	 */
+	path?: string,
+};
+
+/**  What a format can do in this build. */
+export type FormatCapabilities = {
+	extension: string,
+	open: boolean,
+	edit: boolean,
+	save: boolean,
+	pdfExport: boolean,
+	losslessNative: boolean,
+	/**
+	 *  The engine can handle the format, but the app does not offer it by
+	 *  default: its external verification is still missing (UYAP `.udf` has
+	 *  never been round-tripped against a real UYAP file). Experimental
+	 *  formats are excluded from `supported_open_extensions`.
+	 */
+	experimental: boolean,
+	features: FeatureSupport[],
+};
+
+/**
+ *  The parsed GİB karekod payload. Unknown keys are ignored; the rate-keyed
+ *  `kdvmatrah(N)` / `hesaplanankdv(N)` pairs are kept in maps.
+ */
+export type GibQr = GibQr_Serialize | GibQr_Deserialize;
+
+/**
+ *  The parsed GİB karekod payload. Unknown keys are ignored; the rate-keyed
+ *  `kdvmatrah(N)` / `hesaplanankdv(N)` pairs are kept in maps.
+ */
+export type GibQr_Deserialize = {
+	/**  Sender VKN (10 digits) or TCKN (11 digits). */
+	vknTckn?: string,
+	/**  Recipient VKN/TCKN. */
+	avknTckn?: string,
+	senaryo?: string,
+	tip?: string,
+	/**  `YYYY-MM-DD`. */
+	tarih?: string,
+	/**  Invoice number, e.g. `GIB2026000000001`. */
+	no?: string,
+	/**  ETTN. */
+	ettn?: string,
+	paraBirimi?: string,
+	malHizmetToplam?: string,
+	vergiDahil?: string,
+	odenecek?: string,
+	/**  VAT base per rate, keyed by the rate string inside `kdvmatrah(N)`. */
+	kdvMatrah?: { [key in string]: string },
+	/**  VAT amount per rate, keyed by the rate string inside `hesaplanankdv(N)`. */
+	hesaplananKdv?: { [key in string]: string },
+};
+
+/**
+ *  The parsed GİB karekod payload. Unknown keys are ignored; the rate-keyed
+ *  `kdvmatrah(N)` / `hesaplanankdv(N)` pairs are kept in maps.
+ */
+export type GibQr_Serialize = {
+	/**  Sender VKN (10 digits) or TCKN (11 digits). */
+	vknTckn: string,
+	/**  Recipient VKN/TCKN. */
+	avknTckn: string,
+	senaryo: string,
+	tip: string,
+	/**  `YYYY-MM-DD`. */
+	tarih: string,
+	/**  Invoice number, e.g. `GIB2026000000001`. */
+	no: string,
+	/**  ETTN. */
+	ettn: string,
+	paraBirimi: string,
+	malHizmetToplam: string,
+	vergiDahil: string,
+	odenecek: string,
+	/**  VAT base per rate, keyed by the rate string inside `kdvmatrah(N)`. */
+	kdvMatrah: { [key in string]: string },
+	/**  VAT amount per rate, keyed by the rate string inside `hesaplanankdv(N)`. */
+	hesaplananKdv: { [key in string]: string },
+};
+
+export type HistoryEntry = {
+	version: number,
+	savedAt: string,
+	title: string,
+	kind: string,
+	size: number,
+};
+
+export type InvoiceDocument = InvoiceDocument_Serialize | InvoiceDocument_Deserialize;
+
+export type InvoiceDocument_Deserialize = {
+	kind: string,
+	title: string,
+	/**  The Writer model rendered with the app's own deterministic template. */
+	model: Value,
+	invoice: UblInvoice_Deserialize,
+	warnings: string[],
+	issues: UblIssue_Deserialize[],
+};
+
+export type InvoiceDocument_Serialize = {
+	kind: string,
+	title: string,
+	/**  The Writer model rendered with the app's own deterministic template. */
+	model: Value,
+	invoice: UblInvoice_Serialize,
+	warnings: string[],
+	issues: UblIssue_Serialize[],
+};
+
+export type InvoiceQr = InvoiceQr_Serialize | InvoiceQr_Deserialize;
+
+export type InvoiceQr_Deserialize = {
+	payload: GibQr_Deserialize,
+	raw: string,
+	page: number,
+	/**  Whether the payload's sender VKN/TCKN passes its checksum. */
+	taxIdValid: boolean,
+	warnings: string[],
+};
+
+export type InvoiceQr_Serialize = {
+	payload: GibQr_Serialize,
+	raw: string,
+	page: number,
+	/**  Whether the payload's sender VKN/TCKN passes its checksum. */
+	taxIdValid: boolean,
+	warnings: string[],
+};
+
+export type InvoiceSummary = {
+	/**  A Calc workbook model for the VAT summary; save it as `.xlsx`/`.ods`. */
+	workbook: Value,
+	warnings: string[],
+	count: number,
+};
 
 export type InvoiceTableRow = InvoiceTableRow_Serialize | InvoiceTableRow_Deserialize;
 
@@ -762,6 +1246,38 @@ export type InvoiceTableRow_Serialize = {
 	customFields: { [key in string]: string },
 };
 
+export type MailMergeError = {
+	row: number,
+	message: string,
+};
+
+export type MailMergeReport = {
+	produced: string[],
+	errors: MailMergeError[],
+};
+
+export type MailMergeRequest = MailMergeRequest_Serialize | MailMergeRequest_Deserialize;
+
+export type MailMergeRequest_Deserialize = {
+	template: string,
+	data: string,
+	outputDir: string,
+	/**  "pdf" or "docx". */
+	format: string,
+	/**  A data field used as the output file name; otherwise `<template>-<n>`. */
+	nameField?: string | null,
+};
+
+export type MailMergeRequest_Serialize = {
+	template: string,
+	data: string,
+	outputDir: string,
+	/**  "pdf" or "docx". */
+	format: string,
+	/**  A data field used as the output file name; otherwise `<template>-<n>`. */
+	nameField: string | null,
+};
+
 export type MetadataSuggestion = {
 	title: string,
 	author: string,
@@ -779,6 +1295,97 @@ export type OAuthStatus = {
 	tenant: string,
 	/**  Where tokens live: `keychain` or `file`. */
 	store: string,
+};
+
+export type OfficeErrorPayload = {
+	code: string,
+	message: string,
+};
+
+export type OfficeImagesToPdfRequest = OfficeImagesToPdfRequest_Serialize | OfficeImagesToPdfRequest_Deserialize;
+
+export type OfficeImagesToPdfRequest_Deserialize = {
+	images?: string[],
+	output?: string,
+	pageSize?: string | null,
+	orientation?: string | null,
+	fit?: string | null,
+	marginPt?: number | null,
+	overwrite?: string | null,
+};
+
+export type OfficeImagesToPdfRequest_Serialize = {
+	images: string[],
+	output: string,
+	pageSize: string | null,
+	orientation: string | null,
+	fit: string | null,
+	marginPt: number | null,
+	overwrite: string | null,
+};
+
+export type OfficePdfToImagesRequest = OfficePdfToImagesRequest_Serialize | OfficePdfToImagesRequest_Deserialize;
+
+export type OfficePdfToImagesRequest_Deserialize = {
+	input?: string,
+	outputDir?: string,
+	format?: string | null,
+	dpi?: number | null,
+	jpegQuality?: number | null,
+	grayscale?: boolean | null,
+	prefix?: string | null,
+	overwrite?: string | null,
+};
+
+export type OfficePdfToImagesRequest_Serialize = {
+	input: string,
+	outputDir: string,
+	format: string | null,
+	dpi: number | null,
+	jpegQuality: number | null,
+	grayscale: boolean | null,
+	prefix: string | null,
+	overwrite: string | null,
+};
+
+export type OpenDocument = OpenDocument_Serialize | OpenDocument_Deserialize;
+
+export type OpenDocument_Deserialize = {
+	kind: string,
+	title: string,
+	path: string,
+	model: Value,
+	warnings: string[],
+	/**
+	 *  True when the file was a legacy binary format (`.doc`/`.xls`/`.ppt`). The
+	 *  frontend must not save back to it: the tab keeps an empty path so the
+	 *  first save asks for a modern destination.
+	 */
+	legacy?: boolean,
+	/**
+	 *  Write token for an in-place save (issued in the app process, not the
+	 *  worker: the token registry is per process).
+	 */
+	token?: string,
+};
+
+export type OpenDocument_Serialize = {
+	kind: string,
+	title: string,
+	path: string,
+	model: Value,
+	warnings: string[],
+	/**
+	 *  True when the file was a legacy binary format (`.doc`/`.xls`/`.ppt`). The
+	 *  frontend must not save back to it: the tab keeps an empty path so the
+	 *  first save asks for a modern destination.
+	 */
+	legacy: boolean,
+	/**
+	 *  Write token for an in-place save (issued in the app process, not the
+	 *  worker: the token registry is per process).
+	 */
+	token: string,
 };
 
 export type OutlineSlide = OutlineSlide_Serialize | OutlineSlide_Deserialize;
@@ -800,6 +1407,72 @@ export type OutlineSlide_Serialize = {
 export type PdfError = {
 	code: ErrorCode,
 	message: string,
+};
+
+export type PdfFormField = PdfFormField_Serialize | PdfFormField_Deserialize;
+
+export type PdfFormField_Deserialize = {
+	/**  text | checkbox | radio | dropdown */
+	kind?: string,
+	name?: string,
+	page?: number,
+	/**  Position and size in PDF points, top-left origin. */
+	x?: number,
+	y?: number,
+	w?: number,
+	h?: number,
+	value?: string,
+	options?: string[],
+	fontSize?: number | null,
+	required?: boolean,
+};
+
+export type PdfFormField_Serialize = {
+	/**  text | checkbox | radio | dropdown */
+	kind: string,
+	name: string,
+	page: number,
+	/**  Position and size in PDF points, top-left origin. */
+	x: number,
+	y: number,
+	w: number,
+	h: number,
+	value: string,
+	options: string[],
+	fontSize: number | null,
+	required: boolean,
+};
+
+export type PdfFormRequest = PdfFormRequest_Serialize | PdfFormRequest_Deserialize;
+
+export type PdfFormRequest_Deserialize = {
+	input?: string,
+	output?: string,
+	fields?: PdfFormField_Deserialize[],
+	overwrite?: string | null,
+	password?: string | null,
+};
+
+export type PdfFormRequest_Serialize = {
+	input: string,
+	output: string,
+	fields: PdfFormField_Serialize[],
+	overwrite: string | null,
+	password: string | null,
+};
+
+export type PdfTextRequest = PdfTextRequest_Serialize | PdfTextRequest_Deserialize;
+
+export type PdfTextRequest_Deserialize = {
+	input?: string,
+	output?: string,
+	password?: string | null,
+};
+
+export type PdfTextRequest_Serialize = {
+	input: string,
+	output: string,
+	password: string | null,
 };
 
 export type PluginEntry = {
@@ -853,6 +1526,26 @@ export type ProviderCapabilities = {
 	streaming: boolean,
 };
 
+export type RecoveryEntry = RecoveryEntry_Serialize | RecoveryEntry_Deserialize;
+
+export type RecoveryEntry_Deserialize = {
+	documentId: string,
+	kind: string,
+	title: string,
+	path?: string | null,
+	savedAt: string,
+	size: number,
+};
+
+export type RecoveryEntry_Serialize = {
+	documentId: string,
+	kind: string,
+	title: string,
+	path: string | null,
+	savedAt: string,
+	size: number,
+};
+
 export type SaveAiEntryRequest = SaveAiEntryRequest_Serialize | SaveAiEntryRequest_Deserialize;
 
 export type SaveAiEntryRequest_Deserialize = {
@@ -881,6 +1574,11 @@ export type SaveAiEntryRequest_Serialize = {
 	elapsedMs: number,
 	/**  Overrides the default library folder for this save. */
 	directory: string | null,
+};
+
+export type SaveDocument = {
+	path: string,
+	warnings: string[],
 };
 
 export type SavedChatMessage = SavedChatMessage_Serialize | SavedChatMessage_Deserialize;
@@ -917,6 +1615,69 @@ export type SavedChatThread_Serialize = {
 	messages: SavedChatMessage_Serialize[],
 };
 
+/**
+ *  One captured page: an image file plus the four page corners the user tapped
+ *  (in source pixels). Without corners the image is used as it is.
+ */
+export type ScanPage = ScanPage_Serialize | ScanPage_Deserialize;
+
+/**
+ *  One captured page: an image file plus the four page corners the user tapped
+ *  (in source pixels). Without corners the image is used as it is.
+ */
+export type ScanPage_Deserialize = {
+	path: string,
+	corners?: ([(number | null), (number | null)])[] | null,
+};
+
+/**
+ *  One captured page: an image file plus the four page corners the user tapped
+ *  (in source pixels). Without corners the image is used as it is.
+ */
+export type ScanPage_Serialize = {
+	path: string,
+	corners: ([(number | null), (number | null)])[] | null,
+};
+
+/**  The corner picker's view of one page photo (see `pdfcore::scan::preview`). */
+export type ScanPreview = {
+	/**  A small upright JPEG as a `data:` URL. */
+	dataUrl: string,
+	/**  Upright full-size width and height: the corners are sent in these pixels. */
+	width: number,
+	height: number,
+};
+
+export type ScanRequest = ScanRequest_Serialize | ScanRequest_Deserialize;
+
+export type ScanRequest_Deserialize = {
+	pages: ScanPage_Deserialize[],
+	output: string,
+};
+
+export type ScanRequest_Serialize = {
+	pages: ScanPage_Serialize[],
+	output: string,
+};
+
+export type ScanResult = {
+	output: string,
+	pages: number,
+	corrected: number,
+	warnings: string[],
+};
+
+export type SpellCheckMisspelling = {
+	word: string,
+	start: number,
+	end: number,
+	suggestions: string[],
+};
+
+export type SpellCheckResponse = {
+	misspellings: SpellCheckMisspelling[],
+};
+
 export type SummaryLength = "short" | "medium" | "detailed";
 
 export type SummaryOptions = SummaryOptions_Serialize | SummaryOptions_Deserialize;
@@ -940,6 +1701,9 @@ export type SummaryOptions_Serialize = {
 };
 
 export type SummaryStyle = "paragraph" | "bullets" | "executive";
+
+/**  How well a format supports one feature. */
+export type SupportLevel = "full" | "partial" | "unsupported";
 
 /**  Honest capability report for the UI (size limit, provider availability). */
 export type SyncCapabilities = {
@@ -1094,6 +1858,169 @@ export type TranslateOptions_Serialize = {
 	targetLanguage: string,
 	/**  Keep the original text under each translated page. */
 	bilingual: boolean,
+};
+
+export type UblInvoice = UblInvoice_Serialize | UblInvoice_Deserialize;
+
+export type UblInvoice_Deserialize = {
+	number?: string,
+	/**  ETTN, the unique invoice identifier (`cbc:UUID`). */
+	ettn?: string,
+	issueDate?: string,
+	issueTime?: string,
+	/**  `SATIS`, `IADE`, `TEVKIFAT`, ... (`cbc:InvoiceTypeCode`). */
+	typeCode?: string,
+	/**  `TEMELFATURA`, `TICARIFATURA`, `EARSIVFATURA`, ... (`cbc:ProfileID`). */
+	profile?: string,
+	currency?: string,
+	supplier?: UblParty_Deserialize,
+	customer?: UblParty_Deserialize,
+	lines?: UblLine_Deserialize[],
+	taxSubtotals?: UblTaxSubtotal_Deserialize[],
+	withholdingSubtotals?: UblTaxSubtotal_Deserialize[],
+	lineExtensionAmount?: number,
+	taxExclusiveAmount?: number,
+	taxInclusiveAmount?: number,
+	allowanceTotal?: number,
+	taxAmount?: number,
+	withholdingAmount?: number,
+	payableAmount?: number,
+	notes?: string[],
+};
+
+export type UblInvoice_Serialize = {
+	number: string,
+	/**  ETTN, the unique invoice identifier (`cbc:UUID`). */
+	ettn: string,
+	issueDate: string,
+	issueTime: string,
+	/**  `SATIS`, `IADE`, `TEVKIFAT`, ... (`cbc:InvoiceTypeCode`). */
+	typeCode: string,
+	/**  `TEMELFATURA`, `TICARIFATURA`, `EARSIVFATURA`, ... (`cbc:ProfileID`). */
+	profile: string,
+	currency: string,
+	supplier: UblParty_Serialize,
+	customer: UblParty_Serialize,
+	lines: UblLine_Serialize[],
+	taxSubtotals: UblTaxSubtotal_Serialize[],
+	withholdingSubtotals: UblTaxSubtotal_Serialize[],
+	lineExtensionAmount: number,
+	taxExclusiveAmount: number,
+	taxInclusiveAmount: number,
+	allowanceTotal: number,
+	taxAmount: number,
+	withholdingAmount: number,
+	payableAmount: number,
+	notes: string[],
+};
+
+/**  A field whose value disagrees with the arithmetic the invoice claims. */
+export type UblIssue = UblIssue_Serialize | UblIssue_Deserialize;
+
+/**  A field whose value disagrees with the arithmetic the invoice claims. */
+export type UblIssue_Deserialize = {
+	field?: string,
+	expected?: number,
+	found?: number,
+	message?: string,
+};
+
+/**  A field whose value disagrees with the arithmetic the invoice claims. */
+export type UblIssue_Serialize = {
+	field: string,
+	expected: number,
+	found: number,
+	message: string,
+};
+
+export type UblLine = UblLine_Serialize | UblLine_Deserialize;
+
+export type UblLine_Deserialize = {
+	id?: string,
+	name?: string,
+	quantity?: number,
+	unit?: string,
+	unitPrice?: number,
+	/**  Line-level discount (`cac:AllowanceCharge`, indicator false). */
+	allowance?: number,
+	lineTotal?: number,
+	vatRate?: number,
+	vatAmount?: number,
+	withholdingRate?: number,
+	withholdingAmount?: number,
+};
+
+export type UblLine_Serialize = {
+	id: string,
+	name: string,
+	quantity: number,
+	unit: string,
+	unitPrice: number,
+	/**  Line-level discount (`cac:AllowanceCharge`, indicator false). */
+	allowance: number,
+	lineTotal: number,
+	vatRate: number,
+	vatAmount: number,
+	withholdingRate: number,
+	withholdingAmount: number,
+};
+
+export type UblParty = UblParty_Serialize | UblParty_Deserialize;
+
+export type UblParty_Deserialize = {
+	name?: string,
+	/**  VKN (10 digits) or TCKN (11 digits). */
+	taxId?: string,
+	/**  `VKN` or `TCKN` as declared by the `schemeID` attribute. */
+	taxIdScheme?: string,
+	taxOffice?: string,
+	address?: string,
+	city?: string,
+};
+
+export type UblParty_Serialize = {
+	name: string,
+	/**  VKN (10 digits) or TCKN (11 digits). */
+	taxId: string,
+	/**  `VKN` or `TCKN` as declared by the `schemeID` attribute. */
+	taxIdScheme: string,
+	taxOffice: string,
+	address: string,
+	city: string,
+};
+
+export type UblTaxSubtotal = UblTaxSubtotal_Serialize | UblTaxSubtotal_Deserialize;
+
+export type UblTaxSubtotal_Deserialize = {
+	/**  VAT or withholding rate in percent. */
+	rate?: number,
+	taxable?: number,
+	tax?: number,
+	/**  `KDV`, `KDV Tevkifatı`, `ÖTV`, ... */
+	name?: string,
+	exemptionReason?: string,
+};
+
+export type UblTaxSubtotal_Serialize = {
+	/**  VAT or withholding rate in percent. */
+	rate: number,
+	taxable: number,
+	tax: number,
+	/**  `KDV`, `KDV Tevkifatı`, `ÖTV`, ... */
+	name: string,
+	exemptionReason: string,
+};
+
+export type Value = null | boolean | number | string | Value[] | { [key in string]: Value };
+
+/**  One dated entry of the reference VAT-rate table. */
+export type VatRate = {
+	rate: number,
+	label: string,
+	/**  Inclusive start date (`YYYY-MM-DD`). */
+	since: string,
+	/**  Inclusive end date; empty means "still in force". */
+	until: string,
 };
 
 export type VaultConfig = VaultConfig_Serialize | VaultConfig_Deserialize;
