@@ -102,6 +102,7 @@ pub fn lookup(value: &str, access: FileAccess) -> Option<Result<PathBuf, String>
 
 /// Opens the native file dialog on the Rust side and returns read tokens.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn file_token_pick(
     app: tauri::AppHandle,
     extensions: Option<Vec<String>>,
@@ -112,6 +113,7 @@ pub async fn file_token_pick(
 
 /// Opens the native save dialog and returns a read-write token for the target.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn file_token_save(
     app: tauri::AppHandle,
     name: Option<String>,
@@ -122,6 +124,7 @@ pub async fn file_token_save(
 
 /// Forgets a token (best effort; an unknown token is not an error).
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn file_token_release(token: String) -> bool {
     revoke(&token)
 }
@@ -129,6 +132,7 @@ pub fn file_token_release(token: String) -> bool {
 /// Display names for values that may be tokens or plain paths. The webview
 /// only ever needs the name, never the path behind a token.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn file_names(values: Vec<String>) -> Vec<Option<String>> {
     values
         .iter()

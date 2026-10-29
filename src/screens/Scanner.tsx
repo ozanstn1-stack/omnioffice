@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { call } from "../lib/typed-call";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { pickSaveToken } from "../lib/file-tokens";
 import { writeFile } from "@tauri-apps/plugin-fs";
@@ -62,7 +62,7 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
     try {
       const cache = await appCacheDir();
       const directory = await join(cache, "scans", uid("scan"));
-      await invoke("ensure_dir", { path: directory });
+      await call((c) => c.ensureDir(directory));
       const staged: string[] = [];
       for (const file of Array.from(fileList)) {
         const cleanName = (file.name || `page-${staged.length + 1}.jpg`).replace(/[\\/:*?"<>|]/g, "_");

@@ -22,7 +22,7 @@ import {
   Type,
   Underline,
 } from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
+import { call } from "../lib/typed-call";
 import { appDataDir } from "@tauri-apps/api/path";
 import { pickDocumentToken } from "../lib/file-tokens";
 import { isAndroid, pickAndroidFiles } from "../lib/mobile";
@@ -109,7 +109,7 @@ function normalizeColor(color: string): string {
 async function stageEditedCopy(input: string): Promise<string> {
   const base = await appDataDir();
   const directory = joinPath(base, "AnnotateStaging");
-  await invoke("ensure_dir", { path: directory }).catch(() => undefined);
+  await call((c) => c.ensureDir(directory)).catch(() => undefined);
   return joinPath(directory, `${fileStem(input)}-${uid("edit")}.pdf`);
 }
 

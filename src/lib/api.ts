@@ -7,7 +7,6 @@ import type {
   Annotation,
   AnnotationEditItem,
   AnnotationEditReport,
-  AppInfo,
   BatesOptions,
   CompressEstimate,
   CompareOptions,
@@ -16,15 +15,12 @@ import type {
   CropItem,
   DocumentInspection,
   EditableAnnotation,
-  EngineStatus,
   HeaderFooterOptions,
   ImageItem,
   ImageToPdfOptions,
   NumberingOptions,
   NupOptions,
-  OcrLanguage,
   OcrOptions,
-  OperationEntry,
   OpResult,
   OutlineEntry,
   OutputSpec,
@@ -34,9 +30,7 @@ import type {
   SearchResponse,
   ProtectOptions,
   RecentAdd,
-  RecentEntry,
   RedactionArea,
-  UpdateInfo,
   RedactionMatch,
   RedactionOptions,
   Settings,
@@ -48,7 +42,7 @@ import type { CertificateItem } from "./generated/CertificateItem";
 import type { CertificateVerification } from "./generated/CertificateVerification";
 import type { RedactionCertificate } from "./generated/RedactionCertificate";
 import { trackJobInvocation } from "./job-retries";
-import { call, callPlain } from "./typed-call";
+import { asJson, call, callPlain } from "./typed-call";
 
 /**
  * Every long operation goes through here: the retry metadata (kind + the exact
@@ -81,13 +75,13 @@ export function toAppError(error: unknown): { code: string; message: string } {
 // System
 // ---------------------------------------------------------------------------
 
-export const appInfo = () => invoke<AppInfo>("app_info");
-export const updateCheck = () => invoke<UpdateInfo>("update_check");
-export const updateOpen = (url: string) => invoke<void>("update_open", { url });
-export const diagnosticsReport = () => invoke<string>("diagnostics_report");
-export const engineStatus = () => invoke<EngineStatus>("engine_status");
-export const ocrLanguages = () => invoke<OcrLanguage[]>("ocr_languages");
-export const cancelJob = (jobId: string) => invoke<void>("cancel_job", { jobId });
+export const appInfo = () => callPlain((c) => c.appInfo());
+export const updateCheck = () => call((c) => c.updateCheck());
+export const updateOpen = (url: string) => call((c) => c.updateOpen(url));
+export const diagnosticsReport = () => callPlain((c) => c.diagnosticsReport());
+export const engineStatus = () => callPlain((c) => c.engineStatus());
+export const ocrLanguages = () => callPlain((c) => c.ocrLanguages());
+export const cancelJob = (jobId: string) => callPlain((c) => c.cancelJob(jobId));
 
 export const onProgress = (handler: (payload: ProgressPayload) => void): Promise<UnlistenFn> =>
   listen<ProgressPayload>("job:progress", (event) => handler(event.payload));
@@ -176,9 +170,9 @@ export const logOperation = (entry: {
   outputBytes?: number;
   ok?: boolean;
   detail?: string;
-}) => invoke<void>("log_operation", { entry }).catch(() => undefined);
-export const loadOperations = () => invoke<OperationEntry[]>("load_operations");
-export const clearOperations = () => invoke<void>("clear_operations");
+}) => call((c) => c.logOperation(entry)).catch(() => undefined);
+export const loadOperations = () => callPlain((c) => c.loadOperations());
+export const clearOperations = () => call((c) => c.clearOperations());
 
 export const onAiChunk = (
   handler: (payload: { jobId: string; delta: string; kind: "content" | "reasoning" }) => void,
@@ -260,26 +254,29 @@ export const searchDocument = (
 
 export const checkPassword = (path: string, password: string) => invoke<boolean>("check_password", { path, password });
 
-export const outputExists = (path: string) => invoke<boolean>("output_exists", { path });
+export const outputExists = (path: string) => callPlain((c) => c.outputExists(path));
 
-export const fileSizes = (paths: string[]) => invoke<(number | null)[]>("file_sizes", { paths });
+export const fileSizes = (paths: string[]) => callPlain((c) => c.fileSizes(paths));
 
 export const logFrontend = (level: string, message: string) =>
-  invoke<void>("log_frontend", { level, message }).catch(() => undefined);
+  callPlain((c) => c.logFrontend(level, message)).catch(() => undefined);
+
+/** The dev launch arguments (opaque JSON on the Rust side). */
+export interface DevLaunchContext {
+  startScreen: string | null;
+  newTab: string | null;
+  files: string[] | null;
+  autoRun: boolean;
+  tab: string | null;
+}
 
 export const devLaunchContext = () =>
-  invoke<{
-    startScreen: string | null;
-    newTab: string | null;
-    files: string[] | null;
-    autoRun: boolean;
-    tab: string | null;
-  }>("dev_launch_context");
+  callPlain((c) => c.devLaunchContext()).then((context) => context as unknown as DevLaunchContext);
 
 export const startupFiles = (): Promise<FileToken[]> => callPlain((c) => c.officeStartupFiles());
 
 /** Drains the files later launches forwarded to this (single) instance. */
-export const takeLaunchFiles = () => invoke<FileToken[]>("office_take_launch_files");
+export const takeLaunchFiles = () => callPlain((c) => c.officeTakeLaunchFiles());
 
 /** Fires when a later launch queued files; fetch them with `takeLaunchFiles`. */
 export const onLaunchFilesQueued = (handler: () => void): Promise<UnlistenFn> =>
@@ -661,11 +658,13 @@ export const inspectDocument = (path: string, password?: string) =>
 // Settings / recent
 // ---------------------------------------------------------------------------
 
-export const loadSettings = () => invoke<Partial<Settings>>("load_settings");
-export const saveSettings = (settings: Settings) => invoke<void>("save_settings", { settings });
-export const loadRecent = () => invoke<RecentEntry[]>("load_recent");
-export const addRecent = (entry: RecentAdd) => invoke<void>("add_recent", { entry });
-export const clearRecent = () => invoke<void>("clear_recent");
+// Settings are stored as opaque JSON on the Rust side.
+export const loadSettings = () =>
+  call((c) => c.loadSettings()).then((settings) => settings as unknown as Partial<Settings>);
+export const saveSettings = (settings: Settings) => call((c) => c.saveSettings(asJson(settings)));
+export const loadRecent = () => call((c) => c.loadRecent());
+export const addRecent = (entry: RecentAdd) => call((c) => c.addRecent(entry));
+export const clearRecent = () => call((c) => c.clearRecent());
 
 /** Vault scan: tracked so a failed/interrupted scan can be retried from Jobs. */
 // The request type is generated from the Rust struct (#316); the call stays

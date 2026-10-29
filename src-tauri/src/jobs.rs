@@ -54,6 +54,7 @@ fn now_ms() -> i64 {
 
 /// The lifecycle of a persisted job. Serialized lowercase to match the
 /// frontend type (`src/lib/jobs.ts` maps `done` to the UI's `succeeded`).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum JobStatus {
@@ -77,6 +78,7 @@ impl JobStatus {
 /// `payload` is the serialized operation input captured at job start. It is
 /// never document content, only paths/options the frontend already had; the
 /// UI hands it back to the originating screen when Retry is pressed.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JobRecord {
@@ -85,6 +87,7 @@ pub struct JobRecord {
     pub title: String,
     pub status: JobStatus,
     /// Normalized 0..1; stays at the previous value while `total` is unknown.
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub progress: f64,
     /// Human-readable last stage/message (never document content).
     #[serde(default)]
@@ -681,18 +684,21 @@ pub fn emit_progress(app: &AppHandle, job_id: &str, event: &ProgressEvent) {
 
 /// Full persisted history, newest first.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn jobs_list(store: State<'_, Arc<JobStore>>) -> Vec<JobRecord> {
     store.records()
 }
 
 /// Drops done/failed/cancelled/interrupted records and returns what remains.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn jobs_clear_finished(store: State<'_, Arc<JobStore>>) -> Vec<JobRecord> {
     store.clear_finished()
 }
 
 /// Registers (or restarts) a job from the frontend with kind/title/payload.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn jobs_register(
     store: State<'_, Arc<JobStore>>,
     id: String,
@@ -707,6 +713,7 @@ pub fn jobs_register(
 /// Progress mirror for events the Rust side does not emit itself (AI jobs emit
 /// `ai:progress` directly); idempotent with `job:progress`.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn jobs_progress(
     store: State<'_, Arc<JobStore>>,
     id: String,
@@ -721,6 +728,7 @@ pub fn jobs_progress(
 /// Terminal status reported by the producer ("succeeded" | "failed" |
 /// "cancelled" | "interrupted").
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn jobs_finish(
     store: State<'_, Arc<JobStore>>,
     id: String,
@@ -742,6 +750,7 @@ pub fn jobs_finish(
 /// route it back to the originating screen. The status is intentionally left
 /// untouched: the screen starts a new run through the normal `start` path.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn jobs_retry(store: State<'_, Arc<JobStore>>, id: String) -> Result<JobRecord, String> {
     store.record(&id).ok_or_else(|| format!("job {id} not found"))
 }

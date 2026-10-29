@@ -1,10 +1,24 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { unwrap } from "./typed-ipc";
 
 const root = path.resolve(__dirname, "..", "..");
 const read = (relative: string) => readFileSync(path.join(root, relative), "utf8").replace(/\r\n/g, "\n");
+
+/** Every front-end source file (tests and the generated bindings excluded), relative to the root. */
+function sourceFiles(directory = "src"): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(path.join(root, directory))) {
+    const relative = `${directory}/${entry}`;
+    if (statSync(path.join(root, relative)).isDirectory()) {
+      if (entry !== "generated") files.push(...sourceFiles(relative));
+    } else if (/\.(ts|tsx)$/.test(entry) && !/\.test\.(ts|tsx)$/.test(entry)) {
+      files.push(relative);
+    }
+  }
+  return files;
+}
 
 describe("typed command results", () => {
   it("returns the data of an ok result", async () => {
@@ -127,6 +141,33 @@ describe("typed bindings: the office group", () => {
       "src/components/compatibility.tsx",
       "src/screens/Compatibility.tsx",
     ]) {
+      expect(read(file), file).not.toMatch(pattern);
+    }
+  });
+});
+
+// The two Android-only update commands have no desktop stub, and the bindings
+// are exported on desktop, so they keep their hand-written `invoke`.
+const ANDROID_ONLY = ["update_download_apk", "update_install_apk"];
+
+describe("typed bindings: the app group", () => {
+  const ipc = read("src-tauri/src/ipc.rs");
+  const appBlock = /app_commands \{\n([\s\S]*?)\n\s*\}\n\}/.exec(ipc)?.[1] ?? "";
+  const appCommands = [...appBlock.matchAll(/[a-z_]+::([a-z_0-9]+),/g)].map((match) => match[1]);
+  const typed = appCommands.filter((name) => !ANDROID_ONLY.includes(name));
+  const generated = read("src/lib/generated/specta.ts");
+
+  it("generates a typed wrapper for every app command but the Android-only two", () => {
+    expect(appCommands.length).toBe(42);
+    expect(typed.length).toBe(40);
+    for (const name of typed) {
+      expect(generated, name).toMatch(new RegExp(`__TAURI_INVOKE(?:<[^>]*>)?\\("${name}"`));
+    }
+  });
+
+  it("leaves no hand-written app invoke in the app", () => {
+    const pattern = new RegExp(`invoke(?:<[^>]*>)?\\(\\s*"(?:${typed.join("|")})"`);
+    for (const file of sourceFiles()) {
       expect(read(file), file).not.toMatch(pattern);
     }
   });

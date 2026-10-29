@@ -4,6 +4,7 @@
  * gate the share buttons call is `presend-gate.ts`.
  */
 import { invoke } from "@tauri-apps/api/core";
+import { call } from "./typed-call";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { inspectDocument, pageText, pdfVerifySignatures } from "./api";
 import { fileBaseName, uid } from "./format";
@@ -37,7 +38,7 @@ export async function runPresendCheck(path: string): Promise<PresendFinding[]> {
  */
 export async function cleanCopyForSending(path: string, name?: string): Promise<string> {
   const directory = await join(await appCacheDir(), "share", uid("clean"));
-  await invoke("ensure_dir", { path: directory });
+  await call((c) => c.ensureDir(directory));
   const output = await join(directory, name ?? fileBaseName(path));
   await invoke("sanitize_pdf", {
     request: { input: path, output: { path: output, overwrite: "replace" }, options: SEND_SANITIZE_OPTIONS },

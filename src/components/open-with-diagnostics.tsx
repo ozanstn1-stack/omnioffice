@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Stethoscope } from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
+import { callPlain } from "../lib/typed-call";
 import { Button, Card, Modal, TextArea } from "./ui";
 import { useT } from "../lib/i18n";
 import { reportError, useToasts } from "../lib/store";
@@ -67,7 +67,7 @@ export function OpenWithDiagnostics() {
     try {
       // The command answers on every build (a desktop stub returns ""), and a
       // failed IPC call must still show the frontend ring instead of nothing.
-      const native = await invoke<string>("android_open_with_diagnostics").catch(() => "");
+      const native = await callPlain((c) => c.androidOpenWithDiagnostics()).catch(() => "");
       // The frontend trace goes first: it is short and names the route that
       // was taken, while the native log can fill the visible text on a phone.
       const sections = [openWithDiagnosticsText(), native.trim()].filter((section) => section.length > 0);

@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { call } from "../lib/typed-call";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { AlertTriangle, Copy, Download, Edit3, FileText, Shield } from "lucide-react";
 import { Badge, Button, Card, Field, Segmented, TextArea, TextInput } from "../components/ui";
@@ -109,7 +109,7 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
       try {
         const cache = await appCacheDir();
         const dir = await join(cache, "kvkk-export");
-        await invoke("ensure_dir", { path: dir });
+        await call((c) => c.ensureDir(dir));
         const tempPath = await join(dir, `${uid("kvkk")}.${format}`);
         if (format === "pdf") {
           await exportPdf("writer", doc, tempPath);

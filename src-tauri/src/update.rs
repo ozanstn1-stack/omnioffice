@@ -19,6 +19,7 @@ const RELEASES_PATH_PREFIX: &str = "/ozanstn1-stack/omnioffice/releases/";
 const MAX_NOTES_CHARS: usize = 4000;
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateInfo {
@@ -237,6 +238,7 @@ pub fn evaluate_release(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn update_check() -> Result<UpdateInfo, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
@@ -269,6 +271,7 @@ pub async fn update_check() -> Result<UpdateInfo, String> {
 /// this project's GitHub releases are accepted (parsed and normalised; see
 /// [`is_allowed_release_url`]).
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub fn update_open(url: String) -> Result<(), String> {
     if !is_allowed_release_url(&url) {
         return Err("Only OmniOffice release links can be opened.".to_string());

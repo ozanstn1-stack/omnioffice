@@ -7,38 +7,14 @@ export interface AppError {
   message: string;
 }
 
-export interface EngineStatus {
-  pdfium: boolean;
-  qpdf: boolean;
-  tesseract: boolean;
-  tesseract_version: string | null;
-  ocr_languages: string[];
-}
+export type EngineStatus = specta.EngineStatus;
 
-export interface OcrLanguage {
-  code: string;
-  name: string;
-}
+export type OcrLanguage = specta.OcrLanguage;
 
 /** Answer of the GitHub release check (`update_check`). */
-export interface UpdateInfo {
-  current: string;
-  latest: string;
-  newer: boolean;
-  releaseUrl: string;
-  downloadUrl: string | null;
-  downloadName: string | null;
-  notes: string;
-  /** SHA-256 of the release download, when the backend resolved one. */
-  sha256?: string | null;
-}
+export type UpdateInfo = specta.UpdateInfo;
 
-export interface AppInfo {
-  appVersion: string;
-  coreVersion: string;
-  platform: string;
-  name: string;
-}
+export type AppInfo = specta.AppInfo;
 
 export interface PageGeometry {
   page: number;
@@ -661,18 +637,7 @@ export interface AiCleanupRequest {
 
 export type AiLibraryEntry = specta.AiLibraryEntry;
 
-export interface OperationEntry {
-  id: string;
-  createdAt: number;
-  operation: string;
-  inputPath: string;
-  outputPath: string;
-  pageCount?: number;
-  inputBytes?: number;
-  outputBytes?: number;
-  ok: boolean;
-  detail?: string;
-}
+export type OperationEntry = specta.OperationEntry_Serialize;
 
 export interface SelectedFile {
   path: string;
