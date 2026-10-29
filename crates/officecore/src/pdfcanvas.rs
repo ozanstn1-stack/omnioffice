@@ -9,7 +9,7 @@ use ab_glyph::{Font, FontVec, GlyphId};
 use lopdf::{dictionary, Document, Object, Stream};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 const FONT_REGULAR: &[u8] = include_bytes!("../../pdfcore/assets/fonts/PT_Sans-Web-Regular.ttf");
 const FONT_BOLD: &[u8] = include_bytes!("../../pdfcore/assets/fonts/PT_Sans-Web-Bold.ttf");
@@ -49,7 +49,11 @@ pub fn parse_hex(value: &str) -> Option<Rgb> {
     Some(Rgb(red, green, blue))
 }
 
-/// One embedded font program, tracked as CIDs are assigned.
+/// One embedded font program and the glyphs drawn with it.
+///
+/// CIDs are the program's own glyph ids (`CIDToGIDMap /Identity` over the
+/// whole embedded font), so `used` keys the widths and the ToUnicode entries
+/// by glyph id.
 pub struct FontFace {
     font: FontVec,
     units_per_em: f32,
@@ -57,9 +61,8 @@ pub struct FontFace {
     descent_em: f64,
     line_gap_em: f64,
     bold: bool,
-    cid_of: RefCell<HashMap<char, u16>>,
-    char_of: RefCell<Vec<char>>,
-    widths: RefCell<Vec<f64>>,
+    /// Glyph id -> the first character drawn with it and its advance (1000 units).
+    used: RefCell<BTreeMap<u16, (char, f64)>>,
 }
 
 impl FontFace {
@@ -77,9 +80,7 @@ impl FontFace {
             descent_em: descent,
             line_gap_em: gap,
             bold,
-            cid_of: RefCell::new(HashMap::new()),
-            char_of: RefCell::new(Vec::new()),
-            widths: RefCell::new(Vec::new()),
+            used: RefCell::new(BTreeMap::new()),
         }
     }
 
@@ -115,17 +116,12 @@ impl FontFace {
     }
 
     fn cid(&self, ch: char) -> u16 {
-        let mut map = self.cid_of.borrow_mut();
-        if let Some(existing) = map.get(&ch) {
-            return *existing;
-        }
-        let next = map.len() as u16;
-        map.insert(ch, next);
-        let mut chars = self.char_of.borrow_mut();
-        chars.push(ch);
-        let advance = self.font.h_advance_unscaled(self.glyph(ch)) as f64 / self.units_per_em as f64 * 1000.0;
-        self.widths.borrow_mut().push(advance);
-        next
+        let glyph = self.glyph(ch);
+        self.used
+            .borrow_mut()
+            .entry(glyph.0)
+            .or_insert_with(|| (ch, self.font.h_advance_unscaled(glyph) as f64 / self.units_per_em as f64 * 1000.0));
+        glyph.0
     }
 
     /// Hex-encoded CID string for a `Tj` operator.
@@ -139,26 +135,24 @@ impl FontFace {
     }
 
     fn cmap(&self) -> String {
-        let chars = self.char_of.borrow();
+        let used = self.used.borrow();
+        let entries: Vec<(&u16, &(char, f64))> = used.iter().collect();
         let mut out = String::new();
         out.push_str("/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n");
-        let mut index = 0;
-        while index < chars.len() {
-            let chunk = (chars.len() - index).min(100);
-            out.push_str(&format!("{chunk} begincidchar\n"));
-            for offset in 0..chunk {
-                let ch = chars[index + offset];
-                let code = ch as u32;
+        // A ToUnicode CMap maps codes to text with bfchar (cidchar maps codes to CIDs).
+        for chunk in entries.chunks(100) {
+            out.push_str(&format!("{} beginbfchar\n", chunk.len()));
+            for (glyph, (ch, _)) in chunk {
+                let code = *ch as u32;
                 let hex = if code > 0xFFFF {
                     let value = code - 0x10000;
                     format!("{:04X}{:04X}", 0xD800 + (value >> 10) as u16, 0xDC00 + (value & 0x3FF) as u16)
                 } else {
                     format!("{code:04X}")
                 };
-                out.push_str(&format!("<{:04X}> <{hex}>\n", index + offset));
+                out.push_str(&format!("<{glyph:04X}> <{hex}>\n"));
             }
-            out.push_str("endcidchar\n");
-            index += chunk;
+            out.push_str("endbfchar\n");
         }
         out.push_str("endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n");
         out
@@ -186,10 +180,9 @@ impl FontFace {
             "FontFile2" => Object::Reference(file_id),
         });
 
-        let widths = self.widths.borrow();
         let mut w_array: Vec<Object> = Vec::new();
-        for (index, width) in widths.iter().enumerate() {
-            w_array.push(Object::Integer(index as i64 + 1));
+        for (glyph, (_, width)) in self.used.borrow().iter() {
+            w_array.push(Object::Integer(i64::from(*glyph)));
             w_array.push(Object::Array(vec![Object::Real(*width as f32)]));
         }
         let _ = scale;
@@ -932,6 +925,54 @@ mod tests {
         let encoded = fonts.regular.encode("Hi");
         assert_eq!(encoded.len(), 8);
         assert_eq!(fonts.regular.encode("Hi"), encoded);
+    }
+
+    /// The CIDs are glyph ids (the descendant font says `CIDToGIDMap
+    /// /Identity` over the whole embedded program), the widths are keyed by
+    /// the same ids, and the ToUnicode CMap maps them back with `bfchar`.
+    /// Before this, CIDs were numbered in order of first use, so every viewer
+    /// drew the wrong glyphs and extracted no text.
+    #[test]
+    fn cids_are_glyph_ids_with_matching_widths_and_unicode() {
+        let fonts = FontSet::new();
+        let mut canvas = Canvas::new(595.28, 841.89, &fonts);
+        canvas.text(72.0, 100.0, "Şişli A", &TextStyle { size_pt: 12.0, ..Default::default() });
+        let page = canvas.finish();
+        let bytes = write_pdf(&[page], &fonts, "Test", "tr-TR");
+        let doc = Document::load_mem(&bytes).expect("the PDF loads");
+
+        let face = &fonts.regular;
+        let gid = |ch: char| face.font.glyph_id(ch).0;
+        assert_eq!(face.encode("A"), format!("{:04X}", gid('A')));
+        assert_eq!(face.encode("Ş"), format!("{:04X}", gid('Ş')));
+
+        let font = doc
+            .objects
+            .values()
+            .filter_map(|object| object.as_dict().ok())
+            .find(|dict| dict.get(b"Subtype").and_then(Object::as_name).ok() == Some(b"CIDFontType2".as_slice()))
+            .expect("a CID font");
+        let widths = font.get(b"W").and_then(Object::as_array).expect("W");
+        let entry = widths
+            .chunks(2)
+            .find(|pair| pair[0].as_i64().ok() == Some(i64::from(gid('A'))))
+            .expect("a W entry for A's glyph");
+        let width = entry[1].as_array().unwrap()[0].as_float().unwrap() as f64;
+        assert!((width - face.advance_pt("A", 1000.0)).abs() < 0.5, "width {width}");
+
+        let to_unicode = doc
+            .objects
+            .values()
+            .filter_map(|object| object.as_stream().ok())
+            .find_map(|stream| {
+                let content = stream.decompressed_content().unwrap_or_else(|_| stream.content.clone());
+                let text = String::from_utf8_lossy(&content).into_owned();
+                text.contains("Adobe-Identity-UCS").then_some(text)
+            })
+            .expect("a ToUnicode CMap");
+        assert!(to_unicode.contains("beginbfchar") && !to_unicode.contains("cidchar"));
+        assert!(to_unicode.contains(&format!("<{:04X}> <015E>", gid('Ş'))), "{to_unicode}");
+        assert!(to_unicode.contains(&format!("<{:04X}> <0041>", gid('A'))));
     }
 
     #[test]
