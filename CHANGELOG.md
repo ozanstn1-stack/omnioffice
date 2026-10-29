@@ -4,6 +4,40 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.0] - Delil klasörü, resmî yazı ve okunur ofis PDF'leri
+
+### Added
+
+- **Evidence bundle (#341 C3, Delil klasörü):** one PDF with a cover sheet,
+  an index of every exhibit's page range, size and SHA-256, the exhibits in
+  the chosen order stamped `EK-n · i/n` with a bundle-wide page number, and
+  an embedded manifest. Reopening the bundle tells whether it was changed
+  after it was built, and original files are matched to their exhibits by
+  hash. The lawyer desk's evidence task opens it (it used to open Merge).
+- **Official letter (#341 C5, Resmî yazı):** a letter laid out as the
+  Official Correspondence Regulation describes it: "T.C." and the
+  institution, number and date on one line, subject, addressee in capitals,
+  references, a justified body, the signature block, attachments,
+  distribution and the contact block in the page footer. The number
+  (`E-DETSİS-file plan code-sequence`) is counted per year and code, the
+  institution and contact details are remembered, and the letter opens in
+  Writer or is saved as DOCX or PDF/A-2b. The public servant desk's letter
+  task opens it.
+- Office documents export straight to PDF/A (`office_export_pdfa`); the
+  report says whether the result validates.
+
+### Fixed
+
+- **Office PDF exports were unreadable.** Every Writer, Calc, Impress and UDF
+  PDF export drew the wrong glyphs and carried no extractable text, in the
+  app's own reader and in other viewers alike: the font's CIDs were numbered
+  in order of use instead of being glyph ids, the widths were one entry off
+  and the ToUnicode map used the wrong operator. Exports now show the right
+  text, which can be searched and copied.
+- Centred and right-aligned lines in office PDF exports were offset twice:
+  centred text ended at the right margin.
+- A footer of several lines ran off the bottom of the page; it now ends at the
+  footer distance above the page edge, as in Word.
 ## [6.4.9] - Tipli IPC: PDF komutları, #316 tamam
 
 ### Changed (internal)
