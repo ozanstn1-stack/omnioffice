@@ -15,10 +15,11 @@
 //! serialising a load/save round trip byte-identically: the digest is defined
 //! as *the hash of this file with the certificate removed*.
 
-use lopdf::{dictionary, Dictionary, Document, Object, Stream};
+use lopdf::Document;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::attachment::{self, RecordKind};
 use crate::error::{PdfError, PdfResult};
 use crate::timestamp::TimestampToken;
 
@@ -167,123 +168,32 @@ pub fn build_certificate(
     Ok(certificate)
 }
 
+/// Where the certificate lives inside the PDF.
+const KIND: RecordKind = RecordKind {
+    file_name: CERTIFICATE_FILE_NAME,
+    description: "OmniOffice redaction certificate",
+    xmp_namespace: CERTIFICATE_XMP_NAMESPACE,
+};
+
 /// The XMP packet that mirrors the certificate into the catalog metadata.
 fn xmp_packet(certificate: &RedactionCertificate) -> String {
-    let escape =
-        |value: &str| value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;");
-    format!(
-        "<?xpacket begin=\"\u{feff}\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n\
-<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\n\
-  <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n\
-    <rdf:Description rdf:about=\"\" xmlns:omni=\"{namespace}\">\n\
-      <omni:CertificateId>{id}</omni:CertificateId>\n\
-      <omni:OriginalSha256>{original}</omni:OriginalSha256>\n\
-      <omni:RedactedSha256>{redacted}</omni:RedactedSha256>\n\
-      <omni:CreatedAt>{created}</omni:CreatedAt>\n\
-      <omni:ItemCount>{count}</omni:ItemCount>\n\
-    </rdf:Description>\n\
-  </rdf:RDF>\n\
-</x:xmpmeta>\n\
-<?xpacket end=\"w\"?>",
-        namespace = CERTIFICATE_XMP_NAMESPACE,
-        id = escape(&certificate.id),
-        original = escape(&certificate.original.sha256),
-        redacted = escape(&certificate.redacted.sha256),
-        created = escape(&certificate.created_at),
-        count = certificate.items.len(),
+    attachment::xmp_packet(
+        CERTIFICATE_XMP_NAMESPACE,
+        &[
+            ("CertificateId", certificate.id.clone()),
+            ("OriginalSha256", certificate.original.sha256.clone()),
+            ("RedactedSha256", certificate.redacted.sha256.clone()),
+            ("CreatedAt", certificate.created_at.clone()),
+            ("ItemCount", certificate.items.len().to_string()),
+        ],
     )
-}
-
-/// Finds the certificate's file specification id, if the PDF carries one.
-fn certificate_filespec(doc: &Document) -> Option<lopdf::ObjectId> {
-    let catalog = doc.catalog().ok()?;
-    let names = catalog.get(b"Names").ok()?.as_dict().ok()?;
-    let embedded = names.get(b"EmbeddedFiles").ok()?.as_dict().ok()?;
-    let pairs = embedded.get(b"Names").ok()?.as_array().ok()?;
-    for pair in pairs.chunks(2) {
-        let [name, reference] = pair else { continue };
-        if name.as_str().ok() == Some(CERTIFICATE_FILE_NAME.as_bytes()) {
-            if let Ok(id) = reference.as_reference() {
-                return Some(id);
-            }
-        }
-    }
-    None
-}
-
-/// Reads the embedded certificate bytes.
-fn read_embedded_certificate(doc: &Document) -> Option<Vec<u8>> {
-    let filespec_id = certificate_filespec(doc)?;
-    let filespec = doc.get_dictionary(filespec_id).ok()?;
-    let ef = filespec.get(b"EF").ok()?.as_dict().ok()?;
-    let stream_id = ef.get(b"F").ok()?.as_reference().ok()?;
-    let stream = doc.get_object(stream_id).ok()?.as_stream().ok()?;
-    Some(stream.content.clone())
 }
 
 /// Embeds the certificate as an embedded file and as XMP metadata.
 pub fn embed_certificate(pdf: &[u8], certificate: &RedactionCertificate) -> PdfResult<Vec<u8>> {
-    let mut doc = Document::load_mem(pdf).map_err(|error| PdfError::InvalidPdf(format!("{error}")))?;
     let json = serde_json::to_vec_pretty(certificate)
         .map_err(|error| PdfError::InvalidPdf(format!("certificate json: {error}")))?;
-
-    let stream_id = doc.add_object(Stream::new(
-        dictionary! {
-            "Type" => "EmbeddedFile",
-            "Subtype" => Object::Name(b"application/json".to_vec()),
-        },
-        json,
-    ));
-    let filespec_id = doc.add_object(dictionary! {
-        "Type" => "Filespec",
-        "F" => Object::string_literal(CERTIFICATE_FILE_NAME),
-        "Desc" => Object::string_literal("OmniOffice redaction certificate"),
-        "EF" => dictionary! { "F" => Object::Reference(stream_id) },
-    });
-
-    let catalog_id = doc
-        .trailer
-        .get(b"Root")
-        .and_then(Object::as_reference)
-        .map_err(|error| PdfError::InvalidPdf(format!("{error}")))?;
-    {
-        let catalog = doc.get_dictionary_mut(catalog_id).map_err(|error| PdfError::InvalidPdf(format!("{error}")))?;
-        // Merge into an existing name tree rather than replacing it.
-        let mut embedded = match catalog.get(b"Names").ok().and_then(|value| value.as_dict().ok()) {
-            Some(names) => match names.get(b"EmbeddedFiles").ok().and_then(|value| value.as_dict().ok()) {
-                Some(tree) => tree.clone(),
-                None => dictionary! {},
-            },
-            None => dictionary! {},
-        };
-        let mut pairs: Vec<Object> =
-            embedded.get(b"Names").ok().and_then(|value| value.as_array().ok()).cloned().unwrap_or_default();
-        pairs.push(Object::string_literal(CERTIFICATE_FILE_NAME));
-        pairs.push(Object::Reference(filespec_id));
-        embedded.set("Names", Object::Array(pairs));
-        let mut names = match catalog.get(b"Names").ok().and_then(|value| value.as_dict().ok()) {
-            Some(existing) => existing.clone(),
-            None => Dictionary::new(),
-        };
-        names.set("EmbeddedFiles", Object::Dictionary(embedded));
-        catalog.set("Names", Object::Dictionary(names));
-    }
-
-    let metadata_id = doc.add_object(Stream::new(
-        dictionary! {
-            "Type" => "Metadata",
-            "Subtype" => "XML",
-        },
-        xmp_packet(certificate).into_bytes(),
-    ));
-    {
-        let catalog = doc.get_dictionary_mut(catalog_id).map_err(|error| PdfError::InvalidPdf(format!("{error}")))?;
-        catalog.set("Metadata", Object::Reference(metadata_id));
-    }
-
-    let mut out = Vec::new();
-    doc.save_to(&mut out).map_err(|error| PdfError::InvalidPdf(format!("{error}")))?;
-    Ok(out)
+    attachment::embed_record(pdf, &KIND, json, xmp_packet(certificate))
 }
 
 /// Removes the certificate (embedded file + our XMP metadata) from the PDF.
@@ -291,89 +201,13 @@ pub fn embed_certificate(pdf: &[u8], certificate: &RedactionCertificate) -> PdfR
 /// This is what verification hashes: the file "as it was redacted", without
 /// the evidence that was added afterwards.
 pub fn strip_certificate(pdf: &[u8]) -> PdfResult<Vec<u8>> {
-    let mut doc = Document::load_mem(pdf).map_err(|error| PdfError::InvalidPdf(format!("{error}")))?;
-
-    // Collect and remove the filespec + its stream.
-    let mut removed: Vec<lopdf::ObjectId> = Vec::new();
-    if let Some(filespec_id) = certificate_filespec(&doc) {
-        if let Ok(filespec) = doc.get_dictionary(filespec_id) {
-            if let Ok(stream_id) = filespec
-                .get(b"EF")
-                .and_then(|ef| ef.as_dict())
-                .and_then(|ef| ef.get(b"F"))
-                .and_then(Object::as_reference)
-            {
-                removed.push(stream_id);
-            }
-        }
-        removed.push(filespec_id);
-    }
-
-    let catalog_id = doc
-        .trailer
-        .get(b"Root")
-        .and_then(Object::as_reference)
-        .map_err(|error| PdfError::InvalidPdf(format!("{error}")))?;
-    let metadata_id = {
-        let catalog = doc.get_dictionary(catalog_id).map_err(|error| PdfError::InvalidPdf(format!("{error}")))?;
-        // Only drop metadata that is ours; a foreign XMP packet stays.
-        catalog.get(b"Metadata").ok().and_then(|value| value.as_reference().ok()).filter(|id| {
-            doc.get_object(*id)
-                .ok()
-                .and_then(|object| object.as_stream().ok())
-                .map(|stream| String::from_utf8_lossy(&stream.content).contains(CERTIFICATE_XMP_NAMESPACE))
-                .unwrap_or(false)
-        })
-    };
-
-    {
-        let catalog = doc.get_dictionary_mut(catalog_id).map_err(|error| PdfError::InvalidPdf(format!("{error}")))?;
-        if let Some(id) = metadata_id {
-            removed.push(id);
-            catalog.remove(b"Metadata");
-        }
-        // Rebuild the name tree without our entry; drop the tree when empty.
-        let names = catalog.get(b"Names").ok().and_then(|value| value.as_dict().ok()).cloned();
-        if let Some(mut names) = names {
-            let embedded = names.get(b"EmbeddedFiles").ok().and_then(|value| value.as_dict().ok()).cloned();
-            if let Some(mut embedded) = embedded {
-                let mut pairs: Vec<Object> =
-                    embedded.get(b"Names").ok().and_then(|value| value.as_array().ok()).cloned().unwrap_or_default();
-                pairs = pairs
-                    .chunks(2)
-                    .filter(|pair| {
-                        pair.first().and_then(|name| name.as_str().ok()) != Some(CERTIFICATE_FILE_NAME.as_bytes())
-                    })
-                    .flat_map(|pair| pair.to_vec())
-                    .collect();
-                if pairs.is_empty() {
-                    names.remove(b"EmbeddedFiles");
-                } else {
-                    embedded.set("Names", Object::Array(pairs));
-                    names.set("EmbeddedFiles", Object::Dictionary(embedded));
-                }
-                if names.is_empty() {
-                    catalog.remove(b"Names");
-                } else {
-                    catalog.set("Names", Object::Dictionary(names));
-                }
-            }
-        }
-    }
-
-    for id in removed {
-        doc.objects.remove(&id);
-    }
-
-    let mut out = Vec::new();
-    doc.save_to(&mut out).map_err(|error| PdfError::InvalidPdf(format!("{error}")))?;
-    Ok(out)
+    attachment::strip_record(pdf, &KIND)
 }
 
 /// Extracts and verifies the certificate, if the PDF carries one.
 pub fn verify_certificate(pdf: &[u8]) -> PdfResult<CertificateVerification> {
     let doc = Document::load_mem(pdf).map_err(|error| PdfError::InvalidPdf(format!("{error}")))?;
-    let Some(bytes) = read_embedded_certificate(&doc) else {
+    let Some(bytes) = attachment::read_record(&doc, &KIND) else {
         return Ok(CertificateVerification {
             present: false,
             certificate: None,
@@ -398,6 +232,7 @@ pub fn verify_certificate(pdf: &[u8]) -> PdfResult<CertificateVerification> {
 mod tests {
     use super::*;
     use lopdf::dictionary as dict;
+    use lopdf::{dictionary, Dictionary, Object, Stream};
 
     fn sample_pdf() -> Vec<u8> {
         let mut doc = Document::with_version("1.7");

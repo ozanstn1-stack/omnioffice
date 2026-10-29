@@ -26,7 +26,7 @@ export interface DeskTask {
 export const DESKS: Record<Profession, readonly DeskTask[]> = {
   lawyer: [
     { key: "petition", screen: "petition" },
-    { key: "evidenceBundle", screen: "merge" },
+    { key: "evidenceBundle", screen: "evidence" },
     { key: "kvkkRedact", screen: "redact" },
     { key: "kepMessage", screen: "eml" },
     { key: "compareDrafts", screen: "compare" },
