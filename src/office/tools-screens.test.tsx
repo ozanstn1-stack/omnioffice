@@ -48,7 +48,7 @@ import {
   PdfFormsScreen,
 } from "./ToolsScreens";
 import { TEMPLATES } from "./templates";
-import { useOfficeTabs } from "../lib/office-store";
+import { useNotes, useOfficeTabs } from "../lib/office-store";
 import { useSettings } from "../lib/store";
 
 describe("local productivity tools render and act on their stores", () => {
@@ -61,11 +61,13 @@ describe("local productivity tools render and act on their stores", () => {
     const user = userEvent.setup();
     render(<NotesScreen />);
     expect(await screen.findByRole("heading", { name: "Notes" })).toBeInTheDocument();
+    // The saved notes load asynchronously; a note created before they arrive would be replaced.
+    await waitFor(() => expect(useNotes.getState().loaded).toBe(true));
     await user.click(screen.getByRole("button", { name: /new note/i }));
     const title = await screen.findByPlaceholderText(/write/i);
     expect(title).toBeInTheDocument();
     // Loading went through the persisted store, not a hard-coded default.
-    expect(invoke.mock.calls.some(([name]) => name === "store_load")).toBe(true);
+    await waitFor(() => expect(invoke.mock.calls.some(([name]) => name === "store_load")).toBe(true));
   });
 
   it("adds a task to the planner", async () => {

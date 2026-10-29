@@ -68,6 +68,9 @@ import { AiSettings } from "./ai-settings";
 import { useSettings } from "../lib/store";
 import { DEFAULT_SETTINGS } from "../lib/types";
 
+/** The saved settings arrive asynchronously; picking a provider before they do would be overwritten. */
+const settingsLoaded = () => screen.findByPlaceholderText("sk-d••••1234");
+
 describe("AI provider settings", () => {
   beforeEach(() => {
     invoke.mockClear();
@@ -79,6 +82,7 @@ describe("AI provider settings", () => {
     const user = userEvent.setup();
     render(<AiSettings />);
     const select = (await screen.findByRole("combobox", { name: "Provider" })) as HTMLSelectElement;
+    await settingsLoaded();
     expect(Array.from(select.options).map((option) => option.textContent)).toContain("Anthropic (Claude)");
 
     await user.selectOptions(select, "anthropic");
@@ -104,6 +108,7 @@ describe("AI provider settings", () => {
     const user = userEvent.setup();
     render(<AiSettings />);
     const select = await screen.findByRole("combobox", { name: "Provider" });
+    await settingsLoaded();
     await user.selectOptions(select, "anthropic");
     await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
@@ -123,6 +128,7 @@ describe("AI provider settings", () => {
     const user = userEvent.setup();
     render(<AiSettings />);
     const select = (await screen.findByRole("combobox", { name: "Provider" })) as HTMLSelectElement;
+    await settingsLoaded();
     // The saved DeepSeek key is shown for DeepSeek.
     expect(await screen.findByPlaceholderText("sk-d••••1234")).toBeInTheDocument();
     await user.type(screen.getByPlaceholderText("sk-d••••1234"), "typed-deepseek-key");

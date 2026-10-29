@@ -18,6 +18,7 @@ use std::path::Path;
 
 /// The parsed GİB karekod payload. Unknown keys are ignored; the rate-keyed
 /// `kdvmatrah(N)` / `hesaplanankdv(N)` pairs are kept in maps.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

@@ -3,12 +3,16 @@
  * document would lose when saved into a target format.
  */
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { ShieldCheck } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { errorMessage } from "../lib/store";
 import { Badge, Card, EmptyState } from "../components/ui";
-import { CompatibilityReportView, type FormatCapabilities } from "../components/compatibility";
+import {
+  CompatibilityReportView,
+  formatCapabilities,
+  supportedExtensions,
+  type FormatCapabilities,
+} from "../components/compatibility";
 
 export function CompatibilityScreen() {
   const t = useT();
@@ -18,10 +22,10 @@ export function CompatibilityScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void invoke<string[]>("office_supported_extensions")
+    void supportedExtensions()
       .then((list) => {
         setExtensions(list);
-        return Promise.all(list.map((extension) => invoke<FormatCapabilities>("office_capabilities", { extension })));
+        return Promise.all(list.map(formatCapabilities));
       })
       .then((all) => {
         setCapabilities(all);

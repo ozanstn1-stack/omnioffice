@@ -17,11 +17,12 @@ path = "src/lib.rs"
 
 [features]
 # Typed command bindings (tauri-specta, #316): the prompt options and results the AI commands use.
-bindings = ["dep:specta"]
+bindings = ["dep:specta", "dep:specta-typescript"]
 
 [dependencies]
 # tauri-specta's type layer, pinned with the app crate's (docs/dependencies.md).
 specta = { version = "=2.0.0-rc.26", features = ["derive"], optional = true }
+specta-typescript = { version = "0.0.13", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "charset"] }
 futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
