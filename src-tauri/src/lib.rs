@@ -38,6 +38,7 @@ mod paths_policy;
 mod paths_read;
 mod pdf_v3;
 mod plugin;
+mod provenance;
 mod recent;
 mod recipes;
 mod secret;
@@ -412,6 +413,8 @@ pub fn export_typed_bindings(path: &std::path::Path) -> Result<(), String> {
             evidence::evidence_bundle_build,
             evidence::evidence_bundle_verify,
             evidence::evidence_match_originals,
+            provenance::pdf_provenance_read,
+            provenance::pdf_provenance_write,
             commands::detect_redaction_matches,
             commands::pdf_set_outline,
             commands::stamp_pdf,

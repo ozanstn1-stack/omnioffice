@@ -446,6 +446,16 @@ export const commands = {
 	/**  Hashes each original and finds the exhibit it was submitted as. */
 	evidenceMatchOriginals: (bundle: string, originals: string[]) => typedError<EvidenceOriginalMatch_Serialize[], PdfError>(__TAURI_INVOKE("evidence_match_originals", { bundle, originals })),
 	/**
+	 *  Reads the manifest of a document, if it carries one, and reports whether the
+	 *  document still matches the digest recorded then.
+	 */
+	pdfProvenanceRead: (path: string) => typedError<ProvenanceReport_Serialize, PdfError>(__TAURI_INVOKE("pdf_provenance_read", { path })),
+	/**
+	 *  Writes a copy of the input with the manifest embedded and reports the digest
+	 *  it recorded.
+	 */
+	pdfProvenanceWrite: (request: ProvenanceWriteRequest_Deserialize) => typedError<ProvenanceWriteResult_Serialize, PdfError>(__TAURI_INVOKE("pdf_provenance_write", { request })),
+	/**
 	 *  Keyword and regular-expression matches for redaction, in page order. The
 	 *  single-page [`detect_sensitive_text`] built-in detector stays separate.
 	 */
@@ -3883,6 +3893,175 @@ export type ProtectRequest_Serialize = {
 	allowCommenting: boolean,
 	password: string | null,
 	jobId: string | null,
+};
+
+/**  The AI provider behind a generated document, when one was involved. */
+export type ProvenanceAi = ProvenanceAi_Serialize | ProvenanceAi_Deserialize;
+
+export type ProvenanceAiInput = ProvenanceAiInput_Serialize | ProvenanceAiInput_Deserialize;
+
+export type ProvenanceAiInput_Deserialize = {
+	provider: string,
+	model: string,
+	citations?: number,
+};
+
+export type ProvenanceAiInput_Serialize = {
+	provider: string,
+	model: string,
+	citations: number,
+};
+
+/**  The AI provider behind a generated document, when one was involved. */
+export type ProvenanceAi_Deserialize = {
+	provider: string,
+	model: string,
+	/**  How many verified citations the output carried, when the producer knows. */
+	citations?: number,
+};
+
+/**  The AI provider behind a generated document, when one was involved. */
+export type ProvenanceAi_Serialize = {
+	provider: string,
+	model: string,
+	/**  How many verified citations the output carried, when the producer knows. */
+	citations: number,
+};
+
+/**  What a document was made from, when and by which module. */
+export type ProvenanceManifest = ProvenanceManifest_Serialize | ProvenanceManifest_Deserialize;
+
+/**  What a document was made from, when and by which module. */
+export type ProvenanceManifest_Deserialize = {
+	formatVersion: number,
+	/**  RFC 3339, UTC. */
+	createdAt: string,
+	appVersion: string,
+	/**  The screen or pipeline that produced the output, e.g. `manual`. */
+	module: string,
+	note?: string,
+	sources: ProvenanceSource_Deserialize[],
+	ai?: ProvenanceAi_Deserialize | null,
+	/**  SHA-256 of the document with the manifest stripped. */
+	documentSha256?: string,
+};
+
+/**  What a document was made from, when and by which module. */
+export type ProvenanceManifest_Serialize = {
+	formatVersion: number,
+	/**  RFC 3339, UTC. */
+	createdAt: string,
+	appVersion: string,
+	/**  The screen or pipeline that produced the output, e.g. `manual`. */
+	module: string,
+	note: string,
+	sources: ProvenanceSource_Serialize[],
+	ai: ProvenanceAi_Serialize | null,
+	/**  SHA-256 of the document with the manifest stripped. */
+	documentSha256: string,
+};
+
+/**  What a document reports about its own provenance. */
+export type ProvenanceReport = ProvenanceReport_Serialize | ProvenanceReport_Deserialize;
+
+/**  What a document reports about its own provenance. */
+export type ProvenanceReport_Deserialize = {
+	present: boolean,
+	/**  The recorded digest matches the document minus the manifest. */
+	intact: boolean,
+	manifest?: ProvenanceManifest_Deserialize | null,
+	/**  Digest recomputed while reading; empty when no manifest is present. */
+	actualSha256: string,
+	warnings?: string[],
+};
+
+/**  What a document reports about its own provenance. */
+export type ProvenanceReport_Serialize = {
+	present: boolean,
+	/**  The recorded digest matches the document minus the manifest. */
+	intact: boolean,
+	manifest: ProvenanceManifest_Serialize | null,
+	/**  Digest recomputed while reading; empty when no manifest is present. */
+	actualSha256: string,
+	warnings: string[],
+};
+
+/**  One document the output was made from. */
+export type ProvenanceSource = ProvenanceSource_Serialize | ProvenanceSource_Deserialize;
+
+/**  One source document: a path or file token, its display name and role. */
+export type ProvenanceSourceInput = ProvenanceSourceInput_Serialize | ProvenanceSourceInput_Deserialize;
+
+/**  One source document: a path or file token, its display name and role. */
+export type ProvenanceSourceInput_Deserialize = {
+	path: string,
+	name?: string | null,
+	role?: string | null,
+};
+
+/**  One source document: a path or file token, its display name and role. */
+export type ProvenanceSourceInput_Serialize = {
+	path: string,
+	name: string | null,
+	role: string | null,
+};
+
+/**  One document the output was made from. */
+export type ProvenanceSource_Deserialize = {
+	fileName: string,
+	sha256: string,
+	size: number,
+	/**  What the source contributed, e.g. `source`, `merge`, `attachment`. */
+	role?: string,
+};
+
+/**  One document the output was made from. */
+export type ProvenanceSource_Serialize = {
+	fileName: string,
+	sha256: string,
+	size: number,
+	/**  What the source contributed, e.g. `source`, `merge`, `attachment`. */
+	role: string,
+};
+
+export type ProvenanceWriteRequest = ProvenanceWriteRequest_Serialize | ProvenanceWriteRequest_Deserialize;
+
+export type ProvenanceWriteRequest_Deserialize = {
+	/**  The document to add a manifest to (a path or file token). */
+	input: string,
+	output: OutputSpec_Deserialize,
+	/**  The screen or pipeline that produced the output, e.g. `manual`. */
+	module: string,
+	note?: string,
+	/**  The running app version, shown in the manifest. */
+	appVersion: string,
+	sources?: ProvenanceSourceInput_Deserialize[],
+	ai?: ProvenanceAiInput_Deserialize | null,
+};
+
+export type ProvenanceWriteRequest_Serialize = {
+	/**  The document to add a manifest to (a path or file token). */
+	input: string,
+	output: OutputSpec_Serialize,
+	/**  The screen or pipeline that produced the output, e.g. `manual`. */
+	module: string,
+	note: string,
+	/**  The running app version, shown in the manifest. */
+	appVersion: string,
+	sources: ProvenanceSourceInput_Serialize[],
+	ai: ProvenanceAiInput_Serialize | null,
+};
+
+export type ProvenanceWriteResult = ProvenanceWriteResult_Serialize | ProvenanceWriteResult_Deserialize;
+
+export type ProvenanceWriteResult_Deserialize = {
+	result: OpResult_Deserialize,
+	manifest: ProvenanceManifest_Deserialize,
+};
+
+export type ProvenanceWriteResult_Serialize = {
+	result: OpResult_Serialize,
+	manifest: ProvenanceManifest_Serialize,
 };
 
 export type ProviderCapabilities = {
