@@ -77,6 +77,7 @@ const FLAG_COMB: i64 = 1 << 24; // Tx bit 25
 
 /// One entry of a choice field's `/Opt` array (and of the synthesized options
 /// for radio button groups).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct FieldOption {
@@ -86,9 +87,12 @@ pub struct FieldOption {
     pub label: String,
 }
 
-/// A form field as found in the document.
+/// A form field as found in the document. The inspection report has its own
+/// `FormFieldInfo`; the bindings name this one `PdfFormFieldInfo`.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
+#[cfg_attr(feature = "bindings", serde(rename = "PdfFormFieldInfo"))]
 pub struct FormFieldInfo {
     /// Fully qualified name (`/T` joined with the parent chain, dot separated).
     pub name: String,
@@ -121,6 +125,7 @@ pub struct FormFieldInfo {
     /// Page of the first widget, when it could be resolved.
     pub page: Option<u32>,
     /// `/Rect` of the first widget (page space, bottom-left origin).
+    #[cfg_attr(feature = "bindings", specta(type = Option<[specta_typescript::Number; 4]>))]
     pub rect: Option<[f64; 4]>,
     /// Position in the page tab order when the page declares a `/Tabs` number
     /// tree; `None` means annotation order applies.
@@ -132,6 +137,7 @@ pub struct FormFieldInfo {
 }
 
 /// A value requested for one field.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct FieldValue {
@@ -143,6 +149,7 @@ pub struct FieldValue {
 }
 
 /// What `apply_field_values` actually changed.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct FillReport {
@@ -155,6 +162,7 @@ pub struct FillReport {
 }
 
 /// One validation finding. Nothing here is produced by executing scripts.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct FieldIssue {
@@ -1637,6 +1645,7 @@ fn looks_like_number(value: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 /// One annotation, widget or image placement on a page.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PageObjectInfo {
@@ -1652,8 +1661,10 @@ pub struct PageObjectInfo {
     pub id: Option<String>,
     /// Page-space bounding box, bottom-left origin (`/Rect`, or the placed
     /// image's bounding box).
+    #[cfg_attr(feature = "bindings", specta(type = [specta_typescript::Number; 4]))]
     pub rect: [f64; 4],
     /// Placement matrix for images (unit square -> page space).
+    #[cfg_attr(feature = "bindings", specta(type = Option<[specta_typescript::Number; 6]>))]
     pub matrix: Option<[f64; 6]>,
     /// Resource name of the image (`/Im0`), when the object is an image.
     pub resource_name: Option<String>,
@@ -2192,25 +2203,31 @@ fn insert_matrix_bytes(bytes: &[u8], at: usize, values: [f64; 6]) -> Option<Vec<
 // ---------------------------------------------------------------------------
 
 /// One edit requested for an object listed by `list_page_objects`.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "action")]
 pub enum ObjectAction {
     /// Translate by (dx, dy) page points.
     Move {
+        #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
         dx: f64,
+        #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
         dy: f64,
     },
     /// New page-space rectangle `[x0, y0, x1, y1]` (bottom-left origin).
     Resize {
+        #[cfg_attr(feature = "bindings", specta(type = [specta_typescript::Number; 4]))]
         rect: [f64; 4],
     },
     Delete,
     /// Rotate around the object's center, in degrees.
     Rotate {
+        #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
         degrees: f64,
     },
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ObjectEdit {
@@ -2222,6 +2239,7 @@ pub struct ObjectEdit {
     pub action: ObjectAction,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct EditReport {

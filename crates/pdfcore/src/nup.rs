@@ -26,6 +26,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// How many pages go on one sheet and in which order.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct NupOptions {
@@ -37,7 +38,9 @@ pub struct NupOptions {
     pub orientation: String,
     /// Sheet size: `source` keeps the source page size, or `a4` / `letter`.
     pub page_size: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub margin_pt: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub gutter_pt: f64,
     /// Draw a light border around each placed page.
     pub border: bool,

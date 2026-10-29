@@ -7,7 +7,7 @@
  * opt-in online check.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { call } from "../lib/typed-call";
 import { listen } from "@tauri-apps/api/event";
 import { pickDocumentToken, pickSaveToken } from "../lib/file-tokens";
 import { fileBaseName } from "../lib/format";
@@ -403,7 +403,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
 
   const runValidate = () =>
     run(async () => {
-      const report = await invoke<PdfaReport>("pdfa_validate", { request: { input, level } });
+      const report = await call((c) => c.pdfaValidate({ input, level }));
       setPdfaReport(report);
     }, "studio-pdfa-validate");
 
@@ -605,13 +605,13 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
       if (flattenAfterFill) {
         // Flatten after fill uses the existing flatten core (which burns the
         // regenerated appearances into the page); it is not duplicated here.
-        await invoke("flatten_pdf", {
-          request: {
+        await call((c) =>
+          c.flattenPdf({
             input: target.output,
             output: { path: target.output, overwrite: "replace" },
             options: null,
-          },
-        });
+          }),
+        );
       }
       if (target.androidTarget) await publishOutputs([target.output], { file: target.androidTarget });
       toast("success", t("studio.fillDone"), `${report.filled} / ${fields.length}`);

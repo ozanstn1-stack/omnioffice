@@ -35,15 +35,20 @@ use crate::progress::{CancelToken, ProgressCallback, ProgressReporter};
 use crate::textbox::{self, CharBox, PageChars};
 
 /// A rectangle to redact, in PDF page space (origin bottom-left, points).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export))]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct RedactionArea {
     /// 1-based page number.
     pub page: u32,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub left: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub bottom: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub right: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub top: f64,
 }
 
@@ -54,6 +59,7 @@ impl RedactionArea {
 }
 
 /// How aggressively images under a redaction area are handled.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -69,6 +75,7 @@ pub enum ImageRedaction {
     RemovePixels,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export))]
 #[cfg_attr(feature = "ts", ts(optional_fields))]
@@ -80,6 +87,7 @@ pub struct RedactionOptions {
     pub images: ImageRedaction,
     /// Points of padding added around each area so anti-aliased glyph edges
     /// cannot leave a readable sliver.
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub padding_pt: f64,
     /// Drop the document's metadata, which often names the redacted party.
     pub remove_metadata: bool,
@@ -133,14 +141,19 @@ pub struct RedactionReport {
 }
 
 /// One rectangle with the text it is meant to hide.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RedactionMatch {
     pub page: u32,
     pub text: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub left: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub bottom: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub right: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub top: f64,
     /// Which detector produced the match.
     pub kind: String,

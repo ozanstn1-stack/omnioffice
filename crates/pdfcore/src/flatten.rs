@@ -25,6 +25,7 @@ use crate::docutil::{self, add_resource_entry, append_page_content, pdf_text_val
 use crate::error::PdfResult;
 use crate::progress::{CancelToken, ProgressCallback, ProgressReporter};
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FlattenOptions {
@@ -42,6 +43,7 @@ impl Default for FlattenOptions {
     }
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FlattenReport {

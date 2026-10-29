@@ -90,6 +90,7 @@ impl PdfaLevel {
 }
 
 /// One validation result. `status` is `pass`, `warning` or `fail`.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfaCheck {
@@ -99,6 +100,7 @@ pub struct PdfaCheck {
     pub message: String,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfaReport {

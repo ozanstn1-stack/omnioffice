@@ -1460,6 +1460,7 @@ fn mail_merge(request: MailMergeRequest) -> Result<MailMergeReport, OfficeErrorP
 pub struct ScanPage {
     pub path: String,
     #[serde(default)]
+    #[cfg_attr(feature = "bindings", specta(type = Option<Vec<[specta_typescript::Number; 2]>>))]
     pub corners: Option<Vec<[f32; 2]>>,
 }
 

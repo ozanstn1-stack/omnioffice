@@ -20,6 +20,7 @@ fn level_from(value: &str) -> Result<PdfaLevel, PdfError> {
     PdfaLevel::parse(value)
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SanitizeRequest {
@@ -32,6 +33,7 @@ pub struct SanitizeRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn sanitize_pdf(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -49,6 +51,7 @@ pub async fn sanitize_pdf(
     .await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepairRequest {
@@ -61,6 +64,7 @@ pub struct RepairRequest {
 /// Repairs a damaged PDF: qpdf when it is available, otherwise (Android, or
 /// when qpdf fails) the built-in rebuild. The report names the method used.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_repair(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -91,6 +95,7 @@ pub async fn pdf_repair(
 
 /// Rewrites a PDF in qpdf's linearized (Fast Web View) layout.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_linearize(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -107,6 +112,7 @@ pub async fn pdf_linearize(
     .await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FlattenRequest {
@@ -119,6 +125,7 @@ pub struct FlattenRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn flatten_pdf(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -136,6 +143,7 @@ pub async fn flatten_pdf(
     .await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfaRequest {
@@ -148,6 +156,7 @@ pub struct PdfaRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdfa_validate(request: PdfaRequest) -> Result<PdfaReport, PdfError> {
     let level = level_from(&request.level)?;
     let input = crate::paths::input_file(&request.input)?.into_path_buf();
@@ -158,6 +167,7 @@ pub async fn pdfa_validate(request: PdfaRequest) -> Result<PdfaReport, PdfError>
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdfa_convert(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -183,6 +193,7 @@ pub async fn pdfa_convert(
 /// widget page/rect and tab order. Password protected inputs report
 /// `PasswordRequired` instead of silently returning an empty list.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_list_form_fields(
     path: String,
     password: Option<String>,
@@ -196,6 +207,7 @@ pub async fn pdf_list_form_fields(
     .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FillFormRequest {
@@ -211,6 +223,7 @@ pub struct FillFormRequest {
 /// appearances and saves to `output`. Unknown field names fail atomically
 /// before anything is written.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_fill_form(request: FillFormRequest) -> Result<pdfcore::forms::FillReport, PdfError> {
     let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || {
@@ -230,6 +243,7 @@ pub async fn pdf_fill_form(request: FillFormRequest) -> Result<pdfcore::forms::F
 /// reported; PDF JavaScript is never executed and scripted formats are
 /// flagged as unchecked warnings instead.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_validate_form(
     path: String,
     values: Vec<pdfcore::forms::FieldValue>,
@@ -251,6 +265,7 @@ pub async fn pdf_validate_form(
 
 /// Lists annotations, widgets and drawn image placements for every page.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_list_objects(
     path: String,
     password: Option<String>,
@@ -264,6 +279,7 @@ pub async fn pdf_list_objects(
     .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditObjectsRequest {
@@ -279,6 +295,7 @@ pub struct EditObjectsRequest {
 /// validated against a snapshot of the original object list before any
 /// mutation, so a bad index cannot leave a half-edited file.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_edit_objects(request: EditObjectsRequest) -> Result<pdfcore::forms::EditReport, PdfError> {
     let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || {
@@ -300,6 +317,7 @@ pub async fn pdf_edit_objects(request: EditObjectsRequest) -> Result<pdfcore::fo
 
 /// Lists the text runs of every page (stream order, approximate positions).
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_list_text_runs(
     path: String,
     password: Option<String>,
@@ -313,6 +331,7 @@ pub async fn pdf_list_text_runs(
     .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditTextRunsRequest {
@@ -327,6 +346,7 @@ pub struct EditTextRunsRequest {
 /// Replaces the text of existing runs and appends the result as a new
 /// revision: the original bytes (and any signature over them) stay intact.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_edit_text_runs(request: EditTextRunsRequest) -> Result<pdfcore::content::TextEditReport, PdfError> {
     let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || {

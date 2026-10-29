@@ -43,6 +43,7 @@ where
         .map_err(|e| PdfError::Internal(format!("worker thread failed: {e}")))?
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpResult {
@@ -50,10 +51,12 @@ pub struct OpResult {
     pub page_count: Option<u32>,
     pub original_bytes: Option<u64>,
     pub output_bytes: Option<u64>,
+    #[cfg_attr(feature = "bindings", specta(type = Option<specta_typescript::Number>))]
     pub reduction: Option<f64>,
     pub message: Option<String>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OutputSpec {
@@ -76,6 +79,7 @@ impl OutputSpec {
     }
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Thumbnail {
@@ -132,12 +136,14 @@ pub fn cancel_job(registry: State<'_, JobRegistry>, job_id: String) {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_info(path: String, password: Option<String>) -> Result<pdfcore::info::PdfInfo, PdfError> {
     let path = crate::paths::input_file(&path)?.into_path_buf();
     run_blocking(move || pdfcore::info::pdf_info(&path, password.as_deref())).await
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn page_thumbnail(
     path: String,
     page: u32,
@@ -157,6 +163,7 @@ pub async fn page_thumbnail(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn page_preview(
     path: String,
     page: u32,
@@ -214,6 +221,7 @@ const MAX_DOCUMENT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// the reader keeps that preview as a base layer and lays these tiles over the
 /// part of the page on screen. The open document is reused between tiles.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn page_tile(
     path: String,
     page: u32,
@@ -248,11 +256,13 @@ pub async fn page_tile(
 
 /// Extracts the text layer of a single page (reading mode: "copy page text").
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn page_text(path: String, page: u32, password: Option<String>) -> Result<String, PdfError> {
     let path = crate::paths::input_file(&path)?.into_path_buf();
     run_blocking(move || pdfcore::render::extract_page_text(&path, password.as_deref(), page)).await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResponse {
@@ -264,6 +274,7 @@ pub struct SearchResponse {
 
 /// Full-text search over the document's text layer (reading mode).
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn search_document(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -298,6 +309,7 @@ pub async fn search_document(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn check_password(path: String, password: String) -> Result<bool, PdfError> {
     let path = crate::paths::input_file(&path)?.into_path_buf();
     run_blocking(move || pdfcore::security::check_password(&path, &password)).await
@@ -307,6 +319,7 @@ pub async fn check_password(path: String, password: String) -> Result<bool, PdfE
 // Merge
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MergeRequest {
@@ -322,6 +335,7 @@ fn default_true() -> bool {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn merge_pdfs(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -374,6 +388,7 @@ pub async fn merge_pdfs(
 // Page operations
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PagesRequest {
@@ -391,6 +406,7 @@ pub struct PagesRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn extract_pages(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -436,6 +452,7 @@ fn validate_pages(input: &Path, request: &PagesRequest) -> Result<Vec<u32>, PdfE
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn delete_pages(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -460,6 +477,7 @@ pub async fn delete_pages(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn rotate_pages(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -490,6 +508,7 @@ pub async fn rotate_pages(
     .await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanRequest {
@@ -503,6 +522,7 @@ pub struct PlanRequest {
 
 /// Organizer "Apply": order, deletions, duplicates and rotations in one step.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn apply_page_plan(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -533,6 +553,7 @@ pub async fn apply_page_plan(
     .await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SplitRequest {
@@ -546,6 +567,7 @@ pub struct SplitRequest {
     pub job_id: Option<String>,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SplitResponse {
@@ -554,6 +576,7 @@ pub struct SplitResponse {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn split_pdf(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -580,6 +603,7 @@ pub async fn split_pdf(
 // Compression
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompressRequest {
@@ -592,6 +616,7 @@ pub struct CompressRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn estimate_compression(
     input: String,
     options: pdfcore::compress::CompressOptions,
@@ -605,6 +630,7 @@ pub async fn estimate_compression(
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn compress_pdf(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -638,6 +664,7 @@ pub async fn compress_pdf(
 // OCR
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OcrRequest {
@@ -650,6 +677,7 @@ pub struct OcrRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn ocr_pdf(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -686,6 +714,7 @@ pub async fn ocr_pdf(
 // Security
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProtectRequest {
@@ -707,6 +736,7 @@ pub struct ProtectRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn protect_pdf(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -741,6 +771,7 @@ pub async fn protect_pdf(
     .await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnlockRequest {
@@ -751,6 +782,7 @@ pub struct UnlockRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn unlock_pdf(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -776,6 +808,7 @@ pub async fn unlock_pdf(
 // Conversion
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfToImagesRequest {
@@ -809,6 +842,7 @@ fn default_prefix() -> String {
     "page".into()
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfToImagesResponse {
@@ -819,6 +853,7 @@ pub struct PdfToImagesResponse {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_to_images(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -851,6 +886,7 @@ pub async fn pdf_to_images(
     .await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImagesToPdfRequest {
@@ -861,6 +897,7 @@ pub struct ImagesToPdfRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn images_to_pdf(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -899,6 +936,7 @@ pub async fn images_to_pdf(
 // Layout / metadata / stamps
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResizeRequest {
@@ -911,6 +949,7 @@ pub struct ResizeRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn resize_pages(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -940,6 +979,7 @@ pub async fn resize_pages(
     .await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CropRequest {
@@ -952,6 +992,7 @@ pub struct CropRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn crop_pages(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -979,6 +1020,7 @@ pub async fn crop_pages(
     .await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MetadataRequest {
@@ -998,6 +1040,7 @@ pub struct MetadataRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn edit_metadata(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -1053,6 +1096,7 @@ pub async fn edit_metadata(
     .await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NumberingRequest {
@@ -1069,6 +1113,7 @@ pub struct NumberingRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn add_page_numbers(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -1123,6 +1168,7 @@ pub async fn add_page_numbers(
     .await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WatermarkRequest {
@@ -1139,6 +1185,7 @@ pub struct WatermarkRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn watermark_pdf(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -1193,6 +1240,7 @@ pub async fn watermark_pdf(
     .await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AnnotateRequest {
@@ -1209,6 +1257,7 @@ pub struct AnnotateRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn annotate_pdf(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -1269,6 +1318,7 @@ pub async fn annotate_pdf(
 
 /// Lists a document's annotations in display space (top-left origin).
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_list_annotations(
     path: String,
     password: Option<String>,
@@ -1277,6 +1327,7 @@ pub async fn pdf_list_annotations(
     run_blocking(move || pdfcore::annotate::list_annotations_in_file(&path, password.as_deref())).await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AnnotateEditableRequest {
@@ -1293,6 +1344,7 @@ pub struct AnnotateEditableRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_annotate_editable(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -1347,6 +1399,7 @@ pub async fn pdf_annotate_editable(
     .await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditAnnotationsRequest {
@@ -1360,6 +1413,7 @@ pub struct EditAnnotationsRequest {
 /// Moves, resizes, updates or deletes existing annotations by index. The edits
 /// are appended as a new revision, so existing signatures stay valid.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_edit_annotations(
     request: EditAnnotationsRequest,
 ) -> Result<pdfcore::annotate::AnnotationEditReport, PdfError> {
@@ -1381,6 +1435,7 @@ pub async fn pdf_edit_annotations(
 // Redaction
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RedactRequest {
@@ -1394,6 +1449,7 @@ pub struct RedactRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn redact_pdf(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -1442,6 +1498,7 @@ pub async fn redact_pdf(
 
 /// What a certificate is built for: the original file, the redacted output and
 /// the item list (page, category, rule - never a value).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RedactionCertificateRequest {
@@ -1456,6 +1513,7 @@ pub struct RedactionCertificateRequest {
 /// Builds the verifiable redaction certificate (digests, items, optional
 /// RFC 3161 timestamp). See `pdfcore::certificate` for the guarantees.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn redact_certificate_build(
     request: RedactionCertificateRequest,
 ) -> Result<pdfcore::certificate::RedactionCertificate, PdfError> {
@@ -1481,6 +1539,7 @@ pub async fn redact_certificate_build(
 /// Embeds the certificate into the redacted PDF (embedded file + XMP) and
 /// returns the verification of the file it just wrote.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn redact_certificate_embed(
     path: String,
     certificate: pdfcore::certificate::RedactionCertificate,
@@ -1497,6 +1556,7 @@ pub async fn redact_certificate_embed(
 
 /// Extracts and verifies the certificate a PDF carries, if any.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn redact_certificate_verify(
     path: String,
 ) -> Result<pdfcore::certificate::CertificateVerification, PdfError> {
@@ -1510,6 +1570,7 @@ pub async fn redact_certificate_verify(
 /// Patterns found on one page, so the UI can show the user what it is about to
 /// remove and let them deselect any of it.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn detect_sensitive_text(
     path: String,
     page: u32,
@@ -1527,6 +1588,7 @@ pub async fn detect_sensitive_text(
     .await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DetectRedactionMatchesRequest {
@@ -1556,6 +1618,7 @@ const MAX_REDACT_SCAN_PAGES: u32 = 5000;
 /// Keyword and regular-expression matches for redaction, in page order. The
 /// single-page [`detect_sensitive_text`] built-in detector stays separate.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn detect_redaction_matches(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -1604,6 +1667,7 @@ pub async fn detect_redaction_matches(
 // Document finishing (outline, stamps, N-up)
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetOutlineRequest {
@@ -1618,6 +1682,7 @@ pub struct SetOutlineRequest {
 /// Writes the document outline (bookmarks) as a new revision, so existing
 /// signatures stay valid. An empty entry list removes the outline.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_set_outline(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -1648,6 +1713,7 @@ pub async fn pdf_set_outline(
     .await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StampRequest {
@@ -1667,6 +1733,7 @@ pub struct StampRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn stamp_pdf(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -1723,6 +1790,7 @@ pub async fn stamp_pdf(
     .await
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NupRequest {
@@ -1736,6 +1804,7 @@ pub struct NupRequest {
 
 /// N-up sheets and saddle-stitch booklets.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn nup_pdf(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -1772,6 +1841,7 @@ pub async fn nup_pdf(
 // Compare
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompareRequest {
@@ -1786,6 +1856,7 @@ pub struct CompareRequest {
 }
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn compare_pdfs(
     app: AppHandle,
     registry: State<'_, JobRegistry>,
@@ -1812,6 +1883,7 @@ pub async fn compare_pdfs(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn inspect_document(
     path: String,
     password: Option<String>,

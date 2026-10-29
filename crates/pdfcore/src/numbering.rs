@@ -33,6 +33,7 @@ pub fn helvetica_text_width(text: &str, size_pt: f64) -> f64 {
     width / 1000.0 * size_pt
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NumberingOptions {
     /// top_left | top_center | top_right | bottom_left | bottom_center | bottom_right
@@ -44,11 +45,13 @@ pub struct NumberingOptions {
     #[serde(default = "default_start")]
     pub start_number: u32,
     #[serde(default = "default_font_size")]
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub font_size_pt: f64,
     /// "#RRGGBB"
     #[serde(default = "default_color")]
     pub color: String,
     #[serde(default = "default_margin")]
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub margin_pt: f64,
     /// Empty = all pages.
     #[serde(default)]

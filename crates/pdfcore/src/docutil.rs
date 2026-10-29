@@ -430,6 +430,7 @@ pub fn rebuild_page_tree(doc: &mut Document, plan: &[PagePlanItem]) -> PdfResult
 /// `/Contents`, and its size comes from `width_pt`/`height_pt` when given,
 /// otherwise from the first non-blank plan page's MediaBox (A4 as a last
 /// resort).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct PagePlanItem {
     pub source_page: u32,
@@ -440,9 +441,11 @@ pub struct PagePlanItem {
     pub blank: bool,
     /// Blank page width in points; `None` inherits the reference page width.
     #[serde(default)]
+    #[cfg_attr(feature = "bindings", specta(type = Option<specta_typescript::Number>))]
     pub width_pt: Option<f64>,
     /// Blank page height in points; `None` inherits the reference page height.
     #[serde(default)]
+    #[cfg_attr(feature = "bindings", specta(type = Option<specta_typescript::Number>))]
     pub height_pt: Option<f64>,
 }
 

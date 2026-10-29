@@ -8,6 +8,7 @@ use lopdf::Document;
 use serde::Serialize;
 use std::path::Path;
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfInfo {

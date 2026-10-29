@@ -369,6 +369,181 @@ export const commands = {
 	 */
 	logFrontend: (level: string, message: string) => __TAURI_INVOKE<void>("log_frontend", { level, message }),
 	officeTakeLaunchFiles: () => __TAURI_INVOKE<FileRef_Serialize[]>("office_take_launch_files"),
+	pdfInfo: (path: string, password: string | null) => typedError<PdfInfo, PdfError>(__TAURI_INVOKE("pdf_info", { path, password })),
+	pageThumbnail: (path: string, page: number, maxWidth: number | null, password: string | null) => typedError<Thumbnail, PdfError>(__TAURI_INVOKE("page_thumbnail", { path, page, maxWidth, password })),
+	pagePreview: (path: string, page: number, maxWidth: number | null, password: string | null, format: string | null, quality: number | null) => typedError<Thumbnail, PdfError>(__TAURI_INVOKE("page_preview", { path, page, maxWidth, password, format, quality })),
+	/**
+	 *  Renders one tile of a page for the reader's high-zoom overlay: the region
+	 *  `x, y, width, height` (output pixels) of the page as if it were rendered
+	 *  whole at `scale` pixels per point. Past the full-page preview's raster cap
+	 *  the reader keeps that preview as a base layer and lays these tiles over the
+	 *  part of the page on screen. The open document is reused between tiles.
+	 */
+	pageTile: (path: string, page: number, scale: number | null, x: number, y: number, width: number, height: number, password: string | null, format: string | null, quality: number | null) => typedError<Thumbnail, PdfError>(__TAURI_INVOKE("page_tile", { path, page, scale, x, y, width, height, password, format, quality })),
+	/**  Extracts the text layer of a single page (reading mode: "copy page text"). */
+	pageText: (path: string, page: number, password: string | null) => typedError<string, PdfError>(__TAURI_INVOKE("page_text", { path, page, password })),
+	/**  Full-text search over the document's text layer (reading mode). */
+	searchDocument: (path: string, query: string, matchCase: boolean | null, maxResults: number | null, password: string | null, jobId: string | null) => typedError<SearchResponse, PdfError>(__TAURI_INVOKE("search_document", { path, query, matchCase, maxResults, password, jobId })),
+	checkPassword: (path: string, password: string) => typedError<boolean, PdfError>(__TAURI_INVOKE("check_password", { path, password })),
+	mergePdfs: (request: MergeRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("merge_pdfs", { request })),
+	extractPages: (request: PagesRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("extract_pages", { request })),
+	deletePages: (request: PagesRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("delete_pages", { request })),
+	rotatePages: (request: PagesRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("rotate_pages", { request })),
+	/**  Organizer "Apply": order, deletions, duplicates and rotations in one step. */
+	applyPagePlan: (request: PlanRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("apply_page_plan", { request })),
+	splitPdf: (request: SplitRequest_Deserialize) => typedError<SplitResponse, PdfError>(__TAURI_INVOKE("split_pdf", { request })),
+	estimateCompression: (input: string, options: CompressOptions_Deserialize, password: string | null) => typedError<CompressEstimate, PdfError>(__TAURI_INVOKE("estimate_compression", { input, options, password })),
+	compressPdf: (request: CompressRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("compress_pdf", { request })),
+	ocrPdf: (request: OcrRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("ocr_pdf", { request })),
+	protectPdf: (request: ProtectRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("protect_pdf", { request })),
+	unlockPdf: (request: UnlockRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("unlock_pdf", { request })),
+	pdfToImages: (request: PdfToImagesRequest_Deserialize) => typedError<PdfToImagesResponse, PdfError>(__TAURI_INVOKE("pdf_to_images", { request })),
+	imagesToPdf: (request: ImagesToPdfRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("images_to_pdf", { request })),
+	resizePages: (request: ResizeRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("resize_pages", { request })),
+	cropPages: (request: CropRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("crop_pages", { request })),
+	editMetadata: (request: MetadataRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("edit_metadata", { request })),
+	addPageNumbers: (request: NumberingRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("add_page_numbers", { request })),
+	watermarkPdf: (request: WatermarkRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("watermark_pdf", { request })),
+	annotatePdf: (request: AnnotateRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("annotate_pdf", { request })),
+	/**  Lists a document's annotations in display space (top-left origin). */
+	pdfListAnnotations: (path: string, password: string | null) => typedError<EditableAnnotation[], PdfError>(__TAURI_INVOKE("pdf_list_annotations", { path, password })),
+	pdfAnnotateEditable: (request: AnnotateEditableRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("pdf_annotate_editable", { request })),
+	/**
+	 *  Moves, resizes, updates or deletes existing annotations by index. The edits
+	 *  are appended as a new revision, so existing signatures stay valid.
+	 */
+	pdfEditAnnotations: (request: EditAnnotationsRequest_Deserialize) => typedError<AnnotationEditReport, PdfError>(__TAURI_INVOKE("pdf_edit_annotations", { request })),
+	redactPdf: (request: RedactRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("redact_pdf", { request })),
+	/**
+	 *  Patterns found on one page, so the UI can show the user what it is about to
+	 *  remove and let them deselect any of it.
+	 */
+	detectSensitiveText: (path: string, page: number, password: string | null) => typedError<RedactionMatch[], PdfError>(__TAURI_INVOKE("detect_sensitive_text", { path, page, password })),
+	/**
+	 *  Builds the verifiable redaction certificate (digests, items, optional
+	 *  RFC 3161 timestamp). See `pdfcore::certificate` for the guarantees.
+	 */
+	redactCertificateBuild: (request: RedactionCertificateRequest_Deserialize) => typedError<RedactionCertificate_Serialize, PdfError>(__TAURI_INVOKE("redact_certificate_build", { request })),
+	/**
+	 *  Embeds the certificate into the redacted PDF (embedded file + XMP) and
+	 *  returns the verification of the file it just wrote.
+	 */
+	redactCertificateEmbed: (path: string, certificate: RedactionCertificate_Deserialize) => typedError<CertificateVerification_Serialize, PdfError>(__TAURI_INVOKE("redact_certificate_embed", { path, certificate })),
+	/**  Extracts and verifies the certificate a PDF carries, if any. */
+	redactCertificateVerify: (path: string) => typedError<CertificateVerification_Serialize, PdfError>(__TAURI_INVOKE("redact_certificate_verify", { path })),
+	/**
+	 *  Keyword and regular-expression matches for redaction, in page order. The
+	 *  single-page [`detect_sensitive_text`] built-in detector stays separate.
+	 */
+	detectRedactionMatches: (request: DetectRedactionMatchesRequest_Deserialize) => typedError<RedactionMatch[], PdfError>(__TAURI_INVOKE("detect_redaction_matches", { request })),
+	/**
+	 *  Writes the document outline (bookmarks) as a new revision, so existing
+	 *  signatures stay valid. An empty entry list removes the outline.
+	 */
+	pdfSetOutline: (request: SetOutlineRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("pdf_set_outline", { request })),
+	stampPdf: (request: StampRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("stamp_pdf", { request })),
+	/**  N-up sheets and saddle-stitch booklets. */
+	nupPdf: (request: NupRequest_Deserialize) => typedError<OpResult_Serialize, PdfError>(__TAURI_INVOKE("nup_pdf", { request })),
+	comparePdfs: (request: CompareRequest_Deserialize) => typedError<CompareReport, PdfError>(__TAURI_INVOKE("compare_pdfs", { request })),
+	inspectDocument: (path: string, password: string | null) => typedError<DocumentInspection, PdfError>(__TAURI_INVOKE("inspect_document", { path, password })),
+	signatureSave: (name: string, imageBase64: string) => typedError<null, PdfError>(__TAURI_INVOKE("signature_save", { name, imageBase64 })),
+	signatureList: () => typedError<SignatureEntry[], PdfError>(__TAURI_INVOKE("signature_list")),
+	signatureDelete: (name: string) => typedError<null, PdfError>(__TAURI_INVOKE("signature_delete", { name })),
+	recipeSave: (recipe: Recipe_Deserialize) => typedError<null, PdfError>(__TAURI_INVOKE("recipe_save", { recipe })),
+	recipeList: () => typedError<Recipe_Serialize[], PdfError>(__TAURI_INVOKE("recipe_list")),
+	recipeDelete: (id: string) => typedError<null, PdfError>(__TAURI_INVOKE("recipe_delete", { id })),
+	recipeRun: (request: RecipeRunRequest_Deserialize) => typedError<RecipeRunResult, PdfError>(__TAURI_INVOKE("recipe_run", { request })),
+	watchedFolderGet: () => typedError<WatchedFolder_Serialize, PdfError>(__TAURI_INVOKE("watched_folder_get")),
+	watchedFolderSet: (config: WatchedFolder_Deserialize) => typedError<null, PdfError>(__TAURI_INVOKE("watched_folder_set", { config })),
+	/**
+	 *  One watch pass: reads the config, the named recipe, and processes new files.
+	 *  The frontend (or the background loop) calls this on an interval.
+	 */
+	watchedFolderScan: (seen: string[] | null) => typedError<WatchedResult[], PdfError>(__TAURI_INVOKE("watched_folder_scan", { seen })),
+	/**
+	 *  Starts a polling loop that runs a watch pass every few seconds until
+	 *  `watched_folder_stop` is called. Best-effort: a pass error is logged and the
+	 *  loop keeps running.
+	 */
+	watchedFolderStart: (intervalSeconds: number | null) => typedError<null, PdfError>(__TAURI_INVOKE("watched_folder_start", { intervalSeconds })),
+	watchedFolderStop: () => typedError<null, PdfError>(__TAURI_INVOKE("watched_folder_stop")),
+	/**
+	 *  Archives the validation data of every signature in the document.
+	 * 
+	 *  This is the offline half of PAdES B-LT: the certificates of each chain (and
+	 *  any revocation data the CMS carries) are written into a /DSS dictionary as an
+	 *  incremental update, so the signed revision - and every signature in it -
+	 *  stays byte for byte as it was. Nothing is fetched from the network; what the
+	 *  signature already carries is what gets archived.
+	 */
+	pdfArchiveValidationData: (input: string, output: string | null) => typedError<LtvReport, PdfError>(__TAURI_INVOKE("pdf_archive_validation_data", { input, output })),
+	/**
+	 *  Signs a PDF with either a PKCS#12 file or a certificate from the Windows
+	 *  personal store, writes the result atomically and returns the verification
+	 *  report of the signature that was actually produced.
+	 */
+	pdfSign: (input: string, output: string, pfxPath: string | null, pfxPassword: string | null, certIndex: number | null, options: SignOptionsDto_Deserialize, tsaUrl: string | null) => typedError<SignResultDto_Serialize, PdfError>(__TAURI_INVOKE("pdf_sign", { input, output, pfxPath, pfxPassword, certIndex, options, tsaUrl })),
+	/**  Verifies every signature embedded in a PDF on disk. */
+	pdfVerifySignatures: (path: string) => typedError<SignatureReport_Serialize, PdfError>(__TAURI_INVOKE("pdf_verify_signatures", { path })),
+	/**
+	 *  Verifies every signature and asks each signer certificate's CA whether it
+	 *  was revoked (OCSP, then the CRL). This is the only signature command that
+	 *  touches the network, and it re-reads the stored setting itself so a stale
+	 *  or buggy caller cannot reach the CA while the user has the check off.
+	 */
+	pdfVerifySignaturesOnline: (path: string) => typedError<SignatureReport_Serialize, PdfError>(__TAURI_INVOKE("pdf_verify_signatures_online", { path })),
+	/**
+	 *  Lists the personal certificates of the current Windows user ("My" store).
+	 * 
+	 *  On non-Windows platforms the list is empty: Android and other platforms
+	 *  have no equivalent store access from Rust, so signing there always uses a
+	 *  PFX/P12 file.
+	 */
+	pdfListSigningCertificates: () => typedError<CertificateSummaryDto[], PdfError>(__TAURI_INVOKE("pdf_list_signing_certificates")),
+	sanitizePdf: (request: SanitizeRequest_Deserialize) => typedError<SanitizeReport, PdfError>(__TAURI_INVOKE("sanitize_pdf", { request })),
+	/**
+	 *  Repairs a damaged PDF: qpdf when it is available, otherwise (Android, or
+	 *  when qpdf fails) the built-in rebuild. The report names the method used.
+	 */
+	pdfRepair: (request: RepairRequest_Deserialize) => typedError<RepairReport_Serialize, PdfError>(__TAURI_INVOKE("pdf_repair", { request })),
+	/**  Rewrites a PDF in qpdf's linearized (Fast Web View) layout. */
+	pdfLinearize: (request: RepairRequest_Deserialize) => typedError<RepairReport_Serialize, PdfError>(__TAURI_INVOKE("pdf_linearize", { request })),
+	flattenPdf: (request: FlattenRequest_Deserialize) => typedError<FlattenReport, PdfError>(__TAURI_INVOKE("flatten_pdf", { request })),
+	pdfaValidate: (request: PdfaRequest_Deserialize) => typedError<PdfaReport_Serialize, PdfError>(__TAURI_INVOKE("pdfa_validate", { request })),
+	pdfaConvert: (request: PdfaRequest_Deserialize) => typedError<PdfaReport_Serialize, PdfError>(__TAURI_INVOKE("pdfa_convert", { request })),
+	/**
+	 *  Lists every terminal form field with its type, flags, value, options,
+	 *  widget page/rect and tab order. Password protected inputs report
+	 *  `PasswordRequired` instead of silently returning an empty list.
+	 */
+	pdfListFormFields: (path: string, password: string | null) => typedError<PdfFormFieldInfo_Serialize[], PdfError>(__TAURI_INVOKE("pdf_list_form_fields", { path, password })),
+	/**
+	 *  Writes the requested values into the AcroForm, regenerates the widget
+	 *  appearances and saves to `output`. Unknown field names fail atomically
+	 *  before anything is written.
+	 */
+	pdfFillForm: (request: FillFormRequest_Deserialize) => typedError<FillReport_Serialize, PdfError>(__TAURI_INVOKE("pdf_fill_form", { request })),
+	/**
+	 *  Checks the given values against the form. Only provable constraints are
+	 *  reported; PDF JavaScript is never executed and scripted formats are
+	 *  flagged as unchecked warnings instead.
+	 */
+	pdfValidateForm: (path: string, values: FieldValue_Deserialize[], password: string | null) => typedError<FieldIssue_Serialize[], PdfError>(__TAURI_INVOKE("pdf_validate_form", { path, values, password })),
+	/**  Lists annotations, widgets and drawn image placements for every page. */
+	pdfListObjects: (path: string, password: string | null) => typedError<PageObjectInfo_Serialize[], PdfError>(__TAURI_INVOKE("pdf_list_objects", { path, password })),
+	/**
+	 *  Applies annotation/widget/image edits and saves to `output`. Edits are
+	 *  validated against a snapshot of the original object list before any
+	 *  mutation, so a bad index cannot leave a half-edited file.
+	 */
+	pdfEditObjects: (request: EditObjectsRequest_Deserialize) => typedError<EditReport_Serialize, PdfError>(__TAURI_INVOKE("pdf_edit_objects", { request })),
+	/**  Lists the text runs of every page (stream order, approximate positions). */
+	pdfListTextRuns: (path: string, password: string | null) => typedError<TextRunInfo_Serialize[], PdfError>(__TAURI_INVOKE("pdf_list_text_runs", { path, password })),
+	/**
+	 *  Replaces the text of existing runs and appends the result as a new
+	 *  revision: the original bytes (and any signature over them) stay intact.
+	 */
+	pdfEditTextRuns: (request: EditTextRunsRequest_Deserialize) => typedError<TextEditReport, PdfError>(__TAURI_INVOKE("pdf_edit_text_runs", { request })),
 };
 
 /* Types */
@@ -913,11 +1088,311 @@ export type AiTranslateRequest_Serialize = {
 	consent: boolean,
 };
 
+export type AnnotateEditableRequest = AnnotateEditableRequest_Serialize | AnnotateEditableRequest_Deserialize;
+
+export type AnnotateEditableRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	annotations: Annotation_Deserialize[],
+	/**
+	 *  Keep existing signatures by appending the annotations as a new revision
+	 *  (default on).
+	 */
+	keepSignatures?: boolean,
+	password?: string | null,
+	jobId?: string | null,
+};
+
+export type AnnotateEditableRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	annotations: Annotation_Serialize[],
+	/**
+	 *  Keep existing signatures by appending the annotations as a new revision
+	 *  (default on).
+	 */
+	keepSignatures: boolean,
+	password: string | null,
+	jobId: string | null,
+};
+
+export type AnnotateRequest = AnnotateRequest_Serialize | AnnotateRequest_Deserialize;
+
+export type AnnotateRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	annotations: Annotation_Deserialize[],
+	/**
+	 *  Keep existing signatures by appending the stamp as a new revision
+	 *  (default on).
+	 */
+	keepSignatures?: boolean,
+	password?: string | null,
+	jobId?: string | null,
+};
+
+export type AnnotateRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	annotations: Annotation_Serialize[],
+	/**
+	 *  Keep existing signatures by appending the stamp as a new revision
+	 *  (default on).
+	 */
+	keepSignatures: boolean,
+	password: string | null,
+	jobId: string | null,
+};
+
+export type Annotation = Annotation_Serialize | Annotation_Deserialize;
+
+/**  One edit applied to an existing annotation. */
+export type AnnotationAction = AnnotationAction_Serialize | AnnotationAction_Deserialize;
+
+/**  One edit applied to an existing annotation. */
+export type AnnotationAction_Deserialize = 
+/**  Display-space delta. */
+{ action: "move"; dx: number; dy: number } | 
+/**  New display-space rectangle. */
+{ action: "resize"; x: number; y: number; w: number; h: number } | { action: "delete" } | { action: "update"; text?: string | null; color?: string | null; opacity?: number | null; lineWidthPt?: number | null };
+
+/**  One edit applied to an existing annotation. */
+export type AnnotationAction_Serialize = 
+/**  Display-space delta. */
+{ action: "move"; dx: number; dy: number } | 
+/**  New display-space rectangle. */
+{ action: "resize"; x: number; y: number; w: number; h: number } | { action: "delete" } | { action: "update"; text: string | null; color: string | null; opacity: number | null; lineWidthPt: number | null };
+
+/**  A page/index handle plus the action to apply to that annotation. */
+export type AnnotationEditItem = AnnotationEditItem_Serialize | AnnotationEditItem_Deserialize;
+
+/**  A page/index handle plus the action to apply to that annotation. */
+export type AnnotationEditItem_Deserialize = {
+	page: number,
+	index: number,
+} & AnnotationAction_Deserialize;
+
+/**  A page/index handle plus the action to apply to that annotation. */
+export type AnnotationEditItem_Serialize = {
+	page: number,
+	index: number,
+} & AnnotationAction_Serialize;
+
+/**  Outcome of a batch of annotation edits. */
+export type AnnotationEditReport = {
+	edited: number,
+	deleted: number,
+	warnings: string[],
+};
+
+export type AnnotationInfo = {
+	page: number,
+	subtype: string,
+	/**  The annotation's `/Contents` text, which often holds a note. */
+	contents: string,
+	/**  True when the annotation is not displayed in the page. */
+	hidden: boolean,
+};
+
+export type Annotation_Deserialize = {
+	/**
+	 *  text | image | rect | highlight | line | note | underline | strike |
+	 *  ink | textbox | signature
+	 */
+	kind: string,
+	/**  1-based page number. */
+	page: number,
+	/**
+	 *  Display-space rectangle in points with the origin at the TOP-LEFT of
+	 *  the displayed page (matches how the UI canvas reports coordinates).
+	 */
+	x: number,
+	y: number,
+	w: number,
+	h: number,
+	text?: string,
+	font_size_pt?: number,
+	bold?: boolean,
+	/**  "#RRGGBB" */
+	color?: string,
+	opacity?: number,
+	image_path?: string | null,
+	line_width_pt?: number,
+	/**  For line annotations: the second point, in the same top-left space. */
+	x2?: number | null,
+	y2?: number | null,
+	/**  Ink strokes in display space (top-left origin), absolute on the page. */
+	strokes?: (([number, number])[])[],
+	/**
+	 *  PNG bytes for image/signature annotations, base64 encoded (a `data:`
+	 *  URL prefix is accepted). Takes precedence over `image_path`.
+	 */
+	image_base64?: string | null,
+};
+
+export type Annotation_Serialize = {
+	/**
+	 *  text | image | rect | highlight | line | note | underline | strike |
+	 *  ink | textbox | signature
+	 */
+	kind: string,
+	/**  1-based page number. */
+	page: number,
+	/**
+	 *  Display-space rectangle in points with the origin at the TOP-LEFT of
+	 *  the displayed page (matches how the UI canvas reports coordinates).
+	 */
+	x: number,
+	y: number,
+	w: number,
+	h: number,
+	text: string,
+	font_size_pt: number,
+	bold: boolean,
+	/**  "#RRGGBB" */
+	color: string,
+	opacity: number,
+	image_path: string | null,
+	line_width_pt: number,
+	/**  For line annotations: the second point, in the same top-left space. */
+	x2: number | null,
+	y2: number | null,
+	/**  Ink strokes in display space (top-left origin), absolute on the page. */
+	strokes: (([number, number])[])[],
+	/**
+	 *  PNG bytes for image/signature annotations, base64 encoded (a `data:`
+	 *  URL prefix is accepted). Takes precedence over `image_path`.
+	 */
+	image_base64?: string,
+};
+
 export type AppInfo = {
 	appVersion: string,
 	coreVersion: string,
 	platform: string,
 	name: string,
+};
+
+/**  Bates numbering: `{prefix}{number}{suffix}` with zero padding. */
+export type BatesOptions = BatesOptions_Serialize | BatesOptions_Deserialize;
+
+/**  Bates numbering: `{prefix}{number}{suffix}` with zero padding. */
+export type BatesOptions_Deserialize = {
+	prefix?: string,
+	suffix?: string,
+	start?: number,
+	/**  Zero-padded digit count for the number part. */
+	digits?: number,
+	/**  `bottomLeft` | `bottomCenter` | `bottomRight` | `topLeft` | `topCenter` | `topRight`. */
+	position?: string,
+	fontSizePt?: number,
+	color?: string,
+	marginPt?: number,
+	/**  1-based pages; empty means every page. */
+	pages?: number[],
+};
+
+/**  Bates numbering: `{prefix}{number}{suffix}` with zero padding. */
+export type BatesOptions_Serialize = {
+	prefix: string,
+	suffix: string,
+	start: number,
+	/**  Zero-padded digit count for the number part. */
+	digits: number,
+	/**  `bottomLeft` | `bottomCenter` | `bottomRight` | `topLeft` | `topCenter` | `topRight`. */
+	position: string,
+	fontSizePt: number,
+	color: string,
+	marginPt: number,
+	/**  1-based pages; empty means every page. */
+	pages: number[],
+};
+
+/**
+ *  Information about one X.509 certificate, extracted from the signature or
+ *  the PFX container. Never claims trust - see [`SignatureInfo::trust`].
+ */
+export type CertificateInfo = {
+	subject: string,
+	issuer: string,
+	serialHex: string,
+	notBefore: string,
+	notAfter: string,
+	expired: boolean,
+	isCa: boolean,
+	/**
+	 *  SHA-256 fingerprint of the DER certificate, uppercase hex separated by
+	 *  colons (OpenSSL style).
+	 */
+	sha256Fingerprint: string,
+};
+
+/**  One redaction: where and under which rule, never what. */
+export type CertificateItem = {
+	page: number,
+	category: string,
+	rule: string,
+};
+
+/**  One personal certificate from the Windows certificate store. */
+export type CertificateSummaryDto = {
+	index: number,
+	subject: string,
+	issuer: string,
+	serialHex: string,
+	notBefore: string,
+	notAfter: string,
+	expired: boolean,
+	hasPrivateKey: boolean,
+	sha256Fingerprint: string,
+};
+
+/**  The granted timestamp, mirroring [`TimestampToken`] in JSON form. */
+export type CertificateTimestamp = CertificateTimestamp_Serialize | CertificateTimestamp_Deserialize;
+
+/**  The granted timestamp, mirroring [`TimestampToken`] in JSON form. */
+export type CertificateTimestamp_Deserialize = {
+	/**  `genTime` from the TSTInfo, when it could be read. */
+	time?: string | null,
+	/**  The DER `ContentInfo`, hex-encoded (the certificate is JSON). */
+	tokenHex: string,
+};
+
+/**  The granted timestamp, mirroring [`TimestampToken`] in JSON form. */
+export type CertificateTimestamp_Serialize = {
+	/**  `genTime` from the TSTInfo, when it could be read. */
+	time: string | null,
+	/**  The DER `ContentInfo`, hex-encoded (the certificate is JSON). */
+	tokenHex: string,
+};
+
+/**  The result of checking a PDF for a certificate. */
+export type CertificateVerification = CertificateVerification_Serialize | CertificateVerification_Deserialize;
+
+/**  The result of checking a PDF for a certificate. */
+export type CertificateVerification_Deserialize = {
+	present: boolean,
+	certificate?: RedactionCertificate_Deserialize | null,
+	/**
+	 *  True when the file, minus the certificate itself, still hashes to the
+	 *  digest recorded at certification time.
+	 */
+	contentMatches: boolean,
+	/**  SHA-256 of the file with the certificate stripped. */
+	actualSha256: string,
+};
+
+/**  The result of checking a PDF for a certificate. */
+export type CertificateVerification_Serialize = {
+	present: boolean,
+	certificate: RedactionCertificate_Serialize | null,
+	/**
+	 *  True when the file, minus the certificate itself, still hashes to the
+	 *  digest recorded at certification time.
+	 */
+	contentMatches: boolean,
+	/**  SHA-256 of the file with the certificate stripped. */
+	actualSha256: string,
 };
 
 export type CleanOptions = CleanOptions_Serialize | CleanOptions_Deserialize;
@@ -958,10 +1433,121 @@ export type CleanResult_Serialize = {
 	warnings: string[],
 };
 
+export type ColorSpaceInfo = {
+	name: string,
+	components: number,
+	occurrences: number,
+	deviceDependent: boolean,
+};
+
+export type CompareOptions = {
+	/**  Cap on pages to compare, so a huge pair does not hang the UI. */
+	maxPages: number,
+	/**  Per-pixel tolerance, 0-255, before a pixel counts as changed. */
+	tolerance: number,
+	/**  Resolution for the visual pass. */
+	dpi: number,
+	/**  Include the visual pass. It needs a rendering engine. */
+	visual: boolean,
+	/**  Ignore whitespace-only and case-only differences in the text pass. */
+	ignoreWhitespace: boolean,
+	/**  Upper bound on reported text differences, so the UI stays responsive. */
+	maxDifferences: number,
+};
+
+export type CompareReport = {
+	leftPages: number,
+	rightPages: number,
+	/**  Pages only the original has. */
+	removedPages: number[],
+	/**  Pages only the modified document has. */
+	addedPages: number[],
+	/**  Pages present in both whose text differs. */
+	textDifferences: TextDifference[],
+	/**  True when the visual pass ran out of pages or the engine. */
+	visualTruncated: boolean,
+	visualDifferences: VisualDifference[],
+	identical: boolean,
+	warnings: string[],
+};
+
+export type CompareRequest = CompareRequest_Serialize | CompareRequest_Deserialize;
+
+export type CompareRequest_Deserialize = {
+	left: string,
+	right: string,
+	leftPassword?: string | null,
+	rightPassword?: string | null,
+	options: CompareOptions,
+	jobId?: string | null,
+};
+
+export type CompareRequest_Serialize = {
+	left: string,
+	right: string,
+	leftPassword: string | null,
+	rightPassword: string | null,
+	options: CompareOptions,
+	jobId: string | null,
+};
+
 /**  The report produced before saving a document into a target format. */
 export type CompatibilityReport = {
 	target: string,
 	items: FeatureLoss[],
+};
+
+export type CompressEstimate = {
+	original_bytes: number,
+	estimated_bytes: number,
+	page_count: number,
+	/**  Fraction of bytes removed (0.0 - 1.0) */
+	reduction: number,
+	method: string,
+	sample_pages: number,
+	accurate: boolean,
+};
+
+export type CompressOptions = CompressOptions_Serialize | CompressOptions_Deserialize;
+
+export type CompressOptions_Deserialize = {
+	/**  lossless | raster */
+	strategy?: string,
+	/**  low | medium | high | custom (only for raster) */
+	preset?: string,
+	dpi?: number,
+	jpeg_quality?: number,
+	grayscale?: boolean,
+	remove_metadata?: boolean,
+};
+
+export type CompressOptions_Serialize = {
+	/**  lossless | raster */
+	strategy: string,
+	/**  low | medium | high | custom (only for raster) */
+	preset: string,
+	dpi: number,
+	jpeg_quality: number,
+	grayscale: boolean,
+	remove_metadata: boolean,
+};
+
+export type CompressRequest = CompressRequest_Serialize | CompressRequest_Deserialize;
+
+export type CompressRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	options: CompressOptions_Deserialize,
+	password?: string | null,
+	jobId?: string | null,
+};
+
+export type CompressRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	options: CompressOptions_Serialize,
+	password: string | null,
+	jobId: string | null,
 };
 
 export type ConversionInfo = {
@@ -1015,6 +1601,70 @@ export type ConvertOptions_Serialize = {
 	password: string | null,
 };
 
+export type CropItem = {
+	page: number,
+	/**
+	 *  Display-space rectangle (top-left origin, points), as reported by the
+	 *  crop UI overlay.
+	 */
+	x: number,
+	y: number,
+	w: number,
+	h: number,
+};
+
+export type CropRequest = CropRequest_Serialize | CropRequest_Deserialize;
+
+export type CropRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	crops: CropItem[],
+	password?: string | null,
+	jobId?: string | null,
+};
+
+export type CropRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	crops: CropItem[],
+	password: string | null,
+	jobId: string | null,
+};
+
+export type DetectRedactionMatchesRequest = DetectRedactionMatchesRequest_Serialize | DetectRedactionMatchesRequest_Deserialize;
+
+export type DetectRedactionMatchesRequest_Deserialize = {
+	path: string,
+	keywords?: string[],
+	pattern?: string | null,
+	caseSensitive?: boolean | null,
+	/**  1-based pages; `None` or empty scans the whole document. */
+	pages?: number[] | null,
+	/**
+	 *  Also run the built-in sensitive-data detector (KVKK patterns) on every
+	 *  scanned page, next to the keywords and the regular expression.
+	 */
+	auto?: boolean,
+	password?: string | null,
+	jobId?: string | null,
+};
+
+export type DetectRedactionMatchesRequest_Serialize = {
+	path: string,
+	keywords: string[],
+	pattern: string | null,
+	caseSensitive: boolean | null,
+	/**  1-based pages; `None` or empty scans the whole document. */
+	pages: number[] | null,
+	/**
+	 *  Also run the built-in sensitive-data detector (KVKK patterns) on every
+	 *  scanned page, next to the keywords and the regular expression.
+	 */
+	auto: boolean,
+	password: string | null,
+	jobId: string | null,
+};
+
 export type DocChatMessage = {
 	role: string,
 	content: string,
@@ -1043,6 +1693,78 @@ export type DocumentCapabilities = {
 	supportsFooter: boolean,
 	supportsConnectors: boolean,
 	supportsImageCrop: boolean,
+};
+
+/**  The full structural report for a document. */
+export type DocumentInspection = {
+	path: string,
+	fileSizeBytes: number,
+	pdfVersion: string,
+	pageCount: number,
+	encrypted: boolean,
+	linearized: boolean,
+	objectCount: number,
+	hasStructTree: boolean,
+	marked: boolean,
+	structTree: boolean,
+	/**  `Figure` structure elements without `/Alt` text. */
+	figuresMissingAlt: number,
+	language: string,
+	viewerPreferences: string,
+	fonts: FontInfo[],
+	images: ImageInfo[],
+	colorSpaces: ColorSpaceInfo[],
+	annotations: AnnotationInfo[],
+	formFields: FormFieldInfo[],
+	outline: OutlineEntry[],
+	embeddedFiles: string[],
+	hasJavascript: boolean,
+	javascriptEntries: string[],
+	hasOpenAction: boolean,
+	hasAcroForm: boolean,
+	attachmentCount: number,
+	totalImagePixels: number,
+	findings: Finding[],
+	/**  `pdf/ua` when the blocking checks pass, otherwise the first failure. */
+	accessibilityConformance: string,
+	/**  The /Info /Title; the UI falls back to the file name when empty. */
+	titleOverride: string,
+	subjectOverride: string,
+	authorOverride: string,
+	producer: string,
+	creator: string,
+};
+
+export type EditAnnotationsRequest = EditAnnotationsRequest_Serialize | EditAnnotationsRequest_Deserialize;
+
+export type EditAnnotationsRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	edits: AnnotationEditItem_Deserialize[],
+	password?: string | null,
+};
+
+export type EditAnnotationsRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	edits: AnnotationEditItem_Serialize[],
+	password: string | null,
+};
+
+export type EditObjectsRequest = EditObjectsRequest_Serialize | EditObjectsRequest_Deserialize;
+
+export type EditObjectsRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	edits?: ObjectEdit[],
+	password?: string | null,
+};
+
+export type EditObjectsRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	edits: ObjectEdit[],
+	password: string | null,
 };
 
 export type EditOptions = EditOptions_Serialize | EditOptions_Deserialize;
@@ -1077,7 +1799,124 @@ export type EditOptions_Serialize = {
 	context: string | null,
 };
 
+export type EditReport = EditReport_Serialize | EditReport_Deserialize;
+
+export type EditReport_Deserialize = {
+	edited?: number,
+	deleted?: number,
+	warnings?: string[],
+};
+
+export type EditReport_Serialize = {
+	edited: number,
+	deleted: number,
+	warnings: string[],
+};
+
 export type EditTask = "rewrite" | "shorten" | "expand" | "fix" | "translate" | "tone" | "summarize_column" | "suggest_formula" | "outline_to_slides";
+
+export type EditTextRunsRequest = EditTextRunsRequest_Serialize | EditTextRunsRequest_Deserialize;
+
+export type EditTextRunsRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	edits?: TextRunEdit[],
+	password?: string | null,
+};
+
+export type EditTextRunsRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	edits: TextRunEdit[],
+	password: string | null,
+};
+
+/**  An annotation read back from a document, in display space (top-left). */
+export type EditableAnnotation = {
+	/**  1-based page number. */
+	page: number,
+	/**  Index among the page's annotations (stable for edit/delete). */
+	index: number,
+	/**  note|highlight|underline|strike|ink|textbox|signature|image|rect|line|text */
+	kind: string,
+	x: number,
+	y: number,
+	w: number,
+	h: number,
+	text: string,
+	/**  "#rrggbb" */
+	color: string,
+	opacity: number,
+	lineWidthPt: number,
+	fontSizePt: number,
+	bold: boolean,
+	/**  Ink strokes in display space (top-left origin). */
+	strokes: (([number, number])[])[],
+};
+
+/**
+ *  One font's outcome. `embedded` means "this conversion embedded a program
+ *  now"; a font that already carried one is reported as skipped, not embedded.
+ */
+export type EmbeddedFontReport = EmbeddedFontReport_Serialize | EmbeddedFontReport_Deserialize;
+
+/**
+ *  One font's outcome. `embedded` means "this conversion embedded a program
+ *  now"; a font that already carried one is reported as skipped, not embedded.
+ */
+export type EmbeddedFontReport_Deserialize = {
+	/**  The resource name, e.g. `F1`. */
+	resourceName: string,
+	/**  The original `/BaseFont`, e.g. `Helvetica`. */
+	baseFont: string,
+	/**  True when a substitute program was written into this document. */
+	embedded: boolean,
+	/**  The bundled PostScript name that was embedded, when one was. */
+	substitute?: string | null,
+	/**
+	 *  True only for the Liberation Sans family, which is metric-compatible
+	 *  with the Helvetica/Arial base fonts. None when nothing was embedded.
+	 */
+	metricCompatible?: boolean | null,
+	/**  Why the font was left alone, when it was. */
+	skippedReason?: string | null,
+	/**  Non-fatal notes, e.g. "the substitute is not metric-compatible". */
+	warning?: string | null,
+	/**
+	 *  True when only the glyphs the document uses were embedded; the font
+	 *  names then carry a six-letter subset tag (`ABCDEF+Name`).
+	 */
+	subset?: boolean,
+};
+
+/**
+ *  One font's outcome. `embedded` means "this conversion embedded a program
+ *  now"; a font that already carried one is reported as skipped, not embedded.
+ */
+export type EmbeddedFontReport_Serialize = {
+	/**  The resource name, e.g. `F1`. */
+	resourceName: string,
+	/**  The original `/BaseFont`, e.g. `Helvetica`. */
+	baseFont: string,
+	/**  True when a substitute program was written into this document. */
+	embedded: boolean,
+	/**  The bundled PostScript name that was embedded, when one was. */
+	substitute: string | null,
+	/**
+	 *  True only for the Liberation Sans family, which is metric-compatible
+	 *  with the Helvetica/Arial base fonts. None when nothing was embedded.
+	 */
+	metricCompatible: boolean | null,
+	/**  Why the font was left alone, when it was. */
+	skippedReason: string | null,
+	/**  Non-fatal notes, e.g. "the substitute is not metric-compatible". */
+	warning: string | null,
+	/**
+	 *  True when only the glyphs the document uses were embedded; the font
+	 *  names then carry a six-letter subset tag (`ABCDEF+Name`).
+	 */
+	subset: boolean,
+};
 
 /**  One attachment (or an unparsed body part kept for the user). */
 export type EmlAttachment = EmlAttachment_Serialize | EmlAttachment_Deserialize;
@@ -1195,6 +2034,92 @@ export type FeatureSupport = {
 	note: string,
 };
 
+/**  One validation finding. Nothing here is produced by executing scripts. */
+export type FieldIssue = FieldIssue_Serialize | FieldIssue_Deserialize;
+
+/**  One validation finding. Nothing here is produced by executing scripts. */
+export type FieldIssue_Deserialize = {
+	field?: string,
+	/**
+	 *  Stable machine code: `required`, `max_length`, `option_not_in_list`,
+	 *  `unknown_field`, `read_only`, `not_fillable`, `invalid_date`,
+	 *  `invalid_number`, `multi_select_not_allowed`, `scripted_format`.
+	 */
+	code?: string,
+	/**  `error` for provable violations, `warning` for heuristic checks. */
+	severity?: string,
+	message?: string,
+};
+
+/**  One validation finding. Nothing here is produced by executing scripts. */
+export type FieldIssue_Serialize = {
+	field: string,
+	/**
+	 *  Stable machine code: `required`, `max_length`, `option_not_in_list`,
+	 *  `unknown_field`, `read_only`, `not_fillable`, `invalid_date`,
+	 *  `invalid_number`, `multi_select_not_allowed`, `scripted_format`.
+	 */
+	code: string,
+	/**  `error` for provable violations, `warning` for heuristic checks. */
+	severity: string,
+	message: string,
+};
+
+/**
+ *  One entry of a choice field's `/Opt` array (and of the synthesized options
+ *  for radio button groups).
+ */
+export type FieldOption = FieldOption_Serialize | FieldOption_Deserialize;
+
+/**
+ *  One entry of a choice field's `/Opt` array (and of the synthesized options
+ *  for radio button groups).
+ */
+export type FieldOption_Deserialize = {
+	/**  The value written to `/V` when this option is chosen. */
+	value?: string,
+	/**  The human readable label (the second entry of an `/Opt` pair). */
+	label?: string,
+};
+
+/**
+ *  One entry of a choice field's `/Opt` array (and of the synthesized options
+ *  for radio button groups).
+ */
+export type FieldOption_Serialize = {
+	/**  The value written to `/V` when this option is chosen. */
+	value: string,
+	/**  The human readable label (the second entry of an `/Opt` pair). */
+	label: string,
+};
+
+/**  A value requested for one field. */
+export type FieldValue = FieldValue_Serialize | FieldValue_Deserialize;
+
+/**  A value requested for one field. */
+export type FieldValue_Deserialize = {
+	name?: string,
+	/**  Single value: text, choice export, checkbox/radio state. */
+	value?: string,
+	/**  Multi-select choice values. When non-empty this wins over `value`. */
+	values?: string[],
+};
+
+/**  A value requested for one field. */
+export type FieldValue_Serialize = {
+	name: string,
+	/**  Single value: text, choice export, checkbox/radio state. */
+	value: string,
+	/**  Multi-select choice values. When non-empty this wins over `value`. */
+	values: string[],
+};
+
+/**  SHA-256 and size of one file in the chain. */
+export type FileDigest = {
+	sha256: string,
+	size: number,
+};
+
 /**
  *  A file fingerprint used to detect that a document changed on disk since it
  *  was opened (another program, another tab, or a cloud client). `sha256` is
@@ -1231,6 +2156,116 @@ export type FileRef_Serialize = {
 	 *  the UI shows it. Pick tokens never carry a path.
 	 */
 	path?: string,
+};
+
+export type FillFormRequest = FillFormRequest_Serialize | FillFormRequest_Deserialize;
+
+export type FillFormRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	values?: FieldValue_Deserialize[],
+	password?: string | null,
+};
+
+export type FillFormRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	values: FieldValue_Serialize[],
+	password: string | null,
+};
+
+/**  What `apply_field_values` actually changed. */
+export type FillReport = FillReport_Serialize | FillReport_Deserialize;
+
+/**  What `apply_field_values` actually changed. */
+export type FillReport_Deserialize = {
+	filled?: number,
+	/**
+	 *  Fields that were requested but deliberately not written (read-only,
+	 *  push buttons, signatures, unsupported types).
+	 */
+	skipped?: string[],
+	/**  Values written with a caveat (over `/MaxLen`, unknown checkbox state). */
+	warnings?: string[],
+};
+
+/**  What `apply_field_values` actually changed. */
+export type FillReport_Serialize = {
+	filled: number,
+	/**
+	 *  Fields that were requested but deliberately not written (read-only,
+	 *  push buttons, signatures, unsupported types).
+	 */
+	skipped: string[],
+	/**  Values written with a caveat (over `/MaxLen`, unknown checkbox state). */
+	warnings: string[],
+};
+
+export type Finding = {
+	severity: Severity,
+	/**  Stable identifier, e.g. `a11y.missing-title`. */
+	code: string,
+	/**  Short title shown in the list. */
+	title: string,
+	/**  What to do about it. */
+	detail: string,
+};
+
+export type FlattenOptions = {
+	/**  Burn every annotation that has an appearance and remove it. */
+	annotations: boolean,
+	/**  Burn form fields/widgets and remove them from the AcroForm. */
+	forms: boolean,
+	/**  Generate a simple appearance for text fields that have none. */
+	appearances: boolean,
+};
+
+export type FlattenReport = {
+	annotationsFlattened: number,
+	fieldsFlattened: number,
+	pagesTouched: number,
+	warnings: string[],
+};
+
+export type FlattenRequest = FlattenRequest_Serialize | FlattenRequest_Deserialize;
+
+export type FlattenRequest_Deserialize = {
+	input: string,
+	output?: OutputSpec_Deserialize | null,
+	options?: FlattenOptions | null,
+	jobId?: string | null,
+};
+
+export type FlattenRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize | null,
+	options: FlattenOptions | null,
+	jobId: string | null,
+};
+
+/**  One embedded font. */
+export type FontInfo = {
+	name: string,
+	subtype: string,
+	/**  True for a Type 0 composite font, which needs a CID descendant. */
+	composite: boolean,
+	/**  True when the font program itself is in the file. */
+	embedded: boolean,
+	embeddedFormats: string[],
+};
+
+export type FormFieldInfo = {
+	/**  Fully qualified name, e.g. `address.postcode`. */
+	name: string,
+	/**  `Tx` (text), `Btn` (button), `Ch` (choice)... */
+	kind: string,
+	fieldType: string,
+	readOnly: boolean,
+	required: boolean,
+	/**  True when the field has no `/TU` tooltip or alternate name. */
+	missingLabel: boolean,
+	/**  The options of a choice field. */
+	options: string[],
 };
 
 /**  What a format can do in this build. */
@@ -1311,12 +2346,150 @@ export type GibQr_Serialize = {
 	hesaplananKdv: { [key in string]: string },
 };
 
+/**  Header and footer templates; empty strings skip that slot. */
+export type HeaderFooterOptions = HeaderFooterOptions_Serialize | HeaderFooterOptions_Deserialize;
+
+/**  Header and footer templates; empty strings skip that slot. */
+export type HeaderFooterOptions_Deserialize = {
+	headerLeft?: string,
+	headerCenter?: string,
+	headerRight?: string,
+	footerLeft?: string,
+	footerCenter?: string,
+	footerRight?: string,
+	fontSizePt?: number,
+	color?: string,
+	marginPt?: number,
+	/**  1-based pages; empty means every page. */
+	pages?: number[],
+	/**  Visible number of the first selected page (`{page}` on it). */
+	startNumber?: number,
+	/**  Number pages by their position in the selection instead of the document. */
+	countFromStart?: boolean,
+};
+
+/**  Header and footer templates; empty strings skip that slot. */
+export type HeaderFooterOptions_Serialize = {
+	headerLeft: string,
+	headerCenter: string,
+	headerRight: string,
+	footerLeft: string,
+	footerCenter: string,
+	footerRight: string,
+	fontSizePt: number,
+	color: string,
+	marginPt: number,
+	/**  1-based pages; empty means every page. */
+	pages: number[],
+	/**  Visible number of the first selected page (`{page}` on it). */
+	startNumber: number,
+	/**  Number pages by their position in the selection instead of the document. */
+	countFromStart: boolean,
+};
+
 export type HistoryEntry = {
 	version: number,
 	savedAt: string,
 	title: string,
 	kind: string,
 	size: number,
+};
+
+export type ImageFormat = "jpeg" | "png";
+
+/**  One image XObject, aggregated across the document. */
+export type ImageInfo = {
+	width: number,
+	height: number,
+	colorSpace: string,
+	bitsPerComponent: number,
+	/**  `DCTDecode` (JPEG), `FlateDecode` (raw), `JPXDecode` (JPEG 2000)... */
+	filter: string,
+	occurrences: number,
+};
+
+export type ImageItem = ImageItem_Serialize | ImageItem_Deserialize;
+
+export type ImageItem_Deserialize = {
+	path: string,
+	rotation_delta?: number,
+};
+
+export type ImageItem_Serialize = {
+	path: string,
+	rotation_delta: number,
+};
+
+export type ImageOutput = {
+	path: string,
+	page: number,
+	width: number,
+	height: number,
+	bytes: number,
+};
+
+/**  How aggressively images under a redaction area are handled. */
+export type ImageRedaction = 
+/**
+ *  Paint over the area. The pixels - and any text baked into a scan - are
+ *  still in the file, so this is concealment, not redaction.
+ */
+"obscure" | 
+/**
+ *  Replace any image the page carries with a solid black image of the same
+ *  dimensions. The pixels are genuinely gone. The rest of the page is not
+ *  re-rendered, so a redacted scan shows a black block where the image was.
+ */
+"removePixels";
+
+export type ImageToPdfOptions = ImageToPdfOptions_Serialize | ImageToPdfOptions_Deserialize;
+
+export type ImageToPdfOptions_Deserialize = {
+	/**  a3 | a4 | a5 | letter | legal | original | custom */
+	page_size?: string,
+	custom_width_pt?: number,
+	custom_height_pt?: number,
+	/**  auto | portrait | landscape */
+	orientation?: string,
+	/**  fit (contain) | fill (cover) | actual (1 image pixel = 1/ dpi point) */
+	fit?: string,
+	margin_pt?: number,
+	/**  Assumed resolution for images without DPI metadata. */
+	dpi?: number,
+	/**  JPEG re-encode quality (only used when re-encoding is necessary). */
+	jpeg_quality?: number,
+};
+
+export type ImageToPdfOptions_Serialize = {
+	/**  a3 | a4 | a5 | letter | legal | original | custom */
+	page_size: string,
+	custom_width_pt: number,
+	custom_height_pt: number,
+	/**  auto | portrait | landscape */
+	orientation: string,
+	/**  fit (contain) | fill (cover) | actual (1 image pixel = 1/ dpi point) */
+	fit: string,
+	margin_pt: number,
+	/**  Assumed resolution for images without DPI metadata. */
+	dpi: number,
+	/**  JPEG re-encode quality (only used when re-encoding is necessary). */
+	jpeg_quality: number,
+};
+
+export type ImagesToPdfRequest = ImagesToPdfRequest_Serialize | ImagesToPdfRequest_Deserialize;
+
+export type ImagesToPdfRequest_Deserialize = {
+	items: ImageItem_Deserialize[],
+	output: OutputSpec_Deserialize,
+	options: ImageToPdfOptions_Deserialize,
+	jobId?: string | null,
+};
+
+export type ImagesToPdfRequest_Serialize = {
+	items: ImageItem_Serialize[],
+	output: OutputSpec_Serialize,
+	options: ImageToPdfOptions_Serialize,
+	jobId: string | null,
 };
 
 export type InvoiceDocument = InvoiceDocument_Serialize | InvoiceDocument_Deserialize;
@@ -1464,6 +2637,18 @@ export type JobRecord_Serialize = {
  */
 export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled" | "interrupted";
 
+/**  What [`add_validation_data`] wrote into the document. */
+export type LtvReport = {
+	/**  Signatures that received a VRI entry. */
+	signatures: number,
+	/**  Certificates stored in the DSS, after de-duplication. */
+	certificates: number,
+	/**  The VRI keys written (uppercase hex SHA-1 of each signature /Contents). */
+	vriKeys: string[],
+	/**  Anything that could not be archived, reported instead of skipped. */
+	warnings: string[],
+};
+
 export type MailMergeError = {
 	row: number,
 	message: string,
@@ -1496,11 +2681,184 @@ export type MailMergeRequest_Serialize = {
 	nameField: string | null,
 };
 
+export type MergeRequest = MergeRequest_Serialize | MergeRequest_Deserialize;
+
+export type MergeRequest_Deserialize = {
+	inputs: string[],
+	output: OutputSpec_Deserialize,
+	preserveMetadata?: boolean,
+	jobId?: string | null,
+};
+
+export type MergeRequest_Serialize = {
+	inputs: string[],
+	output: OutputSpec_Serialize,
+	preserveMetadata: boolean,
+	jobId: string | null,
+};
+
+export type MetadataRequest = MetadataRequest_Serialize | MetadataRequest_Deserialize;
+
+export type MetadataRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	metadata: PdfMetadata,
+	remove?: boolean,
+	/**
+	 *  Keep existing signatures by appending the change as a new revision
+	 *  (default on). Removing metadata cannot be expressed that way, so it
+	 *  always rewrites - and says so in the result message.
+	 */
+	keepSignatures?: boolean,
+	password?: string | null,
+	jobId?: string | null,
+};
+
+export type MetadataRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	metadata: PdfMetadata,
+	remove: boolean,
+	/**
+	 *  Keep existing signatures by appending the change as a new revision
+	 *  (default on). Removing metadata cannot be expressed that way, so it
+	 *  always rewrites - and says so in the result message.
+	 */
+	keepSignatures: boolean,
+	password: string | null,
+	jobId: string | null,
+};
+
 export type MetadataSuggestion = {
 	title: string,
 	author: string,
 	subject: string,
 	keywords: string[],
+};
+
+export type NumberingOptions = NumberingOptions_Serialize | NumberingOptions_Deserialize;
+
+export type NumberingOptions_Deserialize = {
+	/**  top_left | top_center | top_right | bottom_left | bottom_center | bottom_right */
+	position?: string,
+	/**  "n" | "page_n" | "n_of_total" | "page_n_of_total" */
+	format?: string,
+	start_number?: number,
+	font_size_pt?: number,
+	/**  "#RRGGBB" */
+	color?: string,
+	margin_pt?: number,
+	/**  Empty = all pages. */
+	pages?: number[],
+	/**
+	 *  When true the first rendered number equals start_number, otherwise the
+	 *  displayed number matches the physical page index.
+	 */
+	count_from_start?: boolean,
+};
+
+export type NumberingOptions_Serialize = {
+	/**  top_left | top_center | top_right | bottom_left | bottom_center | bottom_right */
+	position: string,
+	/**  "n" | "page_n" | "n_of_total" | "page_n_of_total" */
+	format: string,
+	start_number: number,
+	font_size_pt: number,
+	/**  "#RRGGBB" */
+	color: string,
+	margin_pt: number,
+	/**  Empty = all pages. */
+	pages: number[],
+	/**
+	 *  When true the first rendered number equals start_number, otherwise the
+	 *  displayed number matches the physical page index.
+	 */
+	count_from_start: boolean,
+};
+
+export type NumberingRequest = NumberingRequest_Serialize | NumberingRequest_Deserialize;
+
+export type NumberingRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	options: NumberingOptions_Deserialize,
+	/**
+	 *  Keep existing signatures by appending the numbers as a new revision
+	 *  (default on).
+	 */
+	keepSignatures?: boolean,
+	password?: string | null,
+	jobId?: string | null,
+};
+
+export type NumberingRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	options: NumberingOptions_Serialize,
+	/**
+	 *  Keep existing signatures by appending the numbers as a new revision
+	 *  (default on).
+	 */
+	keepSignatures: boolean,
+	password: string | null,
+	jobId: string | null,
+};
+
+/**  How many pages go on one sheet and in which order. */
+export type NupOptions = NupOptions_Serialize | NupOptions_Deserialize;
+
+/**  How many pages go on one sheet and in which order. */
+export type NupOptions_Deserialize = {
+	/**  Pages per sheet: 2 or 4. */
+	perSheet?: number,
+	/**  Saddle-stitch booklet ordering instead of reading order. */
+	booklet?: boolean,
+	/**  `portrait` or `landscape`; the sheet is always landscape-ish for N-up. */
+	orientation?: string,
+	/**  Sheet size: `source` keeps the source page size, or `a4` / `letter`. */
+	pageSize?: string,
+	marginPt?: number,
+	gutterPt?: number,
+	/**  Draw a light border around each placed page. */
+	border?: boolean,
+	/**  1-based pages to include; empty means every page. */
+	pages?: number[],
+};
+
+/**  How many pages go on one sheet and in which order. */
+export type NupOptions_Serialize = {
+	/**  Pages per sheet: 2 or 4. */
+	perSheet: number,
+	/**  Saddle-stitch booklet ordering instead of reading order. */
+	booklet: boolean,
+	/**  `portrait` or `landscape`; the sheet is always landscape-ish for N-up. */
+	orientation: string,
+	/**  Sheet size: `source` keeps the source page size, or `a4` / `letter`. */
+	pageSize: string,
+	marginPt: number,
+	gutterPt: number,
+	/**  Draw a light border around each placed page. */
+	border: boolean,
+	/**  1-based pages to include; empty means every page. */
+	pages: number[],
+};
+
+export type NupRequest = NupRequest_Serialize | NupRequest_Deserialize;
+
+export type NupRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	options: NupOptions_Deserialize,
+	password?: string | null,
+	jobId?: string | null,
+};
+
+export type NupRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	options: NupOptions_Serialize,
+	password: string | null,
+	jobId: string | null,
 };
 
 export type OAuthStatus = {
@@ -1515,9 +2873,89 @@ export type OAuthStatus = {
 	store: string,
 };
 
+/**  One edit requested for an object listed by `list_page_objects`. */
+export type ObjectAction = 
+/**  Translate by (dx, dy) page points. */
+{ action: "move"; dx: number; dy: number } | 
+/**  New page-space rectangle `[x0, y0, x1, y1]` (bottom-left origin). */
+{ action: "resize"; rect: [number, number, number, number] } | { action: "delete" } | 
+/**  Rotate around the object's center, in degrees. */
+{ action: "rotate"; degrees: number };
+
+export type ObjectEdit = {
+	page: number,
+	index: number,
+} & ObjectAction;
+
 export type OcrLanguage = {
 	code: string,
 	name: string,
+};
+
+export type OcrOptions = OcrOptions_Serialize | OcrOptions_Deserialize;
+
+export type OcrOptions_Deserialize = {
+	languages?: string[],
+	psm?: number,
+	dpi?: number,
+	/**  searchable_pdf | text | markdown */
+	output_mode?: string,
+	/**  Empty = all pages. */
+	pages?: number[],
+	preprocess?: OcrPreprocess_Deserialize,
+	/**  Skip OCR on pages that already contain a text layer. */
+	skip_text_pages?: boolean,
+};
+
+export type OcrOptions_Serialize = {
+	languages: string[],
+	psm: number,
+	dpi: number,
+	/**  searchable_pdf | text | markdown */
+	output_mode: string,
+	/**  Empty = all pages. */
+	pages: number[],
+	preprocess: OcrPreprocess_Serialize,
+	/**  Skip OCR on pages that already contain a text layer. */
+	skip_text_pages: boolean,
+};
+
+export type OcrPreprocess = OcrPreprocess_Serialize | OcrPreprocess_Deserialize;
+
+export type OcrPreprocess_Deserialize = {
+	auto_rotate?: boolean,
+	deskew?: boolean,
+	contrast?: boolean,
+	denoise?: boolean,
+	binarize?: boolean,
+	grayscale?: boolean,
+};
+
+export type OcrPreprocess_Serialize = {
+	auto_rotate: boolean,
+	deskew: boolean,
+	contrast: boolean,
+	denoise: boolean,
+	binarize: boolean,
+	grayscale: boolean,
+};
+
+export type OcrRequest = OcrRequest_Serialize | OcrRequest_Deserialize;
+
+export type OcrRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	options: OcrOptions_Deserialize,
+	password?: string | null,
+	jobId?: string | null,
+};
+
+export type OcrRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	options: OcrOptions_Serialize,
+	password: string | null,
+	jobId: string | null,
 };
 
 export type OfficeErrorPayload = {
@@ -1569,6 +3007,26 @@ export type OfficePdfToImagesRequest_Serialize = {
 	grayscale: boolean | null,
 	prefix: string | null,
 	overwrite: string | null,
+};
+
+export type OpResult = OpResult_Serialize | OpResult_Deserialize;
+
+export type OpResult_Deserialize = {
+	path: string,
+	pageCount?: number | null,
+	originalBytes?: number | null,
+	outputBytes?: number | null,
+	reduction?: number | null,
+	message?: string | null,
+};
+
+export type OpResult_Serialize = {
+	path: string,
+	pageCount: number | null,
+	originalBytes: number | null,
+	outputBytes: number | null,
+	reduction: number | null,
+	message: string | null,
 };
 
 export type OpenDocument = OpenDocument_Serialize | OpenDocument_Deserialize;
@@ -1667,6 +3125,13 @@ export type OperationLogRequest_Serialize = {
 	detail: string | null,
 };
 
+export type OutlineEntry = {
+	title: string,
+	/**  Page the entry points at, 1-based. */
+	page: number,
+	depth: number,
+};
+
 export type OutlineSlide = OutlineSlide_Serialize | OutlineSlide_Deserialize;
 
 export type OutlineSlide_Deserialize = {
@@ -1679,6 +3144,18 @@ export type OutlineSlide_Serialize = {
 	bullets: string[],
 };
 
+export type OutputSpec = OutputSpec_Serialize | OutputSpec_Deserialize;
+
+export type OutputSpec_Deserialize = {
+	path: string,
+	overwrite?: string | null,
+};
+
+export type OutputSpec_Serialize = {
+	path: string,
+	overwrite: string | null,
+};
+
 /**
  *  Suggests a default output path next to the input.
  *  A suggested save target: the write token and the path the UI displays.
@@ -1686,6 +3163,161 @@ export type OutlineSlide_Serialize = {
 export type OutputSuggestion = {
 	token: string,
 	path: string,
+};
+
+export type PageGeometry = {
+	page: number,
+	width_pt: number,
+	height_pt: number,
+	/**  Width/height as displayed, i.e. after the page's /Rotate value. */
+	display_width_pt: number,
+	display_height_pt: number,
+	rotation: number,
+};
+
+/**  One annotation, widget or image placement on a page. */
+export type PageObjectInfo = PageObjectInfo_Serialize | PageObjectInfo_Deserialize;
+
+/**  One annotation, widget or image placement on a page. */
+export type PageObjectInfo_Deserialize = {
+	page?: number,
+	/**
+	 *  Stable position within the page's object list (annotations first, then
+	 *  drawn images in content order). This is the key `ObjectEdit` uses.
+	 */
+	index?: number,
+	/**  `annotation` | `widget` | `image`. */
+	kind?: string,
+	/**  Annotation `/Subtype`, or `Image`. */
+	subtype?: string,
+	/**  `"object generation"` for indirect annotations; `None` for inline ones. */
+	id?: string | null,
+	/**
+	 *  Page-space bounding box, bottom-left origin (`/Rect`, or the placed
+	 *  image's bounding box).
+	 */
+	rect?: [number, number, number, number],
+	/**  Placement matrix for images (unit square -> page space). */
+	matrix?: [number, number, number, number, number, number] | null,
+	/**  Resource name of the image (`/Im0`), when the object is an image. */
+	resourceName?: string | null,
+	/**  Field name for widget annotations. */
+	fieldName?: string | null,
+	/**  Annotation `/Contents` (truncated). */
+	contents?: string,
+	/**  Annotation `/F` flags. */
+	flags?: number,
+	hidden?: boolean,
+	tabOrder?: number | null,
+};
+
+/**  One annotation, widget or image placement on a page. */
+export type PageObjectInfo_Serialize = {
+	page: number,
+	/**
+	 *  Stable position within the page's object list (annotations first, then
+	 *  drawn images in content order). This is the key `ObjectEdit` uses.
+	 */
+	index: number,
+	/**  `annotation` | `widget` | `image`. */
+	kind: string,
+	/**  Annotation `/Subtype`, or `Image`. */
+	subtype: string,
+	/**  `"object generation"` for indirect annotations; `None` for inline ones. */
+	id: string | null,
+	/**
+	 *  Page-space bounding box, bottom-left origin (`/Rect`, or the placed
+	 *  image's bounding box).
+	 */
+	rect: [number, number, number, number],
+	/**  Placement matrix for images (unit square -> page space). */
+	matrix: [number, number, number, number, number, number] | null,
+	/**  Resource name of the image (`/Im0`), when the object is an image. */
+	resourceName: string | null,
+	/**  Field name for widget annotations. */
+	fieldName: string | null,
+	/**  Annotation `/Contents` (truncated). */
+	contents: string,
+	/**  Annotation `/F` flags. */
+	flags: number,
+	hidden: boolean,
+	tabOrder: number | null,
+};
+
+/**
+ *  A single entry of a pages plan: source page number (1-based, referring to
+ *  the input document) plus a rotation delta applied to that instance.
+ * 
+ *  When `blank` is true the entry inserts a brand-new empty page instead of
+ *  copying a source page: `source_page` is ignored, the page carries no
+ *  `/Contents`, and its size comes from `width_pt`/`height_pt` when given,
+ *  otherwise from the first non-blank plan page's MediaBox (A4 as a last
+ *  resort).
+ */
+export type PagePlanItem = PagePlanItem_Serialize | PagePlanItem_Deserialize;
+
+/**
+ *  A single entry of a pages plan: source page number (1-based, referring to
+ *  the input document) plus a rotation delta applied to that instance.
+ * 
+ *  When `blank` is true the entry inserts a brand-new empty page instead of
+ *  copying a source page: `source_page` is ignored, the page carries no
+ *  `/Contents`, and its size comes from `width_pt`/`height_pt` when given,
+ *  otherwise from the first non-blank plan page's MediaBox (A4 as a last
+ *  resort).
+ */
+export type PagePlanItem_Deserialize = {
+	source_page: number,
+	rotation_delta?: number,
+	/**  Insert a blank page instead of copying a source page. */
+	blank?: boolean,
+	/**  Blank page width in points; `None` inherits the reference page width. */
+	width_pt?: number | null,
+	/**  Blank page height in points; `None` inherits the reference page height. */
+	height_pt?: number | null,
+};
+
+/**
+ *  A single entry of a pages plan: source page number (1-based, referring to
+ *  the input document) plus a rotation delta applied to that instance.
+ * 
+ *  When `blank` is true the entry inserts a brand-new empty page instead of
+ *  copying a source page: `source_page` is ignored, the page carries no
+ *  `/Contents`, and its size comes from `width_pt`/`height_pt` when given,
+ *  otherwise from the first non-blank plan page's MediaBox (A4 as a last
+ *  resort).
+ */
+export type PagePlanItem_Serialize = {
+	source_page: number,
+	rotation_delta: number,
+	/**  Insert a blank page instead of copying a source page. */
+	blank: boolean,
+	/**  Blank page width in points; `None` inherits the reference page width. */
+	width_pt: number | null,
+	/**  Blank page height in points; `None` inherits the reference page height. */
+	height_pt: number | null,
+};
+
+export type PagesRequest = PagesRequest_Serialize | PagesRequest_Deserialize;
+
+export type PagesRequest_Deserialize = {
+	input: string,
+	pages?: number[],
+	output: OutputSpec_Deserialize,
+	selection?: string | null,
+	degrees?: number | null,
+	password?: string | null,
+	jobId?: string | null,
+};
+
+export type PagesRequest_Serialize = {
+	input: string,
+	pages: number[],
+	output: OutputSpec_Serialize,
+	selection: string | null,
+	degrees: number | null,
+	password: string | null,
+	jobId: string | null,
 };
 
 /**
@@ -1698,6 +3330,116 @@ export type PdfError = {
 };
 
 export type PdfFormField = PdfFormField_Serialize | PdfFormField_Deserialize;
+
+/**
+ *  A form field as found in the document. The inspection report has its own
+ *  `FormFieldInfo`; the bindings name this one `PdfFormFieldInfo`.
+ */
+export type PdfFormFieldInfo = PdfFormFieldInfo_Serialize | PdfFormFieldInfo_Deserialize;
+
+/**
+ *  A form field as found in the document. The inspection report has its own
+ *  `FormFieldInfo`; the bindings name this one `PdfFormFieldInfo`.
+ */
+export type PdfFormFieldInfo_Deserialize = {
+	/**  Fully qualified name (`/T` joined with the parent chain, dot separated). */
+	name?: string,
+	/**  `text` | `checkbox` | `radio` | `pushbutton` | `choice` | `signature` | `unknown`. */
+	fieldType?: string,
+	/**  Raw `/Ff` value after inheritance. */
+	flags?: number,
+	required?: boolean,
+	readOnly?: boolean,
+	/**
+	 *  Current value (`/V`), as a string. Arrays (multi select) are joined in
+	 *  `values`.
+	 */
+	value?: string,
+	/**  All current values (multi-select choice fields can have several). */
+	values?: string[],
+	defaultValue?: string,
+	/**  `/TU` tooltip, when present. */
+	tooltip?: string | null,
+	/**  `/MaxLen` for text fields. */
+	maxLength?: number | null,
+	multiline?: boolean,
+	password?: boolean,
+	comb?: boolean,
+	/**  Choice field is a dropdown (`/Ff` combo bit) rather than a list box. */
+	combo?: boolean,
+	/**  Choice field is editable (`/Ff` edit bit). */
+	editable?: boolean,
+	multiSelect?: boolean,
+	/**  Declared options. Radio groups list one entry per widget state. */
+	options?: FieldOption_Deserialize[],
+	/**  Page of the first widget, when it could be resolved. */
+	page?: number | null,
+	/**  `/Rect` of the first widget (page space, bottom-left origin). */
+	rect?: [number, number, number, number] | null,
+	/**
+	 *  Position in the page tab order when the page declares a `/Tabs` number
+	 *  tree; `None` means annotation order applies.
+	 */
+	tabOrder?: number | null,
+	widgetCount?: number,
+	/**
+	 *  The field carries JavaScript actions (`/AA` or `/A`); validation cannot
+	 *  execute them and says so in the field issue list.
+	 */
+	hasScript?: boolean,
+};
+
+/**
+ *  A form field as found in the document. The inspection report has its own
+ *  `FormFieldInfo`; the bindings name this one `PdfFormFieldInfo`.
+ */
+export type PdfFormFieldInfo_Serialize = {
+	/**  Fully qualified name (`/T` joined with the parent chain, dot separated). */
+	name: string,
+	/**  `text` | `checkbox` | `radio` | `pushbutton` | `choice` | `signature` | `unknown`. */
+	fieldType: string,
+	/**  Raw `/Ff` value after inheritance. */
+	flags: number,
+	required: boolean,
+	readOnly: boolean,
+	/**
+	 *  Current value (`/V`), as a string. Arrays (multi select) are joined in
+	 *  `values`.
+	 */
+	value: string,
+	/**  All current values (multi-select choice fields can have several). */
+	values: string[],
+	defaultValue: string,
+	/**  `/TU` tooltip, when present. */
+	tooltip: string | null,
+	/**  `/MaxLen` for text fields. */
+	maxLength: number | null,
+	multiline: boolean,
+	password: boolean,
+	comb: boolean,
+	/**  Choice field is a dropdown (`/Ff` combo bit) rather than a list box. */
+	combo: boolean,
+	/**  Choice field is editable (`/Ff` edit bit). */
+	editable: boolean,
+	multiSelect: boolean,
+	/**  Declared options. Radio groups list one entry per widget state. */
+	options: FieldOption_Serialize[],
+	/**  Page of the first widget, when it could be resolved. */
+	page: number | null,
+	/**  `/Rect` of the first widget (page space, bottom-left origin). */
+	rect: [number, number, number, number] | null,
+	/**
+	 *  Position in the page tab order when the page declares a `/Tabs` number
+	 *  tree; `None` means annotation order applies.
+	 */
+	tabOrder: number | null,
+	widgetCount: number,
+	/**
+	 *  The field carries JavaScript actions (`/AA` or `/A`); validation cannot
+	 *  execute them and says so in the field issue list.
+	 */
+	hasScript: boolean,
+};
 
 export type PdfFormField_Deserialize = {
 	/**  text | checkbox | radio | dropdown */
@@ -1749,6 +3491,38 @@ export type PdfFormRequest_Serialize = {
 	password: string | null,
 };
 
+export type PdfInfo = {
+	path: string,
+	fileName: string,
+	fileSizeBytes: number,
+	pageCount: number,
+	pdfVersion: string,
+	encrypted: boolean,
+	hasTextLayer: boolean,
+	metadata: PdfMetadata,
+	pageGeometries: PageGeometry[],
+	imageCount: number,
+	title: string,
+	author: string,
+	producer: string,
+	/**
+	 *  Document outline (bookmarks), bounded and read-only. Entries whose
+	 *  destination cannot be resolved carry page 0.
+	 */
+	outline: OutlineEntry[],
+};
+
+export type PdfMetadata = {
+	title: string,
+	author: string,
+	subject: string,
+	keywords: string,
+	creator: string,
+	producer: string,
+	creation_date: string,
+	mod_date: string,
+};
+
 export type PdfTextRequest = PdfTextRequest_Serialize | PdfTextRequest_Deserialize;
 
 export type PdfTextRequest_Deserialize = {
@@ -1761,6 +3535,119 @@ export type PdfTextRequest_Serialize = {
 	input: string,
 	output: string,
 	password: string | null,
+};
+
+export type PdfToImagesRequest = PdfToImagesRequest_Serialize | PdfToImagesRequest_Deserialize;
+
+export type PdfToImagesRequest_Deserialize = {
+	input: string,
+	outputDir: string,
+	format: ImageFormat,
+	dpi?: number,
+	jpegQuality?: number,
+	grayscale?: boolean,
+	namePrefix?: string,
+	pages?: number[],
+	overwrite?: string | null,
+	password?: string | null,
+	jobId?: string | null,
+};
+
+export type PdfToImagesRequest_Serialize = {
+	input: string,
+	outputDir: string,
+	format: ImageFormat,
+	dpi: number,
+	jpegQuality: number,
+	grayscale: boolean,
+	namePrefix: string,
+	pages: number[],
+	overwrite: string | null,
+	password: string | null,
+	jobId: string | null,
+};
+
+export type PdfToImagesResponse = {
+	files: ImageOutput[],
+	totalBytes: number,
+	dpi: number,
+	format: string,
+};
+
+/**  One validation result. `status` is `pass`, `warning` or `fail`. */
+export type PdfaCheck = {
+	id: string,
+	level: string,
+	status: string,
+	message: string,
+};
+
+export type PdfaReport = PdfaReport_Serialize | PdfaReport_Deserialize;
+
+export type PdfaReport_Deserialize = {
+	valid: boolean,
+	level: string,
+	checks: PdfaCheck[],
+	failures: number,
+	warnings: number,
+	/**  True when the report was produced by [`convert_pdfa`]. */
+	converted: boolean,
+	/**
+	 *  Per-font outcome of the conversion's embedding step. Empty for a plain
+	 *  [`validate_pdfa`] run; a font that could not be embedded is reported
+	 *  here with its skip reason instead of being silently dropped.
+	 */
+	fontEmbedding?: EmbeddedFontReport_Deserialize[],
+};
+
+export type PdfaReport_Serialize = {
+	valid: boolean,
+	level: string,
+	checks: PdfaCheck[],
+	failures: number,
+	warnings: number,
+	/**  True when the report was produced by [`convert_pdfa`]. */
+	converted: boolean,
+	/**
+	 *  Per-font outcome of the conversion's embedding step. Empty for a plain
+	 *  [`validate_pdfa`] run; a font that could not be embedded is reported
+	 *  here with its skip reason instead of being silently dropped.
+	 */
+	fontEmbedding: EmbeddedFontReport_Serialize[],
+};
+
+export type PdfaRequest = PdfaRequest_Serialize | PdfaRequest_Deserialize;
+
+export type PdfaRequest_Deserialize = {
+	input: string,
+	level: string,
+	output?: OutputSpec_Deserialize | null,
+	jobId?: string | null,
+};
+
+export type PdfaRequest_Serialize = {
+	input: string,
+	level: string,
+	output: OutputSpec_Serialize | null,
+	jobId: string | null,
+};
+
+export type PlanRequest = PlanRequest_Serialize | PlanRequest_Deserialize;
+
+export type PlanRequest_Deserialize = {
+	input: string,
+	plan: PagePlanItem_Deserialize[],
+	output: OutputSpec_Deserialize,
+	password?: string | null,
+	jobId?: string | null,
+};
+
+export type PlanRequest_Serialize = {
+	input: string,
+	plan: PagePlanItem_Serialize[],
+	output: OutputSpec_Serialize,
+	password: string | null,
+	jobId: string | null,
 };
 
 export type PluginEntry = {
@@ -1806,6 +3693,34 @@ export type PluginPdfRead = {
 	text: string,
 };
 
+export type ProtectRequest = ProtectRequest_Serialize | ProtectRequest_Deserialize;
+
+export type ProtectRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	userPassword: string,
+	ownerPassword: string,
+	allowPrinting?: boolean,
+	allowCopying?: boolean,
+	allowEditing?: boolean,
+	allowCommenting?: boolean,
+	password?: string | null,
+	jobId?: string | null,
+};
+
+export type ProtectRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	userPassword: string,
+	ownerPassword: string,
+	allowPrinting: boolean,
+	allowCopying: boolean,
+	allowEditing: boolean,
+	allowCommenting: boolean,
+	password: string | null,
+	jobId: string | null,
+};
+
 export type ProviderCapabilities = {
 	chat: boolean,
 	embeddings: boolean,
@@ -1830,6 +3745,65 @@ export type RecentRef = {
 	timestamp: number,
 };
 
+export type Recipe = Recipe_Serialize | Recipe_Deserialize;
+
+export type RecipeRunRequest = RecipeRunRequest_Serialize | RecipeRunRequest_Deserialize;
+
+export type RecipeRunRequest_Deserialize = {
+	input: string,
+	output: string,
+	recipe: Recipe_Deserialize,
+	password?: string | null,
+};
+
+export type RecipeRunRequest_Serialize = {
+	input: string,
+	output: string,
+	recipe: Recipe_Serialize,
+	password: string | null,
+};
+
+export type RecipeRunResult = {
+	output: string,
+	applied: string[],
+};
+
+/**
+ *  One step of a recipe. The `kind` tag matches the frontend's step palette.
+ *  `rename_all_fields` renames the variant **fields** too, so the frontend's
+ *  `headerFooter` reaches `header_footer` (it used to be silently dropped, and
+ *  the stamp step ran empty).
+ */
+export type RecipeStep = RecipeStep_Serialize | RecipeStep_Deserialize;
+
+/**
+ *  One step of a recipe. The `kind` tag matches the frontend's step palette.
+ *  `rename_all_fields` renames the variant **fields** too, so the frontend's
+ *  `headerFooter` reaches `header_footer` (it used to be silently dropped, and
+ *  the stamp step ran empty).
+ */
+export type RecipeStep_Deserialize = { kind: "compress"; options: CompressOptions_Deserialize } | { kind: "stamp"; headerFooter?: HeaderFooterOptions_Deserialize | null; bates?: BatesOptions_Deserialize | null } | { kind: "pdfa"; level: string } | { kind: "ocr"; options: OcrOptions_Deserialize } | { kind: "redact"; areas?: RedactionArea[]; options: RedactionOptions_Deserialize };
+
+/**
+ *  One step of a recipe. The `kind` tag matches the frontend's step palette.
+ *  `rename_all_fields` renames the variant **fields** too, so the frontend's
+ *  `headerFooter` reaches `header_footer` (it used to be silently dropped, and
+ *  the stamp step ran empty).
+ */
+export type RecipeStep_Serialize = { kind: "compress"; options: CompressOptions_Serialize } | { kind: "stamp"; headerFooter?: HeaderFooterOptions_Serialize; bates?: BatesOptions_Serialize } | { kind: "pdfa"; level: string } | { kind: "ocr"; options: OcrOptions_Serialize } | { kind: "redact"; areas: RedactionArea[]; options: RedactionOptions_Serialize };
+
+export type Recipe_Deserialize = {
+	id: string,
+	name: string,
+	steps?: RecipeStep_Deserialize[],
+};
+
+export type Recipe_Serialize = {
+	id: string,
+	name: string,
+	steps: RecipeStep_Serialize[],
+};
+
 export type RecoveryEntry = RecoveryEntry_Serialize | RecoveryEntry_Deserialize;
 
 export type RecoveryEntry_Deserialize = {
@@ -1848,6 +3822,356 @@ export type RecoveryEntry_Serialize = {
 	path: string | null,
 	savedAt: string,
 	size: number,
+};
+
+export type RedactRequest = RedactRequest_Serialize | RedactRequest_Deserialize;
+
+export type RedactRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	areas: RedactionArea[],
+	options: RedactionOptions_Deserialize,
+	password?: string | null,
+	jobId?: string | null,
+};
+
+export type RedactRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	areas: RedactionArea[],
+	options: RedactionOptions_Serialize,
+	password: string | null,
+	jobId: string | null,
+};
+
+/**  A rectangle to redact, in PDF page space (origin bottom-left, points). */
+export type RedactionArea = {
+	/**  1-based page number. */
+	page: number,
+	left: number,
+	bottom: number,
+	right: number,
+	top: number,
+};
+
+/**  The certificate as embedded in the PDF. */
+export type RedactionCertificate = RedactionCertificate_Serialize | RedactionCertificate_Deserialize;
+
+/**
+ *  What a certificate is built for: the original file, the redacted output and
+ *  the item list (page, category, rule - never a value).
+ */
+export type RedactionCertificateRequest = RedactionCertificateRequest_Serialize | RedactionCertificateRequest_Deserialize;
+
+/**
+ *  What a certificate is built for: the original file, the redacted output and
+ *  the item list (page, category, rule - never a value).
+ */
+export type RedactionCertificateRequest_Deserialize = {
+	originalPath: string,
+	redactedPath: string,
+	items: CertificateItem[],
+	/**  Optional RFC 3161 authority; when set, the certified digest is stamped. */
+	tsaUrl?: string | null,
+};
+
+/**
+ *  What a certificate is built for: the original file, the redacted output and
+ *  the item list (page, category, rule - never a value).
+ */
+export type RedactionCertificateRequest_Serialize = {
+	originalPath: string,
+	redactedPath: string,
+	items: CertificateItem[],
+	/**  Optional RFC 3161 authority; when set, the certified digest is stamped. */
+	tsaUrl: string | null,
+};
+
+/**  The certificate as embedded in the PDF. */
+export type RedactionCertificate_Deserialize = {
+	version: number,
+	id: string,
+	/**  RFC 3339 UTC. */
+	createdAt: string,
+	original: FileDigest,
+	/**  The redacted file **with the certificate stripped** (see module docs). */
+	redacted: FileDigest,
+	items: CertificateItem[],
+	timestamp?: CertificateTimestamp_Deserialize | null,
+};
+
+/**  The certificate as embedded in the PDF. */
+export type RedactionCertificate_Serialize = {
+	version: number,
+	id: string,
+	/**  RFC 3339 UTC. */
+	createdAt: string,
+	original: FileDigest,
+	/**  The redacted file **with the certificate stripped** (see module docs). */
+	redacted: FileDigest,
+	items: CertificateItem[],
+	timestamp: CertificateTimestamp_Serialize | null,
+};
+
+/**  One rectangle with the text it is meant to hide. */
+export type RedactionMatch = {
+	page: number,
+	text: string,
+	left: number,
+	bottom: number,
+	right: number,
+	top: number,
+	/**  Which detector produced the match. */
+	kind: string,
+};
+
+export type RedactionOptions = RedactionOptions_Serialize | RedactionOptions_Deserialize;
+
+export type RedactionOptions_Deserialize = {
+	/**  `#RRGGBB` fill drawn over the redacted area. */
+	fill?: string,
+	images?: ImageRedaction,
+	/**
+	 *  Points of padding added around each area so anti-aliased glyph edges
+	 *  cannot leave a readable sliver.
+	 */
+	paddingPt?: number,
+	/**  Drop the document's metadata, which often names the redacted party. */
+	removeMetadata?: boolean,
+};
+
+export type RedactionOptions_Serialize = {
+	/**  `#RRGGBB` fill drawn over the redacted area. */
+	fill: string,
+	images: ImageRedaction,
+	/**
+	 *  Points of padding added around each area so anti-aliased glyph edges
+	 *  cannot leave a readable sliver.
+	 */
+	paddingPt: number,
+	/**  Drop the document's metadata, which often names the redacted party. */
+	removeMetadata: boolean,
+};
+
+/**  The engine that rewrote a repaired file. */
+export type RepairMethod = "qpdf" | 
+/**  The built-in object-scanning rebuild (`rebuild::rebuild_pdf`). */
+"builtin";
+
+export type RepairReport = RepairReport_Serialize | RepairReport_Deserialize;
+
+export type RepairReport_Deserialize = {
+	/**  Where the rewritten file was written. */
+	output: string,
+	/**  Pages in the produced file (0 when it could not be re-opened). */
+	pages: number,
+	/**
+	 *  qpdf diagnostics or the rebuild's notes, capped; these are the
+	 *  repair's warnings.
+	 */
+	warnings: string[],
+	/**  Which engine repaired the file; absent for linearization. */
+	method?: RepairMethod | null,
+};
+
+export type RepairReport_Serialize = {
+	/**  Where the rewritten file was written. */
+	output: string,
+	/**  Pages in the produced file (0 when it could not be re-opened). */
+	pages: number,
+	/**
+	 *  qpdf diagnostics or the rebuild's notes, capped; these are the
+	 *  repair's warnings.
+	 */
+	warnings: string[],
+	/**  Which engine repaired the file; absent for linearization. */
+	method?: RepairMethod,
+};
+
+export type RepairRequest = RepairRequest_Serialize | RepairRequest_Deserialize;
+
+export type RepairRequest_Deserialize = {
+	input: string,
+	output?: OutputSpec_Deserialize | null,
+	jobId?: string | null,
+};
+
+export type RepairRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize | null,
+	jobId: string | null,
+};
+
+export type ResizeOptions = ResizeOptions_Serialize | ResizeOptions_Deserialize;
+
+export type ResizeOptions_Deserialize = {
+	/**  a3 | a4 | a5 | letter | legal | custom */
+	page_size?: string,
+	custom_width_pt?: number,
+	custom_height_pt?: number,
+	/**  auto | portrait | landscape */
+	orientation?: string,
+	/**  fit (contain, keep aspect) | stretch (fill, may distort) */
+	mode?: string,
+	/**  Empty = all pages. */
+	pages?: number[],
+};
+
+export type ResizeOptions_Serialize = {
+	/**  a3 | a4 | a5 | letter | legal | custom */
+	page_size: string,
+	custom_width_pt: number,
+	custom_height_pt: number,
+	/**  auto | portrait | landscape */
+	orientation: string,
+	/**  fit (contain, keep aspect) | stretch (fill, may distort) */
+	mode: string,
+	/**  Empty = all pages. */
+	pages: number[],
+};
+
+export type ResizeRequest = ResizeRequest_Serialize | ResizeRequest_Deserialize;
+
+export type ResizeRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	options: ResizeOptions_Deserialize,
+	password?: string | null,
+	jobId?: string | null,
+};
+
+export type ResizeRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	options: ResizeOptions_Serialize,
+	password: string | null,
+	jobId: string | null,
+};
+
+/**  Revocation status of a signer certificate. */
+export type RevocationInfo = RevocationInfo_Serialize | RevocationInfo_Deserialize;
+
+/**  Revocation status of a signer certificate. */
+export type RevocationInfo_Deserialize = {
+	status?: RevocationStatus,
+	/**  Which mechanism produced the answer. */
+	source?: RevocationSource | null,
+	/**  When the check ran (RFC 3339, UTC). */
+	checkedAt?: string | null,
+	/**  The responder or CRL URL that answered. */
+	url?: string | null,
+	/**  Revocation time (RFC 3339, UTC) when the status is `revoked`. */
+	revokedAt?: string | null,
+	/**  RFC 5280 CRLReason name, e.g. `keyCompromise`, when one was given. */
+	reason?: string | null,
+	/**  Why the status is unknown or an error, or a caveat about a revocation. */
+	detail?: string | null,
+};
+
+/**  Revocation status of a signer certificate. */
+export type RevocationInfo_Serialize = {
+	status: RevocationStatus,
+	/**  Which mechanism produced the answer. */
+	source: RevocationSource | null,
+	/**  When the check ran (RFC 3339, UTC). */
+	checkedAt: string | null,
+	/**  The responder or CRL URL that answered. */
+	url: string | null,
+	/**  Revocation time (RFC 3339, UTC) when the status is `revoked`. */
+	revokedAt: string | null,
+	/**  RFC 5280 CRLReason name, e.g. `keyCompromise`, when one was given. */
+	reason: string | null,
+	/**  Why the status is unknown or an error, or a caveat about a revocation. */
+	detail: string | null,
+};
+
+export type RevocationSource = "ocsp" | "crl";
+
+export type RevocationStatus = 
+/**  No online check ran - the default, because the check is opt-in. */
+"not_checked" | 
+/**  The CA says the certificate is not revoked. Not a statement of trust. */
+"good" | "revoked" | 
+/**
+ *  The responder does not know the certificate, or the certificate names
+ *  nowhere to ask.
+ */
+"unknown" | 
+/**
+ *  Every attempt failed: unreachable server, invalid, unauthorized or
+ *  stale answer.
+ */
+"error";
+
+/**
+ *  What the document carried before sanitization, so the UI can show what was
+ *  at stake even after every trace is gone.
+ */
+export type SanitizeFindingsBefore = {
+	javascriptEntries: number,
+	embeddedFiles: number,
+	actions: number,
+	unsafeAnnotations: number,
+	linkAnnotations: number,
+	metadataPresent: boolean,
+	openActionPresent: boolean,
+};
+
+/**
+ *  Which classes of content the sanitizer removes. Every switch defaults to
+ *  `true`; the user turns off only what they intentionally want to keep.
+ */
+export type SanitizeOptions = {
+	/**  Removes `/JavaScript` name trees and every `/JS` / `/JavaScript` key. */
+	removeJavascript: boolean,
+	/**  Removes the `/EmbeddedFiles` name tree and every file specification. */
+	removeEmbeddedFiles: boolean,
+	/**
+	 *  Removes Launch, URI, SubmitForm, ImportData, GoToR and GoToE actions,
+	 *  plus the `/AA` additional-action dictionaries.
+	 */
+	removeActions: boolean,
+	/**  Removes the Info dictionary and every XMP `/Metadata` stream. */
+	removeMetadata: boolean,
+	/**  Removes the catalog `/OpenAction`. */
+	removeOpenAction: boolean,
+	/**  Removes `/A` and `/AA` entries from form fields and widgets. */
+	removeFormActions: boolean,
+	/**
+	 *  Removes annotations with a hazardous subtype (FileAttachment, Sound,
+	 *  Movie, Screen, RichMedia) or with an attached action.
+	 */
+	removeAnnotationsUnsafe: boolean,
+	/**  Removes every link annotation, including its target action. */
+	removeLinks: boolean,
+};
+
+/**  Exactly what the sanitizer removed. */
+export type SanitizeReport = {
+	javascriptRemoved: number,
+	embeddedFilesRemoved: number,
+	actionsRemoved: number,
+	metadataRemoved: number,
+	annotationsRemoved: number,
+	linksRemoved: number,
+	warnings: string[],
+	findingsBefore: SanitizeFindingsBefore,
+};
+
+export type SanitizeRequest = SanitizeRequest_Serialize | SanitizeRequest_Deserialize;
+
+export type SanitizeRequest_Deserialize = {
+	input: string,
+	output?: OutputSpec_Deserialize | null,
+	options?: SanitizeOptions | null,
+	jobId?: string | null,
+};
+
+export type SanitizeRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize | null,
+	options: SanitizeOptions | null,
+	jobId: string | null,
 };
 
 export type SaveAiEntryRequest = SaveAiEntryRequest_Serialize | SaveAiEntryRequest_Deserialize;
@@ -1931,7 +4255,7 @@ export type ScanPage = ScanPage_Serialize | ScanPage_Deserialize;
  */
 export type ScanPage_Deserialize = {
 	path: string,
-	corners?: ([(number | null), (number | null)])[] | null,
+	corners?: ([number, number])[] | null,
 };
 
 /**
@@ -1940,7 +4264,7 @@ export type ScanPage_Deserialize = {
  */
 export type ScanPage_Serialize = {
 	path: string,
-	corners: ([(number | null), (number | null)])[] | null,
+	corners: ([number, number])[] | null,
 };
 
 /**  The corner picker's view of one page photo (see `pdfcore::scan::preview`). */
@@ -1971,6 +4295,252 @@ export type ScanResult = {
 	warnings: string[],
 };
 
+export type SearchResponse = {
+	matches: TextMatch[],
+	pagesWithMatches: number,
+	totalMatches: number,
+	truncated: boolean,
+};
+
+export type SetOutlineRequest = SetOutlineRequest_Serialize | SetOutlineRequest_Deserialize;
+
+export type SetOutlineRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	entries: OutlineEntry[],
+	password?: string | null,
+	jobId?: string | null,
+};
+
+export type SetOutlineRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	entries: OutlineEntry[],
+	password: string | null,
+	jobId: string | null,
+};
+
+/**  How serious a finding is for an accessible or archival document. */
+export type Severity = 
+/**  Worth knowing; the document still works. */
+"info" | 
+/**  Should be fixed before publishing. */
+"warning" | 
+/**  Blocks conformance (PDF/UA, PDF/A). */
+"error";
+
+/**  UI facing signing options (camelCase on the wire, matching the frontend). */
+export type SignOptionsDto = SignOptionsDto_Serialize | SignOptionsDto_Deserialize;
+
+/**  UI facing signing options (camelCase on the wire, matching the frontend). */
+export type SignOptionsDto_Deserialize = {
+	page?: number,
+	rect?: [number, number, number, number] | null,
+	reason?: string,
+	location?: string,
+	contact?: string,
+	appearance?: boolean,
+	signerName?: string | null,
+};
+
+/**  UI facing signing options (camelCase on the wire, matching the frontend). */
+export type SignOptionsDto_Serialize = {
+	page: number,
+	rect: [number, number, number, number] | null,
+	reason: string,
+	location: string,
+	contact: string,
+	appearance: boolean,
+	signerName: string | null,
+};
+
+/**
+ *  Result of a successful signing operation: the written path plus the
+ *  verification report of the produced signature (never an assumed success).
+ */
+export type SignResultDto = SignResultDto_Serialize | SignResultDto_Deserialize;
+
+/**
+ *  Result of a successful signing operation: the written path plus the
+ *  verification report of the produced signature (never an assumed success).
+ */
+export type SignResultDto_Deserialize = {
+	output: string,
+	signature: SignatureInfo_Deserialize,
+};
+
+/**
+ *  Result of a successful signing operation: the written path plus the
+ *  verification report of the produced signature (never an assumed success).
+ */
+export type SignResultDto_Serialize = {
+	output: string,
+	signature: SignatureInfo_Serialize,
+};
+
+export type SignatureEntry = {
+	name: string,
+	imageBase64: string,
+};
+
+/**  Verification result for a single embedded signature. */
+export type SignatureInfo = SignatureInfo_Serialize | SignatureInfo_Deserialize;
+
+/**  Verification result for a single embedded signature. */
+export type SignatureInfo_Deserialize = {
+	fieldName: string,
+	subFilter: string,
+	/**  The ByteRange covers the whole revision except the `/Contents` value. */
+	coversWholeDocument: boolean,
+	/**
+	 *  Bytes were appended after this signature's own revision - a
+	 *  counter-signature, validation data (DSS) or any other incremental
+	 *  update. The signature is still valid for the revision it signed; it
+	 *  simply is not the last revision any more.
+	 */
+	supersededByLaterRevision?: boolean,
+	/**
+	 *  The signed bytes no longer hash to the digest in the CMS, or the byte
+	 *  range leaves unsigned bytes *inside* the signed revision. An appended
+	 *  revision is not a modification and is reported separately above.
+	 */
+	modifiedAfterSigning: boolean,
+	/**
+	 *  SHA-256 (or the declared digest) of the covered bytes matches the
+	 *  `messageDigest` signed attribute.
+	 */
+	digestMatches: boolean,
+	/**
+	 *  The RSA/ECDSA signature over the signed attributes verifies with the
+	 *  public key of the embedded signer certificate.
+	 */
+	signatureValid: boolean,
+	/**
+	 *  Signer certificate first, then the remaining embedded certificates in
+	 *  path order when the issuer links allow it.
+	 */
+	chain: CertificateInfo[],
+	/**
+	 *  Every certificate in `chain` is issued (and signature-verified) by the
+	 *  next one.
+	 */
+	chainLinked: boolean,
+	/**  The last certificate of the chain is self-signed. */
+	selfSignedChain: boolean,
+	signer: CertificateInfo,
+	/**  Signing time from the CMS `signingTime` attribute (RFC 3339, UTC). */
+	signingTime?: string | null,
+	/**
+	 *  RFC 3161 timestamp token time (`genTime`), when the signature carries
+	 *  one as an unsigned attribute. Present does not mean trusted: the TSA
+	 *  certificate chain and revocation status are not checked offline.
+	 */
+	timestamp?: string | null,
+	algorithm: string,
+	/**
+	 *  Always `"unknown"`: there is no system trust store. A `good`
+	 *  revocation answer does not change that.
+	 */
+	trust: string,
+	/**  Human readable notes about anything that could not be checked. */
+	notes?: string[],
+	/**
+	 *  Revocation status of the signer certificate. `not_checked` unless the
+	 *  signatures were verified with [`verify_signatures_online`].
+	 */
+	revocation?: RevocationInfo_Deserialize,
+};
+
+/**  Verification result for a single embedded signature. */
+export type SignatureInfo_Serialize = {
+	fieldName: string,
+	subFilter: string,
+	/**  The ByteRange covers the whole revision except the `/Contents` value. */
+	coversWholeDocument: boolean,
+	/**
+	 *  Bytes were appended after this signature's own revision - a
+	 *  counter-signature, validation data (DSS) or any other incremental
+	 *  update. The signature is still valid for the revision it signed; it
+	 *  simply is not the last revision any more.
+	 */
+	supersededByLaterRevision: boolean,
+	/**
+	 *  The signed bytes no longer hash to the digest in the CMS, or the byte
+	 *  range leaves unsigned bytes *inside* the signed revision. An appended
+	 *  revision is not a modification and is reported separately above.
+	 */
+	modifiedAfterSigning: boolean,
+	/**
+	 *  SHA-256 (or the declared digest) of the covered bytes matches the
+	 *  `messageDigest` signed attribute.
+	 */
+	digestMatches: boolean,
+	/**
+	 *  The RSA/ECDSA signature over the signed attributes verifies with the
+	 *  public key of the embedded signer certificate.
+	 */
+	signatureValid: boolean,
+	/**
+	 *  Signer certificate first, then the remaining embedded certificates in
+	 *  path order when the issuer links allow it.
+	 */
+	chain: CertificateInfo[],
+	/**
+	 *  Every certificate in `chain` is issued (and signature-verified) by the
+	 *  next one.
+	 */
+	chainLinked: boolean,
+	/**  The last certificate of the chain is self-signed. */
+	selfSignedChain: boolean,
+	signer: CertificateInfo,
+	/**  Signing time from the CMS `signingTime` attribute (RFC 3339, UTC). */
+	signingTime: string | null,
+	/**
+	 *  RFC 3161 timestamp token time (`genTime`), when the signature carries
+	 *  one as an unsigned attribute. Present does not mean trusted: the TSA
+	 *  certificate chain and revocation status are not checked offline.
+	 */
+	timestamp: string | null,
+	algorithm: string,
+	/**
+	 *  Always `"unknown"`: there is no system trust store. A `good`
+	 *  revocation answer does not change that.
+	 */
+	trust: string,
+	/**  Human readable notes about anything that could not be checked. */
+	notes: string[],
+	/**
+	 *  Revocation status of the signer certificate. `not_checked` unless the
+	 *  signatures were verified with [`verify_signatures_online`].
+	 */
+	revocation: RevocationInfo_Serialize,
+};
+
+/**  Result of [`verify_signatures`]. */
+export type SignatureReport = SignatureReport_Serialize | SignatureReport_Deserialize;
+
+/**  Result of [`verify_signatures`]. */
+export type SignatureReport_Deserialize = {
+	signatures: SignatureInfo_Deserialize[],
+	/**
+	 *  Problems with the document itself rather than with one signature - for
+	 *  example a file that could not be parsed at all. Without this an empty
+	 *  signature list read exactly like "this PDF is unsigned".
+	 */
+	warnings?: string[],
+};
+
+/**  Result of [`verify_signatures`]. */
+export type SignatureReport_Serialize = {
+	signatures: SignatureInfo_Serialize[],
+	/**
+	 *  Problems with the document itself rather than with one signature - for
+	 *  example a file that could not be parsed at all. Without this an empty
+	 *  signature list read exactly like "this PDF is unsigned".
+	 */
+	warnings: string[],
+};
+
 export type SpellCheckMisspelling = {
 	word: string,
 	start: number,
@@ -1980,6 +4550,78 @@ export type SpellCheckMisspelling = {
 
 export type SpellCheckResponse = {
 	misspellings: SpellCheckMisspelling[],
+};
+
+/**  A split strategy chosen by the user. */
+export type SplitMode = 
+/**  One range per group, e.g. "1-5", "6-10", "11-20". */
+{ mode: "ranges"; ranges: string[] } | 
+/**  New document every N pages. */
+{ mode: "every_n"; n: number } | 
+/**  One document per page. */
+{ mode: "individual" } | 
+/**  Cut before each of the given pages (page 1 is always a start). */
+{ mode: "at_pages"; pages: number[] };
+
+export type SplitPart = {
+	path: string,
+	first_page: number,
+	last_page: number,
+};
+
+export type SplitRequest = SplitRequest_Serialize | SplitRequest_Deserialize;
+
+export type SplitRequest_Deserialize = {
+	input: string,
+	mode: SplitMode,
+	outputDir: string,
+	overwrite?: string | null,
+	password?: string | null,
+	jobId?: string | null,
+};
+
+export type SplitRequest_Serialize = {
+	input: string,
+	mode: SplitMode,
+	outputDir: string,
+	overwrite: string | null,
+	password: string | null,
+	jobId: string | null,
+};
+
+export type SplitResponse = {
+	parts: SplitPart[],
+	outputDir: string,
+};
+
+export type StampRequest = StampRequest_Serialize | StampRequest_Deserialize;
+
+export type StampRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	headerFooter?: HeaderFooterOptions_Deserialize | null,
+	bates?: BatesOptions_Deserialize | null,
+	password?: string | null,
+	jobId?: string | null,
+	/**
+	 *  Keep existing signatures by appending the stamps as a new revision
+	 *  (default on).
+	 */
+	keepSignatures?: boolean,
+};
+
+export type StampRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	headerFooter: HeaderFooterOptions_Serialize | null,
+	bates: BatesOptions_Serialize | null,
+	password: string | null,
+	jobId: string | null,
+	/**
+	 *  Keep existing signatures by appending the stamps as a new revision
+	 *  (default on).
+	 */
+	keepSignatures: boolean,
 };
 
 export type SummaryLength = "short" | "medium" | "detailed";
@@ -2148,6 +4790,87 @@ export type SyncTestResult = {
 	message: string,
 };
 
+/**  One difference between two pages of text. */
+export type TextDifference = {
+	/**  Page both documents have, 1-based. */
+	page: number,
+	/**  `added`, `removed` or `changed`. */
+	kind: string,
+	left: string,
+	right: string,
+};
+
+export type TextEditReport = {
+	edited: number,
+	warnings: string[],
+};
+
+export type TextMatch = {
+	page: number,
+	/**  Short excerpt around the match (whitespace collapsed). */
+	snippet: string,
+	/**  1-based index of the match within its page. */
+	index_on_page: number,
+};
+
+/**  One requested text replacement. */
+export type TextRunEdit = {
+	page: number,
+	index: number,
+	text: string,
+};
+
+/**  One text-showing operation on a page, with what the editor can do with it. */
+export type TextRunInfo = TextRunInfo_Serialize | TextRunInfo_Deserialize;
+
+/**  One text-showing operation on a page, with what the editor can do with it. */
+export type TextRunInfo_Deserialize = {
+	/**  1-based page number. */
+	page: number,
+	/**  Stable index of the run among the page's runs (stream order). */
+	index: number,
+	text: string,
+	/**  Font resource name (`Tf`), for display. */
+	font?: string | null,
+	fontSizePt: number,
+	/**  Approximate text-space origin of the run (page points). */
+	x: number,
+	y: number,
+	/**  Approximate advance width of the run (page points). */
+	widthPt: number,
+	renderMode: number,
+	/**  False when the run cannot be edited in place (see `note`). */
+	editable: boolean,
+	note?: string | null,
+};
+
+/**  One text-showing operation on a page, with what the editor can do with it. */
+export type TextRunInfo_Serialize = {
+	/**  1-based page number. */
+	page: number,
+	/**  Stable index of the run among the page's runs (stream order). */
+	index: number,
+	text: string,
+	/**  Font resource name (`Tf`), for display. */
+	font: string | null,
+	fontSizePt: number,
+	/**  Approximate text-space origin of the run (page points). */
+	x: number,
+	y: number,
+	/**  Approximate advance width of the run (page points). */
+	widthPt: number,
+	renderMode: number,
+	/**  False when the run cannot be edited in place (see `note`). */
+	editable: boolean,
+	note: string | null,
+};
+
+export type Thumbnail = {
+	dataUrl: string,
+	width: number,
+	height: number,
+};
+
 export type TranslateOptions = TranslateOptions_Serialize | TranslateOptions_Deserialize;
 
 export type TranslateOptions_Deserialize = {
@@ -2313,6 +5036,22 @@ export type UblTaxSubtotal_Serialize = {
 	/**  `KDV`, `KDV Tevkifatı`, `ÖTV`, ... */
 	name: string,
 	exemptionReason: string,
+};
+
+export type UnlockRequest = UnlockRequest_Serialize | UnlockRequest_Deserialize;
+
+export type UnlockRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	password: string,
+	jobId?: string | null,
+};
+
+export type UnlockRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	password: string,
+	jobId: string | null,
 };
 
 export type UpdateInfo = UpdateInfo_Serialize | UpdateInfo_Deserialize;
@@ -2583,6 +5322,121 @@ export type VaultStatus_Serialize = {
 	 *  app-private import directory (true on every platform).
 	 */
 	canImportFiles: boolean,
+};
+
+/**  How two pages look different. */
+export type VisualDifference = {
+	/**  Page in the original document, 1-based. */
+	page: number,
+	/**  0 (identical) to 1 (completely different). */
+	difference: number,
+	changedPixels: number,
+	totalPixels: number,
+	/**  The page as a JPEG data URL, with the changed areas tinted. */
+	preview: string,
+};
+
+export type WatchedFolder = WatchedFolder_Serialize | WatchedFolder_Deserialize;
+
+export type WatchedFolder_Deserialize = {
+	folder?: string,
+	outputDir?: string,
+	recipeId?: string,
+	password?: string | null,
+};
+
+export type WatchedFolder_Serialize = {
+	folder: string,
+	outputDir: string,
+	recipeId: string,
+	password: string | null,
+};
+
+export type WatchedResult = {
+	input: string,
+	output: string,
+	ok: boolean,
+	detail: string,
+};
+
+export type WatermarkOptions = WatermarkOptions_Serialize | WatermarkOptions_Deserialize;
+
+export type WatermarkOptions_Deserialize = {
+	/**  "text" or "image" */
+	kind?: string,
+	text?: string,
+	font_size_pt?: number,
+	bold?: boolean,
+	/**  "#RRGGBB" */
+	color?: string,
+	/**  0.0 - 1.0 */
+	opacity?: number,
+	rotation_deg?: number,
+	/**
+	 *  top_left | top_center | top_right | center | bottom_left |
+	 *  bottom_center | bottom_right
+	 */
+	position?: string,
+	margin_pt?: number,
+	tile?: boolean,
+	image_path?: string | null,
+	/**  Image watermark width as a fraction of the page width (0.05 - 1.0). */
+	image_scale?: number,
+	/**  Empty = all pages. */
+	pages?: number[],
+};
+
+export type WatermarkOptions_Serialize = {
+	/**  "text" or "image" */
+	kind: string,
+	text: string,
+	font_size_pt: number,
+	bold: boolean,
+	/**  "#RRGGBB" */
+	color: string,
+	/**  0.0 - 1.0 */
+	opacity: number,
+	rotation_deg: number,
+	/**
+	 *  top_left | top_center | top_right | center | bottom_left |
+	 *  bottom_center | bottom_right
+	 */
+	position: string,
+	margin_pt: number,
+	tile: boolean,
+	image_path: string | null,
+	/**  Image watermark width as a fraction of the page width (0.05 - 1.0). */
+	image_scale: number,
+	/**  Empty = all pages. */
+	pages: number[],
+};
+
+export type WatermarkRequest = WatermarkRequest_Serialize | WatermarkRequest_Deserialize;
+
+export type WatermarkRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	options: WatermarkOptions_Deserialize,
+	/**
+	 *  Keep existing signatures by appending the watermark as a new revision
+	 *  (default on).
+	 */
+	keepSignatures?: boolean,
+	password?: string | null,
+	jobId?: string | null,
+};
+
+export type WatermarkRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	options: WatermarkOptions_Serialize,
+	/**
+	 *  Keep existing signatures by appending the watermark as a new revision
+	 *  (default on).
+	 */
+	keepSignatures: boolean,
+	password: string | null,
+	jobId: string | null,
 };
 
 /* Tauri Specta runtime */

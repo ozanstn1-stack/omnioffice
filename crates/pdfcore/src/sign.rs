@@ -172,6 +172,7 @@ pub const DEFAULT_RECT: [f32; 4] = [36.0, 36.0, 300.0, 110.0];
 
 /// Information about one X.509 certificate, extracted from the signature or
 /// the PFX container. Never claims trust - see [`SignatureInfo::trust`].
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CertificateInfo {
@@ -188,6 +189,7 @@ pub struct CertificateInfo {
 }
 
 /// Verification result for a single embedded signature.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureInfo {
@@ -241,6 +243,7 @@ pub struct SignatureInfo {
 }
 
 /// Result of [`verify_signatures`].
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureReport {

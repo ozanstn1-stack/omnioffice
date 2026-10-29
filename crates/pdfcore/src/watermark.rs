@@ -9,6 +9,7 @@ use lopdf::{Document, Object};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatermarkOptions {
     /// "text" or "image"
@@ -17,6 +18,7 @@ pub struct WatermarkOptions {
     #[serde(default)]
     pub text: String,
     #[serde(default = "default_font_size")]
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub font_size_pt: f64,
     #[serde(default)]
     pub bold: bool,
@@ -25,14 +27,17 @@ pub struct WatermarkOptions {
     pub color: String,
     /// 0.0 - 1.0
     #[serde(default = "default_opacity")]
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub opacity: f64,
     #[serde(default = "default_rotation")]
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub rotation_deg: f64,
     /// top_left | top_center | top_right | center | bottom_left |
     /// bottom_center | bottom_right
     #[serde(default = "default_position")]
     pub position: String,
     #[serde(default = "default_margin")]
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub margin_pt: f64,
     #[serde(default)]
     pub tile: bool,
@@ -40,6 +45,7 @@ pub struct WatermarkOptions {
     pub image_path: Option<String>,
     /// Image watermark width as a fraction of the page width (0.05 - 1.0).
     #[serde(default = "default_image_scale")]
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub image_scale: f64,
     /// Empty = all pages.
     #[serde(default)]

@@ -62,6 +62,7 @@ const OID_SHA1: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.14.3.2.26")
 // Result model (serde friendly for the Tauri layer)
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RevocationStatus {
@@ -79,6 +80,7 @@ pub enum RevocationStatus {
     Error,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RevocationSource {
@@ -87,6 +89,7 @@ pub enum RevocationSource {
 }
 
 /// Revocation status of a signer certificate.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct RevocationInfo {

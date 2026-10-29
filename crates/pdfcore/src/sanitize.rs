@@ -33,6 +33,7 @@ use crate::progress::{CancelToken, ProgressCallback, ProgressReporter};
 
 /// Which classes of content the sanitizer removes. Every switch defaults to
 /// `true`; the user turns off only what they intentionally want to keep.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SanitizeOptions {
@@ -73,6 +74,7 @@ impl Default for SanitizeOptions {
 
 /// What the document carried before sanitization, so the UI can show what was
 /// at stake even after every trace is gone.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SanitizeFindingsBefore {
@@ -86,6 +88,7 @@ pub struct SanitizeFindingsBefore {
 }
 
 /// Exactly what the sanitizer removed.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SanitizeReport {

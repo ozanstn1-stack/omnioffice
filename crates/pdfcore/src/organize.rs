@@ -112,6 +112,7 @@ pub fn rotate_pages(
     Ok(final_path)
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SplitPart {
     pub path: String,

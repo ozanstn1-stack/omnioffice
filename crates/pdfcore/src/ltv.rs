@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 
 /// What [`add_validation_data`] wrote into the document.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LtvReport {

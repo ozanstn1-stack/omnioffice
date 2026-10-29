@@ -81,12 +81,14 @@ pub(crate) fn request_timestamp(url: &str, signature: &[u8]) -> PdfResult<Vec<u8
 }
 
 /// UI facing signing options (camelCase on the wire, matching the frontend).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignOptionsDto {
     #[serde(default = "default_page")]
     pub page: u32,
     #[serde(default)]
+    #[cfg_attr(feature = "bindings", specta(type = Option<[specta_typescript::Number; 4]>))]
     pub rect: Option<[f32; 4]>,
     #[serde(default)]
     pub reason: String,
@@ -124,6 +126,7 @@ impl SignOptionsDto {
 
 /// Result of a successful signing operation: the written path plus the
 /// verification report of the produced signature (never an assumed success).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignResultDto {
@@ -132,6 +135,7 @@ pub struct SignResultDto {
 }
 
 /// One personal certificate from the Windows certificate store.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CertificateSummaryDto {
@@ -157,6 +161,7 @@ fn write_atomic(output: &Path, bytes: &[u8]) -> PdfResult<()> {
 /// personal store, writes the result atomically and returns the verification
 /// report of the signature that was actually produced.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_sign(
     input: String,
     output: String,
@@ -248,6 +253,7 @@ pub async fn pdf_sign(
 /// stays byte for byte as it was. Nothing is fetched from the network; what the
 /// signature already carries is what gets archived.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_archive_validation_data(
     input: String,
     output: Option<String>,
@@ -270,6 +276,7 @@ pub async fn pdf_archive_validation_data(
 
 /// Verifies every signature embedded in a PDF on disk.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_verify_signatures(path: String) -> Result<SignatureReport, PdfError> {
     let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || {
@@ -380,6 +387,7 @@ fn fetch_revocation(
 /// touches the network, and it re-reads the stored setting itself so a stale
 /// or buggy caller cannot reach the CA while the user has the check off.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_verify_signatures_online(app: tauri::AppHandle, path: String) -> Result<SignatureReport, PdfError> {
     let settings = crate::commands::load_settings(app)?;
     if !online_revocation_enabled(&settings) {
@@ -414,6 +422,7 @@ pub async fn pdf_verify_signatures_online(app: tauri::AppHandle, path: String) -
 /// have no equivalent store access from Rust, so signing there always uses a
 /// PFX/P12 file.
 #[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_list_signing_certificates() -> Result<Vec<CertificateSummaryDto>, PdfError> {
     let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || {

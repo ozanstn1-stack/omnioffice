@@ -28,6 +28,7 @@ pub fn base64_encode(bytes: &[u8]) -> String {
     out
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ImageFormat {
@@ -106,14 +107,17 @@ pub fn page_size_points(name: &str) -> Option<(f64, f64)> {
     PAGE_SIZES_PT.iter().find(|(n, _, _)| n.eq_ignore_ascii_case(name)).map(|(_, w, h)| (*w, *h))
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageToPdfOptions {
     /// a3 | a4 | a5 | letter | legal | original | custom
     #[serde(default = "default_page_size")]
     pub page_size: String,
     #[serde(default)]
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub custom_width_pt: f64,
     #[serde(default)]
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub custom_height_pt: f64,
     /// auto | portrait | landscape
     #[serde(default = "default_orientation")]
@@ -122,6 +126,7 @@ pub struct ImageToPdfOptions {
     #[serde(default = "default_fit")]
     pub fit: String,
     #[serde(default = "default_margin")]
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub margin_pt: f64,
     /// Assumed resolution for images without DPI metadata.
     #[serde(default = "default_dpi")]
@@ -165,6 +170,7 @@ impl Default for ImageToPdfOptions {
     }
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageItem {
     pub path: String,

@@ -90,6 +90,7 @@ impl<'a> FontCache<'a> {
 }
 
 /// One text-showing operation on a page, with what the editor can do with it.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextRunInfo {
@@ -100,11 +101,15 @@ pub struct TextRunInfo {
     pub text: String,
     /// Font resource name (`Tf`), for display.
     pub font: Option<String>,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub font_size_pt: f64,
     /// Approximate text-space origin of the run (page points).
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub x: f64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub y: f64,
     /// Approximate advance width of the run (page points).
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub width_pt: f64,
     pub render_mode: i64,
     /// False when the run cannot be edited in place (see `note`).
@@ -113,6 +118,7 @@ pub struct TextRunInfo {
 }
 
 /// One requested text replacement.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextRunEdit {
@@ -121,6 +127,7 @@ pub struct TextRunEdit {
     pub text: String,
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextEditReport {

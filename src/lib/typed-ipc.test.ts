@@ -51,12 +51,13 @@ describe("typed bindings: the vault group", () => {
     expect(read("src/screens/Vault.tsx")).not.toMatch(/invoke(?:<[^>]*>)?\(\s*"vault_/);
   });
 
-  // The palette sits in the entry chunk: it keeps `invoke` but takes the
-  // request and response types from the generated file.
+  // The palette sits in the entry chunk: it reaches the generated wrapper
+  // through typed-call, which does not carry the wrappers in that chunk.
   it("types the palette's vault search with the generated types", () => {
     const palette = read("src/components/command-palette.tsx");
-    expect(palette).toMatch(/invoke<VaultSearchResponse_Serialize>\("vault_search"/);
+    expect(palette).toContain("call((c) => c.vaultSearch(request))");
     expect(palette).toContain("const request: VaultSearchRequest_Deserialize");
+    expect(palette).not.toMatch(/invoke(?:<[^>]*>)?\(\s*"vault_/);
   });
 });
 
@@ -170,5 +171,55 @@ describe("typed bindings: the app group", () => {
     for (const file of sourceFiles()) {
       expect(read(file), file).not.toMatch(pattern);
     }
+  });
+});
+
+/** The command names of one `ipc.rs` domain, in registration order. */
+function domainCommands(domain: string): string[] {
+  const ipc = read("src-tauri/src/ipc.rs");
+  const block = new RegExp(`${domain}_commands \\{\\n([\\s\\S]*?)\\n\\s*\\}\\n\\}`).exec(ipc)?.[1] ?? "";
+  return [...block.matchAll(/[a-z0-9_]+::([a-z0-9_]+),/g)].map((match) => match[1]);
+}
+
+// The long PDF jobs stay on `invokeTracked` (the Jobs screen re-runs them from
+// the stored args); everything else calls the generated wrappers.
+describe("typed bindings: the pdf group", () => {
+  const pdfCommands = domainCommands("pdf");
+  const generated = read("src/lib/generated/specta.ts");
+
+  it("generates a typed wrapper for every PDF command", () => {
+    expect(pdfCommands.length).toBe(70);
+    for (const name of pdfCommands) {
+      expect(generated, name).toMatch(new RegExp(`__TAURI_INVOKE(?:<[^>]*>)?\\("${name}"`));
+    }
+  });
+
+  it("leaves no hand-written PDF invoke outside the job tracker", () => {
+    const pattern = new RegExp(`invoke(?:<[^>]*>)?\\(\\s*"(?:${pdfCommands.join("|")})"`);
+    for (const file of sourceFiles()) {
+      expect(read(file), file).not.toMatch(pattern);
+    }
+  });
+});
+
+// #316 is complete: every domain goes through the generated wrappers. The only
+// hand-written calls left are the job tracker's (`invokeTracked`) and the two
+// Android-only commands the desktop export cannot see.
+describe("typed bindings: every domain", () => {
+  const domains = ["app", "pdf", "office", "ai", "vault", "sync", "plugin"];
+  const all = domains.flatMap(domainCommands);
+  const typed = all.filter((name) => !ANDROID_ONLY.includes(name));
+  const generated = read("src/lib/generated/specta.ts");
+
+  it("generates a typed wrapper for every registered command", () => {
+    expect(all.length).toBeGreaterThan(200);
+    const missing = typed.filter((name) => !new RegExp(`__TAURI_INVOKE(?:<[^>]*>)?\\("${name}"`).test(generated));
+    expect(missing).toEqual([]);
+  });
+
+  it("leaves no hand-written invoke of a typed command anywhere in the app", () => {
+    const pattern = new RegExp(`\\binvoke(?:<[^>]*>)?\\(\\s*"(?:${typed.join("|")})"`);
+    const offenders = sourceFiles().filter((file) => pattern.test(read(file)));
+    expect(offenders).toEqual([]);
   });
 });

@@ -18,6 +18,7 @@ use lopdf::{dictionary, Document, Object};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts", ts(export))]
 #[cfg_attr(feature = "ts", ts(optional_fields))]
@@ -80,12 +81,14 @@ impl CompressOptions {
     }
 }
 
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 pub struct CompressEstimate {
     pub original_bytes: u64,
     pub estimated_bytes: u64,
     pub page_count: u32,
     /// Fraction of bytes removed (0.0 - 1.0)
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub reduction: f64,
     pub method: String,
     pub sample_pages: u32,
