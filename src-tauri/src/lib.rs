@@ -31,6 +31,7 @@ mod links;
 mod netpolicy;
 mod oauth;
 mod office;
+mod office_pdfa;
 mod office_tools;
 mod paths;
 mod paths_policy;
@@ -295,6 +296,7 @@ pub fn export_typed_bindings(path: &std::path::Path) -> Result<(), String> {
             office::office_save_document,
             office::office_save_unit,
             office::office_export_pdf,
+            office_pdfa::office_export_pdfa,
             office::office_convert,
             office::office_conversion_targets,
             office::office_open_invoice,

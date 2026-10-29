@@ -49,6 +49,7 @@ const SCREEN_ICONS: Partial<Record<ScreenId, React.ReactNode>> = {
   planner: <CalendarDays size={20} />,
   deadline: <CalendarClock size={20} />,
   evidence: <FolderCheck size={20} />,
+  officialLetter: <Landmark size={20} />,
   kvkk: <ShieldCheck size={20} />,
   invoices: <Receipt size={20} />,
   spreadsheets: <FileSpreadsheet size={20} />,

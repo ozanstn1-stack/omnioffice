@@ -45,7 +45,7 @@ export const DESKS: Record<Profession, readonly DeskTask[]> = {
     { key: "protectReports", screen: "protect" },
   ],
   public: [
-    { key: "officialLetter", screen: "documents" },
+    { key: "officialLetter", screen: "officialLetter" },
     { key: "letterTemplates", screen: "templates" },
     { key: "archivePdf", screen: "pdfStudio" },
     { key: "scanIncoming", screen: "scanner" },
