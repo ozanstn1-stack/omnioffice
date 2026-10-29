@@ -10,11 +10,11 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 6.5.1** · Platforms: Windows (Tauri also targets Linux/macOS; the
+**Version 6.6.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
 
-## What's new (6.2 to 6.5.1)
+## What's new (6.2 to 6.6.0)
 
 6.1 and 6.2 are one continuous arc: user files are no longer handed to the
 webview as raw paths, release builds enforce that boundary, and the office core
@@ -143,12 +143,20 @@ was split into per-format modules.
   office PDF exports with readable, searchable text.
 - **Phone fixes** (6.5.1): PDF Studio scrolls on a phone, older screens have
   their padding back, the Reader fits the screen and dialogs wrap.
-**Downloads (v6.5.1)** — Windows Setup/Portable, Android APK/AAB and SHA-256
-manifests: [Release v6.5.1](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v6.5.1)
-· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.5.1/OmniOffice-Setup-6.5.1.exe)
-· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.5.1/OmniOffice-Portable-6.5.1.zip)
-· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.5.1/OmniOffice-Android-6.5.1-arm64-v8a.apk)
-· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.5.1/OmniOffice-Android-6.5.1-armeabi-v7a.apk)
+- **Signature verification and source manifests** (6.6.0): one screen
+  verifies a signed PDF - the verdict, signer, chain, timestamp and notes,
+  with revocation on request - and shows or writes the manifest that records
+  what a generated PDF was made from (sources with their SHA-256, the module,
+  the app version and the AI model when one was used).
+- **Report a problem** (6.6.0): the diagnostics section builds the redacted
+  report, shows it before anything leaves the device, and opens the GitHub
+  issue form with the report on the clipboard.
+**Downloads (v6.6.0)** — Windows Setup/Portable, Android APK/AAB and SHA-256
+manifests: [Release v6.6.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v6.6.0)
+· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.6.0/OmniOffice-Setup-6.6.0.exe)
+· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.6.0/OmniOffice-Portable-6.6.0.zip)
+· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.6.0/OmniOffice-Android-6.6.0-arm64-v8a.apk)
+· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.6.0/OmniOffice-Android-6.6.0-armeabi-v7a.apk)
 
 ## Release history
 
