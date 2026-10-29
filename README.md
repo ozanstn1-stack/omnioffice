@@ -841,11 +841,11 @@ Next (architecture prepared, not implemented):
 <!-- stats:start -->
 | Project statistics | Count |
 | --- | --- |
-| Screens | 53 |
+| Screens | 54 |
 | Tauri commands | 229 |
 | Rust tests | 1315 |
-| TypeScript test files | 192 |
-| TypeScript test cases (approx.) | 2307 |
+| TypeScript test files | 194 |
+| TypeScript test cases (approx.) | 2323 |
 <!-- stats:end -->
 
 ## License

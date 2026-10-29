@@ -141,6 +141,7 @@ const CARDS: ToolCardSpec[] = [
   { id: "redact", titleKey: "nav.redact", descKey: "redact.subtitle", icon: <Eraser size={20} />, group: "pdf" },
   { id: "compare", titleKey: "nav.compare", descKey: "compare.subtitle", icon: <FileDiff size={20} />, group: "pdf" },
   { id: "inspect", titleKey: "nav.inspect", descKey: "inspect.subtitle", icon: <Search size={20} />, group: "pdf" },
+  { id: "verify", titleKey: "nav.verify", descKey: "verify.subtitle", icon: <ShieldCheck size={20} />, group: "pdf" },
   { id: "metadata", titleKey: "nav.metadata", descKey: "metadata.subtitle", icon: <Puzzle size={20} />, group: "pdf" },
   {
     id: "pageTools",

@@ -149,6 +149,7 @@ const KvkkWizardScreen = React.lazy(() =>
 const DocumentHealthScreen = React.lazy(() =>
   import("./screens/DocumentHealthScreen").then((module) => ({ default: module.DocumentHealthScreen })),
 );
+const VerifyScreen = React.lazy(() => import("./screens/Verify").then((module) => ({ default: module.VerifyScreen })));
 import { matchKeybinding, registerCommand, runCommand, setCommandTranslator, unregisterCommand } from "./lib/commands";
 import { resumeJobs, useJobs as useBackgroundJobs } from "./lib/jobs";
 import { installJobRetryHandlers } from "./lib/job-retries";
@@ -756,6 +757,7 @@ export default function App() {
       evidence: <EvidenceBundleScreen initialFiles={files} dragging={dragging} />,
       kvkk: <KvkkWizardScreen onNavigate={navigate} />,
       documentHealth: <DocumentHealthScreen onNavigate={navigate} />,
+      verify: <VerifyScreen initialFiles={files} dragging={dragging} />,
     }),
     [convertTab, dragging, files, homeDrop, navigate, pageToolTab, readerPage, securityTab],
   );
@@ -794,6 +796,7 @@ export default function App() {
     pageTools: <Wand2 size={16} />,
     pdfStudio: <ShieldCheck size={16} />,
     documentHealth: <ShieldCheck size={16} />,
+    verify: <ShieldCheck size={16} />,
     watermark: <Stamp size={16} />,
     annotate: <Type size={16} />,
     redact: <Eraser size={16} />,

@@ -68,6 +68,7 @@ export const SCREEN_IDS = [
   "evidence",
   "kvkk",
   "documentHealth",
+  "verify",
 ] as const;
 
 export type ScreenId = (typeof SCREEN_IDS)[number];
@@ -159,6 +160,7 @@ export const ROUTES: readonly RouteDef[] = [
   route("ocr", "ocr"),
   route("protect", "security"),
   route("unlock", "security"),
+  route("verify", "security"),
   route("ai", "ai"),
   route("aiLibrary", "ai"),
   route("batch", "system"),
