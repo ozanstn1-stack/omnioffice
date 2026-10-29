@@ -67,7 +67,10 @@ const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$
 // check, the notification deadline calculator, the period audit and the
 // phone bottom bar add about 12 KB gzip in total. Each one is a lazy chunk or
 // lazy-mounted dialog; the entry stays under its 60 KB cap.
-const TOTAL_BUDGET_KB = 490;
+// Raised to 500 in 6.5 (#341 C3 and C5): the evidence bundle screen and the
+// official letter wizard add about 7 KB gzip, both as lazy chunks; the entry
+// is unchanged (59.5 KB). That leaves room for C13 before the next review.
+const TOTAL_BUDGET_KB = 500;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);
