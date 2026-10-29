@@ -348,13 +348,10 @@ fn finalize_line(
     }
     // A line that already wrapped needs no justification.
     let natural = natural_width.min(line_width + 0.001);
-    let extra = (width - line_width).max(0.0);
     let gap_count = placed.iter().filter(|(_, _, _, is_space)| *is_space).count().max(1);
-    let mut dx = match align {
-        "center" => extra / 2.0,
-        "right" => extra,
-        _ => 0.0,
-    };
+    // Centred and right-aligned lines are positioned by the caller from the
+    // line's width; offsetting the items here as well placed them twice.
+    let mut dx = 0.0;
     let mut laid_items = Vec::new();
     let justify = align == "justify" && natural > width - 1.0 && gap_count > 1;
     let gap_extra = if justify { (width - line_width) / gap_count as f64 } else { 0.0 };
@@ -684,7 +681,21 @@ impl<'a> Renderer<'a> {
             let start_y = if is_header {
                 (page.margin_top_pt - page.header_distance_pt).max(4.0) + 10.0
             } else {
-                page.height_pt - page.margin_bottom_pt + page.footer_distance_pt.max(10.0) - 4.0
+                // As in Word, the footer's last line ends `footer_distance`
+                // above the page edge and the footer grows upwards.
+                let mut height = 0.0;
+                for block in blocks {
+                    if let Block::Paragraph { props, runs } = block {
+                        let substituted = self.substitute_runs(runs, page_number);
+                        let (words, _) = paragraph_words(self.document, props, &substituted);
+                        for segment in split_on_newlines(words) {
+                            for line in break_line(self.fonts, &segment, content_width, &props.align, &props.tabs) {
+                                height += line.height;
+                            }
+                        }
+                    }
+                }
+                page.height_pt - page.footer_distance_pt.max(10.0) - height
             };
             let mut y = start_y;
             for block in blocks {
@@ -2037,6 +2048,66 @@ mod tests {
             runs: vec![Run { text: "Page {{page}} / {{pages}}".into(), ..Default::default() }],
         }];
         document
+    }
+
+    /// Centred and right-aligned lines land where their alignment puts them.
+    /// The line breaker leaves alignment to its callers; it used to apply it
+    /// too, so centred text ended at the right margin and right-aligned text
+    /// ran past it.
+    #[test]
+    fn centred_and_right_aligned_lines_are_placed_once() {
+        let mut document = TextDocument::new_blank("Align");
+        let paragraph = |align: &str, text: &str| Block::Paragraph {
+            props: ParaProps { align: align.into(), ..Default::default() },
+            runs: vec![Run { text: text.into(), size_pt: Some(12.0), ..Default::default() }],
+        };
+        document.blocks = vec![paragraph("center", "Ortada"), paragraph("right", "Sağda")];
+        let bytes = document_to_pdf(&document);
+        let doc = lopdf::Document::load_mem(&bytes).expect("the PDF loads");
+        let page_id = *doc.get_pages().values().next().expect("a page");
+        let content = String::from_utf8_lossy(&doc.get_page_content(page_id)).into_owned();
+        let xs: Vec<f64> = content
+            .lines()
+            .filter(|line| line.ends_with(" Tm"))
+            .map(|line| line.split_whitespace().nth(4).unwrap().parse().unwrap())
+            .collect();
+
+        let fonts = FontSet::new();
+        let page = &document.page;
+        let left = page.margin_left_pt;
+        let width = page.width_pt - page.margin_left_pt - page.margin_right_pt;
+        let centred = left + (width - fonts.regular.advance_pt("Ortada", 12.0)) / 2.0;
+        let right = left + width - fonts.regular.advance_pt("Sağda", 12.0);
+        assert!((xs[0] - centred).abs() < 1.0, "centred x {} expected {centred}", xs[0]);
+        assert!((xs[1] - right).abs() < 1.0, "right x {} expected {right}", xs[1]);
+    }
+
+    /// A footer of several lines ends `footer_distance` above the page edge,
+    /// as in Word, instead of starting near the bottom margin and running off
+    /// the page.
+    #[test]
+    fn a_multi_line_footer_stays_on_the_page() {
+        let mut document = TextDocument::new_blank("Footer");
+        document.page.footer_distance_pt = 20.0;
+        document.footer = (1..=4)
+            .map(|line| Block::Paragraph {
+                props: ParaProps::default(),
+                runs: vec![Run { text: format!("Satır {line}"), size_pt: Some(9.0), ..Default::default() }],
+            })
+            .collect();
+        let bytes = document_to_pdf(&document);
+        let doc = lopdf::Document::load_mem(&bytes).expect("the PDF loads");
+        let page_id = *doc.get_pages().values().next().expect("a page");
+        let content = String::from_utf8_lossy(&doc.get_page_content(page_id)).into_owned();
+        // Tm's y is in PDF space (origin bottom-left): the last footer line's
+        // baseline must sit above the 20 pt footer distance.
+        let lowest = content
+            .lines()
+            .filter(|line| line.ends_with(" Tm"))
+            .map(|line| line.split_whitespace().nth(5).unwrap().parse::<f64>().unwrap())
+            .fold(f64::INFINITY, f64::min);
+        assert!(lowest >= 20.0, "the last footer line's baseline is at {lowest} pt");
+        assert!(lowest < 40.0, "the footer sits at the bottom, not at {lowest} pt");
     }
 
     #[test]
