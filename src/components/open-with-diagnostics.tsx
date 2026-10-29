@@ -7,6 +7,7 @@ import { reportError, useToasts } from "../lib/store";
 import { diagnosticsReport } from "../lib/api";
 import { isAndroid, saveFileBytes } from "../lib/mobile";
 import { openWithDiagnosticsText } from "../lib/open-with-diagnostics";
+import { ReportProblem } from "./report-problem";
 
 /**
  * Diagnostics UI.
@@ -49,6 +50,7 @@ export function DiagnosticsExport() {
         </Button>
       </div>
       <p className="text-xs muted">{t("settings.diagnosticsHint")}</p>
+      <ReportProblem />
     </div>
   );
 }
