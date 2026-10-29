@@ -63,6 +63,7 @@ pub mod pages;
 pub mod pdf2doc;
 pub mod pdfa;
 pub mod progress;
+pub mod provenance;
 pub mod rebuild;
 pub mod redact;
 pub mod render;

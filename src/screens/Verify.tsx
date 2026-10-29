@@ -12,6 +12,7 @@ import {
 import { Badge, Button, Card, Spinner } from "../components/ui";
 import { DropZone, FileList } from "../components/files";
 import { Screen } from "../components/layout";
+import { ProvenanceCard } from "../components/provenance-card";
 import { RevocationStatus } from "../components/revocation-status";
 import {
   pdfVerifySignatures,
@@ -330,6 +331,8 @@ export function VerifyScreen({ initialFiles = [], dragging = false }: { initialF
               ))}
             </>
           ) : null}
+
+          <ProvenanceCard path={primaryPath} />
 
           <Card>
             <FileList

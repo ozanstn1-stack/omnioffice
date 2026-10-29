@@ -188,7 +188,7 @@ describe("typed bindings: the pdf group", () => {
   const generated = read("src/lib/generated/specta.ts");
 
   it("generates a typed wrapper for every PDF command", () => {
-    expect(pdfCommands.length).toBe(73);
+    expect(pdfCommands.length).toBe(75);
     for (const name of pdfCommands) {
       expect(generated, name).toMatch(new RegExp(`__TAURI_INVOKE(?:<[^>]*>)?\\("${name}"`));
     }
