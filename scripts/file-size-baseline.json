@@ -84,7 +84,7 @@
     "crates/pdfcore/src/flatten.rs": 549,
     "crates/pdfcore/src/fontembed.rs": 1421,
     "crates/pdfcore/src/fontusage.rs": 1175,
-    "crates/pdfcore/src/forms.rs": 2731,
+    "crates/pdfcore/src/forms.rs": 2734,
     "crates/pdfcore/src/gibqr.rs": 296,
     "crates/pdfcore/src/images.rs": 326,
     "crates/pdfcore/src/inspect.rs": 1069,
