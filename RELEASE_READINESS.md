@@ -31,6 +31,56 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.5.0) - Delil klasörü, resmî yazı, okunur ofis PDF'leri
+
+- **Evidence bundle** (#341 C3): cover, index with SHA-256, stamped exhibits
+  and an embedded manifest.
+  `test:crates/pdfcore/tests/evidence_bundle_test.rs#builds_a_cover_an_index_and_the_exhibits_in_order`
+  `test:crates/pdfcore/tests/evidence_bundle_test.rs#many_exhibits_spread_the_index_over_several_pages`
+- **The bundle verifies on reopen**, an edited one does not, and originals are
+  matched to their exhibits by hash.
+  `test:crates/pdfcore/tests/evidence_bundle_test.rs#a_fresh_bundle_verifies_on_reopen`
+  `test:crates/pdfcore/tests/evidence_bundle_test.rs#an_edited_bundle_fails_verification`
+  `test:crates/pdfcore/tests/evidence_bundle_test.rs#an_original_is_matched_to_its_exhibit_by_hash`
+- **The Delil klasörü screen** builds and verifies bundles; the lawyer desk
+  opens it.
+  `test:src/screens/EvidenceBundle.test.tsx#builds the bundle with each exhibit's label and the cover details`
+  `test:src/screens/EvidenceBundle.test.tsx#verifies a bundle on reopen and matches the originals to their exhibits`
+- **Official letter** (#341 C5) built to the regulation's layout; the
+  regulation checker finds nothing to fix in it.
+  `test:src/lib/official-letter-template.test.ts#builds a letter the regulation checker finds nothing wrong with`
+  `test:src/lib/official-letter-template.test.ts#lays the header, number, subject and addressee out as the regulation does`
+- **Letter numbers** are counted per year, DETSİS code and file plan code.
+  `test:src/lib/official-letter-template.test.ts#counts per year, institution code and file plan code`
+- **The Resmî yazı screen** numbers the letter, opens it in Writer and saves
+  it as PDF/A; the public servant desk opens it.
+  `test:src/screens/OfficialLetterWizard.test.tsx#numbers a compliant letter and opens it in Writer`
+  `test:src/screens/OfficialLetterWizard.test.tsx#saves the letter as PDF/A and reports the validation`
+- **A Writer document exports as valid PDF/A-2b.**
+  `test:src-tauri/src/office_pdfa.rs#a_writer_document_comes_out_as_valid_pdfa_2b`
+- **Office PDF exports draw the right glyphs and keep their text** (glyph-id
+  CIDs, widths and a bfchar ToUnicode map).
+  `test:crates/officecore/src/pdfcanvas.rs#cids_are_glyph_ids_with_matching_widths_and_unicode`
+- **Centred and right-aligned lines are placed once; a multi-line footer stays
+  on the page.**
+  `test:crates/officecore/src/layout.rs#centred_and_right_aligned_lines_are_placed_once`
+  `test:crates/officecore/src/layout.rs#a_multi_line_footer_stays_on_the_page`
+
+### Not done / Known limitations (6.5.0)
+
+- The 6.4.9 device-check defects are still open: PDF Studio and four other
+  screens use classes without CSS (PDF Studio does not scroll on a phone),
+  the "0 B" file sizes in PDF Studio, the English "Untitled spreadsheet",
+  the Reader page width and search icon, the pre-send button row, the drawer
+  badge and the deadline dropdown text.
+  (no test: open defect.)
+- The office PDF export embeds PT Sans for every font; a letter asked for
+  Times New Roman comes out in PT Sans (the PDF/A report is still valid).
+  (no test: known limitation.)
+- The evidence bundle and the official letter were not tried on a phone.
+  (no test: on-device verification pending.)
+- #341 Faz C: C6-C9 and C12-C15 remain.
+  (no test: not implemented.)
 ## Implemented (this cycle, 6.4.9) - Tipli IPC: PDF komutları, #316 tamam
 
 - **Typed PDF commands** (#316 group 7), the long jobs on the job tracker
