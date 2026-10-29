@@ -31,6 +31,28 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.4.9) - Tipli IPC: PDF komutları, #316 tamam
+
+- **Typed PDF commands** (#316 group 7), the long jobs on the job tracker
+  excepted.
+  `test:src/lib/typed-ipc.test.ts#generates a typed wrapper for every PDF command`
+  `test:src/lib/typed-ipc.test.ts#leaves no hand-written PDF invoke outside the job tracker`
+- **No hand-written invoke of a typed command anywhere** (#316 complete).
+  `test:src/lib/typed-ipc.test.ts#generates a typed wrapper for every registered command`
+  `test:src/lib/typed-ipc.test.ts#leaves no hand-written invoke of a typed command anywhere in the app`
+
+### Not done / Known limitations (6.4.9)
+
+- `update_download_apk` and `update_install_apk` stay hand-written: they
+  exist only on Android and the bindings are exported on desktop.
+  (no test: known limitation.)
+- The long PDF jobs keep `invokeTracked` with untyped arguments, so the Jobs
+  screen can re-run them.
+  (no test: known limitation.)
+- Nothing in 6.4.0-6.4.9 was tried on a phone (no device connected); the
+  Android clippy step and the instrumented emulator tests are the Android
+  coverage this cycle.
+  (no test: on-device verification pending.)
 ## Implemented (this cycle, 6.4.8) - Tipli IPC: uygulama komutları
 
 - **Typed app commands** (#316 group 6), the Android-only update commands

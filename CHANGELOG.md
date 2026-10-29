@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.9] - Tipli IPC: PDF komutları, #316 tamam
+
+### Changed (internal)
+
+- **Typed PDF commands (#316, group 7):** the 70 PDF commands (inspection,
+  pages, annotations, forms, redaction, signing and certificates, recipes,
+  PDF Studio, conversion and the rest) are called through wrappers generated
+  from the Rust types. The long PDF jobs keep `invokeTracked`, because the
+  Jobs screen re-runs them from the stored arguments.
+- **#316 is complete.** Every registered command has a generated wrapper,
+  and a test now fails if any screen calls a typed command through a
+  hand-written `invoke`. The only hand-written calls left are the job tracker
+  and the two Android-only update commands.
+- The recipe step and redaction certificate types on the front end are now
+  aliases of the generated ones, so they can no longer drift from Rust.
+
+### Fixed
+
+- Redaction certificate sizes are typed as numbers, which is what Rust sends.
+  The old generated file said `bigint`.
 ## [6.4.8] - Tipli IPC: uygulama komutları
 
 ### Changed (internal)
