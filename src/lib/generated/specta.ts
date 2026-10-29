@@ -432,6 +432,15 @@ export const commands = {
 	/**  Extracts and verifies the certificate a PDF carries, if any. */
 	redactCertificateVerify: (path: string) => typedError<CertificateVerification_Serialize, PdfError>(__TAURI_INVOKE("redact_certificate_verify", { path })),
 	/**
+	 *  Builds the bundle (cover, index, stamped exhibits, embedded manifest) and
+	 *  writes it to the output.
+	 */
+	evidenceBundleBuild: (request: EvidenceBundleRequest_Deserialize) => typedError<EvidenceBundleResult_Serialize, PdfError>(__TAURI_INVOKE("evidence_bundle_build", { request })),
+	/**  Reads a bundle's manifest and checks the bundle against it. */
+	evidenceBundleVerify: (path: string) => typedError<EvidenceVerification_Serialize, PdfError>(__TAURI_INVOKE("evidence_bundle_verify", { path })),
+	/**  Hashes each original and finds the exhibit it was submitted as. */
+	evidenceMatchOriginals: (bundle: string, originals: string[]) => typedError<EvidenceOriginalMatch_Serialize[], PdfError>(__TAURI_INVOKE("evidence_match_originals", { bundle, originals })),
+	/**
 	 *  Keyword and regular-expression matches for redaction, in page order. The
 	 *  single-page [`detect_sensitive_text`] built-in detector stays separate.
 	 */
@@ -2018,6 +2027,156 @@ export type EngineStatus_Serialize = {
  *  localized, user friendly messages - raw internal errors are never shown.
  */
 export type ErrorCode = "invalid_pdf" | "corrupt_pdf" | "password_required" | "wrong_password" | "not_found" | "permission_denied" | "file_locked" | "output_exists" | "disk_full" | "cancelled" | "engine_missing" | "ocr_engine_unavailable" | "unsupported" | "invalid_input" | "invalid_image" | "range_out_of_bounds" | "conversion_failed" | "processing_failed" | "internal" | "ai_not_configured" | "ai_invalid_key" | "ai_rate_limited" | "ai_insufficient_balance" | "ai_network" | "ai_no_text" | "ai_too_large" | "ai_server_error" | "ai_invalid_response";
+
+export type EvidenceBundleRequest = EvidenceBundleRequest_Serialize | EvidenceBundleRequest_Deserialize;
+
+export type EvidenceBundleRequest_Deserialize = {
+	exhibits: EvidenceExhibit_Deserialize[],
+	details: EvidenceDetails_Deserialize,
+	output: OutputSpec_Deserialize,
+};
+
+export type EvidenceBundleRequest_Serialize = {
+	exhibits: EvidenceExhibit_Serialize[],
+	details: EvidenceDetails_Serialize,
+	output: OutputSpec_Serialize,
+};
+
+export type EvidenceBundleResult = EvidenceBundleResult_Serialize | EvidenceBundleResult_Deserialize;
+
+export type EvidenceBundleResult_Deserialize = {
+	result: OpResult_Deserialize,
+	manifest: EvidenceManifest_Deserialize,
+};
+
+export type EvidenceBundleResult_Serialize = {
+	result: OpResult_Serialize,
+	manifest: EvidenceManifest_Serialize,
+};
+
+/**  What the cover sheet says about the bundle. */
+export type EvidenceDetails = EvidenceDetails_Serialize | EvidenceDetails_Deserialize;
+
+/**  What the cover sheet says about the bundle. */
+export type EvidenceDetails_Deserialize = {
+	title?: string,
+	caseReference?: string,
+	court?: string,
+	submittedBy?: string,
+	/**  "tr" or "en": the language of the cover, index and stamps. */
+	language?: string,
+};
+
+/**  What the cover sheet says about the bundle. */
+export type EvidenceDetails_Serialize = {
+	title: string,
+	caseReference: string,
+	court: string,
+	submittedBy: string,
+	/**  "tr" or "en": the language of the cover, index and stamps. */
+	language: string,
+};
+
+/**  One exhibit in the manifest. */
+export type EvidenceEntry = {
+	number: number,
+	label: string,
+	fileName: string,
+	sha256: string,
+	size: number,
+	pages: number,
+	/**  Bundle page numbers, 1-based and inclusive. */
+	firstPage: number,
+	lastPage: number,
+};
+
+/**  One exhibit: a path or file token, its label and, for a token, its name. */
+export type EvidenceExhibit = EvidenceExhibit_Serialize | EvidenceExhibit_Deserialize;
+
+/**  One exhibit: a path or file token, its label and, for a token, its name. */
+export type EvidenceExhibit_Deserialize = {
+	path: string,
+	label: string,
+	name?: string | null,
+};
+
+/**  One exhibit: a path or file token, its label and, for a token, its name. */
+export type EvidenceExhibit_Serialize = {
+	path: string,
+	label: string,
+	name: string | null,
+};
+
+/**  The manifest embedded in the bundle. */
+export type EvidenceManifest = EvidenceManifest_Serialize | EvidenceManifest_Deserialize;
+
+/**  The manifest embedded in the bundle. */
+export type EvidenceManifest_Deserialize = {
+	version: number,
+	/**  `EVD-` and the start of the digest over the exhibits' digests. */
+	id: string,
+	/**  RFC 3339 UTC. */
+	createdAt: string,
+	details: EvidenceDetails_Deserialize,
+	entries: EvidenceEntry[],
+	totalPages: number,
+	/**  The bundle with the manifest stripped. */
+	bundle: FileDigest,
+};
+
+/**  The manifest embedded in the bundle. */
+export type EvidenceManifest_Serialize = {
+	version: number,
+	/**  `EVD-` and the start of the digest over the exhibits' digests. */
+	id: string,
+	/**  RFC 3339 UTC. */
+	createdAt: string,
+	details: EvidenceDetails_Serialize,
+	entries: EvidenceEntry[],
+	totalPages: number,
+	/**  The bundle with the manifest stripped. */
+	bundle: FileDigest,
+};
+
+/**  An original file checked against a bundle's manifest. */
+export type EvidenceOriginalMatch = EvidenceOriginalMatch_Serialize | EvidenceOriginalMatch_Deserialize;
+
+/**  An original file checked against a bundle's manifest. */
+export type EvidenceOriginalMatch_Deserialize = {
+	path: string,
+	sha256: string,
+	/**  The exhibit number whose digest matches, if any. */
+	exhibit?: number | null,
+};
+
+/**  An original file checked against a bundle's manifest. */
+export type EvidenceOriginalMatch_Serialize = {
+	path: string,
+	sha256: string,
+	/**  The exhibit number whose digest matches, if any. */
+	exhibit: number | null,
+};
+
+/**  The result of checking a PDF for a manifest. */
+export type EvidenceVerification = EvidenceVerification_Serialize | EvidenceVerification_Deserialize;
+
+/**  The result of checking a PDF for a manifest. */
+export type EvidenceVerification_Deserialize = {
+	present: boolean,
+	manifest?: EvidenceManifest_Deserialize | null,
+	/**  True when the bundle, minus the manifest, still hashes to the recorded digest. */
+	contentMatches: boolean,
+	actualSha256: string,
+};
+
+/**  The result of checking a PDF for a manifest. */
+export type EvidenceVerification_Serialize = {
+	present: boolean,
+	manifest: EvidenceManifest_Serialize | null,
+	/**  True when the bundle, minus the manifest, still hashes to the recorded digest. */
+	contentMatches: boolean,
+	actualSha256: string,
+};
 
 /**  One lossy item in a compatibility report. */
 export type FeatureLoss = {

@@ -20,6 +20,7 @@ mod commands;
 mod concurrency;
 mod crash_log;
 mod diagnostics;
+mod evidence;
 mod file_dirs;
 mod files;
 mod ipc;
@@ -406,6 +407,9 @@ pub fn export_typed_bindings(path: &std::path::Path) -> Result<(), String> {
             commands::redact_certificate_build,
             commands::redact_certificate_embed,
             commands::redact_certificate_verify,
+            evidence::evidence_bundle_build,
+            evidence::evidence_bundle_verify,
+            evidence::evidence_match_originals,
             commands::detect_redaction_matches,
             commands::pdf_set_outline,
             commands::stamp_pdf,

@@ -64,6 +64,7 @@ export const SCREEN_IDS = [
   "jobs",
   "petition",
   "deadline",
+  "evidence",
   "kvkk",
   "documentHealth",
 ] as const;
@@ -123,6 +124,7 @@ export const ROUTES: readonly RouteDef[] = [
   route("templates", "office"),
   route("petition", "office"),
   route("deadline", "office"),
+  route("evidence", "office"),
   route("kvkk", "office", { flag: "experimentalKvkkWizard" }),
   route("notes", "productivity"),
   route("planner", "productivity"),

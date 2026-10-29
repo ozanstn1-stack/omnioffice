@@ -15,6 +15,7 @@ import {
   FileImage,
   FilePlus2,
   CalendarClock,
+  FolderCheck,
   FolderOpen,
   FileSpreadsheet,
   FileText,
@@ -131,6 +132,9 @@ const TemplatesScreen = React.lazy(() =>
 );
 const DeadlineCalculatorScreen = React.lazy(() =>
   import("./screens/DeadlineCalculator").then((module) => ({ default: module.DeadlineCalculatorScreen })),
+);
+const EvidenceBundleScreen = React.lazy(() =>
+  import("./screens/EvidenceBundle").then((module) => ({ default: module.EvidenceBundleScreen })),
 );
 const PetitionWizardScreen = React.lazy(() =>
   import("./screens/PetitionWizard").then((module) => ({ default: module.PetitionWizard })),
@@ -743,6 +747,7 @@ export default function App() {
       plugins: <Plugins />,
       petition: <PetitionWizardScreen onNavigate={navigate} />,
       deadline: <DeadlineCalculatorScreen initialFiles={files} dragging={dragging} />,
+      evidence: <EvidenceBundleScreen initialFiles={files} dragging={dragging} />,
       kvkk: <KvkkWizardScreen onNavigate={navigate} />,
       documentHealth: <DocumentHealthScreen onNavigate={navigate} />,
     }),
@@ -760,6 +765,7 @@ export default function App() {
     templates: <LayoutTemplate size={16} />,
     petition: <FilePlus2 size={16} />,
     deadline: <CalendarClock size={16} />,
+    evidence: <FolderCheck size={16} />,
     kvkk: <ShieldCheck size={16} />,
     notes: <NotebookPen size={16} />,
     planner: <CalendarDays size={16} />,

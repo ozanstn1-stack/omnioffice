@@ -15,8 +15,8 @@ use crate::ai::edit as ai_edit;
 #[cfg(target_os = "android")]
 use crate::android_update;
 use crate::{
-    ai, android_intent, android_share, commands, diagnostics, file_dirs, files, jobs, launch, links, oauth, office,
-    office_tools, pdf_v3, plugin, recent, recipes, sign, signatures, sync, update, vault,
+    ai, android_intent, android_share, commands, diagnostics, evidence, file_dirs, files, jobs, launch, links, oauth,
+    office, office_tools, pdf_v3, plugin, recent, recipes, sign, signatures, sync, update, vault,
 };
 use tauri::ipc::Invoke;
 use tauri::Wry;
@@ -136,6 +136,9 @@ domain! {
         commands::redact_certificate_build,
         commands::redact_certificate_embed,
         commands::redact_certificate_verify,
+        evidence::evidence_bundle_build,
+        evidence::evidence_bundle_verify,
+        evidence::evidence_match_originals,
         commands::detect_redaction_matches,
         commands::pdf_set_outline,
         commands::stamp_pdf,
@@ -400,5 +403,5 @@ mod tests {
     }
 
     /// The number of entries in the domain lists, Android-only ones included.
-    const TOTAL: usize = 220;
+    const TOTAL: usize = 223;
 }
