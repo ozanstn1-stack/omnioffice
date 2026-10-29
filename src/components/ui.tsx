@@ -482,7 +482,7 @@ export function Modal({
         <div className="px-5 py-4">{children}</div>
         {footer ? (
           <div
-            className="px-5 py-4 border-t flex justify-end gap-2"
+            className="px-5 py-4 border-t flex flex-wrap justify-end gap-2"
             style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
           >
             {footer}

@@ -61,14 +61,22 @@ export const useOfficeTabs = create<OfficeTabsState>((set, get) => ({
   activeId: null,
   create: (kind, title, model) => {
     const id = uid();
+    // New documents are named in the interface language ("Adsız hesap
+    // tablosu", "Sayfa1"), not always in English (6.4.9 device check).
+    const t = makeTranslate(useSettings.getState().settings.language);
+    const untitled = t(
+      kind === "writer"
+        ? "office.untitledDocument"
+        : kind === "calc"
+          ? "office.untitledSpreadsheet"
+          : "office.untitledPresentation",
+    );
     const tab: OfficeTab = {
       id,
       kind,
-      title:
-        title ??
-        (kind === "writer" ? "Untitled document" : kind === "calc" ? "Untitled spreadsheet" : "Untitled presentation"),
+      title: title ?? untitled,
       path: null,
-      model: (model ?? defaultModelFor(kind)) as OfficeModel,
+      model: (model ?? defaultModelFor(kind, untitled, t("calc.sheetBase"))) as OfficeModel,
       dirty: false,
       warnings: [],
       lastSavedAt: new Date().toISOString(),
@@ -128,10 +136,14 @@ export const useOfficeTabs = create<OfficeTabsState>((set, get) => ({
     set({ tabs: get().tabs.map((tab) => (tab.id === id ? { ...tab, fingerprint } : tab)) }),
 }));
 
-function defaultModelFor(kind: OfficeKind): OfficeModel {
-  if (kind === "calc") return newWorkbook();
-  if (kind === "impress") return newDeck();
-  return newTextDocument();
+function defaultModelFor(kind: OfficeKind, title: string, sheetBase: string): OfficeModel {
+  if (kind === "calc") {
+    const workbook = newWorkbook(title);
+    workbook.sheets[0].name = `${sheetBase}1`;
+    return workbook;
+  }
+  if (kind === "impress") return newDeck(title);
+  return newTextDocument(title);
 }
 
 // ---------------------------------------------------------------------------

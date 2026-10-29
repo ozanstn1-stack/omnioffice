@@ -830,7 +830,7 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
 
   const addSheet = () => {
     update((current) => {
-      const name = uniqueSheetName(current, "Sheet");
+      const name = uniqueSheetName(current, t("calc.sheetBase"));
       const sheets = [...current.sheets, newSheet(name)];
       return { ...current, sheets, activeSheet: sheets.length - 1 };
     });

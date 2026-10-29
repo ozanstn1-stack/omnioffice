@@ -11,6 +11,7 @@ import { hasJobRetryHandler, resumeJobs, useJobs as useBackgroundJobs } from "..
 import { useT } from "../lib/i18n";
 import { useToasts } from "../lib/store";
 import { Badge, Card, EmptyState } from "../components/ui";
+import { Screen } from "../components/layout";
 
 export function JobsScreen() {
   const t = useT();
@@ -37,19 +38,15 @@ export function JobsScreen() {
   };
 
   return (
-    <div className="screen">
-      <div className="screen-head">
-        <div>
-          <h1>
-            <ListChecks size={18} /> {t("jobs.title")}
-          </h1>
-          <p className="muted">{t("jobs.subtitle")}</p>
-        </div>
-        <button type="button" className="btn btn-soft" onClick={clearFinished}>
-          {t("jobs.clearFinished")}
+    <Screen
+      title={t("jobs.title")}
+      subtitle={t("jobs.subtitle")}
+      actions={
+        <button type="button" className="btn" onClick={clearFinished}>
+          <ListChecks size={14} /> {t("jobs.clearFinished")}
         </button>
-      </div>
-
+      }
+    >
       {jobs.length === 0 ? <EmptyState title={t("jobs.empty")} hint={t("jobs.emptyHint")} /> : null}
 
       <div className="stack">
@@ -117,6 +114,6 @@ export function JobsScreen() {
           );
         })}
       </div>
-    </div>
+    </Screen>
   );
 }
