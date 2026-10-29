@@ -4,6 +4,34 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.7] - Tipli IPC: yapay zekâ ve ofis
+
+### Changed (internal)
+
+- **Typed AI commands (#316, group 4):** the 31 AI commands (summaries,
+  translation, chat, tables, batch runs, the in-editor actions and the AI
+  library) are called through generated tauri-specta wrappers whose types
+  come from the Rust structs. The long jobs stay on the job tracker so the
+  Jobs screen can still re-run them.
+- **Typed office commands (#316, group 5):** the 43 office commands
+  (documents, conversion, e-invoices, KEP mail, the scanner, mail merge, the
+  spell checker, history and recovery, the compatibility reports) go the same
+  way. The document models stay opaque JSON.
+- The generated wrappers live in their own chunk, preloaded with the
+  language before the first render (`src/lib/typed-call.ts`), so the entry
+  chunk stays under its 60 KB budget and a call is as direct as `invoke`.
+
+### Fixed
+
+- **PDF Studio: moving, resizing, deleting and rotating objects now works
+  (#477).** The Objects panel's edits never reached the document: Rust
+  expected the action nested one level deeper than the screen sends it and
+  refused every request before any change was made.
+- Typing the AI results against Rust surfaced three mismatches the
+  hand-written types hid: a temperature that arrives as `null` (NaN) falls
+  back to its default, a saved chat message's role is narrowed when a thread
+  is loaded, and a chat thread saved without a document sends `null` for its
+  path.
 ## [6.4.6] - Teknik borç: kalanlar
 
 ### Changed (internal)
