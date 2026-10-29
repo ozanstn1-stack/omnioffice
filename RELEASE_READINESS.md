@@ -60,6 +60,43 @@ release-train schedule is decided.
   (no test: on-device verification pending.)
 - #341 Faz C: C6-C9 and C12-C15 remain.
   (no test: not implemented.)
+- PDF Studio's tool panel (the card under the file list) has no inner
+  padding: its heading, text and Run button touch the card edge (found on the
+  device, below).
+  (no test: open defect.)
+- A toast at the foot of the screen covers the bottom bar and reaches into
+  the system gesture area on a phone.
+  (no test: open defect.)
+
+### Device check (6.5.1, 29.10.2026)
+
+Release APK `OmniOffice-Android-6.5.1-arm64-v8a.apk` (SHA-256 matches
+`SHA256SUMS-android.txt`), installed with `adb install -r` over 6.4.9 on the
+Samsung Galaxy S22 Ultra (SM-S908E, Android 16). The app ran in one process
+for the whole session; the screen lock was not touched. All seven 6.4.9
+defects are fixed on the device:
+
+- **PDF Studio** has its header, padding and button gaps, scrolls, and its Run
+  button is reachable; running Temizle on a sample PDF completes and shows
+  its report.
+  (no test: manual device check.)
+- **File size:** a picked 3.22 kB PDF is listed as 3.15 KB, not 0 B.
+  (no test: manual device check.)
+- **Names:** a new spreadsheet is "Adsız hesap tablosu" with a "Sayfa1" tab.
+  (no test: manual device check.)
+- **Reader:** the page opens at the screen width, centred; the search icon
+  sits clear of "Belgede bul…".
+  (no test: manual device check.)
+- **Pre-send dialog:** İptal, Karart and Temizle ve gönder fit on one line,
+  Yine de gönder wraps under them; nothing is cut off. Nothing was sent.
+  (no test: manual device check.)
+- **Drawer:** the "%100 yerel" badge sits above the navigation bar.
+  (no test: manual device check.)
+- **Deadline dropdown:** the long option ends with an ellipsis before the
+  arrow.
+  (no test: manual device check.)
+- The office empty state ("Açık belge yok") is centred and padded.
+  (no test: manual device check.)
 ## Implemented (this cycle, 6.5.0) - Delil klasörü, resmî yazı, okunur ofis PDF'leri
 
 - **Evidence bundle** (#341 C3): cover, index with SHA-256, stamped exhibits
