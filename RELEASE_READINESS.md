@@ -31,6 +31,35 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.5.1) - Telefon denetimindeki arayüz kusurları
+
+- **No screen uses the unstyled screen wrapper; the shared layout classes are
+  styled** (PDF Studio scrolls on a phone).
+  `test:src/components/layout-css.test.tsx#leaves no screen in the unstyled screen / screen-head wrapper`
+  `test:src/components/layout-css.test.tsx#styles the shared row, stack, field and empty-state classes`
+- **PDF Studio shows the real file size.**
+  `test:src/screens/pdf-screens.test.tsx#shows the picked PDF's real size in PDF Studio, not 0 B`
+- **New office documents are named in the interface language.**
+  `test:src/lib/office-store-names.test.ts#uses Turkish names when the interface is Turkish`
+- **The Reader's notes are no wider than the page; icon fields keep room for
+  their icon.**
+  `test:src/screens/pdf-screens.test.tsx#keeps the reader's notes no wider than the page`
+  `test:src/components/layout-css.test.tsx#leaves room for a field's icon outside the utility layer`
+- **Dialog buttons wrap, the drawer clears the navigation bar and a long
+  select value ends with an ellipsis.**
+  `test:src/components/layout-css.test.tsx#wraps a dialog's buttons instead of pushing them off a narrow screen`
+  `test:src/components/layout-css.test.tsx#keeps the drawer clear of the system navigation bar`
+  `test:src/components/layout-css.test.tsx#ends a long select value with an ellipsis before the arrow`
+
+### Not done / Known limitations (6.5.1)
+
+- The office PDF export embeds PT Sans for every font; a letter asked for
+  Times New Roman comes out in PT Sans (the PDF/A report is still valid).
+  (no test: known limitation.)
+- The evidence bundle and the official letter were not tried on a phone yet.
+  (no test: on-device verification pending.)
+- #341 Faz C: C6-C9 and C12-C15 remain.
+  (no test: not implemented.)
 ## Implemented (this cycle, 6.5.0) - Delil klasörü, resmî yazı, okunur ofis PDF'leri
 
 - **Evidence bundle** (#341 C3): cover, index with SHA-256, stamped exhibits
