@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 5.0.1
+# Release Readiness — OmniOffice 6.5.1
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,

@@ -14,7 +14,7 @@ and embedded scripts in office files are never executed.
 desktop CI builds and tests all three, only Windows packaging is produced
 here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
 
-## What's new in 6.2 (file tokens, strict mode, module splits)
+## What's new (6.2 to 6.5.1)
 
 6.1 and 6.2 are one continuous arc: user files are no longer handed to the
 webview as raw paths, release builds enforce that boundary, and the office core
