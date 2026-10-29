@@ -49,10 +49,55 @@ release-train schedule is decided.
 - The long PDF jobs keep `invokeTracked` with untyped arguments, so the Jobs
   screen can re-run them.
   (no test: known limitation.)
-- Nothing in 6.4.0-6.4.9 was tried on a phone (no device connected); the
-  Android clippy step and the instrumented emulator tests are the Android
-  coverage this cycle.
-  (no test: on-device verification pending.)
+- PDF Studio, Jobs, Plugins, Compatibility and the office landing use
+  `screen` / `screen-head` / `row` classes that have no CSS: no padding, no
+  gaps, and on a phone PDF Studio does not scroll, so its Run button is out of
+  reach (found on the device, below).
+  (no test: open defect.)
+- The PDF Studio file list shows every picked file as "0 B".
+  (no test: open defect.)
+- New office documents are named "Untitled spreadsheet" / "Sheet1" in the
+  Turkish interface.
+  (no test: open defect.)
+- Reader on a phone: the page opens wider than the screen, cut off on the
+  right, and the search icon overlaps the "Belgede bul…" placeholder.
+  (no test: open defect.)
+- The pre-send dialog's button row does not wrap on a phone; the left button
+  ("Karart") is cut off.
+  (no test: open defect.)
+- The drawer's "%100 yerel" badge sits under the Android navigation buttons.
+  (no test: open defect.)
+- The deadline calculator's duration dropdown cuts its long option text.
+  (no test: open defect.)
+
+### Device check (6.4.9, 29.10.2026)
+
+Release APK `OmniOffice-Android-6.4.9-arm64-v8a.apk` (SHA-256 matches
+`SHA256SUMS-android.txt`), installed with `adb install -r` over 6.3.1 on a
+Samsung Galaxy S22 Ultra (SM-S908E, Android 16). No crash in the session; the
+screen lock was not touched.
+
+- **Profession desk first run:** the picker shows, "Avukat" opens the lawyer
+  desk with its cards. Works.
+  (no test: manual device check.)
+- **Deadline calculator:** 29.10.2026 e-notice, 2 weeks: served 2026-11-03,
+  last day 2026-11-17. Correct.
+  (no test: manual device check.)
+- **Bottom bar and touch targets:** five tabs, each about 77 x 55 dp
+  (density 600). Above 48 dp.
+  (no test: manual device check.)
+- **Calc column widening:** dragging the A|B header border widens column A;
+  undo and the unsaved marker follow. Works.
+  (no test: manual device check.)
+- **PDF Studio, adding a file:** "PDF ekle" opens the system picker and the
+  file is listed (with the "0 B" and scrolling defects above).
+  (no test: manual device check.)
+- **Pre-send check:** sharing the redaction sample from Reader lists TCKN,
+  IBAN, phone and e-mail, the hidden properties and the PDF/A note. Nothing
+  was sent.
+  (no test: manual device check.)
+- 6.4.0-6.4.8 were not installed one by one; 6.4.9 carries their changes.
+  (no test: on-device verification of older builds skipped.)
 ## Implemented (this cycle, 6.4.8) - Tipli IPC: uygulama komutları
 
 - **Typed app commands** (#316 group 6), the Android-only update commands
