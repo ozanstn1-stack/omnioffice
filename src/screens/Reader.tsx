@@ -1152,7 +1152,7 @@ export function Reader({
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 muted" />
             <input
               ref={searchInputRef}
-              className="input input-sm pl-8 pr-8"
+              className="input input-sm input-lead-icon input-trail-icon"
               placeholder={t("reader.searchPlaceholder")}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -1293,8 +1293,13 @@ export function Reader({
               of centring out of reach) once a zoom makes them wider than the
               reading area, which is what horizontal panning scrolls. */}
           <div ref={contentRef} className="px-6 py-5 flex flex-col gap-5 items-center min-w-full w-max mx-auto">
+            {/* The notes are capped at the page width: the column is `w-max`,
+                so a wider unwrapped line widened it and a phone centred the
+                page partly off screen. */}
             {session.info && !session.info.hasTextLayer ? (
-              <div className="text-xs muted text-center max-w-[620px]">{t("reader.noTextLayer")}</div>
+              <div className="text-xs muted text-center" style={{ maxWidth: Math.min(620, renderWidth) }}>
+                {t("reader.noTextLayer")}
+              </div>
             ) : null}
             {geometries.map((geometry) => (
               <ReaderPage
@@ -1318,7 +1323,9 @@ export function Reader({
                 }
               />
             ))}
-            <div className="text-center text-xs muted py-3">{t("reader.shortcutHint")}</div>
+            <div className="text-center text-xs muted py-3" style={{ maxWidth: renderWidth }}>
+              {t("reader.shortcutHint")}
+            </div>
           </div>
         </div>
       </div>

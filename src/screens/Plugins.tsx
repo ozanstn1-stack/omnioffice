@@ -4,8 +4,9 @@
  * Worker; this screen only talks to the plugin manager in `src/lib/plugins.ts`.
  */
 import { useEffect, useState } from "react";
-import { FolderPlus, Package, Play, Power, RefreshCw, RotateCw, Trash2 } from "lucide-react";
+import { FolderPlus, Play, Power, RefreshCw, RotateCw, Trash2 } from "lucide-react";
 import { Badge, Card, EmptyState } from "../components/ui";
+import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { isAndroid } from "../lib/mobile";
 import { useOfficeTabs } from "../lib/office-store";
@@ -44,15 +45,11 @@ export function Plugins() {
   };
 
   return (
-    <div className="screen">
-      <div className="screen-head">
-        <div>
-          <h1>
-            <Package size={18} /> {t("plugins.title")}
-          </h1>
-          <p className="muted">{t("plugins.subtitle")}</p>
-        </div>
-        <div className="row">
+    <Screen
+      title={t("plugins.title")}
+      subtitle={t("plugins.subtitle")}
+      actions={
+        <>
           <button type="button" className="btn btn-soft" onClick={() => void load()} disabled={busy}>
             <RefreshCw size={13} /> {t("plugins.refresh")}
           </button>
@@ -64,9 +61,9 @@ export function Plugins() {
               <FolderPlus size={13} /> {t("plugins.installFolder")}
             </button>
           ) : null}
-        </div>
-      </div>
-
+        </>
+      }
+    >
       <Card soft>
         <p className="muted small">{t("plugins.sandboxNote")}</p>
       </Card>
@@ -93,7 +90,7 @@ export function Plugins() {
           />
         ))}
       </div>
-    </div>
+    </Screen>
   );
 }
 

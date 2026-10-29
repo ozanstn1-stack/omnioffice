@@ -2736,5 +2736,9 @@
   "officialLetter.saved": "Saved: {name}",
   "officialLetter.pdfaValid": "PDF/A-2b saved and validated.",
   "officialLetter.pdfaInvalid": "Saved, but PDF/A validation reports {n} failures.",
-  "officialLetter.missing": "Fill in the subject, addressee, text and signer first."
+  "officialLetter.missing": "Fill in the subject, addressee, text and signer first.",
+  "office.untitledDocument": "Untitled document",
+  "office.untitledSpreadsheet": "Untitled spreadsheet",
+  "office.untitledPresentation": "Untitled presentation",
+  "calc.sheetBase": "Sheet"
 }

@@ -173,7 +173,7 @@ export function AiLibrary({ onOpenAi }: { onOpenAi: () => void }) {
           <div className="relative">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 muted" />
             <TextInput
-              className="input-sm pl-8"
+              className="input-sm input-lead-icon"
               style={{ width: 220 }}
               placeholder={t("library.searchPlaceholder")}
               value={query}

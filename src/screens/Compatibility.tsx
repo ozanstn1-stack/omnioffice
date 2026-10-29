@@ -3,10 +3,10 @@
  * document would lose when saved into a target format.
  */
 import { useEffect, useState } from "react";
-import { ShieldCheck } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { errorMessage } from "../lib/store";
 import { Badge, Card, EmptyState } from "../components/ui";
+import { Screen } from "../components/layout";
 import {
   CompatibilityReportView,
   formatCapabilities,
@@ -37,16 +37,7 @@ export function CompatibilityScreen() {
   }, []);
 
   return (
-    <div className="screen">
-      <div className="screen-head">
-        <div>
-          <h1>
-            <ShieldCheck size={18} /> {t("compat.title")}
-          </h1>
-          <p className="muted">{t("compat.subtitle")}</p>
-        </div>
-      </div>
-
+    <Screen title={t("compat.title")} subtitle={t("compat.subtitle")}>
       {error ? <p className="muted">{error}</p> : null}
       {!error && capabilities.length === 0 ? <EmptyState title={t("compat.loading")} /> : null}
 
@@ -103,6 +94,6 @@ export function CompatibilityScreen() {
       <p className="muted small">
         {extensions.length} {t("compat.formats")}
       </p>
-    </div>
+    </Screen>
   );
 }

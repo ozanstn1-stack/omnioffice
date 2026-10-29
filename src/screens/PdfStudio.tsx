@@ -32,9 +32,11 @@ import { errorMessage, useSettings, useToasts } from "../lib/store";
 import { invokeTracked } from "../lib/api";
 import { DropZone, FileList } from "../components/files";
 import { Badge, Card, Field, Toggle } from "../components/ui";
+import { Screen } from "../components/layout";
 import { RevocationStatus } from "../components/revocation-status";
 import { PageCanvas } from "../components/pages";
 import {
+  fileSizes,
   pdfArchiveValidationData,
   pdfEditObjects,
   pdfEditTextRuns,
@@ -258,6 +260,27 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
   const onlineRevocation = useSettings((s) => s.settings.onlineRevocationCheck === true);
   const [tab, setTab] = useState<StudioTab>("sanitize");
   const [files, setFiles] = useState<string[]>(initialFiles ?? []);
+  // Sizes for the file list; it showed 0 B for every file (6.4.9 device check).
+  const [sizes, setSizes] = useState<Record<string, number>>({});
+  useEffect(() => {
+    const missing = files.filter((path) => sizes[path] === undefined);
+    if (!missing.length) return;
+    let live = true;
+    void fileSizes(missing)
+      .then((found) => {
+        if (!live) return;
+        setSizes((current) => ({
+          ...current,
+          ...Object.fromEntries(missing.map((path, index) => [path, found[index] ?? 0])),
+        }));
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+    // Only a new file list asks for sizes; `sizes` is the cache it fills.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [files]);
   const [level, setLevel] = useState("A-2b");
   const [running, setRunning] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressEvent | null>(null);
@@ -1034,17 +1057,8 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
   ) : null;
 
   return (
-    <div className="screen">
-      <div className="screen-head">
-        <div>
-          <h1>
-            <ShieldCheck size={18} /> {t("studio.title")}
-          </h1>
-          <p className="muted">{t("studio.subtitle")}</p>
-        </div>
-      </div>
-
-      <div className="row" style={{ marginBottom: 12 }}>
+    <Screen title={t("studio.title")} subtitle={t("studio.subtitle")}>
+      <div className="row">
         {tabs.map((entry) => (
           <button
             key={entry.id}
@@ -1061,7 +1075,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
       <Card>
         <DropZone onPaths={(paths) => setFiles(paths)} dragging={dragging ?? false} accept="pdf" />
         <FileList
-          files={files.map((path) => ({ path, name: fileBaseName(path), sizeBytes: 0 }))}
+          files={files.map((path) => ({ path, name: fileBaseName(path), sizeBytes: sizes[path] ?? 0 }))}
           onRemove={(index) => setFiles((current) => current.filter((_, position) => position !== index))}
           onAdd={async () => {
             // Android: the SAF picker (the desktop dialog cannot open it).
@@ -1882,6 +1896,6 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
           </Card>
         </>
       ) : null}
-    </div>
+    </Screen>
   );
 }

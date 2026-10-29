@@ -2736,5 +2736,9 @@
   "officialLetter.saved": "Kaydedildi: {name}",
   "officialLetter.pdfaValid": "PDF/A-2b kaydedildi ve doğrulandı.",
   "officialLetter.pdfaInvalid": "Kaydedildi, ancak PDF/A doğrulaması {n} hata bildiriyor.",
-  "officialLetter.missing": "Önce konu, muhatap, metin ve imzalayan alanlarını doldurun."
+  "officialLetter.missing": "Önce konu, muhatap, metin ve imzalayan alanlarını doldurun.",
+  "office.untitledDocument": "Adsız belge",
+  "office.untitledSpreadsheet": "Adsız hesap tablosu",
+  "office.untitledPresentation": "Adsız sunum",
+  "calc.sheetBase": "Sayfa"
 }

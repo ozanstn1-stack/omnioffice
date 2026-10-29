@@ -158,6 +158,7 @@ import { usePresend } from "./lib/presend-gate";
 import { DataLossDialogHost } from "./components/data-loss-dialog";
 import { FileConflictDialogHost } from "./components/file-conflict-dialog";
 import { Badge, IconButton, Spinner } from "./components/ui";
+import { Screen } from "./components/layout";
 import { BrandMark } from "./components/brand";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { isAndroid, openAnyFile, pickAndroidFiles } from "./lib/mobile";
@@ -1083,41 +1084,42 @@ function OfficeLauncher({ kind, onOpen }: OfficeLauncherProps) {
   );
 
   return (
-    <div className="screen">
-      <div className="screen-head">
-        <div>
-          <h1>{t(kind === "writer" ? "nav.documents" : kind === "calc" ? "nav.spreadsheets" : "nav.presentations")}</h1>
-          <p className="muted">{t("office.noTabsHint")}</p>
-        </div>
-        <button
-          type="button"
-          className="btn btn-soft"
-          onClick={async () => {
-            const opened = await openIntoWorkspace();
-            if (opened) onOpen();
-          }}
-        >
-          <FolderOpen size={16} /> {t("common.open")}
-        </button>
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() => {
-            useOfficeTabs.getState().create(kind);
-            onOpen();
-          }}
-        >
-          <FilePlus2 size={16} />{" "}
-          {t(
-            kind === "writer"
-              ? "office.newDocument"
-              : kind === "calc"
-                ? "office.newSpreadsheet"
-                : "office.newPresentation",
-          )}
-        </button>
-      </div>
-      <div className="card">
+    <Screen
+      title={t(kind === "writer" ? "nav.documents" : kind === "calc" ? "nav.spreadsheets" : "nav.presentations")}
+      subtitle={t("office.noTabsHint")}
+      actions={
+        <>
+          <button
+            type="button"
+            className="btn btn-soft"
+            onClick={async () => {
+              const opened = await openIntoWorkspace();
+              if (opened) onOpen();
+            }}
+          >
+            <FolderOpen size={16} /> {t("common.open")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              useOfficeTabs.getState().create(kind);
+              onOpen();
+            }}
+          >
+            <FilePlus2 size={16} />{" "}
+            {t(
+              kind === "writer"
+                ? "office.newDocument"
+                : kind === "calc"
+                  ? "office.newSpreadsheet"
+                  : "office.newPresentation",
+            )}
+          </button>
+        </>
+      }
+    >
+      <div className="card p-4">
         <h3>{t("home.recent")}</h3>
         {related.length === 0 ? <p className="muted">{t("converter.noFiles")}</p> : null}
         <div className="stack">
@@ -1133,6 +1135,6 @@ function OfficeLauncher({ kind, onOpen }: OfficeLauncherProps) {
           ))}
         </div>
       </div>
-    </div>
+    </Screen>
   );
 }

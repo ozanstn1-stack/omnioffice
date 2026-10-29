@@ -420,7 +420,7 @@ export function Home({
           <div className="relative flex-1 max-w-md">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 muted pointer-events-none" />
             <input
-              className="input input-sm pl-8"
+              className="input input-sm input-lead-icon"
               value={query}
               aria-label={t("home.searchTools")}
               placeholder={t("home.searchTools")}

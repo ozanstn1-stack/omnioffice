@@ -218,7 +218,7 @@ import {
   reusablePreview,
   MAX_PREVIEW_CACHE_ENTRIES,
 } from "./Reader";
-import { previewRasterWidth } from "../lib/format";
+import { formatBytes, previewRasterWidth } from "../lib/format";
 import { useDrop, useSettings } from "../lib/store";
 import { DEFAULT_SETTINGS } from "../lib/types";
 import { rememberTokenName } from "../lib/file-token-names";
@@ -967,5 +967,27 @@ describe("PDF Studio works with file tokens", () => {
     render(<PdfStudio dragging={false} initialFiles={["tok-held"]} />);
     expect(await screen.findByText("Sözleşme.pdf")).toBeInTheDocument();
     expect(screen.queryByText("tok-held")).not.toBeInTheDocument();
+  });
+});
+
+describe("6.4.9 device check fixes", () => {
+  it("shows the picked PDF's real size in PDF Studio, not 0 B", async () => {
+    render(<PdfStudio dragging={false} initialFiles={["C:/a.pdf"]} />);
+    expect(await screen.findByText(formatBytes(1024))).toBeInTheDocument();
+    expect(screen.queryByText("0 B")).not.toBeInTheDocument();
+    expect(invoke).toHaveBeenCalledWith("file_sizes", expect.objectContaining({ paths: ["C:/a.pdf"] }));
+  });
+
+  // The page column is `w-max`: an unwrapped hint wider than the page used to
+  // widen it, so a phone centred the page partly off screen.
+  it("keeps the reader's notes no wider than the page", async () => {
+    render(<Reader initialFiles={["C:/a.pdf"]} dragging={false} />);
+    const page = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>('[data-page="1"]');
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    const hint = screen.getByText(/Ctrl\+F search/);
+    expect(hint.style.maxWidth).toBe(page.style.width);
   });
 });

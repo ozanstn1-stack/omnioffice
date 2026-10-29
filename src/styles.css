@@ -120,6 +120,8 @@ body {
   border-right: 1px solid var(--border);
   padding-top: env(safe-area-inset-top);
   padding-left: env(safe-area-inset-left);
+  /* The privacy badge at the foot sat under the system navigation bar. */
+  padding-bottom: env(safe-area-inset-bottom);
   animation: drawer-in 0.16s ease-out;
 }
 
@@ -216,6 +218,39 @@ body {
 
 .muted {
   color: var(--muted);
+}
+
+/* Layout helpers used by the older screens, the office workspace and the
+   Calc dialogs; without them their content had no gaps or padding (6.4.9
+   device check). */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 100%;
+  padding: 48px 24px;
+  text-align: center;
 }
 
 /* Screen-reader-only text: labels controls whose visible mark is an icon. */
@@ -350,10 +385,26 @@ body {
   min-height: 92px;
   resize: vertical;
 }
+/* A long option ends with an ellipsis before the arrow instead of under it. */
+.select {
+  padding-right: 28px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .input-sm {
   min-height: 32px;
   padding: 5px 9px;
   font-size: 13px;
+}
+/* Room for an icon inside a field. Tailwind's pl-* / pr-* utilities sit in a
+   cascade layer and lose to the unlayered padding above, so the icon covered
+   the placeholder. */
+.input-lead-icon {
+  padding-left: 32px;
+}
+.input-trail-icon {
+  padding-right: 32px;
 }
 
 .label {
