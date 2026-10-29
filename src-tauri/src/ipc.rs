@@ -16,7 +16,7 @@ use crate::ai::edit as ai_edit;
 use crate::android_update;
 use crate::{
     ai, android_intent, android_share, commands, diagnostics, evidence, file_dirs, files, jobs, launch, links, oauth,
-    office, office_tools, pdf_v3, plugin, recent, recipes, sign, signatures, sync, update, vault,
+    office, office_pdfa, office_tools, pdf_v3, plugin, recent, recipes, sign, signatures, sync, update, vault,
 };
 use tauri::ipc::Invoke;
 use tauri::Wry;
@@ -186,6 +186,7 @@ domain! {
         office::office_save_document,
         office::office_save_unit,
         office::office_export_pdf,
+        office_pdfa::office_export_pdfa,
         office::office_convert,
         office::office_conversion_targets,
         office::office_open_invoice,
@@ -403,5 +404,5 @@ mod tests {
     }
 
     /// The number of entries in the domain lists, Android-only ones included.
-    const TOTAL: usize = 223;
+    const TOTAL: usize = 224;
 }

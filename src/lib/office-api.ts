@@ -41,6 +41,10 @@ export const saveUnit = (kind: OfficeKind, title: string, model: unknown, path: 
 export const exportPdf = (kind: OfficeKind, model: unknown, path: string) =>
   call((c) => c.officeExportPdf(kind, model as specta.Value, path));
 
+/** Exports straight to PDF/A ("2b" by default); the report says whether the file validates. */
+export const exportPdfa = (kind: OfficeKind, model: unknown, path: string, level = "2b") =>
+  call((c) => c.officeExportPdfa(kind, model as specta.Value, path, level));
+
 export const convertFile = (input: string, output: string, options?: specta.ConvertOptions_Deserialize) =>
   call((c) => c.officeConvert(input, output, options ?? null));
 

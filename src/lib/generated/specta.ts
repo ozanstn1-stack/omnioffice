@@ -145,6 +145,11 @@ export const commands = {
 	officeSaveDocument: (kind: string, model: Value, path: string) => typedError<SaveDocument, OfficeErrorPayload>(__TAURI_INVOKE("office_save_document", { kind, model, path })),
 	officeSaveUnit: (kind: string, title: string, model: Value, path: string) => typedError<SaveDocument, OfficeErrorPayload>(__TAURI_INVOKE("office_save_unit", { kind, title, model, path })),
 	officeExportPdf: (kind: string, model: Value, path: string) => typedError<SaveDocument, OfficeErrorPayload>(__TAURI_INVOKE("office_export_pdf", { kind, model, path })),
+	/**
+	 *  Exports `model` as PDF and converts it to PDF/A at `level` ("1b", "2b",
+	 *  ...) into `path`. The report says whether the result validates.
+	 */
+	officeExportPdfa: (kind: string, model: Value, path: string, level: string) => typedError<PdfaReport_Serialize, PdfError>(__TAURI_INVOKE("office_export_pdfa", { kind, model, path, level })),
 	officeConvert: (input: string, output: string, options: ConvertOptions_Deserialize | null) => typedError<ConversionInfo, OfficeErrorPayload>(__TAURI_INVOKE("office_convert", { input, output, options })),
 	/**
 	 *  Lists the conversions the converter can perform for a given extension.

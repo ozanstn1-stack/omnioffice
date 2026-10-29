@@ -14,6 +14,7 @@ import {
   FolderClock,
   FileImage,
   FilePlus2,
+  Landmark,
   CalendarClock,
   FolderCheck,
   FolderOpen,
@@ -132,6 +133,9 @@ const TemplatesScreen = React.lazy(() =>
 );
 const DeadlineCalculatorScreen = React.lazy(() =>
   import("./screens/DeadlineCalculator").then((module) => ({ default: module.DeadlineCalculatorScreen })),
+);
+const OfficialLetterScreen = React.lazy(() =>
+  import("./screens/OfficialLetterWizard").then((module) => ({ default: module.OfficialLetterWizard })),
 );
 const EvidenceBundleScreen = React.lazy(() =>
   import("./screens/EvidenceBundle").then((module) => ({ default: module.EvidenceBundleScreen })),
@@ -746,6 +750,7 @@ export default function App() {
       sync: <Sync />,
       plugins: <Plugins />,
       petition: <PetitionWizardScreen onNavigate={navigate} />,
+      officialLetter: <OfficialLetterScreen onNavigate={navigate} />,
       deadline: <DeadlineCalculatorScreen initialFiles={files} dragging={dragging} />,
       evidence: <EvidenceBundleScreen initialFiles={files} dragging={dragging} />,
       kvkk: <KvkkWizardScreen onNavigate={navigate} />,
@@ -764,6 +769,7 @@ export default function App() {
     presentations: <Presentation size={16} />,
     templates: <LayoutTemplate size={16} />,
     petition: <FilePlus2 size={16} />,
+    officialLetter: <Landmark size={16} />,
     deadline: <CalendarClock size={16} />,
     evidence: <FolderCheck size={16} />,
     kvkk: <ShieldCheck size={16} />,
