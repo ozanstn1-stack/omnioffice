@@ -31,6 +31,30 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.4.7) - Tipli IPC: yapay zekâ ve ofis
+
+- **PDF Studio object edits reach the document** (#477): the flat
+  `{ page, index, action, ... }` shape the screen sends is what Rust reads.
+  `test:crates/pdfcore/tests/object_edit_wire_test.rs#an_object_edit_reads_the_flat_shape_the_front_end_sends`
+- **Typed AI commands** (#316 group 4).
+  `test:src/lib/typed-ipc.test.ts#generates a typed wrapper for every AI command`
+  `test:src/lib/typed-ipc.test.ts#leaves no hand-written AI invoke outside the job tracker`
+- **Typed office commands** (#316 group 5).
+  `test:src/lib/typed-ipc.test.ts#generates a typed wrapper for every office command`
+  `test:src/lib/typed-ipc.test.ts#leaves no hand-written office invoke in the app`
+- **A command error still rejects with the command's error object** through
+  the typed wrappers.
+  `test:src/lib/typed-ipc.test.ts#throws the command's error object, as a plain invoke rejects with it`
+
+### Not done / Known limitations (6.4.7)
+
+- #316: the app and pdf groups (about 120 commands) still use hand-written
+  `invoke`.
+  (no test: not implemented.)
+- Nothing in 6.4.0-6.4.7 was tried on a phone (no device connected); the
+  Android clippy step and the instrumented emulator tests are the Android
+  coverage this cycle.
+  (no test: on-device verification pending.)
 ## Implemented (this cycle, 6.4.6) - Teknik borç: kalanlar
 
 - **Calc list dropdown and formula draft as hooks** (#415 slices 3-4).

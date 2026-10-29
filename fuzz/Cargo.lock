@@ -835,7 +835,7 @@ dependencies = [
 
 [[package]]
 name = "officecore"
-version = "6.4.6"
+version = "6.4.7"
 dependencies = [
  "ab_glyph",
  "base64",
