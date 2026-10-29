@@ -31,6 +31,26 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.4.8) - Tipli IPC: uygulama komutları
+
+- **Typed app commands** (#316 group 6), the Android-only update commands
+  excepted.
+  `test:src/lib/typed-ipc.test.ts#generates a typed wrapper for every app command but the Android-only two`
+  `test:src/lib/typed-ipc.test.ts#leaves no hand-written app invoke in the app`
+- **Every invoked command exists in Rust**, the generated wrappers included.
+  `test:src/lib/ipc-contract-coverage.test.ts#never invokes a command that does not exist`
+
+### Not done / Known limitations (6.4.8)
+
+- #316: the pdf group (70 commands) still uses hand-written `invoke`.
+  (no test: not implemented.)
+- `update_download_apk` and `update_install_apk` stay hand-written: they
+  exist only on Android and the bindings are exported on desktop.
+  (no test: known limitation.)
+- Nothing in 6.4.0-6.4.8 was tried on a phone (no device connected); the
+  Android clippy step and the instrumented emulator tests are the Android
+  coverage this cycle.
+  (no test: on-device verification pending.)
 ## Implemented (this cycle, 6.4.7) - Tipli IPC: yapay zekâ ve ofis
 
 - **PDF Studio object edits reach the document** (#477): the flat

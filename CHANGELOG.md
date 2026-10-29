@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.8] - Tipli IPC: uygulama komutları
+
+### Changed (internal)
+
+- **Typed app commands (#316, group 6):** 40 of the 42 app commands (app
+  info and updates, diagnostics, engines, file tokens, jobs, settings,
+  recents, the operation log, launch files, Android open-with and share) are
+  called through wrappers generated from the Rust types. The two Android-only
+  update commands keep their hand-written call: the bindings are exported on
+  desktop, where they do not exist.
+- The IPC coverage check now also reads the generated wrappers, so a typed
+  command is still checked against the commands Rust registers.
+
+### Fixed
+
+- The operation log's optional fields (pages, sizes, detail) are typed as
+  Rust sends them (`null`, not absent), and the History export keeps writing
+  an empty cell for them.
 ## [6.4.7] - Tipli IPC: yapay zekâ ve ofis
 
 ### Changed (internal)
