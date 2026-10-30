@@ -37,6 +37,7 @@ mod paths;
 mod paths_policy;
 mod paths_read;
 mod pdf_v3;
+mod person_cards;
 mod plugin;
 mod provenance;
 mod recent;
@@ -415,6 +416,9 @@ pub fn export_typed_bindings(path: &std::path::Path) -> Result<(), String> {
             evidence::evidence_match_originals,
             provenance::pdf_provenance_read,
             provenance::pdf_provenance_write,
+            person_cards::person_card_list,
+            person_cards::person_card_save,
+            person_cards::person_card_delete,
             commands::detect_redaction_matches,
             commands::pdf_set_outline,
             commands::stamp_pdf,
