@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 6.7.0
+# Release Readiness — OmniOffice 6.8.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -30,6 +30,40 @@ Two channels carry builds:
 The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
+
+## Implemented (this cycle, 6.8.0) - Ofis belgelerinde model seviyesinde fark
+
+- **Writer diff (C13, #514):** paragraphs from the body, header and footer and
+  table-cell paragraphs are aligned with a whole-paragraph LCS; the gaps are
+  paired positionally and reported as changed with word-level segments, the
+  extras as added/removed.
+  `test:src/lib/office-diff.test.ts#pairs the paragraphs between anchors and marks them changed`
+  `test:src/lib/office-diff.test.ts#marks table cells with their coordinates`
+  `test:src/lib/office-diff.test.ts#includes header and footer paragraphs`
+- **Calc and Impress diff (C13, #514):** sheets added/removed and one entry per
+  changed cell (formula text or displayed value), slides compared by position
+  and by the text of their frames; every result is bounded and carries a
+  `truncated` flag.
+  `test:src/lib/office-diff.test.ts#reports changed cells, formulas and added/removed sheets`
+  `test:src/lib/office-diff.test.ts#compares a formula by its text`
+  `test:src/lib/office-diff.test.ts#bounds a document that differs everywhere`
+  `test:src/lib/office-diff.test.ts#reports a changed slide with word-level segments`
+- **Compare screen Office mode and version-history comparison (C13, #514):**
+  two documents are opened as models and diffed without rendering; the version
+  dialog loads a snapshot and diffs it against the open tab's model.
+  `test:src/components/office-compare.test.tsx#opens two office files and shows the model diff`
+  `test:src/components/office-diff-view.test.tsx#shows the Writer summary and the changed paragraph with its segments`
+
+### Not done / Known limitations (6.8.0)
+
+- The office comparison is model-level; the PDF Compare screen keeps its
+  existing visual (rendered) mode, and the office mode does not render pages.
+  (no test: by design, documented here and in the issue.)
+- A pair that differs beyond the reporting limits is reported as `truncated`
+  with the summary of the shown changes, not every change.
+  (no test: the bound itself is covered; the limit is documented.)
+- The version comparison uses the open tab's model, so unsaved edits are
+  included and the snapshot is read-only.
 
 ## Implemented (this cycle, 6.7.0) - Şablon alanları, kişi kartları ve Linux paketleri
 

@@ -27,7 +27,7 @@ its own release section; the issue checklist is updated when an item lands.
 | C10. Pre-send check | Delivered in 6.4.1 | `DocumentHealthScreen.tsx`, `document-health.ts` |
 | C11. Mobile ergonomics | Delivered in 6.4.4 and 6.5.1; per-screen audit remains | `bottom-nav.tsx`, touch CSS tests |
 | C12. Real scanner | Partial | Camera capture and manual four-corner picker only; no automatic edge detection |
-| C13. Make differences visible | Partial | PDF Compare exists (`pdfcore/src/compare.rs`); no office-document or version-history comparison |
+| C13. Make differences visible | Delivered in 6.8.0 | `office-diff-*.ts` engines, `OfficeDiffView`, Compare Office mode and the version-history comparison |
 | C14. Office-internal sync | Partial | WebDAV/Drive/OneDrive sync and `synccore/src/merge.rs`; no same-network device pairing |
 | C15. Privacy-preserving feedback | Delivered in 6.6.0 | `report-problem.tsx`, `feedback.ts`; the diagnostics report is copied and the issue pre-filled, nothing is uploaded |
 
@@ -91,7 +91,7 @@ backups unless the user opts in.
 **Acceptance.** One template produces a 20-person mail merge in one action; add,
 edit and delete a card; export requires confirmation; both UI languages.
 
-### C13. Make differences visible — M, about 2 days
+### C13. Make differences visible — delivered in 6.8.0
 
 **Goal.** See what changed between two versions of an office document.
 
@@ -197,7 +197,7 @@ disabled command says why; plugin commands keep working.
 |---|---|---|
 | v6.6.0 "Verify" | C9, C8, C15 | Done in 6.6.0 (C8: PDF manifests only) |
 | v6.7.0 "Templates" | C6, C1 remainder | Done in 6.7.0 (C1's palette task commands remain) |
-| v6.8.0 "Compare" | C13, tracker and README/RELEASE_READINESS cleanup | 2–3 days |
+| v6.8.0 "Compare" | C13, tracker and README/RELEASE_READINESS cleanup | Done in 6.8.0 |
 | v6.9.0 "Local AI" | C7 | 3–5 days |
 | v6.10.0 "Scanner" | C12 | 3–4 days |
 | v7.0.0 "Sync" | C14 | 5–8 days |

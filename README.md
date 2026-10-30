@@ -10,12 +10,12 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 6.7.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
+**Version 6.8.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
 CI) and Android (arm64-v8a, armeabi-v7a); Tauri also targets macOS and the
 desktop CI builds and tests all three, but only Windows, Linux and Android are
 packaged · UI languages: English, Turkish.
 
-## What's new (6.2 to 6.7.0)
+## What's new (6.2 to 6.8.0)
 
 6.1 and 6.2 are one continuous arc: user files are no longer handed to the
 webview as raw paths, release builds enforce that boundary, and the office core
@@ -159,14 +159,18 @@ was split into per-format modules.
 - **Linux packages** (6.7.0): every release now includes a `.deb` and an
   `.AppImage` with their SHA-256 manifest, next to the Windows and Android
   assets.
-**Downloads (v6.7.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
-APK/AAB and SHA-256 manifests: [Release v6.7.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v6.7.0)
-· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.7.0/OmniOffice-Setup-6.7.0.exe)
-· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.7.0/OmniOffice-Portable-6.7.0.zip)
-· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.7.0/OmniOffice-Linux-6.7.0-amd64.deb)
-· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.7.0/OmniOffice-Linux-6.7.0-amd64.AppImage)
-· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.7.0/OmniOffice-Android-6.7.0-arm64-v8a.apk)
-· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.7.0/OmniOffice-Android-6.7.0-armeabi-v7a.apk)
+- **Model-level document comparison** (6.8.0): the Compare screen gains an
+  Office mode that diffs two Writer, Calc or Impress documents structurally -
+  paragraphs and table cells, sheets and cells, slides - and the version
+  history can compare a saved snapshot with the open document.
+**Downloads (v6.8.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
+APK/AAB and SHA-256 manifests: [Release v6.8.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v6.8.0)
+· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.8.0/OmniOffice-Setup-6.8.0.exe)
+· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.8.0/OmniOffice-Portable-6.8.0.zip)
+· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.8.0/OmniOffice-Linux-6.8.0-amd64.deb)
+· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.8.0/OmniOffice-Linux-6.8.0-amd64.AppImage)
+· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.8.0/OmniOffice-Android-6.8.0-arm64-v8a.apk)
+· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.8.0/OmniOffice-Android-6.8.0-armeabi-v7a.apk)
 
 ## Release history
 
