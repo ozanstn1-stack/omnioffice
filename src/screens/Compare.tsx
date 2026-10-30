@@ -6,6 +6,7 @@ import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
 import { comparePdfs, toAppError } from "../lib/api";
+import { OfficeCompare } from "../components/office-compare";
 import type { CompareOptions, CompareReport, TextDifference } from "../lib/types";
 
 const DEFAULTS: CompareOptions = {
@@ -38,6 +39,7 @@ export function Compare({ initialFiles, dragging }: { initialFiles?: string[]; d
   const [report, setReport] = useState<CompareReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<"text" | "visual">("text");
+  const [mode, setMode] = useState<"pdf" | "office">("pdf");
   const [passwords, setPasswords] = useState<Record<number, string>>({});
 
   const patch = (values: Partial<CompareOptions>) => {
@@ -83,12 +85,37 @@ export function Compare({ initialFiles, dragging }: { initialFiles?: string[]; d
     return { changed, added, removed };
   }, [report]);
 
+  const modes = (
+    <Segmented<"pdf" | "office">
+      value={mode}
+      onChange={setMode}
+      options={[
+        { value: "pdf", label: t("compare.pdfMode") },
+        { value: "office", label: t("compare.officeMode") },
+      ]}
+    />
+  );
+
+  if (mode === "office") {
+    return (
+      <Screen
+        title={t("nav.compare")}
+        subtitle={t("compare.subtitle")}
+        actions={<FileDiff size={18} className="muted" />}
+      >
+        {modes}
+        <OfficeCompare />
+      </Screen>
+    );
+  }
+
   return (
     <Screen
       title={t("nav.compare")}
       subtitle={t("compare.subtitle")}
       actions={<FileDiff size={18} className="muted" />}
     >
+      {modes}
       <TwoColumn
         main={
           <>
