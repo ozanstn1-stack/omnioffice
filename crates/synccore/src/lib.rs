@@ -21,6 +21,7 @@
 //! (`dyn SyncProvider`) without pulling in an async runtime.
 
 pub mod cloud;
+pub mod lan;
 pub mod merge;
 pub mod metadata;
 pub mod oauth;

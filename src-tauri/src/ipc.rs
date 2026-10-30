@@ -15,9 +15,9 @@ use crate::ai::edit as ai_edit;
 #[cfg(target_os = "android")]
 use crate::android_update;
 use crate::{
-    ai, android_intent, android_share, commands, diagnostics, evidence, file_dirs, files, jobs, launch, links, oauth,
-    office, office_pdfa, office_tools, pdf_v3, person_cards, plugin, provenance, recent, recipes, scanner, sign,
-    signatures, sync, update, vault,
+    ai, android_intent, android_share, commands, diagnostics, evidence, file_dirs, files, jobs, lan_sync, launch,
+    links, oauth, office, office_pdfa, office_tools, pdf_v3, person_cards, plugin, provenance, recent, recipes,
+    scanner, sign, signatures, sync, update, vault,
 };
 use tauri::ipc::Invoke;
 use tauri::Wry;
@@ -309,6 +309,24 @@ domain! {
 }
 
 domain! {
+    /// Same-network document sync (C14): identity, host, peers and transfers.
+    lan_commands {
+        lan_sync::lan_status,
+        lan_sync::lan_rename,
+        lan_sync::lan_host_start,
+        lan_sync::lan_host_open_pairing,
+        lan_sync::lan_host_stop,
+        lan_sync::lan_host_unpair,
+        lan_sync::lan_discover,
+        lan_sync::lan_pair,
+        lan_sync::lan_unpair,
+        lan_sync::lan_plan,
+        lan_sync::lan_apply,
+        lan_sync::lan_sync_safe,
+    }
+}
+
+domain! {
     /// Third-party plugins and their sandboxed host calls.
     plugin_commands {
         plugin::plugin_list,
@@ -334,6 +352,7 @@ fn domain_names() -> Vec<(&'static str, Vec<&'static str>)> {
         ("ai", ai_commands::names()),
         ("vault", vault_commands::names()),
         ("sync", sync_commands::names()),
+        ("lan", lan_commands::names()),
         ("plugin", plugin_commands::names()),
     ]
 }
@@ -348,6 +367,7 @@ fn domains() -> Vec<(&'static str, Vec<&'static str>, DomainHandler)> {
         ("ai", ai_commands::names(), Box::new(ai_commands::handler())),
         ("vault", vault_commands::names(), Box::new(vault_commands::handler())),
         ("sync", sync_commands::names(), Box::new(sync_commands::handler())),
+        ("lan", lan_commands::names(), Box::new(lan_commands::handler())),
         ("plugin", plugin_commands::names(), Box::new(plugin_commands::handler())),
     ]
 }
@@ -411,5 +431,5 @@ mod tests {
     }
 
     /// The number of entries in the domain lists, Android-only ones included.
-    const TOTAL: usize = 230;
+    const TOTAL: usize = 242;
 }

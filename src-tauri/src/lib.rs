@@ -25,6 +25,7 @@ mod file_dirs;
 mod files;
 mod ipc;
 mod jobs;
+mod lan_sync;
 mod launch;
 mod library;
 mod links;
@@ -249,6 +250,18 @@ pub fn export_typed_bindings(path: &std::path::Path) -> Result<(), String> {
             sync::sync_forget,
             sync::sync_delete_remote,
             sync::sync_capabilities,
+            lan_sync::lan_status,
+            lan_sync::lan_rename,
+            lan_sync::lan_host_start,
+            lan_sync::lan_host_open_pairing,
+            lan_sync::lan_host_stop,
+            lan_sync::lan_host_unpair,
+            lan_sync::lan_discover,
+            lan_sync::lan_pair,
+            lan_sync::lan_unpair,
+            lan_sync::lan_plan,
+            lan_sync::lan_apply,
+            lan_sync::lan_sync_safe,
             oauth::oauth_status,
             oauth::oauth_save_client,
             oauth::oauth_connect,

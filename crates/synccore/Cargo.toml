@@ -32,6 +32,15 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 thiserror = "2"
+# LAN sync (crates/synccore/src/lan.rs, C14): the pairing handshake runs on a
+# self-signed certificate and every later connection pins that certificate's
+# SHA-256, so rustls/rcgen are the only TLS pieces needed. `ring` is the
+# provider both crates already use; HMAC-SHA256 authenticates each request with
+# the key established at pairing.
+getrandom = "0.2"
+hmac = "0.12"
+rcgen = "0.13"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 uuid = { version = "1", features = ["v4"] }
 # tauri-specta's type layer, pinned with the app crate's (docs/dependencies.md).
 specta = { version = "=2.0.0-rc.26", features = ["derive"], optional = true }

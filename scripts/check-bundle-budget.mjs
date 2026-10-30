@@ -79,7 +79,9 @@ const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$
 // Raised to 515 in 6.9 (#341 C7): the Turkish task pack engine and the aiPacks
 // route (four packs + verification, both lazy) add about 5 KB gzip; the entry
 // chunk is unchanged.
-const TOTAL_BUDGET_KB = 515;
+// Raised to 520 in 6.11 (#341 C14): the LAN sync card and its plan list run
+// on the Sync screen; the crypto and transport live in Rust.
+const TOTAL_BUDGET_KB = 520;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);

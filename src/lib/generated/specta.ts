@@ -58,6 +58,32 @@ export const commands = {
 	 */
 	syncDeleteRemote: (localPath: string) => typedError<SyncStatusView_Serialize, PdfError>(__TAURI_INVOKE("sync_delete_remote", { localPath })),
 	syncCapabilities: () => __TAURI_INVOKE<SyncCapabilities>("sync_capabilities"),
+	lanStatus: () => typedError<LanStatusView_Serialize, PdfError>(__TAURI_INVOKE("lan_status")),
+	/**  Renames this device on the network (the certificate stays the same). */
+	lanRename: (name: string) => typedError<LanStatusView_Serialize, PdfError>(__TAURI_INVOKE("lan_rename", { name })),
+	/**  Shares `folder` and opens a fresh pairing window. */
+	lanHostStart: (folder: string) => typedError<LanStatusView_Serialize, PdfError>(__TAURI_INVOKE("lan_host_start", { folder })),
+	/**  Opens a new pairing window on the running host (a new code). */
+	lanHostOpenPairing: () => typedError<LanStatusView_Serialize, PdfError>(__TAURI_INVOKE("lan_host_open_pairing")),
+	/**  Stops sharing. */
+	lanHostStop: () => typedError<LanStatusView_Serialize, PdfError>(__TAURI_INVOKE("lan_host_stop")),
+	/**  Revokes a host-side pairing. */
+	lanHostUnpair: (deviceId: string) => typedError<LanStatusView_Serialize, PdfError>(__TAURI_INVOKE("lan_host_unpair", { deviceId })),
+	/**  Broadcasts a discovery probe and returns the hosts that answered. */
+	lanDiscover: (timeoutMs: number) => typedError<LanDeviceView[], PdfError>(__TAURI_INVOKE("lan_discover", { timeoutMs })),
+	/**  Pairs with a host using its six-digit code and stores the pin + key. */
+	lanPair: (address: string, code: string) => typedError<LanStatusView_Serialize, PdfError>(__TAURI_INVOKE("lan_pair", { address, code })),
+	/**  Forgets a client-side pairing. */
+	lanUnpair: (deviceId: string) => typedError<LanStatusView_Serialize, PdfError>(__TAURI_INVOKE("lan_unpair", { deviceId })),
+	/**  Compares the local folder with the peer's folder over the LAN. */
+	lanPlan: (deviceId: string, folder: string) => typedError<LanPlanView_Serialize, PdfError>(__TAURI_INVOKE("lan_plan", { deviceId, folder })),
+	/**
+	 *  Applies one plan item. A conflict needs an explicit `resolution`
+	 *  (`keep_local`, `keep_cloud` or `keep_both`); anything else refuses.
+	 */
+	lanApply: (deviceId: string, folder: string, path: string, resolution: string | null) => typedError<LanApplyView_Serialize, PdfError>(__TAURI_INVOKE("lan_apply", { deviceId, folder, path, resolution })),
+	/**  Applies every item that needs no question; conflicts are left for the user. */
+	lanSyncSafe: (deviceId: string, folder: string) => typedError<LanApplyView_Serialize[], PdfError>(__TAURI_INVOKE("lan_sync_safe", { deviceId, folder })),
 	oauthStatus: () => __TAURI_INVOKE<OAuthStatus[]>("oauth_status"),
 	oauthSaveClient: (provider: string, clientId: string, clientSecret: string | null, tenant: string | null) => typedError<OAuthStatus[], PdfError>(__TAURI_INVOKE("oauth_save_client", { provider, clientId, clientSecret, tenant })),
 	oauthConnect: (provider: string) => typedError<OAuthStatus[], PdfError>(__TAURI_INVOKE("oauth_connect", { provider })),
@@ -2823,6 +2849,121 @@ export type JobRecord_Serialize = {
  *  frontend type (`src/lib/jobs.ts` maps `done` to the UI's `succeeded`).
  */
 export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled" | "interrupted";
+
+export type LanApplyView = LanApplyView_Serialize | LanApplyView_Deserialize;
+
+export type LanApplyView_Deserialize = {
+	path: string,
+	applied: boolean,
+	action: string,
+	warning?: string | null,
+};
+
+export type LanApplyView_Serialize = {
+	path: string,
+	applied: boolean,
+	action: string,
+	warning: string | null,
+};
+
+export type LanDeviceView = {
+	deviceId: string,
+	name: string,
+	address: string,
+	fingerprint: string,
+	paired: boolean,
+};
+
+export type LanHostView = LanHostView_Serialize | LanHostView_Deserialize;
+
+export type LanHostView_Deserialize = {
+	port: number,
+	folder: string,
+	/**  The live pairing code, when the window is open. */
+	code?: string | null,
+	expiresInSecs: number,
+	attemptsLeft: number,
+};
+
+export type LanHostView_Serialize = {
+	port: number,
+	folder: string,
+	/**  The live pairing code, when the window is open. */
+	code: string | null,
+	expiresInSecs: number,
+	attemptsLeft: number,
+};
+
+export type LanIdentityView = {
+	deviceId: string,
+	name: string,
+	fingerprint: string,
+};
+
+export type LanPeerView = {
+	deviceId: string,
+	name: string,
+	address: string,
+	/**  Pinned certificate on the client side; empty on the host side. */
+	fingerprint: string,
+	pairedAt: string,
+	/**  True when this device is the host of the pairing. */
+	hostSide: boolean,
+};
+
+export type LanPlanItemView = LanPlanItemView_Serialize | LanPlanItemView_Deserialize;
+
+export type LanPlanItemView_Deserialize = {
+	path: string,
+	/**  `synced`, `local_only`, `local_ahead`, `cloud_ahead` or `conflict`. */
+	state: string,
+	/**  The action that needs no question; `None` for a conflict. */
+	action?: string | null,
+	localSha256?: string | null,
+	remoteSha256?: string | null,
+};
+
+export type LanPlanItemView_Serialize = {
+	path: string,
+	/**  `synced`, `local_only`, `local_ahead`, `cloud_ahead` or `conflict`. */
+	state: string,
+	/**  The action that needs no question; `None` for a conflict. */
+	action: string | null,
+	localSha256: string | null,
+	remoteSha256: string | null,
+};
+
+export type LanPlanView = LanPlanView_Serialize | LanPlanView_Deserialize;
+
+export type LanPlanView_Deserialize = {
+	deviceId: string,
+	folder: string,
+	items: LanPlanItemView_Deserialize[],
+};
+
+export type LanPlanView_Serialize = {
+	deviceId: string,
+	folder: string,
+	items: LanPlanItemView_Serialize[],
+};
+
+export type LanStatusView = LanStatusView_Serialize | LanStatusView_Deserialize;
+
+export type LanStatusView_Deserialize = {
+	identity: LanIdentityView,
+	/**  False when the platform has no cipher and the store is `plain:`. */
+	encrypted: boolean,
+	host?: LanHostView_Deserialize | null,
+	peers: LanPeerView[],
+};
+
+export type LanStatusView_Serialize = {
+	identity: LanIdentityView,
+	/**  False when the platform has no cipher and the store is `plain:`. */
+	encrypted: boolean,
+	host: LanHostView_Serialize | null,
+	peers: LanPeerView[],
+};
 
 /**  What [`add_validation_data`] wrote into the document. */
 export type LtvReport = {
