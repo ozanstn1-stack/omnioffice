@@ -18,6 +18,7 @@
 //! * `watermark` - text/image watermarks
 //! * `numbering` - page numbers (base14 Helvetica)
 //! * `annotate`  - text/image/rect/highlight/line annotations
+//! * `page_detect` - automatic page corners (Canny/Hough) and scanner filters
 //! * `pagelayout`- page size conversion and cropping
 //! * `ocr`       - Tesseract-based OCR pipeline
 //! * `engines`   - engine discovery (pdfium.dll, qpdf.exe, tesseract.exe)
@@ -58,6 +59,7 @@ pub mod numbering;
 pub mod nup;
 pub mod ocr;
 pub mod organize;
+pub mod page_detect;
 pub mod pagelayout;
 pub mod pages;
 pub mod pdf2doc;

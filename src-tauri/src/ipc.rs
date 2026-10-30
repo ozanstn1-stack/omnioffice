@@ -16,8 +16,8 @@ use crate::ai::edit as ai_edit;
 use crate::android_update;
 use crate::{
     ai, android_intent, android_share, commands, diagnostics, evidence, file_dirs, files, jobs, launch, links, oauth,
-    office, office_pdfa, office_tools, pdf_v3, person_cards, plugin, provenance, recent, recipes, sign, signatures,
-    sync, update, vault,
+    office, office_pdfa, office_tools, pdf_v3, person_cards, plugin, provenance, recent, recipes, scanner, sign,
+    signatures, sync, update, vault,
 };
 use tauri::ipc::Invoke;
 use tauri::Wry;
@@ -201,8 +201,9 @@ domain! {
         office::office_vat_rates,
         office::office_read_invoice_qr,
         office::office_open_eml,
-        office::office_scan_pages,
-        office::office_scan_preview,
+        scanner::office_scan_pages,
+        scanner::office_scan_preview,
+        scanner::office_scan_detect,
         office::office_mail_merge,
         office::turkish_spellcheck,
         office::turkish_suggestions,
@@ -410,5 +411,5 @@ mod tests {
     }
 
     /// The number of entries in the domain lists, Android-only ones included.
-    const TOTAL: usize = 229;
+    const TOTAL: usize = 230;
 }

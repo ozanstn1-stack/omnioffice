@@ -198,6 +198,13 @@ export const commands = {
 	 */
 	officeScanPreview: (path: string) => typedError<ScanPreview, OfficeErrorPayload>(__TAURI_INVOKE("office_scan_preview", { path })),
 	/**
+	 *  Finds the page's four corners on the device (C12): a downscaled
+	 *  grayscale -> Gaussian -> Canny -> Hough pipeline plus a bright-region
+	 *  contour candidate, scored by area and edge support. No network call; the
+	 *  corner picker stays as the fallback when nothing is found.
+	 */
+	officeScanDetect: (path: string) => typedError<ScanDetection, OfficeErrorPayload>(__TAURI_INVOKE("office_scan_detect", { path })),
+	/**
 	 *  Fills a Writer template's `{{alan}}` placeholders from a CSV file and writes
 	 *  one document per row. A row that misses a placeholder is reported, not
 	 *  written.
@@ -4645,6 +4652,21 @@ export type SavedChatThread_Serialize = {
 };
 
 /**
+ *  The automatically detected page in one photo (C12). Empty `corners` means
+ *  the detector found nothing and the corner picker stays in charge.
+ */
+export type ScanDetection = {
+	detected: boolean,
+	/**  `[top-left, top-right, bottom-right, bottom-left]` in upright pixels. */
+	corners: ([number, number])[],
+	/**  0..1; area and edge support combined. */
+	score: number | null,
+};
+
+/**  Post-processing for a corrected page. */
+export type ScanFilter = "colour" | "greyscale" | "blackWhite";
+
+/**
  *  One captured page: an image file plus the four page corners the user tapped
  *  (in source pixels). Without corners the image is used as it is.
  */
@@ -4657,6 +4679,8 @@ export type ScanPage = ScanPage_Serialize | ScanPage_Deserialize;
 export type ScanPage_Deserialize = {
 	path: string,
 	corners?: ([number, number])[] | null,
+	/**  Colour, greyscale or black-and-white output for this page. */
+	filter?: ScanFilter | null,
 };
 
 /**
@@ -4666,6 +4690,8 @@ export type ScanPage_Deserialize = {
 export type ScanPage_Serialize = {
 	path: string,
 	corners: ([number, number])[] | null,
+	/**  Colour, greyscale or black-and-white output for this page. */
+	filter: ScanFilter | null,
 };
 
 /**  The corner picker's view of one page photo (see `pdfcore::scan::preview`). */

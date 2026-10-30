@@ -34,13 +34,13 @@ impl From<OfficeError> for OfficeErrorPayload {
     }
 }
 
-fn payload(error: OfficeError) -> OfficeErrorPayload {
+pub(crate) fn payload(error: OfficeError) -> OfficeErrorPayload {
     error.into()
 }
 
 /// Validates an input file coming from the frontend through the shared path
 /// policy, surfacing a normal office error on rejection.
-fn input_path(raw: &str) -> Result<PathBuf, OfficeErrorPayload> {
+pub(crate) fn input_path(raw: &str) -> Result<PathBuf, OfficeErrorPayload> {
     crate::paths::input_file(raw)
         .map(|path| path.into_path_buf())
         .map_err(|error| payload(OfficeError::invalid(error.to_string())))
@@ -48,7 +48,7 @@ fn input_path(raw: &str) -> Result<PathBuf, OfficeErrorPayload> {
 
 /// Validates an output file coming from the frontend through the shared path
 /// policy.
-fn output_path(raw: &str) -> Result<PathBuf, OfficeErrorPayload> {
+pub(crate) fn output_path(raw: &str) -> Result<PathBuf, OfficeErrorPayload> {
     crate::paths::output_file(raw)
         .map(|path| path.into_path_buf())
         .map_err(|error| payload(OfficeError::invalid(error.to_string())))
@@ -1448,139 +1448,6 @@ fn mail_merge(request: MailMergeRequest) -> Result<MailMergeReport, OfficeErrorP
     Ok(MailMergeReport { produced, errors })
 }
 
-// ---------------------------------------------------------------------------
-// Document scanner (Android camera path)
-// ---------------------------------------------------------------------------
-
-/// One captured page: an image file plus the four page corners the user tapped
-/// (in source pixels). Without corners the image is used as it is.
-#[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ScanPage {
-    pub path: String,
-    #[serde(default)]
-    #[cfg_attr(feature = "bindings", specta(type = Option<Vec<[specta_typescript::Number; 2]>>))]
-    pub corners: Option<Vec<[f32; 2]>>,
-}
-
-#[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ScanRequest {
-    pub pages: Vec<ScanPage>,
-    pub output: String,
-}
-
-#[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ScanResult {
-    pub output: String,
-    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
-    pub pages: usize,
-    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
-    pub corrected: usize,
-    pub warnings: Vec<String>,
-}
-
-/// The corner picker's view of one page photo (see `pdfcore::scan::preview`).
-#[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ScanPreview {
-    /// A small upright JPEG as a `data:` URL.
-    pub data_url: String,
-    /// Upright full-size width and height: the corners are sent in these pixels.
-    pub width: u32,
-    pub height: u32,
-}
-
-/// Longest side of the corner picker's preview.
-const SCAN_PREVIEW_SIDE: u32 = 1280;
-
-/// A small upright preview of a page photo for the corner picker. The photo
-/// itself can be 12 MP and carry its rotation in EXIF; the preview is turned
-/// the same way the page will be, so the picked corners line up.
-#[tauri::command]
-#[cfg_attr(feature = "bindings", specta::specta)]
-pub async fn office_scan_preview(path: String) -> Result<ScanPreview, OfficeErrorPayload> {
-    let task = tauri::async_runtime::spawn_blocking(move || scan_preview(&path));
-    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
-}
-
-fn scan_preview(path: &str) -> Result<ScanPreview, OfficeErrorPayload> {
-    use base64::Engine;
-    let source = input_path(path)?;
-    let preview = pdfcore::scan::preview(&source, SCAN_PREVIEW_SIDE)
-        .map_err(|error| payload(OfficeError::invalid(error.to_string())))?;
-    let data_url =
-        format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(&preview.jpeg));
-    Ok(ScanPreview { data_url, width: preview.width, height: preview.height })
-}
-
-/// Turns each captured page upright, corrects its perspective when it has
-/// corners and assembles a multi-page PDF through the existing image-to-PDF
-/// writer. The photos come from the system camera (Android) or a file pick.
-#[tauri::command]
-#[cfg_attr(feature = "bindings", specta::specta)]
-pub async fn office_scan_pages(request: ScanRequest) -> Result<ScanResult, OfficeErrorPayload> {
-    let _permit = crate::concurrency::acquire().await;
-    let task = tauri::async_runtime::spawn_blocking(move || scan_pages(request));
-    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
-}
-
-fn scan_pages(request: ScanRequest) -> Result<ScanResult, OfficeErrorPayload> {
-    if request.pages.is_empty() {
-        return Err(payload(OfficeError::invalid("Select at least one page image.")));
-    }
-    let output = output_path(&request.output)?;
-    let temp = tempfile::tempdir().map_err(|error| payload(OfficeError::internal(error.to_string())))?;
-    let mut items = Vec::with_capacity(request.pages.len());
-    let mut warnings = Vec::new();
-    let mut corrected = 0usize;
-    for (index, page) in request.pages.iter().enumerate() {
-        let source = input_path(&page.path)?;
-        let quad = page.corners.as_ref().filter(|corners| corners.len() == 4).map(|corners| {
-            [
-                [corners[0][0], corners[0][1]],
-                [corners[1][0], corners[1][1]],
-                [corners[2][0], corners[2][1]],
-                [corners[3][0], corners[3][1]],
-            ]
-        });
-        // Every page is turned upright first (camera photos carry their
-        // rotation in EXIF), then flattened when it has corners.
-        let path = temp.path().join(format!("page-{index}.jpg"));
-        let target = match pdfcore::scan::prepare_page(&source, quad, &path) {
-            Ok(true) => {
-                if quad.is_some() {
-                    corrected += 1;
-                }
-                path
-            }
-            Ok(false) => source.clone(),
-            Err(error) => {
-                warnings.push(format!("Page {} was used as it is: {error}", index + 1));
-                source.clone()
-            }
-        };
-        items.push(pdfcore::images::ImageItem { path: target.to_string_lossy().to_string(), rotation_delta: 0 });
-    }
-    let silent = |_| ();
-    let cancel = pdfcore::CancelToken::new();
-    pdfcore::images::images_to_pdf(
-        &items,
-        &Default::default(),
-        &output,
-        pdfcore::docutil::OverwritePolicy::Replace,
-        &silent,
-        &cancel,
-    )
-    .map_err(|error| payload(OfficeError::internal(error.to_string())))?;
-    Ok(ScanResult { output: output.to_string_lossy().to_string(), pages: items.len(), corrected, warnings })
-}
-
 /// Opens a KEP `.eml` message (read-only): headers, body and attachments. Each
 /// attachment is written to a temp directory so the UI can open it; the message
 /// itself is never modified and nothing is sent anywhere.
@@ -2634,69 +2501,6 @@ pub async fn turkish_spellcheck(text: String, suggestions_limit: Option<usize>) 
 pub async fn turkish_suggestions(word: String, limit: Option<usize>) -> Vec<String> {
     let limit = limit.unwrap_or(5);
     tauri::async_runtime::spawn_blocking(move || turkish::suggestions(&word, limit)).await.unwrap_or_default()
-}
-
-#[cfg(test)]
-mod scan_tests {
-    use super::*;
-
-    fn write_page(path: &Path, width: u32, height: u32) {
-        let mut image = image::RgbaImage::new(width, height);
-        for y in 0..height {
-            for x in 0..width {
-                let value = if (x / 8 + y / 8) % 2 == 0 { 40 } else { 220 };
-                image.put_pixel(x, y, image::Rgba([value, value, value, 255]));
-            }
-        }
-        image.save(path).expect("write page");
-    }
-
-    #[test]
-    fn scan_corrects_corners_and_assembles_a_pdf() {
-        let dir = tempfile::tempdir().unwrap();
-        let first = dir.path().join("page1.png");
-        let second = dir.path().join("page2.png");
-        write_page(&first, 60, 80);
-        write_page(&second, 60, 80);
-        let output = dir.path().join("scan.pdf");
-
-        // The first page is corrected from an offset quad, the second is used
-        // as it is (no corners).
-        let request = ScanRequest {
-            pages: vec![
-                ScanPage {
-                    path: first.to_string_lossy().to_string(),
-                    corners: Some(vec![[10.0, 10.0], [50.0, 10.0], [50.0, 70.0], [10.0, 70.0]]),
-                },
-                ScanPage { path: second.to_string_lossy().to_string(), corners: None },
-            ],
-            output: output.to_string_lossy().to_string(),
-        };
-        let result = scan_pages(request).expect("scan");
-        assert_eq!(result.pages, 2);
-        assert_eq!(result.corrected, 1, "one page had corners");
-        assert!(result.warnings.is_empty(), "warnings: {:?}", result.warnings);
-        let bytes = std::fs::read(&output).expect("pdf written");
-        assert!(bytes.starts_with(b"%PDF"));
-    }
-
-    #[test]
-    fn scan_preview_is_a_small_jpeg_with_the_full_size() {
-        let dir = tempfile::tempdir().unwrap();
-        let page = dir.path().join("page.png");
-        write_page(&page, 2560, 1280);
-        let preview = scan_preview(&page.to_string_lossy()).expect("preview");
-        assert!(preview.data_url.starts_with("data:image/jpeg;base64,"));
-        assert_eq!((preview.width, preview.height), (2560, 1280));
-        assert!(scan_preview(&dir.path().join("gone.jpg").to_string_lossy()).is_err());
-    }
-
-    #[test]
-    fn scan_rejects_an_empty_page_list() {
-        let dir = tempfile::tempdir().unwrap();
-        let request = ScanRequest { pages: Vec::new(), output: dir.path().join("x.pdf").to_string_lossy().to_string() };
-        assert!(scan_pages(request).is_err());
-    }
 }
 
 #[cfg(test)]

@@ -20,8 +20,9 @@ edition = "2021"
 #
 # The dependency tree sets the floor, not taste: scanning every crate in
 # Cargo.lock that ships a manifest gives a maximum requirement of 1.89 (aes
-# 0.9.3), with calamine, darling, encoding_rs, icu_*, image, lopdf, time and
-# weezl all at 1.88 and cpubits on edition 2024 (1.85). The declaration here
+# 0.9.3, and the scanner's imageproc tree: nalgebra, safe_arch and wide), with
+# calamine, darling, encoding_rs, icu_*, image, lopdf, time and weezl all at
+# 1.88 and cpubits on edition 2024 (1.85). The declaration here
 # used to say 1.82, which had not built for a long time; CI never noticed
 # because every job used the stable toolchain. `cargo +1.89.0 check` passes and
 # 1.88 does not, so the `msrv` job in .github/workflows/desktop.yml pins 1.89.0
