@@ -124,7 +124,7 @@ fn instance_name(name: &str, device_id: &str) -> String {
         .collect();
     let trimmed = cleaned.trim_matches('-').trim();
     if trimmed.is_empty() {
-        format!("OmniOffice-{}", &device_id.chars().take(8).collect::<String>())
+        format!("OmniOffice-{}", device_id.chars().take(8).collect::<String>())
     } else {
         trimmed.to_string()
     }
