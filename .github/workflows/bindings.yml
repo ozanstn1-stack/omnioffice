@@ -1,0 +1,58 @@
+name: Typed bindings
+
+# Regenerates `src/lib/generated/specta.ts` from the Rust commands.
+#
+# The generator compiles the Tauri app crate (tauri-specta reads the command
+# registry), which is why it lives on a runner instead of a workstation with a
+# compile budget: dispatch it for a branch, download the `specta-bindings`
+# artifact and commit the file. `bindings:check` in the Desktop workflow still
+# fails when the committed file drifts.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bindings-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    name: Generate specta.ts
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
+      - name: Rust cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Tauri Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf
+      - name: Install npm dependencies
+        run: npm ci
+      - name: Placeholder engine directory
+        # The bundle resource glob needs the directory; the binaries are only
+        # fetched for a real build (scripts/fetch-engines.ps1).
+        run: |
+          mkdir -p src-tauri/resources/engines
+          echo "Engine binaries are fetched by scripts/fetch-engines.ps1." \
+            > src-tauri/resources/engines/README.txt
+      - name: Generate the bindings
+        run: npm run bindings:specta
+      - name: Upload specta.ts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: specta-bindings
+          path: src/lib/generated/specta.ts
+          if-no-files-found: error
