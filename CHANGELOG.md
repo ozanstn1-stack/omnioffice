@@ -4,6 +4,35 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.10.0] - Otomatik belge tarama
+
+### Added
+
+- **On-device page detection (C12, #520):** the scanner now finds the page
+  instead of asking for four corners on every photo. The photo is downscaled,
+  turned into one luminance channel, blurred and run through Canny; a Hough
+  transform turns the strongest edges into lines, two near-parallel pairs and
+  two crossing pairs become quadrilateral candidates, and each candidate is
+  scored by area and by how much of its perimeter lies on an edge. An Otsu
+  bright-region contour is added as a fallback for low-contrast borders. The
+  best quad is scaled back to the full-size photo before the perspective
+  correction, so the flattening still runs on full-resolution pixels.
+- **Scanner filters (C12, #520):** colour, greyscale and adaptive black and
+  white (a local box-mean threshold, so uneven light does not swallow the
+  page); the colour path is byte-for-byte the old behaviour.
+- **Batch capture:** a captured photo is auto-cropped and added to the page
+  list without opening the picker; the picker opens with the detected corners
+  and "find corners automatically" runs the detector again. The manual corner
+  picker stays the correction surface when nothing is found.
+- **`imageproc` 0.27** (MIT, default features off) joins `pdfcore` for the
+  edge, blur, contrast and contour primitives; its transitive tree stays in the
+  `deny.toml` license allow list and does not raise the Rust 1.89 MSRV.
+
+### Changed
+
+- The scanner commands moved out of `office.rs` into `src-tauri/src/scanner.rs`
+  (`office.rs` 2,758 -> 2,562 lines); the file-size ratchet follows.
+
 ## [6.9.0] - Yerel Türkçe yapay zekâ görev paketleri
 
 ### Added
