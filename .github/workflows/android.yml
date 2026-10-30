@@ -159,6 +159,14 @@ jobs:
           (cd release-artifacts && sha256sum *.apk *.aab > SHA256SUMS-android.txt)
           ls -lh release-artifacts
 
+      # Catalogues and installed users key the identity on these two facts (#502):
+      # a monotonic version code and an unchanged signing certificate.
+      - name: Verify release identity (versionCode + signing key continuity)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/verify-android-release.sh
+
       # JVM unit tests for the Android-only logic: the open-with/share intent
       # pipeline (untrusted display names, extension whitelist, 256 MB copy
       # cap). They run after the Rust artifacts are warm, so Gradle does not

@@ -1,0 +1,3 @@
+6.8.0: Ofis belgelerinde model seviyesinde fark: Writer paragrafları, Calc
+hücreleri ve Impress slaytları görsel yerine yapısal olarak karşılaştırılır;
+Compare ekranına Office modu ve sürüm geçmişinden karşılaştırma eklenir.

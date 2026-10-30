@@ -1,0 +1,2 @@
+6.12.0: Yerel ağ eşitleme ikinci aşama: mDNS/DNS-SD ile keşif, iki yönlü
+eşleşme, onaylı silme yayılımı ve paylaşım sırasında Android ön plan servisi.

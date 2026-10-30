@@ -1,0 +1,43 @@
+OmniOffice, yerel-first bir üretkenlik paketidir: kelime işlemci (Writer),
+elektronik tablo (Calc) ve sunum düzenleyici (Impress), notlar, planlayıcı,
+veri ve çizim araçları ile projenin başladığı eksiksiz PDF araç takımı -
+birleştirme, bölme, sıkıştırma, OCR, karartma, imzalama, imza doğrulama, form
+doldurma ve karşılaştırma.
+
+Her şey cihazınızda çalışır. Belgeler yüklenmez; telemetri, reklam ve hesap
+yoktur. Uygulama ağa yalnızca siz bulut eşitlemesi açtığınızda, motor
+kurduğunuzda veya kendi ağınızda klasör paylaştığınızda çıkar.
+
+Neler var
+- Yerel ofis paketi: DOCX, XLSX, PPTX ve ODF içe/dışa aktarma; {{alan}}
+  yer tutuculu şablonlar ve bunları dolduran şifreli yerel adres defteri
+  (DPAPI/Android Keystore).
+- PDF araç takımı: Türkçe aranabilir metin katmanlı OCR, karartma, imzalama ve
+  imza doğrulama, formlar, delil klasörü, kaynak manifesti ve ofis
+  belgelerinde model seviyesinde fark karşılaştırma.
+- Cihaz içi belge tarayıcı: sayfayı Canny/Hough ile bulur, kırpar, gri veya
+  siyah-beyaz filtre uygular ve çok sayfalı PDF oluşturur.
+- Türkçe yapay zekâ görev paketleri (dilekçe düzeltme, sözleşme maddeleri, KDV
+  özeti, tebligat süresi) varsayılan olarak yerel Ollama modeliyle çalışır.
+  Uygulamada model gömülü değildir; siz bulut sağlayıcısı seçmedikçe cihazdan
+  hiçbir metin çıkmaz.
+- Yerel ağ eşitleme: aynı Wi-Fi'daki iki cihaz tek kullanımlık altı haneli
+  kodla eşleşir, sabitlenmiş TLS bağlantısı kurar ve klasörler arasında üç
+  yönlü planla belge taşır. Çakışmalar asla otomatik ezilmez; silmeler yalnız
+  onayınızdan sonra uygulanır.
+- Türkçe yazım denetimi yardımcıları, tarih/kaşe araçları ve KVKK'ya duyarlı
+  raporlama akışları.
+
+Gizlilik
+- Google Play hizmetleri, Firebase veya analitik SDK yoktur.
+- Ofis dosyalarındaki makrolar ve gömülü betikler asla çalıştırılmaz.
+- Belgeler ve ayarlar uygulamanın özel depolamasında kalır; yalnızca sizin
+  dışa aktardığınız dosyalar cihazdan çıkar.
+- Sorun bildirme akışı, hiçbir şey kopyalanmadan önce gizliliği temizlenmiş
+  tanılama raporunu gösterir ve otomatik yükleme yapmaz.
+
+Açık kaynak
+OmniOffice MIT lisanslıdır; kaynak kodu, sürüm notları ve her sürümün
+sağlama toplamları https://github.com/ozanstn1-stack/omnioffice adresindedir.
+APK, aynı kaynaktan GitHub Actions tarafından sabit bir sürüm anahtarıyla
+derlenir.
