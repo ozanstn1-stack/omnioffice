@@ -4,6 +4,32 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.8.0] - Ofis belgelerinde model seviyesinde fark
+
+### Added
+
+- **Model-level office diff (C13, #514):** Writer paragraphs from the body,
+  header and footer plus table-cell paragraphs, Calc sheets and cells and
+  Impress slides are compared structurally instead of being rendered page by
+  page. Writer and Impress changes carry word-level segments; Calc reports
+  before/after per cell (formula text when the cell has one). Every result is
+  bounded and says when the list was cut.
+- **Compare screen, Office mode:** the Compare screen gains a PDF / Office
+  switch; in Office mode two Writer, Calc or Impress documents are opened as
+  models and compared without rendering.
+- **Compare a saved version with the current document:** the version-history
+  dialog now has "Compare with current"; it loads the snapshot and diffs it
+  against the open tab's model (unsaved edits included) and shows the result
+  in the same viewer.
+
+### Changed
+
+- The version-history dialog moved out of `OfficeWorkspace.tsx`
+  (465 -> 361 lines) so that file keeps shrinking instead of growing.
+- The bundle budget moves 505 -> 510 KB gzip for the diff engine and viewer
+  (both lazy; the entry chunk is unchanged), and the `Compare.tsx` ratchet
+  grows by the mode switch.
+
 ## [6.7.0] - Şablon alanları, kişi kartları ve Linux paketleri
 
 ### Added
