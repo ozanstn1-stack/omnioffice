@@ -196,7 +196,7 @@ pub fn open_upright(input: &Path) -> PdfResult<(DynamicImage, bool)> {
 
 /// JPEG quality of prepared pages: a 12 MP page photo stays well under a few
 /// MB in the PDF instead of the tens of MB a lossless PNG would take.
-const PAGE_JPEG_QUALITY: u8 = 88;
+pub(crate) const PAGE_JPEG_QUALITY: u8 = 88;
 
 /// Prepares one captured page for the PDF: turned upright and, when corners
 /// are given (in upright pixels), flattened. Writes a JPEG to `output` and
@@ -236,7 +236,7 @@ pub fn preview(input: &Path, max_side: u32) -> PdfResult<PagePreview> {
     Ok(PagePreview { jpeg, width, height })
 }
 
-fn write_jpeg(image: &DynamicImage, output: &Path, quality: u8) -> PdfResult<()> {
+pub(crate) fn write_jpeg(image: &DynamicImage, output: &Path, quality: u8) -> PdfResult<()> {
     let file = std::fs::File::create(output)
         .map_err(|error| PdfError::ConversionFailed(format!("the prepared page could not be written: {error}")))?;
     let mut writer = std::io::BufWriter::new(file);

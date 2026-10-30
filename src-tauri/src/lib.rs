@@ -309,6 +309,7 @@ pub fn export_typed_bindings(path: &std::path::Path) -> Result<(), String> {
             office::office_open_eml,
             office::office_scan_pages,
             office::office_scan_preview,
+            office::office_scan_detect,
             office::office_mail_merge,
             office::turkish_spellcheck,
             office::turkish_suggestions,

@@ -1462,6 +1462,30 @@ pub struct ScanPage {
     #[serde(default)]
     #[cfg_attr(feature = "bindings", specta(type = Option<Vec<[specta_typescript::Number; 2]>>))]
     pub corners: Option<Vec<[f32; 2]>>,
+    /// Colour, greyscale or black-and-white output for this page.
+    #[serde(default)]
+    pub filter: Option<ScanFilter>,
+}
+
+/// Post-processing for a corrected page.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ScanFilter {
+    #[default]
+    Colour,
+    Greyscale,
+    BlackWhite,
+}
+
+impl From<ScanFilter> for pdfcore::page_detect::ScanFilter {
+    fn from(filter: ScanFilter) -> Self {
+        match filter {
+            ScanFilter::Colour => Self::Colour,
+            ScanFilter::Greyscale => Self::Greyscale,
+            ScanFilter::BlackWhite => Self::BlackWhite,
+        }
+    }
 }
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
@@ -1496,6 +1520,20 @@ pub struct ScanPreview {
     pub height: u32,
 }
 
+/// The automatically detected page in one photo (C12). Empty `corners` means
+/// the detector found nothing and the corner picker stays in charge.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanDetection {
+    pub detected: bool,
+    /// `[top-left, top-right, bottom-right, bottom-left]` in upright pixels.
+    #[cfg_attr(feature = "bindings", specta(type = Vec<[specta_typescript::Number; 2]>))]
+    pub corners: Vec<[f32; 2]>,
+    /// 0..1; area and edge support combined.
+    pub score: f32,
+}
+
 /// Longest side of the corner picker's preview.
 const SCAN_PREVIEW_SIDE: u32 = 1280;
 
@@ -1517,6 +1555,31 @@ fn scan_preview(path: &str) -> Result<ScanPreview, OfficeErrorPayload> {
     let data_url =
         format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(&preview.jpeg));
     Ok(ScanPreview { data_url, width: preview.width, height: preview.height })
+}
+
+/// Finds the page's four corners on the device (C12): a downscaled
+/// grayscale -> Gaussian -> Canny -> Hough pipeline plus a bright-region
+/// contour candidate, scored by area and edge support. No network call; the
+/// corner picker stays as the fallback when nothing is found.
+#[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
+pub async fn office_scan_detect(path: String) -> Result<ScanDetection, OfficeErrorPayload> {
+    let task = tauri::async_runtime::spawn_blocking(move || scan_detect(&path));
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+}
+
+fn scan_detect(path: &str) -> Result<ScanDetection, OfficeErrorPayload> {
+    let source = input_path(path)?;
+    let detection =
+        pdfcore::page_detect::detect_file(&source).map_err(|error| payload(OfficeError::invalid(error.to_string())))?;
+    Ok(match detection {
+        Some(page) => ScanDetection {
+            detected: true,
+            corners: page.corners.map(|corner| [corner[0], corner[1]]).to_vec(),
+            score: page.score,
+        },
+        None => ScanDetection { detected: false, corners: Vec::new(), score: 0.0 },
+    })
 }
 
 /// Turns each captured page upright, corrects its perspective when it has
@@ -1552,7 +1615,8 @@ fn scan_pages(request: ScanRequest) -> Result<ScanResult, OfficeErrorPayload> {
         // Every page is turned upright first (camera photos carry their
         // rotation in EXIF), then flattened when it has corners.
         let path = temp.path().join(format!("page-{index}.jpg"));
-        let target = match pdfcore::scan::prepare_page(&source, quad, &path) {
+        let filter = page.filter.unwrap_or_default().into();
+        let target = match pdfcore::page_detect::prepare_page_filtered(&source, quad, filter, &path) {
             Ok(true) => {
                 if quad.is_some() {
                     corrected += 1;
@@ -2667,8 +2731,9 @@ mod scan_tests {
                 ScanPage {
                     path: first.to_string_lossy().to_string(),
                     corners: Some(vec![[10.0, 10.0], [50.0, 10.0], [50.0, 70.0], [10.0, 70.0]]),
+                    filter: None,
                 },
-                ScanPage { path: second.to_string_lossy().to_string(), corners: None },
+                ScanPage { path: second.to_string_lossy().to_string(), corners: None, filter: None },
             ],
             output: output.to_string_lossy().to_string(),
         };
@@ -2689,6 +2754,80 @@ mod scan_tests {
         assert!(preview.data_url.starts_with("data:image/jpeg;base64,"));
         assert_eq!((preview.width, preview.height), (2560, 1280));
         assert!(scan_preview(&dir.path().join("gone.jpg").to_string_lossy()).is_err());
+    }
+
+    /// A photo-like image: dark desk plus a bright page quad.
+    fn write_photo(path: &Path, quad: [[f32; 2]; 4]) {
+        let (width, height) = (320u32, 240u32);
+        let quad = pdfcore::scan::order_corners(quad);
+        let inside = |point: [f32; 2]| {
+            let mut sign = 0.0f32;
+            for index in 0..4 {
+                let a = quad[index];
+                let b = quad[(index + 1) % 4];
+                let cross = (b[0] - a[0]) * (point[1] - a[1]) - (b[1] - a[1]) * (point[0] - a[0]);
+                let current = cross.signum();
+                if sign == 0.0 {
+                    sign = current;
+                } else if current != sign {
+                    return false;
+                }
+            }
+            true
+        };
+        let mut image = image::RgbaImage::from_pixel(width, height, image::Rgba([64, 66, 72, 255]));
+        for (x, y, pixel) in image.enumerate_pixels_mut() {
+            if inside([x as f32 + 0.5, y as f32 + 0.5]) {
+                *pixel = image::Rgba([246, 243, 236, 255]);
+            }
+        }
+        image.save(path).expect("write photo");
+    }
+
+    #[test]
+    fn scan_detects_the_page_corners() {
+        let dir = tempfile::tempdir().unwrap();
+        let page = dir.path().join("photo.png");
+        let truth = [[46.0, 30.0], [278.0, 38.0], [270.0, 208.0], [40.0, 200.0]];
+        write_photo(&page, truth);
+        let detection = scan_detect(&page.to_string_lossy()).expect("detect");
+        assert!(detection.detected, "a page outline was found");
+        assert_eq!(detection.corners.len(), 4);
+        assert!(detection.score > 0.0 && detection.score <= 1.0);
+        for (found, expected) in detection.corners.iter().zip(truth.iter()) {
+            let dx = found[0] - expected[0];
+            let dy = found[1] - expected[1];
+            assert!((dx * dx + dy * dy).sqrt() <= 8.0, "corner {found:?} vs {expected:?}");
+        }
+    }
+
+    #[test]
+    fn scan_reports_no_page_on_a_blank_wall() {
+        let dir = tempfile::tempdir().unwrap();
+        let blank = dir.path().join("blank.png");
+        image::RgbaImage::from_pixel(320, 240, image::Rgba([120, 120, 120, 255])).save(&blank).expect("write");
+        let detection = scan_detect(&blank.to_string_lossy()).expect("detect");
+        assert!(!detection.detected);
+        assert!(detection.corners.is_empty());
+    }
+
+    #[test]
+    fn a_black_and_white_page_goes_through_the_scan_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let page = dir.path().join("page.png");
+        write_page(&page, 80, 60);
+        let output = dir.path().join("scan.pdf");
+        let request = ScanRequest {
+            pages: vec![ScanPage {
+                path: page.to_string_lossy().to_string(),
+                corners: Some(vec![[0.0, 0.0], [80.0, 0.0], [80.0, 60.0], [0.0, 60.0]]),
+                filter: Some(ScanFilter::BlackWhite),
+            }],
+            output: output.to_string_lossy().to_string(),
+        };
+        let result = scan_pages(request).expect("scan");
+        assert_eq!(result.corrected, 1);
+        assert!(std::fs::read(&output).expect("pdf written").starts_with(b"%PDF"));
     }
 
     #[test]
