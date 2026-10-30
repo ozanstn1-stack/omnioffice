@@ -28,6 +28,9 @@ Bu dosya, [`ROADMAP-3.md`](./ROADMAP-3.md) yol haritasını uygulayacak yapay ze
   - `OmniOffice-Setup-X.Y.Z.exe`
   - `OmniOffice-Portable-X.Y.Z.zip`
   - `OmniOffice-Android-X.Y.Z-arm64-v8a.apk` ve `...-armeabi-v7a.apk`
+  - `OmniOffice-Linux-X.Y.Z-amd64.deb` ve `...-amd64.AppImage` (Linux paketleri
+    ilk kez çıktığı sürümden itibaren; `linux-package.yml`, `release.yml`'den
+    çağrılır)
   - iki AAB
   - `latest.json` ve `.sig`
   - `SHA256SUMS*`

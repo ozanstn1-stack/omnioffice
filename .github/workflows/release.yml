@@ -178,6 +178,16 @@ jobs:
           # releases, which enforces the same rule on the API side).
           Get-ChildItem release-artifacts -File | ForEach-Object { gh release upload $tag $_.FullName }
 
+  linux:
+    name: Linux packages
+    needs: version-consistency
+    # The .deb and .AppImage come from a reusable workflow so the same build is
+    # tested by a manual dispatch and attached by a tag. The release creation
+    # and the asset upload inside it are tag-guarded.
+    uses: ./.github/workflows/linux-package.yml
+    permissions:
+      contents: write
+
   version-consistency:
     name: Version consistency
     runs-on: ubuntu-24.04

@@ -1,0 +1,2 @@
+6.6.0: imzalı PDF'leri tek ekranda doğrulayın, üretilen PDF'e kaynak
+manifesti ekleyin ve hiçbir şey yüklemeden sorun bildirin.

@@ -1,0 +1,9 @@
+OmniOffice yerel-first bir üretkenlik paketidir: Writer, Calc, Impress,
+notlar, planlayıcı, veri ve çizim araçları ile projenin başladığı eksiksiz
+PDF araç takımı - birleştirme, bölme, sıkıştırma, OCR, karartma, imzalama,
+imza doğrulama, form doldurma ve karşılaştırma.
+
+Her şey cihazınızda çalışır. Belgeler yüklenmez, telemetri yoktur, yapay
+zekâ kendi sağlayıcınızla isteğe bağlıdır ve bulut eşitlemesi siz
+yapılandırana kadar kapalıdır. Ofis dosyalarındaki makrolar ve gömülü
+betikler asla çalıştırılmaz.
