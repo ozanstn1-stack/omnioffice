@@ -1,0 +1,3 @@
+6.11.0: Yerel ağ eşitleme: aynı Wi-Fi'daki cihazlar tek kullanımlık altı haneli
+kodla eşleşir, sabitlenmiş TLS ve HMAC imzalı isteklerle belge taşır;
+çakışmalar kullanıcıya bırakılır, eşleşme kaldırılınca erişim biter.

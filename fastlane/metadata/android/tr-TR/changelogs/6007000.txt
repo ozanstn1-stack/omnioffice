@@ -1,0 +1,3 @@
+6.7.0: Şablon alanları ve kişi kartları: {{alan}} yer tutuculu şablonlar
+formla doldurulur; şifreli yerel adres defteri CSV/vCard kopyala-yapıştır ile
+çalışır. Linux için .deb ve .AppImage paketleri ilk kez yayınlanır.

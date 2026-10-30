@@ -1,1 +1,0 @@
-Windows ve Android için yerel-first ofis paketi ve PDF araçları

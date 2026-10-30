@@ -1,0 +1,3 @@
+6.9.0: Türkçe yapay zekâ görev paketleri: dilekçe düzeltme, sözleşme maddeleri,
+KDV özeti ve tebligat süresi; çıktı JSON şeması ve doğrulama ile denetlenir,
+varsayılan yol yerel Ollama sağlayıcısıdır.

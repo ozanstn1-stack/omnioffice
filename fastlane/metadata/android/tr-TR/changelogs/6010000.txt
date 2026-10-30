@@ -1,0 +1,3 @@
+6.10.0: Otomatik belge tarama: Canny/Hough ile sayfa köşeleri cihazda bulunur
+ve perspektif düzeltilir; renkli, gri ve siyah-beyaz filtre ile toplu çekim
+eklenir.

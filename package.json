@@ -28,6 +28,8 @@
     "compat:score": "node scripts/compat-score.mjs",
     "docs:stats": "node scripts/docs-stats.mjs",
     "docs:stats:check": "node scripts/docs-stats.mjs --check",
+    "fastlane:sync": "node scripts/fastlane-changelogs.mjs",
+    "fastlane:check": "node scripts/fastlane-changelogs.mjs --check",
     "files:check": "node scripts/check-file-sizes.mjs --check",
     "files:update": "node scripts/check-file-sizes.mjs --update",
     "test:all": "npm run test && npm run test:rust",

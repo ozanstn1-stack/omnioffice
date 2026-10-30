@@ -1,2 +1,1 @@
-6.6.0: verify signed PDFs on one screen, add a source manifest to a
-generated PDF, and report a problem without uploading anything.
+6.6.0: Signature verification screen (C9, #493): the Security section gains "Verify signature": pick a PDF and see, without signing anything, whether the document was signed, whether the signed revision changed afterwards, one verdict for the document (verified, changed after signing, does not verify, unsigned, unreadable) and, per signature, the signer, issuer, serial, validity, signing time, RFC 3161 timestamp, algorithm, SHA-256, certificate chain and notes. The optional online revocation…

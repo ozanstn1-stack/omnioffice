@@ -1,9 +1,42 @@
-OmniOffice is a local-first productivity suite: Writer, Calc and Impress,
-notes, planner, data and drawing tools, plus the complete PDF toolkit
-the project started from - merge, split, compress, OCR, redact, sign,
-verify signatures, fill forms and compare.
+OmniOffice is a local-first productivity suite: a word processor (Writer), a
+spreadsheet (Calc) and a presentation editor (Impress), notes, planner, data
+and drawing tools, plus the complete PDF toolkit the project started from -
+merge, split, compress, OCR, redact, sign, verify signatures, fill forms and
+compare.
 
 Everything runs on your device. Documents are never uploaded, there is no
-telemetry, AI is opt-in with your own provider and cloud sync stays off
-until you configure it. Macros and embedded scripts in office files are
-never executed.
+telemetry, no advertising and no account. The app asks for network access only
+when you enable a cloud sync provider, install engines or share a folder on
+your own network.
+
+What you get
+- Local document suite: DOCX, XLSX, PPTX and ODF import/export; templates with
+  {{field}} placeholders and an encrypted local address book (DPAPI/Android
+  Keystore) that fills them.
+- PDF toolkit: OCR with a searchable Turkish text layer, redaction, signing and
+  signature verification, forms, evidence bundles, provenance manifests and
+  model-level document comparison.
+- A document scanner that finds the page on the device (Canny/Hough detection),
+  crops it, filters it to grey or black and white and builds a multi-page PDF.
+- Turkish AI task packs (petition fixes, contract clauses, VAT summaries,
+  notification deadlines) that run against a local Ollama model by default. The
+  app ships no model; nothing leaves the device unless you point it at a cloud
+  provider yourself.
+- LAN sync: two devices on the same Wi-Fi pair with a one-time six-digit code,
+  keep a pinned TLS connection and move documents between folders with a
+  three-way plan. Conflicts are never overwritten automatically and deletions
+  are applied only after you confirm them.
+- Turkish spellcheck helpers, date/stamp tools and KVKK-aware report flows.
+
+Privacy
+- No Google Play services, no Firebase, no analytics SDKs.
+- Macros and embedded scripts in office files are never executed.
+- Documents and settings stay in the app's private storage; only files you
+  export leave it.
+- The report-a-problem flow shows the redacted diagnostics before anything is
+  copied, and nothing is uploaded automatically.
+
+Open source
+OmniOffice is MIT-licensed; the source, the release notes and the checksums of
+every release are at https://github.com/ozanstn1-stack/omnioffice. The APK is
+built by GitHub Actions from that source with a stable release key.
