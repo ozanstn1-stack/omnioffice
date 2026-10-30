@@ -67,8 +67,10 @@ jobs:
           set -euo pipefail
           version=$(node -p "require('./package.json').version")
           mkdir -p release-artifacts
-          deb=$(find src-tauri/target/release/bundle/deb -maxdepth 1 -name '*.deb' | head -n 1)
-          appimage=$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' | head -n 1)
+          # The Cargo workspace target lives at the repository root; keep the
+          # src-tauri/target fallback so a non-workspace layout still works.
+          deb=$(find target src-tauri/target -path '*/bundle/deb/*.deb' -type f 2>/dev/null | head -n 1)
+          appimage=$(find target src-tauri/target -path '*/bundle/appimage/*.AppImage' -type f 2>/dev/null | head -n 1)
           test -n "$deb"
           test -n "$appimage"
           cp "$deb" "release-artifacts/OmniOffice-Linux-${version}-amd64.deb"
