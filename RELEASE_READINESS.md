@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 6.6.0
+# Release Readiness — OmniOffice 6.7.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -30,6 +30,47 @@ Two channels carry builds:
 The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
+
+## Implemented (this cycle, 6.7.0) - Şablon alanları, kişi kartları ve Linux paketleri
+
+- **Template fields (C6, #508):** `{{alan}}` placeholders are collected from
+  the body, header, footer and table cells (Turkish letters included) and
+  filled through a form; a split placeholder collapses its paragraph into one
+  run, and a field left empty keeps the placeholder.
+  `test:src/lib/template-fields.test.ts#collects fields from body, table cells and the header with their counts`
+  `test:src/lib/template-fields.test.ts#fills a placeholder split across runs by collapsing the paragraph`
+  `test:src/components/template-fields-dialog.test.tsx#submits the typed values`
+- **Encrypted person cards (C6, #509):** one sealed JSON file per card
+  (`secret::seal_bytes`: DPAPI / Android Keystore, `plain:` fallback reported
+  in the UI), format and length validation, and a corrupt card becomes a
+  warning instead of a failed list. CSV and vCard 3.0 import/export works on
+  paste/copy under a KVKK warning, and the template form fills from a card.
+  `test:src-tauri/src/person_cards.rs#a_saved_card_round_trips_through_the_cipher`
+  `test:src-tauri/src/person_cards.rs#a_corrupt_card_becomes_a_warning_not_a_failed_list`
+  `test:src-tauri/src/person_cards.rs#tax_numbers_and_emails_are_checked_but_never_guessed`
+  `test:src/lib/person-cards-io.test.ts#round-trips cards, including commas and quotes`
+  `test:src/components/person-cards-dialog.test.tsx#imports pasted CSV rows`
+- **Linux packages (#500):** `linux-package.yml` builds the `.deb` and
+  `.AppImage` on Ubuntu and attaches them with `SHA256SUMS-linux.txt` on a tag;
+  a dispatch run verified both files and their SHA-256 before this release.
+  (no test: the release workflow itself produces and verifies the artifacts.)
+- **Bindings on a runner (#511):** `bindings.yml` generates `specta.ts` for a
+  branch and hands it out as an artifact; `bindings:check` still fails the
+  Desktop workflow when the committed file drifts.
+  (no test: the workflow is the tool, and Desktop's `bindings:check` is the guard.)
+- **Windows Authenticode:** still unsigned; the release readiness keeps
+  reporting it honestly. (no test: documented until a provider account exists.)
+
+### Not done / Known limitations (6.7.0)
+
+- Person-card import/export is paste/copy based; there is no file dialog yet,
+  and the vCard reader handles a 3.0 subset.
+  (no test: documented follow-up, #509.)
+- The Windows installer is still unsigned (no Authenticode provider account),
+  and no Play/F-Droid submission has been made; `docs/distribution.md` records
+  what each needs. (no test: documented in the distribution doc.)
+- The provenance manifest remains PDF-only (C8): DOCX and automatic manifests
+  from the producer screens are still follow-ups. (no test: documented, #497.)
 
 ## Implemented (this cycle, 6.6.0) - Doğrulama, geri bildirim ve kaynak manifesti
 

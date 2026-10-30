@@ -10,11 +10,12 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 6.6.0** · Platforms: Windows (Tauri also targets Linux/macOS; the
-desktop CI builds and tests all three, only Windows packaging is produced
-here) and Android (arm64-v8a, armeabi-v7a) · UI languages: English, Turkish.
+**Version 6.7.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
+CI) and Android (arm64-v8a, armeabi-v7a); Tauri also targets macOS and the
+desktop CI builds and tests all three, but only Windows, Linux and Android are
+packaged · UI languages: English, Turkish.
 
-## What's new (6.2 to 6.6.0)
+## What's new (6.2 to 6.7.0)
 
 6.1 and 6.2 are one continuous arc: user files are no longer handed to the
 webview as raw paths, release builds enforce that boundary, and the office core
@@ -151,12 +152,21 @@ was split into per-format modules.
 - **Report a problem** (6.6.0): the diagnostics section builds the redacted
   report, shows it before anything leaves the device, and opens the GitHub
   issue form with the report on the clipboard.
-**Downloads (v6.6.0)** — Windows Setup/Portable, Android APK/AAB and SHA-256
-manifests: [Release v6.6.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v6.6.0)
-· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.6.0/OmniOffice-Setup-6.6.0.exe)
-· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.6.0/OmniOffice-Portable-6.6.0.zip)
-· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.6.0/OmniOffice-Android-6.6.0-arm64-v8a.apk)
-· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.6.0/OmniOffice-Android-6.6.0-armeabi-v7a.apk)
+- **Template fields and person cards** (6.7.0): templates with `{{alan}}`
+  placeholders ask for their values in a form (today's date proposed), and the
+  encrypted local address book fills those fields from a card, with CSV/vCard
+  copy and paste import under a KVKK warning.
+- **Linux packages** (6.7.0): every release now includes a `.deb` and an
+  `.AppImage` with their SHA-256 manifest, next to the Windows and Android
+  assets.
+**Downloads (v6.7.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
+APK/AAB and SHA-256 manifests: [Release v6.7.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v6.7.0)
+· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.7.0/OmniOffice-Setup-6.7.0.exe)
+· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.7.0/OmniOffice-Portable-6.7.0.zip)
+· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.7.0/OmniOffice-Linux-6.7.0-amd64.deb)
+· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.7.0/OmniOffice-Linux-6.7.0-amd64.AppImage)
+· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.7.0/OmniOffice-Android-6.7.0-arm64-v8a.apk)
+· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.7.0/OmniOffice-Android-6.7.0-armeabi-v7a.apk)
 
 ## Release history
 
