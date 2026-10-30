@@ -4,6 +4,34 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.9.0] - Yerel Türkçe yapay zekâ görev paketleri
+
+### Added
+
+- **Turkish AI task packs (C7, #518):** four ready-made tasks - fix a
+  petition, summarise a contract clause, extract a VAT summary and read the
+  deadline out of a notification - each with a Turkish instruction, the
+  expected JSON shape and a verification pass. The prompt asks for JSON only
+  and forbids invented values (dot decimals, `YYYY-MM-DD` dates); the verifier
+  tolerates fences and surrounding prose, then checks every field, type and
+  enum. The VAT pack re-computes each row and the totals, and the notification
+  pack checks the date format, that the last day is not before the service
+  date and that the period is plausible. Problems come back as i18n codes.
+- **AI packs screen:** a new screen runs a pack against a PDF through the
+  existing `ai_chat` command and shows the verification badges, the problems
+  and the raw answer; the provider card carries a **local** badge, offers a
+  one-click switch to the Ollama preset, and states that no model ships inside
+  the installer.
+- **Local mode keeps documents on the machine:** the screen itself makes no
+  network request (asserted in its test), and a new `aicore` test proves that a
+  local provider stays on its own loopback origin - a remote `http://` base is
+  rejected and a redirect cannot leave the origin.
+
+### Changed
+
+- The bundle budget moves 510 -> 515 KB gzip, and `ai-task-packs.ts` joins the
+  file-size ratchet.
+
 ## [6.8.0] - Ofis belgelerinde model seviyesinde fark
 
 ### Added

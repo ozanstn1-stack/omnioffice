@@ -21,7 +21,7 @@ its own release section; the issue checklist is updated when an item lands.
 | C4. Period close audit | Delivered in 6.4.3 | `Invoices.tsx`, `duplicate-invoices.ts` |
 | C5. Official letter | Delivered in 6.5.0 (#487) | `official-letter-template.ts` |
 | C6. Smart template form and person cards | Delivered in 6.7.0 | `template-fields.ts` + form, `templates-fields.ts`, encrypted `person_cards.rs` with the cards dialog and CSV/vCard IO |
-| C7. Turkish AI task packs, local by default | Partial | Ollama provider preset exists; no task packs or local-default flow |
+| C7. Turkish AI task packs, local by default | Delivered in 6.9.0 | `ai-task-packs.ts` (four packs, JSON shapes, verification), the AI packs screen with the local badge and the Ollama switch, and the aicore loopback test |
 | C8. Provenance-backed output | Delivered in 6.6.0 for PDFs; DOCX and automatic producers remain | `crates/pdfcore/src/provenance.rs`, `pdf_provenance_write/read`; card on the verification screen |
 | C9. Verification chain (verification only) | Delivered in 6.6.0 | verification screen over the existing certificate/revocation/LTV modules; trust stays unknown |
 | C10. Pre-send check | Delivered in 6.4.1 | `DocumentHealthScreen.tsx`, `document-health.ts` |
@@ -107,7 +107,7 @@ result works on large documents and can say "paragraph 12 changed" instead of
 a Calc range `Sheet1!A1:B7` lists the changed cells; the result opens from
 History.
 
-### C7. Turkish AI task packs, local by default — M–L, 3–5 days
+### C7. Turkish AI task packs, local by default — delivered in 6.9.0
 
 **Goal.** Ready-made Turkish task packs that keep document text on the machine
 by default.
@@ -198,7 +198,7 @@ disabled command says why; plugin commands keep working.
 | v6.6.0 "Verify" | C9, C8, C15 | Done in 6.6.0 (C8: PDF manifests only) |
 | v6.7.0 "Templates" | C6, C1 remainder | Done in 6.7.0 (C1's palette task commands remain) |
 | v6.8.0 "Compare" | C13, tracker and README/RELEASE_READINESS cleanup | Done in 6.8.0 |
-| v6.9.0 "Local AI" | C7 | 3–5 days |
+| v6.9.0 "Local AI" | C7 | Done in 6.9.0 |
 | v6.10.0 "Scanner" | C12 | 3–4 days |
 | v7.0.0 "Sync" | C14 | 5–8 days |
 
