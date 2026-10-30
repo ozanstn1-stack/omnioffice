@@ -104,7 +104,6 @@ function changelogText(version, body) {
 
 const sections = [];
 const headingPattern = /^## \[(\d+\.\d+\.\d+)\]\s*-\s*(.*)$/gm;
-let match;
 const matches = [...changelog.matchAll(headingPattern)];
 matches.forEach((heading, index) => {
   const start = heading.index + heading[0].length;
