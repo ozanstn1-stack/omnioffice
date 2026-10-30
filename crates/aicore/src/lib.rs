@@ -1700,4 +1700,24 @@ mod provider_parse_tests {
         // LM Studio serves the OpenAI-compatible body and supports vision models.
         assert!(ProviderCapabilities::for_kind(ProviderKind::OpenAiCompatible).vision);
     }
+    /// A local provider (Ollama) only talks to its own loopback origin: the
+    /// base URL must stay loopback, a remote plain-HTTP host is refused, and
+    /// the client's redirect policy refuses another origin, so a local run
+    /// cannot leak the document text to the internet through a redirect.
+    #[test]
+    fn a_local_provider_stays_on_its_own_loopback_origin() {
+        let base = ProviderKind::Ollama.default_base_url();
+        assert_eq!(base, "http://localhost:11434");
+        assert_eq!(normalize_base_url(base).unwrap(), base);
+        let configured = reqwest::Url::parse(base).unwrap();
+        assert!(is_loopback_host(configured.host_str().unwrap()));
+        // A "local" provider still refuses a remote plain-http host.
+        assert!(normalize_base_url("http://192.168.1.10:11434").is_err());
+        let same_origin = reqwest::Url::parse("http://localhost:11434/api/chat").unwrap();
+        let external = reqwest::Url::parse("https://api.example.com/v1/chat").unwrap();
+        assert!(is_same_origin(&configured, &same_origin));
+        assert!(!is_same_origin(&configured, &external));
+        assert!(is_redirect_target_allowed(&same_origin, true));
+        assert!(is_redirect_target_allowed(&external, false));
+    }
 }
