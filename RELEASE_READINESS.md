@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 6.10.0
+# Release Readiness — OmniOffice 6.11.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -30,6 +30,57 @@ Two channels carry builds:
 The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
+
+## Implemented (this cycle, 6.11.0) - Yerel ağ eşitleme
+
+- **Pinned-TLS pairing and transport (C14, #522):** the host presents a
+  self-signed certificate; the client records its SHA-256 at pairing and
+  refuses any other certificate, every request carries an HMAC-SHA256 over
+  device id, timestamp, nonce, operation, path and body hash, and a stale
+  timestamp or a removed pairing is refused. Frames are length-prefixed with a
+  1 MiB header cap and the 512 MiB transfer cap.
+  `test:crates/synccore/src/lan/tests.rs#an_identity_pins_the_certificate_it_generated`
+  `test:crates/synccore/src/lan/tests.rs#a_wrong_pin_cannot_reach_the_host`
+  `test:crates/synccore/src/lan/tests.rs#a_loopback_host_pairs_lists_and_transfers`
+- **One-time six-digit pairing (C14, #522):** random code, 120 s lifetime, five
+  attempts and one-time use; a ticket that ran out or expired refuses even the
+  right code.
+  `test:crates/synccore/src/lan/tests.rs#pairing_codes_are_six_digits_and_only_the_exact_code_matches`
+  `test:crates/synccore/src/lan/tests.rs#a_ticket_is_one_time_short_lived_and_runs_out_of_attempts`
+- **Path-safe folder transfer (C14, #522):** relative document paths only, no
+  `..`, no absolute or hidden paths, an extension allow-list, nothing outside
+  the shared folder, no delete operation.
+  `test:crates/synccore/src/lan/tests.rs#only_relative_document_paths_are_accepted`
+  `test:crates/synccore/src/lan/tests.rs#a_scan_folder_skips_sidecars_and_unshared_types`
+- **Three-way plan and explicit conflicts (C14, #522):** the existing
+  `metadata::detect_state` and `merge::plan` decide; a conflict gets no default
+  action and the user picks keep both / keep local / keep remote.
+  `test:crates/synccore/src/lan/tests.rs#the_plan_follows_the_three_way_state_and_never_overwrites_a_conflict`
+- **Sealed store and Sync-screen card (C14, #522):** identity, pairing keys and
+  common hashes in one sealed store (DPAPI / Android Keystore; `plain:` is
+  reported); the card shares a folder, shows the code, discovers, pairs,
+  compares and resolves conflicts.
+  `test:src-tauri/src/lan_sync/store.rs#a_new_store_gets_an_identity_and_round_trips_through_the_cipher`
+  `test:src-tauri/src/lan_sync/store.rs#a_missing_store_is_empty_and_a_corrupt_one_is_an_error`
+  `test:src-tauri/src/lan_sync/tests.rs#the_folder_must_exist_and_is_canonicalised`
+  `test:src/screens/lan-sync-card.test.tsx#discovers a host and pairs with its code`
+  `test:src/screens/lan-sync-card.test.tsx#shows a conflict and sends the chosen resolution`
+
+### Not done / Known limitations (6.11.0)
+
+- Discovery is a UDP broadcast on port 47821, not mDNS; mDNS is the roadmap's
+  follow-up because it needs a dependency and a multicast lock on Android.
+  (no test: the wire codec is tested, the mDNS swap is not implemented.)
+- There is no Android background service: the host listens only while the app
+  is open and sharing; a killed process aborts a running transfer.
+  (no test: no device on the runners.)
+- Pairing does not bind the code to the certificate (no QR/SPAKE2 yet), so an
+  active MITM can still pair its own device; the short life, one-time code,
+  paired-device list and immediate unpair are the mitigations.
+  (no test: this is the documented residual risk in `docs/lan-sync.md`.)
+- Deletions are not propagated and a device is either host or client for a
+  given peer (symmetric pairing is a follow-up).
+  (no test: by design, documented in the threat model.)
 
 ## Implemented (this cycle, 6.10.0) - Otomatik belge tarama
 

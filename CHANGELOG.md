@@ -4,6 +4,43 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.11.0] - Yerel ağ eşitleme
+
+### Added
+
+- **Same-network document sync (C14, #522):** two devices on one Wi-Fi pair
+  once and move office documents between their folders without an account, a
+  cloud or a relay. The host shares one folder and shows a random six-digit
+  code with a 120 s lifetime, five attempts and one-time use; the client pairs
+  with that code over TLS, records the certificate's SHA-256 and refuses any
+  other certificate afterwards. Every request is signed with HMAC-SHA256 over
+  device id, timestamp, nonce, operation, path and body hash, and paths are
+  validated (relative document paths only, extension allow-list, nothing
+  outside the shared folder). Transfers are capped at 512 MiB; no delete
+  operation exists.
+- **Sync plan with explicit conflict resolution:** the local folder is hashed
+  and compared with the peer's listing through the existing three-way
+  `metadata::detect_state`; conflicts are never auto-resolved and go through
+  the existing `merge::plan` policy - keep both saves the peer copy next to the
+  local file, keep local uploads, keep remote downloads. "Sync safe changes"
+  applies only the unambiguous items.
+- **Device identity and pairing store:** one sealed store (DPAPI / Android
+  Keystore, `plain:` warning elsewhere) holds the device certificate and key,
+  the paired peers and the last common hashes; unpairing removes the key on
+  either side and the next request is refused.
+- **LAN card on the Sync screen:** share a picked folder, show and copy the
+  code, discover hosts (UDP broadcast on port 47821), pair with a code, compare
+  folders, sync safe changes and resolve each conflict; en and tr strings.
+- **Threat model (`docs/lan-sync.md`):** assets, actors, pairing, post-pairing
+  authentication, revocation, platform limits and the honest residual-risk
+  list (six-digit-code MITM, traffic analysis, discovery metadata, one role per
+  device, no delete propagation, single-threaded host).
+
+### Changed
+
+- The bundle budget moves 515 -> 520 KB gzip for the LAN card, and the new
+  Rust modules join the file-size ratchet.
+
 ## [6.10.0] - Otomatik belge tarama
 
 ### Added
