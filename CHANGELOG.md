@@ -4,6 +4,47 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.7.0] - Şablon alanları, kişi kartları ve Linux paketleri
+
+### Added
+
+- **Template fields and the fill form (C6, #508):** a Writer template that
+  carries `{{alan}}` placeholders now asks for their values before it is
+  created - one labelled input per field, today's date proposed for date
+  fields, "fill and create" or "create without filling". The rules mirror the
+  file-based mail merge (letters, digits and underscores between double
+  braces, Turkish letters included); the body, the header, the footer and
+  table cells are scanned, and a placeholder split across runs is filled by
+  collapsing that paragraph into one run. A field-carrying Turkish petition
+  template ships with the catalogue.
+- **Encrypted person cards (C6, #509):** a local address book behind the
+  template form and the mail merge. Cards hold the fields a document needs
+  (name, VKN/TCKN, address, phone, e-mail, note), are sealed like the saved
+  signatures (DPAPI on Windows, Android Keystore on Android) and live in one
+  file per card; a card that cannot be read is reported and skipped. The
+  dialog adds/edits/deletes cards, copies CSV or vCard 3.0, imports from a
+  paste with a KVKK warning, and the template form fills the fields a card
+  knows.
+- **Linux packages (C6-era distribution, #500):** every release now also
+  ships `OmniOffice-Linux-X.Y.Z-amd64.deb` and `.AppImage` with
+  `SHA256SUMS-linux.txt`, built by `linux-package.yml` on Ubuntu and attached
+  next to the Windows and Android assets. This is the first release that
+  includes them.
+- **Typed bindings on a runner (#511):** a `workflow_dispatch` job regenerates
+  `src/lib/generated/specta.ts` and uploads it as an artifact, so a Rust
+  command change no longer needs a Tauri build on a workstation; the Desktop
+  workflow's `bindings:check` still guards the committed file.
+- **Distribution docs (#502 groundwork):** `docs/distribution.md` records what
+  every release ships, the Authenticode provider options with the secrets
+  each needs, and the F-Droid/IzzyOnDroid path; fastlane metadata (en-US/tr)
+  supplies the Android listing text.
+
+### Changed
+
+- README documents the Linux packages and the new release assets.
+- The bundle budget moves 500 -> 505 KB gzip for the C6 UI (a lazy route and a
+  lazy dialog; the entry chunk is unchanged).
+
 ## [6.6.0] - Doğrulama, geri bildirim ve kaynak manifesti
 
 ### Added

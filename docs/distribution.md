@@ -11,7 +11,7 @@ file covers the packaging and store side.
 | Windows | `OmniOffice-Setup-X.Y.Z.exe` (NSIS, updater manifest signed) | `release.yml` | Signed updater, **unsigned exe** (SmartScreen warning) |
 | Windows | `OmniOffice-Portable-X.Y.Z.zip` | `release.yml` | portable folder |
 | Android | `OmniOffice-Android-X.Y.Z-<abi>.apk` and `.aab` | `android.yml` | release-signed by the `ANDROID_KEYSTORE_BASE64` secret, sideload + store ready |
-| Linux | `OmniOffice-Linux-X.Y.Z-amd64.deb`, `.AppImage` | `linux-package.yml` (called by `release.yml`) | first shipped with the release after 6.6.0 |
+| Linux | `OmniOffice-Linux-X.Y.Z-amd64.deb`, `.AppImage` | `linux-package.yml` (called by `release.yml`) | shipped since 6.7.0 |
 
 Every artifact is listed in `SHA256SUMS*.txt` on the release page. The release
 notes are generated from the version's `CHANGELOG.md` section.

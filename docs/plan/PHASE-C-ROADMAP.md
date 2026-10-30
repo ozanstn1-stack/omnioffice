@@ -20,7 +20,7 @@ its own release section; the issue checklist is updated when an item lands.
 | C3. Evidence bundle | Delivered in 6.5.0 (#484) | `pdfcore/src/evidence.rs` |
 | C4. Period close audit | Delivered in 6.4.3 | `Invoices.tsx`, `duplicate-invoices.ts` |
 | C5. Official letter | Delivered in 6.5.0 (#487) | `official-letter-template.ts` |
-| C6. Smart template form and person cards | Open | `office/templates.ts`, `MailMerge.tsx` exist; no form/person layer |
+| C6. Smart template form and person cards | Delivered in 6.7.0 | `template-fields.ts` + form, `templates-fields.ts`, encrypted `person_cards.rs` with the cards dialog and CSV/vCard IO |
 | C7. Turkish AI task packs, local by default | Partial | Ollama provider preset exists; no task packs or local-default flow |
 | C8. Provenance-backed output | Delivered in 6.6.0 for PDFs; DOCX and automatic producers remain | `crates/pdfcore/src/provenance.rs`, `pdf_provenance_write/read`; card on the verification screen |
 | C9. Verification chain (verification only) | Delivered in 6.6.0 | verification screen over the existing certificate/revocation/LTV modules; trust stays unknown |
@@ -73,7 +73,7 @@ already carries a signature — rewriting breaks it.
 hashes; a modified manifest is detected; signed inputs are refused with an
 explanation.
 
-### C6. Smart template form and person cards — M, 2–3 days
+### C6. Smart template form and person cards — delivered in 6.7.0
 
 **Goal.** Turn a template with `{{name}}`-style variables into a form, and keep
 the people you fill it for.
@@ -196,7 +196,7 @@ disabled command says why; plugin commands keep working.
 | Release | Contents | Effort |
 |---|---|---|
 | v6.6.0 "Verify" | C9, C8, C15 | Done in 6.6.0 (C8: PDF manifests only) |
-| v6.7.0 "Templates" | C6, C1 remainder | 3–4 days |
+| v6.7.0 "Templates" | C6, C1 remainder | Done in 6.7.0 (C1's palette task commands remain) |
 | v6.8.0 "Compare" | C13, tracker and README/RELEASE_READINESS cleanup | 2–3 days |
 | v6.9.0 "Local AI" | C7 | 3–5 days |
 | v6.10.0 "Scanner" | C12 | 3–4 days |
