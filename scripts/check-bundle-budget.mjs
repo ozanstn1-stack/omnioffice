@@ -76,7 +76,10 @@ const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$
 // Raised to 510 in 6.8 (#341 C13): the model-level office diff engine and its
 // viewer add about 3 KB gzip, used by the Compare route and the version-history
 // dialog (both lazy); the entry chunk is unchanged.
-const TOTAL_BUDGET_KB = 510;
+// Raised to 515 in 6.9 (#341 C7): the Turkish task pack engine and the aiPacks
+// route (four packs + verification, both lazy) add about 5 KB gzip; the entry
+// chunk is unchanged.
+const TOTAL_BUDGET_KB = 515;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);

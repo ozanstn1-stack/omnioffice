@@ -69,6 +69,7 @@ import { enabledRoutes, navSections, routeEnabled } from "./lib/routes";
 const HomeScreen = React.lazy(() => import("./screens/Home").then((module) => ({ default: module.Home })));
 const Reader = React.lazy(() => import("./screens/Reader").then((module) => ({ default: module.Reader })));
 const Ai = React.lazy(() => import("./screens/Ai").then((module) => ({ default: module.Ai })));
+const AiPacks = React.lazy(() => import("./screens/AiPacks").then((module) => ({ default: module.AiPacks })));
 const AiLibrary = React.lazy(() => import("./screens/AiLibrary").then((module) => ({ default: module.AiLibrary })));
 const Merge = React.lazy(() => import("./screens/Merge").then((module) => ({ default: module.Merge })));
 const Organize = React.lazy(() => import("./screens/Organize").then((module) => ({ default: module.Organize })));
@@ -708,6 +709,7 @@ export default function App() {
       reader: <Reader initialFiles={files} dragging={dragging} initialPage={readerPage} />,
       ai: <Ai initialFiles={files} dragging={dragging} onNavigate={navigate} />,
       aiLibrary: <AiLibrary onOpenAi={() => navigate("ai")} />,
+      aiPacks: <AiPacks />,
       merge: <Merge initialFiles={files} dragging={dragging} />,
       organize: <Organize initialFiles={files} dragging={dragging} />,
       split: <Split initialFiles={files} dragging={dragging} />,
@@ -810,6 +812,7 @@ export default function App() {
     unlock: <LockOpen size={16} />,
     ai: <Bot size={16} />,
     aiLibrary: <Library size={16} />,
+    aiPacks: <Bot size={16} />,
     batch: <Archive size={16} />,
     jobs: <ListChecks size={16} />,
     sync: <Repeat size={16} />,
