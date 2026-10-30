@@ -76,3 +76,23 @@ The groups are the domains of `src-tauri/src/ipc.rs` (#338). Migrated so far:
   - **Exception:** `vault_scan` stays on `invokeTracked` (the job tracker needs the command name), with the generated request type.
 
 `npm run bindings:check` regenerates `src/lib/generated/specta.ts` and fails on drift; the Linux Rust job runs it. Next groups, in order of size: plugin (10), sync (15), ai (31), app (42), office (43), pdf (70).
+
+## Direct dependency: imageproc (C12)
+
+The document scanner's automatic page detection
+(`crates/pdfcore/src/page_detect.rs`, C12) adds one direct dependency:
+`imageproc` 0.27 (MIT), with the default features off - `text`, `fft` and
+`sdl2` stay out, only the edge, filter, contrast, contour and geometry modules
+are compiled.
+
+- **Licenses:** every transitive crate is already covered by the `[licenses]`
+  allow list in `deny.toml` (MIT / Apache-2.0 / Zlib): `nalgebra` 0.35
+  (Apache-2.0), `approx`, `simba`, `matrixmultiply`, `rawpointer`, `itertools`,
+  `rand_distr`, `glam`, and `safe_arch`/`wide`. `cargo deny check` therefore
+  needed no rule change; the "Dependency audit" job is the gate.
+- **MSRV:** the newest requirements are `nalgebra`, `safe_arch` and `wide` at
+  Rust 1.89, exactly the workspace's declared floor, so the dependency does not
+  raise it. The MSRV job re-checks this.
+- **Size:** only Canny, Gaussian blur, Otsu and contour geometry are used; the
+  text/FFT/display-window features stay off, and the release profile still
+  strips and LTOs.

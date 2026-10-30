@@ -3,17 +3,18 @@ import { call } from "../lib/typed-call";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { pickSaveToken } from "../lib/file-tokens";
 import { writeFile } from "@tauri-apps/plugin-fs";
-import { Camera, Crop, FileText, Save, ScanText } from "lucide-react";
+import { Camera, FileText, Save, ScanText } from "lucide-react";
 import { Badge, Button, Card } from "../components/ui";
 import { Screen } from "../components/layout";
-import { fileBaseName, uid } from "../lib/format";
+import { uid } from "../lib/format";
 import { pickDocumentTokens } from "../lib/file-tokens";
 import { useT } from "../lib/i18n";
 import { reportError, useToasts } from "../lib/store";
 import { isAndroid, pickAndroidFiles, pickAndroidSaveTarget, publishOutputs } from "../lib/mobile";
-import { scanPages, type ScanPage } from "../lib/office-api";
+import { detectedCorners, scanDetect, scanPages, type ScanFilter } from "../lib/scan-detect";
 import type { ScreenId } from "../lib/nav";
 import { CornerPicker } from "./scanner-corners";
+import { ScannerPageList, type ScannerPage } from "./scanner-page-list";
 
 interface ScannerProps {
   onNavigate?: (screen: ScreenId, options?: { files?: string[] }) => void;
@@ -24,25 +25,50 @@ interface ScannerProps {
  *
  * Camera: the hidden `<input capture="environment">` opens the system camera
  * app (Android asks for the camera permission the first time); each photo is
- * one page. Gallery/file picking works on Android and desktop. A page's four
- * corners can be set in the corner picker (`scanner-corners.tsx`); Rust turns
- * every page upright (EXIF), flattens the cropped ones and assembles the PDF
+ * one page. Gallery/file picking works on Android and desktop. Every page is
+ * auto-cropped: `office_scan_detect` finds the four corners on the device
+ * (Canny edges, Hough lines, scored quadrilateral) and the corner picker
+ * (`scanner-corners.tsx`) stays for correcting a page it could not find. The
+ * chosen filter (colour, grey or black and white) is applied while Rust turns
+ * each page upright (EXIF), flattens it and assembles the PDF
  * (`office_scan_pages`), which can go straight to OCR. No Google Play services
  * are involved: ML Kit's scanner would bring its usage logging along.
  */
 export function Scanner({ onNavigate }: ScannerProps = {}) {
   const t = useT();
-  const [pages, setPages] = useState<ScanPage[]>([]);
+  const [pages, setPages] = useState<ScannerPage[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [filter, setFilter] = useState<ScanFilter>("colour");
   const [lastOutput, setLastOutput] = useState<string | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
-  const addPaths = (paths: string[]) =>
+  /** Adds pages and runs the on-device detector for each new photo. */
+  const addPaths = async (paths: string[]) => {
+    const unique = [...new Set(paths.filter(Boolean))];
+    if (!unique.length) return;
     setPages((current) => [
       ...current,
-      ...paths.filter((path) => !current.some((page) => page.path === path)).map((path) => ({ path })),
+      ...unique.filter((path) => !current.some((page) => page.path === path)).map((path) => ({ path })),
     ]);
+    setDetecting(true);
+    try {
+      const found = await Promise.all(
+        unique.map(async (path) => [path, await scanDetect(path).catch(() => null)] as const),
+      );
+      setPages((current) =>
+        current.map((page) => {
+          const match = found.find(([path]) => path === page.path);
+          const corners = detectedCorners(match?.[1]);
+          // A page the user already corrected keeps its corners.
+          return corners && !page.corners ? { ...page, corners, auto: true } : page;
+        }),
+      );
+    } finally {
+      setDetecting(false);
+    }
+  };
 
   const pick = async () => {
     let paths: string[] = [];
@@ -53,7 +79,7 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
         await pickDocumentTokens(["jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"], true).catch(() => [])
       ).map((file) => file.token);
     }
-    addPaths(paths);
+    await addPaths(paths);
   };
 
   const handleCameraFiles = async (fileList: FileList | null) => {
@@ -71,9 +97,9 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
         await writeFile(dest, bytes);
         staged.push(dest);
       }
-      addPaths(staged);
-      // A fresh camera shot nearly always needs cropping: open the picker.
-      if (staged.length === 1) setEditing(staged[0]);
+      // Batch capture: each shot is one page; the detector crops it without
+      // opening the picker, so the next shot can follow immediately.
+      await addPaths(staged);
     } catch (error) {
       reportError(error, t);
     } finally {
@@ -115,7 +141,12 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
 
     setBusy(true);
     try {
-      const result = await scanPages(pages, outputPath);
+      const request = pages.map((page) => ({
+        path: page.path,
+        filter,
+        ...(page.corners ? { corners: page.corners } : {}),
+      }));
+      const result = await scanPages(request, outputPath);
       if (isAndroid() && androidTarget) {
         await publishOutputs([outputPath], { file: androidTarget });
       }
@@ -175,7 +206,7 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
             <Button variant="primary" disabled={busy} onClick={() => void pick()}>
               <FileText size={16} /> {t("scanner.pick")}
             </Button>
-            <Button variant="ghost" disabled={busy || !pages.length} onClick={() => void build()}>
+            <Button variant="ghost" disabled={busy || detecting || !pages.length} onClick={() => void build()}>
               <Save size={16} /> {t("scanner.build")}
             </Button>
             {lastOutput && onNavigate && (
@@ -185,70 +216,25 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
             )}
             <span className="text-xs muted">{t("scanner.pickHint")}</span>
           </div>
-          {pages.length ? (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between text-xs muted">
-                <span>{t("scanner.pageCount", { count: pages.length })}</span>
-                <Button size="sm" variant="ghost" onClick={() => setPages([])}>
-                  {t("scanner.clearAll")}
-                </Button>
-              </div>
-              <ul className="flex flex-col gap-1 text-sm">
-                {pages.map((page, index) => (
-                  <li
-                    key={page.path}
-                    className="flex items-center justify-between gap-2 p-1.5 rounded bg-surface/50 border border-border/40"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="muted font-mono text-xs">{index + 1}.</span>
-                      <span className="truncate">{fileBaseName(page.path)}</span>
-                      {page.corners ? <Badge tone="accent">{t("scanner.cropped")}</Badge> : null}
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing(page.path)}>
-                        <Crop size={14} /> {t("scanner.adjust")}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={t("common.moveUp")}
-                        disabled={index === 0}
-                        onClick={() => move(index, -1)}
-                      >
-                        ↑
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={t("common.moveDown")}
-                        disabled={index === pages.length - 1}
-                        onClick={() => move(index, 1)}
-                      >
-                        ↓
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={t("common.remove")}
-                        onClick={() => setPages((current) => current.filter((item) => item.path !== page.path))}
-                      >
-                        ×
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <p className="muted text-sm">{t("scanner.empty")}</p>
-          )}
+          <ScannerPageList
+            pages={pages}
+            busy={busy}
+            detecting={detecting}
+            filter={filter}
+            onFilter={setFilter}
+            onMove={move}
+            onRemove={(path) => setPages((current) => current.filter((page) => page.path !== path))}
+            onAdjust={setEditing}
+            onClear={() => setPages([])}
+          />
+          <p className="text-xs muted">{t("scanner.autoNote")}</p>
           <p className="text-xs muted">{t("scanner.ocrNote")}</p>
         </Card>
       </div>
       {editingPage ? (
         <CornerPicker
           key={editingPage.path}
-          name={fileBaseName(editingPage.path)}
+          name={editingPage.path.split(/[\\/]/).pop() || editingPage.path}
           path={editingPage.path}
           initial={editingPage.corners}
           onSave={(corners) => setCorners(editingPage.path, corners)}

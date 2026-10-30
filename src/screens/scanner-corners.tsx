@@ -3,16 +3,20 @@
  *
  * Shows an upright, downscaled preview of a page photo (`office_scan_preview`)
  * with four handles to drag onto the page's corners; arrow keys move the
- * focused handle by 1 % (Shift: 5 %). Saving hands back the corners in pixels
- * of the full-size photo, which `office_scan_pages` flattens - or nothing when
- * the whole photo is kept. This is the privacy-preserving counterpart of the
- * ML Kit document scanner: no Google Play services and no usage logging.
+ * focused handle by 1 % (Shift: 5 %). The corners start where the on-device
+ * detector (`office_scan_detect`) found the page, or on the default inset when
+ * it found nothing; "find corners automatically" runs it again. Saving hands
+ * back the corners in pixels of the full-size photo, which `office_scan_pages`
+ * flattens - or nothing when the whole photo is kept. This is the
+ * privacy-preserving counterpart of the ML Kit document scanner: no Google
+ * Play services and no usage logging.
  */
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { Maximize } from "lucide-react";
+import { Maximize, Search } from "lucide-react";
 import { Button, Modal } from "../components/ui";
 import { useT } from "../lib/i18n";
 import { scanPreview, type ScanPreview } from "../lib/office-api";
+import { detectedCorners, scanDetect } from "../lib/scan-detect";
 import {
   cornersToPixels,
   defaultCorners,
@@ -55,16 +59,31 @@ export function CornerPicker({
   const [preview, setPreview] = useState<ScanPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [corners, setCorners] = useState<Corner[]>(defaultCorners);
+  const [detection, setDetection] = useState<"plain" | "detecting" | "found" | "missing">(
+    initial ? "plain" : "detecting",
+  );
   const frameRef = useRef<HTMLDivElement | null>(null);
   const dragging = useRef<number | null>(null);
 
   useEffect(() => {
     let live = true;
     scanPreview(path)
-      .then((result) => {
+      .then(async (result) => {
         if (!live) return;
         setPreview(result);
-        if (initial) setCorners(pixelsToCorners(initial, result.width, result.height));
+        if (initial) {
+          setCorners(pixelsToCorners(initial, result.width, result.height));
+          return;
+        }
+        // No corners yet: ask the detector where the page is.
+        const found = detectedCorners(await scanDetect(path).catch(() => null));
+        if (!live) return;
+        if (found) {
+          setCorners(pixelsToCorners(found, result.width, result.height));
+          setDetection("found");
+        } else {
+          setDetection("missing");
+        }
       })
       .catch((reason: unknown) => {
         if (live) setError(reason instanceof Error ? reason.message : String(reason));
@@ -72,9 +91,21 @@ export function CornerPicker({
     return () => {
       live = false;
     };
-    // The preview is loaded once per opened picker.
+    // The preview and the automatic detection load once per opened picker.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
+
+  const findCorners = async () => {
+    if (!preview) return;
+    setDetection("detecting");
+    const found = detectedCorners(await scanDetect(path).catch(() => null));
+    if (found) {
+      setCorners(pixelsToCorners(found, preview.width, preview.height));
+      setDetection("found");
+    } else {
+      setDetection("missing");
+    }
+  };
 
   const pointAt = (event: PointerEvent): Corner | null => {
     const rect = frameRef.current?.getBoundingClientRect();
@@ -133,6 +164,9 @@ export function CornerPicker({
       }
     >
       <p className="text-sm muted mb-3">{t("scanner.cornersHint")}</p>
+      {detection === "detecting" ? <p className="text-xs muted mb-2">{t("scanner.detecting")}</p> : null}
+      {detection === "found" ? <p className="text-xs muted mb-2">{t("scanner.autoFound")}</p> : null}
+      {detection === "missing" ? <p className="text-xs text-[var(--warn)] mb-2">{t("scanner.autoMissing")}</p> : null}
       {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
       {preview ? (
         <div className="flex flex-col gap-3 items-center">
@@ -182,9 +216,14 @@ export function CornerPicker({
               />
             ))}
           </div>
-          <Button size="sm" variant="ghost" onClick={() => setCorners(FULL_FRAME)}>
-            <Maximize size={14} /> {t("scanner.cornersWhole")}
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap justify-center">
+            <Button size="sm" variant="ghost" disabled={detection === "detecting"} onClick={() => void findCorners()}>
+              <Search size={14} /> {t("scanner.autoDetect")}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setCorners(FULL_FRAME)}>
+              <Maximize size={14} /> {t("scanner.cornersWhole")}
+            </Button>
+          </div>
         </div>
       ) : error ? null : (
         <p className="text-sm muted">{t("common.loading")}</p>
