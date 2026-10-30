@@ -43,6 +43,7 @@ use crate::merge::{self, MergeAction, Resolution};
 use crate::metadata::{self, BaseState, SyncState};
 use crate::SyncError;
 
+mod mdns;
 #[cfg(test)]
 mod tests;
 mod transport;
@@ -160,6 +161,10 @@ pub struct PairedPeer {
     /// Hex HMAC key, established at pairing.
     pub shared_key: String,
     pub paired_at: String,
+    /// True when this device hosts the pairing; the key works in both
+    /// directions, the flag only tells the UI which list a peer belongs to.
+    #[serde(default)]
+    pub host_side: bool,
 }
 
 /// A six-digit one-time pairing code.
@@ -282,6 +287,8 @@ pub struct LanHost {
     port: u16,
     listener: Option<std::thread::JoinHandle<()>>,
     responder: Option<std::thread::JoinHandle<()>>,
+    /// mDNS advertisement; dropped when the host stops.
+    _mdns: Option<mdns::Advertiser>,
 }
 
 impl LanHost {
@@ -303,6 +310,9 @@ impl LanHost {
             let (certificate, key) = state.identity.material()?;
             transport::server_config(&certificate, &key)?
         };
+        // mDNS is best effort: a network without multicast still has the
+        // broadcast responder below and manual pairing.
+        let advertised = mdns::Advertiser::start(&state.identity, port, &[]).ok();
         let worker = state.clone();
         let listener_thread = std::thread::Builder::new()
             .name("omnioffice-lan-host".into())
@@ -313,7 +323,7 @@ impl LanHost {
             .name("omnioffice-lan-discovery".into())
             .spawn(move || respond_to_discovery(discovery_state, port))
             .ok();
-        Ok(Self { state, port, listener: Some(listener_thread), responder: responder_thread })
+        Ok(Self { state, port, listener: Some(listener_thread), responder: responder_thread, _mdns: advertised })
     }
 
     pub fn port(&self) -> u16 {
@@ -402,6 +412,11 @@ impl Drop for LanHost {
 pub struct LanClient {
     pub device_id: String,
     pub name: String,
+    /// This device's certificate fingerprint, sent at pairing so the host can
+    /// call back (symmetric pairing).
+    pub fingerprint: String,
+    /// This device's listening port, `0` when it is not sharing a folder.
+    pub port: u16,
 }
 
 /// A remote document entry.
@@ -418,7 +433,14 @@ pub type LocalFile = RemoteFile;
 
 impl LanClient {
     pub fn new(device_id: impl Into<String>, name: impl Into<String>) -> Self {
-        Self { device_id: device_id.into(), name: name.into() }
+        Self { device_id: device_id.into(), name: name.into(), fingerprint: String::new(), port: 0 }
+    }
+
+    /// Announces this device's certificate and listening port at pairing.
+    pub fn with_identity(mut self, fingerprint: impl Into<String>, port: u16) -> Self {
+        self.fingerprint = fingerprint.into();
+        self.port = port;
+        self
     }
 
     /// Pairs with the host at `address` using its six-digit code. The returned
@@ -432,6 +454,8 @@ impl LanClient {
             device_id: self.device_id.clone(),
             name: self.name.clone(),
             code: code.trim().to_string(),
+            fingerprint: self.fingerprint.clone(),
+            port: self.port,
             ..Request::default()
         };
         let (response, _) = connection.request::<_, Response>(&request, None)?;
@@ -454,6 +478,7 @@ impl LanClient {
             fingerprint: recorded,
             shared_key: response.shared_key,
             paired_at: now_rfc3339_utc(),
+            host_side: false,
         })
     }
 
@@ -480,6 +505,12 @@ impl LanClient {
             },
             body,
         ))
+    }
+
+    /// Deletes one document on the peer (only after the user confirmed the
+    /// deletion in the plan; the protocol has no deleted-by-default path).
+    pub fn remove(&self, peer: &PairedPeer, path: &str) -> Result<(), SyncError> {
+        self.call(peer, "delete", path, None).map(|_| ())
     }
 
     /// Uploads one document and returns the host's hash of it.
@@ -553,6 +584,12 @@ struct Request {
     code: String,
     #[serde(default)]
     name: String,
+    /// The client's certificate fingerprint, so the host can call it back.
+    #[serde(default)]
+    fingerprint: String,
+    /// The client's listening port, `0` when it is not sharing.
+    #[serde(default)]
+    port: u16,
 }
 
 impl transport::HasBodyLen for Request {
@@ -622,8 +659,9 @@ fn serve(state: Arc<HostState>, listener: TcpListener, config: Arc<rustls::Serve
 
 fn handle_request(state: &Arc<HostState>, peer: &mut transport::ServerPeer) {
     let Ok((request, body)) = peer.read_request::<Request>() else { return };
+    let client_address = peer.peer_addr();
     let outcome = match request.op.as_str() {
-        "pair" => handle_pair(state, &request).map(|response| (response, None)),
+        "pair" => handle_pair(state, &request, client_address).map(|response| (response, None)),
         "ping" => authenticated(state, &request, &body).map(|_| (Response { ok: true, ..Response::default() }, None)),
         "list" => {
             authenticated(state, &request, &body).and_then(|_| handle_list(state)).map(|response| (response, None))
@@ -632,13 +670,20 @@ fn handle_request(state: &Arc<HostState>, peer: &mut transport::ServerPeer) {
         "put" => authenticated(state, &request, &body)
             .and_then(|_| handle_put(state, &request.path, &body))
             .map(|response| (response, None)),
+        "delete" => authenticated(state, &request, &body)
+            .and_then(|_| handle_delete(state, &request.path))
+            .map(|response| (response, None)),
         _ => Err(refusal("unknown operation")),
     };
     let (response, document) = outcome.unwrap_or_else(|failure| (*failure, None));
     let _ = peer.respond(&response, document.as_deref());
 }
 
-fn handle_pair(state: &Arc<HostState>, request: &Request) -> Result<Response, Failure> {
+fn handle_pair(
+    state: &Arc<HostState>,
+    request: &Request,
+    client_address: Option<std::net::SocketAddr>,
+) -> Result<Response, Failure> {
     if request.device_id.trim().is_empty() {
         return Err(refusal("a device id is required"));
     }
@@ -662,13 +707,21 @@ fn handle_pair(state: &Arc<HostState>, request: &Request) -> Result<Response, Fa
     // One-time code: the window closes with the first success.
     *ticket = None;
     let shared_key = hex_encode(&random_bytes::<32>().map_err(|_| refusal("no randomness"))?);
+    // For symmetric pairing the host also records how to reach the client:
+    // its certificate pin and (when it shares) the port it announced.
+    let address = match (client_address, request.port) {
+        (Some(source), port) if port > 0 => format!("{}:{port}", source.ip()),
+        (Some(source), _) => format!("{}:{DEFAULT_PORT}", source.ip()),
+        (None, _) => String::new(),
+    };
     let peer = PairedPeer {
         device_id: request.device_id.clone(),
         name: if request.name.trim().is_empty() { "device".into() } else { request.name.clone() },
-        address: String::new(),
-        fingerprint: String::new(),
+        address,
+        fingerprint: request.fingerprint.clone(),
         shared_key,
         paired_at: now_rfc3339_utc(),
+        host_side: true,
     };
     let mut peers = state.peers.lock().map_err(|_| refusal("pairing state is unavailable"))?;
     peers.retain(|known| known.device_id != peer.device_id);
@@ -744,6 +797,17 @@ fn handle_put(state: &Arc<HostState>, path: &str, body: &[u8]) -> Result<Respons
     })
 }
 
+/// Removes one document after the user confirmed its deletion in the plan.
+fn handle_delete(state: &Arc<HostState>, path: &str) -> Result<Response, Failure> {
+    let target = resolve_path(&state.root, path).map_err(|error| refusal(error.to_string()))?;
+    match std::fs::remove_file(&target) {
+        Ok(()) => Ok(Response { ok: true, ..Response::default() }),
+        // A peer that already removed it is not an error.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Response { ok: true, ..Response::default() }),
+        Err(error) => Err(refusal(format!("the document could not be deleted: {error}"))),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Discovery
 // ---------------------------------------------------------------------------
@@ -778,6 +842,28 @@ fn respond_to_discovery(state: Arc<HostState>, port: u16) {
 /// The local subnet is addressed by the OS broadcast address; this replaces
 /// mDNS for the first cut (see `docs/lan-sync.md`).
 pub fn discover(timeout: Duration) -> Result<Vec<LanDevice>, SyncError> {
+    let half = timeout / 2;
+    let mut devices = mdns::discover(half).unwrap_or_default();
+    let remaining = timeout.saturating_sub(half);
+    if !remaining.is_zero() {
+        match discover_broadcast(remaining) {
+            Ok(more) => {
+                for device in more {
+                    if !devices.iter().any(|known| known.device_id == device.device_id) {
+                        devices.push(device);
+                    }
+                }
+            }
+            Err(error) if devices.is_empty() => return Err(error),
+            Err(_) => {}
+        }
+    }
+    devices.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok(devices)
+}
+
+/// The UDP broadcast fallback from the first cut.
+fn discover_broadcast(timeout: Duration) -> Result<Vec<LanDevice>, SyncError> {
     let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))
         .map_err(|error| SyncError::Network(format!("discovery socket failed: {error}")))?;
     socket.set_broadcast(true).ok();
@@ -852,6 +938,45 @@ fn walk_folder(root: &Path, directory: &Path, files: &mut Vec<LocalFile>) -> Res
         files.push(LocalFile { path: relative, size, sha256, modified: file_modified(&path) });
     }
     Ok(())
+}
+
+/// Which side removed a file that both sides had before.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeletionSide {
+    /// The file is gone from the local folder but still on the peer.
+    Local,
+    /// The file is gone from the peer but still in the local folder.
+    Remote,
+}
+
+/// A deletion the user has to confirm: nothing is removed automatically.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LanDeletion {
+    pub path: String,
+    pub side: DeletionSide,
+}
+
+/// Deletions relative to the last common state: a path in the base that is
+/// missing on exactly one side was removed there. Paths missing on both sides
+/// are not reported (the caller drops their base entries).
+pub fn plan_deletions(
+    local: &[LocalFile],
+    remote: &[RemoteFile],
+    bases: &HashMap<String, BaseState>,
+) -> Vec<LanDeletion> {
+    let mut deletions = Vec::new();
+    for path in bases.keys() {
+        let local_has = local.iter().any(|file| &file.path == path);
+        let remote_has = remote.iter().any(|file| &file.path == path);
+        match (local_has, remote_has) {
+            (false, true) => deletions.push(LanDeletion { path: path.clone(), side: DeletionSide::Local }),
+            (true, false) => deletions.push(LanDeletion { path: path.clone(), side: DeletionSide::Remote }),
+            _ => {}
+        }
+    }
+    deletions.sort_by(|left, right| left.path.cmp(&right.path));
+    deletions
 }
 
 /// One file's state and the action that follows from it. `action` is `None`

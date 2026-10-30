@@ -9,6 +9,7 @@ mod android_background;
 mod android_intent;
 #[cfg(target_os = "android")]
 mod android_keystore;
+mod android_lan;
 mod android_share;
 // Android in-app update; host tests cover the URL/checksum helpers too.
 #[cfg(any(target_os = "android", test))]
@@ -127,6 +128,10 @@ pub fn run() {
     // background; see android_background.rs.
     #[cfg(target_os = "android")]
     let builder = builder.plugin(android_background::init());
+    // Foreground service + multicast lock while a LAN folder is shared; see
+    // android_lan.rs.
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(android_lan::init());
     // Android in-app update: downloads the release APK and opens the system
     // package installer; see android_update.rs.
     #[cfg(target_os = "android")]
@@ -262,6 +267,7 @@ pub fn export_typed_bindings(path: &std::path::Path) -> Result<(), String> {
             lan_sync::lan_plan,
             lan_sync::lan_apply,
             lan_sync::lan_sync_safe,
+            lan_sync::lan_resolve_deletion,
             oauth::oauth_status,
             oauth::oauth_save_client,
             oauth::oauth_connect,

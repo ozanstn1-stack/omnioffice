@@ -6,4 +6,8 @@
     <string name="background_work_channel_description">OCR, sıkıştırma ve dönüştürme gibi uzun görevleri OmniOffice arka plandayken de çalışır durumda tutar.</string>
     <string name="background_work_title">OmniOffice çalışıyor</string>
     <string name="background_work_text">Belgeleriniz bu cihazda işleniyor</string>
+    <string name="lan_share_channel_name">Yerel ağ eşitleme</string>
+    <string name="lan_share_channel_description">OmniOffice arka plandayken paylaşılan klasörün eşleşmiş cihazlara açık kalmasını sağlar.</string>
+    <string name="lan_share_title">Yerel ağ paylaşımı açık</string>
+    <string name="lan_share_text">Bu Wi-Fi\'daki eşleşmiş cihazlar paylaşılan klasörü açabilir</string>
 </resources>

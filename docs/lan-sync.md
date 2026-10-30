@@ -50,7 +50,10 @@ socket.
    (a relay cannot present the host's certificate).
 3. A correct code inside the 120 s window returns a fresh 32-byte HMAC key and
    closes the pairing window. The client stores the key plus the pinned
-   fingerprint; the host stores the key against the client's device id.
+   fingerprint; the host stores the key, the client's certificate pin and the
+   address it connected from (plus the port the client announced when it is
+   sharing too). **Pairing is symmetric:** the same entry lets either side call
+   the other, as long as the other side is sharing a folder.
 4. Both stores are sealed with the platform cipher (DPAPI on Windows, Android
    Keystore on Android, `plain:` with the UI's warning elsewhere).
 
@@ -93,6 +96,14 @@ local file (via `merge::unique_cloud_copy_name`), `keep local` uploads and
 `keep remote` downloads. "Sync all safe changes" applies the default actions
 and lists conflicts untouched.
 
+**Deletions are propagated only after a confirmation.** `plan_deletions` looks
+at paths in the last common base: a path missing locally but present on the
+peer is a local deletion, the reverse is a remote deletion. Nothing is removed
+by a plan; the user confirms `delete_remote` / `restore_local` (for a local
+deletion) or `delete_local` / `restore_remote` (for a remote one). The `delete`
+request is HMAC-signed like every other operation and goes through the same
+path validation, so it can only remove a shared document.
+
 ## Revocation
 
 * `lan_unpair` on the client forgets the peer (key and pin).
@@ -104,20 +115,31 @@ and lists conflicts untouched.
 
 ## Background and platform limits
 
-The host runs only while the app is open and the user started sharing; there
-is no foreground service in the first cut. On Android the process may be
-killed when it goes to the background, so a long transfer is not promised;
-the client shows a plain error and the plan can be run again. A future version
-can add a foreground service when the store/transport story is tested on a
-real device.
+On Android the host is protected by a `dataSync` foreground service
+(`LanShareService.kt`, started through the `LanSharePlugin` bridge in
+`src-tauri/src/android_lan.rs`) with an ongoing notification, plus the
+multicast lock mDNS needs. The system still owns the lifetime: Android 15
+stops `dataSync` services after six hours in a 24-hour window (the service
+ends cleanly and the UI says sharing stopped), and a battery optimisation or
+a manual force-stop ends it earlier. On desktop the host lives exactly as long
+as the process; closing the app stops sharing.
+
+A transfer that is interrupted is not resumed; the client reports the error and
+the plan can be run again.
 
 ## Discovery
 
-The first cut uses a UDP broadcast probe on port 47821 and a JSON reply
-(`device_id`, `name`, `port`, `fingerprint`). It needs no dependency and works
-on Android without a multicast lock. mDNS is the roadmap's stated discovery
-mechanism and the follow-up: it gives service names and SRV/TXT records without
-broadcast storms, at the cost of a dependency and multicast handling on Android.
+Discovery is **mDNS/DNS-SD** (`crates/synccore/src/lan/mdns.rs`): the host
+advertises `_omnioffice._tcp.local.` with a TXT record carrying `device_id`,
+`fingerprint` and the protocol version, and a client browses the same type. The
+address comes from the resolved A/AAAA record and the SRV port, so one browse
+yields everything pairing needs. On Android the plugin holds a
+`WifiManager.MulticastLock` while sharing, because Wi-Fi power saving drops
+multicast packets otherwise.
+
+The phase-1 UDP broadcast on port 47821 stays as a fallback for networks that
+block multicast (some guests and CI sandboxes do); both results are merged by
+device id and the mDNS answer wins. No manual IP entry is needed.
 
 ## Residual risks (honest list)
 
@@ -133,12 +155,16 @@ broadcast storms, at the cost of a dependency and multicast handling on Android.
 3. **Discovery metadata.** The broadcast reply carries the device name and
    certificate fingerprint to anyone on the LAN. This is deliberate (it makes
    the UI understandable) and leaks no document data.
-4. **One role per device id.** A device is either a host or a client for a
-   given peer; symmetric pairing is a follow-up.
-5. **No delete propagation.** Removing a file locally does not delete it on the
-   peer (it would be downloaded again on the next plan).
+4. **Deletion is a user action.** A deletion on one side only propagates after
+   the user confirms it; a wrong confirmation is not undoable from the app (the
+   peer's copy is gone), so the plan shows the path and the side first.
+5. **Background limits are the platform's.** The Android foreground service
+   keeps the host alive, but a force-stop, battery optimisation or the
+   `dataSync` six-hour cap ends it; transfers are not resumed.
 6. **Single-threaded host.** One request is handled at a time; a stalled peer
    delays the queue for at most the 60 s socket timeout.
 7. **Symlinked folders.** The host resolves paths under the shared root and
    rejects traversal, but a symlink created inside the folder by the user is
    followed by the filesystem. Documents are read, never executed.
+8. **mDNS leaks a service name.** The advertised instance name is the device
+   name (sanitized); it is visible to the LAN like the broadcast reply was.

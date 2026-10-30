@@ -8,6 +8,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- LAN sync: a dataSync foreground service keeps the shared folder reachable
+         while the app is in the background, and the multicast lock makes mDNS
+         responses arrive (Wi-Fi power saving drops multicast otherwise). -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <!-- In-app update: the app downloads the release APK and opens the system
          package installer for it (ApkInstallerPlugin). The user still
          confirms every installation in the system UI. -->
@@ -499,6 +503,11 @@
         <!-- Started and stopped by BackgroundWorkPlugin while Rust jobs run. -->
         <service
             android:name=".BackgroundWorkService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <service
+            android:name=".LanShareService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 

@@ -248,6 +248,11 @@ impl ServerPeer {
         Ok(Self { stream })
     }
 
+    /// The TCP address the peer connected from.
+    pub(super) fn peer_addr(&self) -> Option<std::net::SocketAddr> {
+        self.stream.sock.peer_addr().ok()
+    }
+
     /// Reads one request frame.
     pub(super) fn read_request<T: DeserializeOwned + HasBodyLen>(&mut self) -> Result<(T, Vec<u8>), SyncError> {
         read_frame(&mut self.stream)
