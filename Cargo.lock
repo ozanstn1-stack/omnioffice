@@ -5552,9 +5552,13 @@ name = "synccore"
 version = "6.10.0"
 dependencies = [
  "base64 0.23.1",
+ "getrandom 0.2.17",
+ "hmac 0.12.1",
  "percent-encoding",
  "quick-xml",
+ "rcgen",
  "reqwest 0.12.28",
+ "rustls",
  "serde",
  "serde_json",
  "sha2 0.10.9",
