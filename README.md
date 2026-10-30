@@ -878,10 +878,10 @@ Next (architecture prepared, not implemented):
 | Project statistics | Count |
 | --- | --- |
 | Screens | 55 |
-| Tauri commands | 247 |
-| Rust tests | 1361 |
+| Tauri commands | 248 |
+| Rust tests | 1367 |
 | TypeScript test files | 208 |
-| TypeScript test cases (approx.) | 2418 |
+| TypeScript test cases (approx.) | 2419 |
 <!-- stats:end -->
 
 ## License

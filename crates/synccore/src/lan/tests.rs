@@ -144,6 +144,63 @@ fn the_plan_follows_the_three_way_state_and_never_overwrites_a_conflict() {
 }
 
 #[test]
+fn deletions_are_reported_only_from_the_last_common_state() {
+    let base = || BaseState { cloud_etag: None, cloud_sha256: "old".into(), revision: 1 };
+    let mut bases = HashMap::new();
+    for path in ["kept.docx", "removed-here.docx", "removed-there.docx", "gone-both.docx"] {
+        bases.insert(path.to_string(), base());
+    }
+    let local = |path: &str| LocalFile { path: path.into(), size: 1, sha256: "new".into(), modified: String::new() };
+    let remote = |path: &str| RemoteFile { path: path.into(), size: 1, sha256: "old".into(), modified: String::new() };
+    let deletions = plan_deletions(
+        &[local("kept.docx"), local("removed-there.docx"), local("never-synced.docx")],
+        &[remote("kept.docx"), remote("removed-here.docx")],
+        &bases,
+    );
+    let summary: Vec<(&str, DeletionSide)> =
+        deletions.iter().map(|deletion| (deletion.path.as_str(), deletion.side)).collect();
+    assert_eq!(
+        summary,
+        vec![("removed-here.docx", DeletionSide::Local), ("removed-there.docx", DeletionSide::Remote)],
+        "only the base paths missing on exactly one side are deletions"
+    );
+}
+
+#[test]
+fn a_pairing_records_the_client_pin_and_address_for_symmetric_calls() {
+    let root = folder();
+    write_doc(root.path(), "rapor.docx", b"x");
+    let (host, ticket, address) = host_at(root.path());
+    let client = LanClient::new("client-9", "Telefon").with_identity("ab".repeat(32), 47820);
+    let peer = client.pair(&address, ticket.code()).expect("pairing");
+    let peers = host.peers();
+    assert_eq!(peers.len(), 1);
+    let host_side = &peers[0];
+    assert!(host_side.host_side, "the host stores its own role");
+    assert_eq!(host_side.fingerprint, "ab".repeat(32), "the client pin is recorded");
+    assert!(host_side.address.starts_with("127.0.0.1:47820"), "address: {}", host_side.address);
+    assert_eq!(host_side.shared_key, peer.shared_key, "both sides hold the same key");
+    host.stop();
+}
+
+#[test]
+fn the_delete_operation_needs_a_confirmed_plan_and_stays_inside_the_folder() {
+    let root = folder();
+    write_doc(root.path(), "rapor.docx", b"x");
+    write_doc(root.path(), "eski.docx", b"old");
+    let (host, ticket, address) = host_at(root.path());
+    let client = LanClient::new("client-10", "Tablet");
+    let peer = client.pair(&address, ticket.code()).expect("pairing");
+    assert!(root.path().join("eski.docx").exists());
+    client.remove(&peer, "eski.docx").expect("confirmed delete");
+    assert!(!root.path().join("eski.docx").exists(), "the peer removed it");
+    assert!(root.path().join("rapor.docx").exists(), "other files stay");
+    assert!(client.remove(&peer, "../out.docx").is_err(), "traversal is refused");
+    assert!(client.remove(&peer, "run.exe").is_err(), "unshared types are refused");
+    host.stop();
+}
+
+#[test]
 fn only_relative_document_paths_are_accepted() {
     let root = Path::new("/shared");
     assert_eq!(

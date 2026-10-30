@@ -39,6 +39,9 @@ thiserror = "2"
 # the key established at pairing.
 getrandom = "0.2"
 hmac = "0.12"
+# mDNS/DNS-SD discovery for the LAN sync (C14 phase 2). Sync API, no async
+# runtime; the logging and async features stay off.
+mdns-sd = { version = "0.21", default-features = false }
 rcgen = "0.13"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 uuid = { version = "1", features = ["v4"] }

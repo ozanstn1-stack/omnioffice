@@ -121,6 +121,7 @@ mod tests {
             fingerprint: "ab".repeat(32),
             shared_key: "cd".repeat(32),
             paired_at: "2026-10-30T12:00:00Z".into(),
+            host_side: false,
         });
         save(dir.path(), &store).expect("save");
         let loaded = load(dir.path()).expect("load");

@@ -84,6 +84,13 @@ export const commands = {
 	lanApply: (deviceId: string, folder: string, path: string, resolution: string | null) => typedError<LanApplyView_Serialize, PdfError>(__TAURI_INVOKE("lan_apply", { deviceId, folder, path, resolution })),
 	/**  Applies every item that needs no question; conflicts are left for the user. */
 	lanSyncSafe: (deviceId: string, folder: string) => typedError<LanApplyView_Serialize[], PdfError>(__TAURI_INVOKE("lan_sync_safe", { deviceId, folder })),
+	/**
+	 *  Confirms one deletion the plan reported. `side` is `local` (removed here)
+	 *  or `remote` (removed on the peer); `resolution` is `delete_remote`,
+	 *  `restore_local`, `delete_local` or `restore_remote`. Nothing is deleted
+	 *  without this call.
+	 */
+	lanResolveDeletion: (deviceId: string, folder: string, path: string, side: string, resolution: string) => typedError<LanDeletionResultView, PdfError>(__TAURI_INVOKE("lan_resolve_deletion", { deviceId, folder, path, side, resolution })),
 	oauthStatus: () => __TAURI_INVOKE<OAuthStatus[]>("oauth_status"),
 	oauthSaveClient: (provider: string, clientId: string, clientSecret: string | null, tenant: string | null) => typedError<OAuthStatus[], PdfError>(__TAURI_INVOKE("oauth_save_client", { provider, clientId, clientSecret, tenant })),
 	oauthConnect: (provider: string) => typedError<OAuthStatus[], PdfError>(__TAURI_INVOKE("oauth_connect", { provider })),
@@ -2866,6 +2873,18 @@ export type LanApplyView_Serialize = {
 	warning: string | null,
 };
 
+export type LanDeletionResultView = {
+	path: string,
+	applied: boolean,
+	action: string,
+};
+
+export type LanDeletionView = {
+	path: string,
+	/**  `local` (removed here) or `remote` (removed on the peer). */
+	side: string,
+};
+
 export type LanDeviceView = {
 	deviceId: string,
 	name: string,
@@ -2939,12 +2958,22 @@ export type LanPlanView_Deserialize = {
 	deviceId: string,
 	folder: string,
 	items: LanPlanItemView_Deserialize[],
+	/**
+	 *  Files one side removed since the last common state; each needs a
+	 *  confirmation before anything is touched.
+	 */
+	deletions: LanDeletionView[],
 };
 
 export type LanPlanView_Serialize = {
 	deviceId: string,
 	folder: string,
 	items: LanPlanItemView_Serialize[],
+	/**
+	 *  Files one side removed since the last common state; each needs a
+	 *  confirmation before anything is touched.
+	 */
+	deletions: LanDeletionView[],
 };
 
 export type LanStatusView = LanStatusView_Serialize | LanStatusView_Deserialize;

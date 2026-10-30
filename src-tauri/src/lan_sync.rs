@@ -109,6 +109,61 @@ pub struct LanPlanView {
     pub device_id: String,
     pub folder: String,
     pub items: Vec<LanPlanItemView>,
+    /// Files one side removed since the last common state; each needs a
+    /// confirmation before anything is touched.
+    pub deletions: Vec<LanDeletionView>,
+}
+
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LanDeletionView {
+    pub path: String,
+    /// `local` (removed here) or `remote` (removed on the peer).
+    pub side: String,
+}
+
+/// What the user confirmed for one deletion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DeletionAction {
+    /// Delete the peer's copy (removed here).
+    DeleteRemote,
+    /// Download the peer's copy back (removed here).
+    RestoreLocal,
+    /// Delete the local file (removed on the peer).
+    DeleteLocal,
+    /// Upload the local file again (removed on the peer).
+    RestoreRemote,
+}
+
+impl DeletionAction {
+    fn parse(side: &str, resolution: &str) -> Result<Self, PdfError> {
+        match (side, resolution) {
+            ("local", "delete_remote") => Ok(Self::DeleteRemote),
+            ("local", "restore_local") => Ok(Self::RestoreLocal),
+            ("remote", "delete_local") => Ok(Self::DeleteLocal),
+            ("remote", "restore_remote") => Ok(Self::RestoreRemote),
+            _ => Err(PdfError::InvalidInput("unknown deletion resolution".into())),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::DeleteRemote => "delete_remote",
+            Self::RestoreLocal => "restore_local",
+            Self::DeleteLocal => "delete_local",
+            Self::RestoreRemote => "restore_remote",
+        }
+    }
+}
+
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LanDeletionResultView {
+    pub path: String,
+    pub applied: bool,
+    pub action: String,
 }
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
@@ -147,7 +202,7 @@ fn peer_view(peer: &PairedPeer) -> LanPeerView {
         address: peer.address.clone(),
         fingerprint: peer.fingerprint.clone(),
         paired_at: peer.paired_at.clone(),
-        host_side: peer.fingerprint.is_empty(),
+        host_side: peer.host_side || peer.fingerprint.is_empty(),
     }
 }
 
@@ -202,7 +257,7 @@ fn client_peer(store: &LanStore, device_id: &str) -> Result<PairedPeer, PdfError
     store
         .peers
         .iter()
-        .find(|peer| peer.device_id == device_id && !peer.fingerprint.is_empty())
+        .find(|peer| peer.device_id == device_id && !peer.fingerprint.is_empty() && !peer.shared_key.is_empty())
         .cloned()
         .ok_or_else(|| PdfError::InvalidInput("this device is not paired with that peer".into()))
 }
@@ -285,6 +340,9 @@ pub async fn lan_host_start(app: AppHandle, folder: String) -> Result<LanStatusV
             previous.stop();
         }
     }
+    // Android keeps the process (and the mDNS multicast lock) alive through a
+    // foreground service while a folder is shared; a no-op elsewhere.
+    crate::android_lan::set_active(true);
     status_of(&app)
 }
 
@@ -309,6 +367,7 @@ pub async fn lan_host_stop(app: AppHandle) -> Result<LanStatusView, PdfError> {
             host.stop();
         }
     }
+    crate::android_lan::set_active(false);
     status_of(&app)
 }
 
@@ -359,7 +418,9 @@ pub async fn lan_discover(app: AppHandle, timeout_ms: u32) -> Result<Vec<LanDevi
 pub async fn lan_pair(app: AppHandle, address: String, code: String) -> Result<LanStatusView, PdfError> {
     let directory = config_dir(&app)?;
     let identity = store::identity(&directory)?;
-    let client = LanClient::new(identity.device_id.clone(), identity.name.clone());
+    let hosting_port = HOST.lock().ok().and_then(|guard| guard.as_ref().map(|(host, _)| host.port())).unwrap_or(0);
+    let client = LanClient::new(identity.device_id.clone(), identity.name.clone())
+        .with_identity(identity.fingerprint.clone(), hosting_port);
     let peer = tauri::async_runtime::spawn_blocking(move || client.pair(&address, &code))
         .await
         .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
@@ -394,14 +455,15 @@ pub async fn lan_plan(app: AppHandle, device_id: String, folder: String) -> Resu
     let bases = bases_for(&store, &device_id);
     let identity = store::identity(&directory)?;
     let device_name = identity.name.clone();
-    let items =
+    let plan =
         tauri::async_runtime::spawn_blocking(move || plan_for(&peer, &root, &bases, &identity.device_id, &device_name))
             .await
             .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))??;
     Ok(LanPlanView {
         device_id,
         folder,
-        items: items
+        items: plan
+            .items
             .into_iter()
             .map(|item| LanPlanItemView {
                 state: state_name(&item),
@@ -409,6 +471,17 @@ pub async fn lan_plan(app: AppHandle, device_id: String, folder: String) -> Resu
                 action: item.action.map(action_name).map(str::to_string),
                 local_sha256: item.local_sha256,
                 remote_sha256: item.remote_sha256,
+            })
+            .collect(),
+        deletions: plan
+            .deletions
+            .into_iter()
+            .map(|deletion| LanDeletionView {
+                path: deletion.path,
+                side: match deletion.side {
+                    lan::DeletionSide::Local => "local".to_string(),
+                    lan::DeletionSide::Remote => "remote".to_string(),
+                },
             })
             .collect(),
     })
@@ -476,9 +549,56 @@ pub async fn lan_sync_safe(app: AppHandle, device_id: String, folder: String) ->
     Ok(results.views)
 }
 
+/// Confirms one deletion the plan reported. `side` is `local` (removed here)
+/// or `remote` (removed on the peer); `resolution` is `delete_remote`,
+/// `restore_local`, `delete_local` or `restore_remote`. Nothing is deleted
+/// without this call.
+#[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
+pub async fn lan_resolve_deletion(
+    app: AppHandle,
+    device_id: String,
+    folder: String,
+    path: String,
+    side: String,
+    resolution: String,
+) -> Result<LanDeletionResultView, PdfError> {
+    let root = folder_path(&folder)?;
+    let action = DeletionAction::parse(&side, &resolution)?;
+    let directory = config_dir(&app)?;
+    let mut store = store::load(&directory)?;
+    let peer = client_peer(&store, &device_id)?;
+    let identity = store::identity(&directory)?;
+    let name = identity.name.clone();
+    let device = device_id.clone();
+    let path_for_work = path.clone();
+    let (view, base) = tauri::async_runtime::spawn_blocking(move || {
+        resolve_deletion(&peer, &root, &path_for_work, action, &device, &name)
+    })
+    .await
+    .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))??;
+    match base {
+        Some(sha) => {
+            store.bases.entry(device_id.clone()).or_default().insert(path, sha);
+        }
+        None => {
+            if let Some(entries) = store.bases.get_mut(&device_id) {
+                entries.remove(&path);
+            }
+        }
+    }
+    store::save(&directory, &store)?;
+    Ok(view)
+}
+
 // ---------------------------------------------------------------------------
 // The actual work (blocking)
 // ---------------------------------------------------------------------------
+
+struct FolderPlan {
+    items: Vec<PlanItem>,
+    deletions: Vec<lan::LanDeletion>,
+}
 
 fn plan_for(
     peer: &PairedPeer,
@@ -486,11 +606,13 @@ fn plan_for(
     bases: &HashMap<String, BaseState>,
     device_id: &str,
     name: &str,
-) -> Result<Vec<PlanItem>, PdfError> {
+) -> Result<FolderPlan, PdfError> {
     let client = LanClient::new(device_id, name);
     let remote = client.list(peer).map_err(sync_error)?;
     let local = lan::scan_folder(root).map_err(sync_error)?;
-    Ok(lan::plan_sync(&local, &remote, bases))
+    let items = lan::plan_sync(&local, &remote, bases);
+    let deletions = lan::plan_deletions(&local, &remote, bases);
+    Ok(FolderPlan { items, deletions })
 }
 
 fn apply_one(
@@ -504,6 +626,7 @@ fn apply_one(
 ) -> Result<(LanApplyView, Option<String>), PdfError> {
     let plan = plan_for(peer, root, bases, device_id, name)?;
     let item = plan
+        .items
         .iter()
         .find(|item| item.path == path)
         .ok_or_else(|| PdfError::NotFound(format!("{path} is not in the plan")))?;
@@ -539,7 +662,7 @@ fn apply_safe(
     let client = LanClient::new(device_id, name);
     let mut views = Vec::new();
     let mut updated = Vec::new();
-    for item in plan {
+    for item in plan.items {
         let Some(action) = item.action else {
             views.push(LanApplyView {
                 path: item.path.clone(),
@@ -570,6 +693,48 @@ fn apply_safe(
         }
     }
     Ok(SafeReport { views, bases: updated })
+}
+
+fn resolve_deletion(
+    peer: &PairedPeer,
+    root: &Path,
+    path: &str,
+    action: DeletionAction,
+    device_id: &str,
+    name: &str,
+) -> Result<(LanDeletionResultView, Option<String>), PdfError> {
+    let client = LanClient::new(device_id, name);
+    let base = match action {
+        DeletionAction::DeleteRemote => {
+            client.remove(peer, path).map_err(sync_error)?;
+            None
+        }
+        DeletionAction::RestoreLocal => {
+            let (remote, bytes) = client.fetch(peer, path).map_err(sync_error)?;
+            let target = lan::resolve_path(root, path).map_err(sync_error)?;
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(PdfError::from_io)?;
+            }
+            synccore::metadata::write_atomic(&target, &bytes).map_err(|error| PdfError::Internal(error.to_string()))?;
+            Some(remote.sha256)
+        }
+        DeletionAction::DeleteLocal => {
+            let target = lan::resolve_path(root, path).map_err(sync_error)?;
+            match std::fs::remove_file(&target) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(PdfError::from_io(error)),
+            }
+            None
+        }
+        DeletionAction::RestoreRemote => {
+            let target = lan::resolve_path(root, path).map_err(sync_error)?;
+            let bytes = std::fs::read(&target).map_err(PdfError::from_io)?;
+            let remote = client.push(peer, path, &bytes).map_err(sync_error)?;
+            Some(remote.sha256)
+        }
+    };
+    Ok((LanDeletionResultView { path: path.to_string(), applied: true, action: action.as_str().to_string() }, base))
 }
 
 struct SafeReport {

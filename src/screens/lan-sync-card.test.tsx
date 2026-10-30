@@ -49,6 +49,13 @@ const lanApply = vi.fn(async (_deviceId: string, _folder: string, _path: string,
   warning: null,
 }));
 const lanSyncSafe = vi.fn(async (_deviceId: string, _folder: string) => []);
+const lanResolveDeletion = vi.fn(
+  async (_deviceId: string, _folder: string, _path: string, _side: string, _resolution: string) => ({
+    path: "eski.docx",
+    applied: true,
+    action: "delete_local",
+  }),
+);
 
 vi.mock("../lib/lan-sync", () => ({
   lanStatus: (...args: unknown[]) => lanStatus(...(args as [])),
@@ -63,6 +70,7 @@ vi.mock("../lib/lan-sync", () => ({
   lanPlan: (...args: unknown[]) => lanPlan(...(args as [string, string])),
   lanApply: (...args: unknown[]) => lanApply(...(args as [string, string, string, string])),
   lanSyncSafe: (...args: unknown[]) => lanSyncSafe(...(args as [string, string])),
+  lanResolveDeletion: (...args: unknown[]) => lanResolveDeletion(...(args as [string, string, string, string, string])),
 }));
 
 vi.mock("../lib/file-tokens", () => ({
@@ -139,6 +147,7 @@ describe("LAN sync card", () => {
         { path: "rapor.docx", state: "conflict", action: null, localSha256: "aa", remoteSha256: "bb" },
         { path: "yeni.xlsx", state: "cloud_ahead", action: "download", localSha256: null, remoteSha256: "cc" },
       ],
+      deletions: [],
     };
     const { pickDirectoryToken } = await import("../lib/file-tokens");
     expect(await pickDirectoryToken()).toEqual({ token: "folder-token", name: "Belgeler" });
@@ -153,6 +162,44 @@ describe("LAN sync card", () => {
     await user.click(screen.getByRole("button", { name: /Keep both/i }));
     await waitFor(() => expect(lanApply).toHaveBeenCalledWith("device-b", "folder-token", "rapor.docx", "keep_both"));
     expect(screen.getByText(/download/i)).toBeInTheDocument();
+  });
+
+  it("lists a removed document and sends only the confirmed deletion", async () => {
+    status = {
+      ...baseStatus,
+      peers: [
+        {
+          deviceId: "device-b",
+          name: "Telefon",
+          address: "192.168.1.20:47820",
+          fingerprint: "cd".repeat(32),
+          pairedAt: "2026-10-30T12:00:00Z",
+          hostSide: false,
+        },
+      ],
+    };
+    plan = {
+      deviceId: "device-b",
+      folder: "folder-token",
+      items: [],
+      deletions: [{ path: "eski.docx", side: "remote" }],
+    };
+    const user = userEvent.setup();
+    render(<LanSyncCard />);
+    await user.click(await screen.findByRole("button", { name: /Local folder/i }));
+    await user.click(await screen.findByRole("button", { name: /Compare/i }));
+    expect(await screen.findByText("eski.docx")).toBeInTheDocument();
+    expect(screen.getByText(/removed on the peer/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Delete here/i }));
+    await waitFor(() =>
+      expect(lanResolveDeletion).toHaveBeenCalledWith(
+        "device-b",
+        "folder-token",
+        "eski.docx",
+        "remote",
+        "delete_local",
+      ),
+    );
   });
 
   it("reports a failed pairing instead of pretending it worked", async () => {

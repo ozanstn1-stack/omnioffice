@@ -49,5 +49,15 @@ export const lanApply = (
   resolution?: "keep_local" | "keep_cloud" | "keep_both",
 ) => call((c) => c.lanApply(deviceId, folder, path, resolution ?? null));
 
+/** Confirms one deletion; `side` is `local` or `remote`, `resolution` one of
+ * `delete_remote`, `restore_local`, `delete_local`, `restore_remote`. */
+export const lanResolveDeletion = (
+  deviceId: string,
+  folder: string,
+  path: string,
+  side: "local" | "remote",
+  resolution: "delete_remote" | "restore_local" | "delete_local" | "restore_remote",
+) => call((c) => c.lanResolveDeletion(deviceId, folder, path, side, resolution));
+
 /** Applies every change that needs no question; conflicts stay for the user. */
 export const lanSyncSafe = (deviceId: string, folder: string) => call((c) => c.lanSyncSafe(deviceId, folder));

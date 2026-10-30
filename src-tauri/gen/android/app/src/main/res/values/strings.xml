@@ -12,4 +12,8 @@
     <string name="shortcut_new_long">Start a new Writer document</string>
     <string name="shortcut_recent_short">Recent files</string>
     <string name="shortcut_recent_long">Open a recent file</string>
+    <string name="lan_share_channel_name">LAN sync</string>
+    <string name="lan_share_channel_description">Keeps the shared folder reachable for paired devices while OmniOffice is in the background.</string>
+    <string name="lan_share_title">LAN sharing is on</string>
+    <string name="lan_share_text">Paired devices on this Wi-Fi can open the shared folder</string>
 </resources>
