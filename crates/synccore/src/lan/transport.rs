@@ -219,7 +219,10 @@ impl Client {
         R: DeserializeOwned + HasBodyLen,
     {
         write_frame(&mut self.stream, header, body)?;
-        read_frame(&mut self.stream)
+        let response = read_frame(&mut self.stream);
+        self.stream.conn.send_close_notify();
+        let _ = self.stream.conn.complete_io(&mut self.stream.sock);
+        response
     }
 }
 
@@ -231,6 +234,9 @@ pub(super) struct ServerPeer {
 impl ServerPeer {
     /// Completes the TLS handshake on an accepted socket.
     pub(super) fn accept_stream(socket: TcpStream, config: &Arc<rustls::ServerConfig>) -> Result<Self, SyncError> {
+        // On macOS an accepted socket inherits the listener's non-blocking
+        // mode; the handshake below is synchronous, so force blocking I/O.
+        socket.set_nonblocking(false).ok();
         socket.set_read_timeout(Some(IO_TIMEOUT)).ok();
         socket.set_write_timeout(Some(IO_TIMEOUT)).ok();
         let connection = rustls::ServerConnection::new(config.clone())
@@ -247,13 +253,16 @@ impl ServerPeer {
         read_frame(&mut self.stream)
     }
 
-    /// Writes one response frame.
+    /// Writes one response frame and closes the TLS session politely.
     pub(super) fn respond<R: Serialize + HasBodyLen>(
         &mut self,
         header: &R,
         body: Option<&[u8]>,
     ) -> Result<(), SyncError> {
-        write_frame(&mut self.stream, header, body)
+        write_frame(&mut self.stream, header, body)?;
+        self.stream.conn.send_close_notify();
+        let _ = self.stream.conn.complete_io(&mut self.stream.sock);
+        Ok(())
     }
 }
 

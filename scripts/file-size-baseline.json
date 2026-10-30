@@ -135,7 +135,7 @@
     "crates/synccore/src/cloud.rs": 1007,
     "crates/synccore/src/lan.rs": 1023,
     "crates/synccore/src/lan/tests.rs": 243,
-    "crates/synccore/src/lan/transport.rs": 315,
+    "crates/synccore/src/lan/transport.rs": 324,
     "crates/synccore/src/merge.rs": 215,
     "crates/synccore/src/metadata.rs": 599,
     "crates/synccore/src/oauth.rs": 452,
