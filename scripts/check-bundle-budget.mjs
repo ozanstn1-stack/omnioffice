@@ -73,7 +73,10 @@ const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$
 // Raised to 505 in 6.7 (#508/#509 C6): the template field form and the person
 // card dialog (CSV/vCard import/export, encrypted-card UI) add about 4 KB gzip
 // as a lazy route and a lazy dialog; the entry is unchanged.
-const TOTAL_BUDGET_KB = 505;
+// Raised to 510 in 6.8 (#341 C13): the model-level office diff engine and its
+// viewer add about 3 KB gzip, used by the Compare route and the version-history
+// dialog (both lazy); the entry chunk is unchanged.
+const TOTAL_BUDGET_KB = 510;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);
