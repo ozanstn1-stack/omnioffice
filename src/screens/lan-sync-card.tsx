@@ -23,6 +23,7 @@ import {
   lanHostUnpair,
   lanPair,
   lanPlan,
+  lanResolveDeletion,
   lanStatus,
   lanSyncSafe,
   lanUnpair,
@@ -125,6 +126,18 @@ export function LanSyncCard() {
     run(async () => {
       if (!folder) return;
       await lanSyncSafe(deviceId, folder.token);
+      setPlan(await lanPlan(deviceId, folder.token));
+    });
+
+  const resolveDeletion = (
+    deviceId: string,
+    path: string,
+    side: "local" | "remote",
+    resolution: "delete_remote" | "restore_local" | "delete_local" | "restore_remote",
+  ) =>
+    run(async () => {
+      if (!folder) return;
+      await lanResolveDeletion(deviceId, folder.token, path, side, resolution);
       setPlan(await lanPlan(deviceId, folder.token));
     });
 
@@ -321,7 +334,15 @@ export function LanSyncCard() {
         </div>
       </div>
 
-      {plan ? <LanSyncPlan plan={plan} busy={busy} onResolve={resolve} onSyncSafe={syncSafe} /> : null}
+      {plan ? (
+        <LanSyncPlan
+          plan={plan}
+          busy={busy}
+          onResolve={resolve}
+          onSyncSafe={syncSafe}
+          onResolveDeletion={resolveDeletion}
+        />
+      ) : null}
       <p className="text-xs muted mt-3">{t("lan.note")}</p>
     </Card>
   );
