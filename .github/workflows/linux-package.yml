@@ -69,8 +69,23 @@ jobs:
           mkdir -p release-artifacts
           # The Cargo workspace target lives at the repository root; keep the
           # src-tauri/target fallback so a non-workspace layout still works.
-          deb=$(find target src-tauri/target -path '*/bundle/deb/*.deb' -type f 2>/dev/null | head -n 1)
-          appimage=$(find target src-tauri/target -path '*/bundle/appimage/*.AppImage' -type f 2>/dev/null | head -n 1)
+          # A missing root must be skipped, not fail the step: under
+          # `set -o pipefail` find's "No such file or directory" would stop the
+          # job even though the other root holds the bundle.
+          find_bundle() {
+            local pattern="$1" root found
+            for root in target src-tauri/target; do
+              [ -d "$root" ] || continue
+              found=$(find "$root" -path "$pattern" -type f -print -quit)
+              if [ -n "$found" ]; then
+                printf '%s\n' "$found"
+                return 0
+              fi
+            done
+            return 1
+          }
+          deb=$(find_bundle '*/bundle/deb/*.deb') || { echo "the .deb bundle was not produced"; exit 1; }
+          appimage=$(find_bundle '*/bundle/appimage/*.AppImage') || { echo "the AppImage bundle was not produced"; exit 1; }
           test -n "$deb"
           test -n "$appimage"
           cp "$deb" "release-artifacts/OmniOffice-Linux-${version}-amd64.deb"
