@@ -159,9 +159,10 @@ describe("Turkish templates", () => {
         "İstifa Dilekçesi",
         "Bordro",
         "İrsaliye",
+        "Dilekçe (alanlı)",
       ]),
     );
-    expect(turkish).toHaveLength(12);
+    expect(turkish).toHaveLength(13);
     expect(turkish.map((candidate) => [candidate.name, candidate.kind])).toEqual(
       expect.arrayContaining([
         ["Resmî Yazı", "writer"],

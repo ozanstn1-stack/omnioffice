@@ -240,7 +240,7 @@
     "src/office/ImpressEditor.tsx": 2796,
     "src/office/office-ui.tsx": 355,
     "src/office/OfficeWorkspace.tsx": 465,
-    "src/office/templates.ts": 1444,
+    "src/office/templates.ts": 1446,
     "src/office/tools/converter.tsx": 295,
     "src/office/tools/data.tsx": 295,
     "src/office/tools/draw.tsx": 360,
