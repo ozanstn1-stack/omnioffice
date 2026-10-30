@@ -235,7 +235,6 @@ fn a_scan_folder_skips_sidecars_and_unshared_types() {
 
 #[test]
 fn a_timeout_discovery_still_returns_a_list() {
-    // A sandbox without a broadcast route must answer with an error, not hang.
     let started = std::time::Instant::now();
     if let Ok(devices) = discover(Duration::from_millis(250)) {
         assert!(devices.iter().all(|device| !device.device_id.is_empty()));
