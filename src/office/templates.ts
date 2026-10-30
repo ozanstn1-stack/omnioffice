@@ -3,6 +3,7 @@
  * original design built from the same model types the editors use, so it opens
  * directly as an editable document.
  */
+import { TEMPLATES_WITH_FIELDS } from "./templates-fields";
 import {
   defaultCellStyle,
   defaultParaProps,
@@ -1424,6 +1425,7 @@ export const TEMPLATES: OfficeTemplate[] = [
       },
     ),
   ),
+  ...TEMPLATES_WITH_FIELDS,
 ];
 
 export function templatesFor(kind: "writer" | "calc" | "impress"): OfficeTemplate[] {

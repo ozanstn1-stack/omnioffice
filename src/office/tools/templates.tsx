@@ -3,20 +3,51 @@ import { useState } from "react";
 import { FileSpreadsheet, FileText, Image as ImageIcon } from "lucide-react";
 import { useT } from "../../lib/i18n";
 import { useSettings } from "../../lib/store";
-import { useOfficeTabs } from "../../lib/office-store";
+import { useOfficeTabs, type OfficeModel } from "../../lib/office-store";
 import { Screen } from "../../components/layout";
-import { orderTemplates, TEMPLATES, templatesFor } from ".././templates";
+import { TemplateFieldsDialog } from "../../components/template-fields-dialog";
+import { fillTemplate, templateFields, type TemplateField } from "../../lib/template-fields";
+import type { TextDocument } from "../../lib/office-types";
+import { orderTemplates, TEMPLATES, templatesFor, type OfficeTemplate } from ".././templates";
 
 // ---------------------------------------------------------------------------
 // Templates
 // ---------------------------------------------------------------------------
+
+interface PendingTemplate {
+  template: OfficeTemplate;
+  model: OfficeModel;
+  fields: TemplateField[];
+}
 
 export function TemplatesScreen({ onOpen }: { onOpen?: () => void } = {}) {
   const t = useT();
   const create = useOfficeTabs((state) => state.create);
   const language = useSettings((state) => state.settings.language);
   const [filter, setFilter] = useState<"all" | "writer" | "calc" | "impress">("all");
+  const [pending, setPending] = useState<PendingTemplate | null>(null);
   const visible = orderTemplates(filter === "all" ? TEMPLATES : templatesFor(filter), language);
+
+  /** A Writer template with `{{alan}}` placeholders asks for their values first. */
+  const openTemplate = (template: OfficeTemplate) => {
+    const model = template.build() as OfficeModel;
+    const fields = template.kind === "writer" ? templateFields(model as TextDocument) : [];
+    if (fields.length) {
+      setPending({ template, model, fields });
+      return;
+    }
+    create(template.kind, template.name, model);
+    onOpen?.();
+  };
+
+  const finish = (values: Record<string, string> | null) => {
+    if (!pending) return;
+    const model = values ? fillTemplate(pending.model as TextDocument, values) : pending.model;
+    create(pending.template.kind, pending.template.name, model);
+    setPending(null);
+    onOpen?.();
+  };
+
   return (
     <Screen title={t("templates.title")} subtitle={t("templates.subtitle")}>
       <div className="row">
@@ -33,15 +64,7 @@ export function TemplatesScreen({ onOpen }: { onOpen?: () => void } = {}) {
       </div>
       <div className="template-grid">
         {visible.map((template) => (
-          <button
-            key={template.id}
-            type="button"
-            className="card template-card"
-            onClick={() => {
-              create(template.kind, template.name, template.build() as never);
-              onOpen?.();
-            }}
-          >
+          <button key={template.id} type="button" className="card template-card" onClick={() => openTemplate(template)}>
             <span className={`template-icon kind-${template.kind}`}>
               {template.kind === "writer" ? (
                 <FileText size={20} />
@@ -61,6 +84,15 @@ export function TemplatesScreen({ onOpen }: { onOpen?: () => void } = {}) {
           </button>
         ))}
       </div>
+      {pending ? (
+        <TemplateFieldsDialog
+          templateName={pending.template.name}
+          fields={pending.fields}
+          onSubmit={(values) => finish(values)}
+          onCreateEmpty={() => finish(null)}
+          onClose={() => setPending(null)}
+        />
+      ) : null}
     </Screen>
   );
 }
