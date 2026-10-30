@@ -159,8 +159,8 @@ describe("typed bindings: the app group", () => {
   const generated = read("src/lib/generated/specta.ts");
 
   it("generates a typed wrapper for every app command but the Android-only two", () => {
-    expect(appCommands.length).toBe(42);
-    expect(typed.length).toBe(40);
+    expect(appCommands.length).toBe(45);
+    expect(typed.length).toBe(43);
     for (const name of typed) {
       expect(generated, name).toMatch(new RegExp(`__TAURI_INVOKE(?:<[^>]*>)?\\("${name}"`));
     }

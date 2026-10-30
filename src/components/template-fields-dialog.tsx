@@ -3,10 +3,12 @@
  * created: one labelled input per field, today's date proposed for date
  * fields, and a way to create the document with the placeholders intact.
  */
-import { useState } from "react";
-import { Button, Field, Modal, TextInput } from "./ui";
+import { useEffect, useState } from "react";
+import { Button, Field, Modal, Select, TextInput } from "./ui";
 import { useT } from "../lib/i18n";
 import { useSettings } from "../lib/store";
+import { listPersonCards, type PersonCard } from "../lib/person-cards";
+import { cardTemplateValues } from "../lib/person-cards-io";
 import type { TemplateField } from "../lib/template-fields";
 
 /** Date-like field names get today's date as the initial value. */
@@ -40,6 +42,27 @@ export function TemplateFieldsDialog({
   const t = useT();
   const language = useSettings((state) => state.settings.language);
   const [values, setValues] = useState<Record<string, string>>(() => initialValues(fields, language));
+  const [cards, setCards] = useState<PersonCard[]>([]);
+
+  // Person cards are optional: with none saved the form shows no picker, and a
+  // failed read must not block the template itself.
+  useEffect(() => {
+    let alive = true;
+    listPersonCards()
+      .then((list) => {
+        if (alive) setCards(list.cards);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const applyCard = (id: string) => {
+    const card = cards.find((candidate) => candidate.id === id);
+    if (!card) return;
+    setValues((previous) => ({ ...previous, ...cardTemplateValues(card, fields) }));
+  };
 
   const label = (name: string): string => {
     const key = `templates.field.${name}`;
@@ -68,6 +91,18 @@ export function TemplateFieldsDialog({
     >
       <div className="stack">
         <p className="muted small">{t("templates.formHint")}</p>
+        {cards.length ? (
+          <Field label={t("templates.formFromCard")}>
+            <Select
+              value=""
+              onChange={(value) => applyCard(value)}
+              options={[
+                { value: "", label: t("templates.formFromCardPlaceholder") },
+                ...cards.map((card) => ({ value: card.id, label: card.name })),
+              ]}
+            />
+          </Field>
+        ) : null}
         {fields.map((field) => (
           <Field key={field.name} label={label(field.name)} hint={`{{${field.name}}}`}>
             <TextInput

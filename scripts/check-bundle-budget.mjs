@@ -70,7 +70,10 @@ const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$
 // Raised to 500 in 6.5 (#341 C3 and C5): the evidence bundle screen and the
 // official letter wizard add about 7 KB gzip, both as lazy chunks; the entry
 // is unchanged (59.5 KB). That leaves room for C13 before the next review.
-const TOTAL_BUDGET_KB = 500;
+// Raised to 505 in 6.7 (#508/#509 C6): the template field form and the person
+// card dialog (CSV/vCard import/export, encrypted-card UI) add about 4 KB gzip
+// as a lazy route and a lazy dialog; the entry is unchanged.
+const TOTAL_BUDGET_KB = 505;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);

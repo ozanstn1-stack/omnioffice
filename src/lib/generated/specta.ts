@@ -455,6 +455,12 @@ export const commands = {
 	 *  it recorded.
 	 */
 	pdfProvenanceWrite: (request: ProvenanceWriteRequest_Deserialize) => typedError<ProvenanceWriteResult_Serialize, PdfError>(__TAURI_INVOKE("pdf_provenance_write", { request })),
+	/**  Every saved card plus the platform's encryption state. */
+	personCardList: () => typedError<PersonCardList_Serialize, PdfError>(__TAURI_INVOKE("person_card_list")),
+	/**  Creates or updates a card; the id and `updatedAt` are assigned here. */
+	personCardSave: (card: PersonCard_Deserialize) => typedError<PersonCard_Serialize, PdfError>(__TAURI_INVOKE("person_card_save", { card })),
+	/**  Deletes a card; false when it was not there. */
+	personCardDelete: (id: string) => typedError<boolean, PdfError>(__TAURI_INVOKE("person_card_delete", { id })),
 	/**
 	 *  Keyword and regular-expression matches for redaction, in page order. The
 	 *  single-page [`detect_sensitive_text`] built-in detector stays separate.
@@ -3804,6 +3810,58 @@ export type PdfaRequest_Serialize = {
 	level: string,
 	output: OutputSpec_Serialize | null,
 	jobId: string | null,
+};
+
+/**  One card, exactly what the UI edits and the templates fill from. */
+export type PersonCard = PersonCard_Serialize | PersonCard_Deserialize;
+
+/**  The list plus the files that could not be read (names only, never contents). */
+export type PersonCardList = PersonCardList_Serialize | PersonCardList_Deserialize;
+
+/**  The list plus the files that could not be read (names only, never contents). */
+export type PersonCardList_Deserialize = {
+	cards: PersonCard_Deserialize[],
+	warnings?: string[],
+	/**  False when the platform has no cipher and the files are `plain:`. */
+	encrypted: boolean,
+};
+
+/**  The list plus the files that could not be read (names only, never contents). */
+export type PersonCardList_Serialize = {
+	cards: PersonCard_Serialize[],
+	warnings: string[],
+	/**  False when the platform has no cipher and the files are `plain:`. */
+	encrypted: boolean,
+};
+
+/**  One card, exactly what the UI edits and the templates fill from. */
+export type PersonCard_Deserialize = {
+	/**  Empty when a new card is saved; the command assigns one. */
+	id?: string,
+	name: string,
+	/**  VKN (10 digits) or TCKN (11 digits); format only, check digits are the UI's. */
+	taxId?: string,
+	address?: string,
+	phone?: string,
+	email?: string,
+	note?: string,
+	/**  RFC 3339 UTC, written by the command. */
+	updatedAt?: string,
+};
+
+/**  One card, exactly what the UI edits and the templates fill from. */
+export type PersonCard_Serialize = {
+	/**  Empty when a new card is saved; the command assigns one. */
+	id: string,
+	name: string,
+	/**  VKN (10 digits) or TCKN (11 digits); format only, check digits are the UI's. */
+	taxId: string,
+	address: string,
+	phone: string,
+	email: string,
+	note: string,
+	/**  RFC 3339 UTC, written by the command. */
+	updatedAt: string,
 };
 
 export type PlanRequest = PlanRequest_Serialize | PlanRequest_Deserialize;

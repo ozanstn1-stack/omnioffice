@@ -2,6 +2,14 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+const invoke = vi.fn(async (command: string, _payload?: unknown) => {
+  if (command === "person_card_list") return { cards: [], warnings: [], encrypted: true };
+  return null;
+});
+vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invoke(...(args as [string, unknown])) }));
+vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(async () => null), save: vi.fn(async () => null) }));
+
 import { TemplateFieldsDialog } from "./template-fields-dialog";
 
 const fields = [
