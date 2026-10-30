@@ -28,7 +28,7 @@ its own release section; the issue checklist is updated when an item lands.
 | C11. Mobile ergonomics | Delivered in 6.4.4 and 6.5.1; per-screen audit remains | `bottom-nav.tsx`, touch CSS tests |
 | C12. Real scanner | Delivered in 6.10.0 | `pdfcore/src/page_detect.rs` (Canny/Hough detection, Otsu fallback, filters), `office_scan_detect`, auto-crop and batch capture in the scanner screen; the manual picker stays the fallback |
 | C13. Make differences visible | Delivered in 6.8.0 | `office-diff-*.ts` engines, `OfficeDiffView`, Compare Office mode and the version-history comparison |
-| C14. Office-internal sync | Delivered in 6.11.0 (first cut) | `synccore/src/lan*.rs` (pinned-TLS pairing, authenticated transfer, three-way plan), sealed pairing store and the LAN card on the Sync screen; mDNS, background service, delete propagation and symmetric pairing remain |
+| C14. Office-internal sync | Delivered in 6.11.0 (first cut), extended in 6.12.0 | pinned-TLS pairing and transfer, three-way plan, sealed store and LAN card; 6.12.0 adds mDNS/DNS-SD, symmetric pairing, confirmed deletion propagation and the Android sharing service. The real two-device pass remains |
 | C15. Privacy-preserving feedback | Delivered in 6.6.0 | `report-problem.tsx`, `feedback.ts`; the diagnostics report is copied and the issue pre-filled, nothing is uploaded |
 
 ## Open and partial items
@@ -200,7 +200,7 @@ disabled command says why; plugin commands keep working.
 | v6.8.0 "Compare" | C13, tracker and README/RELEASE_READINESS cleanup | Done in 6.8.0 |
 | v6.9.0 "Local AI" | C7 | Done in 6.9.0 |
 | v6.10.0 "Scanner" | C12 | Done in 6.10.0 |
-| v6.11.0 "LAN sync" | C14 | Done in 6.11.0 (first cut; mDNS, background service and delete propagation remain) |
+| v6.12.0 "LAN sync 2" | C14 follow-ups | Done in 6.12.0 (mDNS, symmetric pairing, confirmed deletions, Android service; two-device pass remains) |
 
 The order is deliberate: trust features first (the legal and accounting desks
 are the differentiator), then the features that remove daily repeated work,

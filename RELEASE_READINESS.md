@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 6.11.0
+# Release Readiness — OmniOffice 6.12.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -30,6 +30,50 @@ Two channels carry builds:
 The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
+
+## Implemented (this cycle, 6.12.0) - Yerel ağ eşitleme, ikinci aşama
+
+- **mDNS/DNS-SD discovery (C14 phase 2, #524):** the host advertises
+  `_omnioffice._tcp.local.` with device id, certificate fingerprint and
+  protocol in the TXT record; the client browses the type, resolves the
+  address, sanitizes instance names and merges the answer with the broadcast
+  fallback by device id.
+  `test:crates/synccore/src/lan/mdns.rs#instance_names_stay_inside_the_dnssd_rules`
+  `test:crates/synccore/src/lan/mdns.rs#a_device_without_the_txt_identity_is_ignored`
+  `test:crates/synccore/src/lan/mdns.rs#discovery_returns_within_its_timeout_without_a_network`
+- **Symmetric pairing (C14 phase 2, #524):** the pairing request carries the
+  client's certificate pin and listening port, the host stores them, and the
+  same pairing then works in both directions.
+  `test:crates/synccore/src/lan/tests.rs#a_pairing_records_the_client_pin_and_address_for_symmetric_calls`
+- **Confirmed deletion propagation (C14 phase 2, #524):** the plan reports
+  paths in the common base missing on one side; the delete request is
+  HMAC-signed and path-checked, and nothing is removed without an explicit
+  confirmation.
+  `test:crates/synccore/src/lan/tests.rs#deletions_are_reported_only_from_the_last_common_state`
+  `test:crates/synccore/src/lan/tests.rs#the_delete_operation_needs_a_confirmed_plan_and_stays_inside_the_folder`
+- **Deletion UI (C14 phase 2, #524):** the plan card lists each removed path
+  with its side and the confirm buttons, and sends the resolution through
+  `lan_resolve_deletion`.
+  `test:src/screens/lan-sync-card.test.tsx#lists a removed document and sends only the confirmed deletion`
+- **Android sharing foreground service (C14 phase 2, #524):** `LanShareService`
+  (dataSync) with its own channel, started/stopped with the host through the
+  `LanSharePlugin` bridge; the plugin holds the multicast lock mDNS needs.
+  (no test: the service and the plugin call are exercised on a device; the Rust
+  bridge is a thin, idempotent plugin call.)
+
+### Not done / Known limitations (6.12.0)
+
+- mDNS is best effort; a network that blocks multicast still relies on the UDP
+  broadcast fallback.
+  (no test: the wire codec and timeout are covered; the network policy is not.)
+- The Android foreground service is bound by the platform: force-stop, battery
+  optimisation and the six-hour `dataSync` cap end it, and interrupted
+  transfers are not resumed.
+  (no test: on-device verification remains the roadmap's acceptance step.)
+- Deletion propagation is a user action without an in-app undo.
+  (no test: by design, the peer copy is gone once confirmed.)
+- Symmetric calls require the other side to be sharing a folder as well.
+  (no test: by design, documented in the threat model.)
 
 ## Implemented (this cycle, 6.11.0) - Yerel ağ eşitleme
 
