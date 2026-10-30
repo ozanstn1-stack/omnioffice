@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 6.8.0
+# Release Readiness — OmniOffice 6.9.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -30,6 +30,48 @@ Two channels carry builds:
 The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
+
+## Implemented (this cycle, 6.9.0) - Yerel Türkçe yapay zekâ görev paketleri
+
+- **Turkish AI task packs (C7, #518):** four packs - "düzelt dilekçe",
+  "özetle sözleşme maddesi", "çıkar KDV özeti" and "tebligattan süre çıkar" -
+  each with a Turkish instruction, the expected JSON shape and a deterministic
+  prompt that asks for JSON only.
+  `test:src/lib/ai-task-packs.test.ts#ships the four requested Turkish packs with unique ids`
+  `test:src/lib/ai-task-packs.test.ts#asks for JSON only and shows the expected shape`
+  `test:src/lib/ai-task-packs.test.ts#includes the pack's own instruction and is deterministic`
+- **Structured answer verification (C7, #518):** the JSON is extracted from
+  fences or surrounding prose and every field, type and enum is checked; the VAT
+  pack re-computes each row (`vat = base * rate`) and the totals, the
+  notification pack checks the date format, that the last day is not before the
+  service date and that the period is plausible. Problems come back as i18n
+  codes instead of the raw answer being trusted.
+  `test:src/lib/ai-task-packs.test.ts#finds the object inside fences and prose`
+  `test:src/lib/ai-task-packs.test.ts#reports totals that do not add up and a rate out of range`
+  `test:src/lib/ai-task-packs.test.ts#reports a bad date format, an inverted range and a last day before service`
+- **AI packs screen (C7, #518):** a pack and a PDF are chosen, the run goes
+  through the existing `ai_chat` command with consent, and the screen shows the
+  verification badges, the problems and the raw answer; the provider card
+  carries the **local** badge and a one-click switch to the Ollama preset, and a
+  note says that no model is bundled into the installer.
+  `test:src/screens/AiPacks.test.tsx#shows the local badge for the Ollama provider`
+  `test:src/screens/AiPacks.test.tsx#runs a pack through ai_chat and verifies the structured answer`
+  `test:src/screens/AiPacks.test.tsx#offers switching a cloud provider to the local Ollama preset`
+- **Local mode makes no network request (C7, #518):** the screen itself calls
+  no `fetch` (the provider call is the command), and a local provider stays on
+  its own loopback origin - a remote `http://` base is rejected and a redirect
+  cannot leave the origin.
+  `test:src/screens/AiPacks.test.tsx#runs a pack through ai_chat and verifies the structured answer`
+  `test:crates/aicore/src/lib.rs#a_local_provider_stays_on_its_own_loopback_origin`
+
+### Not done / Known limitations (6.9.0)
+
+- The verification proves the shape, the arithmetic and the date logic; it
+  cannot prove that a summary or a correction is legally correct.
+  (no test: by design, the model's judgement is out of the app's control.)
+- A pack reads the PDF text layer, so a scan without OCR has nothing to send.
+  (no test: the engine takes text as input; the PDF text layer is covered
+  elsewhere.)
 
 ## Implemented (this cycle, 6.8.0) - Ofis belgelerinde model seviyesinde fark
 
