@@ -96,3 +96,22 @@ are compiled.
 - **Size:** only Canny, Gaussian blur, Otsu and contour geometry are used; the
   text/FFT/display-window features stay off, and the release profile still
   strips and LTOs.
+
+## Direct dependency: rustls + rcgen for LAN sync (C14)
+
+The same-network sync (`crates/synccore/src/lan*.rs`, C14) adds four direct
+dependencies to `synccore`:
+
+- **`rustls` 0.23** (MIT/Apache-2.0) with the `ring` provider - the same TLS
+  crate `reqwest` already uses for the cloud providers, now also used for the
+  pinned self-signed transport. No OpenSSL, no native TLS.
+- **`rcgen` 0.13** (MIT/Apache-2.0) generates the device certificate; it was
+  already in the tree as a `pdfcore` dev-dependency, so this only makes it a
+  normal dependency of one crate.
+- **`hmac` 0.12** and **`getrandom` 0.2** for the request signature and the
+  pairing/code randomness. Both are already pulled in by `pdfcore`.
+
+No `deny.toml` change was needed: every transitive crate is MIT/Apache-2.0 and
+the newest MSRV requirement in the added tree is Rust 1.89 (`safe_arch`/`wide`
+via `imageproc`), the workspace floor. `cargo deny check` in the dependency
+audit job is the gate.

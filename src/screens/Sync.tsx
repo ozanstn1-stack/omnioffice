@@ -37,6 +37,7 @@ import { useRecent, useToasts } from "../lib/store";
 import { toAppError, type SyncProviderId, type SyncResolutionId, type SyncStateId } from "../lib/api";
 import type * as specta from "../lib/generated/specta";
 import { commands, unwrap } from "../lib/typed-ipc";
+import { LanSyncCard } from "./lan-sync-card";
 import { isOswkPath, needsResolution, shortHash, syncStateTone } from "../lib/sync";
 import { fileBaseName, formatBytes, formatDate } from "../lib/format";
 import { pickDocumentTokens } from "../lib/file-tokens";
@@ -954,6 +955,8 @@ export function Sync() {
               <h3 className="text-[13px] font-bold uppercase tracking-wider muted mb-2">{t("sync.downloadTitle")}</h3>
               <p className="text-xs muted">{t("sync.downloadHint")}</p>
             </Card>
+
+            <LanSyncCard />
           </>
         }
       />
