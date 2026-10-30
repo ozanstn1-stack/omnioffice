@@ -4,6 +4,38 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.12.0] - Yerel ağ eşitleme, ikinci aşama
+
+### Added
+
+- **mDNS/DNS-SD discovery (C14 phase 2, #524):** the host advertises
+  `_omnioffice._tcp.local.` with its device id, certificate fingerprint and
+  protocol version in the TXT record; a client browses the same type and gets
+  the address from the resolved A/AAAA record. The first cut's UDP broadcast
+  stays as a fallback for networks without multicast and both answers are
+  merged by device id.
+- **Symmetric pairing:** the pairing request carries the client's certificate
+  fingerprint and, when it shares too, its listening port; the host stores the
+  pin and address, so one pairing works in both directions once both sides
+  share a folder.
+- **Confirmed deletion propagation:** a path in the last common state missing
+  on exactly one side is reported as a deletion. Nothing is removed by a plan;
+  the user confirms `delete_remote`/`restore_local` (removed here) or
+  `delete_local`/`restore_remote` (removed on the peer). The new `delete`
+  request is HMAC-signed and path-checked like every other operation.
+- **Android foreground service for sharing (C14 phase 2, #524):** a `dataSync`
+  service with its own notification channel keeps the shared folder reachable
+  while the app is in the background, and a `WifiManager.MulticastLock` lets
+  mDNS responses through Wi-Fi power saving. Desktop keeps the process-bound
+  behaviour.
+
+### Changed
+
+- The LAN plan card gains a "Removed documents" section with one explicit
+  button per side; the threat model (`docs/lan-sync.md`) documents mDNS,
+  symmetric pairing, deletion confirmation, the Android service limits and the
+  updated residual risks.
+
 ## [6.11.0] - Yerel ağ eşitleme
 
 ### Added
