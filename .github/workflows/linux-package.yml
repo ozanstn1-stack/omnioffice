@@ -1,0 +1,101 @@
+name: Linux packages
+
+# Builds the .deb and .AppImage users install. The desktop CI compiles and
+# tests Linux but does not package it; these files are attached to the matching
+# release on a v* tag.
+#
+# release.yml calls this workflow for every tag. A manual dispatch runs it on
+# a branch and only uploads workflow artifacts, so the packaging can be tried
+# without publishing anything.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One build per ref: a release must never be cancelled midway, and a second
+# dispatch for the same branch should wait rather than race the artifact names.
+concurrency:
+  group: linux-package-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux:
+    name: Debian package and AppImage
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
+      - name: Rust cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Tauri Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf
+      - name: Install npm dependencies
+        run: npm ci
+      - name: Placeholder engine directory
+        # The engine binaries are fetched on Windows (scripts/fetch-engines.ps1).
+        # The bundle resource glob needs the directory to exist; on Linux the app
+        # reports the missing PDF engine and falls back to a system qpdf.
+        run: |
+          mkdir -p src-tauri/resources/engines
+          echo "Engine binaries are fetched by scripts/fetch-engines.ps1." \
+            > src-tauri/resources/engines/README.txt
+      - name: Build
+        # The updater artifacts are Windows-only here, and with no signing key
+        # configured `tauri build` would refuse to produce them; the inline
+        # config turns them off for this bundle. APPIMAGE_EXTRACT_AND_RUN keeps
+        # the AppImage tooling working on a runner without FUSE.
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: >-
+          npx tauri build --bundles deb,appimage
+          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+      - name: Collect artifacts
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          mkdir -p release-artifacts
+          deb=$(find src-tauri/target/release/bundle/deb -maxdepth 1 -name '*.deb' | head -n 1)
+          appimage=$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' | head -n 1)
+          test -n "$deb"
+          test -n "$appimage"
+          cp "$deb" "release-artifacts/OmniOffice-Linux-${version}-amd64.deb"
+          cp "$appimage" "release-artifacts/OmniOffice-Linux-${version}-amd64.AppImage"
+          (cd release-artifacts && sha256sum *.deb *.AppImage > SHA256SUMS-linux.txt)
+          ls -lh release-artifacts
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-packages
+          path: release-artifacts/*
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          for i in $(seq 1 30); do
+            if gh release view "$tag" >/dev/null 2>&1; then break; fi
+            echo "waiting for release $tag ($i/30)"
+            sleep 20
+          done
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            version=$(node -p "require('./package.json').version")
+            # Only this version's CHANGELOG section becomes the release body.
+            node scripts/changelog-section.mjs "$version" > release-notes.md
+            gh release create "$tag" --title "OmniOffice $tag" --notes-file release-notes.md
+          fi
+          gh release upload "$tag" release-artifacts/* --clobber

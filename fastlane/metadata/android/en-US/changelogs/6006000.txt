@@ -1,0 +1,2 @@
+6.6.0: verify signed PDFs on one screen, add a source manifest to a
+generated PDF, and report a problem without uploading anything.

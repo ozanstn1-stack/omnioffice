@@ -1,0 +1,9 @@
+OmniOffice is a local-first productivity suite: Writer, Calc and Impress,
+notes, planner, data and drawing tools, plus the complete PDF toolkit
+the project started from - merge, split, compress, OCR, redact, sign,
+verify signatures, fill forms and compare.
+
+Everything runs on your device. Documents are never uploaded, there is no
+telemetry, AI is opt-in with your own provider and cloud sync stays off
+until you configure it. Macros and embedded scripts in office files are
+never executed.
