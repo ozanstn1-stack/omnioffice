@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 6.9.0
+# Release Readiness — OmniOffice 6.10.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -30,6 +30,51 @@ Two channels carry builds:
 The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
+
+## Implemented (this cycle, 6.10.0) - Otomatik belge tarama
+
+- **On-device page detection (C12, #520):** a downscaled copy of the photo is
+  blurred and run through Canny; a Hough transform turns the edges into lines,
+  two near-parallel pairs and two crossing pairs become quadrilateral
+  candidates, and the best candidate is scored by area and edge support. An
+  Otsu bright-region contour (convex hull, Douglas-Peucker to four corners) is
+  the fallback for low-contrast borders; the corners are scaled back to the
+  full-size photo and ordered top-left..bottom-left.
+  `test:crates/pdfcore/src/page_detect/tests.rs#detects_a_perspective_page`
+  `test:crates/pdfcore/src/page_detect/tests.rs#detects_a_page_turned_on_the_desk`
+  `test:crates/pdfcore/src/page_detect/tests.rs#detects_a_page_under_uneven_light`
+  `test:crates/pdfcore/src/page_detect/tests.rs#scales_the_corners_back_to_the_full_size_photo`
+  `test:crates/pdfcore/src/page_detect/tests.rs#refuses_a_blank_wall`
+  `test:crates/pdfcore/src/page_detect/tests.rs#refuses_a_page_that_fills_too_little_of_the_photo`
+- **Scanner filters (C12, #520):** colour, greyscale and adaptive black and
+  white (a local box-mean threshold); the filtered JPEG goes through the same
+  upright/flatten path as before.
+  `test:crates/pdfcore/src/page_detect/tests.rs#the_black_and_white_filter_keeps_ink_and_paper`
+  `test:crates/pdfcore/src/page_detect/tests.rs#a_filtered_page_is_written_through_the_scan_path`
+- **Scan command surface (C12, #520):** `office_scan_detect` returns the
+  corners in upright pixels (or `detected: false`), `office_scan_pages` takes a
+  per-page filter, and the commands live in `src-tauri/src/scanner.rs`.
+  `test:src-tauri/src/scanner.rs#scan_detects_the_page_corners`
+  `test:src-tauri/src/scanner.rs#scan_reports_no_page_on_a_blank_wall`
+  `test:src-tauri/src/scanner.rs#a_black_and_white_page_goes_through_the_scan_path`
+- **Scanner screen (C12, #520):** every picked or photographed page is
+  auto-cropped and badged, camera shots are queued for batch capture, the
+  filter reaches every page of the build, and a miss falls back to the manual
+  picker.
+  `test:src/screens/Scanner.test.tsx#finds the page corners automatically and badges the page`
+  `test:src/screens/Scanner.test.tsx#keeps a page without a detected outline and says the picker is the fallback`
+  `test:src/screens/Scanner.test.tsx#sends the chosen black-and-white filter with every page`
+  `test:src/lib/scan-detect.test.ts#hands the four corners back when the page was found`
+
+### Not done / Known limitations (6.10.0)
+
+- The detector's accuracy is proven on the synthetic corpus in the tests (a
+  page on a grainy desk, turned, shaded and scaled); the roadmap's real-photo
+  regression corpus is the remaining C12 follow-up.
+  (no test: the photos cannot be committed and the runners have no camera.)
+- Detection runs on a 640 px copy, so a page below roughly a tenth of the frame
+  is refused rather than guessed; the picker is one tap away.
+  (no test: the threshold is deliberate and covered by the too-small-page test.)
 
 ## Implemented (this cycle, 6.9.0) - Yerel Türkçe yapay zekâ görev paketleri
 

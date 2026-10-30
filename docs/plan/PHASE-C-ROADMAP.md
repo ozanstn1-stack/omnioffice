@@ -26,7 +26,7 @@ its own release section; the issue checklist is updated when an item lands.
 | C9. Verification chain (verification only) | Delivered in 6.6.0 | verification screen over the existing certificate/revocation/LTV modules; trust stays unknown |
 | C10. Pre-send check | Delivered in 6.4.1 | `DocumentHealthScreen.tsx`, `document-health.ts` |
 | C11. Mobile ergonomics | Delivered in 6.4.4 and 6.5.1; per-screen audit remains | `bottom-nav.tsx`, touch CSS tests |
-| C12. Real scanner | Partial | Camera capture and manual four-corner picker only; no automatic edge detection |
+| C12. Real scanner | Delivered in 6.10.0 | `pdfcore/src/page_detect.rs` (Canny/Hough detection, Otsu fallback, filters), `office_scan_detect`, auto-crop and batch capture in the scanner screen; the manual picker stays the fallback |
 | C13. Make differences visible | Delivered in 6.8.0 | `office-diff-*.ts` engines, `OfficeDiffView`, Compare Office mode and the version-history comparison |
 | C14. Office-internal sync | Partial | WebDAV/Drive/OneDrive sync and `synccore/src/merge.rs`; no same-network device pairing |
 | C15. Privacy-preserving feedback | Delivered in 6.6.0 | `report-problem.tsx`, `feedback.ts`; the diagnostics report is copied and the issue pre-filled, nothing is uploaded |
@@ -127,7 +127,7 @@ mock provider (`scripts/mock-deepseek.mjs`).
 **Acceptance.** Four task packs; local mode makes no network request (asserted by
 the existing netpolicy test); both UI languages.
 
-### C12. Real scanner — M, 3–4 days
+### C12. Real scanner — delivered in 6.10.0
 
 **Goal.** Detect the page automatically instead of asking for four corners by
 hand.
@@ -199,7 +199,7 @@ disabled command says why; plugin commands keep working.
 | v6.7.0 "Templates" | C6, C1 remainder | Done in 6.7.0 (C1's palette task commands remain) |
 | v6.8.0 "Compare" | C13, tracker and README/RELEASE_READINESS cleanup | Done in 6.8.0 |
 | v6.9.0 "Local AI" | C7 | Done in 6.9.0 |
-| v6.10.0 "Scanner" | C12 | 3–4 days |
+| v6.10.0 "Scanner" | C12 | Done in 6.10.0 |
 | v7.0.0 "Sync" | C14 | 5–8 days |
 
 The order is deliberate: trust features first (the legal and accounting desks
