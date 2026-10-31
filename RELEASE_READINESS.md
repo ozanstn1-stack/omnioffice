@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.1.0
+# Release Readiness — OmniOffice 7.1.1
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -104,6 +104,8 @@ release-train schedule is decided.
   `check`); stale panic=abort, bindings and aicore network comments corrected;
   `files.rs`'s file-wide dead-code allowance replaced with a targeted one;
   README platform sentence fixed.
+  (no test: documentation and script hygiene; the behaviour claims above carry
+  their own markers.)
 
 ## Implemented (this cycle, 7.1.0) - İmzalama hazırlığı ve D10 kararı
 
