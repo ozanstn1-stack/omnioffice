@@ -273,11 +273,9 @@ fn pptx_transition_and_duration_round_trip() {
     let read = read_pptx(&bytes).expect("read PPTX");
     let slide = &read.deck.slides[0];
     println!(
-        "PPTX   transition {}/{}  duration {}/{} ms  warnings {}",
+        "PPTX   transition {}/fade  duration {}/800 ms  warnings {}",
         slide.transition.as_deref().unwrap_or("-"),
-        "fade",
         slide.transition_ms,
-        800,
         read.warnings.len()
     );
     assert_eq!(slide.transition.as_deref(), Some("fade"));
