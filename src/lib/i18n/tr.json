@@ -2024,6 +2024,7 @@
   "lan.trashEmpty": "Çöp kutusu boş.",
   "lan.trashRestore": "Geri yükle",
   "lan.trashPurge": "Süresi dolanları temizle",
+  "lan.progress": "Yükleniyor: {file}… %{percent}",
   "sync.offTitle": "Bulut eşitleme kapalı",
   "sync.offHint": "Buradan etkinleştirene kadar hiçbir şey yüklenmez veya indirilmez.",
   "sync.enable": "Bulut eşitlemeyi etkinleştir",

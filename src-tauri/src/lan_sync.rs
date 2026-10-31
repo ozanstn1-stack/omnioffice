@@ -26,7 +26,7 @@ use synccore::lan::{self, LanClient, LanDevice, LanHost, PairedPeer, PlanItem};
 use synccore::merge::{self, MergeAction, Resolution};
 use synccore::metadata::BaseState;
 use synccore::SyncError;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use store::LanStore;
 
@@ -206,6 +206,13 @@ pub struct LanApplyView {
     pub applied: bool,
     pub action: String,
     pub warning: Option<String>,
+}
+
+/// Upload progress for the UI (one event per chunk).
+fn progress_emitter(app: AppHandle) -> impl Fn(&str, u64, u64) + Send + Sync + 'static {
+    move |path, sent, total| {
+        let _ = app.emit("lan-progress", serde_json::json!({ "path": path, "sent": sent, "total": total }));
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -557,8 +564,9 @@ pub async fn lan_apply(
     let path_for_work = path.clone();
     let identity = store::identity(&directory)?;
     let device_name = identity.name.clone();
+    let progress = progress_emitter(app.clone());
     let (view, base) = tauri::async_runtime::spawn_blocking(move || {
-        apply_one(&peer, &root, &path_for_work, resolution, &bases, &identity.device_id, &device_name)
+        apply_one(&peer, &root, &path_for_work, resolution, &bases, &identity.device_id, &device_name, &progress)
     })
     .await
     .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))??;
@@ -580,8 +588,9 @@ pub async fn lan_sync_safe(app: AppHandle, device_id: String, folder: String) ->
     let bases = bases_for(&store, &device_id);
     let identity = store::identity(&directory)?;
     let device_name = identity.name.clone();
+    let progress = progress_emitter(app.clone());
     let results = tauri::async_runtime::spawn_blocking(move || {
-        apply_safe(&peer, &root, &bases, &identity.device_id, &device_name)
+        apply_safe(&peer, &root, &bases, &identity.device_id, &device_name, &progress)
     })
     .await
     .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))??;
@@ -730,6 +739,7 @@ fn apply_one(
     bases: &HashMap<String, BaseState>,
     device_id: &str,
     name: &str,
+    progress: &(dyn Fn(&str, u64, u64) + Sync),
 ) -> Result<(LanApplyView, Option<String>), PdfError> {
     let plan = plan_for(peer, root, bases, device_id, name)?;
     let item = plan
@@ -746,7 +756,7 @@ fn apply_one(
         }
     };
     let client = LanClient::new(device_id, name);
-    let base = execute(&client, peer, root, path, action)?;
+    let base = execute(&client, peer, root, path, action, progress)?;
     Ok((
         LanApplyView {
             path: path.to_string(),
@@ -764,6 +774,7 @@ fn apply_safe(
     bases: &HashMap<String, BaseState>,
     device_id: &str,
     name: &str,
+    progress: &(dyn Fn(&str, u64, u64) + Sync),
 ) -> Result<SafeReport, PdfError> {
     let plan = plan_for(peer, root, bases, device_id, name)?;
     let client = LanClient::new(device_id, name);
@@ -779,7 +790,7 @@ fn apply_safe(
             });
             continue;
         };
-        match execute(&client, peer, root, &item.path, action) {
+        match execute(&client, peer, root, &item.path, action, progress) {
             Ok(base) => {
                 if let Some(base) = base {
                     updated.push((item.path.clone(), base));
@@ -879,6 +890,7 @@ fn execute(
     root: &Path,
     path: &str,
     action: MergeAction,
+    progress: &(dyn Fn(&str, u64, u64) + Sync),
 ) -> Result<Option<String>, PdfError> {
     match action {
         MergeAction::Nothing => Ok(None),
@@ -888,7 +900,11 @@ fn execute(
             if bytes.len() as u64 > synccore::MAX_TRANSFER_BYTES {
                 return Err(PdfError::InvalidInput("the document is larger than the transfer limit".into()));
             }
-            let remote = client.push(peer, path, &bytes).map_err(sync_error)?;
+            // Chunked and resumable: an Android foreground-service restart in the
+            // middle of a large upload continues from the peer's offset.
+            let remote = client
+                .push_resumable(peer, path, &bytes, |sent, total| progress(path, sent, total))
+                .map_err(sync_error)?;
             Ok(Some(remote.sha256))
         }
         MergeAction::DownloadCloud => {

@@ -9,10 +9,12 @@
  * pressed.
  */
 import { useCallback, useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { Copy, FolderOpen, Loader2, Radio, RefreshCw, Share2, ShieldCheck, Unlink } from "lucide-react";
 import { Badge, Button, Card } from "../components/ui";
 import { LanSyncPlan } from "./lan-sync-plan";
 import { pickDirectoryToken, type FileToken } from "../lib/file-tokens";
+import { formatBytes } from "../lib/format";
 import { useT } from "../lib/i18n";
 import {
   lanApply,
@@ -32,6 +34,7 @@ import {
   lanUnpair,
   type LanDeviceView,
   type LanPlanView,
+  type LanProgress,
   type LanStatusView,
   type LanTrashEntryView,
 } from "../lib/lan-sync";
@@ -43,6 +46,7 @@ export function LanSyncCard() {
   const [devices, setDevices] = useState<LanDeviceView[]>([]);
   const [plan, setPlan] = useState<LanPlanView | null>(null);
   const [trash, setTrash] = useState<LanTrashEntryView[]>([]);
+  const [progress, setProgress] = useState<LanProgress | null>(null);
   const [pairTarget, setPairTarget] = useState<LanDeviceView | null>(null);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -76,8 +80,24 @@ export function LanSyncCard() {
     };
   }, []);
 
+  useEffect(() => {
+    let live = true;
+    let stop: (() => void) | null = null;
+    listen<LanProgress>("lan-progress", (event) => setProgress(event.payload))
+      .then((unlisten) => {
+        if (live) stop = unlisten;
+        else unlisten();
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+      stop?.();
+    };
+  }, []);
+
   const run = async (work: () => Promise<void>) => {
     setBusy(true);
+    setProgress(null);
     try {
       await work();
       setError(null);
@@ -85,6 +105,7 @@ export function LanSyncCard() {
       setError(String(reason));
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   };
 
@@ -358,6 +379,20 @@ export function LanSyncCard() {
         </div>
       </div>
 
+      {progress ? (
+        <div className="flex items-center gap-2 text-xs mt-3" role="status">
+          <Loader2 size={13} className="animate-spin" />
+          <span>
+            {t("lan.progress", {
+              file: progress.path,
+              percent: Math.round((progress.sent / Math.max(progress.total, 1)) * 100),
+            })}
+          </span>
+          <span className="text-xs muted">
+            {formatBytes(progress.sent)} / {formatBytes(progress.total)}
+          </span>
+        </div>
+      ) : null}
       {plan ? (
         <LanSyncPlan
           plan={plan}
