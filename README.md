@@ -708,6 +708,10 @@ trusting a visual check.
   revealing a file goes through Rust commands that only accept existing
   documents with extensions the app itself produces, so a compromised
   renderer cannot ask the shell to launch an executable.
+- **Command ACL**: the webview may only invoke the commands its capability
+  allows. The permission set is generated from the IPC domain lists
+  (`docs/command-acl.md`), so a command that is not registered cannot be
+  called at all and an added one cannot be forgotten.
 - Macros and embedded scripts are never executed; PDF JavaScript is never
   executed by forms; documents always open with macros disabled.
 - ZIP extraction is bounded (entry count, size, compression ratio) to resist
@@ -905,7 +909,7 @@ Next (architecture prepared, not implemented):
 | --- | --- |
 | Screens | 55 |
 | Tauri commands | 253 |
-| Rust tests | 1426 |
+| Rust tests | 1429 |
 | TypeScript test files | 219 |
 | TypeScript test cases (approx.) | 2475 |
 <!-- stats:end -->

@@ -1,0 +1,55 @@
+# Generated from src-tauri/src/ipc.rs by `npm run acl:sync` - do not edit by hand.
+# One permission per IPC domain: Tauri refuses any command a capability does not
+# allow once an application ACL manifest exists, so this file is the whole
+# permission for the commands below.
+
+[[permission]]
+identifier = "allow-app-commands"
+description = "Shared app plumbing: settings, files and tokens, jobs, recent files, updates, diagnostics, platform bridges."
+commands.allow = [
+  "app_info",
+  "update_check",
+  "update_open",
+  "update_download_apk",
+  "update_install_apk",
+  "open_external_link",
+  "diagnostics_report",
+  "engine_status",
+  "ocr_languages",
+  "file_token_pick",
+  "file_token_save",
+  "file_token_release",
+  "file_names",
+  "file_token_pick_directory",
+  "cancel_job",
+  "jobs_list",
+  "jobs_clear_finished",
+  "jobs_register",
+  "jobs_progress",
+  "jobs_finish",
+  "jobs_retry",
+  "load_settings",
+  "save_settings",
+  "load_recent",
+  "add_recent",
+  "clear_recent",
+  "output_exists",
+  "ensure_dir",
+  "suggest_output",
+  "file_sizes",
+  "file_fingerprint",
+  "open_document_file",
+  "reveal_document_file",
+  "dev_launch_context",
+  "android_take_pending_open",
+  "android_open_with_diagnostics",
+  "share_document_file",
+  "log_operation",
+  "load_operations",
+  "clear_operations",
+  "log_frontend",
+  "office_take_launch_files",
+  "person_card_list",
+  "person_card_save",
+  "person_card_delete",
+]

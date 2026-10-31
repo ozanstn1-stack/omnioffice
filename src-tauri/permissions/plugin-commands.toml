@@ -1,0 +1,20 @@
+# Generated from src-tauri/src/ipc.rs by `npm run acl:sync` - do not edit by hand.
+# One permission per IPC domain: Tauri refuses any command a capability does not
+# allow once an application ACL manifest exists, so this file is the whole
+# permission for the commands below.
+
+[[permission]]
+identifier = "allow-plugin-commands"
+description = "Third-party plugins and their sandboxed host calls."
+commands.allow = [
+  "plugin_list",
+  "plugin_read_source",
+  "plugin_install",
+  "plugin_install_from_dialog",
+  "plugin_install_sample",
+  "plugin_delete",
+  "plugin_file_read",
+  "plugin_file_write",
+  "plugin_pdf_read",
+  "plugin_http_request",
+]

@@ -55,6 +55,12 @@ jobs:
       # (screens, commands, tests); a hand-edited stale count fails here.
       - name: Project statistics (generated from the sources)
         run: npm run docs:stats:check
+      # The application command ACL (E1/4b) is generated from the IPC domain
+      # lists; a registered command that is missing a permission would be
+      # refused at runtime, so the generated files and the capability grant are
+      # checked here without building the app.
+      - name: Command ACL (generated from the IPC domains)
+        run: npm run acl:check
       - name: Fastlane metadata (changelogs derived from CHANGELOG.md)
         run: npm run fastlane:check
       # The signing scripts only run in the tag release workflow, so a syntax
@@ -435,6 +441,12 @@ jobs:
       - name: Smoke test (Xvfb)
         timeout-minutes: 10
         run: xvfb-run -a npm run e2e:smoke
+      # The command ACL is enforced inside the webview: this drives the real
+      # IPC bridge, so a refused command and an allowed one are both observed
+      # on the running app rather than in the TOML.
+      - name: Command ACL (Xvfb)
+        timeout-minutes: 10
+        run: xvfb-run -a npm run e2e:acl
       # Engine-free real flows: Writer type -> save, PDF merge and Studio
       # sanitize all run through the same WebDriver session harness.
       - name: Deep flows (Xvfb)

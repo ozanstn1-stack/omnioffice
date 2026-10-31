@@ -138,6 +138,22 @@ release-train schedule is decided.
   `test:src-tauri/src/secret/vault.rs#a_secret_file_is_restricted_to_its_owner`
   `test:src/lib/ai-storage-label.test.ts#names every storage tier the Rust layer reports`
 
+- **Application command ACL (E1/4b, #550):** the webview may only invoke the
+  commands a capability allows. `src-tauri/build.rs` now declares an app ACL
+  manifest, `src-tauri/permissions/` carries one `allow-<domain>-commands`
+  permission per IPC domain generated from the domain lists
+  (`scripts/command-acl.mjs`, `npm run acl:sync`/`acl:check`, run in the Lint
+  job), and `capabilities/default.json` grants the eight permissions to the
+  main window. Because the manifest comes from the registry, an unregistered
+  command cannot be called and an added one cannot be forgotten; the Rust suite
+  compares the two artifacts the build script writes (`acl-manifests.json` and
+  `capabilities.json`) with the registered surface, and the WebDriver scenario
+  `e2e/smoke.mjs --acl` proves the runtime refusal on the running app (an
+  unknown command is rejected, `app_info` still answers).
+  `test:src-tauri/src/command_acl.rs#the_application_acl_is_active`
+  `test:src-tauri/src/command_acl.rs#every_registered_command_is_granted_to_the_main_window`
+  `test:src-tauri/src/command_acl.rs#the_capability_grants_exactly_the_generated_permissions`
+
 ### Not done / Known limitations (7.2.0)
 
 - **Configured output destinations keep a legacy raw path.** Settings' default
@@ -174,10 +190,18 @@ release-train schedule is decided.
   hold, so they are written owner-only (`0600`) rather than vaulted. A file
   written before this change is tightened on its next write, not on read.
   `test:src-tauri/src/secret/vault.rs#a_secret_file_is_restricted_to_its_owner`
-- The command ACL and plugin-install confirmation are the next E1 slices; each
-  needs its own regression test and, for the ACL, a coverage check that every
-  registered command has a permission.
-  (no test: planned slices, tracked in #550.)
+- **The ACL is domain granular.** One permission per IPC domain means a
+  compromised webview can still call every command of a domain the app uses;
+  the ACL bounds the surface, it does not split it per feature. It also
+  separates the webview from the backend, not users from each other: a local
+  process under the same account reaches the files directly, which is what the
+  path policy and the secret store cover.
+  (no test: a design property of the manifest; the enforcement itself is the
+  Rust and WebDriver checks in the claim above.)
+- **Plugin-install confirmation is the last E1 slice.** `plugin_install` still
+  trusts the webview's manifest and source; a Rust-side confirmation and a
+  recorded SHA-256 are the remaining work, with its own regression test.
+  (no test: planned slice, tracked in #550.)
 
 ## Implemented (this cycle, 7.1.1) - E0 hızlı kazanımlar
 

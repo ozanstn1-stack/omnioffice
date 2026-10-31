@@ -1,0 +1,19 @@
+# Generated from src-tauri/src/ipc.rs by `npm run acl:sync` - do not edit by hand.
+# One permission per IPC domain: Tauri refuses any command a capability does not
+# allow once an application ACL manifest exists, so this file is the whole
+# permission for the commands below.
+
+[[permission]]
+identifier = "allow-vault-commands"
+description = "The local document vault and its index."
+commands.allow = [
+  "vault_status",
+  "vault_configure",
+  "vault_scan",
+  "vault_import_files",
+  "vault_search",
+  "vault_search_hybrid",
+  "vault_index_build",
+  "vault_document_text",
+  "vault_clear",
+]

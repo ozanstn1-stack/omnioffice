@@ -1,0 +1,56 @@
+# Generated from src-tauri/src/ipc.rs by `npm run acl:sync` - do not edit by hand.
+# One permission per IPC domain: Tauri refuses any command a capability does not
+# allow once an application ACL manifest exists, so this file is the whole
+# permission for the commands below.
+
+[[permission]]
+identifier = "allow-office-commands"
+description = "The office suite: documents, workbooks, decks, invoices, and the office side tools."
+commands.allow = [
+  "office_startup_files",
+  "office_open_document",
+  "office_save_document",
+  "office_save_unit",
+  "office_export_pdf",
+  "office_export_pdfa",
+  "office_convert",
+  "office_conversion_targets",
+  "office_open_invoice",
+  "office_open_invoice_package",
+  "office_invoice_summary",
+  "office_vat_rates",
+  "office_read_invoice_qr",
+  "office_open_eml",
+  "office_scan_pages",
+  "office_scan_preview",
+  "office_scan_detect",
+  "office_scan_detect_batch",
+  "office_mail_merge",
+  "turkish_spellcheck",
+  "turkish_suggestions",
+  "office_clean",
+  "office_image_footprint",
+  "store_load",
+  "store_save",
+  "store_clear",
+  "history_push",
+  "history_list",
+  "history_load",
+  "history_clear",
+  "recovery_save",
+  "recovery_save_blobs",
+  "recovery_gc_blobs",
+  "recovery_list",
+  "recovery_load",
+  "recovery_discard",
+  "recovery_discard_all",
+  "office_images_to_pdf",
+  "office_pdf_to_images",
+  "office_pdf_to_text",
+  "office_pdf_add_form",
+  "office_pdf_list_form",
+  "office_capabilities",
+  "office_model_capabilities",
+  "office_supported_extensions",
+  "office_compatibility",
+]
