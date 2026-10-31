@@ -4,6 +4,44 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.1.0] - Dağıtım ve platform
+
+### Added
+
+- **Desk tasks in the command palette (D13, #545):** ten profession tasks —
+  redact the selected PDF, extract the VAT summary, create an evidence bundle,
+  review a petition, write an official letter, read a deadline from a
+  notification, run the KVKK check, check document health, clean the document,
+  open the data tools — run from the palette with `Ctrl+Alt+…` shortcuts, take
+  the current file selection with them and preselect the AI pack (VAT). A query
+  now shows a task that cannot run with an `aria-disabled` row and the reason
+  ("Select a document first").
+- **Signing readiness and runbook (D10 preparation, #546):** the release
+  workflow fails fast and names the missing secret when an Authenticode
+  provider is only partially configured; `npm run signing:check` pins the
+  provider detection, the secret list, both verification steps and the runbook;
+  `docs/signing.md` gained the operator checklist for the first signed release.
+- **Reproducibility inputs gate and report (D11 preparation, #547):**
+  `npm run repro:check` pins committed lockfiles, the single workspace version,
+  SHA-pinned actions, `npm ci`, sorted archive inputs and the report structure;
+  the release/desktop builds now pass `--locked`. `docs/reproducibility.md`
+  separates the pinned inputs from what still differs between builds.
+- **Platform decisions (D12, #547):** `docs/platform-decisions.md` records that
+  macOS packaging, Flatpak and Windows ARM64 are declined/deferred for this
+  train, each with its reason and the trigger that reopens it. The supported
+  matrix stays Windows, Linux and Android.
+
+### Changed
+
+- **Windows Authenticode: unsigned by decision for 7.1.0.** The workflow stays
+  ready for SignPath/Azure/PFX, but no provider account is available and the
+  SignPath Foundation route needs the owner's application (and its reputation
+  review); the decision and the revisit triggers are recorded in
+  `docs/signing.md`. SmartScreen therefore still shows "unknown publisher" on
+  the first download.
+- The release notes no longer imply a signed installer before it exists; the
+  signing notes point at the decision record.
+
 ## [7.0.0] - Yerel, eksiksiz
 
 The major bump marks the scope of the train (local capabilities), not a file

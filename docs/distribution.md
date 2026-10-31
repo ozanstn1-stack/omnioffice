@@ -33,9 +33,11 @@ Linux bundle ships without the bundled PDF engine and falls back to a system
 
 ## Windows Authenticode signing
 
-Status: **unsigned**. SmartScreen therefore shows "unknown publisher" on the
-first download; the updater manifest signature (`latest.json.sig`) is a
-different key and does not change that.
+Status: **unsigned by decision for 7.1.0** (no provider account in this
+cycle; see the D10 decision in [`docs/signing.md`](signing.md#d10-decision--unsigned-for-710)).
+SmartScreen therefore shows "unknown publisher" on the first download; the
+updater manifest signature (`latest.json.sig`) is a different key and does not
+change that.
 
 The release workflow is prepared: when one of the signing providers is
 configured through repository secrets, its optional step signs the app exe and

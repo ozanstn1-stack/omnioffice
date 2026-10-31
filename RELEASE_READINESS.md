@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.0.0
+# Release Readiness — OmniOffice 7.1.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -65,8 +65,15 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
-## Implemented (this cycle, 7.1.0) - İmzalama hazırlığı (D10)
+## Implemented (this cycle, 7.1.0) - İmzalama hazırlığı ve D10 kararı
 
+- **D10 closed as unsigned for 7.1.0 (#531):** no Authenticode provider
+  account is available in this cycle, so the release ships unsigned by
+  decision; the SignPath Foundation route is free and needs no business
+  identity, but it requires the owner's application and its reputation review.
+  The workflow, preflight, readiness gate and runbook stay ready, and the
+  decision and revisit triggers are recorded in `docs/signing.md`.
+  (no test: decision record; the workflow readiness below is tested.)
 - **SignPath preflight (D10 preparation, #531):** the release workflow now
   fails fast when a provider is selected by one secret but misses another,
   naming the missing secrets instead of failing deep inside the signing action;
@@ -86,12 +93,13 @@ release-train schedule is decided.
 
 ### Not done / Known limitations (7.1.0)
 
-- **D10 acceptance is still open:** no signed installer exists yet. The SignPath
-  account, identity validation and the five repository secrets are the owner's
-  step; the first signed release must pass `Get-AuthenticodeSignature` (Valid,
-  with a timestamp) and `signtool verify /pa /v` before the "unsigned" notes are
-  flipped. The workflow and runbook are ready for that run.
-  (no test: requires the external signing account and an approved policy.)
+- **D10 acceptance was not met:** the release is unsigned by decision because
+  no provider account exists. Reopening needs either a SignPath Foundation
+  approval (free, reputation-reviewed) or a Certum OSS certificate; the first
+  signed release must then pass `Get-AuthenticodeSignature` (Valid, with a
+  timestamp) and `signtool verify /pa /v`. SmartScreen keeps showing
+  "unknown publisher" until that happens.
+  (no test: requires an external signing account and an approved policy.)
 
 ## Implemented (this cycle, 7.1.0) - Komut paleti görev komutları
 
