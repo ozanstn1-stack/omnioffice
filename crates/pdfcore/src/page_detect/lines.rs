@@ -6,6 +6,7 @@ use image::{GrayImage, Luma};
 use imageproc::contours::find_contours;
 use imageproc::geometry::{approximate_polygon_dp, convex_hull, min_area_rect};
 use imageproc::point::Point as GeoPoint;
+use imageproc::region_labelling::{connected_components, Connectivity};
 use std::f32::consts::{FRAC_PI_2, PI};
 
 /// Angle resolution of the Hough accumulator (one degree per bin).
@@ -155,6 +156,101 @@ fn same_quad(left: &Quad, right: &Quad) -> bool {
     left.iter().zip(right.iter()).all(|(a, b)| ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt() < 3.0)
 }
 
+/// Turns a point cloud (bright-region pixels) into a quadrilateral: convex
+/// hull, then Douglas-Peucker until four corners remain, with the minimum-area
+/// rectangle as the last resort.
+pub(super) fn quad_from_points(points: Vec<GeoPoint<i32>>, longest: f64) -> Option<Quad> {
+    let hull = convex_hull(points);
+    if hull.len() < 4 {
+        return None;
+    }
+    let hull_f32: Vec<GeoPoint<f32>> = hull.iter().map(|point| GeoPoint::new(point.x as f32, point.y as f32)).collect();
+    for step in [0.01, 0.02, 0.03, 0.05, 0.08, 0.12] {
+        let simplified = approximate_polygon_dp(&hull_f32, longest * step, true);
+        if simplified.len() == 4 {
+            return Some([
+                [simplified[0].x, simplified[0].y],
+                [simplified[1].x, simplified[1].y],
+                [simplified[2].x, simplified[2].y],
+                [simplified[3].x, simplified[3].y],
+            ]);
+        }
+    }
+    let rect = min_area_rect(&hull_f32);
+    Some(rect.map(|point| [point.x, point.y]))
+}
+
+/// Two side-by-side bright regions are a two-page spread: the dark spine
+/// disconnects the paper, so the single-outline path cannot see the spread.
+/// Returns `[left, right]` when two large portrait-ish regions sit next to
+/// each other with enough vertical overlap.
+pub(super) fn spread_from_regions(luma: &GrayImage) -> Option<[Quad; 2]> {
+    let (width, height) = luma.dimensions();
+    let threshold = imageproc::contrast::otsu_level(luma);
+    let binary =
+        GrayImage::from_fn(width, height, |x, y| Luma([if luma.get_pixel(x, y)[0] > threshold { 255u8 } else { 0u8 }]));
+    let labels = connected_components(&binary, Connectivity::Eight, Luma([0u8]));
+    let total = (width * height) as f32;
+    let mut stats: std::collections::HashMap<u32, (i32, i32, i32, i32, u32)> = std::collections::HashMap::new();
+    for (x, y, label) in labels.enumerate_pixels() {
+        let value = label[0];
+        if value == 0 {
+            continue;
+        }
+        let entry = stats.entry(value).or_insert((x as i32, y as i32, x as i32, y as i32, 0));
+        entry.0 = entry.0.min(x as i32);
+        entry.1 = entry.1.min(y as i32);
+        entry.2 = entry.2.max(x as i32);
+        entry.3 = entry.3.max(y as i32);
+        entry.4 += 1;
+    }
+    let mut candidates: Vec<(u32, (i32, i32, i32, i32))> = stats
+        .into_iter()
+        .filter(|(_, (left, top, right, bottom, area))| {
+            let region_width = (right - left + 1) as f32;
+            let region_height = (bottom - top + 1) as f32;
+            *area as f32 >= total * 0.06 && region_height >= region_width * 0.8
+        })
+        .map(|(label, (left, top, right, bottom, _))| (label, (left, top, right, bottom)))
+        .collect();
+    candidates
+        .sort_by_key(|(_, (left, top, right, bottom))| std::cmp::Reverse(((right - left) * (bottom - top)) as i64));
+    if candidates.len() < 2 {
+        return None;
+    }
+    let (label_a, box_a) = candidates[0];
+    let (label_b, box_b) = candidates[1];
+    let (left_box, right_box, left_label, right_label) = if box_a.0 + box_a.2 < box_b.0 + box_b.2 {
+        (box_a, box_b, label_a, label_b)
+    } else {
+        (box_b, box_a, label_b, label_a)
+    };
+    // A rotated spread has overlapping bounding boxes; allow a little overlap
+    // as long as the two centres are clearly apart.
+    let smaller_width = (left_box.2 - left_box.0).min(right_box.2 - right_box.0).max(1) as f32;
+    if (left_box.2 - right_box.0) as f32 > smaller_width * 0.25 {
+        return None;
+    }
+    let overlap = (left_box.3.min(right_box.3) - left_box.1.max(right_box.1)) as f32;
+    let smaller_height = (left_box.3 - left_box.1).min(right_box.3 - right_box.1).max(1) as f32;
+    if overlap / smaller_height < 0.6 {
+        return None;
+    }
+    let mut left_points = Vec::new();
+    let mut right_points = Vec::new();
+    for (x, y, label) in labels.enumerate_pixels() {
+        match label[0] {
+            value if value == left_label => left_points.push(GeoPoint::new(x as i32, y as i32)),
+            value if value == right_label => right_points.push(GeoPoint::new(x as i32, y as i32)),
+            _ => {}
+        }
+    }
+    let longest = width.max(height) as f64;
+    let left = quad_from_points(left_points, longest)?;
+    let right = quad_from_points(right_points, longest)?;
+    Some([left, right])
+}
+
 /// The largest bright region (paper usually is bright): its convex hull,
 /// simplified down to four corners.
 pub(super) fn quad_from_bright_regions(luma: &GrayImage) -> Option<Quad> {
@@ -175,26 +271,8 @@ pub(super) fn quad_from_bright_regions(luma: &GrayImage) -> Option<Quad> {
             best_points = Some(contour.points);
         }
     }
-    let points = best_points?;
-    let hull = convex_hull(points);
-    if hull.len() < 4 {
-        return None;
-    }
-    let hull_f32: Vec<GeoPoint<f32>> = hull.iter().map(|point| GeoPoint::new(point.x as f32, point.y as f32)).collect();
     let longest = luma.width().max(luma.height()) as f64;
-    for step in [0.01, 0.02, 0.03, 0.05, 0.08, 0.12] {
-        let simplified = approximate_polygon_dp(&hull_f32, longest * step, true);
-        if simplified.len() == 4 {
-            return Some([
-                [simplified[0].x, simplified[0].y],
-                [simplified[1].x, simplified[1].y],
-                [simplified[2].x, simplified[2].y],
-                [simplified[3].x, simplified[3].y],
-            ]);
-        }
-    }
-    let rect = min_area_rect(&hull_f32);
-    Some(rect.map(|point| [point.x, point.y]))
+    quad_from_points(best_points?, longest)
 }
 
 fn polygon_area_i32(points: &[GeoPoint<i32>]) -> f32 {

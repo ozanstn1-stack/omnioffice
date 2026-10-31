@@ -31,6 +31,42 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.14.0) - Tarayıcı korpusu
+
+- **Measured scanner accuracy (D4, #531):** the committed photo-realistic
+  corpus in `corpus/scanner/` (14 deterministic images: perspective, rotation,
+  dark/light desks, shadows, warm/cool light, vignetting, texture, defocus,
+  edge crop, three two-page spreads) is measured on every commit. 12/14 photos
+  pass the usable-quad rule (mean corner error ≤ 3.5 % of the diagonal and
+  every corner ≤ 6 %) — **85 %** against the 80 % acceptance target. The
+  corpus, its generator and the measured table are documented in
+  `docs/scanner-corpus.md`.
+  `test:crates/pdfcore/src/page_detect/corpus_tests.rs#the_corpus_meets_the_acceptance_target`
+- **Automatic two-page separation (D4, #531):** a capture with two facing
+  pages is split at the spine into two page quads, refined against the photo's
+  Sobel gradients; all three spreads in the corpus return exactly two pages,
+  and the rotated spread is as accurate as a straight single page.
+  `test:crates/pdfcore/src/page_detect/corpus_tests.rs#a_two_page_spread_is_split_and_a_single_page_is_not`
+- **Batch auto-crop detection (D4, #531):** `office_scan_detect_batch` checks a
+  whole capture in one call, so the scanner detects every picked photo at once
+  instead of one by one; a spread returns two page entries under the same photo
+  path.
+  `test:src-tauri/src/scanner.rs#scan_detect_batch_splits_a_two_page_spread`
+
+### Not done / Known limitations (6.14.0)
+
+- The corpus is synthetic (photo-realistic, deterministic, ~2.5 MB) rather than
+  real camera photos: real photos would commit personal data. The real-device
+  photo pass remains the D1 manual acceptance and is not automated.
+  (no test: by design, documented in `docs/scanner-corpus.md`.)
+- Two corpus photos fail on purpose and stay documented: a bright page on a
+  bright desk under a shadow gradient (`02_desk_light_shadow.png`), and the
+  same lighting on a right spread half (`13_spread_light_shadow.png`, its outer
+  corners are pulled into the shadowed desk). Both keep the right page count
+  and fall back to the corner picker rather than writing a wrong crop; 12/14
+  stays above the target.
+  (no test: known failure, measured in the corpus table.)
+
 ## Implemented (this cycle, 6.13.0) - Yerel ağ kapanışı
 
 - **Two-host LAN acceptance contract (D1, #532):** two hosts with two folders

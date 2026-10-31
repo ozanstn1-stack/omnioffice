@@ -139,6 +139,52 @@ fn scan_detect(path: &str) -> Result<ScanDetection, OfficeErrorPayload> {
     })
 }
 
+/// The pages found in one photo for the batch auto-crop flow (D4). A single
+/// page yields one entry; a two-page spread yields two entries that share the
+/// same path, so the scanner can show and crop each half on its own.
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanBatchPage {
+    /// The photo this entry belongs to; a spread repeats its path.
+    pub path: String,
+    pub detected: bool,
+    /// 0..1; area and edge support combined.
+    pub score: f32,
+    /// `[top-left, top-right, bottom-right, bottom-left]` per page in upright
+    /// pixels; empty when nothing was found.
+    #[cfg_attr(feature = "bindings", specta(type = Vec<Vec<[specta_typescript::Number; 2]>>))]
+    pub pages: Vec<Vec<[f32; 2]>>,
+}
+
+/// Finds the pages in several photos in one call (D4): the batch auto-crop
+/// flow detects every captured photo up front instead of one by one. A pair of
+/// facing pages is returned as two quads under the same path.
+#[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
+pub async fn office_scan_detect_batch(paths: Vec<String>) -> Result<Vec<ScanBatchPage>, OfficeErrorPayload> {
+    let _permit = crate::concurrency::acquire().await;
+    let task = tauri::async_runtime::spawn_blocking(move || scan_detect_batch(&paths));
+    task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
+}
+
+fn scan_detect_batch(paths: &[String]) -> Result<Vec<ScanBatchPage>, OfficeErrorPayload> {
+    let mut results = Vec::with_capacity(paths.len());
+    for path in paths {
+        let source = input_path(path)?;
+        let pages = pdfcore::page_detect::detect_file_pages(&source)
+            .map_err(|error| payload(OfficeError::invalid(error.to_string())))?;
+        let score = pages.first().map(|page| page.score).unwrap_or(0.0);
+        results.push(ScanBatchPage {
+            path: path.clone(),
+            detected: !pages.is_empty(),
+            score,
+            pages: pages.into_iter().map(|page| page.corners.map(|corner| [corner[0], corner[1]]).to_vec()).collect(),
+        });
+    }
+    Ok(results)
+}
+
 /// Turns each captured page upright, corrects its perspective when it has
 /// corners and assembles a multi-page PDF through the existing image-to-PDF
 /// writer. The photos come from the system camera (Android) or a file pick.
@@ -302,6 +348,50 @@ mod scan_tests {
             let dy = found[1] - expected[1];
             assert!((dx * dx + dy * dy).sqrt() <= 8.0, "corner {found:?} vs {expected:?}");
         }
+    }
+
+    /// A photo-like spread: one bright sheet with a darker spine band in the
+    /// middle, on a dark desk.
+    fn write_spread(path: &Path) {
+        let (width, height) = (560u32, 400u32);
+        let mut image = image::RgbaImage::from_pixel(width, height, image::Rgba([64, 66, 72, 255]));
+        for y in 40..360 {
+            for x in 30..530 {
+                let value = if (270..292).contains(&x) { 96 } else { 246 };
+                image.put_pixel(x, y, image::Rgba([value, value, value, 255]));
+            }
+        }
+        image.save(path).expect("write spread");
+    }
+
+    #[test]
+    fn scan_detect_batch_splits_a_two_page_spread() {
+        let dir = tempfile::tempdir().unwrap();
+        let spread = dir.path().join("spread.png");
+        let single = dir.path().join("single.png");
+        let blank = dir.path().join("blank.png");
+        write_spread(&spread);
+        write_photo(&single, [[46.0, 30.0], [278.0, 38.0], [270.0, 208.0], [40.0, 200.0]]);
+        image::RgbaImage::from_pixel(320, 240, image::Rgba([120, 120, 120, 255])).save(&blank).expect("write blank");
+
+        let paths: Vec<String> = [&spread, &single, &blank].map(|path| path.to_string_lossy().to_string()).to_vec();
+        let results = scan_detect_batch(&paths).expect("batch detect");
+        assert_eq!(results.len(), 3);
+
+        assert!(results[0].detected, "the spread outline was found");
+        assert_eq!(results[0].pages.len(), 2, "a spread is two pages");
+        assert_eq!(results[0].path, paths[0], "both halves keep the photo path");
+        let left = &results[0].pages[0];
+        let right = &results[0].pages[1];
+        assert!(left.iter().all(|corner| corner[0] < 300.0), "left page: {left:?}");
+        assert!(right.iter().all(|corner| corner[0] > 260.0), "right page: {right:?}");
+
+        assert!(results[1].detected);
+        assert_eq!(results[1].pages.len(), 1, "a single page is one page");
+
+        assert!(!results[2].detected);
+        assert!(results[2].pages.is_empty());
+        assert!(scan_detect_batch(&[]).expect("empty batch").is_empty());
     }
 
     #[test]

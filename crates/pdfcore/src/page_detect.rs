@@ -20,6 +20,8 @@ use crate::scan::Point;
 use image::{DynamicImage, GrayImage, RgbaImage};
 use std::path::Path;
 
+#[cfg(test)]
+mod corpus_tests;
 mod filter;
 mod lines;
 #[cfg(test)]
@@ -27,7 +29,7 @@ mod tests;
 
 pub use filter::apply_filter;
 
-use lines::{quad_candidates_from_lines, quad_from_bright_regions};
+use lines::{quad_candidates_from_lines, quad_from_bright_regions, spread_from_regions};
 
 /// Longest side the detector works on. A 12 MP photo is downscaled to this
 /// before the edge work; the found corners are scaled back afterwards.
@@ -84,13 +86,50 @@ impl ScanFilter {
 /// Finds the page in a photo. Returns `None` when no quadrilateral is
 /// convincing enough; the caller then keeps the manual corner picker.
 pub fn detect_page(image: &RgbaImage) -> Option<PageDetection> {
+    let (quad, score, luma, small_width, small_height) = detect_small(image)?;
+    let refined = refine_quad(quad, &imageproc::gradients::sobel_gradients(&luma));
+    Some(scale_detection(image, refined, score, small_width, small_height))
+}
+
+/// Finds every page in a photo: one page normally, two when the photo is a
+/// two-page spread (a book or a notebook captured open).
+///
+/// The split is only made when the detected outline is clearly landscape and a
+/// darker spine runs down its middle; a landscape single page (a photo in
+/// landscape orientation) keeps one page.
+pub fn detect_pages(image: &RgbaImage) -> Vec<PageDetection> {
+    let Some((quad, score, luma, small_width, small_height)) = detect_small(image) else {
+        return Vec::new();
+    };
+    let magnitude = imageproc::gradients::sobel_gradients(&luma);
+    let refine = |page: Quad| refine_quad(page, &magnitude);
+    if let Some([left, right]) = split_spread(quad, &luma) {
+        return vec![
+            scale_detection(image, refine(left), score, small_width, small_height),
+            scale_detection(image, refine(right), score, small_width, small_height),
+        ];
+    }
+    // A dark spine disconnects the paper, so the single-outline path sees only
+    // one page; two large portrait-ish regions side by side are a spread.
+    if let Some([left, right]) = spread_from_regions(&luma) {
+        return vec![
+            scale_detection(image, refine(left), score, small_width, small_height),
+            scale_detection(image, refine(right), score, small_width, small_height),
+        ];
+    }
+    vec![scale_detection(image, refine(quad), score, small_width, small_height)]
+}
+
+/// The detector's work on the downscaled copy: the winning quad in downscaled
+/// pixels, its score, the luminance copy and the copy's size.
+fn detect_small(image: &RgbaImage) -> Option<(Quad, f32, GrayImage, u32, u32)> {
     let (width, height) = image.dimensions();
     if width < 96 || height < 96 {
         return None;
     }
     let small = downscale(image);
     let (small_width, small_height) = small.dimensions();
-    let luma = DynamicImage::ImageRgba8(small.clone()).to_luma8();
+    let luma = DynamicImage::ImageRgba8(small).to_luma8();
     let blurred = imageproc::filter::gaussian_blur_f32(&luma, BLUR_SIGMA);
     let edges = canny_edges(&blurred);
     if edges.iter().filter(|pixel| **pixel > 0).count() < 32 {
@@ -111,10 +150,178 @@ pub fn detect_page(image: &RgbaImage) -> Option<PageDetection> {
         consider(candidate);
     }
     let (quad, score) = best?;
+    Some((quad, score, luma, small_width, small_height))
+}
+
+fn scale_detection(image: &RgbaImage, quad: Quad, score: f32, small_width: u32, small_height: u32) -> PageDetection {
+    let (width, height) = image.dimensions();
     let scale_x = width as f32 / small_width as f32;
     let scale_y = height as f32 / small_height as f32;
     let corners = crate::scan::order_corners(quad.map(|point| [point[0] * scale_x, point[1] * scale_y]));
-    Some(PageDetection { corners, score })
+    PageDetection { corners, score }
+}
+
+/// The Sobel gradient-magnitude image used to snap an edge to the strongest
+/// nearby gradient.
+type MagnitudeImage = image::ImageBuffer<image::Luma<u16>, Vec<u16>>;
+
+/// Snaps the four edges to the strongest gradient nearby and rebuilds the
+/// corners from the refined lines. The bright-region path can land a few pixels
+/// inside the paper (shading, vignetting); the edges themselves are sharp.
+fn refine_quad(quad: Quad, magnitude: &MagnitudeImage) -> Quad {
+    let quad = crate::scan::order_corners(quad);
+    let mut edges: [Option<(Point, Point)>; 4] = [None; 4];
+    for index in 0..4 {
+        edges[index] = fit_edge(quad[index], quad[(index + 1) % 4], magnitude);
+    }
+    let mut refined = quad;
+    for index in 0..4 {
+        let previous = edges[(index + 3) % 4];
+        let current = edges[index];
+        if let (Some(first), Some(second)) = (previous, current) {
+            if let Some(corner) = intersect_lines(first, second) {
+                refined[index] = corner;
+            }
+        }
+    }
+    if is_convex(&refined) && quad_area(&refined) > 1.0 {
+        refined
+    } else {
+        quad
+    }
+}
+
+/// Fits a line through the strongest gradient sample along one side.
+fn fit_edge(start: Point, end: Point, magnitude: &MagnitudeImage) -> Option<(Point, Point)> {
+    let length = distance(start, end);
+    if length < 8.0 {
+        return None;
+    }
+    let direction = [(end[0] - start[0]) / length, (end[1] - start[1]) / length];
+    let normal = [-direction[1], direction[0]];
+    let (width, height) = magnitude.dimensions();
+    let mut points: Vec<Point> = Vec::new();
+    for sample in 0..=12 {
+        let t = 0.08 + 0.84 * sample as f32 / 12.0;
+        let base = [start[0] + (end[0] - start[0]) * t, start[1] + (end[1] - start[1]) * t];
+        let mut best_offset = 0.0f32;
+        let mut best_strength = 0.0f32;
+        for offset in [-4.0f32, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0] {
+            let x = (base[0] + normal[0] * offset).round();
+            let y = (base[1] + normal[1] * offset).round();
+            if x < 0.0 || y < 0.0 || x >= width as f32 || y >= height as f32 {
+                continue;
+            }
+            let strength = magnitude.get_pixel(x as u32, y as u32)[0] as f32;
+            if strength > best_strength {
+                best_strength = strength;
+                best_offset = offset;
+            }
+        }
+        if best_strength > 0.0 {
+            points.push([base[0] + normal[0] * best_offset, base[1] + normal[1] * best_offset]);
+        }
+    }
+    if points.len() < 4 {
+        return None;
+    }
+    let count = points.len() as f32;
+    let mean_x = points.iter().map(|point| point[0]).sum::<f32>() / count;
+    let mean_y = points.iter().map(|point| point[1]).sum::<f32>() / count;
+    let (mut xx, mut xy, mut yy) = (0.0f32, 0.0f32, 0.0f32);
+    for point in &points {
+        let dx = point[0] - mean_x;
+        let dy = point[1] - mean_y;
+        xx += dx * dx;
+        xy += dx * dy;
+        yy += dy * dy;
+    }
+    let angle = 0.5 * (2.0 * xy).atan2(xx - yy);
+    let fitted = [angle.cos(), angle.sin()];
+    Some(([mean_x, mean_y], [mean_x + fitted[0], mean_y + fitted[1]]))
+}
+
+fn intersect_lines(first: (Point, Point), second: (Point, Point)) -> Option<Point> {
+    let (p1, p2) = first;
+    let (p3, p4) = second;
+    let d1 = [p2[0] - p1[0], p2[1] - p1[1]];
+    let d2 = [p4[0] - p3[0], p4[1] - p3[1]];
+    let determinant = d1[0] * d2[1] - d1[1] * d2[0];
+    if determinant.abs() < 1e-4 {
+        return None;
+    }
+    let t = ((p3[0] - p1[0]) * d2[1] - (p3[1] - p1[1]) * d2[0]) / determinant;
+    Some([p1[0] + d1[0] * t, p1[1] + d1[1] * t])
+}
+
+/// Splits a detected outline into two page quads when it looks like a spread:
+/// clearly landscape (width/height >= 1.25) and with a darker vertical strip
+/// down its middle (the spine and its shadow).
+fn split_spread(quad: Quad, luma: &GrayImage) -> Option<[Quad; 2]> {
+    let quad = crate::scan::order_corners(quad);
+    let [top_left, top_right, bottom_right, bottom_left] = quad;
+    let width = distance(top_left, top_right).max(distance(bottom_left, bottom_right));
+    let height = distance(top_left, bottom_left).max(distance(top_right, bottom_right));
+    if height <= 1.0 || width / height < 1.25 {
+        return None;
+    }
+    let center = mean_luma(quad, luma, 0.46, 0.54, 0.30, 0.70);
+    let left_side = mean_luma(quad, luma, 0.33, 0.41, 0.30, 0.70);
+    let right_side = mean_luma(quad, luma, 0.59, 0.67, 0.30, 0.70);
+    let sides = (left_side + right_side) / 2.0;
+    if center + 2.5 >= sides {
+        return None;
+    }
+    let middle_top = midpoint(top_left, top_right);
+    let middle_bottom = midpoint(bottom_left, bottom_right);
+    Some([[top_left, middle_top, middle_bottom, bottom_left], [middle_top, top_right, bottom_right, middle_bottom]])
+}
+
+fn midpoint(left: Point, right: Point) -> Point {
+    [(left[0] + right[0]) / 2.0, (left[1] + right[1]) / 2.0]
+}
+
+/// Mean luminance of a grid of bilinearly sampled points inside the quad,
+/// between the given fractions of its width and height.
+fn mean_luma(quad: Quad, luma: &GrayImage, left: f32, right: f32, top: f32, bottom: f32) -> f32 {
+    let [top_left, top_right, bottom_right, bottom_left] = quad;
+    let mut total: f32 = 0.0;
+    let mut samples: f32 = 0.0;
+    for row in 0..7 {
+        let v = top + (bottom - top) * (row as f32 + 0.5) / 7.0;
+        for column in 0..9 {
+            let u = left + (right - left) * (column as f32 + 0.5) / 9.0;
+            let x = top_left[0] * (1.0 - u) * (1.0 - v)
+                + top_right[0] * u * (1.0 - v)
+                + bottom_right[0] * u * v
+                + bottom_left[0] * (1.0 - u) * v;
+            let y = top_left[1] * (1.0 - u) * (1.0 - v)
+                + top_right[1] * u * (1.0 - v)
+                + bottom_right[1] * u * v
+                + bottom_left[1] * (1.0 - u) * v;
+            total += bilinear_luma(luma, x, y);
+            samples += 1.0;
+        }
+    }
+    total / samples.max(1.0)
+}
+
+fn bilinear_luma(luma: &GrayImage, x: f32, y: f32) -> f32 {
+    let (width, height) = luma.dimensions();
+    if width == 0 || height == 0 {
+        return 0.0;
+    }
+    let x = x.clamp(0.0, (width.saturating_sub(1)) as f32);
+    let y = y.clamp(0.0, (height.saturating_sub(1)) as f32);
+    let x0 = x.floor() as u32;
+    let y0 = y.floor() as u32;
+    let x1 = (x0 + 1).min(width - 1);
+    let y1 = (y0 + 1).min(height - 1);
+    let fx = x - x0 as f32;
+    let fy = y - y0 as f32;
+    let top = luma.get_pixel(x0, y0)[0] as f32 * (1.0 - fx) + luma.get_pixel(x1, y0)[0] as f32 * fx;
+    let bottom = luma.get_pixel(x0, y1)[0] as f32 * (1.0 - fx) + luma.get_pixel(x1, y1)[0] as f32 * fx;
+    top * (1.0 - fy) + bottom * fy
 }
 
 /// Finds the page by reading `input` the way the viewer shows it (EXIF turned
@@ -122,6 +329,13 @@ pub fn detect_page(image: &RgbaImage) -> Option<PageDetection> {
 pub fn detect_file(input: &Path) -> PdfResult<Option<PageDetection>> {
     let (image, _) = crate::scan::open_upright(input)?;
     Ok(detect_page(&image.to_rgba8()))
+}
+
+/// Finds the page or the two pages of a spread in one photo file (D4). The
+/// batch auto-crop flow calls this once per captured photo.
+pub fn detect_file_pages(input: &Path) -> PdfResult<Vec<PageDetection>> {
+    let (image, _) = crate::scan::open_upright(input)?;
+    Ok(detect_pages(&image.to_rgba8()))
 }
 
 /// Turns a captured page upright, corrects its perspective when it has

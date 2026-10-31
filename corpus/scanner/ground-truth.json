@@ -1,0 +1,436 @@
+{
+  "version": 1,
+  "images": [
+    {
+      "file": "01_desk_dark_perspective.png",
+      "conditions": [
+        "dark desk",
+        "perspective"
+      ],
+      "pages": [
+        [
+          [
+            70,
+            60
+          ],
+          [
+            300,
+            48
+          ],
+          [
+            315,
+            400
+          ],
+          [
+            55,
+            420
+          ]
+        ]
+      ]
+    },
+    {
+      "file": "02_desk_light_shadow.png",
+      "conditions": [
+        "light desk",
+        "shadow"
+      ],
+      "pages": [
+        [
+          [
+            60,
+            55
+          ],
+          [
+            300,
+            70
+          ],
+          [
+            290,
+            415
+          ],
+          [
+            55,
+            400
+          ]
+        ]
+      ]
+    },
+    {
+      "file": "03_rotated_12deg.png",
+      "conditions": [
+        "rotation 12",
+        "dark desk"
+      ],
+      "pages": [
+        [
+          [
+            100.0,
+            58.4
+          ],
+          [
+            326.9,
+            106.6
+          ],
+          [
+            260.0,
+            421.6
+          ],
+          [
+            33.1,
+            373.4
+          ]
+        ]
+      ]
+    },
+    {
+      "file": "04_low_contrast.png",
+      "conditions": [
+        "low contrast",
+        "soft edge"
+      ],
+      "pages": [
+        [
+          [
+            80,
+            70
+          ],
+          [
+            285,
+            66
+          ],
+          [
+            290,
+            410
+          ],
+          [
+            75,
+            405
+          ]
+        ]
+      ]
+    },
+    {
+      "file": "05_busy_desk.png",
+      "conditions": [
+        "busy desk",
+        "perspective"
+      ],
+      "pages": [
+        [
+          [
+            85,
+            65
+          ],
+          [
+            295,
+            78
+          ],
+          [
+            300,
+            405
+          ],
+          [
+            70,
+            390
+          ]
+        ]
+      ]
+    },
+    {
+      "file": "06_warm_light.png",
+      "conditions": [
+        "warm light",
+        "vignette"
+      ],
+      "pages": [
+        [
+          [
+            72,
+            58
+          ],
+          [
+            292,
+            62
+          ],
+          [
+            298,
+            408
+          ],
+          [
+            62,
+            402
+          ]
+        ]
+      ]
+    },
+    {
+      "file": "07_cool_color.png",
+      "conditions": [
+        "cool light",
+        "color cast"
+      ],
+      "pages": [
+        [
+          [
+            76,
+            66
+          ],
+          [
+            296,
+            58
+          ],
+          [
+            290,
+            406
+          ],
+          [
+            66,
+            414
+          ]
+        ]
+      ]
+    },
+    {
+      "file": "08_strong_perspective.png",
+      "conditions": [
+        "strong perspective"
+      ],
+      "pages": [
+        [
+          [
+            112,
+            62
+          ],
+          [
+            288,
+            112
+          ],
+          [
+            258,
+            430
+          ],
+          [
+            46,
+            382
+          ]
+        ]
+      ]
+    },
+    {
+      "file": "09_paper_texture.png",
+      "conditions": [
+        "paper texture",
+        "text lines"
+      ],
+      "pages": [
+        [
+          [
+            66,
+            54
+          ],
+          [
+            294,
+            66
+          ],
+          [
+            306,
+            414
+          ],
+          [
+            58,
+            396
+          ]
+        ]
+      ]
+    },
+    {
+      "file": "10_soft_focus.png",
+      "conditions": [
+        "defocus"
+      ],
+      "pages": [
+        [
+          [
+            72,
+            62
+          ],
+          [
+            296,
+            54
+          ],
+          [
+            308,
+            404
+          ],
+          [
+            58,
+            416
+          ]
+        ]
+      ]
+    },
+    {
+      "file": "11_edge_crop.png",
+      "conditions": [
+        "page near the edge"
+      ],
+      "pages": [
+        [
+          [
+            96,
+            70
+          ],
+          [
+            358,
+            82
+          ],
+          [
+            352,
+            402
+          ],
+          [
+            88,
+            414
+          ]
+        ]
+      ]
+    },
+    {
+      "file": "12_spread_dark.png",
+      "conditions": [
+        "two-page spread",
+        "dark desk",
+        "spine shadow"
+      ],
+      "pages": [
+        [
+          [
+            62,
+            72
+          ],
+          [
+            276.7,
+            65.2
+          ],
+          [
+            275.7,
+            349.2
+          ],
+          [
+            52,
+            356
+          ]
+        ],
+        [
+          [
+            287.3,
+            64.8
+          ],
+          [
+            502,
+            58
+          ],
+          [
+            510,
+            342
+          ],
+          [
+            286.3,
+            348.8
+          ]
+        ]
+      ]
+    },
+    {
+      "file": "13_spread_light_shadow.png",
+      "conditions": [
+        "two-page spread",
+        "light desk",
+        "shadow"
+      ],
+      "pages": [
+        [
+          [
+            62,
+            72
+          ],
+          [
+            276.7,
+            65.2
+          ],
+          [
+            275.7,
+            349.2
+          ],
+          [
+            52,
+            356
+          ]
+        ],
+        [
+          [
+            287.3,
+            64.8
+          ],
+          [
+            502,
+            58
+          ],
+          [
+            510,
+            342
+          ],
+          [
+            286.3,
+            348.8
+          ]
+        ]
+      ]
+    },
+    {
+      "file": "14_spread_rotated.png",
+      "conditions": [
+        "two-page spread",
+        "rotation 7"
+      ],
+      "pages": [
+        [
+          [
+            75.2,
+            29.8
+          ],
+          [
+            292.2,
+            56.4
+          ],
+          [
+            257.1,
+            342.3
+          ],
+          [
+            40.1,
+            315.6
+          ]
+        ],
+        [
+          [
+            302.9,
+            57.7
+          ],
+          [
+            519.9,
+            84.4
+          ],
+          [
+            484.8,
+            370.2
+          ],
+          [
+            267.8,
+            343.6
+          ]
+        ]
+      ]
+    }
+  ]
+}
