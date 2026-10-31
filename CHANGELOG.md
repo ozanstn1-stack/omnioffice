@@ -4,6 +4,37 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.15.0] - Telefon denetimi
+
+### Added
+
+- **Thumb-reach primary actions (D8, #538):** the shared screen shell keeps
+  the actions in the header on a desktop window and moves them, below 900 px,
+  into a bottom action bar with 44 px buttons — 25 of the 55 routes, while the
+  rest keep their primary action in the page flow (forms, cards, editor
+  canvas).
+- **Keyboard overlap handling (D8, #538):** the covered visual-viewport pixels
+  are published as `--keyboard-inset`, so the action bar lifts itself above the
+  on-screen keyboard instead of hiding Save behind it; a focused field is
+  scrolled to the centre and grows a 128 px scroll margin, and the bottom tabs
+  still step aside.
+- **Safe areas and landscape (D8, #538):** `viewport-fit=cover` plus
+  `env(safe-area-inset-*)` padding keep the notch, the punch hole and the system
+  navigation bar clear; at a phone height the action bar becomes one scrolling
+  row, the tabs drop their labels, the drawer narrows to 60 vw and dialogs are
+  capped to the viewport.
+- **Audit report (D8, #538):** `docs/mobile-ergonomics-audit.md` carries the
+  bilingual (en-US / tr-TR) 360 dp acceptance matrix for all 55 routes, a
+  14-scenario device record sheet, the rules the matrix applies and the known
+  limits.
+
+### Changed
+
+- The C11 keyboard helper moved to `lib/viewport.ts` and is shared by the
+  bottom tabs and the new screen action bar; three test suites pin the compact
+  placement, the safe-area/keyboard/landscape CSS and the scroll-into-view
+  helper.
+
 ## [6.14.0] - Tarayıcı korpusu
 
 ### Added
