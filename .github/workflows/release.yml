@@ -118,6 +118,50 @@ jobs:
             echo "::notice::Authenticode provider: $provider"
           fi
 
+      # A provider selected by one secret but missing another would fail deep in
+      # the signing action with an opaque error. Fail here instead, with the
+      # missing names, so adding secrets is a two-minute fix (D10).
+      - name: Check the Authenticode configuration
+        if: steps.authenticode.outputs.provider != 'none'
+        shell: pwsh
+        env:
+          PROVIDER: ${{ steps.authenticode.outputs.provider }}
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          SIGNPATH_PROJECT_SLUG: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          SIGNPATH_SIGNING_POLICY_SLUG: ${{ secrets.SIGNPATH_SIGNING_POLICY_SLUG }}
+          SIGNPATH_ARTIFACT_CONFIGURATION_SLUG: ${{ secrets.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TS_ENDPOINT: ${{ secrets.AZURE_TS_ENDPOINT }}
+          AZURE_TS_ACCOUNT: ${{ secrets.AZURE_TS_ACCOUNT }}
+          AZURE_TS_PROFILE: ${{ secrets.AZURE_TS_PROFILE }}
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          $provider = $env:PROVIDER
+          $required = switch ($provider) {
+            'signpath' {
+              @('SIGNPATH_API_TOKEN', 'SIGNPATH_ORGANIZATION_ID', 'SIGNPATH_PROJECT_SLUG',
+                'SIGNPATH_SIGNING_POLICY_SLUG', 'SIGNPATH_ARTIFACT_CONFIGURATION_SLUG')
+            }
+            'azure' {
+              @('AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET',
+                'AZURE_TS_ENDPOINT', 'AZURE_TS_ACCOUNT', 'AZURE_TS_PROFILE')
+            }
+            'pfx' { @('WINDOWS_CERT_PFX', 'WINDOWS_CERT_PASSWORD') }
+            default { @() }
+          }
+          $missing = @($required | Where-Object {
+            [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_))
+          })
+          if ($missing.Count -gt 0) {
+            Write-Error "Authenticode provider '$provider' is selected but these secrets are missing: $($missing -join ', '). Add them, or remove the provider's secrets to build an unsigned installer."
+            exit 1
+          }
+          Write-Host "Authenticode preflight: $provider has all $($required.Count) required secrets."
+
       - name: Sign the app exe and the installer (PFX / Azure Trusted Signing)
         if: steps.authenticode.outputs.provider == 'pfx' || steps.authenticode.outputs.provider == 'azure'
         shell: pwsh

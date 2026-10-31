@@ -161,3 +161,64 @@ Get-AuthenticodeSignature .\portable\OmniOffice.exe | Format-List Status, Signer
   step 4 or regenerate with `tauri signer sign`.
 - **Checksums changed after signing** — expected: signing changes the bytes, so
   checksums are computed afterwards. Never compute them before signing.
+
+## D10 runbook — the first signed SignPath release
+
+This is the operator checklist for turning the existing conditional signing
+into the first **verified signed** installer. Steps 1–3 happen in SignPath and
+GitHub, steps 4–6 in this repository; the app code does not change.
+
+1. **Apply for the free OSS plan.** Create the account at signpath.io, connect
+   the `ozanstn1-stack/omnioffice` repository and request the open-source
+   (free) plan. The application asks for the project URL and a short
+   description; no payment method is needed for the OSS plan.
+2. **Create the SignPath objects** and note their slugs:
+   - organization → `SIGNPATH_ORGANIZATION_ID` (the UUID in the organization
+     settings) and `SIGNPATH_PROJECT_SLUG`;
+   - project for the release artifacts → `SIGNPATH_PROJECT_SLUG`;
+   - artifact configuration for the two Windows files (the app exe and the
+     NSIS `*-setup.exe`) → `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG`. Both files
+     are uploaded in one artifact; the configuration must list both names.
+   - signing policy for releases (manual approval recommended, so a release
+     cannot be signed by a push alone) → `SIGNPATH_SIGNING_POLICY_SLUG`.
+3. **Add the five secrets** in GitHub → Settings → Secrets and variables →
+   Actions: `SIGNPATH_API_TOKEN`, `SIGNPATH_ORGANIZATION_ID`,
+   `SIGNPATH_PROJECT_SLUG`, `SIGNPATH_SIGNING_POLICY_SLUG`,
+   `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG`. The workflow's **Authenticode
+   preflight** step fails fast and names any missing one; a partial
+   configuration never reaches the signing action.
+4. **Dry-run the workflow** with **Actions → Release → Run workflow** on a
+   scratch branch (a dispatch is not a tag, so the release-upload steps stay
+   skipped, but the Windows build, the SignPath request and the verification
+   run). Approve the request in SignPath when the policy asks. Read the job log:
+   `::notice::Authenticode provider: signpath`, then
+   `restore the signed ...` and `Authenticode preflight: signpath has all 5
+   required secrets.` with no verification error.
+5. **Verify the artifacts** (PowerShell, on a Windows machine):
+   ```powershell
+   Get-AuthenticodeSignature .\OmniOffice-Setup-X.Y.Z.exe | Format-List Status
+   # Status: Valid, with a SignerCertificate and a TimeStamperCertificate
+   signtool verify /pa /v .\OmniOffice-Setup-X.Y.Z.exe
+   Get-AuthenticodeSignature .\portable\OmniOffice.exe | Format-List Status
+   ```
+   Then install the Setup and check the in-app update still verifies: the
+   workflow refreshed the updater signature after Authenticode rewrote the
+   installer, so `latest.json` must stay valid.
+6. **Publish only after the checks pass**, then update the word "unsigned" in
+   `README.md`, `docs/distribution.md` and `RELEASE_READINESS.md` in the
+   release PR. Do not flip those notes before the verification in step 5 —
+   the release notes are the only place users read about SmartScreen.
+
+### Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| Preflight: "these secrets are missing: …" | Add the named GitHub secrets, or remove the provider's secrets to build unsigned. |
+| SignPath: "artifact configuration not found" | The `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG` configuration does not list one of the uploaded names (the app exe or the `*-setup.exe`); update the configuration in SignPath. |
+| Request stays pending | The signing policy requires manual approval; open the SignPath dashboard and approve. |
+| `Get-AuthenticodeSignature` says `NotSigned` | The provider was not detected (no `SIGNPATH_API_TOKEN`) or the upload/restore step failed; check the step log, not the file. |
+| Signature valid but update fails | The updater signature was not refreshed; the workflow step `Refresh the updater signature over the signed installer` must appear before `latest.json`. |
+| Token leaked | Revoke it in SignPath, add a new `SIGNPATH_API_TOKEN`; the signing key lives in SignPath, so there is no local key to rotate. |
+
+The unsigned fallback is unchanged: with no provider secrets the job builds the
+same unsigned installer as before, so forks and local dispatches keep working.

@@ -31,6 +31,34 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 7.1.0) - İmzalama hazırlığı (D10)
+
+- **SignPath preflight (D10 preparation, #531):** the release workflow now
+  fails fast when a provider is selected by one secret but misses another,
+  naming the missing secrets instead of failing deep inside the signing action;
+  the three-provider detection and the unsigned fallback for forks are pinned.
+  `test:src/lib/signing-readiness.test.ts#fails when a required SignPath secret disappears from the workflow`
+  `test:src/lib/signing-readiness.test.ts#pins the unsigned fallback, the preflight and the updater refresh`
+- **First-signed-release runbook (D10 preparation, #531):** `docs/signing.md`
+  gained the operator checklist — free OSS application, the five SignPath
+  secrets, the artifact configuration for the app exe and the NSIS installer, a
+  dispatch dry-run, the `Get-AuthenticodeSignature` / `signtool verify` checks,
+  the updater-signature refresh and a troubleshooting table.
+  `test:src/lib/signing-readiness.test.ts#passes the workflow and runbook invariants`
+  `test:src/lib/signing-readiness.test.ts#fails when the runbook drops the verification step`
+- **Readiness gate (D10 preparation, #531):** `npm run signing:check` validates
+  the workflow and the runbook together (provider guards, required secrets,
+  verification steps, documented commands) and runs in the test suite.
+
+### Not done / Known limitations (7.1.0)
+
+- **D10 acceptance is still open:** no signed installer exists yet. The SignPath
+  account, identity validation and the five repository secrets are the owner's
+  step; the first signed release must pass `Get-AuthenticodeSignature` (Valid,
+  with a timestamp) and `signtool verify /pa /v` before the "unsigned" notes are
+  flipped. The workflow and runbook are ready for that run.
+  (no test: requires the external signing account and an approved policy.)
+
 ## Implemented (this cycle, 7.1.0) - Komut paleti görev komutları
 
 - **Desk tasks in the palette (D13, #531):** ten profession tasks (redact the
