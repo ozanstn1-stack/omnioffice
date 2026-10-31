@@ -8,6 +8,7 @@ const baseStatus = { identity, encrypted: true, host: null, peers: [] };
 let status = { ...baseStatus } as Record<string, unknown>;
 let devices: Record<string, unknown>[] = [];
 let plan: Record<string, unknown> | null = null;
+let trash: Record<string, unknown>[] = [];
 
 const lanStatus = vi.fn(async () => status);
 const lanHostStart = vi.fn(async (_folder: string) => {
@@ -49,6 +50,9 @@ const lanApply = vi.fn(async (_deviceId: string, _folder: string, _path: string,
   warning: null,
 }));
 const lanSyncSafe = vi.fn(async (_deviceId: string, _folder: string) => []);
+const lanTrashList = vi.fn(async () => trash);
+const lanTrashRestore = vi.fn(async (_folder: string, _id: string) => status);
+const lanTrashPurge = vi.fn(async () => 0);
 const lanResolveDeletion = vi.fn(
   async (_deviceId: string, _folder: string, _path: string, _side: string, _resolution: string) => ({
     path: "eski.docx",
@@ -70,6 +74,9 @@ vi.mock("../lib/lan-sync", () => ({
   lanPlan: (...args: unknown[]) => lanPlan(...(args as [string, string])),
   lanApply: (...args: unknown[]) => lanApply(...(args as [string, string, string, string])),
   lanSyncSafe: (...args: unknown[]) => lanSyncSafe(...(args as [string, string])),
+  lanTrashList: (...args: unknown[]) => lanTrashList(...(args as [])),
+  lanTrashRestore: (...args: unknown[]) => lanTrashRestore(...(args as [string, string])),
+  lanTrashPurge: (...args: unknown[]) => lanTrashPurge(...(args as [])),
   lanResolveDeletion: (...args: unknown[]) => lanResolveDeletion(...(args as [string, string, string, string, string])),
 }));
 
@@ -84,6 +91,7 @@ describe("LAN sync card", () => {
     status = { ...baseStatus };
     devices = [];
     plan = null;
+    trash = [];
     vi.clearAllMocks();
   });
 
@@ -200,6 +208,28 @@ describe("LAN sync card", () => {
         "delete_local",
       ),
     );
+  });
+
+  it("lists a trashed deletion and restores it into the picked folder", async () => {
+    trash = [
+      {
+        id: "trash-1",
+        path: "eski.docx",
+        peerDeviceId: "device-b",
+        peerName: "Telefon",
+        side: "remote",
+        sha256: "ee".repeat(32),
+        size: 42,
+        deletedAt: 1_800_000_000,
+      },
+    ];
+    const user = userEvent.setup();
+    render(<LanSyncCard />);
+    expect(await screen.findByText("eski.docx")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Local folder/i }));
+    expect(await screen.findByText("Belgeler")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^Restore$/i }));
+    await waitFor(() => expect(lanTrashRestore).toHaveBeenCalledWith("folder-token", "trash-1"));
   });
 
   it("reports a failed pairing instead of pretending it worked", async () => {

@@ -104,6 +104,24 @@ deletion) or `delete_local` / `restore_remote` (for a remote one). The `delete`
 request is HMAC-signed like every other operation and goes through the same
 path validation, so it can only remove a shared document.
 
+## Deletion safety: trash and tombstones
+
+A confirmed deletion used to be permanent. Every confirmed `delete_remote` or
+`delete_local` now first copies the document into a **local trash** for 30 days:
+a sealed index plus the bytes under the app config directory (200 entries and
+the transfer cap bound it; expired entries are pruned on list/push and can be
+cleared explicitly). "Recently deleted" in the LAN card restores an entry back
+into the selected shared folder - the restore is local, the next comparison
+uploads it like any other local change.
+
+Alongside the trash, the pairing store keeps a **tombstone** per deleted path
+and peer (path, SHA-256, side, timestamp). While a tombstone is live, the plan
+does not report the same deletion again, so a re-sync cannot resurrect a file
+or ask the same question twice; restoring the file clears its tombstone. Base
+entries for paths that are gone on both sides are dropped during the plan, so a
+later file with the same name does not look like a conflict against a stale
+ancestor. Tombstones expire with the same 30-day window.
+
 ## Revocation
 
 * `lan_unpair` on the client forgets the peer (key and pin).
