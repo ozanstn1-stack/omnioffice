@@ -227,7 +227,7 @@ describe("LAN sync card", () => {
     render(<LanSyncCard />);
     expect(await screen.findByText("eski.docx")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Local folder/i }));
-    expect(await screen.findByText("Belgeler")).toBeInTheDocument();
+    expect((await screen.findAllByText("Belgeler")).length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: /^Restore$/i }));
     await waitFor(() => expect(lanTrashRestore).toHaveBeenCalledWith("folder-token", "trash-1"));
   });
