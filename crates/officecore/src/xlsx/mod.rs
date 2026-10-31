@@ -71,6 +71,7 @@ use crate::io::{normalize_hex, write_atomic};
 use crate::model::*;
 use crate::xml::{escape_attr, escape_text, parse_xml, XmlNode, XmlWriter};
 use crate::zip::ZipWriter;
+pub mod shared_formulas;
 use base64::Engine as _;
 use calamine::Reader as CalamineReader;
 use std::collections::BTreeMap;

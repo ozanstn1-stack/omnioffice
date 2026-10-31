@@ -31,6 +31,44 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 7.0.0) - Ofis sadakati
+
+- **DOCX tracked changes in the editor (D6, #531):** `w:ins`/`w:del` runs keep
+  their author and date in the inline tooltip, the kind is a CSS class, and the
+  model (with the revisions) survives a save and reload.
+  `test:src/office/writer/runs.test.ts#marks insertions and deletions with their kind, author and date`
+  `test:crates/officecore/src/docx_tests.rs#roundtrip_tracked_changes`
+- **XLSX shared formulas (D6, #531):** the raw sheet XML is read to keep the
+  base formula per `si` and expand every filled-down follower by shifting its
+  relative A1 references; absolute/mixed references, ranges and quoted strings
+  are handled.
+  `test:crates/officecore/src/xlsx/shared_formulas.rs#shifts_relative_references_only`
+  `test:crates/officecore/tests/office_fidelity.rs#shared_formulas_are_expanded_on_import`
+- **PPTX transition duration (D6, #531):** the duration is written as `advTm`
+  and read back, so a `fade` with 800 ms no longer returns as the 500 ms
+  default.
+  `test:crates/officecore/tests/office_fidelity.rs#pptx_transition_and_duration_round_trip`
+- **Round-trip fidelity corpus (D6, #531):** a programmatic corpus writes,
+  reloads and compares the content counters for DOCX, ODT, XLSX and PPTX; the
+  measured delta is zero for every listed construct and the report lives in
+  `docs/office-fidelity-report.md`.
+  `test:crates/officecore/tests/office_fidelity.rs#docx_round_trip_preserves_every_supported_construct`
+  `test:crates/officecore/tests/office_fidelity.rs#odt_round_trip_preserves_text_styles_and_tables`
+  `test:crates/officecore/tests/office_fidelity.rs#xlsx_round_trip_preserves_values_and_formulas`
+
+### Not done / Known limitations (7.0.0)
+
+- The corpus does not yet count images, charts, comments, headers/footers,
+  numbering or section breaks; those have their own tests but are outside the
+  measured table.
+  (no test: honest gap, listed in `docs/office-fidelity-report.md`.)
+- Dynamic arrays (spill ranges) are imported as their formula text; the app
+  does not calculate spills yet.
+  (no test: not implemented.)
+- The XLSX writer still emits plain formulas (no `t="shared"` output), and ODT
+  tracked changes are a separate importer not covered by the ODT corpus row.
+  (no test: documented limitation.)
+
 ## Implemented (this cycle, 7.0.0) - Yerel yapay zekâ v2
 
 - **Turkish eval harness (D5, #531):** every pack carries golden answers plus

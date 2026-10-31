@@ -1402,11 +1402,12 @@ fn slide_xml(slide: &Slide, theme: &Theme, writer: &mut SlideWriter, export: &mu
             escape_attr(background.trim_start_matches('#'))
         );
     }
+    let advance = if slide.transition_ms > 0 { format!(" advTm=\"{}\"", slide.transition_ms) } else { String::new() };
     let transition = match slide.transition.as_deref() {
-        Some("fade") => "<p:transition spd=\"med\"><p:fade/></p:transition>".to_string(),
-        Some("push") => "<p:transition spd=\"med\"><p:push dir=\"l\"/></p:transition>".to_string(),
-        Some("wipe") => "<p:transition spd=\"med\"><p:wipe dir=\"l\"/></p:transition>".to_string(),
-        Some("slide") => "<p:transition spd=\"med\"><p:slide dir=\"l\"/></p:transition>".to_string(),
+        Some("fade") => format!("<p:transition spd=\"med\"{advance}><p:fade/></p:transition>"),
+        Some("push") => format!("<p:transition spd=\"med\"{advance}><p:push dir=\"l\"/></p:transition>"),
+        Some("wipe") => format!("<p:transition spd=\"med\"{advance}><p:wipe dir=\"l\"/></p:transition>"),
+        Some("slide") => format!("<p:transition spd=\"med\"{advance}><p:slide dir=\"l\"/></p:transition>"),
         _ => String::new(),
     };
     let timing = timing_xml(slide, &writer.shape_ids, &mut export.warnings);

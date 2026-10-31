@@ -1021,6 +1021,9 @@ pub fn read_pptx(bytes: &[u8]) -> OfficeResult<DeckRead> {
             }
         }
         if let Some(transition) = slide_root.find_descendant("transition") {
+            if let Some(advance) = transition.attr_any_ns("advTm").and_then(|value| value.trim().parse::<u32>().ok()) {
+                slide.transition_ms = advance;
+            }
             if transition.find_descendant("fade").is_some() {
                 slide.transition = Some("fade".into());
             } else if transition.find_descendant("push").is_some() {

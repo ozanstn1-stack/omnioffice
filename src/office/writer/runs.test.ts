@@ -279,6 +279,33 @@ describe("formatAtOffset", () => {
   });
 });
 
+describe("tracked changes in the editor (D6)", () => {
+  it("marks insertions and deletions with their kind, author and date", () => {
+    const insert = run("eklendi", {
+      revision: { id: "i1", kind: "insert", author: "Ada", date: "2026-10-31T09:00:00Z", original: null },
+    });
+    const remove = run("silindi", {
+      revision: { id: "d1", kind: "delete", author: "Grace", date: "2026-10-31T10:00:00Z", original: null },
+    });
+    const html = runsToHtml([insert, remove]);
+    expect(html).toContain('class="writer-rev writer-rev-insert"');
+    expect(html).toContain('class="writer-rev writer-rev-delete"');
+    expect(html).toContain('data-revision-kind="insert"');
+    expect(html).toContain('data-revision-author="Ada"');
+    // The tooltip names the author and the moment, not just the author.
+    expect(html).toContain("Ada · 2026-10-31 09:00:00 UTC");
+    expect(html).toContain("Grace · 2026-10-31 10:00:00 UTC");
+  });
+
+  it("hides a deleted run in the final view but keeps its attributes", () => {
+    const remove = run("silindi", {
+      revision: { id: "d1", kind: "delete", author: "Grace", date: "2026-10-31T10:00:00Z", original: null },
+    });
+    expect(runsToHtml([remove], { showRevisions: false })).toBe("");
+    expect(runsToHtml([remove])).toContain("silindi");
+  });
+});
+
 describe("runsToHtml / domToRuns round trip", () => {
   function toDom(html: string): HTMLElement {
     const element = document.createElement("div");
@@ -388,7 +415,10 @@ describe("runsToHtml injection hardening", () => {
     expect(toDom(html).querySelector("[onmouseover]")).toBeNull();
     expect(html).not.toContain('" onmouseover="');
     expect(html).toContain('data-revision-id="rev-1&quot; onmouseover=&quot;alert(1)"');
-    expect(html).toContain('title="A&quot; onmouseover=&quot;alert(1) &lt;i&gt;"');
+    // The tooltip carries the author and the date, both escaped as attributes.
+    expect(html).toContain(
+      'title="A&quot; onmouseover=&quot;alert(1) &lt;i&gt; · 2024&quot; onmouseover=&quot;alert(1)"',
+    );
     // Markup supplied as a text value is escaped rather than parsed.
     expect(html).toContain("&lt;b&gt;bold&lt;/b&gt;");
     expect(html).not.toContain("<b>");

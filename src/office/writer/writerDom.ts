@@ -244,7 +244,10 @@ export function runsToHtml(runs: Run[], options: RunRenderOptions = {}): string 
             : run.revision.kind === "insert"
               ? "writer-rev-insert"
               : "writer-rev-format";
-        html = `<span class="writer-rev ${className}"${revisionAttributes(run)} title="${escapeHtml(run.revision.author)}">${html}</span>`;
+        const who = run.revision.date
+          ? `${run.revision.author} · ${run.revision.date.replace("T", " ").replace("Z", " UTC")}`
+          : run.revision.author;
+        html = `<span class="writer-rev ${className}"${revisionAttributes(run)} title="${escapeHtml(who)}">${html}</span>`;
       } else if (run.revision) {
         html = `<span${revisionAttributes(run)}>${html}</span>`;
       }

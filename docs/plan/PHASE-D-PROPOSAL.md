@@ -1,6 +1,6 @@
 # Phase D proposal — after Phase C
 
-**Status: approved; v6.13.0–v6.15.0 delivered (D1–D4, D8); v7.0.0 in progress (D5, D7).** Phase C is closed (all C1–C15 delivered between
+**Status: approved; v6.13.0–v6.15.0 delivered (D1–D4, D8); v7.0.0 in progress (D5, D6, D7).** Phase C is closed (all C1–C15 delivered between
 v6.4.0 and v6.12.0, tracker #341 closed, every release verified with its
 18-asset SHA-256 manifest). This document proposes what comes next; nothing
 here is committed until the owner picks the items and a tracker issue is
@@ -17,6 +17,7 @@ opened.
 | D8. Mobile ergonomics audit | Delivered in v6.15.0 (thumb-reach action bar, keyboard inset, safe areas, landscape, bilingual 360 dp matrix for 55 routes) |
 | D7. Provenance v2 | Delivered (DOCX manifests, unified source chain, automatic producer embedding) |
 | D5. Local AI v2 | Delivered (eval harness, three new Turkish packs, strict JSON + repair, zero-network isolation, bundling decision) |
+| D6. Office fidelity | Delivered for the measured scope (DOCX tracked changes, XLSX shared formulas, PPTX transition duration, round-trip corpus with a zero delta; images/charts/dynamic arrays remain open) |
 
 The rest of this document is the original proposal, kept as the planning record.
 
@@ -143,6 +144,14 @@ model supports them, and a round-trip fuzz corpus for ODF/DOCX/XLSX.
 
 **Acceptance.** The round-trip corpus reports its fidelity delta per format;
 tracked changes render in the editor and survive a save.
+
+**Status (v7.0.0).** Delivered for the measured scope: DOCX tracked changes
+render with author and date and survive a save, XLSX shared formulas expand on
+import, PPTX transition durations round-trip, and
+`docs/office-fidelity-report.md` records a zero measured delta for DOCX, ODT,
+XLSX and PPTX constructs in the programmatic corpus. Images/charts/comments
+counters, dynamic arrays, shared-formula output and a random fuzzer stay open
+and are listed as such.
 
 ### D7. Provenance v2 (C8 follow-up)
 
