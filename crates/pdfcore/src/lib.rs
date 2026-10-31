@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! pdfcore - local-first PDF processing engine for OmniOffice.
 //!
 //! All operations run on the user's machine. Nothing is uploaded anywhere;

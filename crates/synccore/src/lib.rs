@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Local-first cloud sync foundation.
 //!
 //! Design rules that every module here must respect:

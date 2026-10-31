@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Scores the compatibility corpus (`tests/corpus`, see `docs/corpus.md`).
 //!
 //! Two independent scores per sample:

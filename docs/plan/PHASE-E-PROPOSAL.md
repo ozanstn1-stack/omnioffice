@@ -7,7 +7,7 @@
 | Release | Items | Status |
 |---|---|---|
 | v7.1.1 | E0 quick wins | Delivered (#551) |
-| v7.2.0 | E1 security, E2.2–E2.4 | Next |
+| v7.2.0 | E1 security, E2.2–E2.4 | In progress: CSP + prototype freeze + `forbid(unsafe_code)` landed; raw-path, LAN MITM, secrets, ACL and plugin confirmation are next |
 | v7.3.0 | E4, E5, E2.5 | — |
 | v7.4.0 | E3 | — |
 | v8.0.0 | E2.1, E6 | — |
