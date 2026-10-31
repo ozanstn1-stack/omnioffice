@@ -1,10 +1,20 @@
 # Phase D proposal — after Phase C
 
-**Status: draft for approval.** Phase C is closed (all C1–C15 delivered between
+**Status: approved; first release in progress.** Phase C is closed (all C1–C15 delivered between
 v6.4.0 and v6.12.0, tracker #341 closed, every release verified with its
 18-asset SHA-256 manifest). This document proposes what comes next; nothing
 here is committed until the owner picks the items and a tracker issue is
 opened.
+
+## Progress
+
+| Item | Status |
+|---|---|
+| D1. Real two-device LAN acceptance | Delivered in v6.13.0 (contract test and device guide; the manual pass records in the release notes) |
+| D2. Deletion undo and history | Delivered in v6.13.0 |
+| D3. Resumable Android transfer | Delivered in v6.13.0 (uploads; downloads stay whole-file) |
+
+The rest of this document is the original proposal, kept as the planning record.
 
 ## Starting point (v6.12.0)
 

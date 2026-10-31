@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 6.12.0
+# Release Readiness — OmniOffice 6.13.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -30,6 +30,49 @@ Two channels carry builds:
 The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
+
+## Implemented (this cycle, 6.13.0) - Yerel ağ kapanışı
+
+- **Two-host LAN acceptance contract (D1, #532):** two hosts with two folders
+  run pair, list, download, upload, a symmetric call, a three-way conflict, a
+  confirmed delete and an unpair refusal on loopback; the manual device matrix
+  lives in `docs/lan-sync-acceptance.md`.
+  `test:crates/synccore/tests/lan_two_host.rs#two_hosts_pair_transfer_conflict_delete_and_revoke_over_loopback`
+- **Deletion trash and restore (D2, #533):** a confirmed deletion copies the
+  document into a sealed local trash for 30 days (200-entry cap, transfer cap),
+  rolls the oldest entry out, prunes expired entries from the index and disk,
+  and restores it into the picked folder.
+  `test:src-tauri/src/lan_sync/trash.rs#a_deleted_document_round_trips_through_the_trash`
+  `test:src-tauri/src/lan_sync/trash.rs#expired_entries_are_pruned_from_the_index_and_the_disk`
+  `test:src-tauri/src/lan_sync/trash.rs#the_oldest_entry_makes_room_at_the_limit`
+  `test:src/screens/lan-sync-card.test.tsx#lists a trashed deletion and restores it into the picked folder`
+- **Tombstone history (D2, #533):** confirmed deletions keep path, SHA-256,
+  side and timestamp for 30 days; the plan does not re-report them and clears
+  tombstones when the file returns.
+  `test:src-tauri/src/lan_sync/store.rs#tombstones_are_recorded_pruned_and_cleared`
+- **Resumable chunked upload (D3, #534):** begin/chunk/finish with byte
+  offsets, 512 KiB chunks, a streamed whole-document SHA-256, `.parts/`
+  cleanup after 24 hours, wrong offsets and paths refused; an interrupted
+  upload resumes from the peer's offset in a restarted client and the result
+  is byte-identical.
+  `test:crates/synccore/src/lan/tests.rs#a_chunked_upload_resumes_where_the_previous_run_stopped`
+  `test:crates/synccore/src/lan/tests.rs#a_chunked_upload_checks_offsets_hashes_and_paths`
+- **Upload progress (D3, #534):** each chunk emits a `lan-progress` event and
+  the LAN card shows file, percentage and bytes while it runs.
+  `test:src/screens/lan-sync-card.test.tsx#shows upload progress from the lan-progress event`
+
+### Not done / Known limitations (6.13.0)
+
+- The real two-device pass (Windows ↔ Android, Android ↔ Android, mDNS on a
+  home Wi-Fi) is manual and has not run on the CI runners; D1 provides the
+  matrix and the record sheet.
+  (no test: requires two physical devices.)
+- Downloads are still whole-file; only uploads resume.
+  (no test: by design, documented in the threat model.)
+- The trash and tombstones are local to this device and are not synced; a very
+  carefully recreated file with the same path resurrects after the tombstone
+  expires.
+  (no test: by design, retention is 30 days.)
 
 ## Implemented (this cycle, 6.12.0) - Yerel ağ eşitleme, ikinci aşama
 
