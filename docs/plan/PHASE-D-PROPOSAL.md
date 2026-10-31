@@ -1,6 +1,6 @@
 # Phase D proposal — after Phase C
 
-**Status: approved; v6.13.0–v7.0.0 delivered (D1–D9); v7.1.0 in progress (D13 delivered).** Phase C is closed (all C1–C15 delivered between
+**Status: approved; v6.13.0–v7.0.0 delivered (D1–D9); v7.1.0 in progress (D13 delivered, D10 preparation landed).** Phase C is closed (all C1–C15 delivered between
 v6.4.0 and v6.12.0, tracker #341 closed, every release verified with its
 18-asset SHA-256 manifest). This document proposes what comes next; nothing
 here is committed until the owner picks the items and a tracker issue is
@@ -20,6 +20,7 @@ opened.
 | D6. Office fidelity | Delivered for the measured scope (DOCX tracked changes, XLSX shared formulas, PPTX transition duration, round-trip corpus with a zero delta; images/charts/dynamic arrays remain open) |
 | D9. Performance and memory | Delivered (500-page DOCX and 50k-cell XLSX budget tests, memory ceilings, calc virtualization, PDF worker isolation, named budgets in `docs/performance-budgets.md`) |
 | D13. Command palette task commands | Delivered in v7.1.0 (ten desk tasks with shortcuts, file context, disabled reason; plugin registry unchanged) |
+| D10. First signed Windows release | Preparation delivered (preflight, runbook, readiness gate); signed artifact pending the SignPath account and secrets (owner action) |
 
 The rest of this document is the original proposal, kept as the planning record.
 
@@ -218,6 +219,15 @@ the artifact is verified.
 
 **Acceptance.** `Get-AuthenticodeSignature` and `signtool verify` pass on the
 installer and the portable exe; `latest.json` still verifies in the app.
+
+**Status (v7.1.0 preparation).** The workflow side is ready: three-provider
+detection with an unsigned fallback, a preflight that fails fast and names a
+missing secret, the SignPath request/restore steps, the updater-signature
+refresh and both verification steps; `docs/signing.md` carries the operator
+runbook and `npm run signing:check` pins all of it. **Acceptance stays open**
+until the owner completes the SignPath OSS application, identity validation
+and the five secrets, and the first signed installer passes the two
+verification commands.
 
 ### D11. Catalogue listings and reproducible builds (#502)
 
