@@ -1,4 +1,5 @@
 import type { ScreenId } from "./routes";
+import type { TaskPackId } from "./ai-task-packs";
 
 export type { ScreenId };
 
@@ -10,5 +11,5 @@ export interface PageToolsTab {
 
 export type Navigate = (
   screen: ScreenId,
-  options?: { files?: string[]; pageToolsTab?: PageToolsTab["tab"]; targetPage?: number },
+  options?: { files?: string[]; pageToolsTab?: PageToolsTab["tab"]; targetPage?: number; pack?: TaskPackId },
 ) => void;

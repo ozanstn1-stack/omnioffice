@@ -63,6 +63,7 @@ import type { Navigate, PageToolsTab, ScreenId } from "./lib/nav";
 import { flagEnabled } from "./lib/flags";
 import { useFocusScrollIntoView, useKeyboardInset, useNarrowLayout } from "./lib/viewport";
 import { enabledRoutes, navSections, routeEnabled } from "./lib/routes";
+import type { TaskPackId } from "./lib/ai-task-packs";
 // Route-level code splitting: every screen is loaded when it is first opened,
 // so the startup bundle only carries the shell, the navigation and the shared
 // UI primitives. The lazy import maps the named export to the default export
@@ -156,6 +157,7 @@ import { matchKeybinding, registerCommand, runCommand, setCommandTranslator, unr
 import { resumeJobs, useJobs as useBackgroundJobs } from "./lib/jobs";
 import { installJobRetryHandlers } from "./lib/job-retries";
 import { CommandPalette, GlobalSearch } from "./components/command-palette";
+import { useDeskTaskCommands } from "./lib/use-desk-task-commands";
 import { OverwriteDialog, PasswordDialog, Toasts } from "./components/files";
 import { usePresend } from "./lib/presend-gate";
 import { DataLossDialogHost } from "./components/data-loss-dialog";
@@ -216,6 +218,7 @@ export default function App() {
 
   const [screen, setScreen] = useState<ScreenId>("home");
   const [files, setFiles] = useState<string[]>([]);
+  const [aiPack, setAiPack] = useState<TaskPackId | null>(null);
   const [readerPage, setReaderPage] = useState<number | undefined>(undefined);
   const [pageToolTab, setPageToolTab] = useState<PageToolTab>("extract");
   const [convertTab, setConvertTab] = useState<"pdfToImages" | "imagesToPdf">("pdfToImages");
@@ -242,6 +245,7 @@ export default function App() {
 
   const navigate = useCallback<Navigate>((next, options) => {
     setFiles(options?.files ?? []);
+    setAiPack(options?.pack ?? null);
     if (options?.pageToolsTab) setPageToolTab(options.pageToolsTab);
     if (options?.targetPage) setReaderPage(options.targetPage);
     else setReaderPage(undefined);
@@ -568,6 +572,9 @@ export default function App() {
     return () => ids.forEach((id) => unregisterCommand(id));
   }, [pickFiles]);
 
+  // Desk tasks (D13): the palette runs a task with the current file selection.
+  useDeskTaskCommands(files, navigate);
+
   // One keyboard entry point: the command registry decides. Modified chords
   // run commands (palette, search, open, settings); unmodified keys are left
   // to the focused editor or control.
@@ -709,7 +716,9 @@ export default function App() {
       reader: <Reader initialFiles={files} dragging={dragging} initialPage={readerPage} />,
       ai: <Ai initialFiles={files} dragging={dragging} onNavigate={navigate} />,
       aiLibrary: <AiLibrary onOpenAi={() => navigate("ai")} />,
-      aiPacks: <AiPacks />,
+      // A desk task (D13) navigates with its pack; the key remounts the screen so the
+      // preselection applies even when the user is already on it.
+      aiPacks: <AiPacks key={aiPack ?? "ai-packs"} initialPack={aiPack ?? undefined} />,
       merge: <Merge initialFiles={files} dragging={dragging} />,
       organize: <Organize initialFiles={files} dragging={dragging} />,
       split: <Split initialFiles={files} dragging={dragging} />,
@@ -761,7 +770,7 @@ export default function App() {
       documentHealth: <DocumentHealthScreen onNavigate={navigate} />,
       verify: <VerifyScreen initialFiles={files} dragging={dragging} />,
     }),
-    [convertTab, dragging, files, homeDrop, navigate, pageToolTab, readerPage, securityTab],
+    [aiPack, convertTab, dragging, files, homeDrop, navigate, pageToolTab, readerPage, securityTab],
   );
 
   /** Icons are presentation, not routing: the manifest owns the ids. */

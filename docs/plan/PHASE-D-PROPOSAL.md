@@ -1,6 +1,6 @@
 # Phase D proposal — after Phase C
 
-**Status: approved; v6.13.0–v6.15.0 delivered (D1–D4, D8); v7.0.0 delivered (D5, D6, D7, D9).** Phase C is closed (all C1–C15 delivered between
+**Status: approved; v6.13.0–v7.0.0 delivered (D1–D9); v7.1.0 in progress (D13 delivered).** Phase C is closed (all C1–C15 delivered between
 v6.4.0 and v6.12.0, tracker #341 closed, every release verified with its
 18-asset SHA-256 manifest). This document proposes what comes next; nothing
 here is committed until the owner picks the items and a tracker issue is
@@ -19,6 +19,7 @@ opened.
 | D5. Local AI v2 | Delivered (eval harness, three new Turkish packs, strict JSON + repair, zero-network isolation, bundling decision) |
 | D6. Office fidelity | Delivered for the measured scope (DOCX tracked changes, XLSX shared formulas, PPTX transition duration, round-trip corpus with a zero delta; images/charts/dynamic arrays remain open) |
 | D9. Performance and memory | Delivered (500-page DOCX and 50k-cell XLSX budget tests, memory ceilings, calc virtualization, PDF worker isolation, named budgets in `docs/performance-budgets.md`) |
+| D13. Command palette task commands | Delivered in v7.1.0 (ten desk tasks with shortcuts, file context, disabled reason; plugin registry unchanged) |
 
 The rest of this document is the original proposal, kept as the planning record.
 
@@ -246,6 +247,12 @@ current selection does not fit.
 
 **Acceptance.** Every desk task is reachable from the palette with a shortcut,
 a disabled command explains why, and the plugin command registry keeps working.
+
+**Status (v7.1.0).** Delivered: ten desk tasks with `Ctrl+Alt+…` shortcuts take
+the current file selection (the VAT task also selects its AI pack), a query
+shows a not-runnable task with its reason and `aria-disabled`, and the plugin
+registry suite is untouched. Scoping by an editor text selection is not covered
+yet and is listed as a limitation.
 
 ## Prioritisation
 

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   commandKeybinding,
   getCommand,
+  isCommandEnabled,
   listCommands,
   matchKeybinding,
   registerCommand,
@@ -26,6 +27,7 @@ function define(
     enabled: definition.enabled ?? (() => true),
     execute: definition.execute ?? (() => undefined),
     when: definition.when,
+    disabledReasonKey: definition.disabledReasonKey,
   };
   registerCommand(command);
   tracked.push(command.id);
@@ -35,6 +37,39 @@ function define(
 afterEach(() => {
   for (const id of tracked.splice(0)) unregisterCommand(id);
   setCommandTranslator((key) => key);
+});
+
+describe("disabled commands (D13)", () => {
+  it("keeps a disabled command out of the default search and lists it on request", () => {
+    define({
+      id: "task.redact",
+      titleKey: "desk.redact",
+      category: "task",
+      disabledReasonKey: "palette.taskNeedsFile",
+      enabled: () => false,
+    });
+    expect(searchCommands("redact").map((command) => command.id)).not.toContain("task.redact");
+    const found = searchCommands("redact", undefined, { includeDisabled: true });
+    const command = found.find((entry) => entry.id === "task.redact");
+    expect(command?.disabledReasonKey).toBe("palette.taskNeedsFile");
+    expect(isCommandEnabled(command!)).toBe(false);
+  });
+
+  it("puts enabled matches before disabled ones and still refuses to run them", () => {
+    const execute = vi.fn();
+    define({ id: "task.openRedact", titleKey: "desk.redact", category: "task", execute });
+    define({
+      id: "task.disabledRedact",
+      titleKey: "desk.redact",
+      category: "task",
+      enabled: () => false,
+      disabledReasonKey: "palette.taskNeedsFile",
+    });
+    const found = searchCommands("redact", undefined, { includeDisabled: true }).map((command) => command.id);
+    expect(found.indexOf("task.openRedact")).toBeLessThan(found.indexOf("task.disabledRedact"));
+    expect(runCommand("task.disabledRedact")).toBe(false);
+    expect(execute).not.toHaveBeenCalled();
+  });
 });
 
 describe("command registry", () => {

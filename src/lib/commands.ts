@@ -1,5 +1,17 @@
 export type CommandCategory =
-  "file" | "edit" | "view" | "writer" | "calc" | "impress" | "pdf" | "ai" | "vault" | "plugins" | "settings" | "help";
+  | "file"
+  | "edit"
+  | "view"
+  | "writer"
+  | "calc"
+  | "impress"
+  | "pdf"
+  | "ai"
+  | "vault"
+  | "plugins"
+  | "settings"
+  | "help"
+  | "task";
 
 export interface CommandContext {
   screen?: string;
@@ -16,6 +28,11 @@ export interface CommandDefinition {
   enabled: () => boolean;
   execute: (context?: CommandContext) => void | Promise<void>;
   when?: () => boolean;
+  /**
+   * i18n key explaining why the command cannot run right now (the palette
+   * shows it next to a disabled row, D13).
+   */
+  disabledReasonKey?: string;
 }
 
 export interface CommandKeyEvent {
@@ -107,16 +124,6 @@ function isEnabled(command: CommandDefinition): boolean {
   }
 }
 
-function isVisible(command: CommandDefinition): boolean {
-  if (!isEnabled(command)) return false;
-  if (!command.when) return true;
-  try {
-    return command.when();
-  } catch {
-    return false;
-  }
-}
-
 export function runCommand(id: string, context?: CommandContext): boolean {
   const command = commands.get(id);
   if (!command || !isEnabled(command)) return false;
@@ -196,9 +203,34 @@ function scoreCommand(command: CommandDefinition, query: string, context?: Comma
   return best;
 }
 
-export function searchCommands(query: string, context?: CommandContext): CommandDefinition[] {
-  const visible = listCommands().filter(isVisible);
+/** True when the command can run now (does not throw). */
+export function isCommandEnabled(command: CommandDefinition): boolean {
+  return isEnabled(command);
+}
+
+function isAvailable(command: CommandDefinition): boolean {
+  if (!command.when) return true;
+  try {
+    return command.when();
+  } catch {
+    return false;
+  }
+}
+
+export interface SearchCommandOptions {
+  /** Include commands that are disabled right now (the palette shows why). */
+  includeDisabled?: boolean;
+}
+
+export function searchCommands(
+  query: string,
+  context?: CommandContext,
+  options: SearchCommandOptions = {},
+): CommandDefinition[] {
+  const includeDisabled = options.includeDisabled === true;
+  const visible = listCommands().filter((command) => isAvailable(command) && (includeDisabled || isEnabled(command)));
   const trimmed = query.trim();
+  const enabledRank = (command: CommandDefinition) => (isEnabled(command) ? 0 : 1);
   if (!trimmed) {
     return visible.sort(compareCommands);
   }
@@ -206,7 +238,10 @@ export function searchCommands(query: string, context?: CommandContext): Command
   return visible
     .map((command) => ({ command, score: scoreCommand(command, needle, context) }))
     .filter((entry) => entry.score >= 0)
-    .sort((a, b) => b.score - a.score || compareCommands(a.command, b.command))
+    .sort(
+      (a, b) =>
+        enabledRank(a.command) - enabledRank(b.command) || b.score - a.score || compareCommands(a.command, b.command),
+    )
     .map((entry) => entry.command);
 }
 

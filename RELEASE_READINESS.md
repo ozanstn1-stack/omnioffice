@@ -31,6 +31,32 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 7.1.0) - Komut paleti görev komutları
+
+- **Desk tasks in the palette (D13, #531):** ten profession tasks (redact the
+  selected PDF, VAT summary, evidence bundle, petition, official letter,
+  deadline, KVKK, document health, cleaner, data tools) are registered as
+  palette commands with `Ctrl+Alt+…` shortcuts and take the current file
+  selection with them; the VAT task also selects its AI pack on arrival.
+  `test:src/lib/desk-tasks.test.ts#covers the profession desk screens`
+  `test:src/screens/AiPacks.test.tsx#preselects the pack a desk task navigates with (D13)`
+- **Disabled reason (D13, #531):** a query lists a task that cannot run right
+  now with the reason ("Select a document first"), an `aria-disabled` row and a
+  no-op click instead of hiding it silently.
+  `test:src/lib/commands.test.ts#keeps a disabled command out of the default search and lists it on request`
+  `test:src/components/command-palette.test.tsx#shows a disabled task with the reason and does not run it`
+- **Plugin registry unchanged (D13, #531):** desk tasks are registered and
+  removed by id through the same registry; plugin commands keep their own ids
+  and the existing plugin suite runs unchanged.
+  (no test: the plugin command registry suite runs unchanged and covers it.)
+
+### Not done / Known limitations (7.1.0)
+
+- The palette rows are driven by the current screen's file selection, not by a
+  range/selection inside an editor; a Writer text selection does not yet scope
+  a desk task.
+  (no test: documented limitation.)
+
 ## Implemented (this cycle, 7.0.0) - Performans ve bellek
 
 - **Large-document flows (D9, #531):** a 500-page Writer document opens and

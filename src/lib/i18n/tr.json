@@ -3045,5 +3045,17 @@
   "aiPacks.pack.mahkeme.title": "Mahkeme dilekçesini sınıflandır",
   "aiPacks.pack.mahkeme.description": "Dilekçeden mahkeme türü, konu, talepler ve deliller.",
   "aiPacks.pack.mahkeme.hint": "Yanıt listeden bir mahkeme türü seçer, talepleri ve delilleri listeler, konuyu özetler.",
-  "aiPacks.repaired": "Yanıt doğrulanamadı; bir onarım turu gönderildi."
+  "aiPacks.repaired": "Yanıt doğrulanamadı; bir onarım turu gönderildi.",
+  "desk.redact": "Seçili PDF’i karart",
+  "desk.vat": "KDV özetini çıkar",
+  "desk.evidence": "Delil klasörü oluştur",
+  "desk.petition": "Dilekçeyi incele",
+  "desk.officialLetter": "Resmî yazı yaz",
+  "desk.deadline": "Tebligattan süre çıkar",
+  "desk.kvkk": "KVKK denetimini çalıştır",
+  "desk.health": "Belge sağlığını denetle",
+  "desk.cleaner": "Belgeyi temizle",
+  "desk.data": "Veri araçlarını aç",
+  "palette.category.task": "Masaüstü görevi",
+  "palette.taskNeedsFile": "Önce bir belge seçin"
 }
