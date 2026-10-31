@@ -1,0 +1,4 @@
+6.15.0: Telefon denetimi: birincil eylemler tek elle erişilebilen alt eylem
+çubuğunda; klavye açılınca çubuk yukarı kalkıyor, çentik ve sistem çubuğu
+güvenli alanları korunuyor; yatay modda çevre kompakt. 55 ekranlık 360 dp
+kabul matrisi docs/mobile-ergonomics-audit.md dosyasında (en-US ve tr-TR).
