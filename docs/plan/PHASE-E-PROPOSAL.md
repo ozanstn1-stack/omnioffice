@@ -32,9 +32,9 @@ Parent PR: #548 (v7.1.0), current commits after D13/D10/D11/D12.
 | 2 | `desktop.yml` uploads crash artifacts **before** the `pdf_parse` fuzz target, so a crash there loses its input. | Move the upload step after the last fuzz target. |
 | 3 | `desktop.yml` has no `concurrency`, and none of its 12 jobs has `timeout-minutes` (only steps do). | Add workflow concurrency with cancel for PRs, and job-level timeouts. |
 | 4 | Impress `undo`/`redo` call `setRedoStack` and `edit()` inside the `setUndoStack` updater (impure, double-invoked under StrictMode). | Move to a reducer/`useCalcUndoRedo`-style hook (see E3.3). |
-| 5 | Release builds call `tauri build` / `tauri android build` without `--locked`; `check-reproducibility-inputs.mjs` only checks `cargo build` lines. | Pass `-- --locked`, extend the gate to `tauri build` invocations, dry-run once. |
+| 5 | Release builds call `tauri build` / `tauri android build` without `--locked`; `check-reproducibility-inputs.mjs` only checks `cargo build` lines. | Add a `cargo metadata --locked` preflight before every tauri build (the CLI passthrough is version-dependent), extend the gate to require it, dry-run once. |
 | 6 | Stale comments/docs: `lib.rs:104,231`, `crash_log.rs:3` (panic=abort claim), `aicore/src/lib.rs:1-6`, `deny.toml` zip note (calamine still pins zip 8; the review's "zip 9" claim is wrong), file-wide `dead_code` in `files.rs:15`, README format-gate text and test counts. | Fix each in place; no behaviour change. |
-| 7 | `check` and `check:fast` are byte-identical. | Either drop `check:fast` or make it skip the slow suites (coverage/E2E). |
+| 7 | `check` and `check:fast` are byte-identical. | Drop `check:fast`; `check:all` builds on `check`. |
 | 8 | `cargo audit --ignore` list duplicates `deny.toml`. | Keep `deny.toml` as the only advisory list; let `cargo audit` read it or reduce the duplicate to a comment. |
 | 9 | Generated `specta.ts` is inside the file-size ratchet and grows on every regeneration. | Exclude `src/lib/generated/` from the ratchet; rebuild the baseline. |
 

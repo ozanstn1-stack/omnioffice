@@ -3,7 +3,7 @@
 A local-first productivity suite: a word processor (Writer), a spreadsheet
 (Calc), a presentation editor (Impress), local productivity tools (Notes,
 Planner, Data, Draw, Templates, PDF Forms, Document Vault) and the complete
-PDF toolkit this project started from — on **Windows and Android**.
+PDF toolkit this project started from — on **Windows, Linux and Android**.
 
 Everything runs on your machine. Documents are never uploaded, there is no
 telemetry, AI is opt-in with your own provider, cloud sync is off until you
@@ -897,10 +897,10 @@ Next (architecture prepared, not implemented):
 | Project statistics | Count |
 | --- | --- |
 | Screens | 55 |
-| Tauri commands | 254 |
+| Tauri commands | 253 |
 | Rust tests | 1400 |
-| TypeScript test files | 216 |
-| TypeScript test cases (approx.) | 2462 |
+| TypeScript test files | 217 |
+| TypeScript test cases (approx.) | 2470 |
 <!-- stats:end -->
 
 ## License

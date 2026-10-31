@@ -120,6 +120,10 @@ jobs:
 
       # The Tauri CLI builds the "universal" flavor restricted to the requested
       # target, so each run overwrites the previous APK - collect per target.
+      - name: Lockfile preflight
+        # `tauri build` runs cargo through the CLI; this check makes a stale
+        # Cargo.lock fail here instead of resolving new versions mid-release.
+        run: cargo metadata --locked --format-version 1 > /dev/null
       - name: Build arm64 APK
         run: |
           set -e

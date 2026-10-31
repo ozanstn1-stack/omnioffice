@@ -46,6 +46,13 @@ jobs:
           $beta = "$next-beta.${{ github.run_number }}"
           Write-Output "beta=$beta" >> $env:GITHUB_OUTPUT
           Write-Host "stable $stable -> beta $beta"
+      - name: Lockfile preflight
+        # `tauri build` runs cargo through the CLI; this check makes a stale
+        # Cargo.lock fail here instead of resolving new versions mid-release.
+        shell: pwsh
+        run: |
+          cargo metadata --locked --format-version 1 | Out-Null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Patch the version files for the beta channel
         run: node scripts/set-update-channel.mjs beta ${{ steps.version.outputs.beta }}
       - name: Build the signed bundle

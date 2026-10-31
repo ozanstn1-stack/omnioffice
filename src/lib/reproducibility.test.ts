@@ -67,6 +67,19 @@ describe("reproducibility inputs (D11)", () => {
     expect(result.output).toContain("not pinned to a commit SHA");
   });
 
+  it("fails when a tauri release build loses its lockfile preflight", () => {
+    const directory = copyInputs();
+    const workflow = path.join(directory, ".github", "workflows", "release.yml");
+    const text = readFileSync(workflow, "utf8").replace(
+      /cargo metadata --locked --format-version 1 \| Out-Null/,
+      "cargo metadata",
+    );
+    writeFileSync(workflow, text);
+    const result = run(directory);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("cargo metadata --locked");
+  });
+
   it("fails when the reproducibility report loses its gaps section", () => {
     const directory = copyInputs();
     const report = path.join(directory, "docs", "reproducibility.md");

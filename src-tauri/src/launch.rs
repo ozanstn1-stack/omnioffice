@@ -53,8 +53,10 @@ impl LaunchQueue {
     }
 }
 
-/// Drains the files forwarded by later launches (empty on mobile).
-#[tauri::command]
+/// Drains the files forwarded by later launches (empty on mobile). Internal:
+/// it is called by `startup_tokens`, never by the webview, so it carries no
+/// command attribute (an unregistered command attribute only inflates the
+/// counted command surface).
 fn issue_tokens(paths: Vec<String>) -> Vec<crate::files::FileRef> {
     paths
         .into_iter()

@@ -52,6 +52,10 @@ jobs:
           mkdir -p src-tauri/resources/engines
           echo "Engine binaries are fetched by scripts/fetch-engines.ps1." \
             > src-tauri/resources/engines/README.txt
+      - name: Lockfile preflight
+        # `tauri build` runs cargo through the CLI; this check makes a stale
+        # Cargo.lock fail here instead of resolving new versions mid-release.
+        run: cargo metadata --locked --format-version 1 > /dev/null
       - name: Build
         # The updater artifacts are Windows-only here, and with no signing key
         # configured `tauri build` would refuse to produce them; the inline

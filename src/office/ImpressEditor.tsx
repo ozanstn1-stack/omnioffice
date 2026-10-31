@@ -1198,24 +1198,23 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
     window.addEventListener("pointercancel", onUp);
   };
 
+  // The updaters stay pure: the stack is read before the update and `edit` is
+  // a plain event-handler side effect, so StrictMode does not run the
+  // transition (and the deck edit) twice.
   const undo = () => {
-    setUndoStack((stack) => {
-      const previous = stack[stack.length - 1];
-      if (!previous) return stack;
-      setRedoStack((redos) => [...redos, deck]);
-      edit(tab.id, () => previous);
-      return stack.slice(0, -1);
-    });
+    const previous = undoStack[undoStack.length - 1];
+    if (!previous) return;
+    setUndoStack((stack) => stack.slice(0, -1));
+    setRedoStack((redos) => [...redos, deck]);
+    edit(tab.id, () => previous);
   };
 
   const redo = () => {
-    setRedoStack((stack) => {
-      const next = stack[stack.length - 1];
-      if (!next) return stack;
-      setUndoStack((undos) => [...undos, deck]);
-      edit(tab.id, () => next);
-      return stack.slice(0, -1);
-    });
+    const next = redoStack[redoStack.length - 1];
+    if (!next) return;
+    setRedoStack((stack) => stack.slice(0, -1));
+    setUndoStack((undos) => [...undos, deck]);
+    edit(tab.id, () => next);
   };
 
   // -------------------------------------------------------------------------

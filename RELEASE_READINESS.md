@@ -65,6 +65,46 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (this cycle, 7.1.1) - E0 hızlı kazanımlar
+
+- **Command-surface hygiene (E0, #550):** the unregistered `issue_tokens`
+  lost its `#[tauri::command]` attribute (it was never invocable, but the
+  attribute inflated the counted command surface); the README counts are
+  refreshed by `docs:stats`.
+  (no test: attribute-only cleanup; the IPC totals test pins the registered
+  surface.)
+- **CI guards pinned (E0, #550):** the desktop workflow cancels superseded PR
+  runs but never a master run, every job has a wall-clock timeout, and the fuzz
+  crash-artifact upload now runs after the last target so a `pdf_parse` crash
+  keeps its input.
+  `test:src/lib/ci-workflow.test.ts#cancels superseded PR runs but never a master run`
+  `test:src/lib/ci-workflow.test.ts#gives every job a wall-clock timeout`
+  `test:src/lib/ci-workflow.test.ts#uploads fuzz crash artifacts after the last fuzz target`
+- **Release builds are lock-pinned (E0, #550):** release, beta, Linux-package,
+  Android and the desktop Android target run a `cargo metadata --locked`
+  preflight before the Tauri build; the reproducibility gate requires the
+  preflight and a negative test proves it fails without one.
+  `test:src/lib/ci-workflow.test.ts#runs a cargo metadata --locked preflight before every release tauri build`
+  `test:src/lib/reproducibility.test.ts#fails when a tauri release build loses its lockfile preflight`
+- **Single advisory policy (E0, #550):** the duplicated `cargo audit --ignore`
+  list is gone; `cargo deny check` (advisories, licenses, bans, sources) is the
+  only advisory gate, with the vendored-calamine/zip-9 and updater-zip-4 facts
+  recorded in `deny.toml`.
+  `test:src/lib/ci-workflow.test.ts#keeps a single advisory policy (no cargo audit --ignore duplicate)`
+- **Impress undo/redo purity (E0, #550):** the handlers read the stack before
+  updating and keep the updaters pure, so StrictMode no longer runs the state
+  transition (and `edit`) twice; behaviour is covered by the existing editor
+  suite.
+  (no test: behaviour preserved; the Impress editor suite runs unchanged.)
+- **Generated bindings out of the line ratchet (E0, #550):** `src/lib/generated/`
+  is excluded from `files:check`; its size follows the command surface, not a
+  hand-written budget.
+  (no test: the ratchet gate itself runs in CI.)
+- **Hygiene (E0, #550):** `check:fast` removed (it was byte-identical to
+  `check`); stale panic=abort, bindings and aicore network comments corrected;
+  `files.rs`'s file-wide dead-code allowance replaced with a targeted one;
+  README platform sentence fixed.
+
 ## Implemented (this cycle, 7.1.0) - İmzalama hazırlığı ve D10 kararı
 
 - **D10 closed as unsigned for 7.1.0 (#531):** no Authenticode provider
