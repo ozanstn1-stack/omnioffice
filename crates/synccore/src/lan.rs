@@ -29,7 +29,6 @@
 //! lock. mDNS is the documented follow-up.
 
 use std::collections::HashMap;
-use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, UdpSocket};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -63,15 +62,6 @@ pub const PAIRING_MAX_ATTEMPTS: u8 = 5;
 pub const REQUEST_FRESHNESS_SECS: u64 = 300;
 /// Files one listing may return.
 pub const MAX_LISTED_FILES: usize = 10_000;
-
-/// Chunk size of a resumable upload: large enough to amortise the request
-/// overhead, small enough that an interruption loses little.
-pub const CHUNK_BYTES: usize = 512 * 1024;
-/// Largest chunk the host accepts in one `put_chunk`; a misbehaving client is
-/// refused instead of buffered.
-const MAX_CHUNK_BYTES: usize = 4 * 1024 * 1024;
-/// Partial uploads older than this are removed when the next upload begins.
-const PART_MAX_AGE_SECS: u64 = 24 * 60 * 60;
 
 /// Extensions the LAN sync moves. Anything else stays on the machine.
 const ALLOWED_EXTENSIONS: [&str; 14] =
@@ -534,117 +524,12 @@ impl LanClient {
         })
     }
 
-    /// Begins (or resumes) a chunked upload; returns the offset the peer
-    /// already has for this document.
-    pub fn begin_upload(&self, peer: &PairedPeer, path: &str, total: u64, sha256: &str) -> Result<u64, SyncError> {
-        let (response, _) = self.request(peer, "begin_put", path, None, 0, total, sha256)?;
-        Ok(response.offset)
-    }
-
-    /// Sends one chunk and returns the peer's new offset.
-    pub fn upload_chunk(
-        &self,
-        peer: &PairedPeer,
-        path: &str,
-        offset: u64,
-        chunk: &[u8],
-        total: u64,
-    ) -> Result<u64, SyncError> {
-        let (response, _) = self.request(peer, "put_chunk", path, Some(chunk), offset, total, "")?;
-        Ok(response.offset)
-    }
-
-    /// Verifies the assembled document and moves it into place.
-    pub fn finish_upload(
-        &self,
-        peer: &PairedPeer,
-        path: &str,
-        total: u64,
-        sha256: &str,
-    ) -> Result<RemoteFile, SyncError> {
-        let (response, _) = self.request(peer, "finish_put", path, None, total, total, sha256)?;
-        Ok(RemoteFile {
-            path: path.to_string(),
-            size: response.size,
-            sha256: response.sha256,
-            modified: response.modified,
-        })
-    }
-
-    /// Uploads a document in chunks, resuming at the peer's offset after a
-    /// dropped connection (up to three attempts) and reporting progress.
-    /// A completed attempt that fails the hash check restarts from zero.
-    pub fn push_resumable(
-        &self,
-        peer: &PairedPeer,
-        path: &str,
-        bytes: &[u8],
-        mut on_progress: impl FnMut(u64, u64),
-    ) -> Result<RemoteFile, SyncError> {
-        let total = bytes.len() as u64;
-        if total > crate::MAX_TRANSFER_BYTES {
-            return Err(SyncError::TooLarge(crate::MAX_TRANSFER_BYTES));
-        }
-        let sha256 = hex_encode(&Sha256::digest(bytes));
-        let mut last_error: Option<SyncError> = None;
-        for _attempt in 0..3 {
-            let mut offset = match self.begin_upload(peer, path, total, &sha256) {
-                Ok(offset) => offset.min(total),
-                Err(error) => {
-                    last_error = Some(error);
-                    continue;
-                }
-            };
-            while offset < total {
-                let end = (offset as usize + CHUNK_BYTES).min(bytes.len());
-                match self.upload_chunk(peer, path, offset, &bytes[offset as usize..end], total) {
-                    Ok(next) if next > offset => {
-                        offset = next.min(total);
-                        on_progress(offset, total);
-                    }
-                    Ok(_) => {
-                        last_error = Some(SyncError::Protocol("the peer did not advance the upload".into()));
-                        break;
-                    }
-                    Err(error) => {
-                        last_error = Some(error);
-                        break;
-                    }
-                }
-            }
-            if offset == total {
-                match self.finish_upload(peer, path, total, &sha256) {
-                    Ok(file) => {
-                        on_progress(total, total);
-                        return Ok(file);
-                    }
-                    Err(error) => last_error = Some(error),
-                }
-            }
-        }
-        Err(last_error.unwrap_or_else(|| SyncError::Network("the upload did not finish".into())))
-    }
-
     fn call(
         &self,
         peer: &PairedPeer,
         op: &str,
         path: &str,
         body: Option<&[u8]>,
-    ) -> Result<(Response, Vec<u8>), SyncError> {
-        self.request(peer, op, path, body, 0, 0, "")
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn request(
-        &self,
-        peer: &PairedPeer,
-        op: &str,
-        path: &str,
-        body: Option<&[u8]>,
-        offset: u64,
-        total: u64,
-        sha256: &str,
     ) -> Result<(Response, Vec<u8>), SyncError> {
         if peer.shared_key.is_empty() || peer.fingerprint.is_empty() {
             return Err(SyncError::Auth("this peer has not completed pairing".into()));
@@ -657,9 +542,6 @@ impl LanClient {
             path: path.to_string(),
             timestamp: now_unix(),
             nonce: hex_encode(&random_bytes::<16>()?),
-            offset,
-            total,
-            sha256: sha256.to_string(),
             ..Request::default()
         };
         let body_hash = hex_encode(&Sha256::digest(body.unwrap_or(&[])));
@@ -708,15 +590,6 @@ struct Request {
     /// The client's listening port, `0` when it is not sharing.
     #[serde(default)]
     port: u16,
-    /// Resumable upload: byte offset of this chunk.
-    #[serde(default)]
-    offset: u64,
-    /// Resumable upload: total document size.
-    #[serde(default)]
-    total: u64,
-    /// Resumable upload: SHA-256 of the whole document.
-    #[serde(default)]
-    sha256: String,
 }
 
 impl transport::HasBodyLen for Request {
@@ -748,9 +621,6 @@ struct Response {
     sha256: String,
     #[serde(default)]
     modified: String,
-    /// Resumable upload: the host's current offset after a begin/chunk.
-    #[serde(default)]
-    offset: u64,
 }
 
 impl transport::HasBodyLen for Response {
@@ -802,15 +672,6 @@ fn handle_request(state: &Arc<HostState>, peer: &mut transport::ServerPeer) {
             .map(|response| (response, None)),
         "delete" => authenticated(state, &request, &body)
             .and_then(|_| handle_delete(state, &request.path))
-            .map(|response| (response, None)),
-        "begin_put" => authenticated(state, &request, &body)
-            .and_then(|_| handle_begin_put(state, &request))
-            .map(|response| (response, None)),
-        "put_chunk" => authenticated(state, &request, &body)
-            .and_then(|_| handle_put_chunk(state, &request, &body))
-            .map(|response| (response, None)),
-        "finish_put" => authenticated(state, &request, &body)
-            .and_then(|_| handle_finish_put(state, &request))
             .map(|response| (response, None)),
         _ => Err(refusal("unknown operation")),
     };
@@ -945,113 +806,6 @@ fn handle_delete(state: &Arc<HostState>, path: &str) -> Result<Response, Failure
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Response { ok: true, ..Response::default() }),
         Err(error) => Err(refusal(format!("the document could not be deleted: {error}"))),
     }
-}
-
-// ---------------------------------------------------------------------------
-// Resumable uploads (D3)
-// ---------------------------------------------------------------------------
-
-fn parts_dir(root: &Path) -> PathBuf {
-    root.join(".parts")
-}
-
-/// One partial upload per relative path; the name is the hash of the path, so
-/// no user-controlled component reaches the filesystem as a name.
-fn part_path(root: &Path, path: &str) -> Result<PathBuf, Failure> {
-    let digest = hex_encode(&Sha256::digest(path.as_bytes()));
-    Ok(parts_dir(root).join(format!("{}.part", &digest[..32])))
-}
-
-/// Removes partial uploads nobody resumed within the window.
-fn cleanup_parts(root: &Path) {
-    let Ok(entries) = std::fs::read_dir(parts_dir(root)) else { return };
-    let now = SystemTime::now();
-    for entry in entries.flatten() {
-        let Ok(metadata) = entry.metadata() else { continue };
-        let Ok(modified) = metadata.modified() else { continue };
-        let stale = now.duration_since(modified).map(|age| age.as_secs() > PART_MAX_AGE_SECS).unwrap_or(false);
-        if stale {
-            let _ = std::fs::remove_file(entry.path());
-        }
-    }
-}
-
-fn handle_begin_put(state: &Arc<HostState>, request: &Request) -> Result<Response, Failure> {
-    resolve_path(&state.root, &request.path).map_err(|error| refusal(error.to_string()))?;
-    if request.total == 0 || request.total > crate::MAX_TRANSFER_BYTES {
-        return Err(refusal("the announced document size is not acceptable"));
-    }
-    cleanup_parts(&state.root);
-    std::fs::create_dir_all(parts_dir(&state.root))
-        .map_err(|error| refusal(format!("the upload directory could not be created: {error}")))?;
-    let part = part_path(&state.root, &request.path)?;
-    let mut offset = std::fs::metadata(&part).map(|metadata| metadata.len()).unwrap_or(0);
-    if offset > request.total {
-        let _ = std::fs::remove_file(&part);
-        offset = 0;
-    }
-    Ok(Response { ok: true, offset, ..Response::default() })
-}
-
-fn handle_put_chunk(state: &Arc<HostState>, request: &Request, body: &[u8]) -> Result<Response, Failure> {
-    if body.is_empty() || body.len() > MAX_CHUNK_BYTES {
-        return Err(refusal("the chunk size is not acceptable"));
-    }
-    let part = part_path(&state.root, &request.path)?;
-    let current = std::fs::metadata(&part).map(|metadata| metadata.len()).unwrap_or(0);
-    if current != request.offset {
-        return Err(refusal(format!("the upload is at offset {current}, not {}", request.offset)));
-    }
-    let total = request.total.max(current);
-    if current + body.len() as u64 > total {
-        return Err(refusal("the chunk exceeds the announced document size"));
-    }
-    let mut file = std::fs::OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(&part)
-        .map_err(|error| refusal(format!("the partial upload could not be opened: {error}")))?;
-    file.write_all(body).map_err(|error| refusal(format!("the chunk could not be written: {error}")))?;
-    Ok(Response { ok: true, offset: current + body.len() as u64, ..Response::default() })
-}
-
-fn handle_finish_put(state: &Arc<HostState>, request: &Request) -> Result<Response, Failure> {
-    let part = part_path(&state.root, &request.path)?;
-    let current = std::fs::metadata(&part).map(|metadata| metadata.len()).unwrap_or(0);
-    if current != request.total {
-        return Err(refusal(format!("the upload is incomplete ({current} of {} bytes)", request.total)));
-    }
-    let mut file =
-        std::fs::File::open(&part).map_err(|error| refusal(format!("the partial upload is unreadable: {error}")))?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 64 * 1024];
-    loop {
-        let read =
-            file.read(&mut buffer).map_err(|error| refusal(format!("the partial upload is unreadable: {error}")))?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-    let digest = hex_encode(&hasher.finalize());
-    if digest != request.sha256 {
-        // A poisoned part must not be resumed: the client starts over.
-        let _ = std::fs::remove_file(&part);
-        return Err(refusal("the document hash does not match"));
-    }
-    let target = resolve_path(&state.root, &request.path).map_err(|error| refusal(error.to_string()))?;
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|error| refusal(format!("the folder could not be created: {error}")))?;
-    }
-    if target.exists() {
-        std::fs::remove_file(&target)
-            .map_err(|error| refusal(format!("the old document could not be replaced: {error}")))?;
-    }
-    std::fs::rename(&part, &target)
-        .map_err(|error| refusal(format!("the document could not be moved into place: {error}")))?;
-    let size = std::fs::metadata(&target).map(|metadata| metadata.len()).unwrap_or(request.total);
-    Ok(Response { ok: true, size, sha256: digest, modified: file_modified(&target), ..Response::default() })
 }
 
 // ---------------------------------------------------------------------------
