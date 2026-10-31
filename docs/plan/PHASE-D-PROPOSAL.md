@@ -1,6 +1,6 @@
 # Phase D proposal — after Phase C
 
-**Status: approved; v6.13.0 and v6.14.0 delivered.** Phase C is closed (all C1–C15 delivered between
+**Status: approved; v6.13.0, v6.14.0 and v6.15.0 delivered.** Phase C is closed (all C1–C15 delivered between
 v6.4.0 and v6.12.0, tracker #341 closed, every release verified with its
 18-asset SHA-256 manifest). This document proposes what comes next; nothing
 here is committed until the owner picks the items and a tracker issue is
@@ -14,6 +14,7 @@ opened.
 | D2. Deletion undo and history | Delivered in v6.13.0 |
 | D3. Resumable Android transfer | Delivered in v6.13.0 (uploads; downloads stay whole-file) |
 | D4. Real-photo scanner corpus and page separation | Delivered in v6.14.0 (photo-realistic corpus, measured 12/14 = 85 %, spread split and batch auto-crop) |
+| D8. Mobile ergonomics audit | Delivered in v6.15.0 (thumb-reach action bar, keyboard inset, safe areas, landscape, bilingual 360 dp matrix for 55 routes) |
 
 The rest of this document is the original proposal, kept as the planning record.
 
@@ -151,6 +152,14 @@ matrix for both languages.
 
 **Acceptance.** No screen needs a second hand for its primary action; the
 matrix is attached to the release.
+
+**Status (v6.15.0).** Delivered: the shared screen shell moves header actions
+into a 44 px bottom action bar on phones (25 of 55 routes; the rest keep the
+primary action in the flow), the keyboard inset lifts the bar instead of hiding
+Save, safe-area padding covers the notch and the system bars, landscape keeps
+one scrolling action row and icon-only tabs, and
+`docs/mobile-ergonomics-audit.md` carries the bilingual 360 dp matrix plus the
+14-scenario device record sheet. The physical phone pass stays manual.
 
 ### D9. Performance and memory
 

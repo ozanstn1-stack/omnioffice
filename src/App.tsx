@@ -61,6 +61,7 @@ import packageJson from "../package.json";
 import { devLaunchContext } from "./lib/api";
 import type { Navigate, PageToolsTab, ScreenId } from "./lib/nav";
 import { flagEnabled } from "./lib/flags";
+import { useFocusScrollIntoView, useKeyboardInset, useNarrowLayout } from "./lib/viewport";
 import { enabledRoutes, navSections, routeEnabled } from "./lib/routes";
 // Route-level code splitting: every screen is loaded when it is first opened,
 // so the startup bundle only carries the shell, the navigation and the shared
@@ -224,7 +225,7 @@ export default function App() {
   const [navOpen, setNavOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth < 900);
+  const narrow = useNarrowLayout();
   const backgroundJobs = useBackgroundJobs((state) => state.jobs.filter((job) => job.status === "running").length);
   // WebView history bridge for the Android back button (see lib/nav-history).
   const navSnapshotRef = useRef<NavigationSnapshot>({ screen: "home", files: [] });
@@ -234,11 +235,10 @@ export default function App() {
   // when they get narrow enough for the sidebar to waste space.
   const compactNav = isAndroid() || narrow;
 
-  useEffect(() => {
-    const onResize = () => setNarrow(window.innerWidth < 900);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
+  // Phone ergonomics (D8): publish the keyboard inset for the bottom action
+  // bar and scroll a focused field clear of the keyboard.
+  useKeyboardInset();
+  useFocusScrollIntoView();
 
   const navigate = useCallback<Navigate>((next, options) => {
     setFiles(options?.files ?? []);

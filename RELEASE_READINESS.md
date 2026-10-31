@@ -31,6 +31,45 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 6.15.0) - Mobil ergonomi
+
+- **Thumb-reach primary actions (D8, #531):** the shared `Screen` shell keeps
+  the actions in the header on a desktop window and moves them into a bottom
+  action bar below 900 px — 25 of 55 routes pass their header actions through
+  it, the rest keep the primary action in the page flow. The bar sits above the
+  bottom tabs, pads for the safe area and gives every button a 44 px target.
+  `test:src/components/screen-actions.test.tsx#moves the header actions into the bottom bar at 360 dp`
+- **Keyboard overlap (D8):** the covered visual-viewport pixels are published
+  as `--keyboard-inset`, so the action bar lifts itself above the keyboard
+  instead of hiding Save behind it; a focused field is scrolled to the centre
+  and carries `scroll-margin-block: 128px`.
+  `test:src/lib/viewport.test.ts#scrolls a focused text field into view and leaves other elements alone`
+- **Safe areas, notation and the keyboard bar (D8):** `viewport-fit=cover`
+  plus `env(safe-area-inset-*)` padding reach the notch, the punch hole and the
+  system navigation bar; landscape pads the notch edges on the content column.
+  `test:src/components/mobile-ergonomics.test.ts#keeps the bottom action bar above the safe area and the keyboard`
+- **Landscape (D8):** at a phone height the action bar is one scrolling row,
+  the bottom tabs drop their labels, the drawer narrows to 60 vw and dialogs are
+  capped to the viewport.
+  `test:src/components/mobile-ergonomics.test.ts#keeps the chrome from eating a landscape phone screen`
+- **Audit report and matrix (D8):** `docs/mobile-ergonomics-audit.md` carries the
+  bilingual (en-US / tr-TR) 360 dp acceptance matrix for all 55 routes, the 14
+  scenario device record sheet and the known limits. The structural guarantees
+  are pinned by CI; the physical phone pass is the manual step recorded there.
+  (no test: the device matrix is a manual pass; the structure is covered by the
+  tests above.)
+
+### Not done / Known limitations (6.15.0)
+
+- The physical 360 dp device pass (notch, gesture bar, keyboard, landscape,
+  Turkish long labels) is manual; the VPS cannot take device screenshots, so
+  only the existing C11 phone screenshots and the record sheet ship with this
+  cycle.
+  (no test: requires a physical device.)
+- Two-finger gestures in the Office editors (pinch-zoom on the canvas) stay
+  two-finger by design; no primary action needs a second hand.
+  (no test: documented in the audit.)
+
 ## Implemented (this cycle, 6.14.0) - Tarayıcı korpusu
 
 - **Measured scanner accuracy (D4, #531):** the committed photo-realistic

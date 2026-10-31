@@ -1,5 +1,16 @@
 import type { ReactNode } from "react";
+import { useNarrowLayout } from "../lib/viewport";
 
+/**
+ * The shared screen shell.
+ *
+ * On a desktop window the header carries the screen's actions on the right. On
+ * a phone-sized window (D8) the actions move out of the header and into a
+ * bottom action bar: primary buttons stay inside the thumb's reach instead of
+ * sitting at the top of a 360 dp screen, and the bar lifts itself above the
+ * on-screen keyboard through `--keyboard-inset`. Screens that pass no actions
+ * keep the plain scrolling page.
+ */
 export function Screen({
   title,
   subtitle,
@@ -11,18 +22,30 @@ export function Screen({
   actions?: ReactNode;
   children: ReactNode;
 }) {
+  const narrow = useNarrowLayout();
+  const content = (
+    <div className="screen-content mx-auto px-7 py-6 flex flex-col gap-5" style={{ maxWidth: 1180 }}>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[21px] font-bold tracking-tight leading-tight">{title}</h1>
+          {subtitle ? <p className="muted text-[13.5px] mt-1">{subtitle}</p> : null}
+        </div>
+        {!narrow && actions ? <div className="flex items-center gap-2 shrink-0">{actions}</div> : null}
+      </header>
+      {children}
+    </div>
+  );
+  if (!narrow) {
+    return <div className="h-full overflow-y-auto overflow-x-hidden">{content}</div>;
+  }
   return (
-    <div className="h-full overflow-y-auto overflow-x-hidden">
-      <div className="screen-content mx-auto px-7 py-6 flex flex-col gap-5" style={{ maxWidth: 1180 }}>
-        <header className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-[21px] font-bold tracking-tight leading-tight">{title}</h1>
-            {subtitle ? <p className="muted text-[13.5px] mt-1">{subtitle}</p> : null}
-          </div>
-          {actions ? <div className="flex items-center gap-2 shrink-0">{actions}</div> : null}
-        </header>
-        {children}
-      </div>
+    <div className="screen-shell flex h-full flex-col">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">{content}</div>
+      {actions ? (
+        <div className="screen-action-bar" role="toolbar">
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 }
