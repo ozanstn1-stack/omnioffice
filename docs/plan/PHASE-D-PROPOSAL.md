@@ -1,6 +1,6 @@
 # Phase D proposal — after Phase C
 
-**Status: approved; v6.13.0–v6.15.0 delivered (D1–D4, D8); v7.0.0 in progress (D5, D6, D7).** Phase C is closed (all C1–C15 delivered between
+**Status: approved; v6.13.0–v6.15.0 delivered (D1–D4, D8); v7.0.0 items D5, D6, D7 and D9 delivered — release train next.** Phase C is closed (all C1–C15 delivered between
 v6.4.0 and v6.12.0, tracker #341 closed, every release verified with its
 18-asset SHA-256 manifest). This document proposes what comes next; nothing
 here is committed until the owner picks the items and a tracker issue is
@@ -18,6 +18,7 @@ opened.
 | D7. Provenance v2 | Delivered (DOCX manifests, unified source chain, automatic producer embedding) |
 | D5. Local AI v2 | Delivered (eval harness, three new Turkish packs, strict JSON + repair, zero-network isolation, bundling decision) |
 | D6. Office fidelity | Delivered for the measured scope (DOCX tracked changes, XLSX shared formulas, PPTX transition duration, round-trip corpus with a zero delta; images/charts/dynamic arrays remain open) |
+| D9. Performance and memory | Delivered (500-page DOCX and 50k-cell XLSX budget tests, memory ceilings, calc virtualization, PDF worker isolation, named budgets in `docs/performance-budgets.md`) |
 
 The rest of this document is the original proposal, kept as the planning record.
 
@@ -196,6 +197,14 @@ wired into CI.
 
 **Acceptance.** Named budgets for open/save/render and cold start; a regression
 fails CI when a benchmark exceeds its trend band.
+
+**Status (v7.0.0).** Delivered: always-on 500-page DOCX and 50 000-cell XLSX
+open/save tests with printed measurements, counting-allocator memory ceilings
+(384/256 MiB), a calc render-window test for 50 000 rows, a pinned 2–8 slot
+heavy-work bound with panic-release tests, and
+`docs/performance-budgets.md` naming the product budgets, test bounds, the
+isolation rule and the criterion trend gate. Cold start stays a manual release
+measurement, and the criterion trend check is advisory by policy.
 
 ## Workstream C — distribution and trust
 
