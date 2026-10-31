@@ -26,10 +26,14 @@ import {
   lanResolveDeletion,
   lanStatus,
   lanSyncSafe,
+  lanTrashList,
+  lanTrashPurge,
+  lanTrashRestore,
   lanUnpair,
   type LanDeviceView,
   type LanPlanView,
   type LanStatusView,
+  type LanTrashEntryView,
 } from "../lib/lan-sync";
 
 export function LanSyncCard() {
@@ -38,6 +42,7 @@ export function LanSyncCard() {
   const [folder, setFolder] = useState<FileToken | null>(null);
   const [devices, setDevices] = useState<LanDeviceView[]>([]);
   const [plan, setPlan] = useState<LanPlanView | null>(null);
+  const [trash, setTrash] = useState<LanTrashEntryView[]>([]);
   const [pairTarget, setPairTarget] = useState<LanDeviceView | null>(null);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -45,7 +50,9 @@ export function LanSyncCard() {
 
   const refresh = useCallback(async () => {
     try {
-      setStatus(await lanStatus());
+      const [next, entries] = await Promise.all([lanStatus(), lanTrashList()]);
+      setStatus(next);
+      setTrash(entries ?? []);
       setError(null);
     } catch (reason) {
       setError(String(reason));
@@ -54,10 +61,11 @@ export function LanSyncCard() {
 
   useEffect(() => {
     let live = true;
-    lanStatus()
-      .then((next) => {
+    Promise.all([lanStatus(), lanTrashList()])
+      .then(([next, entries]) => {
         if (!live) return;
         setStatus(next);
+        setTrash(entries ?? []);
         setError(null);
       })
       .catch((reason: unknown) => {
@@ -127,6 +135,7 @@ export function LanSyncCard() {
       if (!folder) return;
       await lanSyncSafe(deviceId, folder.token);
       setPlan(await lanPlan(deviceId, folder.token));
+      setTrash((await lanTrashList()) ?? []);
     });
 
   const resolveDeletion = (
@@ -139,6 +148,7 @@ export function LanSyncCard() {
       if (!folder) return;
       await lanResolveDeletion(deviceId, folder.token, path, side, resolution);
       setPlan(await lanPlan(deviceId, folder.token));
+      setTrash((await lanTrashList()) ?? []);
     });
 
   const resolve = (deviceId: string, path: string, resolution: "keep_local" | "keep_cloud" | "keep_both") =>
@@ -146,6 +156,20 @@ export function LanSyncCard() {
       if (!folder) return;
       await lanApply(deviceId, folder.token, path, resolution);
       setPlan(await lanPlan(deviceId, folder.token));
+      setTrash((await lanTrashList()) ?? []);
+    });
+
+  const restoreTrash = (id: string) =>
+    run(async () => {
+      if (!folder) return;
+      setStatus(await lanTrashRestore(folder.token, id));
+      setTrash((await lanTrashList()) ?? []);
+    });
+
+  const purgeTrash = () =>
+    run(async () => {
+      await lanTrashPurge();
+      setTrash((await lanTrashList()) ?? []);
     });
 
   const copyCode = () => {
@@ -343,6 +367,36 @@ export function LanSyncCard() {
           onResolveDeletion={resolveDeletion}
         />
       ) : null}
+      <div className="flex flex-col gap-2 mt-4">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <strong className="text-sm">{t("lan.trashTitle")}</strong>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void purgeTrash()}>
+            {t("lan.trashPurge")}
+          </Button>
+        </div>
+        <p className="text-xs muted">{t("lan.trashNote")}</p>
+        {trash.length ? (
+          <ul className="flex flex-col gap-1 text-sm">
+            {trash.map((entry) => (
+              <li
+                key={entry.id}
+                className="flex items-center justify-between gap-2 p-1.5 rounded bg-surface/50 border border-border/40"
+              >
+                <span className="truncate">{entry.path}</span>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Badge tone="warn">{t(entry.side === "local" ? "lan.deletionLocal" : "lan.deletionRemote")}</Badge>
+                  <span className="text-xs muted">{entry.peerName}</span>
+                  <Button size="sm" disabled={busy || !folder} onClick={() => void restoreTrash(entry.id)}>
+                    {t("lan.trashRestore")}
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs muted">{t("lan.trashEmpty")}</p>
+        )}
+      </div>
       <p className="text-xs muted mt-3">{t("lan.note")}</p>
     </Card>
   );

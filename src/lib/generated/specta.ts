@@ -91,6 +91,16 @@ export const commands = {
 	 *  without this call.
 	 */
 	lanResolveDeletion: (deviceId: string, folder: string, path: string, side: string, resolution: string) => typedError<LanDeletionResultView, PdfError>(__TAURI_INVOKE("lan_resolve_deletion", { deviceId, folder, path, side, resolution })),
+	/**  The local trash, newest first (expired entries are pruned on the way). */
+	lanTrashList: () => typedError<LanTrashEntryView[], PdfError>(__TAURI_INVOKE("lan_trash_list")),
+	/**
+	 *  Writes a trashed document back into the shared folder (no upload; the next
+	 *  plan sees it as a local change). Consumes the trash entry and clears its
+	 *  tombstone.
+	 */
+	lanTrashRestore: (folder: string, id: string) => typedError<LanStatusView_Serialize, PdfError>(__TAURI_INVOKE("lan_trash_restore", { folder, id })),
+	/**  Drops expired trash entries (older than the 30-day retention window). */
+	lanTrashPurge: () => typedError<number, PdfError>(__TAURI_INVOKE("lan_trash_purge")),
 	oauthStatus: () => __TAURI_INVOKE<OAuthStatus[]>("oauth_status"),
 	oauthSaveClient: (provider: string, clientId: string, clientSecret: string | null, tenant: string | null) => typedError<OAuthStatus[], PdfError>(__TAURI_INVOKE("oauth_save_client", { provider, clientId, clientSecret, tenant })),
 	oauthConnect: (provider: string) => typedError<OAuthStatus[], PdfError>(__TAURI_INVOKE("oauth_connect", { provider })),
@@ -2992,6 +3002,19 @@ export type LanStatusView_Serialize = {
 	encrypted: boolean,
 	host: LanHostView_Serialize | null,
 	peers: LanPeerView[],
+};
+
+/**  One document in the local trash ("Recently deleted", 30 days). */
+export type LanTrashEntryView = {
+	id: string,
+	path: string,
+	peerDeviceId: string,
+	peerName: string,
+	/**  `local` (removed here) or `remote` (removed on the peer). */
+	side: string,
+	sha256: string,
+	size: number,
+	deletedAt: number,
 };
 
 /**  What [`add_validation_data`] wrote into the document. */
