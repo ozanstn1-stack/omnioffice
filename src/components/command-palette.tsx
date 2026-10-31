@@ -9,7 +9,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { VaultSearchHit, VaultSearchRequest_Deserialize } from "../lib/generated/specta";
 import { call } from "../lib/typed-call";
 import { Command as CommandIcon, FileText, Search } from "lucide-react";
-import { runCommand, searchCommands, type CommandDefinition, type CommandContext } from "../lib/commands";
+import {
+  isCommandEnabled,
+  runCommand,
+  searchCommands,
+  type CommandDefinition,
+  type CommandContext,
+} from "../lib/commands";
 import { errorMessage, useRecent } from "../lib/store";
 import { useT } from "../lib/i18n";
 import type { RecentEntry } from "../lib/types";
@@ -51,9 +57,15 @@ function CommandPaletteBody({
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, []);
 
-  const results = useMemo(() => searchCommands(query, context), [query, context]);
+  // D13: a query also shows the desk-task commands that are disabled right now,
+  // with the reason, so a missing file selection is explained instead of silent.
+  const results = useMemo(
+    () => searchCommands(query, context, { includeDisabled: query.trim().length > 0 }),
+    [query, context],
+  );
 
   const run = (command: CommandDefinition) => {
+    if (!isCommandEnabled(command)) return;
     onClose();
     void runCommand(command.id, context);
     if (command.id.startsWith("view.") && onNavigate) {
@@ -103,12 +115,18 @@ function CommandPaletteBody({
             <button
               key={command.id}
               type="button"
-              className="palette-row"
+              className={`palette-row${isCommandEnabled(command) ? "" : " is-disabled"}`}
               data-active={position === index}
+              aria-disabled={isCommandEnabled(command) ? undefined : true}
               onMouseEnter={() => setIndex(position)}
               onClick={() => run(command)}
             >
-              <span className="palette-title">{t(command.titleKey)}</span>
+              <span className="palette-row-text">
+                <span className="palette-title">{t(command.titleKey)}</span>
+                {!isCommandEnabled(command) && command.disabledReasonKey ? (
+                  <span className="muted small">{t(command.disabledReasonKey)}</span>
+                ) : null}
+              </span>
               <span className="spacer" />
               {command.keybinding ? <kbd>{command.keybinding}</kbd> : null}
               <span className="muted small">{t(`palette.category.${command.category}`)}</span>

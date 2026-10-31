@@ -34,11 +34,11 @@ function issueText(
   return issue.field ? `${issue.field}: ${text}` : text;
 }
 
-export function AiPacks() {
+export function AiPacks({ initialPack }: { initialPack?: TaskPackId } = {}) {
   const t = useT();
   const push = useToasts((state) => state.push);
   const [settings, setSettings] = useState<AiSettingsView | null>(null);
-  const [packId, setPackId] = useState<TaskPackId>(TASK_PACKS[0].id);
+  const [packId, setPackId] = useState<TaskPackId>(initialPack ?? TASK_PACKS[0].id);
   const [file, setFile] = useState<FileToken | null>(null);
   const [consent, setConsent] = useState(false);
   const [running, setRunning] = useState(false);

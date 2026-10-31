@@ -38,7 +38,12 @@ const largestKb = largestBytes / 1024;
 // generated specta table the command palette needs at startup add about
 // 0.2 KB gzip to the entry, which the Linux CI measured at 60.1 KB against
 // the old 60 KB cap. The total cap is unchanged.
-const ENTRY_BUDGET_KB = 61;
+//
+// Raised to 62 in 7.1 (#531 D13): the desk-task palette commands and the
+// disabled-reason rows: the catalogue itself is loaded as its own chunk, but
+// the registry wiring and the row rendering the palette needs at startup push
+// the entry to 61.3 KB gzip against the old 61 KB cap.
+const ENTRY_BUDGET_KB = 62;
 const CHUNK_BUDGET_KB = 100;
 // The v6.0.0 audit asked for a budget per route, not just one global number: a
 // screen can load slowly even while the total stays flat. These caps cover the

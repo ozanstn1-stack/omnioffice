@@ -106,6 +106,16 @@ describe("AiPacks (C7)", () => {
     expect(screen.getByText(/The answer is not a JSON object/)).toBeInTheDocument();
   });
 
+  it("preselects the pack a desk task navigates with (D13)", async () => {
+    render(<AiPacks initialPack="kdv-ozeti" />);
+    // The selected pack card carries the accent outline; the VAT task must land
+    // on the VAT pack instead of the first one in the list.
+    const vat = (await screen.findByText("Extract the VAT summary")).closest("button");
+    expect(vat?.getAttribute("style") ?? "").toContain("outline");
+    const first = screen.getByText("Fix a petition").closest("button");
+    expect(first?.getAttribute("style") ?? "").not.toContain("outline");
+  });
+
   it("offers switching a cloud provider to the local Ollama preset", async () => {
     settingsProvider = "deepseek";
     settingsReads = 0;

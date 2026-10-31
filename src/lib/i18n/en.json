@@ -3045,5 +3045,17 @@
   "aiPacks.pack.mahkeme.title": "Classify a court petition",
   "aiPacks.pack.mahkeme.description": "Court type, subject, requests and evidence, classified from the petition text.",
   "aiPacks.pack.mahkeme.hint": "The answer picks a court type from the list, lists the requests and the evidence, and summarizes the subject.",
-  "aiPacks.repaired": "The answer did not verify; one repair turn was sent."
+  "aiPacks.repaired": "The answer did not verify; one repair turn was sent.",
+  "desk.redact": "Redact the selected PDF",
+  "desk.vat": "Extract the VAT summary",
+  "desk.evidence": "Create an evidence bundle",
+  "desk.petition": "Review a petition",
+  "desk.officialLetter": "Write an official letter",
+  "desk.deadline": "Read the deadline from a notification",
+  "desk.kvkk": "Run the KVKK check",
+  "desk.health": "Check document health",
+  "desk.cleaner": "Clean the document",
+  "desk.data": "Open the data tools",
+  "palette.category.task": "Desk task",
+  "palette.taskNeedsFile": "Select a document first"
 }
