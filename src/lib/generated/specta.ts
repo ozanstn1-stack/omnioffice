@@ -248,6 +248,12 @@ export const commands = {
 	 */
 	officeScanDetect: (path: string) => typedError<ScanDetection, OfficeErrorPayload>(__TAURI_INVOKE("office_scan_detect", { path })),
 	/**
+	 *  Finds the pages in several photos in one call (D4): the batch auto-crop
+	 *  flow detects every captured photo up front instead of one by one. A pair of
+	 *  facing pages is returned as two quads under the same path.
+	 */
+	officeScanDetectBatch: (paths: string[]) => typedError<ScanBatchPage[], OfficeErrorPayload>(__TAURI_INVOKE("office_scan_detect_batch", { paths })),
+	/**
 	 *  Fills a Writer template's `{{alan}}` placeholders from a CSV file and writes
 	 *  one document per row. A row that misses a placeholder is reported, not
 	 *  written.
@@ -4842,6 +4848,24 @@ export type SavedChatThread_Serialize = {
 	createdAt: string,
 	updatedAt: string,
 	messages: SavedChatMessage_Serialize[],
+};
+
+/**
+ *  The pages found in one photo for the batch auto-crop flow (D4). A single
+ *  page yields one entry; a two-page spread yields two entries that share the
+ *  same path, so the scanner can show and crop each half on its own.
+ */
+export type ScanBatchPage = {
+	/**  The photo this entry belongs to; a spread repeats its path. */
+	path: string,
+	detected: boolean,
+	/**  0..1; area and edge support combined. */
+	score: number | null,
+	/**
+	 *  `[top-left, top-right, bottom-right, bottom-left]` per page in upright
+	 *  pixels; empty when nothing was found.
+	 */
+	pages: (([number, number])[])[],
 };
 
 /**

@@ -204,6 +204,7 @@ domain! {
         scanner::office_scan_pages,
         scanner::office_scan_preview,
         scanner::office_scan_detect,
+        scanner::office_scan_detect_batch,
         office::office_mail_merge,
         office::turkish_spellcheck,
         office::turkish_suggestions,
@@ -435,5 +436,5 @@ mod tests {
     }
 
     /// The number of entries in the domain lists, Android-only ones included.
-    const TOTAL: usize = 246;
+    const TOTAL: usize = 247;
 }

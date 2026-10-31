@@ -100,6 +100,17 @@ quads, automatic page separation for two-page captures, and batch auto-crop.
 manual correction; double-page shots split into two pages; the acceptance
 number is published in `RELEASE_READINESS.md`.
 
+**Status (v6.14.0).** Delivered in #531 with a photo-realistic synthetic corpus
+(real photos cannot be committed: privacy and size), 14 images covering
+perspective, rotation, dark/light desks, shadow gradients, warm/cool light,
+vignetting, paper texture, defocus, edge crop and three spreads. Measured
+**12/14 usable (85 %)** against the 80 % target; every spread splits into two
+pages. The two failing light-desk/shadow photos are documented rather than
+hidden — see `docs/scanner-corpus.md`. Batch auto-crop now detects all captured
+photos in one `office_scan_detect_batch` call and the scanner screen shows a
+two-page capture as two page rows. The real-camera pass stays manual in the D1
+device matrix.
+
 ### D5. Local AI v2
 
 **Scope.** Decide whether a tiny model may be bundled (size, licence, device
