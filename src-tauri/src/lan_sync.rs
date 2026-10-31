@@ -15,6 +15,7 @@
 mod store;
 #[cfg(test)]
 mod tests;
+mod trash;
 
 use pdfcore::error::PdfError;
 use serde::Serialize;
@@ -154,6 +155,37 @@ impl DeletionAction {
             Self::DeleteLocal => "delete_local",
             Self::RestoreRemote => "restore_remote",
         }
+    }
+}
+
+/// One document in the local trash ("Recently deleted", 30 days).
+#[cfg_attr(feature = "bindings", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LanTrashEntryView {
+    pub id: String,
+    pub path: String,
+    pub peer_device_id: String,
+    pub peer_name: String,
+    /// `local` (removed here) or `remote` (removed on the peer).
+    pub side: String,
+    pub sha256: String,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
+    pub size: u64,
+    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
+    pub deleted_at: u64,
+}
+
+fn trash_view(entry: trash::TrashEntry) -> LanTrashEntryView {
+    LanTrashEntryView {
+        id: entry.id,
+        path: entry.path,
+        peer_device_id: entry.peer_device_id,
+        peer_name: entry.peer_name,
+        side: entry.side,
+        sha256: entry.sha256,
+        size: entry.size,
+        deleted_at: entry.deleted_at,
     }
 }
 
@@ -450,7 +482,7 @@ pub async fn lan_unpair(app: AppHandle, device_id: String) -> Result<LanStatusVi
 pub async fn lan_plan(app: AppHandle, device_id: String, folder: String) -> Result<LanPlanView, PdfError> {
     let root = folder_path(&folder)?;
     let directory = config_dir(&app)?;
-    let store = store::load(&directory)?;
+    let mut store = store::load(&directory)?;
     let peer = client_peer(&store, &device_id)?;
     let bases = bases_for(&store, &device_id);
     let identity = store::identity(&directory)?;
@@ -459,6 +491,16 @@ pub async fn lan_plan(app: AppHandle, device_id: String, folder: String) -> Resu
         tauri::async_runtime::spawn_blocking(move || plan_for(&peer, &root, &bases, &identity.device_id, &device_name))
             .await
             .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))??;
+    // A confirmed deletion keeps its tombstone for 30 days: do not report it
+    // again, and drop base entries for paths gone on both sides.
+    let tombstoned = store.tombstone_paths(&device_id, store::now_unix());
+    let stale = plan.stale_bases.len();
+    for path in &plan.stale_bases {
+        store.clear_base(&device_id, path);
+    }
+    if stale > 0 {
+        store::save(&directory, &store)?;
+    }
     Ok(LanPlanView {
         device_id,
         folder,
@@ -476,6 +518,7 @@ pub async fn lan_plan(app: AppHandle, device_id: String, folder: String) -> Resu
         deletions: plan
             .deletions
             .into_iter()
+            .filter(|deletion| !tombstoned.contains(&deletion.path))
             .map(|deletion| LanDeletionView {
                 path: deletion.path,
                 side: match deletion.side {
@@ -572,23 +615,81 @@ pub async fn lan_resolve_deletion(
     let name = identity.name.clone();
     let device = device_id.clone();
     let path_for_work = path.clone();
-    let (view, base) = tauri::async_runtime::spawn_blocking(move || {
+    let (view, base, candidate) = tauri::async_runtime::spawn_blocking(move || {
         resolve_deletion(&peer, &root, &path_for_work, action, &device, &name)
     })
     .await
     .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))??;
     match base {
         Some(sha) => {
-            store.bases.entry(device_id.clone()).or_default().insert(path, sha);
+            store.bases.entry(device_id.clone()).or_default().insert(path.clone(), sha);
         }
-        None => {
-            if let Some(entries) = store.bases.get_mut(&device_id) {
-                entries.remove(&path);
+        None => store.clear_base(&device_id, &path),
+    }
+    match action {
+        DeletionAction::DeleteRemote | DeletionAction::DeleteLocal => {
+            if let Some(candidate) = candidate {
+                let side = candidate.side.clone();
+                let sha256 = candidate.sha256.clone();
+                trash::push(&directory, candidate)?;
+                store.record_tombstone(&device_id, &path, &sha256, &side, store::now_unix());
             }
+        }
+        DeletionAction::RestoreLocal | DeletionAction::RestoreRemote => {
+            store.clear_tombstone(&device_id, &path);
         }
     }
     store::save(&directory, &store)?;
     Ok(view)
+}
+
+/// The local trash, newest first (expired entries are pruned on the way).
+#[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
+pub async fn lan_trash_list(app: AppHandle) -> Result<Vec<LanTrashEntryView>, PdfError> {
+    let directory = config_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        trash::list(&directory).map(|entries| entries.into_iter().map(trash_view).collect())
+    })
+    .await
+    .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
+}
+
+/// Writes a trashed document back into the shared folder (no upload; the next
+/// plan sees it as a local change). Consumes the trash entry and clears its
+/// tombstone.
+#[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
+pub async fn lan_trash_restore(app: AppHandle, folder: String, id: String) -> Result<LanStatusView, PdfError> {
+    let root = folder_path(&folder)?;
+    let directory = config_dir(&app)?;
+    let mut store = store::load(&directory)?;
+    let directory_for_take = directory.clone();
+    let taken = tauri::async_runtime::spawn_blocking(move || trash::take(&directory_for_take, &id))
+        .await
+        .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))??;
+    let Some((entry, bytes)) = taken else {
+        return Err(PdfError::NotFound("this document is no longer in the trash".into()));
+    };
+    let target = lan::resolve_path(&root, &entry.path).map_err(sync_error)?;
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(PdfError::from_io)?;
+    }
+    synccore::metadata::write_atomic(&target, &bytes).map_err(|error| PdfError::Internal(error.to_string()))?;
+    store.clear_tombstone(&entry.peer_device_id, &entry.path);
+    store.clear_base(&entry.peer_device_id, &entry.path);
+    store::save(&directory, &store)?;
+    status_of(&app)
+}
+
+/// Drops expired trash entries (older than the 30-day retention window).
+#[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
+pub async fn lan_trash_purge(app: AppHandle) -> Result<usize, PdfError> {
+    let directory = config_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || trash::purge_expired(&directory))
+        .await
+        .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
 }
 
 // ---------------------------------------------------------------------------
@@ -598,6 +699,9 @@ pub async fn lan_resolve_deletion(
 struct FolderPlan {
     items: Vec<PlanItem>,
     deletions: Vec<lan::LanDeletion>,
+    /// Paths in the base that exist on neither side anymore; their base entry
+    /// is stale and would turn a later re-appearance into a fake conflict.
+    stale_bases: Vec<String>,
 }
 
 fn plan_for(
@@ -612,7 +716,10 @@ fn plan_for(
     let local = lan::scan_folder(root).map_err(sync_error)?;
     let items = lan::plan_sync(&local, &remote, bases);
     let deletions = lan::plan_deletions(&local, &remote, bases);
-    Ok(FolderPlan { items, deletions })
+    let existing: std::collections::HashSet<String> =
+        local.iter().map(|file| file.path.clone()).chain(remote.iter().map(|file| file.path.clone())).collect();
+    let stale_bases = bases.keys().filter(|path| !existing.contains(*path)).cloned().collect();
+    Ok(FolderPlan { items, deletions, stale_bases })
 }
 
 fn apply_one(
@@ -702,10 +809,21 @@ fn resolve_deletion(
     action: DeletionAction,
     device_id: &str,
     name: &str,
-) -> Result<(LanDeletionResultView, Option<String>), PdfError> {
+) -> Result<(LanDeletionResultView, Option<String>, Option<trash::TrashCandidate>), PdfError> {
     let client = LanClient::new(device_id, name);
+    let mut candidate: Option<trash::TrashCandidate> = None;
     let base = match action {
         DeletionAction::DeleteRemote => {
+            // Keep the peer's bytes before they are gone; a fetch failure means
+            // the file already vanished there, which is not a reason to stop.
+            candidate = client.fetch(peer, path).ok().map(|(remote, bytes)| trash::TrashCandidate {
+                path: path.to_string(),
+                peer_device_id: peer.device_id.clone(),
+                peer_name: peer.name.clone(),
+                side: "local".to_string(),
+                sha256: remote.sha256,
+                bytes,
+            });
             client.remove(peer, path).map_err(sync_error)?;
             None
         }
@@ -720,6 +838,14 @@ fn resolve_deletion(
         }
         DeletionAction::DeleteLocal => {
             let target = lan::resolve_path(root, path).map_err(sync_error)?;
+            candidate = std::fs::read(&target).ok().map(|bytes| trash::TrashCandidate {
+                path: path.to_string(),
+                peer_device_id: peer.device_id.clone(),
+                peer_name: peer.name.clone(),
+                side: "remote".to_string(),
+                sha256: synccore::metadata::hash_bytes(&bytes),
+                bytes,
+            });
             match std::fs::remove_file(&target) {
                 Ok(()) => {}
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -734,7 +860,11 @@ fn resolve_deletion(
             Some(remote.sha256)
         }
     };
-    Ok((LanDeletionResultView { path: path.to_string(), applied: true, action: action.as_str().to_string() }, base))
+    Ok((
+        LanDeletionResultView { path: path.to_string(), applied: true, action: action.as_str().to_string() },
+        base,
+        candidate,
+    ))
 }
 
 struct SafeReport {

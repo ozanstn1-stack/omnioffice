@@ -324,6 +324,9 @@ domain! {
         lan_sync::lan_apply,
         lan_sync::lan_sync_safe,
         lan_sync::lan_resolve_deletion,
+        lan_sync::lan_trash_list,
+        lan_sync::lan_trash_restore,
+        lan_sync::lan_trash_purge,
     }
 }
 
@@ -432,5 +435,5 @@ mod tests {
     }
 
     /// The number of entries in the domain lists, Android-only ones included.
-    const TOTAL: usize = 243;
+    const TOTAL: usize = 246;
 }

@@ -7,9 +7,9 @@
  * paths the webview invents.
  */
 import { call } from "./typed-call";
-import type { LanApplyView, LanDeviceView, LanPlanView, LanStatusView } from "./generated/specta";
+import type { LanApplyView, LanDeviceView, LanPlanView, LanStatusView, LanTrashEntryView } from "./generated/specta";
 
-export type { LanApplyView, LanDeviceView, LanPlanView, LanStatusView };
+export type { LanApplyView, LanDeviceView, LanPlanView, LanStatusView, LanTrashEntryView };
 
 /** The identity, whether sharing is on, and the peers on both sides. */
 export const lanStatus = () => call((c) => c.lanStatus());
@@ -58,6 +58,15 @@ export const lanResolveDeletion = (
   side: "local" | "remote",
   resolution: "delete_remote" | "restore_local" | "delete_local" | "restore_remote",
 ) => call((c) => c.lanResolveDeletion(deviceId, folder, path, side, resolution));
+
+/** The local trash of confirmed LAN deletions (kept 30 days). */
+export const lanTrashList = () => call((c) => c.lanTrashList());
+
+/** Writes a trashed document back into the picked shared folder. */
+export const lanTrashRestore = (folder: string, id: string) => call((c) => c.lanTrashRestore(folder, id));
+
+/** Drops trash entries older than the 30-day retention window. */
+export const lanTrashPurge = () => call((c) => c.lanTrashPurge());
 
 /** Applies every change that needs no question; conflicts stay for the user. */
 export const lanSyncSafe = (deviceId: string, folder: string) => call((c) => c.lanSyncSafe(deviceId, folder));

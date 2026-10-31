@@ -6,8 +6,9 @@
 
 use pdfcore::error::PdfError;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 use synccore::lan::{LanIdentity, PairedPeer};
 use synccore::metadata;
 
@@ -25,6 +26,73 @@ pub(super) struct LanStore {
     /// `device_id` -> relative path -> SHA-256 of the copy both sides had.
     #[serde(default)]
     pub(super) bases: HashMap<String, HashMap<String, String>>,
+    /// Confirmed deletions per peer, so a later plan does not resurrect or
+    /// re-report them (`device_id` -> relative path -> tombstone).
+    #[serde(default)]
+    pub(super) tombstones: HashMap<String, HashMap<String, Tombstone>>,
+}
+
+/// A deletion the user confirmed. Kept for 30 days: the trash restores the
+/// bytes, the tombstone keeps the plan honest in the meantime.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(super) struct Tombstone {
+    pub(super) path: String,
+    pub(super) sha256: String,
+    /// `local` (removed on this device) or `remote` (removed on the peer).
+    pub(super) side: String,
+    pub(super) deleted_at: u64,
+}
+
+pub(super) const TOMBSTONE_RETENTION_SECS: u64 = 30 * 24 * 60 * 60;
+
+pub(super) fn now_unix() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|elapsed| elapsed.as_secs()).unwrap_or(0)
+}
+
+impl LanStore {
+    /// Records (or refreshes) the tombstone of a confirmed deletion.
+    pub(super) fn record_tombstone(&mut self, device_id: &str, path: &str, sha256: &str, side: &str, now: u64) {
+        self.tombstones.entry(device_id.to_string()).or_default().insert(
+            path.to_string(),
+            Tombstone { path: path.to_string(), sha256: sha256.to_string(), side: side.to_string(), deleted_at: now },
+        );
+    }
+
+    /// The file came back (restore): the tombstone must not suppress it.
+    pub(super) fn clear_tombstone(&mut self, device_id: &str, path: &str) {
+        if let Some(entries) = self.tombstones.get_mut(device_id) {
+            entries.remove(path);
+            if entries.is_empty() {
+                self.tombstones.remove(device_id);
+            }
+        }
+    }
+
+    /// Drops tombstones older than the retention window and returns the live
+    /// paths for one peer.
+    pub(super) fn tombstone_paths(&mut self, device_id: &str, now: u64) -> HashSet<String> {
+        self.prune_tombstones(now);
+        self.tombstones
+            .get(device_id)
+            .map(|entries| entries.values().map(|entry| entry.path.clone()).collect())
+            .unwrap_or_default()
+    }
+
+    pub(super) fn prune_tombstones(&mut self, now: u64) {
+        self.tombstones.retain(|_, entries| {
+            entries.retain(|_, tombstone| now.saturating_sub(tombstone.deleted_at) <= TOMBSTONE_RETENTION_SECS);
+            !entries.is_empty()
+        });
+    }
+
+    pub(super) fn clear_base(&mut self, device_id: &str, path: &str) {
+        if let Some(entries) = self.bases.get_mut(device_id) {
+            entries.remove(path);
+            if entries.is_empty() {
+                self.bases.remove(device_id);
+            }
+        }
+    }
 }
 
 pub(super) fn store_path(config_dir: &Path) -> PathBuf {
@@ -127,6 +195,25 @@ mod tests {
         let loaded = load(dir.path()).expect("load");
         assert_eq!(loaded.peers.len(), 1);
         assert_eq!(loaded.peers[0].name, "Telefon");
+    }
+
+    #[test]
+    fn tombstones_are_recorded_pruned_and_cleared() {
+        let mut store = LanStore::default();
+        let now = now_unix();
+        store.record_tombstone("peer-1", "eski.docx", "abc", "local", now);
+        store.record_tombstone(
+            "peer-1",
+            "silinen.docx",
+            "def",
+            "remote",
+            now.saturating_sub(TOMBSTONE_RETENTION_SECS + 1),
+        );
+        assert_eq!(store.tombstone_paths("peer-1", now).len(), 1, "the expired tombstone is pruned");
+        assert!(store.tombstone_paths("peer-1", now).contains("eski.docx"));
+        assert!(store.tombstone_paths("peer-2", now).is_empty());
+        store.clear_tombstone("peer-1", "eski.docx");
+        assert!(store.tombstone_paths("peer-1", now).is_empty());
     }
 
     #[test]
