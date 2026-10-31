@@ -14,6 +14,8 @@ Effort estimates assume a single developer.
 | 3 (v3.6) | PDF depth: content-stream object editing, render cache, Reader, Studio UX, PDF/A subsetting, signature chain (RFC 3161/OCSP) | Done in 3.6.0-4.1.0: content-stream **text** editing, Reader bookmarks and RFC 3161 timestamps in 3.6.0; tiled rendering, PDF/A font subsetting and the optional OCSP/CRL check in 4.1.0. Vector-object editing stays read-only |
 | 4 (v3.7) | Office depth: Writer fields/revisions, Calc data tools + chart UI, Impress timeline + media, format fidelity | Partly delivered: Writer fields and run-preserving revisions (3.5.3, 3.5.5), Calc data tools and ODF fidelity - comments, groups, animations, charts (4.0.0). Chart UI, Impress media and further format fidelity are open |
 | 5 (v4.x) | Platform: auto-update, macOS/Linux packaging, stores, Android foreground service + Keystore, sync OAuth, Vault 2.0, plugins, AI | Substantially delivered: sync OAuth (3.5.7), Android foreground service (4.3.0), in-place updates (4.6.1), Android Keystore and in-editor AI (4.2.0), Belge Asistanı 2.0 multi-modal AI & Vault hybrid search (4.7.0). Store packaging and macOS/Linux packaging are open |
+| D (v6.13–v7.1) | LAN acceptance, scanner corpus, mobile ergonomics, provenance, local AI v2, office fidelity, performance, palette tasks, distribution decisions | Delivered in v6.13.0–v7.1.0 (D1–D13); see `docs/plan/PHASE-D-PROPOSAL.md` |
+| E (v7.1.1–v8.0) | Security hardening, PDF worker isolation, frontend architecture, quality/CI, product depth | Proposed; the live plan is `docs/plan/PHASE-E-PROPOSAL.md` |
 
 ## 3.4.0 — Quick wins (delivered)
 
