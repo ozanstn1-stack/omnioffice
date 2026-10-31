@@ -31,6 +31,40 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 7.1.0) - Tekrarlanabilirlik ve platform kararları (D11/D12)
+
+- **Reproducibility inputs gate (D11 preparation, #531):** `npm run repro:check`
+  pins the inputs the repository controls — committed lockfiles, one workspace
+  version inherited by every crate, SHA-pinned actions, `npm ci`, sorted
+  archive inputs — and the release builds now pass `--locked` so a lockfile
+  change cannot slip into a release build.
+  `test:src/lib/reproducibility.test.ts#passes the repository as it stands`
+  `test:src/lib/reproducibility.test.ts#fails when an action loses its commit pin`
+- **Reproducibility report (D11 preparation, #531):**
+  `docs/reproducibility.md` separates the pinned inputs from what still differs
+  between builds (unpinned rustc channel, ZIP/NSIS/deb/AppImage/APK bytes) and
+  gives the verification steps and the path to bit-reproducible Linux builds.
+  `test:src/lib/reproducibility.test.ts#fails when the reproducibility report loses its gaps section`
+- **Platform decisions (D12, #531):** `docs/platform-decisions.md` records the
+  three decisions with reasons, evidence and revisit triggers — macOS packaging
+  declined for v7.1 (CI build/test stays), Flatpak declined for v7.1 (sandbox
+  and engine constraints), Windows ARM64 deferred (device verification and CI
+  cost); the supported release matrix is unchanged.
+  (no test: a decision record, documented with its reasons and triggers.)
+
+### Not done / Known limitations (7.1.0)
+
+- **D11 is not closed:** the IzzyOnDroid request still needs the owner's
+  Codeberg submission (the text is ready in
+  `docs/izzyondroid-submission-template.md`); F-Droid main is declined for now
+  because of the prebuilt engines. Reproducibility is pinned at the input
+  level, not proven byte-for-byte.
+  (no test: external listing submission and future build work.)
+- **D12 declines are decisions, not shipped platforms:** no macOS, Flatpak or
+  Windows ARM64 package exists; each version ships only the Windows, Linux and
+  Android assets verified in the release checklist.
+  (no test: decision record.)
+
 ## Implemented (this cycle, 7.1.0) - İmzalama hazırlığı (D10)
 
 - **SignPath preflight (D10 preparation, #531):** the release workflow now

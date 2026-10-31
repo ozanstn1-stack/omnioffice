@@ -48,6 +48,9 @@ and the verification commands live in [`docs/signing.md`](signing.md). Start
 with SignPath.io (free for open source); Azure Trusted Signing is the
 supported fallback and a custom EV/OV certificate is the long-term option.
 
+Platform breadth (macOS, Flatpak, Windows ARM64) decisions are recorded in
+[`docs/platform-decisions.md`](platform-decisions.md).
+
 ## F-Droid / IzzyOnDroid
 
 The goal is the same APK that the release page already ships, found by the two

@@ -1,6 +1,6 @@
 # Phase D proposal — after Phase C
 
-**Status: approved; v6.13.0–v7.0.0 delivered (D1–D9); v7.1.0 in progress (D13 delivered, D10 preparation landed).** Phase C is closed (all C1–C15 delivered between
+**Status: approved; v6.13.0–v7.0.0 delivered (D1–D9); v7.1.0 in progress (D13 delivered, D10/D11 prepared, D12 decided).** Phase C is closed (all C1–C15 delivered between
 v6.4.0 and v6.12.0, tracker #341 closed, every release verified with its
 18-asset SHA-256 manifest). This document proposes what comes next; nothing
 here is committed until the owner picks the items and a tracker issue is
@@ -21,6 +21,8 @@ opened.
 | D9. Performance and memory | Delivered (500-page DOCX and 50k-cell XLSX budget tests, memory ceilings, calc virtualization, PDF worker isolation, named budgets in `docs/performance-budgets.md`) |
 | D13. Command palette task commands | Delivered in v7.1.0 (ten desk tasks with shortcuts, file context, disabled reason; plugin registry unchanged) |
 | D10. First signed Windows release | Preparation delivered (preflight, runbook, readiness gate); signed artifact pending the SignPath account and secrets (owner action) |
+| D11. Catalogue listings and reproducible builds | Preparation delivered (input gate + report + F-Droid decision); the IzzyOnDroid submission is the owner's Codeberg step |
+| D12. Platform breadth | Delivered (macOS, Flatpak and Windows ARM64 declined for v7.1 with reasons and revisit triggers in `docs/platform-decisions.md`) |
 
 The rest of this document is the original proposal, kept as the planning record.
 
@@ -239,6 +241,13 @@ against the source.
 **Acceptance.** The listing exists, or the decision to skip is recorded; the
 reproducibility report names what matched and what did not.
 
+**Status (v7.1.0 preparation).** `docs/reproducibility.md` names the pinned
+inputs and the remaining byte differences, and `npm run repro:check` fails when
+a lockfile, a workspace version, an action pin or the report structure
+regresses; release builds now use `--locked`. F-Droid main is declined for now
+(prebuilt engines); the IzzyOnDroid request text is ready and its submission is
+the owner's Codeberg step, so the listing itself is still open.
+
 ### D12. Platform breadth
 
 **Scope.** Decide on macOS packaging and notarization (current macOS support is
@@ -247,6 +256,13 @@ ARM64 is worth packaging.
 
 **Acceptance.** Each platform is either shipped with the same verification as
 Windows/Linux/Android, or explicitly declined with the reasons.
+
+**Status (v7.1.0).** Delivered as decisions: macOS packaging declined (Apple
+fee/notarization, no verified mac hardware; CI build/test stays), Flatpak
+declined for v7.1 (vault and engine constraints, deb/AppImage already
+verified), Windows ARM64 deferred (device verification, CI cost). Each decision
+carries the trigger that reopens it and the verification it must pass then; the
+supported matrix is unchanged.
 
 ### D13. Command palette task commands (C1 follow-up)
 
