@@ -4,6 +4,54 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.0.0] - Yerel, eksiksiz
+
+The major bump marks the scope of the train (local capabilities), not a file
+format break: DOCX/XLSX/PPTX/ODT files open and save as before.
+
+### Added
+
+- **DOCX provenance manifests and the source chain (D7, #540):** a DOCX
+  produced by the app carries the C8 manifest as one package part
+  (`omnioffice/provenance.json`); the digest is canonical over the package
+  entries, so re-compressing the file does not report a false change while
+  editing a part does. `provenance_read_chain` sniffs a PDF or DOCX and returns
+  sources → transformation → output with an intact/changed/absent/unsupported
+  verdict; the verification screen shows the chain and puts a red tamper
+  warning before the recorded sources. Conversion to DOCX, OCR PDFs and merged
+  PDFs embed their manifest automatically.
+- **Turkish task-pack evaluation and three new packs (D5, #541):** e-invoice
+  analysis, KEP/e-Tebligat summary and court-petition classification join the
+  four C7 packs; every pack has golden and negative eval answers with a 90 %
+  floor, and an answer that does not verify gets one repair turn carrying the
+  concrete problems. A test proves the harness and runner make no network or
+  telemetry call; `docs/local-ai-decision.md` records the decision to keep a
+  model out of the installer for this release.
+- **DOCX tracked changes in the editor (D6, #542):** inline revision markers
+  keep their kind, author and date, and the model survives a save.
+- **XLSX shared formulas (D6):** filled-down followers of a shared formula are
+  expanded on import by shifting relative A1 references (`B2 → =A2*2`), instead
+  of arriving empty.
+- **PPTX transition durations (D6):** the duration is written as `advTm` and
+  read back, so a fade with 800 ms no longer returns as the 500 ms default.
+- **Round-trip fidelity corpus (D6):** a programmatic DOCX/ODT/XLSX/PPTX corpus
+  prints its measured table and fails on a silent loss; the measured delta is
+  zero for every listed construct (`docs/office-fidelity-report.md`).
+- **Named performance and memory budgets (D9, #543):** always-on 500-page DOCX
+  and 50 000-cell XLSX open/save tests, counting-allocator memory ceilings
+  (384/256 MiB), a calc render-window test for 50 000 rows and a pinned 2–8
+  slot heavy-work bound with panic-release tests
+  (`docs/performance-budgets.md`).
+
+### Changed
+
+- The heavy-work semaphore that isolates PDF/OCR/compression jobs is now pinned
+  by tests: the async bound, the synchronous extraction bound and the
+  panic-release behaviour.
+- `docs/provenance-v2.md`, `docs/office-fidelity-report.md`,
+  `docs/local-ai-decision.md` and `docs/performance-budgets.md` document the
+  new capabilities and their limits.
+
 ## [6.15.0] - Telefon denetimi
 
 ### Added

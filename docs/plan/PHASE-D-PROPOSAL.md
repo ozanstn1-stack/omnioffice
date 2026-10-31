@@ -1,6 +1,6 @@
 # Phase D proposal — after Phase C
 
-**Status: approved; v6.13.0–v6.15.0 delivered (D1–D4, D8); v7.0.0 items D5, D6, D7 and D9 delivered — release train next.** Phase C is closed (all C1–C15 delivered between
+**Status: approved; v6.13.0–v6.15.0 delivered (D1–D4, D8); v7.0.0 delivered (D5, D6, D7, D9).** Phase C is closed (all C1–C15 delivered between
 v6.4.0 and v6.12.0, tracker #341 closed, every release verified with its
 18-asset SHA-256 manifest). This document proposes what comes next; nothing
 here is committed until the owner picks the items and a tracker issue is
