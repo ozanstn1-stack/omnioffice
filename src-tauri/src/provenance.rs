@@ -225,7 +225,7 @@ fn pdf_manifest_to_chain(
             for source in &manifest.sources {
                 links.push(ChainLink {
                     kind: "source".into(),
-                    label: if source.role.is_empty() { source.file_name.clone() } else { source.role.clone() },
+                    label: if source.file_name.is_empty() { source.role.clone() } else { source.file_name.clone() },
                     sha256: source.sha256.clone(),
                     size: Some(source.size),
                     role: source.role.clone(),
