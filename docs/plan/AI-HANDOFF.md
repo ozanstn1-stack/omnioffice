@@ -38,6 +38,10 @@ Bu dosya, [`ROADMAP-3.md`](./ROADMAP-3.md) yol haritasını uygulayacak yapay ze
   Biri eksikse sürüm tamamlanmış sayılmaz.
 - **Tag asla taşınmaz:** v4.7.0'da tag yayından sonra taşındı. Hata çıkarsa yeni bir yama sürümü
   (X.Y.Z+1) yayınlanır.
+- **Authenticode (opsiyonel):** sağlayıcı sırları tanımlıysa `release.yml` Windows işi exe'yi
+  imzalar; sırlar yoksa adım sessizce atlanır ve sürüm imzasız çıkar. Sağlayıcı kararı, sırlar ve
+  doğrulama: [`docs/signing.md`](../signing.md). İmzalı ilk sürümden önce README/`distribution.md`
+  "imzasız" demeye devam eder; imza canlıya çıkınca bu notlar güncellenir.
 - **Sürüm kapısı E2E'dir:** `auto-tag.yml` yalnızca master'daki Desktop çalışması başarılıysa tag
   atar; "Desktop E2E (Windows, WebView2)" işi bu yüzden sürüm kapısıdır. Office/merge/sanitize
   akışları `withSessionRetry` ile **bir kez** yeni oturumla yeniden denenir. Akışlar düğme saymak
