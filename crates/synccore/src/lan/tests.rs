@@ -50,43 +50,41 @@ fn an_identity_pins_the_certificate_it_generated() {
 }
 
 #[test]
-fn pairing_codes_are_six_digits_and_only_the_exact_code_matches() {
-    let code = PairingCode::generate().expect("code");
-    assert_eq!(code.as_str().len(), 6);
-    assert!(code.as_str().bytes().all(|byte| byte.is_ascii_digit()));
-    assert!(code.matches(code.as_str()));
-    assert!(code.matches(&format!(" {} ", code.as_str())));
-    assert!(!code.matches("12345"));
-    assert!(!code.matches("1234567"));
-    let other = if code.as_str() == "000000" { "000001" } else { "000000" };
-    assert!(!code.matches(other));
+fn pairing_codes_are_six_random_digits() {
+    for _ in 0..32 {
+        let code = PairingCode::generate().expect("code");
+        assert_eq!(code.as_str().len(), 6);
+        assert!(code.as_str().bytes().all(|byte| byte.is_ascii_digit()));
+    }
+    // A weak generator check: eight draws are not one repeated value.
+    let codes: std::collections::HashSet<String> =
+        (0..8).map(|_| PairingCode::generate().expect("code").as_str().to_string()).collect();
+    assert!(codes.len() > 1, "the code generator repeats one value");
 }
 
 #[test]
-fn a_ticket_is_one_time_short_lived_and_runs_out_of_attempts() {
+fn a_ticket_is_short_lived_and_runs_out_of_attempts() {
     let mut ticket = PairingTicket::new().expect("ticket");
     assert_eq!(ticket.attempts_left(), PAIRING_MAX_ATTEMPTS);
-    assert!(!ticket.attempt("999999x", now_unix()));
+    assert!(ticket.record_failure(now_unix()), "one failure still leaves attempts");
     assert_eq!(ticket.attempts_left(), PAIRING_MAX_ATTEMPTS - 1);
-    let right = ticket.code().to_string();
-    assert!(ticket.attempt(&right, now_unix()));
 
-    // Five wrong codes exhaust a fresh ticket, and the right code no longer helps.
+    // Five failed confirmations exhaust a fresh ticket: the fifth is the one
+    // that reports the ticket as spent.
     let mut fresh = PairingTicket::new().expect("ticket");
-    let wrong = if fresh.code() == "000000" { "000001" } else { "000000" };
-    for _ in 0..PAIRING_MAX_ATTEMPTS {
-        assert!(!fresh.attempt(wrong, now_unix()));
+    for left in (1..PAIRING_MAX_ATTEMPTS).rev() {
+        assert!(fresh.record_failure(now_unix()), "{left} attempts left");
+        assert_eq!(fresh.attempts_left(), left);
     }
+    assert!(!fresh.record_failure(now_unix()), "the last attempt spends the ticket");
     assert_eq!(fresh.attempts_left(), 0);
-    let fresh_code = fresh.code().to_string();
-    assert!(!fresh.attempt(&fresh_code, now_unix()));
+    assert!(!fresh.record_failure(now_unix()), "a spent ticket stays spent");
 
     // A ticket created before the TTL window is dead.
     let mut stale = PairingTicket::new().expect("ticket");
     stale.created_at = now_unix().saturating_sub(PAIRING_TTL_SECS + 1);
     assert!(stale.expired(now_unix()));
-    let stale_code = stale.code().to_string();
-    assert!(!stale.attempt(&stale_code, now_unix()));
+    assert!(!stale.record_failure(now_unix()));
 }
 
 #[test]

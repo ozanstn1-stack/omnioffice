@@ -97,8 +97,8 @@ impl ServerCertVerifier for PinnedServerCert {
 }
 
 /// A pairing-only client verifier: it accepts whatever certificate the host
-/// presents and records its fingerprint, which the caller then compares with
-/// the fingerprint the host claims in its pairing response.
+/// presents and records its fingerprint. That is safe because the pairing key
+/// is bound to this fingerprint (see `super::pairing`).
 #[derive(Debug, Clone)]
 pub(super) struct RecordingServerCert {
     seen: Arc<Mutex<Option<String>>>,
@@ -179,8 +179,8 @@ pub(super) struct Client {
 
 impl Client {
     /// Opens a connection. `pin` is `Some` for every ordinary request and
-    /// `None` during pairing (the fingerprint is then recorded and checked
-    /// against the host's own claim).
+    /// `None` only for the first pairing round, whose fingerprint is recorded
+    /// and bound into the pairing key (see `super::pairing`).
     pub(super) fn connect(address: &str, pin: Option<&str>) -> Result<Self, SyncError> {
         let socket = TcpStream::connect(address)
             .map_err(|error| SyncError::Network(format!("cannot reach {address}: {error}")))?;

@@ -30,7 +30,7 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::net::{Ipv4Addr, SocketAddr, TcpListener, UdpSocket};
+use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -45,6 +45,10 @@ use crate::metadata::{self, BaseState, SyncState};
 use crate::SyncError;
 
 mod mdns;
+mod pairing;
+#[cfg(test)]
+mod pairing_tests;
+mod replay;
 #[cfg(test)]
 mod tests;
 mod transport;
@@ -70,6 +74,12 @@ pub const CHUNK_BYTES: usize = 512 * 1024;
 /// Largest chunk the host accepts in one `put_chunk`; a misbehaving client is
 /// refused instead of buffered.
 const MAX_CHUNK_BYTES: usize = 4 * 1024 * 1024;
+/// Connections the host handles at once, so one stalled peer cannot queue the
+/// rest; a connection that arrives while all workers are busy waits in a
+/// queue of [`QUEUE_DEPTH`] and is dropped beyond that.
+const WORKER_THREADS: usize = 4;
+/// How many accepted connections may wait for a worker.
+const QUEUE_DEPTH: usize = 16;
 /// Partial uploads older than this are removed when the next upload begins.
 const PART_MAX_AGE_SECS: u64 = 24 * 60 * 60;
 
@@ -194,19 +204,6 @@ impl PairingCode {
     pub fn as_str(&self) -> &str {
         &self.digits
     }
-
-    /// Compares without an early exit on the first wrong digit.
-    pub fn matches(&self, candidate: &str) -> bool {
-        let candidate = candidate.trim();
-        if candidate.len() != 6 {
-            return false;
-        }
-        let mut difference = 0u8;
-        for (left, right) in self.digits.bytes().zip(candidate.bytes()) {
-            difference |= left ^ right;
-        }
-        difference == 0
-    }
 }
 
 /// The host's live pairing code: a six-digit code, its lifetime and failures.
@@ -234,14 +231,18 @@ impl PairingTicket {
         PAIRING_MAX_ATTEMPTS.saturating_sub(self.attempts)
     }
 
-    /// One pairing attempt. A wrong code uses up one attempt; the ticket is the
-    /// caller's to drop when this returns `None` (used up or expired).
-    pub fn attempt(&mut self, candidate: &str, now: u64) -> bool {
+    /// Charges one failed confirmation. The code itself is never compared
+    /// (pairing is code-authenticated, see `pairing`), so the only visible
+    /// event is a handshake that did not produce the expected tag.
+    ///
+    /// Returns `false` when the ticket is used up or expired; the caller drops
+    /// it then.
+    pub fn record_failure(&mut self, now: u64) -> bool {
         if self.expired(now) || self.attempts >= PAIRING_MAX_ATTEMPTS {
             return false;
         }
         self.attempts = self.attempts.saturating_add(1);
-        self.code.matches(candidate)
+        self.attempts_left() > 0
     }
 }
 
@@ -281,6 +282,10 @@ struct HostState {
     root: PathBuf,
     peers: Mutex<Vec<PairedPeer>>,
     ticket: Mutex<Option<PairingTicket>>,
+    /// Pairing sessions waiting for their second round (E1/3).
+    pairing: pairing::PendingPairings,
+    /// Nonces already accepted, so a signed request cannot be replayed.
+    replay: replay::ReplayGuard,
     stop: AtomicBool,
 }
 
@@ -314,6 +319,8 @@ impl LanHost {
             root: options.root,
             peers: Mutex::new(options.peers),
             ticket: Mutex::new(options.pairing),
+            pairing: pairing::PendingPairings::new(),
+            replay: replay::ReplayGuard::new(REQUEST_FRESHNESS_SECS, replay::REPLAY_CAPACITY),
             stop: AtomicBool::new(false),
         });
         let config = {
@@ -453,43 +460,10 @@ impl LanClient {
         self
     }
 
-    /// Pairs with the host at `address` using its six-digit code. The returned
-    /// peer holds the pinned fingerprint and the shared key.
+    /// Pairs with the host at `address` using its six-digit code: a SPAKE2
+    /// handshake over the code, bound to both certificates (see `pairing`).
     pub fn pair(&self, address: &str, code: &str) -> Result<PairedPeer, SyncError> {
-        let mut connection = transport::Client::connect(address, None)?;
-        let recorded = connection.server_fingerprint.clone();
-        let request = Request {
-            op: "pair".into(),
-            body_len: 0,
-            device_id: self.device_id.clone(),
-            name: self.name.clone(),
-            code: code.trim().to_string(),
-            fingerprint: self.fingerprint.clone(),
-            port: self.port,
-            ..Request::default()
-        };
-        let (response, _) = connection.request::<_, Response>(&request, None)?;
-        if !response.ok {
-            return Err(SyncError::Auth(non_empty(&response.error, "pairing was refused")));
-        }
-        // The host's answer is authenticated by its certificate: a relayed
-        // handshake cannot present a certificate matching the fingerprint in
-        // the answer.
-        if response.fingerprint != recorded || response.fingerprint.is_empty() {
-            return Err(SyncError::Protocol("the pairing answer is not from the printed code's host".into()));
-        }
-        if response.shared_key.is_empty() {
-            return Err(SyncError::Protocol("the host returned no pairing key".into()));
-        }
-        Ok(PairedPeer {
-            device_id: response.device_id,
-            name: response.name,
-            address: address.to_string(),
-            fingerprint: recorded,
-            shared_key: response.shared_key,
-            paired_at: now_rfc3339_utc(),
-            host_side: false,
-        })
+        pairing::pair(self, address, code)
     }
 
     /// Cheap authenticated round trip.
@@ -699,8 +673,6 @@ struct Request {
     #[serde(default)]
     path: String,
     #[serde(default)]
-    code: String,
-    #[serde(default)]
     name: String,
     /// The client's certificate fingerprint, so the host can call it back.
     #[serde(default)]
@@ -717,6 +689,15 @@ struct Request {
     /// Resumable upload: SHA-256 of the whole document.
     #[serde(default)]
     sha256: String,
+    /// Pairing: the client's one-shot session id.
+    #[serde(default)]
+    session: String,
+    /// Pairing: the client's SPAKE2 message, hex.
+    #[serde(default)]
+    spake: String,
+    /// Pairing: the client's key-confirmation tag, hex.
+    #[serde(default)]
+    confirm: String,
 }
 
 impl transport::HasBodyLen for Request {
@@ -738,8 +719,12 @@ struct Response {
     name: String,
     #[serde(default)]
     fingerprint: String,
+    /// Pairing: the host's SPAKE2 message, hex.
     #[serde(default)]
-    shared_key: String,
+    spake: String,
+    /// Pairing: the host's key-confirmation tag, hex.
+    #[serde(default)]
+    confirm: String,
     #[serde(default)]
     files: Vec<RemoteFile>,
     #[serde(default)]
@@ -772,17 +757,51 @@ fn refusal(message: impl Into<String>) -> Failure {
 // ---------------------------------------------------------------------------
 
 fn serve(state: Arc<HostState>, listener: TcpListener, config: Arc<rustls::ServerConfig>) {
+    // A stalled peer must not queue every other device: the accept loop hands
+    // each connection to one of a few workers, and a full queue drops new
+    // connections instead of growing without bound.
+    let (queue, pending) = std::sync::mpsc::sync_channel::<TcpStream>(QUEUE_DEPTH);
+    let pending = Arc::new(Mutex::new(pending));
+    for index in 0..WORKER_THREADS {
+        let worker_state = state.clone();
+        let worker_config = config.clone();
+        let worker_queue = pending.clone();
+        let spawned = std::thread::Builder::new()
+            .name(format!("omnioffice-lan-worker-{index}"))
+            .spawn(move || work(worker_state, worker_config, worker_queue));
+        if spawned.is_err() {
+            break;
+        }
+    }
     while !state.stop.load(Ordering::SeqCst) {
         match listener.accept() {
             Ok((socket, _)) => {
-                if let Ok(mut peer) = transport::ServerPeer::accept_stream(socket, &config) {
-                    handle_request(&state, &mut peer);
-                }
+                let _ = queue.try_send(socket);
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                 std::thread::sleep(Duration::from_millis(25));
             }
             Err(_) => std::thread::sleep(Duration::from_millis(100)),
+        }
+    }
+    // The listener is closed here and the queue is dropped, so every worker
+    // wakes up and exits after the request it is already handling. They are not
+    // joined: a peer that opens a connection and sends nothing would otherwise
+    // hold "stop sharing" for the whole socket timeout.
+    drop(queue);
+}
+
+/// One connection at a time, until the queue closes.
+fn work(
+    state: Arc<HostState>,
+    config: Arc<rustls::ServerConfig>,
+    queue: Arc<Mutex<std::sync::mpsc::Receiver<TcpStream>>>,
+) {
+    loop {
+        let next = queue.lock().ok().and_then(|queue| queue.recv().ok());
+        let Some(socket) = next else { return };
+        if let Ok(mut peer) = transport::ServerPeer::accept_stream(socket, &config) {
+            handle_request(&state, &mut peer);
         }
     }
 }
@@ -791,7 +810,11 @@ fn handle_request(state: &Arc<HostState>, peer: &mut transport::ServerPeer) {
     let Ok((request, body)) = peer.read_request::<Request>() else { return };
     let client_address = peer.peer_addr();
     let outcome = match request.op.as_str() {
-        "pair" => handle_pair(state, &request, client_address).map(|response| (response, None)),
+        "pair_begin" => pairing::handle_begin(state, &request).map(|response| (response, None)),
+        "pair_finish" => pairing::handle_finish(state, &request, client_address).map(|response| (response, None)),
+        // The pre-v7.2 handshake sent the code itself; it is refused instead of
+        // being honoured quietly, so an old device is told to update.
+        "pair" => Err(refusal("this host needs the updated pairing handshake; update both devices")),
         "ping" => authenticated(state, &request, &body).map(|_| (Response { ok: true, ..Response::default() }, None)),
         "list" => {
             authenticated(state, &request, &body).and_then(|_| handle_list(state)).map(|response| (response, None))
@@ -818,64 +841,6 @@ fn handle_request(state: &Arc<HostState>, peer: &mut transport::ServerPeer) {
     let _ = peer.respond(&response, document.as_deref());
 }
 
-fn handle_pair(
-    state: &Arc<HostState>,
-    request: &Request,
-    client_address: Option<std::net::SocketAddr>,
-) -> Result<Response, Failure> {
-    if request.device_id.trim().is_empty() {
-        return Err(refusal("a device id is required"));
-    }
-    let now = now_unix();
-    let mut ticket = state.ticket.lock().map_err(|_| refusal("pairing state is unavailable"))?;
-    let Some(current) = ticket.as_mut() else {
-        return Err(refusal("pairing is closed; the host must show a code first"));
-    };
-    if current.expired(now) {
-        *ticket = None;
-        return Err(refusal("the pairing code expired"));
-    }
-    let matched = current.attempt(&request.code, now);
-    if !matched {
-        let exhausted = current.attempts_left() == 0;
-        if exhausted {
-            *ticket = None;
-        }
-        return Err(refusal("the pairing code is not correct"));
-    }
-    // One-time code: the window closes with the first success.
-    *ticket = None;
-    let shared_key = hex_encode(&random_bytes::<32>().map_err(|_| refusal("no randomness"))?);
-    // For symmetric pairing the host also records how to reach the client:
-    // its certificate pin and (when it shares) the port it announced.
-    let address = match (client_address, request.port) {
-        (Some(source), port) if port > 0 => format!("{}:{port}", source.ip()),
-        (Some(source), _) => format!("{}:{DEFAULT_PORT}", source.ip()),
-        (None, _) => String::new(),
-    };
-    let peer = PairedPeer {
-        device_id: request.device_id.clone(),
-        name: if request.name.trim().is_empty() { "device".into() } else { request.name.clone() },
-        address,
-        fingerprint: request.fingerprint.clone(),
-        shared_key,
-        paired_at: now_rfc3339_utc(),
-        host_side: true,
-    };
-    let mut peers = state.peers.lock().map_err(|_| refusal("pairing state is unavailable"))?;
-    peers.retain(|known| known.device_id != peer.device_id);
-    let response = Response {
-        ok: true,
-        device_id: state.identity.device_id.clone(),
-        name: state.identity.name.clone(),
-        fingerprint: state.identity.fingerprint.clone(),
-        shared_key: peer.shared_key.clone(),
-        ..Response::default()
-    };
-    peers.push(peer);
-    Ok(response)
-}
-
 fn authenticated(state: &Arc<HostState>, request: &Request, body: &[u8]) -> Result<(), Failure> {
     if request.device_id.is_empty() {
         return Err(refusal("not paired"));
@@ -891,7 +856,12 @@ fn authenticated(state: &Arc<HostState>, request: &Request, body: &[u8]) -> Resu
         return Err(refusal("the request body length does not match"));
     }
     let body_hash = hex_encode(&Sha256::digest(body));
-    verify_mac(&key, request, &body_hash).map_err(|_| refusal("the request signature is not valid"))
+    verify_mac(&key, request, &body_hash).map_err(|_| refusal("the request signature is not valid"))?;
+    // A valid MAC is not enough: the same request must not be accepted twice.
+    if !state.replay.accept(&request.device_id, &request.nonce, now) {
+        return Err(refusal("the request was already used"));
+    }
+    Ok(())
 }
 
 fn handle_list(state: &Arc<HostState>) -> Result<Response, Failure> {

@@ -89,6 +89,30 @@ release-train schedule is decided.
   `test:src-tauri/src/paths_policy.rs#registration_normalizes_and_deduplicates`
   `test:src-tauri/src/paths_policy.rs#trusted_paths_cover_their_tree`
 
+- **Code-authenticated LAN pairing (E1/3, #550):** the six-digit code never
+  crosses the wire. Pairing is a SPAKE2 handshake with the code as the password
+  (`crates/synccore/src/lan/pairing.rs`), so only a device that knows the code
+  derives the key, and a wrong guess costs one online attempt instead of
+  letting a recorded handshake be tested offline. Both certificate fingerprints
+  are hashed into the derived key: a device that terminates TLS with its own
+  certificate and relays the handshake derives two different keys, so the
+  client pins nothing and the host records nothing. The confirmation round runs
+  on a connection pinned to the first answer's certificate, a pending session
+  is taken out of the host's map before it is checked, the pairing fields are
+  validated before the handshake (a 16-64 character hex session, a fixed-size
+  SPAKE2 message, short identity fields), accepted nonces are remembered for
+  the freshness window (`crates/synccore/src/lan/replay.rs`) and four worker
+  threads replace the one-connection-at-a-time accept loop, so a stalled peer
+  neither queues the others nor holds "stop sharing".
+  `test:crates/synccore/src/lan/pairing_tests.rs#a_relaying_mitm_cannot_turn_a_pairing_into_a_pin`
+  `test:crates/synccore/src/lan/pairing_tests.rs#the_pairing_key_is_bound_to_both_certificates`
+  `test:crates/synccore/src/lan/pairing_tests.rs#an_attacker_that_guesses_codes_spends_the_host_attempts`
+  `test:crates/synccore/src/lan/pairing_tests.rs#a_signed_request_is_accepted_once`
+  `test:crates/synccore/src/lan/pairing_tests.rs#a_stalled_peer_does_not_block_a_pairing`
+  `test:crates/synccore/src/lan/pairing_tests.rs#stopping_the_host_does_not_wait_for_a_stalled_peer`
+  `test:crates/synccore/src/lan/pairing_tests.rs#a_malformed_pairing_request_is_refused_without_side_effects`
+  `test:crates/synccore/src/lan/pairing_tests.rs#a_client_on_the_old_pairing_protocol_is_refused`
+
 ### Not done / Known limitations (7.2.0)
 
 - **Configured output destinations keep a legacy raw path.** Settings' default
@@ -102,10 +126,21 @@ release-train schedule is decided.
   and code path; CI runs debug builds where raw paths are allowed, so a release
   E2E remains the manual check.
   (no test: requires a release build on a desktop device.)
-- The LAN pairing MITM (SPAKE2/SAS), desktop secrets on the keyring, the
-  command ACL and plugin-install confirmation are the next E1 slices; each
-  needs its own regression test and, for the LAN item, a simulated attacker
-  test.
+- **Pairing needs both devices on 7.2 or newer.** The pre-7.2 handshake sent
+  the code inside the TLS session; this host refuses that operation with an
+  update message instead of honouring it, so a mixed-version pair cannot
+  downgrade. A real two-device version mixture is the manual row S2 in
+  `docs/lan-sync-acceptance.md`.
+  `test:crates/synccore/src/lan/pairing_tests.rs#a_client_on_the_old_pairing_protocol_is_refused`
+- **Pairing availability, not the host, can be blocked.** Eight in-flight
+  pairing sessions are held for up to the 120 s window, so a device that opens
+  first rounds without finishing them can make a legitimate pairing wait for
+  the window to be reopened. It cannot pair, read or write anything, and the
+  host keeps serving paired peers meanwhile.
+  (no test: a timing property of the bounded session map; the cap and the
+  expiry are covered by the attacker test above.)
+- Desktop secrets on the keyring, the command ACL and plugin-install
+  confirmation are the next E1 slices; each needs its own regression test.
   (no test: planned slices, tracked in #550.)
 
 ## Implemented (this cycle, 7.1.1) - E0 hızlı kazanımlar
@@ -555,12 +590,13 @@ release-train schedule is decided.
   `test:crates/synccore/src/lan/tests.rs#a_loopback_host_pairs_lists_and_transfers`
 - **One-time six-digit pairing (C14, #522):** random code, 120 s lifetime, five
   attempts and one-time use; a ticket that ran out or expired refuses even the
-  right code.
-  `test:crates/synccore/src/lan/tests.rs#pairing_codes_are_six_digits_and_only_the_exact_code_matches`
-  `test:crates/synccore/src/lan/tests.rs#a_ticket_is_one_time_short_lived_and_runs_out_of_attempts`
+  right code. Since 7.2 the budget counts failed code-authenticated
+  confirmations instead of wrong code strings (E1/3).
+  `test:crates/synccore/src/lan/tests.rs#pairing_codes_are_six_random_digits`
+  `test:crates/synccore/src/lan/tests.rs#a_ticket_is_short_lived_and_runs_out_of_attempts`
 - **Path-safe folder transfer (C14, #522):** relative document paths only, no
   `..`, no absolute or hidden paths, an extension allow-list, nothing outside
-  the shared folder, no delete operation.
+  the shared folder, and no deletion except through a confirmed plan.
   `test:crates/synccore/src/lan/tests.rs#only_relative_document_paths_are_accepted`
   `test:crates/synccore/src/lan/tests.rs#a_scan_folder_skips_sidecars_and_unshared_types`
 - **Three-way plan and explicit conflicts (C14, #522):** the existing

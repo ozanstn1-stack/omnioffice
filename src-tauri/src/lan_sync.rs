@@ -6,11 +6,11 @@
 //! execution of a merge action against the local folder.
 //!
 //! Two roles exist. A **host** shares one folder and shows a six-digit code; a
-//! **client** pairs with it and can list, download and upload documents. A
-//! pairing is one-directional: the same device id cannot be both roles at
-//! once (the roadmap's follow-up is symmetric pairing). See
-//! `docs/lan-sync.md` for the threat model and what is deliberately absent
-//! (background service, delete propagation, mDNS).
+//! **client** pairs with it through the code-authenticated handshake in
+//! `synccore::lan::pairing` and can list, download and upload documents.
+//! Pairing is symmetric: the host also records the client's certificate pin and
+//! address, so either side can call the other while that side is sharing. See
+//! `docs/lan-sync.md` for the threat model and the residual risks.
 
 mod store;
 #[cfg(test)]

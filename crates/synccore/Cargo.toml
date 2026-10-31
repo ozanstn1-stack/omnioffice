@@ -39,6 +39,11 @@ thiserror = "2"
 # the key established at pairing.
 getrandom = "0.2"
 hmac = "0.12"
+# Code-authenticated LAN pairing (E1/3): SPAKE2 over the six-digit code, so the
+# code never crosses the wire and a relayed handshake cannot be turned into a
+# pin. curve25519-dalek (the crate's group arithmetic) is BSD-3-Clause, which
+# deny.toml already allows.
+spake2 = "0.4"
 # mDNS/DNS-SD discovery for the LAN sync (C14 phase 2). Sync API, no async
 # runtime; the logging and async features stay off.
 mdns-sd = { version = "0.21", default-features = false }
