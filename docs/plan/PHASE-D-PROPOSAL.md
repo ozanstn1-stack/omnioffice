@@ -1,6 +1,6 @@
 # Phase D proposal — after Phase C
 
-**Status: approved; v6.13.0–v6.15.0 delivered (D1–D4, D8); v7.0.0 in progress (D7).** Phase C is closed (all C1–C15 delivered between
+**Status: approved; v6.13.0–v6.15.0 delivered (D1–D4, D8); v7.0.0 in progress (D5, D7).** Phase C is closed (all C1–C15 delivered between
 v6.4.0 and v6.12.0, tracker #341 closed, every release verified with its
 18-asset SHA-256 manifest). This document proposes what comes next; nothing
 here is committed until the owner picks the items and a tracker issue is
@@ -15,7 +15,8 @@ opened.
 | D3. Resumable Android transfer | Delivered in v6.13.0 (uploads; downloads stay whole-file) |
 | D4. Real-photo scanner corpus and page separation | Delivered in v6.14.0 (photo-realistic corpus, measured 12/14 = 85 %, spread split and batch auto-crop) |
 | D8. Mobile ergonomics audit | Delivered in v6.15.0 (thumb-reach action bar, keyboard inset, safe areas, landscape, bilingual 360 dp matrix for 55 routes) |
-| D7. Provenance v2 | In progress for v7.0.0 (DOCX manifests, unified source chain, automatic producer embedding) |
+| D7. Provenance v2 | Delivered (DOCX manifests, unified source chain, automatic producer embedding) |
+| D5. Local AI v2 | Delivered (eval harness, three new Turkish packs, strict JSON + repair, zero-network isolation, bundling decision) |
 
 The rest of this document is the original proposal, kept as the planning record.
 
@@ -125,6 +126,13 @@ budget.
 **Acceptance.** Every pack passes the eval harness on the local provider; the
 decision about bundling a model is recorded with its trade-offs; no pack makes
 a network call in local mode.
+
+**Status (v7.0.0).** Delivered: seven Turkish packs with golden and negative
+eval cases (the suite scores 100 % on the goldens and fails under the 90 %
+floor when the model degrades), one repair turn on invalid JSON, a test proving
+the harness and runner make no network/telemetry call, and
+`docs/local-ai-decision.md` with the bundling decision (no bundled model in
+v7.0.0) and the criteria to revisit it.
 
 ### D6. Office fidelity
 

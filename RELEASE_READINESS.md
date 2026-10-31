@@ -31,6 +31,46 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 7.0.0) - Yerel yapay zekâ v2
+
+- **Turkish eval harness (D5, #531):** every pack carries golden answers plus
+  answers it must reject (broken arithmetic, wrong dates, missing fields); the
+  same verifier the screen uses scores them, a suite floor of 90 % per pack and
+  overall turns "the model seems fine" into a number, and a degraded model is
+  caught by the score instead of by a user.
+  `test:src/lib/ai-task-pack-eval.test.ts#scores the golden answers at 100 % and reports every pack`
+  `test:src/lib/ai-task-pack-eval.test.ts#catches a regression when the local model starts answering badly`
+- **Three new Turkish packs (D5, #531):** e-invoice analysis (line arithmetic,
+  per-line VAT, the three totals), KEP/e-Tebligat summary (sender, subject,
+  sections, service date, period and last day), and court-petition
+  classification (court type from a closed list, subject, requests, evidence) —
+  seven packs in total, each with its own verifier.
+  `test:src/lib/ai-task-packs.test.ts#ships the seven Turkish packs (C7 + D5) with unique ids`
+- **Strict JSON contract with a repair turn (D5):** when an answer does not
+  verify, the runner sends one repair question carrying the concrete problems
+  and the rejected answer; the screen shows the repaired, verified answer and
+  says a repair happened.
+  `test:src/lib/ai-task-pack-eval.test.ts#sends one repair turn with the concrete problems and then accepts`
+- **Zero-network isolation (D5):** the runner takes the provider call as a
+  parameter, so a test proves the harness and the runner never call `fetch` or
+  telemetry; the only network user is the provider the user configured, and the
+  local presets point at localhost.
+  `test:src/lib/ai-task-pack-eval.test.ts#never calls the network or telemetry itself`
+- **Model bundling decision (D5):** `docs/local-ai-decision.md` records the
+  candidate models, licences, sizes, RAM budgets, packaging and update costs,
+  the decision to keep the model out of the installer for v7.0.0, and the
+  criteria that would reopen it.
+  (no test: a decision record, documented with its numbers and limits.)
+
+### Not done / Known limitations (7.0.0)
+
+- No model is bundled or downloaded by the app; local AI still requires Ollama
+  or LM Studio installed by the user, as decided and documented.
+  (no test: decision record in `docs/local-ai-decision.md`.)
+- The eval harness scores recorded answers; it runs on CI, not on the user's
+  machine against the user's model.
+  (no test: by design; the harness is provider-agnostic and network-free.)
+
 ## Implemented (this cycle, 7.0.0) - Kaynak şeffaflığı v2
 
 - **DOCX provenance manifests (D7, #531):** a DOCX produced by the app carries
@@ -342,7 +382,7 @@ release-train schedule is decided.
   "özetle sözleşme maddesi", "çıkar KDV özeti" and "tebligattan süre çıkar" -
   each with a Turkish instruction, the expected JSON shape and a deterministic
   prompt that asks for JSON only.
-  `test:src/lib/ai-task-packs.test.ts#ships the four requested Turkish packs with unique ids`
+  `test:src/lib/ai-task-packs.test.ts#ships the seven Turkish packs (C7 + D5) with unique ids`
   `test:src/lib/ai-task-packs.test.ts#asks for JSON only and shows the expected shape`
   `test:src/lib/ai-task-packs.test.ts#includes the pack's own instruction and is deterministic`
 - **Structured answer verification (C7, #518):** the JSON is extracted from

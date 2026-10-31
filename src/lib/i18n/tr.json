@@ -3035,5 +3035,15 @@
   "provenance.chainUnsupported": "PDF veya DOCX paketi değil; kaynak bildirgesi taşıyamaz.",
   "provenance.recorded": "Kaydedilen SHA-256",
   "provenance.outputDigest": "Çıktı SHA-256",
-  "provenance.docxSupported": "Bildirge, DOCX paketine ek bir parça olarak gömülür."
+  "provenance.docxSupported": "Bildirge, DOCX paketine ek bir parça olarak gömülür.",
+  "aiPacks.pack.efatura.title": "E-faturayı analiz et",
+  "aiPacks.pack.efatura.description": "Satıcı, alıcı, KDV’li kalemler ve üç toplam; satır aritmetiğiyle denetlenir.",
+  "aiPacks.pack.efatura.hint": "Yanıt her kalemi miktar, birim fiyat, oran, matrah ve KDV ile listeler; uygulama aritmetiği ve toplamları denetler.",
+  "aiPacks.pack.kep.title": "KEP tebligatını özetle",
+  "aiPacks.pack.kep.description": "KEP/e-Tebligat metninden gönderen, konu, bölüm özetleri ve hukuki süre.",
+  "aiPacks.pack.kep.hint": "Yanıt göndereni, konuyu, bölüm özetlerini, tebliğ tarihini ve son günü verir; uygulama tarihleri denetler.",
+  "aiPacks.pack.mahkeme.title": "Mahkeme dilekçesini sınıflandır",
+  "aiPacks.pack.mahkeme.description": "Dilekçeden mahkeme türü, konu, talepler ve deliller.",
+  "aiPacks.pack.mahkeme.hint": "Yanıt listeden bir mahkeme türü seçer, talepleri ve delilleri listeler, konuyu özetler.",
+  "aiPacks.repaired": "Yanıt doğrulanamadı; bir onarım turu gönderildi."
 }

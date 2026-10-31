@@ -5,9 +5,10 @@
  * provider is not local the screen says so and offers a one-click switch.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Bot, FileSearch, Play, ShieldAlert, ShieldCheck, Wifi, WifiOff } from "lucide-react";
+import { FileSearch, Play, ShieldAlert, ShieldCheck, Wifi, WifiOff } from "lucide-react";
 import { Badge, Button, Card, Checkbox, Field } from "../components/ui";
 import { Screen } from "../components/layout";
+import { AiPackGrid } from "../components/ai-pack-grid";
 import { pickDocumentToken, type FileToken } from "../lib/file-tokens";
 import { uid } from "../lib/format";
 import { useT } from "../lib/i18n";
@@ -15,13 +16,12 @@ import { aiChat, aiGetSettings, aiSaveSettings, toAppError } from "../lib/api";
 import { PROVIDER_PRESETS, isLocalProvider, parseProviderId } from "../lib/ai-providers";
 import {
   TASK_PACKS,
-  buildTaskPackQuestion,
   getTaskPack,
-  verifyTaskPackOutput,
   type TaskPackId,
   type TaskPackResult,
   type VerificationIssue,
 } from "../lib/ai-task-packs";
+import { runTaskPack } from "../lib/ai-task-pack-runner";
 import { useScreenReady } from "../lib/screen-ready";
 import { reportError, useToasts } from "../lib/store";
 import type { AiSettingsView } from "../lib/types";
@@ -87,6 +87,12 @@ export function AiPacks() {
     }
   };
 
+  const pickPack = (id: TaskPackId) => {
+    setPackId(id);
+    setResult(null);
+    setRaw("");
+  };
+
   const pickFile = async () => {
     const picked = await pickDocumentToken(["pdf"]).catch(() => null);
     if (!picked) return;
@@ -103,19 +109,26 @@ export function AiPacks() {
     setResult(null);
     setRaw("");
     try {
-      const answer = await aiChat({
-        path: file.token,
-        question: buildTaskPackQuestion(pack),
-        scope: "document",
-        jobId: uid("ai-pack"),
-        consent: true,
+      // D5: a strict JSON contract with one repair turn. The runner never
+      // touches the network; the provider call below is the only one.
+      const run = await runTaskPack(pack, async (question) => {
+        const answer = await aiChat({
+          path: file.token,
+          question,
+          scope: "document",
+          jobId: uid("ai-pack"),
+          consent: true,
+        });
+        return answer.answer;
       });
-      setRaw(answer.answer);
-      const checked = verifyTaskPackOutput(pack, answer.answer);
-      setResult(checked);
+      setRaw(run.answers[run.answers.length - 1] ?? "");
+      setResult(run.result);
+      if (run.attempts > 1) {
+        push({ kind: "info", title: t("aiPacks.repaired") });
+      }
       push({
-        kind: checked.ok ? "success" : "info",
-        title: checked.ok ? t("aiPacks.verified") : t("aiPacks.verificationFailed"),
+        kind: run.result.ok ? "success" : "info",
+        title: run.result.ok ? t("aiPacks.verified") : t("aiPacks.verificationFailed"),
       });
     } catch (caught) {
       const appError = toAppError(caught);
@@ -152,28 +165,7 @@ export function AiPacks() {
         <p className="muted small mt-1">{t("aiPacks.modelNote")}</p>
       </Card>
 
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
-        {TASK_PACKS.map((candidate) => (
-          <button
-            key={candidate.id}
-            type="button"
-            className={`card p-4 text-left${candidate.id === packId ? " is-active" : ""}`}
-            style={candidate.id === packId ? { outline: "2px solid var(--accent)" } : undefined}
-            onClick={() => {
-              setPackId(candidate.id);
-              setResult(null);
-              setRaw("");
-            }}
-          >
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <strong>{t(candidate.titleKey)}</strong>
-              <Bot size={15} />
-            </div>
-            <p className="muted small mt-1">{t(candidate.descriptionKey)}</p>
-          </button>
-        ))}
-      </div>
-
+      <AiPackGrid packs={TASK_PACKS} activeId={packId} onPick={pickPack} />
       <Card>
         <p className="muted small">{t(`aiPacks.pack.${pack.id}.hint`)}</p>
         <div className="stack mt-2">

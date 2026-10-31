@@ -8,7 +8,14 @@
  * server, see `isLocalProvider`.
  */
 
-export type TaskPackId = "duzelt-dilekce" | "ozetle-sozlesme" | "kdv-ozeti" | "tebligat-sure";
+export type TaskPackId =
+  | "duzelt-dilekce"
+  | "ozetle-sozlesme"
+  | "kdv-ozeti"
+  | "tebligat-sure"
+  | "efatura-analiz"
+  | "kep-tebligat"
+  | "mahkeme-dilekce";
 
 export type FieldType = "string" | "number" | "array";
 
@@ -18,6 +25,8 @@ export interface FieldSpec {
   type: FieldType;
   /** Fields of each array item (when `type` is "array"). */
   items?: FieldSpec[];
+  /** Primitive array items (when the array is a list of strings or numbers). */
+  itemType?: "string" | "number";
   /** Allowed values of a string field. */
   values?: string[];
   /** Absent fields are allowed; present ones still have to match the type. */
@@ -106,6 +115,17 @@ function validateField(value: unknown, field: FieldSpec, path: string, issues: V
     issues.push({ code: "wrongType", field: path, params: { expected: "array" } });
     return;
   }
+  if (field.itemType) {
+    value.forEach((item, index) => {
+      const expected = field.itemType as "string" | "number";
+      const valid =
+        expected === "string"
+          ? typeof item === "string" && item.trim() !== ""
+          : typeof item === "number" && Number.isFinite(item);
+      if (!valid) issues.push({ code: "wrongType", field: `${path}[${index}]`, params: { expected } });
+    });
+    return;
+  }
   value.forEach((item, index) => {
     if (!isRecord(item)) {
       issues.push({ code: "wrongType", field: `${path}[${index}]`, params: { expected: "object" } });
@@ -122,173 +142,7 @@ function validateShape(value: Record<string, unknown>, fields: FieldSpec[]): Ver
   return issues;
 }
 
-function dateValue(value: unknown): number | null {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const parsed = Date.parse(`${value}T00:00:00Z`);
-  return Number.isNaN(parsed) ? null : parsed;
-}
-
-function numbersIn(value: Record<string, unknown>): Record<string, number> {
-  const numbers: Record<string, number> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (typeof entry === "number" && Number.isFinite(entry)) numbers[key] = entry;
-  }
-  return numbers;
-}
-
-/** KDV: each row's vat ≈ base * rate / 100 and the totals match the rows. */
-function verifyVat(value: Record<string, unknown>): VerificationIssue[] {
-  const issues: VerificationIssue[] = [];
-  const rows = Array.isArray(value.rows) ? value.rows : [];
-  let base = 0;
-  let vat = 0;
-  rows.forEach((row, index) => {
-    if (!isRecord(row)) return;
-    const rate = typeof row.rate === "number" ? row.rate : 0;
-    const rowBase = typeof row.base === "number" ? row.base : 0;
-    const rowVat = typeof row.vat === "number" ? row.vat : 0;
-    if (rate < 0 || rate > 100)
-      issues.push({ code: "range", field: `rows[${index}].rate`, params: { min: 0, max: 100 } });
-    base += rowBase;
-    vat += rowVat;
-    const expected = (rowBase * rate) / 100;
-    const tolerance = Math.max(1, Math.abs(rowBase) * 0.005);
-    if (Math.abs(expected - rowVat) > tolerance) {
-      issues.push({
-        code: "vatMath",
-        field: `rows[${index}].vat`,
-        params: { expected: expected.toFixed(2), actual: rowVat.toFixed(2) },
-      });
-    }
-  });
-  const numbers = numbersIn(value);
-  if (typeof numbers.totalBase === "number" && Math.abs(numbers.totalBase - base) > 1) {
-    issues.push({
-      code: "totalsMismatch",
-      field: "totalBase",
-      params: { expected: base.toFixed(2), actual: numbers.totalBase.toFixed(2) },
-    });
-  }
-  if (typeof numbers.totalVat === "number" && Math.abs(numbers.totalVat - vat) > 1) {
-    issues.push({
-      code: "totalsMismatch",
-      field: "totalVat",
-      params: { expected: vat.toFixed(2), actual: numbers.totalVat.toFixed(2) },
-    });
-  }
-  return issues;
-}
-
-/** Notification deadline: real dates, the last day not before the service day, a sane period. */
-function verifyDeadline(value: Record<string, unknown>): VerificationIssue[] {
-  const issues: VerificationIssue[] = [];
-  const service = dateValue(value.serviceDate);
-  const last = dateValue(value.lastDay);
-  if (service === null) issues.push({ code: "dateFormat", field: "serviceDate" });
-  if (last === null) issues.push({ code: "dateFormat", field: "lastDay" });
-  if (service !== null && last !== null && last < service) {
-    issues.push({ code: "dateOrder", field: "lastDay" });
-  }
-  if (typeof value.periodDays === "number" && (value.periodDays < 1 || value.periodDays > 3650)) {
-    issues.push({ code: "range", field: "periodDays", params: { min: 1, max: 3650 } });
-  }
-  return issues;
-}
-
-export const TASK_PACKS: TaskPack[] = [
-  {
-    id: "duzelt-dilekce",
-    titleKey: "aiPacks.pack.dilekce.title",
-    descriptionKey: "aiPacks.pack.dilekce.description",
-    prompt:
-      "Sen Türk hukuk diline hâkim bir editörsün. Verilen dilekçeyi incele: dil bilgisi, imla, noktalama, " +
-      "resmî hitap ve tutarlılık sorunlarını bul; her sorun için kısa bir başlık, önem derecesi ve somut bir " +
-      "düzeltme önerisi yaz. Ardından dilekçenin düzeltilmiş tam metnini ver. Metinde olmayan bilgi uydurma.",
-    fields: [
-      { name: "summary", type: "string" },
-      {
-        name: "issues",
-        type: "array",
-        items: [
-          { name: "severity", type: "string", values: ["high", "medium", "low"] },
-          { name: "title", type: "string" },
-          { name: "suggestion", type: "string" },
-        ],
-      },
-      { name: "corrected", type: "string" },
-    ],
-  },
-  {
-    id: "ozetle-sozlesme",
-    titleKey: "aiPacks.pack.sozlesme.title",
-    descriptionKey: "aiPacks.pack.sozlesme.description",
-    prompt:
-      "Sen sözleşme inceleyen bir uzmansın. Verilen sözleşme metnindeki maddeleri başlık, tek cümlelik özet " +
-      "ve varsa taraf için risk olarak çıkar; sonunda sözleşmenin kısa bir özetini yaz. Maddede yazmayan bir " +
-      "hüküm ekleme, yorumu risk alanında açıkça belirt.",
-    fields: [
-      { name: "summary", type: "string" },
-      {
-        name: "clauses",
-        type: "array",
-        items: [
-          { name: "heading", type: "string" },
-          { name: "summary", type: "string" },
-          { name: "risk", type: "string", optional: true },
-        ],
-      },
-    ],
-    extra: (value) => {
-      const clauses = Array.isArray(value.clauses) ? value.clauses : [];
-      return clauses.length === 0 ? [{ code: "tooFew", field: "clauses", params: { min: 1 } }] : [];
-    },
-  },
-  {
-    id: "kdv-ozeti",
-    titleKey: "aiPacks.pack.kdv.title",
-    descriptionKey: "aiPacks.pack.kdv.description",
-    prompt:
-      "Sen muhasebe uzmanısın. Verilen fatura/KDV dökümünden oran bazında matrah ve KDV satırlarını çıkar " +
-      "(satırlar: rate, base, vat), sonra toplam matrah (totalBase) ve toplam KDV (totalVat) yaz. Sayıları " +
-      "nokta ondalıkla ve para birimi simgesi olmadan ver. Hesaplamadığın bir sayıyı uydurma.",
-    fields: [
-      {
-        name: "rows",
-        type: "array",
-        items: [
-          { name: "rate", type: "number" },
-          { name: "base", type: "number" },
-          { name: "vat", type: "number" },
-        ],
-      },
-      { name: "totalBase", type: "number" },
-      { name: "totalVat", type: "number" },
-    ],
-    extra: verifyVat,
-  },
-  {
-    id: "tebligat-sure",
-    titleKey: "aiPacks.pack.tebligat.title",
-    descriptionKey: "aiPacks.pack.tebligat.description",
-    prompt:
-      "Sen tebligat sürelerini hesaplayan bir hukuk asistanısın. Verilen tebligat metninden tebliğ tarihini " +
-      "(serviceDate), süreyi gün olarak (periodDays) ve son günü (lastDay) çıkar; hesabın adımlarını kısaca " +
-      "reasoning alanında açıkla. Tarihleri YYYY-AA-GG biçiminde yaz. Metinde olmayan bir tarih uydurma.",
-    fields: [
-      { name: "serviceDate", type: "string" },
-      { name: "periodDays", type: "number" },
-      { name: "lastDay", type: "string" },
-      { name: "reasoning", type: "string" },
-    ],
-    extra: verifyDeadline,
-  },
-];
-
-export function getTaskPack(id: TaskPackId): TaskPack {
-  const pack = TASK_PACKS.find((candidate) => candidate.id === id);
-  if (!pack) throw new Error(`unknown task pack: ${id}`);
-  return pack;
-}
+export { TASK_PACKS, getTaskPack } from "./ai-task-packs-catalog";
 
 /**
  * The question sent through `ai_chat`: the task, the JSON shape and the rules
