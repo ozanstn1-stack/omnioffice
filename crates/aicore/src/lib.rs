@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! aicore — DeepSeek API client and prompt pipeline for OmniOffice.
 //!
 //! This is the only **AI** component that talks to the network (the updater

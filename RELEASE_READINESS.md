@@ -65,6 +65,28 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (this cycle, 7.2.0) - Güvenlik sertleştirmesi (E1, ilk dilim)
+
+- **CSP and prototype freeze (E1, #550):** the webview policy now blocks
+  plugins/objects (`object-src 'none'`), base-tag rewrites (`base-uri 'none'`),
+  form posts (`form-action 'none'`) and framing (`frame-ancestors 'none'`) on
+  top of the existing local-asset/IPC allow-lists, and `freezePrototype` is on.
+  `test:src/lib/security-config.test.ts#blocks objects, base changes, form posts and framing`
+  `test:src/lib/security-config.test.ts#freezes the prototypes the webview exposes`
+- **No unsafe code in the library crates (E1, #550):** `aicore`, `compat`,
+  `officecore`, `pdfcore`, `synccore` and `turkish` declare
+  `#![forbid(unsafe_code)]`; the workspace compiles under it.
+  `test:src/lib/security-config.test.ts#declares #![forbid(unsafe_code)] in every library crate`
+
+### Not done / Known limitations (7.2.0)
+
+- The raw-path gap (`paths::lexical`/`directory` bypassing
+  `ensure_raw_allowed`), the LAN pairing MITM (SPAKE2/SAS), desktop secrets on
+  the keyring, the command ACL and plugin-install confirmation are the next E1
+  slices; each needs its own regression test and, for the LAN item, a simulated
+  attacker test.
+  (no test: planned slices, tracked in #550.)
+
 ## Implemented (this cycle, 7.1.1) - E0 hızlı kazanımlar
 
 - **Command-surface hygiene (E0, #550):** the unregistered `issue_tokens`

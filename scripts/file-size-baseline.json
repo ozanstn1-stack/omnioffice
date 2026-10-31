@@ -4,11 +4,11 @@
   "files": {
     "crates/aicore/src/anthropic.rs": 896,
     "crates/aicore/src/citations.rs": 207,
-    "crates/aicore/src/lib.rs": 1724,
+    "crates/aicore/src/lib.rs": 1726,
     "crates/aicore/src/prompts.rs": 1042,
     "crates/aicore/tests/anthropic_test.rs": 458,
     "crates/aicore/tests/client_test.rs": 1044,
-    "crates/compat/src/lib.rs": 465,
+    "crates/compat/src/lib.rs": 467,
     "crates/officecore/examples/make-corpus.rs": 390,
     "crates/officecore/examples/make-office-samples.rs": 314,
     "crates/officecore/src/cleaner.rs": 303,

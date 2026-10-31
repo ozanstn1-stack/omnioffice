@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Offline Turkish spell checking.
 //!
 //! * root lexicon: the vendored Zemberek master dictionary plus the `first-10K`

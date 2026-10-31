@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! officecore - local-first document engine for OmniOffice.
 //!
 //! Handles the document model and the file formats behind the Writer, Calc,
