@@ -104,6 +104,28 @@ deletion) or `delete_local` / `restore_remote` (for a remote one). The `delete`
 request is HMAC-signed like every other operation and goes through the same
 path validation, so it can only remove a shared document.
 
+## Resumable transfers
+
+A large upload is no longer one request that dies with the app. The protocol
+splits it into `begin_put` / `put_chunk` / `finish_put`:
+
+- the client begins with the total size and the SHA-256 of the whole document;
+  the host answers with the offset it already has (0 for a new upload, the
+  length of the partial file after an interruption);
+- each chunk (512 KiB by default, at most 4 MiB accepted) carries the byte
+  offset it starts at, so an out-of-order chunk is refused instead of appended;
+- `finish_put` checks the assembled length, streams the file through SHA-256 and
+  only then moves it into place; a hash mismatch drops the partial file so a
+  poisoned resume cannot corrupt the document.
+
+Partial files live in the host's shared folder under `.parts/` with a hashed
+name, are never listed as documents (hidden directories are skipped) and are
+cleaned up when they are older than 24 hours. The client retries up to three
+times and resumes from the host's offset, so a dropped connection or an Android
+foreground-service restart continues instead of restarting. Progress is emitted
+as a `lan-progress` event (`path`, `sent`, `total`) and shown in the LAN card;
+downloads are still whole-file and not resumable yet.
+
 ## Deletion safety: trash and tombstones
 
 A confirmed deletion used to be permanent. Every confirmed `delete_remote` or

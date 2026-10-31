@@ -56,7 +56,7 @@ the best-effort rows are either passing or documented.
 | S9 | Delete there | Delete a file on the PC, compare on the phone, confirm “Delete here”. | The phone's copy is gone; the trash entry exists (D2) and can restore it. |
 | S10 | Unpair | Unpair on the phone; then try “Compare” again. | The request is refused; the PC no longer accepts the phone's key; re-pairing works with a new code. |
 | S11 | Background share | Start sharing on the phone, switch to another app, wait 5 minutes, then pair from the PC. | The phone still answers (foreground service + multicast lock); the notification is visible. |
-| S12 | Interrupted transfer | During a large upload, stop the share (or kill the app) on the receiver. | No partial document appears in the shared folder; the error is shown; re-running the sync completes. (D3 makes this resumable instead of restarting.) |
+| S12 | Interrupted transfer | During a large upload, stop the share (or kill the app) on the receiver, then resume. | No partial document appears in the shared folder; progress restarts from the peer's offset (not from zero) and the upload completes; the final SHA-256 matches. |
 | S13 | Unicode and paths | Transfer `örnek belge.pdf` in `test/alt/`. | File name is preserved exactly; the nested path arrives in the right folder. |
 | S14 | Blocked multicast | On a guest Wi-Fi where mDNS fails, discover again. | The broadcast fallback finds the host (annotation says fallback) or the row is recorded as a limitation. |
 

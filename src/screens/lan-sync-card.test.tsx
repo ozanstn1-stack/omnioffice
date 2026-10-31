@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -61,6 +61,15 @@ const lanResolveDeletion = vi.fn(
   }),
 );
 
+const eventHandlers = vi.hoisted(() => ({}) as Record<string, (event: { payload: unknown }) => void>);
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async (name: string, callback: (event: { payload: unknown }) => void) => {
+    eventHandlers[name] = callback;
+    return () => undefined;
+  }),
+}));
+
 vi.mock("../lib/lan-sync", () => ({
   lanStatus: (...args: unknown[]) => lanStatus(...(args as [])),
   lanRename: vi.fn(async () => status),
@@ -92,6 +101,7 @@ describe("LAN sync card", () => {
     devices = [];
     plan = null;
     trash = [];
+    for (const key of Object.keys(eventHandlers)) delete eventHandlers[key];
     vi.clearAllMocks();
   });
 
@@ -230,6 +240,17 @@ describe("LAN sync card", () => {
     expect((await screen.findAllByText("Belgeler")).length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: /^Restore$/i }));
     await waitFor(() => expect(lanTrashRestore).toHaveBeenCalledWith("folder-token", "trash-1"));
+  });
+
+  it("shows upload progress from the lan-progress event", async () => {
+    render(<LanSyncCard />);
+    await screen.findByText(/Atölye/);
+    act(() => {
+      eventHandlers["lan-progress"]?.({ payload: { path: "buyuk.pdf", sent: 512, total: 1024 } });
+    });
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(/buyuk\.pdf/);
+    expect(status).toHaveTextContent(/50/);
   });
 
   it("reports a failed pairing instead of pretending it worked", async () => {

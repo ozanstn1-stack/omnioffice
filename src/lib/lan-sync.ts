@@ -59,6 +59,13 @@ export const lanResolveDeletion = (
   resolution: "delete_remote" | "restore_local" | "delete_local" | "restore_remote",
 ) => call((c) => c.lanResolveDeletion(deviceId, folder, path, side, resolution));
 
+/** One upload-progress event while a resumable transfer runs. */
+export interface LanProgress {
+  path: string;
+  sent: number;
+  total: number;
+}
+
 /** The local trash of confirmed LAN deletions (kept 30 days). */
 export const lanTrashList = () => call((c) => c.lanTrashList());
 

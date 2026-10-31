@@ -2024,6 +2024,7 @@
   "lan.trashEmpty": "Nothing in the trash.",
   "lan.trashRestore": "Restore",
   "lan.trashPurge": "Clear expired",
+  "lan.progress": "Uploading {file}… {percent}%",
   "sync.offTitle": "Cloud sync is off",
   "sync.offHint": "Nothing is uploaded or downloaded until you enable it here.",
   "sync.enable": "Enable cloud sync",
