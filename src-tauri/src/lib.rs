@@ -441,6 +441,8 @@ pub fn export_typed_bindings(path: &std::path::Path) -> Result<(), String> {
             evidence::evidence_match_originals,
             provenance::pdf_provenance_read,
             provenance::pdf_provenance_write,
+            provenance::provenance_read_chain,
+            provenance::provenance_write,
             person_cards::person_card_list,
             person_cards::person_card_save,
             person_cards::person_card_delete,

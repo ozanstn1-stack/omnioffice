@@ -17,6 +17,7 @@ pub mod cleaner;
 pub mod compat;
 pub mod csvio;
 pub mod docx;
+pub mod docx_provenance;
 pub mod eml;
 pub mod encoding;
 pub mod error;

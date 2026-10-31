@@ -145,6 +145,8 @@ domain! {
         evidence::evidence_match_originals,
         provenance::pdf_provenance_read,
         provenance::pdf_provenance_write,
+        provenance::provenance_read_chain,
+        provenance::provenance_write,
         commands::detect_redaction_matches,
         commands::pdf_set_outline,
         commands::stamp_pdf,
@@ -436,5 +438,5 @@ mod tests {
     }
 
     /// The number of entries in the domain lists, Android-only ones included.
-    const TOTAL: usize = 247;
+    const TOTAL: usize = 249;
 }
