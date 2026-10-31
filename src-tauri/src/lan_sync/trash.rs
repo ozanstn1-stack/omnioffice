@@ -83,7 +83,7 @@ fn save_index(config_dir: &Path, entries: &[TrashEntry]) -> Result<(), PdfError>
     }
     let json = serde_json::to_vec(entries).map_err(|error| PdfError::Internal(error.to_string()))?;
     let sealed = secret::seal_bytes(secret::platform_cipher(), &json);
-    metadata::write_atomic(&path, sealed.as_bytes())
+    secret::write_sealed(&path, sealed.as_bytes())
         .map_err(|error| PdfError::Internal(format!("the LAN trash index could not be written: {error}")))
 }
 
@@ -141,7 +141,7 @@ pub(super) fn push(config_dir: &Path, candidate: TrashCandidate) -> Result<Trash
         deleted_at: now,
     };
     std::fs::create_dir_all(trash_dir(config_dir)).map_err(PdfError::from_io)?;
-    metadata::write_atomic(&body_path(config_dir, &entry.id), &candidate.bytes)
+    secret::write_sealed(&body_path(config_dir, &entry.id), &candidate.bytes)
         .map_err(|error| PdfError::Internal(format!("the trash copy could not be written: {error}")))?;
     entries.push(entry.clone());
     save_index(config_dir, &entries)?;

@@ -81,7 +81,9 @@ socket.
    the window; the answer is the same "the pairing code is not correct" a wrong
    code always produced.
 7. Both stores are sealed with the platform cipher (DPAPI on Windows, Android
-   Keystore on Android, `plain:` with the UI's warning elsewhere).
+   Keystore on Android, `plain:` elsewhere) and the file is always written
+   owner-only (`0600`): the vault tier of `secret.rs` holds single secrets, not
+   a store that grows with every paired device.
 8. A device on the pre-7.2 protocol sent the code in the clear; this host
    refuses that operation with an update message instead of accepting it, so
    there is no silent downgrade. Both devices must run v7.2 or newer.

@@ -398,10 +398,15 @@ toolbar.
   Android)
 - Document chat with `[page N]` citations, summaries, translation, text
   cleanup, metadata suggestions
-- API keys use Windows DPAPI on desktop and the Android Keystore (AES-256-GCM)
-  on Android; if no platform cipher is available the app reports that keys are
-  stored unprotected. Android excludes app data from device backups. Keys are
-  never logged, never written into documents, versions or crash reports.
+- API keys use Windows DPAPI on Windows and the Android Keystore (AES-256-GCM)
+  on Android. Where the platform has no cipher (Linux, macOS) the value goes
+  into the OS credential vault - Secret Service, Keychain, Credential Manager -
+  and the file only keeps a marker; if the vault does not answer either, the
+  key lands in a `plain:` file that is forced to `0600` and the app reports
+  that it is stored unprotected. Sealed stores (the LAN device key, person
+  cards, signatures and trash copies) are owner-only files too. Android
+  excludes app data from device backups. Keys are never logged, never written
+  into documents, versions or crash reports.
 
 ## Supported formats
 
@@ -709,8 +714,9 @@ trusting a visual check.
   ZIP bombs; XML parsing is depth-limited and does not expand external
   entities; OOXML/ODF importers parse parts through those hardened layers.
 - Writes are atomic (temp sibling + rename); passwords are never logged or
-  persisted; API keys use DPAPI on Windows. PFX passwords and private keys
-  are held in memory only during signing.
+  persisted; API keys use DPAPI on Windows, the Keystore on Android and the OS
+  keyring elsewhere, falling back to an owner-only (`0600`) file. PFX passwords
+  and private keys are held in memory only during signing.
 - The plugin runtime sandboxes plugin code in a Web Worker with no DOM, no
   Tauri IPC and host-enforced capabilities; plugin file access is scoped to a
   per-plugin directory and path traversal is rejected on both sides.
@@ -899,9 +905,9 @@ Next (architecture prepared, not implemented):
 | --- | --- |
 | Screens | 55 |
 | Tauri commands | 253 |
-| Rust tests | 1413 |
-| TypeScript test files | 218 |
-| TypeScript test cases (approx.) | 2473 |
+| Rust tests | 1426 |
+| TypeScript test files | 219 |
+| TypeScript test cases (approx.) | 2475 |
 <!-- stats:end -->
 
 ## License

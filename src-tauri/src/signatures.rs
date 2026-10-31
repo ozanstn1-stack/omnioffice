@@ -65,7 +65,7 @@ pub struct SignatureEntry {
 /// Seals `data` into `<dir>/<name>.sig` and drops a legacy plain PNG.
 fn save_in(dir: &Path, cipher: Option<&dyn SecretCipher>, name: &str, data: &[u8]) -> Result<(), PdfError> {
     let payload = secret::seal_bytes(cipher, data);
-    crate::commands::write_atomic(&dir.join(format!("{name}.{SEALED}")), payload.as_bytes())?;
+    secret::write_sealed(&dir.join(format!("{name}.{SEALED}")), payload.as_bytes())?;
     remove_if_present(&dir.join(format!("{name}.{LEGACY}")))
 }
 
@@ -110,7 +110,7 @@ fn list_in(dir: &Path, cipher: Option<&dyn SecretCipher>) -> Vec<SignatureEntry>
 fn migrate_legacy(dir: &Path, cipher: Option<&dyn SecretCipher>, name: &str, bytes: &[u8], legacy: &Path) {
     let sealed = dir.join(format!("{name}.{SEALED}"));
     let payload = secret::seal_bytes(cipher, bytes);
-    if crate::commands::write_atomic(&sealed, payload.as_bytes()).is_err() {
+    if secret::write_sealed(&sealed, payload.as_bytes()).is_err() {
         return;
     }
     let verified = std::fs::read_to_string(&sealed)

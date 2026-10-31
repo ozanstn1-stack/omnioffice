@@ -113,6 +113,31 @@ release-train schedule is decided.
   `test:crates/synccore/src/lan/pairing_tests.rs#a_malformed_pairing_request_is_refused_without_side_effects`
   `test:crates/synccore/src/lan/pairing_tests.rs#a_client_on_the_old_pairing_protocol_is_refused`
 
+- **OS keyring for desktop secrets, owner-only fallback (E1/4, #550):** the
+  secret store has three tiers. DPAPI (Windows) and the Android Keystore stay
+  first; on a platform with no cipher (Linux, macOS) the value moves into the
+  OS credential vault (`src-tauri/src/secret/vault.rs`: Secret Service,
+  Keychain, Credential Manager) and the file keeps only a `keyring:<slot>`
+  marker with no secret in it. Only when the vault does not answer does the
+  value land in a `plain:` file, and every such file - and every sealed store:
+  the LAN device key, person cards, signature images, trash copies - is written
+  with `0600` (POSIX modes; on Windows those files stay inside the user's
+  profile and inherit its ACLs). Legacy `plain:` values migrate into the vault
+  (or the cipher) on read, with a read-back check before the plain file is
+  replaced, and an old file's permissions are tightened when it is read. The UI
+  names the tier.
+  `test:src-tauri/src/secret_tests.rs#save_uses_the_vault_when_there_is_no_cipher`
+  `test:src-tauri/src/secret_tests.rs#save_falls_back_to_plain_when_the_vault_refuses`
+  `test:src-tauri/src/secret_tests.rs#load_migrates_a_plain_value_into_the_vault`
+  `test:src-tauri/src/secret_tests.rs#load_keeps_the_plain_value_when_the_vault_does_not_answer`
+  `test:src-tauri/src/secret_tests.rs#a_marker_without_a_vault_is_reported_instead_of_read_as_empty`
+  `test:src-tauri/src/secret_tests.rs#a_plain_file_is_restricted_when_it_is_read`
+  `test:src-tauri/src/secret_tests.rs#a_plain_fallback_file_is_created_owner_only`
+  `test:src-tauri/src/secret/vault.rs#a_slot_is_stable_per_path_and_keeps_the_path_out_of_the_name`
+  `test:src-tauri/src/secret/vault.rs#a_value_sealed_into_the_vault_round_trips_through_its_marker`
+  `test:src-tauri/src/secret/vault.rs#a_secret_file_is_restricted_to_its_owner`
+  `test:src/lib/ai-storage-label.test.ts#names every storage tier the Rust layer reports`
+
 ### Not done / Known limitations (7.2.0)
 
 - **Configured output destinations keep a legacy raw path.** Settings' default
@@ -139,8 +164,19 @@ release-train schedule is decided.
   host keeps serving paired peers meanwhile.
   (no test: a timing property of the bounded session map; the cap and the
   expiry are covered by the attacker test above.)
-- Desktop secrets on the keyring, the command ACL and plugin-install
-  confirmation are the next E1 slices; each needs its own regression test.
+- **The vault tier is best effort and desktop-only.** A Linux session with no
+  Secret Service (a bare SSH box, a container) has no vault, so the value falls
+  back to the `0600` file and the UI says "unprotected"; the vault itself is
+  only as strong as the user's login session.
+  `test:src-tauri/src/secret_tests.rs#save_falls_back_to_plain_when_the_vault_refuses`
+- **Sealed stores stay `plain:` without a cipher.** The LAN store, person
+  cards, signatures and trash copies can grow past what a keyring entry should
+  hold, so they are written owner-only (`0600`) rather than vaulted. A file
+  written before this change is tightened on its next write, not on read.
+  `test:src-tauri/src/secret/vault.rs#a_secret_file_is_restricted_to_its_owner`
+- The command ACL and plugin-install confirmation are the next E1 slices; each
+  needs its own regression test and, for the ACL, a coverage check that every
+  registered command has a permission.
   (no test: planned slices, tracked in #550.)
 
 ## Implemented (this cycle, 7.1.1) - E0 hızlı kazanımlar

@@ -4,19 +4,26 @@
 //! On Windows the value is encrypted with DPAPI (CryptProtectData), so the
 //! stored blob can only be decrypted by the same Windows user on the same
 //! machine. On Android it is encrypted with an AES-256-GCM key that lives in
-//! the Android Keystore (see `android_keystore.rs`). On other platforms it
-//! falls back to plain text and the UI is told about it, so nothing pretends
-//! to be safer than it is.
+//! the Android Keystore (see `android_keystore.rs`). Those two are the first
+//! tier. The second is the OS credential vault ([`vault`]): when
+//! the platform has no cipher, the value goes into the Windows Credential
+//! Manager, the macOS Keychain or the Linux Secret Service and the file keeps a
+//! `keyring:<slot>` marker. Only when the vault does not answer either does the
+//! value land in a `plain:` file - and that file is forced to `0600`, so the
+//! fallback is not readable by other local users. The UI reports which tier is
+//! in use, so nothing pretends to be safer than it is.
 //!
-//! The file holds one `<prefix>:<base64>` line: `dpapi:` and `keystore:` carry
-//! the platform ciphertext, `plain:` carries the raw bytes. The platform
-//! crypto sits behind [`SecretCipher`], so the prefix handling, the migration
-//! of old `plain:` values and the failure paths are unit-tested on the host
-//! with a fake cipher.
+//! The file holds one `<prefix>...` line: `dpapi:` and `keystore:` carry the
+//! platform ciphertext, `keyring:` a vault slot and `plain:` the raw bytes. The
+//! platform crypto sits behind [`SecretCipher`], so the prefix handling, the
+//! migration of old `plain:` values and the failure paths are unit-tested on
+//! the host with a fake cipher and a fake vault.
 
 use pdfcore::error::PdfError;
 use std::path::Path;
 use std::sync::Mutex;
+
+mod vault;
 
 const DPAPI_PREFIX: &str = "dpapi:";
 const PLAIN_PREFIX: &str = "plain:";
@@ -132,6 +139,24 @@ fn seal(cipher: Option<&dyn SecretCipher>, value: &str) -> String {
     seal_bytes(cipher, value.as_bytes())
 }
 
+/// Builds the payload for a *secret* (not a binary blob): the platform cipher
+/// first, then the OS vault, then a `plain:` file the caller restricts to
+/// `0600`. The order matters: DPAPI and the Keystore need no daemon, the vault
+/// does, and plain text is the last resort - never the first.
+fn seal_for(cipher: Option<&dyn SecretCipher>, vault: Option<&dyn vault::Vault>, path: &Path, value: &str) -> String {
+    if let Some(payload) = cipher.map(|cipher| seal(Some(cipher), value)) {
+        if !payload.starts_with(PLAIN_PREFIX) {
+            return payload;
+        }
+    }
+    if let Some(vault) = vault {
+        if let Some(marker) = vault::seal(vault, path, value) {
+            return marker;
+        }
+    }
+    format!("{PLAIN_PREFIX}{}", base64_encode(value.as_bytes()))
+}
+
 /// [`seal`] for arbitrary bytes (the signature images).
 pub(crate) fn seal_bytes(cipher: Option<&dyn SecretCipher>, bytes: &[u8]) -> String {
     if let Some(cipher) = cipher {
@@ -174,8 +199,16 @@ fn utf8(bytes: Vec<u8>) -> Result<String, PdfError> {
 }
 
 /// Decodes a stored payload. Unknown or empty content reads as "no value".
-fn open(cipher: Option<&dyn SecretCipher>, content: &str) -> Result<Opened, PdfError> {
+fn open_via(
+    cipher: Option<&dyn SecretCipher>,
+    vault: Option<&dyn vault::Vault>,
+    content: &str,
+) -> Result<Opened, PdfError> {
     let content = content.trim();
+    if content.starts_with(vault::KEYRING_PREFIX) {
+        let vault = vault.ok_or_else(|| PdfError::Internal(vault::VAULT_MISSING_MESSAGE.to_string()))?;
+        return Ok(Opened { value: vault::open(vault, content)?, migrate: false });
+    }
     if let Some(encoded) = content.strip_prefix(PLAIN_PREFIX) {
         let bytes = base64_decode(encoded).ok_or_else(|| PdfError::Internal("invalid key blob".to_string()))?;
         return Ok(Opened { value: utf8(bytes)?, migrate: cipher.is_some_and(|cipher| cipher.migrates_plain()) });
@@ -195,9 +228,21 @@ fn open(cipher: Option<&dyn SecretCipher>, content: &str) -> Result<Opened, PdfE
     Ok(Opened { value: String::new(), migrate: false })
 }
 
+/// Replaces a `plain:` file with `payload`, but only when the file still holds
+/// exactly the bytes the caller read. A concurrent save therefore wins over a
+/// migration, and a failed write leaves the plain value in place.
+fn replace_plain(path: &Path, original: &str, payload: &str) {
+    let _guard = file_lock();
+    if std::fs::read_to_string(path).map(|now| now != original).unwrap_or(true) {
+        return;
+    }
+    let _ = crate::commands::write_atomic(path, payload.as_bytes());
+    vault::restrict(path);
+}
+
 /// Re-saves a legacy `plain:` value encrypted. Best effort: it only replaces
-/// the exact bytes that were read, only when the new payload decrypts back to
-/// the same value, and any failure leaves the plain file untouched.
+/// the exact bytes that were read, and only when the new payload decrypts back
+/// to the same value.
 fn migrate_plain(cipher: &dyn SecretCipher, path: &Path, original: &str, value: &str) {
     if value.is_empty() {
         return;
@@ -206,57 +251,112 @@ fn migrate_plain(cipher: &dyn SecretCipher, path: &Path, original: &str, value: 
     if payload.starts_with(PLAIN_PREFIX) {
         return;
     }
-    match open(Some(cipher), &payload) {
+    match open_via(Some(cipher), None, &payload) {
         Ok(check) if check.value == value => {}
         _ => return,
     }
-    let _guard = file_lock();
-    if std::fs::read_to_string(path).map(|now| now != original).unwrap_or(true) {
-        return;
-    }
-    let _ = crate::commands::write_atomic(path, payload.as_bytes());
+    replace_plain(path, original, &payload);
 }
 
-fn save_with(cipher: Option<&dyn SecretCipher>, path: &Path, key: &str) -> Result<bool, PdfError> {
+/// Moves a legacy `plain:` value into the OS vault, the only encryption a
+/// platform without a cipher has.
+fn migrate_to_vault(vault: &dyn vault::Vault, path: &Path, original: &str, value: &str) {
+    if value.is_empty() {
+        return;
+    }
+    let Some(marker) = vault::seal(vault, path, value) else { return };
+    // A vault that answered the write but not the read would lose the secret if
+    // the plain file were replaced, so the read-back is part of the migration.
+    if vault::open(vault, &marker).ok().as_deref() != Some(value) {
+        vault::remove(vault, &marker);
+        return;
+    }
+    replace_plain(path, original, &marker);
+}
+
+/// Saves one secret, reporting whether it is protected (`true`) or landed in a
+/// `plain:` file (`false`).
+/// Writes a sealed payload atomically and restricts the file to its owner. The
+/// cipher may be missing (a platform with neither a cipher nor a vault), and a
+/// sealed store - the LAN device key, a person card, a signature - must still
+/// not be readable by other local users.
+pub(crate) fn write_sealed(path: &Path, payload: &[u8]) -> Result<(), PdfError> {
+    crate::commands::write_atomic(path, payload)?;
+    vault::restrict(path);
+    Ok(())
+}
+
+fn save_via(
+    cipher: Option<&dyn SecretCipher>,
+    vault: Option<&dyn vault::Vault>,
+    path: &Path,
+    key: &str,
+) -> Result<bool, PdfError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(PdfError::from_io)?;
     }
-    let payload = seal(cipher, key.trim());
+    let payload = seal_for(cipher, vault, path, key.trim());
     let _guard = file_lock();
     // A torn write here would make the key unrecoverable, so it must never
     // truncate the previous blob in place.
     crate::commands::write_atomic(path, payload.as_bytes())?;
+    vault::restrict(path);
     Ok(!payload.starts_with(PLAIN_PREFIX))
 }
 
-fn load_with(cipher: Option<&dyn SecretCipher>, path: &Path) -> Result<String, PdfError> {
+fn load_via(
+    cipher: Option<&dyn SecretCipher>,
+    vault: Option<&dyn vault::Vault>,
+    path: &Path,
+) -> Result<String, PdfError> {
     if !path.exists() {
         return Ok(String::new());
     }
     let content = std::fs::read_to_string(path).map_err(PdfError::from_io)?;
-    let opened = open(cipher, &content)?;
+    let plain = content.trim().starts_with(PLAIN_PREFIX);
+    if plain {
+        // An old file may have been written with the umask's mode.
+        vault::restrict(path);
+    }
+    let opened = open_via(cipher, vault, &content)?;
     if opened.migrate {
         if let Some(cipher) = cipher {
             migrate_plain(cipher, path, &content, &opened.value);
+        }
+    } else if plain && cipher.is_none() {
+        if let Some(vault) = vault {
+            migrate_to_vault(vault, path, &content, &opened.value);
         }
     }
     Ok(opened.value)
 }
 
 /// Writes the API key to `path`, encrypted when possible.
-/// Returns `true` when platform encryption was used.
+/// Returns `true` when the platform cipher or the OS vault took it.
 pub fn save_api_key(path: &Path, key: &str) -> Result<bool, PdfError> {
-    save_with(platform_cipher(), path, key)
+    save_via(platform_cipher(), vault::system(), path, key)
 }
 
 /// Reads the API key, decrypting it when it was stored encrypted. A `plain:`
-/// value is migrated to encrypted storage on platforms that support it.
+/// value is migrated to encrypted or vault storage when the platform offers it.
 pub fn load_api_key(path: &Path) -> Result<String, PdfError> {
-    load_with(platform_cipher(), path)
+    load_via(platform_cipher(), vault::system(), path)
 }
 
+/// Deletes the stored value: the vault entry (the file then only holds a
+/// marker) and the file itself.
 pub fn delete_api_key(path: &Path) -> Result<(), PdfError> {
+    delete_via(vault::system(), path)
+}
+
+fn delete_via(vault: Option<&dyn vault::Vault>, path: &Path) -> Result<(), PdfError> {
     let _guard = file_lock();
+    if let Some(vault) = vault {
+        match std::fs::read_to_string(path) {
+            Ok(content) if content.trim().starts_with(vault::KEYRING_PREFIX) => vault::remove(vault, &content),
+            _ => vault::remove_for(vault, path),
+        }
+    }
     if path.exists() {
         std::fs::remove_file(path).map_err(PdfError::from_io)?;
     }
@@ -269,13 +369,15 @@ fn kind_of(content: &str) -> &'static str {
         "dpapi"
     } else if content.starts_with(KEYSTORE_PREFIX) {
         "keystore"
+    } else if content.starts_with(vault::KEYRING_PREFIX) {
+        "keyring"
     } else {
         "plain"
     }
 }
 
 /// How the value at `path` is stored, for the UI: `dpapi`, `keystore`,
-/// `plain` or `none` (no file).
+/// `keyring`, `plain` or `none` (no file).
 pub fn storage_kind(path: &Path) -> &'static str {
     if !path.exists() {
         return "none";
@@ -294,212 +396,5 @@ pub(crate) fn base64_decode(value: &str) -> Option<Vec<u8>> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::cell::Cell;
-
-    /// Reversible stand-in for the platform crypto: reverses the bytes.
-    struct FakeCipher {
-        prefix: &'static str,
-        migrates: bool,
-        fail_protect: bool,
-        key_lost: bool,
-        protect_calls: Cell<u32>,
-    }
-
-    impl FakeCipher {
-        fn keystore() -> Self {
-            Self {
-                prefix: KEYSTORE_PREFIX,
-                migrates: true,
-                fail_protect: false,
-                key_lost: false,
-                protect_calls: Cell::new(0),
-            }
-        }
-    }
-
-    impl SecretCipher for FakeCipher {
-        fn prefix(&self) -> &'static str {
-            self.prefix
-        }
-        fn protect(&self, plaintext: &[u8]) -> Result<Vec<u8>, CipherError> {
-            self.protect_calls.set(self.protect_calls.get() + 1);
-            if self.fail_protect {
-                return Err(CipherError::Failed("encryption unavailable".into()));
-            }
-            Ok(plaintext.iter().rev().copied().collect())
-        }
-        fn unprotect(&self, blob: &[u8]) -> Result<Vec<u8>, CipherError> {
-            if self.key_lost {
-                return Err(CipherError::KeyLost);
-            }
-            Ok(blob.iter().rev().copied().collect())
-        }
-        fn migrates_plain(&self) -> bool {
-            self.migrates
-        }
-    }
-
-    fn plain_payload(value: &str) -> String {
-        format!("{PLAIN_PREFIX}{}", base64_encode(value.as_bytes()))
-    }
-
-    fn secret_file(content: &str) -> (tempfile::TempDir, std::path::PathBuf) {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("secret.key");
-        std::fs::write(&path, content).unwrap();
-        (dir, path)
-    }
-
-    #[test]
-    fn seal_uses_the_cipher_prefix_and_round_trips() {
-        let cipher = FakeCipher::keystore();
-        let payload = seal(Some(&cipher), "sk-abc");
-        assert!(payload.starts_with("keystore:"));
-        assert!(!payload.contains("sk-abc"));
-        assert_eq!(cipher.protect_calls.get(), 1);
-        let opened = open(Some(&cipher), &payload).unwrap();
-        assert_eq!(opened.value, "sk-abc");
-        assert!(!opened.migrate);
-    }
-
-    #[test]
-    fn seal_falls_back_to_plain_without_a_working_cipher() {
-        assert_eq!(seal(None, "k"), plain_payload("k"));
-        let mut cipher = FakeCipher::keystore();
-        cipher.fail_protect = true;
-        assert_eq!(seal(Some(&cipher), "k"), plain_payload("k"));
-    }
-
-    #[test]
-    fn open_plain_asks_for_migration_only_when_the_cipher_wants_it() {
-        let payload = plain_payload("old-key");
-        let cipher = FakeCipher::keystore();
-        let opened = open(Some(&cipher), &payload).unwrap();
-        assert_eq!((opened.value.as_str(), opened.migrate), ("old-key", true));
-
-        let mut no_migrate = FakeCipher::keystore();
-        no_migrate.migrates = false;
-        assert!(!open(Some(&no_migrate), &payload).unwrap().migrate);
-        assert!(!open(None, &payload).unwrap().migrate);
-    }
-
-    #[test]
-    fn open_reports_a_lost_key_clearly() {
-        let mut cipher = FakeCipher::keystore();
-        let payload = seal(Some(&cipher), "sk-abc");
-        cipher.key_lost = true;
-        let message = open(Some(&cipher), &payload).err().unwrap().to_string();
-        assert!(message.contains("can no longer be decrypted"), "{message}");
-        assert!(message.contains("enter it again"), "{message}");
-    }
-
-    #[test]
-    fn open_rejects_values_from_another_platform() {
-        let payload = format!("{KEYSTORE_PREFIX}{}", base64_encode(b"xyz"));
-        assert!(open(None, &payload).is_err());
-        let mut dpapi_like = FakeCipher::keystore();
-        dpapi_like.prefix = DPAPI_PREFIX;
-        assert!(open(Some(&dpapi_like), &payload).is_err());
-    }
-
-    #[test]
-    fn open_treats_empty_unknown_and_corrupt_content() {
-        let cipher = FakeCipher::keystore();
-        assert_eq!(open(Some(&cipher), "").unwrap().value, "");
-        assert_eq!(open(Some(&cipher), "something-else").unwrap().value, "");
-        assert!(open(Some(&cipher), "plain:***not base64***").is_err());
-        assert!(open(Some(&cipher), "keystore:***not base64***").is_err());
-        assert_eq!(open(Some(&cipher), &format!("{}\n", plain_payload("k"))).unwrap().value, "k");
-    }
-
-    #[test]
-    fn kind_of_names_every_prefix() {
-        assert_eq!(kind_of("dpapi:AAAA"), "dpapi");
-        assert_eq!(kind_of("keystore:AAAA"), "keystore");
-        assert_eq!(kind_of("plain:AAAA"), "plain");
-        assert_eq!(kind_of(""), "plain");
-    }
-
-    #[test]
-    fn storage_kind_reads_the_file() {
-        let (dir, path) = secret_file("keystore:AAAA");
-        assert_eq!(storage_kind(&path), "keystore");
-        assert_eq!(storage_kind(&dir.path().join("missing.key")), "none");
-    }
-
-    #[test]
-    fn save_then_load_round_trips_encrypted() {
-        let cipher = FakeCipher::keystore();
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("nested").join("secret.key");
-        assert!(save_with(Some(&cipher), &path, "  sk-abc \n").unwrap());
-        assert_eq!(storage_kind(&path), "keystore");
-        assert_eq!(load_with(Some(&cipher), &path).unwrap(), "sk-abc");
-    }
-
-    #[test]
-    fn save_reports_plain_when_encryption_fails() {
-        let mut cipher = FakeCipher::keystore();
-        cipher.fail_protect = true;
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("secret.key");
-        assert!(!save_with(Some(&cipher), &path, "sk-abc").unwrap());
-        assert_eq!(storage_kind(&path), "plain");
-        assert_eq!(load_with(Some(&cipher), &path).unwrap(), "sk-abc");
-    }
-
-    #[test]
-    fn load_migrates_a_plain_value_to_encrypted_storage() {
-        let cipher = FakeCipher::keystore();
-        let (_dir, path) = secret_file(&plain_payload("old-key"));
-        assert_eq!(load_with(Some(&cipher), &path).unwrap(), "old-key");
-        assert_eq!(storage_kind(&path), "keystore");
-        assert_eq!(load_with(Some(&cipher), &path).unwrap(), "old-key");
-    }
-
-    #[test]
-    fn load_keeps_the_plain_value_when_migration_cannot_encrypt() {
-        let mut cipher = FakeCipher::keystore();
-        cipher.fail_protect = true;
-        let payload = plain_payload("old-key");
-        let (_dir, path) = secret_file(&payload);
-        assert_eq!(load_with(Some(&cipher), &path).unwrap(), "old-key");
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), payload);
-    }
-
-    #[test]
-    fn load_does_not_migrate_without_a_migrating_cipher() {
-        let payload = plain_payload("old-key");
-        let (_dir, path) = secret_file(&payload);
-        assert_eq!(load_with(None, &path).unwrap(), "old-key");
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), payload);
-    }
-
-    #[test]
-    fn load_surfaces_a_lost_key_and_leaves_the_file_alone() {
-        let mut cipher = FakeCipher::keystore();
-        let (_dir, path) = secret_file(&seal(Some(&cipher), "sk-abc"));
-        let before = std::fs::read_to_string(&path).unwrap();
-        cipher.key_lost = true;
-        let error = load_with(Some(&cipher), &path).err().unwrap();
-        assert!(error.to_string().contains("enter it again"));
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
-    }
-
-    #[test]
-    fn load_of_a_missing_file_is_empty() {
-        let dir = tempfile::tempdir().unwrap();
-        assert_eq!(load_with(None, &dir.path().join("none.key")).unwrap(), "");
-    }
-
-    #[test]
-    fn migration_never_overwrites_a_concurrently_saved_value() {
-        let cipher = FakeCipher::keystore();
-        let (_dir, path) = secret_file(&plain_payload("newer"));
-        // The migration read an older value, but the file has changed since.
-        migrate_plain(&cipher, &path, &plain_payload("old"), "old");
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), plain_payload("newer"));
-    }
-}
+#[path = "secret_tests.rs"]
+mod tests;
