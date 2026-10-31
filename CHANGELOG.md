@@ -4,6 +4,37 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.14.0] - Tarayıcı korpusu
+
+### Added
+
+- **Measured scanner corpus (D4, #536):** `corpus/scanner/` commits 14
+  photo-realistic, deterministic images (perspective, rotation, dark and light
+  desks, shadow gradients, warm/cool light, vignetting, paper texture, defocus,
+  edge crop and three two-page spreads) with their ground-truth quads, generated
+  by `scripts/generate-scanner-corpus.py` (Python standard library only). The
+  golden test measures **12/14 usable (85 %)** against the 80 % target: a pass
+  means the page count matches, the mean corner error is ≤ 3.5 % of the
+  diagonal and every corner ≤ 6 %. Real camera photos cannot be committed
+  (personal data), so the real-device pass stays the D1 manual matrix.
+- **Automatic two-page separation (D4, #536):** a capture with two facing pages
+  is split at the spine (or between two bright regions) into two quads, and
+  every quad is refined against the photo's Sobel gradients. All three corpus
+  spreads return exactly two pages; single pages land at ~0.5 px mean error.
+- **Batch auto-crop (D4, #536):** `office_scan_detect_batch` checks the whole
+  capture in one call, and the scanner screen shows a spread as two page rows
+  (left/right half, spread badge) that are built as separate PDF pages. Rows
+  are keyed by page id, so correcting one half never touches the other.
+
+### Changed
+
+- `docs/scanner-corpus.md` documents the corpus design, the acceptance rule,
+  the measured table and the two known failures (bright page on a bright desk
+  under a shadow gradient; the right half of the same spread) — documented, not
+  hidden, and the corpus was not weakened.
+- `docs/android.md`, `RELEASE_READINESS.md` and `docs/plan/PHASE-D-PROPOSAL.md`
+  record the measured scanner baseline.
+
 ## [6.13.0] - Yerel ağ kapanışı
 
 ### Added

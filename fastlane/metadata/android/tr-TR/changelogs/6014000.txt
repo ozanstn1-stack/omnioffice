@@ -1,0 +1,3 @@
+6.14.0: Tarayıcı korpusu: 14 görsellik fotoğraf-benzeri korpusla ölçülen
+%85 köşe doğruluğu (12/14), çift sayfa otomatik ayırma ve toplu otomatik
+kırpma; çift sayfa ekranda iki ayrı sayfa olarak gösteriliyor.
