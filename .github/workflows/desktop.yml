@@ -304,7 +304,7 @@ jobs:
           cargo test -p pdfcore -p aicore --lib
       - name: Workspace compile
         if: runner.os != 'Windows'
-        run: cargo build --workspace
+        run: cargo build --workspace --locked
       # The IPC DTOs are generated from the Rust structs; a hand-written copy
       # that drifts fails here instead of shipping as `undefined` (the v5.0.0
       # audit's `headerFooter`/`taxIdValid` failures). One platform is enough:
@@ -320,7 +320,7 @@ jobs:
         run: npm run bindings:check
       - name: Release build (library crates)
         shell: bash
-        run: cargo build --release $(node scripts/workspace-crates.mjs release)
+        run: cargo build --release --locked $(node scripts/workspace-crates.mjs release)
 
   # The workspace declares a rust-version; this job proves the declaration is
   # true instead of trusting it. Cargo.lock already contains crates that need

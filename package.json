@@ -61,7 +61,8 @@
     "e2e:persona:lawyer": "node e2e/smoke.mjs --persona lawyer",
     "bindings:specta": "cargo run --manifest-path src-tauri/Cargo.toml --features bindings --bin specta_scaffold",
     "bindings:check": "npm run bindings:specta && git diff --exit-code -- src/lib/generated/specta.ts",
-    "signing:check": "node scripts/check-signing-readiness.mjs"
+    "signing:check": "node scripts/check-signing-readiness.mjs",
+    "repro:check": "node scripts/check-reproducibility-inputs.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
