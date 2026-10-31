@@ -1,5 +1,6 @@
 //! Unit tests for the path validators (kept apart to respect the file-size ratchet).
 use super::*;
+use crate::files::FileAccess;
 
 fn scratch_dir() -> PathBuf {
     let dir = std::env::temp_dir().join(format!("pdfsak-paths-{}", std::process::id()));
@@ -34,7 +35,7 @@ fn traversal_and_device_names_are_refused() {
 fn unc_and_extended_paths_are_refused() {
     assert!(input_file("\\\\server\\share\\a.pdf").is_err());
     assert!(output_file(r"\\?\C:\docs\out.pdf").is_err());
-    assert!(directory("\\\\server\\share").is_err());
+    assert!(directory("\\\\server\\share", FileAccess::ReadWrite).is_err());
 }
 
 #[test]
@@ -48,11 +49,11 @@ fn a_directory_token_resolves_through_the_directory_validator() {
     let dir = scratch_dir().join("token-dir");
     std::fs::create_dir_all(&dir).expect("temp dir");
     let reference = crate::file_dirs::issue_dir(&dir);
-    assert_eq!(directory(&reference.token).unwrap().as_path(), dir);
+    assert_eq!(directory(&reference.token, FileAccess::ReadWrite).unwrap().as_path(), dir);
     let file = dir.join("a.pdf");
     std::fs::write(&file, b"%PDF").expect("write");
     let file_ref = crate::files::issue(&file, crate::files::FileAccess::Read);
-    assert!(directory(&file_ref.token).is_err(), "a file token is not a folder");
+    assert!(directory(&file_ref.token, FileAccess::ReadWrite).is_err(), "a file token is not a folder");
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -70,12 +71,12 @@ fn output_requires_an_existing_parent_folder() {
 #[test]
 fn directory_requires_an_existing_folder() {
     let dir = scratch_dir();
-    assert_eq!(directory(dir.to_str().unwrap()).unwrap().as_path(), dir);
-    assert!(matches!(directory(dir.join("nope").to_str().unwrap()), Err(PdfError::NotFound(_))));
+    assert_eq!(directory(dir.to_str().unwrap(), FileAccess::ReadWrite).unwrap().as_path(), dir);
+    assert!(matches!(directory(dir.join("nope").to_str().unwrap(), FileAccess::ReadWrite), Err(PdfError::NotFound(_))));
 
     let file = dir.join("a-file.pdf");
     std::fs::write(&file, b"%PDF").expect("write");
-    assert!(matches!(directory(file.to_str().unwrap()), Err(PdfError::InvalidInput(_))));
+    assert!(matches!(directory(file.to_str().unwrap(), FileAccess::ReadWrite), Err(PdfError::InvalidInput(_))));
 }
 
 #[test]
@@ -103,7 +104,7 @@ fn a_file_token_flows_through_the_input_and_output_validators() {
     let write = crate::files::issue(&output, crate::files::FileAccess::ReadWrite);
     assert_eq!(output_file(&write.token).unwrap().as_path(), output);
     assert_eq!(input_file(&write.token).unwrap().as_path(), output);
-    assert_eq!(lexical(&read.token).unwrap().as_path(), input);
+    assert_eq!(lexical(&read.token, FileAccess::Read).unwrap().as_path(), input);
 }
 
 #[test]

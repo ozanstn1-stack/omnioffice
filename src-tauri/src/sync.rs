@@ -1036,7 +1036,7 @@ pub async fn sync_resolve(app: AppHandle, local_path: String, resolution: String
 pub fn sync_forget(app: AppHandle, local_path: String) -> Result<(), PdfError> {
     // Forgetting must also work for a file that no longer exists, so only the
     // path shape is validated (still absolute, no traversal/device names).
-    let path = crate::paths::lexical(&local_path)?.into_path_buf();
+    let path = crate::paths::lexical(&local_path, crate::files::FileAccess::ReadWrite)?.into_path_buf();
     metadata::delete_meta(&config_dir(&app)?, &path).map_err(sync_error)
 }
 

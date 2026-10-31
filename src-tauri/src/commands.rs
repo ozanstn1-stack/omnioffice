@@ -586,7 +586,7 @@ pub async fn split_pdf(
 ) -> Result<SplitResponse, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let input = crate::paths::input_file(&request.input)?;
-        let output_dir = crate::paths::directory(&request.output_dir)?;
+        let output_dir = crate::paths::directory_configured(&request.output_dir)?;
         let parts = pdfcore::organize::split_pdf(
             input.as_path(),
             &request.mode,
@@ -869,7 +869,7 @@ pub async fn pdf_to_images(
 ) -> Result<PdfToImagesResponse, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let input = crate::paths::input_file(&request.input)?;
-        let output_dir = crate::paths::directory(&request.output_dir)?;
+        let output_dir = crate::paths::directory_configured(&request.output_dir)?;
         let result = pdfcore::convert::pdf_to_images(
             input.as_path(),
             output_dir.as_path(),
@@ -1950,7 +1950,9 @@ pub fn save_settings(app: AppHandle, settings: serde_json::Value) -> Result<(), 
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub fn output_exists(path: String) -> bool {
-    crate::paths::lexical(&path).map(|validated| validated.as_path().exists()).unwrap_or(false)
+    crate::paths::lexical(&path, crate::files::FileAccess::Read)
+        .map(|validated| validated.as_path().exists())
+        .unwrap_or(false)
 }
 
 /// Creates a directory (including its parents). The Android shell uses this to
@@ -1961,7 +1963,7 @@ pub fn output_exists(path: String) -> bool {
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub fn ensure_dir(path: String) -> Result<(), PdfError> {
-    let path = crate::paths::lexical(&path)?;
+    let path = crate::paths::lexical(&path, crate::files::FileAccess::ReadWrite)?;
     std::fs::create_dir_all(path.as_path()).map_err(PdfError::from_io)
 }
 
@@ -1985,7 +1987,7 @@ pub fn suggest_output(input: String, suffix: String, directory: Option<String>) 
     // A configured output folder is validated like any other directory; the
     // token is issued here, never by the webview.
     let target = match directory {
-        Some(directory) => match crate::paths::directory(&directory) {
+        Some(directory) => match crate::paths::directory_configured(&directory) {
             Ok(base) => base.as_path().join(suggested.file_name().unwrap_or_default()),
             Err(_) => suggested,
         },
@@ -2031,7 +2033,7 @@ pub struct FileFingerprint {
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub fn file_fingerprint(path: String) -> Result<FileFingerprint, PdfError> {
-    let validated = crate::paths::lexical(&path)?;
+    let validated = crate::paths::lexical(&path, crate::files::FileAccess::Read)?;
     let target = validated.as_path();
     match std::fs::metadata(target) {
         Err(_) => Ok(FileFingerprint { exists: false, size: 0, modified_ms: 0, sha256: String::new() }),
@@ -2209,7 +2211,9 @@ pub fn ai_library_save(app: AppHandle, request: SaveAiEntryRequest) -> Result<Ai
     let index = ai_library_index(&app)?;
     // The library folder may be created below, so validate its shape only.
     let dir = match request.directory.as_deref() {
-        Some(raw) if !raw.is_empty() => crate::paths::lexical(raw)?.into_path_buf(),
+        Some(raw) if !raw.is_empty() => {
+            crate::paths::lexical(raw, crate::files::FileAccess::ReadWrite)?.into_path_buf()
+        }
         _ => default_library_dir(&app),
     };
     library::save_ai_entry(
