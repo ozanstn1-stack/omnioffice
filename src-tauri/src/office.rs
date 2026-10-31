@@ -1166,7 +1166,21 @@ pub async fn office_convert(
     let task = tauri::async_runtime::spawn_blocking(move || {
         let input = input_path(&input)?;
         let output = output_path(&output)?;
-        convert(&input, &output, &options)
+        let info = convert(&input, &output, &options)?;
+        // D7: a DOCX produced from a source document carries its provenance
+        // manifest automatically; a producer must never fail because of it.
+        if info.converted {
+            let produced = std::path::Path::new(&info.output);
+            let is_docx = produced
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .map(|extension| extension.eq_ignore_ascii_case("docx"))
+                .unwrap_or(false);
+            if is_docx {
+                crate::provenance::attach_docx_manifest(produced, "convert", std::slice::from_ref(&input));
+            }
+        }
+        Ok(info)
     });
     task.await.map_err(|error| payload(OfficeError::internal(format!("worker thread failed: {error}"))))?
 }

@@ -366,6 +366,8 @@ pub async fn merge_pdfs(
             &progress,
             &cancel,
         )?;
+        // D7: the merged PDF records which documents it was made from.
+        crate::provenance::attach_pdf_manifest(&path, "merge", &inputs);
         Ok(OpResult {
             path: path.display().to_string(),
             page_count: Some(pages),
@@ -695,6 +697,12 @@ pub async fn ocr_pdf(
             progress,
             cancel,
         )?;
+        // D7: the OCR output records the scanned document it came from.
+        crate::provenance::attach_pdf_manifest(
+            &std::path::PathBuf::from(&result.path),
+            "ocr",
+            &[input.as_path().to_path_buf()],
+        );
         Ok(OpResult {
             path: result.path.clone(),
             page_count: Some(result.pages_processed),

@@ -31,6 +31,47 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 7.0.0) - Kaynak şeffaflığı v2
+
+- **DOCX provenance manifests (D7, #531):** a DOCX produced by the app carries
+  the C8 manifest shape as one package part (`omnioffice/provenance.json`); the
+  recorded digest is computed over the package entries in a canonical order, so
+  re-compressing the file does not report a false change while editing a part
+  does. Re-embedding replaces the part instead of stacking it.
+  `test:crates/officecore/src/docx_provenance.rs#embedding_round_trips_the_manifest_and_the_digest`
+  `test:crates/officecore/src/docx_provenance.rs#changing_a_part_after_the_manifest_is_detected`
+  `test:crates/officecore/src/docx_provenance.rs#the_digest_does_not_depend_on_zip_order_or_timestamps`
+- **Unified source chain (D7):** `provenance_read_chain` sniffs a PDF or a DOCX
+  and returns the derivation chain — sources with their SHA-256, the
+  transformation step, the output digest — with an `intact` / `changed` /
+  `absent` / `unsupported` verdict; the verification screen shows the links in
+  order and puts a red tamper warning before the sources when the digest no
+  longer matches.
+  `test:src-tauri/src/provenance.rs#the_chain_lists_sources_then_the_transformation_then_the_output`
+  `test:src/components/provenance-card.test.tsx#warns clearly when the document no longer matches its manifest`
+- **Automatic producer embedding (D7):** format conversion to DOCX, OCR PDFs
+  and merged PDFs write their manifest after the output is saved; the hook is
+  best effort and never blocks the produced file. The generic
+  `provenance_write` command embeds into either container, and the card keeps a
+  DOCX copy path (`-provenance.docx`).
+  `test:src-tauri/src/provenance.rs#a_produced_docx_gets_the_manifest_attached_automatically`
+  `test:src/components/provenance-card.test.tsx#writes a DOCX copy with the picked sources and the app version`
+- **Guide (D7):** `docs/provenance-v2.md` documents the manifest fields, the
+  canonical DOCX digest, the chain verdicts, the producer hooks and the honest
+  limits (no XMP in DOCX, a self-consistent forged manifest is out of scope,
+  sources are not re-read, Android read-only).
+
+### Not done / Known limitations (7.0.0)
+
+- The chain detects changes to the document; it cannot prove a source file was
+  the one recorded without the user supplying it again. The recorded digests
+  are shown for out-of-band comparison, and no source is re-hashed while
+  verifying.
+  (no test: by design, documented in `docs/provenance-v2.md`.)
+- The invoice export path reaches the manifest only through the generic
+  conversion/save surface, not as a dedicated invoice hook.
+  (no test: the office save dialog owns the output name.)
+
 ## Implemented (this cycle, 6.15.0) - Mobil ergonomi
 
 - **Thumb-reach primary actions (D8, #531):** the shared `Screen` shell keeps
@@ -435,8 +476,8 @@ release-train schedule is decided.
   `test:crates/pdfcore/src/provenance.rs#embedding_round_trips_the_manifest_and_the_digest`
   `test:crates/pdfcore/src/provenance.rs#changing_the_document_after_the_manifest_is_detected`
   `test:crates/pdfcore/src/provenance.rs#re_embedding_replaces_the_manifest_instead_of_stacking_it`
-  `test:src/components/provenance-card.test.tsx#writes a copy with the picked sources and the app version`
-  `test:src/components/provenance-card.test.tsx#calls out a document changed after the manifest`
+  `test:src/components/provenance-card.test.tsx#writes a DOCX copy with the picked sources and the app version`
+  `test:src/components/provenance-card.test.tsx#warns clearly when the document no longer matches its manifest`
 - **Report a problem without uploading anything (C15, #495):** the live
   diagnostics report is shown for review, copied on request and the GitHub
   issue form opens pre-filled; nothing is sent automatically and file/folder

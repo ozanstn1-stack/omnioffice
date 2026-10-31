@@ -3025,5 +3025,15 @@
   "aiPacks.issue.dateFormat": "Expected a YYYY-MM-DD date.",
   "aiPacks.issue.dateOrder": "The last day is before the service date.",
   "aiPacks.issue.range": "Must be between {min} and {max}.",
-  "aiPacks.issue.tooFew": "At least {min} item(s) required."
+  "aiPacks.issue.tooFew": "At least {min} item(s) required.",
+  "provenance.chain": "Derivation chain",
+  "provenance.chainNote": "How this file was produced, from its sources to the output digest.",
+  "provenance.chainStepSource": "Source",
+  "provenance.chainStepTransform": "Transformation",
+  "provenance.chainStepOutput": "Output",
+  "provenance.chainTampered": "This document was changed after its source manifest was written. The recorded sources no longer describe it; verify the file before trusting it.",
+  "provenance.chainUnsupported": "Not a PDF or DOCX package, so it cannot carry a source manifest.",
+  "provenance.recorded": "Recorded SHA-256",
+  "provenance.outputDigest": "Output SHA-256",
+  "provenance.docxSupported": "The manifest is embedded in the DOCX package as one extra part."
 }

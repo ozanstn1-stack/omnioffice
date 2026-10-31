@@ -3025,5 +3025,15 @@
   "aiPacks.issue.dateFormat": "YYYY-AA-GG biçiminde tarih bekleniyor.",
   "aiPacks.issue.dateOrder": "Son gün, tebliğ tarihinden önce.",
   "aiPacks.issue.range": "{min} ile {max} arasında olmalı.",
-  "aiPacks.issue.tooFew": "En az {min} öğe gerekli."
+  "aiPacks.issue.tooFew": "En az {min} öğe gerekli.",
+  "provenance.chain": "Türetim zinciri",
+  "provenance.chainNote": "Bu dosyanın kaynaklarından çıktı özetine kadar nasıl üretildiği.",
+  "provenance.chainStepSource": "Kaynak",
+  "provenance.chainStepTransform": "Dönüşüm",
+  "provenance.chainStepOutput": "Çıktı",
+  "provenance.chainTampered": "Bu belge kaynak bildirgesi yazıldıktan sonra değiştirilmiş. Kaydedilen kaynaklar artık belgeyi tanımlamıyor; güvenmeden önce dosyayı doğrulayın.",
+  "provenance.chainUnsupported": "PDF veya DOCX paketi değil; kaynak bildirgesi taşıyamaz.",
+  "provenance.recorded": "Kaydedilen SHA-256",
+  "provenance.outputDigest": "Çıktı SHA-256",
+  "provenance.docxSupported": "Bildirge, DOCX paketine ek bir parça olarak gömülür."
 }

@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ProvenanceReport } from "../lib/provenance-api";
+import type { SourceChainReport } from "../lib/provenance-api";
 
 const manifest = {
   formatVersion: 1,
@@ -15,20 +15,60 @@ const manifest = {
   documentSha256: "b".repeat(64),
 };
 
-let report: ProvenanceReport = {
+function chainOf(overrides: Partial<SourceChainReport> = {}): SourceChainReport {
+  const intact = overrides.intact ?? true;
+  return {
+    format: "pdf",
+    present: true,
+    intact,
+    verdict: intact ? "intact" : "changed",
+    outputSha256: intact ? manifest.documentSha256 : "c".repeat(64),
+    recordedSha256: manifest.documentSha256,
+    module: "manual",
+    appVersion: "6.6.0",
+    createdAt: "2026-10-29T20:00:00Z",
+    note: "",
+    ai: null,
+    links: [
+      { kind: "source", label: "kaynak.pdf", sha256: "a".repeat(64), size: 1024, role: "source" },
+      { kind: "transform", label: "manual", sha256: "", size: null, role: "" },
+      {
+        kind: "output",
+        label: "belge.pdf",
+        sha256: intact ? manifest.documentSha256 : "c".repeat(64),
+        size: 1200,
+        role: "output",
+      },
+    ],
+    warnings: [],
+    ...overrides,
+  };
+}
+
+const absent: SourceChainReport = {
+  format: "pdf",
   present: false,
   intact: false,
-  manifest: null,
-  actualSha256: "",
+  verdict: "absent",
+  outputSha256: "",
+  recordedSha256: "",
+  module: "",
+  appVersion: "",
+  createdAt: "",
+  note: "",
+  ai: null,
+  links: [],
   warnings: [],
 };
+
+let report: SourceChainReport = absent;
 let savePick: { token: string; name: string } | null = { token: "tok-out", name: "belge-provenance.pdf" };
 
 const invoke = vi.fn(async (command: string, _payload?: unknown) => {
   switch (command) {
-    case "pdf_provenance_read":
+    case "provenance_read_chain":
       return report;
-    case "pdf_provenance_write":
+    case "provenance_write":
       return {
         result: {
           path: "/docs/belge-provenance.pdf",
@@ -61,11 +101,11 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(async () => null), sav
 import { useToasts } from "../lib/store";
 import { ProvenanceCard } from "./provenance-card";
 
-describe("ProvenanceCard (C8)", () => {
+describe("ProvenanceCard (C8 + D7)", () => {
   beforeEach(() => {
     invoke.mockClear();
     useToasts.setState({ toasts: [] });
-    report = { present: false, intact: false, manifest: null, actualSha256: "", warnings: [] };
+    report = absent;
     savePick = { token: "tok-out", name: "belge-provenance.pdf" };
   });
 
@@ -75,43 +115,60 @@ describe("ProvenanceCard (C8)", () => {
     expect(screen.getByRole("button", { name: "Add source manifest" })).toBeInTheDocument();
   });
 
-  it("shows an intact manifest with its sources and digest", async () => {
-    report = { present: true, intact: true, manifest, actualSha256: manifest.documentSha256, warnings: [] };
+  it("renders the derivation chain of an intact manifest", async () => {
+    report = chainOf();
     render(<ProvenanceCard path="/docs/belge.pdf" />);
 
     expect(await screen.findByText("Matches the recorded digest")).toBeInTheDocument();
-    expect(screen.getByText("manual")).toBeInTheDocument();
+    expect(screen.getByText("Derivation chain")).toBeInTheDocument();
+    expect(screen.getAllByText("manual").length).toBeGreaterThan(0);
+    // Sources, the transformation step and the output are numbered links.
+    expect(screen.getByText("Source")).toBeInTheDocument();
+    expect(screen.getByText("Transformation")).toBeInTheDocument();
+    expect(screen.getByText("Output")).toBeInTheDocument();
     expect(screen.getByText(/kaynak\.pdf/)).toBeInTheDocument();
-    expect(screen.getByText("Document SHA-256", { exact: false })).toBeInTheDocument();
-    // Replacing an existing manifest stays possible from the same button.
+    expect(screen.getByText("Recorded SHA-256", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("Output SHA-256", { exact: false })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add source manifest" })).toBeInTheDocument();
   });
 
-  it("calls out a document changed after the manifest", async () => {
-    report = { present: true, intact: false, manifest, actualSha256: "c".repeat(64), warnings: [] };
+  it("warns clearly when the document no longer matches its manifest", async () => {
+    report = chainOf({ intact: false, verdict: "changed" });
     render(<ProvenanceCard path="/docs/belge.pdf" />);
 
-    expect(await screen.findByText("Changed after the manifest")).toBeInTheDocument();
-    expect(screen.getByText("The document differs from the bytes the manifest was written for.")).toBeInTheDocument();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Changed after the manifest");
+    expect(alert).toHaveTextContent("changed after its source manifest was written");
   });
 
-  it("writes a copy with the picked sources and the app version", async () => {
+  it("writes a DOCX copy with the picked sources and the app version", async () => {
+    report = absent;
+    savePick = { token: "tok-out", name: "belge-provenance.docx" };
     const user = userEvent.setup();
-    render(<ProvenanceCard path="/docs/belge.pdf" />);
+    render(<ProvenanceCard path="/docs/belge.docx" />);
 
     await user.click(await screen.findByRole("button", { name: "Add source manifest" }));
+    expect(screen.getByText("The manifest is embedded in the DOCX package as one extra part.")).toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: "Add source files" }));
     await user.click(screen.getByRole("button", { name: "Save a copy with the manifest" }));
 
-    await waitFor(() => expect(invoke).toHaveBeenCalledWith("pdf_provenance_write", expect.anything()));
-    const request = invoke.mock.calls.find(([command]) => command === "pdf_provenance_write")?.[1] as {
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("provenance_write", expect.anything()));
+    const request = invoke.mock.calls.find(([command]) => command === "provenance_write")?.[1] as {
       request: Record<string, unknown>;
     };
-    expect(request.request.input).toBe("/docs/belge.pdf");
+    expect(request.request.input).toBe("/docs/belge.docx");
     expect(request.request.appVersion).toBe("6.5.1");
     expect(request.request.sources).toEqual([{ path: "tok-src", name: "kaynak.pdf", role: "source" }]);
     await waitFor(() =>
       expect(useToasts.getState().toasts.map((toast) => toast.title)).toContain("Source manifest written"),
     );
+  });
+
+  it("reports a file that is neither a PDF nor a DOCX package", async () => {
+    report = { ...absent, format: "", verdict: "unsupported", warnings: ["not a package"] };
+    render(<ProvenanceCard path="/docs/notes.txt" />);
+    expect(
+      await screen.findByText("Not a PDF or DOCX package, so it cannot carry a source manifest."),
+    ).toBeInTheDocument();
   });
 });
