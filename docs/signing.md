@@ -11,6 +11,48 @@ signature has to be refreshed after signing.
 The current state is expressed in `docs/distribution.md` and the README: they
 say "unsigned" until the first release that actually carries a signature.
 
+## D10 decision — unsigned for 7.1.0
+
+**Decision: v7.1.0 ships unsigned.** No Authenticode provider account is
+available in this cycle, and the free options are not something the repository
+can create on its own:
+
+- **SignPath Foundation** (signpath.org) signs open-source projects for free
+  and explicitly needs **no business or personal identity validation** — the
+  certificate is issued to the Foundation and it verifies that the binary was
+  built from the project's repository. What it does require is an application,
+  a project reputation check ("we require a certain verifiable reputation" for
+  executables), a code-signing policy on the project page and manual approval
+  per release. It is the recommended path when the owner wants to apply.
+- **Certum Open Source Code Signing** is the fallback (free certificate for
+  OSS projects, cloud/card signing); it additionally needs a workflow
+  adaptation and a validation step.
+- **Azure Trusted Signing** needs an Azure subscription and identity
+  validation that is only available for individuals in some countries; not
+  practical here.
+
+The commercial SignPath signup (`app.signpath.io`) is **not** the right door for
+this project: it asks for organization details, while the OSS route lives at
+**signpath.org/apply**.
+
+**What stays ready:** the provider-gated workflow (SignPath / Azure / PFX), the
+preflight that fails fast and names missing secrets, the verification steps,
+the updater-signature refresh, `npm run signing:check` and the runbook above.
+Nothing needs to change in the app when a provider is approved: add the five
+secrets and dispatch a release.
+
+**User impact, stated honestly:** SmartScreen shows "unknown publisher" on the
+first download; the updater manifest signature is a separate key and is
+unaffected. The release notes and the website say "unsigned" rather than
+implying a signature.
+
+**Revisit triggers:** (1) SignPath Foundation accepts the project and issues
+the subscription; (2) a Certum OSS certificate is obtained and the workflow is
+adapted; (3) an Azure Trusted Signing account with individual validation
+becomes available. When one of these lands, run the dry-run in the runbook,
+verify with `Get-AuthenticodeSignature` and `signtool verify`, then flip the
+notes in the same PR that publishes the first signed release.
+
 ## What gets signed, and what does not
 
 | Artifact | Signed by Authenticode? | Notes |

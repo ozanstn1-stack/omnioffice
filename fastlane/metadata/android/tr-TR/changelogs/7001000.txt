@@ -1,0 +1,5 @@
+7.1.0: Dağıtım ve platform: komut paletinde on masaüstü görevi (karartma,
+KDV özeti, delil klasörü, dilekçe, resmî yazı, süre, KVKK, belge sağlığı,
+temizleyici, veri araçları); imzalama hazırlığı ve runbook; tekrarlanabilirlik
+girdi kapısı + rapor; macOS/Flatpak/Windows ARM64 platform kararları.
+Windows imzası bu sürümde sağlayıcı hesabı olmadığından bilinçli olarak yok.
