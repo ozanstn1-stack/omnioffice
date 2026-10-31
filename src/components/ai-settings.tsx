@@ -7,6 +7,7 @@ import { isAndroid } from "../lib/mobile";
 import { clamp } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { PROVIDER_PRESETS, parseProviderId, type ProviderCapabilities } from "../lib/ai-providers";
+import { storageLabelKey } from "../lib/ai-storage-label";
 import {
   aiClearKey,
   aiDiscoverModels,
@@ -23,8 +24,8 @@ import type { AiKeyState, AiModelOption, AiSettingsView, AiTestResult, Reasoning
  * Settings panel for the optional AI integration.
  *
  * This is the only screen that receives an API key. The key is written by the
- * Rust layer (Windows DPAPI encrypted) and is never logged; the UI only ever
- * shows a masked value afterwards.
+ * Rust layer (DPAPI, the Android Keystore or the OS keyring) and is never
+ * logged; the UI only ever shows a masked value afterwards.
  */
 
 type AiSettingsViewExt = AiSettingsView & {
@@ -556,14 +557,7 @@ export function AiSettings() {
       </div>
 
       <p className="text-xs muted">
-        {t("settings.aiStorage")}:{" "}
-        {keyState.keyStorage === "dpapi"
-          ? t("ai.keySecure")
-          : keyState.keyStorage === "keystore"
-            ? t("ai.keyKeystore")
-            : keyState.keyStorage === "plain"
-              ? t("ai.keyPlain")
-              : t("ai.keyMissing")}
+        {t("settings.aiStorage")}: {t(storageLabelKey(keyState.keyStorage))}
       </p>
     </Card>
   );

@@ -123,7 +123,7 @@ pub(super) fn save(config_dir: &Path, store: &LanStore) -> Result<(), PdfError> 
     }
     let json = serde_json::to_vec(store).map_err(|error| PdfError::Internal(error.to_string()))?;
     let sealed = secret::seal_bytes(secret::platform_cipher(), &json);
-    metadata::write_atomic(&path, sealed.as_bytes())
+    secret::write_sealed(&path, sealed.as_bytes())
         .map_err(|error| PdfError::Internal(format!("the LAN sync store could not be written: {error}")))
 }
 

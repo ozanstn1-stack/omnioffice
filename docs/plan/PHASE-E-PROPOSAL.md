@@ -7,7 +7,7 @@
 | Release | Items | Status |
 |---|---|---|
 | v7.1.1 | E0 quick wins | Delivered (#551) |
-| v7.2.0 | E1 security, E2.2–E2.4 | In progress: CSP/prototype freeze, unsafe-free crates, the raw-path policy and the code-authenticated LAN pairing landed; configured-output token migration, desktop secrets, ACL and plugin confirmation are next |
+| v7.2.0 | E1 security, E2.2–E2.4 | In progress: CSP/prototype freeze, unsafe-free crates, the raw-path policy, the code-authenticated LAN pairing and the keyring secret tier landed; configured-output token migration, the command ACL and plugin confirmation are next |
 | v7.3.0 | E4, E5, E2.5 | — |
 | v7.4.0 | E3 | — |
 | v8.0.0 | E2.1, E6 | — |
@@ -74,11 +74,18 @@ change, README counts refreshed.
    confirmation spends one of the five attempts, accepted nonces are cached for
    the freshness window (`lan/replay.rs`), and four worker threads replace the
    one-at-a-time accept loop. Regression tests: `lan/pairing_tests.rs`.
-3. **Secrets on desktop.** `secret.rs` writes `plain:` when the platform cipher
-   is unavailable and does not set `0600`. Use the already-present `keyring`
-   dependency behind `SecretCipher`, fall back to `plain:` with `0600` only
-   when the keyring is missing, migrate legacy values on read, and extend the
-   existing cipher tests.
+3. **Secrets on desktop. Delivered (E1/4).** `secret.rs` used to write `plain:`
+   when the platform cipher was unavailable and never set `0600`, so on Linux
+   and macOS the API keys, the WebDAV password and the OAuth token landed in
+   umask-permission files. The store now has three tiers: the platform cipher,
+   then the OS credential vault (`src-tauri/src/secret/vault.rs`, behind an
+   injectable `Vault` so the tests need no Keychain) with only a
+   `keyring:<slot>` marker in the file, then a `plain:` file forced to `0600`.
+   Legacy plain values migrate into the vault on read (with a read-back check
+   before the plain file is replaced), old files are tightened when they are
+   read, and every sealed blob store (LAN device key, person cards, signatures,
+   trash copies) is written owner-only through `secret::write_sealed`. The UI
+   names the tier it is in.
 4. **Command ACL.** `build.rs` calls plain `tauri_build::build()`; all 249
    commands are reachable from the main window. Map the eight `ipc.rs` domains
    to capabilities/app-manifest permissions.

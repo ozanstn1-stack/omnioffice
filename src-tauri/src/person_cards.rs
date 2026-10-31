@@ -144,7 +144,7 @@ fn write_card(dir: &Path, cipher: Option<&dyn SecretCipher>, card: &PersonCard) 
         return Err(PdfError::InvalidInput("The person card is too large.".into()));
     }
     let sealed = secret::seal_bytes(cipher, &json);
-    crate::commands::write_atomic(&path_of(dir, &card.id), sealed.as_bytes())
+    secret::write_sealed(&path_of(dir, &card.id), sealed.as_bytes())
 }
 
 fn read_card(path: &Path, cipher: Option<&dyn SecretCipher>) -> Result<PersonCard, PdfError> {
